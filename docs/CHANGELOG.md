@@ -128,6 +128,19 @@ The panel can restart AgEnD itself for a change only a fresh process can adopt, 
   fire-and-forget (a failed stop said nothing, and a second press sent a second request). While
   one is in flight the agent's buttons are disabled and the pressed one reads "Working…", only one
   action per agent runs at a time, and a failure is reported.
+- **Codex 0.158 and 0.159 are supported; deliveries wait out a 0.159 resume again.** Right
+  after a restart Codex draws its composer about a second before input is live, and AgEnD
+  holds deliveries until then. 0.159 redrew the header without its box, which the hold
+  depended on, so on 0.159 a message sent straight after a restart could land during the
+  load. The hold now recognises both header layouts. It is also tied to AgEnD's own launch
+  state rather than to the screen alone: it applies only after AgEnD launched a resume, and
+  it stops once the load has been seen to end or the screen has not changed for 30 seconds.
+  So a conversation that quotes the loading screen cannot hold deliveries. AgEnD also launches Codex with
+  `features.instant_interrupt` off: 0.159's opt-in setting makes new input steer the running
+  reply instead of queueing behind it. Codex before 0.159 lists that key as "ignored" among
+  its startup warnings; nothing else changes. On 0.158, instances that run with approvals
+  on (`--full-auto`, i.e. `skipPermissions: false`) may see a new approval prompt for
+  elevated commands. The default launch bypasses approvals and is unaffected.
 - **Settings › Connections & Bots rows no longer break words or clip.** Since v2.1.7 each
   row (bot type, id, token env var, group/guild, access mode, allowed users, token status,
   connection state, Settings button) was a non-wrapping flex row, so every item shrank and

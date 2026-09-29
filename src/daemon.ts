@@ -1153,6 +1153,25 @@ export class Daemon extends EventEmitter {
    * after the startup scan can still swallow that message's Enter.
    */
   private inputTransientGuardGeneration: number | null = null;
+  /**
+   * The spawn whose passive transients are over, independently of the
+   * startup-proof tail above. A transient screen can be quoted verbatim by the
+   * transcript (a cropped quote of the resume screen is byte-identical to the
+   * real one), so the pane alone must not be able to hold input. AgEnD's own
+   * launch state retires the check, per launch attempt: a launch that cannot show one, the real
+   * transient seen and then gone, or a "transient" that never changed for
+   * INPUT_TRANSIENT_STALL_MS. (The first submitted message retires the whole
+   * guard, as before.)
+   */
+  private inputTransientRetiredAttempt: number | null = null;
+  /** The launch attempt in which a passive transient was actually observed on screen. */
+  private inputTransientSeenAttempt: number | null = null;
+  /**
+   * One per command actually launched. A spawn can launch more than once
+   * (spawnClaudeWindow retries a failed resume without a new beginSpawn), and
+   * each launch paints its own transient, so retirement is per attempt.
+   */
+  private launchAttempt = 0;
   private skipResume = false;
   private startupAborted = false;
   /** First time the current on-screen blocking dialog was seen (0 = none); drives the parked report. */
@@ -5191,18 +5210,36 @@ export class Daemon extends EventEmitter {
   private guardedInputTransients(): InputUnavailableTransient[] {
     if (this.inputTransientGuardGeneration === null
       || this.inputTransientGuardGeneration !== this.spawnGeneration) return [];
+    if (this.inputTransientRetiredAttempt === this.launchAttempt) return [];
     return this.backend?.getInputUnavailableTransients?.() ?? [];
+  }
+
+  /** Stop honouring passive transients for the current spawn. */
+  private retireInputTransients(reason: string): void {
+    if (this.inputTransientRetiredAttempt === this.launchAttempt) return;
+    this.inputTransientRetiredAttempt = this.launchAttempt;
+    this.logger.debug({ reason, generation: this.spawnGeneration, attempt: this.launchAttempt }, "Startup input transient retired for this launch");
   }
 
   /** Match a passive transient against the current interactive screen. */
   private inputTransientInPane(pane: string): InputUnavailableTransient | null {
-    for (const transient of this.guardedInputTransients()) {
+    const transients = this.guardedInputTransients();
+    if (transients.length === 0) return null;
+    for (const transient of transients) {
       // `pattern` is only a cheap pre-filter. `isActive` is deliberately the
       // authority because users and agents routinely quote diagnostic text.
       transient.pattern.lastIndex = 0;
       if (!transient.pattern.test(pane)) continue;
-      if (transient.isActive(pane)) return transient;
+      if (transient.isActive(pane)) {
+        this.inputTransientSeenAttempt = this.launchAttempt;
+        return transient;
+      }
     }
+    // The phase is over once it has been seen to end; from then on the same
+    // screen is a quote. A settled-looking pane before that proves nothing:
+    // codex 0.154 painted the prompt and footer first and "Resuming session…"
+    // a moment later — the reason this guard outlives the startup scan.
+    if (this.inputTransientSeenAttempt === this.launchAttempt) this.retireInputTransients("transient ended");
     return null;
   }
 
@@ -5243,7 +5280,12 @@ export class Daemon extends EventEmitter {
     | { state: "clear" }
     | { state: "unknown" }
   > {
-    if (this.guardedInputTransients().length === 0 || !this.tmux) return { state: "clear" };
+    // A retired transient still leaves the startup guard armed: an unreadable
+    // pane keeps answering "unknown", so it stalls out on the same budget
+    // instead of letting a delivery poll a dark pane for ever.
+    const armed = this.inputTransientGuardGeneration !== null && this.inputTransientGuardGeneration === this.spawnGeneration
+      && (this.backend?.getInputUnavailableTransients?.().length ?? 0) > 0;
+    if (!armed || !this.tmux) return { state: "clear" };
     try {
       const pane = await this.tmux.capturePane();
       const transient = this.inputTransientInPane(pane);
@@ -5309,6 +5351,10 @@ export class Daemon extends EventEmitter {
           stalledForMs: budget.stalled ? INPUT_TRANSIENT_STALL_MS : undefined,
           ceilingMs: timeoutMs,
         }, "CLI input stayed unavailable — refusing to send Enter");
+        // A screen that did not change for the whole stall window is not a
+        // load in progress. This delivery still fails, but the same screen
+        // (possibly a quote) must not fail every later one too.
+        if (budget.stalled && observedDescription !== null) this.retireInputTransients("transient stalled");
         return false;
       }
       await new Promise(r => setTimeout(r, INPUT_TRANSIENT_POLL_MS));
@@ -5538,6 +5584,10 @@ export class Daemon extends EventEmitter {
             stalledForMs: transientBudget.stalled ? INPUT_TRANSIENT_STALL_MS : undefined,
             ceilingMs: INPUT_TRANSIENT_WAIT_MS,
           }, "CLI input stayed unavailable during the delivery-readiness wait");
+          // Same rule as the pre-Enter wait: a screen frozen for the whole
+          // stall window is not a load in progress, so it holds this delivery
+          // only.
+          if (transientBudget.stalled) this.retireInputTransients("transient stalled");
           return false;
         }
         await new Promise(r => setTimeout(r, BOTTOM_READY_POLL_MS));
@@ -7741,6 +7791,12 @@ export class Daemon extends EventEmitter {
       }
     }
     const cmd = `${envPrefix} ` + this.backend!.buildCommand(launchConfig);
+    // Every launched command re-arms the passive-transient check, including a
+    // retry inside the same spawn: its load is a new one.
+    this.launchAttempt++;
+    // A launch that cannot paint a passive transient (Codex: a fresh start
+    // never shows "Resuming session…") must not honour one quoted on screen.
+    if (this.backend!.launchMayShowInputTransient?.() === false) this.retireInputTransients("launch shows none");
     // e.g. Codex could not read its session DB and chose a fallback (#984):
     // the operator should know which conversation this launch continues.
     const launchWarning = this.backend!.consumeLaunchWarning?.() ?? null;

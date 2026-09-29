@@ -1,0 +1,6 @@
+  >_ OpenAI Codex (v0.159.0)
+     ~/Projects/app
+  permissions: YOLO mode
+  Resuming session…
+
+› Ask Codex to do anything

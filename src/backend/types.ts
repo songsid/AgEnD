@@ -389,6 +389,15 @@ export interface CliBackend {
    */
   consumeLaunchWarning?(): string | null;
 
+  /**
+   * Whether the launch the last buildCommand produced can paint an
+   * input-unavailable transient at all (Codex: only a resume shows "Resuming
+   * session…"). A pane can be quoted verbatim by a transcript, so a transient
+   * is only honoured while AgEnD's own launch state says one can be on screen.
+   * Undefined means yes.
+   */
+  launchMayShowInputTransient?(): boolean;
+
   /** Write all config files the CLI needs before launch. */
   writeConfig(config: CliBackendConfig): void;
 

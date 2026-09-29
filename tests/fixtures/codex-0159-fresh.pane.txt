@@ -1,0 +1,12 @@
+  >_ OpenAI Codex (v0.159.0)
+     ~/Projects/app
+  permissions: YOLO mode
+
+  Shall we make this terminal earn its keep?
+
+  Tip: New Use /fast to enable our fastest inference with increased plan usage.
+
+
+› Ask Codex to do anything
+
+  Context 100% left                                                                            ⚠ 1 warning · f2 to view
