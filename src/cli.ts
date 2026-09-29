@@ -44,7 +44,7 @@ import {
 } from "./service-restart-selection.js";
 import { loadRawFleetConfig } from "./config.js";
 import { setLocale, t } from "./locale.js";
-import { DeliveryOutbox, type DeliveryStatusSelector } from "./delivery-outbox.js";
+import { DeliveryOutbox, deliveryStatusSelector, type DeliveryStatusSelector } from "./delivery-outbox.js";
 import { DeliveryStatusArgs } from "./outbound-schemas.js";
 
 /** Prefix tmux args with -L when socket isolation is active. */
@@ -510,9 +510,10 @@ delivery
   .option("--delivery-id <id>", "Exact delivery ID")
   .option("--operation-id <id>", "Operation ID returned by an outbound tool")
   .option("--correlation-id <id>", "Correlation ID (may return multiple rows)")
+  .option("--message-id <id>", "message_id from an inbound envelope header (may return multiple rows)")
   .option("--limit <n>", "Maximum rows (1–100)", "20")
   .option("--cursor <id>", "Opaque next-page cursor")
-  .action((opts: { deliveryId?: string; operationId?: string; correlationId?: string; limit: string; cursor?: string }) => {
+  .action((opts: { deliveryId?: string; operationId?: string; correlationId?: string; messageId?: string; limit: string; cursor?: string }) => {
     const dbPath = join(DATA_DIR, "delivery-outbox.db");
     if (!existsSync(dbPath)) {
       console.error("No durable delivery records are available.");
@@ -523,20 +524,17 @@ delivery
       ...(opts.deliveryId ? { delivery_id: opts.deliveryId } : {}),
       ...(opts.operationId ? { operation_id: opts.operationId } : {}),
       ...(opts.correlationId ? { correlation_id: opts.correlationId } : {}),
+      ...(opts.messageId ? { message_id: opts.messageId } : {}),
       limit: Number(opts.limit),
       ...(opts.cursor ? { cursor: opts.cursor } : {}),
     });
     if (!parsed.success) {
-      console.error("Specify exactly one of --delivery-id, --operation-id, or --correlation-id; limit must be 1–100.");
+      console.error("Specify exactly one of --delivery-id, --operation-id, --correlation-id, or --message-id; limit must be 1–100.");
       process.exitCode = 1;
       return;
     }
-    const { delivery_id, operation_id, correlation_id, limit, cursor } = parsed.data;
-    const selector: DeliveryStatusSelector = delivery_id
-      ? { deliveryId: delivery_id }
-      : operation_id
-        ? { operationId: operation_id, ...(limit !== undefined ? { limit } : {}), ...(cursor ? { cursor } : {}) }
-        : { correlationId: correlation_id!, ...(limit !== undefined ? { limit } : {}), ...(cursor ? { cursor } : {}) };
+    const { delivery_id, operation_id, correlation_id, message_id, limit, cursor } = parsed.data;
+    const selector: DeliveryStatusSelector = deliveryStatusSelector(parsed.data);
     try {
       const page = DeliveryOutbox.queryStatusReadOnly(dbPath, selector);
       const auditDir = join(DATA_DIR, "delivery-audit");
@@ -551,7 +549,9 @@ delivery
           ? { delivery_id }
           : operation_id
             ? { operation_id, limit, ...(cursor ? { cursor } : {}) }
-            : { correlation_id, limit, ...(cursor ? { cursor } : {}) },
+            : message_id
+              ? { message_id, limit, ...(cursor ? { cursor } : {}) }
+              : { correlation_id, limit, ...(cursor ? { cursor } : {}) },
         result_count: page.items.length,
       })}\n`, { encoding: "utf8", mode: 0o600 });
       chmodSync(auditPath, 0o600);

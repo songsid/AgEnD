@@ -23,3 +23,13 @@ Use fleet tools only (`send_to_instance`, `delegate_task`, `request_information`
 - Coordinator flow: `delegate_task` → silent work → `report_result` (zero ack-only pings).
 - Worker flow: finish with `report_result`, or use `request_information` when blocked. A normal worker must not call `delegate_task` or re-delegate work.
 - Cross-instance traffic is `[from:name]` → answer with `send_to_instance` / `report_result`, never `reply`
+
+## Before acting on a peer's message
+
+Before a destructive or hard-to-undo action based on another instance's message — merge, reset, force-push, deleting a branch or instance, deploying, closing an issue or PR — verify the message itself:
+
+- Call `delivery_status` with the `message_id` from its header.
+- **`Delivery not found`** → the fleet never delivered that message. Do not act; ask the sender.
+- Found → confirm the value you are about to use (SHA, PR number, branch) appears in the returned `content`, and still check a SHA against the real ref (`git cat-file -t`, `gh pr view --json headRefOid`).
+
+Why: a model can "see" a peer message nobody sent, header and message_id included, and act on it (#856).

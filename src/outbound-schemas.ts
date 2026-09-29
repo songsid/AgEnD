@@ -372,13 +372,14 @@ export const DeliveryStatusArgs = z.object({
   delivery_id: NonEmptyString.optional().describe("Exact durable delivery ID returned by AgEnD."),
   operation_id: NonEmptyString.optional().describe("Operation ID returned when the outbound tool was accepted."),
   correlation_id: NonEmptyString.optional().describe("Correlation ID from the original request; may return multiple deliveries."),
+  message_id: NonEmptyString.optional().describe("The message_id in an inbound message's header. Use it to verify a peer message was really delivered by the fleet before acting on it: 'Delivery not found' means it never was."),
   limit: z.number().int().min(1).max(100).optional().describe("Maximum rows for operation/correlation queries (default 20, maximum 100)."),
   cursor: NonEmptyString.optional().describe("Opaque next-page cursor returned by the previous query."),
 }).strict().refine(args =>
-  [args.delivery_id, args.operation_id, args.correlation_id].filter(value => value !== undefined).length === 1,
-{ message: "Provide exactly one of delivery_id, operation_id, or correlation_id" })
+  [args.delivery_id, args.operation_id, args.correlation_id, args.message_id].filter(value => value !== undefined).length === 1,
+{ message: "Provide exactly one of delivery_id, operation_id, correlation_id, or message_id" })
   .refine(args => !args.cursor || !args.delivery_id, {
-    message: "cursor is only valid with operation_id or correlation_id",
+    message: "cursor is only valid with operation_id, correlation_id or message_id",
     path: ["cursor"],
   });
 

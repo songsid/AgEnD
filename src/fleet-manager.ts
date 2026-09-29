@@ -891,6 +891,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
     });
     outbox.on("generation_recovered", () => this.scheduleDeliveryOutboxPump());
+    // #856: the text the target daemon received differs from what was
+    // admitted. Transport has never been seen to do this; a warning and the
+    // attempt row's flag are the whole response until it has.
+    outbox.on("content_digest_mismatch", (event: { deliveryId: string; attemptNo: number; targetInstance?: string }) => {
+      this.logger.warn(event, "Delivered text differs from the admitted text (content digest mismatch)");
+    });
     outbox.on("expired", (event: { count?: number; uncertain?: number }) => {
       this.scheduleDeliveryOutboxPump();
       if (event.count) this.notifyFleetError(

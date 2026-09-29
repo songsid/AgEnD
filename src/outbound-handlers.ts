@@ -9,7 +9,7 @@ import type { Logger } from "./logger.js";
 import type { RoutingEngine } from "./routing-engine.js";
 import type { InstanceLifecycle, LifecycleCreateArgs } from "./instance-lifecycle.js";
 import type { EventLog } from "./event-log.js";
-import type { DeliveryStatusPage, DeliveryStatusSelector } from "./delivery-outbox.js";
+import { deliveryContentDigest, deliveryStatusSelector, type DeliveryStatusPage, type DeliveryStatusSelector } from "./delivery-outbox.js";
 import type { z } from "zod";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import { DEFAULT_MAX_CROSS_INSTANCE_MESSAGE_BYTES, DEFAULT_LIST_INSTANCES_OUTPUT_BUDGET, MAX_INSTANCE_LOG_LINES } from "./config.js";
@@ -541,7 +541,10 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
     }
   }
 
-  ctx.logger.info(`✉ ${senderLabel} → ${targetName}: ${(message ?? "").slice(0, 100)}`);
+  // #856: the same line, now carrying the envelope's message_id and a short
+  // content digest, so a disputed message can be matched to its outbox row
+  // and paste digests without adding a log line per delivery.
+  ctx.logger.info(`✉ ${senderLabel} → ${targetName}: ${(message ?? "").slice(0, 100)} [msg=${ipcMeta.message_id} sha=${deliveryContentDigest(message ?? "").slice(0, 12)}]`);
   const taskSummary = ipcMeta.task_summary || (message ?? "").slice(0, 200);
   ctx.eventLog?.logActivity("message", senderLabel, taskSummary, targetName, ipcMeta.request_kind);
   ctx.queueMirrorMessage?.(`${senderLabel} → ${targetName}: ${truncatePreview(message ?? "", 500)}`);
@@ -1830,12 +1833,7 @@ const deliveryStatus: Handler = (ctx, rawArgs, respond, meta) => {
     respond(null, "Delivery not found");
     return;
   }
-  const { delivery_id, operation_id, correlation_id, limit, cursor } = v.data;
-  const selector: DeliveryStatusSelector = delivery_id
-    ? { deliveryId: delivery_id }
-    : operation_id
-      ? { operationId: operation_id, ...(limit !== undefined ? { limit } : {}), ...(cursor ? { cursor } : {}) }
-      : { correlationId: correlation_id!, ...(limit !== undefined ? { limit } : {}), ...(cursor ? { cursor } : {}) };
+  const selector: DeliveryStatusSelector = deliveryStatusSelector(v.data);
   try {
     // `meta.instanceName` is populated from the owning daemon socket / HTTP
     // token. Ignore any identity-like argument; the schema is strict as well.
