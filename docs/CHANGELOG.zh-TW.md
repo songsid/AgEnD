@@ -7,6 +7,7 @@
 ## [未發佈] (Unreleased)
 
 ### 升級注意事項 (Upgrade Notes)
+- **[行為變更] dashboard 現在會拒絕 `Host` 不認得的請求。** health/dashboard server 雖然只綁 127.0.0.1，但這擋不住 DNS rebinding：網頁可以把自己的網域解析到 127.0.0.1，再用 script 讀取不需要 cookie 的路由，包含 `/view` 的即時終端畫面（`/api/pane/*`）。這種網頁唯一改不了的是瀏覽器送出的 `Host`，所以所有路由（含 `/health`、`/agent`）現在只有在 `Host` 是 `localhost`、`127.0.0.1`、`[::1]`、fleet 的 `hostname:`，或新增的 `web.allowed_hosts` 列出的名稱時才回應，其餘一律 403（不比對 port）。**如果你是透過反向代理或 port forward、且它呈現的是別的名稱，請把該名稱加進 `web.allowed_hosts`**；每個被拒的名稱第一次出現時，`fleet.log` 會記一行並附上這個提示。CLI、`agend web`、`/dashboard` 與內部呼叫都用 loopback 名稱，不受影響。
 - **[行為變更] Codex instance 改為恢復自己的對話，不再拿到兄弟 worktree 的（#984）。** Codex 0.157 的 `codex resume --last` 會挑整個 git repo 裡最新的 session，所以同一個 repo 的不同 worktree 上的 AgEnD instance 會互搶 session：對方還在跑時卡在「conversation is open in another app」lock 畫面，否則就默默接著跑對方的對話。現在 AgEnD 會以唯讀方式讀 Codex 的 session 資料庫，對「工作目錄完全相符」的最新 session 執行 `codex resume <id>`。對你的影響：
   - session 都在自己目錄下的 instance，恢復的仍是原本那段對話。
   - 同一個 repo 已有其他 Codex instance 時，**新建**的 instance 會從**新對話**開始，不會繼承兄弟的。
@@ -14,6 +15,7 @@
   - 不做任何搬移，AgEnD 也不寫入任何 Codex state。這個版本之前已經被搶走的對話（例如從 lock 畫面按 fork 產生的），Codex 記在哪裡就還在哪裡：重啟受影響的 instance 前，請先確認，並在 Codex 裡把錯誤的 fork 封存。
 
 ### 修正 (Fixed)
+- **dashboard 的回應不會再被 iframe 嵌入、被猜測型別或被快取。** dashboard/health server 的每個回應現在都帶 `X-Frame-Options: DENY`、`Content-Security-Policy: frame-ancestors 'none'`（這些頁面有重啟 instance 的按鈕，被嵌入就可能被誘導點擊）、`X-Content-Type-Options: nosniff` 與 `Cache-Control: no-store`（自己設定 Cache-Control 的路由，例如 SSE 與頭像，維持原樣）。
 - **Codex 的 session lock 畫面與 resume 目錄選擇器不再讓投遞默默卡住（#984）。** 「This conversation is open in another app（r retry / f fork）」畫面和「Working directory · resume」選擇器原本都認不出來，啟動時被當成已就緒，訊息會在 idle gate 等滿 30 分鐘後失敗。現在兩者都會被 hold：投遞維持擋住、通知 operator，AgEnD 絕不會替你按 `r`、`f` 或選擇器的任何選項。
 
 ## [2.1.4] - 2026-09-07

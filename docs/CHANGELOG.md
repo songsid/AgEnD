@@ -45,6 +45,19 @@ Settings now applies changes as a job you can watch. `POST /api/settings/apply` 
 The panel can restart AgEnD itself for a change only a fresh process can adopt, behind its own confirmation, its own idempotency key, and a rate limit of one restart per 10 minutes and three per hour that is written to disk before anything is launched. The restart is announced in the chat channel first and is refused if it cannot be announced, so a panel restart is never invisible to the people who would notice it was not them.
 
 ### Upgrade Notes
+- **[Behaviour change] The dashboard now refuses requests whose `Host` is not a
+  name it knows.** The health/dashboard server listens on 127.0.0.1, but that does
+  not stop DNS rebinding: a web page can point its own domain at 127.0.0.1 and
+  read, from script, the routes that need no cookie — including `/view`'s live
+  terminal capture (`/api/pane/*`). The one thing such a page cannot change is
+  the `Host` the browser sends, so every route (`/health` and `/agent` included)
+  now answers 403 unless `Host` is `localhost`, `127.0.0.1`, `[::1]`, your fleet
+  `hostname:`, or a name listed in the new `web.allowed_hosts`. The port is not
+  compared. **If you reach the dashboard through a reverse proxy or a port
+  forward that presents another name, add that name to `web.allowed_hosts`**;
+  the first refusal of each name is logged in `fleet.log` with that hint. The
+  CLI, `agend web`, `/dashboard` and every internal caller use loopback names and
+  are unaffected.
 - **[Behaviour change] Codex instances resume their own conversation, not a
   sibling worktree's (#984).** Codex 0.157's `codex resume --last` picks the
   newest session of the whole git repository, so AgEnD instances on worktrees of
@@ -114,6 +127,12 @@ The panel can restart AgEnD itself for a change only a fresh process can adopt, 
 - **A failed self-restart needs the change applied again** — if the restart cannot be launched, its row is marked failed and the job is finished rather than left open for another attempt. Press Apply again to get a fresh job whose fleet row can be restarted. This is the fail-closed side of "one restart per job": a job whose launch failed must not stay a reusable restart button.
 
 ### Fixed
+- **Dashboard responses can no longer be framed, sniffed or cached.** Every
+  response from the dashboard/health server now carries `X-Frame-Options: DENY`,
+  `Content-Security-Policy: frame-ancestors 'none'` (the pages have buttons that
+  restart instances, so a framed page could be clicked through),
+  `X-Content-Type-Options: nosniff` and `Cache-Control: no-store` (routes that set
+  their own Cache-Control, such as the SSE stream and avatars, keep it).
 - **Codex session-lock and resume-directory screens no longer stall delivery
   silently (#984).** Codex's "This conversation is open in another app (r retry /
   f fork)" screen and its "Working directory · resume" picker matched nothing, so
