@@ -1,25 +1,27 @@
 /**
- * #855/#963: advisory warning for GitHub tokens embedded in HTTPS remote URLs.
+ * #855/#963: GitHub credentials are removed from linked-worktree remote URLs.
  *
  * Every case calls the production detector (src/remote-credential-check.ts) or
  * the real InstanceLifecycle.handleCreate path; no parser or pattern is
  * duplicated here. All tokens are fake.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   EMBEDDED_CREDENTIAL_REMOTE_WARNING,
   GITHUB_TOKEN_PREFIXES,
   httpsUserinfo,
   remoteListHasEmbeddedGitHubToken,
+  stripEmbeddedGitHubToken,
   urlHasEmbeddedGitHubToken,
 } from "../src/remote-credential-check.js";
 import { InstanceLifecycle, type LifecycleContext } from "../src/instance-lifecycle.js";
 
 const FAKE = "FAKE0000000000000000000000000000";
+const GIT_BIN = execFileSync("which", ["git"], { encoding: "utf-8" }).trim();
 
 describe("urlHasEmbeddedGitHubToken — each GitHub token form, on its own", () => {
   // One fixture per prefix, and no fixture carries a second prefix, so removing
@@ -57,6 +59,15 @@ describe("urlHasEmbeddedGitHubToken — each GitHub token form, on its own", () 
   it("flags a token in the password position and a percent-encoded separator", () => {
     expect(urlHasEmbeddedGitHubToken(`https://oauth2:ghp_${FAKE}@github.com/acme/repo.git`)).toBe(true);
     expect(urlHasEmbeddedGitHubToken(`https://x-access-token%3Aghs_${FAKE}@github.com/acme/repo.git`)).toBe(true);
+  });
+
+  it("strips only GitHub HTTPS userinfo and never returns a token in a repair URL", () => {
+    expect(stripEmbeddedGitHubToken(`https://x-access-token:ghp_${FAKE}@github.com/acme/repo.git`))
+      .toBe("https://github.com/acme/repo.git");
+    expect(stripEmbeddedGitHubToken(`https://ghp_${FAKE}@github.com/acme/repo.git`))
+      .toBe("https://github.com/acme/repo.git");
+    expect(stripEmbeddedGitHubToken(`https://ghp_${FAKE}@git.example.com/acme/repo.git`)).toBeNull();
+    expect(stripEmbeddedGitHubToken("https://github.com/acme/repo.git")).toBeNull();
   });
 
   it("flags a token inside a multi-@ userinfo: git sends everything before the last @", () => {
@@ -124,10 +135,10 @@ afterEach(() => {
 });
 
 function git(cwd: string, ...args: string[]): string {
-  return execFileSync("git", args, { cwd, encoding: "utf-8" });
+  return execFileSync(GIT_BIN, args, { cwd, encoding: "utf-8" });
 }
 
-function makeSourceRepo(remoteUrl: string, insteadOf?: { base: string; rewrite: string }): string {
+function makeSourceRepo(remoteUrl: string): string {
   const dir = mkdtempSync(join(tmpdir(), "agend-963-src-"));
   dirs.push(dir);
   git(dir, "init", "-q", "-b", "main");
@@ -137,9 +148,46 @@ function makeSourceRepo(remoteUrl: string, insteadOf?: { base: string; rewrite: 
   git(dir, "add", "a.txt");
   git(dir, "commit", "-qm", "init");
   git(dir, "remote", "add", "origin", remoteUrl);
-  // Repository-local, so the test never touches the user's ~/.gitconfig.
-  if (insteadOf) git(dir, "config", `url.${insteadOf.rewrite}.insteadOf`, insteadOf.base);
   return dir;
+}
+
+function installFakeGitHubCredentialSetup(): { restore: () => void; home: string } {
+  const home = mkdtempSync(join(tmpdir(), "agend-855-auth-"));
+  dirs.push(home);
+  const bin = join(home, "bin");
+  mkdirSync(bin);
+  const fakeGh = join(bin, "gh");
+  writeFileSync(fakeGh, [
+    "#!/bin/sh",
+    "if [ \"$1\" = auth ] && [ \"$2\" = setup-git ]; then",
+    "  git config --global --replace-all credential.https://github.com.helper '!gh auth git-credential'",
+    "  exit $?",
+    "fi",
+    "if [ \"$1\" = auth ] && [ \"$2\" = git-credential ]; then",
+    "  printf 'username=gh-helper-user\\npassword=gh-helper-fake-credential\\n\\n'",
+    "  exit 0",
+    "fi",
+    "exit 2",
+    "",
+  ].join("\n"), { mode: 0o700 });
+  chmodSync(fakeGh, 0o700);
+  const previousGlobal = process.env.GIT_CONFIG_GLOBAL;
+  const previousSystem = process.env.GIT_CONFIG_NOSYSTEM;
+  const previousPath = process.env.PATH;
+  process.env.GIT_CONFIG_GLOBAL = join(home, "gitconfig");
+  process.env.GIT_CONFIG_NOSYSTEM = "1";
+  process.env.PATH = `${bin}${delimiter}${previousPath ?? ""}${delimiter}/usr/local/bin:/usr/bin:/bin`;
+  return {
+    home,
+    restore: () => {
+      if (previousGlobal === undefined) delete process.env.GIT_CONFIG_GLOBAL;
+      else process.env.GIT_CONFIG_GLOBAL = previousGlobal;
+      if (previousSystem === undefined) delete process.env.GIT_CONFIG_NOSYSTEM;
+      else process.env.GIT_CONFIG_NOSYSTEM = previousSystem;
+      if (previousPath === undefined) delete process.env.PATH;
+      else process.env.PATH = previousPath;
+    },
+  };
 }
 
 function makeCtx(warn: ReturnType<typeof vi.fn>): LifecycleContext {
@@ -173,36 +221,73 @@ async function createWorktreeFrom(sourceDir: string) {
   dirs.push(worktreePath);
   rmSync(worktreePath, { recursive: true });
   const warn = vi.fn();
-  await new InstanceLifecycle(makeCtx(warn)).handleCreate(
+  const respond = vi.fn();
+  const lifecycle = new InstanceLifecycle(makeCtx(warn));
+  lifecycle.start = vi.fn(async () => {});
+  await lifecycle.handleCreate(
     { directory: sourceDir, branch: "feature-963", worktree_path: worktreePath, backend: "claude-code" },
-    vi.fn(),
+    respond,
   );
-  return { warn };
+  return { warn, worktreePath, response: respond.mock.calls[0] };
 }
 
-describe("handleCreate advisory check (real git)", () => {
-  it("warns when a url.insteadOf rewrite puts a token in the effective remote — the #855 mechanism", async () => {
-    const src = makeSourceRepo("https://github.com/acme/repo.git", {
-      base: "https://github.com/",
-      rewrite: `https://x-access-token:ghs_${FAKE}@github.com/`,
-    });
-    const { warn } = await createWorktreeFrom(src);
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn).toHaveBeenCalledWith({ repo: src }, EMBEDDED_CREDENTIAL_REMOTE_WARNING);
-    // The warning never echoes the credential or the URL.
-    const logged = JSON.stringify(warn.mock.calls);
-    expect(logged).not.toContain(FAKE);
-    expect(logged).not.toContain("github.com");
-    // Advisory only: neither the remote nor the rewrite was touched.
-    expect(git(src, "config", "--get", "remote.origin.url").trim()).toBe("https://github.com/acme/repo.git");
-    expect(git(src, "config", "--get", "url.https://x-access-token:ghs_" + FAKE + "@github.com/.insteadOf").trim())
-      .toBe("https://github.com/");
+describe("handleCreate protects linked worktree remotes (real git)", () => {
+  it("moves a global insteadOf token to the GitHub CLI helper before creating the worktree", async () => {
+    const fakeAuth = installFakeGitHubCredentialSetup();
+    try {
+      const src = makeSourceRepo("https://github.com/acme/repo.git");
+      // This isolated global rule models the credentialed effective URL from
+      // the fleet without reading or changing the operator's real git config.
+      git(src, "config", "--global", "--add", `url.https://x-access-token:ghs_${FAKE}@github.com/.insteadOf`, "https://github.com/");
+      const { warn, worktreePath, response } = await createWorktreeFrom(src);
+      expect(response?.[1]).toBeUndefined();
+      expect(response?.[0]).toMatchObject({ success: true });
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn).toHaveBeenCalledWith({ repo: src }, EMBEDDED_CREDENTIAL_REMOTE_WARNING);
+      const logged = JSON.stringify(warn.mock.calls);
+      expect(logged.includes(FAKE)).toBe(false);
+      expect(logged.includes("github.com")).toBe(false);
+
+      for (const cwd of [src, worktreePath]) {
+        const verbose = git(cwd, "remote", "-v");
+        const origin = git(cwd, "config", "--get", "remote.origin.url");
+        expect(verbose.includes(FAKE)).toBe(false);
+        expect(origin.includes(FAKE)).toBe(false);
+        expect(origin.trim()).toBe("https://github.com/acme/repo.git");
+      }
+
+      const filled = execFileSync(GIT_BIN, ["credential", "fill"], {
+        cwd: src,
+        encoding: "utf-8",
+        input: "protocol=https\nhost=github.com\npath=acme/repo.git\n\n",
+      });
+      expect(filled.includes("password=gh-helper-fake-credential")).toBe(true);
+      expect(filled.includes(FAKE)).toBe(false);
+    } finally {
+      fakeAuth.restore();
+    }
+  });
+
+  it("strips a credential embedded directly in the raw origin URL", async () => {
+    const fakeAuth = installFakeGitHubCredentialSetup();
+    try {
+      const src = makeSourceRepo(`https://x-access-token:ghp_${FAKE}@github.com/acme/repo.git`);
+      const { warn, worktreePath, response } = await createWorktreeFrom(src);
+      expect(response?.[0]).toMatchObject({ success: true });
+      expect(warn).toHaveBeenCalledTimes(1);
+      for (const cwd of [src, worktreePath]) {
+        expect(git(cwd, "remote", "-v").includes(FAKE)).toBe(false);
+        expect(git(cwd, "config", "--get", "remote.origin.url").includes(FAKE)).toBe(false);
+      }
+    } finally {
+      fakeAuth.restore();
+    }
   });
 
   it("stays silent for a clean remote and for a token-like path", async () => {
     for (const url of ["https://github.com/acme/repo.git", `https://github.com/acme/ghp_${FAKE}@v2/repo.git`]) {
       const { warn } = await createWorktreeFrom(makeSourceRepo(url));
-      expect(warn, url.replace(FAKE, "<fake>")).not.toHaveBeenCalled();
+      expect(warn).not.toHaveBeenCalled();
     }
   });
 });
