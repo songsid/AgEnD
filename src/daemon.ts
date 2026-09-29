@@ -1158,14 +1158,20 @@ export class Daemon extends EventEmitter {
    * startup-proof tail above. A transient screen can be quoted verbatim by the
    * transcript (a cropped quote of the resume screen is byte-identical to the
    * real one), so the pane alone must not be able to hold input. AgEnD's own
-   * launch state retires the check: a launch that cannot show one, the real
+   * launch state retires the check, per launch attempt: a launch that cannot show one, the real
    * transient seen and then gone, or a "transient" that never changed for
    * INPUT_TRANSIENT_STALL_MS. (The first submitted message retires the whole
    * guard, as before.)
    */
-  private inputTransientRetiredGeneration: number | null = null;
-  /** The spawn in which a passive transient was actually observed on screen. */
-  private inputTransientSeenGeneration: number | null = null;
+  private inputTransientRetiredAttempt: number | null = null;
+  /** The launch attempt in which a passive transient was actually observed on screen. */
+  private inputTransientSeenAttempt: number | null = null;
+  /**
+   * One per command actually launched. A spawn can launch more than once
+   * (spawnClaudeWindow retries a failed resume without a new beginSpawn), and
+   * each launch paints its own transient, so retirement is per attempt.
+   */
+  private launchAttempt = 0;
   private skipResume = false;
   private startupAborted = false;
   /** First time the current on-screen blocking dialog was seen (0 = none); drives the parked report. */
@@ -5204,15 +5210,15 @@ export class Daemon extends EventEmitter {
   private guardedInputTransients(): InputUnavailableTransient[] {
     if (this.inputTransientGuardGeneration === null
       || this.inputTransientGuardGeneration !== this.spawnGeneration) return [];
-    if (this.inputTransientRetiredGeneration === this.spawnGeneration) return [];
+    if (this.inputTransientRetiredAttempt === this.launchAttempt) return [];
     return this.backend?.getInputUnavailableTransients?.() ?? [];
   }
 
   /** Stop honouring passive transients for the current spawn. */
   private retireInputTransients(reason: string): void {
-    if (this.inputTransientRetiredGeneration === this.spawnGeneration) return;
-    this.inputTransientRetiredGeneration = this.spawnGeneration;
-    this.logger.debug({ reason, generation: this.spawnGeneration }, "Startup input transient retired for this spawn");
+    if (this.inputTransientRetiredAttempt === this.launchAttempt) return;
+    this.inputTransientRetiredAttempt = this.launchAttempt;
+    this.logger.debug({ reason, generation: this.spawnGeneration, attempt: this.launchAttempt }, "Startup input transient retired for this launch");
   }
 
   /** Match a passive transient against the current interactive screen. */
@@ -5225,7 +5231,7 @@ export class Daemon extends EventEmitter {
       transient.pattern.lastIndex = 0;
       if (!transient.pattern.test(pane)) continue;
       if (transient.isActive(pane)) {
-        this.inputTransientSeenGeneration = this.spawnGeneration;
+        this.inputTransientSeenAttempt = this.launchAttempt;
         return transient;
       }
     }
@@ -5233,7 +5239,7 @@ export class Daemon extends EventEmitter {
     // screen is a quote. A settled-looking pane before that proves nothing:
     // codex 0.154 painted the prompt and footer first and "Resuming session…"
     // a moment later — the reason this guard outlives the startup scan.
-    if (this.inputTransientSeenGeneration === this.spawnGeneration) this.retireInputTransients("transient ended");
+    if (this.inputTransientSeenAttempt === this.launchAttempt) this.retireInputTransients("transient ended");
     return null;
   }
 
@@ -7785,6 +7791,9 @@ export class Daemon extends EventEmitter {
       }
     }
     const cmd = `${envPrefix} ` + this.backend!.buildCommand(launchConfig);
+    // Every launched command re-arms the passive-transient check, including a
+    // retry inside the same spawn: its load is a new one.
+    this.launchAttempt++;
     // A launch that cannot paint a passive transient (Codex: a fresh start
     // never shows "Resuming session…") must not honour one quoted on screen.
     if (this.backend!.launchMayShowInputTransient?.() === false) this.retireInputTransients("launch shows none");

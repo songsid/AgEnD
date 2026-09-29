@@ -25,6 +25,17 @@ const CROPPED_QUOTE = LOADING;
 /** Settled but without an idle footer the backend recognises (status_line without Context). */
 const IDLE_NO_FOOTER = IDLE.replace(/\n {2}Context 99% left[^\n]*/, "");
 
+/** A real 0.157 session row for `dir`, so the Codex plan is `resume <id>`. */
+function seedResumableSession(dir: string): void {
+  const real = JSON.parse(readFileSync(join(fixtures, "codex-real-threads.json"), "utf8"));
+  const db = new Database(join(process.env.CODEX_HOME!, "state_5.sqlite"));
+  db.exec(readFileSync(join(fixtures, "codex-0157-state5-schema.sql"), "utf8"));
+  const row = { ...real.rows.resumable_0157, cwd: dir, rollout_path: join(dir, "rollout.jsonl") };
+  const cols = Object.keys(row);
+  db.prepare(`INSERT INTO threads (${cols.join(", ")}) VALUES (${cols.map(c => `@${c}`).join(", ")})`).run(row);
+  db.close();
+}
+
 const dirs: string[] = [];
 let saved: Record<string, string | undefined>;
 beforeEach(() => { saved = { AGEND_HOME: process.env.AGEND_HOME, CODEX_HOME: process.env.CODEX_HOME }; });
@@ -88,19 +99,45 @@ describe("the resume-loading hold follows AgEnD's launch state, not pane text al
 
   it("a resume launch keeps it armed", async () => {
     const { daemon, backend, dir } = daemonAfterSpawn();
-    // A real 0.157 session row for this working directory, so the plan is `resume <id>`.
-    const real = JSON.parse(readFileSync(join(fixtures, "codex-real-threads.json"), "utf8"));
-    const db = new Database(join(process.env.CODEX_HOME!, "state_5.sqlite"));
-    db.exec(readFileSync(join(fixtures, "codex-0157-state5-schema.sql"), "utf8"));
-    const row = { ...real.rows.resumable_0157, cwd: dir, rollout_path: join(dir, "rollout.jsonl") };
-    const cols = Object.keys(row);
-    db.prepare(`INSERT INTO threads (${cols.join(", ")}) VALUES (${cols.map(c => `@${c}`).join(", ")})`).run(row);
-    db.close();
+    seedResumableSession(dir);
     daemon.skipResume = false;
     vi.spyOn(TmuxManager, "ensureSession").mockRejectedValue(new Error("stop after the command is built"));
     await expect(daemon.trySpawnInsideGate()).rejects.toThrow(/stop after the command/);
     expect(backend.launchMayShowInputTransient()).toBe(true);
     expect(daemon.inputTransientInPane(LOADING)).not.toBeNull();
+  });
+
+  it("a retried resume inside the same spawn re-arms it, after the first attempt's load ended", async () => {
+    const { daemon, dir, held } = daemonAfterSpawn();
+    seedResumableSession(dir);
+    daemon.skipResume = false;
+    const generation = daemon.spawnGeneration;
+    vi.spyOn(TmuxManager, "ensureSession").mockRejectedValue(new Error("stop after the command is built"));
+    // First resume attempt: its load is seen and ends, so it retires.
+    await expect(daemon.trySpawnInsideGate()).rejects.toThrow(/stop after the command/);
+    expect(held(LOADING)).toBe(true);
+    expect(held(IDLE_NO_FOOTER)).toBe(false);
+    expect(held(CROPPED_QUOTE)).toBe(false);
+    // spawnClaudeWindow retries a failed resume with trySpawn and no new beginSpawn.
+    await expect(daemon.trySpawnInsideGate()).rejects.toThrow(/stop after the command/);
+    expect(daemon.spawnGeneration).toBe(generation);
+    expect(held(LOADING)).toBe(true); // the retry's own load is held
+  });
+
+  it("a retried resume re-arms it after the first attempt stalled out too", async () => {
+    vi.useFakeTimers();
+    const { daemon, dir, held } = daemonAfterSpawn();
+    seedResumableSession(dir);
+    daemon.skipResume = false;
+    vi.spyOn(TmuxManager, "ensureSession").mockRejectedValue(new Error("stop after the command is built"));
+    await expect(daemon.trySpawnInsideGate()).rejects.toThrow(/stop after the command/);
+    daemon.tmux = { capturePane: async () => LOADING };
+    const wait = daemon.waitForInputTransientToClear("pre-write");
+    await vi.advanceTimersByTimeAsync(31_000);
+    await expect(wait).resolves.toBe(false);
+    expect(held(LOADING)).toBe(false); // this attempt: stalled, retired
+    await expect(daemon.trySpawnInsideGate()).rejects.toThrow(/stop after the command/);
+    expect(held(LOADING)).toBe(true);
   });
 
   it("a 'transient' frozen for the whole stall window fails that wait, then stops holding", async () => {
