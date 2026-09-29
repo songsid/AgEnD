@@ -107,6 +107,28 @@ export function setUsageFetcherForTests(fn: (() => Promise<UsagePayload>) | null
  * errors are softened this way: an auth failure or a schema error must stay
  * loud, because stale data would hide a problem the user needs to act on.
  */
+/**
+ * Transient fetch failures worth the same last-good softening as a 429: a
+ * network jitter, a timed-out query or an overloaded vendor's 5xx says
+ * nothing about the user's subscription — showing red where numbers stood a
+ * minute ago reads as "something broke". Auth, login and schema errors match
+ * none of these patterns and stay loud, because stale data would hide a
+ * problem the user needs to act on.
+ */
+const TRANSIENT_ERROR_PATTERNS = [
+  /could not reach/i, // provider fail-soft rows (fetch + 16s-deadline alike)
+  /timed? ?out/i, /deadline/i, // timeouts surfacing raw past the fetch wrappers
+  /econnreset|econnrefused|econnaborted|epipe/i,
+  /eai_again|enotfound/i, // DNS blips
+  /socket hang up|fetch failed|network/i,
+  /502|503|504|bad gateway|service unavailable|gateway timeout/i,
+];
+
+function isTransientFailure(p: ProviderUsage): boolean {
+  return p.status === "error"
+    && TRANSIENT_ERROR_PATTERNS.some(re => re.test(p.error ?? ""));
+}
+
 function withStaleFallback(payload: UsagePayload): UsagePayload {
   const now = Date.now();
   const providers = payload.providers.map(p => {
@@ -132,6 +154,16 @@ function withStaleFallback(payload: UsagePayload): UsagePayload {
         return {
           ...good.provider,
           hint: `cached ${ageMin}m ago — live query is rate limited`,
+        };
+      }
+    }
+    if (isTransientFailure(p)) {
+      const good = lastGood.get(p.id);
+      if (good && now - good.at < STALE_MAX_MS) {
+        const ageMin = Math.max(1, Math.round((now - good.at) / 60_000));
+        return {
+          ...good.provider,
+          hint: `cached ${ageMin}m ago — live query failed, will retry`,
         };
       }
     }
