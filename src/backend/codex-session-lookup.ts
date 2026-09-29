@@ -19,7 +19,7 @@ import Database from "better-sqlite3";
 
 /** Columns the lookup depends on; any missing one means "schema unreadable". */
 export const CODEX_THREAD_COLUMNS = [
-  "id", "cwd", "source", "archived", "first_user_message", "rollout_path", "recency_at_ms", "updated_at_ms",
+  "id", "cwd", "source", "archived", "has_user_event", "first_user_message", "rollout_path", "recency_at_ms", "updated_at_ms",
 ] as const;
 
 const SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -90,15 +90,19 @@ export function findExactCwdCodexSession(
     // Every thread of this directory, newest first, until one has content —
     // no page limit, so a run of empty threads cannot hide an older session.
     const rows = db.prepare(`
-      SELECT id, first_user_message, rollout_path FROM threads
+      SELECT id, has_user_event, first_user_message, rollout_path FROM threads
       WHERE cwd IN (?, ?)
         AND source = 'cli'
         AND archived = 0
       ORDER BY recency_at_ms DESC, updated_at_ms DESC, id DESC
-    `).iterate(first, second) as IterableIterator<{ id: unknown; first_user_message: unknown; rollout_path: unknown }>;
+    `).iterate(first, second) as IterableIterator<{ id: unknown; has_user_event: unknown; first_user_message: unknown; rollout_path: unknown }>;
     let row: { id: unknown } | undefined;
     for (const r of rows) {
-      if ((typeof r.first_user_message === "string" && r.first_user_message !== "")
+      // Any sign of content is enough; only a thread with none is skipped.
+      // has_user_event = 1 is what the #984 lookup accepted, so keeping it
+      // means this lookup never resumes less than that one did.
+      if (r.has_user_event === 1
+        || (typeof r.first_user_message === "string" && r.first_user_message !== "")
         || (typeof r.rollout_path === "string" && rolloutHasTurn(r.rollout_path))) { row = r; break; }
     }
     if (!row) return { kind: "none" };
@@ -128,8 +132,13 @@ function isTurnEntry(entry: { type?: unknown; payload?: { type?: unknown } }): b
  * Whether a Codex rollout (JSONL) records that a turn ever ran. Read-only, in
  * chunks, stopping at the first turn entry — in real rollouts it follows the
  * ~22 KB session_meta line — so only a thread with no turn is read to the
- * end, and those are a few KB. A missing or unreadable rollout cannot be
- * resumed, so it counts as no.
+ * end, and those are a few KB.
+ *
+ * "No" needs proof: a recognisable Codex rollout (it has a `session_meta`
+ * line; every rollout from 0.137 to 0.157 does) that holds no turn. A file
+ * in a shape this code does not recognise counts as yes — resuming a doubtful
+ * thread fails loudly, skipping a real one silently loses the conversation.
+ * A missing or unreadable rollout cannot be resumed, so it counts as no.
  */
 export function rolloutRecordsTurn(path: string): boolean {
   let fd: number | null = null;
@@ -140,6 +149,7 @@ export function rolloutRecordsTurn(path: string): boolean {
     const decoder = new StringDecoder("utf8");
     let pending = "";
     let position = 0;
+    let recognised = false;
     for (;;) {
       const read = readSync(fd, buf, 0, ROLLOUT_CHUNK_BYTES, position);
       position += read;
@@ -149,10 +159,12 @@ export function rolloutRecordsTurn(path: string): boolean {
       for (const line of lines) {
         if (!line.trim()) continue;
         try {
-          if (isTurnEntry(JSON.parse(line) as { type?: unknown; payload?: { type?: unknown } })) return true;
+          const entry = JSON.parse(line) as { type?: unknown; payload?: { type?: unknown } };
+          if (isTurnEntry(entry)) return true;
+          if (entry.type === "session_meta") recognised = true;
         } catch { /* a malformed line says nothing */ }
       }
-      if (read === 0) return false;
+      if (read === 0) return !recognised;
     }
   } catch {
     return false;

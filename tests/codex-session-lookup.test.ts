@@ -126,8 +126,9 @@ describe("the lookup against real Codex thread rows (#1017)", () => {
     expect(REAL.rows.metadata_empty_real_0156).toMatchObject({ first_user_message: "", tokens_used: 0 });
     const path = realStateDb([{ name: "metadata_empty_real_0156", cwd: "/w/app", recency: 100 }]);
     expect(findExactCwdCodexSession(path, "/w/app")).toEqual({ kind: "found", id: REAL.rows.metadata_empty_real_0156.id });
-    // Without its rollout there is nothing to resume.
-    const gone = realStateDb([{ name: "metadata_empty_real_0156", cwd: "/w/app", recency: 100, rollout: "missing" }]);
+    // With no metadata sign at all (has_user_event 0, empty first message),
+    // a missing rollout leaves nothing to resume.
+    const gone = realStateDb([{ name: "goal_first_0157", cwd: "/w/app", recency: 100, rollout: "missing" }]);
     expect(findExactCwdCodexSession(gone, "/w/app")).toEqual({ kind: "none" });
   });
 
@@ -161,6 +162,19 @@ describe("the lookup against real Codex thread rows (#1017)", () => {
     expect(findExactCwdCodexSession(path, "/w/app")).toEqual({ kind: "found", id: REAL.rows.resumable_0157.id });
   });
 
+  it("never resumes less than the #984 lookup: a has_user_event=1 thread is kept even with no other sign", () => {
+    const row = { ...REAL.rows.empty_0157, id: "019f8888-0000-7000-8000-000000000001", has_user_event: 1 };
+    const dir = tempDir();
+    const path = join(dir, "state_5.sqlite");
+    const db = new Database(path);
+    db.exec(SCHEMA);
+    const values = { ...row, cwd: "/w/app", rollout_path: join(dir, "missing.jsonl"), recency_at_ms: 1, updated_at_ms: 1 };
+    const cols = Object.keys(values);
+    db.prepare(`INSERT INTO threads (${cols.join(", ")}) VALUES (${cols.map(c => `@${c}`).join(", ")})`).run(values);
+    db.close();
+    expect(findExactCwdCodexSession(path, "/w/app")).toEqual({ kind: "found", id: row.id });
+  });
+
   it("skips a real untouched fork for the older real session behind it", () => {
     const path = realStateDb([
       { name: "resumable_0157", cwd: "/w/app", recency: 100 },
@@ -184,9 +198,14 @@ describe("rolloutRecordsTurn", () => {
     expect(rolloutRecordsTurn(write([{ type: "session_meta", payload: {} }, { type: "turn_context", payload: {} }]))).toBe(true);
     expect(rolloutRecordsTurn(write([{ type: "session_meta", payload: {} }, { type: "response_item", payload: { type: "message", role: "developer" } }]))).toBe(true);
   });
-  it("is no for a missing file or malformed lines", () => {
+  it("is no for a missing file, and yes for a file it cannot recognise as a Codex rollout (fail-safe)", () => {
     expect(rolloutRecordsTurn(join(tempDir(), "gone.jsonl"))).toBe(false);
-    expect(rolloutRecordsTurn(write('{"type":"response_item" broken\n'))).toBe(false);
+    // "No" needs a recognisable rollout with no turn; anything else keeps the thread.
+    expect(rolloutRecordsTurn(write('{"type":"response_item" broken\n'))).toBe(true);
+    expect(rolloutRecordsTurn(write([{ type: "some_future_entry", payload: {} }]))).toBe(true);
+    expect(rolloutRecordsTurn(write(""))).toBe(true);
+    // A recognisable rollout with a malformed line and no turn is still no.
+    expect(rolloutRecordsTurn(write('{"type":"session_meta","payload":{}}\n{broken\n'))).toBe(false);
   });
   it("reads past any head size: an oversized empty thread is no, a turn after a huge session_meta is yes", () => {
     // Real session_meta lines are ~22 KB; these are far past any chunk, with
@@ -262,7 +281,7 @@ describe("findExactCwdCodexSession", () => {
     const db = new Database(drifted);
     db.exec("CREATE TABLE threads (id TEXT PRIMARY KEY, cwd TEXT, source TEXT, archived INTEGER, recency_at_ms INTEGER, updated_at_ms INTEGER)");
     db.close();
-    expect(findExactCwdCodexSession(drifted, "/w/app")).toMatchObject({ kind: "unreadable", reason: expect.stringContaining("first_user_message") });
+    expect(findExactCwdCodexSession(drifted, "/w/app")).toMatchObject({ kind: "unreadable", reason: expect.stringContaining("has_user_event") });
 
     const empty = join(dir, "empty.sqlite");
     new Database(empty).close();
