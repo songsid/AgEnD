@@ -1,6 +1,7 @@
 import { validateProvider } from "./backend/types.js";
 import { credentialHomeSpec, resolveCredentialProfile } from "./backend/credential-profile.js";
 import { STATUS_EMOJI_CONFIG_KEYS, statusEmojiProblem, type StatusEmojiKey } from "./status-emojis.js";
+import { hostnameOf } from "./web-host-guard.js";
 
 /**
  * Shared config validation for fleet.yaml and classicBot.yaml.
@@ -260,6 +261,49 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     }
     if (config.web.provider_secrets !== undefined && typeof config.web.provider_secrets !== "boolean") {
       err("web.provider_secrets", "must be a boolean");
+    }
+    if (config.web.view_access !== undefined && config.web.view_access !== "open" && config.web.view_access !== "session") {
+      err("web.view_access", "must be open or session");
+    }
+    if (config.web.external_hosts !== undefined) {
+      if (!Array.isArray(config.web.external_hosts)) {
+        err("web.external_hosts", "must be a list of host names");
+      } else {
+        config.web.external_hosts.forEach((entry: unknown, i: number) => {
+          if (typeof entry !== "string" || hostnameOf(entry) === null) {
+            err(`web.external_hosts[${i}]`, "must be a bare host name (optionally with :port) — no scheme, path or credentials");
+          }
+        });
+      }
+    }
+    if (config.web.gateway_port !== undefined
+      && (typeof config.web.gateway_port !== "number" || !Number.isInteger(config.web.gateway_port)
+        || config.web.gateway_port < 1 || config.web.gateway_port > 65535)) {
+      err("web.gateway_port", "must be an integer from 1 to 65535");
+    }
+    const hasHosts = Array.isArray(config.web.external_hosts) && config.web.external_hosts.length > 0;
+    if (hasHosts && config.web.gateway_port === undefined) {
+      err("web.gateway_port", "is required with web.external_hosts — it is the port your tunnel or proxy points at");
+    }
+    if (config.web.gateway_port !== undefined && !hasHosts) {
+      err("web.external_hosts", "is required with web.gateway_port — without a host list the gateway answers nothing");
+    }
+    if (config.web.gateway_port !== undefined && config.web.gateway_port === (config.health_port ?? 19280)) {
+      err("web.gateway_port", "must differ from health_port: the gateway is a separate listener on purpose");
+    }
+    if (config.web.notify_login !== undefined && typeof config.web.notify_login !== "boolean") {
+      err("web.notify_login", "must be a boolean");
+    }
+    if (config.web.allowed_hosts !== undefined) {
+      if (!Array.isArray(config.web.allowed_hosts)) {
+        err("web.allowed_hosts", "must be a list of host names");
+      } else {
+        config.web.allowed_hosts.forEach((entry: unknown, i: number) => {
+          if (typeof entry !== "string" || hostnameOf(entry) === null) {
+            err(`web.allowed_hosts[${i}]`, "must be a bare host name or IP (optionally with :port) — no scheme, path or credentials");
+          }
+        });
+      }
     }
   }
 

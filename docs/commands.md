@@ -26,7 +26,7 @@ Registered via `setMyCommands` with `scope: chat` (forum group only).
 | 🔒 `/login [backend\|cancel\|code <text>]` | **(beta)** Remote CLI re-authentication without SSH — `codex`, `grok`, `kiro`, `claude`, `antigravity` (not `opencode`, API-key only). No arg shows a backend picker; device-flow backends (codex/grok) post a URL+code, paste-back backends (claude/kiro) prompt for `/login code <pasted-code>`. Opens a temporary tmux window (instance panes untouched), warns if auth is already valid, 10-minute timeout, `/login cancel` anytime. Credentials are per-backend shared — one login fixes every instance on that backend, and running instances restart afterward to pick up the new credential. Also on Discord (`/login backend:… code:… cancel:…`); not on TG Classic. | Admin |
 | 🔒 `/install-cli <backend>\|cancel` | **(beta)** Remote CLI installation without SSH — runs the backend's official install script in a temporary tmux window, verifies the binary landed on PATH, then offers a `/login` button. All 6 backends including `opencode` (no auth needed to install it). 10-minute timeout, cancel anytime. TG spelling is `/install_cli` (no hyphens in Telegram commands). Also on Discord; not on TG Classic. | Admin |
 | 🔒 `/collab` | Toggle bot/webhook message reception | Admin |
-| 🔒 `/dashboard` | Show View/Settings/WebUI URLs | Admin |
+| 🔒 `/dashboard` | Show the sign-in page and a one-time login code (`/dashboard revoke` signs every browser out) | Admin |
 | 🔒 `/model` | Change backend model (inline keyboard). On `claude-code`, a two-tier menu: 6 quick-select aliases, plus a "📋 更多模型…" (more models) button that fetches the live model catalog from the API (24h cache, falls back to the alias list on failure). | Admin |
 | 🔒 `/effort` | Adjust AI reasoning effort (low/medium/high/xhigh/max) | Admin |
 | 🔒 `/clear` | Full conversation reset (destructive) — asks for Confirm/Cancel before running. Sends each backend's own reset command (`/clear` for most, `/new` for grok); unsupported on `gemini-cli`. | Admin |
@@ -78,7 +78,7 @@ Registered globally via `client.application.commands.set()`.
 | `/steer <message>` | Interject into the current turn (not admin-gated; `claude-code`/`codex`/`grok` only, others reply "not supported") | All |
 | `/btw <message>` | Side question that doesn't interrupt the current task (not admin-gated; `claude-code` only, others reply "not supported") | All |
 | `/tips [mode]` | Draw a random usage tip, posted in the current channel (`mode` empty); `mode: on\|off` toggles the daily auto-send; `mode: advanced on` manually unlocks the advanced tier fleet-wide (no visible effect yet — beginner-only rollout stage) | All / 🔒 for `on`\|`off`\|`advanced on` |
-| 🔒 `/dashboard` | Show View/Settings/WebUI URLs (ephemeral) | Admin |
+| 🔒 `/dashboard` | Show the sign-in page and a one-time login code (ephemeral) | Admin |
 | 🔒 `/status` | Show fleet status and costs | Admin |
 | 🔒 `/pause [instance]` | Pause an idle instance | Admin |
 | 🔒 `/wake [instance]` | Wake a paused instance | Admin |
@@ -154,8 +154,8 @@ A `/steer` or `/btw` on an unsupported backend gets an honest error instead of s
 | `agend update [--beta]` | Update AgEnD to latest version |
 | `agend doctor` | Run backend health diagnostics |
 | `agend doctor mcp` | Fleet-wide MCP health check (IPC, config paths, duplicates, binary PATH) |
-| `agend web` | Launch Web UI dashboard |
-| `agend web-token rotate` | Revoke every dashboard link and browser session |
+| `agend web` | Launch Web UI dashboard (`--code` prints a one-time sign-in code instead) |
+| `agend web-token rotate` | Sign every browser out and rotate the CLI token |
 | `agend export` | Export fleet config (fleet.yaml + classicBot.yaml) |
 | `agend logs` | View fleet logs |
 

@@ -1,19 +1,26 @@
 /**
- * Read-only Web View (`/view`) — a terminal-streaming page plus editable
- * instance profiles. Separate from the operator Web UI (`/ui`):
+ * Web View (`/view`) — a terminal-streaming page plus editable instance
+ * profiles. Separate from the operator Web UI (`/ui`):
  *
- *   GET  /view                 → static page (no token)
+ *   GET  /view                 → static page
  *   GET  /api/pane/:instance    → `tmux capture-pane -ep` output (ANSI text),
  *                                plus X-Pane-Cols / X-Pane-Rows response headers
  *   GET  /api/profiles          → merged roster (live status + config + profile)
  *   GET  /api/profile/:instance → one profile row
- *   POST /api/profile/:instance → upsert profile              (web.token only)
+ *   POST /api/profile/:instance → upsert profile              (signed in)
  *   GET  /api/avatar/:instance  → avatar image
- *   POST /api/avatar/:instance  → upload avatar               (web.token only)
+ *   POST /api/avatar/:instance  → upload avatar               (signed in)
+ *   GET/POST /api/sort-order    → sidebar order               (POST: signed in)
  *
- * Auth: GET routes are open (read-only dashboard, no token); POST routes require
- * the (read-write) web.token. Instance names are whitelisted against fleet config
- * and tmux is invoked via execFile (no shell) to prevent command injection.
+ * Auth: reads follow `web.view_access` — `open` (the default; the page is a
+ * read-only dashboard on a loopback listener) or `session` (a signed-in
+ * session or the CLI's header token is required for every route here, the page
+ * included). Writes always need a credential: a session (with the CSRF checks
+ * every cookie-authenticated write gets) or `X-Agend-Token`. A `?token=` in the
+ * URL is never a write credential, and nothing here compares a token itself —
+ * that is `web-auth.ts`'s one decision. Instance names are whitelisted against
+ * fleet config and tmux is invoked via execFile (no shell) to prevent command
+ * injection.
  */
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
 import { join, dirname, basename } from "node:path";
@@ -26,13 +33,16 @@ import type { FleetConfig } from "./types.js";
 import type { Logger } from "./logger.js";
 import { getTmuxSession } from "./config.js";
 import { getTmuxSocketName } from "./paths.js";
+import { evaluateWebRequest, requestSurface, type WebGateRequest } from "./web-auth.js";
+import type { WebSessionStore } from "./web-session.js";
 
 const execFileP = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export interface ViewApiContext {
-  readonly viewToken: string | null;
   readonly webToken: string | null;
+  /** Absent in a hand-built context: cookies are then not a credential; the header token still is. */
+  readonly webSessions?: WebSessionStore | null;
   readonly dataDir: string;
   readonly fleetConfig: FleetConfig | null;
   readonly logger: Logger;
@@ -96,10 +106,6 @@ function extForMime(mime: string): string | null {
   return null;
 }
 
-function tokenFrom(req: IncomingMessage, url: URL): string | null {
-  const h = req.headers["x-agend-token"];
-  return url.searchParams.get("token") ?? (typeof h === "string" ? h : null);
-}
 function json(res: ServerResponse, code: number, body: unknown): void {
   res.writeHead(code, { "Content-Type": "application/json" });
   res.end(JSON.stringify(body));
@@ -210,9 +216,24 @@ export function handleViewRequest(
   if (!isViewPath(path)) return false;
 
   const method = req.method ?? "GET";
-  const token = tokenFrom(req, url);
-  // GET routes are open (read-only dashboard); writes still require the web token.
-  const canWrite = !!token && token === ctx.webToken;
+  // The gate in front of this handler has usually decided already; deciding again
+  // here keeps the module safe when it is reached any other way, and is the only
+  // place the refusal can say *why* (signed out, cross-site, missing CSRF value).
+  const verdict = () => evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken, ctx.webSessions);
+  const isRead = method === "GET" || method === "HEAD";
+  const denied = (): boolean => {
+    const decision = verdict();
+    if (decision.kind === "reject") { json(res, decision.status, { error: decision.message }); return true; }
+    return false;
+  };
+
+  // Reads: open unless the operator asked for a session (`web.view_access: session`).
+  // On the gateway reads always need a session: `open` is a choice about a loopback listener.
+  const readsNeedSession = ctx.fleetConfig?.web?.view_access === "session" || requestSurface(req) === "gateway";
+  if (isRead && readsNeedSession && denied()) return true;
+  // Writes: always a credential. Checked once here rather than per route, so a route
+  // added later cannot forget it.
+  if (!isRead && denied()) return true;
 
   // ── GET /view — static page ──
   if (method === "GET" && path === "/view") {
@@ -312,7 +333,6 @@ export function handleViewRequest(
       return true;
     }
     if (method === "POST") {
-      if (!canWrite) { json(res, 401, { error: "Unauthorized (web token required)" }); return true; }
       readBody(req, 512 * 1024).then(buf => {
         let body: Array<{ item_type: string; item_name: string; sort_index: number; group_name?: string | null }>;
         try { body = JSON.parse(buf.toString("utf-8") || "[]"); } catch { json(res, 400, { error: "invalid JSON" }); return; }
@@ -352,7 +372,6 @@ export function handleViewRequest(
     }
 
     if (method === "POST") {
-      if (!canWrite) { json(res, 401, { error: "Unauthorized (web token required)" }); return true; }
       readBody(req, 256 * 1024).then(buf => {
         let body: { display_name?: string; role?: string; description?: string };
         try { body = JSON.parse(buf.toString("utf-8") || "{}"); }
@@ -396,7 +415,6 @@ export function handleViewRequest(
     }
 
     if (method === "POST") {
-      if (!canWrite) { json(res, 401, { error: "Unauthorized (web token required)" }); return true; }
       const ext = extForMime(String(req.headers["content-type"] ?? ""));
       if (!ext) { json(res, 400, { error: "unsupported image type (png/jpeg/gif/webp)" }); return true; }
       readBody(req, 4 * 1024 * 1024).then(buf => {

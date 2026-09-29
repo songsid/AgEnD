@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 import { ServerResponse, type IncomingMessage, type OutgoingHttpHeader, type OutgoingHttpHeaders } from "node:http";
 import { Readable } from "node:stream";
 import { broadcastSseEvent, handleWebRequest, type WebApiContext } from "../src/web-api.js";
+import { DEFAULT_SESSION_POLICY, tokenEpoch, WebSessionStore } from "../src/web-session.js";
 
 // ── Fake ServerResponse-shaped client for broadcastSseEvent ────────────────
 
@@ -149,7 +150,7 @@ function makeSseCtx(sseClients: Set<ServerResponse>): WebApiContext {
 }
 
 describe("/ui/events SSE handler cleanup", () => {
-  it("removes client + clears interval on req close", () => {
+  it("removes client + clears interval when the response closes", () => {
     const sseClients = new Set<ServerResponse>();
     const ctx = makeSseCtx(sseClients);
     const req = makeReq("GET", "/ui/events");
@@ -159,7 +160,10 @@ describe("/ui/events SSE handler cleanup", () => {
 
     expect(sseClients.has(res)).toBe(true);
 
+    // The response closing is the stream ending. The request closing only means it was read.
     req.emit("close");
+    expect(sseClients.has(res)).toBe(true);
+    res.emit("close");
 
     expect(sseClients.has(res)).toBe(false);
   });
@@ -188,7 +192,103 @@ describe("/ui/events SSE handler cleanup", () => {
 
     // Fire both — second one should be a no-op, not a double-delete + clearInterval(null)
     req.emit("error", new Error("x"));
-    expect(() => req.emit("close")).not.toThrow();
+    expect(() => res.emit("close")).not.toThrow();
     expect(sseClients.size).toBe(0);
+  });
+});
+
+
+describe("/ui/events and the life of the session that opened it", () => {
+  function openStream(sessions: WebSessionStore, sessionId: string) {
+    const sseClients = new Set<ServerResponse>();
+    const ctx = { ...makeSseCtx(sseClients), webSessions: sessions } as WebApiContext;
+    const req = makeReq("GET", "/ui/events");
+    req.headers = { cookie: `agend_session=${sessionId}` };
+    const res = new CaptureRes(req);
+    const end = vi.spyOn(res, "end").mockImplementation(() => res);
+    handleWebRequest(req, res, new URL("http://localhost/ui/events"), ctx);
+    return { sseClients, res, end };
+  }
+
+  const login = (sessions: WebSessionStore) =>
+    sessions.create({ tier: "admin", surface: "local", label: "test", tokenEpoch: tokenEpoch(SSE_TOKEN) });
+
+  it("keeps streaming while the session is good", () => {
+    vi.useFakeTimers();
+    try {
+      const sessions = new WebSessionStore();
+      const { sessionId } = login(sessions);
+      const { sseClients, res, end } = openStream(sessions, sessionId);
+
+      vi.advanceTimersByTime(30_000);
+
+      expect(end).not.toHaveBeenCalled();
+      expect(sseClients.has(res)).toBe(true);
+      expect(res.written.filter(w => w.includes("event: status")).length).toBeGreaterThanOrEqual(3);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("closes at the next heartbeat once the session is revoked", () => {
+    vi.useFakeTimers();
+    try {
+      const sessions = new WebSessionStore();
+      const { sessionId, record } = login(sessions);
+      const { sseClients, res, end } = openStream(sessions, sessionId);
+      vi.advanceTimersByTime(10_000);
+      expect(end).not.toHaveBeenCalled();
+
+      sessions.revokeByHandle(record.handle);
+      const framesBefore = res.written.length;
+      vi.advanceTimersByTime(10_000);
+
+      expect(end).toHaveBeenCalledTimes(1);
+      expect(sseClients.has(res)).toBe(false);
+      // The heartbeat that noticed did not also push a status frame.
+      expect(res.written.length).toBe(framesBefore);
+      vi.advanceTimersByTime(60_000);
+      expect(end).toHaveBeenCalledTimes(1);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("does not let an open tab keep an idle session alive", () => {
+    vi.useFakeTimers();
+    try {
+      const sessions = new WebSessionStore();
+      const { sessionId } = login(sessions);
+      const { sseClients, res, end } = openStream(sessions, sessionId);
+
+      // Heartbeats every 10s for longer than the idle window, with nobody touching the panel.
+      vi.advanceTimersByTime(DEFAULT_SESSION_POLICY.local.idleMs + 20_000);
+
+      expect(end).toHaveBeenCalled();
+      expect(sseClients.has(res)).toBe(false);
+      expect(sessions.authenticate(sessionId, tokenEpoch(SSE_TOKEN), { touch: false })).toBeNull();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("closes when the token it was issued under is rotated away, mid-stream", () => {
+    vi.useFakeTimers();
+    try {
+      const sessions = new WebSessionStore();
+      const { sessionId } = login(sessions);
+      const sseClients = new Set<ServerResponse>();
+      // `web.token` is read live in production; a getter stands in for a rotation by another process.
+      let current = SSE_TOKEN;
+      const ctx = { ...makeSseCtx(sseClients), webSessions: sessions } as WebApiContext;
+      Object.defineProperty(ctx, "webToken", { get: () => current });
+      const req = makeReq("GET", "/ui/events");
+      req.headers = { cookie: `agend_session=${sessionId}` };
+      const res = new CaptureRes(req);
+      const end = vi.spyOn(res, "end").mockImplementation(() => res);
+      handleWebRequest(req, res, new URL("http://localhost/ui/events"), ctx);
+      vi.advanceTimersByTime(10_000);
+      expect(end).not.toHaveBeenCalled();
+
+      current = "r".repeat(48);
+      vi.advanceTimersByTime(10_000);
+
+      expect(end).toHaveBeenCalledTimes(1);
+      expect(sseClients.has(res)).toBe(false);
+    } finally { vi.useRealTimers(); }
   });
 });

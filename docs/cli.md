@@ -135,8 +135,9 @@ agend backend trust <backend>   # Pre-trust working directories (avoid CLI trust
 
 ```bash
 agend web                       # Open Web UI dashboard in browser
+agend web --code                # Print a one-time sign-in code for the sign-in page
 agend view                      # Open the read-only View dashboard in browser
-agend web-token rotate          # Revoke every dashboard link and browser session
+agend web-token rotate          # Sign every browser out and rotate the CLI token
 agend setup                     # Guided setup page, before a fleet exists
 agend setup --reset             # Allow setup to run again after it completed
 agend setup --tunnel            # …and expose it publicly, so a phone can open it
@@ -212,17 +213,117 @@ place — this page writes the file by dumping the loaded configuration, which i
 right for a file it creates and would flatten comments and freeze defaults in
 one somebody already has.
 
-Opening a dashboard link redeems its `?token=` for an `HttpOnly` session cookie
-and redirects to the same page without the token, so the credential stays out of
-the address bar, browser history and any log that records request URLs. The
-cookie lasts 12 hours. `agend web-token rotate` invalidates every issued link and
-cookie at once — a running fleet picks it up with no restart.
+The dashboard signs in with a **one-time code**, not a link that carries a
+credential. Send `/dashboard` to your bot (or run `agend web --code` on the host)
+and you get the sign-in page address plus an 8-character code — `ABCD-EFGH`,
+typed with or without the dash, in any case. Type it into the sign-in page and
+you are signed in to `/ui`, `/view` and `/settings` for as long as the session
+lasts, with nothing in the address bar, the browser history or any log that
+records request URLs.
 
-**If the page says "No session"** right after you followed a link from web
-Telegram or Discord, reload once. The session cookie is `SameSite=Strict`, and a
-browser that declines to send it on the first cross-site hop will send it on the
-reload, which is same-site. (Verified on Chromium; Firefox and WebKit have not
-been measured.)
+- **The code works once and expires after 5 minutes.** Only the newest code
+  works: asking again replaces the previous one. Five wrong tries use up that one
+  code (ask for another); enough wrong tries across codes pause sign-in for a few
+  minutes. While no code has been issued there is nothing to guess.
+- **A session is an opaque server-side record**, not a value derived from
+  `web.token`. It ends after 12 hours from sign-in at the latest, or after 2
+  hours without use, whichever comes first — the server decides, not the
+  browser. It survives a fleet restart (Settings can restart the fleet).
+- **`/dashboard revoke`** in the chat signs every browser out and withdraws any
+  unused code. `agend web-token rotate` does the same and also rotates the token
+  the CLI uses; a running fleet picks it up with no restart. The sign-in
+  endpoints also list your signed-in devices and end one or all of them
+  (`GET/DELETE /auth/sessions`).
+- **Each sign-in is announced** in the General topic ("New web sign-in: Chrome on
+  macOS"). If it was not you, send `/dashboard revoke`. Turn this off with
+  `web.notify_login: false`.
+- **Writes need more than the cookie.** The panels add a per-session
+  `X-Agend-CSRF` header to every write, and the server also requires a matching
+  `Origin`; a cookie alone cannot change anything.
+- **One navigation across the panels.** `/ui`, `/view` and `/settings` share a
+  *Dashboard · View · Settings* bar and a **Session** menu (which browser you are,
+  when the session ends, your other signed-in devices with a Sign-out each, and
+  Sign out everywhere). `/` opens the dashboard. If the dashboard's live stream is
+  silent — a proxy that buffers it, or a path that cannot carry SSE such as a
+  Cloudflare Quick Tunnel — it polls `/ui/poll` every 5 seconds until the stream
+  speaks again.
+- **`/view` reads are open by default** (it is a read-only dashboard on a loopback
+  listener) — including the live terminal capture, so anyone who can reach the
+  port can watch your agents. Set `web.view_access: session` in `fleet.yaml` to
+  require a sign-in for the page, the capture, the roster and usage. **Editing a
+  profile or avatar always needs a signed-in session** (or `X-Agend-Token` from a
+  script): the Edit button on `/view` sends a signed-out visitor to sign in and
+  back. The old "paste your web.token to save" box is gone, and `/view?token=…` no
+  longer authorizes anything.
+- `agend web` (no flag) still opens `/ui?token=…` for the host's own browser and
+  works as before; that link now creates a real session, and is deprecated in
+  favour of the code.
+
+Following a link from Telegram or Discord into a panel lands on the sign-in page
+first if the browser did not send the cookie on that cross-site hop
+(`SameSite=Strict`); the page checks for a session from inside the site and
+carries on to the panel you asked for by itself. (Verified on Chromium; Firefox
+and WebKit have not been measured.)
+
+### Reaching the panels from outside
+
+The dashboard listens on `127.0.0.1:19280` and never anywhere else. To use it from
+another network, give AgEnD a **gateway**: a second listener, also on loopback,
+that your tunnel or proxy points at. It exists only when both keys are set:
+
+```yaml
+web:
+  external_hosts: [agend.example.com]   # the name(s) your tunnel / proxy presents
+  gateway_port: 19281                   # where the tunnel / proxy connects (not health_port)
+```
+
+Restart the fleet to apply a change. Then run the tunnel yourself — a named
+Cloudflare Tunnel (`cloudflared tunnel run`, ingress `http://127.0.0.1:19281`),
+`tailscale serve --bg 19281`, or Caddy/nginx in front. AgEnD does not start or
+supervise one, so there is nothing to keep in step with it.
+
+What the gateway is, and is not:
+
+- **It routes only what the panels call.** `/agent` (the agents' own RPC), `/health`,
+  `/status`, `/restart/*`, `/api/activity` and the code-issuing route do not exist
+  there — a request for one is a 404, whatever credentials it carries.
+- **It honours a signed-in session and nothing else.** `X-Agend-Token` and `?token=`
+  are not credentials on the gateway, so the CLI token never needs to cross the
+  internet. A session is good on the listener that made it: a local session is
+  nobody at the gateway, and the reverse. Gateway sessions are shorter (4 hours,
+  30 minutes idle) and each sign-in lists the IP your edge reported.
+- **Actions that amount to running code want a sign-in from the last 30 minutes.**
+  Over the gateway a session may read all day, but sending an agent a message,
+  creating/removing/restarting agents, changing settings, applying or restarting the
+  fleet, schedules, tasks and anything handling secrets answers `403 reauth_required`
+  once the session's sign-in is older than that; the page asks for a fresh code
+  (`/dashboard` in the chat) and repeats the action. Editing a profile on `/view`
+  and signing out are not affected. The local listener never asks. A write route
+  added in future is in this class until it is deliberately listed out.
+- **It requires a sign-in for `/view` too**, including the live terminal capture,
+  whatever `web.view_access` says — `open` is a choice about a loopback listener.
+- **It answers only the names in `external_hosts`** (a port is ignored). The
+  loopback names belong to the local listener, and the external name is not a name
+  of the local one.
+- **It assumes HTTPS in front of it.** Its cookie is always `Secure` and `__Host-`,
+  decided by which listener it is rather than by an `X-Forwarded-Proto` anyone
+  could send, so plain `http://` to the gateway will not keep you signed in.
+- **It is bounded**: 64 connections, a 30-second request timeout, and a request
+  the server cannot parse is answered 400 rather than taking the fleet down.
+
+`/dashboard` then shows the remote sign-in page next to the local one; the same
+code signs in at either. `/dashboard revoke` and `agend web-token rotate` end
+gateway sessions too. Remove the two keys and the next start revokes every session
+that came in through the gateway.
+
+Know what you are exposing. A signed-in session can change settings, start and stop
+agents and send them messages, which is close to a shell on this machine. With
+Cloudflare in the path, TLS ends at Cloudflare's edge: they can see the cookie,
+every terminal capture and every setting you open. `tailscale serve` (a private
+tailnet, not `funnel`) has no third party in the path; with a named tunnel,
+putting Cloudflare Access in front adds a second, independent gate. A Cloudflare
+*Quick* Tunnel works but is a poor fit — no SLA, a new address each time, and no
+Server-Sent Events (the dashboard falls back to polling).
 
 ### Applying settings changes
 

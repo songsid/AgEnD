@@ -7,6 +7,9 @@
 ## [未發佈] (Unreleased)
 
 ### 升級注意事項 (Upgrade Notes)
+- **[行為變更] 網頁面板改用一次性登入碼登入，dashboard 連結不再帶憑證。** `/dashboard` 以前會把整個 fleet 共用的 `web.token` 貼進 `/view?token=`、`/settings?token=`、`/ui?token=`：它會留在聊天紀錄、瀏覽器歷史與截圖裡，直到執行 `agend web-token rotate` 才失效。現在改給登入頁位址與一組 8 字元登入碼，只能用一次、5 分鐘過期；在登入頁輸入後會建立**伺服器端 session**（不透明的隨機 id，伺服器可以讓它過期、列出、撤銷；不再是 `sha256(web.token)` 那種每台裝置都相同、要到 rotate 才失效的 cookie）。**升級後每個人都要重新登入一次**，舊 cookie 不再被接受。Session 自登入起最多 12 小時、閒置 2 小時即結束，fleet 重啟後仍在，頁面上每個寫入動作也都需要每個 session 專屬的 `X-Agend-CSRF` 標頭與相符的 `Origin`。`/dashboard revoke` 讓所有瀏覽器登出；`agend web --code` 在主機上印出登入碼；`agend web-token rotate` 仍會一次殺掉所有 session。標頭 token（`X-Agend-Token`）維持不變，給 CLI 與腳本使用；`agend web` 仍會為本機瀏覽器開啟 `?token=` 連結（已棄用，現在會建立真正的 session）。新的登入會通知 General topic（`web.notify_login: false` 可關閉）。
+- **[行為變更] `/view` 不再接受網址或文字框裡的 web token。** 以前儲存個人檔案、頭像與側欄順序，可以用整個 fleet 共用的 `web.token` 以 `?token=` 送出：`/dashboard` 的「View (edit)」連結會把它放進網址列，而 `view.html` 還會把它附加到**每一個** API 請求並存進 `localStorage`。現在寫入需要已登入的 session（與其他面板相同的 CSRF 檢查），或腳本使用 `X-Agend-Token`；`?token=` 不再被當成寫入憑證，token 輸入框已移除，Edit 會把未登入的訪客帶到登入頁再回來。**預設仍可公開讀取 `/view`**（包含即時終端畫面）；新增的 `web.view_access: session` 可要求讀取也要登入。沒有任何程式接受過的唯讀 `view.token` 檔不再寫入，舊檔會在啟動時刪除。
+- **[行為變更] dashboard 現在會拒絕 `Host` 不認得的請求。** health/dashboard server 雖然只綁 127.0.0.1，但這擋不住 DNS rebinding：網頁可以把自己的網域解析到 127.0.0.1，再用 script 讀取不需要 cookie 的路由，包含 `/view` 的即時終端畫面（`/api/pane/*`）。這種網頁唯一改不了的是瀏覽器送出的 `Host`，所以所有路由（含 `/health`、`/agent`）現在只有在 `Host` 是 `localhost`、`127.0.0.1`、`[::1]`、fleet 的 `hostname:`，或新增的 `web.allowed_hosts` 列出的名稱時才回應，其餘一律 403（不比對 port）。**如果你是透過反向代理或 port forward、且它呈現的是別的名稱，請把該名稱加進 `web.allowed_hosts`**；每個被拒的名稱第一次出現時，`fleet.log` 會記一行並附上這個提示。CLI、`agend web`、`/dashboard` 與內部呼叫都用 loopback 名稱，不受影響。
 - **[行為變更] Codex instance 改為恢復自己的對話，不再拿到兄弟 worktree 的（#984）。** Codex 0.157 的 `codex resume --last` 會挑整個 git repo 裡最新的 session，所以同一個 repo 的不同 worktree 上的 AgEnD instance 會互搶 session：對方還在跑時卡在「conversation is open in another app」lock 畫面，否則就默默接著跑對方的對話。現在 AgEnD 會以唯讀方式讀 Codex 的 session 資料庫，對「工作目錄完全相符」的最新 session 執行 `codex resume <id>`。對你的影響：
   - session 都在自己目錄下的 instance，恢復的仍是原本那段對話。
   - 同一個 repo 已有其他 Codex instance 時，**新建**的 instance 會從**新對話**開始，不會繼承兄弟的。
@@ -14,6 +17,12 @@
   - 不做任何搬移，AgEnD 也不寫入任何 Codex state。這個版本之前已經被搶走的對話（例如從 lock 畫面按 fork 產生的），Codex 記在哪裡就還在哪裡：重啟受影響的 instance 前，請先確認，並在 Codex 裡把錯誤的 fork 封存。
 
 ### 修正 (Fixed)
+- **被撤銷的網頁 session 在重啟後可能復活。** 如果 session 檔案無法被替換（權限或磁碟問題），store 在記憶體裡已忘記該 session，舊檔卻還留著它，下次啟動就會讀回來。現在儲存失敗會繼續記在待寫清單（下次變更與關機時重試）；若舊檔含有記憶體已丟棄的項目就把舊檔移除 — 重啟後大家重新登入，而不是讓被撤銷的 session 復活 — 連移除都做不到時會明確警告。被 debounce 暫存的 `lastSeen` 與尚待寫入的內容也會在關機時寫出。
+- **SSE 串流綁定 response 而非 request，被撤銷的串流會被切斷。** Dashboard 的串流現在在 response 的 `close` 時清理（request 的 `close` 代表「已讀完」，在較新的 Node 上可能早於串流結束）；當它的 session 被撤銷、過期或因 rotate 失效時，除了結束 response 也會關閉 socket，避免閒置佔滿 gateway 的連線上限。
+- **`git init` 不再經過 shell。** 在面板或聊天輸入的工作目錄路徑（引號、`$(…)`、反引號）可能被 `ensureWorkspaceGit` 執行；現在直接執行 `git init -- <dir>`（CodeQL js/command-line-injection）。以 `__proto__`/`constructor` 當 instance 名稱設定顯示名稱或描述，也不再能寫入 `Object.prototype`（js/prototype-polluting-assignment）。
+- **一個格式錯誤的請求就能讓 fleet 停止。** `new URL` 不接受的 request target（`GET http://[bad/`）會在 dashboard 的 request callback 內丟出例外 — 也就是未捕捉的例外，程序會結束。現在兩個 listener 都會回 400 並繼續運作。
+- **Dashboard 不再從 Google 載入字型。** 每次開啟 `/ui` 都會對 `fonts.googleapis.com` 發請求，而這個頁面可以重啟你的 agent。現在改用系統字型，且每個面板都帶有 `Content-Security-Policy`，把 script、樣式、圖片、字型與連線都限制在本站（`connect-src 'self'`），即使頁面上真的跑了不該跑的 script，也無法把讀到的內容送到別的伺服器。（`'unsafe-inline'` 暫時保留：面板是單檔內嵌 script，dashboard 也用了 `onclick=` 屬性。）
+- **dashboard 的回應不會再被 iframe 嵌入、被猜測型別或被快取。** dashboard/health server 的每個回應現在都帶 `X-Frame-Options: DENY`、`Content-Security-Policy: frame-ancestors 'none'`（這些頁面有重啟 instance 的按鈕，被嵌入就可能被誘導點擊）、`X-Content-Type-Options: nosniff` 與 `Cache-Control: no-store`（自己設定 Cache-Control 的路由，例如 SSE 與頭像，維持原樣）。
 - **Codex 的 session lock 畫面與 resume 目錄選擇器不再讓投遞默默卡住（#984）。** 「This conversation is open in another app（r retry / f fork）」畫面和「Working directory · resume」選擇器原本都認不出來，啟動時被當成已就緒，訊息會在 idle gate 等滿 30 分鐘後失敗。現在兩者都會被 hold：投遞維持擋住、通知 operator，AgEnD 絕不會替你按 `r`、`f` 或選擇器的任何選項。
 
 ## [2.1.4] - 2026-09-07
@@ -24,6 +33,12 @@
 - **`/login` 尚未支援 Org SSO** — `/login` 指令是 beta；organization SSO 流程是已知限制。
 
 ### 新增 (Added)
+**從外部連到面板的 gateway。** 設定 `web.external_hosts`（你的 tunnel 或反向代理呈現的名稱）與 `web.gateway_port`，會在 `127.0.0.1` 多開一個 listener，專門給 Cloudflare tunnel、`tailscale serve` 或 Caddy/nginx 連；AgEnD 不負責執行 tunnel。邊界是 port，而不是擋在 dashboard 前面的路徑清單：gateway 只 routing 三個面板實際會呼叫的路徑（所以 `/agent`、`/health`、`/status`、`/restart/*`、`/api/activity` 在那裡是 404），只認已登入的 session（`X-Agend-Token` 與 `?token=` 在 gateway 上都不是憑證），不論 `web.view_access` 怎麼設，`/view` 都要登入，只回應列出的 Host 名稱，簽發的 `Secure` `__Host-` cookie 由「哪個 listener」決定而不是 `X-Forwarded-Proto`，且 session 只在建立它的 listener 上有效。Gateway session 4 小時（閒置 30 分鐘）結束，並在清單中顯示 edge 回報的 IP。透過 gateway 時，任何等同於在這台機器上執行程式的動作（傳訊息給 agent、建立/移除/重啟 agent、設定、apply/restart-fleet、schedule、task、機密處理 — 除了 `/view` 的編輯與 session 管理外的所有寫入）都需要最近 30 分鐘內的登入：較舊的 session 會得到 `403 reauth_required`，頁面會要求輸入新的登入碼並重送該動作。兩個設定都沒有就沒有 gateway，曾在其上建立的 session 會在下次啟動時撤銷。詳見 `docs/cli.md`〈Reaching the panels from outside〉。
+
+**三個網頁面板共用同一組導覽與登入狀態選單。** `/ui`、`/view`、`/settings` 現在都有相同的「Dashboard · View · Settings」連結，以及一個 Session 按鈕：顯示目前登入的瀏覽器、登入何時結束、其他已登入的裝置（每台都能個別登出）與「全部登出」。在面板之間切換不必再登入，`/` 也會直接開啟 dashboard。各頁維持原本的樣子，選單借用各頁自己的顏色；這是一支小 script（`/assets/shell.js`）加一份樣式，不是重寫面板。
+
+**Dashboard 不再依賴 Server-Sent Events。** 如果即時串流 15 秒沒有任何動靜、或一直失敗，頁面會每 5 秒用一般請求取回同樣的狀態與聊天訊息（`GET /ui/poll`），串流恢復後自動切回，且不會重複顯示訊息。有些路徑無法承載 SSE（Cloudflare 文件說 Quick Tunnel 不支援），而會緩衝串流的代理，看起來和一個永遠不送資料的伺服器一模一樣。
+
 - **`/login` 指令** — 直接從 Telegram／Discord 重新登入 CLI 後端，不必再 SSH 進主機。執行前會先檢查現有登入，若仍有效會要求確認，避免誤把還能用的登入洗掉。登入成功後，原本在執行的 instance 會自動重啟以套用新憑證（#611、#613、#614、#617）。
 - **`/install-cli` 指令** — 遠端在主機上安裝 CLI 後端，並整合進 quickstart。安裝指令改為各家目前的官方做法：kiro-cli 改用 `curl` 安裝腳本（原為 Homebrew）、codex 改用官方 standalone 安裝程式（原為 npm）（#619–#621、#624）。
 - **`/clear` 指令** — 清空 instance 的 context。**限管理員，而且必須先按確認鈕**才會真的執行，單獨下指令不會觸發破壞性動作（#529、#549）。

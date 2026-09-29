@@ -293,6 +293,30 @@ export interface WebConfig {
   usage_panel?: boolean;
   /** Expose provider API-key verify/apply endpoints (default false until dark-shipped). */
   provider_secrets?: boolean;
+  /**
+   * Extra `Host` names the dashboard answers to, for a reverse proxy or port
+   * forward that presents a name other than localhost / 127.0.0.1 / [::1] / `hostname`.
+   * Names only (a port is ignored); anything not listed is refused with 403.
+   */
+  allowed_hosts?: string[];
+  /**
+   * Who may read /view (the page, the terminal capture, the roster, usage).
+   * `open` (default): anyone who can reach the listener — the page is a read-only dashboard on loopback.
+   * `session`: a signed-in web session or the CLI header token. Writes need a credential either way.
+   */
+  view_access?: "open" | "session";
+  /**
+   * `Host` names the gateway answers to — the name(s) your tunnel, `tailscale serve` or reverse proxy
+   * presents. The gateway is a second listener, bound to 127.0.0.1:`gateway_port`, that is the only one
+   * meant to face the outside: it routes only what the panels call, honours only a signed-in session
+   * (never `X-Agend-Token` or `?token=`), and requires one for /view too. Leave both unset and there is
+   * no gateway. Restart the fleet to apply a change.
+   */
+  external_hosts?: string[];
+  /** Loopback port for the gateway (point your tunnel/proxy here). Required with `external_hosts`. */
+  gateway_port?: number;
+  /** Tell the admin channel when someone signs in to the web panel (default true). */
+  notify_login?: boolean;
 }
 
 /** `login:` section — remote /login behaviour. */

@@ -12,6 +12,7 @@ import { CreateInstanceArgs, validateArgs } from "./outbound-schemas.js";
 import { readStatuslineModel, resolveInstanceContext } from "./topic-commands.js";
 import { z } from "zod";
 import { isWebRequestAuthorized, WEB_TOKEN_INVALID_MESSAGE } from "./web-auth.js";
+import type { WebSessionStore } from "./web-session.js";
 import { authorizeExplicitInstanceRemoval } from "./instance-removal.js";
 import type { ExplicitInstanceRemoval } from "./instance-removal.js";
 
@@ -80,8 +81,9 @@ export function broadcastSseEvent(
   event: string,
   data: unknown,
   onError?: (err: unknown) => void,
+  id?: number,
 ): void {
-  const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  const payload = `${id === undefined ? "" : `id: ${id}\n`}event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
   const dead: ServerResponse[] = [];
   for (const client of clients) {
     try {
@@ -116,8 +118,49 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 /** Minimal interface — only what web-api needs from FleetManager. */
+/**
+ * The recent chat messages the dashboard shows, numbered, so a client that cannot
+ * hold an SSE stream open can ask for "everything after N" instead.
+ *
+ * Some paths cannot carry SSE — Cloudflare says outright that Quick Tunnels do not
+ * — and a proxy that buffers a stream looks to the page exactly like a server that
+ * never sends. Polling `/ui/poll` is the same data over plain requests.
+ */
+export class UiMessageLog {
+  private seq = 0;
+  private entries: Array<Record<string, unknown> & { id: number }> = [];
+
+  constructor(private readonly max = 500) {}
+
+  /** Record one message; returns the id it was given (also sent as the SSE event id). */
+  append(data: unknown): number {
+    const id = ++this.seq;
+    const body = data && typeof data === "object" && !Array.isArray(data) ? data as Record<string, unknown> : { value: data };
+    this.entries.push({ ...body, id });
+    if (this.entries.length > this.max) this.entries.splice(0, this.entries.length - this.max);
+    return id;
+  }
+
+  get last(): number { return this.seq; }
+
+  /**
+   * Messages with an id above `after`. A client whose `after` is ahead of the log —
+   * the fleet restarted and numbering began again — gets nothing rather than a replay
+   * of a conversation it may already have shown, and learns the current `last`.
+   */
+  since(after: number): Array<Record<string, unknown> & { id: number }> {
+    if (after >= this.seq) return [];
+    return this.entries.filter(e => e.id > after);
+  }
+}
+
+/** How often a stream is refreshed, and how often it re-checks that its session still stands. */
+export const SSE_HEARTBEAT_MS = 10_000;
+
 export interface WebApiContext {
   readonly webToken: string | null;
+  /** Absent in a hand-built context: cookies are then simply not a credential, the header token still is. */
+  readonly webSessions?: WebSessionStore | null;
   readonly dataDir: string;
   readonly sseClients: Set<ServerResponse>;
   readonly fleetConfig: {
@@ -138,6 +181,10 @@ export interface WebApiContext {
   deliverToInstance(instanceName: string, payload: Record<string, unknown>): Promise<void>;
   getUiStatus(): unknown;
   emitSseEvent(event: string, data: unknown): void;
+  /** Absent means SSE_HEARTBEAT_MS; a test shortens it. */
+  readonly sseHeartbeatMs?: number;
+  /** Absent in a hand-built context: `/ui/poll` then reports status and no messages. */
+  readonly uiMessages?: UiMessageLog;
   startInstance(name: string, config: unknown, topicMode: boolean): Promise<void>;
   stopInstance(name: string): Promise<void>;
   restartSingleInstance(name: string): Promise<void>;
@@ -204,7 +251,7 @@ export function handleWebRequest(
   // this accepts the cookie and the header too, and an unset token closes the
   // panel instead of comparing null against a missing credential.
   if (path.startsWith("/ui")) {
-    if (!isWebRequestAuthorized(req, url, ctx.webToken)) {
+    if (!isWebRequestAuthorized(req, url, ctx.webToken, ctx.webSessions)) {
       json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE });
       return true;
     }
@@ -272,6 +319,18 @@ export function handleWebRequest(
 
   // ── SSE ────────────────────────────────────────────────
 
+  // The same data as the stream, over plain requests, for a path that cannot carry SSE.
+  if (method === "GET" && path === "/ui/poll") {
+    const raw = Number.parseInt(url.searchParams.get("after") ?? "0", 10);
+    const after = Number.isFinite(raw) && raw > 0 ? raw : 0;
+    json(res, 200, {
+      status: ctx.getUiStatus(),
+      messages: ctx.uiMessages?.since(after) ?? [],
+      last: ctx.uiMessages?.last ?? 0,
+    });
+    return true;
+  }
+
   if (method === "GET" && path === "/ui/events") {
     res.writeHead(200, {
       "Content-Type": "text/event-stream",
@@ -281,12 +340,23 @@ export function handleWebRequest(
     res.write(`event: status\ndata: ${JSON.stringify(ctx.getUiStatus())}\n\n`);
     ctx.sseClients.add(res);
     const interval = setInterval(() => {
+      // A stream authorized once must not outlive the authorization. Re-checked
+      // without counting as activity, or an open tab would keep an idle session
+      // alive forever; a revoked, expired or rotated-away session ends here.
+      if (!isWebRequestAuthorized(req, url, ctx.webToken, ctx.webSessions, { touch: false })) {
+        // Close the connection too, not just the response: an ended response leaves the socket idle
+        // in keep-alive, still counted against a listener that caps its connections.
+        const socket = req.socket;
+        try { res.end(() => socket?.destroy()); } catch { /* already closed */ }
+        cleanup();
+        return;
+      }
       try {
         res.write(`event: status\ndata: ${JSON.stringify(ctx.getUiStatus())}\n\n`);
       } catch {
         cleanup();
       }
-    }, 10_000);
+    }, ctx.sseHeartbeatMs ?? SSE_HEARTBEAT_MS);
     let cleanedUp = false;
     const cleanup = (): void => {
       if (cleanedUp) return;
@@ -294,10 +364,13 @@ export function handleWebRequest(
       ctx.sseClients.delete(res);
       clearInterval(interval);
     };
-    // `close` covers normal disconnects; `error` covers network resets that
-    // never deliver a clean FIN. Without both, dead clients accumulate in
+    // The *response's* `close` is the one that means the stream is over: it fires when the connection
+    // goes away or the response is finished. The request's `close` means "the request has been read"
+    // — on newer Node that is as soon as it is consumed, which would drop a live stream from
+    // sseClients and stop its session re-check while the response is still open. `error` covers
+    // network resets that never deliver a clean FIN. Without these, dead clients accumulate in
     // sseClients and the heartbeat interval keeps firing forever.
-    req.on("close", cleanup);
+    res.on("close", cleanup);
     req.on("error", cleanup);
     res.on("error", cleanup);
     return true;

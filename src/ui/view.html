@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AgEnD View</title>
+<link rel="stylesheet" href="/assets/shell.css">
+<script src="/assets/agend-auth.js"></script>
+<script src="/assets/shell.js" defer></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   :root {
@@ -172,7 +175,7 @@
     <button class="close" id="usageClose" data-i18n-title="close" title="Close">×</button>
     <div id="usageContent"></div>
   </aside>
-  <div id="sidebar"><h1 data-i18n="viewTitle">AgEnD · View</h1><div id="list"></div>
+  <div id="sidebar"><h1 data-i18n="viewTitle">AgEnD · View</h1><nav data-agend-nav data-compact data-current="view" style="margin:0 10px 8px"></nav><div id="list"></div>
     <div id="filterBar">
       <div class="filter-wrap">
         <svg class="filter-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3.5 3.5" stroke-linecap="round"/></svg>
@@ -198,30 +201,30 @@
         <input id="fRole" data-i18n-ph="role" placeholder="Role">
         <textarea id="fDesc" data-i18n-ph="description" placeholder="Description"></textarea>
         <input id="fAvatar" type="file" accept="image/png,image/jpeg,image/gif,image/webp">
-        <input id="fToken" type="password" data-i18n-ph="tokenPh" placeholder="web.token (required to save)">
         <div class="actions">
           <button id="saveBtn" data-i18n="save">Save</button>
           <button id="cancelBtn" data-i18n="cancel">Cancel</button>
           <span id="msg"></span>
         </div>
-        <div class="hint" data-i18n="saveHint">Viewing is open (read-only). Saving requires the web.token (~/.agend/web.token).</div>
+        <div class="hint" data-i18n="saveHint">Saving needs a signed-in session. Send /dashboard to your AgEnD bot for a sign-in code.</div>
       </div>
     </div>
   </div>
 
 <script>
 (() => {
-  // GET routes are open (no token). Profile/avatar writes require web.token;
+  // Reading is open unless the operator set web.view_access: session. Profile/avatar
+  // writes need a signed-in session (the cookie; /assets/agend-auth.js adds the CSRF
+  // header). No credential is ever placed in a URL or kept in localStorage here;
   // visual ordering is browser-local and never leaves localStorage.
-  const urlToken = new URLSearchParams(location.search).get("token") || "";
   const q = (id) => document.getElementById(id);
 
   // ── i18n ──
   const I18N = {
     en: { viewTitle: "AgEnD · View", editProfile: "✏️ Edit", save: "Save", cancel: "Cancel",
       filterPh: "Filter: name, model, backend", filterClear: "Clear filter", filterNone: "No instance matches", filterShown: "shown",
-      displayName: "Display name", role: "Role", description: "Description", tokenPh: "web.token (required to save)",
-      saveHint: "Viewing is open (read-only). Saving requires the web.token (~/.agend/web.token).", helpTitle: "📖 Help",
+      displayName: "Display name", role: "Role", description: "Description",
+      saveHint: "Saving needs a signed-in session. Send /dashboard to your AgEnD bot for a sign-in code.", helpTitle: "📖 Help",
       help1: "Pick an instance on the left → its live terminal shows on the right",
       help2: "Click a group header ▼/▶ to collapse/expand", help3: "✏️ Edit changes display name, role, description",
       help4: "Drag groups or instances to reorder them in this browser",
@@ -281,11 +284,11 @@
       "usage.error.grok_persist": "Refreshed but could not write auth.json. Run `grok` once instead.",
       usageButton: "AI usage", languageButton: "Language", helpButton: "Help", close: "Close", expandProfile: "Expand profile",
       rosterFailed: "Failed to load roster: {error}\n(Is the fleet running?)", paneFailed: "⚠ Could not load pane for {name} (HTTP {status}).",
-      tokenRequired: "web.token required", avatarFailed: "Avatar upload failed: {error}", saved: "Saved", saveFailed: "Save failed: {error}" },
+      signInToSave: "Sign in to save — your session may have ended.", avatarFailed: "Avatar upload failed: {error}", saved: "Saved", saveFailed: "Save failed: {error}" },
     "zh-TW": { viewTitle: "AgEnD · 檢視", editProfile: "✏️ 編輯", save: "儲存", cancel: "取消",
       filterPh: "篩選：名稱、模型、後端", filterClear: "清除篩選", filterNone: "沒有符合的 instance", filterShown: "顯示中",
-      displayName: "顯示名稱", role: "角色", description: "描述", tokenPh: "web.token（儲存時需要）",
-      saveHint: "檢視為公開（唯讀）。儲存需要 web.token（~/.agend/web.token）。", helpTitle: "📖 使用說明",
+      displayName: "顯示名稱", role: "角色", description: "描述",
+      saveHint: "儲存需要已登入的 session。請在 AgEnD bot 傳 /dashboard 取得登入碼。", helpTitle: "📖 使用說明",
       help1: "左側選 instance → 右側顯示即時 terminal 畫面",
       help2: "點 group header ▼/▶ 收合/展開", help3: "✏️ Edit 可修改顯示名稱、角色、描述",
       help4: "拖曳 group 或 instance 可調整此瀏覽器的顯示順序",
@@ -345,7 +348,7 @@
       "usage.error.grok_persist": "Token 已更新但無法寫入 auth.json。請改為執行一次 `grok`。",
       usageButton: "AI 訂閱用量", languageButton: "語言", helpButton: "使用說明", close: "關閉", expandProfile: "展開個人資料",
       rosterFailed: "載入 instance 清單失敗：{error}\n（Fleet 是否正在執行？）", paneFailed: "⚠ 無法載入 {name} 的 pane（HTTP {status}）。",
-      tokenRequired: "需要 web.token", avatarFailed: "上傳頭像失敗：{error}", saved: "已儲存", saveFailed: "儲存失敗：{error}" },
+      signInToSave: "請先登入才能儲存：你的 session 可能已結束。", avatarFailed: "上傳頭像失敗：{error}", saved: "已儲存", saveFailed: "儲存失敗：{error}" },
   };
   let lang = localStorage.getItem("agend_lang") || (navigator.language && navigator.language.toLowerCase().startsWith("zh") ? "zh-TW" : "en");
   if (!I18N[lang]) lang = "en";
@@ -392,7 +395,6 @@
   const SIDEBAR_ORDER_KEY = "agend_view_sidebar_order";
   const USAGE_ORDER_KEY = "agend_view_usage_order";
 
-  const api = (path) => urlToken ? `${path}${path.includes("?") ? "&" : "?"}token=${encodeURIComponent(urlToken)}` : path;
 
   // ── ANSI (SGR) → HTML ─────────────────────────────────
   const BASE = ["#000000","#cd3131","#0dbc79","#e5e510","#2472c8","#bc3fbc","#11a8cd","#e5e5e5"];
@@ -713,7 +715,7 @@
     // 404 shows a broken-image icon. No avatar → CSS placeholder (initial).
     const box = q("avatarBox");
     if (it.has_avatar) {
-      const base = api(`/api/avatar/${encodeURIComponent(it.instance_name)}`);
+      const base = `/api/avatar/${encodeURIComponent(it.instance_name)}`;
       // Only rebuild (and cache-bust) when the avatar's instance changed.
       // Rebuilding every renderCard re-issued the <img> request each 5s
       // loadRoster tick, which made the avatar flicker. Compare the raw src
@@ -738,7 +740,7 @@
 
   async function loadRoster() {
     try {
-      const pr = await fetch(api("/api/profiles"));
+      const pr = await fetch("/api/profiles");
       if (!pr.ok) throw new Error("HTTP " + pr.status);
       roster = await pr.json();
       rosterByName = new Map(roster.map(r => [r.instance_name, r]));
@@ -758,7 +760,7 @@
     if (sel && sel.toString().length > 0 && sel.anchorNode && q("pre").contains(sel.anchorNode)) return;
     const target = current;  // guard against a switch mid-fetch
     try {
-      const r = await fetch(api(`/api/pane/${encodeURIComponent(target)}`));
+      const r = await fetch(`/api/pane/${encodeURIComponent(target)}`);
       if (target !== current) return;  // user switched while awaiting — drop stale
       if (!r.ok) {
         // Surface the failure instead of leaving the previous instance's output
@@ -876,13 +878,23 @@
     applyCardExpanded(on);
   }
 
-  function enterEdit() {
+  // Whether this browser holds a session. Asked when Edit is pressed rather than at load: the
+  // answer can change while the page is open (signed in from another tab, or expired).
+  async function isSignedIn() {
+    try { return (await fetch("/auth/session", { cache: "no-store" })).ok; } catch { return false; }
+  }
+
+  async function enterEdit() {
     const it = roster.find(r => r.instance_name === current);
     if (!it) return;
+    if (!(await isSignedIn())) {
+      // Sign in, then come back to this page.
+      location.href = "/signin?next=" + encodeURIComponent("/view");
+      return;
+    }
     q("fDisplay").value = it.display_name || "";
     q("fRole").value = it.role || "";
     q("fDesc").value = it.description || "";
-    q("fToken").value = localStorage.getItem("agend_web_token") || "";
     q("msg").textContent = "";
     applyCardExpanded(true);          // form needs the room; don't persist it
     q("cardBody").style.display = "none";
@@ -901,20 +913,18 @@
   async function save() {
     const it = roster.find(r => r.instance_name === current);
     if (!it) return;
-    const wt = q("fToken").value.trim();
-    if (!wt) { q("msg").className = "err"; q("msg").textContent = T("tokenRequired"); return; }
-    localStorage.setItem("agend_web_token", wt);
     const name = encodeURIComponent(current);
     try {
       const r = await fetch(`/api/profile/${name}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "X-Agend-Token": wt },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ display_name: q("fDisplay").value, role: q("fRole").value, description: q("fDesc").value }),
       });
+      if (r.status === 401) throw new Error(T("signInToSave"));
       if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error || ("HTTP " + r.status)); }
       const file = q("fAvatar").files[0];
       if (file) {
-        const ar = await fetch(`/api/avatar/${name}`, { method: "POST", headers: { "Content-Type": file.type, "X-Agend-Token": wt }, body: file });
+        const ar = await fetch(`/api/avatar/${name}`, { method: "POST", headers: { "Content-Type": file.type }, body: file });
         if (!ar.ok) { const e = await ar.json().catch(() => ({})); throw new Error(TF("avatarFailed", { error: e.error || ar.status })); }
       }
       q("msg").className = "ok"; q("msg").textContent = T("saved");

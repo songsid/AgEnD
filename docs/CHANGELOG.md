@@ -7,6 +7,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+**A gateway for reaching the panels from outside.** Setting `web.external_hosts`
+(the names your tunnel or reverse proxy presents) and `web.gateway_port` opens a
+second listener on `127.0.0.1` — the one thing meant to face a Cloudflare tunnel,
+`tailscale serve` or Caddy/nginx; AgEnD does not run the tunnel. The boundary is the
+port, not a path list in front of the dashboard: the gateway routes only what the
+three panels call (so `/agent`, `/health`, `/status`, `/restart/*` and
+`/api/activity` are a 404 there), honours only a signed-in session (`X-Agend-Token`
+and `?token=` are not credentials on it), requires a sign-in for `/view` whatever
+`web.view_access` says, answers only the listed Host names, issues a `Secure`
+`__Host-` cookie decided by which listener it is rather than by
+`X-Forwarded-Proto`, and keeps a session on the listener that made it. Gateway
+sessions last 4 hours (30 minutes idle) and are listed with the IP the edge
+reported. Over the gateway, anything that amounts to running code here (messaging or creating/removing/restarting agents, settings, apply/restart-fleet, schedules, tasks, secrets — every write except the `/view` edits and session management) needs a sign-in from the last 30 minutes: an older session gets `403 reauth_required` and the page asks for a fresh code and repeats the action. With neither key set there is no gateway, and sessions made on one are
+revoked at the next start. See `docs/cli.md` › *Reaching the panels from outside*.
+
+**The three web panels share one navigation and one session menu.** `/ui`,
+`/view` and `/settings` now carry the same *Dashboard · View · Settings* links, and
+a Session button that shows which browser you are signed in as, when the session
+ends, every other signed-in device (with a Sign-out for each) and Sign out
+everywhere. Moving between panels never asks you to sign in again, and `/` now
+opens the dashboard. The pages keep their own look; the menu borrows each page's
+colours. It is one small script (`/assets/shell.js`) and stylesheet, not a rewrite
+of the panels.
+
+**The dashboard no longer depends on Server-Sent Events.** If the live stream says
+nothing for 15 seconds, or keeps failing, the page fetches the same status and chat
+messages every 5 seconds (`GET /ui/poll`) and goes back to the stream when it
+speaks again, without showing a message twice. Some paths cannot carry SSE —
+Cloudflare's docs say Quick Tunnels do not — and a proxy that buffers a stream looks
+exactly like a server that never sends.
+
 **Tool access is decided by the fleet, not by what a model happens to be shown.**
 Every route into AgEnD's tools — the MCP tool list, a `tools/call` naming a tool
 directly, a write straight to the instance's socket, and `POST /agent` — now
@@ -45,6 +76,49 @@ Settings now applies changes as a job you can watch. `POST /api/settings/apply` 
 The panel can restart AgEnD itself for a change only a fresh process can adopt, behind its own confirmation, its own idempotency key, and a rate limit of one restart per 10 minutes and three per hour that is written to disk before anything is launched. The restart is announced in the chat channel first and is refused if it cannot be announced, so a panel restart is never invisible to the people who would notice it was not them.
 
 ### Upgrade Notes
+- **[Behaviour change] The web panels sign in with a one-time code, and a
+  dashboard link no longer carries a credential.** `/dashboard` used to paste the
+  fleet-wide `web.token` into `/view?token=`, `/settings?token=` and `/ui?token=`
+  — into chat history, browser history and screenshots, where it stayed valid
+  until `agend web-token rotate`. It now gives the sign-in page and an 8-character
+  code that works once and expires in 5 minutes; typing it there starts a
+  **server-side session** (an opaque random id the server can expire, list and
+  revoke — not the old cookie that was `sha256(web.token)`, identical on every
+  device and valid until rotation). **Everyone signs in once after upgrading:**
+  the old cookie is no longer accepted. Sessions end 12 hours after sign-in or
+  after 2 hours idle, survive a fleet restart, and every write from a page now
+  also needs a per-session `X-Agend-CSRF` header and a matching `Origin`.
+  `/dashboard revoke` signs every browser out; `agend web --code` prints a code on
+  the host; `agend web-token rotate` still kills every session at once. The
+  header token (`X-Agend-Token`) is unchanged for the CLI and scripts, and
+  `agend web` still opens a `?token=` link for the host's own browser (deprecated;
+  it now creates a real session). New sign-ins are announced in the General topic
+  (`web.notify_login: false` to silence).
+- **[Behaviour change] `/view` no longer takes the web token in its URL or a text box.**
+  Saving a profile or avatar (and the sidebar order) used to work with the
+  fleet-wide `web.token` sent as `?token=` — which `/dashboard`'s "View (edit)" link
+  put in the address bar, and which `view.html` then appended to *every* API
+  request and kept in `localStorage`. Writes now need a signed-in session (with
+  the same CSRF checks as the other panels) or `X-Agend-Token` from a script; a
+  `?token=` is refused as a write credential, the token box is gone, and Edit sends
+  a signed-out visitor to the sign-in page and back. **Reading `/view` stays open by
+  default** (the live terminal capture included); the new `web.view_access: session`
+  requires a sign-in for reads too. The unused `view.token` file (a read-only
+  credential nothing ever accepted) is no longer written, and an old one is
+  deleted at startup.
+- **[Behaviour change] The dashboard now refuses requests whose `Host` is not a
+  name it knows.** The health/dashboard server listens on 127.0.0.1, but that does
+  not stop DNS rebinding: a web page can point its own domain at 127.0.0.1 and
+  read, from script, the routes that need no cookie — including `/view`'s live
+  terminal capture (`/api/pane/*`). The one thing such a page cannot change is
+  the `Host` the browser sends, so every route (`/health` and `/agent` included)
+  now answers 403 unless `Host` is `localhost`, `127.0.0.1`, `[::1]`, your fleet
+  `hostname:`, or a name listed in the new `web.allowed_hosts`. The port is not
+  compared. **If you reach the dashboard through a reverse proxy or a port
+  forward that presents another name, add that name to `web.allowed_hosts`**;
+  the first refusal of each name is logged in `fleet.log` with that hint. The
+  CLI, `agend web`, `/dashboard` and every internal caller use loopback names and
+  are unaffected.
 - **[Behaviour change] Codex instances resume their own conversation, not a
   sibling worktree's (#984).** Codex 0.157's `codex resume --last` picks the
   newest session of the whole git repository, so AgEnD instances on worktrees of
@@ -114,6 +188,40 @@ The panel can restart AgEnD itself for a change only a fresh process can adopt, 
 - **A failed self-restart needs the change applied again** — if the restart cannot be launched, its row is marked failed and the job is finished rather than left open for another attempt. Press Apply again to get a fresh job whose fleet row can be restarted. This is the fail-closed side of "one restart per job": a job whose launch failed must not stay a reusable restart button.
 
 ### Fixed
+- **A revoked web session could come back after a restart.** If the session file could
+  not be replaced (a permissions or disk problem), the store forgot the session in
+  memory but the old file still held it, and the next start read it back. A failed save
+  now stays owed to the disk (retried on the next change and at shutdown), removes the
+  old file when it holds anything memory has dropped — so a restart signs everyone in
+  again instead of reviving a revoked session — and says so when even that is
+  impossible. The debounced `lastSeen` and any owed write are also flushed at shutdown.
+- **An SSE stream is tied to the response, not the request, and a revoked one is cut.**
+  The dashboard's stream now cleans up on the response's `close` (the request's means
+  "read", which on newer Node can precede the end of the stream), and when its session
+  is revoked, expires or is rotated away it closes the socket as well as the response,
+  so it cannot sit idle against the gateway's connection cap.
+- **`git init` no longer goes through a shell.** A workspace path typed into the panel or a
+  chat (quotes, `$(…)`, backticks) could be executed by `ensureWorkspaceGit`; it now runs
+  `git init -- <dir>` directly (CodeQL js/command-line-injection). Setting an instance's
+  display name or description with `__proto__`/`constructor` as the name can no longer
+  write to `Object.prototype` (js/prototype-polluting-assignment).
+- **One malformed request could stop the fleet.** A request target `new URL` rejects
+  (`GET http://[bad/`) threw inside the dashboard's request callback — an uncaught
+  exception, which ends the process. Both listeners now answer 400 and carry on.
+- **The dashboard no longer loads its fonts from Google.** Opening `/ui` sent a
+  request to `fonts.googleapis.com` every time, from a page that can restart your
+  agents. It now uses the system fonts, and every panel is served with a
+  `Content-Security-Policy` that keeps scripts, styles, images, fonts and
+  connections to this origin (`connect-src 'self'`), so script that somehow ran on
+  a page could not send what it read to another server. (`'unsafe-inline'` stays for
+  now: the panels are single files of inline script and the dashboard uses
+  `onclick=` attributes.)
+- **Dashboard responses can no longer be framed, sniffed or cached.** Every
+  response from the dashboard/health server now carries `X-Frame-Options: DENY`,
+  `Content-Security-Policy: frame-ancestors 'none'` (the pages have buttons that
+  restart instances, so a framed page could be clicked through),
+  `X-Content-Type-Options: nosniff` and `Cache-Control: no-store` (routes that set
+  their own Cache-Control, such as the SSE stream and avatars, keep it).
 - **Codex session-lock and resume-directory screens no longer stall delivery
   silently (#984).** Codex's "This conversation is open in another app (r retry /
   f fork)" screen and its "Working directory · resume" picker matched nothing, so

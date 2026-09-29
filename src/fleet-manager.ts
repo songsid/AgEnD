@@ -3,7 +3,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { freemem, totalmem, cpus } from "node:os";
 import { access } from "node:fs/promises";
-import { createServer, type Server } from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
@@ -76,7 +76,7 @@ import { DeliveryOutbox, type ClaimedOutboxDelivery, type OutboxDelivery, type D
 // active manager/target generation pair owns the lane until the daemon reports
 // a state transition or that generation is replaced.
 export const DURABLE_DELIVERY_LANE_ALERT_MS = 35 * 60_000;
-import { handleWebRequest, broadcastSseEvent } from "./web-api.js";
+import { handleWebRequest, broadcastSseEvent, SSE_HEARTBEAT_MS, UiMessageLog } from "./web-api.js";
 import { handleViewRequest, isViewPath } from "./view-api.js";
 import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, usageProviderIdForBackend } from "./usage/usage-api.js";
 import { LOGIN_FLOWS, LOGIN_BACKEND_ALIASES, checkAuthStatus, type LoginFlow, type AuthCheckResult } from "./login-flows.js";
@@ -107,7 +107,12 @@ import {
   type ToolSetName,
   type ToolSink,
 } from "./tool-permissions.js";
-import { decideWebGate, loadOrCreateWebToken, readWebToken } from "./web-auth.js";
+import { decideWebGate, loadOrCreateWebToken, markRequestSurface, readWebToken } from "./web-auth.js";
+import { bypassesWebGate, handleAuthRequest, serveSigninPage, type AuthApiContext } from "./auth-api.js";
+import { WebSessionStore, type SessionSurface } from "./web-session.js";
+import { WebLoginCodes, LOGIN_CODE_TTL_MS } from "./web-login.js";
+import { gatewayConfigured, gatewayHostNames, isGatewayRoute, GATEWAY_MAX_CONNECTIONS, GATEWAY_REQUEST_TIMEOUT_MS } from "./web-gateway.js";
+import { allowedHostNames, applyWebSecurityHeaders, hostnameOf, isHostAllowed, WEB_HOST_REJECTED_MESSAGE } from "./web-host-guard.js";
 import { fleetLevelDifferences, fleetLevelSignature } from "./fleet-level-config.js";
 import { checkSelfRestartAllowance, recordSelfRestartAttempt } from "./self-restart-limit.js";
 import { SecretStore } from "./secret-store.js";
@@ -788,6 +793,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   // Health endpoint
   private healthServer: Server | null = null;
+  /** The one listener meant to face a tunnel or proxy; null unless web.external_hosts and web.gateway_port are set. */
+  private gatewayServer: Server | null = null;
   private healthPortRetried = false;
   private updateCheckTimer: ReturnType<typeof setTimeout> | ReturnType<typeof setInterval> | null = null;
   private updateProgressTimer: ReturnType<typeof setInterval> | null = null;
@@ -815,12 +822,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   // Web UI: SSE clients + auth token
   private sseClients = new Set<import("node:http").ServerResponse>();
+  readonly uiMessages = new UiMessageLog();
+  /** Heartbeat of the dashboard's SSE stream; public so a test can shorten it. */
+  sseHeartbeatMs = SSE_HEARTBEAT_MS;
   /**
    * Read from disk on every access rather than cached at startup: `agend
    * web-token rotate` runs in a separate process, and a cached copy would keep
    * authorizing revoked links and cookies until the fleet restarted.
    */
   private get webToken(): string | null { return readWebToken(this.dataDir); }
+  /**
+   * Server-side web sessions (see web-session.ts). Created with the token, not per
+   * request: they are persisted, and a restart must find them again.
+   */
+  private webSessions: WebSessionStore | null = null;
+  /** The dashboard's login codes. Memory only: a code that outlives the process is a code nobody can prove was not copied. */
+  private webLoginCodes: WebLoginCodes | null = null;
   /**
    * Set while a Settings apply job is driving the reconcile. The reconcile
    * stays the single doer; it just says out loud what it is doing to whom, so
@@ -838,7 +855,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** Set when the file on disk and the in-memory config disagree on a
    * startup-only key at startup. See checkStartupSignatureConsistency(). */
   private fleetSignatureMismatch: string[] | null = null;
-  private viewToken: string | null = null;
   private healthServerListening = false;
 
   constructor(public dataDir: string) {
@@ -3050,11 +3066,57 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Creates web.token if absent; the value is then read back per request by
     // the `webToken` getter, so nothing is cached here.
     loadOrCreateWebToken(this.dataDir);
-    this.viewToken = randomBytes(24).toString("hex");
-    const viewTokenPath = join(this.dataDir, "view.token");
-    writeFileSync(viewTokenPath, this.viewToken, { encoding: "utf8", mode: 0o600 });
-    try { chmodSync(viewTokenPath, 0o600); } catch { /* best effort */ }
+    this.initializeWebSessions();
+    // A `view.token` file was written here for a read-only credential that nothing
+    // ever accepted. Older installs still have one; it authorizes nothing, so do
+    // not leave a credential-shaped file lying around.
+    try { rmSync(join(this.dataDir, "view.token"), { force: true }); } catch { /* best effort */ }
     this.healthServerListening = false;
+  }
+
+  private initializeWebSessions(): void {
+    if (!this.webSessions) {
+      this.webSessions = new WebSessionStore({
+        dataDir: this.dataDir,
+        onWarn: message => this.logger.warn(message),
+      });
+    }
+    if (!this.webLoginCodes) {
+      this.webLoginCodes = new WebLoginCodes({
+        onEvent: event => {
+          if (event === "burned") this.logger.warn("A web login code was used up by wrong attempts");
+          else if (event === "breaker-open") this.logger.warn("Web sign-in paused: too many wrong login codes");
+        },
+      });
+    }
+  }
+
+  /**
+   * A single-use login code for the dashboard, for a channel only the operator
+   * can read (`/dashboard`). Null while the panel is closed (no web.token).
+   */
+  issueDashboardLogin(): { display: string; expiresAt: number; ttlMinutes: number } | null {
+    if (!this.webToken) return null;
+    this.initializeWebSessions();
+    const issued = this.webLoginCodes!.issue({ tier: "admin" });
+    return { display: issued.display, expiresAt: issued.expiresAt, ttlMinutes: Math.round(LOGIN_CODE_TTL_MS / 60_000) };
+  }
+
+  /** `/dashboard revoke`: sign out every browser and withdraw any unused code. */
+  revokeWebSessions(): number {
+    this.initializeWebSessions();
+    this.webLoginCodes!.revoke();
+    const count = this.webSessions!.revokeAll();
+    this.logger.info({ count }, "Web sessions revoked (all)");
+    return count;
+  }
+
+  /** Called by the sign-in endpoint: a login the operator did not make should be visible to them. */
+  onWebLogin(info: { label: string; surface: "local" | "gateway"; tier: string; handle: string }): void {
+    if (this.fleetConfig?.web?.notify_login === false) return;
+    // The session handle makes each notice distinct: notifyFleetError throttles by text, and a second
+    // sign-in from the same kind of browser is exactly the one the operator most needs to hear about.
+    this.notifyFleetError(t("web.login_notice", info.label, info.surface, info.handle.slice(0, 8)));
   }
 
   getDashboardAccess(): { ready: boolean; token: string | null } {
@@ -3776,6 +3838,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // Health HTTP endpoint
     this.startHealthServer(fleet.health_port ?? 19280);
+    // The gateway, if the operator configured one (web.external_hosts + web.gateway_port).
+    this.startGatewayIfConfigured();
 
     // Daily update check — first check after 1 hour, then every 24 hours
     this.updateCheckTimer = setTimeout(() => {
@@ -6340,8 +6404,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Persist identity to the instance's actual config store. Classic instances
    * are registry rows in classicBot.yaml, not fleet.yaml instance entries. */
+  /**
+   * The instance's own config entry, or undefined. `instances[name]` alone answers for `__proto__`,
+   * `constructor` and friends with the prototype object, and assigning a field to *that* would change
+   * every object in the process.
+   */
+  private ownInstanceConfig(instanceName: string): FleetConfig["instances"][string] | undefined {
+    const instances = this.fleetConfig?.instances;
+    return instances && Object.hasOwn(instances, instanceName) ? instances[instanceName] : undefined;
+  }
+
   private setInstanceDisplayName(instanceName: string, displayName: string): boolean {
-    const fleetInstance = this.fleetConfig?.instances[instanceName];
+    const fleetInstance = this.ownInstanceConfig(instanceName);
     if (fleetInstance) {
       fleetInstance.display_name = displayName;
       this.saveFleetConfig();
@@ -6351,7 +6425,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private setInstanceDescription(instanceName: string, description: string): boolean {
-    const fleetInstance = this.fleetConfig?.instances[instanceName];
+    const fleetInstance = this.ownInstanceConfig(instanceName);
     if (fleetInstance) {
       fleetInstance.description = description;
       this.saveFleetConfig();
@@ -10396,8 +10470,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Push an SSE event to all connected Web UI clients. */
   emitSseEvent(event: string, data: unknown): void {
+    // Chat messages are numbered and kept, so a client that cannot hold a stream
+    // open (see UiMessageLog) can fetch them by polling instead.
+    const id = event === "message" ? this.uiMessages.append(data) : undefined;
     broadcastSseEvent(this.sseClients, event, data, (err) =>
       this.logger.debug({ err }, "SSE client write failed; evicting"),
+      id,
     );
   }
 
@@ -12586,6 +12664,17 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       this.healthServer.close();
       this.healthServer = null;
     }
+    if (this.gatewayServer) {
+      // Sessions stay: a restart (Settings can trigger one) must not sign people out. What must not
+      // outlive the process is a connection someone is holding open.
+      this.gatewayServer.close();
+      this.gatewayServer.closeAllConnections();
+      this.gatewayServer = null;
+    }
+    // The store writes lastSeen at most once a minute; what that debounce is still holding — and any
+    // write that failed and is still owed — is paid now, so a restart neither shortens the idle window
+    // nor revives a session that was revoked while the disk was refusing writes.
+    this.webSessions?.flush();
 
     this.eventLog?.close();
 
@@ -14306,298 +14395,417 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
   // ── Health HTTP endpoint ─────────────────────────────────────────────
 
+  /** Distinct rejected Host names already logged; bounded so a scanner cannot grow it. */
+  private readonly rejectedHostsLogged = new Set<string>();
+
+  /**
+   * Say once per name why a request was refused, so a reverse-proxy deployment
+   * that stopped working after the Host check is diagnosable from fleet.log.
+   * Only the parsed host name is logged, never the raw header.
+   */
+  private noteRejectedHost(header: string | string[] | undefined, surface: SessionSurface = "local"): void {
+    const name = typeof header === "string" ? (hostnameOf(header) ?? "(malformed)") : "(missing)";
+    const key = `${surface}:${name}`;
+    if (this.rejectedHostsLogged.has(key) || this.rejectedHostsLogged.size >= 32) return;
+    this.rejectedHostsLogged.add(key);
+    this.logger.warn(
+      { host: name, surface },
+      surface === "gateway"
+        ? "Gateway request refused: Host is not in web.external_hosts"
+        : "Web request refused: Host is not allowed (add it to web.allowed_hosts if this is a proxy you run)",
+    );
+  }
+
+  /**
+   * The error boundary in front of `handleHttpRequest`. A throw inside a request
+   * callback is an uncaught exception, and one malformed request target (`GET
+   * http://[bad/`) is enough to make `new URL` throw — which would take the whole
+   * fleet down for whoever can reach the port. On the gateway that is the internet.
+   */
+  private serveHttp(req: IncomingMessage, res: ServerResponse, port: number, surface: SessionSurface): void {
+    try {
+      this.handleHttpRequest(req, res, port, surface);
+    } catch (err) {
+      this.logger.error({ err, surface }, "Web request handler threw");
+      try {
+        if (!res.headersSent) res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "bad request" }));
+      } catch { /* the socket is already gone */ }
+    }
+  }
+
+  /**
+   * Open the gateway when — and only when — both `web.external_hosts` and
+   * `web.gateway_port` are set. With neither there is no such listener and no
+   * such port; sessions that were made on it are revoked rather than left waiting
+   * for the day it comes back.
+   */
+  private startGatewayIfConfigured(): void {
+    this.initializeWebSessions();
+    const port = gatewayConfigured(this.fleetConfig);
+    if (port === null) {
+      const revoked = this.webSessions!.revokeSurface("gateway");
+      if (revoked) this.logger.info({ revoked }, "No web gateway configured — its sessions were revoked");
+      return;
+    }
+    this.startGatewayServer(port);
+  }
+
+  private startGatewayServer(port: number): void {
+    if (this.gatewayServer) return;
+    const server = createServer((req, res) => this.serveHttp(req, res, port, "gateway"));
+    // Bounded on purpose: this is the listener strangers can reach.
+    server.maxConnections = GATEWAY_MAX_CONNECTIONS;
+    server.requestTimeout = GATEWAY_REQUEST_TIMEOUT_MS;
+    server.headersTimeout = Math.min(GATEWAY_REQUEST_TIMEOUT_MS, 15_000);
+    server.on("error", (err: NodeJS.ErrnoException) => {
+      this.logger.error({ err, port }, "Web gateway error — it is not serving");
+      if (this.gatewayServer === server) this.gatewayServer = null;
+      this.notifyFleetError(t("dashboard.gateway_failed", port, err.code ?? err.message));
+    });
+    // Loopback only, always: the tunnel or proxy runs on this machine and connects here.
+    server.listen(port, "127.0.0.1", () => {
+      const hosts = [...gatewayHostNames(this.fleetConfig)];
+      this.logger.info({ port, hosts }, "Web gateway listening (loopback; point your tunnel or proxy here)");
+    });
+    this.gatewayServer = server;
+  }
+
+  /**
+   * One HTTP request, on either listener: the dashboard/health server (`local`,
+   * bound to loopback, reached by the operator's own browser and the CLI) or the
+   * gateway (`gateway`, the one listener meant to face a tunnel or proxy).
+   *
+   * Everything the two share — the Host check, the gate, the panels' handlers — is
+   * this one function, so a fix cannot land on one listener and miss the other. What
+   * differs is decided by `surface` and nothing else: which Host names are accepted,
+   * which routes exist at all, and (in `web-auth.ts`, via `markRequestSurface`) which
+   * credentials count.
+   */
+  private handleHttpRequest(req: IncomingMessage, res: ServerResponse, port: number, surface: SessionSurface): void {
+    // Set first and by the listener that accepted the connection: it is what the gate reads to decide
+    // which credentials count, and nothing in the request can change it.
+    markRequestSurface(req, surface);
+    res.setHeader("Content-Type", "application/json");
+    // No Referer to a tunnel host, an upstream proxy, or any page linked from
+    // the panel — the dashboard URL is itself a credential-bearing address.
+    res.setHeader("Referrer-Policy", "no-referrer");
+    // Authorization now depends on a cookie, so a shared cache (a tunnel, a
+    // corporate proxy) must not serve one visitor's response to another.
+    res.setHeader("Vary", "Cookie");
+    applyWebSecurityHeaders(res);
+
+    // Before any route, /health and /agent included: loopback binding does not
+    // stop DNS rebinding, and the Host the browser sends is the one thing a
+    // rebinding page cannot change.
+    // The gateway answers to the names the operator listed in web.external_hosts and to no loopback name;
+    // the local listener to loopback, `hostname` and web.allowed_hosts.
+    const allowedHosts = surface === "gateway" ? gatewayHostNames(this.fleetConfig) : allowedHostNames(this.fleetConfig);
+    if (!isHostAllowed(req.headers.host, allowedHosts)) {
+      this.noteRejectedHost(req.headers.host, surface);
+      res.writeHead(403);
+      res.end(JSON.stringify({ error: surface === "gateway" ? "Host not allowed" : WEB_HOST_REJECTED_MESSAGE }));
+      return;
+    }
+
+    const requestPath = new URL(req.url ?? "/", `http://localhost:${port}`).pathname;
+
+    // The gateway routes only what the panels call. Everything else — /agent, /health, /status,
+    // /restart/*, /api/activity, /auth/issue-code — does not exist there, whatever the gate would say.
+    if (surface === "gateway" && !isGatewayRoute(req.method, requestPath)) {
+      res.writeHead(404);
+      res.end(JSON.stringify({ error: "not found" }));
+      return;
+    }
+
+    // Browsers request this automatically and AgEnD does not ship an icon.
+    // It is neither user data nor an API route, so do not turn the harmless
+    // probe into a noisy web-token 401 in the browser console.
+    if (req.method === "GET" && requestPath === "/favicon.ico") {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    // Public: the health probe, /agent (instance-token auth of its own), the
+    // sign-in surface, and /view's reads unless web.view_access says otherwise.
+    if (bypassesWebGate(req, requestPath, this.fleetConfig, p => isViewPath(p) || isUsagePath(p))) {
+      // fall through to the handlers below
+    } else {
+      // All other endpoints require a session cookie or an X-Agend-Token
+      // header; a `?token=` in the URL is only redeemed for a cookie on a GET.
+      // /ui/* will also re-check in web-api.ts, which is harmless.
+      const parsedUrl = new URL(req.url ?? "/", `http://localhost:${port}`);
+      const decision = decideWebGate(req, parsedUrl, this.webToken, this.webSessions);
+      if (decision.kind === "reject") {
+        // A browser navigating to a panel with no cookie gets the sign-in page,
+        // not a JSON error: a SameSite=Strict cookie is not sent on a link
+        // followed from a chat app, and the page can tell "no session" from "cookie
+        // not sent" by asking from inside the site. API callers still get JSON.
+        if (decision.reason === "no-credential" && req.method === "GET"
+          && String(req.headers.accept ?? "").includes("text/html")
+          && (requestPath === "/ui" || requestPath === "/settings" || requestPath === "/view")) {
+          serveSigninPage(res, 401);
+          return;
+        }
+        res.writeHead(decision.status);
+        res.end(JSON.stringify({ error: decision.message }));
+        return;
+      }
+      if (decision.kind === "exchange") {
+        res.setHeader("Set-Cookie", decision.setCookie);
+        res.setHeader("Location", decision.location);
+        // A cached redirect would replay a Set-Cookie for a rotated token.
+        res.setHeader("Cache-Control", "no-store");
+        res.writeHead(302);
+        // Browsers follow the Location; a script that does not gets told why
+        // its URL token stopped being echoed back as data.
+        res.end(JSON.stringify({ redirect: decision.location }));
+        return;
+      }
+    }
+
+    if (req.method === "GET" && req.url === "/health") {
+      const health = this.getFleetHealth();
+      // 503 when the fleet cannot do its job, so an external monitor sees it.
+      // This used to always answer 200 "ok" with a count of CONFIGURED instances,
+      // so every agent could be dead and every adapter down and it still looked
+      // green.
+      res.writeHead(health.status === "ok" ? 200 : 503);
+      res.end(JSON.stringify(health));
+      return;
+    }
+
+    if (req.method === "GET" && req.url === "/status") {
+      const instances = Object.keys(this.fleetConfig?.instances ?? {}).map(name => {
+        const statusFile = join(this.getInstanceDir(name), "statusline.json");
+        let cost = 0;
+        try {
+          const data = JSON.parse(readFileSync(statusFile, "utf-8"));
+          cost = data.cost?.total_cost_usd ?? 0;
+        } catch (err) {
+          this.logger.debug({ err, name }, "statusline.json read failed (/status)");
+        }
+        const backend = this.fleetConfig?.instances[name]?.backend
+          ?? this.fleetConfig?.defaults?.backend
+          ?? "claude-code";
+        const { context } = resolveInstanceContext(this.dataDir, name, backend);
+        return {
+          name,
+          status: this.getInstanceStatus(name),
+          context_pct: context ?? 0,
+          cost,
+        };
+      });
+      res.writeHead(200);
+      res.end(JSON.stringify({ instances }));
+      return;
+    }
+
+    // Fleet API (enriched for agent board)
+    if (req.method === "GET" && req.url === "/api/fleet") {
+      try {
+        const sysInfo = this.getSysInfo();
+        const fleetInstances = sysInfo.instances.map(inst => ({ ...inst, classic: false }));
+        const fleetNames = new Set(fleetInstances.map(inst => inst.name));
+        const classicInstances = (this.classicChannels?.getAll() ?? [])
+          .filter(channel => !fleetNames.has(channel.instanceName))
+          .map(channel => ({
+            name: channel.instanceName,
+            status: this.getInstanceStatus(channel.instanceName),
+            state: this.getInstanceExecutionState(channel.instanceName),
+            ipc: this.instanceIpcClients.has(channel.instanceName),
+            costCents: this.costGuard?.getDailyCostCents(channel.instanceName) ?? 0,
+            rateLimits: this.statuslineWatcher.getRateLimits(channel.instanceName) ?? null,
+            classic: true,
+            classicName: channel.name,
+            channelId: channel.channelId,
+            adapterId: channel.adapterId ?? null,
+          }));
+        const enriched = [...fleetInstances, ...classicInstances].map(inst => {
+          const config = this.fleetConfig?.instances[inst.name];
+          const persistedInboundAt = readLastInboundAt(this.getInstanceDir(inst.name));
+          const lastActivity = inst.classic
+            ? Math.max(persistedInboundAt ?? 0, readClassicLastActivityAt(this.dataDir, inst.name) ?? 0) || null
+            : (persistedInboundAt ?? this.lastActivityMs(inst.name)) || null;
+          const backend = this.backendNameForInstance(inst.name);
+          const resolvedModel = this.resolveInstanceModel(inst.name);
+          const effortStrategy = this.effortStrategyFor(inst.name);
+          const resolvedEffort = this.resolveInstanceEffort(inst.name);
+          // Find claimed tasks for this instance
+          let currentTask: string | null = null;
+          try {
+            const tasks = this.scheduler?.db.listTasks({ assignee: inst.name, status: "claimed" });
+            if (tasks?.length) currentTask = tasks[0].title;
+          } catch (err) {
+            this.logger.debug({ err, name: inst.name }, "Scheduler listTasks failed (/api/fleet)");
+          }
+          return {
+            ...inst,
+            description: config?.description ?? ("classicName" in inst ? inst.classicName : null),
+            backend,
+            // Settings renders these runtime-effective values rather than the
+            // sparse user-authored YAML. `auto` means the supported CLI is
+            // using its own effort default; null is reserved for unsupported.
+            model: resolvedModel.model,
+            model_display: resolvedModel.display,
+            model_source: resolvedModel.source,
+            effort: effortStrategy === "unsupported" ? null : (resolvedEffort.effort ?? "auto"),
+            effort_supported: effortStrategy !== "unsupported",
+            tool_set: config?.tool_set ?? "full",
+            general_topic: config?.general_topic ?? false,
+            // User activity is persisted by the daemon, so both the board and
+            // auto-pause retain an accurate age across fleet restarts.
+            lastActivity,
+            currentTask,
+            idle: this.getInstanceIdle(inst.name),
+            state: this.getInstanceExecutionState(inst.name),
+          };
+        });
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        res.writeHead(200);
+        res.end(JSON.stringify({
+          ...sysInfo,
+          version: this.currentVersion,
+          instances: enriched,
+        }));
+      } catch (err) {
+        this.logger.error({ err }, "/api/fleet failed");
+        if (!res.headersSent) {
+          res.writeHead(500);
+          res.end("Internal Server Error");
+        }
+      }
+      return;
+    }
+
+    // Activity API
+    if (req.method === "GET" && req.url?.startsWith("/api/activity")) {
+      const url = new URL(req.url, `http://localhost:${port}`);
+      const sinceParam = url.searchParams.get("since") ?? "2h";
+      const limitParam = url.searchParams.get("limit") ?? "500";
+
+      const match = sinceParam.match(/^(\d+)(m|h|d)$/);
+      let sinceIso: string | undefined;
+      if (match) {
+        const val = parseInt(match[1], 10);
+        const unit = match[2] === "d" ? 86400000 : match[2] === "h" ? 3600000 : 60000;
+        sinceIso = new Date(Date.now() - val * unit).toISOString();
+      }
+
+      const rows = this.eventLog?.listActivity({ since: sinceIso, limit: parseInt(limitParam, 10) }) ?? [];
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.writeHead(200);
+      res.end(JSON.stringify(rows));
+      return;
+    }
+
+    // Activity viewer
+    if (req.method === "GET" && (req.url === "/activity" || req.url === "/activity/")) {
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.writeHead(200);
+      res.end(ACTIVITY_VIEWER_HTML);
+      return;
+    }
+
+    // Instance start via API
+    if (req.method === "POST" && req.url?.startsWith("/api/instance/") && req.url.endsWith("/start")) {
+      const name = decodeURIComponent(req.url.slice("/api/instance/".length, -"/start".length));
+      const config = this.fleetConfig?.instances[name];
+      if (!config) {
+        res.writeHead(404);
+        res.end(JSON.stringify({ error: `Instance not found: ${name}` }));
+        return;
+      }
+      (async () => {
+        try {
+          const topicMode = this.fleetConfig?.channel?.mode === "topic";
+          await this.startInstance(name, config, topicMode ?? false, "fleet-topic", true);
+          this.emitSseEvent("status", this.getUiStatus());
+          res.writeHead(200);
+          res.end(JSON.stringify({ ok: true }));
+        } catch (err) {
+          res.writeHead(500);
+          res.end(JSON.stringify({ error: `Start failed: ${(err as Error).message}` }));
+        }
+        // The inner catch can itself throw (writeHead after a successful
+        // writeHead is ERR_HTTP_HEADERS_SENT), and that rejection escapes the
+        // IIFE. Same for the two handlers below.
+      })().catch(err => this.logger.error({ err, name }, "HTTP start handler failed"));
+      return;
+    }
+
+    // Instance restart (immediate, no idle wait)
+    if (req.method === "POST" && req.url?.startsWith("/restart/")) {
+      const name = decodeURIComponent(req.url.slice("/restart/".length));
+      this.logger.info({ name }, "Instance restart requested via HTTP");
+      (async () => {
+        try {
+          await this.restartSingleInstance(name);
+          this.logger.info({ name }, "Instance restarted");
+          this.emitSseEvent("status", this.getUiStatus());
+          res.writeHead(200);
+          res.end(JSON.stringify({ restarted: name }));
+        } catch (err) {
+          this.logger.error({ err, name }, "Instance restart failed");
+          const status = (err as Error).message.includes("not found") ? 404 : 500;
+          res.writeHead(status);
+          res.end(JSON.stringify({ error: `Restart failed: ${(err as Error).message}` }));
+        }
+      })().catch(err => this.logger.error({ err, name }, "HTTP restart handler failed"));
+      return;
+    }
+
+    if (req.method === "POST" && req.url?.startsWith("/stop/")) {
+      const name = decodeURIComponent(req.url.slice("/stop/".length));
+      this.logger.info({ name }, "Instance stop requested via HTTP");
+      (async () => {
+        try {
+          // Runs inside the live fleet process: lifecycle.stop finds the
+          // in-memory daemon and stops just this instance. (Doing this from a
+          // detached CLI FleetManager would read the shared daemon.pid — the
+          // fleet's own pid — and kill the whole fleet.)
+          await this.stopInstance(name);
+          this.logger.info({ name }, "Instance stopped");
+          this.emitSseEvent("status", this.getUiStatus());
+          res.writeHead(200);
+          res.end(JSON.stringify({ stopped: name }));
+        } catch (err) {
+          this.logger.error({ err, name }, "Instance stop failed");
+          res.writeHead(500);
+          res.end(JSON.stringify({ error: `Stop failed: ${(err as Error).message}` }));
+        }
+      })().catch(err => this.logger.error({ err, name }, "HTTP stop handler failed"));
+      return;
+    }
+
+    // ── Agent CLI endpoint ─────
+    if (req.url === "/agent" && req.method === "POST") {
+      handleAgentRequest(req, res, this as unknown as import("./agent-endpoint.js").AgentEndpointContext);
+      return;
+    }
+
+    // ── Web UI endpoints (delegated to web-api.ts) ─────
+
+    const url = new URL(req.url ?? "/", `http://localhost:${port}`);
+    if (handleAuthRequest(req, res, url, this as unknown as AuthApiContext)) return;
+    if (handleViewRequest(req, res, url, this as unknown as import("./view-api.js").ViewApiContext)) return;
+    if (handleUsageRequest(req, res, url, this as unknown as import("./usage/usage-api.js").UsageApiContext)) return;
+    if (handleSettingsRequest(req, res, url, this as unknown as import("./settings-api.js").SettingsApiContext)) return;
+    if (handleWebRequest(req, res, url, this as unknown as import("./web-api.js").WebApiContext)) return;
+
+    res.writeHead(404);
+    res.end(JSON.stringify({ error: "not found" }));
+  }
+
   private startHealthServer(port: number): void {
     this.startedAt = Date.now();
     this.healthServerListening = false;
     this.healthPortRetried = false;
     // Defensive for direct/unit callers; normal startup initializes these before adapters.
-    if (!this.webToken || !this.viewToken) this.initializeWebAuthTokens();
+    if (!this.webToken || !this.webSessions) this.initializeWebAuthTokens();
 
-    this.healthServer = createServer((req, res) => {
-      res.setHeader("Content-Type", "application/json");
-      // No Referer to a tunnel host, an upstream proxy, or any page linked from
-      // the panel — the dashboard URL is itself a credential-bearing address.
-      res.setHeader("Referrer-Policy", "no-referrer");
-      // Authorization now depends on a cookie, so a shared cache (a tunnel, a
-      // corporate proxy) must not serve one visitor's response to another.
-      res.setHeader("Vary", "Cookie");
-      const requestPath = new URL(req.url ?? "/", `http://localhost:${port}`).pathname;
-
-      // Browsers request this automatically and AgEnD does not ship an icon.
-      // It is neither user data nor an API route, so do not turn the harmless
-      // probe into a noisy web-token 401 in the browser console.
-      if (req.method === "GET" && requestPath === "/favicon.ico") {
-        res.writeHead(204);
-        res.end();
-        return;
-      }
-
-      // Public health probe — no auth required.
-      if (req.method === "GET" && req.url === "/health") {
-        // fallthrough to existing handler below
-      } else if (req.method === "POST" && req.url === "/agent") {
-        // /agent handles its own instance-level auth via X-Agend-Instance-Token
-      } else if (isViewPath(new URL(req.url ?? "/", `http://localhost:${port}`).pathname)) {
-        // /view routes accept the read-only view.token (or web.token) and do
-        // their own per-method auth in view-api.ts — skip the web-token gate.
-      } else if (isUsagePath(new URL(req.url ?? "/", `http://localhost:${port}`).pathname)) {
-        // /api/ai-usage is read-only GET data for the /view Usage panel — open
-        // like the other /view data routes (usage-api.ts rejects non-GET).
-      } else {
-        // All other endpoints require a session cookie or an X-Agend-Token
-        // header; a `?token=` in the URL is only redeemed for a cookie on a GET.
-        // /ui/* will also re-check in web-api.ts, which is harmless.
-        const parsedUrl = new URL(req.url ?? "/", `http://localhost:${port}`);
-        const decision = decideWebGate(req, parsedUrl, this.webToken);
-        if (decision.kind === "reject") {
-          res.writeHead(decision.status);
-          res.end(JSON.stringify({ error: decision.message }));
-          return;
-        }
-        if (decision.kind === "exchange") {
-          res.setHeader("Set-Cookie", decision.setCookie);
-          res.setHeader("Location", decision.location);
-          // A cached redirect would replay a Set-Cookie for a rotated token.
-          res.setHeader("Cache-Control", "no-store");
-          res.writeHead(302);
-          // Browsers follow the Location; a script that does not gets told why
-          // its URL token stopped being echoed back as data.
-          res.end(JSON.stringify({ redirect: decision.location }));
-          return;
-        }
-      }
-
-      if (req.method === "GET" && req.url === "/health") {
-        const health = this.getFleetHealth();
-        // 503 when the fleet cannot do its job, so an external monitor sees it.
-        // This used to always answer 200 "ok" with a count of CONFIGURED instances,
-        // so every agent could be dead and every adapter down and it still looked
-        // green.
-        res.writeHead(health.status === "ok" ? 200 : 503);
-        res.end(JSON.stringify(health));
-        return;
-      }
-
-      if (req.method === "GET" && req.url === "/status") {
-        const instances = Object.keys(this.fleetConfig?.instances ?? {}).map(name => {
-          const statusFile = join(this.getInstanceDir(name), "statusline.json");
-          let cost = 0;
-          try {
-            const data = JSON.parse(readFileSync(statusFile, "utf-8"));
-            cost = data.cost?.total_cost_usd ?? 0;
-          } catch (err) {
-            this.logger.debug({ err, name }, "statusline.json read failed (/status)");
-          }
-          const backend = this.fleetConfig?.instances[name]?.backend
-            ?? this.fleetConfig?.defaults?.backend
-            ?? "claude-code";
-          const { context } = resolveInstanceContext(this.dataDir, name, backend);
-          return {
-            name,
-            status: this.getInstanceStatus(name),
-            context_pct: context ?? 0,
-            cost,
-          };
-        });
-        res.writeHead(200);
-        res.end(JSON.stringify({ instances }));
-        return;
-      }
-
-      // Fleet API (enriched for agent board)
-      if (req.method === "GET" && req.url === "/api/fleet") {
-        try {
-          const sysInfo = this.getSysInfo();
-          const fleetInstances = sysInfo.instances.map(inst => ({ ...inst, classic: false }));
-          const fleetNames = new Set(fleetInstances.map(inst => inst.name));
-          const classicInstances = (this.classicChannels?.getAll() ?? [])
-            .filter(channel => !fleetNames.has(channel.instanceName))
-            .map(channel => ({
-              name: channel.instanceName,
-              status: this.getInstanceStatus(channel.instanceName),
-              state: this.getInstanceExecutionState(channel.instanceName),
-              ipc: this.instanceIpcClients.has(channel.instanceName),
-              costCents: this.costGuard?.getDailyCostCents(channel.instanceName) ?? 0,
-              rateLimits: this.statuslineWatcher.getRateLimits(channel.instanceName) ?? null,
-              classic: true,
-              classicName: channel.name,
-              channelId: channel.channelId,
-              adapterId: channel.adapterId ?? null,
-            }));
-          const enriched = [...fleetInstances, ...classicInstances].map(inst => {
-            const config = this.fleetConfig?.instances[inst.name];
-            const persistedInboundAt = readLastInboundAt(this.getInstanceDir(inst.name));
-            const lastActivity = inst.classic
-              ? Math.max(persistedInboundAt ?? 0, readClassicLastActivityAt(this.dataDir, inst.name) ?? 0) || null
-              : (persistedInboundAt ?? this.lastActivityMs(inst.name)) || null;
-            const backend = this.backendNameForInstance(inst.name);
-            const resolvedModel = this.resolveInstanceModel(inst.name);
-            const effortStrategy = this.effortStrategyFor(inst.name);
-            const resolvedEffort = this.resolveInstanceEffort(inst.name);
-            // Find claimed tasks for this instance
-            let currentTask: string | null = null;
-            try {
-              const tasks = this.scheduler?.db.listTasks({ assignee: inst.name, status: "claimed" });
-              if (tasks?.length) currentTask = tasks[0].title;
-            } catch (err) {
-              this.logger.debug({ err, name: inst.name }, "Scheduler listTasks failed (/api/fleet)");
-            }
-            return {
-              ...inst,
-              description: config?.description ?? ("classicName" in inst ? inst.classicName : null),
-              backend,
-              // Settings renders these runtime-effective values rather than the
-              // sparse user-authored YAML. `auto` means the supported CLI is
-              // using its own effort default; null is reserved for unsupported.
-              model: resolvedModel.model,
-              model_display: resolvedModel.display,
-              model_source: resolvedModel.source,
-              effort: effortStrategy === "unsupported" ? null : (resolvedEffort.effort ?? "auto"),
-              effort_supported: effortStrategy !== "unsupported",
-              tool_set: config?.tool_set ?? "full",
-              general_topic: config?.general_topic ?? false,
-              // User activity is persisted by the daemon, so both the board and
-              // auto-pause retain an accurate age across fleet restarts.
-              lastActivity,
-              currentTask,
-              idle: this.getInstanceIdle(inst.name),
-              state: this.getInstanceExecutionState(inst.name),
-            };
-          });
-          res.setHeader("Access-Control-Allow-Origin", "*");
-          res.writeHead(200);
-          res.end(JSON.stringify({
-            ...sysInfo,
-            version: this.currentVersion,
-            instances: enriched,
-          }));
-        } catch (err) {
-          this.logger.error({ err }, "/api/fleet failed");
-          if (!res.headersSent) {
-            res.writeHead(500);
-            res.end("Internal Server Error");
-          }
-        }
-        return;
-      }
-
-      // Activity API
-      if (req.method === "GET" && req.url?.startsWith("/api/activity")) {
-        const url = new URL(req.url, `http://localhost:${port}`);
-        const sinceParam = url.searchParams.get("since") ?? "2h";
-        const limitParam = url.searchParams.get("limit") ?? "500";
-
-        const match = sinceParam.match(/^(\d+)(m|h|d)$/);
-        let sinceIso: string | undefined;
-        if (match) {
-          const val = parseInt(match[1], 10);
-          const unit = match[2] === "d" ? 86400000 : match[2] === "h" ? 3600000 : 60000;
-          sinceIso = new Date(Date.now() - val * unit).toISOString();
-        }
-
-        const rows = this.eventLog?.listActivity({ since: sinceIso, limit: parseInt(limitParam, 10) }) ?? [];
-        res.setHeader("Access-Control-Allow-Origin", "*");
-        res.writeHead(200);
-        res.end(JSON.stringify(rows));
-        return;
-      }
-
-      // Activity viewer
-      if (req.method === "GET" && (req.url === "/activity" || req.url === "/activity/")) {
-        res.setHeader("Content-Type", "text/html; charset=utf-8");
-        res.writeHead(200);
-        res.end(ACTIVITY_VIEWER_HTML);
-        return;
-      }
-
-      // Instance start via API
-      if (req.method === "POST" && req.url?.startsWith("/api/instance/") && req.url.endsWith("/start")) {
-        const name = decodeURIComponent(req.url.slice("/api/instance/".length, -"/start".length));
-        const config = this.fleetConfig?.instances[name];
-        if (!config) {
-          res.writeHead(404);
-          res.end(JSON.stringify({ error: `Instance not found: ${name}` }));
-          return;
-        }
-        (async () => {
-          try {
-            const topicMode = this.fleetConfig?.channel?.mode === "topic";
-            await this.startInstance(name, config, topicMode ?? false, "fleet-topic", true);
-            this.emitSseEvent("status", this.getUiStatus());
-            res.writeHead(200);
-            res.end(JSON.stringify({ ok: true }));
-          } catch (err) {
-            res.writeHead(500);
-            res.end(JSON.stringify({ error: `Start failed: ${(err as Error).message}` }));
-          }
-          // The inner catch can itself throw (writeHead after a successful
-          // writeHead is ERR_HTTP_HEADERS_SENT), and that rejection escapes the
-          // IIFE. Same for the two handlers below.
-        })().catch(err => this.logger.error({ err, name }, "HTTP start handler failed"));
-        return;
-      }
-
-      // Instance restart (immediate, no idle wait)
-      if (req.method === "POST" && req.url?.startsWith("/restart/")) {
-        const name = decodeURIComponent(req.url.slice("/restart/".length));
-        this.logger.info({ name }, "Instance restart requested via HTTP");
-        (async () => {
-          try {
-            await this.restartSingleInstance(name);
-            this.logger.info({ name }, "Instance restarted");
-            this.emitSseEvent("status", this.getUiStatus());
-            res.writeHead(200);
-            res.end(JSON.stringify({ restarted: name }));
-          } catch (err) {
-            this.logger.error({ err, name }, "Instance restart failed");
-            const status = (err as Error).message.includes("not found") ? 404 : 500;
-            res.writeHead(status);
-            res.end(JSON.stringify({ error: `Restart failed: ${(err as Error).message}` }));
-          }
-        })().catch(err => this.logger.error({ err, name }, "HTTP restart handler failed"));
-        return;
-      }
-
-      if (req.method === "POST" && req.url?.startsWith("/stop/")) {
-        const name = decodeURIComponent(req.url.slice("/stop/".length));
-        this.logger.info({ name }, "Instance stop requested via HTTP");
-        (async () => {
-          try {
-            // Runs inside the live fleet process: lifecycle.stop finds the
-            // in-memory daemon and stops just this instance. (Doing this from a
-            // detached CLI FleetManager would read the shared daemon.pid — the
-            // fleet's own pid — and kill the whole fleet.)
-            await this.stopInstance(name);
-            this.logger.info({ name }, "Instance stopped");
-            this.emitSseEvent("status", this.getUiStatus());
-            res.writeHead(200);
-            res.end(JSON.stringify({ stopped: name }));
-          } catch (err) {
-            this.logger.error({ err, name }, "Instance stop failed");
-            res.writeHead(500);
-            res.end(JSON.stringify({ error: `Stop failed: ${(err as Error).message}` }));
-          }
-        })().catch(err => this.logger.error({ err, name }, "HTTP stop handler failed"));
-        return;
-      }
-
-      // ── Agent CLI endpoint ─────
-      if (req.url === "/agent" && req.method === "POST") {
-        handleAgentRequest(req, res, this as unknown as import("./agent-endpoint.js").AgentEndpointContext);
-        return;
-      }
-
-      // ── Web UI endpoints (delegated to web-api.ts) ─────
-
-      const url = new URL(req.url ?? "/", `http://localhost:${port}`);
-      if (handleViewRequest(req, res, url, this as unknown as import("./view-api.js").ViewApiContext)) return;
-      if (handleUsageRequest(req, res, url, this as unknown as import("./usage/usage-api.js").UsageApiContext)) return;
-      if (handleSettingsRequest(req, res, url, this as unknown as import("./settings-api.js").SettingsApiContext)) return;
-      if (handleWebRequest(req, res, url, this as unknown as import("./web-api.js").WebApiContext)) return;
-
-      res.writeHead(404);
-      res.end(JSON.stringify({ error: "not found" }));
-    });
+    this.healthServer = createServer((req, res) => this.serveHttp(req, res, port, "local"));
 
     const markListening = (afterTakeover = false): void => {
       this.healthServerListening = true;
