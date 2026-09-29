@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { parse as parseToml } from "smol-toml";
 import { Daemon } from "../src/daemon.js";
 import { KiroBackend } from "../src/backend/kiro.js";
 import { CodexBackend } from "../src/backend/codex.js";
@@ -193,6 +194,28 @@ describe("codex startup update check", () => {
   it("works from an empty global config", () => {
     expect(writeAndRead("")).toMatch(/check_for_update_on_startup\s*=\s*false/);
   });
+
+  it("sets the documented rate-limit model nudge opt-out in the notice table", () => {
+    const out = writeAndRead(
+      `model = "gpt-5.6-sol"\n[notice]\nhide_rate_limit_model_nudge = false\nhide_world_writable_warning = false\n`,
+    );
+    const config = parseToml(out) as any;
+    expect(config.notice.hide_rate_limit_model_nudge).toBe(true);
+    expect(config.notice.hide_world_writable_warning).toBe(false);
+    expect(out.match(/hide_rate_limit_model_nudge\s*=/g)).toHaveLength(1);
+  });
+
+  it("adds the documented notice setting when the inherited config has no notice table", () => {
+    const out = writeAndRead(`model = "gpt-5.6-sol"\n[tui]\nstatus_line = ["context-remaining"]\n`);
+    expect((parseToml(out) as any).notice.hide_rate_limit_model_nudge).toBe(true);
+  });
+
+  it("preserves unrelated fields in an inherited inline notice table", () => {
+    const out = writeAndRead(`notice = { hide_world_writable_warning = false }\n`);
+    const config = parseToml(out) as any;
+    expect(config.notice.hide_rate_limit_model_nudge).toBe(true);
+    expect(config.notice.hide_world_writable_warning).toBe(false);
+  });
 });
 
 describe("codex update picker is dismissed if it appears anyway", () => {
@@ -235,5 +258,6 @@ describe("codex update picker is dismissed if it appears anyway", () => {
     expect(d?.keys).toEqual([]);
     expect(d?.holdOnly).toBe(true);
     expect(d?.blocksDelivery).toBe(true);
+    expect(d?.inputBlocked).toBe(true);
   });
 });

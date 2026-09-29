@@ -137,6 +137,83 @@ function tomlTable(value: unknown): Record<string, unknown> | null {
     ? value as Record<string, unknown> : null;
 }
 
+/**
+ * Set one boolean inside a TOML table while leaving unrelated config text
+ * intact. Existing tables keep their layout; when the table isn't declared,
+ * use the equivalent dotted key in the root table. Table headers embedded in
+ * multiline strings are ignored.
+ */
+function setTomlTableBoolean(content: string, table: string, key: string): string {
+  const lines = content.split(/(?<=\n)/);
+  let multiline: `"""` | `'''` | null = null;
+  const headers: Array<{ index: number; name: string }> = [];
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index];
+    if (!multiline) {
+      const header = line.match(/^\s*\[([^\]]+)\]\s*(?:#.*)?(?:\r?\n)?$/);
+      if (header) headers.push({ index, name: header[1].trim() });
+    }
+    for (const delimiter of ['"""', "'''"] as const) {
+      if (multiline && multiline !== delimiter) continue;
+      let count = 0;
+      let pos = 0;
+      while ((pos = line.indexOf(delimiter, pos)) !== -1) {
+        if (delimiter === "'''" || pos === 0 || line[pos - 1] !== "\\") count++;
+        pos += delimiter.length;
+      }
+      if (count % 2 === 1) multiline = multiline === delimiter ? null : delimiter;
+    }
+  }
+
+  const assignment = new RegExp(`^(\\s*${key}\\s*=\\s*)(?:true|false)(\\s*(?:#.*)?)(\\r?\\n?)$`);
+  const tableIndex = headers.findIndex(header => header.name === table);
+  if (tableIndex >= 0) {
+    const start = headers[tableIndex].index + 1;
+    const end = headers[tableIndex + 1]?.index ?? lines.length;
+    for (let index = start; index < end; index++) {
+      const existing = lines[index].match(assignment);
+      if (existing) {
+        lines[index] = `${existing[1]}true${existing[2]}${existing[3]}`;
+        return lines.join("");
+      }
+    }
+    lines.splice(end, 0, `${key} = true\n`);
+    return lines.join("");
+  }
+
+  // Inline tables cannot be extended with dotted keys, so update the simple
+  // root-level `notice = { ... }` form in place when it is present.
+  const rootEnd = headers[0]?.index ?? lines.length;
+  const dottedAssignment = new RegExp(`^(\\s*${table}\\s*\\.\\s*${key}\\s*=\\s*)(?:true|false)(\\s*(?:#.*)?)(\\r?\\n?)$`);
+  for (let index = 0; index < rootEnd; index++) {
+    const existing = lines[index].match(dottedAssignment);
+    if (existing) {
+      lines[index] = `${existing[1]}true${existing[2]}${existing[3]}`;
+      return lines.join("");
+    }
+    const inline = lines[index].match(new RegExp(`^(\\s*${table}\\s*=\\s*\\{)(.*)(\\})(\\s*(?:#.*)?)(\\r?\\n?)$`));
+    if (inline) {
+      const option = new RegExp(`(${key}\\s*=\\s*)(?:true|false)`);
+      const body = option.test(inline[2])
+        ? inline[2].replace(option, "$1true")
+        : `${inline[2].trim().length > 0 ? `${inline[2]}, ` : inline[2]}${key} = true`;
+      lines[index] = `${inline[1]}${body}${inline[3]}${inline[4]}${inline[5]}`;
+      return lines.join("");
+    }
+  }
+
+  // A dotted assignment is valid in the root table and can extend an implicit
+  // parent table created by `[notice.child]` without duplicating `[notice]`.
+  const line = `${table}.${key} = true\n`;
+  if (rootEnd === 0) lines.unshift(line);
+  else if (lines[rootEnd - 1].endsWith("\n")) lines.splice(rootEnd, 0, line);
+  else {
+    lines[rootEnd - 1] += "\n";
+    lines.splice(rootEnd, 0, line);
+  }
+  return lines.join("");
+}
+
 const CODEX_CONTEXT_STATUS_ITEM_RE = /^context-(?:remaining|usage|used)$/;
 
 /** The TUI's effective status_line items: null when unset, "invalid" when unusable. */
@@ -868,6 +945,7 @@ export class CodexBackend implements CliBackend {
 
     this.enableContextStatusLine();
     this.disableStartupUpdateCheck();
+    this.hideRateLimitModelNudge();
 
     // Write fleet instructions into AGENTS.md (additive via marker block)
     if (config.instructions) {
@@ -921,6 +999,24 @@ export class CodexBackend implements CliBackend {
       ? (content.length && !content.endsWith("\n") ? `${content}\n${LINE}` : `${content}${LINE}`)
       : `${content.slice(0, firstSection)}${LINE}${content.slice(firstSection)}`;
     try { atomicWritePrivate(configPath, updated); } catch { /* best effort */ }
+  }
+
+  /**
+   * Suppress Codex's rate-limit model-switch reminder for unattended instances.
+   * Codex documents this as `notice.hide_rate_limit_model_nudge` (a boolean in
+   * the `[notice]` table). This changes only the per-instance config; the
+   * runtime holdOnly dialog remains as defense-in-depth for older or changed
+   * CLI behavior. No model option is selected automatically.
+   */
+  private hideRateLimitModelNudge(): void {
+    const configPath = join(this.isolatedCodexHome, "config.toml");
+    let content = "";
+    try { content = readFileSync(configPath, "utf-8"); } catch { return; }
+
+    const updated = setTomlTableBoolean(content, "notice", "hide_rate_limit_model_nudge");
+    if (updated !== content) {
+      try { atomicWritePrivate(configPath, updated); } catch { /* best effort */ }
+    }
   }
 
   /**
