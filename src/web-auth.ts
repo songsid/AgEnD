@@ -357,6 +357,21 @@ export function decideWebGate(
  * `touch: false` is for a long-lived stream re-checking itself on a timer, which
  * must be able to notice a revocation without counting as activity.
  */
+/**
+ * The decision, for a handler that needs to say *why* it refused (401 vs the 403
+ * a cross-site or CSRF failure earns) rather than only whether. Never mints a
+ * session; a valid `?token=` on a GET is reported as allowed, as it is above.
+ */
+export function evaluateWebRequest(
+  req: WebGateRequest,
+  url: URL,
+  token: string | null,
+  sessions?: WebSessionStore | null,
+  opts: { touch?: boolean } = {},
+): WebGateDecision {
+  return authorize(req, url, token, sessions, { mint: false, touch: opts.touch !== false });
+}
+
 export function isWebRequestAuthorized(
   req: WebGateRequest,
   url: URL,
