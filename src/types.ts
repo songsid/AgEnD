@@ -198,6 +198,12 @@ export interface FleetDefaults extends Partial<InstanceConfig> {
   progress_min_elapsed?: number;
   /** Maximum UTF-8 byte size of one cross-instance tool message body. Default: 12288. */
   max_cross_instance_message_bytes?: number;
+  /**
+   * #926: minutes after the last ask (or reminder) before a requester is told
+   * that an idle owner has not answered a requires_reply request. Default 15;
+   * 0 turns the notice off. The owner reminder is not affected.
+   */
+  reply_overdue_minutes?: number;
   scheduler?: {
     max_schedules?: number;
     default_timezone?: string;

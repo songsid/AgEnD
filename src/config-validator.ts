@@ -251,6 +251,10 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     if (config.defaults.warm_cap !== undefined && (!Number.isInteger(config.defaults.warm_cap) || (config.defaults.warm_cap as number) < 0)) {
       err("defaults.warm_cap", "must be a non-negative integer (0 = unlimited)");
     }
+    const overdue = config.defaults.reply_overdue_minutes;
+    if (overdue !== undefined && (typeof overdue !== "number" || !Number.isFinite(overdue) || overdue < 0)) {
+      err("defaults.reply_overdue_minutes", "must be a non-negative number of minutes (0 turns the overdue notice off)");
+    }
     validateInstanceOptions(config.defaults, "defaults");
     if (config.defaults.max_cross_instance_message_bytes !== undefined) {
       const v = config.defaults.max_cross_instance_message_bytes;
