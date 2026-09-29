@@ -114,6 +114,20 @@ The panel can restart AgEnD itself for a change only a fresh process can adopt, 
 - **A failed self-restart needs the change applied again** — if the restart cannot be launched, its row is marked failed and the job is finished rather than left open for another attempt. Press Apply again to get a fresh job whose fleet row can be restarted. This is the fail-closed side of "one restart per job": a job whose launch failed must not stay a reusable restart button.
 
 ### Fixed
+- **Settings › "Restart AgEnD" now shows that it is restarting, and cannot be pressed twice.**
+  The restart really happened, but the button stayed enabled, the panel kept saying "Saved —
+  restart AgEnD to apply" while AgEnD was going down, and nothing watched for it to come back —
+  so people pressed it again. The click handed the *finished* job it was holding to the watcher,
+  whose loop only runs while a job is "running", so it returned at once and re-drew a fresh
+  button. It now disables and relabels the button the moment it is pressed ("Restarting…"), asks
+  for one confirmation and posts one request, watches the job the server moved to "running",
+  shows "Restarting AgEnD…" with an explanation, keeps polling through the seconds when the
+  server is unreachable, and reports "Changes applied" and refreshes the page once AgEnD is back.
+  A refused restart gives the button back with the reason.
+- **Settings › Start / Stop / Pause / Wake on an agent show that they are working.** They were
+  fire-and-forget (a failed stop said nothing, and a second press sent a second request). While
+  one is in flight the agent's buttons are disabled and the pressed one reads "Working…", only one
+  action per agent runs at a time, and a failure is reported.
 - **Settings › Connections & Bots rows no longer break words or clip.** Since v2.1.7 each
   row (bot type, id, token env var, group/guild, access mode, allowed users, token status,
   connection state, Settings button) was a non-wrapping flex row, so every item shrank and
