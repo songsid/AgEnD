@@ -240,6 +240,14 @@ records request URLs.
 - **Writes need more than the cookie.** The panels add a per-session
   `X-Agend-CSRF` header to every write, and the server also requires a matching
   `Origin`; a cookie alone cannot change anything.
+- **`/view` reads are open by default** (it is a read-only dashboard on a loopback
+  listener) — including the live terminal capture, so anyone who can reach the
+  port can watch your agents. Set `web.view_access: session` in `fleet.yaml` to
+  require a sign-in for the page, the capture, the roster and usage. **Editing a
+  profile or avatar always needs a signed-in session** (or `X-Agend-Token` from a
+  script): the Edit button on `/view` sends a signed-out visitor to sign in and
+  back. The old "paste your web.token to save" box is gone, and `/view?token=…` no
+  longer authorizes anything.
 - `agend web` (no flag) still opens `/ui?token=…` for the host's own browser and
   works as before; that link now creates a real session, and is deprecated in
   favour of the code.

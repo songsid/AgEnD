@@ -62,7 +62,19 @@ The panel can restart AgEnD itself for a change only a fresh process can adopt, 
   header token (`X-Agend-Token`) is unchanged for the CLI and scripts, and
   `agend web` still opens a `?token=` link for the host's own browser (deprecated;
   it now creates a real session). New sign-ins are announced in the General topic
-  (`web.notify_login: false` to silence). `/view` is unchanged in this release.
+  (`web.notify_login: false` to silence).
+- **[Behaviour change] `/view` no longer takes the web token in its URL or a text box.**
+  Saving a profile or avatar (and the sidebar order) used to work with the
+  fleet-wide `web.token` sent as `?token=` — which `/dashboard`'s "View (edit)" link
+  put in the address bar, and which `view.html` then appended to *every* API
+  request and kept in `localStorage`. Writes now need a signed-in session (with
+  the same CSRF checks as the other panels) or `X-Agend-Token` from a script; a
+  `?token=` is refused as a write credential, the token box is gone, and Edit sends
+  a signed-out visitor to the sign-in page and back. **Reading `/view` stays open by
+  default** (the live terminal capture included); the new `web.view_access: session`
+  requires a sign-in for reads too. The unused `view.token` file (a read-only
+  credential nothing ever accepted) is no longer written, and an old one is
+  deleted at startup.
 - **[Behaviour change] The dashboard now refuses requests whose `Host` is not a
   name it knows.** The health/dashboard server listens on 127.0.0.1, but that does
   not stop DNS rebinding: a web page can point its own domain at 127.0.0.1 and

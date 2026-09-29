@@ -66,6 +66,32 @@ export function isAuthPath(path: string): boolean {
   return path === "/signin" || path.startsWith("/auth/") || path.startsWith("/assets/");
 }
 
+/**
+ * Whether a request skips the global gate. Everything not named here goes
+ * through `decideWebGate`.
+ *
+ * - `/health` (GET) is the monitor's probe; `/agent` (POST) authenticates itself
+ *   with an instance token.
+ * - The sign-in page and its endpoints are the way *through* the gate; each route
+ *   in this file does its own checks.
+ * - `/view`'s reads and `/api/ai-usage` are open by default, and only reads: a
+ *   write to any of them is gated like everything else, so it needs a session
+ *   (with the cookie-write checks) or the header token, never a `?token=`.
+ *   `web.view_access: session` closes the reads too.
+ */
+export function bypassesWebGate(
+  req: { method?: string | undefined; url?: string | undefined },
+  path: string,
+  config: { web?: { view_access?: string } | undefined } | null | undefined,
+  isViewRead: (path: string) => boolean,
+): boolean {
+  const method = req.method ?? "GET";
+  if (method === "GET" && req.url === "/health") return true;
+  if (method === "POST" && req.url === "/agent") return true;
+  if (isAuthPath(path)) return true;
+  return (method === "GET" || method === "HEAD") && config?.web?.view_access !== "session" && isViewRead(path);
+}
+
 function json(res: ServerResponse, code: number, body: unknown, headers: Record<string, string | string[]> = {}): void {
   res.writeHead(code, { "Content-Type": "application/json", ...headers });
   res.end(JSON.stringify(body));

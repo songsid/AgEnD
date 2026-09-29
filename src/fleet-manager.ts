@@ -108,7 +108,7 @@ import {
   type ToolSink,
 } from "./tool-permissions.js";
 import { decideWebGate, loadOrCreateWebToken, readWebToken } from "./web-auth.js";
-import { handleAuthRequest, isAuthPath, serveSigninPage, type AuthApiContext } from "./auth-api.js";
+import { bypassesWebGate, handleAuthRequest, serveSigninPage, type AuthApiContext } from "./auth-api.js";
 import { WebSessionStore } from "./web-session.js";
 import { WebLoginCodes, LOGIN_CODE_TTL_MS } from "./web-login.js";
 import { allowedHostNames, applyWebSecurityHeaders, hostnameOf, isHostAllowed, WEB_HOST_REJECTED_MESSAGE } from "./web-host-guard.js";
@@ -849,7 +849,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** Set when the file on disk and the in-memory config disagree on a
    * startup-only key at startup. See checkStartupSignatureConsistency(). */
   private fleetSignatureMismatch: string[] | null = null;
-  private viewToken: string | null = null;
   private healthServerListening = false;
 
   constructor(public dataDir: string) {
@@ -3062,10 +3061,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // the `webToken` getter, so nothing is cached here.
     loadOrCreateWebToken(this.dataDir);
     this.initializeWebSessions();
-    this.viewToken = randomBytes(24).toString("hex");
-    const viewTokenPath = join(this.dataDir, "view.token");
-    writeFileSync(viewTokenPath, this.viewToken, { encoding: "utf8", mode: 0o600 });
-    try { chmodSync(viewTokenPath, 0o600); } catch { /* best effort */ }
+    // A `view.token` file was written here for a read-only credential that nothing
+    // ever accepted. Older installs still have one; it authorizes nothing, so do
+    // not leave a credential-shaped file lying around.
+    try { rmSync(join(this.dataDir, "view.token"), { force: true }); } catch { /* best effort */ }
     this.healthServerListening = false;
   }
 
@@ -14383,7 +14382,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     this.healthServerListening = false;
     this.healthPortRetried = false;
     // Defensive for direct/unit callers; normal startup initializes these before adapters.
-    if (!this.webToken || !this.viewToken) this.initializeWebAuthTokens();
+    if (!this.webToken || !this.webSessions) this.initializeWebAuthTokens();
 
     this.healthServer = createServer((req, res) => {
       res.setHeader("Content-Type", "application/json");
@@ -14416,20 +14415,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         return;
       }
 
-      // Public health probe — no auth required.
-      if (req.method === "GET" && req.url === "/health") {
-        // fallthrough to existing handler below
-      } else if (req.method === "POST" && req.url === "/agent") {
-        // /agent handles its own instance-level auth via X-Agend-Instance-Token
-      } else if (isAuthPath(requestPath)) {
-        // The sign-in page and its endpoints are the way *through* the gate; each
-        // route in auth-api.ts does its own checks.
-      } else if (isViewPath(new URL(req.url ?? "/", `http://localhost:${port}`).pathname)) {
-        // /view routes accept the read-only view.token (or web.token) and do
-        // their own per-method auth in view-api.ts — skip the web-token gate.
-      } else if (isUsagePath(new URL(req.url ?? "/", `http://localhost:${port}`).pathname)) {
-        // /api/ai-usage is read-only GET data for the /view Usage panel — open
-        // like the other /view data routes (usage-api.ts rejects non-GET).
+      // Public: the health probe, /agent (instance-token auth of its own), the
+      // sign-in surface, and /view's reads unless web.view_access says otherwise.
+      if (bypassesWebGate(req, requestPath, this.fleetConfig, p => isViewPath(p) || isUsagePath(p))) {
+        // fall through to the handlers below
       } else {
         // All other endpoints require a session cookie or an X-Agend-Token
         // header; a `?token=` in the URL is only redeemed for a cookie on a GET.
@@ -14443,7 +14432,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
           // not sent" by asking from inside the site. API callers still get JSON.
           if (decision.reason === "no-credential" && req.method === "GET"
             && String(req.headers.accept ?? "").includes("text/html")
-            && (requestPath === "/ui" || requestPath === "/settings")) {
+            && (requestPath === "/ui" || requestPath === "/settings" || requestPath === "/view")) {
             serveSigninPage(res, 401);
             return;
           }
