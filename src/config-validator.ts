@@ -272,6 +272,9 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     if (config.web.provider_secrets !== undefined && typeof config.web.provider_secrets !== "boolean") {
       err("web.provider_secrets", "must be a boolean");
     }
+    if (config.web.view_access !== undefined && config.web.view_access !== "open" && config.web.view_access !== "session") {
+      err("web.view_access", "must be open or session");
+    }
     if (config.web.notify_login !== undefined && typeof config.web.notify_login !== "boolean") {
       err("web.notify_login", "must be a boolean");
     }
