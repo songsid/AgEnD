@@ -46,14 +46,21 @@ export type NormalizedEmoji =
   | { kind: "unicode"; value: string }
   | { kind: "custom"; name: string; id: string; animated: boolean };
 
+const GRAPHEMES = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+function graphemeCount(s: string): number {
+  let n = 0;
+  for (const _ of GRAPHEMES.segment(s)) if (++n > 1) break;
+  return n;
+}
+
 const CUSTOM_TAG_RE = /^<(a?):([A-Za-z0-9_]{2,32}):(\d{15,25})>$/;
 const CUSTOM_BARE_RE = /^(?:(a):)?([A-Za-z0-9_]{2,32}):(\d{15,25})$/;
-const PICTOGRAPH_RE = /\p{Extended_Pictographic}|\p{Regional_Indicator}|⃣/u;
+const PICTOGRAPH_RE = /\p{Extended_Pictographic}|\p{Regional_Indicator}|\u20E3/u;
 
 /**
  * Parse one configured value. Discord custom emoji may be written `<:name:id>`,
- * `<a:name:id>` or bare `name:id`; anything else must be a single emoji
- * (no spaces, no words). Returns null for a value that is neither.
+ * `<a:name:id>` or bare `name:id`; anything else must be exactly one emoji
+ * grapheme (no spaces, no words, not two emojis). Returns null otherwise.
  */
 export function normalizeEmoji(raw: unknown): NormalizedEmoji | null {
   if (typeof raw !== "string") return null;
@@ -61,11 +68,15 @@ export function normalizeEmoji(raw: unknown): NormalizedEmoji | null {
   if (!s) return null;
   const custom = CUSTOM_TAG_RE.exec(s) ?? CUSTOM_BARE_RE.exec(s);
   if (custom) return { kind: "custom", animated: custom[1] === "a", name: custom[2]!, id: custom[3]! };
-  if (/\s/.test(s) || [...s].length > 10 || /[A-Za-z0-9<>:]/.test(s) || !PICTOGRAPH_RE.test(s)) return null;
+  // Exactly one grapheme: 👀✅ is two emojis that no platform can stamp as
+  // one reaction — accepting it lost that status silently. Segmenting by
+  // grapheme (not code points) keeps ZWJ sequences (👨‍👩‍👧), flags (🇹🇼) and
+  // skin tones (👍🏽) as the single emoji they are.
+  if (/[\sA-Za-z0-9<>:]/.test(s) || !PICTOGRAPH_RE.test(s) || graphemeCount(s) !== 1) return null;
   return { kind: "unicode", value: s };
 }
 
-const stripVariation = (s: string): string => s.replace(/️/g, "");
+const stripVariation = (s: string): string => s.replace(/\uFE0F/g, "");
 
 /**
  * Why a value cannot be used on `platform`, or null when it can. Telegram has

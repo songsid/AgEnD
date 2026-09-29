@@ -99,6 +99,21 @@ describe("normalising a configured value (#1005)", () => {
 
   it("refuses words, several emojis' worth of text, and custom emoji on Telegram", () => {
     for (const bad of ["ok", "done!", "👍 👍", "", ":inbox:"]) expect(normalizeEmoji(bad)).toBeNull();
+  });
+
+  it("takes exactly one emoji grapheme: two adjacent emojis are refused, ZWJ/flag/skin-tone sequences kept", () => {
+    // 👀✅ cannot be stamped as one reaction; accepting it silently lost that status.
+    for (const two of ["👀✅", "🇹🇼🇯🇵", "👍🏽👍", "❤️🔥"]) {
+      expect(normalizeEmoji(two), two).toBeNull();
+      expect(statusEmojiProblem("discord", "delivered", two), two).toMatch(/not an emoji/);
+    }
+    for (const one of ["👨‍👩‍👧‍👦", "🏳️‍🌈", "🇹🇼", "👍🏽", "❤️", "❤‍🔥"]) {
+      expect(normalizeEmoji(one), one).toEqual({ kind: "unicode", value: one });
+    }
+    // And the resolver falls back instead of reacting with the pair.
+    const onInvalid = vi.fn();
+    expect(resolveStatusEmojis({ platform: "discord", platformConfig: { delivered: "👀✅" }, onInvalid }).delivered).toBe("✅");
+    expect(onInvalid).toHaveBeenCalledOnce();
     expect(statusEmojiProblem("telegram", "delivered", INBOX)).toMatch(/no server custom emoji/);
     expect(statusEmojiProblem("telegram", "delivered", "✅")).toMatch(/allowed reaction set/);
     expect(statusEmojiProblem("telegram", "delivered", "👌")).toBeNull();
