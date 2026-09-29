@@ -321,6 +321,12 @@ export interface WebConfig {
   usage_panel?: boolean;
   /** Expose provider API-key verify/apply endpoints (default false until dark-shipped). */
   provider_secrets?: boolean;
+  /**
+   * Extra `Host` names the dashboard answers to, for a reverse proxy or port
+   * forward that presents a name other than localhost / 127.0.0.1 / [::1] / `hostname`.
+   * Names only (a port is ignored); anything not listed is refused with 403.
+   */
+  allowed_hosts?: string[];
 }
 
 /** `login:` section — remote /login behaviour. */

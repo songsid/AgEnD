@@ -2,6 +2,7 @@ import { validateProvider } from "./backend/types.js";
 import { DELIVERY_WORKER_MODES } from "./types.js";
 import { credentialHomeSpec, resolveCredentialProfile } from "./backend/credential-profile.js";
 import { STATUS_EMOJI_CONFIG_KEYS, statusEmojiProblem, type StatusEmojiKey } from "./status-emojis.js";
+import { hostnameOf } from "./web-host-guard.js";
 
 /**
  * Shared config validation for fleet.yaml and classicBot.yaml.
@@ -266,6 +267,17 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     }
     if (config.web.provider_secrets !== undefined && typeof config.web.provider_secrets !== "boolean") {
       err("web.provider_secrets", "must be a boolean");
+    }
+    if (config.web.allowed_hosts !== undefined) {
+      if (!Array.isArray(config.web.allowed_hosts)) {
+        err("web.allowed_hosts", "must be a list of host names");
+      } else {
+        config.web.allowed_hosts.forEach((entry: unknown, i: number) => {
+          if (typeof entry !== "string" || hostnameOf(entry) === null) {
+            err(`web.allowed_hosts[${i}]`, "must be a bare host name or IP (optionally with :port) — no scheme, path or credentials");
+          }
+        });
+      }
     }
   }
 
