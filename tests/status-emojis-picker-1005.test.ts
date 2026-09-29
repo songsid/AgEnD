@@ -261,6 +261,33 @@ describe("the Settings editor: picked == previewed == reacted (#1005 addendum 3)
     expect(applied).toBe("done:333333333333333333");
   });
 
+  it("shows an unavailable server emoji but will not pick it", async () => {
+    // Discord marks an emoji unavailable when the server loses the Boost tier
+    // it needs; a bot cannot react with it, so storing it would fail silently.
+    const ctx = context({ listGuildEmojis: async () => ({ ok: true, fetched_at: 1, emojis: [
+      { id: "444444444444444444", name: "old", animated: false, available: false },
+      { id: "333333333333333333", name: "done", animated: true, available: true },
+    ] }) });
+    const { api } = realApi(ctx);
+    const editor = loadEditor(api)({ delivered: "✅" }, {
+      platform: () => "discord", channelId: () => "dc",
+      previewBody: (map: unknown) => ({ channel_id: "dc", instance_config: map }),
+    });
+    await settle();
+    const row = editor.box.all(e => e.className === "se-row").find(r => r.textContent.startsWith("se_delivered"))!;
+    buttons(row, "se_pick")[0]!.fire("click");
+    await settle();
+    const unavailable = row.all(e => e.tag === "button" && e.attrs.title === ":old: (se_unavailable)")[0]!;
+    expect(unavailable.attrs.disabled).toBe("disabled");
+    unavailable.fire("click");
+    await settle();
+    expect(editor.value()).toEqual({ delivered: "✅" });
+    expect(row.querySelector("se-picker")).not.toBeNull(); // still open: nothing was chosen
+    // The available one next to it still picks.
+    row.all(e => e.tag === "button" && e.attrs.title === ":done:")[0]!.fire("click");
+    expect(editor.value()).toEqual({ delivered: "<a:done:333333333333333333>" });
+  });
+
   it("offers only Telegram's reaction set on a Telegram connection, and blanks mean the default", async () => {
     const { api } = realApi(context());
     const statusEmojiEditor = loadEditor(api);

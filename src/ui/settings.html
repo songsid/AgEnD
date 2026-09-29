@@ -550,9 +550,13 @@
           guildBox.innerHTML = "";
           if (list.error) { guildBox.append(el("div", { class: "feedback error" }, `✗ ${list.error}`)); return; }
           if (!list.emojis.length) { guildBox.append(el("div", { class: "hint" }, t("se_noServerEmojis"))); return; }
+          // An unavailable emoji (e.g. the server lost the Boost tier it
+          // needs) cannot be reacted with; picking it would preview fine and
+          // then fail silently on every status. Shown, but not pickable.
           guildBox.append(grid(list.emojis.map(e => el("button", {
             type: "button", class: "sm" + (e.available ? "" : " off"), title: `:${e.name}:${e.available ? "" : ` (${t("se_unavailable")})`}`,
-            onclick: () => choose(e.value),
+            ...(e.available ? {} : { disabled: "disabled", "aria-disabled": "true" }),
+            onclick: () => { if (e.available) choose(e.value); },
           }, emojiImg(e.image_url, `:${e.name}:`)))));
         };
         picker.append(el("div", { class: "hint", style: "display:flex;gap:8px;align-items:center" }, t("se_serverEmojis"),
