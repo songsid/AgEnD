@@ -272,6 +272,9 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     if (config.web.provider_secrets !== undefined && typeof config.web.provider_secrets !== "boolean") {
       err("web.provider_secrets", "must be a boolean");
     }
+    if (config.web.notify_login !== undefined && typeof config.web.notify_login !== "boolean") {
+      err("web.notify_login", "must be a boolean");
+    }
     if (config.web.allowed_hosts !== undefined) {
       if (!Array.isArray(config.web.allowed_hosts)) {
         err("web.allowed_hosts", "must be a list of host names");

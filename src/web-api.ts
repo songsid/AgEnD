@@ -13,6 +13,7 @@ import { readStatuslineModel, resolveInstanceContext } from "./topic-commands.js
 import { z } from "zod";
 import { isWebRequestAuthorized, WEB_TOKEN_INVALID_MESSAGE } from "./web-auth.js";
 import { parseLastEventId, type WebChatHistory } from "./web-chat-history.js";
+import type { WebSessionStore } from "./web-session.js";
 import { authorizeExplicitInstanceRemoval } from "./instance-removal.js";
 import type { ExplicitInstanceRemoval } from "./instance-removal.js";
 
@@ -125,6 +126,8 @@ const __dirname = dirname(__filename);
 /** Minimal interface — only what web-api needs from FleetManager. */
 export interface WebApiContext {
   readonly webToken: string | null;
+  /** Absent in a hand-built context: cookies are then simply not a credential, the header token still is. */
+  readonly webSessions?: WebSessionStore | null;
   readonly dataDir: string;
   readonly sseClients: Set<ServerResponse>;
   readonly fleetConfig: {
@@ -213,7 +216,7 @@ export function handleWebRequest(
   // this accepts the cookie and the header too, and an unset token closes the
   // panel instead of comparing null against a missing credential.
   if (path.startsWith("/ui")) {
-    if (!isWebRequestAuthorized(req, url, ctx.webToken)) {
+    if (!isWebRequestAuthorized(req, url, ctx.webToken, ctx.webSessions)) {
       json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE });
       return true;
     }
@@ -296,6 +299,14 @@ export function handleWebRequest(
     }
     ctx.sseClients.add(res);
     const interval = setInterval(() => {
+      // A stream authorized once must not outlive the authorization. Re-checked
+      // without counting as activity, or an open tab would keep an idle session
+      // alive forever; a revoked, expired or rotated-away session ends here.
+      if (!isWebRequestAuthorized(req, url, ctx.webToken, ctx.webSessions, { touch: false })) {
+        try { res.end(); } catch { /* already closed */ }
+        cleanup();
+        return;
+      }
       try {
         res.write(`event: status\ndata: ${JSON.stringify(ctx.getUiStatus())}\n\n`);
       } catch {
