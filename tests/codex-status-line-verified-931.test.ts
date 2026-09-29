@@ -4,7 +4,7 @@
  * config that cannot be made verifiable warns the operator instead of leaving
  * the pane silently unready. Every case runs the production writeConfig.
  */
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { parse } from "smol-toml";
@@ -91,5 +91,26 @@ describe("a status_line AgEnD cannot make verifiable is surfaced, not silent (#9
     // Where the user's status_line lives — the private copy is rebuilt each launch.
     expect(warning).toContain(join(process.env.CODEX_HOME!, "config.toml"));
     expect(again).toBeNull();
+  });
+});
+
+describe("a verified edit that cannot be written is surfaced too (#931 follow-up)", () => {
+  it.skipIf(process.getuid?.() === 0)("warns, naming the shared config, instead of swallowing the write error", () => {
+    writeFileSync(join(process.env.CODEX_HOME!, "config.toml"), '"tui"."status_line" = ["model-with-reasoning"]\n');
+    const instanceDir = join(root, "instance");
+    const backend = new CodexBackend(instanceDir) as any;
+    const config = { workingDirectory: root, instanceDir, instanceName: "w", mcpServers: {}, skipResume: true };
+    // The private config is written twice: by writeConfig, then by the
+    // status-line edit. Make only the second fail, after the edit verified:
+    // the atomic write needs a temp file in the (now read-only) home.
+    const enable = backend.enableContextStatusLine.bind(backend);
+    backend.enableContextStatusLine = () => {
+      chmodSync(backend.isolatedCodexHome, 0o500);
+      try { enable(); } finally { chmodSync(backend.isolatedCodexHome, 0o700); }
+    };
+    backend.writeConfig(config);
+    const warning = backend.consumeLaunchWarning();
+    expect(warning).toMatch(/could not be written: EACCES/);
+    expect(warning).toContain(join(process.env.CODEX_HOME!, "config.toml"));
   });
 });

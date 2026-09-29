@@ -996,7 +996,12 @@ export class CodexBackend implements CliBackend {
     }
     try {
       atomicWritePrivate(configPath, fixed);
-    } catch { /* best effort — never block launch on statusline config */ }
+    } catch (err) {
+      // Never block launch on statusline config — but a verified edit that
+      // could not be written leaves the pane as unready as an unfixable one.
+      const reason = `the verified edit could not be written: ${(err as NodeJS.ErrnoException).code ?? "write failed"}`;
+      this.statusLineWarning = t("codex.status_line_unverifiable", reason, sharedConfigPath);
+    }
   }
 
   /** Null when the instance did not ask for a profile — today's behaviour. */
