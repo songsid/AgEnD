@@ -56,10 +56,11 @@ function writeState(threads: Array<{ id: string; cwd: string; recency: number }>
   const db = new Database(join(shared, "state_5.sqlite"));
   db.pragma("journal_mode = WAL");
   db.exec(SCHEMA);
+  // has_user_event 0 + a first message: the shape real 0.157 sessions have (#1017).
   const insert = db.prepare(`
     INSERT INTO threads (id, rollout_path, created_at, updated_at, source, model_provider, cwd, title,
-      sandbox_policy, approval_mode, has_user_event, archived, recency_at_ms, updated_at_ms)
-    VALUES (?, '/r.jsonl', 1, 1, 'cli', 'openai', ?, 't', 'danger-full-access', 'never', 1, 0, ?, ?)
+      sandbox_policy, approval_mode, has_user_event, first_user_message, archived, recency_at_ms, updated_at_ms)
+    VALUES (?, '/r.jsonl', 1, 1, 'cli', 'openai', ?, 't', 'danger-full-access', 'never', 0, 'a question', 0, ?, ?)
   `);
   for (const t of threads) insert.run(t.id, t.cwd, t.recency, t.recency);
   db.close();

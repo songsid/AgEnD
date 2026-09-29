@@ -66,11 +66,12 @@ function writeState(shared: string, rows: Array<{ id: string; cwd: string; rollo
   db.pragma("journal_mode = WAL");
   db.exec(SCHEMA);
   db.exec(MIGRATIONS);
+  // has_user_event 0 with a first message: what real 0.157 sessions carry (#1017).
   const insert = db.prepare(`
     INSERT INTO threads (id, rollout_path, created_at, updated_at, source, model_provider, cwd, title,
       sandbox_policy, approval_mode, has_user_event, archived, cli_version, first_user_message, preview,
       recency_at, recency_at_ms, updated_at_ms, created_at_ms)
-    VALUES (@id, @rollout, @s, @s, 'cli', 'openai', @cwd, @title, 'danger-full-access', 'never', 1, 0,
+    VALUES (@id, @rollout, @s, @s, 'cli', 'openai', @cwd, @title, 'danger-full-access', 'never', 0, 0,
       '0.157.0', @title, @title, @s, @recency, @recency, @recency)
   `);
   for (const r of rows) {

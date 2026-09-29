@@ -12,13 +12,14 @@
  * docs/design/984-codex-exact-cwd-resume.zh-TW.md.
  */
 import { execFileSync } from "node:child_process";
-import { realpathSync } from "node:fs";
+import { closeSync, openSync, readSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
+import { StringDecoder } from "node:string_decoder";
 import Database from "better-sqlite3";
 
 /** Columns the lookup depends on; any missing one means "schema unreadable". */
 export const CODEX_THREAD_COLUMNS = [
-  "id", "cwd", "source", "archived", "has_user_event", "recency_at_ms", "updated_at_ms",
+  "id", "cwd", "source", "archived", "has_user_event", "first_user_message", "rollout_path", "recency_at_ms", "updated_at_ms",
 ] as const;
 
 const SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -56,11 +57,28 @@ function cwdCandidates(workingDirectory: string): string[] {
  * Newest interactive thread recorded for exactly this directory. Exact
  * equality only: a prefix or LIKE match would take a subdirectory's (or a
  * similarly named sibling's) session.
+ *
+ * "Has anything in it" was checked against real Codex data (#1017), not
+ * inferred from a column name:
+ * - `has_user_event` does NOT mean that. Real 0.157 sessions with a first
+ *   message and millions of tokens carry 0. Filtering on it matched no real
+ *   session, so every restart silently started a new conversation.
+ * - `tokens_used > 0` drops real sessions too: a provider that reports no
+ *   token usage leaves it at 0, as does a restart during the first turn.
+ * - A non-empty `first_user_message` proves content, but an empty one does
+ *   not prove the opposite: a real 38-turn session (0.156.1) and `/goal`-first
+ *   sessions (openai/codex#28423) have empty list metadata. For those the
+ *   rollout decides whether a turn ever ran. A thread nobody used (e.g. an
+ *   untouched fork) holds only `session_meta`/`thread_settings_applied`; any
+ *   turn — however its first input was delivered, including hidden goal
+ *   context — writes `task_started`, a `turn_context` or a `response_item`.
+ * tests/fixtures/codex-real-threads.json holds the real rows behind this.
  */
 export function findExactCwdCodexSession(
   stateDbPath: string,
   workingDirectory: string,
   open: (path: string) => Database.Database = openCodexStateReadonly,
+  rolloutHasTurn: (path: string) => boolean = rolloutRecordsTurn,
 ): ExactCwdSession {
   let db: Database.Database | null = null;
   try {
@@ -69,15 +87,24 @@ export function findExactCwdCodexSession(
     const missing = CODEX_THREAD_COLUMNS.filter(c => !columns.has(c));
     if (missing.length > 0) return { kind: "unreadable", reason: `threads schema missing: ${missing.join(", ")}` };
     const [first, second = first] = cwdCandidates(workingDirectory);
-    const row = db.prepare(`
-      SELECT id FROM threads
+    // Every thread of this directory, newest first, until one has content —
+    // no page limit, so a run of empty threads cannot hide an older session.
+    const rows = db.prepare(`
+      SELECT id, has_user_event, first_user_message, rollout_path FROM threads
       WHERE cwd IN (?, ?)
         AND source = 'cli'
         AND archived = 0
-        AND has_user_event = 1
       ORDER BY recency_at_ms DESC, updated_at_ms DESC, id DESC
-      LIMIT 1
-    `).get(first, second) as { id: unknown } | undefined;
+    `).iterate(first, second) as IterableIterator<{ id: unknown; has_user_event: unknown; first_user_message: unknown; rollout_path: unknown }>;
+    let row: { id: unknown } | undefined;
+    for (const r of rows) {
+      // Any sign of content is enough; only a thread with none is skipped.
+      // has_user_event = 1 is what the #984 lookup accepted, so keeping it
+      // means this lookup never resumes less than that one did.
+      if (r.has_user_event === 1
+        || (typeof r.first_user_message === "string" && r.first_user_message !== "")
+        || (typeof r.rollout_path === "string" && rolloutHasTurn(r.rollout_path))) { row = r; break; }
+    }
     if (!row) return { kind: "none" };
     // A malformed id means the schema no longer means what we think it does.
     if (typeof row.id !== "string" || !SESSION_ID_RE.test(row.id)) {
@@ -89,6 +116,62 @@ export function findExactCwdCodexSession(
     return { kind: "unreadable", reason: e.code ?? e.message ?? String(err) };
   } finally {
     try { db?.close(); } catch { /* already closed */ }
+  }
+}
+
+/** Rollouts are read in chunks of this size until a turn entry or the end. */
+const ROLLOUT_CHUNK_BYTES = 256 * 1024;
+
+/**
+ * The entries of a thread nobody used. Real untouched threads (e.g. a fork)
+ * hold exactly `session_meta` and `event_msg:thread_settings_applied`.
+ */
+function isUntouchedThreadEntry(entry: { type?: unknown; payload?: { type?: unknown } }): boolean {
+  return entry.type === "session_meta"
+    || (entry.type === "event_msg" && entry.payload?.type === "thread_settings_applied");
+}
+
+/**
+ * Whether a Codex rollout (JSONL) may hold a conversation. Read-only, in
+ * chunks, stopping at the first entry that is not part of an untouched thread
+ * — in real rollouts a turn entry follows the ~22 KB session_meta line.
+ *
+ * "No" needs proof: the file has the known untouched shape and nothing else
+ * (`session_meta` + `thread_settings_applied`). Every other entry — a turn,
+ * an entry type from a newer Codex, a line this code cannot parse — counts
+ * as yes: resuming a doubtful thread fails loudly, skipping a real one
+ * silently loses the conversation. A missing or unreadable rollout cannot be
+ * resumed, so it counts as no.
+ */
+export function rolloutRecordsTurn(path: string): boolean {
+  let fd: number | null = null;
+  try {
+    fd = openSync(path, "r");
+    const buf = Buffer.alloc(ROLLOUT_CHUNK_BYTES);
+    // A multi-byte character may straddle two chunks; the decoder holds it.
+    const decoder = new StringDecoder("utf8");
+    let pending = "";
+    let position = 0;
+    let recognised = false;
+    for (;;) {
+      const read = readSync(fd, buf, 0, ROLLOUT_CHUNK_BYTES, position);
+      position += read;
+      const text = pending + (read === 0 ? decoder.end() : decoder.write(buf.subarray(0, read)));
+      const lines = text.split("\n");
+      pending = read === 0 ? "" : lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        let entry: { type?: unknown; payload?: { type?: unknown } };
+        try { entry = JSON.parse(line) as typeof entry; } catch { return true; } // unparseable: not provably empty
+        if (!isUntouchedThreadEntry(entry)) return true;
+        if (entry.type === "session_meta") recognised = true;
+      }
+      if (read === 0) return !recognised;
+    }
+  } catch {
+    return false;
+  } finally {
+    if (fd !== null) try { closeSync(fd); } catch { /* already closed */ }
   }
 }
 
