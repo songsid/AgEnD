@@ -204,8 +204,14 @@ describe("rolloutRecordsTurn", () => {
     expect(rolloutRecordsTurn(write('{"type":"response_item" broken\n'))).toBe(true);
     expect(rolloutRecordsTurn(write([{ type: "some_future_entry", payload: {} }]))).toBe(true);
     expect(rolloutRecordsTurn(write(""))).toBe(true);
-    // A recognisable rollout with a malformed line and no turn is still no.
-    expect(rolloutRecordsTurn(write('{"type":"session_meta","payload":{}}\n{broken\n'))).toBe(false);
+  });
+  it("is no only for the known untouched shape: anything else after session_meta keeps the thread", () => {
+    // The real untouched fork, and the same shape with a huge session_meta.
+    expect(rolloutRecordsTurn(write(REAL.rollout_heads.untouched_fork_0157))).toBe(false);
+    // A newer Codex's entry type, or a line this code cannot parse, is not proof of emptiness.
+    expect(rolloutRecordsTurn(write([{ type: "session_meta", payload: {} }, { type: "some_future_entry", payload: {} }]))).toBe(true);
+    expect(rolloutRecordsTurn(write([{ type: "session_meta", payload: {} }, { type: "event_msg", payload: { type: "some_future_event" } }]))).toBe(true);
+    expect(rolloutRecordsTurn(write('{"type":"session_meta","payload":{}}\n{broken\n'))).toBe(true);
   });
   it("reads past any head size: an oversized empty thread is no, a turn after a huge session_meta is yes", () => {
     // Real session_meta lines are ~22 KB; these are far past any chunk, with

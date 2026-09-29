@@ -122,23 +122,26 @@ export function findExactCwdCodexSession(
 /** Rollouts are read in chunks of this size until a turn entry or the end. */
 const ROLLOUT_CHUNK_BYTES = 256 * 1024;
 
-/** An entry only a turn writes: it started, got a context, or produced an item. */
-function isTurnEntry(entry: { type?: unknown; payload?: { type?: unknown } }): boolean {
-  return entry.type === "response_item" || entry.type === "turn_context"
-    || (entry.type === "event_msg" && entry.payload?.type === "task_started");
+/**
+ * The entries of a thread nobody used. Real untouched threads (e.g. a fork)
+ * hold exactly `session_meta` and `event_msg:thread_settings_applied`.
+ */
+function isUntouchedThreadEntry(entry: { type?: unknown; payload?: { type?: unknown } }): boolean {
+  return entry.type === "session_meta"
+    || (entry.type === "event_msg" && entry.payload?.type === "thread_settings_applied");
 }
 
 /**
- * Whether a Codex rollout (JSONL) records that a turn ever ran. Read-only, in
- * chunks, stopping at the first turn entry — in real rollouts it follows the
- * ~22 KB session_meta line — so only a thread with no turn is read to the
- * end, and those are a few KB.
+ * Whether a Codex rollout (JSONL) may hold a conversation. Read-only, in
+ * chunks, stopping at the first entry that is not part of an untouched thread
+ * — in real rollouts a turn entry follows the ~22 KB session_meta line.
  *
- * "No" needs proof: a recognisable Codex rollout (it has a `session_meta`
- * line; every rollout from 0.137 to 0.157 does) that holds no turn. A file
- * in a shape this code does not recognise counts as yes — resuming a doubtful
- * thread fails loudly, skipping a real one silently loses the conversation.
- * A missing or unreadable rollout cannot be resumed, so it counts as no.
+ * "No" needs proof: the file has the known untouched shape and nothing else
+ * (`session_meta` + `thread_settings_applied`). Every other entry — a turn,
+ * an entry type from a newer Codex, a line this code cannot parse — counts
+ * as yes: resuming a doubtful thread fails loudly, skipping a real one
+ * silently loses the conversation. A missing or unreadable rollout cannot be
+ * resumed, so it counts as no.
  */
 export function rolloutRecordsTurn(path: string): boolean {
   let fd: number | null = null;
@@ -158,11 +161,10 @@ export function rolloutRecordsTurn(path: string): boolean {
       pending = read === 0 ? "" : lines.pop() ?? "";
       for (const line of lines) {
         if (!line.trim()) continue;
-        try {
-          const entry = JSON.parse(line) as { type?: unknown; payload?: { type?: unknown } };
-          if (isTurnEntry(entry)) return true;
-          if (entry.type === "session_meta") recognised = true;
-        } catch { /* a malformed line says nothing */ }
+        let entry: { type?: unknown; payload?: { type?: unknown } };
+        try { entry = JSON.parse(line) as typeof entry; } catch { return true; } // unparseable: not provably empty
+        if (!isUntouchedThreadEntry(entry)) return true;
+        if (entry.type === "session_meta") recognised = true;
       }
       if (read === 0) return !recognised;
     }
