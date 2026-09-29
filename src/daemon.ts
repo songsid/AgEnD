@@ -42,7 +42,7 @@ import type { BackendOutageView } from "./backend-outage.js";
 import { TurnReplyGuard, type TurnReplySnapshot, type TurnReplyTarget } from "./turn-reply-guard.js";
 import { t } from "./locale.js";
 import { MuseUsageRelay, clearMuseUsageSnapshot } from "./muse-usage-relay.js";
-import type { DaemonDeliveryPort, DeliveryAttemptEvidence, DurableSubmissionMode } from "./delivery-outbox.js";
+import { deliveryContentDigest, type DaemonDeliveryPort, type DeliveryAttemptEvidence, type DurableSubmissionMode } from "./delivery-outbox.js";
 import { queueResumePolicyForAttempt } from "./delivery-queue-evidence.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -614,6 +614,8 @@ type DurableDeliveryAttempt = {
   deliveryId: string;
   attemptNo: number;
   submissionMode?: "raw_paste";
+  /** sha256 of the text as this daemon received it, before formatting (#856). */
+  contentSha256?: string;
 };
 type DeliveryVerdict = {
   reached: boolean;
@@ -1533,12 +1535,14 @@ export class Daemon extends EventEmitter {
     return this.paneWriteLock.waitForIdle(timeoutMs);
   }
 
-  private durableDeliveryAttempt(meta: Record<string, string>): DurableDeliveryAttempt | null | false {
+  private durableDeliveryAttempt(meta: Record<string, string>, content?: string): DurableDeliveryAttempt | null | false {
     const deliveryId = meta.delivery_id;
     if (!deliveryId) return null;
     const attemptNo = Number(meta.delivery_attempt);
     if (!Number.isSafeInteger(attemptNo) || attemptNo < 1) return false;
-    return { deliveryId, attemptNo };
+    // Hashed on arrival, before any formatting, so the outbox can compare it
+    // with the digest taken at admission (#856).
+    return { deliveryId, attemptNo, ...(content !== undefined ? { contentSha256: deliveryContentDigest(content) } : {}) };
   }
 
   private beginDurableDelivery(delivery: DurableDeliveryAttempt, evidence?: DeliveryAttemptEvidence): boolean {
@@ -3101,7 +3105,7 @@ export class Daemon extends EventEmitter {
       delivery_id: typeof msg.delivery_id === "string" ? msg.delivery_id : "",
       delivery_attempt: typeof msg.delivery_attempt === "string" ? msg.delivery_attempt : "",
     };
-    const durableAttempt = this.durableDeliveryAttempt(deliveryMeta);
+    const durableAttempt = this.durableDeliveryAttempt(deliveryMeta, typeof msg.content === "string" ? msg.content : undefined);
     if (durableAttempt === false) {
       this.deferDurableDelivery(deliveryMeta, "invalid raw_paste delivery attempt metadata");
       return;
@@ -4708,7 +4712,7 @@ export class Daemon extends EventEmitter {
     const formatted = "[STEERING — mid-task course correction. Fold this into the CURRENT work if one is active.]\n"
       + this.formatInboundMessage(content, meta);
     const status = channelStatus(meta);
-    const durableAttempt = this.durableDeliveryAttempt(meta);
+    const durableAttempt = this.durableDeliveryAttempt(meta, content);
     if (durableAttempt === false) {
       this.deferDurableDelivery(meta, "invalid durable delivery attempt metadata");
       return;
@@ -4890,7 +4894,7 @@ export class Daemon extends EventEmitter {
         // the previous turn's tool list.
         this.resetToolProgress();
         verdict = { reached: false };
-        const durableAttempt = this.durableDeliveryAttempt(meta);
+        const durableAttempt = this.durableDeliveryAttempt(meta, content);
         if (durableAttempt === false) {
           this.deferDurableDelivery(meta, "invalid durable delivery attempt metadata");
           return;
@@ -5884,12 +5888,18 @@ export class Daemon extends EventEmitter {
       // first side effect; a crash during those waits remains safely replayable.
       if (durableAttempt && !beginChecked) {
         beginChecked = true;
-        const attemptEvidence = await this.durableAttemptEvidence(
-          windowId,
-          handingOffToNativeQueue,
-          steer,
-          durableAttempt.submissionMode === "raw_paste",
-        );
+        const attemptEvidence = {
+          ...await this.durableAttemptEvidence(
+            windowId,
+            handingOffToNativeQueue,
+            steer,
+            durableAttempt.submissionMode === "raw_paste",
+          ),
+          // #856: what arrived vs what is about to be written, taken at the
+          // fence that already precedes the first pane side effect.
+          pastedContentSha256: durableAttempt.contentSha256 ?? null,
+          pastedBytesSha256: deliveryContentDigest(formatted),
+        };
         if (!this.beginDurableDelivery(durableAttempt, attemptEvidence)) {
           verdict.durableBeginRejected = true;
           verdict.phase = "submission-begin";

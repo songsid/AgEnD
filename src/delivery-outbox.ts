@@ -1,5 +1,5 @@
 import Database from "better-sqlite3";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { chmodSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
@@ -63,9 +63,43 @@ export interface OutboxDelivery {
 }
 
 export type DeliveryStatusSelector =
-  | { deliveryId: string; operationId?: never; correlationId?: never; limit?: never; cursor?: never }
-  | { operationId: string; deliveryId?: never; correlationId?: never; limit?: number; cursor?: string }
-  | { correlationId: string; deliveryId?: never; operationId?: never; limit?: number; cursor?: string };
+  | { deliveryId: string; operationId?: never; correlationId?: never; messageId?: never; limit?: never; cursor?: never }
+  | { operationId: string; deliveryId?: never; correlationId?: never; messageId?: never; limit?: number; cursor?: string }
+  | { correlationId: string; deliveryId?: never; operationId?: never; messageId?: never; limit?: number; cursor?: string }
+  /**
+   * #856: the `message_id` a receiver sees in the envelope header. Lets an
+   * agent check that a peer message it is about to act on was really
+   * delivered by the fleet — a model can "see" one nobody sent.
+   */
+  | { messageId: string; deliveryId?: never; operationId?: never; correlationId?: never; limit?: number; cursor?: string };
+
+/** The one mapping from validated tool/CLI arguments to a selector. */
+export function deliveryStatusSelector(args: {
+  delivery_id?: string; operation_id?: string; correlation_id?: string; message_id?: string; limit?: number; cursor?: string;
+}): DeliveryStatusSelector {
+  const page = { ...(args.limit !== undefined ? { limit: args.limit } : {}), ...(args.cursor ? { cursor: args.cursor } : {}) };
+  if (args.delivery_id) return { deliveryId: args.delivery_id };
+  if (args.operation_id) return { operationId: args.operation_id, ...page };
+  if (args.message_id) return { messageId: args.message_id, ...page };
+  return { correlationId: args.correlation_id!, ...page };
+}
+
+/** sha256 of a delivered text, as hex. The same function hashes admission and paste. */
+export function deliveryContentDigest(text: string): string {
+  return createHash("sha256").update(text, "utf8").digest("hex");
+}
+
+/** The text a durable row delivers, for kinds whose payload carries one. */
+function payloadContent(payload: unknown): string | null {
+  const content = payload && typeof payload === "object" ? (payload as Record<string, unknown>).content : undefined;
+  return typeof content === "string" ? content : null;
+}
+
+function payloadMessageId(payload: unknown): string | null {
+  const meta = payload && typeof payload === "object" ? (payload as Record<string, unknown>).meta : undefined;
+  const id = meta && typeof meta === "object" ? (meta as Record<string, unknown>).message_id : undefined;
+  return typeof id === "string" && id.length > 0 ? id : null;
+}
 
 export interface DeliveryStatusItem {
   delivery_id: string;
@@ -81,6 +115,17 @@ export interface DeliveryStatusItem {
   status_summary: string;
   error_summary: string | null;
   safe_to_retry: boolean;
+  /** Fleet message ID of the delivered envelope, when it had one. */
+  message_id: string | null;
+  /** sha256 of the delivered text as admitted (#856). */
+  content_sha256: string | null;
+  /**
+   * The text as admitted — only on a `message_id` query by the row's own
+   * source or target: the caller already sent or received it, and verifying
+   * a value (a SHA, a PR number) needs the text, not just its digest. Every
+   * other query, and operator reads, stay redacted as before (#982).
+   */
+  content?: string | null;
 }
 
 export interface DeliveryStatusPage {
@@ -100,6 +145,10 @@ export interface DeliveryAttemptEvidence {
   transcriptSessionId: string | null;
   submissionMode: DurableSubmissionMode;
   queueResumePolicy?: QueueResumePolicy;
+  /** sha256 of the text the target daemon received, before formatting (#856). */
+  pastedContentSha256?: string | null;
+  /** sha256 of the exact string handed to the pane write (#856). */
+  pastedBytesSha256?: string | null;
 }
 
 export interface DeliveryReconciliationCandidate extends OutboxDelivery {
@@ -130,6 +179,8 @@ interface OutboxRow {
   kind: string;
   correlation_id: string | null;
   payload_json: string;
+  message_id?: string | null;
+  content_sha256?: string | null;
   state: OutboxState;
   attempt_no: number;
   created_seq: number;
@@ -200,6 +251,22 @@ function safeToRetry(state: OutboxState): boolean {
   return state === "queued" || state === "delivering" || state === "retry_wait" || state === "failed";
 }
 
+function hasColumn(db: Database.Database, table: string, column: string): boolean {
+  return (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).some(c => c.name === column);
+}
+
+/** Derived from the stored payload, so it is the same for pre-#856 rows. */
+function rowContentEvidence(payloadJson: string, withContent: boolean): Pick<DeliveryStatusItem, "message_id" | "content_sha256" | "content"> {
+  let payload: unknown = null;
+  try { payload = JSON.parse(payloadJson); } catch { /* corrupt row: report no evidence */ }
+  const content = payloadContent(payload);
+  return {
+    message_id: payloadMessageId(payload),
+    content_sha256: content === null ? null : deliveryContentDigest(content),
+    ...(withContent ? { content } : {}),
+  };
+}
+
 function queryStatusPage(
   db: Database.Database,
   selector: DeliveryStatusSelector,
@@ -207,8 +274,12 @@ function queryStatusPage(
 ): DeliveryStatusPage {
   const where: string[] = [];
   const params: (string | number)[] = [];
+  // An operator may read a database written before the column existed.
+  const messageIdColumn = hasColumn(db, "deliveries", "message_id")
+    ? "d.message_id" : "json_extract(d.payload_json,'$.meta.message_id')";
   if (selector.deliveryId) { where.push("d.delivery_id = ?"); params.push(selector.deliveryId); }
   else if (selector.operationId) { where.push("d.operation_id = ?"); params.push(selector.operationId); }
+  else if (selector.messageId) { where.push(`${messageIdColumn} = ?`); params.push(selector.messageId); }
   else { where.push("d.correlation_id = ?"); params.push(selector.correlationId!); }
   if (callerInstance !== null) {
     where.push("(d.source_instance = ? OR d.target_instance = ?)");
@@ -218,7 +289,10 @@ function queryStatusPage(
     const cursorScope = ["c.delivery_id = ?"];
     const cursorParams: (string | number)[] = [selector.cursor];
     if (selector.operationId) { cursorScope.push("c.operation_id = ?"); cursorParams.push(selector.operationId); }
-    else { cursorScope.push("c.correlation_id = ?"); cursorParams.push(selector.correlationId!); }
+    else if (selector.messageId) {
+      cursorScope.push(`${messageIdColumn.replace(/\bd\./g, "c.")} = ?`);
+      cursorParams.push(selector.messageId);
+    } else { cursorScope.push("c.correlation_id = ?"); cursorParams.push(selector.correlationId!); }
     if (callerInstance !== null) {
       cursorScope.push("(c.source_instance = ? OR c.target_instance = ?)");
       cursorParams.push(callerInstance, callerInstance);
@@ -232,7 +306,7 @@ function queryStatusPage(
       d.kind,
       CASE WHEN d.state='submission_started' AND d.reconciliation_pending=1
         THEN 'reconciliation_pending' ELSE d.state END AS state,
-      d.attempt_no,d.created_at,d.updated_at,d.last_error
+      d.attempt_no,d.created_at,d.updated_at,d.last_error,d.payload_json
     FROM deliveries d
     WHERE ${where.join(" AND ")}
     ORDER BY d.created_seq
@@ -249,6 +323,7 @@ function queryStatusPage(
     created_at: string;
     updated_at: string;
     last_error: string | null;
+    payload_json: string;
   }>;
   const hasMore = rows.length > limit;
   const visible = rows.slice(0, limit);
@@ -267,6 +342,9 @@ function queryStatusPage(
       status_summary: statusSummary(row.state),
       error_summary: safeErrorSummary(row.last_error),
       safe_to_retry: safeToRetry(row.state),
+      // Text only for the explicit verification query (#856), and only to the
+      // row's own source/target; every other query keeps #982's redaction.
+      ...rowContentEvidence(row.payload_json, callerInstance !== null && !!selector.messageId),
     })),
     next_cursor: hasMore ? visible.at(-1)?.delivery_id ?? null : null,
   };
@@ -376,7 +454,34 @@ export class DeliveryOutbox extends EventEmitter {
     this.ensureColumn("delivery_attempts", "backend_version", "TEXT");
     this.ensureColumn("delivery_attempts", "queue_resume_policy", "TEXT");
     this.ensureColumn("delivery_attempts", "enter_started_at", "TEXT");
-    this.db.pragma("user_version = 3");
+    // #856: a receiver can look a message up by the ID in its envelope, and
+    // admission vs pane-write digests tell transport rewrites apart from a
+    // receiver acting on a message nobody sent.
+    this.ensureColumn("deliveries", "message_id", "TEXT");
+    this.ensureColumn("deliveries", "content_sha256", "TEXT");
+    this.ensureColumn("delivery_attempts", "pasted_content_sha256", "TEXT");
+    this.ensureColumn("delivery_attempts", "pasted_bytes_sha256", "TEXT");
+    this.ensureColumn("delivery_attempts", "content_digest_mismatch", "INTEGER NOT NULL DEFAULT 0");
+    this.db.exec("CREATE INDEX IF NOT EXISTS idx_delivery_message_id ON deliveries(message_id)");
+    this.backfillMessageEvidence();
+    this.db.pragma("user_version = 4");
+  }
+
+  /** Rows admitted before #856 get the same message_id / digest a new row would. */
+  private backfillMessageEvidence(): void {
+    const rows = this.db.prepare(`
+      SELECT delivery_id, payload_json FROM deliveries WHERE message_id IS NULL AND content_sha256 IS NULL
+    `).all() as Array<{ delivery_id: string; payload_json: string }>;
+    if (rows.length === 0) return;
+    const update = this.db.prepare("UPDATE deliveries SET message_id=?, content_sha256=? WHERE delivery_id=?");
+    this.db.transaction(() => {
+      for (const row of rows) {
+        let payload: unknown = null;
+        try { payload = JSON.parse(row.payload_json); } catch { continue; }
+        const content = payloadContent(payload);
+        update.run(payloadMessageId(payload), content === null ? null : deliveryContentDigest(content), row.delivery_id);
+      }
+    })();
   }
 
   private ensureColumn(table: string, column: string, definition: string): void {
@@ -392,11 +497,11 @@ export class DeliveryOutbox extends EventEmitter {
     const insert = this.db.prepare(`
       INSERT OR IGNORE INTO deliveries (
         delivery_id, operation_id, source_key, source_instance, source_daemon_boot_id,
-        target_instance, target_session, kind, correlation_id, payload_json, state,
+        target_instance, target_session, kind, correlation_id, payload_json, message_id, content_sha256, state,
         attempt_no, created_seq, manager_boot_id, created_at, updated_at, accepted_at
       ) VALUES (
         @delivery_id, @operation_id, @source_key, @source_instance, @source_daemon_boot_id,
-        @target_instance, @target_session, @kind, @correlation_id, @payload_json, 'queued',
+        @target_instance, @target_session, @kind, @correlation_id, @payload_json, @message_id, @content_sha256, 'queued',
         0, (SELECT COALESCE(MAX(created_seq), 0) + 1 FROM deliveries), NULL,
         @created_at, @updated_at, @accepted_at
       )
@@ -414,6 +519,8 @@ export class DeliveryOutbox extends EventEmitter {
         kind: input.kind,
         correlation_id: input.correlationId ?? null,
         payload_json: JSON.stringify(input.payload),
+        message_id: payloadMessageId(input.payload),
+        content_sha256: (content => content === null ? null : deliveryContentDigest(content))(payloadContent(input.payload)),
         created_at: now,
         updated_at: now,
         accepted_at: now,
@@ -521,7 +628,7 @@ export class DeliveryOutbox extends EventEmitter {
   /** Idempotent begin permit, committed immediately before the pane side effect. */
   begin(deliveryId: string, targetBootId: string, attemptNo: number, evidence?: DeliveryAttemptEvidence): "begun" | "duplicate" | "stale" {
     const now = new Date().toISOString();
-    const transaction = this.db.transaction((): { outcome: "begun" | "duplicate" | "stale"; failed: boolean } => {
+    const transaction = this.db.transaction((): { outcome: "begun" | "duplicate" | "stale"; failed: boolean; mismatch?: boolean } => {
       const row = this.db.prepare("SELECT * FROM deliveries WHERE delivery_id=?").get(deliveryId) as OutboxRow | undefined;
       if (!row || row.target_daemon_boot_id !== targetBootId || row.attempt_no !== attemptNo) {
         return { outcome: "stale", failed: false };
@@ -535,6 +642,10 @@ export class DeliveryOutbox extends EventEmitter {
       const started = this.db.prepare(`
         SELECT COUNT(*) AS count FROM delivery_attempts WHERE delivery_id=?
       `).get(deliveryId) as { count: number };
+      // Only a digest on BOTH sides can disagree: a pre-#856 row or a caller
+      // that could not hash is "unknown", never a mismatch.
+      const mismatch = !!row.content_sha256 && !!evidence?.pastedContentSha256
+        && row.content_sha256 !== evidence.pastedContentSha256;
       if (started.count >= DURABLE_DELIVERY_MAX_ATTEMPTS) {
         const update = this.db.prepare(`
           UPDATE deliveries SET state='failed',updated_at=?,finished_at=?,last_error='delivery submission attempt limit reached'
@@ -548,8 +659,8 @@ export class DeliveryOutbox extends EventEmitter {
         INSERT INTO delivery_attempts(
           delivery_id,target_daemon_boot_id,attempt_no,state,begin_ack_at,
           backend,window_id,transcript_path,transcript_offset,transcript_session_id,submission_mode,
-          backend_version,queue_resume_policy
-        ) VALUES (?,?,?,'begun',?,?,?,?,?,?,?,?,?)
+          backend_version,queue_resume_policy,pasted_content_sha256,pasted_bytes_sha256,content_digest_mismatch
+        ) VALUES (?,?,?,'begun',?,?,?,?,?,?,?,?,?,?,?,?)
       `).run(
         deliveryId, targetBootId, attemptNo, now,
         evidence?.backend ?? null,
@@ -560,14 +671,20 @@ export class DeliveryOutbox extends EventEmitter {
         evidence?.submissionMode ?? null,
         evidence?.backendVersion ?? null,
         evidence?.queueResumePolicy ?? null,
+        evidence?.pastedContentSha256 ?? null,
+        evidence?.pastedBytesSha256 ?? null,
+        mismatch ? 1 : 0,
       );
       this.db.prepare(`
         UPDATE deliveries SET state='submission_started', submitted_at=?, updated_at=?
         WHERE delivery_id=? AND state='delivering'
       `).run(now, now, deliveryId);
-      return { outcome: "begun", failed: false };
+      return { outcome: "begun", failed: false, mismatch };
     });
     const result = transaction();
+    if (result.mismatch) {
+      this.emit("content_digest_mismatch", { deliveryId, targetBootId, attemptNo, targetInstance: this.get(deliveryId)?.targetInstance });
+    }
     if (result.outcome === "begun") this.emit("state", { deliveryId, state: "submission_started" });
     else if (result.failed) this.emit("state", { deliveryId, state: "failed" });
     return result.outcome;

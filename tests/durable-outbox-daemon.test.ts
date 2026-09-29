@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -249,6 +250,47 @@ describe("durable delivery through a real Daemon", () => {
 
     expect(h.tmux.pasteBuffer).toHaveBeenCalledOnce();
     expect(h.outbox.get(h.row.deliveryId)).toMatchObject({ state: "delivered", attemptNo: 1 });
+    h.outbox.close();
+  });
+
+  // #856: admission, arrival and pane-write digests on one attempt row.
+  it("records the received and pasted digests beside the admitted one", async () => {
+    vi.useFakeTimers();
+    const h = makeHarness();
+    h.daemon.pushChannelMessage("hello", deliveryMeta(h.row.deliveryId, h.claimed.attemptNo));
+    await vi.runAllTimersAsync();
+    await (h.daemon as any).pasteLock;
+
+    const db = (h.outbox as any).db;
+    const admitted = db.prepare("SELECT content_sha256 FROM deliveries WHERE delivery_id=?").get(h.row.deliveryId);
+    const attempt = db.prepare(`
+      SELECT pasted_content_sha256, pasted_bytes_sha256, content_digest_mismatch FROM delivery_attempts WHERE delivery_id=?
+    `).get(h.row.deliveryId);
+    const sha = (text: string) => createHash("sha256").update(text, "utf8").digest("hex");
+    expect(admitted.content_sha256).toBe(sha("hello"));
+    expect(attempt.pasted_content_sha256).toBe(sha("hello"));
+    // The bytes digest is of exactly what reached the pane, formatting included.
+    expect(attempt.pasted_bytes_sha256).toBe(sha(h.tmux.pasteBuffer.mock.calls[0]![0] as string));
+    expect(attempt.pasted_bytes_sha256).not.toBe(sha("hello"));
+    expect(attempt.content_digest_mismatch).toBe(0);
+    h.outbox.close();
+  });
+
+  it("flags a received text that differs from the admitted one, once, without blocking the delivery", async () => {
+    vi.useFakeTimers();
+    const h = makeHarness();
+    const mismatches: unknown[] = [];
+    h.outbox.on("content_digest_mismatch", event => mismatches.push(event));
+    h.daemon.pushChannelMessage("hellX", deliveryMeta(h.row.deliveryId, h.claimed.attemptNo));
+    await vi.runAllTimersAsync();
+    await (h.daemon as any).pasteLock;
+
+    const attempt = (h.outbox as any).db.prepare(
+      "SELECT content_digest_mismatch FROM delivery_attempts WHERE delivery_id=?",
+    ).get(h.row.deliveryId);
+    expect(attempt.content_digest_mismatch).toBe(1);
+    expect(mismatches).toEqual([expect.objectContaining({ deliveryId: h.row.deliveryId, targetInstance: "worker" })]);
+    expect(h.tmux.pasteBuffer).toHaveBeenCalledOnce();
     h.outbox.close();
   });
 
