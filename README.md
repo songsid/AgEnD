@@ -133,6 +133,8 @@ graph LR
 
 > **⚠️** All CLI backends run with `--dangerously-skip-permissions` (or equivalent). See [Security](docs/SECURITY.md).
 
+> **Codex:** each instance resumes the conversation recorded for its own working directory, so instances on git worktrees of one repository no longer take each other's sessions. See [Codex session resume](docs/features.md#codex-session-resume).
+
 > **WSL (Windows Subsystem for Linux):** Fully supported. The install script auto-detects WSL and avoids using Windows `node.exe` from PATH. If you encounter PATH issues, add to `/etc/wsl.conf`:
 > ```ini
 > [interop]

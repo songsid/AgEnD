@@ -45,6 +45,27 @@ Settings now applies changes as a job you can watch. `POST /api/settings/apply` 
 The panel can restart AgEnD itself for a change only a fresh process can adopt, behind its own confirmation, its own idempotency key, and a rate limit of one restart per 10 minutes and three per hour that is written to disk before anything is launched. The restart is announced in the chat channel first and is refused if it cannot be announced, so a panel restart is never invisible to the people who would notice it was not them.
 
 ### Upgrade Notes
+- **[Behaviour change] Codex instances resume their own conversation, not a
+  sibling worktree's (#984).** Codex 0.157's `codex resume --last` picks the
+  newest session of the whole git repository, so AgEnD instances on worktrees of
+  one repo were taking each other's sessions: a "conversation is open in another
+  app" lock screen while the other instance ran, or its conversation silently
+  continued here. AgEnD now reads Codex's session database read-only and runs
+  `codex resume <id>` for the newest session recorded for exactly this
+  instance's working directory. What changes for you:
+  - An instance whose sessions are in its own directory resumes the same
+    conversation as before.
+  - A **new** instance in a repository that other Codex instances already use
+    starts a **new** conversation instead of inheriting a sibling's.
+  - If the session database cannot be read (for example after a Codex schema
+    change), AgEnD starts a new conversation when another Codex instance shares
+    the repository, and falls back to `codex resume --last` when none does; either
+    way the instance's topic gets a notice. Earlier conversations are never
+    deleted and can be resumed by hand with `codex resume <id>`.
+  - Nothing is migrated and AgEnD writes no Codex state. A conversation that was
+    already taken over before this release (for example a fork created from the
+    lock screen) stays where Codex recorded it: check it, and archive a wrong
+    fork in Codex, before restarting an affected instance.
 - **[Behaviour change] Agents no longer get every tool by default.** An instance
   with no `tool_set` in `fleet.yaml` used to be handed all 47 of AgEnD's tools,
   including `create_instance`, `delete_instance`, `deploy_template` and
@@ -91,6 +112,15 @@ The panel can restart AgEnD itself for a change only a fresh process can adopt, 
 - **Dashboard and Settings links now exchange their token for a session cookie** — opening a link redeems `?token=` once, sets an `HttpOnly; SameSite=Strict` cookie, and redirects to the same page without the token, so the credential stays out of the address bar, browser history and any log that records request URLs. `X-Agend-Token` still works for scripts and the CLI, but a URL token is no longer accepted for a write. `agend web-token rotate` revokes every issued link and cookie at once.
 - **Fewer changes ask for a full AgEnD restart** — "restart AgEnD" used to appear for every cold fleet default, including `backend` and `model`, which the agents absorb by restarting. It is now limited to settings read once when a subsystem is constructed (channel bindings, `health_port`, `defaults.locale`, `cost_guard`, `webhooks`, `daily_summary`, and the two scheduler keys the scheduler captures at startup).
 - **A failed self-restart needs the change applied again** — if the restart cannot be launched, its row is marked failed and the job is finished rather than left open for another attempt. Press Apply again to get a fresh job whose fleet row can be restarted. This is the fail-closed side of "one restart per job": a job whose launch failed must not stay a reusable restart button.
+
+### Fixed
+- **Codex session-lock and resume-directory screens no longer stall delivery
+  silently (#984).** Codex's "This conversation is open in another app (r retry /
+  f fork)" screen and its "Working directory · resume" picker matched nothing, so
+  startup assumed the screen was ready and messages waited 30 minutes in the idle
+  gate before failing. Both are now held: delivery stays blocked, the operator is
+  told, and AgEnD never presses `r`, `f` or a picker option for you.
+
 
 ## [2.1.5] - 2026-09-16
 

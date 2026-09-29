@@ -39,6 +39,8 @@ export default defineConfig({
       "tests/tmux-kill-window-confirmed.test.ts",
       "tests/view-api.test.ts",
       "tests/web-terminal-socket-cleanup.test.ts",
+      // Opt-in (AGEND_CODEX_E2E=1): real codex CLI on a private tmux socket.
+      "tests/codex-exact-cwd-resume-e2e.test.ts",
     ],
     env: {
       PATH: process.env.PATH ?? "",

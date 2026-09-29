@@ -396,7 +396,16 @@ Agent 可以在透過 `systemPrompt` 參數建立 instance 時傳入自訂系統
 
 ## Codex session 恢復 (Codex session resume)
 
-OpenAI Codex 後端支援 session 恢復。當 session-id 檔案存在時，後端使用 `codex resume <session-id>` 而非重新啟動。同時偵測 "You've hit your usage limit" 作為觸發暫停的錯誤。
+每個 Codex instance 恢復的都是**自己的**對話。啟動時，AgEnD 以唯讀方式讀 Codex 共用的 session 資料庫（`~/.codex/state_5.sqlite`），挑出「記錄的工作目錄與 instance 完全相符」的最新互動 session，執行 `codex resume <id>`。AgEnD 不用 `codex resume --last`：從 Codex 0.157 起它會挑整個 git repo 裡最新的 session，同一個 repo 的不同 worktree 上的 instance 就會互搶 session（#984）。
+
+| 情況 | 啟動方式 |
+|---|---|
+| 這個目錄有 session | `codex resume <id>` |
+| 這個目錄沒有 session（例如同 repo 裡新建的 instance） | 新對話 |
+| 讀不到 session 資料庫，且同 repo 有其他 Codex instance | 新對話，並在該 instance 的 topic 發通知 |
+| 讀不到 session 資料庫，且同 repo 沒有其他 Codex instance | `codex resume --last`，並發通知 |
+
+AgEnD 不寫入任何 Codex state，也不搬移 session 檔；session 與 lock 都留在共用的 `~/.codex`，所以在 terminal 執行 `codex resume` 仍看得到所有 instance 的對話。若 Codex 顯示「This conversation is open in another app」或「Working directory · resume」選擇器，AgEnD 會擋住投遞並通知 operator，不會替你按鍵。同時偵測 "You've hit your usage limit" 作為觸發暫停的錯誤。
 
 ## Rate limit failover 冷卻 (Rate limit failover cooldown)
 

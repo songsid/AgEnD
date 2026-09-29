@@ -17,6 +17,7 @@ const required = [
   "tests/tmux-kill-window-confirmed.test.ts",
   "tests/view-api.test.ts",
   "tests/web-terminal-socket-cleanup.test.ts",
+  "tests/codex-exact-cwd-resume-e2e.test.ts",
 ];
 
 const problems = [];
