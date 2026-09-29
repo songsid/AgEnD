@@ -4,7 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AgEnD View</title>
+<link rel="stylesheet" href="/assets/shell.css">
 <script src="/assets/agend-auth.js"></script>
+<script src="/assets/shell.js" defer></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   :root {
@@ -187,7 +189,7 @@
     <button class="close" id="usageClose" data-i18n-title="close" title="Close">×</button>
     <div id="usageContent"></div>
   </aside>
-  <div id="sidebar"><h1 data-i18n="viewTitle">AgEnD · View</h1><div id="list"></div>
+  <div id="sidebar"><h1 data-i18n="viewTitle">AgEnD · View</h1><nav data-agend-nav data-compact data-current="view" style="margin:0 10px 8px"></nav><div id="list"></div>
     <div id="filterBar">
       <div class="filter-wrap">
         <svg class="filter-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3.5 3.5" stroke-linecap="round"/></svg>

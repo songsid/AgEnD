@@ -7,6 +7,9 @@
 ## [未發佈] (Unreleased)
 
 ### 安全 (Security)
+- **三個網頁面板共用同一條導覽列與 Session 選單，`/` 直接開 dashboard。** `/ui`、`/view`、`/settings` 都有相同的「Dashboard · View · Settings」連結與 Session 按鈕：顯示目前以哪個瀏覽器登入、session 何時結束、其他已登入的裝置（各自可登出）以及「全部登出」。只是一支小 script 與樣式表（`/assets/shell.js`、`/assets/shell.css`），不是重寫面板。
+- **Dashboard 不再依賴 Server-Sent Events。** 即時串流 15 秒沒有任何訊息或一直失敗時，頁面改為每 5 秒用 `GET /ui/poll` 取得相同的狀態與聊天訊息，串流恢復後再切回去。輪詢與串流使用同一個 `<boot>-<id>` 游標，所以兩者交替時不會重複也不會漏訊息，fleet 重啟後也一樣。（Cloudflare Quick Tunnel 不支援 SSE，會緩衝串流的 proxy 看起來就像從不送資料的伺服器。）
+- **Dashboard 不再從 Google 載入字型，每個面板都帶 `Content-Security-Policy`**，把 script、樣式、圖片、字型與連線都限制在本站（`connect-src 'self'`），即使頁面上真的跑了不該跑的 script，也無法把讀到的內容送到別的伺服器。（`'unsafe-inline'` 暫時保留：面板是單檔內嵌 script，dashboard 也用了 `onclick=` 屬性。）
 - **Discord slash 指令現在遵循同一張指令表（#1148）。** 指令適用於哪些頻道、誰能使用，改由一個地方宣告（`src/command-table.ts`），不再散在兩份複製的 handler 裡；
   選單描述上的 🔒 由這張表產生，標籤不會再和規則不一致。它位於先前加入的授權關卡「後面」，只會收窄關卡放行的範圍。授權級別為：*任何人*、
   *頻道管理員*（fleet 頻道＝fleet admin；ClassicBot 頻道＝fleet admin **或** ClassicBot admin）、*fleet admin*、*ClassicBot admin*。行為變更：
@@ -268,6 +271,10 @@ dashboard 與 `/view` 的側欄現在以原始 instance 名稱作為主要標籤
 - **`/login` 尚未支援 Org SSO** — `/login` 指令是 beta；organization SSO 流程是已知限制。
 
 ### 新增 (Added)
+**三個網頁面板共用同一組導覽與登入狀態選單。** `/ui`、`/view`、`/settings` 現在都有相同的「Dashboard · View · Settings」連結，以及一個 Session 按鈕：顯示目前登入的瀏覽器、登入何時結束、其他已登入的裝置（每台都能個別登出）與「全部登出」。在面板之間切換不必再登入，`/` 也會直接開啟 dashboard。各頁維持原本的樣子，選單借用各頁自己的顏色；這是一支小 script（`/assets/shell.js`）加一份樣式，不是重寫面板。
+
+**Dashboard 不再依賴 Server-Sent Events。** 如果即時串流 15 秒沒有任何動靜、或一直失敗，頁面會每 5 秒用一般請求取回同樣的狀態與聊天訊息（`GET /ui/poll`），串流恢復後自動切回，且不會重複顯示訊息。有些路徑無法承載 SSE（Cloudflare 文件說 Quick Tunnel 不支援），而會緩衝串流的代理，看起來和一個永遠不送資料的伺服器一模一樣。
+
 - **`/login` 指令** — 直接從 Telegram／Discord 重新登入 CLI 後端，不必再 SSH 進主機。執行前會先檢查現有登入，若仍有效會要求確認，避免誤把還能用的登入洗掉。登入成功後，原本在執行的 instance 會自動重啟以套用新憑證（#611、#613、#614、#617）。
 - **`/install-cli` 指令** — 遠端在主機上安裝 CLI 後端，並整合進 quickstart。安裝指令改為各家目前的官方做法：kiro-cli 改用 `curl` 安裝腳本（原為 Homebrew）、codex 改用官方 standalone 安裝程式（原為 npm）（#619–#621、#624）。
 - **`/clear` 指令** — 清空 instance 的 context。**限管理員，而且必須先按確認鈕**才會真的執行，單獨下指令不會觸發破壞性動作（#529、#549）。

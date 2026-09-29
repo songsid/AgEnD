@@ -231,7 +231,11 @@ describe("health server response headers (live)", () => {
     expect(responses.map(r => r.status)).toContain(403);
     for (const res of responses) {
       expect(res.headers["x-frame-options"]).toBe("DENY");
-      expect(res.headers["content-security-policy"]).toBe("frame-ancestors 'none'");
+      const csp = String(res.headers["content-security-policy"]);
+      // Cannot be framed, and script that does run has nowhere to send what it reads.
+      for (const directive of ["frame-ancestors 'none'", "default-src 'self'", "connect-src 'self'", "img-src 'self' data: blob:",
+        "form-action 'self'", "base-uri 'none'", "object-src 'none'"]) expect(csp, directive).toContain(directive);
+      expect(csp).not.toMatch(/https?:|\*/);
       expect(res.headers["x-content-type-options"]).toBe("nosniff");
       expect(res.headers["cache-control"]).toBe("no-store");
     }

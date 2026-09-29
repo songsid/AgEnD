@@ -288,6 +288,22 @@ export function handleWebRequest(
 
   // ── SSE ────────────────────────────────────────────────
 
+  // The same data as the stream, over plain requests, for a path that cannot carry SSE (Cloudflare Quick
+  // Tunnels do not; a buffering proxy looks like a mute server). `after` is the same `<boot>-<id>` cursor
+  // as the stream's Last-Event-ID, so polling and the stream can take turns without a message twice or
+  // a gap — and a cursor from before a fleet restart gets the new process's backlog. No cursor yet: just
+  // the current one (the page has /ui/history for what was said before it loaded).
+  if (method === "GET" && path === "/ui/poll") {
+    const history = ctx.webChatHistory;
+    const cursor = parseLastEventId(url.searchParams.get("after") ?? undefined);
+    json(res, 200, {
+      status: ctx.getUiStatus(),
+      messages: history ? history.replayFor(cursor) : [],
+      cursor: history ? `${history.boot}-${history.lastId}` : null,
+    });
+    return true;
+  }
+
   if (method === "GET" && path === "/ui/events") {
     res.writeHead(200, {
       "Content-Type": "text/event-stream",
