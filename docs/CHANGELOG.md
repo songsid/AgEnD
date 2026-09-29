@@ -114,6 +114,15 @@ The panel can restart AgEnD itself for a change only a fresh process can adopt, 
 - **A failed self-restart needs the change applied again** — if the restart cannot be launched, its row is marked failed and the job is finished rather than left open for another attempt. Press Apply again to get a fresh job whose fleet row can be restarted. This is the fail-closed side of "one restart per job": a job whose launch failed must not stay a reusable restart button.
 
 ### Fixed
+- **Settings › Connections & Bots rows no longer break words or clip.** Since v2.1.7 each
+  row (bot type, id, token env var, group/guild, access mode, allowed users, token status,
+  connection state, Settings button) was a non-wrapping flex row, so every item shrank and
+  wrapped inside its own box — "存取模式:" and "設定" split mid-word, chips became two lines —
+  and the tail ("Connected") was clipped by the card. Items now keep their own text on one
+  line, the row wraps *between* items when it is too long, and the token-status / state /
+  Settings cluster stays together at the end. Long values (env names, user ids) break
+  anywhere rather than widen the row. CSS/markup layout only; nothing about the data or the
+  Settings button changed. Checked in Chromium at nine widths (1280–390 px) in both languages.
 - **Codex session-lock and resume-directory screens no longer stall delivery
   silently (#984).** Codex's "This conversation is open in another app (r retry /
   f fork)" screen and its "Working directory · resume" picker matched nothing, so

@@ -14,6 +14,7 @@
   - 不做任何搬移，AgEnD 也不寫入任何 Codex state。這個版本之前已經被搶走的對話（例如從 lock 畫面按 fork 產生的），Codex 記在哪裡就還在哪裡：重啟受影響的 instance 前，請先確認，並在 Codex 裡把錯誤的 fork 封存。
 
 ### 修正 (Fixed)
+- **Settings › Connections & Bots 的每一列不再斷字或被裁掉。** 自 v2.1.7 起，每一列（bot 類型、id、token 環境變數、群組/guild、存取模式、允許的使用者、token 狀態、連線狀態、設定按鈕）是不換行的 flex 列，所有項目被壓縮並在自己的框內換行 — 「存取模式:」與「設定」在字中間斷開、標籤變成兩行 — 尾端的「Connected」還被卡片裁掉。現在每個項目的文字保持單行，列太長時是在項目之間換行，token 狀態 / 連線狀態 / 設定按鈕這一組會一起留在列尾。很長的值（環境變數名稱、使用者 id）會在任意位置斷開，而不是把列撐寬。只改版面（CSS 與標記），資料與設定按鈕的行為沒有變。已用 Chromium 在 9 種寬度（1280–390 px）與兩種語言下檢查。
 - **Codex 的 session lock 畫面與 resume 目錄選擇器不再讓投遞默默卡住（#984）。** 「This conversation is open in another app（r retry / f fork）」畫面和「Working directory · resume」選擇器原本都認不出來，啟動時被當成已就緒，訊息會在 idle gate 等滿 30 分鐘後失敗。現在兩者都會被 hold：投遞維持擋住、通知 operator，AgEnD 絕不會替你按 `r`、`f` 或選擇器的任何選項。
 
 ## [2.1.4] - 2026-09-07
