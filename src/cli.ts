@@ -2458,6 +2458,13 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean }): Promise<
     const totalGB = totalmem() / (1024 ** 3);
     const usedGB = (totalmem() - freemem()) / (1024 ** 3);
     console.log(`\nInstances: ${runningCount} running, ${pausedCount} paused | Fleet Mem: ${(totalMemMb / 1024).toFixed(1)} GB | System Memory: ${usedGB.toFixed(1)} / ${totalGB.toFixed(1)} GB`);
+    // #1003: a working completion nobody knew to install. Tell the person at
+    // the terminal once per `ls` while nothing is installed — file checks only,
+    // no shell spawned, so ls stays fast.
+    if (process.stdout.isTTY) {
+      const { completionTipNeeded } = await import("./completion-install.js");
+      if (completionTipNeeded()) console.log("Tip: agend completion install  — then agend attach <TAB> completes instance names.");
+    }
 }
 
 program
@@ -2471,15 +2478,16 @@ program
 
 program
   .command("completion")
-  .description("Print a shell completion script, or install it (bash or zsh)")
-  .argument("<target>", `"install", or a shell to print for (${COMPLETION_SHELLS.join(", ")})`)
-  .argument("[shell]", "with install: limit to one shell (default: detect)")
-  .option("--modify-rc", "with install: authorize adding the zsh eval line to ~/.zshrc")
+  .description("Print a shell completion script, install it, or check it (bash or zsh)")
+  .argument("<target>", `"install", "status", or a shell to print for (${COMPLETION_SHELLS.join(", ")})`)
+  .argument("[shell]", "with install/status: limit to one shell (default: detect)")
+  .option("--modify-rc", "with install: authorize adding the eval line to ~/.zshrc (or ~/.bashrc when bash-completion is not loaded)")
   .option("--refresh", "with install: only rewrite artifacts that already exist (used by agend update)")
   .addHelpText("after", `
 Recommended:
   agend completion install          # bash: static file, no rc edit; zsh: prints what to do
-  agend completion install --modify-rc   # also add the zsh line to ~/.zshrc
+  agend completion install --modify-rc   # also add the rc line (zsh, or bash without bash-completion)
+  agend completion status           # does <TAB> actually work in a new shell?
 
 Manual (fallback):
   bash   echo 'eval "$(agend completion bash)"' >> ~/.bashrc
@@ -2498,8 +2506,20 @@ Then reload the shell. Tab-completes instance names for \`agend attach\` and
       fleetInstanceCommands: ["start", "stop", "restart"],
     };
 
+    if (target === "status") {
+      const { detectShells, completionStatus } = await import("./completion-install.js");
+      if (shellArg && !(COMPLETION_SHELLS as readonly string[]).includes(shellArg)) {
+        console.error(`Unsupported shell: ${shellArg}. Supported: ${COMPLETION_SHELLS.join(", ")}`);
+        process.exit(2);
+      }
+      const shells = shellArg ? [shellArg as CompletionShell] : detectShells();
+      if (shells.length === 0) { console.log("  No bash or zsh detected."); return; }
+      for (const r of completionStatus(shells)) console.log(`  ${r.shell}: ${r.state} — ${r.detail}`);
+      return;
+    }
+
     if (target === "install") {
-      const { detectShells, installCompletions } = await import("./completion-install.js");
+      const { detectShells, installCompletions, probeBashCompletion } = await import("./completion-install.js");
       const { zshCompletion } = await import("./completion.js");
       if (shellArg && !(COMPLETION_SHELLS as readonly string[]).includes(shellArg)) {
         console.error(`Unsupported shell: ${shellArg}. Supported: ${COMPLETION_SHELLS.join(", ")}`);
@@ -2513,18 +2533,24 @@ Then reload the shell. Tab-completes instance names for \`agend attach\` and
       const results = installCompletions(
         { bash: completionScript("bash", spec), zshFpath: zshCompletion(spec, "fpath") },
         shells,
-        { modifyRc: opts.modifyRc, refresh: opts.refresh },
+        // #1003: the bash file only works where bash-completion is loaded;
+        // check the user's real interactive bash instead of assuming it.
+        { modifyRc: opts.modifyRc, refresh: opts.refresh, bashCompletionActive: () => probeBashCompletion() },
       );
+      let active = false;
       for (const r of results) {
         if (r.status === "hint") console.log(`  ${r.shell}: ${r.hint}`);
         else if (r.status === "skipped") { /* refresh mode, nothing was installed before */ }
-        else console.log(`  ${r.shell}: completion ${r.status}${r.path ? ` (${r.path})` : ""}`);
+        else { active = true; console.log(`  ${r.shell}: completion ${r.status}${r.path ? ` (${r.path})` : ""}`); }
+      }
+      if (active && !opts.refresh) {
+        console.log("  Open a new terminal (or reload your shell rc) to use it — e.g. agend attach <TAB>.");
       }
       return;
     }
 
     if (!(COMPLETION_SHELLS as readonly string[]).includes(target)) {
-      console.error(`Unsupported target: ${target}. Supported: install, ${COMPLETION_SHELLS.join(", ")}`);
+      console.error(`Unsupported target: ${target}. Supported: install, status, ${COMPLETION_SHELLS.join(", ")}`);
       process.exit(2);
     }
     console.log(completionScript(target as CompletionShell, spec));

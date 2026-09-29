@@ -147,3 +147,112 @@ describe("installCompletions", () => {
     ]);
   });
 });
+
+// ── #1003: the bash file only works where bash-completion is loaded ─────────
+import { spawnSync } from "node:child_process";
+import {
+  BASH_RC_MARKER,
+  completionStatus,
+  completionTipNeeded,
+  probeBashCompletion,
+} from "../src/completion-install.js";
+
+const BC_MAIN = "/usr/share/bash-completion/bash_completion";
+const bashFile = () => join(HOME, ".local", "share", "bash-completion", "completions", "agend");
+
+describe("bash completion activation (#1003)", () => {
+  it("keeps the static file and touches no rc file when bash-completion is loaded", () => {
+    const r = installBashCompletion(BASH_SCRIPT, { home: HOME, isRoot: false, bashCompletionActive: () => "active" });
+    expect(r).toEqual({ shell: "bash", status: "installed", path: bashFile() });
+    expect(existsSync(join(HOME, ".bashrc"))).toBe(false);
+  });
+
+  it("says <TAB> will not work, and why, when bash-completion is not loaded and no rc edit is authorized", () => {
+    writeFileSync(join(HOME, ".bashrc"), "# mine\n");
+    const r = installBashCompletion(BASH_SCRIPT, { home: HOME, isRoot: false, bashCompletionActive: () => "inactive" });
+    expect(r.status).toBe("hint");
+    expect(r.hint).toMatch(/bash-completion is not loaded.*--modify-rc/);
+    expect(readFileSync(join(HOME, ".bashrc"), "utf-8")).toBe("# mine\n");
+  });
+
+  it("adds the marker-guarded eval line to ~/.bashrc exactly once when authorized", () => {
+    writeFileSync(join(HOME, ".bashrc"), "# mine\n");
+    const opts = { home: HOME, isRoot: false, modifyRc: true, bashCompletionActive: () => "inactive" as const };
+    expect(installBashCompletion(BASH_SCRIPT, opts)).toMatchObject({ status: "installed", path: join(HOME, ".bashrc") });
+    expect(installBashCompletion(BASH_SCRIPT, opts)).toMatchObject({ status: "unchanged" });
+    const rc = readFileSync(join(HOME, ".bashrc"), "utf-8");
+    expect(rc.startsWith("# mine\n")).toBe(true);
+    expect(rc.split(BASH_RC_MARKER).length - 1).toBe(1);
+    expect(rc).toContain('eval "$(agend completion bash)"');
+  });
+
+  it("does not block the install when activation cannot be checked", () => {
+    expect(installBashCompletion(BASH_SCRIPT, { home: HOME, isRoot: false, bashCompletionActive: () => "unknown" }).status).toBe("installed");
+  });
+
+  it("never probes or edits an rc file in refresh mode (agend update)", () => {
+    installBashCompletion(BASH_SCRIPT, { home: HOME, isRoot: false });
+    const probe = () => { throw new Error("refresh must not probe"); };
+    expect(installBashCompletion(BASH_SCRIPT + "#v2\n", { home: HOME, isRoot: false, refresh: true, modifyRc: true, bashCompletionActive: probe }).status).toBe("updated");
+    expect(existsSync(join(HOME, ".bashrc"))).toBe(false);
+  });
+
+  it.skipIf(!existsSync(BC_MAIN))("probes a real interactive bash: active only when its rc loads bash-completion", () => {
+    writeFileSync(join(HOME, ".bashrc"), `. ${BC_MAIN}\n`);
+    expect(probeBashCompletion(HOME)).toBe("active");
+    writeFileSync(join(HOME, ".bashrc"), "# no bash-completion here\n");
+    // Some distros source bash-completion from /etc/bash.bashrc for everyone.
+    const systemWide = spawnSync("bash", ["-c", "grep -v '^\\s*#' /etc/bash.bashrc 2>/dev/null | grep -q bash_completion"]).status === 0;
+    expect(probeBashCompletion(HOME)).toBe(systemWide ? "active" : "inactive");
+  });
+});
+
+describe("completion status (#1003)", () => {
+  const sys = { systemBashDir: join(SYS, "bash"), systemZshDir: join(SYS, "zsh") };
+
+  it("reports missing, inactive and active for bash", () => {
+    expect(completionStatus(["bash"], { home: HOME, ...sys, bashCompletionActive: () => "active" })[0]!.state).toBe("missing");
+    installBashCompletion(BASH_SCRIPT, { home: HOME, isRoot: false });
+    expect(completionStatus(["bash"], { home: HOME, ...sys, bashCompletionActive: () => "inactive" })[0]).toMatchObject({ state: "inactive", detail: expect.stringContaining("--modify-rc") });
+    expect(completionStatus(["bash"], { home: HOME, ...sys, bashCompletionActive: () => "active" })[0]!.state).toBe("active");
+    installBashCompletion(BASH_SCRIPT, { home: HOME, isRoot: false, modifyRc: true, bashCompletionActive: () => "inactive" });
+    expect(completionStatus(["bash"], { home: HOME, ...sys, bashCompletionActive: () => "inactive" })[0]!.state).toBe("active");
+  });
+
+  it("reports zsh active only with the rc marker or the site-functions file", () => {
+    expect(completionStatus(["zsh"], { home: HOME, ...sys })[0]!.state).toBe("missing");
+    installZshCompletion(ZSH_FPATH, { home: HOME, isRoot: false, modifyRc: true });
+    expect(completionStatus(["zsh"], { home: HOME, ...sys })[0]!.state).toBe("active");
+  });
+});
+
+describe("the agend ls tip (#1003)", () => {
+  const sys = { systemBashDir: join(SYS, "bash"), systemZshDir: join(SYS, "zsh") };
+  it("shows only while bash or zsh is in use and nothing is installed", () => {
+    expect(completionTipNeeded({ SHELL: "/bin/bash" }, { home: HOME, ...sys })).toBe(true);
+    expect(completionTipNeeded({ SHELL: "/usr/bin/fish" }, { home: HOME, ...sys })).toBe(false);
+    installBashCompletion(BASH_SCRIPT, { home: HOME, isRoot: false });
+    expect(completionTipNeeded({ SHELL: "/bin/bash" }, { home: HOME, ...sys })).toBe(false);
+  });
+
+  it("also stops once only an rc line exists", () => {
+    installZshCompletion(ZSH_FPATH, { home: HOME, isRoot: false, modifyRc: true });
+    expect(completionTipNeeded({ SHELL: "/bin/zsh" }, { home: HOME, ...sys })).toBe(false);
+  });
+});
+
+describe("agend completion install, for real (#1003)", () => {
+  it.skipIf(!existsSync(BC_MAIN))("tells a shell without bash-completion that <TAB> will not work yet, then fixes it with --modify-rc", () => {
+    writeFileSync(join(HOME, ".bashrc"), "# no bash-completion\n");
+    const systemWide = spawnSync("bash", ["-c", "grep -v '^\\s*#' /etc/bash.bashrc 2>/dev/null | grep -q bash_completion"]).status === 0;
+    if (systemWide) return;
+    const cli = (...args: string[]) => spawnSync(process.execPath, ["--import", "tsx", join(process.cwd(), "src", "cli.ts"), "completion", ...args],
+      { env: { ...process.env, HOME, SHELL: "/bin/bash", XDG_DATA_HOME: "" }, encoding: "utf-8", timeout: 60_000 });
+    const plain = cli("install", "bash");
+    expect(plain.stdout).toMatch(/bash-completion is not loaded/);
+    const fixed = cli("install", "bash", "--modify-rc");
+    expect(fixed.stdout).toMatch(/completion installed .*\.bashrc/);
+    expect(fixed.stdout).toMatch(/Open a new terminal/);
+    expect(cli("status", "bash").stdout).toMatch(/bash: active/);
+  }, 90_000);
+});
