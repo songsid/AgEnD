@@ -498,6 +498,9 @@ const CODEX_FALLBACK_MODELS: ModelOption[] = [
   { id: "gpt-5.6-luna", label: "GPT-5.6 Luna", description: "fast, efficient agentic coding" },
 ];
 
+/** A live Codex status row, whatever its title (#964); see getBusyPattern. */
+const CODEX_LIVE_STATUS_ROW = /(?:^|\n)•[ \t]+\S[^\r\n]*?\((?:(?:\d+[hms][ \t]+)+[•·][ \t]+)?esc to interrupt\)(?:[ \t]+·[ \t][^\r\n]*)?[ \t]*(?=\r?\n|$)/i;
+
 const CODEX_RUN_STATE_STATUS_ITEMS = new Set(["run-state", "status"]);
 // Deliberately small allow-list of built-in Codex status_line values. These
 // patterns identify positive rendered chrome; unknown/custom items fail closed.
@@ -708,9 +711,20 @@ export class CodexBackend implements CliBackend {
     return false;
   }
 
-  /** Live status chrome that must veto the broad prompt/context ready match. */
+  /**
+   * Live status chrome that must veto the broad prompt/context ready match.
+   *
+   * #964: Codex relabels the live status row with the reasoning title
+   * (`• Planning the edit (12s • esc to interrupt)`), so "Working" is only one
+   * of its titles. Match the row's shape instead, as observed on 0.156/0.157:
+   * a column-zero bullet, any title, then the `(… esc to interrupt)`
+   * affordance with an optional elapsed time (`12s`, `2m 05s`, `·` or `•`
+   * separator), optionally followed by ` · N background terminal(s) …`.
+   * Anchoring on the whole row, not on the phrase, keeps an agent reply that
+   * merely mentions "esc to interrupt" from pinning the pane as busy.
+   */
   getBusyPattern(): RegExp {
-    return /(?:^|\n)•\s+Working\b[^\n]*\besc to interrupt\b/i;
+    return CODEX_LIVE_STATUS_ROW;
   }
 
   /**

@@ -317,6 +317,40 @@ describe("Daemon event-driven pane monitor", () => {
     vi.useRealTimers();
   });
 
+  // #964: busy with a reasoning title and a footer the ready proof DOES
+  // recognise — the false-ready that let a delivery land mid-turn.
+  it("keeps a reasoning-titled busy Codex working even under a recognised Context footer (#964)", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const reasoningBusy = (s: number) => [
+      `• Planning the edit (${s}s • esc to interrupt)`,
+      "",
+      "› Ask Codex to do anything",
+      "  Context 19% left",
+    ].join("\n");
+    const monitor = makeCodexMonitor(reasoningBusy(1));
+    try {
+      (monitor.daemon as any).startInstanceStateMonitor();
+      await vi.advanceTimersByTimeAsync(0);
+      // A long tool call: the row sits still and the pane goes quiet, which is
+      // exactly when the silence gate asks the ready pattern for a verdict.
+      monitor.setPane(reasoningBusy(12));
+      monitor.control.emit("output:@codex", { paneId: "%codex", windowId: "@codex", at: Date.now() });
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(monitor.daemon.getInstanceState()).toBe("working");
+      expect((monitor.daemon as any).isPaneIdleForDelivery("@codex")).toBe(false);
+
+      // The turn ends: the same footer, without the status row, is idle.
+      monitor.setPane(codexIdleFrame);
+      await redrawFor(monitor, 2_000);
+      expect(monitor.daemon.getInstanceState()).toBe("idle");
+      expect((monitor.daemon as any).isPaneIdleForDelivery("@codex")).toBe(true);
+    } finally {
+      monitor.close();
+      vi.useRealTimers();
+    }
+  });
+
   /**
    * The safety sweep fires for every daemon on a timer, and recordOutput sets
    * working unconditionally. Without a settled guard, a Codex that had gone
