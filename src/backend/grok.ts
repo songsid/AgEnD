@@ -10,6 +10,45 @@ import { appendWithMarker, removeMarker } from "./marker-utils.js";
 const SESSION_ID_RE = /^[A-Za-z0-9-]+$/;
 const MODEL_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/;
 
+/** The weekly-limit picker is a paid-action modal, not an error line to dismiss. */
+function grokWeeklyLimitDialog(): RuntimeDialog {
+  const pattern = /You hit your weekly limit\./;
+  return {
+    pattern,
+    keys: [],
+    description: "Grok Build weekly limit (Grok 週限) — waiting for operator choice",
+    blocksDelivery: true,
+    holdOnly: true,
+    inputBlocked: true,
+    isActive(pane) {
+      pattern.lastIndex = 0;
+      if (!pattern.test(pane)) return false;
+      const lines = pane.split(/\r?\n/).map(line => line.trimEnd());
+      let end = lines.length - 1;
+      while (end >= 0 && !lines[end].trim()) end--;
+      if (end < 0 || !/^Tab:next answer\s+│\s+Esc:scrollback\s+│\s+Shift\+x:dismiss\s*$/.test(lines[end].trim())) return false;
+
+      const text = (line: string) => line.replace(/^\s*┃\s?/, "").trim();
+      const first = Math.max(0, end - 12);
+      const current = lines.slice(first, end + 1);
+      const find = (predicate: (line: string) => boolean, from = 0) => {
+        for (let i = from; i < current.length; i++) if (predicate(text(current[i]))) return i;
+        return -1;
+      };
+      const title = find(line => line === "You hit your weekly limit.");
+      const upgrade = find(line => /^1 \(○\) Upgrade tier\s+Upgrade to a higher tier for more usage$/.test(line), title + 1);
+      const credits = find(line => /^2 \(○\) Buy more credits\s+Purchase credits to keep using Grok Build$/.test(line), upgrade + 1);
+      const submit = find(line => /^↑\/↓ navigate · y copy\s+Enter:submit$/.test(line), credits + 1);
+      if (title < 0 || upgrade < 0 || credits < 0 || submit < 0) return false;
+      if (![title, upgrade, credits, submit].every(index => /^\s*┃/.test(current[index]))) return false;
+      // The Grok keyboard legend must immediately follow the choice footer;
+      // another composer or screen below the modal makes the old text stale.
+      const between = current.slice(submit + 1).map(text).filter(Boolean);
+      return between.length === 1 && /^Tab:next answer\s+│\s+Esc:scrollback\s+│\s+Shift\+x:dismiss$/.test(between[0]);
+    },
+  };
+}
+
 /** Parse the text format emitted by `grok models`. */
 export function parseGrokModelsOutput(output: string): import("./types.js").ModelOption[] {
   const models: import("./types.js").ModelOption[] = [];
@@ -221,6 +260,10 @@ export class GrokBackend implements CliBackend {
 
   getStartupDialogs(): StartupDialog[] {
     return [
+      // Grok Build's weekly-limit picker is a paid-action modal. Keep it ahead
+      // of broad startup prompts and hold it for an operator: never choose a
+      // tier, buy credits, or submit the menu automatically.
+      grokWeeklyLimitDialog(),
       // Animated intro logo (spinning braille X). It redraws continuously, so
       // AgEnD's idle detector (2s of silence) never fires and messages queue
       // forever. User-confirmed fix: one Enter skips to the ready prompt.
@@ -296,6 +339,9 @@ export class GrokBackend implements CliBackend {
         keys: ["Enter"],
         description: "Grok intro logo — skip to prompt",
       },
+      // This is a modal rather than a quota log line. Hold delivery until an
+      // operator resolves it; all available choices can incur paid usage.
+      grokWeeklyLimitDialog(),
       // Mid-task tool-approval prompt ("1. Yes, always  2. Yes  3. No"). Select
       // option 1 so the fleet runs unattended. Primary mechanism is
       // --always-approve at launch; this is the net if that flag is absent/ignored.
