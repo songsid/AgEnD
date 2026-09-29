@@ -595,6 +595,19 @@ export class InstanceLifecycle {
    * against a plain event emitter — the alternative is a real Daemon, which
    * means a real tmux window, which is why this rule went untested before.
    */
+  /**
+   * A backend's launch fallback (e.g. Codex could not read its session DB and
+   * chose which conversation to continue, #984). Posted even during a planned
+   * restart: an upgrade restart is exactly when a changed Codex schema shows
+   * up, and the operator needs to know which conversation each instance is in.
+   */
+  attachLaunchWarningHandler(name: string, daemon: IncidentEventSource): void {
+    daemon.on("backend_launch_warning", safeHandler((data: { name: string; message: string }) => {
+      this.ctx.eventLog?.insert(name, "backend_launch_warning", { message: data.message });
+      this.ctx.notifyInstanceTopic(name, t("inst.backend_launch_warning", name, data.message));
+    }, this.ctx.logger, `daemon.backend_launch_warning[${name}]`));
+  }
+
   attachIncidentHandlers(name: string, daemon: IncidentEventSource): void {
     const hangDetector = daemon.getHangDetector?.();
     if (hangDetector) {
@@ -881,11 +894,6 @@ export class InstanceLifecycle {
       this.ctx.restartSingleInstance(name).catch(err =>
         this.ctx.logger.error({ err, name }, "MCP auto-restart failed"));
     }, this.ctx.logger, `daemon.mcp_restart_requested[${name}]`));
-
-    daemon.on("backend_launch_warning", safeHandler((data: { name: string; message: string }) => {
-      this.ctx.eventLog?.insert(name, "backend_launch_warning", { message: data.message });
-      this.notifyIncident(name, "backend_launch_warning", t("inst.backend_launch_warning", name, data.message));
-    }, this.ctx.logger, `daemon.backend_launch_warning[${name}]`));
 
     daemon.on("dialog_parked", safeHandler((data: { name: string; description: string; holdOnly: boolean }) => {
       // A CLI dialog the daemon will NOT answer on its own. No assist buttons
@@ -1200,6 +1208,10 @@ export class InstanceLifecycle {
     daemon.setDeliveryOutboxPort(this.ctx.deliveryOutbox ?? undefined);
     // Read at each spawn so a fleet.yaml reload is honoured (#984).
     daemon.setPeerWorkingDirectories(() => peerWorkingDirectories(this.ctx.fleetConfig, name, backendName));
+    // Before start: the first spawn builds the command and emits its launch
+    // warning synchronously inside Daemon.start, long before
+    // attachIncidentHandlers runs (#984).
+    this.attachLaunchWarningHandler(name, daemon);
     daemon.on("durable_delivery_deferred", (data: {
       deliveryId: string;
       attemptNo: number;

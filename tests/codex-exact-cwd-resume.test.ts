@@ -183,7 +183,7 @@ describe("the lifecycle feeds peers and notifies the operator (#984)", () => {
       restartSingleInstance: vi.fn(async () => {}),
     } as unknown as LifecycleContext);
     const daemon = Object.assign(new EventEmitter(), { requestPauseWhenIdle() {} });
-    lifecycle.attachIncidentHandlers("worker", daemon as any);
+    lifecycle.attachLaunchWarningHandler("worker", daemon as any);
 
     daemon.emit("backend_launch_warning", { name: "worker", message: "started a NEW conversation" });
 
@@ -215,5 +215,31 @@ describe("lifecycle.start hands the peer list to the daemon it creates (#984)", 
 
     expect(peers).toHaveLength(1);
     expect(peers[0]?.()).toEqual([sibling]);
+  });
+});
+
+describe("a launch warning from the FIRST spawn reaches the operator (#984)", () => {
+  it.each([false, true])("is recorded and posted when Daemon.start emits it (planned restart: %s)", async (planned) => {
+    const self = join(root, "self");
+    mkdirSync(self);
+    const fm = new FleetManager(join(root, "fleet"));
+    const worker = { backend: "codex", working_directory: self } as any;
+    (fm as any).fleetConfig = { defaults: {}, instances: { worker } };
+    const eventLogInsert = vi.fn();
+    (fm as any).eventLog = { insert: eventLogInsert };
+    const notifyInstanceTopic = vi.spyOn(fm as any, "notifyInstanceTopic").mockReturnValue(true);
+    vi.spyOn(fm as any, "isPlannedRestart").mockReturnValue(planned);
+    // Exactly where production emits it: synchronously inside Daemon.start's
+    // first spawn, before lifecycle.start has attached its incident handlers.
+    vi.spyOn(Daemon.prototype, "start").mockImplementation(async function (this: Daemon) {
+      this.emit("backend_launch_warning", { name: "worker", message: "session DB unreadable — started a NEW conversation" });
+      throw new Error("stop after the first spawn");
+    });
+
+    await fm.lifecycle.start("worker", worker, false).catch(() => {});
+
+    expect(eventLogInsert).toHaveBeenCalledWith("worker", "backend_launch_warning",
+      { message: "session DB unreadable — started a NEW conversation" });
+    expect(notifyInstanceTopic).toHaveBeenCalledWith("worker", expect.stringContaining("started a NEW conversation"));
   });
 });
