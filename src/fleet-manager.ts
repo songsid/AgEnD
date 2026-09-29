@@ -76,7 +76,7 @@ import { DeliveryOutbox, type ClaimedOutboxDelivery, type OutboxDelivery, type D
 // active manager/target generation pair owns the lane until the daemon reports
 // a state transition or that generation is replaced.
 export const DURABLE_DELIVERY_LANE_ALERT_MS = 35 * 60_000;
-import { handleWebRequest, broadcastSseEvent } from "./web-api.js";
+import { handleWebRequest, broadcastSseEvent, UiMessageLog } from "./web-api.js";
 import { handleViewRequest, isViewPath } from "./view-api.js";
 import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, usageProviderIdForBackend } from "./usage/usage-api.js";
 import { LOGIN_FLOWS, LOGIN_BACKEND_ALIASES, checkAuthStatus, type LoginFlow, type AuthCheckResult } from "./login-flows.js";
@@ -819,6 +819,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   // Web UI: SSE clients + auth token
   private sseClients = new Set<import("node:http").ServerResponse>();
+  readonly uiMessages = new UiMessageLog();
   /**
    * Read from disk on every access rather than cached at startup: `agend
    * web-token rotate` runs in a separate process, and a cached copy would keep
@@ -10452,8 +10453,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Push an SSE event to all connected Web UI clients. */
   emitSseEvent(event: string, data: unknown): void {
+    // Chat messages are numbered and kept, so a client that cannot hold a stream
+    // open (see UiMessageLog) can fetch them by polling instead.
+    const id = event === "message" ? this.uiMessages.append(data) : undefined;
     broadcastSseEvent(this.sseClients, event, data, (err) =>
       this.logger.debug({ err }, "SSE client write failed; evicting"),
+      id,
     );
   }
 

@@ -17,6 +17,7 @@
   - 不做任何搬移，AgEnD 也不寫入任何 Codex state。這個版本之前已經被搶走的對話（例如從 lock 畫面按 fork 產生的），Codex 記在哪裡就還在哪裡：重啟受影響的 instance 前，請先確認，並在 Codex 裡把錯誤的 fork 封存。
 
 ### 修正 (Fixed)
+- **Dashboard 不再從 Google 載入字型。** 每次開啟 `/ui` 都會對 `fonts.googleapis.com` 發請求，而這個頁面可以重啟你的 agent。現在改用系統字型，且每個面板都帶有 `Content-Security-Policy`，把 script、樣式、圖片、字型與連線都限制在本站（`connect-src 'self'`），即使頁面上真的跑了不該跑的 script，也無法把讀到的內容送到別的伺服器。（`'unsafe-inline'` 暫時保留：面板是單檔內嵌 script，dashboard 也用了 `onclick=` 屬性。）
 - **dashboard 的回應不會再被 iframe 嵌入、被猜測型別或被快取。** dashboard/health server 的每個回應現在都帶 `X-Frame-Options: DENY`、`Content-Security-Policy: frame-ancestors 'none'`（這些頁面有重啟 instance 的按鈕，被嵌入就可能被誘導點擊）、`X-Content-Type-Options: nosniff` 與 `Cache-Control: no-store`（自己設定 Cache-Control 的路由，例如 SSE 與頭像，維持原樣）。
 - **Codex 的 session lock 畫面與 resume 目錄選擇器不再讓投遞默默卡住（#984）。** 「This conversation is open in another app（r retry / f fork）」畫面和「Working directory · resume」選擇器原本都認不出來，啟動時被當成已就緒，訊息會在 idle gate 等滿 30 分鐘後失敗。現在兩者都會被 hold：投遞維持擋住、通知 operator，AgEnD 絕不會替你按 `r`、`f` 或選擇器的任何選項。
 
@@ -28,6 +29,10 @@
 - **`/login` 尚未支援 Org SSO** — `/login` 指令是 beta；organization SSO 流程是已知限制。
 
 ### 新增 (Added)
+**三個網頁面板共用同一組導覽與登入狀態選單。** `/ui`、`/view`、`/settings` 現在都有相同的「Dashboard · View · Settings」連結，以及一個 Session 按鈕：顯示目前登入的瀏覽器、登入何時結束、其他已登入的裝置（每台都能個別登出）與「全部登出」。在面板之間切換不必再登入，`/` 也會直接開啟 dashboard。各頁維持原本的樣子，選單借用各頁自己的顏色；這是一支小 script（`/assets/shell.js`）加一份樣式，不是重寫面板。
+
+**Dashboard 不再依賴 Server-Sent Events。** 如果即時串流 15 秒沒有任何動靜、或一直失敗，頁面會每 5 秒用一般請求取回同樣的狀態與聊天訊息（`GET /ui/poll`），串流恢復後自動切回，且不會重複顯示訊息。有些路徑無法承載 SSE（Cloudflare 文件說 Quick Tunnel 不支援），而會緩衝串流的代理，看起來和一個永遠不送資料的伺服器一模一樣。
+
 - **`/login` 指令** — 直接從 Telegram／Discord 重新登入 CLI 後端，不必再 SSH 進主機。執行前會先檢查現有登入，若仍有效會要求確認，避免誤把還能用的登入洗掉。登入成功後，原本在執行的 instance 會自動重啟以套用新憑證（#611、#613、#614、#617）。
 - **`/install-cli` 指令** — 遠端在主機上安裝 CLI 後端，並整合進 quickstart。安裝指令改為各家目前的官方做法：kiro-cli 改用 `curl` 安裝腳本（原為 Homebrew）、codex 改用官方 standalone 安裝程式（原為 npm）（#619–#621、#624）。
 - **`/clear` 指令** — 清空 instance 的 context。**限管理員，而且必須先按確認鈕**才會真的執行，單獨下指令不會觸發破壞性動作（#529、#549）。

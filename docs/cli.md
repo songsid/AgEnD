@@ -240,6 +240,13 @@ records request URLs.
 - **Writes need more than the cookie.** The panels add a per-session
   `X-Agend-CSRF` header to every write, and the server also requires a matching
   `Origin`; a cookie alone cannot change anything.
+- **One navigation across the panels.** `/ui`, `/view` and `/settings` share a
+  *Dashboard · View · Settings* bar and a **Session** menu (which browser you are,
+  when the session ends, your other signed-in devices with a Sign-out each, and
+  Sign out everywhere). `/` opens the dashboard. If the dashboard's live stream is
+  silent — a proxy that buffers it, or a path that cannot carry SSE such as a
+  Cloudflare Quick Tunnel — it polls `/ui/poll` every 5 seconds until the stream
+  speaks again.
 - **`/view` reads are open by default** (it is a read-only dashboard on a loopback
   listener) — including the live terminal capture, so anyone who can reach the
   port can watch your agents. Set `web.view_access: session` in `fleet.yaml` to

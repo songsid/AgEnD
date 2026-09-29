@@ -7,6 +7,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+**The three web panels share one navigation and one session menu.** `/ui`,
+`/view` and `/settings` now carry the same *Dashboard · View · Settings* links, and
+a Session button that shows which browser you are signed in as, when the session
+ends, every other signed-in device (with a Sign-out for each) and Sign out
+everywhere. Moving between panels never asks you to sign in again, and `/` now
+opens the dashboard. The pages keep their own look; the menu borrows each page's
+colours. It is one small script (`/assets/shell.js`) and stylesheet, not a rewrite
+of the panels.
+
+**The dashboard no longer depends on Server-Sent Events.** If the live stream says
+nothing for 15 seconds, or keeps failing, the page fetches the same status and chat
+messages every 5 seconds (`GET /ui/poll`) and goes back to the stream when it
+speaks again, without showing a message twice. Some paths cannot carry SSE —
+Cloudflare's docs say Quick Tunnels do not — and a proxy that buffers a stream looks
+exactly like a server that never sends.
+
 **Tool access is decided by the fleet, not by what a model happens to be shown.**
 Every route into AgEnD's tools — the MCP tool list, a `tools/call` naming a tool
 directly, a write straight to the instance's socket, and `POST /agent` — now
@@ -157,6 +173,14 @@ The panel can restart AgEnD itself for a change only a fresh process can adopt, 
 - **A failed self-restart needs the change applied again** — if the restart cannot be launched, its row is marked failed and the job is finished rather than left open for another attempt. Press Apply again to get a fresh job whose fleet row can be restarted. This is the fail-closed side of "one restart per job": a job whose launch failed must not stay a reusable restart button.
 
 ### Fixed
+- **The dashboard no longer loads its fonts from Google.** Opening `/ui` sent a
+  request to `fonts.googleapis.com` every time, from a page that can restart your
+  agents. It now uses the system fonts, and every panel is served with a
+  `Content-Security-Policy` that keeps scripts, styles, images, fonts and
+  connections to this origin (`connect-src 'self'`), so script that somehow ran on
+  a page could not send what it read to another server. (`'unsafe-inline'` stays for
+  now: the panels are single files of inline script and the dashboard uses
+  `onclick=` attributes.)
 - **Dashboard responses can no longer be framed, sniffed or cached.** Every
   response from the dashboard/health server now carries `X-Frame-Options: DENY`,
   `Content-Security-Policy: frame-ancestors 'none'` (the pages have buttons that

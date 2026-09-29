@@ -47,6 +47,32 @@ export function hostnameOf(value: string): string | null {
   return match[1]!.replace(/\.$/, "") || null;
 }
 
+/**
+ * What a page served here may load and where it may send anything.
+ *
+ * `script-src` keeps `'unsafe-inline'` because the panels are single files of inline
+ * script and the dashboard wires its buttons with `onclick=` attributes; a nonce
+ * would switch those off. What this policy does buy is the part that matters when
+ * script somehow runs: `connect-src`, `img-src` and `form-action` are this origin,
+ * so it cannot post what it reads to somebody else's server, and `base-uri`,
+ * `object-src` and `frame-ancestors` are closed. Moving the inline handlers to
+ * `addEventListener` (and then dropping `'unsafe-inline'`) is the follow-up.
+ *
+ * Fonts, scripts and styles are all served from here; nothing loads from a CDN.
+ */
+export const WEB_CONTENT_SECURITY_POLICY = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "font-src 'self' data:",
+  "connect-src 'self'",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join("; ");
+
 export interface HostGuardConfig {
   hostname?: string;
   web?: { allowed_hosts?: unknown } | null;
@@ -86,7 +112,7 @@ export function applyWebSecurityHeaders(res: ServerResponse): void {
   // These pages have buttons that restart instances and change configuration;
   // a page that can be framed can be clicked through.
   res.setHeader("X-Frame-Options", "DENY");
-  res.setHeader("Content-Security-Policy", "frame-ancestors 'none'");
+  res.setHeader("Content-Security-Policy", WEB_CONTENT_SECURITY_POLICY);
   // Authorization now depends on a cookie, so a shared cache (a tunnel, a
   // corporate proxy) must not keep or replay any of it.
   res.setHeader("Cache-Control", "no-store");

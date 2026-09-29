@@ -81,8 +81,9 @@ export function broadcastSseEvent(
   event: string,
   data: unknown,
   onError?: (err: unknown) => void,
+  id?: number,
 ): void {
-  const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  const payload = `${id === undefined ? "" : `id: ${id}\n`}event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
   const dead: ServerResponse[] = [];
   for (const client of clients) {
     try {
@@ -117,6 +118,42 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 /** Minimal interface — only what web-api needs from FleetManager. */
+/**
+ * The recent chat messages the dashboard shows, numbered, so a client that cannot
+ * hold an SSE stream open can ask for "everything after N" instead.
+ *
+ * Some paths cannot carry SSE — Cloudflare says outright that Quick Tunnels do not
+ * — and a proxy that buffers a stream looks to the page exactly like a server that
+ * never sends. Polling `/ui/poll` is the same data over plain requests.
+ */
+export class UiMessageLog {
+  private seq = 0;
+  private entries: Array<Record<string, unknown> & { id: number }> = [];
+
+  constructor(private readonly max = 500) {}
+
+  /** Record one message; returns the id it was given (also sent as the SSE event id). */
+  append(data: unknown): number {
+    const id = ++this.seq;
+    const body = data && typeof data === "object" && !Array.isArray(data) ? data as Record<string, unknown> : { value: data };
+    this.entries.push({ ...body, id });
+    if (this.entries.length > this.max) this.entries.splice(0, this.entries.length - this.max);
+    return id;
+  }
+
+  get last(): number { return this.seq; }
+
+  /**
+   * Messages with an id above `after`. A client whose `after` is ahead of the log —
+   * the fleet restarted and numbering began again — gets nothing rather than a replay
+   * of a conversation it may already have shown, and learns the current `last`.
+   */
+  since(after: number): Array<Record<string, unknown> & { id: number }> {
+    if (after >= this.seq) return [];
+    return this.entries.filter(e => e.id > after);
+  }
+}
+
 export interface WebApiContext {
   readonly webToken: string | null;
   /** Absent in a hand-built context: cookies are then simply not a credential, the header token still is. */
@@ -141,6 +178,8 @@ export interface WebApiContext {
   deliverToInstance(instanceName: string, payload: Record<string, unknown>): Promise<void>;
   getUiStatus(): unknown;
   emitSseEvent(event: string, data: unknown): void;
+  /** Absent in a hand-built context: `/ui/poll` then reports status and no messages. */
+  readonly uiMessages?: UiMessageLog;
   startInstance(name: string, config: unknown, topicMode: boolean): Promise<void>;
   stopInstance(name: string): Promise<void>;
   restartSingleInstance(name: string): Promise<void>;
@@ -274,6 +313,18 @@ export function handleWebRequest(
   }
 
   // ── SSE ────────────────────────────────────────────────
+
+  // The same data as the stream, over plain requests, for a path that cannot carry SSE.
+  if (method === "GET" && path === "/ui/poll") {
+    const raw = Number.parseInt(url.searchParams.get("after") ?? "0", 10);
+    const after = Number.isFinite(raw) && raw > 0 ? raw : 0;
+    json(res, 200, {
+      status: ctx.getUiStatus(),
+      messages: ctx.uiMessages?.since(after) ?? [],
+      last: ctx.uiMessages?.last ?? 0,
+    });
+    return true;
+  }
 
   if (method === "GET" && path === "/ui/events") {
     res.writeHead(200, {

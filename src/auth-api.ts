@@ -60,10 +60,12 @@ export interface AuthApiContext {
 const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
   "agend-auth.js": { file: join("shared", "agend-auth.js"), type: "text/javascript; charset=utf-8" },
   "signin.js": { file: join("shared", "signin.js"), type: "text/javascript; charset=utf-8" },
+  "shell.js": { file: join("shared", "shell.js"), type: "text/javascript; charset=utf-8" },
+  "shell.css": { file: join("shared", "shell.css"), type: "text/css; charset=utf-8" },
 };
 
 export function isAuthPath(path: string): boolean {
-  return path === "/signin" || path.startsWith("/auth/") || path.startsWith("/assets/");
+  return path === "/" || path === "/signin" || path.startsWith("/auth/") || path.startsWith("/assets/");
 }
 
 /**
@@ -143,6 +145,14 @@ export function handleAuthRequest(
   if (!isAuthPath(path)) return false;
   const method = req.method ?? "GET";
   const gateReq = req as unknown as WebGateRequest;
+
+  // ── `/` is a door, not a page: everything about who may enter is decided at /ui ──
+  if (path === "/") {
+    if (method !== "GET" && method !== "HEAD") { json(res, 405, { error: "method not allowed" }); return true; }
+    res.writeHead(302, { Location: "/ui", "Cache-Control": "no-store" });
+    res.end();
+    return true;
+  }
 
   // ── The page and its scripts: public, inert ──
   if (path === "/signin") {
@@ -238,6 +248,7 @@ export function handleAuthRequest(
         created: session.created,
         expiresAt: session.absoluteExpiry,
         idleExpiresAt: session.idleExpiry,
+        idleMs: sessions.idleWindowMs(session.surface),
       });
       return true;
     }

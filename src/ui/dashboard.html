@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <title>AgEnD Dashboard</title>
+<link rel="stylesheet" href="/assets/shell.css">
 <script src="/assets/agend-auth.js"></script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="/assets/shell.js" defer></script>
 <style>
   :root {
     --bg: #080b12; --surface: rgba(22,27,34,0.7); --raised: rgba(28,33,41,0.8);
@@ -259,6 +259,7 @@
     <h1>AgEnD</h1>
     <div class="uptime" id="uptime">--</div>
   </div>
+  <div style="padding:8px 12px 0"><nav data-agend-nav data-compact data-current="ui"></nav></div>
   <div style="padding:8px 12px 0">
     <div class="fleet-entry" id="fleetEntry" onclick="selFleet()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
@@ -322,21 +323,52 @@ function toast(msg, ok=true) {
   document.body.appendChild(el); setTimeout(() => el.remove(), 3000);
 }
 
-const sse = new EventSource("/ui/events");
-sse.addEventListener("status", e => {
-  const d = JSON.parse(e.data); instances = d.instances;
+// Live updates arrive over SSE. Some paths cannot carry it (Cloudflare Quick Tunnels do not), and a proxy
+// that buffers a stream looks to the page exactly like a server that never sends — so a stream that says
+// nothing is treated as no stream, and the same data is fetched by polling until it speaks again.
+let lastMsgId = 0, silentTimer = null, errorTimer = null, pollTimer = null;
+function applyStatus(d) {
+  instances = d.instances;
   document.getElementById("uptime").textContent = fmtUp(d.uptime);
   renderList();
   if (cur) { const i = instances.find(x => x.name === cur); const a = document.getElementById("actions"); if (i && a) renderActions(i); }
-});
-sse.addEventListener("message", e => {
-  const m = JSON.parse(e.data);
+}
+function ingestMessage(m) {
   if (!msgs[m.instance]) msgs[m.instance] = [];
   msgs[m.instance].push(m);
   if (msgs[m.instance].length > 500) msgs[m.instance].shift();
   if (m.instance === cur && curTab === "chat") renderMsgs();
+}
+async function pollOnce() {
+  try {
+    const r = await fetch(`/ui/poll?after=${lastMsgId}`, { cache: "no-store" });
+    if (!r.ok) return;
+    const d = await r.json();
+    applyStatus(d.status);
+    for (const m of d.messages) if (m.id > lastMsgId) ingestMessage(m);
+    lastMsgId = d.last;
+  } catch { /* the next tick tries again */ }
+}
+function startPolling() { if (pollTimer) return; pollOnce(); pollTimer = setInterval(pollOnce, 5000); }
+function stopPolling() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
+function sseAlive() { stopPolling(); clearTimeout(errorTimer); errorTimer = null; clearTimeout(silentTimer); silentTimer = setTimeout(startPolling, 30000); }
+
+const sse = new EventSource("/ui/events");
+silentTimer = setTimeout(startPolling, 15000);   // the server sends a status frame the moment a stream opens
+sse.addEventListener("status", e => { sseAlive(); applyStatus(JSON.parse(e.data)); });
+sse.addEventListener("message", e => {
+  sseAlive();
+  const id = Number(e.lastEventId);
+  if (id && id <= lastMsgId) return;          // already shown by a poll while the stream was down
+  if (id) lastMsgId = id;
+  ingestMessage(JSON.parse(e.data));
 });
-sse.onerror = () => { document.getElementById("uptime").textContent = tr("disconnected"); };
+sse.onerror = () => {
+  document.getElementById("uptime").textContent = tr("disconnected");
+  // Armed once, not re-armed: the browser retries every few seconds and each retry fires this again,
+  // so pushing the deadline back each time would mean polling never starts.
+  if (!errorTimer) errorTimer = setTimeout(startPolling, 5000);
+};
 
 function renderList() {
   document.getElementById("fleetEntry").className = `fleet-entry${mode==="fleet"?" active":""}`;
