@@ -68,7 +68,7 @@ health_port: 19280
 | `group_id` | number | — | Telegram 群組 ID（負數）或 Discord guild ID |
 | `access` | object | **必填** | 存取控制 |
 | `mirror_topic_id` | number \| string | — | 鏡像跨 instance 通訊的 Telegram topic ID。所有 `send_to_instance` 訊息都會出現在此 |
-| `options` | object | — | 平台特定選項（Discord：`category_name`、`general_channel_id`；Telegram：`topic_probe`，`on-demand`（預設，只在真實投遞回報 topic 不存在時才確認，不做定期送刪訊息）或 `periodic`（每 5 分鐘對每個 topic 送刪一則空白訊息確認存在）） |
+| `options` | object | — | 平台特定選項（Discord：`category_name`、`general_channel_id`；Telegram：`topic_probe`，`on-demand`（預設，只在真實投遞回報 topic 不存在時才確認，不做定期送刪訊息）或 `periodic`（每 5 分鐘對每個 topic 送刪一則空白訊息確認存在）；兩者皆可設 `status_emojis`，見 instance 的 `status_emojis`） |
 
 ### channel.access
 
@@ -166,6 +166,7 @@ teams:
 |------|------|------|------|
 | `working_directory` | string | 自動 | 專案目錄路徑。省略時自動建立 `~/.agend/workspaces/<name>` |
 | `display_name` | string | — | Agent 顯示名稱（例："Kuro"）。用 `set_display_name` 設定 |
+| `status_emojis` | object | — | 此 instance 自己的投遞狀態 emoji，逐鍵覆蓋 channel 的 `options.status_emojis`。鍵：`received`、`queued`、`processing`、`delivered`、`failed`、`progress_prefix`。解析順序：instance → channel → 內建。Discord 可用伺服器自訂 emoji（`<:name:id>`、`<a:name:id>`、`name:id`）；Telegram 只接受固定反應集合，無效值只警告一次並退回內建值 |
 | `description` | string | — | 角色描述。透過 MCP server instructions 注入為 `## Role` |
 | `topic_id` | number\|string | 自動 | 頻道 topic/thread ID。建立時自動分配 |
 | `general_topic` | boolean | `false` | 標記為 General Topic（接收未路由的訊息） |

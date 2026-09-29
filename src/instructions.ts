@@ -15,8 +15,29 @@ export interface FleetInstructionsParams {
   customPrompt?: string;
   workflow?: string | false;
   decisions?: { title: string; content: string }[];
+  /**
+   * #1005: the instance's own delivery-status emojis in display form. The
+   * workflow template's "avoid these AgEnD system emojis" list is rendered
+   * from it, so a persona is told to avoid what it actually stamps.
+   */
+  statusEmojis?: string[];
   /** CLI mode: inject CLI quick reference instead of MCP tool usage section */
   cliInstructions?: string;
+}
+
+/** The built-in status set as default.md spells it. */
+const DEFAULT_STATUS_AVOID_LIST = "👀 ⏳ ✅ ❌";
+const STATUS_AVOID_RE = /(avoid these AgEnD system emojis: )👀 ⏳ ✅ ❌/g;
+
+/**
+ * Swap the template's built-in status list for the instance's resolved one.
+ * Also applies to a custom workflow that copied the default line.
+ */
+export function renderStatusEmojiAvoidList(workflow: string, statusEmojis?: string[]): string {
+  if (!statusEmojis?.length) return workflow;
+  const list = statusEmojis.join(" ");
+  if (list === DEFAULT_STATUS_AVOID_LIST) return workflow;
+  return workflow.replace(STATUS_AVOID_RE, (_m, lead: string) => `${lead}${list}`);
 }
 
 function isClassicInstance(params: FleetInstructionsParams): boolean {
@@ -178,7 +199,7 @@ export function buildFleetInstructions(params: FleetInstructionsParams): string 
       } catch { /* template not found — skip */ }
     }
     if (workflowContent) {
-      const trimmed = workflowContent.trim();
+      const trimmed = renderStatusEmojiAvoidList(workflowContent, params.statusEmojis).trim();
       if (trimmed.startsWith("#")) {
         sections.push(trimmed);
       } else {

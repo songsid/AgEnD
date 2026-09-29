@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
 import { FleetManager } from "../src/fleet-manager.js";
+import type { DeliveryStatus } from "../src/status-emojis.js";
 import { Daemon } from "../src/daemon.js";
 import { DiscordAdapter } from "../src/channel/adapters/discord.js";
 import { TelegramAdapter } from "../src/channel/adapters/telegram.js";
@@ -37,7 +38,7 @@ function discord(id = "discord-main") {
   const unreact = vi.fn(async (chat: string, msg: string, emoji: string) => { visible(chat, msg).delete(emoji); });
   return { adapter: { id, type: "discord", react, unreact } as unknown as ChannelAdapter, visible, react, unreact };
 }
-async function status(fleet: FleetManager, emoji: string, msg = "msg", instance = "inst") {
+async function status(fleet: FleetManager, emoji: DeliveryStatus, msg = "msg", instance = "inst") {
   fleet.reactMessageStatus(instance, "chat", msg, emoji);
   await flush();
 }
@@ -49,8 +50,8 @@ describe("review #956 adversarial status transitions", () => {
       if (emoji === "❌") await gate.promise;
       d.visible(chat, msg).add(emoji);
     });
-    fleet.reactMessageStatus("inst", "chat", "msg", "❌");
-    fleet.reactMessageStatus("inst", "chat", "msg", "✅");
+    fleet.reactMessageStatus("inst", "chat", "msg", "failed");
+    fleet.reactMessageStatus("inst", "chat", "msg", "delivered");
     await flush(); gate.resolve(); await flush();
     expect([...d.visible()]).toEqual(["✅"]);
   });
@@ -65,8 +66,8 @@ describe("review #956 adversarial status transitions", () => {
       visible = values.map(v => v.emoji);
     } } } });
     const { fleet } = makeFleet(adapter);
-    fleet.reactMessageStatus("inst", "100", "42", "👀");
-    fleet.reactMessageStatus("inst", "100", "42", "✅");
+    fleet.reactMessageStatus("inst", "100", "42", "processing");
+    fleet.reactMessageStatus("inst", "100", "42", "delivered");
     await flush(); gate.resolve(); await flush();
     expect(visible).toEqual(["👀"]);
   });
@@ -74,9 +75,9 @@ describe("review #956 adversarial status transitions", () => {
   it("keeps bot A's failed state when bot B completes the same message", async () => {
     const a = discord("a"); const b = discord("b"); const { fleet } = makeFleet(a.adapter);
     vi.spyOn(fleet, "getAdapterForInstance").mockImplementation(name => name === "a" ? a.adapter : b.adapter);
-    await status(fleet, "❌", "msg", "a");
-    await status(fleet, "✅", "msg", "b");
-    await status(fleet, "✅", "msg", "a");
+    await status(fleet, "failed", "msg", "a");
+    await status(fleet, "delivered", "msg", "b");
+    await status(fleet, "delivered", "msg", "a");
     expect([...a.visible()]).toEqual(["✅"]);
     expect(b.unreact).not.toHaveBeenCalled();
   });
@@ -87,7 +88,7 @@ describe("review #956 adversarial status transitions", () => {
     // says 👀/⏳/✅ stacking is harmless; only ❌ left over after a recovery
     // is misleading.
     const d = discord(); const { fleet } = makeFleet(d.adapter);
-    await status(fleet, "❌"); await status(fleet, "✅"); await status(fleet, "❌");
+    await status(fleet, "failed"); await status(fleet, "delivered"); await status(fleet, "failed");
     // After ❌→✅: ❌ removed, ✅ added. After ✅→❌: ✅ stays, ❌ added.
     expect([...d.visible()]).toContain("✅");
     expect([...d.visible()]).toContain("❌");
@@ -95,9 +96,9 @@ describe("review #956 adversarial status transitions", () => {
 
   it("can replace a failure after its tracking entry was evicted", async () => {
     const d = discord(); const { fleet } = makeFleet(d.adapter);
-    await status(fleet, "❌", "old");
-    for (let i = 0; i < 1_000; i++) await status(fleet, "⏳", `new-${i}`);
-    await status(fleet, "✅", "old");
+    await status(fleet, "failed", "old");
+    for (let i = 0; i < 1_000; i++) await status(fleet, "queued", `new-${i}`);
+    await status(fleet, "delivered", "old");
     expect([...d.visible("chat", "old")]).toEqual(["✅"]);
   });
 
@@ -129,7 +130,7 @@ describe("review #956 adversarial status transitions", () => {
   it("retains unrelated Discord reactions during a status replacement (control)", async () => {
     const d = discord(); const { fleet } = makeFleet(d.adapter);
     await d.adapter.react("chat", "msg", "👍");
-    await status(fleet, "❌"); await status(fleet, "✅");
+    await status(fleet, "failed"); await status(fleet, "delivered");
     expect([...d.visible()]).toEqual(["👍", "✅"]);
   });
 });
@@ -146,7 +147,7 @@ describe("review #956 adapter contracts", () => {
       context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 }, log_level: "error",
     }, dir, true, undefined, undefined, fleet.logger);
     (daemon as any).tmux = {};
-    daemon.on("message_delivered", ({ chatId, messageId }) => fleet.reactMessageStatus("inst", chatId, messageId, "👀"));
+    daemon.on("message_delivered", ({ chatId, messageId }) => fleet.reactMessageStatus("inst", chatId, messageId, "processing"));
     (daemon as any).deliverMessage = async (_text: string, data: { chatId: string; messageId: string }) => {
       daemon.emit("message_delivered", data); return true;
     };
@@ -173,9 +174,9 @@ describe("review #956 adapter contracts", () => {
       visible = values.map(v => v.emoji);
     } } } });
     const { fleet } = makeFleet(adapter);
-    fleet.reactMessageStatus("inst", "100", "42", "👀");
-    fleet.finishDeliveryStatus("inst", "100", "42", "✅");
-    fleet.finishDeliveryStatus("inst", "100", "42", "❌");
+    fleet.reactMessageStatus("inst", "100", "42", "processing");
+    fleet.finishDeliveryStatus("inst", "100", "42", "delivered");
+    fleet.finishDeliveryStatus("inst", "100", "42", "failed");
     await flush();
     expect(rejected).toEqual([]);
     expect(visible).toEqual(["👎"]);

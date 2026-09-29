@@ -29,17 +29,10 @@ import type { FleetConfig, RawFleetConfig, InstanceConfig, ChannelConfig, CostGu
 
 /** Fallback access policy for a channel with no `access:` block — open (no gate). */
 const DEFAULT_OPEN_ACCESS: AccessConfig = { mode: "open", allowed_users: [], max_pending_codes: 0, code_expiry_minutes: 0 };
-/**
- * Telegram bot reactions replace a single slot per message. Keep delivery state
- * presentation here so supported emoji choices can change without altering the
- * status reconciliation logic.
- */
-const TELEGRAM_DELIVERY_STATUS_REACTIONS = new Map<string, string>([
-  ["👀", "👀"], // queued / processing
-  ["⏳", "👀"],
-  ["✅", "👀"], // confirmed
-  ["❌", "👎"], // failed
-]);
+import {
+  STATUS_EMOJI_KEYS, builtinStatusEmojis, reactionForm, reactionMatchKey, resolveStatusEmojis, statusAvoidList, statusMatchKey, statusMatchKeys, textForm,
+  type DeliveryStatus, type ResolvedStatusEmojis,
+} from "./status-emojis.js";
 import { isProbeableRouteTarget, type RouteTarget } from "./fleet-context.js";
 import { loadFleetConfig, loadRawFleetConfig, DEFAULT_COST_GUARD, DEFAULT_DAILY_SUMMARY, DEFAULT_INSTANCE_CONFIG } from "./config.js";
 import { EventLog } from "./event-log.js";
@@ -312,18 +305,9 @@ const PROGRESS_MIN_ELAPSED_MS = 30_000;
 /** How much of a tool summary the progress line will show before eliding. */
 const PROGRESS_ACTIVITY_MAX_CHARS = 48;
 /**
- * Emoji AgEnD itself stamps on messages as the delivery-status ladder
- * (⏳ queued, 👀 delivered, ✅ confirmed, ❌ failed). These are machine
- * indicators, not opinions, so they never enter the reactions queue — from
- * anyone. This exact-emoji filter is the ONLY bot filtering left: bot-to-bot
- * reactions are otherwise delivered on purpose (agents signal each other), and
- * 🫡 passes too — it reads as a deliberate acknowledgement, not plumbing.
- */
-const DELIVERY_STATUS_EMOJIS = new Set(["👀", "⏳", "✅", "❌"]);
-/**
  * Reactions that are neither delivery plumbing nor meaningful conversational
- * feedback. Keep this separate from DELIVERY_STATUS_EMOJIS so adding a UI-only
- * emoji never changes the documented delivery-state protocol.
+ * feedback. Delivery-status emojis are configurable (#1005) and filtered by
+ * FleetManager.isOwnStatusReaction, not by a fixed set.
  */
 const IGNORED_REACTION_EMOJIS = new Set(["📷"]);
 
@@ -5043,7 +5027,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
 
-    if (DELIVERY_STATUS_EMOJIS.has(r.emoji)) {
+    if (this.isOwnStatusReaction(r)) {
       this.logger.debug({ emoji: r.emoji, user: r.username }, "Ignoring delivery-status emoji as a reaction");
       return;
     }
@@ -5609,7 +5593,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // path, so a later delivery status replaces (not stacks onto) this
         // acknowledgement.
         if (msg.chatId && msg.messageId) {
-          this.reactMessageStatus(generalInstance, msg.chatId, msg.messageId, "👀", msg.threadId || undefined);
+          this.reactMessageStatus(generalInstance, msg.chatId, msg.messageId, "received", msg.threadId || undefined);
         }
 
         this.warnIfRateLimited(generalInstance, msg);
@@ -5706,7 +5690,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // status path, so a later delivery status replaces (not stacks onto) this
     // acknowledgement. Same bound-adapter routing as the status path itself.
     if (msg.chatId && msg.messageId) {
-      this.reactMessageStatus(instanceName, msg.chatId, msg.messageId, "👀", msg.threadId || undefined);
+      this.reactMessageStatus(instanceName, msg.chatId, msg.messageId, "received", msg.threadId || undefined);
     }
 
     // These may hit Discord API (topic icon, archive) — do after react
@@ -5751,7 +5735,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // Reconciled status path (not a bare add): a retry that later
         // succeeds replaces this ❌ with ✅ instead of leaving both. Chat and
         // thread travel separately so Telegram addresses the supergroup.
-        this.finishDeliveryStatus(instanceName, msg.chatId, msg.messageId, "❌", msg.threadId || undefined);
+        this.finishDeliveryStatus(instanceName, msg.chatId, msg.messageId, "failed", msg.threadId || undefined);
       }
       return;
     }
@@ -7259,7 +7243,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * status-reacted messages cost kilobytes. A bot restart loses it, degrading
    * to a plain add (never worse than the old behaviour).
    */
-  private lastStatusEmoji = new Map<string, string>();
+  private lastStatusEmoji = new Map<string, { emoji: string; status?: DeliveryStatus }>();
   /**
    * One in-flight status update per bot+message: updates run strictly in call
    * order, so a delayed ❌ add can never land after a newer ✅'s removal —
@@ -7270,8 +7254,96 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** #725: in-flight CLI env probes, keyed by backend name. Coalesces concurrent /model requests. */
   private pendingCliEnvProbes = new Map<string, Promise<import("./backend/types.js").CliEnv | null>>();
 
+  /**
+   * The status emojis for an instance (#1005): its own `status_emojis`, then
+   * its channel's `options.status_emojis`, then the platform built-in. An
+   * unusable value warns once and falls through, never failing the reaction.
+   * `adapterId` pins the channel for paths that already know the bot (classic).
+   */
+  resolveStatusEmojisFor(
+    instanceName: string, adapterId?: string, adapter?: ChannelAdapter | null,
+  ): ResolvedStatusEmojis & { platform: string | undefined } {
+    const worldId = adapterId ?? this.getInstanceAdapterId(instanceName);
+    const channel = (worldId ? this.worlds.get(worldId)?.channelConfig : undefined) ?? this.getChannelConfig(worldId ?? undefined);
+    // The adapter that will react decides the vocabulary: a Telegram bot gets
+    // Telegram's reaction set even if the channel lookup fell back elsewhere.
+    const reacting = adapter ?? (worldId ? this.worlds.get(worldId)?.adapter : undefined) ?? this.adapter;
+    const platform = reacting instanceof TelegramAdapter ? "telegram" : channel?.type;
+    const resolved = resolveStatusEmojis({
+      platform,
+      platformConfig: channel?.options?.status_emojis,
+      instanceConfig: this.fleetConfig?.instances[instanceName]?.status_emojis,
+      onInvalid: (source, key, value, problem) => {
+        const at = source === "instance" ? `instances.${instanceName}` : `channel ${channel?.id ?? platform ?? "?"}`;
+        const once = `${at}:${key}:${String(value)}`;
+        if (this.warnedStatusEmojis.has(once)) return;
+        this.warnedStatusEmojis.add(once);
+        this.logger.warn({ at, key, value, problem }, `Ignoring status_emojis.${key}: ${problem} — using the default`);
+      },
+    });
+    return { ...resolved, platform };
+  }
+  private warnedStatusEmojis = new Set<string>();
+
+  /** What the instructions tell `instanceName` not to react with (its own status set). */
+  statusEmojiAvoidList(instanceName: string): string[] {
+    return statusAvoidList(this.resolveStatusEmojisFor(instanceName));
+  }
+
+  /** The progress bubble's leading emoji, in the form the channel renders. */
+  private progressPrefixFor(instanceName: string): string | undefined {
+    const r = this.resolveStatusEmojisFor(instanceName);
+    const builtin = builtinStatusEmojis(r.platform).progress_prefix;
+    return r.progress_prefix === builtin ? undefined : textForm(r.platform, r.progress_prefix);
+  }
+
+  /**
+   * Is this inbound reaction one of the fleet's own delivery-status stamps?
+   * Those are machine indicators and must not reach any instance as a user
+   * reaction (#1005 point 3). When every bot's user id is known, the check
+   * keys on WHO reacted: a fleet bot's reaction is a status stamp only if it
+   * is in that bot's instances' status set (other bot reactions are agent
+   * signals and pass), and a human's reaction always passes — whatever emoji
+   * a persona picked. Without every id, fall back to the emoji alone.
+   */
+  isOwnStatusReaction(r: InboundReaction): boolean {
+    const key = reactionMatchKey(r.emoji, r.emojiId);
+    const worlds = [...this.worlds.values()];
+    const names = new Set([
+      ...Object.keys(this.fleetConfig?.instances ?? {}),
+      ...(this.classicChannels?.getAll?.() ?? []).map(c => c.instanceName),
+      ...this.instanceWorldBinding.keys(),
+    ]);
+    if (worlds.length > 0 && worlds.every(w => !!w.botUserId)) {
+      const reactorWorlds = new Set(worlds.filter(w => w.botUserId === r.userId).map(w => w.id));
+      if (reactorWorlds.size === 0) return false; // a human, or a bot outside this fleet
+      return [...names]
+        .filter(n => reactorWorlds.has(this.getInstanceAdapterId(n) ?? ""))
+        .some(n => statusMatchKeys(this.resolveStatusEmojisFor(n)).includes(key));
+    }
+    // Fallback: the built-in ladder (as before #1005) plus every value an
+    // operator configured. Not the Telegram built-ins — 👎 is AgEnD's failed
+    // stamp there, but also far too common a human reaction to swallow blind.
+    const keys = new Set(statusMatchKeys(builtinStatusEmojis(undefined)));
+    for (const name of names) {
+      const resolved = this.resolveStatusEmojisFor(name);
+      const builtin = builtinStatusEmojis(resolved.platform);
+      for (const k of STATUS_EMOJI_KEYS) if (resolved[k] !== builtin[k]) keys.add(statusMatchKey(resolved[k]));
+    }
+    return keys.has(key);
+  }
+
+  /**
+   * The "received" reaction for paths that react with the inbound message's
+   * own adapter rather than through reactMessageStatus (classic bots).
+   */
+  private receivedReactionFor(instanceName: string, adapter: ChannelAdapter, adapterId?: string): string {
+    const resolved = this.resolveStatusEmojisFor(instanceName, adapterId, adapter);
+    return reactionForm(resolved.platform, resolved.received);
+  }
+
   reactMessageStatus(
-    instanceName: string, chatId: string, messageId: string, emoji: string, threadId?: string,
+    instanceName: string, chatId: string, messageId: string, status: DeliveryStatus, threadId?: string,
   ): void {
     // React via the adapter BOUND to this instance — NOT the first discord world.
     // Otherwise, in a same-channel/same-guild multi-bot setup, the inbound 👀
@@ -7279,36 +7351,37 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // different bots, leaving a duplicate 👀 that never turns into ✅.
     const adapter = this.getAdapterForInstance(instanceName) ?? this.adapter;
     if (!adapter) return;
-    const statusEmoji = adapter instanceof TelegramAdapter
-      ? TELEGRAM_DELIVERY_STATUS_REACTIONS.get(emoji)
-      : emoji;
-    // Telegram has a deliberately smaller status vocabulary, and every mapped
-    // value is accepted by ReactionTypeEmoji. Unknown statuses stay a no-op.
-    if (!statusEmoji) return;
+    const resolved = this.resolveStatusEmojisFor(instanceName, undefined, adapter);
+    const configured = resolved[status];
+    // Unknown statuses stay a no-op. Every resolved Telegram value has been
+    // checked against the ReactionTypeEmoji set (status-emojis.ts).
+    if (!configured) return;
+    const statusEmoji = reactionForm(resolved.platform, configured);
     // Bot-scoped: sibling bots reacting on the same message must not clear
     // each other's state — every removal below targets this adapter's own
     // reactions (@me on Discord, the bot's list on Telegram).
     const adapterId = typeof (adapter as { id?: unknown }).id === "string"
       ? (adapter as unknown as { id: string }).id : "?";
     const key = `${adapterId}:${chatId}:${threadId ?? ""}:${messageId}`;
-    this.queueDeliveryStatusReaction(adapter, key, chatId, messageId, statusEmoji, threadId);
+    this.queueDeliveryStatusReaction(adapter, key, chatId, messageId, statusEmoji, threadId, status);
   }
 
   /**
-   * Apply a terminal delivery verdict. Telegram maps ✅ to 👀 and ❌ to 👎 in
-   * reactMessageStatus; Discord continues to show the verdict emoji directly.
+   * Apply a terminal delivery verdict. On Telegram the built-in delivered is
+   * 👀 and failed is 👎; Discord shows ✅/❌ — both configurable (#1005).
    */
   finishDeliveryStatus(
-    instanceName: string, chatId: string, messageId: string, emoji: string, threadId?: string,
+    instanceName: string, chatId: string, messageId: string, status: DeliveryStatus, threadId?: string,
   ): void {
-    this.reactMessageStatus(instanceName, chatId, messageId, emoji, threadId);
+    this.reactMessageStatus(instanceName, chatId, messageId, status, threadId);
   }
 
   private queueDeliveryStatusReaction(
     adapter: ChannelAdapter, key: string, chatId: string, messageId: string, emoji: string | null, threadId?: string,
+    status?: DeliveryStatus,
   ): void {
     const prev = this.deliveryStatusChains.get(key) ?? Promise.resolve();
-    const run = prev.then(() => this.applyDeliveryStatusReaction(adapter, key, chatId, messageId, emoji, threadId));
+    const run = prev.then(() => this.applyDeliveryStatusReaction(adapter, key, chatId, messageId, emoji, threadId, status));
     this.deliveryStatusChains.set(key, run);
     void run.then(
       () => { if (this.deliveryStatusChains.get(key) === run) this.deliveryStatusChains.delete(key); },
@@ -7318,11 +7391,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private async applyDeliveryStatusReaction(
     adapter: ChannelAdapter, key: string,
-    chatId: string, messageId: string, emoji: string | null, threadId?: string,
+    chatId: string, messageId: string, emoji: string | null, threadId?: string, status?: DeliveryStatus,
   ): Promise<void> {
     try {
       const target = adapter instanceof TelegramAdapter ? chatId : (threadId ?? chatId);
-      const prev = this.lastStatusEmoji.get(key);
+      const last = this.lastStatusEmoji.get(key);
+      const prev = last?.emoji;
       if (emoji == null) {
         if (prev && adapter.unreact) {
           await adapter.unreact(target, messageId, prev, threadId);
@@ -7336,16 +7410,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (prev === emoji) return;
       // Thread-aware adapters (Discord) react where the thread is; Telegram
       // addresses the supergroup chat and ignores the thread part.
-      // #972: add-only by default — only remove ❌ when leaving the failed
-      // state. 👀/⏳/✅ stacking together is harmless; leaving ❌ visible
-      // after a recovery would be misleading.
-      if (prev === "❌" && adapter.unreact && !(adapter instanceof TelegramAdapter)) {
+      // #972: add-only by default — only remove the failed emoji when leaving
+      // the failed state. 👀/⏳/✅ stacking together is harmless; leaving ❌
+      // visible after a recovery would be misleading. `prev` is the exact
+      // form it was added with, so a custom emoji comes off too (#1005).
+      if (last?.status === "failed" && adapter.unreact && !(adapter instanceof TelegramAdapter)) {
         // Best effort: a failed removal must not block the new status.
-        await adapter.unreact(target, messageId, prev, threadId).catch(e =>
+        await adapter.unreact(target, messageId, last.emoji, threadId).catch(e =>
           this.logger.debug({ err: (e as Error).message }, "Delivery status reaction removal failed"));
       }
       await adapter.react(target, messageId, emoji, threadId);
-      this.lastStatusEmoji.set(key, emoji);
+      this.lastStatusEmoji.set(key, { emoji, status });
     } catch (e) {
       this.logger.debug({ err: (e as Error).message }, "Message status react failed");
     }
@@ -8808,12 +8883,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
 
     const publication = this.beginCancelButtonPublication(instanceName, correlationId);
+    const initialProgressText = FleetManager.progressText(0, null, 1, this.progressPrefixFor(instanceName));
 
     try {
       const sent = await adapter.notifyAlert(chatId, {
         type: "cancel",
         instanceName,
-        message: "👀 處理中…",
+        message: initialProgressText,
         choices: [{ id: `cancel:${instanceName}`, label: t("cancel.button") }],
       }, threadId ? { threadId } : undefined);
 
@@ -8834,7 +8910,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // Matches the text notifyAlert just posted, so the first 60s tick does
         // not re-edit identical text — which put a "(edited)" mark on Discord
         // with nothing visibly changed.
-        lastProgressText: "👀 處理中…",
+        lastProgressText: initialProgressText,
         // A reply can re-post the same in-flight bubble below the reply. Carry
         // its current list into that replacement; fresh inbound work must start
         // empty even if the daemon's reset broadcast is still in flight.
@@ -8925,13 +9001,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * progress indicator (#409) — the channel showed nothing at all during long work,
    * and once the agent had replied once there was no sign it was still going.
    */
-  static progressText(elapsedMs: number, activity?: string | null, minElapsedMs = PROGRESS_MIN_ELAPSED_MS): string {
-    if (elapsedMs < minElapsedMs) return "👀 處理中…";
+  static progressText(elapsedMs: number, activity?: string | null, minElapsedMs = PROGRESS_MIN_ELAPSED_MS, prefix?: string): string {
+    // A configured progress_prefix (#1005) leads both phases; the built-in
+    // switches 👀 → ⏳ once the elapsed time shows.
+    if (elapsedMs < minElapsedMs) return `${prefix ?? "👀"} 處理中…`;
     const elapsed = FleetManager.formatProgressElapsed(elapsedMs);
     const detail = FleetManager.sanitizeActivity(activity);
     return detail
-      ? `⏳ 處理中… (已進行 ${elapsed} · ${detail})`
-      : `⏳ 處理中… (已進行 ${elapsed})`;
+      ? `${prefix ?? "⏳"} 處理中… (已進行 ${elapsed} · ${detail})`
+      : `${prefix ?? "⏳"} 處理中… (已進行 ${elapsed})`;
   }
 
   /** Render elapsed time consistently in live and retained progress bubbles. */
@@ -9031,6 +9109,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.instanceActivity.get(entry.instanceName),
       this.progressMinElapsedMs(),
       entry.toolProgress,
+      this.progressPrefixFor(entry.instanceName),
     );
   }
 
@@ -9040,12 +9119,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     activity: string | undefined,
     minElapsedMs: number,
     progress: string | undefined,
+    prefix?: string,
   ): string {
     const header = FleetManager.progressText(
       elapsedMs,
       // The single-line activity detail is redundant once a tool list exists.
       progress ? undefined : activity,
       minElapsedMs,
+      prefix,
     );
     return progress ? `${header}\n${progress}` : header;
   }
@@ -10832,7 +10913,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       const classicAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter;
       const collabReactChatId = msg.threadId ?? msg.chatId;
       if (classicAdapter && collabReactChatId && msg.messageId) {
-        classicAdapter.react(collabReactChatId, msg.messageId, "👀")
+        classicAdapter.react(collabReactChatId, msg.messageId, this.receivedReactionFor(instanceName, classicAdapter, msg.adapterId))
           .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
       }
 
@@ -10939,7 +11020,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
     if (msg.chatId && msg.messageId) {
       const reactChatId = msg.threadId ?? msg.chatId;
-      classicMsgAdapter.react(reactChatId, msg.messageId, "👀")
+      classicMsgAdapter.react(reactChatId, msg.messageId, this.receivedReactionFor(instanceName, classicMsgAdapter, msg.adapterId))
         .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
       if (saved) {
         const savedEmoji = msg.source === "telegram"

@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FleetManager } from "../src/fleet-manager.js";
+import type { DeliveryStatus } from "../src/status-emojis.js";
 import { DiscordAdapter } from "../src/channel/adapters/discord.js";
 import { TelegramAdapter } from "../src/channel/adapters/telegram.js";
 import type { ChannelAdapter } from "../src/channel/types.js";
@@ -42,9 +43,9 @@ describe("delivery-status reaction replaces the previous status", () => {
     const { adapter, react, unreact } = stubAdapter("discord");
     const fleet = makeFleet(adapter);
 
-    fleet.reactMessageStatus("inst", "chat", "msg", "❌");
+    fleet.reactMessageStatus("inst", "chat", "msg", "failed");
     await vi.waitFor(() => expect(react).toHaveBeenCalledWith("chat", "msg", "❌", undefined));
-    fleet.reactMessageStatus("inst", "chat", "msg", "✅");
+    fleet.reactMessageStatus("inst", "chat", "msg", "delivered");
     await vi.waitFor(() => expect(react).toHaveBeenCalledWith("chat", "msg", "✅", undefined));
 
     expect(unreact).toHaveBeenCalledTimes(1);
@@ -61,11 +62,11 @@ describe("delivery-status reaction replaces the previous status", () => {
     const { adapter, react, unreact } = stubAdapter("discord");
     const fleet = makeFleet(adapter);
 
-    fleet.reactMessageStatus("inst", "chat", "msg", "👀");
+    fleet.reactMessageStatus("inst", "chat", "msg", "processing");
     await vi.waitFor(() => expect(react).toHaveBeenCalledWith("chat", "msg", "👀", undefined));
-    fleet.reactMessageStatus("inst", "chat", "msg", "⏳");
+    fleet.reactMessageStatus("inst", "chat", "msg", "queued");
     await vi.waitFor(() => expect(react).toHaveBeenCalledWith("chat", "msg", "⏳", undefined));
-    fleet.reactMessageStatus("inst", "chat", "msg", "✅");
+    fleet.reactMessageStatus("inst", "chat", "msg", "delivered");
     await vi.waitFor(() => expect(react).toHaveBeenCalledWith("chat", "msg", "✅", undefined));
 
     // Three adds, zero removes — each step is a single API call.
@@ -81,11 +82,11 @@ describe("delivery-status reaction replaces the previous status", () => {
     const { adapter, react, unreact } = stubAdapter("discord");
     const fleet = makeFleet(adapter);
 
-    fleet.reactMessageStatus("inst", "chat", "msg2", "👀");
+    fleet.reactMessageStatus("inst", "chat", "msg2", "processing");
     await vi.waitFor(() => expect(react).toHaveBeenCalledWith("chat", "msg2", "👀", undefined));
-    fleet.reactMessageStatus("inst", "chat", "msg2", "❌");
+    fleet.reactMessageStatus("inst", "chat", "msg2", "failed");
     await vi.waitFor(() => expect(react).toHaveBeenCalledWith("chat", "msg2", "❌", undefined));
-    fleet.reactMessageStatus("inst", "chat", "msg2", "✅");
+    fleet.reactMessageStatus("inst", "chat", "msg2", "delivered");
     await vi.waitFor(() => expect(react).toHaveBeenCalledWith("chat", "msg2", "✅", undefined));
 
     // ❌ must be unreacted exactly once (when transitioning away from it).
@@ -99,9 +100,9 @@ describe("delivery-status reaction replaces the previous status", () => {
     const { adapter, react, unreact } = stubAdapter("discord");
     const fleet = makeFleet(adapter);
 
-    fleet.reactMessageStatus("inst", "guild", "msg", "👀", "topic-9");
+    fleet.reactMessageStatus("inst", "guild", "msg", "processing", "topic-9");
     await vi.waitFor(() => expect(react).toHaveBeenCalledWith("topic-9", "msg", "👀", "topic-9"));
-    fleet.reactMessageStatus("inst", "guild", "msg", "✅", "topic-9");
+    fleet.reactMessageStatus("inst", "guild", "msg", "delivered", "topic-9");
     await vi.waitFor(() => expect(react).toHaveBeenCalledWith("topic-9", "msg", "✅", "topic-9"));
 
     // #972: 👀 → ✅ is add-only — no unreact call for non-❌ transitions.
@@ -120,10 +121,10 @@ describe("delivery-status reaction replaces the previous status", () => {
     });
     const fleet = makeFleet(adapter);
 
-    fleet.reactMessageStatus("inst", "100", "42", "👀");
-    fleet.finishDeliveryStatus("inst", "100", "42", "✅");
-    fleet.finishDeliveryStatus("inst", "100", "42", "❌");
-    fleet.finishDeliveryStatus("inst", "100", "42", "✅");
+    fleet.reactMessageStatus("inst", "100", "42", "processing");
+    fleet.finishDeliveryStatus("inst", "100", "42", "delivered");
+    fleet.finishDeliveryStatus("inst", "100", "42", "failed");
+    fleet.finishDeliveryStatus("inst", "100", "42", "delivered");
     await vi.waitFor(() => expect(sets).toHaveLength(3));
 
     expect(sets).toEqual([["👀"], ["👎"], ["👀"]]);
@@ -141,13 +142,13 @@ describe("delivery-status reaction replaces the previous status", () => {
     });
     const fleet = makeFleet(adapter);
 
-    fleet.reactMessageStatus("inst", "100", "42", "👀");
+    fleet.reactMessageStatus("inst", "100", "42", "processing");
     await vi.waitFor(() => expect(sets).toHaveLength(1));
     // Telegram's single slot means the ordinary reaction replaces 👀. Since
     // success maps to the already tracked 👀 state, the status update is a
     // no-op and must not overwrite the agent's reaction.
     await adapter.react("100", "42", "👍");
-    fleet.finishDeliveryStatus("inst", "100", "42", "✅");
+    fleet.finishDeliveryStatus("inst", "100", "42", "delivered");
     await new Promise(r => setTimeout(r, 100));
 
     expect(sets).toEqual([["👀"], ["👍"]]);
@@ -158,9 +159,9 @@ describe("delivery-status reaction replaces the previous status", () => {
     const adapter = { id: "legacy", type: "discord", react } as unknown as ChannelAdapter;
     const fleet = makeFleet(adapter);
 
-    fleet.reactMessageStatus("inst", "chat", "msg", "❌");
+    fleet.reactMessageStatus("inst", "chat", "msg", "failed");
     await vi.waitFor(() => expect(react).toHaveBeenCalledTimes(1));
-    fleet.reactMessageStatus("inst", "chat", "msg", "✅");
+    fleet.reactMessageStatus("inst", "chat", "msg", "delivered");
     await vi.waitFor(() => expect(react).toHaveBeenCalledWith("chat", "msg", "✅", undefined));
 
     expect(react).toHaveBeenCalledTimes(2);

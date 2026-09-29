@@ -232,6 +232,8 @@ export interface InboundReaction {
   userId: string;
   username: string;
   emoji: string;
+  /** Discord server custom emoji id; `emoji` then holds only its name (#1005). */
+  emojiId?: string;
   action: "add" | "remove";
   timestamp: Date;
 }

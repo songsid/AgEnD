@@ -60,6 +60,34 @@ Each entry configures a platform adapter (Telegram or Discord).
 |-------|------|---------|-------------|
 | `topic_probe` | `"on-demand"` \| `"periodic"` | `"on-demand"` | `on-demand`: a topic is only checked after a real delivery reports it missing (no scheduled send+delete, no notifications). `periodic`: also probe every bound topic on the 5-minute scan, which posts and deletes a blank message in each topic. |
 
+#### channel.options.status_emojis (Discord and Telegram)
+
+The delivery-status emojis this channel's bots stamp on inbound messages. Every key is optional; an unset key keeps the built-in value.
+
+| Key | Built-in (Discord) | Built-in (Telegram) | When |
+|-----|--------------------|---------------------|------|
+| `received` | 👀 | 👀 | the fleet routed the message to an instance |
+| `queued` | ⏳ | 👀 | waiting (instance busy, rate-limited) |
+| `processing` | 👀 | 👀 | the agent has the message |
+| `delivered` | ✅ | 👀 | the agent started on it |
+| `failed` | ❌ | 👎 | delivery failed |
+| `progress_prefix` | 👀 / ⏳ | 👀 / ⏳ | leads the "處理中…" progress message |
+
+```yaml
+channels:
+  - type: discord
+    options:
+      status_emojis:
+        received: "<:inbox:123456789012345678>"   # server custom emoji; <a:name:id> and name:id also work
+        delivered: "<:done:123456789012345679>"
+```
+
+- **Discord** takes any emoji, including server custom emoji.
+- **Telegram** takes only its fixed reaction set and no custom emoji. A value outside the set logs a warning once and falls back to the built-in; the reaction still goes out.
+- `instances.<name>.status_emojis` overrides this per instance. Resolution, per key: instance → channel → built-in.
+- Reactions an AgEnD bot stamps from its own status set never reach an instance as a user reaction. Once every bot's user id is known, humans' reactions always pass, whatever emoji they use.
+- Each instance's instructions list its own status set as the emojis to avoid.
+
 ---
 
 ### defaults
@@ -96,6 +124,7 @@ All fields from `instances.<name>` can be set here as shared defaults. Additiona
 |-------|------|---------|-------------|
 | `working_directory` | string | auto-created | Absolute path to project directory |
 | `display_name` | string | — | Agent display name (set by agent) |
+| `status_emojis` | object | — | This instance's own delivery-status emojis; overrides `channel.options.status_emojis` per key (see there) |
 | `description` | string | — | Human-readable role description |
 | `tags` | string[] | — | Capability tags for discovery |
 | `topic_id` | number \| string | auto-created | Telegram topic ID or Discord thread ID |

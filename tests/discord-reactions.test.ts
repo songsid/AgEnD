@@ -152,6 +152,17 @@ describe("Discord inbound reaction listener", () => {
         emoji: "🎯",
         action: "add",
       });
+      expect(await seen).not.toHaveProperty("emojiId");
+
+      // #1005: a server custom emoji carries its id — the name alone can be
+      // renamed or shared, and the status filter matches configured ids.
+      const custom = new Promise(resolve => adapter.once("reaction", resolve));
+      client.emit("messageReactionAdd", {
+        partial: false,
+        message: { id: "message-4", channelId: "topic-3", guildId: "guild-1", author: { id: "self-bot" } },
+        emoji: { name: "inbox", id: "111111111111111111", toString: () => "<:inbox:111111111111111111>" },
+      }, { id: "sibling-bot", username: "sibling", bot: true });
+      await expect(custom).resolves.toMatchObject({ emoji: "inbox", emojiId: "111111111111111111" });
     } finally {
       await adapter.stop();
       rmSync(dir, { recursive: true, force: true });
