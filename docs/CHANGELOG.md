@@ -19,7 +19,7 @@ and `?token=` are not credentials on it), requires a sign-in for `/view` whateve
 `__Host-` cookie decided by which listener it is rather than by
 `X-Forwarded-Proto`, and keeps a session on the listener that made it. Gateway
 sessions last 4 hours (30 minutes idle) and are listed with the IP the edge
-reported. With neither key set there is no gateway, and sessions made on one are
+reported. Over the gateway, anything that amounts to running code here (messaging or creating/removing/restarting agents, settings, apply/restart-fleet, schedules, tasks, secrets — every write except the `/view` edits and session management) needs a sign-in from the last 30 minutes: an older session gets `403 reauth_required` and the page asks for a fresh code and repeats the action. With neither key set there is no gateway, and sessions made on one are
 revoked at the next start. See `docs/cli.md` › *Reaching the panels from outside*.
 
 **The three web panels share one navigation and one session menu.** `/ui`,

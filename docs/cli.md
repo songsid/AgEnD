@@ -292,6 +292,14 @@ What the gateway is, and is not:
   internet. A session is good on the listener that made it: a local session is
   nobody at the gateway, and the reverse. Gateway sessions are shorter (4 hours,
   30 minutes idle) and each sign-in lists the IP your edge reported.
+- **Actions that amount to running code want a sign-in from the last 30 minutes.**
+  Over the gateway a session may read all day, but sending an agent a message,
+  creating/removing/restarting agents, changing settings, applying or restarting the
+  fleet, schedules, tasks and anything handling secrets answers `403 reauth_required`
+  once the session's sign-in is older than that; the page asks for a fresh code
+  (`/dashboard` in the chat) and repeats the action. Editing a profile on `/view`
+  and signing out are not affected. The local listener never asks. A write route
+  added in future is in this class until it is deliberately listed out.
 - **It requires a sign-in for `/view` too**, including the live terminal capture,
   whatever `web.view_access` says — `open` is a choice about a loopback listener.
 - **It answers only the names in `external_hosts`** (a port is ignored). The

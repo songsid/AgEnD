@@ -93,3 +93,35 @@ export function gatewaySourceHint(headers: NodeJS.Dict<string | string[]>): stri
   const value = (Array.isArray(raw) ? raw[0] : raw)?.trim();
   return value && isIP(value) ? value : null;
 }
+
+/**
+ * How recently a gateway session must have signed in to do something that amounts to
+ * running code on this machine. Thirty minutes: long enough to work, short enough
+ * that a cookie lifted from a browser an hour ago cannot restart your fleet.
+ */
+export const GATEWAY_RECENT_AUTH_MS = 30 * 60 * 1000;
+
+/** The machine-readable answer a page recognises; not a sentence, so nothing has to parse prose. */
+export const WEB_REAUTH_REQUIRED = "reauth_required";
+
+/**
+ * Writes that change what is shown or remembered, and nothing about what runs.
+ * Everything else that writes is Tier 2 by default: a route added later is
+ * protected until someone decides otherwise, rather than exposed until someone
+ * remembers to list it.
+ *
+ * Deliberately conservative next to the design's table: tasks, schedules and teams
+ * are Tier 2 here, because a task or a schedule is a message an agent will act on.
+ */
+const TIER1_WRITE_PREFIXES = ["/api/profile/", "/api/avatar/", "/api/sort-order", "/auth/"];
+
+/**
+ * Tier 2 — the requests that, from a session, are close to a shell: sending an agent
+ * a message, creating or removing or restarting one, changing settings, applying or
+ * restarting the fleet, handling secrets. Reads are never Tier 2.
+ */
+export function requiresRecentAuth(method: string | undefined, path: string): boolean {
+  const m = (method ?? "GET").toUpperCase();
+  if (m === "GET" || m === "HEAD" || m === "OPTIONS") return false;
+  return !TIER1_WRITE_PREFIXES.some(prefix => path === prefix || path.startsWith(prefix));
+}

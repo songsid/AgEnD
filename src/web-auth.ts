@@ -1,6 +1,7 @@
 import { chmodSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { join } from "node:path";
+import { GATEWAY_RECENT_AUTH_MS, requiresRecentAuth, WEB_REAUTH_REQUIRED } from "./web-gateway.js";
 import {
   csrfTokenFor,
   labelFromUserAgent,
@@ -164,7 +165,7 @@ export type WebGateDecision =
       readonly status: 401 | 403;
       readonly message: string;
       /** `no-credential` is "nothing was presented" — the case a browser navigation answers with the sign-in page. */
-      readonly reason: "closed" | "no-credential" | "invalid" | "cross-site" | "csrf";
+      readonly reason: "closed" | "no-credential" | "invalid" | "cross-site" | "csrf" | "reauth";
     };
 
 function headerValue(req: WebGateRequest, name: string): string | null {
@@ -353,6 +354,12 @@ function authorize(
     if (session) {
       if (!isSafeMethod(method) && !passesCookieWriteChecks(req, cookie)) {
         return { kind: "reject", status: 403, message: WEB_CSRF_MESSAGE, reason: "csrf" };
+      }
+      // A session that arrived over the internet may read all day, but what amounts to running code
+      // here wants a sign-in from the last half hour — a cookie is only as fresh as its theft.
+      if (surface === "gateway" && requiresRecentAuth(method, url.pathname)
+        && Date.now() - session.created > GATEWAY_RECENT_AUTH_MS) {
+        return { kind: "reject", status: 403, message: WEB_REAUTH_REQUIRED, reason: "reauth" };
       }
       return { kind: "allow", via: "session", session };
     }

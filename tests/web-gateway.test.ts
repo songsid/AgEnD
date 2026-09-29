@@ -1,12 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { request, type Server } from "node:http";
 import { connect } from "node:net";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FleetManager } from "../src/fleet-manager.js";
 import {
-  gatewayConfigured, gatewayHostNames, gatewaySourceHint, isGatewayRoute, GATEWAY_MAX_CONNECTIONS, GATEWAY_REQUEST_TIMEOUT_MS,
+  gatewayConfigured, gatewayHostNames, gatewaySourceHint, isGatewayRoute, requiresRecentAuth,
+  GATEWAY_MAX_CONNECTIONS, GATEWAY_RECENT_AUTH_MS, GATEWAY_REQUEST_TIMEOUT_MS, WEB_REAUTH_REQUIRED,
 } from "../src/web-gateway.js";
 import { decideWebGate, evaluateWebRequest, isWebRequestAuthorized, markRequestSurface, WEB_SESSION_COOKIE, WEB_SESSION_COOKIE_SECURE } from "../src/web-auth.js";
 import { csrfTokenFor, tokenEpoch, WebSessionStore } from "../src/web-session.js";
@@ -167,6 +168,116 @@ describe("credentials on the gateway", () => {
     const signin = { method: "GET", url: "/signin" };
     markRequestSurface(signin, "gateway");
     expect(bypassesWebGate(signin, "/signin", open, isView)).toBe(true);
+  });
+});
+
+describe("requiresRecentAuth — which requests amount to running code here", () => {
+  it("never asks it of a read", () => {
+    for (const method of ["GET", "HEAD", "OPTIONS", undefined]) {
+      for (const path of ["/ui/poll", "/api/settings/fleet/raw", "/api/fleet", "/api/pane/a", "/settings"]) {
+        expect(requiresRecentAuth(method, path), `${method} ${path}`).toBe(false);
+      }
+    }
+  });
+
+  it("asks it of every write that sends, creates, removes, restarts, configures or handles secrets", () => {
+    for (const [method, path] of [
+      ["POST", "/ui/send"], ["POST", "/ui/instances"], ["POST", "/ui/instances/a/delete"], ["POST", "/ui/stop/a"], ["POST", "/ui/restart/a"],
+      ["POST", "/ui/config"], ["POST", "/ui/tasks"], ["POST", "/ui/schedules"], ["DELETE", "/ui/schedules/1"], ["POST", "/ui/teams"], ["DELETE", "/ui/teams/x"],
+      ["POST", "/api/settings/apply"], ["POST", "/api/settings/restart-fleet"], ["POST", "/api/settings/reload"],
+      ["PUT", "/api/settings/fleet/defaults"], ["PUT", "/api/settings/fleet/channels"], ["POST", "/api/settings/fleet/instances"], ["PATCH", "/api/settings/fleet/instances/a"],
+      ["POST", "/api/settings/quickstart/commit"], ["POST", "/api/settings/quickstart/probe"], ["POST", "/api/settings/secrets/x/apply"], ["POST", "/api/settings/connections/c/secret/apply"],
+      ["POST", "/stop/a"], ["POST", "/api/instance/a/start"],
+    ] as const) {
+      expect(requiresRecentAuth(method, path), `${method} ${path}`).toBe(true);
+    }
+  });
+
+  it("leaves the /view edits and the session's own management alone", () => {
+    for (const [method, path] of [
+      ["POST", "/api/profile/a"], ["POST", "/api/avatar/a"], ["POST", "/api/sort-order"],
+      ["POST", "/auth/logout"], ["DELETE", "/auth/sessions"], ["DELETE", "/auth/sessions/0123456789abcdef"], ["POST", "/auth/login"],
+    ] as const) {
+      expect(requiresRecentAuth(method, path), `${method} ${path}`).toBe(false);
+    }
+  });
+
+  it("protects a route nobody has listed yet", () => {
+    expect(requiresRecentAuth("POST", "/ui/something-added-next-year")).toBe(true);
+    expect(requiresRecentAuth("PUT", "/api/settings/brand-new")).toBe(true);
+    // ...and a path that only starts like a Tier 1 one is not one.
+    expect(requiresRecentAuth("POST", "/api/profiles-admin")).toBe(true);
+    expect(requiresRecentAuth("POST", "/auth")).toBe(true);
+  });
+});
+
+describe("recent sign-in on the gateway (gate)", () => {
+  const TOKEN = "a".repeat(48);
+  const EPOCH = tokenEpoch(TOKEN);
+  const MIN = 60_000;
+
+  function sessionAged(sessions: WebSessionStore, minutes: number) {
+    const { sessionId, record } = sessions.create({ tier: "admin", surface: "gateway", label: "g", tokenEpoch: EPOCH });
+    (record as { created: number }).created = Date.now() - minutes * MIN;
+    return { sessionId, csrf: csrfTokenFor(sessionId) };
+  }
+  const write = (surface: "gateway" | "local", s: { sessionId: string; csrf: string }, path: string, method = "POST") => {
+    const req = {
+      method,
+      headers: { cookie: `${surface === "gateway" ? WEB_SESSION_COOKIE_SECURE : WEB_SESSION_COOKIE}=${s.sessionId}`, host: "gw.example", origin: "https://gw.example", "x-agend-csrf": s.csrf },
+    };
+    markRequestSurface(req, surface);
+    return decideWebGate(req, new URL(path, "https://gw.example"), TOKEN, sessionsFor.get(s.sessionId)!);
+  };
+  const sessionsFor = new Map<string, WebSessionStore>();
+  const aged = (minutes: number) => {
+    const sessions = new WebSessionStore();
+    const s = sessionAged(sessions, minutes);
+    sessionsFor.set(s.sessionId, sessions);
+    return s;
+  };
+
+  it("lets a fresh session do it, and turns an old one away with reauth_required", () => {
+    const fresh = aged(29);
+    expect(write("gateway", fresh, "/api/settings/apply").kind).toBe("allow");
+    const stale = aged(31);
+    expect(write("gateway", stale, "/api/settings/apply")).toEqual({ kind: "reject", status: 403, message: WEB_REAUTH_REQUIRED, reason: "reauth" });
+    expect(write("gateway", stale, "/ui/send")).toMatchObject({ status: 403, reason: "reauth" });
+    expect(GATEWAY_RECENT_AUTH_MS).toBe(30 * MIN);
+  });
+
+  it("measures from sign-in, not from the last activity", () => {
+    const sessions = new WebSessionStore();
+    const s = sessionAged(sessions, 45);
+    sessionsFor.set(s.sessionId, sessions);
+    // Active a moment ago — the idle window slides, but the sign-in does not get younger.
+    sessions.authenticate(s.sessionId, EPOCH, { surface: "gateway" });
+    expect(write("gateway", s, "/ui/send")).toMatchObject({ reason: "reauth" });
+  });
+
+  it("does not ask an old session for anything it may still do", () => {
+    const stale = aged(200);
+    expect(write("gateway", stale, "/ui/poll", "GET").kind).toBe("allow");
+    expect(write("gateway", stale, "/api/settings/fleet/raw", "GET").kind).toBe("allow");
+    expect(write("gateway", stale, "/api/profile/a").kind).toBe("allow");
+    expect(write("gateway", stale, "/api/sort-order").kind).toBe("allow");
+    expect(write("gateway", stale, "/auth/logout").kind).toBe("allow");
+  });
+
+  it("answers the CSRF failure first: a forged write learns nothing about the session's age", () => {
+    const stale = aged(200);
+    const req = { method: "POST", headers: { cookie: `${WEB_SESSION_COOKIE_SECURE}=${stale.sessionId}`, host: "gw.example", origin: "https://gw.example" } };
+    markRequestSurface(req, "gateway");
+    expect(decideWebGate(req, new URL("/ui/send", "https://gw.example"), TOKEN, sessionsFor.get(stale.sessionId)!)).toMatchObject({ reason: "csrf" });
+  });
+
+  it("never asks it on the local listener, however old the session", () => {
+    const sessions = new WebSessionStore();
+    const { sessionId, record } = sessions.create({ tier: "admin", surface: "local", label: "l", tokenEpoch: EPOCH });
+    (record as { created: number }).created = Date.now() - 600 * MIN;
+    const s = { sessionId, csrf: csrfTokenFor(sessionId) };
+    sessionsFor.set(sessionId, sessions);
+    expect(write("local", s, "/api/settings/apply").kind).toBe("allow");
   });
 });
 
@@ -444,6 +555,71 @@ describe("the gateway listener (live)", () => {
     expect((await viaGateway(h, "GET", "/ui/poll", { cookie: s.cookie })).status).toBe(401);
     await stop(h);
   }, 30_000);
+});
+
+describe("recent sign-in on the gateway (live)", () => {
+  it("refuses a stale session's Tier 2 write, allows it again after a fresh sign-in, and leaves reads and /view edits alone", async () => {
+    const h = await startFleet();
+    const s = await gatewaySignIn(h);
+    const sessions = (h.fm as unknown as { webSessions: WebSessionStore }).webSessions;
+    // Age the stored record: the sign-in was 31 minutes ago.
+    const stored = (sessions as unknown as { byHash: Map<string, { created: number }> }).byHash;
+    for (const rec of stored.values()) rec.created = Date.now() - 31 * 60_000;
+
+    const headers = { cookie: s.cookie, origin: h.gwOrigin, "x-agend-csrf": s.csrf, "content-type": "application/json" };
+    const stale = await viaGateway(h, "POST", "/ui/send", headers, JSON.stringify({ instance: "alpha", message: "hi" }));
+    expect(stale.status).toBe(403);
+    expect(JSON.parse(stale.body)).toEqual({ error: WEB_REAUTH_REQUIRED });
+    for (const path of ["/api/settings/apply", "/api/settings/restart-fleet", "/ui/instances"]) {
+      expect((await viaGateway(h, "POST", path, headers, "{}")).status, path).toBe(403);
+    }
+    // Reads, and the edits the View page makes, are not affected.
+    expect((await viaGateway(h, "GET", "/api/fleet", { cookie: s.cookie })).status).toBe(200);
+    expect((await viaGateway(h, "POST", "/api/profile/alpha", headers, JSON.stringify({ display_name: "x" }))).status).toBe(200);
+
+    // A fresh sign-in (a new code, from the chat) makes the same request reach routing.
+    const fresh = await gatewaySignIn(h);
+    const again = await viaGateway(h, "POST", "/ui/send", { cookie: fresh.cookie, origin: h.gwOrigin, "x-agend-csrf": fresh.csrf, "content-type": "application/json" },
+      JSON.stringify({ instance: "no-such-instance", message: "hi" }));
+    expect(again.status).not.toBe(403);
+    expect(again.status).not.toBe(401);
+    await stop(h);
+  }, 40_000);
+
+  it("does not ask it of the local listener", async () => {
+    const h = await startFleet();
+    const l = await localSignIn(h);
+    const stored = ((h.fm as unknown as { webSessions: WebSessionStore }).webSessions as unknown as { byHash: Map<string, { created: number }> }).byHash;
+    for (const rec of stored.values()) rec.created = Date.now() - 500 * 60_000;
+    const res = await raw(h.local, "POST", "/ui/send", { host: `127.0.0.1:${h.local}`, cookie: l.cookie, origin: h.localOrigin, "x-agend-csrf": l.csrf, "content-type": "application/json" },
+      JSON.stringify({ instance: "no-such-instance", message: "hi" }));
+    expect(res.status).not.toBe(403);
+    await stop(h);
+  }, 30_000);
+});
+
+describe("the page's reauth prompt", () => {
+  const js = readFileSync(join(process.cwd(), "src", "ui", "shared", "agend-auth.js"), "utf8");
+
+  it("recognises exactly the server's machine-readable answer, on a 403 only", () => {
+    expect(js).toContain(`const REAUTH = "${WEB_REAUTH_REQUIRED}"`);
+    expect(js).toMatch(/response\.status !== 403\) return false/);
+    expect(js).toMatch(/\.error === REAUTH/);
+  });
+
+  it("repeats the action once with the new session's CSRF value, and never for /auth/", () => {
+    expect(js).toContain("csrfPending = null; done(true)");
+    expect(js).toMatch(/!target\.pathname\.startsWith\("\/auth\/"\) && await isReauth\(response\)/);
+    expect(js).toContain('headers.set("X-Agend-CSRF", fresh)');
+    expect(js.match(/askForFreshCode\(\)/g)!.length).toBeGreaterThanOrEqual(2);
+    // one prompt at a time, however many requests were refused together
+    expect(js).toContain("if (reauthPending) return reauthPending;");
+  });
+
+  it("builds its dialog from text nodes only", () => {
+    expect(js).not.toMatch(/\.innerHTML\s*=/);
+    expect(js).not.toContain("insertAdjacentHTML");
+  });
 });
 
 describe("without a gateway", () => {
