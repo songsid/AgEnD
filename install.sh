@@ -248,9 +248,10 @@ info "Discord plugin $(npm list -g @songsid/agend-plugin-discord --depth=0 2>/de
 # ── Shell completion ───────────────────────────────────────
 # bash: static file in bash-completion's completions dir — no rc file touched,
 #   idempotent, zero shell-startup cost. Opt out: AGEND_NO_COMPLETION=1
-# zsh: needs an rc line, which this non-interactive script only adds when the
-#   user explicitly authorizes it with AGEND_MODIFY_RC=1; otherwise agend
-#   prints the one-liner to add manually.
+# zsh — and bash where bash-completion is not loaded (#1003: the static file
+#   is then never read) — need an rc line, which this non-interactive script
+#   only adds when the user explicitly authorizes it with AGEND_MODIFY_RC=1;
+#   otherwise agend says exactly what to run.
 if [ -z "${AGEND_NO_COMPLETION:-}" ] && command_exists agend; then
   if [ -n "${AGEND_MODIFY_RC:-}" ]; then
     agend completion install --modify-rc || true
