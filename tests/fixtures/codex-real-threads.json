@@ -2,9 +2,9 @@
   "_about": "Real Codex threads rows, captured read-only from a lived-in ~/.codex/state_5.sqlite on 2026-09-29 (#1017). Every column is as Codex wrote it except: title/first_user_message/preview replaced by '[redacted: N chars]' (non-empty stays non-empty), cwd -> '{cwd}', rollout_path -> '{rollout}', git_*/creator_*/agent_*/name/project/section -> null. Tests substitute {cwd}/{rollout}. Do not hand-edit the semantic columns (has_user_event, tokens_used, first_user_message emptiness): the point of this file is that they come from real sessions.",
   "_capture_sql": {
     "resumable_0157": "source='cli' AND cli_version='0.157.0' AND first_user_message<>'' AND tokens_used>0 AND has_user_event=0 -- a live AgEnD fleet session",
-    "empty_0157": "source='cli' AND cli_version='0.157.0' AND first_user_message='' AND tokens_used=0 -- opened, never written to",
-    "empty_has_user_event_0156": "source='cli' AND has_user_event=1 AND first_user_message='' -- the only has_user_event=1 row in the database",
-    "first_turn_no_tokens": "source='cli' AND first_user_message<>'' AND tokens_used=0 -- a real session on a provider that reports no token usage"
+    "empty_0157": "source='cli' AND cli_version='0.157.0' AND first_user_message='' AND tokens_used=0 -- an untouched fork: its rollout holds only session_meta + thread_settings_applied",
+    "first_turn_no_tokens": "source='cli' AND first_user_message<>'' AND tokens_used=0 -- a real session on a provider that reports no token usage",
+    "metadata_empty_real_0156": "source='cli' AND has_user_event=1 AND first_user_message='' -- the only has_user_event=1 row: its list metadata is empty (first_user_message, tokens_used) but its rollout holds a real 38-turn conversation (#1017 review; cf. openai/codex#28423)"
   },
   "rows": {
     "resumable_0157": {
@@ -95,7 +95,7 @@
       "creator_user_id": null,
       "creator_account_id": null
     },
-    "empty_has_user_event_0156": {
+    "metadata_empty_real_0156": {
       "id": "01a0d0eb-1af3-7373-a3fc-34c59e2b4910",
       "rollout_path": "{rollout}",
       "created_at": 1790182663,
@@ -183,5 +183,116 @@
       "creator_user_id": null,
       "creator_account_id": null
     }
-  }
+  },
+  "rollout_heads": {
+    "metadata_empty_real_0156": [
+      {
+        "type": "session_meta",
+        "payload": {}
+      },
+      {
+        "type": "event_msg",
+        "payload": {
+          "type": "task_started"
+        }
+      },
+      {
+        "type": "response_item",
+        "payload": {
+          "type": "message",
+          "role": "developer"
+        }
+      },
+      {
+        "type": "response_item",
+        "payload": {
+          "type": "message",
+          "role": "developer"
+        }
+      },
+      {
+        "type": "response_item",
+        "payload": {
+          "type": "message",
+          "role": "developer"
+        }
+      },
+      {
+        "type": "response_item",
+        "payload": {
+          "type": "message",
+          "role": "user"
+        }
+      },
+      {
+        "type": "world_state",
+        "payload": {}
+      },
+      {
+        "type": "turn_context",
+        "payload": {}
+      }
+    ],
+    "untouched_fork_0157": [
+      {
+        "type": "session_meta",
+        "payload": {}
+      },
+      {
+        "type": "event_msg",
+        "payload": {
+          "type": "thread_settings_applied"
+        }
+      }
+    ],
+    "resumable_0157": [
+      {
+        "type": "session_meta",
+        "payload": {}
+      },
+      {
+        "type": "event_msg",
+        "payload": {
+          "type": "task_started"
+        }
+      },
+      {
+        "type": "response_item",
+        "payload": {
+          "type": "message",
+          "role": "developer"
+        }
+      },
+      {
+        "type": "response_item",
+        "payload": {
+          "type": "message",
+          "role": "developer"
+        }
+      },
+      {
+        "type": "response_item",
+        "payload": {
+          "type": "message",
+          "role": "developer"
+        }
+      },
+      {
+        "type": "response_item",
+        "payload": {
+          "type": "message",
+          "role": "user"
+        }
+      },
+      {
+        "type": "world_state",
+        "payload": {}
+      },
+      {
+        "type": "turn_context",
+        "payload": {}
+      }
+    ]
+  },
+  "_about_rollout_heads": "First lines of the same threads' real rollout JSONL files, reduced to type / payload.type / payload.role (every other field dropped)."
 }

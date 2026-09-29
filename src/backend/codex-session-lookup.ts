@@ -12,13 +12,13 @@
  * docs/design/984-codex-exact-cwd-resume.zh-TW.md.
  */
 import { execFileSync } from "node:child_process";
-import { realpathSync } from "node:fs";
+import { closeSync, openSync, readSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import Database from "better-sqlite3";
 
 /** Columns the lookup depends on; any missing one means "schema unreadable". */
 export const CODEX_THREAD_COLUMNS = [
-  "id", "cwd", "source", "archived", "first_user_message", "recency_at_ms", "updated_at_ms",
+  "id", "cwd", "source", "archived", "first_user_message", "rollout_path", "recency_at_ms", "updated_at_ms",
 ] as const;
 
 const SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -57,22 +57,25 @@ function cwdCandidates(workingDirectory: string): string[] {
  * equality only: a prefix or LIKE match would take a subdirectory's (or a
  * similarly named sibling's) session.
  *
- * "Has anything in it" is `first_user_message <> ''` — checked against real
- * Codex data (#1017), not inferred from a column name:
+ * "Has anything in it" was checked against real Codex data (#1017), not
+ * inferred from a column name:
  * - `has_user_event` does NOT mean that. Real 0.157 sessions with a first
- *   message and millions of tokens carry 0; the one row with 1 was empty.
- *   Filtering on it matched no real session, so every restart silently
- *   started a new conversation.
+ *   message and millions of tokens carry 0. Filtering on it matched no real
+ *   session, so every restart silently started a new conversation.
  * - `tokens_used > 0` drops real sessions too: a provider that reports no
  *   token usage leaves it at 0, as does a restart during the first turn.
- * - `first_user_message` is empty exactly for threads that were opened and
- *   never written to, which is what resuming must skip.
+ * - A non-empty `first_user_message` proves content, but an empty one does
+ *   not prove the opposite: a real 38-turn session (0.156.1) and `/goal`-first
+ *   sessions (openai/codex#28423) have empty list metadata. For those the
+ *   rollout decides — a thread nobody wrote to (e.g. an untouched fork) holds
+ *   only `session_meta`/`thread_settings_applied`, never a user message.
  * tests/fixtures/codex-real-threads.json holds the real rows behind this.
  */
 export function findExactCwdCodexSession(
   stateDbPath: string,
   workingDirectory: string,
   open: (path: string) => Database.Database = openCodexStateReadonly,
+  rolloutHasUserMessage: (path: string) => boolean = rolloutRecordsUserMessage,
 ): ExactCwdSession {
   let db: Database.Database | null = null;
   try {
@@ -81,15 +84,16 @@ export function findExactCwdCodexSession(
     const missing = CODEX_THREAD_COLUMNS.filter(c => !columns.has(c));
     if (missing.length > 0) return { kind: "unreadable", reason: `threads schema missing: ${missing.join(", ")}` };
     const [first, second = first] = cwdCandidates(workingDirectory);
-    const row = db.prepare(`
-      SELECT id FROM threads
+    const rows = db.prepare(`
+      SELECT id, first_user_message, rollout_path FROM threads
       WHERE cwd IN (?, ?)
         AND source = 'cli'
         AND archived = 0
-        AND first_user_message <> ''
       ORDER BY recency_at_ms DESC, updated_at_ms DESC, id DESC
-      LIMIT 1
-    `).get(first, second) as { id: unknown } | undefined;
+      LIMIT ${MAX_CANDIDATE_THREADS}
+    `).all(first, second) as Array<{ id: unknown; first_user_message: unknown; rollout_path: unknown }>;
+    const row = rows.find(r => (typeof r.first_user_message === "string" && r.first_user_message !== "")
+      || (typeof r.rollout_path === "string" && rolloutHasUserMessage(r.rollout_path)));
     if (!row) return { kind: "none" };
     // A malformed id means the schema no longer means what we think it does.
     if (typeof row.id !== "string" || !SESSION_ID_RE.test(row.id)) {
@@ -101,6 +105,40 @@ export function findExactCwdCodexSession(
     return { kind: "unreadable", reason: e.code ?? e.message ?? String(err) };
   } finally {
     try { db?.close(); } catch { /* already closed */ }
+  }
+}
+
+/** How many of the directory's newest threads the lookup will look through. */
+const MAX_CANDIDATE_THREADS = 50;
+/** The head of a rollout the content check reads; a user message sits in the first few lines. */
+const ROLLOUT_HEAD_BYTES = 1024 * 1024;
+
+/**
+ * Whether a Codex rollout (JSONL) records a user message. Reads only the
+ * head of the file, read-only; a missing or unreadable rollout cannot be
+ * resumed, so it counts as no. A head too long to hold one without it has
+ * clearly been used, so it counts as yes.
+ */
+export function rolloutRecordsUserMessage(path: string): boolean {
+  let fd: number | null = null;
+  try {
+    fd = openSync(path, "r");
+    const buf = Buffer.alloc(ROLLOUT_HEAD_BYTES);
+    const read = readSync(fd, buf, 0, ROLLOUT_HEAD_BYTES, 0);
+    const lines = buf.subarray(0, read).toString("utf8").split("\n");
+    const complete = read < ROLLOUT_HEAD_BYTES ? lines : lines.slice(0, -1);
+    for (const line of complete) {
+      if (!line.includes('"response_item"')) continue;
+      try {
+        const entry = JSON.parse(line) as { type?: unknown; payload?: { type?: unknown; role?: unknown } };
+        if (entry.type === "response_item" && entry.payload?.type === "message" && entry.payload.role === "user") return true;
+      } catch { /* a malformed line says nothing */ }
+    }
+    return read === ROLLOUT_HEAD_BYTES;
+  } catch {
+    return false;
+  } finally {
+    if (fd !== null) try { closeSync(fd); } catch { /* already closed */ }
   }
 }
 

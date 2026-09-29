@@ -7,7 +7,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -19,6 +19,7 @@ import {
   findExactCwdCodexSession,
   openCodexStateReadonly,
   planCodexResume,
+  rolloutRecordsUserMessage,
 } from "../src/backend/codex-session-lookup.js";
 
 const SCHEMA = readFileSync(fileURLToPath(new URL("./fixtures/codex-0157-state5-schema.sql", import.meta.url)), "utf8");
@@ -74,19 +75,30 @@ function stateDb(threads: Thread[], dir = tempDir()): { path: string; ids: strin
 }
 
 /**
- * Rows exactly as Codex wrote them (redacted text), so the filter is judged
- * against what real sessions look like rather than what a fixture assumes.
+ * Rows exactly as Codex wrote them (redacted text), plus the structure of the
+ * same threads' rollout heads, so the filter is judged against what real
+ * sessions look like rather than what a fixture assumes.
  */
+type RealRow = "resumable_0157" | "empty_0157" | "metadata_empty_real_0156" | "first_turn_no_tokens";
 const REAL = JSON.parse(readFileSync(fileURLToPath(new URL("./fixtures/codex-real-threads.json", import.meta.url)), "utf8")) as {
-  rows: Record<"resumable_0157" | "empty_0157" | "empty_has_user_event_0156" | "first_turn_no_tokens", Record<string, unknown>>;
+  rows: Record<RealRow, Record<string, unknown>>;
+  rollout_heads: Record<"metadata_empty_real_0156" | "untouched_fork_0157" | "resumable_0157", unknown[]>;
 };
-function realStateDb(rows: Array<{ row: Record<string, unknown>; cwd: string; recency: number }>): string {
-  const path = join(tempDir(), "state_5.sqlite");
+const HEAD_OF: Partial<Record<RealRow, keyof typeof REAL.rollout_heads>> = {
+  resumable_0157: "resumable_0157", empty_0157: "untouched_fork_0157", metadata_empty_real_0156: "metadata_empty_real_0156",
+};
+function realStateDb(rows: Array<{ name: RealRow; cwd: string; recency: number; rollout?: "real" | "missing" }>): string {
+  const dir = tempDir();
+  const path = join(dir, "state_5.sqlite");
   const db = new Database(path);
   db.pragma("journal_mode = WAL");
   db.exec(SCHEMA);
-  for (const { row, cwd, recency } of rows) {
-    const values = { ...row, cwd, rollout_path: `/r/${String(row.id)}.jsonl`, recency_at_ms: recency, updated_at_ms: recency };
+  for (const { name, cwd, recency, rollout = "real" } of rows) {
+    const row = REAL.rows[name];
+    const rolloutPath = join(dir, `rollout-${String(row.id)}.jsonl`);
+    const head = HEAD_OF[name];
+    if (rollout === "real" && head) writeFileSync(rolloutPath, REAL.rollout_heads[head].map(l => JSON.stringify(l)).join("\n") + "\n");
+    const values = { ...row, cwd, rollout_path: rolloutPath, recency_at_ms: recency, updated_at_ms: recency };
     const cols = Object.keys(values);
     db.prepare(`INSERT INTO threads (${cols.join(", ")}) VALUES (${cols.map(c => `@${c}`).join(", ")})`).run(values);
   }
@@ -97,29 +109,50 @@ function realStateDb(rows: Array<{ row: Record<string, unknown>; cwd: string; re
 describe("the lookup against real Codex thread rows (#1017)", () => {
   it("resumes a real 0.157 session even though Codex left has_user_event at 0", () => {
     expect(REAL.rows.resumable_0157.has_user_event).toBe(0); // what Codex really writes
-    const path = realStateDb([{ row: REAL.rows.resumable_0157, cwd: "/w/app", recency: 100 }]);
+    const path = realStateDb([{ name: "resumable_0157", cwd: "/w/app", recency: 100 }]);
     expect(findExactCwdCodexSession(path, "/w/app")).toEqual({ kind: "found", id: REAL.rows.resumable_0157.id });
   });
 
   it("resumes a real session whose provider reports no token usage", () => {
     expect(REAL.rows.first_turn_no_tokens.tokens_used).toBe(0);
-    const path = realStateDb([{ row: REAL.rows.first_turn_no_tokens, cwd: "/w/app", recency: 100 }]);
+    const path = realStateDb([{ name: "first_turn_no_tokens", cwd: "/w/app", recency: 100 }]);
     expect(findExactCwdCodexSession(path, "/w/app")).toEqual({ kind: "found", id: REAL.rows.first_turn_no_tokens.id });
   });
 
-  it("skips real empty threads — including the one Codex marked has_user_event=1 — for the older real session", () => {
-    expect(REAL.rows.empty_has_user_event_0156.has_user_event).toBe(1);
+  it("resumes a real session whose list metadata is empty, by its rollout (cf. openai/codex#28423)", () => {
+    expect(REAL.rows.metadata_empty_real_0156).toMatchObject({ first_user_message: "", tokens_used: 0 });
+    const path = realStateDb([{ name: "metadata_empty_real_0156", cwd: "/w/app", recency: 100 }]);
+    expect(findExactCwdCodexSession(path, "/w/app")).toEqual({ kind: "found", id: REAL.rows.metadata_empty_real_0156.id });
+    // Without its rollout there is nothing to resume.
+    const gone = realStateDb([{ name: "metadata_empty_real_0156", cwd: "/w/app", recency: 100, rollout: "missing" }]);
+    expect(findExactCwdCodexSession(gone, "/w/app")).toEqual({ kind: "none" });
+  });
+
+  it("skips a real untouched fork for the older real session behind it", () => {
     const path = realStateDb([
-      { row: REAL.rows.resumable_0157, cwd: "/w/app", recency: 100 },
-      { row: REAL.rows.empty_0157, cwd: "/w/app", recency: 800 },
-      { row: REAL.rows.empty_has_user_event_0156, cwd: "/w/app", recency: 900 },
+      { name: "resumable_0157", cwd: "/w/app", recency: 100 },
+      { name: "empty_0157", cwd: "/w/app", recency: 900 },
     ]);
     expect(findExactCwdCodexSession(path, "/w/app")).toEqual({ kind: "found", id: REAL.rows.resumable_0157.id });
-    const onlyEmpty = realStateDb([
-      { row: REAL.rows.empty_0157, cwd: "/w/app", recency: 800 },
-      { row: REAL.rows.empty_has_user_event_0156, cwd: "/w/app", recency: 900 },
-    ]);
+    const onlyEmpty = realStateDb([{ name: "empty_0157", cwd: "/w/app", recency: 900 }]);
     expect(findExactCwdCodexSession(onlyEmpty, "/w/app")).toEqual({ kind: "none" });
+  });
+});
+
+describe("rolloutRecordsUserMessage", () => {
+  const write = (lines: unknown[] | string) => {
+    const path = join(tempDir(), "rollout.jsonl");
+    writeFileSync(path, typeof lines === "string" ? lines : lines.map(l => JSON.stringify(l)).join("\n") + "\n");
+    return path;
+  };
+  it("needs a user message: injected developer instructions and settings alone are not content", () => {
+    expect(rolloutRecordsUserMessage(write([{ type: "session_meta", payload: {} }, { type: "response_item", payload: { type: "message", role: "developer" } }]))).toBe(false);
+    expect(rolloutRecordsUserMessage(write([{ type: "session_meta", payload: {} }, { type: "response_item", payload: { type: "message", role: "user" } }]))).toBe(true);
+  });
+  it("is no for a missing file or malformed lines, and yes for a head too long to be empty", () => {
+    expect(rolloutRecordsUserMessage(join(tempDir(), "gone.jsonl"))).toBe(false);
+    expect(rolloutRecordsUserMessage(write('{"type":"response_item" broken\n'))).toBe(false);
+    expect(rolloutRecordsUserMessage(write(JSON.stringify({ type: "session_meta", payload: { pad: "x".repeat(1024 * 1024) } }) + "\n"))).toBe(true);
   });
 });
 
