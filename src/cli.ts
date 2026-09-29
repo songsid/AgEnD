@@ -25,9 +25,7 @@ import { homedir, totalmem, freemem, userInfo } from "node:os";
 import { fileURLToPath } from "node:url";
 import { spawn, execSync, execFileSync } from "node:child_process";
 import { getAgendHome, getTmuxSocketName } from "./paths.js";
-import { readClassicLastActivityAt } from "./classic-channel-manager.js";
 import { hasPausedMarker } from "./pause-marker.js";
-import { clampContextPercent, parseContextPercent } from "./context-percent.js";
 import { COMPLETION_SHELLS, completionScript, type CompletionShell } from "./completion.js";
 import {
   getUpdateSelector,
@@ -2145,8 +2143,7 @@ async function resolveInstance(query: string, config: import("./types.js").Fleet
   return match;
 }
 
-// Imported from process-memory.ts — see that module for implementation
-import { getTreeRssKb } from "./process-memory.js";
+
 
 function getInstanceStatusStandalone(name: string): "running" | "paused" | "stopped" | "crashed" {
   if (hasPausedMarker(join(DATA_DIR, "instances", name))) return "paused";
@@ -2187,29 +2184,8 @@ function getTeamsForInstance(config: import("./types.js").FleetConfig, instanceN
     .map(([name]) => name);
 }
 
-function formatTimeSince(isoStr: string): string {
-  const diff = Date.now() - new Date(isoStr).getTime();
-  if (diff < 60_000) return `${Math.floor(diff / 1000)}s ago`;
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-  return `${Math.floor(diff / 86_400_000)}d ago`;
-}
-
-/**
- * Universal context-% parser for `agend ls` (all backends). Shared with
- * topic-commands.ts so CLI and fleet surfaces cannot drift. It scans bottom-up so the
- * most recent prompt wins:
- *   kiro classic "8% !>" / TUI "◑ 1%" (any pie glyph) / bracket "[8%]" / prompt "8% ❯"
- *   codex "Context N% left" (remaining → 100-N) or "Context N% used"
- *   opencode "1.2K (6%)"
- *   grok "12K / 500K" (used tokens / context window)
- * The parser is in a dependency-light module, keeping this CLI entry point free
- * of the daemon's dependency graph. All values are context USED (low % = fresh).
- */
-const defaultParser = parseContextPercent;
-
-/** Optional backend-specific overrides; none needed — defaultParser covers all. */
-const contextParsers: Record<string, (output: string) => number | null> = {};
+/** Row collection + shared formatters live in ls-rows.ts (importable by tests;
+ * this entry point self-executes via program.parse()). */
 
 /**
  * Every instance name the CLI accepts: fleet.yaml instances plus the
@@ -2286,17 +2262,18 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean }): Promise<
       return;
     }
 
-    // Resolve tmux pane PIDs for memory measurement
+    // Resolve tmux pane PIDs for memory measurement (concurrently — one
+    // slow window must not stall the rest).
     const { TmuxManager } = await import("./tmux-manager.js");
     const { getTmuxSession } = await import("./config.js");
     const sessionName = getTmuxSession();
     const pidByName = new Map<string, number>();
     try {
       const windows = await TmuxManager.listWindows(sessionName);
-      for (const w of windows) {
-        const pid = await TmuxManager.getPanePid(sessionName, w.id);
-        if (pid) pidByName.set(w.name, pid);
-      }
+      const pids = await Promise.all(
+        windows.map(w => TmuxManager.getPanePid(sessionName, w.id).catch(() => null)),
+      );
+      windows.forEach((w, i) => { if (pids[i]) pidByName.set(w.name, pids[i] as number); });
     } catch { /* tmux not running */ }
 
     // Determine platform source for each instance
@@ -2323,86 +2300,32 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean }): Promise<
       return "—";
     };
 
-    const rows = allNames.map(name => {
-      const isClassic = classicNames.has(name);
-      const status = getInstanceStatusStandalone(name);
-      const teams = isClassic ? ["(classic)"] : getTeamsForInstance(config, name);
-      const inst = config.instances[name];
-      const backend = isClassic
-        ? (classicBackends.get(name) ?? "claude-code")
-        : ((inst as unknown as Record<string, unknown>)?.backend as string ?? config.defaults?.backend ?? "claude-code");
-      const source = getSource(name, inst as unknown as Record<string, unknown>);
-
-      // Read statusline for context. Only claude-code writes statusline.json;
-      // reading it for other backends risks a stale value left over from a
-      // previous backend (e.g. after switching claude-code → kiro-cli), so those
-      // skip straight to the capture-pane parser below.
-      let context: number | null = null;
-      if (backend === "claude-code") {
-        const statusFile = join(DATA_DIR, "instances", name, "statusline.json");
-        try {
-          if (existsSync(statusFile)) {
-            const data = JSON.parse(readFileSync(statusFile, "utf-8"));
-            context = clampContextPercent(data.context_window?.used_percentage);
-          }
-        } catch { /* ignore */ }
-      }
-
-      // Fallback: parse context from the tmux pane. Every backend gets a parser
-      // now (defaultParser), so codex/agy/opencode resolve too — not just kiro.
-      if (context == null) {
-        const parser = contextParsers[backend] ?? defaultParser;
-        try {
-          const pane = execFileSync("tmux", tmuxArgs([
-            "capture-pane", "-t", `${sessionName}:${name}`, "-p"
-          ]), { encoding: "utf-8", timeout: 2000, stdio: ["pipe", "pipe", "pipe"] });
-          context = parser(pane);
-        } catch { /* tmux capture failed */ }
-      }
-
-      // Memory: sum RSS of pane process tree
-      let memMb: number | null = null;
-      const panePid = pidByName.get(name);
-      if (panePid) {
-        try {
-          const rssKb = getTreeRssKb(panePid);
-          if (rssKb > 0) memMb = Math.round(rssKb / 1024);
-        } catch { /* ignore */ }
-      }
-
-      // Classic activity is channel-driven. Lightweight Classic daemons often
-      // have no statusline/output log, so prefer the persisted inbound timestamp
-      // and fall back to their durable chat-log mtime for pre-migration history.
-      let lastActivity: string | null = null;
-      if (isClassic) {
-        let classicActivity = readClassicLastActivityAt(DATA_DIR, name) ?? 0;
-        try {
-          const inboundPath = join(DATA_DIR, "instances", name, "last-inbound-at");
-          if (existsSync(inboundPath)) {
-            const inboundAt = Number(readFileSync(inboundPath, "utf-8").trim());
-            if (Number.isFinite(inboundAt) && inboundAt >= 0 && inboundAt <= Date.now()) {
-              classicActivity = Math.max(classicActivity, inboundAt);
-            }
-          }
-        } catch { /* ignore */ }
-        if (classicActivity) {
-          lastActivity = formatTimeSince(new Date(classicActivity).toISOString());
-        }
-      } else {
-        // Fleet activity: prefer statusline.json mtime (updated on real agent activity).
-        for (const probe of ["statusline.json", "daemon.log", "output.log"]) {
-          const p = join(DATA_DIR, "instances", name, probe);
-          try {
-            if (existsSync(p)) {
-              lastActivity = formatTimeSince(statSync(p).mtime.toISOString());
-              break;
-            }
-          } catch { /* ignore */ }
-        }
-      }
-
-      return { name, backend, status, teams, source, context, memMb, lastActivity, classic: isClassic, idle: undefined as boolean | undefined, state: undefined as "idle" | "working" | "stuck" | "paused" | null | undefined };
-    });
+    // Row collection runs concurrently (see ls-rows.ts): the per-instance
+    // tmux captures overlap instead of stacking their 2s bounds serially.
+    const { collectLsRows, capturePaneAsync, formatTimeSince } = await import("./ls-rows.js");
+    const { getTmuxSocketName } = await import("./paths.js");
+    const socketName = getTmuxSocketName();
+    const rows = await collectLsRows(
+      allNames.map(name => {
+        const isClassic = classicNames.has(name);
+        const inst = config.instances[name];
+        return {
+          name,
+          isClassic,
+          status: getInstanceStatusStandalone(name),
+          teams: isClassic ? ["(classic)"] : getTeamsForInstance(config, name),
+          backend: isClassic
+            ? (classicBackends.get(name) ?? "claude-code")
+            : ((inst as unknown as Record<string, unknown>)?.backend as string ?? config.defaults?.backend ?? "claude-code"),
+          source: getSource(name, inst as unknown as Record<string, unknown>),
+        };
+      }),
+      {
+        dataDir: DATA_DIR,
+        pidByName,
+        capturePane: target => capturePaneAsync(sessionName, socketName, target),
+      },
+    );
 
     // Enrich with idle state from fleet API (if fleet is running)
     try {
