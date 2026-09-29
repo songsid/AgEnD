@@ -699,6 +699,8 @@ export class CodexBackend implements CliBackend {
   private configuredStatusLinePattern: RegExp | null | undefined;
   /** Set by buildCommand when the resume plan fell back; read once by the daemon. */
   private launchWarning: string | null = null;
+  /** Whether the last buildCommand launched a resume (`resume <id>` or `--last`). */
+  private lastLaunchResumes = true;
   /** Set by writeConfig when the status_line could not be made verifiable (#931). */
   private statusLineWarning: string | null = null;
 
@@ -944,10 +946,12 @@ export class CodexBackend implements CliBackend {
     // DB when no other Codex instance shares the repository.
     let cmd: string;
     this.launchWarning = null;
+    this.lastLaunchResumes = false;
     if (config.skipResume) {
       cmd = `${this.binaryPath} ${approvalFlag}`;
     } else {
       const plan = this.planResume(config);
+      this.lastLaunchResumes = plan.mode === "resume" || plan.mode === "last";
       if (plan.mode === "resume") cmd = `${this.binaryPath} resume ${shellQuote(plan.id)} ${approvalFlag}`;
       else if (plan.mode === "last") cmd = `${this.binaryPath} resume --last ${approvalFlag}`;
       else cmd = `${this.binaryPath} ${approvalFlag}`;
@@ -1836,6 +1840,11 @@ export class CodexBackend implements CliBackend {
       const peers = config.peerWorkingDirectories?.();
       return peers ? codexSiblingState(config.workingDirectory, peers) : "siblings";
     });
+  }
+
+  /** Only a resume paints "Resuming session…"; a fresh launch never does. */
+  launchMayShowInputTransient(): boolean {
+    return this.lastLaunchResumes;
   }
 
   consumeLaunchWarning(): string | null {

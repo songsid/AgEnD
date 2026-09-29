@@ -132,7 +132,10 @@ The panel can restart AgEnD itself for a change only a fresh process can adopt, 
   after a restart Codex draws its composer about a second before input is live, and AgEnD
   holds deliveries until then. 0.159 redrew the header without its box, which the hold
   depended on, so on 0.159 a message sent straight after a restart could land during the
-  load. The hold now recognises both header layouts. AgEnD also launches Codex with
+  load. The hold now recognises both header layouts. It is also tied to AgEnD's own launch
+  state rather than to the screen alone: it applies only after AgEnD launched a resume, and
+  it stops once the load has been seen to end or the screen has not changed for 30 seconds.
+  So a conversation that quotes the loading screen cannot hold deliveries. AgEnD also launches Codex with
   `features.instant_interrupt` off: 0.159's opt-in setting makes new input steer the running
   reply instead of queueing behind it. Codex before 0.159 lists that key as "ignored" among
   its startup warnings; nothing else changes. On 0.158, instances that run with approvals
