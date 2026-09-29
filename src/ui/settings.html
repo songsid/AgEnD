@@ -301,7 +301,10 @@
       applyRestartHint: "This change needs AgEnD itself restarted. You can restart it here, or run /restart in your chat channel.",
       applyBusy: "AgEnD is already reloading its configuration. Your changes are saved — try Apply again in a moment.",
       restartFleetButton: "Restart AgEnD", restartFleetConfirm: "Restart AgEnD now?\n\nEvery agent stops and starts again, work in progress is interrupted, and the panel is unreachable for up to a minute. A notice is posted to your chat channel.",
-      restartFleetStarted: "Restarting AgEnD — this page keeps checking.", restartFleetRefused: "Restart refused: {0}",
+      restartFleetStarted: "Restarting AgEnD — this page keeps checking.",
+      restartFleetBusy: "Restarting…", restartFleetTitle: "Restarting AgEnD…",
+      restartFleetWaiting: "AgEnD is restarting. This page keeps checking and will say when it is back — there is nothing to press.",
+      working: "Working…", restartFleetRefused: "Restart refused: {0}",
       restartFleetRateLimited: "Restart refused: {0} (try again in about {1} minutes)",
       signatureMismatch: "fleet.yaml and the running configuration disagree on: {0}. Restarting will not clear this — check fleet.log first.",
       applyStillWorking: "Still restarting ({0}s) — AgEnD is still working; this page keeps checking.",
@@ -357,7 +360,10 @@
       applyRestartHint: "此變更需要重新啟動 AgEnD 本身。可以在這裡重新啟動，或在聊天頻道執行 /restart。",
       applyBusy: "AgEnD 正在重新載入設定。你的變更已儲存，請稍候再按一次套用。",
       restartFleetButton: "重新啟動 AgEnD", restartFleetConfirm: "現在重新啟動 AgEnD？\n\n所有 agent 都會停止再啟動，進行中的工作會被中斷，面板會有最多約一分鐘無法連線。聊天頻道會收到一則通知。",
-      restartFleetStarted: "AgEnD 重新啟動中 —— 此頁面會持續確認。", restartFleetRefused: "重新啟動被拒絕：{0}",
+      restartFleetStarted: "AgEnD 重新啟動中 —— 此頁面會持續確認。",
+      restartFleetBusy: "重啟中…", restartFleetTitle: "AgEnD 重新啟動中…",
+      restartFleetWaiting: "AgEnD 正在重新啟動。此頁面會持續確認，恢復後會告訴你 —— 不需要再按任何按鈕。",
+      working: "執行中…", restartFleetRefused: "重新啟動被拒絕：{0}",
       restartFleetRateLimited: "重新啟動被拒絕：{0}（約 {1} 分鐘後可再試）",
       signatureMismatch: "fleet.yaml 與執行中的設定在這些項目上不一致：{0}。重新啟動無法解決，請先查看 fleet.log。",
       applyStillWorking: "仍在重啟中（{0} 秒）—— AgEnD 還在處理，此頁面會持續確認。",
@@ -895,7 +901,8 @@
       : row.status === "running" ? "…" : "·";
     // restart-required is terminal and is NOT success: the value is saved and a
     // running AgEnD cannot adopt it.
-    const note = row.status === "restart-required" ? t("applyRestartNeeded")
+    const note = row.target === "fleet" && row.status === "running" ? t("restartFleetTitle")
+      : row.status === "restart-required" ? t("applyRestartNeeded")
       : row.settled_by === "no-change" ? t("applyNoChange")
       : row.settled_by === "fleet-restart" ? "(restart)"
       : row.kind === "hot" ? t("impactNow") : t("impactAgent");
@@ -906,17 +913,31 @@
       row.error ? el("span", { class: "err" }, row.error) : null);
   }
 
-  async function restartFleet(job) {
+  // One restart at a time, and a button that says so. Without this the panel re-drew a fresh, enabled
+  // "Restart AgEnD" button the instant the request was accepted, so a second press asked again.
+  let restartingFleet = false;
+  async function restartFleet(job, button) {
+    if (restartingFleet) return;
     // Its own confirmation, its own key. A single Apply must never be able to
     // carry a full-fleet restart along with it.
     if (!confirm(t("restartFleetConfirm"))) return;
+    restartingFleet = true;
+    const label = button?.textContent;
+    if (button) { button.disabled = true; button.textContent = t("restartFleetBusy"); }
     const key = (crypto.randomUUID ? crypto.randomUUID() : `r-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-    const res = await api("/api/settings/restart-fleet", {
-      method: "POST",
-      headers: { "Idempotency-Key": key },
-      body: JSON.stringify({ job_id: job.id, confirm: "restart-agend", idempotency_key: key }),
-    });
+    let res;
+    try {
+      res = await api("/api/settings/restart-fleet", {
+        method: "POST",
+        headers: { "Idempotency-Key": key },
+        body: JSON.stringify({ job_id: job.id, confirm: "restart-agend", idempotency_key: key }),
+      });
+    } catch {
+      res = { ok: false, status: 0, body: null };
+    }
     if (!res.ok) {
+      restartingFleet = false;
+      if (button?.isConnected) { button.disabled = false; button.textContent = label; }
       const secs = res.body?.retry_after_seconds;
       showBanner(secs
         ? tf("restartFleetRateLimited", res.body?.error || "", Math.ceil(secs / 60))
@@ -924,17 +945,32 @@
       return;
     }
     showBanner(t("restartFleetStarted"));
-    await watchApplyJob(job);
+    // The server has moved this job's fleet row to "running" (and will settle it after the restart). Watch
+    // *that* job: the one in hand still says "restart-required" and is finished, so watching it ended at once.
+    const fresh = await api(`/api/settings/apply/${encodeURIComponent(job.id)}`).catch(() => null);
+    const watching = fresh?.ok && fresh.body?.id ? fresh.body : {
+      ...job, status: "running",
+      targets: job.targets.map(row => row.target === "fleet" ? { ...row, status: "running" } : row),
+    };
+    try {
+      await watchApplyJob(watching);
+      await reload();
+    } finally {
+      restartingFleet = false;
+    }
   }
 
   function renderApplyJob(job) {
     $("applyPanel").classList.add("open");
-    $("applyTitle").textContent = job.status === "done"
+    const fleetRestarting = job.status === "running" && job.targets.some(row => row.target === "fleet" && row.status === "running");
+    $("applyTitle").textContent = fleetRestarting ? t("restartFleetTitle")
+      : job.status === "done"
       ? (job.targets.some(r => r.status === "failed") ? t("applyPartial") : t("applyDone"))
       : job.status === "failed" ? t("applyPartial") : t("applying");
     const needsRestart = job.targets.some(row => row.status === "restart-required");
     const mismatch = state.schema.fleet_signature_mismatch;
-    $("applyNote").textContent = job.overdue
+    $("applyNote").textContent = fleetRestarting ? t("restartFleetWaiting")
+      : job.overdue
       ? tf("applyStillWorking", Math.round(job.elapsed_ms / 1000))
       : mismatch && needsRestart ? tf("signatureMismatch", mismatch.join(", "))
       : needsRestart ? t("applyRestartHint") : "";
@@ -942,8 +978,11 @@
     for (const row of job.targets) rows.append(applyRow(row));
     // A restart that cannot clear the mismatch is worse than no button at all.
     if (needsRestart && !mismatch) {
-      rows.append(el("div", { class: "apply-row" },
-        el("button", { class: "primary", onclick: () => restartFleet(job) }, t("restartFleetButton"))));
+      const restartButton = el("button", { class: "primary", onclick: ev => restartFleet(job, ev.currentTarget) },
+        restartingFleet ? t("restartFleetBusy") : t("restartFleetButton"));
+      // While a restart is under way this stays, disabled and saying so, if anything re-draws the panel.
+      if (restartingFleet) restartButton.disabled = true;
+      rows.append(el("div", { class: "apply-row" }, restartButton));
     }
     if (job.error) rows.append(el("div", { class: "apply-row err" }, job.error));
   }
@@ -958,7 +997,10 @@
     let current = job;
     while (current.status === "running" && Date.now() < deadline) {
       await new Promise(r => setTimeout(r, 1000));
-      const res = await api(`/api/settings/apply/${encodeURIComponent(job.id)}`);
+      // A restart takes the server down under this request: the fetch rejects until AgEnD is back. That is
+      // the expected middle of a restart, not the end of the watch.
+      let res;
+      try { res = await api(`/api/settings/apply/${encodeURIComponent(job.id)}`); } catch { continue; }
       if (res.status === 404) {
         // The job outlives the process that made it, so a 404 means it aged out
         // of the store — not that it never happened.
@@ -1059,9 +1101,9 @@
         const form = agentEditForm(name, inst);
         openModal({ title: shortName(name, inst), subtitle: "ID: " + name, body: form.box, impacts: form.impacts, stage: form.stage });
       } }, t("settingsButton")),
-      running ? el("button", { class: "sm", onclick: () => pauseWakeAgent(name, "pause") }, t("pause")) : null,
-      paused ? el("button", { class: "sm", onclick: () => pauseWakeAgent(name, "wake") }, t("wake")) : null,
-      !paused ? el("button", { class: "sm", onclick: () => toggleAgent(name, running) }, running ? t("stop") : t("start")) : null,
+      running ? el("button", { class: "sm", onclick: ev => pauseWakeAgent(name, "pause", ev.currentTarget) }, t("pause")) : null,
+      paused ? el("button", { class: "sm", onclick: ev => pauseWakeAgent(name, "wake", ev.currentTarget) }, t("wake")) : null,
+      !paused ? el("button", { class: "sm", onclick: ev => toggleAgent(name, running, ev.currentTarget) }, running ? t("stop") : t("start")) : null,
       el("details", { class: "more-menu" },
         el("summary", { title: "More actions" }, "⋯"),
         el("div", { class: "menu" }, el("button", { class: "sm danger", onclick: () => delAgent(name) }, "Delete Agent"))),
@@ -1256,15 +1298,40 @@
     "instance.lightweight", "instance.model_failover", "instance.systemPrompt",
     "instance.tags", "instance.general_topic", "instance.status_emojis",
   ];
-  async function toggleAgent(name, running) {
-    if (running) await api(`/stop/${encodeURIComponent(name)}`, { method: "POST" });
-    else await api(`/api/instance/${encodeURIComponent(name)}/start`, { method: "POST" });
-    setTimeout(reloadLive, 800);
+  // Start, stop, pause and wake take a moment and used to give no sign of it, so they were pressed again.
+  // One action per agent at a time; the row's buttons are disabled and the pressed one says it is working.
+  const busyAgents = new Set();
+  async function runAgentAction(name, button, work) {
+    if (busyAgents.has(name)) return;
+    busyAgents.add(name);
+    const row = button?.closest(".item");
+    const buttons = row ? [...row.querySelectorAll("button")] : (button ? [button] : []);
+    const label = button?.textContent;
+    for (const b of buttons) b.disabled = true;
+    if (button) button.textContent = t("working");
+    try { await work(); }
+    finally {
+      busyAgents.delete(name);
+      // The list is normally redrawn by then; if it was not (a failed reload), give the buttons back.
+      for (const b of buttons) if (b.isConnected) b.disabled = false;
+      if (button?.isConnected) button.textContent = label;
+    }
   }
-  async function pauseWakeAgent(name, action) {
-    const res = await api(`/api/settings/instances/${encodeURIComponent(name)}/${action}`, { method: "POST" });
-    if (!res.ok) alert(res.body?.error || tf("actionFailed", action));
-    await reloadLive();
+  function toggleAgent(name, running, button) {
+    return runAgentAction(name, button, async () => {
+      const res = running ? await api(`/stop/${encodeURIComponent(name)}`, { method: "POST" })
+        : await api(`/api/instance/${encodeURIComponent(name)}/start`, { method: "POST" });
+      if (!res.ok) showBanner(`${tf("actionFailed", running ? t("stop") : t("start"))}: ${res.body?.error || res.status}`, true);
+      await new Promise(r => setTimeout(r, 800));
+      await reloadLive();
+    });
+  }
+  function pauseWakeAgent(name, action, button) {
+    return runAgentAction(name, button, async () => {
+      const res = await api(`/api/settings/instances/${encodeURIComponent(name)}/${action}`, { method: "POST" });
+      if (!res.ok) alert(res.body?.error || tf("actionFailed", action));
+      await reloadLive();
+    });
   }
   async function delAgent(name) {
     if (!confirm(tf("deleteAgent", name))) return;
