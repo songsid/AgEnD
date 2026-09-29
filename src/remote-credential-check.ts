@@ -13,7 +13,10 @@
  * query or fragment therefore can never match, and neither can one after the
  * last `@`, which is the host.
  *
- * Scope: HTTPS/HTTP GitHub tokens only. `ssh://` and scp-style
+ * Scope: HTTPS GitHub remotes can be repaired with GitHub CLI's HTTPS helper.
+ * HTTP GitHub remotes with embedded credentials are detected but fail closed;
+ * they are never stripped because the HTTPS-only helper cannot authenticate
+ * them. `ssh://` and scp-style
  * (`git@github.com:owner/repo`) remotes authenticate with keys and are out of
  * scope, as are other forges' token formats.
  */
@@ -70,7 +73,8 @@ export function stripEmbeddedGitHubToken(url: string): string | null {
   const match = /^(https?:\/\/)([^/?#\s]*)(.*)$/i.exec(url.trim());
   if (!match) return null;
   try {
-    if (new URL(url.trim()).hostname.toLowerCase() !== "github.com") return null;
+    const parsed = new URL(url.trim());
+    if (parsed.protocol !== "https:" || parsed.hostname.toLowerCase() !== "github.com") return null;
   } catch {
     return null;
   }
@@ -94,7 +98,7 @@ export type GitConfigRunner = (args: string[]) => Promise<string>;
 
 /** Safe, fixed error text: command failures must never echo a credential-bearing URL. */
 export const EMBEDDED_CREDENTIAL_REMOTE_REPAIR_FAILED =
-  "Cannot create a worktree safely: configure GitHub CLI authentication and remove embedded remote credentials first.";
+  "Cannot create a worktree safely: use an HTTPS GitHub remote and configure GitHub CLI authentication before retrying.";
 
 function remoteRows(remoteVerboseOutput: string): Array<{ name: string; url: string }> {
   return remoteVerboseOutput.split("\n").flatMap(line => {
@@ -107,8 +111,7 @@ function remoteRows(remoteVerboseOutput: string): Array<{ name: string; url: str
 function githubHttpsUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
-    return (parsed.protocol === "https:" || parsed.protocol === "http:")
-      && parsed.hostname.toLowerCase() === "github.com";
+    return parsed.protocol === "https:" && parsed.hostname.toLowerCase() === "github.com";
   } catch {
     return false;
   }

@@ -12,6 +12,7 @@ import { delimiter, join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   EMBEDDED_CREDENTIAL_REMOTE_WARNING,
+  EMBEDDED_CREDENTIAL_REMOTE_REPAIR_FAILED,
   GITHUB_TOKEN_PREFIXES,
   httpsUserinfo,
   remoteListHasEmbeddedGitHubToken,
@@ -67,6 +68,7 @@ describe("urlHasEmbeddedGitHubToken — each GitHub token form, on its own", () 
     expect(stripEmbeddedGitHubToken(`https://ghp_${FAKE}@github.com/acme/repo.git`))
       .toBe("https://github.com/acme/repo.git");
     expect(stripEmbeddedGitHubToken(`https://ghp_${FAKE}@git.example.com/acme/repo.git`)).toBeNull();
+    expect(stripEmbeddedGitHubToken(`http://x-access-token:ghp_${FAKE}@github.com/acme/repo.git`)).toBeNull();
     expect(stripEmbeddedGitHubToken("https://github.com/acme/repo.git")).toBeNull();
   });
 
@@ -279,6 +281,27 @@ describe("handleCreate protects linked worktree remotes (real git)", () => {
         expect(git(cwd, "remote", "-v").includes(FAKE)).toBe(false);
         expect(git(cwd, "config", "--get", "remote.origin.url").includes(FAKE)).toBe(false);
       }
+    } finally {
+      fakeAuth.restore();
+    }
+  });
+
+  it("fails closed on an HTTP GitHub credential without modifying the remote or installing an HTTPS-only helper", async () => {
+    const fakeAuth = installFakeGitHubCredentialSetup();
+    try {
+      const src = makeSourceRepo(`http://x-access-token:ghp_${FAKE}@github.com/acme/repo.git`);
+      const { warn, worktreePath, response } = await createWorktreeFrom(src);
+      expect(response?.[0]).toBeNull();
+      expect(response?.[1]).toBe(EMBEDDED_CREDENTIAL_REMOTE_REPAIR_FAILED);
+      expect(warn).not.toHaveBeenCalled();
+
+      // Refusal happens before either the shared remote or credential setup is
+      // changed. Assert only booleans so fake secret material is never printed.
+      expect(git(src, "config", "--get", "remote.origin.url").includes(FAKE)).toBe(true);
+      expect(git(src, "remote", "-v").includes(FAKE)).toBe(true);
+      expect(git(src, "worktree", "list", "--porcelain").includes(worktreePath)).toBe(false);
+      expect(() => git(src, "config", "--global", "--get", "credential.https://github.com.helper")).toThrow();
+      expect(JSON.stringify(response).includes(FAKE)).toBe(false);
     } finally {
       fakeAuth.restore();
     }
