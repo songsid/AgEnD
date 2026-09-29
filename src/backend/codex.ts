@@ -146,12 +146,12 @@ function tomlTable(value: unknown): Record<string, unknown> | null {
 function setTomlTableBoolean(content: string, table: string, key: string): string {
   const lines = content.split(/(?<=\n)/);
   let multiline: `"""` | `'''` | null = null;
-  const headers: Array<{ index: number; name: string }> = [];
+  const headers: Array<{ index: number; name: string; isArray: boolean }> = [];
   for (let index = 0; index < lines.length; index++) {
     const line = lines[index];
     if (!multiline) {
-      const header = line.match(/^\s*\[([^\]]+)\]\s*(?:#.*)?(?:\r?\n)?$/);
-      if (header) headers.push({ index, name: header[1].trim() });
+      const header = line.match(/^\s*(?:\[([^\[\]]+)\]|\[\[([^\[\]]+)\]\])\s*(?:#.*)?(?:\r?\n)?$/);
+      if (header) headers.push({ index, name: (header[1] ?? header[2]).trim(), isArray: header[2] !== undefined });
     }
     for (const delimiter of ['"""', "'''"] as const) {
       if (multiline && multiline !== delimiter) continue;
@@ -166,7 +166,7 @@ function setTomlTableBoolean(content: string, table: string, key: string): strin
   }
 
   const assignment = new RegExp(`^(\\s*${key}\\s*=\\s*)(?:true|false)(\\s*(?:#.*)?)(\\r?\\n?)$`);
-  const tableIndex = headers.findIndex(header => header.name === table);
+  const tableIndex = headers.findIndex(header => header.name === table && !header.isArray);
   if (tableIndex >= 0) {
     const start = headers[tableIndex].index + 1;
     const end = headers[tableIndex + 1]?.index ?? lines.length;
@@ -177,6 +177,7 @@ function setTomlTableBoolean(content: string, table: string, key: string): strin
         return lines.join("");
       }
     }
+    if (end > 0 && !lines[end - 1].endsWith("\n")) lines[end - 1] += "\n";
     lines.splice(end, 0, `${key} = true\n`);
     return lines.join("");
   }

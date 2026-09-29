@@ -210,8 +210,34 @@ describe("codex startup update check", () => {
     expect((parseToml(out) as any).notice.hide_rate_limit_model_nudge).toBe(true);
   });
 
+  it("stops the notice table before a following array-of-tables section", () => {
+    const out = writeAndRead(
+      `[notice]\nhide_world_writable_warning = false\n[[tool_suggest.disabled_tools]]\nname = "example"\n`,
+    );
+    const config = parseToml(out) as any;
+    expect(config.notice.hide_rate_limit_model_nudge).toBe(true);
+    expect(config.notice.hide_world_writable_warning).toBe(false);
+    expect(config.tool_suggest.disabled_tools[0].name).toBe("example");
+    expect(config.tool_suggest.disabled_tools[0].hide_rate_limit_model_nudge).toBeUndefined();
+  });
+
+  it("adds the notice setting at the root before an array-of-tables section", () => {
+    const out = writeAndRead(`[[tool_suggest.disabled_tools]]\nname = "example"\n`);
+    const config = parseToml(out) as any;
+    expect(config.notice.hide_rate_limit_model_nudge).toBe(true);
+    expect(config.tool_suggest.disabled_tools[0].name).toBe("example");
+    expect(config.tool_suggest.disabled_tools[0].hide_rate_limit_model_nudge).toBeUndefined();
+  });
+
   it("preserves unrelated fields in an inherited inline notice table", () => {
     const out = writeAndRead(`notice = { hide_world_writable_warning = false }\n`);
+    const config = parseToml(out) as any;
+    expect(config.notice.hide_rate_limit_model_nudge).toBe(true);
+    expect(config.notice.hide_world_writable_warning).toBe(false);
+  });
+
+  it("appends the setting safely when an existing notice table has no trailing newline", () => {
+    const out = writeAndRead(`[notice]\nhide_world_writable_warning = false`);
     const config = parseToml(out) as any;
     expect(config.notice.hide_rate_limit_model_nudge).toBe(true);
     expect(config.notice.hide_world_writable_warning).toBe(false);
