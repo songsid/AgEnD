@@ -131,6 +131,9 @@ import {
   type ToolSink,
 } from "./tool-permissions.js";
 import { decideWebGate, loadOrCreateWebToken, readWebToken } from "./web-auth.js";
+import { handleAuthRequest, isAuthPath, serveSigninPage, type AuthApiContext } from "./auth-api.js";
+import { WebSessionStore } from "./web-session.js";
+import { WebLoginCodes, LOGIN_CODE_TTL_MS } from "./web-login.js";
 import { allowedHostNames, applyWebSecurityHeaders, hostnameOf, isHostAllowed, WEB_HOST_REJECTED_MESSAGE } from "./web-host-guard.js";
 import { fleetLevelDifferences, fleetLevelSignature } from "./fleet-level-config.js";
 import { checkSelfRestartAllowance, recordSelfRestartAttempt } from "./self-restart-limit.js";
@@ -912,6 +915,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * authorizing revoked links and cookies until the fleet restarted.
    */
   private get webToken(): string | null { return readWebToken(this.dataDir); }
+  /**
+   * Server-side web sessions (see web-session.ts). Created with the token, not per
+   * request: they are persisted, and a restart must find them again.
+   */
+  private webSessions: WebSessionStore | null = null;
+  /** The dashboard's login codes. Memory only: a code that outlives the process is a code nobody can prove was not copied. */
+  private webLoginCodes: WebLoginCodes | null = null;
   /**
    * Set while a Settings apply job is driving the reconcile. The reconcile
    * stays the single doer; it just says out loud what it is doing to whom, so
@@ -3937,11 +3947,57 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Creates web.token if absent; the value is then read back per request by
     // the `webToken` getter, so nothing is cached here.
     loadOrCreateWebToken(this.dataDir);
+    this.initializeWebSessions();
     this.viewToken = randomBytes(24).toString("hex");
     const viewTokenPath = join(this.dataDir, "view.token");
     writeFileSync(viewTokenPath, this.viewToken, { encoding: "utf8", mode: 0o600 });
     try { chmodSync(viewTokenPath, 0o600); } catch { /* best effort */ }
     this.healthServerListening = false;
+  }
+
+  private initializeWebSessions(): void {
+    if (!this.webSessions) {
+      this.webSessions = new WebSessionStore({
+        dataDir: this.dataDir,
+        onWarn: message => this.logger.warn(message),
+      });
+    }
+    if (!this.webLoginCodes) {
+      this.webLoginCodes = new WebLoginCodes({
+        onEvent: event => {
+          if (event === "burned") this.logger.warn("A web login code was used up by wrong attempts");
+          else if (event === "breaker-open") this.logger.warn("Web sign-in paused: too many wrong login codes");
+        },
+      });
+    }
+  }
+
+  /**
+   * A single-use login code for the dashboard, for a channel only the operator
+   * can read (`/dashboard`). Null while the panel is closed (no web.token).
+   */
+  issueDashboardLogin(): { display: string; expiresAt: number; ttlMinutes: number } | null {
+    if (!this.webToken) return null;
+    this.initializeWebSessions();
+    const issued = this.webLoginCodes!.issue({ tier: "admin" });
+    return { display: issued.display, expiresAt: issued.expiresAt, ttlMinutes: Math.round(LOGIN_CODE_TTL_MS / 60_000) };
+  }
+
+  /** `/dashboard revoke`: sign out every browser and withdraw any unused code. */
+  revokeWebSessions(): number {
+    this.initializeWebSessions();
+    this.webLoginCodes!.revoke();
+    const count = this.webSessions!.revokeAll();
+    this.logger.info({ count }, "Web sessions revoked (all)");
+    return count;
+  }
+
+  /** Called by the sign-in endpoint: a login the operator did not make should be visible to them. */
+  onWebLogin(info: { label: string; surface: "local" | "gateway"; tier: string; handle: string }): void {
+    if (this.fleetConfig?.web?.notify_login === false) return;
+    // The session handle makes each notice distinct: notifyFleetError throttles by text, and a second
+    // sign-in from the same kind of browser is exactly the one the operator most needs to hear about.
+    this.notifyFleetError(t("web.login_notice", info.label, info.surface, info.handle.slice(0, 8)));
   }
 
   getDashboardAccess(): { ready: boolean; token: string | null } {
@@ -15433,6 +15489,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         // fallthrough to existing handler below
       } else if (req.method === "POST" && req.url === "/agent") {
         // /agent handles its own instance-level auth via X-Agend-Instance-Token
+      } else if (isAuthPath(requestPath)) {
+        // The sign-in page and its endpoints are the way *through* the gate; each
+        // route in auth-api.ts does its own checks.
       } else if (isViewPath(new URL(req.url ?? "/", `http://localhost:${port}`).pathname)) {
         // /view routes accept the read-only view.token (or web.token) and do
         // their own per-method auth in view-api.ts — skip the web-token gate.
@@ -15444,8 +15503,18 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         // header; a `?token=` in the URL is only redeemed for a cookie on a GET.
         // /ui/* will also re-check in web-api.ts, which is harmless.
         const parsedUrl = new URL(req.url ?? "/", `http://localhost:${port}`);
-        const decision = decideWebGate(req, parsedUrl, this.webToken);
+        const decision = decideWebGate(req, parsedUrl, this.webToken, this.webSessions);
         if (decision.kind === "reject") {
+          // A browser navigating to a panel with no cookie gets the sign-in page,
+          // not a JSON error: a SameSite=Strict cookie is not sent on a link
+          // followed from a chat app, and the page can tell "no session" from "cookie
+          // not sent" by asking from inside the site. API callers still get JSON.
+          if (decision.reason === "no-credential" && req.method === "GET"
+            && String(req.headers.accept ?? "").includes("text/html")
+            && (requestPath === "/ui" || requestPath === "/settings")) {
+            serveSigninPage(res, 401);
+            return;
+          }
           res.writeHead(decision.status);
           res.end(JSON.stringify({ error: decision.message }));
           return;
@@ -15686,6 +15755,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       // ── Web UI endpoints (delegated to web-api.ts) ─────
 
       const url = new URL(req.url ?? "/", `http://localhost:${port}`);
+      if (handleAuthRequest(req, res, url, this as unknown as AuthApiContext)) return;
       if (handleViewRequest(req, res, url, this as unknown as import("./view-api.js").ViewApiContext)) return;
       if (handleUsageRequest(req, res, url, this as unknown as import("./usage/usage-api.js").UsageApiContext)) return;
       if (handleSettingsRequest(req, res, url, this as unknown as import("./settings-api.js").SettingsApiContext)) return;

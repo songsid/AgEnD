@@ -6,20 +6,23 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FleetManager } from "../src/fleet-manager.js";
 import {
-  buildSessionCookie,
   decideWebGate,
   isWebRequestAuthorized,
   loadOrCreateWebToken,
   readWebToken,
   rotateWebToken,
   WEB_CROSS_SITE_MESSAGE,
+  WEB_CSRF_HEADER,
+  WEB_CSRF_MESSAGE,
   WEB_SESSION_COOKIE,
+  WEB_SESSION_EXPIRED_MESSAGE,
   WEB_SESSION_REQUIRED_MESSAGE,
   WEB_TOKEN_INVALID_MESSAGE,
   WEB_URL_TOKEN_WRITE_MESSAGE,
-  webSessionCookieValue,
   type WebGateRequest,
 } from "../src/web-auth.js";
+import { csrfTokenFor, tokenEpoch, WebSessionStore } from "../src/web-session.js";
+import { createHash } from "node:crypto";
 
 const TOKEN = "a".repeat(48);
 const tempDirs: string[] = [];
@@ -43,8 +46,20 @@ function gate(
   path: string,
   headers: Record<string, string> = {},
   token: string | null = TOKEN,
+  sessions: WebSessionStore = new WebSessionStore(),
 ) {
-  return decideWebGate(req(method, headers), new URL(path, "http://fleet.local"), token);
+  return decideWebGate(req(method, headers), new URL(path, "http://fleet.local"), token, sessions);
+}
+
+/** A signed-in browser: the cookie header it sends and the CSRF value its page would add to a write. */
+function signedIn(sessions: WebSessionStore, token: string = TOKEN): { cookie: string; csrf: string } {
+  const { sessionId } = sessions.create({ tier: "admin", surface: "local", label: "test", tokenEpoch: tokenEpoch(token) });
+  return { cookie: `${WEB_SESSION_COOKIE}=${sessionId}`, csrf: csrfTokenFor(sessionId) };
+}
+
+/** Headers of a same-origin browser write from that session. */
+function browserWrite(browser: { cookie: string; csrf: string }, host = "fleet.local"): Record<string, string> {
+  return { cookie: browser.cookie, origin: `http://${host}`, host, [WEB_CSRF_HEADER]: browser.csrf };
 }
 
 describe("web gate — token redemption", () => {
@@ -81,71 +96,141 @@ describe("web gate — token redemption", () => {
   it("refuses a URL token as a write credential", () => {
     const decision = gate("POST", `/api/settings/reload?token=${TOKEN}`);
 
-    expect(decision).toEqual({ kind: "reject", status: 401, message: WEB_URL_TOKEN_WRITE_MESSAGE });
+    expect(decision).toEqual({ kind: "reject", status: 401, message: WEB_URL_TOKEN_WRITE_MESSAGE, reason: "invalid" });
   });
 
-  it("stores a derivation in the cookie so a stolen cookie is not the token", () => {
-    const cookie = webSessionCookieValue(TOKEN);
+  it("hands out an opaque session id that has nothing to do with the token", () => {
+    const sessions = new WebSessionStore();
+    const decision = gate("GET", `/ui?token=${TOKEN}`, {}, TOKEN, sessions);
+    expect(decision.kind).toBe("exchange");
+    if (decision.kind !== "exchange") return;
 
-    expect(cookie).not.toBe(TOKEN);
-    expect(cookie).toMatch(/^[0-9a-f]{64}$/);
-    // The cookie must not be replayable through the paths that take the raw
-    // token (X-Agend-Token, ?token=, and /view writes).
-    expect(gate("POST", "/status", { "x-agend-token": cookie })).toMatchObject({ kind: "reject" });
+    const id = /agend_session=([^;]+)/.exec(decision.setCookie)![1]!;
+    expect(id).toMatch(/^[0-9a-f]{64}$/);
+    expect(id).not.toBe(TOKEN);
+    expect(decision.setCookie).not.toContain(TOKEN);
+    // Not the old derivation either: a cookie anyone holding the token could compute.
+    expect(id).not.toBe(createHash("sha256").update(`agend-web-session-v1:${TOKEN}`).digest("hex"));
+    expect(sessions.size).toBe(1);
+    // ...and the id cannot be replayed through the paths that take the raw token.
+    expect(gate("POST", "/status", { "x-agend-token": id })).toMatchObject({ kind: "reject" });
   });
 
-  it("accepts the issued cookie afterwards, and only that cookie", () => {
-    const good = `${WEB_SESSION_COOKIE}=${webSessionCookieValue(TOKEN)}`;
-    const wrong = `${WEB_SESSION_COOKIE}=${webSessionCookieValue("b".repeat(48))}`;
+  it("no longer accepts the old deterministic cookie", () => {
+    const legacy = createHash("sha256").update(`agend-web-session-v1:${TOKEN}`).digest("hex");
 
-    expect(gate("POST", "/status", { cookie: `other=1; ${good}` })).toEqual({ kind: "allow" });
-    expect(gate("POST", "/status", { cookie: wrong })).toEqual({
-      kind: "reject", status: 401, message: WEB_TOKEN_INVALID_MESSAGE,
+    expect(gate("GET", "/status", { cookie: `${WEB_SESSION_COOKIE}=${legacy}` })).toMatchObject({
+      kind: "reject", status: 401, message: WEB_SESSION_EXPIRED_MESSAGE, reason: "no-credential",
+    });
+  });
+
+  it("accepts a session the server issued, and only that one", () => {
+    const sessions = new WebSessionStore();
+    const mine = signedIn(sessions);
+    const foreign = signedIn(new WebSessionStore());
+
+    expect(gate("GET", "/status", { cookie: `other=1; ${mine.cookie}` }, TOKEN, sessions))
+      .toMatchObject({ kind: "allow", via: "session" });
+    // A cookie the server does not know is a session that ended, not a credential guessed wrong.
+    expect(gate("GET", "/status", { cookie: foreign.cookie }, TOKEN, sessions)).toEqual({
+      kind: "reject", status: 401, message: WEB_SESSION_EXPIRED_MESSAGE, reason: "no-credential",
     });
   });
 
   it("keeps the header token working for every method, so the CLI is unaffected", () => {
-    expect(gate("POST", "/stop/x", { "x-agend-token": TOKEN })).toEqual({ kind: "allow" });
-    expect(gate("GET", "/status", { "x-agend-token": TOKEN })).toEqual({ kind: "allow" });
+    expect(gate("POST", "/stop/x", { "x-agend-token": TOKEN })).toEqual({ kind: "allow", via: "header-token" });
+    expect(gate("GET", "/status", { "x-agend-token": TOKEN })).toEqual({ kind: "allow", via: "header-token" });
   });
 
   it("names the missing session separately from a rejected credential", () => {
     expect(gate("GET", "/status")).toEqual({
-      kind: "reject", status: 401, message: WEB_SESSION_REQUIRED_MESSAGE,
+      kind: "reject", status: 401, message: WEB_SESSION_REQUIRED_MESSAGE, reason: "no-credential",
     });
     expect(gate("GET", "/status?token=wrong")).toEqual({
-      kind: "reject", status: 401, message: WEB_TOKEN_INVALID_MESSAGE,
+      kind: "reject", status: 401, message: WEB_TOKEN_INVALID_MESSAGE, reason: "invalid",
     });
   });
 });
 
 describe("web gate — cross-site protection", () => {
   it("rejects a request whose Origin is not the Host it was sent to", () => {
-    const cookie = `${WEB_SESSION_COOKIE}=${webSessionCookieValue(TOKEN)}`;
+    const sessions = new WebSessionStore();
+    const browser = signedIn(sessions);
 
-    expect(gate("POST", "/stop/x", { cookie, origin: "https://evil.example", host: "fleet.local" }))
-      .toEqual({ kind: "reject", status: 403, message: WEB_CROSS_SITE_MESSAGE });
-    expect(gate("POST", "/stop/x", { cookie, origin: "http://fleet.local", host: "fleet.local" }))
-      .toEqual({ kind: "allow" });
+    expect(gate("POST", "/stop/x", { ...browserWrite(browser), origin: "https://evil.example" }, TOKEN, sessions))
+      .toEqual({ kind: "reject", status: 403, message: WEB_CROSS_SITE_MESSAGE, reason: "cross-site" });
+    expect(gate("POST", "/stop/x", browserWrite(browser), TOKEN, sessions))
+      .toMatchObject({ kind: "allow", via: "session" });
   });
 
   it("rejects the opaque origin sent by sandboxed frames", () => {
-    const cookie = `${WEB_SESSION_COOKIE}=${webSessionCookieValue(TOKEN)}`;
+    const sessions = new WebSessionStore();
+    const browser = signedIn(sessions);
 
-    expect(gate("POST", "/stop/x", { cookie, origin: "null", host: "fleet.local" }))
+    expect(gate("POST", "/stop/x", { ...browserWrite(browser), origin: "null" }, TOKEN, sessions))
       .toMatchObject({ status: 403 });
   });
 
-  it("allows a request with no Origin at all, which is every non-browser caller", () => {
+  it("allows a header-token request with no Origin at all, which is every non-browser caller", () => {
     expect(gate("POST", "/stop/x", { "x-agend-token": TOKEN, host: "fleet.local" }))
-      .toEqual({ kind: "allow" });
+      .toEqual({ kind: "allow", via: "header-token" });
+  });
+});
+
+describe("web gate — a cookie is not enough for a write", () => {
+  it("rejects a cookie-authenticated write with no Origin, whatever else it carries", () => {
+    const sessions = new WebSessionStore();
+    const browser = signedIn(sessions);
+    const { origin: _origin, ...withoutOrigin } = browserWrite(browser);
+
+    expect(gate("POST", "/stop/x", withoutOrigin, TOKEN, sessions)).toEqual({
+      kind: "reject", status: 403, message: WEB_CSRF_MESSAGE, reason: "csrf",
+    });
+  });
+
+  it("rejects a write without the CSRF header, or with someone else's", () => {
+    const sessions = new WebSessionStore();
+    const browser = signedIn(sessions);
+    const other = signedIn(sessions);
+
+    const { [WEB_CSRF_HEADER]: _csrf, ...without } = browserWrite(browser);
+    expect(gate("POST", "/stop/x", without, TOKEN, sessions)).toMatchObject({ status: 403, reason: "csrf" });
+    expect(gate("POST", "/stop/x", { ...without, [WEB_CSRF_HEADER]: other.csrf }, TOKEN, sessions))
+      .toMatchObject({ status: 403, reason: "csrf" });
+    // The cookie value itself is not the CSRF value.
+    const id = browser.cookie.split("=")[1]!;
+    expect(gate("POST", "/stop/x", { ...without, [WEB_CSRF_HEADER]: id }, TOKEN, sessions))
+      .toMatchObject({ status: 403, reason: "csrf" });
+  });
+
+  it("rejects a write the browser itself labels cross-site, even with everything else right", () => {
+    const sessions = new WebSessionStore();
+    const browser = signedIn(sessions);
+
+    for (const site of ["cross-site", "same-site", "none"]) {
+      expect(gate("POST", "/stop/x", { ...browserWrite(browser), "sec-fetch-site": site }, TOKEN, sessions), site)
+        .toMatchObject({ status: 403, reason: "csrf" });
+    }
+    expect(gate("POST", "/stop/x", { ...browserWrite(browser), "sec-fetch-site": "same-origin" }, TOKEN, sessions))
+      .toMatchObject({ kind: "allow" });
+  });
+
+  it("does not ask a read for any of it", () => {
+    const sessions = new WebSessionStore();
+    const browser = signedIn(sessions);
+
+    expect(gate("GET", "/status", { cookie: browser.cookie }, TOKEN, sessions)).toMatchObject({ kind: "allow" });
+  });
+
+  it("does not ask the CLI's header token for any of it", () => {
+    expect(gate("DELETE", "/x", { "x-agend-token": TOKEN })).toEqual({ kind: "allow", via: "header-token" });
   });
 });
 
 describe("web gate — an unset token closes the panel", () => {
   it("rejects a credential-less request instead of matching null against null", () => {
     expect(gate("GET", "/status", {}, null)).toEqual({
-      kind: "reject", status: 401, message: WEB_TOKEN_INVALID_MESSAGE,
+      kind: "reject", status: 401, message: WEB_TOKEN_INVALID_MESSAGE, reason: "closed",
     });
     expect(isWebRequestAuthorized(req("GET"), new URL("http://fleet.local/ui"), null)).toBe(false);
   });
@@ -261,8 +346,13 @@ describe("health server gate (live)", () => {
     const crossSite = await raw(port, "POST", "/status", { cookie, origin: "https://evil.example" });
     expect(crossSite.status).toBe(403);
 
-    // Same request from our own origin reaches routing (no POST /status route).
-    const sameSite = await raw(port, "POST", "/status", { cookie, origin: `http://127.0.0.1:${port}` });
+    // Our own origin but no CSRF value: still not a write a page of ours made.
+    const noCsrf = await raw(port, "POST", "/status", { cookie, origin: `http://127.0.0.1:${port}` });
+    expect(noCsrf.status).toBe(403);
+
+    // Same request from our own origin, carrying the value only our page can fetch, reaches routing (no POST /status route).
+    const csrf = csrfTokenFor(cookie.split("=")[1]!);
+    const sameSite = await raw(port, "POST", "/status", { cookie, origin: `http://127.0.0.1:${port}`, [WEB_CSRF_HEADER]: csrf });
     expect(sameSite.status).toBe(404);
 
     await stopFleet(fm);
@@ -354,14 +444,21 @@ describe("web-token rotation", () => {
     expect(readWebToken(dir)).toBeNull();
   });
 
-  it("invalidates every cookie issued under the previous token", () => {
+  it("invalidates every session issued under the previous token", () => {
     const dir = tempDir();
     const before = loadOrCreateWebToken(dir);
-    const cookie = buildSessionCookie(before, false).split(";")[0]!;
+    const sessions = new WebSessionStore();
+    const browser = signedIn(sessions, before);
+    expect(decideWebGate(req("GET", { cookie: browser.cookie }), new URL("http://f/status"), before, sessions))
+      .toMatchObject({ kind: "allow" });
 
     const after = rotateWebToken(dir);
 
-    expect(decideWebGate(req("GET", { cookie }), new URL("http://f/status"), after)).toMatchObject({
+    expect(decideWebGate(req("GET", { cookie: browser.cookie }), new URL("http://f/status"), after, sessions)).toMatchObject({
+      status: 401,
+    });
+    // Gone for good, not merely refused this once: putting the old token back does not revive it.
+    expect(decideWebGate(req("GET", { cookie: browser.cookie }), new URL("http://f/status"), before, sessions)).toMatchObject({
       status: 401,
     });
   });
