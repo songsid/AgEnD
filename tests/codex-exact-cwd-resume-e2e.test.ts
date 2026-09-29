@@ -1,7 +1,7 @@
 /**
  * #984 F3 phase 3.3: the real Codex CLI resumes the instance's OWN session.
  *
- * Opt-in (`AGEND_CODEX_E2E=1`, codex-cli 0.157.x on PATH). It reproduces the
+ * Opt-in (`AGEND_CODEX_E2E=1`, a codex-cli from SUPPORTED_CODEX on PATH). It reproduces the
  * incident with nothing shared with the operator's setup except the login:
  * a throwaway AGEND_HOME and shared CODEX_HOME, one git repo with worktrees A
  * and B, and a synthetic thread in each — B's newer, which is exactly what
@@ -29,7 +29,9 @@ function codexVersion(): string | null {
   } catch { return null; }
 }
 const version = process.env.AGEND_CODEX_E2E === "1" ? codexVersion() : null;
-const enabled = !!version && /\b0\.157\.\d+\b/.test(version) && existsSync(AUTH);
+/** Codex versions this real-CLI test is run against before AgEnD claims support. */
+const SUPPORTED_CODEX = /\b0\.(?:155|156|157|158|159)\.\d+\b/;
+const enabled = !!version && SUPPORTED_CODEX.test(version) && existsSync(AUTH);
 
 const SCHEMA = readFileSync(fileURLToPath(new URL("./fixtures/codex-0157-state5-schema.sql", import.meta.url)), "utf8");
 const MIGRATIONS = readFileSync(fileURLToPath(new URL("./fixtures/codex-0157-state5-migrations.sql", import.meta.url)), "utf8");
@@ -140,15 +142,26 @@ describe.skipIf(!enabled)("real codex 0.157: an instance in a git worktree resum
     tmux("new-session", "-d", "-s", "e2e", "-x", "120", "-y", "36", "-c", a, `${cmd}; sleep 600`);
     const dialogs = backend.getRuntimeDialogs();
     let pane = "";
+    // Every frame that shows the resume-loading status must hold input: the
+    // composer is already drawn but not live (0.154 swallowed Enter here), and
+    // a header redesign (0.159 dropped the box) silently disabled the guard.
+    const loadingFrames: Array<{ pane: string; held: boolean }> = [];
+    const transients = backend.getInputUnavailableTransients();
     const deadline = Date.now() + 45_000;
     for (;;) {
       pane = tmux("capture-pane", "-p", "-t", "e2e");
       const held = dialogs.filter(d => d.holdOnly && (d.isActive ? d.isActive(pane) : d.pattern.test(pane)));
       const ready = isIdle(backend, pane);
       if ((ready && pane.includes(A_MARK)) || held.length > 0 || Date.now() > deadline) break;
-      await new Promise(r => setTimeout(r, 500));
+      if (/^ {2}Resuming session…\s*$/m.test(pane)) {
+        loadingFrames.push({ pane, held: transients.some(t => (t.isActive ? t.isActive(pane) : t.pattern.test(pane))) });
+      }
+      await new Promise(r => setTimeout(r, 50));
     }
 
+    expect(loadingFrames.length, "no resume-loading frame was observed").toBeGreaterThan(0);
+    const unheld = loadingFrames.find(f => !f.held);
+    expect(unheld?.pane ?? null, "a resume-loading frame did not hold input").toBeNull();
     expect(pane, pane).toContain(A_MARK);
     expect(pane, pane).not.toContain(B_MARK);
     expect(pane, pane).not.toMatch(/Working directory · resume/);

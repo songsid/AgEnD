@@ -49,7 +49,8 @@ npm test              # vitest run — full suite, single pass
 npm run test:watch    # vitest watch mode
 npm run test:e2e      # e2e suite (e2e/vitest.config.e2e.ts)
 AGEND_CODEX_E2E=1 npx vitest run --config vitest.config.integration.ts tests/codex-exact-cwd-resume-e2e.test.ts
-                      # opt-in: real codex 0.157 resumes a worktree's own session (#984); symlinks your ~/.codex/auth.json, sends no prompt
+                      # opt-in: a real codex 0.155–0.159 resumes a worktree's own session (#984) and holds input while it loads; symlinks your ~/.codex/auth.json, sends no prompt
+                      # run it against a new codex release before adding the version to SUPPORTED_CODEX in that file
 npx vitest run tests/some-file.test.ts
 ```
 

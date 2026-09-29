@@ -631,6 +631,61 @@ const CODEX_STATUS_LINE_VALUE_PATTERNS: Readonly<Record<string, string>> = {
   "context-usage": CODEX_CONTEXT_ITEM,
 };
 
+/**
+ * Codex's resume-loading screen, during which the composer is drawn but input
+ * is not yet live (0.154: paste works, Enter is swallowed). Two header layouts
+ * are known; each check anchors on structural rows a transcript cannot fake.
+ */
+function codexBoxedResumeLoading(rows: string[]): boolean {
+  // Anchor to the LAST real Codex header in the viewport.  User input and
+  // transcript continuations are indented by the TUI, so an unindented
+  // box row cannot be forged merely by discussing this screen — the same
+  // self-triggering trap that made whole-pane auth/dialog regexes unsafe.
+  let header = -1;
+  for (let i = 0; i < rows.length; i++) {
+    if (/^│ >_ OpenAI Codex \(v[^)]+\)\s*│\s*$/.test(rows[i])) header = i;
+  }
+  if (header < 1 || !/^╭─+╮\s*$/.test(rows[header - 1])) return false;
+
+  const close = rows.findIndex((row, i) => i > header && i <= header + 8 && /^╰─+╯\s*$/.test(row));
+  if (close < 0) return false;
+  const loading = rows.slice(header + 1, close).some(row => /^│ model:\s+loading\b.*│\s*$/.test(row));
+  if (!loading) return false;
+
+  // In 0.154.0 this is a standalone status row immediately below the
+  // loading card, followed by the apparent input row.  That input is only
+  // visual at this phase: paste works, Enter is swallowed.
+  const resume = rows.findIndex((row, i) => i > close && i <= close + 4 && /^\s{2}Resuming session…\s*$/.test(row));
+  if (resume < 0) return false;
+  return rows.slice(resume + 1).some(row => /^›(?:\s|$)/.test(row));
+}
+
+/**
+ * codex 0.159 dropped the box: `  >_ OpenAI Codex (v…)`, then a short header
+ * block (`     loading`, or the cwd plus `  permissions: …` once it paints),
+ * then `  Resuming session…` over a live-looking `›` composer. The "loading"
+ * row disappears after ~2 frames while "Resuming session…" stays for the whole
+ * ~1 s load, so the status row — not the loading row — is what marks it.
+ *
+ * Anti-forgery: an assistant quoting this screen writes the same indented
+ * rows, so the header must come before any transcript row (`›`/`•`), and the
+ * composer must be the last thing on screen (a settled session has a footer
+ * below it; the loading screen has none).
+ */
+function codexUnboxedResumeLoading(rows: string[]): boolean {
+  const header = rows.findIndex(row => /^ {2}>_ OpenAI Codex \(v[^)]+\)\s*$/.test(row));
+  if (header < 0) return false;
+  if (rows.slice(0, header).some(row => /^[›>•]/.test(row))) return false;
+  const resume = rows.findIndex((row, i) => i > header && i <= header + 4 && /^ {2}Resuming session…\s*$/.test(row));
+  if (resume < 0) return false;
+  // Only header-block rows between the header and the status row.
+  if (rows.slice(header + 1, resume).some(row => row.trim() !== "" && !/^ {2,}\S/.test(row))) return false;
+  const after = rows.slice(resume + 1).map(row => row.trimEnd());
+  const composer = after.findIndex(row => row !== "");
+  if (composer < 0 || composer > 2 || !/^›(?:\s|$)/.test(after[composer]!)) return false;
+  return after.slice(composer + 1).every(row => row === "");
+}
+
 export class CodexBackend implements CliBackend {
   readonly binaryName = "codex";
   private binaryPath: string;
@@ -917,6 +972,12 @@ export class CodexBackend implements CliBackend {
     // the initial layout so a user/global fullscreen preference cannot make a
     // header-only pane look ready. A later unknown layout still fails closed.
     cmd += " -c check_for_update_on_startup=false --no-alt-screen";
+    // codex 0.159's opt-in `instant_interrupt` makes new input steer the
+    // running response instead of queueing behind it, which AgEnD's delivery
+    // and queued-input (↳) handling assume. Keep it off whatever a user or
+    // global config says. Codex before 0.159 ignores the key with a startup
+    // warning ("`features.instant_interrupt` is ignored"); nothing else.
+    cmd += " -c features.instant_interrupt=false";
     // CODEX_HOME is the only Codex-supported way to isolate the complete base
     // config. A profile only layers over the shared config and would therefore
     // still load every globally registered AgEnD MCP server.
@@ -1751,28 +1812,7 @@ export class CodexBackend implements CliBackend {
       description: "Codex session resume in progress",
       isActive: (pane: string) => {
         const rows = pane.split(/\r?\n/);
-
-        // Anchor to the LAST real Codex header in the viewport.  User input and
-        // transcript continuations are indented by the TUI, so an unindented
-        // box row cannot be forged merely by discussing this screen — the same
-        // self-triggering trap that made whole-pane auth/dialog regexes unsafe.
-        let header = -1;
-        for (let i = 0; i < rows.length; i++) {
-          if (/^│ >_ OpenAI Codex \(v[^)]+\)\s*│\s*$/.test(rows[i])) header = i;
-        }
-        if (header < 1 || !/^╭─+╮\s*$/.test(rows[header - 1])) return false;
-
-        const close = rows.findIndex((row, i) => i > header && i <= header + 8 && /^╰─+╯\s*$/.test(row));
-        if (close < 0) return false;
-        const loading = rows.slice(header + 1, close).some(row => /^│ model:\s+loading\b.*│\s*$/.test(row));
-        if (!loading) return false;
-
-        // In 0.154.0 this is a standalone status row immediately below the
-        // loading card, followed by the apparent input row.  That input is only
-        // visual at this phase: paste works, Enter is swallowed.
-        const resume = rows.findIndex((row, i) => i > close && i <= close + 4 && /^\s{2}Resuming session…\s*$/.test(row));
-        if (resume < 0) return false;
-        return rows.slice(resume + 1).some(row => /^›(?:\s|$)/.test(row));
+        return codexBoxedResumeLoading(rows) || codexUnboxedResumeLoading(rows);
       },
     }];
   }
