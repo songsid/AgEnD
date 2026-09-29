@@ -18,7 +18,7 @@ import Database from "better-sqlite3";
 
 /** Columns the lookup depends on; any missing one means "schema unreadable". */
 export const CODEX_THREAD_COLUMNS = [
-  "id", "cwd", "source", "archived", "has_user_event", "recency_at_ms", "updated_at_ms",
+  "id", "cwd", "source", "archived", "first_user_message", "recency_at_ms", "updated_at_ms",
 ] as const;
 
 const SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -56,6 +56,18 @@ function cwdCandidates(workingDirectory: string): string[] {
  * Newest interactive thread recorded for exactly this directory. Exact
  * equality only: a prefix or LIKE match would take a subdirectory's (or a
  * similarly named sibling's) session.
+ *
+ * "Has anything in it" is `first_user_message <> ''` — checked against real
+ * Codex data (#1017), not inferred from a column name:
+ * - `has_user_event` does NOT mean that. Real 0.157 sessions with a first
+ *   message and millions of tokens carry 0; the one row with 1 was empty.
+ *   Filtering on it matched no real session, so every restart silently
+ *   started a new conversation.
+ * - `tokens_used > 0` drops real sessions too: a provider that reports no
+ *   token usage leaves it at 0, as does a restart during the first turn.
+ * - `first_user_message` is empty exactly for threads that were opened and
+ *   never written to, which is what resuming must skip.
+ * tests/fixtures/codex-real-threads.json holds the real rows behind this.
  */
 export function findExactCwdCodexSession(
   stateDbPath: string,
@@ -74,7 +86,7 @@ export function findExactCwdCodexSession(
       WHERE cwd IN (?, ?)
         AND source = 'cli'
         AND archived = 0
-        AND has_user_event = 1
+        AND first_user_message <> ''
       ORDER BY recency_at_ms DESC, updated_at_ms DESC, id DESC
       LIMIT 1
     `).get(first, second) as { id: unknown } | undefined;

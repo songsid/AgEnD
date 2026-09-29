@@ -42,7 +42,10 @@ interface Thread {
   recency: number;
   source?: string;
   archived?: 0 | 1;
+  /** Real 0.157 sessions carry 0 here whatever they hold (#1017). */
   hasUserEvent?: 0 | 1;
+  /** Empty exactly for a thread nobody wrote to. */
+  firstUserMessage?: string;
   updated?: number;
 }
 
@@ -54,21 +57,71 @@ function stateDb(threads: Thread[], dir = tempDir()): { path: string; ids: strin
   db.exec(SCHEMA);
   const insert = db.prepare(`
     INSERT INTO threads (id, rollout_path, created_at, updated_at, source, model_provider, cwd, title,
-      sandbox_policy, approval_mode, has_user_event, archived, recency_at_ms, updated_at_ms)
+      sandbox_policy, approval_mode, has_user_event, first_user_message, archived, recency_at_ms, updated_at_ms)
     VALUES (@id, '/r.jsonl', 1, 1, @source, 'openai', @cwd, 't', 'danger-full-access', 'never',
-      @hasUserEvent, @archived, @recency, @updated)
+      @hasUserEvent, @firstUserMessage, @archived, @recency, @updated)
   `);
   const ids = threads.map(t => {
     const id = t.id ?? uuid();
     insert.run({
       id, cwd: t.cwd, recency: t.recency, source: t.source ?? "cli", archived: t.archived ?? 0,
-      hasUserEvent: t.hasUserEvent ?? 1, updated: t.updated ?? t.recency,
+      hasUserEvent: t.hasUserEvent ?? 0, firstUserMessage: t.firstUserMessage ?? "a question", updated: t.updated ?? t.recency,
     });
     return id;
   });
   db.close();
   return { path, ids };
 }
+
+/**
+ * Rows exactly as Codex wrote them (redacted text), so the filter is judged
+ * against what real sessions look like rather than what a fixture assumes.
+ */
+const REAL = JSON.parse(readFileSync(fileURLToPath(new URL("./fixtures/codex-real-threads.json", import.meta.url)), "utf8")) as {
+  rows: Record<"resumable_0157" | "empty_0157" | "empty_has_user_event_0156" | "first_turn_no_tokens", Record<string, unknown>>;
+};
+function realStateDb(rows: Array<{ row: Record<string, unknown>; cwd: string; recency: number }>): string {
+  const path = join(tempDir(), "state_5.sqlite");
+  const db = new Database(path);
+  db.pragma("journal_mode = WAL");
+  db.exec(SCHEMA);
+  for (const { row, cwd, recency } of rows) {
+    const values = { ...row, cwd, rollout_path: `/r/${String(row.id)}.jsonl`, recency_at_ms: recency, updated_at_ms: recency };
+    const cols = Object.keys(values);
+    db.prepare(`INSERT INTO threads (${cols.join(", ")}) VALUES (${cols.map(c => `@${c}`).join(", ")})`).run(values);
+  }
+  db.close();
+  return path;
+}
+
+describe("the lookup against real Codex thread rows (#1017)", () => {
+  it("resumes a real 0.157 session even though Codex left has_user_event at 0", () => {
+    expect(REAL.rows.resumable_0157.has_user_event).toBe(0); // what Codex really writes
+    const path = realStateDb([{ row: REAL.rows.resumable_0157, cwd: "/w/app", recency: 100 }]);
+    expect(findExactCwdCodexSession(path, "/w/app")).toEqual({ kind: "found", id: REAL.rows.resumable_0157.id });
+  });
+
+  it("resumes a real session whose provider reports no token usage", () => {
+    expect(REAL.rows.first_turn_no_tokens.tokens_used).toBe(0);
+    const path = realStateDb([{ row: REAL.rows.first_turn_no_tokens, cwd: "/w/app", recency: 100 }]);
+    expect(findExactCwdCodexSession(path, "/w/app")).toEqual({ kind: "found", id: REAL.rows.first_turn_no_tokens.id });
+  });
+
+  it("skips real empty threads — including the one Codex marked has_user_event=1 — for the older real session", () => {
+    expect(REAL.rows.empty_has_user_event_0156.has_user_event).toBe(1);
+    const path = realStateDb([
+      { row: REAL.rows.resumable_0157, cwd: "/w/app", recency: 100 },
+      { row: REAL.rows.empty_0157, cwd: "/w/app", recency: 800 },
+      { row: REAL.rows.empty_has_user_event_0156, cwd: "/w/app", recency: 900 },
+    ]);
+    expect(findExactCwdCodexSession(path, "/w/app")).toEqual({ kind: "found", id: REAL.rows.resumable_0157.id });
+    const onlyEmpty = realStateDb([
+      { row: REAL.rows.empty_0157, cwd: "/w/app", recency: 800 },
+      { row: REAL.rows.empty_has_user_event_0156, cwd: "/w/app", recency: 900 },
+    ]);
+    expect(findExactCwdCodexSession(onlyEmpty, "/w/app")).toEqual({ kind: "none" });
+  });
+});
 
 describe("findExactCwdCodexSession", () => {
   it("picks the instance's own newest thread even when a sibling worktree's is newer", () => {
@@ -98,7 +151,7 @@ describe("findExactCwdCodexSession", () => {
       { cwd: "/w/app", recency: 900, source: JSON.stringify({ subagent: { thread_spawn: { depth: 1 } } }) },
       { cwd: "/w/app", recency: 900, source: "exec" },
       { cwd: "/w/app", recency: 900, archived: 1 },
-      { cwd: "/w/app", recency: 900, hasUserEvent: 0 },
+      { cwd: "/w/app", recency: 900, firstUserMessage: "" },
     ]);
     expect(findExactCwdCodexSession(path, "/w/app")).toEqual({ kind: "found", id: ids[0] });
   });
@@ -135,7 +188,7 @@ describe("findExactCwdCodexSession", () => {
     const db = new Database(drifted);
     db.exec("CREATE TABLE threads (id TEXT PRIMARY KEY, cwd TEXT, source TEXT, archived INTEGER, recency_at_ms INTEGER, updated_at_ms INTEGER)");
     db.close();
-    expect(findExactCwdCodexSession(drifted, "/w/app")).toMatchObject({ kind: "unreadable", reason: expect.stringContaining("has_user_event") });
+    expect(findExactCwdCodexSession(drifted, "/w/app")).toMatchObject({ kind: "unreadable", reason: expect.stringContaining("first_user_message") });
 
     const empty = join(dir, "empty.sqlite");
     new Database(empty).close();
