@@ -49,12 +49,14 @@ describe("CodexBackend", () => {
   });
 
   describe("buildCommand", () => {
-    it("always uses resume --last (resumes latest session for CWD)", () => {
+    it("never blindly resumes --last (#984: exact-cwd resume is covered in codex-exact-cwd-resume.test.ts)", () => {
       const backend = new CodexBackend(TEST_DIR);
       const cmd = backend.buildCommand(makeConfig());
       // CODEX_HOME is now a short path under ~/.agend/cx/<hash>/ (not instanceDir/codex-home)
       expect(cmd).toMatch(/CODEX_HOME='[^']+\/cx\/[0-9a-f]{8}'/);
-      expect(cmd).toContain("resume --last");
+      // No session DB and no peer list: the repository cannot be proven
+      // sibling-free, so the launch starts fresh rather than `--last`.
+      expect(cmd).not.toContain("resume --last");
       expect(cmd).toContain("--dangerously-bypass-approvals-and-sandbox");
       expect(cmd).toContain("-c check_for_update_on_startup=false");
     });
@@ -62,7 +64,6 @@ describe("CodexBackend", () => {
     it("includes model config", () => {
       const backend = new CodexBackend(TEST_DIR);
       const cmd = backend.buildCommand(makeConfig({ model: "o3" }));
-      expect(cmd).toContain("resume --last");
       expect(cmd).toContain(`-c 'model="o3"'`);
     });
 

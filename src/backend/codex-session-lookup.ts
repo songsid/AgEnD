@@ -33,8 +33,8 @@ export type SiblingState = "siblings" | "alone";
 export type CodexResumePlan =
   | { mode: "resume"; id: string }
   | { mode: "fresh"; reason: "no-session" }
-  | { mode: "fresh"; reason: "unreadable-with-siblings"; warning: string }
-  | { mode: "last"; warning: string };
+  | { mode: "fresh"; reason: "unreadable-with-siblings"; cause: string; warning: string }
+  | { mode: "last"; cause: string; warning: string };
 
 /**
  * The only way the lookup opens Codex's database. Read-only and never
@@ -145,11 +145,13 @@ export function planCodexResume(lookup: ExactCwdSession, siblings: () => Sibling
     return {
       mode: "fresh",
       reason: "unreadable-with-siblings",
+      cause: lookup.reason,
       warning: `Codex session database unreadable (${lookup.reason}); another Codex instance shares this repository, so starting a new session instead of \`resume --last\`. Earlier conversations are kept and can be resumed manually.`,
     };
   }
   return {
     mode: "last",
+    cause: lookup.reason,
     warning: `Codex session database unreadable (${lookup.reason}); no other Codex instance shares this repository, falling back to \`resume --last\`.`,
   };
 }

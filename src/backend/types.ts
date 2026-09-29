@@ -46,6 +46,13 @@ export interface CliBackendConfig {
   backendOptions?: Record<string, unknown>;
   /** Daemon-owned localhost Muse usage relay, prepared before spawn. */
   museBaseUrl?: string;
+  /**
+   * Working directories of the fleet's OTHER instances on the same backend,
+   * read lazily. Codex needs it only when its session DB is unreadable, to
+   * decide whether `resume --last` could take a sibling worktree's session
+   * (#984). Absent means "unknown", which a backend must treat as unsafe.
+   */
+  peerWorkingDirectories?: () => string[];
 }
 
 /** Action to take when an error pattern is detected in PTY output. */
@@ -375,6 +382,12 @@ export interface CliBackend {
 
   /** Build the shell command string to launch the CLI in a tmux window. */
   buildCommand(config: CliBackendConfig): string;
+
+  /**
+   * A warning the last buildCommand wants the operator to see (e.g. Codex's
+   * session DB was unreadable and the launch fell back, #984). Cleared on read.
+   */
+  consumeLaunchWarning?(): string | null;
 
   /** Write all config files the CLI needs before launch. */
   writeConfig(config: CliBackendConfig): void;

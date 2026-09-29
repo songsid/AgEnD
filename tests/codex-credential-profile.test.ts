@@ -371,7 +371,9 @@ describe("if a resumed session cannot be opened", () => {
     const resuming = backend.buildCommand({ ...config } as never);
     const fresh = backend.buildCommand({ ...config, skipResume: true } as never);
 
-    expect(resuming).toContain("resume --last");
+    // #984: with no readable session DB and no peer list the resuming form is
+    // itself fail-closed to fresh; what matters is that skipResume never resumes.
+    expect(resuming).not.toContain("resume --last");
     expect(fresh).not.toContain("resume");
   });
 });

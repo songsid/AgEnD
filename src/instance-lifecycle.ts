@@ -192,6 +192,19 @@ export interface LifecycleContext {
 
 type Daemon = InstanceType<typeof import("./daemon.js").Daemon>;
 
+/**
+ * Working directories of the fleet's other instances on `backendName` (#984):
+ * Codex consults them only to decide whether `resume --last` could take a
+ * sibling worktree's session when its own session DB is unreadable.
+ */
+export function peerWorkingDirectories(fleetConfig: FleetConfig | null, name: string, backendName: string): string[] {
+  return Object.entries(fleetConfig?.instances ?? {})
+    .filter(([peer, cfg]) => peer !== name
+      && (cfg.backend ?? fleetConfig?.defaults?.backend ?? "claude-code") === backendName
+      && typeof cfg.working_directory === "string" && cfg.working_directory.length > 0)
+    .map(([, cfg]) => cfg.working_directory as string);
+}
+
 /** What attachIncidentHandlers needs from a Daemon — the real one satisfies it. */
 export interface IncidentEventSource {
   on(event: string, handler: (...args: any[]) => void): unknown;
@@ -869,6 +882,11 @@ export class InstanceLifecycle {
         this.ctx.logger.error({ err, name }, "MCP auto-restart failed"));
     }, this.ctx.logger, `daemon.mcp_restart_requested[${name}]`));
 
+    daemon.on("backend_launch_warning", safeHandler((data: { name: string; message: string }) => {
+      this.ctx.eventLog?.insert(name, "backend_launch_warning", { message: data.message });
+      this.notifyIncident(name, "backend_launch_warning", t("inst.backend_launch_warning", name, data.message));
+    }, this.ctx.logger, `daemon.backend_launch_warning[${name}]`));
+
     daemon.on("dialog_parked", safeHandler((data: { name: string; description: string; holdOnly: boolean }) => {
       // A CLI dialog the daemon will NOT answer on its own. No assist buttons
       // here on purpose: the General "Confirm" assist sends Enter, and Enter is
@@ -1180,6 +1198,8 @@ export class InstanceLifecycle {
       this.ctx.backendOutage,
     );
     daemon.setDeliveryOutboxPort(this.ctx.deliveryOutbox ?? undefined);
+    // Read at each spawn so a fleet.yaml reload is honoured (#984).
+    daemon.setPeerWorkingDirectories(() => peerWorkingDirectories(this.ctx.fleetConfig, name, backendName));
     daemon.on("durable_delivery_deferred", (data: {
       deliveryId: string;
       attemptNo: number;

@@ -31,6 +31,7 @@ import {
 } from "./credential-profile.js";
 import { getAgendHome } from "../paths.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
+import { type CodexResumePlan, codexSiblingState, findExactCwdCodexSession, planCodexResume } from "./codex-session-lookup.js";
 import { t } from "../locale.js";
 import { parse as parseToml } from "smol-toml";
 
@@ -547,6 +548,8 @@ export class CodexBackend implements CliBackend {
   private authorizedTrust: { cwd: string; root: string } | null = null;
   private configuredStatusLineItems: string[] | null | undefined;
   private configuredStatusLinePattern: RegExp | null | undefined;
+  /** Set by buildCommand when the resume plan fell back; read once by the daemon. */
+  private launchWarning: string | null = null;
 
   constructor(private instanceDir: string) {
     this.binaryPath = resolveBinary("codex");
@@ -770,15 +773,26 @@ export class CodexBackend implements CliBackend {
       ? "--dangerously-bypass-approvals-and-sandbox"
       : "--full-auto";
 
-    // `codex resume --last` resumes the most recent session for the current
-    // working directory. Each AgEnD instance has a unique working_directory,
-    // so sessions are per-instance scoped and won't collide.
-    // If no prior session exists (first launch), Codex falls back to a fresh session.
+    // #984: never trust `codex resume --last` to pick this instance's session.
+    // Codex 0.157 scopes it to the git REPOSITORY, so in a worktree it resumes
+    // the newest session of any sibling worktree (a lock screen while that
+    // instance lives, a silent hijack otherwise), and a new instance in a
+    // shared repo does not start fresh. Resume the exact-cwd thread from the
+    // shared state DB instead; `--last` is only the fallback for an unreadable
+    // DB when no other Codex instance shares the repository.
     let cmd: string;
+    this.launchWarning = null;
     if (config.skipResume) {
       cmd = `${this.binaryPath} ${approvalFlag}`;
     } else {
-      cmd = `${this.binaryPath} resume --last ${approvalFlag}`;
+      const plan = this.planResume(config);
+      if (plan.mode === "resume") cmd = `${this.binaryPath} resume ${shellQuote(plan.id)} ${approvalFlag}`;
+      else if (plan.mode === "last") cmd = `${this.binaryPath} resume --last ${approvalFlag}`;
+      else cmd = `${this.binaryPath} ${approvalFlag}`;
+      if (plan.mode === "last") this.launchWarning = t("codex.resume_db_unreadable_last", plan.cause);
+      else if (plan.mode === "fresh" && plan.reason === "unreadable-with-siblings") {
+        this.launchWarning = t("codex.resume_db_unreadable_fresh", plan.cause);
+      }
     }
     if (config.model) {
       const model = validateModel(config.model);
@@ -1612,9 +1626,26 @@ export class CodexBackend implements CliBackend {
   }
 
   getSessionId(): string | null {
-    // Codex manages sessions internally via SQLite (~/.codex/state_5.sqlite).
-    // `resume --last` handles session selection by CWD automatically.
+    // The resumed thread is chosen per launch from Codex's own state DB
+    // (planResume); AgEnD persists no session id of its own (#913 was reverted).
     return null;
+  }
+
+  /** Which Codex session this launch resumes (#984). Reads, never writes, Codex state. */
+  private planResume(config: CliBackendConfig): CodexResumePlan {
+    const lookup = findExactCwdCodexSession(join(this.sharedCodexHome, "state_5.sqlite"), config.workingDirectory);
+    return planCodexResume(lookup, () => {
+      // Without the fleet's peer list the repository cannot be proven
+      // sibling-free, so `--last` stays off the table.
+      const peers = config.peerWorkingDirectories?.();
+      return peers ? codexSiblingState(config.workingDirectory, peers) : "siblings";
+    });
+  }
+
+  consumeLaunchWarning(): string | null {
+    const warning = this.launchWarning;
+    this.launchWarning = null;
+    return warning;
   }
 
   getQuitCommand(): string { return "/quit"; }
