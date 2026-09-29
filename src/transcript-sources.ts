@@ -245,6 +245,73 @@ export function kiroStoreDbPath(storeHome?: string): string {
   return join(home, "data.sqlite3");
 }
 
+export interface KiroConversation {
+  conversationId: string;
+  createdAt: number;
+  updatedAt: number;
+  /** Length of the stored value — part of the change signature. */
+  size: number;
+  /** Null when the row exists but its history is missing or unparseable. */
+  history: unknown[] | null;
+}
+
+export function kiroWorkingDirectoryKeys(workingDirectory: string): string[] {
+  const keys = new Set([workingDirectory, resolve(workingDirectory)]);
+  try { keys.add(realpathSync(workingDirectory)); } catch { /* keep literal/absolute cwd */ }
+  return [...keys];
+}
+
+/**
+ * Read-only point-in-time read of the newest kiro conversation for a working
+ * directory. Shared by the live monitor and the #995 forged-envelope scanner
+ * so both resolve "this instance's conversation" the same way.
+ */
+export function readKiroConversation(dbPath: string, workingDirectory: string): KiroConversation | null {
+  if (!existsSync(dbPath)) return null;
+  let db: Database.Database | undefined;
+  try {
+    db = new Database(dbPath, { readonly: true, fileMustExist: true });
+    const keys = kiroWorkingDirectoryKeys(workingDirectory);
+    const placeholders = keys.map(() => "?").join(", ");
+    const row = db.prepare(
+      `SELECT conversation_id, created_at, updated_at, value
+       FROM conversations_v2 WHERE key IN (${placeholders})
+       ORDER BY updated_at DESC LIMIT 1`,
+    ).get(...keys) as { conversation_id: string; created_at: number; updated_at: number; value: string } | undefined;
+    if (!row) return null;
+    let history: unknown[] | null;
+    try {
+      const parsed = JSON.parse(row.value) as { history?: unknown };
+      history = Array.isArray(parsed.history) ? parsed.history : null;
+    } catch { history = null; }
+    return {
+      conversationId: row.conversation_id,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      size: row.value.length,
+      history,
+    };
+  } catch {
+    return null;
+  } finally {
+    try { db?.close(); } catch { /* already closed */ }
+  }
+}
+
+/** Strings a kiro assistant turn can carry: plain response + tool-call text. */
+export function extractKiroAssistantStrings(entry: unknown): string[] {
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
+  const assistant = (entry as Record<string, unknown>).assistant;
+  if (!assistant || typeof assistant !== "object" || Array.isArray(assistant)) return [];
+  const out: string[] = [];
+  const record = assistant as Record<string, unknown>;
+  const response = record.Response as Record<string, unknown> | undefined;
+  if (response && typeof response.content === "string" && response.content.trim()) out.push(response.content);
+  const toolUse = record.ToolUse as Record<string, unknown> | undefined;
+  if (toolUse && typeof toolUse.content === "string" && toolUse.content.trim()) out.push(toolUse.content);
+  return out;
+}
+
 /**
  * Follows the newest Kiro conversation whose cwd matches this instance.
  * Kiro 2.19 moved primary conversations to conversations_v2 in data.sqlite3;
@@ -435,6 +502,13 @@ export class KiroSessionSource implements TranscriptSource {
       this.close();
       return null;
     }
+    const events = emptyEvents();
+    for (const entry of history.slice(this.dbHistoryCursor)) {
+      collectKiroDbEvents(entry, events, this.dbToolNames);
+    }
+    this.dbHistoryCursor = history.length;
+    this.dbSignature = signature;
+    return events;
   }
 
   private resolveActiveSession(): { jsonlPath: string; createdAtMs: number } | null {
@@ -497,6 +571,9 @@ export class KiroSessionSource implements TranscriptSource {
 function collectKiroDbEvents(entry: unknown, out: TranscriptEvents, toolNames: Map<string, string>): void {
   if (!entry || typeof entry !== "object") return;
   const record = entry as Record<string, unknown>;
+  // Assistant text is observable too (#995 scans it for fabricated peer
+  // envelopes — the #856 forgery lived in a ToolUse content string).
+  for (const text of extractKiroAssistantStrings(entry)) out.assistantTexts.push(text);
   const assistant = record.assistant as Record<string, unknown> | undefined;
   const toolUse = assistant?.ToolUse as Record<string, unknown> | undefined;
   const uses = toolUse?.tool_uses;

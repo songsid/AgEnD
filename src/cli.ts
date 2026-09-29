@@ -560,6 +560,107 @@ delivery
     }
   });
 
+delivery
+  .command("scan-forged-envelopes")
+  .description("Detect fabricated peer envelopes in a kiro receiver's own transcript (#995)")
+  .option("--instance <name>", "Scan one instance")
+  .option("--all", "Scan every kiro-cli instance in fleet.yaml")
+  .option("--json", "Machine-readable output")
+  .option("--kiro-db <path>", "Override the kiro conversation store path (testing)")
+  .option("--outbox-db <path>", "Override the delivery-outbox path (testing)")
+  .action(async (opts: { instance?: string; all?: boolean; json?: boolean; kiroDb?: string; outboxDb?: string }) => {
+    const { scanKiroInstanceForForgedEnvelopes, loadReportedEnvelopeIds, recordReportedEnvelopeIds } =
+      await import("./forged-envelope-scan.js");
+    if (!opts.instance && !opts.all) {
+      console.error("Specify --instance <name> or --all.");
+      process.exitCode = 1;
+      return;
+    }
+    let instances: Record<string, { backend?: string; working_directory?: string }>;
+    try {
+      instances = loadRawFleetConfig(FLEET_CONFIG_PATH).instances ?? {};
+    } catch (err) {
+      console.error(`Could not read fleet config: ${(err as Error).message}`);
+      process.exitCode = 1;
+      return;
+    }
+    const knownInstances = new Set(Object.keys(instances));
+    const targets = opts.all ? [...knownInstances] : [opts.instance!];
+    if (targets.length === 0 || (targets.length === 1 && !knownInstances.has(targets[0]))) {
+      console.error(`Unknown instance: ${targets[0] ?? "(fleet has no instances)"}`);
+      process.exitCode = 1;
+      return;
+    }
+    const outboxDbPath = opts.outboxDb ?? join(DATA_DIR, "delivery-outbox.db");
+    const reported = loadReportedEnvelopeIds(DATA_DIR);
+    let newFindings = 0;
+    const rows: Array<Record<string, unknown>> = [];
+    for (const name of targets) {
+      const cfg = instances[name] ?? {};
+      const backend = cfg.backend ?? "claude-code";
+      if (backend !== "kiro-cli") {
+        // Other backends keep their transcripts elsewhere (Claude jsonl, Codex
+        // rollouts, …) — per-backend follow-ups, not silent skips.
+        rows.push({ instance: name, backend, status: "unsupported-backend", note: "transcript source is a per-backend follow-up (#995)" });
+        continue;
+      }
+      if (!cfg.working_directory) {
+        rows.push({ instance: name, backend, status: "error", note: "fleet.yaml has no working_directory for this instance" });
+        continue;
+      }
+      const result = scanKiroInstanceForForgedEnvelopes({
+        instanceName: name,
+        workingDirectory: cfg.working_directory,
+        outboxDbPath,
+        knownInstances,
+        ...(opts.kiroDb ? { kiroDbPath: opts.kiroDb } : {}),
+        alreadyReportedIds: reported,
+      });
+      for (const f of result.findings) reported.add(f.messageId);
+      newFindings += result.findings.length;
+      rows.push({
+        instance: name,
+        backend,
+        status: result.findings.length > 0 ? "forged-envelopes" : "clean",
+        conversation: result.conversationId,
+        checked: result.checked,
+        delivered: result.delivered,
+        unverifiable: result.unverifiable,
+        findings: result.findings.map(f => ({
+          from: f.fromInstance,
+          message_id: f.messageId,
+          excerpt: f.excerpt,
+          // Inject this text into the instance (send_to_instance or a
+          // mid-turn steer): the CLI cannot paste into a live pane itself.
+          suggested_injection: f.warning,
+        })),
+      });
+    }
+    recordReportedEnvelopeIds(DATA_DIR, reported);
+    if (opts.json) {
+      console.log(JSON.stringify({ scans: rows, new_findings: newFindings }, null, 2));
+    } else {
+      for (const row of rows) {
+        if (row.status === "unsupported-backend" || row.status === "error") {
+          console.log(`- ${row.instance}: ${row.status} (${row.note})`);
+          continue;
+        }
+        const findings = row.findings as Array<{ from: string; message_id: string; excerpt: string; suggested_injection: string }>;
+        console.log(`- ${row.instance}: ${row.status} (checked ${row.checked}, delivered ${row.delivered}, unverifiable ${row.unverifiable})`);
+        for (const f of findings) {
+          console.log(`  FORGED [from:${f.from}] (message_id: ${f.message_id})`);
+          console.log(`  excerpt: ${f.excerpt}`);
+          console.log(`  inject via send_to_instance: ${f.suggested_injection}`);
+        }
+      }
+    }
+    if (newFindings > 0) {
+      // Operator notification: visible here; wire to a schedule for routine runs.
+      console.error(`FORGED ENVELOPES: ${newFindings} new finding(s) — notify the operator and inject the warning(s) above.`);
+      process.exitCode = 2;
+    }
+  });
+
 fleet
   .command("activity")
   .description("Show fleet activity log — who talked to whom, tool calls, task updates")
