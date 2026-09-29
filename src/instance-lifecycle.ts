@@ -10,7 +10,11 @@ import { isModelCompatible } from "./backend/types.js";
 import { RoutingEngine } from "./routing-engine.js";
 import { safeHandler } from "./safe-async.js";
 import { t } from "./locale.js";
-import { EMBEDDED_CREDENTIAL_REMOTE_WARNING, remoteListHasEmbeddedGitHubToken } from "./remote-credential-check.js";
+import {
+  EMBEDDED_CREDENTIAL_REMOTE_REPAIR_FAILED,
+  EMBEDDED_CREDENTIAL_REMOTE_WARNING,
+  secureGitHubRemotesForWorktree,
+} from "./remote-credential-check.js";
 import type { Logger } from "./logger.js";
 import type { IpcClient } from "./channel/ipc-bridge.js";
 import type { EventLog } from "./event-log.js";
@@ -1717,6 +1721,28 @@ export class InstanceLifecycle {
           branchExists = true;
         } catch { /* branch doesn't exist */ }
 
+        // #855: secure inherited remotes before creating a linked worktree.
+        // This updates only shared remote/credential config; it never touches
+        // worktree removal or cleanup. A failure is fail-closed and happens
+        // before `git worktree add`, so no new worktree is left behind.
+        try {
+          const repaired = await secureGitHubRemotesForWorktree(
+            async (gitArgs) => (await execFileAsync("git", gitArgs, { cwd: directory, timeout: 5_000 })).stdout,
+            async () => {
+              await execFileAsync("gh", ["auth", "setup-git", "--hostname", "github.com"], {
+                cwd: directory,
+                timeout: 15_000,
+              });
+            },
+          );
+          if (repaired) {
+            this.ctx.logger.warn({ repo: directory }, EMBEDDED_CREDENTIAL_REMOTE_WARNING);
+          }
+        } catch {
+          respond(null, EMBEDDED_CREDENTIAL_REMOTE_REPAIR_FAILED);
+          return;
+        }
+
         if (detach) {
           await execFileAsync("git", ["worktree", "add", "--detach", worktreePath, branch], { cwd: directory });
         } else if (branchExists) {
@@ -1728,15 +1754,6 @@ export class InstanceLifecycle {
           await execFileAsync("git", worktreeArgs, { cwd: directory });
         }
         this.ctx.logger.info({ worktreePath, branch, repo: directory }, "Created git worktree for instance");
-        // #855/#963: advisory only. Read-only, bounded, and fully contained so it
-        // can never affect the worktree just created or any cleanup path; the
-        // warning carries the repo path but never the URL or token.
-        try {
-          const { stdout: remotes } = await execFileAsync("git", ["remote", "-v"], { cwd: directory, timeout: 5_000 });
-          if (remoteListHasEmbeddedGitHubToken(remotes)) {
-            this.ctx.logger.warn({ repo: directory }, EMBEDDED_CREDENTIAL_REMOTE_WARNING);
-          }
-        } catch { /* advisory check skipped; the worktree is unaffected */ }
         workDir = worktreePath;
       } catch (err) {
         respond(null, `Failed to create worktree: ${(err as Error).message}`);

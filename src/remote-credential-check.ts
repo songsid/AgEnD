@@ -1,10 +1,11 @@
 /**
- * Advisory detection of GitHub tokens embedded in HTTPS git remote URLs (#855, #963).
+ * Detection and repair of GitHub tokens embedded in HTTPS git remote URLs (#855, #963).
  *
- * AgEnD never writes a credential into a remote URL. The #855 token came from a
- * user-level `url.<base>.insteadOf` rewrite, which `git remote -v` applies, so
- * the effective URL printed there carried the PAT. This module only reports
- * that such a URL exists; it never changes a remote or a credential.
+ * A token can be embedded directly in a remote URL or supplied by a broad
+ * user-level `url.<base>.insteadOf` rewrite, which `git remote -v` applies. On
+ * worktree creation we move GitHub authentication to `gh auth setup-git`, strip
+ * any URL userinfo, and add an exact clean URL rewrite in the shared repository
+ * config so a broader global rewrite cannot put the token back in `remote -v`.
  *
  * Only the URL's authority is inspected, never the raw string: the authority
  * ends at the first `/`, `?` or `#`, and the userinfo is everything before its
@@ -12,7 +13,10 @@
  * query or fragment therefore can never match, and neither can one after the
  * last `@`, which is the host.
  *
- * Scope: HTTPS/HTTP GitHub tokens only. `ssh://` and scp-style
+ * Scope: HTTPS GitHub remotes can be repaired with GitHub CLI's HTTPS helper.
+ * HTTP GitHub remotes with embedded credentials are detected but fail closed;
+ * they are never stripped because the HTTPS-only helper cannot authenticate
+ * them. `ssh://` and scp-style
  * (`git@github.com:owner/repo`) remotes authenticate with keys and are out of
  * scope, as are other forges' token formats.
  */
@@ -63,6 +67,22 @@ export function urlHasEmbeddedGitHubToken(url: string): boolean {
   return userinfo !== null && userinfoHasGitHubToken(userinfo);
 }
 
+/** Remove token-bearing userinfo from a GitHub HTTPS URL without returning it elsewhere. */
+export function stripEmbeddedGitHubToken(url: string): string | null {
+  if (!urlHasEmbeddedGitHubToken(url)) return null;
+  const match = /^(https?:\/\/)([^/?#\s]*)(.*)$/i.exec(url.trim());
+  if (!match) return null;
+  try {
+    const parsed = new URL(url.trim());
+    if (parsed.protocol !== "https:" || parsed.hostname.toLowerCase() !== "github.com") return null;
+  } catch {
+    return null;
+  }
+  const at = match[2].lastIndexOf("@");
+  if (at < 0) return null;
+  return `${match[1]}${match[2].slice(at + 1)}${match[3]}`;
+}
+
 /**
  * Scan `git remote -v` output (`<name>\t<url> (fetch|push)` per line). Returns
  * only a boolean so no caller can end up logging the URL or the token.
@@ -74,9 +94,134 @@ export function remoteListHasEmbeddedGitHubToken(remoteVerboseOutput: string): b
   });
 }
 
+export type GitConfigRunner = (args: string[]) => Promise<string>;
+
+/** Safe, fixed error text: command failures must never echo a credential-bearing URL. */
+export const EMBEDDED_CREDENTIAL_REMOTE_REPAIR_FAILED =
+  "Cannot create a worktree safely: use an HTTPS GitHub remote and configure GitHub CLI authentication before retrying.";
+
+function remoteRows(remoteVerboseOutput: string): Array<{ name: string; url: string }> {
+  return remoteVerboseOutput.split("\n").flatMap(line => {
+    const [name, rawUrl] = line.split("\t");
+    const url = rawUrl?.replace(/\s+\((?:fetch|push)\)\s*$/, "");
+    return name && url ? [{ name, url }] : [];
+  });
+}
+
+function githubHttpsUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" && parsed.hostname.toLowerCase() === "github.com";
+  } catch {
+    return false;
+  }
+}
+
+function isGitConfigNotFound(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === 1;
+}
+
+/**
+ * Move embedded GitHub remote credentials out of `git remote -v` before adding
+ * a linked worktree. The caller supplies only argument-vector Git execution;
+ * tokens are never passed to loggers or interpolated into a shell command.
+ *
+ * Git applies the longest `insteadOf` prefix. The exact clean URL rule shadows
+ * the broad global rewrite that otherwise re-inserts the token. GitHub CLI's
+ * credential helper then provides authentication for that clean URL.
+ */
+export async function secureGitHubRemotesForWorktree(
+  runGit: GitConfigRunner,
+  setupGitHubCredentialHelper: () => Promise<void>,
+): Promise<boolean> {
+  let before: string;
+  try {
+    before = await runGit(["remote", "-v"]);
+  } catch {
+    throw new Error(EMBEDDED_CREDENTIAL_REMOTE_REPAIR_FAILED);
+  }
+  const flaggedRows = remoteRows(before).filter(row => urlHasEmbeddedGitHubToken(row.url));
+  if (flaggedRows.length === 0) return false;
+
+  // Refuse unsupported credential hosts before changing anything. This repair
+  // is intentionally scoped to GitHub HTTPS remotes and its `gh` helper.
+  if (flaggedRows.some(row => stripEmbeddedGitHubToken(row.url) === null)) {
+    throw new Error(EMBEDDED_CREDENTIAL_REMOTE_REPAIR_FAILED);
+  }
+
+  try {
+    await setupGitHubCredentialHelper();
+  } catch {
+    throw new Error(EMBEDDED_CREDENTIAL_REMOTE_REPAIR_FAILED);
+  }
+
+  let names: string[];
+  try {
+    names = (await runGit(["remote"])).split(/\r?\n/).filter(Boolean);
+  } catch {
+    throw new Error(EMBEDDED_CREDENTIAL_REMOTE_REPAIR_FAILED);
+  }
+
+  const cleanUrls = new Set<string>();
+  for (const name of names) {
+    for (const key of ["url", "pushurl"] as const) {
+      const configKey = `remote.${name}.${key}`;
+      let configured: string[];
+      try {
+        configured = (await runGit(["config", "--local", "--get-all", configKey]))
+          .split(/\r?\n/).filter(Boolean);
+      } catch (error) {
+        if (isGitConfigNotFound(error)) continue;
+        throw new Error(EMBEDDED_CREDENTIAL_REMOTE_REPAIR_FAILED);
+      }
+
+      const cleaned = configured.map(url => stripEmbeddedGitHubToken(url) ?? url);
+      const changed = cleaned.some((url, index) => url !== configured[index]);
+      if (changed && configured.length !== 1) {
+        // Do not collapse a multi-URL remote or risk partially rewriting it.
+        throw new Error(EMBEDDED_CREDENTIAL_REMOTE_REPAIR_FAILED);
+      }
+      if (changed) {
+        try {
+          await runGit(["config", "--local", "--replace-all", configKey, cleaned[0]]);
+        } catch {
+          throw new Error(EMBEDDED_CREDENTIAL_REMOTE_REPAIR_FAILED);
+        }
+      }
+      for (const url of cleaned) if (githubHttpsUrl(url)) cleanUrls.add(url);
+    }
+  }
+
+  if (cleanUrls.size === 0) throw new Error(EMBEDDED_CREDENTIAL_REMOTE_REPAIR_FAILED);
+  try {
+    for (const url of cleanUrls) {
+      // The base and prefix are clean. Longest-prefix matching makes this
+      // identity rewrite take precedence over a broad global credential URL.
+      await runGit(["config", "--local", "--add", `url.${url}.insteadOf`, url]);
+    }
+    const after = await runGit(["remote", "-v"]);
+    if (remoteListHasEmbeddedGitHubToken(after)) {
+      throw new Error(EMBEDDED_CREDENTIAL_REMOTE_REPAIR_FAILED);
+    }
+    for (const name of names) {
+      for (const key of ["url", "pushurl"] as const) {
+        let values: string[];
+        try {
+          values = (await runGit(["config", "--local", "--get-all", `remote.${name}.${key}`]))
+            .split(/\r?\n/).filter(Boolean);
+        } catch (error) {
+          if (isGitConfigNotFound(error)) continue;
+          throw error;
+        }
+        if (values.some(urlHasEmbeddedGitHubToken)) throw new Error(EMBEDDED_CREDENTIAL_REMOTE_REPAIR_FAILED);
+      }
+    }
+  } catch {
+    throw new Error(EMBEDDED_CREDENTIAL_REMOTE_REPAIR_FAILED);
+  }
+  return true;
+}
+
 /** Advisory text. Deliberately contains neither the URL nor the token. */
 export const EMBEDDED_CREDENTIAL_REMOTE_WARNING =
-  "A git remote of this repository embeds a GitHub token in its HTTPS URL (user:token@host). "
-  + "This is advisory only; AgEnD did not add it and has not changed it. The usual source is a "
-  + "url.<base>.insteadOf rewrite in ~/.gitconfig: consider a credential helper "
-  + "(e.g. 'gh auth git-credential') so the token stops appearing in `git remote -v` and logs.";
+  "A git remote contained an embedded GitHub credential; worktree creation moved authentication to GitHub CLI and cleaned the shared repository remote config.";
