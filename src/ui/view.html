@@ -6,30 +6,51 @@
 <title>AgEnD View</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  :root { --bg:#0d1117; --panel:#161b22; --border:#21262d; --fg:#c9d1d9; --dim:#8b949e; --accent:#58a6ff; }
+  :root {
+    --bg:#0d1117; --panel:#151b23; --panel-2:#1c2330; --border:#262c36; --fg:#d1d7e0; --dim:#8b949e;
+    --accent:#58a6ff; --accent-soft:rgba(88,166,255,.14); --ok:#3fb950; --warn:#d29922; --crit:#f85149;
+    --radius:8px;
+  }
   html, body { width: 100%; height: 100%; }
   body { background: var(--bg); color: var(--fg); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; display: flex; width: 100vw; min-width: 0; height: 100vh; overflow: hidden; }
 
   /* Sidebar */
-  #sidebar { width: 240px; flex: 0 0 240px; background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow-y: auto; }
-  #sidebar h1 { font-size: 14px; color: var(--accent); padding: 14px 16px; border-bottom: 1px solid var(--border); font-weight: 600; letter-spacing: .5px; }
-  .group-header { display: flex; align-items: center; gap: 6px; padding: 8px 12px; cursor: pointer; font-size: 12px; font-weight: 600; color: var(--dim); text-transform: uppercase; letter-spacing: .4px; background: rgba(255,255,255,.02); border-bottom: 1px solid var(--border); user-select: none; }
+  #sidebar { width: 240px; flex: 0 0 240px; background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+  /* The list scrolls; the filter stays pinned to the bottom of the sidebar. */
+  #list { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+  #filterBar { flex: 0 0 auto; border-top: 1px solid var(--border); padding: 8px 10px 9px; background: var(--panel); }
+  .filter-wrap { position: relative; display: flex; align-items: center; }
+  .filter-wrap .filter-icon { position: absolute; left: 8px; width: 13px; height: 13px; color: var(--dim); pointer-events: none; }
+  #filterInput { width: 100%; background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 7px; padding: 6px 26px 6px 27px; font-size: 12px; font-family: inherit; transition: border-color .15s, box-shadow .15s; }
+  #filterInput::placeholder { color: #6e7681; }
+  #filterInput:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(88,166,255,.16); }
+  #filterClear { position: absolute; right: 4px; width: 20px; height: 20px; border: none; border-radius: 50%; background: none; color: var(--dim); cursor: pointer; font-size: 15px; line-height: 1; display: none; align-items: center; justify-content: center; padding: 0; }
+  #filterClear.show { display: inline-flex; }
+  #filterClear:hover { color: var(--fg); background: rgba(255,255,255,.08); }
+  #filterCount { margin-top: 5px; font-size: 11px; color: var(--dim); font-variant-numeric: tabular-nums; display: flex; justify-content: space-between; }
+  #filterCount .filtering { color: var(--accent); }
+  .filter-empty { padding: 18px 14px; color: var(--dim); font-size: 12px; text-align: center; }
+  #sidebar h1 { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--fg); padding: 14px 16px; border-bottom: 1px solid var(--border); font-weight: 600; letter-spacing: .3px; }
+  #sidebar h1::before { content: ""; width: 10px; height: 10px; flex: 0 0 10px; border-radius: 3px; background: linear-gradient(135deg, var(--accent), #a371f7); box-shadow: 0 0 10px rgba(88,166,255,.45); }
+  .group-header { display: flex; align-items: center; gap: 6px; padding: 10px 12px 6px; cursor: pointer; font-size: 11px; font-weight: 600; color: var(--dim); text-transform: uppercase; letter-spacing: .6px; user-select: none; }
   .group-header:hover { color: var(--fg); }
+  .group-header .caret { font-size: 9px; opacity: .8; }
   .group-header .caret { width: 10px; flex: 0 0 10px; }
-  .group-header .gcount { margin-left: auto; opacity: .7; font-weight: 400; }
-  .inst { display: flex; align-items: center; gap: 8px; padding: 10px 16px 10px 24px; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,.03); font-size: 13px; }
+  .group-header .gcount { margin-left: auto; font-weight: 500; font-size: 10px; letter-spacing: 0; padding: 1px 6px; border-radius: 9px; background: var(--panel-2); color: var(--dim); }
+  .inst { display: flex; align-items: center; gap: 8px; margin: 1px 6px; padding: 8px 10px 8px 14px; cursor: pointer; border-radius: 6px; border-left: 3px solid transparent; font-size: 13px; transition: background .12s; }
   .dragging { opacity: .4; }
   .drop-before { border-top: 2px solid var(--accent) !important; }
   .drop-after { border-bottom: 2px solid var(--accent) !important; }
   [draggable="true"] { cursor: grab; }
-  .inst:hover { background: rgba(255,255,255,.04); }
-  .inst.active { background: rgba(88,166,255,.14); border-left: 3px solid var(--accent); padding-left: 13px; }
+  .inst:hover { background: rgba(255,255,255,.045); }
+  .inst.active { background: var(--accent-soft); border-left-color: var(--accent); }
+  .inst.active .nm { color: #f0f6fc; font-weight: 600; }
   .dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 8px; }
-  .dot.running { background: #3fb950; } .dot.stopped { background: #6e7681; } .dot.crashed { background: #f85149; }
+  .dot.running { background: var(--ok); box-shadow: 0 0 0 3px rgba(63,185,80,.15); } .dot.stopped { background: #6e7681; } .dot.crashed { background: var(--crit); box-shadow: 0 0 0 3px rgba(248,81,73,.18); }
   .inst .identity { flex: 1; min-width: 0; }
   .inst .nm { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .inst .alias { display: block; margin-top: 2px; color: var(--dim); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .inst .pct { color: var(--dim); font-size: 11px; }
+  .inst .pct { color: var(--dim); font-size: 11px; font-variant-numeric: tabular-nums; }
   .cli-icon { width: 10px; height: 10px; flex: 0 0 10px; border-radius: 50%; border: 1px solid rgba(255,255,255,.24); box-shadow: 0 0 0 1px rgba(0,0,0,.18); }
   .cli-claude-code { background: #c678dd; }
   .cli-kiro-cli { background: #58a6ff; }
@@ -69,8 +90,8 @@
   #card.expanded #cardBody .role { font-size: 13px; }
   #card.expanded #cardBody .meta { font-size: 12px; margin-top: 3px; white-space: normal; overflow: visible; }
   #card.expanded #cardBody .desc { display: block; font-size: 13px; margin-top: 6px; color: #adbac7; white-space: pre-wrap; }
-  #editBtn { background: #21262d; color: var(--fg); border: 1px solid var(--border); border-radius: 6px; padding: 3px 10px; cursor: pointer; font-size: 12px; flex: 0 0 auto; }
-  #editBtn:hover { border-color: var(--accent); }
+  #editBtn { background: var(--panel-2); color: var(--fg); border: 1px solid var(--border); border-radius: 6px; padding: 3px 10px; cursor: pointer; font-size: 12px; flex: 0 0 auto; transition: border-color .15s, background .15s; }
+  #editBtn:hover { border-color: var(--accent); background: var(--accent-soft); }
 
   /* Edit form */
   #edit { display: none; flex-direction: column; gap: 8px; flex: 1; }
@@ -82,41 +103,48 @@
   #edit .hint { color: var(--dim); font-size: 11px; }
   #msg { font-size: 12px; }
   .err { color: #f85149; } .ok { color: #3fb950; }
-  .help-btn { position: fixed; top: 10px; right: 14px; width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--border); background: var(--panel); color: var(--fg); cursor: pointer; font-size: 16px; z-index: 60; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
-  .help-btn:hover { background: var(--accent); border-color: var(--accent); }
+  .help-btn { position: fixed; top: 10px; right: 14px; width: 34px; height: 34px; border-radius: 10px; border: 1px solid var(--border); background: rgba(21,27,35,.88); color: var(--dim); cursor: pointer; font-size: 16px; z-index: 60; display: inline-flex; align-items: center; justify-content: center; padding: 0; backdrop-filter: blur(6px); transition: color .15s, border-color .15s, background .15s; }
+  .help-btn svg { width: 17px; height: 17px; }
+  .help-btn:hover { color: #f0f6fc; background: var(--accent-soft); border-color: var(--accent); }
   .help-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: none; z-index: 70; }
   .help-backdrop.open { display: block; }
   .help-panel { position: fixed; top: 0; right: 0; height: 100%; width: 360px; max-width: 90vw; background: var(--panel); border-left: 1px solid var(--border); box-shadow: -8px 0 24px rgba(0,0,0,.4); transform: translateX(100%); transition: transform .2s ease; z-index: 80; overflow-y: auto; padding: 20px 22px; }
   .help-panel.open { transform: translateX(0); }
-  .help-panel h3 { font-size: 16px; margin-bottom: 8px; }
+  .help-panel h3 { font-size: 17px; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+  .help-panel h3 svg { width: 18px; height: 18px; color: var(--accent); }
   .help-panel ul { margin: 8px 0 0 18px; }
   .help-panel li { font-size: 13px; margin: 6px 0; color: var(--fg); }
   .help-panel .close { position: absolute; top: 14px; right: 16px; cursor: pointer; color: var(--dim); font-size: 22px; line-height: 1; background: none; border: none; }
 
   /* AI usage panel (shares .help-panel chrome) */
-  .u-provider { margin: 14px 0 4px; padding-top: 10px; border-top: 1px solid var(--border); }
-  .u-provider:first-of-type { border-top: none; padding-top: 0; }
+  .u-provider { margin: 14px 0 4px; padding: 14px 14px 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel-2); }
+  .u-provider:first-of-type { margin-top: 6px; }
   .u-head { display: flex; align-items: center; gap: 8px; }
-  .u-head .u-name { font-size: 14px; font-weight: 600; }
-  .u-head .u-plan { color: var(--dim); font-size: 11px; }
+  .u-head .u-name { font-size: 15px; font-weight: 700; }
+  .u-head .u-plan { color: var(--dim); font-size: 11px; padding: 1px 7px; border: 1px solid var(--border); border-radius: 9px; }
   .u-order { display: flex; gap: 3px; margin-left: auto; }
   .u-move { width: 24px; height: 22px; border: 1px solid var(--border); border-radius: 5px; background: none; color: var(--dim); cursor: pointer; line-height: 1; }
   .u-move:hover:not(:disabled) { color: var(--fg); border-color: var(--accent); }
   .u-move:disabled { opacity: .25; cursor: default; }
-  .u-metric { margin: 8px 0; }
-  .u-row { display: flex; align-items: baseline; gap: 6px; font-size: 12px; }
-  .u-row .u-label { color: var(--dim); flex: 1; min-width: 0; }
-  .u-row .u-val { font-variant-numeric: tabular-nums; }
-  .u-row .u-status { font-size: 11px; font-weight: 600; }
-  .u-status.warn { color: #d29922; } .u-status.crit { color: #f85149; }
-  .u-meter { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; margin-top: 4px; }
-  .u-fill { height: 100%; border-radius: 3px; background: var(--accent); min-width: 2px; }
-  .u-fill.warn { background: #d29922; } .u-fill.crit { background: #f85149; }
-  .u-sub { color: var(--dim); font-size: 11px; margin-top: 2px; font-variant-numeric: tabular-nums; }
-  .u-err { color: #d29922; font-size: 12px; margin: 6px 0; }
+  /* Readability: the percentage is the number people come here for, so it is
+     large and bold, and the bar is thick enough to read at a glance. */
+  .u-metric { margin: 14px 0 6px; }
+  .u-row { display: flex; align-items: baseline; gap: 8px; font-size: 13px; }
+  .u-row .u-label { color: #adbac7; flex: 1; min-width: 0; }
+  .u-row .u-val { font-variant-numeric: tabular-nums; font-size: 15px; font-weight: 600; color: #f0f6fc; }
+  .u-row .u-val.u-pct { font-size: 24px; font-weight: 700; line-height: 1; letter-spacing: -.5px; }
+  .u-row .u-val.u-pct .u-unit { font-size: 14px; font-weight: 600; margin-left: 1px; opacity: .75; }
+  .u-row .u-val.warn { color: var(--warn); } .u-row .u-val.crit { color: var(--crit); }
+  .u-row .u-status { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 9px; align-self: center; }
+  .u-status.warn { color: var(--warn); background: rgba(210,153,34,.14); } .u-status.crit { color: var(--crit); background: rgba(248,81,73,.14); }
+  .u-meter { height: 10px; background: rgba(255,255,255,.07); border-radius: 5px; overflow: hidden; margin-top: 7px; }
+  .u-fill { height: 100%; border-radius: 5px; background: var(--accent); min-width: 3px; transition: width .3s ease; }
+  .u-fill.warn { background: var(--warn); } .u-fill.crit { background: var(--crit); }
+  .u-sub { color: var(--dim); font-size: 12px; margin-top: 5px; font-variant-numeric: tabular-nums; }
+  .u-err { color: var(--warn); font-size: 13px; margin: 8px 0; }
   /* Neutral note (subscription plan, or "sign-in needed") — deliberately not the
      amber error colour, since neither state is a failure. */
-  .u-note { color: var(--dim); font-size: 12px; margin: 6px 0; }
+  .u-note { color: var(--dim); font-size: 13px; margin: 8px 0; }
   .u-foot { color: var(--dim); font-size: 11px; margin-top: 14px; display: flex; gap: 8px; align-items: baseline; }
   .u-foot button { background: none; border: 1px solid var(--border); border-radius: 5px; color: var(--dim); cursor: pointer; font-size: 11px; padding: 2px 8px; }
   .u-foot button:hover { color: var(--fg); border-color: var(--accent); }
@@ -131,10 +159,10 @@
 </style>
 </head>
 <body>
-  <button class="help-btn" id="usageBtn" data-i18n-title="usageButton" title="AI usage" style="right:140px; display:none">📊</button>
+  <button class="help-btn" id="usageBtn" data-i18n-title="usageButton" title="AI usage" style="right:140px; display:none"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M2.5 13.5h11"/><path d="M4.5 11V8"/><path d="M8 11V4.5"/><path d="M11.5 11V6.5"/></svg></button>
   <button class="help-btn" id="densityBtn" data-i18n-title="densityLabel" title="Font density" style="right:98px">⤢</button>
-  <button class="help-btn" id="langBtn" data-i18n-title="languageButton" title="Language" style="right:56px">🌐</button>
-  <button class="help-btn" id="helpBtn" data-i18n-title="helpButton" title="Help">ℹ️</button>
+  <button class="help-btn" id="langBtn" data-i18n-title="languageButton" title="Language" style="right:56px"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="5.8"/><path d="M2.3 8h11.4M8 2.2c1.7 1.6 2.6 3.6 2.6 5.8S9.7 12.2 8 13.8M8 2.2C6.3 3.8 5.4 5.8 5.4 8s.9 4.2 2.6 5.8"/></svg></button>
+  <button class="help-btn" id="helpBtn" data-i18n-title="helpButton" title="Help"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="5.8"/><path d="M8 7.3v3.6"/><circle cx="8" cy="5.1" r=".6" fill="currentColor" stroke="none"/></svg></button>
   <div class="help-backdrop" id="helpBackdrop"></div>
   <aside class="help-panel" id="helpPanel">
     <button class="close" id="helpClose" data-i18n-title="close" title="Close">×</button>
@@ -144,7 +172,16 @@
     <button class="close" id="usageClose" data-i18n-title="close" title="Close">×</button>
     <div id="usageContent"></div>
   </aside>
-  <div id="sidebar"><h1 data-i18n="viewTitle">AgEnD · View</h1><div id="list"></div></div>
+  <div id="sidebar"><h1 data-i18n="viewTitle">AgEnD · View</h1><div id="list"></div>
+    <div id="filterBar">
+      <div class="filter-wrap">
+        <svg class="filter-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3.5 3.5" stroke-linecap="round"/></svg>
+        <input id="filterInput" type="text" autocomplete="off" spellcheck="false" data-i18n-ph="filterPh" placeholder="Filter: name, model, backend" aria-label="Filter instances">
+        <button id="filterClear" type="button" data-i18n-title="filterClear" title="Clear filter" aria-label="Clear filter">×</button>
+      </div>
+      <div id="filterCount" aria-live="polite"></div>
+    </div>
+  </div>
   <div id="main">
     <div id="term"><pre id="pre"></pre></div>
     <div id="card">
@@ -182,6 +219,7 @@
   // ── i18n ──
   const I18N = {
     en: { viewTitle: "AgEnD · View", editProfile: "✏️ Edit", save: "Save", cancel: "Cancel",
+      filterPh: "Filter: name, model, backend", filterClear: "Clear filter", filterNone: "No instance matches", filterShown: "shown",
       displayName: "Display name", role: "Role", description: "Description", tokenPh: "web.token (required to save)",
       saveHint: "Viewing is open (read-only). Saving requires the web.token (~/.agend/web.token).", helpTitle: "📖 Help",
       help1: "Pick an instance on the left → its live terminal shows on the right",
@@ -245,6 +283,7 @@
       rosterFailed: "Failed to load roster: {error}\n(Is the fleet running?)", paneFailed: "⚠ Could not load pane for {name} (HTTP {status}).",
       tokenRequired: "web.token required", avatarFailed: "Avatar upload failed: {error}", saved: "Saved", saveFailed: "Save failed: {error}" },
     "zh-TW": { viewTitle: "AgEnD · 檢視", editProfile: "✏️ 編輯", save: "儲存", cancel: "取消",
+      filterPh: "篩選：名稱、模型、後端", filterClear: "清除篩選", filterNone: "沒有符合的 instance", filterShown: "顯示中",
       displayName: "顯示名稱", role: "角色", description: "描述", tokenPh: "web.token（儲存時需要）",
       saveHint: "檢視為公開（唯讀）。儲存需要 web.token（~/.agend/web.token）。", helpTitle: "📖 使用說明",
       help1: "左側選 instance → 右側顯示即時 terminal 畫面",
@@ -325,6 +364,9 @@
   let roster = [];
   let rosterByName = new Map();
   let current = null;
+  // #999: the sidebar filter. Only the input and its clear button change it, so
+  // the 5-second roster refresh re-renders through it instead of resetting it.
+  let filterQuery = "";
   let poll = null;
   // Pane grid in cells, reported by /api/pane's X-Pane-Cols / X-Pane-Rows.
   // This — not the captured text — is the font-size input.
@@ -513,16 +555,50 @@
     }
   }
 
+  // ── sidebar filter (#999) — pure; tests execute this block ──
+  function normalizeFilter(query) {
+    return String(query == null ? "" : query).trim().toLowerCase();
+  }
+  /** Case-insensitive substring on name (incl. display name), model and backend. */
+  function instanceMatchesFilter(it, needle, labelOf) {
+    if (!needle) return true;
+    const fields = [it.instance_name, it.display_name, it.model, it.backend, labelOf ? labelOf(it.backend) : null];
+    return fields.some(value => typeof value === "string" && value.toLowerCase().includes(needle));
+  }
+  /** Visible groups in display order, and the "N / M" counts. */
+  function filterSidebar(groupNames, instByGroup, rosterByName, query, labelOf) {
+    const needle = normalizeFilter(query);
+    const groups = [];
+    let shown = 0, total = 0;
+    for (const g of groupNames) {
+      const names = (instByGroup.get(g) || []).filter(name => rosterByName.has(name));
+      total += names.length;
+      const visible = names.filter(name => instanceMatchesFilter(rosterByName.get(name), needle, labelOf));
+      shown += visible.length;
+      if (visible.length) groups.push({ group: g, names: visible });
+    }
+    return { groups, shown, total, active: needle.length > 0 };
+  }
+  // ── end sidebar filter ──
+
+  function renderFilterStatus(view) {
+    const count = q("filterCount");
+    count.innerHTML = view.active
+      ? `<span class="filtering">${view.shown} / ${view.total}</span><span>${esc(T("filterShown"))}</span>`
+      : `<span>${view.shown} / ${view.total}</span>`;
+    q("filterClear").classList.toggle("show", filterQuery.length > 0);
+  }
+
   function renderList() {
     const list = q("list");
     list.innerHTML = "";
-    for (const g of groupNames) {
-      const names = instByGroup.get(g) || [];
-      if (!names.length) continue;
+    const view = filterSidebar(groupNames, instByGroup, rosterByName, filterQuery, backendLabel);
+    for (const { group: g, names } of view.groups) {
       const isCollapsed = collapsed.has(g);
       const header = document.createElement("div");
       header.className = "group-header";
-      header.draggable = true;
+      // Reordering a filtered subset would be ambiguous; drag only the full list.
+      header.draggable = !view.active;
       header.innerHTML = `<span class="caret">${isCollapsed ? "▶" : "▼"}</span><span>${esc(g)}</span><span class="gcount">${names.length}</span>`;
       header.onclick = () => { if (collapsed.has(g)) collapsed.delete(g); else collapsed.add(g); renderList(); };
       wireDrag(header, { type: "group", name: g });
@@ -531,10 +607,9 @@
 
       for (const name of names) {
         const it = rosterByName.get(name);
-        if (!it) continue;
         const el = document.createElement("div");
         el.className = "inst" + (name === current ? " active" : "");
-        el.draggable = true;
+        el.draggable = !view.active;
         // M2: context_pct != null shows value including 0%; null means unavailable (empty)
         const alias = sidebarAlias(it);
         el.innerHTML = `<span class="dot ${it.status}"></span><span class="identity"><span class="nm">${esc(it.instance_name)}</span>${alias ? `<span class="alias">${esc(alias)}</span>` : ""}</span><span class="pct">${it.context_pct != null ? Math.round(it.context_pct)+"%" : ""}</span>${backendIconHtml(it.backend)}`;
@@ -544,6 +619,8 @@
         list.appendChild(el);
       }
     }
+    if (view.active && !view.groups.length) list.innerHTML = `<div class="filter-empty">${esc(T("filterNone"))}</div>`;
+    renderFilterStatus(view);
   }
 
   // ── Drag & drop ───────────────────────────────────────
@@ -856,6 +933,21 @@
   q("helpClose").onclick = () => setHelp(false);
   q("helpBackdrop").onclick = () => setHelp(false);
   q("langBtn").onclick = () => { lang = lang === "en" ? "zh-TW" : "en"; localStorage.setItem("agend_lang", lang); applyI18n(); renderList(); };
+
+  // ── Filter input ──────────────────────────────────────
+  const setFilter = (value) => { filterQuery = value; renderList(); };
+  q("filterInput").addEventListener("input", (e) => setFilter(e.target.value));
+  q("filterInput").addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && filterQuery) { e.stopPropagation(); e.target.value = ""; setFilter(""); }
+  });
+  q("filterClear").onclick = () => { q("filterInput").value = ""; setFilter(""); q("filterInput").focus(); };
+  // "/" focuses the filter, as in most list UIs — never while typing elsewhere.
+  window.addEventListener("keydown", (e) => {
+    if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey) return;
+    const t = e.target;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+    e.preventDefault(); q("filterInput").focus();
+  });
   q("densityBtn").onclick = cycleDensity;
   window.addEventListener("keydown", (e) => { if (e.key === "Escape") setHelp(false); });
 
@@ -921,7 +1013,7 @@
       const sub = [note, usageResetText(m.resetsAt)].filter(Boolean).join(" · ");
       return `<div class="u-metric"><div class="u-row"><span class="u-label">${esc(label)}</span>` +
         (word ? `<span class="u-status ${cls}">${esc(word)}</span>` : "") +
-        `<span class="u-val">${pct.toFixed(0)}%</span></div>` +
+        `<span class="u-val u-pct ${cls}">${pct.toFixed(0)}<span class="u-unit">%</span></span></div>` +
         `<div class="u-meter"><div class="u-fill ${cls}" style="width:${pct}%"></div></div>` +
         (sub ? `<div class="u-sub">${esc(sub)}</div>` : "") + `</div>`;
     }
@@ -937,10 +1029,11 @@
       (note ? `<div class="u-sub">${esc(note)}</div>` : "") + `</div>`;
   }
 
+  const USAGE_ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M2.5 13.5h11"/><path d="M4.5 11V8"/><path d="M8 11V4.5"/><path d="M11.5 11V6.5"/></svg>';
   function renderUsage() {
     const box = q("usageContent");
-    if (!usageData || !Array.isArray(usageData.providers)) { box.innerHTML = `<h3>📊 ${T("usage.title")}</h3><div class="u-err">${T("usageFail")}</div>`; return; }
-    let html = `<h3>📊 ${T("usage.title")}</h3>`;
+    if (!usageData || !Array.isArray(usageData.providers)) { box.innerHTML = `<h3>${USAGE_ICON}${T("usage.title")}</h3><div class="u-err">${T("usageFail")}</div>`; return; }
+    let html = `<h3>${USAGE_ICON}${T("usage.title")}</h3>`;
     const providers = orderedUsageProviders(usageData.providers);
     if (!providers.length) html += `<div class="u-err">${T("usage.empty_active")}</div>`;
     for (let index = 0; index < providers.length; index++) {
@@ -997,7 +1090,7 @@
   q("helpBtn").addEventListener("click", () => setUsage(false));
   window.addEventListener("keydown", (e) => { if (e.key === "Escape") setUsage(false); });
   q("langBtn").addEventListener("click", () => { if (usageData) renderUsage(); });
-  // Probe once at boot: shows the 📊 button only when the endpoint is enabled,
+  // Probe once at boot: shows the usage button only when the endpoint is enabled,
   // and warms the server-side 5-minute cache so the first open is instant.
   loadUsage(false).then(ok => { if (ok !== false) q("usageBtn").style.display = ""; });
 
