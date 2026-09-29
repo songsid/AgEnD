@@ -294,5 +294,69 @@
       }
     ]
   },
-  "_about_rollout_heads": "First lines of the same threads' real rollout JSONL files, reduced to type / payload.type / payload.role (every other field dropped)."
+  "_about_rollout_heads": "First lines of the same threads' real rollout JSONL files, reduced to type / payload.type / payload.role (every other field dropped).",
+  "goal_first_heads": {
+    "_about": "NOT captured: /goal-first rollout heads modelled on the two sequences documented in openai/codex#28423 (sessions resumable by id whose first_user_message/preview are empty). Pattern A opens with internal goal context instead of a user_message event — the issue does not give its role, so this uses 'developer', the role a user-message-only check would miss. Pattern B is the issue's sequence verbatim.",
+    "pattern_a_goal_context_first": [
+      {
+        "type": "session_meta",
+        "payload": {}
+      },
+      {
+        "type": "event_msg",
+        "payload": {
+          "type": "task_started"
+        }
+      },
+      {
+        "type": "response_item",
+        "payload": {
+          "type": "message",
+          "role": "developer"
+        }
+      },
+      {
+        "type": "turn_context",
+        "payload": {}
+      }
+    ],
+    "pattern_b_leading_interrupted_turn": [
+      {
+        "type": "session_meta",
+        "payload": {}
+      },
+      {
+        "type": "event_msg",
+        "payload": {
+          "type": "task_started"
+        }
+      },
+      {
+        "type": "response_item",
+        "payload": {
+          "type": "message",
+          "role": "user"
+        }
+      },
+      {
+        "type": "event_msg",
+        "payload": {
+          "type": "turn_aborted"
+        }
+      },
+      {
+        "type": "response_item",
+        "payload": {
+          "type": "message",
+          "role": "user"
+        }
+      },
+      {
+        "type": "event_msg",
+        "payload": {
+          "type": "user_message"
+        }
+      }
+    ]
+  }
 }

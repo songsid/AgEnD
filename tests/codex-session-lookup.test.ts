@@ -19,7 +19,7 @@ import {
   findExactCwdCodexSession,
   openCodexStateReadonly,
   planCodexResume,
-  rolloutRecordsUserMessage,
+  rolloutRecordsTurn,
 } from "../src/backend/codex-session-lookup.js";
 
 const SCHEMA = readFileSync(fileURLToPath(new URL("./fixtures/codex-0157-state5-schema.sql", import.meta.url)), "utf8");
@@ -83,11 +83,12 @@ type RealRow = "resumable_0157" | "empty_0157" | "metadata_empty_real_0156" | "f
 const REAL = JSON.parse(readFileSync(fileURLToPath(new URL("./fixtures/codex-real-threads.json", import.meta.url)), "utf8")) as {
   rows: Record<RealRow, Record<string, unknown>>;
   rollout_heads: Record<"metadata_empty_real_0156" | "untouched_fork_0157" | "resumable_0157", unknown[]>;
+  goal_first_heads: Record<"pattern_a_goal_context_first" | "pattern_b_leading_interrupted_turn", unknown[]>;
 };
 const HEAD_OF: Partial<Record<RealRow, keyof typeof REAL.rollout_heads>> = {
   resumable_0157: "resumable_0157", empty_0157: "untouched_fork_0157", metadata_empty_real_0156: "metadata_empty_real_0156",
 };
-function realStateDb(rows: Array<{ name: RealRow; cwd: string; recency: number; rollout?: "real" | "missing" }>): string {
+function realStateDb(rows: Array<{ name: RealRow; cwd: string; recency: number; rollout?: "real" | "missing" | unknown[] }>): string {
   const dir = tempDir();
   const path = join(dir, "state_5.sqlite");
   const db = new Database(path);
@@ -97,7 +98,8 @@ function realStateDb(rows: Array<{ name: RealRow; cwd: string; recency: number; 
     const row = REAL.rows[name];
     const rolloutPath = join(dir, `rollout-${String(row.id)}.jsonl`);
     const head = HEAD_OF[name];
-    if (rollout === "real" && head) writeFileSync(rolloutPath, REAL.rollout_heads[head].map(l => JSON.stringify(l)).join("\n") + "\n");
+    const lines = Array.isArray(rollout) ? rollout : rollout === "real" && head ? REAL.rollout_heads[head] : null;
+    if (lines) writeFileSync(rolloutPath, lines.map(l => JSON.stringify(l)).join("\n") + "\n");
     const values = { ...row, cwd, rollout_path: rolloutPath, recency_at_ms: recency, updated_at_ms: recency };
     const cols = Object.keys(values);
     db.prepare(`INSERT INTO threads (${cols.join(", ")}) VALUES (${cols.map(c => `@${c}`).join(", ")})`).run(values);
@@ -128,6 +130,16 @@ describe("the lookup against real Codex thread rows (#1017)", () => {
     expect(findExactCwdCodexSession(gone, "/w/app")).toEqual({ kind: "none" });
   });
 
+  it.each(["pattern_a_goal_context_first", "pattern_b_leading_interrupted_turn"] as const)(
+    "resumes a /goal-first session with empty list metadata (openai/codex#28423, %s)", (pattern) => {
+      // The real metadata-empty row, carrying the rollout shape the issue documents.
+      const path = realStateDb([
+        { name: "resumable_0157", cwd: "/w/app", recency: 100 },
+        { name: "metadata_empty_real_0156", cwd: "/w/app", recency: 500, rollout: REAL.goal_first_heads[pattern] },
+      ]);
+      expect(findExactCwdCodexSession(path, "/w/app")).toEqual({ kind: "found", id: REAL.rows.metadata_empty_real_0156.id });
+    });
+
   it("skips a real untouched fork for the older real session behind it", () => {
     const path = realStateDb([
       { name: "resumable_0157", cwd: "/w/app", recency: 100 },
@@ -139,20 +151,22 @@ describe("the lookup against real Codex thread rows (#1017)", () => {
   });
 });
 
-describe("rolloutRecordsUserMessage", () => {
+describe("rolloutRecordsTurn", () => {
   const write = (lines: unknown[] | string) => {
     const path = join(tempDir(), "rollout.jsonl");
     writeFileSync(path, typeof lines === "string" ? lines : lines.map(l => JSON.stringify(l)).join("\n") + "\n");
     return path;
   };
-  it("needs a user message: injected developer instructions and settings alone are not content", () => {
-    expect(rolloutRecordsUserMessage(write([{ type: "session_meta", payload: {} }, { type: "response_item", payload: { type: "message", role: "developer" } }]))).toBe(false);
-    expect(rolloutRecordsUserMessage(write([{ type: "session_meta", payload: {} }, { type: "response_item", payload: { type: "message", role: "user" } }]))).toBe(true);
+  it("is yes once any turn ran, however its first input arrived, and no for a thread nobody used", () => {
+    expect(rolloutRecordsTurn(write(REAL.rollout_heads.untouched_fork_0157))).toBe(false);
+    expect(rolloutRecordsTurn(write([{ type: "session_meta", payload: {} }, { type: "event_msg", payload: { type: "task_started" } }]))).toBe(true);
+    expect(rolloutRecordsTurn(write([{ type: "session_meta", payload: {} }, { type: "turn_context", payload: {} }]))).toBe(true);
+    expect(rolloutRecordsTurn(write([{ type: "session_meta", payload: {} }, { type: "response_item", payload: { type: "message", role: "developer" } }]))).toBe(true);
   });
   it("is no for a missing file or malformed lines, and yes for a head too long to be empty", () => {
-    expect(rolloutRecordsUserMessage(join(tempDir(), "gone.jsonl"))).toBe(false);
-    expect(rolloutRecordsUserMessage(write('{"type":"response_item" broken\n'))).toBe(false);
-    expect(rolloutRecordsUserMessage(write(JSON.stringify({ type: "session_meta", payload: { pad: "x".repeat(1024 * 1024) } }) + "\n"))).toBe(true);
+    expect(rolloutRecordsTurn(join(tempDir(), "gone.jsonl"))).toBe(false);
+    expect(rolloutRecordsTurn(write('{"type":"response_item" broken\n'))).toBe(false);
+    expect(rolloutRecordsTurn(write(JSON.stringify({ type: "session_meta", payload: { pad: "x".repeat(1024 * 1024) } }) + "\n"))).toBe(true);
   });
 });
 

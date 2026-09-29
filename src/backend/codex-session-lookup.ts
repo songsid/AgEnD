@@ -67,15 +67,17 @@ function cwdCandidates(workingDirectory: string): string[] {
  * - A non-empty `first_user_message` proves content, but an empty one does
  *   not prove the opposite: a real 38-turn session (0.156.1) and `/goal`-first
  *   sessions (openai/codex#28423) have empty list metadata. For those the
- *   rollout decides — a thread nobody wrote to (e.g. an untouched fork) holds
- *   only `session_meta`/`thread_settings_applied`, never a user message.
+ *   rollout decides whether a turn ever ran. A thread nobody used (e.g. an
+ *   untouched fork) holds only `session_meta`/`thread_settings_applied`; any
+ *   turn — however its first input was delivered, including hidden goal
+ *   context — writes `task_started`, a `turn_context` or a `response_item`.
  * tests/fixtures/codex-real-threads.json holds the real rows behind this.
  */
 export function findExactCwdCodexSession(
   stateDbPath: string,
   workingDirectory: string,
   open: (path: string) => Database.Database = openCodexStateReadonly,
-  rolloutHasUserMessage: (path: string) => boolean = rolloutRecordsUserMessage,
+  rolloutHasTurn: (path: string) => boolean = rolloutRecordsTurn,
 ): ExactCwdSession {
   let db: Database.Database | null = null;
   try {
@@ -93,7 +95,7 @@ export function findExactCwdCodexSession(
       LIMIT ${MAX_CANDIDATE_THREADS}
     `).all(first, second) as Array<{ id: unknown; first_user_message: unknown; rollout_path: unknown }>;
     const row = rows.find(r => (typeof r.first_user_message === "string" && r.first_user_message !== "")
-      || (typeof r.rollout_path === "string" && rolloutHasUserMessage(r.rollout_path)));
+      || (typeof r.rollout_path === "string" && rolloutHasTurn(r.rollout_path)));
     if (!row) return { kind: "none" };
     // A malformed id means the schema no longer means what we think it does.
     if (typeof row.id !== "string" || !SESSION_ID_RE.test(row.id)) {
@@ -110,16 +112,22 @@ export function findExactCwdCodexSession(
 
 /** How many of the directory's newest threads the lookup will look through. */
 const MAX_CANDIDATE_THREADS = 50;
-/** The head of a rollout the content check reads; a user message sits in the first few lines. */
+/** The head of a rollout the content check reads; a turn's first entries sit in the first few lines. */
 const ROLLOUT_HEAD_BYTES = 1024 * 1024;
 
+/** An entry only a turn writes: it started, got a context, or produced an item. */
+function isTurnEntry(entry: { type?: unknown; payload?: { type?: unknown } }): boolean {
+  return entry.type === "response_item" || entry.type === "turn_context"
+    || (entry.type === "event_msg" && entry.payload?.type === "task_started");
+}
+
 /**
- * Whether a Codex rollout (JSONL) records a user message. Reads only the
- * head of the file, read-only; a missing or unreadable rollout cannot be
+ * Whether a Codex rollout (JSONL) records that a turn ever ran. Reads only
+ * the head of the file, read-only; a missing or unreadable rollout cannot be
  * resumed, so it counts as no. A head too long to hold one without it has
  * clearly been used, so it counts as yes.
  */
-export function rolloutRecordsUserMessage(path: string): boolean {
+export function rolloutRecordsTurn(path: string): boolean {
   let fd: number | null = null;
   try {
     fd = openSync(path, "r");
@@ -128,10 +136,9 @@ export function rolloutRecordsUserMessage(path: string): boolean {
     const lines = buf.subarray(0, read).toString("utf8").split("\n");
     const complete = read < ROLLOUT_HEAD_BYTES ? lines : lines.slice(0, -1);
     for (const line of complete) {
-      if (!line.includes('"response_item"')) continue;
+      if (!line.trim()) continue;
       try {
-        const entry = JSON.parse(line) as { type?: unknown; payload?: { type?: unknown; role?: unknown } };
-        if (entry.type === "response_item" && entry.payload?.type === "message" && entry.payload.role === "user") return true;
+        if (isTurnEntry(JSON.parse(line) as { type?: unknown; payload?: { type?: unknown } })) return true;
       } catch { /* a malformed line says nothing */ }
     }
     return read === ROLLOUT_HEAD_BYTES;
