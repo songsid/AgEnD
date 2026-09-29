@@ -244,6 +244,7 @@ describe("stale fallback for transient fetch failures", () => {
     "The operation was aborted due to timeout",
     "read ECONNRESET",
     "vendor responded 503",
+    "Usage request failed (HTTP 500).",
   ])("softens a jitter (%s) with cached numbers", async error => {
     const row = await fetchAfterJitter(() => error);
 

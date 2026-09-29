@@ -121,7 +121,7 @@ const TRANSIENT_ERROR_PATTERNS = [
   /econnreset|econnrefused|econnaborted|epipe/i,
   /eai_again|enotfound/i, // DNS blips
   /socket hang up|fetch failed|network/i,
-  /502|503|504|bad gateway|service unavailable|gateway timeout/i,
+  /\b5\d{2}\b|bad gateway|service unavailable|gateway timeout/i, // any HTTP 5xx: vendors report every non-2xx as `Usage request failed (HTTP <status>)`
 ];
 
 function isTransientFailure(p: ProviderUsage): boolean {
