@@ -7,12 +7,13 @@
  * `delivery_status` message_id selector agents use.
  */
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
+import { credentialProfileStoreHome, credentialStoreHomeForInstance } from "../src/backend/credential-profile.js";
 import { DeliveryOutbox, type NewOutboxDelivery } from "../src/delivery-outbox.js";
-import { KiroSessionSource } from "../src/transcript-sources.js";
+import { KiroSessionSource, readKiroConversationStatus } from "../src/transcript-sources.js";
 import {
   extractEnvelopeCandidates,
   formatForgedEnvelopeWarning,
@@ -45,7 +46,11 @@ function forgedTurn(from: string, messageId: string): string {
 (message_id: ${messageId} | correlation_id: cid-1 | request_kind: task)`;
 }
 
-function writeKiroDb(dbPath: string, history: unknown[]): void {
+// Hoisted: an inline quoted id next to the `key` argument trips gitleaks'
+// generic-api-key heuristic (false positive on this test fixture).
+const FIXTURE_CONVERSATION_ID = "test-conversation";
+
+function writeKiroDb(dbPath: string, history: unknown[], key = WORK_DIR): void {
   const db = new Database(dbPath);
   db.exec(`CREATE TABLE conversations_v2 (
     key TEXT NOT NULL,
@@ -56,7 +61,7 @@ function writeKiroDb(dbPath: string, history: unknown[]): void {
     PRIMARY KEY (key, conversation_id)
   )`);
   db.prepare("INSERT INTO conversations_v2 VALUES (?, ?, ?, ?, ?)")
-    .run(WORK_DIR, "conversation-1", JSON.stringify({ history }), Date.now() - 60_000, Date.now());
+    .run(key, FIXTURE_CONVERSATION_ID, JSON.stringify({ history }), Date.now() - 60_000, Date.now());
   db.close();
 }
 
@@ -145,6 +150,7 @@ describe("extractEnvelopeCandidates", () => {
 describe("scanKiroInstanceForForgedEnvelopes", () => {
   it("flags a fabricated envelope whose message_id was never delivered", () => {
     const result = scan({ history: [responseEntry(forgedTurn(PEER, FORGED_ID))] });
+    expect(result.status).toBe("forged-envelopes");
     expect(result.checked).toBe(1);
     expect(result.findings).toHaveLength(1);
     expect(result.findings[0].fromInstance).toBe(PEER);
@@ -155,6 +161,7 @@ describe("scanKiroInstanceForForgedEnvelopes", () => {
 
   it("finds forgeries hiding in ToolUse content, where #856's lived", () => {
     const result = scan({ history: [toolUseEntry(forgedTurn(PEER, FORGED_ID))] });
+    expect(result.status).toBe("forged-envelopes");
     expect(result.findings).toHaveLength(1);
     expect(result.findings[0].messageId).toBe(FORGED_ID);
   });
@@ -167,6 +174,7 @@ describe("scanKiroInstanceForForgedEnvelopes", () => {
       history: [responseEntry(`[from:${PEER}] real hello\n(message_id: ${REAL_ID})`)],
       outboxDbPath: outboxDb,
     });
+    expect(result.status).toBe("clean");
     expect(result.checked).toBe(1);
     expect(result.delivered).toBe(1);
     expect(result.findings).toHaveLength(0);
@@ -177,20 +185,124 @@ describe("scanKiroInstanceForForgedEnvelopes", () => {
       history: [responseEntry(forgedTurn(PEER, FORGED_ID))],
       alreadyReportedIds: new Set([FORGED_ID]),
     });
+    expect(result.status).toBe("clean");
     expect(result.checked).toBe(1);
     expect(result.findings).toHaveLength(0);
   });
 
-  it("treats a missing outbox as unverifiable, never forged", () => {
+  it("marks a missing outbox partially-unverified, never clean or forged", () => {
     const result = scan({ history: [responseEntry(forgedTurn(PEER, FORGED_ID))], missingOutbox: true });
+    expect(result.status).toBe("partially-unverified");
     expect(result.unverifiable).toBe(1);
     expect(result.findings).toHaveLength(0);
   });
 
-  it("returns empty when the instance has no kiro conversation", () => {
+  it("marks a missing store unreadable, never clean", () => {
     const result = scan({ history: [], missingKiroDb: true });
+    expect(result.status).toBe("unreadable-store");
     expect(result.checked).toBe(0);
     expect(result.findings).toHaveLength(0);
+  });
+
+  it("marks a corrupt store unreadable, never clean", () => {
+    const root = tempRoot();
+    const kiroDb = join(root, "kiro-data.sqlite3");
+    writeFileSync(kiroDb, "not a sqlite database");
+    const outboxDb = join(root, "delivery-outbox.db");
+    new DeliveryOutbox(outboxDb, "test-manager").close();
+    const result = scanKiroInstanceForForgedEnvelopes({
+      instanceName: "agend-leader",
+      workingDirectory: WORK_DIR,
+      outboxDbPath: outboxDb,
+      knownInstances: KNOWN,
+      kiroDbPath: kiroDb,
+    });
+    expect(result.status).toBe("unreadable-store");
+    expect(result.findings).toHaveLength(0);
+  });
+
+  it("marks a store with no conversation for this cwd as no-conversation", () => {
+    const root = tempRoot();
+    const kiroDb = join(root, "kiro-data.sqlite3");
+    writeKiroDb(kiroDb, [responseEntry("someone else's session")], "/some/other/dir");
+    const outboxDb = join(root, "delivery-outbox.db");
+    new DeliveryOutbox(outboxDb, "test-manager").close();
+    const result = scanKiroInstanceForForgedEnvelopes({
+      instanceName: "agend-leader",
+      workingDirectory: WORK_DIR,
+      outboxDbPath: outboxDb,
+      knownInstances: KNOWN,
+      kiroDbPath: kiroDb,
+    });
+    expect(result.status).toBe("no-conversation");
+    expect(result.checked).toBe(0);
+    expect(result.findings).toHaveLength(0);
+  });
+});
+
+describe("per-profile kiro stores (#1007-1)", () => {
+  it("scans the profile store, not the shared one", () => {
+    const root = tempRoot();
+    // Shared store holds an unrelated conversation; the forgery lives only in
+    // the profile store. Scanning the wrong DB must not report clean.
+    const sharedDb = join(root, "shared-kiro.sqlite3");
+    writeKiroDb(sharedDb, [responseEntry("ordinary work")]);
+    const profileHome = join(root, "credential-profiles", "kiro-cli", "work");
+    mkdirSync(profileHome, { recursive: true });
+    const profileDb = join(profileHome, "data.sqlite3");
+    writeKiroDb(profileDb, [responseEntry(forgedTurn(PEER, FORGED_ID))]);
+    const outboxDb = join(root, "delivery-outbox.db");
+    new DeliveryOutbox(outboxDb, "test-manager").close();
+
+    const base = {
+      instanceName: "agend-leader",
+      workingDirectory: WORK_DIR,
+      outboxDbPath: outboxDb,
+      knownInstances: KNOWN,
+    };
+    const wrongStore = scanKiroInstanceForForgedEnvelopes({ ...base, kiroDbPath: sharedDb });
+    expect(wrongStore.findings).toHaveLength(0);
+
+    const rightStore = scanKiroInstanceForForgedEnvelopes({ ...base, storeHome: profileHome });
+    expect(rightStore.status).toBe("forged-envelopes");
+    expect(rightStore.findings).toHaveLength(1);
+    expect(rightStore.findings[0].messageId).toBe(FORGED_ID);
+  });
+
+  it("resolves the profile store home from instance backend options", () => {
+    const dataDir = tempRoot();
+    expect(credentialStoreHomeForInstance(dataDir, "kiro-cli", undefined)).toBeUndefined();
+    expect(credentialStoreHomeForInstance(dataDir, "kiro-cli", {})).toBeUndefined();
+    expect(credentialStoreHomeForInstance(dataDir, "kiro-cli", { credential_profile: "work" }))
+      .toBe(credentialProfileStoreHome(dataDir, "kiro-cli", "work"));
+    expect(credentialStoreHomeForInstance(dataDir, "kiro-cli", { credential_profile: "bad name!" })).toBeUndefined();
+  });
+});
+
+describe("kiro metadata-only read (#1007-3)", () => {
+  it("sizes the signature without parsing the value", () => {
+    const root = tempRoot();
+    const dbPath = join(root, "kiro-data.sqlite3");
+    const db = new Database(dbPath);
+    db.exec(`CREATE TABLE conversations_v2 (
+      key TEXT NOT NULL, conversation_id TEXT NOT NULL, value TEXT NOT NULL,
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+      PRIMARY KEY (key, conversation_id))`);
+    // Deliberately unparseable: a metadata read must still succeed — it never
+    // touches the value column.
+    const garbage = "{not json";
+    db.prepare("INSERT INTO conversations_v2 VALUES (?, ?, ?, ?, ?)")
+      .run(WORK_DIR, "conversation-broken", garbage, Date.now() - 60_000, Date.now());
+    const meta = readKiroConversationStatus(dbPath, WORK_DIR, false);
+    expect(meta.status).toBe("ok");
+    if (meta.status === "ok") {
+      expect(meta.conversation.size).toBe(garbage.length);
+      expect(meta.conversation.history).toBeNull();
+    }
+    const full = readKiroConversationStatus(dbPath, WORK_DIR, true);
+    expect(full.status).toBe("ok");
+    if (full.status === "ok") expect(full.conversation.history).toBeNull();
+    db.close();
   });
 });
 
@@ -239,6 +351,36 @@ describe("kiro live monitor (#995 emission)", () => {
       .run(JSON.stringify({ history: live }), Date.now(), "conversation-live");
     const events = await source.poll();
     expect(events.assistantTexts).toEqual(["live assistant output"]);
+    db.close();
+  });
+
+  it("does not fetch or parse history when the signature is unchanged (#1007-3)", async () => {
+    const root = tempRoot();
+    const dbPath = join(root, "kiro-data.sqlite3");
+    const db = new Database(dbPath);
+    db.exec(`CREATE TABLE conversations_v2 (
+      key TEXT NOT NULL, conversation_id TEXT NOT NULL, value TEXT NOT NULL,
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+      PRIMARY KEY (key, conversation_id))`);
+    const seed = [{ user: { content: {} }, assistant: { Response: { message_id: "k0", content: "old" } } }];
+    const updatedAt = Date.now() - 10_000;
+    db.prepare("INSERT INTO conversations_v2 VALUES (?, ?, ?, ?, ?)")
+      .run(WORK_DIR, "conversation-live", JSON.stringify({ history: seed }), Date.now() - 60_000, updatedAt);
+    const sessionsDir = join(root, "no-jsonl-here");
+    const source = new KiroSessionSource(WORK_DIR, sessionsDir, Date.now(), dbPath);
+    expect((await source.poll()).assistantTexts).toHaveLength(0);
+
+    // Rewrite the value with same-length but different history content, same
+    // updated_at: the change signature is untouched. A monitor that re-reads
+    // and parses history on every poll would emit "new"; metadata-only
+    // polling stays silent.
+    const sameLength = JSON.stringify({ history: seed }).replace('"old"', '"new"');
+    expect(sameLength.length).toBe(JSON.stringify({ history: seed }).length);
+    db.prepare("UPDATE conversations_v2 SET value = ? WHERE conversation_id = ?")
+      .run(sameLength, "conversation-live");
+    const quiet = await source.poll();
+    expect(quiet.toolUses).toHaveLength(0);
+    expect(quiet.assistantTexts).toHaveLength(0);
     db.close();
   });
 });

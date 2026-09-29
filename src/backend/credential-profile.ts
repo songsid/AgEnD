@@ -224,6 +224,29 @@ export function credentialProfileHome(dataDir: string, backendName: string, prof
 }
 
 /**
+ * The credential profile's store an instance's CLI writes to, if any (#1007).
+ *
+ * Same resolution the daemon's transcript factory uses: the conversation
+ * lives in the same file as the login, so a profiled instance's transcript
+ * is in its own store, not the shared one. A malformed name resolves to
+ * undefined here — a reader must not fail over a name the writer refuses.
+ */
+export function credentialStoreHomeForInstance(
+  dataDir: string,
+  backendName: string,
+  backendOptions: Record<string, unknown> | undefined,
+): string | undefined {
+  let profile: string | null;
+  try {
+    profile = resolveCredentialProfile(backendOptions);
+  } catch {
+    return undefined;
+  }
+  if (!profile) return undefined;
+  return credentialProfileStoreHome(dataDir, backendName, profile);
+}
+
+/**
  * Create the profile home and link the shareable parts back.
  *
  * Idempotent: it only ever adds links that are missing, and never replaces

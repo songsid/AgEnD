@@ -571,12 +571,17 @@ delivery
   .action(async (opts: { instance?: string; all?: boolean; json?: boolean; kiroDb?: string; outboxDb?: string }) => {
     const { scanKiroInstanceForForgedEnvelopes, loadReportedEnvelopeIds, recordReportedEnvelopeIds } =
       await import("./forged-envelope-scan.js");
+    const { credentialStoreHomeForInstance } = await import("./backend/credential-profile.js");
     if (!opts.instance && !opts.all) {
       console.error("Specify --instance <name> or --all.");
       process.exitCode = 1;
       return;
     }
-    let instances: Record<string, { backend?: string; working_directory?: string }>;
+    let instances: Record<string, {
+      backend?: string;
+      working_directory?: string;
+      backend_options?: Record<string, Record<string, unknown>>;
+    }>;
     try {
       instances = loadRawFleetConfig(FLEET_CONFIG_PATH).instances ?? {};
     } catch (err) {
@@ -594,6 +599,7 @@ delivery
     const outboxDbPath = opts.outboxDb ?? join(DATA_DIR, "delivery-outbox.db");
     const reported = loadReportedEnvelopeIds(DATA_DIR);
     let newFindings = 0;
+    let unreadable = 0;
     const rows: Array<Record<string, unknown>> = [];
     for (const name of targets) {
       const cfg = instances[name] ?? {};
@@ -608,20 +614,28 @@ delivery
         rows.push({ instance: name, backend, status: "error", note: "fleet.yaml has no working_directory for this instance" });
         continue;
       }
+      // A profiled instance writes its transcript to its own store, not the
+      // shared one — scan the store its CLI actually uses (#1007).
+      const storeHome = opts.kiroDb
+        ? undefined
+        : credentialStoreHomeForInstance(DATA_DIR, backend, cfg.backend_options?.[backend]);
       const result = scanKiroInstanceForForgedEnvelopes({
         instanceName: name,
         workingDirectory: cfg.working_directory,
         outboxDbPath,
         knownInstances,
         ...(opts.kiroDb ? { kiroDbPath: opts.kiroDb } : {}),
+        ...(storeHome ? { storeHome } : {}),
         alreadyReportedIds: reported,
       });
       for (const f of result.findings) reported.add(f.messageId);
       newFindings += result.findings.length;
+      if (result.status === "unreadable-store") unreadable++;
       rows.push({
         instance: name,
         backend,
-        status: result.findings.length > 0 ? "forged-envelopes" : "clean",
+        status: result.status,
+        ...(result.reason ? { reason: result.reason } : {}),
         conversation: result.conversationId,
         checked: result.checked,
         delivered: result.delivered,
@@ -641,8 +655,8 @@ delivery
       console.log(JSON.stringify({ scans: rows, new_findings: newFindings }, null, 2));
     } else {
       for (const row of rows) {
-        if (row.status === "unsupported-backend" || row.status === "error") {
-          console.log(`- ${row.instance}: ${row.status} (${row.note})`);
+        if (row.status === "unsupported-backend" || row.status === "error" || row.status === "unreadable-store") {
+          console.log(`- ${row.instance}: ${row.status} (${row.reason ?? row.note})`);
           continue;
         }
         const findings = row.findings as Array<{ from: string; message_id: string; excerpt: string; suggested_injection: string }>;
@@ -658,6 +672,10 @@ delivery
       // Operator notification: visible here; wire to a schedule for routine runs.
       console.error(`FORGED ENVELOPES: ${newFindings} new finding(s) — notify the operator and inject the warning(s) above.`);
       process.exitCode = 2;
+    } else if (unreadable > 0) {
+      // Fail-closed: a transcript that could not be read is not clean.
+      console.error(`UNREADABLE TRANSCRIPT: ${unreadable} instance(s) could not be scanned — not clean.`);
+      process.exitCode = 3;
     }
   });
 

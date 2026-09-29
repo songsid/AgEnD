@@ -21,7 +21,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DeliveryOutbox, deliveryStatusSelector } from "./delivery-outbox.js";
-import { extractKiroAssistantStrings, kiroStoreDbPath, readKiroConversation } from "./transcript-sources.js";
+import { extractKiroAssistantStrings, kiroStoreDbPath, readKiroConversationStatus } from "./transcript-sources.js";
 
 export interface EnvelopeCandidate {
   /** Resolved real instance name (display-name wrapper stripped). */
@@ -104,16 +104,28 @@ export function extractEnvelopeCandidates(text: string, knownInstances: Set<stri
   return out;
 }
 
-/** Assistant texts the kiro store holds for one instance conversation. */
+export type KiroScanRead =
+  | { kind: "ok"; conversationId: string; texts: string[] }
+  | { kind: "no-conversation" }
+  | { kind: "unreadable"; reason: string };
+
+/**
+ * Assistant texts the kiro store holds for one instance conversation.
+ * Discriminated (#1007): a missing/unreadable store is NOT an empty
+ * transcript — the caller must not report it as clean.
+ */
 export function readKiroAssistantTexts(
   workingDirectory: string,
   kiroDbPath = kiroStoreDbPath(),
-): { conversationId: string; texts: string[] } | null {
-  const row = readKiroConversation(kiroDbPath, workingDirectory);
-  if (!row || !row.history) return null;
+): KiroScanRead {
+  const read = readKiroConversationStatus(kiroDbPath, workingDirectory, true);
+  if (read.status === "no-row") return { kind: "no-conversation" };
+  if (read.status === "error") return { kind: "unreadable", reason: read.reason };
+  const history = read.conversation.history;
+  if (!history) return { kind: "unreadable", reason: "conversation history is missing or unparseable" };
   const texts: string[] = [];
-  for (const entry of row.history) texts.push(...extractKiroAssistantStrings(entry));
-  return { conversationId: row.conversationId, texts };
+  for (const entry of history) texts.push(...extractKiroAssistantStrings(entry));
+  return { kind: "ok", conversationId: read.conversation.conversationId, texts };
 }
 
 /**
@@ -153,8 +165,18 @@ export function formatForgedEnvelopeWarning(instanceName: string, finding: Envel
     `直接回問對方是否真的送過這則訊息。之後做破壞性操作前，先用 message_id 查 delivery_status（#856 規則）。`;
 }
 
+export type KiroForgedScanStatus =
+  | "clean"
+  | "forged-envelopes"
+  | "no-conversation"
+  | "unreadable-store"
+  | "partially-unverified";
+
 export interface KiroForgedScanResult {
   instanceName: string;
+  status: KiroForgedScanStatus;
+  /** Why the store could not be read (unreadable-store only). */
+  reason?: string;
   conversationId: string | null;
   /** Envelope candidates found in the transcript (any verdict). */
   checked: number;
@@ -168,25 +190,44 @@ export interface KiroForgedScanResult {
  * Full point-in-time scan of one kiro instance: read its transcript, extract
  * envelope candidates, verify each against the outbox. `alreadyReportedIds`
  * suppresses repeat findings; the caller persists newly reported ids.
+ *
+ * Fail-closed (#1007): an unreadable store is `unreadable-store`, a missing
+ * outbox with candidates is `partially-unverified` — never `clean`. Only a
+ * successfully read transcript with every candidate verified is clean.
  */
 export function scanKiroInstanceForForgedEnvelopes(opts: {
   instanceName: string;
   workingDirectory: string;
   outboxDbPath: string;
   knownInstances: Set<string>;
+  /** Explicit store DB (tests/overrides). Otherwise resolved from storeHome. */
   kiroDbPath?: string;
+  /**
+   * Credential-profile store home, exactly as the transcript factory resolves
+   * it per instance — a profiled instance keeps its transcript in its own
+   * data.sqlite3, not the shared store.
+   */
+  storeHome?: string;
   alreadyReportedIds?: Set<string>;
 }): KiroForgedScanResult {
-  const empty: KiroForgedScanResult = {
+  const base = {
     instanceName: opts.instanceName, conversationId: null, checked: 0, delivered: 0, unverifiable: 0, findings: [],
   };
-  const convo = readKiroAssistantTexts(opts.workingDirectory, opts.kiroDbPath ?? kiroStoreDbPath());
-  if (!convo) return empty;
+  const kiroDbPath = opts.kiroDbPath ?? kiroStoreDbPath(opts.storeHome);
+  const convo = readKiroAssistantTexts(opts.workingDirectory, kiroDbPath);
+  if (convo.kind === "unreadable") {
+    return { ...base, status: "unreadable-store", reason: convo.reason };
+  }
+  if (convo.kind === "no-conversation") {
+    return { ...base, status: "no-conversation" };
+  }
   const candidates: EnvelopeCandidate[] = [];
   for (const text of convo.texts) candidates.push(...extractEnvelopeCandidates(text, opts.knownInstances));
   const verdicts = verifyEnvelopeCandidates(opts.outboxDbPath, candidates.map(c => c.messageId));
   const reported = opts.alreadyReportedIds ?? new Set<string>();
-  const result: KiroForgedScanResult = { ...empty, conversationId: convo.conversationId, checked: candidates.length };
+  const result: KiroForgedScanResult = {
+    ...base, status: "clean", conversationId: convo.conversationId, checked: candidates.length,
+  };
   const seenFinding = new Set<string>();
   for (const c of candidates) {
     const verdict = verdicts.get(c.messageId);
@@ -197,6 +238,8 @@ export function scanKiroInstanceForForgedEnvelopes(opts: {
       result.findings.push({ ...c, warning: formatForgedEnvelopeWarning(opts.instanceName, c) });
     }
   }
+  if (result.findings.length > 0) result.status = "forged-envelopes";
+  else if (result.unverifiable > 0) result.status = "partially-unverified";
   return result;
 }
 

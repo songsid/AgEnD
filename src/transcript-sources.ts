@@ -262,40 +262,71 @@ export function kiroWorkingDirectoryKeys(workingDirectory: string): string[] {
 }
 
 /**
- * Read-only point-in-time read of the newest kiro conversation for a working
- * directory. Shared by the live monitor and the #995 forged-envelope scanner
- * so both resolve "this instance's conversation" the same way.
+ * Discriminated read of the newest kiro conversation for a working directory.
+ * Shared by the live monitor and the #995 forged-envelope scanner so both
+ * resolve "this instance's conversation" the same way — and so a safety scan
+ * can tell "no conversation" apart from "could not read the store" (#1007).
  */
-export function readKiroConversation(dbPath: string, workingDirectory: string): KiroConversation | null {
-  if (!existsSync(dbPath)) return null;
+export type KiroConversationRead =
+  | { status: "ok"; conversation: KiroConversation }
+  | { status: "no-row" }
+  | { status: "error"; reason: string };
+
+export function readKiroConversationStatus(
+  dbPath: string,
+  workingDirectory: string,
+  /** False = metadata only (no value read, no JSON parse): the poll fast path. */
+  includeHistory = true,
+): KiroConversationRead {
+  if (!existsSync(dbPath)) return { status: "error", reason: `kiro store not found: ${dbPath}` };
   let db: Database.Database | undefined;
   try {
     db = new Database(dbPath, { readonly: true, fileMustExist: true });
     const keys = kiroWorkingDirectoryKeys(workingDirectory);
     const placeholders = keys.map(() => "?").join(", ");
+    // Metadata first: length(value) sizes the change signature without
+    // reading or parsing the (growing) transcript on every poll.
     const row = db.prepare(
-      `SELECT conversation_id, created_at, updated_at, value
+      `SELECT conversation_id, created_at, updated_at, length(value) AS size
+         ${includeHistory ? ", value" : ""}
        FROM conversations_v2 WHERE key IN (${placeholders})
        ORDER BY updated_at DESC LIMIT 1`,
-    ).get(...keys) as { conversation_id: string; created_at: number; updated_at: number; value: string } | undefined;
-    if (!row) return null;
-    let history: unknown[] | null;
-    try {
-      const parsed = JSON.parse(row.value) as { history?: unknown };
-      history = Array.isArray(parsed.history) ? parsed.history : null;
-    } catch { history = null; }
+    ).get(...keys) as {
+      conversation_id: string; created_at: number; updated_at: number; size: number; value?: string;
+    } | undefined;
+    if (!row) return { status: "no-row" };
+    let history: unknown[] | null = null;
+    if (includeHistory) {
+      try {
+        const parsed = JSON.parse(row.value ?? "") as { history?: unknown };
+        history = Array.isArray(parsed.history) ? parsed.history : null;
+      } catch { history = null; }
+    }
     return {
-      conversationId: row.conversation_id,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-      size: row.value.length,
-      history,
+      status: "ok",
+      conversation: {
+        conversationId: row.conversation_id,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        size: row.size,
+        history,
+      },
     };
-  } catch {
-    return null;
+  } catch (err) {
+    return { status: "error", reason: (err as Error).message };
   } finally {
     try { db?.close(); } catch { /* already closed */ }
   }
+}
+
+/**
+ * Read-only point-in-time read of the newest kiro conversation for a working
+ * directory. One-shot consumers (the #995 scanner) use this; the live monitor
+ * uses {@link readKiroConversationStatus} with the metadata fast path.
+ */
+export function readKiroConversation(dbPath: string, workingDirectory: string): KiroConversation | null {
+  const read = readKiroConversationStatus(dbPath, workingDirectory, true);
+  return read.status === "ok" ? read.conversation : null;
 }
 
 /** Strings a kiro assistant turn can carry: plain response + tool-call text. */
@@ -507,7 +538,7 @@ export class KiroSessionSource implements TranscriptSource {
       collectKiroDbEvents(entry, events, this.dbToolNames);
     }
     this.dbHistoryCursor = history.length;
-    this.dbSignature = signature;
+    this.dbSignature = fullSignature;
     return events;
   }
 
