@@ -1786,7 +1786,8 @@ program
 program
   .command("web")
   .description("Open the Web UI dashboard in your browser")
-  .action(async () => {
+  .option("--code", "Print a one-time sign-in code for the sign-in page instead of opening a link")
+  .action(async (opts: { code?: boolean }) => {
     const tokenPath = join(DATA_DIR, "web.token");
     if (!existsSync(tokenPath)) {
       console.error("Web token not found. Is the fleet running?");
@@ -1796,6 +1797,29 @@ program
     const { loadFleetConfig } = await import("./config.js");
     const fleet = loadFleetConfig(FLEET_CONFIG_PATH);
     const port = fleet.health_port ?? 19280;
+    if (opts.code) {
+      // The code is minted by the running fleet (it lives in that process's memory),
+      // so ask it — with the header token, the one credential a local script has.
+      try {
+        const resp = await fetch(`http://127.0.0.1:${port}/auth/issue-code`, {
+          method: "POST",
+          headers: { "X-Agend-Token": token },
+          signal: AbortSignal.timeout(5000),
+        });
+        const body = await resp.json().catch(() => ({})) as { code?: string; expiresAt?: number; error?: string };
+        if (!resp.ok || !body.code) {
+          console.error(`Could not get a sign-in code: ${body.error ?? resp.statusText}`);
+          process.exit(1);
+        }
+        const minutes = Math.max(1, Math.round(((body.expiresAt ?? Date.now()) - Date.now()) / 60_000));
+        console.log(`Sign-in page: http://localhost:${port}/signin`);
+        console.log(`Code:         ${body.code}   (works once, valid ~${minutes} min)`);
+      } catch {
+        console.error(`Cannot connect to fleet (port ${port}). Is the fleet running?`);
+        process.exit(1);
+      }
+      return;
+    }
     const url = `http://localhost:${port}/ui?token=${encodeURIComponent(token)}`;
     console.log(`Opening ${url}`);
     // The token is sensitive: passing it on argv would expose it via `ps`,

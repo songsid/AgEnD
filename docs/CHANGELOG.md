@@ -45,6 +45,24 @@ Settings now applies changes as a job you can watch. `POST /api/settings/apply` 
 The panel can restart AgEnD itself for a change only a fresh process can adopt, behind its own confirmation, its own idempotency key, and a rate limit of one restart per 10 minutes and three per hour that is written to disk before anything is launched. The restart is announced in the chat channel first and is refused if it cannot be announced, so a panel restart is never invisible to the people who would notice it was not them.
 
 ### Upgrade Notes
+- **[Behaviour change] The web panels sign in with a one-time code, and a
+  dashboard link no longer carries a credential.** `/dashboard` used to paste the
+  fleet-wide `web.token` into `/view?token=`, `/settings?token=` and `/ui?token=`
+  — into chat history, browser history and screenshots, where it stayed valid
+  until `agend web-token rotate`. It now gives the sign-in page and an 8-character
+  code that works once and expires in 5 minutes; typing it there starts a
+  **server-side session** (an opaque random id the server can expire, list and
+  revoke — not the old cookie that was `sha256(web.token)`, identical on every
+  device and valid until rotation). **Everyone signs in once after upgrading:**
+  the old cookie is no longer accepted. Sessions end 12 hours after sign-in or
+  after 2 hours idle, survive a fleet restart, and every write from a page now
+  also needs a per-session `X-Agend-CSRF` header and a matching `Origin`.
+  `/dashboard revoke` signs every browser out; `agend web --code` prints a code on
+  the host; `agend web-token rotate` still kills every session at once. The
+  header token (`X-Agend-Token`) is unchanged for the CLI and scripts, and
+  `agend web` still opens a `?token=` link for the host's own browser (deprecated;
+  it now creates a real session). New sign-ins are announced in the General topic
+  (`web.notify_login: false` to silence). `/view` is unchanged in this release.
 - **[Behaviour change] The dashboard now refuses requests whose `Host` is not a
   name it knows.** The health/dashboard server listens on 127.0.0.1, but that does
   not stop DNS rebinding: a web page can point its own domain at 127.0.0.1 and

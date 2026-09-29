@@ -299,6 +299,8 @@ export interface WebConfig {
    * Names only (a port is ignored); anything not listed is refused with 403.
    */
   allowed_hosts?: string[];
+  /** Tell the admin channel when someone signs in to the web panel (default true). */
+  notify_login?: boolean;
 }
 
 /** `login:` section — remote /login behaviour. */

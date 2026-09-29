@@ -19,7 +19,7 @@ Located at `~/.agend/fleet.yaml`. The primary configuration file for the fleet.
 | `templates` | object | no | — | Reusable fleet deployment templates |
 | `profiles` | object | no | — | Reusable backend/model presets |
 | `health_port` | number | no | `19280` | HTTP health endpoint port |
-| `web` | object | no | — | Web UI feature toggles — `web.usage_panel: false` hides the AI subscription usage panel on /view and disables `/api/ai-usage` (default `true`); `web.allowed_hosts: [name, …]` adds `Host` names the dashboard answers to when reached through a reverse proxy or port forward (default: `localhost`, `127.0.0.1`, `[::1]` and `hostname`; any other `Host` gets 403 — this is what stops DNS rebinding) |
+| `web` | object | no | — | Web UI feature toggles — `web.usage_panel: false` hides the AI subscription usage panel on /view and disables `/api/ai-usage` (default `true`); `web.allowed_hosts: [name, …]` adds `Host` names the dashboard answers to when reached through a reverse proxy or port forward (default: `localhost`, `127.0.0.1`, `[::1]` and `hostname`; any other `Host` gets 403 — this is what stops DNS rebinding); `web.notify_login: false` stops the General topic being told about each web sign-in (default `true`) |
 
 ---
 

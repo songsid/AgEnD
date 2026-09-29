@@ -135,8 +135,9 @@ agend backend trust <backend>   # Pre-trust working directories (avoid CLI trust
 
 ```bash
 agend web                       # Open Web UI dashboard in browser
+agend web --code                # Print a one-time sign-in code for the sign-in page
 agend view                      # Open the read-only View dashboard in browser
-agend web-token rotate          # Revoke every dashboard link and browser session
+agend web-token rotate          # Sign every browser out and rotate the CLI token
 agend setup                     # Guided setup page, before a fleet exists
 agend setup --reset             # Allow setup to run again after it completed
 agend setup --tunnel            # …and expose it publicly, so a phone can open it
@@ -212,17 +213,42 @@ place — this page writes the file by dumping the loaded configuration, which i
 right for a file it creates and would flatten comments and freeze defaults in
 one somebody already has.
 
-Opening a dashboard link redeems its `?token=` for an `HttpOnly` session cookie
-and redirects to the same page without the token, so the credential stays out of
-the address bar, browser history and any log that records request URLs. The
-cookie lasts 12 hours. `agend web-token rotate` invalidates every issued link and
-cookie at once — a running fleet picks it up with no restart.
+The dashboard signs in with a **one-time code**, not a link that carries a
+credential. Send `/dashboard` to your bot (or run `agend web --code` on the host)
+and you get the sign-in page address plus an 8-character code — `ABCD-EFGH`,
+typed with or without the dash, in any case. Type it into the sign-in page and
+you are signed in to `/ui`, `/view` and `/settings` for as long as the session
+lasts, with nothing in the address bar, the browser history or any log that
+records request URLs.
 
-**If the page says "No session"** right after you followed a link from web
-Telegram or Discord, reload once. The session cookie is `SameSite=Strict`, and a
-browser that declines to send it on the first cross-site hop will send it on the
-reload, which is same-site. (Verified on Chromium; Firefox and WebKit have not
-been measured.)
+- **The code works once and expires after 5 minutes.** Only the newest code
+  works: asking again replaces the previous one. Five wrong tries use up that one
+  code (ask for another); enough wrong tries across codes pause sign-in for a few
+  minutes. While no code has been issued there is nothing to guess.
+- **A session is an opaque server-side record**, not a value derived from
+  `web.token`. It ends after 12 hours from sign-in at the latest, or after 2
+  hours without use, whichever comes first — the server decides, not the
+  browser. It survives a fleet restart (Settings can restart the fleet).
+- **`/dashboard revoke`** in the chat signs every browser out and withdraws any
+  unused code. `agend web-token rotate` does the same and also rotates the token
+  the CLI uses; a running fleet picks it up with no restart. The sign-in
+  endpoints also list your signed-in devices and end one or all of them
+  (`GET/DELETE /auth/sessions`).
+- **Each sign-in is announced** in the General topic ("New web sign-in: Chrome on
+  macOS"). If it was not you, send `/dashboard revoke`. Turn this off with
+  `web.notify_login: false`.
+- **Writes need more than the cookie.** The panels add a per-session
+  `X-Agend-CSRF` header to every write, and the server also requires a matching
+  `Origin`; a cookie alone cannot change anything.
+- `agend web` (no flag) still opens `/ui?token=…` for the host's own browser and
+  works as before; that link now creates a real session, and is deprecated in
+  favour of the code.
+
+Following a link from Telegram or Discord into a panel lands on the sign-in page
+first if the browser did not send the cookie on that cross-site hop
+(`SameSite=Strict`); the page checks for a session from inside the site and
+carries on to the panel you asked for by itself. (Verified on Chromium; Firefox
+and WebKit have not been measured.)
 
 ### Applying settings changes
 
