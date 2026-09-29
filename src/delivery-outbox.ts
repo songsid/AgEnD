@@ -95,6 +95,14 @@ function payloadContent(payload: unknown): string | null {
   return typeof content === "string" ? content : null;
 }
 
+/** Kinds that carry a peer request or its answer. Broadcasts are one-to-many and deferred (#926 §6). */
+const REPLY_OBLIGATION_KINDS = ["fleet_inbound", "steer"] as const;
+
+function payloadRequiresReply(payload: unknown): boolean {
+  const meta = payload && typeof payload === "object" ? (payload as Record<string, unknown>).meta : undefined;
+  return !!meta && typeof meta === "object" && (meta as Record<string, unknown>).requires_reply === "true";
+}
+
 function payloadMessageId(payload: unknown): string | null {
   const meta = payload && typeof payload === "object" ? (payload as Record<string, unknown>).meta : undefined;
   const id = meta && typeof meta === "object" ? (meta as Record<string, unknown>).message_id : undefined;
@@ -126,6 +134,27 @@ export interface DeliveryStatusItem {
    * other query, and operator reads, stay redacted as before (#982).
    */
   content?: string | null;
+  /** #926: the reply this request is owed, when it asked for one. */
+  reply_obligation?: { state: "open" | "answered"; opened_at: string; last_asked_at: string; nudged_at: string | null; overdue_notified_at: string | null; answered_at: string | null } | null;
+}
+
+/**
+ * #926: a peer asked with `requires_reply` and the owner has not answered it
+ * through the fleet yet. Terminal text is not an answer: only a message the
+ * owner sends back to the requester with the same correlation_id closes it.
+ */
+export interface ReplyObligation {
+  correlationId: string;
+  requesterInstance: string;
+  ownerInstance: string;
+  requestDeliveryId: string;
+  openedAt: string;
+  lastAskedAt: string;
+  state: "open" | "answered";
+  nudgedAt: string | null;
+  overdueNotifiedAt: string | null;
+  answeredAt: string | null;
+  answeredDeliveryId: string | null;
 }
 
 export interface DeliveryStatusPage {
@@ -251,6 +280,20 @@ function safeToRetry(state: OutboxState): boolean {
   return state === "queued" || state === "delivering" || state === "retry_wait" || state === "failed";
 }
 
+function hasTable(db: Database.Database, table: string): boolean {
+  return !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table);
+}
+
+/** The obligation a request row opened, if any; absent on databases from before #926. */
+function obligationFor(db: Database.Database, correlationId: string | null, requester: string, owner: string): DeliveryStatusItem["reply_obligation"] {
+  if (!correlationId || !hasTable(db, "reply_obligations")) return null;
+  const row = db.prepare(`
+    SELECT state, opened_at, last_asked_at, nudged_at, overdue_notified_at, answered_at FROM reply_obligations
+    WHERE correlation_id=? AND requester_instance=? AND owner_instance=?
+  `).get(correlationId, requester, owner) as NonNullable<DeliveryStatusItem["reply_obligation"]> | undefined;
+  return row ?? null;
+}
+
 function hasColumn(db: Database.Database, table: string, column: string): boolean {
   return (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).some(c => c.name === column);
 }
@@ -345,8 +388,24 @@ function queryStatusPage(
       // Text only for the explicit verification query (#856), and only to the
       // row's own source/target; every other query keeps #982's redaction.
       ...rowContentEvidence(row.payload_json, callerInstance !== null && !!selector.messageId),
+      reply_obligation: obligationFor(db, row.correlation_id, row.source_instance, row.target_instance),
     })),
     next_cursor: hasMore ? visible.at(-1)?.delivery_id ?? null : null,
+  };
+}
+
+interface ReplyObligationRow {
+  correlation_id: string; requester_instance: string; owner_instance: string; request_delivery_id: string;
+  opened_at: string; last_asked_at: string; state: "open" | "answered";
+  nudged_at: string | null; overdue_notified_at: string | null; answered_at: string | null; answered_delivery_id: string | null;
+}
+
+function mapObligation(row: ReplyObligationRow): ReplyObligation {
+  return {
+    correlationId: row.correlation_id, requesterInstance: row.requester_instance, ownerInstance: row.owner_instance,
+    requestDeliveryId: row.request_delivery_id, openedAt: row.opened_at, lastAskedAt: row.last_asked_at, state: row.state,
+    nudgedAt: row.nudged_at, overdueNotifiedAt: row.overdue_notified_at, answeredAt: row.answered_at,
+    answeredDeliveryId: row.answered_delivery_id,
   };
 }
 
@@ -436,6 +495,21 @@ export class DeliveryOutbox extends EventEmitter {
         created_at TEXT NOT NULL,
         PRIMARY KEY (source_instance, source_daemon_boot_id, operation_id, target_instance)
       );
+      CREATE TABLE IF NOT EXISTS reply_obligations (
+        correlation_id TEXT NOT NULL,
+        requester_instance TEXT NOT NULL,
+        owner_instance TEXT NOT NULL,
+        request_delivery_id TEXT NOT NULL,
+        opened_at TEXT NOT NULL,
+        last_asked_at TEXT NOT NULL,
+        state TEXT NOT NULL CHECK (state IN ('open','answered')),
+        nudged_at TEXT,
+        overdue_notified_at TEXT,
+        answered_at TEXT,
+        answered_delivery_id TEXT,
+        PRIMARY KEY (correlation_id, requester_instance, owner_instance)
+      );
+      CREATE INDEX IF NOT EXISTS idx_reply_obligation_owner_state ON reply_obligations(owner_instance, state);
       CREATE TABLE IF NOT EXISTS failure_notices (
         parent_delivery_id TEXT PRIMARY KEY,
         notice_delivery_id TEXT NOT NULL UNIQUE,
@@ -465,6 +539,63 @@ export class DeliveryOutbox extends EventEmitter {
     this.db.exec("CREATE INDEX IF NOT EXISTS idx_delivery_message_id ON deliveries(message_id)");
     this.backfillMessageEvidence();
     this.db.pragma("user_version = 4");
+  }
+
+  /**
+   * #926: a delivered `requires_reply` request opens (or, asked again,
+   * re-opens) the owner's obligation. Runs inside the delivered transition.
+   * An answer admitted before the request finished its submission proof —
+   * an owner can reply while the daemon is still confirming — counts.
+   */
+  private openReplyObligation(request: OutboxRow, now: string): void {
+    if (!(REPLY_OBLIGATION_KINDS as readonly string[]).includes(request.kind) || !request.correlation_id) return;
+    let payload: unknown = null;
+    try { payload = JSON.parse(request.payload_json); } catch { return; }
+    if (!payloadRequiresReply(payload)) return;
+    const earlyAnswer = this.db.prepare(`
+      SELECT delivery_id FROM deliveries
+      WHERE correlation_id=? AND source_instance=? AND target_instance=? AND created_seq > ?
+        AND kind IN (${REPLY_OBLIGATION_KINDS.map(() => "?").join(",")})
+      ORDER BY created_seq LIMIT 1
+    `).get(request.correlation_id, request.target_instance, request.source_instance, request.created_seq, ...REPLY_OBLIGATION_KINDS) as { delivery_id: string } | undefined;
+    this.db.prepare(`
+      INSERT INTO reply_obligations(correlation_id, requester_instance, owner_instance, request_delivery_id,
+        opened_at, last_asked_at, state, answered_at, answered_delivery_id)
+      VALUES (@cid, @requester, @owner, @request, @now, @now, @state, @answeredAt, @answeredId)
+      ON CONFLICT(correlation_id, requester_instance, owner_instance) DO UPDATE SET
+        request_delivery_id=excluded.request_delivery_id, last_asked_at=excluded.last_asked_at,
+        state=excluded.state, nudged_at=NULL, overdue_notified_at=NULL,
+        answered_at=excluded.answered_at, answered_delivery_id=excluded.answered_delivery_id
+    `).run({
+      cid: request.correlation_id, requester: request.source_instance, owner: request.target_instance,
+      request: request.delivery_id, now,
+      state: earlyAnswer ? "answered" : "open",
+      answeredAt: earlyAnswer ? now : null, answeredId: earlyAnswer?.delivery_id ?? null,
+    });
+  }
+
+  /** The owner's message back to the requester on the same correlation_id answers it — at admission. */
+  private answerReplyObligation(answer: OutboxRow, now: string): void {
+    if (!(REPLY_OBLIGATION_KINDS as readonly string[]).includes(answer.kind) || !answer.correlation_id) return;
+    this.db.prepare(`
+      UPDATE reply_obligations SET state='answered', answered_at=?, answered_delivery_id=?
+      WHERE correlation_id=? AND owner_instance=? AND requester_instance=? AND state='open'
+    `).run(now, answer.delivery_id, answer.correlation_id, answer.source_instance, answer.target_instance);
+  }
+
+  /** The owner's open obligations, oldest first (#926). */
+  openReplyObligations(ownerInstance: string): ReplyObligation[] {
+    const rows = this.db.prepare(`
+      SELECT * FROM reply_obligations WHERE owner_instance=? AND state='open' ORDER BY opened_at, correlation_id
+    `).all(ownerInstance) as ReplyObligationRow[];
+    return rows.map(mapObligation);
+  }
+
+  getReplyObligation(correlationId: string, requesterInstance: string, ownerInstance: string): ReplyObligation | undefined {
+    const row = this.db.prepare(`
+      SELECT * FROM reply_obligations WHERE correlation_id=? AND requester_instance=? AND owner_instance=?
+    `).get(correlationId, requesterInstance, ownerInstance) as ReplyObligationRow | undefined;
+    return row ? mapObligation(row) : undefined;
   }
 
   /** Rows admitted before #856 get the same message_id / digest a new row would. */
@@ -527,6 +658,7 @@ export class DeliveryOutbox extends EventEmitter {
       });
       const row = select.get(input.sourceKey) as OutboxRow | undefined;
       if (!row) throw new Error("outbox admission committed without a readable row");
+      if (result.changes === 1) this.answerReplyObligation(row, now);
       return { delivery: mapRow(row), inserted: result.changes === 1 };
     });
     return transaction();
@@ -769,6 +901,7 @@ export class DeliveryOutbox extends EventEmitter {
       if (parent && (outcome === "failed" || outcome === "uncertain")) {
         this.insertFailureNotice(parent, outcome, evidence ?? outcome, now);
       }
+      if (parent && outcome === "delivered") this.openReplyObligation(parent, now);
       return { changed: true, accepted: true };
     });
     const result = transaction();
@@ -1073,6 +1206,7 @@ export class DeliveryOutbox extends EventEmitter {
       `).run(attemptState, outcome === "retry_wait" ? now : null, terminal ? now : null,
         evidence.slice(0, 300), deliveryId, targetBootId, attemptNo);
       if (outcome === "uncertain") this.insertFailureNotice(parent, "uncertain", evidence, now);
+      if (outcome === "delivered") this.openReplyObligation(parent, now);
       return true;
     });
     const changed = transaction();
