@@ -473,8 +473,9 @@ describe("the Settings editor binds by status name, never by position", () => {
     expect(shown()).toEqual({ ...BUILTIN, received: "🦊", queued: "🍎" });
     expect(editor.value()).toEqual({ received: "🦊", queued: "🍎" });
     const last = calls.filter(c => c.path === "/api/settings/status-emojis/preview").at(-1)!;
-    expect(last.body).toEqual({ channel_id: "dc", platform: "discord", channel_config: { received: "🦊", queued: "🍎" } });
-    expect(Object.keys(last.body.channel_config)).toEqual(["received", "queued"]);
+    const sent = last.body as { channel_config: Record<string, string> };
+    expect(sent).toEqual({ channel_id: "dc", platform: "discord", channel_config: { received: "🦊", queued: "🍎" } });
+    expect(Object.keys(sent.channel_config)).toEqual(["received", "queued"]);
     // Each box holds what belongs to it; an untouched one is empty, its default only a placeholder.
     for (const key of KEYS) expect(input(key).value, key).toBe({ received: "🦊", queued: "🍎" }[key as string] ?? "");
     for (const key of ["processing", "delivered", "failed", "progress_prefix"]) expect(input(key).attrs.placeholder, key).toBe(BUILTIN[key]);
