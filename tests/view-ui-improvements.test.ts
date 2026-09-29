@@ -42,8 +42,10 @@ describe("View UI improvements", () => {
   it("persists sidebar sorting only in browser localStorage", () => {
     expect(html).toContain('const SIDEBAR_ORDER_KEY = "agend_view_sidebar_order"');
     expect(html).toContain("localStorage.setItem(SIDEBAR_ORDER_KEY, JSON.stringify(orderRows()))");
-    expect(html).toContain("header.draggable = true");
-    expect(html).toContain("el.draggable = true");
+    // Draggable on the full list; #999 turns dragging off while a filter
+    // hides rows, since reordering a filtered subset is ambiguous.
+    expect(html).toContain("header.draggable = !view.active");
+    expect(html).toContain("el.draggable = !view.active");
     expect(html).not.toContain('fetch("/api/sort-order"');
     expect(html).not.toContain("probeWrite()");
   });

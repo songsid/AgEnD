@@ -64,8 +64,15 @@ function renderViewSidebar(instances: Array<Record<string, unknown>>): string[] 
     instanceTooltip: () => "tooltip",
     select: () => undefined,
     wireDrag: () => undefined,
+    // #999: renderList renders through the sidebar filter (empty query here).
+    filterQuery: "",
+    backendLabel: (backend: string) => backend,
+    renderFilterStatus: () => undefined,
+    T: (key: string) => key,
   };
-  const renderList = vm.runInNewContext(`(${sourceBetween(viewHtml, "function renderList(", "// ── Drag & drop")})`, context) as () => void;
+  vm.createContext(context);
+  vm.runInContext(sourceBetween(viewHtml, "// ── sidebar filter (#999) — pure; tests execute this block ──", "// ── end sidebar filter ──"), context);
+  const renderList = vm.runInContext(`(${sourceBetween(viewHtml, "function renderList(", "// ── Drag & drop")})`, context) as () => void;
   renderList();
   return rendered.map((element) => element.innerHTML);
 }
