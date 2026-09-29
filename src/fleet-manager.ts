@@ -573,6 +573,11 @@ export function deriveSpawnConcurrency(freeMemMB: number, cores: number): number
   return Math.max(2, Math.min(10, byMemory, Math.max(1, cores)));
 }
 
+/** #926: how often reply obligations are checked, the owner-reminder grace, and the default overdue window. */
+const REPLY_OBLIGATION_SWEEP_MS = 30_000;
+const REPLY_REMINDER_GRACE_MS = 60_000;
+const DEFAULT_REPLY_OVERDUE_MINUTES = 15;
+
 export class FleetManager implements FleetContext, LifecycleContext, ArchiverContext, StatuslineWatcherContext, OutboundContext, AgentEndpointContext {
   private static signalTarget: FleetManager | null = null;
   private static sighupHandlerInstalled = false;
@@ -590,6 +595,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private deliveryPumpScheduled = false;
   private deliveryPumpRunning = false;
   private deliveryPumpTimer: ReturnType<typeof setTimeout> | null = null;
+  /** #926: periodic reply-obligation sweep (owner reminders, requester overdue notices). */
+  private replyObligationTimer: ReturnType<typeof setInterval> | null = null;
   private readonly activeDurableTargets = new Set<string>();
   /** Live view of lifecycle.daemons — used throughout; not deprecated. */
   get daemons() { return this.lifecycle.daemons; }
@@ -891,6 +898,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
     });
     outbox.on("generation_recovered", () => this.scheduleDeliveryOutboxPump());
+    this.replyObligationTimer = setInterval(() => this.sweepReplyObligations(), REPLY_OBLIGATION_SWEEP_MS);
+    this.replyObligationTimer.unref?.();
     // #856: the text the target daemon received differs from what was
     // admitted. Transport has never been seen to do this; a warning and the
     // attempt row's flag are the whole response until it has.
@@ -965,7 +974,34 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.logger.error({ err, source: name, operationId: prior.operationId }, "Could not persist post-restart delivery outcome notice");
       }
     }
+    // #926: a restart kills the turn that was working on a request, and a
+    // resumed CLI does not pick it back up. Remind the owner once per restart.
+    try {
+      outbox.remindReplyObligations(name, { reason: "restart", graceMs: 0, since: new Date() });
+    } catch (err) {
+      this.logger.error({ err, owner: name }, "Could not persist the post-restart reply reminder");
+    }
     this.scheduleDeliveryOutboxPump();
+  }
+
+  /**
+   * #926: the two reply-obligation safety nets. Idle owners with an unanswered
+   * request get one reminder (after the grace); requesters get one overdue
+   * notice when the owner is not working and nothing came back in time.
+   */
+  sweepReplyObligations(now = new Date()): void {
+    const outbox = this.deliveryOutbox;
+    if (!outbox || this.shuttingDown) return;
+    const stateOf = (name: string) => this.daemons.get(name)?.getInstanceState();
+    try {
+      for (const name of this.daemons.keys()) {
+        if (stateOf(name) === "idle") outbox.remindReplyObligations(name, { now, graceMs: REPLY_REMINDER_GRACE_MS, reason: "turn-ended" });
+      }
+      const minutes = this.fleetConfig?.defaults?.reply_overdue_minutes ?? DEFAULT_REPLY_OVERDUE_MINUTES;
+      outbox.notifyOverdueReplyObligations({ now, overdueMs: minutes * 60_000, ownerIdle: name => stateOf(name) !== "working" });
+    } catch (err) {
+      this.logger.error({ err }, "Reply-obligation sweep failed");
+    }
   }
 
   private scheduleDeliveryOutboxPump(delayMs = 0): void {
@@ -12347,6 +12383,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     this.dailyTipScheduler = null;
     if (this.updateCheckTimer) { clearTimeout(this.updateCheckTimer as any); clearInterval(this.updateCheckTimer as any); this.updateCheckTimer = null; }
     if (this.eventLogPruneTimer) { clearInterval(this.eventLogPruneTimer); this.eventLogPruneTimer = null; }
+    if (this.replyObligationTimer) { clearInterval(this.replyObligationTimer); this.replyObligationTimer = null; }
     if (this.logRotateTimer) { clearInterval(this.logRotateTimer); this.logRotateTimer = null; }
     if (this.discordPresenceTimer) { clearInterval(this.discordPresenceTimer); this.discordPresenceTimer = null; }
     if (this.discordPresenceEagerTimer) { clearTimeout(this.discordPresenceEagerTimer); this.discordPresenceEagerTimer = null; }

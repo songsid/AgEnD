@@ -95,6 +95,9 @@ function payloadContent(payload: unknown): string | null {
   return typeof content === "string" ? content : null;
 }
 
+/** #926 reminders and overdue notices; never themselves the subject of a failure notice. */
+export const REPLY_OBLIGATION_NOTICE_KIND = "reply_obligation_notice";
+
 /** Kinds that carry a peer request or its answer. Broadcasts are one-to-many and deferred (#926 §6). */
 const REPLY_OBLIGATION_KINDS = ["fleet_inbound", "steer"] as const;
 
@@ -581,6 +584,93 @@ export class DeliveryOutbox extends EventEmitter {
       UPDATE reply_obligations SET state='answered', answered_at=?, answered_delivery_id=?
       WHERE correlation_id=? AND owner_instance=? AND requester_instance=? AND state='open'
     `).run(now, answer.delivery_id, answer.correlation_id, answer.source_instance, answer.target_instance);
+  }
+
+  /**
+   * #926 safety net 1: remind an owner that has not answered. `turn-ended`
+   * reminds once per ask, after the grace (a reply seconds after the ask is
+   * normal); `restart` reminds once per restart, because the interrupted turn
+   * does not resume on its own. Marked in the same transaction as the notice.
+   */
+  remindReplyObligations(ownerInstance: string, opts: { now?: Date; graceMs: number; reason: "turn-ended" | "restart"; since?: Date }): number {
+    const now = opts.now ?? new Date();
+    const nowIso = now.toISOString();
+    const graceCutoff = new Date(now.getTime() - opts.graceMs).toISOString();
+    const sinceIso = (opts.since ?? now).toISOString();
+    const inserted = this.db.transaction(() => {
+      const due = this.db.prepare(opts.reason === "turn-ended"
+        ? "SELECT * FROM reply_obligations WHERE owner_instance=? AND state='open' AND nudged_at IS NULL AND last_asked_at <= ?"
+        : "SELECT * FROM reply_obligations WHERE owner_instance=? AND state='open' AND (nudged_at IS NULL OR nudged_at < ?)",
+      ).all(ownerInstance, opts.reason === "turn-ended" ? graceCutoff : sinceIso) as ReplyObligationRow[];
+      let count = 0;
+      for (const row of due) {
+        const content = opts.reason === "turn-ended"
+          ? `[system:reply-pending] Your turn ended without answering ${row.requester_instance} (correlation_id ${row.correlation_id}, asked ${row.last_asked_at}). Send your conclusion with report_result (correlation_id ${row.correlation_id}) now — text you write in the terminal does not reach them.`
+          : `[system:reply-pending] A restart interrupted your work on correlation_id ${row.correlation_id} from ${row.requester_instance} (asked ${row.last_asked_at}). Resume it and answer with report_result (correlation_id ${row.correlation_id}); terminal text does not reach them.`;
+        const key = `reply-pending:${opts.reason}:${row.correlation_id}:${row.requester_instance}:${row.owner_instance}:${opts.reason === "turn-ended" ? row.last_asked_at : sinceIso}`;
+        if (this.insertReplyObligationNotice(row.owner_instance, row.correlation_id, key, content, nowIso)) count++;
+        this.db.prepare(`
+          UPDATE reply_obligations SET nudged_at=? WHERE correlation_id=? AND requester_instance=? AND owner_instance=? AND state='open'
+        `).run(nowIso, row.correlation_id, row.requester_instance, row.owner_instance);
+      }
+      return count;
+    })();
+    if (inserted > 0) this.emit("admitted");
+    return inserted;
+  }
+
+  /**
+   * #926 safety net 2 (poll-on-timeout, in code): tell the requester once when
+   * the owner is not working and nothing has come back for `overdueMs` since
+   * the last ask or reminder. A still-working owner is never reported.
+   */
+  notifyOverdueReplyObligations(opts: { now?: Date; overdueMs: number; ownerIdle: (owner: string) => boolean }): number {
+    if (!(opts.overdueMs > 0)) return 0;
+    const now = opts.now ?? new Date();
+    const nowIso = now.toISOString();
+    const inserted = this.db.transaction(() => {
+      const open = this.db.prepare(`
+        SELECT * FROM reply_obligations WHERE state='open' AND overdue_notified_at IS NULL ORDER BY opened_at
+      `).all() as ReplyObligationRow[];
+      let count = 0;
+      for (const row of open) {
+        const quietSince = Math.max(Date.parse(row.last_asked_at), row.nudged_at ? Date.parse(row.nudged_at) : 0);
+        if (now.getTime() - quietSince < opts.overdueMs || !opts.ownerIdle(row.owner_instance)) continue;
+        const content = `[system:reply-overdue] ${row.owner_instance} has not answered correlation_id ${row.correlation_id} (asked ${row.last_asked_at}${row.nudged_at ? `, reminded ${row.nudged_at}` : ""}) and is not working on anything now. Check with describe_instance or delivery_status (correlation_id ${row.correlation_id}), or ask again.`;
+        const key = `reply-overdue:${row.correlation_id}:${row.requester_instance}:${row.owner_instance}:${row.last_asked_at}`;
+        if (this.insertReplyObligationNotice(row.requester_instance, row.correlation_id, key, content, nowIso)) count++;
+        this.db.prepare(`
+          UPDATE reply_obligations SET overdue_notified_at=? WHERE correlation_id=? AND requester_instance=? AND owner_instance=? AND state='open'
+        `).run(nowIso, row.correlation_id, row.requester_instance, row.owner_instance);
+      }
+      return count;
+    })();
+    if (inserted > 0) this.emit("admitted");
+    return inserted;
+  }
+
+  /** A system notice as a durable row, like #929's outcome notices; the key makes it idempotent. */
+  private insertReplyObligationNotice(target: string, correlationId: string, sourceKey: string, content: string, now: string): boolean {
+    const noticeId = randomUUID();
+    const payload = {
+      type: "fleet_inbound",
+      content,
+      meta: {
+        user: "AgEnD delivery outbox", user_id: "agend-system", message_id: `reply-obligation-${noticeId}`,
+        chat_id: "", thread_id: "", source: "delivery-outbox",
+      },
+    };
+    return this.db.prepare(`
+      INSERT OR IGNORE INTO deliveries (
+        delivery_id,operation_id,source_key,source_instance,source_daemon_boot_id,
+        target_instance,target_session,target_daemon_boot_id,kind,correlation_id,payload_json,message_id,content_sha256,state,
+        attempt_no,created_seq,manager_boot_id,created_at,updated_at,accepted_at
+      ) VALUES (?,?,?,'agend-system',?,?,NULL,NULL,?,?,?,?,?,'queued',0,
+        (SELECT COALESCE(MAX(created_seq),0)+1 FROM deliveries),NULL,?,?,?)
+    `).run(
+      noticeId, `notice:${sourceKey}`, sourceKey, this.managerBootId, target, REPLY_OBLIGATION_NOTICE_KIND, correlationId,
+      JSON.stringify(payload), payload.meta.message_id, deliveryContentDigest(content), now, now, now,
+    ).changes === 1;
   }
 
   /** The owner's open obligations, oldest first (#926). */
@@ -1232,7 +1322,8 @@ export class DeliveryOutbox extends EventEmitter {
 
   /** Must be called inside the same SQLite transaction as the terminal transition. */
   private insertFailureNotice(parent: OutboxRow, outcome: "failed" | "uncertain", reason: string, now: string): void {
-    if (parent.kind === "delivery_outcome_notice" || parent.kind === "post_restart_outcome_notice") return;
+    if (parent.kind === "delivery_outcome_notice" || parent.kind === "post_restart_outcome_notice"
+      || parent.kind === REPLY_OBLIGATION_NOTICE_KIND) return;
     const noticeId = randomUUID();
     const operationId = `notice:${parent.operation_id}:${parent.delivery_id}`;
     const payload = {
