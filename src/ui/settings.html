@@ -39,6 +39,17 @@
   .tag.tg { background: #e0f2fe; color: #075985; }
   .sub { font-size: 13px; color: var(--muted); margin-top: 3px; margin-left: 19px; }
   .spacer { flex: 1; }
+  /* "Connections & Bots" rows carry up to ten short facts. Left to shrink, every one of them wraps inside
+     its own box (a chip becomes two lines, "存取模式:" and "設定" break mid-word) and the tail is clipped by
+     the card. So: no fact wraps inside itself; when the row is too long it wraps between facts, and the
+     status/settings cluster stays together at the end. Long values (env names, user ids) may break
+     anywhere rather than push the row wider than its card. */
+  .conn-row { flex-wrap: wrap; row-gap: 6px; }
+  .conn-row > * { flex: 0 0 auto; max-width: 100%; }
+  .conn-row .name, .conn-row .tag, .conn-row button, .conn-row .row-end > * { white-space: nowrap; }
+  .conn-row .tag { overflow: hidden; text-overflow: ellipsis; }
+  .conn-row .sub { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; }
+  .conn-row .row-end { display: inline-flex; align-items: center; gap: 10px; margin-left: auto; }
   button { font-family: inherit; font-size: 13px; border-radius: var(--radius-sm); padding: 6px 12px; border: 1px solid var(--border); background: #fff; color: var(--fg); cursor: pointer; }
   button:hover { background: #f3f4f6; }
   button.primary { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
@@ -1295,7 +1306,7 @@
     chs.forEach((ch, i) => {
       const item = el("div", { class: "item" });
       const type = ch.type || "?";
-      item.append(el("div", { class: "item-row" },
+      item.append(el("div", { class: "item-row conn-row" },
         el("span", { class: "name" }, type === "telegram" ? "Telegram" : "Discord"),
         el("span", { class: "tag" + (i === 0 ? "" : " persona") + (type === "telegram" ? " tg" : "") }, ch.id || chLabel(i)),
         el("span", { class: "sub", style: "margin:0" }, ch.bot_token_env || "(no token env)"),
@@ -1305,13 +1316,14 @@
           (ch.access?.allowed_users || []).length
             ? (ch.access.allowed_users).slice(0, 3).join(", ") + ((ch.access.allowed_users).length > 3 ? ` +${(ch.access.allowed_users).length - 3}` : "")
             : t("noAllowedUsers")),
-        el("span", { class: "spacer" }),
-        el("span", { class: "tag", title: "secret status" }, state.connections.find(c => (c.id || c.type) === (ch.id || ch.type))?.token_present ? "Token configured" : "Token missing"),
-        el("span", { style: `color:${state.fleetUp ? "var(--green)" : "var(--red)"};font-size:13px` }, state.fleetUp ? "Connected" : "Problem"),
-        el("button", { class: "sm ghost", onclick: () => {
-          const form = botEditForm(ch, i);
-          openModal({ title: type === "telegram" ? "Telegram" : "Discord", subtitle: ch.id || chLabel(i), body: form.box, impacts: form.impacts, stage: form.stage });
-        } }, t("settingsButton")),
+        el("span", { class: "row-end" },
+          el("span", { class: "tag", title: "secret status" }, state.connections.find(c => (c.id || c.type) === (ch.id || ch.type))?.token_present ? "Token configured" : "Token missing"),
+          el("span", { style: `color:${state.fleetUp ? "var(--green)" : "var(--red)"};font-size:13px` }, state.fleetUp ? "Connected" : "Problem"),
+          el("button", { class: "sm ghost", onclick: () => {
+            const form = botEditForm(ch, i);
+            openModal({ title: type === "telegram" ? "Telegram" : "Discord", subtitle: ch.id || chLabel(i), body: form.box, impacts: form.impacts, stage: form.stage });
+          } }, t("settingsButton")),
+        ),
       ));
       host.append(item);
     });
