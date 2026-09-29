@@ -145,6 +145,18 @@
     .pending-bar .grow { display:none; }
     .pending-bar button { flex:1; }
   }
+  /* #1005 status-emoji editor */
+  .se-preview { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: #fff; margin-bottom: 6px; }
+  .se-item { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); }
+  .se-glyph { font-size: 20px; line-height: 1; min-width: 22px; text-align: center; }
+  .se-glyph img { width: 22px; height: 22px; object-fit: contain; vertical-align: middle; }
+  .se-row { display: grid; grid-template-columns: 120px 1fr auto auto; gap: 6px; align-items: center; margin: 4px 0; }
+  .se-row label { margin: 0; }
+  .se-picker { grid-column: 1 / -1; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px; background: #fff; }
+  .se-grid { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 8px; }
+  .se-grid button { padding: 3px 6px; font-size: 18px; line-height: 1.2; }
+  .se-grid button img { width: 22px; height: 22px; object-fit: contain; vertical-align: middle; }
+  .se-grid button.off { opacity: .45; }
 </style>
 </head>
 <body>
@@ -238,6 +250,11 @@
       backend: "Backend", model: "Model", workingDir: "Working directory", channelBinding: "Channel binding",
       description: "Description", systemPrompt: "System prompt", tags: "Tags", generalTopicField: "General topic (fleet dispatcher)",
       runtimeResources: "Runtime & Resources", autoPause: "Auto-pause after", minutes: "minutes", inheritDefault: "Inherit from defaults",
+      statusEmojis: "Status emojis", statusEmojisInstance: "This agent's status emojis (override the connection's)", statusEmojisChannel: "Status emojis for this connection's bots",
+      se_received: "Received", se_queued: "Queued", se_processing: "Processing", se_delivered: "Delivered", se_failed: "Failed", se_progress_prefix: "Progress prefix",
+      se_src_instance: "agent", se_src_platform: "connection", se_pick: "Pick…", se_useDefault: "Use the default", se_fallback: "the default is used instead",
+      se_unicode: "Emoji", se_telegramOnly: "Telegram allows only these reactions", se_serverEmojis: "This server's emojis", se_noServerEmojis: "This server has no custom emojis.", se_unavailable: "unavailable",
+      se_hint: "Empty keeps the default. The preview is resolved by AgEnD exactly as the bot will react.",
       detection: "Detection", startup: "Startup", backendSection: "Backend", advancedSection: "Advanced & Access", hangEnabled: "Hang detector enabled", hangTimeout: "Stuck timeout", agentMode: "Agent mode", toolSet: "Tool set", toolProgress: "Tool progress", replyCompletionGuard: "Require a delivered reply", replyGuardSupported: "Active for Claude Code in MCP mode.", replyGuardUnsupported: "Stored but inactive: {0} in {1} mode does not support reply-drop recovery.", logLevel: "Log level", concurrency: "Startup concurrency", staggerDelay: "Stagger delay", lightweight: "Lightweight mode", modelFailover: "Fallback model", displayName: "Display name", pause: "Pause", wake: "Wake", accessMode: "Access mode", affected: "Affected instances",
       language: "Language (bot replies)", defaultBackend: "Default backend", defaultModel: "Default model", allowedUsers: "Allowed users (primary bot)",
       classicAdmins: "ClassicBot admins", allowedGuilds: "Allowed guilds", type: "Type", adapterId: "Adapter id",
@@ -282,6 +299,11 @@
       mustNonNegative: "Must be 0 or greater", mustPositive: "Must be greater than 0", nonnegativeInteger: "Must be a non-negative integer", failoverEmpty: "Empty list disables failover", concurrencyRange: "Must be an integer from 1 to 20", concurrencyWarning: "May exceed CPU capacity on smaller hosts", staggerRange: "Must be between 0 and 30000", staggerWarning: "Very low values can cause startup spikes",
     },
     "zh-TW": {
+      statusEmojis: "狀態 emoji", statusEmojisInstance: "此 Agent 的狀態 emoji（覆蓋連線設定）", statusEmojisChannel: "此連線 bot 的狀態 emoji",
+      se_received: "已收到", se_queued: "排隊中", se_processing: "處理中", se_delivered: "已送達", se_failed: "失敗", se_progress_prefix: "進度前綴",
+      se_src_instance: "Agent", se_src_platform: "連線", se_pick: "選擇…", se_useDefault: "使用預設", se_fallback: "改用預設值",
+      se_unicode: "Emoji", se_telegramOnly: "Telegram 只允許這些反應", se_serverEmojis: "此伺服器的 emoji", se_noServerEmojis: "此伺服器沒有自訂 emoji。", se_unavailable: "無法使用",
+      se_hint: "留空即使用預設值。預覽由 AgEnD 依 bot 實際 react 的方式解析。",
       title: "⚙️ AgEnD 設定", reloadFleet: "↻ 重新載入", myAgents: "🤖 我的 Agent", bots: "🔌 機器人", classicChannels: "🎮 ClassicBot 頻道", noClassic: "沒有 ClassicBot 頻道 — 在聊天中用 /start 建立。",
       general: "⚙️ 一般設定", whatsNew: "🆕 更新重點", advanced: "📋 進階",
       expand: "▶ 展開", collapse: "▼ 收合", new: "+ 新增", add: "+ 加入", searchPh: "🔍 搜尋…",
@@ -449,6 +471,118 @@
     const box = el("details", { class: "drawer" });
     box.append(el("summary", {}, title), el("div", { class: "drawer-body" }, ...children));
     return box;
+  }
+
+  // ── Status emojis (#1005) ──
+  // The page never resolves or checks an emoji itself: /status-emojis/preview
+  // runs the code the bots react with, so what shows here is what gets
+  // stamped, and a picked server emoji is stored in the form they react with.
+  let statusEmojiCatalog = null;
+  async function loadStatusEmojiCatalog() {
+    if (statusEmojiCatalog) return statusEmojiCatalog;
+    const r = await api("/api/settings/status-emojis");
+    statusEmojiCatalog = r.ok ? r.body : { keys: [], builtins: {}, telegram_allowed: [], suggestions: [] };
+    return statusEmojiCatalog;
+  }
+  const guildEmojiLists = new Map();
+  function fetchGuildEmojis(channelId, refresh) {
+    if (refresh || !guildEmojiLists.has(channelId)) {
+      guildEmojiLists.set(channelId, api(`/api/settings/status-emojis/guild-emojis?channel=${encodeURIComponent(channelId)}${refresh ? "&refresh=1" : ""}`)
+        .then(r => r.ok ? r.body : { error: r.body?.error || `HTTP ${r.status}` }));
+    }
+    return guildEmojiLists.get(channelId);
+  }
+  // no-referrer: the settings URL can carry the web token.
+  const emojiImg = (url, alt) => el("img", { src: url, alt, referrerpolicy: "no-referrer", loading: "lazy" });
+  const emojiGlyph = (entry) => el("span", { class: "se-glyph" }, entry.image_url ? emojiImg(entry.image_url, entry.display) : entry.value);
+  /** Keys in catalog order, blanks dropped — so an unchanged map compares equal. */
+  function orderedStatusMap(map, keys) {
+    const out = {};
+    for (const key of keys) { const v = map?.[key]; if (typeof v === "string" && v.trim()) out[key] = v.trim(); }
+    return Object.keys(out).length ? out : null;
+  }
+  /**
+   * Editor for one status_emojis map. `scope.platform()` and
+   * `scope.channelId()` say where it applies; `scope.previewBody(map)` is what
+   * the preview resolves (the channel map, or an instance override on top of
+   * its channel's).
+   */
+  function statusEmojiEditor(own, scope) {
+    const values = { ...(own || {}) };
+    let keys = [];
+    const box = el("div", { class: "se" });
+    const preview = el("div", { class: "se-preview" }, el("span", { class: "hint" }, "…"));
+    const problems = el("div", { class: "feedback" });
+    const rows = el("div", { class: "se-rows" });
+    let timer = null, seq = 0;
+    const refresh = () => { clearTimeout(timer); timer = setTimeout(runPreview, 150); };
+    async function runPreview() {
+      const mine = ++seq;
+      const r = await api("/api/settings/status-emojis/preview", { method: "POST", body: JSON.stringify(scope.previewBody(orderedStatusMap(values, keys) || {})) });
+      if (mine !== seq) return;
+      preview.innerHTML = "";
+      if (!r.ok) { problems.className = "feedback error"; problems.textContent = `✗ ${r.body?.error || "preview failed"}`; return; }
+      for (const entry of r.body.entries) {
+        preview.append(el("span", { class: "se-item", title: `${entry.key}: ${entry.value}` }, emojiGlyph(entry),
+          el("span", {}, t(`se_${entry.key}`)),
+          entry.source === "builtin" ? null : el("span", { class: "tag" }, t(`se_src_${entry.source}`))));
+      }
+      problems.className = r.body.problems.length ? "feedback error" : "feedback";
+      problems.textContent = r.body.problems.map(p => `⚠ ${t(`se_${p.key}`)}: ${p.problem} — ${t("se_fallback")}`).join("  ");
+    }
+    function openPicker(row, key, input) {
+      row.querySelector(".se-picker")?.remove();
+      const picker = el("div", { class: "se-picker" });
+      const choose = (value) => { input.value = value; values[key] = value; picker.remove(); refresh(); };
+      const grid = (items) => { const g = el("div", { class: "se-grid" }); for (const it of items) g.append(it); return g; };
+      const unicodeButton = (emoji) => el("button", { type: "button", class: "sm", title: emoji, onclick: () => choose(emoji) }, emoji);
+      const platform = scope.platform();
+      const cat = statusEmojiCatalog;
+      // progress_prefix is message text, so Telegram's reaction set does not bind it.
+      const unicode = platform === "telegram" && key !== "progress_prefix" ? cat.telegram_allowed : cat.suggestions;
+      picker.append(el("div", { class: "hint" }, platform === "telegram" && key !== "progress_prefix" ? t("se_telegramOnly") : t("se_unicode")), grid(unicode.map(unicodeButton)));
+      const channelId = scope.channelId();
+      if (platform === "discord" && channelId) {
+        const guildBox = el("div");
+        const load = async (refreshList) => {
+          guildBox.innerHTML = ""; guildBox.append(el("div", { class: "hint" }, "…"));
+          const list = await fetchGuildEmojis(channelId, refreshList);
+          guildBox.innerHTML = "";
+          if (list.error) { guildBox.append(el("div", { class: "feedback error" }, `✗ ${list.error}`)); return; }
+          if (!list.emojis.length) { guildBox.append(el("div", { class: "hint" }, t("se_noServerEmojis"))); return; }
+          // An unavailable emoji (e.g. the server lost the Boost tier it
+          // needs) cannot be reacted with; picking it would preview fine and
+          // then fail silently on every status. Shown, but not pickable.
+          guildBox.append(grid(list.emojis.map(e => el("button", {
+            type: "button", class: "sm" + (e.available ? "" : " off"), title: `:${e.name}:${e.available ? "" : ` (${t("se_unavailable")})`}`,
+            ...(e.available ? {} : { disabled: "disabled", "aria-disabled": "true" }),
+            onclick: () => { if (e.available) choose(e.value); },
+          }, emojiImg(e.image_url, `:${e.name}:`)))));
+        };
+        picker.append(el("div", { class: "hint", style: "display:flex;gap:8px;align-items:center" }, t("se_serverEmojis"),
+          el("button", { type: "button", class: "sm ghost", onclick: () => load(true) }, "↻")), guildBox);
+        load(false);
+      }
+      picker.append(el("div", { class: "actions" }, el("button", { type: "button", class: "sm ghost", onclick: () => picker.remove() }, t("close"))));
+      row.append(picker);
+    }
+    (async () => {
+      const cat = await loadStatusEmojiCatalog();
+      keys = cat.keys;
+      const builtins = cat.builtins[scope.platform() === "telegram" ? "telegram" : "discord"] || {};
+      for (const key of keys) {
+        const input = el("input", { type: "text", value: values[key] || "", placeholder: builtins[key] || "", autocomplete: "off" });
+        input.addEventListener("input", () => { values[key] = input.value; refresh(); });
+        const row = el("div", { class: "se-row" });
+        row.append(el("label", {}, t(`se_${key}`)), input,
+          el("button", { type: "button", class: "sm", onclick: () => openPicker(row, key, input) }, t("se_pick")),
+          el("button", { type: "button", class: "sm ghost", title: t("se_useDefault"), onclick: () => { input.value = ""; values[key] = ""; refresh(); } }, "×"));
+        rows.append(row);
+      }
+      runPreview();
+    })();
+    box.append(preview, problems, rows, el("div", { class: "hint" }, t("se_hint")));
+    return { box, refresh, value: () => orderedStatusMap(values, keys), baseline: () => orderedStatusMap(own, keys) };
   }
 
   /**
@@ -980,6 +1114,15 @@
     const fallbackValue = Array.isArray(inst.model_failover) ? (inst.model_failover[0] || "") : (defaults.model_failover?.[0] || "");
     const failover = overrideControl(inst, "model_failover", el("input", { type: "text", value: fallbackValue, placeholder: "e.g. sonnet" }), defaults.model_failover?.[0] || "");
     const displayName = overrideControl(inst, "display_name", el("input", { type: "text", value: inst.display_name ?? defaults.display_name ?? "", placeholder: name }), defaults.display_name || "");
+    // The override sits on top of the bound channel's map, so the preview is
+    // resolved against whichever channel the form currently binds.
+    const boundChannelId = () => fChan.value || channelIds()[0] || null;
+    const statusEmojis = statusEmojiEditor(inst.status_emojis, {
+      platform: () => chById(boundChannelId())?.type,
+      channelId: boundChannelId,
+      previewBody: map => ({ channel_id: boundChannelId(), instance_config: map }),
+    });
+    fChan.addEventListener("change", statusEmojis.refresh);
     const autoFeedback = el("div", { class: "feedback" });
     const hangFeedback = el("div", { class: "feedback" });
     const failoverFeedback = el("div", { class: "feedback" });
@@ -1016,6 +1159,7 @@
         lightweight: lightweight.toggle.checked ? null : lightweight.input.checked,
         model_failover: failover.toggle.checked ? null : (failover.input.value.trim() ? [failover.input.value.trim()] : []),
         display_name: displayName.toggle.checked ? null : displayName.input.value.trim(),
+        status_emojis: statusEmojis.value(),
       };
       const patch = changedFields(nextPatch, {
         backend: inst.backend || defaults.backend || "claude-code",
@@ -1036,6 +1180,7 @@
         lightweight: hasOwn(inst, "lightweight") ? inst.lightweight : null,
         model_failover: hasOwn(inst, "model_failover") ? inst.model_failover : null,
         display_name: hasOwn(inst, "display_name") ? inst.display_name : null,
+        status_emojis: statusEmojis.baseline(),
       });
       state.fleet.instances[name] = { ...inst, ...patch };
       for (const [key, value] of Object.entries(patch)) if (value === null) delete state.fleet.instances[name][key];
@@ -1074,6 +1219,8 @@
         el("label", {}, t("systemPrompt"), impact("instance.systemPrompt")), fSys,
         el("label", {}, t("tags"), impact("instance.tags")), chipList(tags, null, "tag"),
         el("label", { style: "display:flex;align-items:center;gap:8px;cursor:pointer" }, fGeneral, el("span", {}, t("generalTopicField")), impact("instance.general_topic"))),
+      drawer(t("statusEmojis"),
+        el("label", {}, t("statusEmojisInstance"), impact("instance.status_emojis")), statusEmojis.box),
       el("div", { class: "actions" }, msg),
     );
     validate();
@@ -1093,7 +1240,7 @@
     "instance.tool_set", "instance.tool_progress",
     "instance.reply_completion_guard", "instance.log_level",
     "instance.lightweight", "instance.model_failover", "instance.systemPrompt",
-    "instance.tags", "instance.general_topic",
+    "instance.tags", "instance.general_topic", "instance.status_emojis",
   ];
   async function toggleAgent(name, running) {
     if (running) await api(`/stop/${encodeURIComponent(name)}`, { method: "POST" });
@@ -1328,6 +1475,11 @@
       });
       secretFeedback.className = "feedback"; secretFeedback.textContent = "Queued — click Apply changes.";
     };
+    const statusEmojis = statusEmojiEditor(ch.options?.status_emojis, {
+      platform: () => type,
+      channelId: () => connectionId,
+      previewBody: map => ({ channel_id: connectionId, platform: type, channel_config: map }),
+    });
     const validateAccess = () => setValidation(fMode, accessFeedback, "", fMode.value === "locked" && users.length === 0 ? t("accessLockedEmpty") : "");
     fMode.addEventListener("change", validateAccess);
     box.append(
@@ -1340,6 +1492,8 @@
         el("label", {}, type === "discord" ? "General channel id" : "Forum topic id"), fGeneral,
         el("div", { class: "hint" }, "The target is checked with the existing bot token before any binding is changed."),
         el("div", { class: "actions" }, bindingVerify, bindingFeedback)),
+      drawer(t("statusEmojis"),
+        el("label", {}, t("statusEmojisChannel"), impact("fleet.channel.options.status_emojis")), statusEmojis.box),
       drawer(t("advancedSection"),
         el("div", { class: "field" }, el("label", {}, t("tokenEnv")), el("div", { class: "sub" }, ch.bot_token_env || "(no token env)")),
         el("div", { class: "field" },
@@ -1352,7 +1506,7 @@
     validateAccess();
     return {
       box,
-      impacts: ["fleet.channel.access.mode", "fleet.channel.access.allowed_users", "fleet.channels"],
+      impacts: ["fleet.channel.access.mode", "fleet.channel.access.allowed_users", "fleet.channels", "fleet.channel.options.status_emojis"],
       // Staged, not saved: the old form wrote channels straight to the API from
       // inside the editor, which is the one thing a modal must not do.
       stage: () => {
@@ -1361,13 +1515,21 @@
         const stagedAllowedUsers = [...users];
         const nextChannels = structuredClone(originalChannels);
         nextChannels[i] = { ...nextChannels[i], access: { ...nextChannels[i].access, mode: stagedAccessMode, allowed_users: stagedAllowedUsers } };
-        if (sameValue(nextChannels, originalChannels)) return true;
+        const accessChanged = !sameValue(nextChannels, originalChannels);
+        const stagedStatusEmojis = statusEmojis.value();
+        const emojisChanged = !sameValue(stagedStatusEmojis, statusEmojis.baseline());
+        if (emojisChanged) {
+          const options = { ...(nextChannels[i].options || {}) };
+          if (stagedStatusEmojis) options.status_emojis = stagedStatusEmojis; else delete options.status_emojis;
+          nextChannels[i] = { ...nextChannels[i], options };
+        }
+        if (!accessChanged && !emojisChanged) return true;
         stageChange(`connections:${ch.id || chLabel(i)}`, {
-          label: `Update ${ch.id || chLabel(i)} access`,
-          impact: impactOf("fleet.channels"),
+          label: `Update ${ch.id || chLabel(i)} ${accessChanged && emojisChanged ? "access & status emojis" : accessChanged ? "access" : "status emojis"}`,
+          impact: impactOf(accessChanged ? "fleet.channels" : "fleet.channel.options.status_emojis"),
           // Confirm the immutable staged snapshot, not live form controls
           // that the user may edit again before pressing global Apply.
-          confirm: () => confirmAccessChange(previousAccess, stagedAccessMode, stagedAllowedUsers),
+          confirm: () => !accessChanged || confirmAccessChange(previousAccess, stagedAccessMode, stagedAllowedUsers),
           cancelMessage: t("accessChangeCancelled"),
           apply: () => api("/api/settings/fleet/channels", { method: "PUT", body: JSON.stringify(nextChannels) }),
         });

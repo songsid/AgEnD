@@ -14,6 +14,9 @@
  *   POST /api/settings/reload                   → SIGHUP hot-reload
  *   POST /api/settings/instances/:name/pause    → manually pause a running instance
  *   POST /api/settings/instances/:name/wake     → manually wake a paused instance
+ *   GET  /api/settings/status-emojis            → status-emoji keys, built-ins, pickable sets
+ *   POST /api/settings/status-emojis/preview    → resolve a map exactly as the bots will
+ *   GET  /api/settings/status-emojis/guild-emojis?channel=<id>[&refresh=1] → a Discord server's emojis
  *
  * Auth: all routes require the web.token — enforced by the global web-token gate
  * in fleet-manager BEFORE this handler runs (settings paths are not exempt), so
@@ -46,6 +49,10 @@ import {
 } from "./connection-secrets.js";
 import type { ProviderSecretStatus } from "./provider-secret-registry.js";
 import { providerRegistryEnvKeys, isReservedProviderEnvKey } from "./provider-secret-registry.js";
+import {
+  STATUS_EMOJI_CONFIG_KEYS, STATUS_EMOJI_SUGGESTIONS, TELEGRAM_REACTION_EMOJIS,
+  builtinStatusEmojis, customEmojiValue, emojiImageUrl, previewStatusEmojis,
+} from "./status-emojis.js";
 
 
 
@@ -72,6 +79,11 @@ export interface SettingsApiContext {
   /** Non-null when the running config and fleet.yaml disagree on a
    * startup-only key, in which case a restart cannot clear the fleet row. */
   fleetSignatureMismatchKeys?(): string[] | null;
+  /** #1005: a Discord connection's server emojis, fetched with its bot token and cached. */
+  listGuildEmojis?(channelId: string, refresh?: boolean): Promise<
+    { ok: true; fetched_at: number; emojis: Array<{ id: string; name: string; animated: boolean; available: boolean }> }
+    | { ok: false; error: string }
+  >;
   /** True when a running adapter is already long-polling this bot token. */
   isBotTokenInUse?(token: string): boolean;
   /** Secure Connections & Bots operations. The outer fleet HTTP server has
@@ -275,6 +287,54 @@ export function handleSettingsRequest(
   if (method === "GET" && path === "/api/settings/classic") {
     try { json(res, 200, readClassic(ctx)); }
     catch (err) { json(res, 409, { error: (err as Error).message }); }
+    return true;
+  }
+
+  // ── Status emojis (#1005) ──
+  // The picker and preview resolve on the server with the same code the
+  // reaction path runs, so what Settings shows is what a bot stamps.
+  if (method === "GET" && path === "/api/settings/status-emojis") {
+    json(res, 200, {
+      keys: STATUS_EMOJI_CONFIG_KEYS,
+      builtins: { discord: builtinStatusEmojis("discord"), telegram: builtinStatusEmojis("telegram") },
+      telegram_allowed: [...TELEGRAM_REACTION_EMOJIS],
+      suggestions: STATUS_EMOJI_SUGGESTIONS,
+    });
+    return true;
+  }
+  if (method === "POST" && path === "/api/settings/status-emojis/preview") {
+    readBody(req, 64 * 1024).then(buf => {
+      let body: Record<string, unknown>;
+      try { body = JSON.parse(buf.toString("utf-8") || "{}"); } catch { return json(res, 400, { error: "invalid JSON" }); }
+      if (!body || typeof body !== "object" || Array.isArray(body)) return json(res, 400, { error: "expected an object" });
+      // The platform is the connection's type when one is named; an explicit
+      // platform covers a connection that is not saved yet.
+      const channels = ctx.fleetConfig?.channels ?? (ctx.fleetConfig?.channel ? [ctx.fleetConfig.channel] : []);
+      const named = typeof body.channel_id === "string" && body.channel_id
+        ? channels.find(ch => (ch.id ?? ch.type) === body.channel_id) : channels[0];
+      const platform = typeof body.platform === "string" ? body.platform : named?.type;
+      json(res, 200, previewStatusEmojis({
+        platform,
+        platformConfig: "channel_config" in body ? body.channel_config : named?.options?.status_emojis,
+        instanceConfig: body.instance_config,
+      }));
+    }).catch(() => json(res, 400, { error: "bad request" }));
+    return true;
+  }
+  if (method === "GET" && path === "/api/settings/status-emojis/guild-emojis") {
+    if (!ctx.listGuildEmojis) { json(res, 501, { error: "guild emoji listing unavailable" }); return true; }
+    const channelId = url.searchParams.get("channel") ?? "";
+    if (!channelId) { json(res, 400, { error: "channel required" }); return true; }
+    ctx.listGuildEmojis(channelId, url.searchParams.get("refresh") === "1").then(result => {
+      if (!result.ok) return json(res, 409, { error: result.error });
+      json(res, 200, {
+        fetched_at: result.fetched_at,
+        emojis: result.emojis.map(e => {
+          const value = customEmojiValue(e);
+          return { ...e, value, image_url: emojiImageUrl(value) };
+        }),
+      });
+    }).catch(() => json(res, 502, { error: "guild emoji listing failed" }));
     return true;
   }
 
@@ -848,7 +908,7 @@ export function handleSettingsRequest(
 
   // ── Instances (create / patch / delete) ──
   const validName = (n: string) => !!n && /^[^\\/\x00]+$/.test(n);
-  const nullableInstanceOverrides = new Set(["model", "auto_pause_after", "hang_detector", "agent_mode", "tool_set", "tool_progress", "reply_completion_guard", "log_level", "lightweight", "model_failover", "display_name"]);
+  const nullableInstanceOverrides = new Set(["model", "auto_pause_after", "hang_detector", "agent_mode", "tool_set", "tool_progress", "reply_completion_guard", "log_level", "lightweight", "model_failover", "display_name", "status_emojis"]);
   const removesInstanceOverride = (key: string, value: unknown): boolean =>
     nullableInstanceOverrides.has(key)
     && (value === null || (key === "model" && typeof value === "string" && value.trim() === ""));

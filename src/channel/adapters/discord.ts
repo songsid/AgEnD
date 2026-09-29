@@ -1252,6 +1252,20 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     } catch { /* message already gone */ }
   }
 
+  /**
+   * The server's custom emojis, for the Settings status-emoji picker (#1005).
+   * Enumerating needs the bot token (rendering a known id does not — that is
+   * the public CDN), so this stays server-side and returns only public fields.
+   */
+  async listGuildEmojis(): Promise<Array<{ id: string; name: string; animated: boolean; available: boolean }>> {
+    const raw = await ((await this.readyClient()) as any).rest.get(`/guilds/${this.guildId}/emojis`) as unknown;
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .filter((e): e is { id: string; name: string; animated?: boolean; available?: boolean } =>
+        !!e && typeof e.id === "string" && typeof e.name === "string")
+      .map(e => ({ id: e.id, name: e.name, animated: e.animated === true, available: e.available !== false }));
+  }
+
   async react(chatId: string, messageId: string, emoji: string, threadId?: string): Promise<void> {
     // A Discord thread is its own channel — a message posted in a topic thread
     // lives there, not in the parent channel, so react on threadId when given.

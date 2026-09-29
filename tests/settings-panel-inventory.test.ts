@@ -98,7 +98,7 @@ describe("the redesigned panel loses nothing", () => {
       "agent_mode", "auto_pause_after", "backend", "channel_id", "description",
       "display_name", "general_topic", "hang_detector", "lightweight",
       "log_level", "model", "model_failover", "reply_completion_guard",
-      "systemPrompt", "tags", "tool_progress", "tool_set", "working_directory",
+      "status_emojis", "systemPrompt", "tags", "tool_progress", "tool_set", "working_directory",
     ]);
   });
 
