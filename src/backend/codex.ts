@@ -382,6 +382,48 @@ function codexUnknownSelectionVisible(pane: string): boolean {
     /^[›>]\s+Ask Codex to do anything\b/.test(row) || isCodexContextFooter(row));
 }
 
+/**
+ * #984: Codex (0.156+) parks a resumed session behind this screen while
+ * another process holds the session's thread-writer lock. Both keys are unsafe
+ * to automate: `r` spins while the other writer lives, and `f` (0.157) forks
+ * the other instance's conversation and cwd into this one. Match the complete
+ * bottom block only, so a transcript that quotes the text cannot hold delivery.
+ */
+function codexSessionLockVisible(pane: string): boolean {
+  const rows = pane.replace(/\r/g, "").split("\n");
+  let last = rows.length - 1;
+  while (last >= 0 && rows[last].trim() === "") last--;
+  if (last < 0 || !/^\s*r retry\s+(?:f fork\s+)?esc\/ctrl\+c\/q exit\b/.test(rows[last])) return false;
+  for (let i = last - 1; i >= Math.max(0, last - 4); i--) {
+    if (!/^\s*🔒\s+This conversation is open in another app\b/.test(rows[i])) continue;
+    return /^\s*Close it there and press R to continue here\.\s*$/.test(rows[i + 1] ?? "")
+      && rows.slice(i + 2, last).every(row => row.trim() === "");
+  }
+  return false;
+}
+
+/**
+ * #984: in a git worktree, `codex resume --last` (0.157) can select a sibling
+ * worktree's session and then ask which directory to run it in. Every choice
+ * is wrong for an unattended instance: Escape and "session directory" move it
+ * into the sibling's checkout, "current directory" silently continues the
+ * sibling's conversation. Recognise the complete picker so it is held for a
+ * human instead of being treated as ready or answered.
+ */
+function codexResumeCwdPickerVisible(pane: string): boolean {
+  const rows = pane.replace(/\r/g, "").split("\n");
+  let last = rows.length - 1;
+  while (last >= 0 && rows[last].trim() === "") last--;
+  if (last < 0 || !/^\s*enter continue · esc use session · ctrl\+c quit\s*$/.test(rows[last])) return false;
+  const header = rows.findIndex((row, i) => i >= Math.max(0, last - 16) && i < last
+    && /^\s*Working directory · resume\s*$/.test(row));
+  if (header < 0) return false;
+  const block = rows.slice(header + 1, last);
+  return block.some(row => /^\s*[›❯>]?\s*\d\.\s+Use session directory \(/.test(row))
+    && block.some(row => /^\s*[›❯>]?\s*\d\.\s+Use current directory \(/.test(row))
+    && !block.some(row => /^[›>]\s+Ask Codex to do anything\b/.test(row) || isCodexContextFooter(row));
+}
+
 /** Only the complete, current Codex installer picker may receive Escape. */
 function codexUpdatePickerVisible(pane: string): boolean {
   const rows = pane.replace(/\r/g, "").split("\n");
@@ -1402,7 +1444,36 @@ export class CodexBackend implements CliBackend {
       },
       trustHold,
       this.updatePickerDialog(),
+      ...this.sessionHoldDialogs(),
       this.unknownSelectionHoldDialog(),
+    ];
+  }
+
+  /**
+   * #984: session-selection screens only a human may answer. Held (never
+   * keyed) so the delivery gate keeps messages queued and dialog_parked tells
+   * the operator; listed before the generic selection hold for a clear notice.
+   */
+  private sessionHoldDialogs(): RuntimeDialog[] {
+    return [
+      {
+        pattern: /This conversation is open in another app/,
+        keys: [],
+        description: "Codex session is open in another process (thread lock) — close the other one and press r, or fork manually",
+        holdOnly: true,
+        blocksDelivery: true,
+        inputBlocked: true,
+        isActive: codexSessionLockVisible,
+      },
+      {
+        pattern: /Working directory · resume/,
+        keys: [],
+        description: "Codex resume selected a session from another directory (sibling git worktree) — needs a human choice",
+        holdOnly: true,
+        blocksDelivery: true,
+        inputBlocked: true,
+        isActive: codexResumeCwdPickerVisible,
+      },
     ];
   }
 
@@ -1499,6 +1570,7 @@ export class CodexBackend implements CliBackend {
       },
       this.updatePickerDialog(),
       this.usageLimitLunaReserveDialog(),
+      ...this.sessionHoldDialogs(),
       this.unknownSelectionHoldDialog(),
     ];
   }
