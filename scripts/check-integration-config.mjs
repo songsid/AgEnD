@@ -18,6 +18,7 @@ const required = [
   "tests/view-api.test.ts",
   "tests/web-terminal-socket-cleanup.test.ts",
   "tests/codex-exact-cwd-resume-e2e.test.ts",
+  "tests/codex-status-line-e2e.test.ts",
 ];
 
 const problems = [];
