@@ -6,6 +6,7 @@ import {
   labelFromUserAgent,
   tokenEpoch,
   type SessionRecord,
+  type SessionSurface,
   type WebSessionStore,
 } from "./web-session.js";
 
@@ -126,6 +127,25 @@ export function parseCookieHeader(header: string | undefined): Map<string, strin
     jar.set(name, part.slice(eq + 1).trim());
   }
   return jar;
+}
+
+/**
+ * Which listener a request arrived on. Set once, at the door, by the listener that
+ * accepted it — never derived from anything the request says — and read by the one
+ * place that authorizes (`authorize` below), so no handler has to be told.
+ *
+ * `gateway` is the listener that faces the outside (see `web-gateway.ts`). On it a
+ * header token and a `?token=` are not credentials, only a session is, and a session
+ * is only good on the surface it was made on.
+ */
+const requestSurfaces = new WeakMap<object, SessionSurface>();
+
+export function markRequestSurface(req: object, surface: SessionSurface): void {
+  requestSurfaces.set(req, surface);
+}
+
+export function requestSurface(req: object): SessionSurface {
+  return requestSurfaces.get(req) ?? "local";
 }
 
 /** Minimal request shape — everything the gate reads, and nothing more, so the
@@ -281,7 +301,9 @@ export function authorizeSession(
   if (!token) return { kind: "reject", status: 401, message: WEB_TOKEN_INVALID_MESSAGE };
   if (!isSameOriginRequest(req)) return { kind: "reject", status: 403, message: WEB_CROSS_SITE_MESSAGE };
   const cookie = readSessionCookie(req);
-  const session = sessions && cookie ? sessions.authenticate(cookie, tokenEpoch(token), { touch: opts.touch !== false }) : null;
+  const session = sessions && cookie
+    ? sessions.authenticate(cookie, tokenEpoch(token), { touch: opts.touch !== false, surface: requestSurface(req) })
+    : null;
   if (!session || !cookie) {
     return { kind: "reject", status: 401, message: cookie ? WEB_SESSION_EXPIRED_MESSAGE : WEB_SESSION_REQUIRED_MESSAGE };
   }
@@ -315,15 +337,19 @@ function authorize(
   }
 
   const method = (req.method ?? "GET").toUpperCase();
+  const surface = requestSurface(req);
+  // The gateway takes a session and nothing else: web.token is the CLI's credential and
+  // never needs to cross the internet, and there is no reason to let it be tried there.
+  const sessionOnly = surface === "gateway";
 
   // A header credential is not ambient — a page cannot make the browser add it —
   // so it needs none of the cookie write checks, and is tried first: a request
   // carrying both is the CLI's, not a forged form's.
-  if (hasValidHeaderToken(req, token)) return { kind: "allow", via: "header-token" };
+  if (!sessionOnly && hasValidHeaderToken(req, token)) return { kind: "allow", via: "header-token" };
 
   const cookie = readSessionCookie(req);
   if (sessions && cookie) {
-    const session = sessions.authenticate(cookie, tokenEpoch(token), { touch: opts.touch });
+    const session = sessions.authenticate(cookie, tokenEpoch(token), { touch: opts.touch, surface });
     if (session) {
       if (!isSafeMethod(method) && !passesCookieWriteChecks(req, cookie)) {
         return { kind: "reject", status: 403, message: WEB_CSRF_MESSAGE, reason: "csrf" };
@@ -332,7 +358,7 @@ function authorize(
     }
   }
 
-  const queryToken = url.searchParams.get("token");
+  const queryToken = sessionOnly ? null : url.searchParams.get("token");
   if (queryToken && constantTimeEquals(queryToken, token)) {
     if (method !== "GET" && method !== "HEAD") {
       return { kind: "reject", status: 401, message: WEB_URL_TOKEN_WRITE_MESSAGE, reason: "invalid" };
@@ -357,7 +383,7 @@ function authorize(
   // A cookie that no longer works is the ordinary end of a session, not that: it is the same
   // "you need to sign in" as no cookie at all, and a browser navigation should be answered
   // with the sign-in page either way.
-  if (queryToken ?? headerValue(req, "x-agend-token")) {
+  if (queryToken ?? (sessionOnly ? null : headerValue(req, "x-agend-token"))) {
     return { kind: "reject", status: 401, message: WEB_TOKEN_INVALID_MESSAGE, reason: "invalid" };
   }
   return {

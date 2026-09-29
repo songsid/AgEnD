@@ -265,6 +265,58 @@ first if the browser did not send the cookie on that cross-site hop
 carries on to the panel you asked for by itself. (Verified on Chromium; Firefox
 and WebKit have not been measured.)
 
+### Reaching the panels from outside
+
+The dashboard listens on `127.0.0.1:19280` and never anywhere else. To use it from
+another network, give AgEnD a **gateway**: a second listener, also on loopback,
+that your tunnel or proxy points at. It exists only when both keys are set:
+
+```yaml
+web:
+  external_hosts: [agend.example.com]   # the name(s) your tunnel / proxy presents
+  gateway_port: 19281                   # where the tunnel / proxy connects (not health_port)
+```
+
+Restart the fleet to apply a change. Then run the tunnel yourself — a named
+Cloudflare Tunnel (`cloudflared tunnel run`, ingress `http://127.0.0.1:19281`),
+`tailscale serve --bg 19281`, or Caddy/nginx in front. AgEnD does not start or
+supervise one, so there is nothing to keep in step with it.
+
+What the gateway is, and is not:
+
+- **It routes only what the panels call.** `/agent` (the agents' own RPC), `/health`,
+  `/status`, `/restart/*`, `/api/activity` and the code-issuing route do not exist
+  there — a request for one is a 404, whatever credentials it carries.
+- **It honours a signed-in session and nothing else.** `X-Agend-Token` and `?token=`
+  are not credentials on the gateway, so the CLI token never needs to cross the
+  internet. A session is good on the listener that made it: a local session is
+  nobody at the gateway, and the reverse. Gateway sessions are shorter (4 hours,
+  30 minutes idle) and each sign-in lists the IP your edge reported.
+- **It requires a sign-in for `/view` too**, including the live terminal capture,
+  whatever `web.view_access` says — `open` is a choice about a loopback listener.
+- **It answers only the names in `external_hosts`** (a port is ignored). The
+  loopback names belong to the local listener, and the external name is not a name
+  of the local one.
+- **It assumes HTTPS in front of it.** Its cookie is always `Secure` and `__Host-`,
+  decided by which listener it is rather than by an `X-Forwarded-Proto` anyone
+  could send, so plain `http://` to the gateway will not keep you signed in.
+- **It is bounded**: 64 connections, a 30-second request timeout, and a request
+  the server cannot parse is answered 400 rather than taking the fleet down.
+
+`/dashboard` then shows the remote sign-in page next to the local one; the same
+code signs in at either. `/dashboard revoke` and `agend web-token rotate` end
+gateway sessions too. Remove the two keys and the next start revokes every session
+that came in through the gateway.
+
+Know what you are exposing. A signed-in session can change settings, start and stop
+agents and send them messages, which is close to a shell on this machine. With
+Cloudflare in the path, TLS ends at Cloudflare's edge: they can see the cookie,
+every terminal capture and every setting you open. `tailscale serve` (a private
+tailnet, not `funnel`) has no third party in the path; with a named tunnel,
+putting Cloudflare Access in front adds a second, independent gate. A Cloudflare
+*Quick* Tunnel works but is a poor fit — no SLA, a new address each time, and no
+Server-Sent Events (the dashboard falls back to polling).
+
 ### Applying settings changes
 
 `POST /api/settings/apply` returns a job, and `GET /api/settings/apply/:jobId`

@@ -33,7 +33,7 @@ import type { FleetConfig } from "./types.js";
 import type { Logger } from "./logger.js";
 import { getTmuxSession } from "./config.js";
 import { getTmuxSocketName } from "./paths.js";
-import { evaluateWebRequest, type WebGateRequest } from "./web-auth.js";
+import { evaluateWebRequest, requestSurface, type WebGateRequest } from "./web-auth.js";
 import type { WebSessionStore } from "./web-session.js";
 
 const execFileP = promisify(execFile);
@@ -228,7 +228,9 @@ export function handleViewRequest(
   };
 
   // Reads: open unless the operator asked for a session (`web.view_access: session`).
-  if (isRead && ctx.fleetConfig?.web?.view_access === "session" && denied()) return true;
+  // On the gateway reads always need a session: `open` is a choice about a loopback listener.
+  const readsNeedSession = ctx.fleetConfig?.web?.view_access === "session" || requestSurface(req) === "gateway";
+  if (isRead && readsNeedSession && denied()) return true;
   // Writes: always a credential. Checked once here rather than per route, so a route
   // added later cannot forget it.
   if (!isRead && denied()) return true;

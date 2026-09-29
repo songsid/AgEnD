@@ -17,6 +17,7 @@
   - 不做任何搬移，AgEnD 也不寫入任何 Codex state。這個版本之前已經被搶走的對話（例如從 lock 畫面按 fork 產生的），Codex 記在哪裡就還在哪裡：重啟受影響的 instance 前，請先確認，並在 Codex 裡把錯誤的 fork 封存。
 
 ### 修正 (Fixed)
+- **一個格式錯誤的請求就能讓 fleet 停止。** `new URL` 不接受的 request target（`GET http://[bad/`）會在 dashboard 的 request callback 內丟出例外 — 也就是未捕捉的例外，程序會結束。現在兩個 listener 都會回 400 並繼續運作。
 - **Dashboard 不再從 Google 載入字型。** 每次開啟 `/ui` 都會對 `fonts.googleapis.com` 發請求，而這個頁面可以重啟你的 agent。現在改用系統字型，且每個面板都帶有 `Content-Security-Policy`，把 script、樣式、圖片、字型與連線都限制在本站（`connect-src 'self'`），即使頁面上真的跑了不該跑的 script，也無法把讀到的內容送到別的伺服器。（`'unsafe-inline'` 暫時保留：面板是單檔內嵌 script，dashboard 也用了 `onclick=` 屬性。）
 - **dashboard 的回應不會再被 iframe 嵌入、被猜測型別或被快取。** dashboard/health server 的每個回應現在都帶 `X-Frame-Options: DENY`、`Content-Security-Policy: frame-ancestors 'none'`（這些頁面有重啟 instance 的按鈕，被嵌入就可能被誘導點擊）、`X-Content-Type-Options: nosniff` 與 `Cache-Control: no-store`（自己設定 Cache-Control 的路由，例如 SSE 與頭像，維持原樣）。
 - **Codex 的 session lock 畫面與 resume 目錄選擇器不再讓投遞默默卡住（#984）。** 「This conversation is open in another app（r retry / f fork）」畫面和「Working directory · resume」選擇器原本都認不出來，啟動時被當成已就緒，訊息會在 idle gate 等滿 30 分鐘後失敗。現在兩者都會被 hold：投遞維持擋住、通知 operator，AgEnD 絕不會替你按 `r`、`f` 或選擇器的任何選項。
@@ -29,6 +30,8 @@
 - **`/login` 尚未支援 Org SSO** — `/login` 指令是 beta；organization SSO 流程是已知限制。
 
 ### 新增 (Added)
+**從外部連到面板的 gateway。** 設定 `web.external_hosts`（你的 tunnel 或反向代理呈現的名稱）與 `web.gateway_port`，會在 `127.0.0.1` 多開一個 listener，專門給 Cloudflare tunnel、`tailscale serve` 或 Caddy/nginx 連；AgEnD 不負責執行 tunnel。邊界是 port，而不是擋在 dashboard 前面的路徑清單：gateway 只 routing 三個面板實際會呼叫的路徑（所以 `/agent`、`/health`、`/status`、`/restart/*`、`/api/activity` 在那裡是 404），只認已登入的 session（`X-Agend-Token` 與 `?token=` 在 gateway 上都不是憑證），不論 `web.view_access` 怎麼設，`/view` 都要登入，只回應列出的 Host 名稱，簽發的 `Secure` `__Host-` cookie 由「哪個 listener」決定而不是 `X-Forwarded-Proto`，且 session 只在建立它的 listener 上有效。Gateway session 4 小時（閒置 30 分鐘）結束，並在清單中顯示 edge 回報的 IP。兩個設定都沒有就沒有 gateway，曾在其上建立的 session 會在下次啟動時撤銷。詳見 `docs/cli.md`〈Reaching the panels from outside〉。
+
 **三個網頁面板共用同一組導覽與登入狀態選單。** `/ui`、`/view`、`/settings` 現在都有相同的「Dashboard · View · Settings」連結，以及一個 Session 按鈕：顯示目前登入的瀏覽器、登入何時結束、其他已登入的裝置（每台都能個別登出）與「全部登出」。在面板之間切換不必再登入，`/` 也會直接開啟 dashboard。各頁維持原本的樣子，選單借用各頁自己的顏色；這是一支小 script（`/assets/shell.js`）加一份樣式，不是重寫面板。
 
 **Dashboard 不再依賴 Server-Sent Events。** 如果即時串流 15 秒沒有任何動靜、或一直失敗，頁面會每 5 秒用一般請求取回同樣的狀態與聊天訊息（`GET /ui/poll`），串流恢復後自動切回，且不會重複顯示訊息。有些路徑無法承載 SSE（Cloudflare 文件說 Quick Tunnel 不支援），而會緩衝串流的代理，看起來和一個永遠不送資料的伺服器一模一樣。

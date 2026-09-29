@@ -387,10 +387,17 @@ export class TopicCommands {
     if (!login) return t("dashboard.starting");
     const base = `http://${host}:${port}`;
     const hide = (u: string) => htmlSpoiler ? `<tg-spoiler>${u}</tg-spoiler>` : u;
+    // When a gateway is configured the same code signs in there too; say where. The link is not a
+    // credential, so it is not spoilered.
+    const externalHost = (this.ctx.fleetConfig as { web?: { external_hosts?: unknown } } | null | undefined)?.web?.external_hosts;
+    const remote = Array.isArray(externalHost) && typeof externalHost[0] === "string" && (this.ctx.fleetConfig as { web?: { gateway_port?: unknown } }).web?.gateway_port
+      ? [t("dashboard.remote", externalHost[0])]
+      : [];
     return [
       t("dashboard.title"),
       "",
       t("dashboard.signin", base),
+      ...remote,
       t("dashboard.code", hide(login.display), login.ttlMinutes),
       "",
       `• View:      ${base}/view`,

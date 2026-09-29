@@ -33,11 +33,13 @@ import {
   isSameOriginRequest,
   isSecureRequest,
   readSessionCookie,
+  requestSurface,
   WEB_CSRF_MESSAGE,
   type WebGateRequest,
 } from "./web-auth.js";
 import { csrfTokenFor, labelFromUserAgent, sessionIdHash, tokenEpoch, type SessionTier, type WebSessionStore } from "./web-session.js";
 import type { WebLoginCodes } from "./web-login.js";
+import { gatewaySourceHint } from "./web-gateway.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -88,9 +90,14 @@ export function bypassesWebGate(
   isViewRead: (path: string) => boolean,
 ): boolean {
   const method = req.method ?? "GET";
-  if (method === "GET" && req.url === "/health") return true;
-  if (method === "POST" && req.url === "/agent") return true;
+  const gateway = requestSurface(req) === "gateway";
+  // /health and /agent are not the gateway's: it never routes them (see web-gateway.ts).
+  if (!gateway && method === "GET" && req.url === "/health") return true;
+  if (!gateway && method === "POST" && req.url === "/agent") return true;
   if (isAuthPath(path)) return true;
+  // The gateway never serves /view's reads to an anonymous visitor, whatever `view_access` says:
+  // "open" is a decision about a loopback listener, not about the internet.
+  if (gateway) return false;
   return (method === "GET" || method === "HEAD") && config?.web?.view_access !== "session" && isViewRead(path);
 }
 
@@ -202,12 +209,17 @@ export function handleAuthRequest(
       // already had is retired rather than upgraded.
       const previous = readSessionCookie(gateReq);
       if (previous) sessions.revokeById(previous);
-      const label = labelFromUserAgent(typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"] : undefined);
-      const { sessionId, record } = sessions.create({ tier: result.tier, surface: "local", label, tokenEpoch: tokenEpoch(token) });
+      const surface = requestSurface(gateReq);
+      const source = surface === "gateway" ? gatewaySourceHint(req.headers) : null;
+      const browser = labelFromUserAgent(typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"] : undefined);
+      const label = source ? `${browser} · ${source}` : browser;
+      const { sessionId, record } = sessions.create({ tier: result.tier, surface, label, tokenEpoch: tokenEpoch(token) });
       ctx.logger.info({ handle: record.handle, label, tier: record.tier, surface: record.surface }, "Web sign-in");
       try { ctx.onWebLogin?.({ label, surface: record.surface, tier: record.tier, handle: record.handle }); } catch (err) { ctx.logger.debug({ err }, "web sign-in notice failed"); }
       json(res, 200, { ok: true, csrf: csrfTokenFor(sessionId), tier: record.tier, expiresAt: record.absoluteExpiry }, {
-        "Set-Cookie": buildSessionCookie(sessionId, isSecureRequest(gateReq), (record.absoluteExpiry - record.created) / 1000),
+        // The gateway is reached over TLS the tunnel or proxy terminates; a cookie there is always Secure and
+        // `__Host-`, decided by which listener this is — not by an X-Forwarded-Proto anyone could send.
+        "Set-Cookie": buildSessionCookie(sessionId, surface === "gateway" || isSecureRequest(gateReq), (record.absoluteExpiry - record.created) / 1000),
       });
     });
     return true;

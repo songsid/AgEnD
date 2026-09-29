@@ -7,6 +7,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+**A gateway for reaching the panels from outside.** Setting `web.external_hosts`
+(the names your tunnel or reverse proxy presents) and `web.gateway_port` opens a
+second listener on `127.0.0.1` — the one thing meant to face a Cloudflare tunnel,
+`tailscale serve` or Caddy/nginx; AgEnD does not run the tunnel. The boundary is the
+port, not a path list in front of the dashboard: the gateway routes only what the
+three panels call (so `/agent`, `/health`, `/status`, `/restart/*` and
+`/api/activity` are a 404 there), honours only a signed-in session (`X-Agend-Token`
+and `?token=` are not credentials on it), requires a sign-in for `/view` whatever
+`web.view_access` says, answers only the listed Host names, issues a `Secure`
+`__Host-` cookie decided by which listener it is rather than by
+`X-Forwarded-Proto`, and keeps a session on the listener that made it. Gateway
+sessions last 4 hours (30 minutes idle) and are listed with the IP the edge
+reported. With neither key set there is no gateway, and sessions made on one are
+revoked at the next start. See `docs/cli.md` › *Reaching the panels from outside*.
+
 **The three web panels share one navigation and one session menu.** `/ui`,
 `/view` and `/settings` now carry the same *Dashboard · View · Settings* links, and
 a Session button that shows which browser you are signed in as, when the session
@@ -173,6 +188,9 @@ The panel can restart AgEnD itself for a change only a fresh process can adopt, 
 - **A failed self-restart needs the change applied again** — if the restart cannot be launched, its row is marked failed and the job is finished rather than left open for another attempt. Press Apply again to get a fresh job whose fleet row can be restarted. This is the fail-closed side of "one restart per job": a job whose launch failed must not stay a reusable restart button.
 
 ### Fixed
+- **One malformed request could stop the fleet.** A request target `new URL` rejects
+  (`GET http://[bad/`) threw inside the dashboard's request callback — an uncaught
+  exception, which ends the process. Both listeners now answer 400 and carry on.
 - **The dashboard no longer loads its fonts from Google.** Opening `/ui` sent a
   request to `fonts.googleapis.com` every time, from a page that can restart your
   agents. It now uses the system fonts, and every panel is served with a

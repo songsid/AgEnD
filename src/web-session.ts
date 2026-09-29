@@ -222,9 +222,9 @@ export class WebSessionStore {
    *
    * `touch: false` is for a stream that re-checks itself on a timer: counting
    * that as activity would keep an idle session alive for as long as a tab is
-   * open.
+   * open. `surface` restricts it to sessions made on that listener.
    */
-  authenticate(sessionId: string | undefined, currentEpoch: string, opts: { touch?: boolean } = {}): SessionRecord | null {
+  authenticate(sessionId: string | undefined, currentEpoch: string, opts: { touch?: boolean; surface?: SessionSurface } = {}): SessionRecord | null {
     if (!sessionId || !SESSION_ID_PATTERN.test(sessionId)) return null;
     const record = this.byHash.get(sessionIdHash(sessionId));
     if (!record) return null;
@@ -234,6 +234,9 @@ export class WebSessionStore {
       this.persistNow();
       return null;
     }
+    // A session is good on the listener it was made on and nowhere else: a local cookie value
+    // replayed at the gateway, or the reverse, is refused — not deleted, since it is not spent.
+    if (opts.surface && record.surface !== opts.surface) return null;
     if (opts.touch !== false) {
       record.lastSeen = now;
       record.idleExpiry = Math.min(now + this.policy[record.surface].idleMs, record.absoluteExpiry);
