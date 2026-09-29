@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
   handleUsageRequest,
@@ -7,6 +7,7 @@ import {
   setUsageFetcherForTests,
   type UsageApiContext,
 } from "../src/usage/usage-api.js";
+import type { ProviderUsage } from "../src/usage/providers.js";
 
 function fakeCtx(overrides: Partial<UsageApiContext> = {}): UsageApiContext {
   return {
@@ -204,5 +205,77 @@ describe("GET /api/ai-usage", () => {
     await out.done;
     expect(out.code).toBe(500);
     expect(JSON.parse(out.body).error).toContain("boom");
+  });
+});
+
+describe("stale fallback for transient fetch failures", () => {
+  const okRow = (used: number) => ({
+    id: "codex", name: "Codex", status: "ok" as const,
+    metrics: [{ label: "Weekly", type: "percent" as const, used }],
+  });
+  const errRow = (error: string) => ({
+    id: "codex", name: "Codex", status: "error" as const, error, metrics: [] as never[],
+  });
+  const payloadWith = (row: ReturnType<typeof okRow> | ReturnType<typeof errRow>) => ({
+    fetchedAt: new Date().toISOString(), providers: [row],
+  });
+
+  // One stub fetcher whose payload flips mid-test: re-setting the fetcher
+  // would clear lastGood (by design), so expiry past the 5-minute snapshot
+  // TTL is what forces the refetch while keeping memory.
+  async function fetchAfterJitter(makeError: () => string): Promise<ProviderUsage> {
+    let failed = false;
+    setUsageFetcherForTests(async () => payloadWith(failed ? errRow(makeError()) : okRow(12)));
+    vi.useFakeTimers();
+    try {
+      const seeded = await getUsageSnapshot();
+      expect(seeded.providers[0].status).toBe("ok");
+      await vi.advanceTimersByTimeAsync(6 * 60 * 1000);
+      failed = true;
+      const snap = await getUsageSnapshot();
+      return snap.providers[0];
+    } finally {
+      vi.useRealTimers();
+    }
+  }
+
+  it.each([
+    "Could not reach Codex.",
+    "The operation was aborted due to timeout",
+    "read ECONNRESET",
+    "vendor responded 503",
+    "Usage request failed (HTTP 500).",
+  ])("softens a jitter (%s) with cached numbers", async error => {
+    const row = await fetchAfterJitter(() => error);
+
+    expect(row.status, "a jitter shows old numbers, not red").toBe("ok");
+    expect(row.metrics[0]).toMatchObject({ used: 12 });
+    expect(row.hint).toMatch(/^cached \d+m ago/);
+  });
+
+  it("keeps auth failures loud even with last good numbers", async () => {
+    const row = await fetchAfterJitter(() => "Invalid API key (401)");
+
+    expect(row.status).toBe("error");
+    expect(row.error).toBe("Invalid API key (401)");
+    expect(row.hint).toBeUndefined();
+  });
+
+  it("keeps schema errors loud even with last good numbers", async () => {
+    const row = await fetchAfterJitter(() => "Invalid response from usage endpoint.");
+
+    expect(row.status).toBe("error");
+    expect(row.hint).toBeUndefined();
+  });
+
+  it("stays loud when nothing good was ever fetched", async () => {
+    // Fresh process (e.g. right after a restart): no last-good to fall back
+    // to, so even a transient failure must stay visible, not vanish.
+    setUsageFetcherForTests(async () => payloadWith(errRow("Could not reach Codex.")));
+    const snap = await getUsageSnapshot();
+
+    const row = snap.providers[0];
+    expect(row.status).toBe("error");
+    expect(row.error).toBe("Could not reach Codex.");
   });
 });
