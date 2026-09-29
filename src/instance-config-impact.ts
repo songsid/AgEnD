@@ -71,6 +71,9 @@ const INSTANCE_FIELDS = [
   "tool_progress", "reply_completion_guard", "mcp_proxy_reply", "log_level",
   "systemPrompt", "tags", "hang_detector", "agent_mode", "tool_set",
   "lightweight", "model_failover", "effort", "pre_task_command",
+  // #1005: the status reactions follow at once, but the instructions' avoid
+  // list is built at spawn, so the honest cost is an agent restart.
+  "status_emojis",
 ] as const;
 
 /** ClassicBot channel fields the settings page renders. */
@@ -88,6 +91,8 @@ const FLEET_FIELD_IMPACTS: Readonly<Record<string, ConfigImpact>> = {
   "fleet.channels": "fleet",
   "fleet.channel.access.mode": "fleet",
   "fleet.channel.access.allowed_users": "fleet",
+  // A running adapter keeps the channel config it started with (#1005).
+  "fleet.channel.options.status_emojis": "fleet",
   "fleet.spawn_concurrency": "fleet",
   "fleet.spawn_stagger_ms": "fleet",
   "classic.admin_users": "fleet",

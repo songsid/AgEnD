@@ -176,3 +176,69 @@ export function statusAvoidList(resolved: ResolvedStatusEmojis): string[] {
 export function statusMatchKeys(resolved: ResolvedStatusEmojis): string[] {
   return STATUS_EMOJI_KEYS.map(k => statusMatchKey(resolved[k]));
 }
+
+// ── Settings picker / preview (#1005 phase 3.2) ─────────────────────────────
+// The page asks the server to resolve and render, so what it previews is what
+// resolveStatusEmojis and reactionForm produce — picked == previewed == reacted.
+
+/** A handful of unicode status emojis to offer on Discord (Telegram offers its whole set). */
+export const STATUS_EMOJI_SUGGESTIONS: readonly string[] = [
+  "👀", "⏳", "✅", "❌", "📥", "📨", "📬", "📭", "🟢", "🟡", "🔴", "⚪", "🔵", "✔️", "☑️", "✖️", "⚠️", "🚫",
+  "🔄", "⏱️", "⌛", "💬", "💭", "🧠", "⚙️", "🛠️", "🚀", "🎯", "🏁", "🎉", "👍", "👎", "👌", "🙏", "🤔", "🫡",
+  "🦊", "🍎", "🐱", "🐶", "🐼", "🦉", "🐙", "🌟", "⭐", "🔥", "💡", "📌",
+];
+
+/** Stored config form of a Discord server emoji. */
+export function customEmojiValue(e: { name: string; id: string; animated?: boolean }): string {
+  return `<${e.animated ? "a" : ""}:${e.name}:${e.id}>`;
+}
+
+/** Discord's public CDN renders a known custom emoji id without any token. */
+export function emojiImageUrl(raw: string): string | null {
+  const e = normalizeEmoji(raw);
+  if (e?.kind !== "custom") return null;
+  return `https://cdn.discordapp.com/emojis/${e.id}.${e.animated ? "gif" : "png"}`;
+}
+
+export interface StatusEmojiPreviewEntry {
+  key: StatusEmojiKey;
+  /** The resolved config value. */
+  value: string;
+  /** Which layer it came from. */
+  source: "instance" | "platform" | "builtin";
+  /** What the bot passes to react()/unreact(), or the text it posts for progress_prefix. */
+  applied: string;
+  /** `:name:` for custom emoji, the emoji otherwise. */
+  display: string;
+  /** CDN image for a custom emoji; null for unicode. */
+  image_url: string | null;
+}
+
+export interface StatusEmojiPreview {
+  platform: string | undefined;
+  entries: StatusEmojiPreviewEntry[];
+  problems: Array<{ source: "instance" | "platform"; key: StatusEmojiKey; value: unknown; problem: string }>;
+  /** The instructions' "avoid these" list for this map. */
+  avoid: string[];
+}
+
+export function previewStatusEmojis(input: Omit<ResolveStatusEmojisInput, "onInvalid">): StatusEmojiPreview {
+  const problems: StatusEmojiPreview["problems"] = [];
+  const resolved = resolveStatusEmojis({ ...input, onInvalid: (source, key, value, problem) => problems.push({ source, key, value, problem }) });
+  const usable = (cfg: unknown, key: StatusEmojiKey): boolean => {
+    if (!cfg || typeof cfg !== "object" || Array.isArray(cfg)) return false;
+    const v = (cfg as Record<string, unknown>)[key];
+    return v !== undefined && v !== null && v !== "" && !statusEmojiProblem(input.platform, key, v);
+  };
+  const entries = STATUS_EMOJI_CONFIG_KEYS.map((key): StatusEmojiPreviewEntry => {
+    const value = resolved[key];
+    return {
+      key, value,
+      source: usable(input.instanceConfig, key) ? "instance" : usable(input.platformConfig, key) ? "platform" : "builtin",
+      applied: key === "progress_prefix" ? textForm(input.platform, value) : reactionForm(input.platform, value),
+      display: displayForm(value),
+      image_url: emojiImageUrl(value),
+    };
+  });
+  return { platform: input.platform, entries, problems, avoid: statusAvoidList(resolved) };
+}

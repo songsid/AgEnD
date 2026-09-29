@@ -7285,6 +7285,42 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   private warnedStatusEmojis = new Set<string>();
 
+  /**
+   * A Discord connection's server emojis for the Settings picker (#1005).
+   * Cached per connection — a server's emoji set changes rarely — and one
+   * fetch at a time; `refresh` forces a new one. Uses the running adapter, so
+   * the bot token never leaves the server.
+   */
+  async listGuildEmojis(channelId: string, refresh = false): Promise<
+    { ok: true; fetched_at: number; emojis: Array<{ id: string; name: string; animated: boolean; available: boolean }> }
+    | { ok: false; error: string }
+  > {
+    const world = this.worlds.get(channelId);
+    if (!world) return { ok: false, error: `connection "${channelId}" is not running` };
+    if (world.type !== "discord") return { ok: false, error: "only Discord has server custom emoji" };
+    const adapter = world.adapter as ChannelAdapter & { listGuildEmojis?: () => Promise<Array<{ id: string; name: string; animated: boolean; available: boolean }>> };
+    if (!adapter.listGuildEmojis) return { ok: false, error: "this adapter cannot list server emojis" };
+    const cached = this.guildEmojiCache.get(channelId);
+    if (!refresh && cached && Date.now() - cached.fetched_at < FleetManager.GUILD_EMOJI_TTL_MS) return { ok: true, ...cached };
+    let pending = this.guildEmojiFetches.get(channelId);
+    if (!pending) {
+      pending = adapter.listGuildEmojis().then(emojis => {
+        const entry = { fetched_at: Date.now(), emojis };
+        this.guildEmojiCache.set(channelId, entry);
+        return entry;
+      }).finally(() => this.guildEmojiFetches.delete(channelId));
+      this.guildEmojiFetches.set(channelId, pending);
+    }
+    try {
+      return { ok: true, ...(await pending) };
+    } catch (e) {
+      return { ok: false, error: `Discord refused the emoji list: ${(e as Error).message}` };
+    }
+  }
+  private static GUILD_EMOJI_TTL_MS = 10 * 60_000;
+  private guildEmojiCache = new Map<string, { fetched_at: number; emojis: Array<{ id: string; name: string; animated: boolean; available: boolean }> }>();
+  private guildEmojiFetches = new Map<string, Promise<{ fetched_at: number; emojis: Array<{ id: string; name: string; animated: boolean; available: boolean }> }>>();
+
   /** What the instructions tell `instanceName` not to react with (its own status set). */
   statusEmojiAvoidList(instanceName: string): string[] {
     return statusAvoidList(this.resolveStatusEmojisFor(instanceName));
