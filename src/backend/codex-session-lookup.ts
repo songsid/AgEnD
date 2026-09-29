@@ -14,6 +14,7 @@
 import { execFileSync } from "node:child_process";
 import { closeSync, openSync, readSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
+import { StringDecoder } from "node:string_decoder";
 import Database from "better-sqlite3";
 
 /** Columns the lookup depends on; any missing one means "schema unreadable". */
@@ -86,16 +87,20 @@ export function findExactCwdCodexSession(
     const missing = CODEX_THREAD_COLUMNS.filter(c => !columns.has(c));
     if (missing.length > 0) return { kind: "unreadable", reason: `threads schema missing: ${missing.join(", ")}` };
     const [first, second = first] = cwdCandidates(workingDirectory);
+    // Every thread of this directory, newest first, until one has content —
+    // no page limit, so a run of empty threads cannot hide an older session.
     const rows = db.prepare(`
       SELECT id, first_user_message, rollout_path FROM threads
       WHERE cwd IN (?, ?)
         AND source = 'cli'
         AND archived = 0
       ORDER BY recency_at_ms DESC, updated_at_ms DESC, id DESC
-      LIMIT ${MAX_CANDIDATE_THREADS}
-    `).all(first, second) as Array<{ id: unknown; first_user_message: unknown; rollout_path: unknown }>;
-    const row = rows.find(r => (typeof r.first_user_message === "string" && r.first_user_message !== "")
-      || (typeof r.rollout_path === "string" && rolloutHasTurn(r.rollout_path)));
+    `).iterate(first, second) as IterableIterator<{ id: unknown; first_user_message: unknown; rollout_path: unknown }>;
+    let row: { id: unknown } | undefined;
+    for (const r of rows) {
+      if ((typeof r.first_user_message === "string" && r.first_user_message !== "")
+        || (typeof r.rollout_path === "string" && rolloutHasTurn(r.rollout_path))) { row = r; break; }
+    }
     if (!row) return { kind: "none" };
     // A malformed id means the schema no longer means what we think it does.
     if (typeof row.id !== "string" || !SESSION_ID_RE.test(row.id)) {
@@ -110,10 +115,8 @@ export function findExactCwdCodexSession(
   }
 }
 
-/** How many of the directory's newest threads the lookup will look through. */
-const MAX_CANDIDATE_THREADS = 50;
-/** The head of a rollout the content check reads; a turn's first entries sit in the first few lines. */
-const ROLLOUT_HEAD_BYTES = 1024 * 1024;
+/** Rollouts are read in chunks of this size until a turn entry or the end. */
+const ROLLOUT_CHUNK_BYTES = 256 * 1024;
 
 /** An entry only a turn writes: it started, got a context, or produced an item. */
 function isTurnEntry(entry: { type?: unknown; payload?: { type?: unknown } }): boolean {
@@ -122,26 +125,35 @@ function isTurnEntry(entry: { type?: unknown; payload?: { type?: unknown } }): b
 }
 
 /**
- * Whether a Codex rollout (JSONL) records that a turn ever ran. Reads only
- * the head of the file, read-only; a missing or unreadable rollout cannot be
- * resumed, so it counts as no. A head too long to hold one without it has
- * clearly been used, so it counts as yes.
+ * Whether a Codex rollout (JSONL) records that a turn ever ran. Read-only, in
+ * chunks, stopping at the first turn entry — in real rollouts it follows the
+ * ~22 KB session_meta line — so only a thread with no turn is read to the
+ * end, and those are a few KB. A missing or unreadable rollout cannot be
+ * resumed, so it counts as no.
  */
 export function rolloutRecordsTurn(path: string): boolean {
   let fd: number | null = null;
   try {
     fd = openSync(path, "r");
-    const buf = Buffer.alloc(ROLLOUT_HEAD_BYTES);
-    const read = readSync(fd, buf, 0, ROLLOUT_HEAD_BYTES, 0);
-    const lines = buf.subarray(0, read).toString("utf8").split("\n");
-    const complete = read < ROLLOUT_HEAD_BYTES ? lines : lines.slice(0, -1);
-    for (const line of complete) {
-      if (!line.trim()) continue;
-      try {
-        if (isTurnEntry(JSON.parse(line) as { type?: unknown; payload?: { type?: unknown } })) return true;
-      } catch { /* a malformed line says nothing */ }
+    const buf = Buffer.alloc(ROLLOUT_CHUNK_BYTES);
+    // A multi-byte character may straddle two chunks; the decoder holds it.
+    const decoder = new StringDecoder("utf8");
+    let pending = "";
+    let position = 0;
+    for (;;) {
+      const read = readSync(fd, buf, 0, ROLLOUT_CHUNK_BYTES, position);
+      position += read;
+      const text = pending + (read === 0 ? decoder.end() : decoder.write(buf.subarray(0, read)));
+      const lines = text.split("\n");
+      pending = read === 0 ? "" : lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          if (isTurnEntry(JSON.parse(line) as { type?: unknown; payload?: { type?: unknown } })) return true;
+        } catch { /* a malformed line says nothing */ }
+      }
+      if (read === 0) return false;
     }
-    return read === ROLLOUT_HEAD_BYTES;
   } catch {
     return false;
   } finally {

@@ -88,14 +88,14 @@ const REAL = JSON.parse(readFileSync(fileURLToPath(new URL("./fixtures/codex-rea
 const HEAD_OF: Partial<Record<RealRow, keyof typeof REAL.rollout_heads>> = {
   resumable_0157: "resumable_0157", empty_0157: "untouched_fork_0157", metadata_empty_real_0156: "metadata_empty_real_0156",
 };
-function realStateDb(rows: Array<{ name: RealRow; cwd: string; recency: number; rollout?: "real" | "missing" | unknown[] }>): string {
+function realStateDb(rows: Array<{ name: RealRow; cwd: string; recency: number; rollout?: "real" | "missing" | unknown[]; id?: string }>): string {
   const dir = tempDir();
   const path = join(dir, "state_5.sqlite");
   const db = new Database(path);
   db.pragma("journal_mode = WAL");
   db.exec(SCHEMA);
-  for (const { name, cwd, recency, rollout = "real" } of rows) {
-    const row = REAL.rows[name];
+  for (const { name, cwd, recency, rollout = "real", id } of rows) {
+    const row = id ? { ...REAL.rows[name], id } : REAL.rows[name];
     const rolloutPath = join(dir, `rollout-${String(row.id)}.jsonl`);
     const head = HEAD_OF[name];
     const lines = Array.isArray(rollout) ? rollout : rollout === "real" && head ? REAL.rollout_heads[head] : null;
@@ -140,6 +140,14 @@ describe("the lookup against real Codex thread rows (#1017)", () => {
       expect(findExactCwdCodexSession(path, "/w/app")).toEqual({ kind: "found", id: REAL.rows.metadata_empty_real_0156.id });
     });
 
+  it("looks past any number of newer empty threads to the older real session", () => {
+    const path = realStateDb([
+      { name: "resumable_0157", cwd: "/w/app", recency: 1 },
+      ...Array.from({ length: 120 }, (_, i) => ({ name: "empty_0157" as const, cwd: "/w/app", recency: 1000 + i, id: `019f7777-0000-7000-8000-${String(i).padStart(12, "0")}` })),
+    ]);
+    expect(findExactCwdCodexSession(path, "/w/app")).toEqual({ kind: "found", id: REAL.rows.resumable_0157.id });
+  });
+
   it("skips a real untouched fork for the older real session behind it", () => {
     const path = realStateDb([
       { name: "resumable_0157", cwd: "/w/app", recency: 100 },
@@ -163,10 +171,16 @@ describe("rolloutRecordsTurn", () => {
     expect(rolloutRecordsTurn(write([{ type: "session_meta", payload: {} }, { type: "turn_context", payload: {} }]))).toBe(true);
     expect(rolloutRecordsTurn(write([{ type: "session_meta", payload: {} }, { type: "response_item", payload: { type: "message", role: "developer" } }]))).toBe(true);
   });
-  it("is no for a missing file or malformed lines, and yes for a head too long to be empty", () => {
+  it("is no for a missing file or malformed lines", () => {
     expect(rolloutRecordsTurn(join(tempDir(), "gone.jsonl"))).toBe(false);
     expect(rolloutRecordsTurn(write('{"type":"response_item" broken\n'))).toBe(false);
-    expect(rolloutRecordsTurn(write(JSON.stringify({ type: "session_meta", payload: { pad: "x".repeat(1024 * 1024) } }) + "\n"))).toBe(true);
+  });
+  it("reads past any head size: an oversized empty thread is no, a turn after a huge session_meta is yes", () => {
+    // Real session_meta lines are ~22 KB; these are far past any chunk, with
+    // multi-byte text straddling chunk edges.
+    const meta = { type: "session_meta", payload: { base_instructions: "指令".repeat(700_000) } };
+    expect(rolloutRecordsTurn(write([meta, { type: "event_msg", payload: { type: "thread_settings_applied" } }]))).toBe(false);
+    expect(rolloutRecordsTurn(write([meta, { type: "event_msg", payload: { type: "task_started" } }]))).toBe(true);
   });
 });
 
