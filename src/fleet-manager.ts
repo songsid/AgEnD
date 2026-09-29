@@ -76,7 +76,7 @@ import { DeliveryOutbox, type ClaimedOutboxDelivery, type OutboxDelivery, type D
 // active manager/target generation pair owns the lane until the daemon reports
 // a state transition or that generation is replaced.
 export const DURABLE_DELIVERY_LANE_ALERT_MS = 35 * 60_000;
-import { handleWebRequest, broadcastSseEvent, UiMessageLog } from "./web-api.js";
+import { handleWebRequest, broadcastSseEvent, SSE_HEARTBEAT_MS, UiMessageLog } from "./web-api.js";
 import { handleViewRequest, isViewPath } from "./view-api.js";
 import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, usageProviderIdForBackend } from "./usage/usage-api.js";
 import { LOGIN_FLOWS, LOGIN_BACKEND_ALIASES, checkAuthStatus, type LoginFlow, type AuthCheckResult } from "./login-flows.js";
@@ -823,6 +823,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   // Web UI: SSE clients + auth token
   private sseClients = new Set<import("node:http").ServerResponse>();
   readonly uiMessages = new UiMessageLog();
+  /** Heartbeat of the dashboard's SSE stream; public so a test can shorten it. */
+  sseHeartbeatMs = SSE_HEARTBEAT_MS;
   /**
    * Read from disk on every access rather than cached at startup: `agend
    * web-token rotate` runs in a separate process, and a cached copy would keep
@@ -6402,8 +6404,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Persist identity to the instance's actual config store. Classic instances
    * are registry rows in classicBot.yaml, not fleet.yaml instance entries. */
+  /**
+   * The instance's own config entry, or undefined. `instances[name]` alone answers for `__proto__`,
+   * `constructor` and friends with the prototype object, and assigning a field to *that* would change
+   * every object in the process.
+   */
+  private ownInstanceConfig(instanceName: string): FleetConfig["instances"][string] | undefined {
+    const instances = this.fleetConfig?.instances;
+    return instances && Object.hasOwn(instances, instanceName) ? instances[instanceName] : undefined;
+  }
+
   private setInstanceDisplayName(instanceName: string, displayName: string): boolean {
-    const fleetInstance = this.fleetConfig?.instances[instanceName];
+    const fleetInstance = this.ownInstanceConfig(instanceName);
     if (fleetInstance) {
       fleetInstance.display_name = displayName;
       this.saveFleetConfig();
@@ -6413,7 +6425,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private setInstanceDescription(instanceName: string, description: string): boolean {
-    const fleetInstance = this.fleetConfig?.instances[instanceName];
+    const fleetInstance = this.ownInstanceConfig(instanceName);
     if (fleetInstance) {
       fleetInstance.description = description;
       this.saveFleetConfig();
@@ -12659,6 +12671,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       this.gatewayServer.closeAllConnections();
       this.gatewayServer = null;
     }
+    // The store writes lastSeen at most once a minute; what that debounce is still holding — and any
+    // write that failed and is still owed — is paid now, so a restart neither shortens the idle window
+    // nor revives a session that was revoked while the disk was refusing writes.
+    this.webSessions?.flush();
 
     this.eventLog?.close();
 

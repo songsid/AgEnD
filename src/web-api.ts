@@ -154,6 +154,9 @@ export class UiMessageLog {
   }
 }
 
+/** How often a stream is refreshed, and how often it re-checks that its session still stands. */
+export const SSE_HEARTBEAT_MS = 10_000;
+
 export interface WebApiContext {
   readonly webToken: string | null;
   /** Absent in a hand-built context: cookies are then simply not a credential, the header token still is. */
@@ -178,6 +181,8 @@ export interface WebApiContext {
   deliverToInstance(instanceName: string, payload: Record<string, unknown>): Promise<void>;
   getUiStatus(): unknown;
   emitSseEvent(event: string, data: unknown): void;
+  /** Absent means SSE_HEARTBEAT_MS; a test shortens it. */
+  readonly sseHeartbeatMs?: number;
   /** Absent in a hand-built context: `/ui/poll` then reports status and no messages. */
   readonly uiMessages?: UiMessageLog;
   startInstance(name: string, config: unknown, topicMode: boolean): Promise<void>;
@@ -339,7 +344,10 @@ export function handleWebRequest(
       // without counting as activity, or an open tab would keep an idle session
       // alive forever; a revoked, expired or rotated-away session ends here.
       if (!isWebRequestAuthorized(req, url, ctx.webToken, ctx.webSessions, { touch: false })) {
-        try { res.end(); } catch { /* already closed */ }
+        // Close the connection too, not just the response: an ended response leaves the socket idle
+        // in keep-alive, still counted against a listener that caps its connections.
+        const socket = req.socket;
+        try { res.end(() => socket?.destroy()); } catch { /* already closed */ }
         cleanup();
         return;
       }
@@ -348,7 +356,7 @@ export function handleWebRequest(
       } catch {
         cleanup();
       }
-    }, 10_000);
+    }, ctx.sseHeartbeatMs ?? SSE_HEARTBEAT_MS);
     let cleanedUp = false;
     const cleanup = (): void => {
       if (cleanedUp) return;
@@ -356,10 +364,13 @@ export function handleWebRequest(
       ctx.sseClients.delete(res);
       clearInterval(interval);
     };
-    // `close` covers normal disconnects; `error` covers network resets that
-    // never deliver a clean FIN. Without both, dead clients accumulate in
+    // The *response's* `close` is the one that means the stream is over: it fires when the connection
+    // goes away or the response is finished. The request's `close` means "the request has been read"
+    // — on newer Node that is as soon as it is consumed, which would drop a live stream from
+    // sseClients and stop its session re-check while the response is still open. `error` covers
+    // network resets that never deliver a clean FIN. Without these, dead clients accumulate in
     // sseClients and the heartbeat interval keeps firing forever.
-    req.on("close", cleanup);
+    res.on("close", cleanup);
     req.on("error", cleanup);
     res.on("error", cleanup);
     return true;

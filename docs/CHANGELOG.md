@@ -188,6 +188,23 @@ The panel can restart AgEnD itself for a change only a fresh process can adopt, 
 - **A failed self-restart needs the change applied again** — if the restart cannot be launched, its row is marked failed and the job is finished rather than left open for another attempt. Press Apply again to get a fresh job whose fleet row can be restarted. This is the fail-closed side of "one restart per job": a job whose launch failed must not stay a reusable restart button.
 
 ### Fixed
+- **A revoked web session could come back after a restart.** If the session file could
+  not be replaced (a permissions or disk problem), the store forgot the session in
+  memory but the old file still held it, and the next start read it back. A failed save
+  now stays owed to the disk (retried on the next change and at shutdown), removes the
+  old file when it holds anything memory has dropped — so a restart signs everyone in
+  again instead of reviving a revoked session — and says so when even that is
+  impossible. The debounced `lastSeen` and any owed write are also flushed at shutdown.
+- **An SSE stream is tied to the response, not the request, and a revoked one is cut.**
+  The dashboard's stream now cleans up on the response's `close` (the request's means
+  "read", which on newer Node can precede the end of the stream), and when its session
+  is revoked, expires or is rotated away it closes the socket as well as the response,
+  so it cannot sit idle against the gateway's connection cap.
+- **`git init` no longer goes through a shell.** A workspace path typed into the panel or a
+  chat (quotes, `$(…)`, backticks) could be executed by `ensureWorkspaceGit`; it now runs
+  `git init -- <dir>` directly (CodeQL js/command-line-injection). Setting an instance's
+  display name or description with `__proto__`/`constructor` as the name can no longer
+  write to `Object.prototype` (js/prototype-polluting-assignment).
 - **One malformed request could stop the fleet.** A request target `new URL` rejects
   (`GET http://[bad/`) threw inside the dashboard's request callback — an uncaught
   exception, which ends the process. Both listeners now answer 400 and carry on.

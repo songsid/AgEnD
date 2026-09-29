@@ -546,8 +546,7 @@ describe("the gateway listener (live)", () => {
     await stop(h);
   }, 30_000);
 
-  it("ends an open stream when its session is revoked, on the gateway too", async () => {
-    // The heartbeat re-check is in web-api and reads the surface the same way; here, the pieces it depends on.
+  it("refuses a revoked gateway session on its very next request (open streams: see sse-live.test.ts)", async () => {
     const h = await startFleet();
     const s = await gatewaySignIn(h);
     expect((await viaGateway(h, "GET", "/ui/poll", { cookie: s.cookie })).status).toBe(200);

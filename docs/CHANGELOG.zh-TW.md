@@ -17,6 +17,9 @@
   - 不做任何搬移，AgEnD 也不寫入任何 Codex state。這個版本之前已經被搶走的對話（例如從 lock 畫面按 fork 產生的），Codex 記在哪裡就還在哪裡：重啟受影響的 instance 前，請先確認，並在 Codex 裡把錯誤的 fork 封存。
 
 ### 修正 (Fixed)
+- **被撤銷的網頁 session 在重啟後可能復活。** 如果 session 檔案無法被替換（權限或磁碟問題），store 在記憶體裡已忘記該 session，舊檔卻還留著它，下次啟動就會讀回來。現在儲存失敗會繼續記在待寫清單（下次變更與關機時重試）；若舊檔含有記憶體已丟棄的項目就把舊檔移除 — 重啟後大家重新登入，而不是讓被撤銷的 session 復活 — 連移除都做不到時會明確警告。被 debounce 暫存的 `lastSeen` 與尚待寫入的內容也會在關機時寫出。
+- **SSE 串流綁定 response 而非 request，被撤銷的串流會被切斷。** Dashboard 的串流現在在 response 的 `close` 時清理（request 的 `close` 代表「已讀完」，在較新的 Node 上可能早於串流結束）；當它的 session 被撤銷、過期或因 rotate 失效時，除了結束 response 也會關閉 socket，避免閒置佔滿 gateway 的連線上限。
+- **`git init` 不再經過 shell。** 在面板或聊天輸入的工作目錄路徑（引號、`$(…)`、反引號）可能被 `ensureWorkspaceGit` 執行；現在直接執行 `git init -- <dir>`（CodeQL js/command-line-injection）。以 `__proto__`/`constructor` 當 instance 名稱設定顯示名稱或描述，也不再能寫入 `Object.prototype`（js/prototype-polluting-assignment）。
 - **一個格式錯誤的請求就能讓 fleet 停止。** `new URL` 不接受的 request target（`GET http://[bad/`）會在 dashboard 的 request callback 內丟出例外 — 也就是未捕捉的例外，程序會結束。現在兩個 listener 都會回 400 並繼續運作。
 - **Dashboard 不再從 Google 載入字型。** 每次開啟 `/ui` 都會對 `fonts.googleapis.com` 發請求，而這個頁面可以重啟你的 agent。現在改用系統字型，且每個面板都帶有 `Content-Security-Policy`，把 script、樣式、圖片、字型與連線都限制在本站（`connect-src 'self'`），即使頁面上真的跑了不該跑的 script，也無法把讀到的內容送到別的伺服器。（`'unsafe-inline'` 暫時保留：面板是單檔內嵌 script，dashboard 也用了 `onclick=` 屬性。）
 - **dashboard 的回應不會再被 iframe 嵌入、被猜測型別或被快取。** dashboard/health server 的每個回應現在都帶 `X-Frame-Options: DENY`、`Content-Security-Policy: frame-ancestors 'none'`（這些頁面有重啟 instance 的按鈕，被嵌入就可能被誘導點擊）、`X-Content-Type-Options: nosniff` 與 `Cache-Control: no-store`（自己設定 Cache-Control 的路由，例如 SSE 與頭像，維持原樣）。

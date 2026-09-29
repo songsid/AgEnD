@@ -150,7 +150,7 @@ function makeSseCtx(sseClients: Set<ServerResponse>): WebApiContext {
 }
 
 describe("/ui/events SSE handler cleanup", () => {
-  it("removes client + clears interval on req close", () => {
+  it("removes client + clears interval when the response closes", () => {
     const sseClients = new Set<ServerResponse>();
     const ctx = makeSseCtx(sseClients);
     const req = makeReq("GET", "/ui/events");
@@ -160,7 +160,10 @@ describe("/ui/events SSE handler cleanup", () => {
 
     expect(sseClients.has(res)).toBe(true);
 
+    // The response closing is the stream ending. The request closing only means it was read.
     req.emit("close");
+    expect(sseClients.has(res)).toBe(true);
+    res.emit("close");
 
     expect(sseClients.has(res)).toBe(false);
   });
@@ -189,7 +192,7 @@ describe("/ui/events SSE handler cleanup", () => {
 
     // Fire both — second one should be a no-op, not a double-delete + clearInterval(null)
     req.emit("error", new Error("x"));
-    expect(() => req.emit("close")).not.toThrow();
+    expect(() => res.emit("close")).not.toThrow();
     expect(sseClients.size).toBe(0);
   });
 });
