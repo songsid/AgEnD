@@ -31,6 +31,7 @@ export default defineConfig({
       "tests/web-terminal-socket-cleanup.test.ts",
       // Opt-in (AGEND_CODEX_E2E=1): real codex CLI on a private tmux socket.
       "tests/codex-exact-cwd-resume-e2e.test.ts",
+      "tests/codex-status-line-e2e.test.ts",
     ],
     exclude: ["**/node_modules/**", "dist/**", ".worktrees/**", ".claude/worktrees/**"],
     env: {

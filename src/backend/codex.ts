@@ -137,6 +137,19 @@ function tomlTable(value: unknown): Record<string, unknown> | null {
     ? value as Record<string, unknown> : null;
 }
 
+const CODEX_CONTEXT_STATUS_ITEM_RE = /^context-(?:remaining|usage|used)$/;
+
+/** The TUI's effective status_line items: null when unset, "invalid" when unusable. */
+function effectiveTuiStatusLine(content: string): string[] | null | "invalid" {
+  try {
+    const items = tomlTable(tomlTable(parseToml(content))?.tui)?.status_line;
+    if (items === undefined) return null;
+    return Array.isArray(items) && items.every(item => typeof item === "string") ? items as string[] : "invalid";
+  } catch {
+    return "invalid";
+  }
+}
+
 function projectTrustTable(config: unknown, root: string): Record<string, unknown> | null {
   const projects = tomlTable(tomlTable(config)?.projects);
   return projects ? tomlTable(projects[root]) : null;
@@ -553,6 +566,8 @@ export class CodexBackend implements CliBackend {
   private configuredStatusLinePattern: RegExp | null | undefined;
   /** Set by buildCommand when the resume plan fell back; read once by the daemon. */
   private launchWarning: string | null = null;
+  /** Set by writeConfig when the status_line could not be made verifiable (#931). */
+  private statusLineWarning: string | null = null;
 
   constructor(private instanceDir: string) {
     this.binaryPath = resolveBinary("codex");
@@ -909,53 +924,78 @@ export class CodexBackend implements CliBackend {
   }
 
   /**
-   * Ensure Codex's TUI status line shows context usage so /ctx can scrape it.
-   * Rules (never overwrites the user's status_line):
-   *   1. status_line already has a context item (context-remaining / -usage /
-   *      -used) → leave the whole config untouched (they already show context).
+   * Ensure Codex's TUI status line shows context usage: the Context item is
+   * both what /ctx scrapes and the footer AgEnD's readiness proofs rely on.
+   * Rules (never drops or reorders the user's items):
+   *   1. the effective `tui.status_line` already has a context item
+   *      (context-remaining / -usage / -used) → leave the config untouched.
    *   2. no context item:
    *        - no status_line at all → write status_line = ["context-remaining"]
-   *        - status_line exists     → append "context-remaining" to it
-   * If a user's own status_line is long and truncates at 80 cols, that's their
-   * config — /ctx just reports context unavailable. Best-effort string edit of
-   * ~/.codex/config.toml (no toml dependency); other settings untouched.
+   *        - status_line exists     → prepend "context-remaining" to it
+   * Best-effort string edit (no TOML writer), but every candidate edit is
+   * parsed back and kept only if the effective `tui.status_line` becomes
+   * `["context-remaining", ...the user's items]`. A `status_line` key in some
+   * other table is not the TUI's and must not be the one edited (#931). If no
+   * edit can be verified, the launch warns the operator instead of leaving the
+   * pane silently unready.
    */
   private enableContextStatusLine(): void {
     this.configuredStatusLineItems = undefined;
     this.configuredStatusLinePattern = undefined;
+    this.statusLineWarning = null;
     const configPath = join(this.isolatedCodexHome, "config.toml");
+    // The private copy is rebuilt from the shared one at every launch, so the
+    // operator must be pointed at the file their status_line actually lives in.
+    const sharedConfigPath = join(this.sharedCodexHome, "config.toml");
     let content = "";
     try { content = readFileSync(configPath, "utf-8"); } catch { /* no file yet */ }
 
-    // TOML allows quoted keys: `"status_line" = [...]` and `['tui']` are both
-    // legal. The regexes below accept an optional surrounding quote pair so that
-    // users who write their config with quoted keys still get context-remaining
-    // injected correctly. Both single and double TOML quotes are accepted.
-
-    // Rule 1: any existing context item → don't touch anything.
-    if (/["']?status_line["']?\s*=\s*\[[^\]]*context-(remaining|usage|used)[^\]]*\]/.test(content)) return;
-
     const ITEM = "context-remaining";
-    const arr = content.match(/["']?status_line["']?\s*=\s*\[([^\]]*)\]/);
-    if (arr) {
+    const current = effectiveTuiStatusLine(content);
+    if (current === "invalid") {
+      this.statusLineWarning = t("codex.status_line_unverifiable", "tui.status_line is not a list of item names, or config.toml does not parse", sharedConfigPath);
+      return;
+    }
+    // Rule 1: the TUI already shows a context item → don't touch anything.
+    if (current?.some(item => CODEX_CONTEXT_STATUS_ITEM_RE.test(item))) return;
+
+    // TOML allows quoted keys: `"status_line" = [...]`, `"tui"."status_line"`,
+    // `['tui']`. Every textual candidate is tried; parsing decides.
+    const candidates: string[] = [];
+    if (current) {
       // Rule 2b: prepend our item to the user's existing array (don't overwrite).
       // First position keeps "Context N% left" at the far left of the footer so a
       // long cwd/other items can't push it past 80 cols and truncate it.
-      const inner = arr[1].trim().replace(/^,\s*/, "").replace(/,\s*$/, "");
-      const newInner = inner.length ? `"${ITEM}", ${inner}` : `"${ITEM}"`;
-      content = content.replace(arr[0], `status_line = [${newInner}]`);
+      for (const m of content.matchAll(/["']?status_line["']?\s*=\s*\[([^\]]*)\]/g)) {
+        const inner = m[1].trim().replace(/^,\s*/, "").replace(/,\s*$/, "");
+        const newInner = inner.length ? `"${ITEM}", ${inner}` : `"${ITEM}"`;
+        candidates.push(`${content.slice(0, m.index)}status_line = [${newInner}]${content.slice(m.index! + m[0].length)}`);
+      }
     } else {
       // Rule 2a: no status_line at all → add a minimal one.
-      if (content.length && !content.endsWith("\n")) content += "\n";
+      const base = content.length && !content.endsWith("\n") ? `${content}\n` : content;
       // Also recognise quoted section headers: `["tui"]` and `['tui']`.
-      if (/^\[["']?tui["']?\]/m.test(content)) {
-        content = content.replace(/^\[["']?tui["']?\][^\n]*\n/m, h => `${h}status_line = ["${ITEM}"]\n`);
-      } else {
-        content += `\n[tui]\nstatus_line = ["${ITEM}"]\n`;
+      if (/^\[["']?tui["']?\][^\n]*\n/m.test(base)) {
+        candidates.push(base.replace(/^\[["']?tui["']?\][^\n]*\n/m, h => `${h}status_line = ["${ITEM}"]\n`));
       }
+      candidates.push(`${base}\n[tui]\nstatus_line = ["${ITEM}"]\n`);
+      // A config that defines tui with dotted keys cannot take a [tui] table.
+      candidates.push(`tui.status_line = ["${ITEM}"]\n${base}`);
+      // Nor can an inline `tui = { … }` table: the item goes inside it.
+      candidates.push(base.replace(/^([ \t]*["']?tui["']?[ \t]*=[ \t]*\{)[ \t]*\}/m, `$1 status_line = ["${ITEM}"] }`));
+      candidates.push(base.replace(/^([ \t]*["']?tui["']?[ \t]*=[ \t]*\{)/m, `$1 status_line = ["${ITEM}"],`));
+    }
+    const wanted = [ITEM, ...(current ?? [])];
+    const fixed = candidates.find(candidate => {
+      const items = effectiveTuiStatusLine(candidate);
+      return Array.isArray(items) && items.length === wanted.length && items.every((item, i) => item === wanted[i]);
+    });
+    if (!fixed) {
+      this.statusLineWarning = t("codex.status_line_unverifiable", "no edit of tui.status_line could be verified", sharedConfigPath);
+      return;
     }
     try {
-      atomicWritePrivate(configPath, content);
+      atomicWritePrivate(configPath, fixed);
     } catch { /* best effort — never block launch on statusline config */ }
   }
 
@@ -1657,9 +1697,10 @@ export class CodexBackend implements CliBackend {
   }
 
   consumeLaunchWarning(): string | null {
-    const warning = this.launchWarning;
+    const warnings = [this.statusLineWarning, this.launchWarning].filter((w): w is string => !!w);
+    this.statusLineWarning = null;
     this.launchWarning = null;
-    return warning;
+    return warnings.length ? warnings.join("\n") : null;
   }
 
   getQuitCommand(): string { return "/quit"; }
