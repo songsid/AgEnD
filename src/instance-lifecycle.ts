@@ -20,6 +20,7 @@ import type { IpcClient } from "./channel/ipc-bridge.js";
 import type { EventLog } from "./event-log.js";
 import type { TmuxControlClient } from "./tmux-control.js";
 import type { FleetInstructionsParams } from "./instructions.js";
+import type { DeliveryStatus } from "./status-emojis.js";
 import { clearPausedMarker, hasPausedMarker, readPausedAt, writePausedMarker } from "./pause-marker.js";
 import { reportProviderRateLimit } from "./usage/provider-alerts.js";
 import { isFleetStartCommandLine } from "./fleet-lock.js";
@@ -189,8 +190,10 @@ export interface LifecycleContext {
   verifyClaudeQuota?(): Promise<ClaudeQuotaVerdict>;
   startStatuslineWatcher(name: string): void;
   stopStatuslineWatcher(name: string): void;
-  reactMessageStatus(instanceName: string, chatId: string, messageId: string, emoji: string, threadId?: string): void;
-  finishDeliveryStatus?(instanceName: string, chatId: string, messageId: string, emoji: string, threadId?: string): void;
+  reactMessageStatus(instanceName: string, chatId: string, messageId: string, status: DeliveryStatus, threadId?: string): void;
+  finishDeliveryStatus?(instanceName: string, chatId: string, messageId: string, status: DeliveryStatus, threadId?: string): void;
+  /** #1005: the instance's own status emojis, for the instructions' "avoid these" line. */
+  statusEmojiAvoidList?(instanceName: string): string[];
   startPersistedPausedInstance(name: string): Promise<void>;
 }
 
@@ -610,6 +613,31 @@ export class InstanceLifecycle {
       this.ctx.eventLog?.insert(name, "backend_launch_warning", { message: data.message });
       this.ctx.notifyInstanceTopic(name, t("inst.backend_launch_warning", name, data.message));
     }, this.ctx.logger, `daemon.backend_launch_warning[${name}]`));
+  }
+
+  /**
+   * Daemon delivery events → the status reaction on the inbound message. The
+   * emoji for each status comes from config (#1005); this only names it.
+   */
+  attachDeliveryStatusHandlers(name: string, daemon: IncidentEventSource): void {
+    daemon.on("message_queued", (data: { chatId: string; messageId: string; threadId?: string }) => {
+      this.ctx.reactMessageStatus(name, data.chatId, data.messageId, "queued", data.threadId);
+    });
+    // processing: the agent has the message; delivered: it started on it.
+    // The emoji for each comes from config (#1005).
+    daemon.on("message_delivered", (data: { chatId: string; messageId: string; threadId?: string }) => {
+      this.ctx.reactMessageStatus(name, data.chatId, data.messageId, "processing", data.threadId);
+    });
+    daemon.on("message_confirmed", (data: { chatId: string; messageId: string; threadId?: string }) => {
+      if (this.ctx.finishDeliveryStatus) this.ctx.finishDeliveryStatus(name, data.chatId, data.messageId, "delivered", data.threadId);
+      else this.ctx.reactMessageStatus(name, data.chatId, data.messageId, "delivered", data.threadId);
+    });
+    daemon.on("message_failed", safeHandler((data: { chatId: string; messageId: string; threadId?: string }) => {
+      this.ctx.eventLog?.insert(name, "message_failed", { messageId: data.messageId });
+      this.ctx.logger.warn({ name, messageId: data.messageId }, "Message delivery failed (window gone, retries exhausted)");
+      if (this.ctx.finishDeliveryStatus) this.ctx.finishDeliveryStatus(name, data.chatId, data.messageId, "failed", data.threadId);
+      else this.ctx.reactMessageStatus(name, data.chatId, data.messageId, "failed", data.threadId);
+    }, this.ctx.logger, `daemon.message_failed[${name}]`));
   }
 
   attachIncidentHandlers(name: string, daemon: IncidentEventSource): void {
@@ -1212,6 +1240,7 @@ export class InstanceLifecycle {
     daemon.setDeliveryOutboxPort(this.ctx.deliveryOutbox ?? undefined);
     // Read at each spawn so a fleet.yaml reload is honoured (#984).
     daemon.setPeerWorkingDirectories(() => peerWorkingDirectories(this.ctx.fleetConfig, name, backendName));
+    daemon.setStatusEmojiAvoidList(() => this.ctx.statusEmojiAvoidList?.(name));
     // Before start: the first spawn builds the command and emits its launch
     // warning synchronously inside Daemon.start, long before
     // attachIncidentHandlers runs (#984).
@@ -1306,23 +1335,7 @@ export class InstanceLifecycle {
       this.ctx.webhookEmit("pty_recovered", name, { downtime_s: data.downtime_s });
     }, this.ctx.logger, `daemon.pty_recovered[${name}]`));
 
-    daemon.on("message_queued", (data: { chatId: string; messageId: string; threadId?: string }) => {
-      this.ctx.reactMessageStatus(name, data.chatId, data.messageId, "⏳", data.threadId);
-    });
-    // 👀 delivered (agent has the message), ✅ confirmed (agent started processing).
-    daemon.on("message_delivered", (data: { chatId: string; messageId: string; threadId?: string }) => {
-      this.ctx.reactMessageStatus(name, data.chatId, data.messageId, "👀", data.threadId);
-    });
-    daemon.on("message_confirmed", (data: { chatId: string; messageId: string; threadId?: string }) => {
-      if (this.ctx.finishDeliveryStatus) this.ctx.finishDeliveryStatus(name, data.chatId, data.messageId, "✅", data.threadId);
-      else this.ctx.reactMessageStatus(name, data.chatId, data.messageId, "✅", data.threadId);
-    });
-    daemon.on("message_failed", safeHandler((data: { chatId: string; messageId: string; threadId?: string }) => {
-      this.ctx.eventLog?.insert(name, "message_failed", { messageId: data.messageId });
-      this.ctx.logger.warn({ name, messageId: data.messageId }, "Message delivery failed (window gone, retries exhausted)");
-      if (this.ctx.finishDeliveryStatus) this.ctx.finishDeliveryStatus(name, data.chatId, data.messageId, "❌", data.threadId);
-      else this.ctx.reactMessageStatus(name, data.chatId, data.messageId, "❌", data.threadId);
-    }, this.ctx.logger, `daemon.message_failed[${name}]`));
+    this.attachDeliveryStatusHandlers(name, daemon);
 
     this.ctx.setTopicIcon(name, "green");
     this.ctx.touchActivity(name);

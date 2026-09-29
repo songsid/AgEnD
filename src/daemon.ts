@@ -1523,6 +1523,12 @@ export class Daemon extends EventEmitter {
     this.peerWorkingDirectories = peers;
   }
 
+  /** #1005: read at each spawn so an edited status_emojis reaches the next instructions. */
+  private statusEmojiAvoidList: (() => string[] | undefined) | undefined;
+  setStatusEmojiAvoidList(list: (() => string[] | undefined) | undefined): void {
+    this.statusEmojiAvoidList = list;
+  }
+
   /** Fence pane writers before lifecycle captures pre-kill reconciliation evidence. */
   fenceDeliveryWritesForStop(): void {
     if (this.deliveryWritesStopping) return;
@@ -6999,6 +7005,7 @@ export class Daemon extends EventEmitter {
     if (decisions && decisions.length > 0) mcpEnv.AGEND_DECISIONS = JSON.stringify(decisions);
 
     // ── Fleet instructions for additive system prompt injection ──
+    const statusEmojis = this.statusEmojiAvoidList?.() ?? undefined;
     let instructions: string;
     if (isCliMode) {
       // CLI mode: inject CLI quick reference instead of MCP tool schema
@@ -7021,6 +7028,7 @@ export class Daemon extends EventEmitter {
         customPrompt: resolvedCustomPrompt,
         workflow: resolvedWorkflow,
         decisions,
+        statusEmojis,
         cliInstructions: cliRef || undefined,
       });
     } else {
@@ -7033,6 +7041,7 @@ export class Daemon extends EventEmitter {
         customPrompt: resolvedCustomPrompt,
         workflow: resolvedWorkflow,
         decisions,
+        statusEmojis,
       });
     }
 

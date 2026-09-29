@@ -279,8 +279,8 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
         // Other bots' reactions are DELIVERED on purpose: agents react to each
         // other's messages as signals (agent A 👍 → agent B sees it). The noise
         // this used to guard against — sibling AgEnD bots stamping the
-        // delivery-status ladder — is filtered downstream by exact emoji
-        // (DELIVERY_STATUS_EMOJIS in fleet-manager), not by sender kind.
+        // delivery-status ladder — is filtered downstream by reactor and
+        // configured status emoji (FleetManager.isOwnStatusReaction).
         const message = reaction.message;
         // Only reactions on OUR messages are meaningful as agent signals; a user
         // reacting to another user's message is chatter.
@@ -296,6 +296,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
           userId: user.id,
           username: ("username" in user ? user.username : null) ?? user.id,
           emoji: reaction.emoji.name ?? reaction.emoji.toString(),
+          ...(reaction.emoji.id ? { emojiId: reaction.emoji.id } : {}),
           action,
           timestamp: new Date(),
         });

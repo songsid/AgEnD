@@ -1,5 +1,6 @@
 import { validateProvider } from "./backend/types.js";
 import { credentialHomeSpec, resolveCredentialProfile } from "./backend/credential-profile.js";
+import { STATUS_EMOJI_CONFIG_KEYS, statusEmojiProblem, type StatusEmojiKey } from "./status-emojis.js";
 
 /**
  * Shared config validation for fleet.yaml and classicBot.yaml.
@@ -44,6 +45,26 @@ export function validateFleetConfig(config: unknown): ValidationResult {
   const validateAutoPause = (value: unknown, path: string) => {
     if (value !== undefined && (typeof value !== "number" || !Number.isFinite(value) || value < 0)) {
       err(path, "must be a non-negative finite number of minutes (0 disables auto-pause)");
+    }
+  };
+  /**
+   * #1005: a malformed map is an error; an unusable emoji is only a warning,
+   * because at runtime that key falls back to the default (it never fails a
+   * reaction). `platforms`: the channel types the value will be used on.
+   */
+  const validateStatusEmojis = (value: unknown, path: string, platforms: Array<string | undefined>) => {
+    if (value === undefined) return;
+    if (!isObj(value)) { err(path, `must be a mapping of ${STATUS_EMOJI_CONFIG_KEYS.join(", ")}`); return; }
+    for (const [key, v] of Object.entries(value)) {
+      if (!STATUS_EMOJI_CONFIG_KEYS.includes(key as StatusEmojiKey)) {
+        warn(`${path}.${key}`, `unknown status (known: ${STATUS_EMOJI_CONFIG_KEYS.join(", ")}) — ignored`);
+        continue;
+      }
+      if (typeof v !== "string") { err(`${path}.${key}`, "must be an emoji string"); continue; }
+      for (const platform of new Set(platforms)) {
+        const problem = statusEmojiProblem(platform, key as StatusEmojiKey, v);
+        if (problem) { warn(`${path}.${key}`, `${problem} — the default is used instead`); break; }
+      }
     }
   };
   const validateInstanceOptions = (value: Record<string, unknown>, path: string) => {
@@ -194,6 +215,7 @@ export function validateFleetConfig(config: unknown): ValidationResult {
   }
 
   const channelIds = new Set<string>();
+  const channelTypes = new Map<string, string>();
   const multi = channelList.length > 1;
   channelList.forEach((ch, i) => {
     const at = Array.isArray(config.channels) && i < config.channels.length ? `channels[${i}]` : "channel";
@@ -215,6 +237,8 @@ export function validateFleetConfig(config: unknown): ValidationResult {
       if (channelIds.has(cid)) err(`${at}.id`, `duplicate channel id "${cid}"`);
       channelIds.add(cid);
     }
+    if (isObj(ch.options)) validateStatusEmojis(ch.options.status_emojis, `${at}.options.status_emojis`, [typeof ch.type === "string" ? ch.type : undefined]);
+    if (cid && typeof ch.type === "string") channelTypes.set(cid, ch.type);
     if (isObj(ch.access) && ch.access.allowed_users !== undefined && !isIdArray(ch.access.allowed_users)) {
       err(`${at}.access.allowed_users`, "must be an array of strings/numbers");
     }
@@ -256,6 +280,8 @@ export function validateFleetConfig(config: unknown): ValidationResult {
       err("defaults.reply_overdue_minutes", "must be a non-negative number of minutes (0 turns the overdue notice off)");
     }
     validateInstanceOptions(config.defaults, "defaults");
+    // Merged into every instance, so it applies on every configured platform.
+    validateStatusEmojis(config.defaults.status_emojis, "defaults.status_emojis", [...channelTypes.values()]);
     if (config.defaults.max_cross_instance_message_bytes !== undefined) {
       const v = config.defaults.max_cross_instance_message_bytes;
       if (typeof v !== "number" || !Number.isSafeInteger(v) || v <= 0) {
@@ -291,6 +317,9 @@ export function validateFleetConfig(config: unknown): ValidationResult {
           err(`instances.${name}.channel_id`, `references unknown channel "${ref}" (known: ${[...channelIds].join(", ") || "none"})`);
         }
       }
+      const boundTo = inst.channel_id !== undefined && inst.channel_id !== null && inst.channel_id !== ""
+        ? channelTypes.get(String(inst.channel_id)) : channelTypes.values().next().value;
+      validateStatusEmojis(inst.status_emojis, `instances.${name}.status_emojis`, [boundTo]);
       const b = inst.backend;
       if (b !== undefined && (typeof b !== "string" || !KNOWN_BACKENDS.includes(b))) {
         err(`instances.${name}.backend`, `unknown backend "${String(b)}" (known: ${KNOWN_BACKENDS.join(", ")})`);

@@ -90,6 +90,12 @@ export interface InstanceConfig {
   warm_cap?: number;
   /** Agent display name (e.g. "Kuro", "Luna") — chosen by the agent itself */
   display_name?: string;
+  /**
+   * #1005: this instance's own delivery-status emojis, overriding its
+   * channel's `options.status_emojis` per key. Keys: received, queued,
+   * processing, delivered, failed, progress_prefix.
+   */
+  status_emojis?: import("./status-emojis.js").StatusEmojiConfig;
   /** Human-readable description of what this instance does */
   description?: string;
   /** Tags for capability discovery (e.g. ["code-reviewer", "researcher", "executor"]) */
