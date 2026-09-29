@@ -118,6 +118,8 @@ graph LR
 
 > **⚠️** 所有 CLI 後端都以 `--dangerously-skip-permissions`（或等效參數）執行。詳見 [Security](docs/SECURITY.zh-TW.md)。
 
+> **Codex：** 每個 instance 恢復的是記錄在自己工作目錄下的對話，同一個 git repo 的不同 worktree 上的 instance 不再互搶 session。詳見 [Codex session 恢復](docs/features.zh-TW.md#codex-session-恢復-codex-session-resume)。
+
 ## 文件
 
 - [Features](docs/features.md) — 功能詳細說明

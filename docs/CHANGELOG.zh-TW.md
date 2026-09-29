@@ -6,7 +6,15 @@
 
 ## [未發佈] (Unreleased)
 
-_目前沒有未發佈的變更。_
+### 升級注意事項 (Upgrade Notes)
+- **[行為變更] Codex instance 改為恢復自己的對話，不再拿到兄弟 worktree 的（#984）。** Codex 0.157 的 `codex resume --last` 會挑整個 git repo 裡最新的 session，所以同一個 repo 的不同 worktree 上的 AgEnD instance 會互搶 session：對方還在跑時卡在「conversation is open in another app」lock 畫面，否則就默默接著跑對方的對話。現在 AgEnD 會以唯讀方式讀 Codex 的 session 資料庫，對「工作目錄完全相符」的最新 session 執行 `codex resume <id>`。對你的影響：
+  - session 都在自己目錄下的 instance，恢復的仍是原本那段對話。
+  - 同一個 repo 已有其他 Codex instance 時，**新建**的 instance 會從**新對話**開始，不會繼承兄弟的。
+  - 如果讀不到 session 資料庫（例如 Codex 改了 schema）：同 repo 有其他 Codex instance 時開新對話；沒有時退回 `codex resume --last`。兩種情況都會在該 instance 的 topic 發通知。舊對話不會被刪，可以用 `codex resume <id>` 手動接回。
+  - 不做任何搬移，AgEnD 也不寫入任何 Codex state。這個版本之前已經被搶走的對話（例如從 lock 畫面按 fork 產生的），Codex 記在哪裡就還在哪裡：重啟受影響的 instance 前，請先確認，並在 Codex 裡把錯誤的 fork 封存。
+
+### 修正 (Fixed)
+- **Codex 的 session lock 畫面與 resume 目錄選擇器不再讓投遞默默卡住（#984）。** 「This conversation is open in another app（r retry / f fork）」畫面和「Working directory · resume」選擇器原本都認不出來，啟動時被當成已就緒，訊息會在 idle gate 等滿 30 分鐘後失敗。現在兩者都會被 hold：投遞維持擋住、通知 operator，AgEnD 絕不會替你按 `r`、`f` 或選擇器的任何選項。
 
 ## [2.1.4] - 2026-09-07
 

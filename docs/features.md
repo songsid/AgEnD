@@ -516,7 +516,16 @@ Configure `mirror_topic_id` in `fleet.yaml` to designate a Telegram topic for ob
 
 ## Codex session resume
 
-OpenAI Codex backend supports session resume. When a session-id file exists, the backend uses `codex resume <session-id>` instead of starting fresh. Also detects "You've hit your usage limit" as a pause-triggering error.
+Each Codex instance resumes **its own** conversation. At launch AgEnD reads Codex's shared session database (`~/.codex/state_5.sqlite`) read-only and picks the newest interactive session whose recorded working directory is exactly the instance's, then runs `codex resume <id>`. It does not use `codex resume --last`: since Codex 0.157 that picks the newest session of the whole git repository, so instances on worktrees of one repo would take each other's sessions (#984).
+
+| Situation | Launch |
+|---|---|
+| A session exists for this exact directory | `codex resume <id>` |
+| No session for this directory (e.g. a new instance in a shared repo) | a new conversation |
+| Session database unreadable, another Codex instance shares the git repo | a new conversation, plus a notice in the instance's topic |
+| Session database unreadable, no other Codex instance in the repo | `codex resume --last`, plus a notice |
+
+AgEnD never writes Codex state and moves no session files; sessions and locks stay in the shared `~/.codex`, so `codex resume` in a terminal still lists every instance's conversations. If Codex shows "This conversation is open in another app" or its "Working directory · resume" picker, AgEnD holds delivery and tells the operator instead of pressing a key. Also detects "You've hit your usage limit" as a pause-triggering error.
 
 ## Rate limit failover cooldown
 
