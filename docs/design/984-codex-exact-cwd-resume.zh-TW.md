@@ -56,7 +56,8 @@
    - credential profile 只換 `auth.json`，state 仍然共用，所以同一條路徑適用。
 2. 開啟方式：`new Database(path, { readonly: true, fileMustExist: true, timeout: 1000 })`。
    - WAL 模式下唯讀連線是安全的。
-   - 不建立檔案，不 checkpoint，不寫入。
+   - 不 checkpoint，不寫入；DB 不存在時不會建立 DB（readonly open 本來就建不出新檔）。
+   - **實況（3.1 實測）**：codex 沒在跑、且 `-wal` / `-shm` 已被清掉時，SQLite 的 readonly WAL open 會重建它自己的空 `-wal` 和 `-shm`。這兩個檔本來就是 codex 自己會留在那裡的；DB 本體 bytes 不變（checksum 測試）、WAL 為空，沒有碰任何 session 資料。leader 已確認維持此行為，不改成 copy-to-temp。
 3. Schema 探測：`PRAGMA table_info(threads)` 必須含 `id, cwd, source, archived, recency_at_ms`，缺任何一個就走 §4.3 的失敗路徑。
 4. 查詢：
 

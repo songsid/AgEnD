@@ -192,6 +192,19 @@ export interface LifecycleContext {
 
 type Daemon = InstanceType<typeof import("./daemon.js").Daemon>;
 
+/**
+ * Working directories of the fleet's other instances on `backendName` (#984):
+ * Codex consults them only to decide whether `resume --last` could take a
+ * sibling worktree's session when its own session DB is unreadable.
+ */
+export function peerWorkingDirectories(fleetConfig: FleetConfig | null, name: string, backendName: string): string[] {
+  return Object.entries(fleetConfig?.instances ?? {})
+    .filter(([peer, cfg]) => peer !== name
+      && (cfg.backend ?? fleetConfig?.defaults?.backend ?? "claude-code") === backendName
+      && typeof cfg.working_directory === "string" && cfg.working_directory.length > 0)
+    .map(([, cfg]) => cfg.working_directory as string);
+}
+
 /** What attachIncidentHandlers needs from a Daemon — the real one satisfies it. */
 export interface IncidentEventSource {
   on(event: string, handler: (...args: any[]) => void): unknown;
@@ -582,6 +595,19 @@ export class InstanceLifecycle {
    * against a plain event emitter — the alternative is a real Daemon, which
    * means a real tmux window, which is why this rule went untested before.
    */
+  /**
+   * A backend's launch fallback (e.g. Codex could not read its session DB and
+   * chose which conversation to continue, #984). Posted even during a planned
+   * restart: an upgrade restart is exactly when a changed Codex schema shows
+   * up, and the operator needs to know which conversation each instance is in.
+   */
+  attachLaunchWarningHandler(name: string, daemon: IncidentEventSource): void {
+    daemon.on("backend_launch_warning", safeHandler((data: { name: string; message: string }) => {
+      this.ctx.eventLog?.insert(name, "backend_launch_warning", { message: data.message });
+      this.ctx.notifyInstanceTopic(name, t("inst.backend_launch_warning", name, data.message));
+    }, this.ctx.logger, `daemon.backend_launch_warning[${name}]`));
+  }
+
   attachIncidentHandlers(name: string, daemon: IncidentEventSource): void {
     const hangDetector = daemon.getHangDetector?.();
     if (hangDetector) {
@@ -1180,6 +1206,12 @@ export class InstanceLifecycle {
       this.ctx.backendOutage,
     );
     daemon.setDeliveryOutboxPort(this.ctx.deliveryOutbox ?? undefined);
+    // Read at each spawn so a fleet.yaml reload is honoured (#984).
+    daemon.setPeerWorkingDirectories(() => peerWorkingDirectories(this.ctx.fleetConfig, name, backendName));
+    // Before start: the first spawn builds the command and emits its launch
+    // warning synchronously inside Daemon.start, long before
+    // attachIncidentHandlers runs (#984).
+    this.attachLaunchWarningHandler(name, daemon);
     daemon.on("durable_delivery_deferred", (data: {
       deliveryId: string;
       attemptNo: number;

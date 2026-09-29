@@ -1514,6 +1514,13 @@ export class Daemon extends EventEmitter {
     this.deliveryOutbox = port;
   }
 
+  /** The fleet's other same-backend instances' working directories, read at spawn (#984). */
+  private peerWorkingDirectories: (() => string[]) | undefined;
+
+  setPeerWorkingDirectories(peers: (() => string[]) | undefined): void {
+    this.peerWorkingDirectories = peers;
+  }
+
   /** Fence pane writers before lifecycle captures pre-kill reconciliation evidence. */
   fenceDeliveryWritesForStop(): void {
     if (this.deliveryWritesStopping) return;
@@ -7044,6 +7051,7 @@ export class Daemon extends EventEmitter {
       agentMode: isCliMode ? "cli" : "mcp",
       agentPort: isCliMode ? agentPort : undefined,
       backendOptions,
+      peerWorkingDirectories: this.peerWorkingDirectories,
     };
   }
 
@@ -7714,6 +7722,13 @@ export class Daemon extends EventEmitter {
       }
     }
     const cmd = `${envPrefix} ` + this.backend!.buildCommand(launchConfig);
+    // e.g. Codex could not read its session DB and chose a fallback (#984):
+    // the operator should know which conversation this launch continues.
+    const launchWarning = this.backend!.consumeLaunchWarning?.() ?? null;
+    if (launchWarning) {
+      this.logger.warn({ warning: launchWarning }, "Backend launch fell back");
+      this.emit("backend_launch_warning", { name: this.name, message: launchWarning });
+    }
 
     // Ensure tmux session exists (may have been destroyed if all windows died)
     await TmuxManager.ensureSession(this.tmuxSessionName);
