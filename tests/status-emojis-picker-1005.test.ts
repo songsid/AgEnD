@@ -18,7 +18,7 @@ import { FleetManager } from "../src/fleet-manager.js";
 import { AdapterWorld } from "../src/adapter-world.js";
 import { AccessManager } from "../src/channel/access-manager.js";
 import { DiscordAdapter } from "../src/channel/adapters/discord.js";
-import { TELEGRAM_REACTION_EMOJIS } from "../src/status-emojis.js";
+import { previewStatusEmojis, TELEGRAM_REACTION_EMOJIS } from "../src/status-emojis.js";
 import type { ChannelAdapter } from "../src/channel/types.js";
 import type { ChannelConfig } from "../src/types.js";
 
@@ -428,5 +428,110 @@ describe("the agent editor stages its status emojis into the instance PATCH (#10
     const second = await edit(rows => buttons(row(rows, "failed"), "×")[0]!.fire("click"));
     await second.apply();
     expect((puts.at(-1) as any).body).toEqual({ status_emojis: null });
+  });
+});
+
+// A user reported "after I picked two, the 👀 that was on Received moved to Processing". It did not
+// move: 👀 is the built-in for received, processing AND progress_prefix, so it was already under
+// Processing before any pick. These pin what is actually true — every value is bound to its status
+// *name*, a pick changes only that name, and what is left shows (and stores) its own value.
+describe("the Settings editor binds by status name, never by position", () => {
+  const KEYS = ["received", "queued", "processing", "delivered", "failed", "progress_prefix"] as const;
+  const BUILTIN: Record<string, string> = { received: "👀", queued: "⏳", processing: "👀", delivered: "✅", failed: "❌", progress_prefix: "👀" };
+  const PICKS = ["🦊", "🍎", "🐱", "🐶", "🐼", "🦉"];
+
+  // The preview is debounced 150ms; one wait past that is enough here.
+  const quick = () => new Promise(r => setTimeout(r, 260));
+  async function open() {
+    const { api, calls } = realApi(context());
+    const editor = loadEditor(api)(undefined, {
+      platform: () => "discord", channelId: () => "dc",
+      // The connection editor's shape: the map being edited *is* the channel's, so the stored one is not layered under it.
+      previewBody: (map: unknown) => ({ channel_id: "dc", platform: "discord", channel_config: map }),
+    });
+    await quick();
+    const row = (key: string) => editor.box.all(e => e.className === "se-row").find(r => r.textContent.startsWith(`se_${key}`))!;
+    const input = (key: string) => row(key).all(e => e.tag === "input")[0]!;
+    const pick = async (key: string, emoji: string) => {
+      buttons(row(key), "se_pick")[0]!.fire("click");
+      await quick();
+      row(key).all(e => e.tag === "button" && e.attrs.title === emoji)[0]!.fire("click");
+      await quick();
+    };
+    const shown = () => Object.fromEntries(editor.box.querySelector("se-preview")!.all(e => e.className.split(" ").includes("se-item"))
+      .map(e => String(e.attrs.title).split(": ") as [string, string]));
+    return { editor, calls, input, pick, shown };
+  }
+
+  it("the user's case: pick Received then Queued — Processing keeps its own built-in, and only two keys are stored", async () => {
+    const { editor, calls, input, pick, shown } = await open();
+    expect(shown()).toEqual(BUILTIN);                     // before anything is picked, 👀 is already under Processing
+
+    await pick("received", "🦊");
+    await pick("queued", "🍎");
+
+    expect(shown()).toEqual({ ...BUILTIN, received: "🦊", queued: "🍎" });
+    expect(editor.value()).toEqual({ received: "🦊", queued: "🍎" });
+    const last = calls.filter(c => c.path === "/api/settings/status-emojis/preview").at(-1)!;
+    const sent = last.body as { channel_config: Record<string, string> };
+    expect(sent).toEqual({ channel_id: "dc", platform: "discord", channel_config: { received: "🦊", queued: "🍎" } });
+    expect(Object.keys(sent.channel_config)).toEqual(["received", "queued"]);
+    // Each box holds what belongs to it; an untouched one is empty, its default only a placeholder.
+    for (const key of KEYS) expect(input(key).value, key).toBe({ received: "🦊", queued: "🍎" }[key as string] ?? "");
+    for (const key of ["processing", "delivered", "failed", "progress_prefix"]) expect(input(key).attrs.placeholder, key).toBe(BUILTIN[key]);
+  });
+
+  it("says where each preview value comes from — the built-in ones too, so a default 👀 is not mistaken for a moved one", async () => {
+    const { pick, editor } = await open();
+    const sourceOf = () => Object.fromEntries(editor.box.querySelector("se-preview")!.all(e => e.className.split(" ").includes("se-item"))
+      .map(e => [String(e.attrs.title).split(": ")[0]!, e.all(x => x.className.split(" ").includes("tag"))[0]?.textContent ?? "(none)"]));
+    expect(sourceOf()).toEqual({ received: "se_src_builtin", queued: "se_src_builtin", processing: "se_src_builtin", delivered: "se_src_builtin", failed: "se_src_builtin", progress_prefix: "se_src_builtin" });
+
+    await pick("received", "🦊");
+    await pick("queued", "🍎");
+
+    expect(sourceOf()).toEqual({ received: "se_src_platform", queued: "se_src_platform", processing: "se_src_builtin", delivered: "se_src_builtin", failed: "se_src_builtin", progress_prefix: "se_src_builtin" });
+    const html = readFileSync(join(process.cwd(), "src", "ui", "settings.html"), "utf8");
+    expect(html).toContain("se_src_builtin: \"default\"");
+    expect(html).toContain("se_src_builtin: \"預設\"");
+  });
+
+  it("every pair of picks — alternating which is picked first — lands on its own keys and leaves the other four alone", async () => {
+    let n = 0;
+    for (let a = 0; a < KEYS.length; a++) {
+      for (let b = a + 1; b < KEYS.length; b++) {
+        const [first, second] = n++ % 2 === 0 ? [a, b] : [b, a];
+        const { editor, input, pick, shown } = await open();
+        await pick(KEYS[first]!, PICKS[first]!);
+        await pick(KEYS[second]!, PICKS[second]!);
+
+        const expected = { ...BUILTIN, [KEYS[a]!]: PICKS[a]!, [KEYS[b]!]: PICKS[b]! };
+        const label = `${KEYS[first]} then ${KEYS[second]}`;
+        expect(shown(), label).toEqual(expected);
+        expect(editor.value(), label).toEqual(Object.fromEntries(KEYS.filter(k => k === KEYS[a] || k === KEYS[b]).map(k => [k, expected[k]])));
+        for (const k of KEYS) expect(input(k).value, `${k} after ${label}`).toBe(k === KEYS[a] || k === KEYS[b] ? expected[k] : "");
+      }
+    }
+    expect(n).toBe(15);
+  }, 120_000);
+
+  it("clearing one picks its default back without moving another", async () => {
+    const { editor, input, pick, shown } = await open();
+    await pick("queued", "🍎");
+    await pick("failed", "🐱");
+    buttons(editor.box.all(e => e.className === "se-row").find(r => r.textContent.startsWith("se_queued"))!, "×")[0]!.fire("click");
+    await quick();
+    expect(editor.value()).toEqual({ failed: "🐱" });
+    expect(shown()).toEqual({ ...BUILTIN, failed: "🐱" });
+    expect(input("queued").value).toBe("");
+    expect(input("failed").value).toBe("🐱");
+  });
+
+  it("the server resolves a subset per key too: the layers of a map never shift each other", () => {
+    const entries = previewStatusEmojis({ platform: "discord", platformConfig: { received: "🦊", queued: "🍎" } }).entries;
+    expect(Object.fromEntries(entries.map(e => [e.key, e.value]))).toEqual({ ...BUILTIN, received: "🦊", queued: "🍎" });
+    expect(Object.fromEntries(entries.map(e => [e.key, e.source]))).toEqual({
+      received: "platform", queued: "platform", processing: "builtin", delivered: "builtin", failed: "builtin", progress_prefix: "builtin",
+    });
   });
 });

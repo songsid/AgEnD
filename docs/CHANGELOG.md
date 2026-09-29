@@ -123,6 +123,15 @@ The panel can restart AgEnD itself for a change only a fresh process can adopt, 
   Settings cluster stays together at the end. Long values (env names, user ids) break
   anywhere rather than widen the row. CSS/markup layout only; nothing about the data or the
   Settings button changed. Checked in Chromium at nine widths (1280–390 px) in both languages.
+- **Settings › status emojis: every preview value now says where it comes from.** A report
+  said that after picking Received and Queued, the 👀 "moved" to Processing. Nothing moved and
+  nothing was mis-stored — the editor binds every value to its status name, and the request
+  it sends carries exactly the keys that were picked (`{"received":…,"queued":…}`). 👀 is simply
+  the built-in for Received, Processing *and* Progress prefix, and only non-default values were
+  labelled, so the 👀 left under Processing looked like a displaced one. Built-in values now
+  carry a "default" tag next to the "connection" / "agent" ones. A regression test drives the
+  page's real editor code through every pair of picks (in both orders) and asserts each value
+  lands on, previews as, and is stored under its own status name.
 - **Codex session-lock and resume-directory screens no longer stall delivery
   silently (#984).** Codex's "This conversation is open in another app (r retry /
   f fork)" screen and its "Working directory · resume" picker matched nothing, so

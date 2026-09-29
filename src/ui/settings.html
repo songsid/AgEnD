@@ -37,6 +37,7 @@
   .tag { font-size: 12px; color: var(--muted); background: #eef2ff; color: #3730a3; padding: 1px 7px; border-radius: 10px; }
   .tag.persona { background: #fdf2f8; color: #9d174d; }
   .tag.tg { background: #e0f2fe; color: #075985; }
+  .tag.se-default { background: transparent; color: var(--muted); border: 1px dashed var(--border); }
   .sub { font-size: 13px; color: var(--muted); margin-top: 3px; margin-left: 19px; }
   .spacer { flex: 1; }
   /* "Connections & Bots" rows carry up to ten short facts. Left to shrink, every one of them wraps inside
@@ -263,7 +264,7 @@
       runtimeResources: "Runtime & Resources", autoPause: "Auto-pause after", minutes: "minutes", inheritDefault: "Inherit from defaults",
       statusEmojis: "Status emojis", statusEmojisInstance: "This agent's status emojis (override the connection's)", statusEmojisChannel: "Status emojis for this connection's bots",
       se_received: "Received", se_queued: "Queued", se_processing: "Processing", se_delivered: "Delivered", se_failed: "Failed", se_progress_prefix: "Progress prefix",
-      se_src_instance: "agent", se_src_platform: "connection", se_pick: "Pick…", se_useDefault: "Use the default", se_fallback: "the default is used instead",
+      se_src_instance: "agent", se_src_platform: "connection", se_src_builtin: "default", se_pick: "Pick…", se_useDefault: "Use the default", se_fallback: "the default is used instead",
       se_unicode: "Emoji", se_telegramOnly: "Telegram allows only these reactions", se_serverEmojis: "This server's emojis", se_noServerEmojis: "This server has no custom emojis.", se_unavailable: "unavailable",
       se_hint: "Empty keeps the default. The preview is resolved by AgEnD exactly as the bot will react.",
       detection: "Detection", startup: "Startup", backendSection: "Backend", advancedSection: "Advanced & Access", hangEnabled: "Hang detector enabled", hangTimeout: "Stuck timeout", agentMode: "Agent mode", toolSet: "Tool set", toolProgress: "Tool progress", replyCompletionGuard: "Require a delivered reply", replyGuardSupported: "Active for Claude Code in MCP mode.", replyGuardUnsupported: "Stored but inactive: {0} in {1} mode does not support reply-drop recovery.", logLevel: "Log level", concurrency: "Startup concurrency", staggerDelay: "Stagger delay", lightweight: "Lightweight mode", modelFailover: "Fallback model", displayName: "Display name", pause: "Pause", wake: "Wake", accessMode: "Access mode", affected: "Affected instances",
@@ -312,7 +313,7 @@
     "zh-TW": {
       statusEmojis: "狀態 emoji", statusEmojisInstance: "此 Agent 的狀態 emoji（覆蓋連線設定）", statusEmojisChannel: "此連線 bot 的狀態 emoji",
       se_received: "已收到", se_queued: "排隊中", se_processing: "處理中", se_delivered: "已送達", se_failed: "失敗", se_progress_prefix: "進度前綴",
-      se_src_instance: "Agent", se_src_platform: "連線", se_pick: "選擇…", se_useDefault: "使用預設", se_fallback: "改用預設值",
+      se_src_instance: "Agent", se_src_platform: "連線", se_src_builtin: "預設", se_pick: "選擇…", se_useDefault: "使用預設", se_fallback: "改用預設值",
       se_unicode: "Emoji", se_telegramOnly: "Telegram 只允許這些反應", se_serverEmojis: "此伺服器的 emoji", se_noServerEmojis: "此伺服器沒有自訂 emoji。", se_unavailable: "無法使用",
       se_hint: "留空即使用預設值。預覽由 AgEnD 依 bot 實際 react 的方式解析。",
       title: "⚙️ AgEnD 設定", reloadFleet: "↻ 重新載入", myAgents: "🤖 我的 Agent", bots: "🔌 機器人", classicChannels: "🎮 ClassicBot 頻道", noClassic: "沒有 ClassicBot 頻道 — 在聊天中用 /start 建立。",
@@ -536,7 +537,9 @@
       for (const entry of r.body.entries) {
         preview.append(el("span", { class: "se-item", title: `${entry.key}: ${entry.value}` }, emojiGlyph(entry),
           el("span", {}, t(`se_${entry.key}`)),
-          entry.source === "builtin" ? null : el("span", { class: "tag" }, t(`se_src_${entry.source}`))));
+          // Say where every value comes from, defaults included: 👀 is the built-in for three statuses, and
+          // an untagged 👀 left under "Processing" after Received is changed reads as if it had moved there.
+          el("span", { class: "tag" + (entry.source === "builtin" ? " se-default" : "") }, t(`se_src_${entry.source}`))));
       }
       problems.className = r.body.problems.length ? "feedback error" : "feedback";
       problems.textContent = r.body.problems.map(p => `⚠ ${t(`se_${p.key}`)}: ${p.problem} — ${t("se_fallback")}`).join("  ");
