@@ -4,7 +4,8 @@
     "resumable_0157": "source='cli' AND cli_version='0.157.0' AND first_user_message<>'' AND tokens_used>0 AND has_user_event=0 -- a live AgEnD fleet session",
     "empty_0157": "source='cli' AND cli_version='0.157.0' AND first_user_message='' AND tokens_used=0 -- an untouched fork: its rollout holds only session_meta + thread_settings_applied",
     "first_turn_no_tokens": "source='cli' AND first_user_message<>'' AND tokens_used=0 -- a real session on a provider that reports no token usage",
-    "metadata_empty_real_0156": "source='cli' AND has_user_event=1 AND first_user_message='' -- the only has_user_event=1 row: its list metadata is empty (first_user_message, tokens_used) but its rollout holds a real 38-turn conversation (#1017 review; cf. openai/codex#28423)"
+    "metadata_empty_real_0156": "source='cli' AND has_user_event=1 AND first_user_message='' -- the only has_user_event=1 row: its list metadata is empty (first_user_message, tokens_used) but its rollout holds a real 38-turn conversation (#1017 review; cf. openai/codex#28423)",
+    "goal_first_0157": "A real /goal-first session made for #1017 review: codex-cli 0.157.0 in a throwaway CODEX_HOME, first input `/goal <objective>`, one turn, goal complete, resumed by id afterwards. Codex left first_user_message EMPTY (preview carries the objective) with has_user_event 0 — openai/codex#28423 still holds in 0.157."
   },
   "rows": {
     "resumable_0157": {
@@ -182,6 +183,50 @@
       "daybreak_enabled": null,
       "creator_user_id": null,
       "creator_account_id": null
+    },
+    "goal_first_0157": {
+      "id": "01a0ee02-e1d9-72a1-8fbe-817d3ecfc785",
+      "rollout_path": "{rollout}",
+      "created_at": 1790699561,
+      "updated_at": 1790699635,
+      "source": "cli",
+      "model_provider": "openai",
+      "cwd": "{cwd}",
+      "title": "",
+      "sandbox_policy": "{\"type\":\"managed\",\"file_system\":{\"type\":\"restricted\",\"entries\":[{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"root\"}},\"access\":\"read\"},{\"path\":{\"type\":\"path\",\"path\":\"{cwd}\"},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"slash_tmp\"}},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"tmpdir\"}},\"access\":\"write\"},{\"path\":{\"type\":\"path\",\"path\":\"{cwd}/.git\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"{cwd}/.agents\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"{cwd}/.codex\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"}]},\"network\":\"restricted\"}",
+      "approval_mode": "on-request",
+      "tokens_used": 52601,
+      "has_user_event": 0,
+      "archived": 0,
+      "archived_at": null,
+      "git_sha": null,
+      "git_branch": null,
+      "git_origin_url": null,
+      "cli_version": "0.157.0",
+      "first_user_message": "",
+      "agent_nickname": null,
+      "agent_role": null,
+      "memory_mode": "enabled",
+      "model": "gpt-6-astra",
+      "reasoning_effort": null,
+      "agent_path": null,
+      "created_at_ms": 1790699561433,
+      "updated_at_ms": 1790699635516,
+      "thread_source": "user",
+      "preview": "[redacted: 73 chars]",
+      "recency_at": 1790699582,
+      "recency_at_ms": 1790699582532,
+      "history_mode": "paginated",
+      "name": null,
+      "is_pinned": 0,
+      "thread_section_id": null,
+      "section_position": null,
+      "section_entered_at_ms": null,
+      "project_id": null,
+      "originator": "codex-tui",
+      "daybreak_enabled": null,
+      "creator_user_id": null,
+      "creator_account_id": null
     }
   },
   "rollout_heads": {
@@ -292,11 +337,84 @@
         "type": "turn_context",
         "payload": {}
       }
+    ],
+    "goal_first_0157": [
+      {
+        "type": "session_meta",
+        "payload": {}
+      },
+      {
+        "type": "event_msg",
+        "payload": {
+          "type": "thread_settings_applied"
+        }
+      },
+      {
+        "type": "event_msg",
+        "payload": {
+          "type": "thread_goal_updated"
+        }
+      },
+      {
+        "type": "event_msg",
+        "payload": {
+          "type": "task_started"
+        }
+      },
+      {
+        "type": "response_item",
+        "payload": {
+          "type": "message",
+          "role": "developer"
+        }
+      },
+      {
+        "type": "response_item",
+        "payload": {
+          "type": "message",
+          "role": "developer"
+        }
+      },
+      {
+        "type": "response_item",
+        "payload": {
+          "type": "message",
+          "role": "developer"
+        }
+      },
+      {
+        "type": "response_item",
+        "payload": {
+          "type": "message",
+          "role": "user"
+        }
+      },
+      {
+        "type": "world_state",
+        "payload": {}
+      },
+      {
+        "type": "turn_context",
+        "payload": {}
+      },
+      {
+        "type": "response_item",
+        "payload": {
+          "type": "message",
+          "role": "user"
+        }
+      },
+      {
+        "type": "event_msg",
+        "payload": {
+          "type": "item_completed"
+        }
+      }
     ]
   },
   "_about_rollout_heads": "First lines of the same threads' real rollout JSONL files, reduced to type / payload.type / payload.role (every other field dropped).",
   "goal_first_heads": {
-    "_about": "NOT captured: /goal-first rollout heads modelled on the two sequences documented in openai/codex#28423 (sessions resumable by id whose first_user_message/preview are empty). Pattern A opens with internal goal context instead of a user_message event — the issue does not give its role, so this uses 'developer', the role a user-message-only check would miss. Pattern B is the issue's sequence verbatim.",
+    "_about": "Pattern A is still MODELLED (no real capture): a turn opening with goal context under role 'developer' only, which a user-message-only check would miss; kept as a defensive case. The real /goal-first 0.157 shape is rollout_heads.goal_first_0157 (captured), which does include a role=user item after three developer items. Pattern B is the sequence documented in openai/codex#28423.",
     "pattern_a_goal_context_first": [
       {
         "type": "session_meta",

@@ -79,14 +79,15 @@ function stateDb(threads: Thread[], dir = tempDir()): { path: string; ids: strin
  * same threads' rollout heads, so the filter is judged against what real
  * sessions look like rather than what a fixture assumes.
  */
-type RealRow = "resumable_0157" | "empty_0157" | "metadata_empty_real_0156" | "first_turn_no_tokens";
+type RealRow = "resumable_0157" | "empty_0157" | "metadata_empty_real_0156" | "first_turn_no_tokens" | "goal_first_0157";
 const REAL = JSON.parse(readFileSync(fileURLToPath(new URL("./fixtures/codex-real-threads.json", import.meta.url)), "utf8")) as {
   rows: Record<RealRow, Record<string, unknown>>;
-  rollout_heads: Record<"metadata_empty_real_0156" | "untouched_fork_0157" | "resumable_0157", unknown[]>;
+  rollout_heads: Record<"metadata_empty_real_0156" | "untouched_fork_0157" | "resumable_0157" | "goal_first_0157", unknown[]>;
   goal_first_heads: Record<"pattern_a_goal_context_first" | "pattern_b_leading_interrupted_turn", unknown[]>;
 };
 const HEAD_OF: Partial<Record<RealRow, keyof typeof REAL.rollout_heads>> = {
   resumable_0157: "resumable_0157", empty_0157: "untouched_fork_0157", metadata_empty_real_0156: "metadata_empty_real_0156",
+  goal_first_0157: "goal_first_0157",
 };
 function realStateDb(rows: Array<{ name: RealRow; cwd: string; recency: number; rollout?: "real" | "missing" | unknown[]; id?: string }>): string {
   const dir = tempDir();
@@ -130,8 +131,20 @@ describe("the lookup against real Codex thread rows (#1017)", () => {
     expect(findExactCwdCodexSession(gone, "/w/app")).toEqual({ kind: "none" });
   });
 
+  it("resumes a REAL /goal-first 0.157 session, which Codex leaves with an empty first_user_message", () => {
+    // Made for this review: `/goal <objective>` as the first input, one turn,
+    // goal complete, resumed by id. openai/codex#28423 still holds in 0.157.
+    expect(REAL.rows.goal_first_0157).toMatchObject({ cli_version: "0.157.0", first_user_message: "", has_user_event: 0 });
+    expect(REAL.rows.goal_first_0157.tokens_used).toBeGreaterThan(0);
+    const path = realStateDb([
+      { name: "resumable_0157", cwd: "/w/app", recency: 100 },
+      { name: "goal_first_0157", cwd: "/w/app", recency: 500 },
+    ]);
+    expect(findExactCwdCodexSession(path, "/w/app")).toEqual({ kind: "found", id: REAL.rows.goal_first_0157.id });
+  });
+
   it.each(["pattern_a_goal_context_first", "pattern_b_leading_interrupted_turn"] as const)(
-    "resumes a /goal-first session with empty list metadata (openai/codex#28423, %s)", (pattern) => {
+    "resumes a modelled /goal-first shape with empty list metadata (openai/codex#28423, %s)", (pattern) => {
       // The real metadata-empty row, carrying the rollout shape the issue documents.
       const path = realStateDb([
         { name: "resumable_0157", cwd: "/w/app", recency: 100 },
