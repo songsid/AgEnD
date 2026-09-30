@@ -6,6 +6,7 @@ import type { Logger } from "./logger.js";
 import type { CostGuard } from "./cost-guard.js";
 import type { ClassicChannelManager } from "./classic-channel-manager.js";
 import type { ExplicitInstanceRemoval } from "./instance-removal.js";
+import type { BackendCliVersionSnapshot } from "./backend/types.js";
 
 export type RouteTarget =
   | { kind: "instance"; name: string }
@@ -53,6 +54,10 @@ export interface FleetContext {
   readonly classicChannels: ClassicChannelManager | null;
 
   getSysInfo(): SysInfo;
+  /** Read cached CLI versions without triggering a probe. */
+  getBackendCliVersionSnapshot?(): BackendCliVersionSnapshot;
+  /** Refresh stale/missing CLI versions after the sysinfo reply has been sent. */
+  refreshBackendCliVersions?(): void;
   getInstanceStatus(name: string): "running" | "paused" | "stopped" | "crashed";
   /** Current cancellation epoch stamped onto direct daemon IPC deliveries. */
   getDeliveryEpoch?(name: string): number;

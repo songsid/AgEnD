@@ -1,4 +1,4 @@
-import { lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -547,6 +547,20 @@ describe("MuseBackend launch command", () => {
     const { backend, instanceDir } = makeBackend();
     writeFileSync(join(instanceDir, "session-id"), "$(rm -rf /)\n");
     expect(backend.buildCommand(config())).not.toContain("resume");
+  });
+});
+
+describe("MuseBackend CLI env probe", () => {
+  it("suppresses the launcher's update check while reading the CLI version", async () => {
+    const { backend, instanceDir } = makeBackend();
+    const binary = join(instanceDir, "muse-probe");
+    writeFileSync(binary, "#!/bin/sh\nprintf 'Muse Code %s\\n' \"$MUSE_UPDATE_INTERVAL_SECONDS\"\n");
+    chmodSync(binary, 0o755);
+    (backend as any).binaryPath = binary;
+
+    const env = await backend.probeCLIEnv();
+
+    expect(env.version).toBe("Muse Code 31536000");
   });
 });
 

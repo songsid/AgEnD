@@ -114,6 +114,17 @@ export interface CliEnv {
   probedAt: number;
 }
 
+/** Backends whose installed CLI versions are surfaced by `/sysinfo`. */
+export const SYSINFO_BACKEND_IDS = ["claude-code", "codex", "kiro-cli", "grok", "antigravity", "muse"] as const;
+export type SysInfoBackendId = typeof SYSINFO_BACKEND_IDS[number];
+
+/** A cached version snapshot; `probing` means no cached version is available yet. */
+export interface BackendCliVersionInfo {
+  version: string | null;
+  probing: boolean;
+}
+export type BackendCliVersionSnapshot = Record<SysInfoBackendId, BackendCliVersionInfo>;
+
 /** Timeout on the `<binary> --version` step of a CLI env probe. */
 export const CLI_PROBE_VERSION_TIMEOUT_MS = 5_000;
 
@@ -139,11 +150,21 @@ export const CLI_PROBE_LONGEST_LEAF_MS = 8_000;
  */
 export const CLI_PROBE_LONGEST_CHAIN_MS = CLI_PROBE_VERSION_TIMEOUT_MS + CLI_PROBE_LONGEST_LEAF_MS;
 
+/** Parse a CLI version probe into its first bounded output line. */
+export function parseCliVersionOutput(output: string): string | undefined {
+  return output.trim().split(/\r?\n/, 1)[0]?.trim().slice(0, 80) || undefined;
+}
+
 /** Best-effort `<binary> --version` (first line, trimmed). Never throws. */
-export function probeCliVersion(binaryPath: string): string | undefined {
+export function probeCliVersion(binaryPath: string, env?: NodeJS.ProcessEnv): string | undefined {
   try {
-    const out = execFileSync(binaryPath, ["--version"], { encoding: "utf-8", timeout: CLI_PROBE_VERSION_TIMEOUT_MS, stdio: ["ignore", "pipe", "ignore"] });
-    return out.trim().split("\n")[0].slice(0, 80) || undefined;
+    const out = execFileSync(binaryPath, ["--version"], {
+      encoding: "utf-8",
+      timeout: CLI_PROBE_VERSION_TIMEOUT_MS,
+      stdio: ["ignore", "pipe", "ignore"],
+      ...(env ? { env } : {}),
+    });
+    return parseCliVersionOutput(out);
   } catch { return undefined; }
 }
 

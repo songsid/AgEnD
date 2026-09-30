@@ -21,6 +21,7 @@ import {
 } from "./context-percent.js";
 import { isGeneralInstance } from "./general-instance.js";
 import { backendSupportsSteer } from "./steer-capability.js";
+import { SYSINFO_BACKEND_IDS, type BackendCliVersionSnapshot, type SysInfoBackendId } from "./backend/types.js";
 
 export { parseContextPercent, parseTokenContextRatio } from "./context-percent.js";
 export type { TokenContextRatio } from "./context-percent.js";
@@ -95,6 +96,28 @@ function tmuxVersion(): string {
     }
   }
   return cachedTmuxVersion;
+}
+
+const SYSINFO_BACKEND_LABEL_KEYS: Record<SysInfoBackendId, string> = {
+  "claude-code": "sysinfo.backend_cli_claude_code",
+  codex: "sysinfo.backend_cli_codex",
+  "kiro-cli": "sysinfo.backend_cli_kiro_cli",
+  grok: "sysinfo.backend_cli_grok",
+  antigravity: "sysinfo.backend_cli_antigravity",
+  muse: "sysinfo.backend_cli_muse",
+};
+
+function backendCliLines(versions?: BackendCliVersionSnapshot): string[] {
+  return [
+    `**${t("sysinfo.backend_clis")}**`,
+    ...SYSINFO_BACKEND_IDS.map(id => {
+      const label = t(SYSINFO_BACKEND_LABEL_KEYS[id]);
+      const info = versions?.[id];
+      const version = info?.version
+        ?? (info?.probing ? t("sysinfo.cli_version_probing") : t("sysinfo.cli_version_unknown"));
+      return `- ${label}: ${version}`;
+    }),
+  ];
 }
 
 export function compactCommandForBackend(backend: string): string {
@@ -1150,8 +1173,20 @@ export class TopicCommands {
     const adapter = this.getReplyAdapter(msg);
     if (!adapter) return;
     const platform = adapter.type === "discord" ? "discord" : "telegram";
-    const text = this.getSysInfoText({ platform });
-    await adapter.sendText(msg.chatId, text, { threadId: msg.threadId });
+    await this.sendSysInfo(text => adapter.sendText(msg.chatId, text, { threadId: msg.threadId }), { platform });
+  }
+
+  /** Share the send-completion gate across topic messages and Discord slash replies. */
+  async sendSysInfo(
+    send: (text: string) => Promise<unknown>,
+    opts?: { platform?: "telegram" | "discord" },
+  ): Promise<void> {
+    const text = await this.getSysInfoTextAsync(opts);
+    try {
+      await send(text);
+    } finally {
+      this.ctx.refreshBackendCliVersions?.();
+    }
   }
 
   /**
@@ -1164,7 +1199,12 @@ export class TopicCommands {
    *
    * @param opts.platform - "telegram" uses markdown table, "discord" uses plain lines
    */
-  getSysInfoText(opts?: { platform?: "telegram" | "discord" }): string {
+  async getSysInfoTextAsync(opts?: { platform?: "telegram" | "discord" }): Promise<string> {
+    const backendCliVersions = this.ctx.getBackendCliVersionSnapshot?.();
+    return this.getSysInfoText({ ...opts, backendCliVersions });
+  }
+
+  getSysInfoText(opts?: { platform?: "telegram" | "discord"; backendCliVersions?: BackendCliVersionSnapshot }): string {
     const info = this.ctx.getSysInfo();
     const upHours = Math.floor(info.uptime_seconds / 3600);
     const upMins = Math.floor((info.uptime_seconds % 3600) / 60);
@@ -1178,6 +1218,7 @@ export class TopicCommands {
       ...(info.fleet_mem_mb !== null ? [`${t("sysinfo.fleet_mem")}: ${(info.fleet_mem_mb / 1024).toFixed(1)} GB`] : []),
       `${t("sysinfo.system_mem")}: ${info.system_mem_gb.used} / ${info.system_mem_gb.total} GB`,
     ];
+    const backendVersions = backendCliLines(opts?.backendCliVersions);
 
     const resources = [
       `📚 **${t("sysinfo.resources")}**`,
@@ -1198,6 +1239,8 @@ export class TopicCommands {
         `${t("sysinfo.memory")}: ${info.memory_mb.rss} MB RSS`,
         `${t("sysinfo.heap")}: ${info.memory_mb.heapUsed} / ${info.memory_mb.heapTotal} MB`,
         "",
+        ...backendVersions,
+        "",
         ...summaryLines,
         "",
         ...resources,
@@ -1217,6 +1260,8 @@ export class TopicCommands {
       `| ${t("sysinfo.uptime")} | ${upHours}h ${upMins}m |`,
       `| ${t("sysinfo.memory")} | ${info.memory_mb.rss} MB RSS |`,
       `| ${t("sysinfo.heap")} | ${info.memory_mb.heapUsed} / ${info.memory_mb.heapTotal} MB |`,
+      "",
+      ...backendVersions,
       "",
       ...summaryLines,
       "",
