@@ -20,7 +20,10 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { credentialStoreHomeForInstance } from "./backend/credential-profile.js";
+import { deepMergeGeneric, getEffectiveInstanceDefaults } from "./config.js";
 import { DeliveryOutbox, deliveryStatusSelector } from "./delivery-outbox.js";
+import type { InstanceConfig } from "./types.js";
 import { extractKiroAssistantStrings, kiroStoreDbPath, readKiroConversationStatus } from "./transcript-sources.js";
 
 export interface EnvelopeCandidate {
@@ -241,6 +244,154 @@ export function scanKiroInstanceForForgedEnvelopes(opts: {
   if (result.findings.length > 0) result.status = "forged-envelopes";
   else if (result.unverifiable > 0) result.status = "partially-unverified";
   return result;
+}
+
+/* ------------------------------------------------- command layer (testable) */
+
+export interface ScanTargetConfig {
+  name: string;
+  backend: string;
+  workingDirectory?: string;
+  backendOptions?: Record<string, Record<string, unknown>>;
+}
+
+/**
+ * Effective per-instance scan config, merged EXACTLY like the daemon's
+ * (`loadFleetConfig`: fleet defaults deep-merged under instance overrides).
+ * The credential profile most often lives in defaults — resolving it from the
+ * raw instance block alone scans the wrong store (#1007 round-3).
+ */
+export function resolveScanTarget(
+  name: string,
+  rawInstance: Partial<InstanceConfig> | undefined,
+  fleetDefaults: Partial<InstanceConfig>,
+): ScanTargetConfig {
+  const merged = deepMergeGeneric(
+    getEffectiveInstanceDefaults(fleetDefaults),
+    rawInstance ?? {},
+  ) as Partial<InstanceConfig>;
+  const backend = merged.backend ?? "claude-code";
+  return {
+    name,
+    backend,
+    workingDirectory: merged.working_directory,
+    backendOptions: merged.backend_options,
+  };
+}
+
+export interface ScanCommandFinding {
+  from: string;
+  message_id: string;
+  excerpt: string;
+  suggested_injection: string;
+}
+
+export interface ScanCommandRow {
+  instance: string;
+  backend: string;
+  status: string;
+  reason?: string;
+  note?: string;
+  conversation?: string | null;
+  checked?: number;
+  delivered?: number;
+  unverifiable?: number;
+  findings: ScanCommandFinding[];
+}
+
+export interface ScanCommandResult {
+  rows: ScanCommandRow[];
+  newFindings: number;
+  unreadable: number;
+  /** no-conversation, partially-unverified, or missing working_directory. */
+  incomplete: number;
+  /**
+   * Fail-closed exit codes: 2 forged, 3 unreadable store, 4 incomplete
+   * verification, 0 only when every scanned transcript verified clean.
+   */
+  exitCode: number;
+}
+
+/**
+ * Run the scan over resolved targets. Pure orchestration over
+ * {@link scanKiroInstanceForForgedEnvelopes} — the CLI only formats and exits.
+ */
+export function executeForgedEnvelopeScan(opts: {
+  targets: ScanTargetConfig[];
+  knownInstances: Set<string>;
+  outboxDbPath: string;
+  dataDir: string;
+  kiroDbOverride?: string;
+  alreadyReportedIds?: Set<string>;
+}): ScanCommandResult {
+  const reported = opts.alreadyReportedIds ?? new Set<string>();
+  let newFindings = 0;
+  let unreadable = 0;
+  let incomplete = 0;
+  const rows: ScanCommandRow[] = [];
+  for (const target of opts.targets) {
+    if (target.backend !== "kiro-cli") {
+      // Other backends keep their transcripts elsewhere (Claude jsonl, Codex
+      // rollouts, …) — per-backend follow-ups, not silent skips.
+      rows.push({
+        instance: target.name,
+        backend: target.backend,
+        status: "unsupported-backend",
+        note: "transcript source is a per-backend follow-up (#995)",
+        findings: [],
+      });
+      continue;
+    }
+    if (!target.workingDirectory) {
+      incomplete++;
+      rows.push({
+        instance: target.name,
+        backend: target.backend,
+        status: "error",
+        note: "fleet config has no working_directory for this instance",
+        findings: [],
+      });
+      continue;
+    }
+    // A profiled instance writes its transcript to its own store, not the
+    // shared one — scan the store its CLI actually uses.
+    const storeHome = opts.kiroDbOverride
+      ? undefined
+      : credentialStoreHomeForInstance(opts.dataDir, target.backend, target.backendOptions?.[target.backend]);
+    const result = scanKiroInstanceForForgedEnvelopes({
+      instanceName: target.name,
+      workingDirectory: target.workingDirectory,
+      outboxDbPath: opts.outboxDbPath,
+      knownInstances: opts.knownInstances,
+      ...(opts.kiroDbOverride ? { kiroDbPath: opts.kiroDbOverride } : {}),
+      ...(storeHome ? { storeHome } : {}),
+      alreadyReportedIds: reported,
+    });
+    for (const f of result.findings) reported.add(f.messageId);
+    newFindings += result.findings.length;
+    if (result.status === "unreadable-store") unreadable++;
+    if (result.status === "no-conversation" || result.status === "partially-unverified") incomplete++;
+    rows.push({
+      instance: target.name,
+      backend: target.backend,
+      status: result.status,
+      ...(result.reason ? { reason: result.reason } : {}),
+      conversation: result.conversationId,
+      checked: result.checked,
+      delivered: result.delivered,
+      unverifiable: result.unverifiable,
+      findings: result.findings.map(f => ({
+        from: f.fromInstance,
+        message_id: f.messageId,
+        excerpt: f.excerpt,
+        // Inject this text into the instance (send_to_instance or a
+        // mid-turn steer): the CLI cannot paste into a live pane itself.
+        suggested_injection: f.warning,
+      })),
+    });
+  }
+  const exitCode = newFindings > 0 ? 2 : unreadable > 0 ? 3 : incomplete > 0 ? 4 : 0;
+  return { rows, newFindings, unreadable, incomplete, exitCode };
 }
 
 /* ------------------------------------------------------- report dedup state */

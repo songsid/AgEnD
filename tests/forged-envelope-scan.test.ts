@@ -383,4 +383,40 @@ describe("kiro live monitor (#995 emission)", () => {
     expect(quiet.assistantTexts).toHaveLength(0);
     db.close();
   });
+
+  it("stays silent only because the signature gate holds, not the cursor (#1007-3)", async () => {
+    const root = tempRoot();
+    const dbPath = join(root, "kiro-data.sqlite3");
+    const db = new Database(dbPath);
+    db.exec(`CREATE TABLE conversations_v2 (
+      key TEXT NOT NULL, conversation_id TEXT NOT NULL, value TEXT NOT NULL,
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+      PRIMARY KEY (key, conversation_id))`);
+    const seed = [{ user: { content: {} }, assistant: { Response: { message_id: "k0", content: "seed-text ".repeat(12) } } }];
+    const updatedAt = Date.now() - 10_000;
+    db.prepare("INSERT INTO conversations_v2 VALUES (?, ?, ?, ?, ?)")
+      .run(WORK_DIR, "conversation-live", JSON.stringify({ history: seed }), Date.now() - 60_000, updatedAt);
+    const sessionsDir = join(root, "no-jsonl-here");
+    const source = new KiroSessionSource(WORK_DIR, sessionsDir, Date.now(), dbPath);
+    expect((await source.poll()).assistantTexts).toHaveLength(0);
+
+    // Same signature (same updated_at, same byte length) but one MORE history
+    // entry: without the unchanged-signature early return the monitor would
+    // slice past its cursor and emit the new text. Pad to exact length.
+    const original = JSON.stringify({ history: seed });
+    const first = { user: { content: {} }, assistant: { Response: { message_id: "k1", content: "a" } } };
+    const secondBase = { user: { content: {} }, assistant: { Response: { message_id: "k2", content: "b" } } };
+    const unpadded = JSON.stringify({ history: [first, secondBase] });
+    const pad = original.length - unpadded.length;
+    expect(pad).toBeGreaterThanOrEqual(0);
+    secondBase.assistant.Response.content = `b${" ".repeat(pad)}`;
+    const rewritten = JSON.stringify({ history: [first, secondBase] });
+    expect(rewritten.length).toBe(original.length);
+    db.prepare("UPDATE conversations_v2 SET value = ? WHERE conversation_id = ?")
+      .run(rewritten, "conversation-live");
+    const quiet = await source.poll();
+    expect(quiet.toolUses).toHaveLength(0);
+    expect(quiet.assistantTexts).toHaveLength(0);
+    db.close();
+  });
 });

@@ -569,114 +569,80 @@ delivery
   .option("--kiro-db <path>", "Override the kiro conversation store path (testing)")
   .option("--outbox-db <path>", "Override the delivery-outbox path (testing)")
   .action(async (opts: { instance?: string; all?: boolean; json?: boolean; kiroDb?: string; outboxDb?: string }) => {
-    const { scanKiroInstanceForForgedEnvelopes, loadReportedEnvelopeIds, recordReportedEnvelopeIds } =
+    const { executeForgedEnvelopeScan, resolveScanTarget, loadReportedEnvelopeIds, recordReportedEnvelopeIds } =
       await import("./forged-envelope-scan.js");
-    const { credentialStoreHomeForInstance } = await import("./backend/credential-profile.js");
     if (!opts.instance && !opts.all) {
       console.error("Specify --instance <name> or --all.");
       process.exitCode = 1;
       return;
     }
-    let instances: Record<string, {
-      backend?: string;
-      working_directory?: string;
-      backend_options?: Record<string, Record<string, unknown>>;
-    }>;
+    let rawConfig: { defaults?: Record<string, unknown>; instances?: Record<string, Record<string, unknown>> };
     try {
-      instances = loadRawFleetConfig(FLEET_CONFIG_PATH).instances ?? {};
+      const loaded = loadRawFleetConfig(FLEET_CONFIG_PATH);
+      rawConfig = {
+        ...(loaded.defaults ? { defaults: loaded.defaults as Record<string, unknown> } : {}),
+        ...(loaded.instances ? { instances: loaded.instances as Record<string, Record<string, unknown>> } : {}),
+      };
     } catch (err) {
       console.error(`Could not read fleet config: ${(err as Error).message}`);
       process.exitCode = 1;
       return;
     }
+    const instances = rawConfig.instances ?? {};
+    const defaults = (rawConfig.defaults ?? {}) as Partial<import("./types.js").InstanceConfig>;
     const knownInstances = new Set(Object.keys(instances));
-    const targets = opts.all ? [...knownInstances] : [opts.instance!];
-    if (targets.length === 0 || (targets.length === 1 && !knownInstances.has(targets[0]))) {
-      console.error(`Unknown instance: ${targets[0] ?? "(fleet has no instances)"}`);
+    const names = opts.all ? [...knownInstances] : [opts.instance!];
+    if (names.length === 0 || (names.length === 1 && !knownInstances.has(names[0]))) {
+      console.error(`Unknown instance: ${names[0] ?? "(fleet has no instances)"}`);
       process.exitCode = 1;
       return;
     }
-    const outboxDbPath = opts.outboxDb ?? join(DATA_DIR, "delivery-outbox.db");
+    // Effective config exactly like the daemon's: fleet defaults deep-merged
+    // under instance overrides — a credential profile inherited from defaults
+    // must resolve to the profile store (#1007 round-3).
+    const targets = names.map(name =>
+      resolveScanTarget(name, instances[name] as Partial<import("./types.js").InstanceConfig> | undefined, defaults),
+    );
     const reported = loadReportedEnvelopeIds(DATA_DIR);
-    let newFindings = 0;
-    let unreadable = 0;
-    const rows: Array<Record<string, unknown>> = [];
-    for (const name of targets) {
-      const cfg = instances[name] ?? {};
-      const backend = cfg.backend ?? "claude-code";
-      if (backend !== "kiro-cli") {
-        // Other backends keep their transcripts elsewhere (Claude jsonl, Codex
-        // rollouts, …) — per-backend follow-ups, not silent skips.
-        rows.push({ instance: name, backend, status: "unsupported-backend", note: "transcript source is a per-backend follow-up (#995)" });
-        continue;
-      }
-      if (!cfg.working_directory) {
-        rows.push({ instance: name, backend, status: "error", note: "fleet.yaml has no working_directory for this instance" });
-        continue;
-      }
-      // A profiled instance writes its transcript to its own store, not the
-      // shared one — scan the store its CLI actually uses (#1007).
-      const storeHome = opts.kiroDb
-        ? undefined
-        : credentialStoreHomeForInstance(DATA_DIR, backend, cfg.backend_options?.[backend]);
-      const result = scanKiroInstanceForForgedEnvelopes({
-        instanceName: name,
-        workingDirectory: cfg.working_directory,
-        outboxDbPath,
-        knownInstances,
-        ...(opts.kiroDb ? { kiroDbPath: opts.kiroDb } : {}),
-        ...(storeHome ? { storeHome } : {}),
-        alreadyReportedIds: reported,
-      });
-      for (const f of result.findings) reported.add(f.messageId);
-      newFindings += result.findings.length;
-      if (result.status === "unreadable-store") unreadable++;
-      rows.push({
-        instance: name,
-        backend,
-        status: result.status,
-        ...(result.reason ? { reason: result.reason } : {}),
-        conversation: result.conversationId,
-        checked: result.checked,
-        delivered: result.delivered,
-        unverifiable: result.unverifiable,
-        findings: result.findings.map(f => ({
-          from: f.fromInstance,
-          message_id: f.messageId,
-          excerpt: f.excerpt,
-          // Inject this text into the instance (send_to_instance or a
-          // mid-turn steer): the CLI cannot paste into a live pane itself.
-          suggested_injection: f.warning,
-        })),
-      });
+    const result = executeForgedEnvelopeScan({
+      targets,
+      knownInstances,
+      outboxDbPath: opts.outboxDb ?? join(DATA_DIR, "delivery-outbox.db"),
+      dataDir: DATA_DIR,
+      ...(opts.kiroDb ? { kiroDbOverride: opts.kiroDb } : {}),
+      alreadyReportedIds: reported,
+    });
+    for (const row of result.rows) {
+      for (const f of row.findings) reported.add(f.message_id);
     }
     recordReportedEnvelopeIds(DATA_DIR, reported);
     if (opts.json) {
-      console.log(JSON.stringify({ scans: rows, new_findings: newFindings }, null, 2));
+      console.log(JSON.stringify({ scans: result.rows, new_findings: result.newFindings }, null, 2));
     } else {
-      for (const row of rows) {
+      for (const row of result.rows) {
         if (row.status === "unsupported-backend" || row.status === "error" || row.status === "unreadable-store") {
           console.log(`- ${row.instance}: ${row.status} (${row.reason ?? row.note})`);
           continue;
         }
-        const findings = row.findings as Array<{ from: string; message_id: string; excerpt: string; suggested_injection: string }>;
         console.log(`- ${row.instance}: ${row.status} (checked ${row.checked}, delivered ${row.delivered}, unverifiable ${row.unverifiable})`);
-        for (const f of findings) {
+        for (const f of row.findings) {
           console.log(`  FORGED [from:${f.from}] (message_id: ${f.message_id})`);
           console.log(`  excerpt: ${f.excerpt}`);
           console.log(`  inject via send_to_instance: ${f.suggested_injection}`);
         }
       }
     }
-    if (newFindings > 0) {
-      // Operator notification: visible here; wire to a schedule for routine runs.
-      console.error(`FORGED ENVELOPES: ${newFindings} new finding(s) — notify the operator and inject the warning(s) above.`);
-      process.exitCode = 2;
-    } else if (unreadable > 0) {
-      // Fail-closed: a transcript that could not be read is not clean.
-      console.error(`UNREADABLE TRANSCRIPT: ${unreadable} instance(s) could not be scanned — not clean.`);
-      process.exitCode = 3;
+    // Operator notification: visible here; wire to a schedule for routine runs.
+    if (result.newFindings > 0) {
+      console.error(`FORGED ENVELOPES: ${result.newFindings} new finding(s) — notify the operator and inject the warning(s) above.`);
+    } else if (result.exitCode === 3) {
+      console.error(`UNREADABLE TRANSCRIPT: ${result.unreadable} instance(s) could not be scanned — not clean.`);
+    } else if (result.exitCode === 4) {
+      // Fail-closed: no-conversation / partially-unverified / missing
+      // working_directory are "could not verify", never clean.
+      console.error(`INCOMPLETE SCAN: ${result.incomplete} instance(s) could not be fully verified — not clean.`);
     }
+    process.exitCode = result.exitCode;
   });
 
 fleet
