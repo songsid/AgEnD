@@ -1241,6 +1241,16 @@ export class Daemon extends EventEmitter {
    */
   private pausePending = false;
   /**
+   * #1044: pause on the idle edge only if the auth error is still on screen.
+   * Set when nothing could vouch for the hit — the backend has no token-free
+   * auth check (muse), or it could not answer. A real expired session prints
+   * its failure at the end of the turn it broke, so it is still at the bottom
+   * when that turn ends; a phrase the pattern caught mid-turn has scrolled on
+   * by then. Recovery cannot decide this: an expired session is back at its
+   * prompt after every failed turn, which is what "recovered" means.
+   */
+  private pauseReconfirmAuth = false;
+  /**
    * An auth failure was detected and nothing has resolved it yet.
    *
    * Separate from `pausePending` because it must outlive it: the deferred pause
@@ -3419,10 +3429,23 @@ export class Daemon extends EventEmitter {
    * failures: pause() alone no-ops while the CLI is busy/stuck, which is the
    * usual state when the error surfaces. Cleared by a successful pause or wake.
    */
-  requestPauseWhenIdle(): void {
+  requestPauseWhenIdle(opts: { reconfirmAuth?: boolean } = {}): void {
     if (this.pauseWakeState === "paused") return;
+    const reconfirm = opts.reconfirmAuth === true;
+    // A pause already pending unconditionally stays unconditional.
+    this.pauseReconfirmAuth = this.pausePending ? this.pauseReconfirmAuth && reconfirm : reconfirm;
     this.pausePending = true;
   }
+
+  /** The backend's own auth-error pattern, within the pane's last rows. */
+  private authErrorAtPaneBottom(pane: string): boolean {
+    const rows = pane.replace(/\r/g, "").split("\n").filter(r => r.trim() !== "");
+    const bottom = rows.slice(-Daemon.AUTH_RECONFIRM_ROWS).join("\n");
+    return (this.backend?.getErrorPatterns?.() ?? [])
+      .filter(ep => ep.type === "auth_error")
+      .some(ep => new RegExp(ep.pattern.source, ep.pattern.flags.replace("g", "")).test(bottom));
+  }
+  private static readonly AUTH_RECONFIRM_ROWS = 15;
 
   async pause(): Promise<void> {
     if (this.pauseWakeState === "paused") return;
@@ -3500,6 +3523,7 @@ export class Daemon extends EventEmitter {
     // An explicit wake (e.g. after the user re-logs in) cancels a deferred
     // auth pause — otherwise the instance would pause again the moment it idles.
     this.pausePending = false;
+    this.pauseReconfirmAuth = false;
     this.authFailureUnresolved = false;
     this.loginScreenReported = false;
     this.fatalStartupReported = false;
@@ -3623,6 +3647,17 @@ export class Daemon extends EventEmitter {
     // live, kept its warm slot, and re-raised a hang alert on every scan.
     if (this.pausePending && (snapshot.state === "idle" || snapshot.state === "stuck") && this.pasteQueueDepth === 0) {
       this.pausePending = false;
+      const reconfirm = this.pauseReconfirmAuth;
+      this.pauseReconfirmAuth = false;
+      // An unreadable pane keeps the pause: when in doubt, stop feeding a CLI
+      // that may be unable to answer (42512a46).
+      if (reconfirm && pane !== undefined && !this.authErrorAtPaneBottom(pane)) {
+        this.authFailureUnresolved = false;
+        this.logger.warn({ state: snapshot.state },
+          "Deferred auth pause dropped: the auth-error text is no longer at the bottom of the pane at the end of the turn, "
+          + "and this backend has no auth check to confirm it (likely conversation text)");
+        return;
+      }
       this.pauseAllowStuck = snapshot.state === "stuck";
       this.emit("auto_pause_requested", { name: this.name, idleSince: snapshot.stateChangedAt });
       return;

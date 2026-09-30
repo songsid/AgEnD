@@ -215,7 +215,7 @@ export function peerWorkingDirectories(fleetConfig: FleetConfig | null, name: st
 /** What attachIncidentHandlers needs from a Daemon — the real one satisfies it. */
 export interface IncidentEventSource {
   on(event: string, handler: (...args: any[]) => void): unknown;
-  requestPauseWhenIdle(): void;
+  requestPauseWhenIdle(opts?: { reconfirmAuth?: boolean }): void;
   /** Re-checks that a Codex pane is live after an async quota probe. */
   isCodexLivePane?(): Promise<boolean>;
   /** Existing occurrence count used to preserve Codex capacity history on restart. */
@@ -1028,8 +1028,9 @@ export class InstanceLifecycle {
       // Pattern-matched auth errors get a second opinion from the real CLI
       // before any pause/alert: an agent quoting "401 Unauthorized" in prose
       // must not pause the fleet. A working credential ends the incident here.
+      let authVerdict: "valid" | "invalid" | "unknown" | undefined;
       if (data.type === "auth_error") {
-        const verdict = await this.verifyAuthError(name);
+        const verdict = authVerdict = await this.verifyAuthError(name);
         if (verdict === "valid") {
           this.ctx.logger.info({ name, backend: this.backendOf(name) },
             "auth-error pattern ignored — token-free auth check passed (likely conversation text)");
@@ -1169,7 +1170,11 @@ export class InstanceLifecycle {
         // Queued messages survive: delivery wakes a paused instance.
         void this.pause(name)
           .catch(err => this.ctx.logger.warn({ err, name }, "auth-error pause failed"))
-          .finally(() => { if (!this.isPaused(name)) daemon.requestPauseWhenIdle(); });
+          // Nothing vouched for an auth hit the CLI could not be asked about
+          // (#1044): pause only if it is still on screen when the turn ends.
+          .finally(() => {
+            if (!this.isPaused(name)) daemon.requestPauseWhenIdle({ reconfirmAuth: data.type === "auth_error" && authVerdict === "unknown" });
+          });
       }
     }, this.ctx.logger, `daemon.pty_error[${name}]`));
   }
