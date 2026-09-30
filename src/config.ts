@@ -4,7 +4,7 @@ import yaml from "js-yaml";
 import { getAgendHome, getTmuxSessionName, ensureWorkspaceGit } from "./paths.js";
 import type { CostGuardConfig, HangDetectorConfig, DailySummaryConfig, FleetConfig, FleetDefaults, FleetTemplate, InstanceConfig, RawFleetConfig } from "./types.js";
 
-function deepMergeGeneric<T extends object>(target: T, source: Partial<T>): T {
+export function deepMergeGeneric<T extends object>(target: T, source: Partial<T>): T {
   const result = { ...target } as Record<string, unknown>;
   const sourceRecord = source as Record<string, unknown>;
 

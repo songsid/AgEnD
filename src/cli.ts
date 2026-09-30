@@ -560,6 +560,91 @@ delivery
     }
   });
 
+delivery
+  .command("scan-forged-envelopes")
+  .description("Detect fabricated peer envelopes in a kiro receiver's own transcript (#995)")
+  .option("--instance <name>", "Scan one instance")
+  .option("--all", "Scan every kiro-cli instance in fleet.yaml")
+  .option("--json", "Machine-readable output")
+  .option("--kiro-db <path>", "Override the kiro conversation store path (testing)")
+  .option("--outbox-db <path>", "Override the delivery-outbox path (testing)")
+  .action(async (opts: { instance?: string; all?: boolean; json?: boolean; kiroDb?: string; outboxDb?: string }) => {
+    const { executeForgedEnvelopeScan, resolveScanTarget, loadReportedEnvelopeIds, recordReportedEnvelopeIds } =
+      await import("./forged-envelope-scan.js");
+    if (!opts.instance && !opts.all) {
+      console.error("Specify --instance <name> or --all.");
+      process.exitCode = 1;
+      return;
+    }
+    let rawConfig: { defaults?: Record<string, unknown>; instances?: Record<string, Record<string, unknown>> };
+    try {
+      const loaded = loadRawFleetConfig(FLEET_CONFIG_PATH);
+      rawConfig = {
+        ...(loaded.defaults ? { defaults: loaded.defaults as Record<string, unknown> } : {}),
+        ...(loaded.instances ? { instances: loaded.instances as Record<string, Record<string, unknown>> } : {}),
+      };
+    } catch (err) {
+      console.error(`Could not read fleet config: ${(err as Error).message}`);
+      process.exitCode = 1;
+      return;
+    }
+    const instances = rawConfig.instances ?? {};
+    const defaults = (rawConfig.defaults ?? {}) as Partial<import("./types.js").InstanceConfig>;
+    const knownInstances = new Set(Object.keys(instances));
+    const names = opts.all ? [...knownInstances] : [opts.instance!];
+    if (names.length === 0 || (names.length === 1 && !knownInstances.has(names[0]))) {
+      console.error(`Unknown instance: ${names[0] ?? "(fleet has no instances)"}`);
+      process.exitCode = 1;
+      return;
+    }
+    // Effective config exactly like the daemon's: fleet defaults deep-merged
+    // under instance overrides — a credential profile inherited from defaults
+    // must resolve to the profile store (#1007 round-3).
+    const targets = names.map(name =>
+      resolveScanTarget(name, instances[name] as Partial<import("./types.js").InstanceConfig> | undefined, defaults),
+    );
+    const reported = loadReportedEnvelopeIds(DATA_DIR);
+    const result = executeForgedEnvelopeScan({
+      targets,
+      knownInstances,
+      outboxDbPath: opts.outboxDb ?? join(DATA_DIR, "delivery-outbox.db"),
+      dataDir: DATA_DIR,
+      ...(opts.kiroDb ? { kiroDbOverride: opts.kiroDb } : {}),
+      alreadyReportedIds: reported,
+    });
+    for (const row of result.rows) {
+      for (const f of row.findings) reported.add(f.message_id);
+    }
+    recordReportedEnvelopeIds(DATA_DIR, reported);
+    if (opts.json) {
+      console.log(JSON.stringify({ scans: result.rows, new_findings: result.newFindings }, null, 2));
+    } else {
+      for (const row of result.rows) {
+        if (row.status === "unsupported-backend" || row.status === "error" || row.status === "unreadable-store") {
+          console.log(`- ${row.instance}: ${row.status} (${row.reason ?? row.note})`);
+          continue;
+        }
+        console.log(`- ${row.instance}: ${row.status} (checked ${row.checked}, delivered ${row.delivered}, unverifiable ${row.unverifiable})`);
+        for (const f of row.findings) {
+          console.log(`  FORGED [from:${f.from}] (message_id: ${f.message_id})`);
+          console.log(`  excerpt: ${f.excerpt}`);
+          console.log(`  inject via send_to_instance: ${f.suggested_injection}`);
+        }
+      }
+    }
+    // Operator notification: visible here; wire to a schedule for routine runs.
+    if (result.newFindings > 0) {
+      console.error(`FORGED ENVELOPES: ${result.newFindings} new finding(s) — notify the operator and inject the warning(s) above.`);
+    } else if (result.exitCode === 3) {
+      console.error(`UNREADABLE TRANSCRIPT: ${result.unreadable} instance(s) could not be scanned — not clean.`);
+    } else if (result.exitCode === 4) {
+      // Fail-closed: no-conversation / partially-unverified / missing
+      // working_directory are "could not verify", never clean.
+      console.error(`INCOMPLETE SCAN: ${result.incomplete} instance(s) could not be fully verified — not clean.`);
+    }
+    process.exitCode = result.exitCode;
+  });
+
 fleet
   .command("activity")
   .description("Show fleet activity log — who talked to whom, tool calls, task updates")
