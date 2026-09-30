@@ -55,6 +55,42 @@ describe("the kiro poll is cheap when nothing changed (#1048)", () => {
     store.close();
   });
 
+  it("the poll query reads nothing SQLite must walk a conversation for", async () => {
+    // Cost here is decided by which columns the per-poll query reads, not by
+    // how fast this machine is: sub-millisecond timings cannot tell the two
+    // shapes apart on a fast CI box (#1049 CI: 0.80 ms vs 1.05 ms). SQLite
+    // must walk a multi-MB row to reach `value` or any column stored after it
+    // (length(value) counts characters; created_at sits after value). A
+    // column before `value`, one the chosen index carries, or
+    // octet_length(value) (the record header) costs nothing.
+    const source = new KiroSessionSource(dirs[0]!, sessionsDir, Date.now(), dbPath);
+    try {
+      await source.poll();
+      const sql: string = (source as any).newestRowStmt.source;
+      const probe = new Database(dbPath, { readonly: true });
+      const columns = (probe.pragma("table_info(conversations_v2)") as Array<{ cid: number; name: string }>);
+      const valueAt = columns.find(c => c.name === "value")!.cid;
+      const plan = (probe.prepare(`EXPLAIN QUERY PLAN ${sql}`).all("a", "a", "a") as Array<{ detail: string }>)
+        .map(r => r.detail).join(" ");
+      const index = /USING (?:COVERING )?INDEX (\w+)/.exec(plan)?.[1];
+      const indexed = index
+        ? (probe.pragma(`index_info(${index})`) as Array<{ name: string }>).map(c => c.name)
+        : [];
+      probe.close();
+      const selected = /^\s*SELECT\s+([\s\S]*?)\s+FROM\s/i.exec(sql)![1]!
+        .split(",").map(e => e.trim().replace(/\s+AS\s+\w+$/i, "").toLowerCase());
+      expect(index, plan).toBe("idx_conversations_v2_key_updated");
+      for (const expr of selected) {
+        if (expr === "octet_length(value)") continue;
+        const col = columns.find(c => c.name === expr);
+        expect(col, `"${expr}" is not a plain column: it would read the value`).toBeDefined();
+        expect(col!.cid < valueAt || indexed.includes(expr), `"${expr}" is stored after value and not in ${index}`).toBe(true);
+      }
+    } finally {
+      source.close();
+    }
+  });
+
   it("a round of idle polls over ~75 MB of conversations stays far below one parse", async () => {
     const sources = dirs.map(d => new KiroSessionSource(d, sessionsDir, Date.now(), dbPath));
     try {
@@ -71,30 +107,9 @@ describe("the kiro poll is cheap when nothing changed (#1048)", () => {
       lag.disable();
       rounds.sort((a, b) => a - b);
       const median = rounds[5]!;
-      // The same round done the slow way, on this machine: any column stored
-      // after `value` (created_at here; length(value) is worse) makes SQLite
-      // walk every conversation. Relative, so a slow CI box cannot hide it.
-      // One warmed connection per workspace, exactly like the sources: each
-      // then keeps its own row in SQLite's page cache, as they do.
-      const probes = dirs.map(d => {
-        const db = new Database(dbPath, { readonly: true });
-        const stmt = db.prepare(
-          "SELECT conversation_id, updated_at, created_at FROM conversations_v2 WHERE key IN (?, ?, ?) ORDER BY updated_at DESC LIMIT 1");
-        for (let r = 0; r < 3; r++) stmt.get(d, d, d);
-        return { db, get: () => stmt.get(d, d, d) };
-      });
-      const slow: number[] = [];
-      for (let r = 0; r < 10; r++) {
-        const t0 = performance.now();
-        for (const p of probes) p.get();
-        slow.push(performance.now() - t0);
-      }
-      for (const p of probes) p.db.close();
-      slow.sort((a, b) => a - b);
-      console.log(`[#1048] reading past value, same round: ${slow[5]!.toFixed(2)} ms`);
-      expect(median, `idle ${median.toFixed(2)} ms vs reading-past-value ${slow[5]!.toFixed(2)} ms`).toBeLessThan(slow[5]! / 2);
       // On the real store: 100 ms a round before (length() and created_at
-      // both read every value), 0.28 ms after. 15 ms leaves CI a wide margin.
+      // both read every value), 0.28 ms after. An absolute sanity bound; the
+      // shape itself is pinned by the test above.
       console.log(`[#1048] idle poll round median ${median.toFixed(2)} ms over ${WORKSPACES} workspaces; max event-loop delay ${(lag.max / 1e6).toFixed(1)} ms`);
       expect(median, `idle round ${median.toFixed(2)} ms`).toBeLessThan(15);
       expect(lag.max / 1e6, "event-loop delay").toBeLessThan(100); // sanity bound; GC included
