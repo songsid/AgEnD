@@ -200,6 +200,36 @@ describe("fleet's Context-less idle gate (#1035)", () => {
     await expect(delivery).resolves.toBe(true);
   });
 
+  it.each(["state_query", "safety_sweep", "output_probe"].flatMap(reason =>
+    [{ kind: "busy", pane: BUSY }, { kind: "dialog", pane: TRUST }, { kind: "transient", pane: LOADING }]
+      .map(interruption => ({ reason, ...interruption })),
+  ))("a stale $reason capture of a $kind pane resets both gates' stable window", async ({ reason, pane }) => {
+    const h = harness();
+    const delivery = h.start();
+    await vi.advanceTimersByTimeAsync(6_500);
+    let release!: (pane: string) => void;
+    h.daemon.tmux.capturePane.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    h.state.pane = pane;
+    const observation = h.daemon.captureAndEvaluateInstanceState(reason);
+    await vi.advanceTimersByTimeAsync(1);
+    // New output arrives while the ordinary observer awaits its capture.
+    // The changed pane must invalidate the candidate even though the state
+    // evaluation now returns early because this observation is stale.
+    h.daemon.instanceStateLastOutputAt = Date.now();
+    release(pane);
+    await observation;
+    h.state.pane = NO_CONTEXT;
+    await vi.advanceTimersByTimeAsync(3_499); // old candidate's 10s deadline
+    expect(h.handoff).not.toHaveBeenCalled();
+    expect(await h.daemon.hasPositiveDeliveryInput(), "the paste gate shares the invalidated timer").toBe(false);
+    await vi.advanceTimersByTimeAsync(6_999); // 9,999ms after the next fleet observation at 7s
+    expect(h.handoff).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(h.handoff).toHaveBeenCalledOnce();
+    await expect(delivery).resolves.toBe(true);
+    expect(await h.daemon.hasPositiveDeliveryInput()).toBe(true);
+  });
+
   it.each(["output", "spawn", "retry"])("%s during the async TTY probe invalidates the captured proof", async kind => {
     const h = harness();
     const delivery = h.start();

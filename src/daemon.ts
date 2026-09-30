@@ -4102,6 +4102,13 @@ export class Daemon extends EventEmitter {
         return;
       }
       this.updateInputBlockedState(pane);
+      // A monitor/lifecycle capture can see a busy moment between fleet polls.
+      // Even a stale capture of changed content disproves continuous stability;
+      // invalidate it before the output-freshness check can return early.
+      if (currentDeliveryCapture() && this.footerFallbackPaneKey !== null
+        && pane.replace(/⋆/gu, "").replace(/[ \t]+$/gmu, "") !== this.footerFallbackPaneKey) {
+        this.resetFooterFallback();
+      }
       // Output received while capture-pane was in flight makes this snapshot
       // stale. Its output handler has already armed a new debounce.
       const outputMovedDuringCapture =
@@ -4122,12 +4129,6 @@ export class Daemon extends EventEmitter {
         return;
       }
 
-      // A monitor/lifecycle capture can see a busy moment between fleet polls.
-      // Any observed change to this candidate breaks continuous stability.
-      if (currentDeliveryCapture() && this.footerFallbackPaneKey !== null
-        && pane.replace(/⋆/gu, "").replace(/[ \t]+$/gmu, "") !== this.footerFallbackPaneKey) {
-        this.resetFooterFallback();
-      }
       // Advance the shared 10s timer only for a fresh capture of this launch.
       const deliveryFallback = deliveryCandidate === true
         ? this.deliveryInputReadyPane(pane) : deliveryCandidate;
