@@ -31,7 +31,7 @@ import type { FleetConfig, RawFleetConfig, InstanceConfig, ChannelConfig, CostGu
 const DEFAULT_OPEN_ACCESS: AccessConfig = { mode: "open", allowed_users: [], max_pending_codes: 0, code_expiry_minutes: 0 };
 import {
   STATUS_EMOJI_KEYS, builtinStatusEmojis, reactionForm, reactionMatchKey, resolveStatusEmojis, statusAvoidList, statusMatchKey, statusMatchKeys, textForm,
-  type DeliveryStatus, type ResolvedStatusEmojis,
+  type DeliveryStatus, type GuildEmoji, type GuildEmojiGroup, type ResolvedStatusEmojis,
 } from "./status-emojis.js";
 import { isProbeableRouteTarget, type RouteTarget } from "./fleet-context.js";
 import { loadFleetConfig, loadRawFleetConfig, DEFAULT_COST_GUARD, DEFAULT_DAILY_SUMMARY, DEFAULT_INSTANCE_CONFIG } from "./config.js";
@@ -7286,40 +7286,69 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private warnedStatusEmojis = new Set<string>();
 
   /**
-   * A Discord connection's server emojis for the Settings picker (#1005).
-   * Cached per connection — a server's emoji set changes rarely — and one
-   * fetch at a time; `refresh` forces a new one. Uses the running adapter, so
-   * the bot token never leaves the server.
+   * A Discord connection's server emojis for the Settings picker (#1005), from
+   * every server its bot can draw on (#1021): the primary `group_id` server,
+   * then each other server the bot is a member of that ClassicBot's
+   * `allowed_guilds` admits (unset = all, as for classic routing). A bot can
+   * react with a custom emoji from any server it is in. Cached per server — a
+   * server's emoji set changes rarely — and one fetch per server at a time;
+   * `refresh` forces new ones. One server refusing (e.g. Missing Access) is
+   * reported on that server and does not hide the others. Uses the running
+   * adapter, so the bot token never leaves the server.
    */
   async listGuildEmojis(channelId: string, refresh = false): Promise<
-    { ok: true; fetched_at: number; emojis: Array<{ id: string; name: string; animated: boolean; available: boolean }> }
+    { ok: true; fetched_at: number; emojis: GuildEmoji[]; guilds: GuildEmojiGroup[] }
     | { ok: false; error: string }
   > {
     const world = this.worlds.get(channelId);
     if (!world) return { ok: false, error: `connection "${channelId}" is not running` };
     if (world.type !== "discord") return { ok: false, error: "only Discord has server custom emoji" };
-    const adapter = world.adapter as ChannelAdapter & { listGuildEmojis?: () => Promise<Array<{ id: string; name: string; animated: boolean; available: boolean }>> };
+    const adapter = world.adapter as ChannelAdapter & {
+      listGuildEmojis?: (guildId?: string) => Promise<GuildEmoji[]>;
+      listMemberGuilds?: () => Promise<Array<{ id: string; name: string; primary: boolean }>>;
+    };
     if (!adapter.listGuildEmojis) return { ok: false, error: "this adapter cannot list server emojis" };
-    const cached = this.guildEmojiCache.get(channelId);
-    if (!refresh && cached && Date.now() - cached.fetched_at < FleetManager.GUILD_EMOJI_TTL_MS) return { ok: true, ...cached };
-    let pending = this.guildEmojiFetches.get(channelId);
-    if (!pending) {
-      pending = adapter.listGuildEmojis().then(emojis => {
-        const entry = { fetched_at: Date.now(), emojis };
-        this.guildEmojiCache.set(channelId, entry);
-        return entry;
-      }).finally(() => this.guildEmojiFetches.delete(channelId));
-      this.guildEmojiFetches.set(channelId, pending);
-    }
+    const listEmojis = adapter.listGuildEmojis.bind(adapter);
+    let servers: Array<{ id: string; name: string; primary: boolean }>;
     try {
-      return { ok: true, ...(await pending) };
+      servers = adapter.listMemberGuilds
+        ? (await adapter.listMemberGuilds()).filter(g => g.primary || (this.classicChannels?.isGuildAllowed(g.id) ?? false))
+        : [{ id: "", name: "", primary: true }];
     } catch (e) {
-      return { ok: false, error: `Discord refused the emoji list: ${(e as Error).message}` };
+      return { ok: false, error: `Discord refused the server list: ${(e as Error).message}` };
     }
+    const guilds = await Promise.all(servers.map(async (g): Promise<GuildEmojiGroup> => {
+      const key = `${channelId}\0${g.id}`;
+      const cached = this.guildEmojiCache.get(key);
+      if (!refresh && cached && Date.now() - cached.fetched_at < FleetManager.GUILD_EMOJI_TTL_MS) return { ...g, ...cached };
+      let pending = this.guildEmojiFetches.get(key);
+      if (!pending) {
+        pending = (g.id ? listEmojis(g.id) : listEmojis()).then(emojis => {
+          const entry = { fetched_at: Date.now(), emojis };
+          this.guildEmojiCache.set(key, entry);
+          return entry;
+        }).finally(() => this.guildEmojiFetches.delete(key));
+        this.guildEmojiFetches.set(key, pending);
+      }
+      try {
+        return { ...g, ...(await pending) };
+      } catch (e) {
+        return { ...g, error: `Discord refused the emoji list: ${(e as Error).message}` };
+      }
+    }));
+    const listed = guilds.filter((g): g is GuildEmojiGroup & { emojis: GuildEmoji[]; fetched_at: number } => !!g.emojis);
+    if (!listed.length) return { ok: false, error: guilds[0]?.error ?? "no server to list emojis from" };
+    return {
+      ok: true,
+      fetched_at: Math.min(...listed.map(g => g.fetched_at)),
+      emojis: listed.flatMap(g => g.emojis),
+      guilds,
+    };
   }
   private static GUILD_EMOJI_TTL_MS = 10 * 60_000;
-  private guildEmojiCache = new Map<string, { fetched_at: number; emojis: Array<{ id: string; name: string; animated: boolean; available: boolean }> }>();
-  private guildEmojiFetches = new Map<string, Promise<{ fetched_at: number; emojis: Array<{ id: string; name: string; animated: boolean; available: boolean }> }>>();
+  /** Keyed `<connection>\0<server id>`. */
+  private guildEmojiCache = new Map<string, { fetched_at: number; emojis: GuildEmoji[] }>();
+  private guildEmojiFetches = new Map<string, Promise<{ fetched_at: number; emojis: GuildEmoji[] }>>();
 
   /** What the instructions tell `instanceName` not to react with (its own status set). */
   statusEmojiAvoidList(instanceName: string): string[] {

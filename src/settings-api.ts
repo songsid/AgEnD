@@ -16,7 +16,7 @@
  *   POST /api/settings/instances/:name/wake     → manually wake a paused instance
  *   GET  /api/settings/status-emojis            → status-emoji keys, built-ins, pickable sets
  *   POST /api/settings/status-emojis/preview    → resolve a map exactly as the bots will
- *   GET  /api/settings/status-emojis/guild-emojis?channel=<id>[&refresh=1] → a Discord server's emojis
+ *   GET  /api/settings/status-emojis/guild-emojis?channel=<id>[&refresh=1] → a Discord bot's servers' emojis
  *
  * Auth: all routes require the web.token — enforced by the global web-token gate
  * in fleet-manager BEFORE this handler runs (settings paths are not exempt), so
@@ -52,6 +52,7 @@ import { providerRegistryEnvKeys, isReservedProviderEnvKey } from "./provider-se
 import {
   STATUS_EMOJI_CONFIG_KEYS, STATUS_EMOJI_SUGGESTIONS, TELEGRAM_REACTION_EMOJIS,
   builtinStatusEmojis, customEmojiValue, emojiImageUrl, previewStatusEmojis,
+  type GuildEmoji, type GuildEmojiGroup,
 } from "./status-emojis.js";
 
 
@@ -79,9 +80,10 @@ export interface SettingsApiContext {
   /** Non-null when the running config and fleet.yaml disagree on a
    * startup-only key, in which case a restart cannot clear the fleet row. */
   fleetSignatureMismatchKeys?(): string[] | null;
-  /** #1005: a Discord connection's server emojis, fetched with its bot token and cached. */
+  /** #1005/#1021: a Discord connection's server emojis, from each server its
+   * bot can draw on, fetched with its bot token and cached. */
   listGuildEmojis?(channelId: string, refresh?: boolean): Promise<
-    { ok: true; fetched_at: number; emojis: Array<{ id: string; name: string; animated: boolean; available: boolean }> }
+    { ok: true; fetched_at: number; emojis: GuildEmoji[]; guilds?: GuildEmojiGroup[] }
     | { ok: false; error: string }
   >;
   /** True when a running adapter is already long-polling this bot token. */
@@ -327,12 +329,17 @@ export function handleSettingsRequest(
     if (!channelId) { json(res, 400, { error: "channel required" }); return true; }
     ctx.listGuildEmojis(channelId, url.searchParams.get("refresh") === "1").then(result => {
       if (!result.ok) return json(res, 409, { error: result.error });
+      const pickable = (e: GuildEmoji) => {
+        const value = customEmojiValue(e);
+        return { ...e, value, image_url: emojiImageUrl(value) };
+      };
       json(res, 200, {
         fetched_at: result.fetched_at,
-        emojis: result.emojis.map(e => {
-          const value = customEmojiValue(e);
-          return { ...e, value, image_url: emojiImageUrl(value) };
-        }),
+        emojis: result.emojis.map(pickable),
+        guilds: (result.guilds ?? [{ id: "", name: "", primary: true, emojis: result.emojis }]).map(g => ({
+          id: g.id, name: g.name, primary: g.primary,
+          ...(g.emojis ? { emojis: g.emojis.map(pickable) } : { error: g.error ?? "unavailable" }),
+        })),
       });
     }).catch(() => json(res, 502, { error: "guild emoji listing failed" }));
     return true;
