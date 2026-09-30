@@ -1125,7 +1125,9 @@ export class TopicCommands {
             : executionState === "idle" ? `🟢 ${t("state.idle")}`
               : executionState === "working" ? `🔵 ${t("state.working")}`
                 : executionState === "stuck" ? `🔴 ${t("state.stuck")}`
-                  : "—";
+                  // Running but no execution snapshot yet: the old Status
+                  // column showed 🟢 here — say running, never idle or "—".
+                  : `🟢 ${t("state.running")}`;
       const displayName = this.shortInstanceName(name);
       // Model: same source as /ctx — live statusline for claude-code, the
       // effective resolver otherwise — capped so one long name cannot blow

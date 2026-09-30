@@ -53,6 +53,18 @@ describe("/status table (#1052)", () => {
     expect(text).toContain("🔴 crashed");
   });
 
+  it("shows running (never idle or —) when execution state is unknown", async () => {
+    const commands = setup(
+      { u: "auto" },
+      { u: { status: "running", exec: null } },
+    );
+    const text = await commands.getStatusText();
+    const row = text.split("\n").find(l => l.includes("| u |")) ?? "";
+    expect(row).toContain("🟢 running");
+    expect(row).not.toContain("idle");
+    expect(row).not.toContain("—");
+  });
+
   it("truncates a long model so one name cannot blow the table wider", async () => {
     const commands = setup(
       { w: "muse-spark-1.3-contributor" },

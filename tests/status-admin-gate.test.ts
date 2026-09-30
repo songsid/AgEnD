@@ -3,9 +3,10 @@ import { TopicCommands } from "../src/topic-commands.js";
 import type { InboundMessage } from "../src/channel/types.js";
 
 /**
- * /status now folds in the old /sysinfo instance table (per-instance cost and
- * IPC health), so it is admin-gated. /sysinfo keeps only machine-level facts and
- * stays open.
+ * /status now folds in the old /sysinfo instance table (per-instance cost),
+ * so it is admin-gated. /sysinfo keeps only machine-level facts and stays
+ * open. Per-instance IPC health left /status in #1052 and stays queryable
+ * via /api/fleet.
  */
 
 function makeCommands(isAdmin: boolean) {
@@ -46,13 +47,14 @@ describe("/status admin gate", () => {
     expect(reply).not.toContain("alpha");
   });
 
-  it("answers an admin with the merged table, IPC column included", async () => {
+  it("answers an admin with the merged table, Model column, no IPC", async () => {
     const { commands, sendText } = makeCommands(true);
 
     await commands.handleGeneralCommand(msg());
 
     const reply = sendText.mock.calls[0][1] as string;
     expect(reply).toContain("Fleet Status");
-    expect(reply).toContain("| IPC |");
+    expect(reply).toContain("| Instance | Backend | Model | Ctx | Effort | Cost | State |");
+    expect(reply).not.toContain("| IPC |");
   });
 });
