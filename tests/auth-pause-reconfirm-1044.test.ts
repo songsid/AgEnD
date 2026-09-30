@@ -227,6 +227,34 @@ describe("#1058 review: the pane is already idle when the lifecycle's handler ru
     return { pauses, directPause, daemon };
   }
 
+  it("a muse turn past its first minute is still busy: the immediate look defers, the real idle edge decides", async () => {
+    const { PaneStateMachine } = await import("../src/daemon.js");
+    const { daemon, pauses } = museDaemon();
+    // A real failure line right at the bottom, but the turn is still running —
+    // with a timer that has grown a minutes unit (#1045).
+    const running = [ "◆ Looking at it.", AUTH, "◈ Thinking (1m 31s · esc to interrupt)", RULE, "❯", RULE, STATUS, "" ].join("\n");
+    let pane = running;
+    daemon.tmux = { isWindowAlive: vi.fn(async () => true), capturePane: vi.fn(async () => pane), getWindowId: () => "@1" };
+    daemon.instanceStateMachine = new PaneStateMachine(daemon.backend.getReadyPattern(), 600_000, Date.now(), daemon.backend.getBusyPattern());
+    daemon.instanceStateMonitorActive = true;
+    // A stale "idle" cached from before (#1045's gap) must not decide it.
+    daemon.instanceState = "idle";
+    daemon.requestPauseWhenIdle({ reconfirmAuth: true });
+    await vi.waitFor(() => expect(daemon.tmux.capturePane).toHaveBeenCalled());
+    await new Promise(r => setTimeout(r, 20));
+    expect(daemon.instanceState).toBe("working");
+    expect(pauses).toEqual([]);
+    expect(daemon.pausePending).toBe(true); // still deferred, not dropped
+    // The turn ends with the failure still at the bottom: now it pauses.
+    // The turn ends with the failure still at the bottom, and no output
+    // arrives for the idle debounce: that capture is the real idle edge.
+    pane = idlePane("◆ Looking at it.", AUTH);
+    await new Promise(r => setTimeout(r, daemon.instanceStateIdleDebounceMs + 100));
+    await daemon.captureAndEvaluateInstanceState("idle_debounce");
+    expect(daemon.instanceState).toBe("idle");
+    expect(pauses).toHaveLength(1);
+  }, 15_000);
+
   it("the hit has scrolled out of the bottom rows → no pause", async () => {
     const more = Array.from({ length: 20 }, (_, i) => `  step ${i}: kept working`);
     const { pauses, directPause, daemon } = await idleMuseUnderLifecycle(
