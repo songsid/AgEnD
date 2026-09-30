@@ -167,3 +167,75 @@ describe("every #978 condition is required (#1031)", () => {
     })();
   });
 });
+
+describe("the 10 s must be this screen, continuously (#1032 review)", () => {
+  // Through the production readiness path, not the helper: its early returns
+  // (busy, dialog, transient) never reach the helper, so they must reset too.
+  const readiness = (h: ReturnType<typeof makeHarness>) => h.daemon.paneReadinessForDelivery("@19");
+
+  it("a new spawn starts the clock over, even for the identical pane", async () => {
+    const h = makeHarness();
+    expect(await readiness(h)).toBe("transient"); // first sight: clock starts
+    await vi.advanceTimersByTimeAsync(UNKNOWN_LAYOUT_STABLE_MS - 1_000);
+    h.daemon.beginSpawn(); h.daemon.endSpawn(); // same daemon, next spawn
+    await vi.advanceTimersByTimeAsync(2_000); // 11 s since the first sight overall
+    expect(await readiness(h)).toBe("transient");
+    await vi.advanceTimersByTimeAsync(UNKNOWN_LAYOUT_STABLE_MS + 1);
+    expect(await readiness(h)).toBe("ready");
+  });
+
+  it("a retry launch inside the same spawn starts the clock over too", async () => {
+    const h = makeHarness();
+    expect(await readiness(h)).toBe("transient");
+    await vi.advanceTimersByTimeAsync(UNKNOWN_LAYOUT_STABLE_MS - 1_000);
+    h.daemon.launchAttempt++; // what the retry trySpawn does after buildCommand, without beginSpawn
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(await readiness(h)).toBe("transient");
+    await vi.advanceTimersByTimeAsync(UNKNOWN_LAYOUT_STABLE_MS + 1);
+    expect(await readiness(h)).toBe("ready");
+  });
+
+  it("idle → resume load → the same idle pane waits the full window again", async () => {
+    const h = makeHarness();
+    expect(await readiness(h)).toBe("transient");
+    await vi.advanceTimersByTimeAsync(6_000);
+    h.state.pane = LOADING_0159;
+    expect(await readiness(h)).toBe("transient"); // the load: an early return
+    await vi.advanceTimersByTimeAsync(5_000);
+    h.state.pane = NO_CONTEXT;
+    expect(await readiness(h)).toBe("transient"); // back: first sight again, not 11 s old
+    await vi.advanceTimersByTimeAsync(UNKNOWN_LAYOUT_STABLE_MS - 1_000);
+    expect(await readiness(h)).toBe("transient");
+    await vi.advanceTimersByTimeAsync(1_001);
+    expect(await readiness(h)).toBe("ready");
+  });
+
+  it("a busy moment in between also starts the clock over", async () => {
+    const h = makeHarness();
+    let idle = true;
+    h.daemon.controlClient.isIdle = () => idle;
+    expect(await readiness(h)).toBe("transient");
+    await vi.advanceTimersByTimeAsync(6_000);
+    idle = false;
+    expect(await readiness(h)).toBe("busy");
+    idle = true;
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(await readiness(h)).toBe("transient");
+    await vi.advanceTimersByTimeAsync(UNKNOWN_LAYOUT_STABLE_MS + 1);
+    expect(await readiness(h)).toBe("ready");
+  });
+
+  it("a blocking dialog in between also starts the clock over", async () => {
+    const h = makeHarness();
+    const trust = readFileSync(join(fixtures, "codex-0156-trust-wide.pane.txt"), "utf8");
+    expect(await readiness(h)).toBe("transient");
+    await vi.advanceTimersByTimeAsync(6_000);
+    h.state.pane = trust;
+    expect(await readiness(h)).toBe("dialog");
+    await vi.advanceTimersByTimeAsync(5_000);
+    h.state.pane = NO_CONTEXT;
+    expect(await readiness(h)).toBe("transient");
+    await vi.advanceTimersByTimeAsync(UNKNOWN_LAYOUT_STABLE_MS + 1);
+    expect(await readiness(h)).toBe("ready");
+  });
+});

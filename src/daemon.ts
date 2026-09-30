@@ -5292,9 +5292,11 @@ export class Daemon extends EventEmitter {
       // The pane text comes back with the verdict: a transient that is still
       // repainting is still working, and that is the only thing separating a
       // slow resume from a wedged one.
+      if (transient) this.resetFooterFallback();
       return transient ? { state: "active", transient, pane } : { state: "clear" };
     } catch (err) {
       this.logger.debug({ err }, "capture-pane failed during the input-transient probe — pane state unknown");
+      this.resetFooterFallback();
       return { state: "unknown" };
     }
   }
@@ -5499,9 +5501,10 @@ export class Daemon extends EventEmitter {
     if (!check || !this.tmux) return !check;
     try {
       const mode = await this.tmux.getPaneInputMode?.();
-      if (mode !== "raw") return false;
+      if (mode !== "raw") { this.resetFooterFallback(); return false; }
       return this.deliveryInputReadyPane(await this.tmux.capturePane());
     } catch {
+      this.resetFooterFallback();
       return false;
     }
   }
@@ -5509,6 +5512,19 @@ export class Daemon extends EventEmitter {
   /** Pane text of the current footer-fallback candidate, and since when it has been unchanged. */
   private footerFallbackPaneKey: string | null = null;
   private footerFallbackStableSince = 0;
+  /** The launch the candidate was seen in: a new spawn or launch attempt starts over. */
+  private footerFallbackEpoch: string | null = null;
+
+  /**
+   * Forget the footer-fallback candidate. Called whenever the pane is seen
+   * outside the candidate state (busy, a dialog, a transient, unreadable) and
+   * on every spawn: "stable for UNKNOWN_LAYOUT_STABLE_MS" must mean this screen,
+   * continuously, not time accumulated across an interruption.
+   */
+  private resetFooterFallback(): void {
+    this.footerFallbackPaneKey = null;
+    this.footerFallbackEpoch = null;
+  }
   private footerFallbackWarnedGeneration: number | null = null;
 
   /**
@@ -5539,9 +5555,11 @@ export class Daemon extends EventEmitter {
       return false;
     }
     const key = pane.replace(/⋆/gu, "").replace(/[ \t]+$/gmu, "");
+    const epoch = `${this.spawnGeneration}:${this.launchAttempt}`;
     const now = Date.now();
-    if (key !== this.footerFallbackPaneKey) {
+    if (key !== this.footerFallbackPaneKey || epoch !== this.footerFallbackEpoch) {
       this.footerFallbackPaneKey = key;
+      this.footerFallbackEpoch = epoch;
       this.footerFallbackStableSince = now;
       return false;
     }
@@ -5562,12 +5580,14 @@ export class Daemon extends EventEmitter {
    * pane proves nothing. The silence gate comes first and costs no capture.
    */
   private async paneReadinessForDelivery(windowId: string): Promise<"ready" | "busy" | "dialog" | "transient" | "unknown"> {
-    if (!this.isPaneIdleForDelivery(windowId)) return "busy";
+    // Each early return below is the pane seen outside the footer-fallback
+    // candidate state, and never reaches deliveryInputReadyPane: reset here.
+    if (!this.isPaneIdleForDelivery(windowId)) { this.resetFooterFallback(); return "busy"; }
     const probe = await this.probeBlockingDialog();
-    if (probe.state !== "clear") return probe.state;
+    if (probe.state !== "clear") { this.resetFooterFallback(); return probe.state; }
     const transient = await this.probeInputTransient();
-    if (transient.state === "active") return "transient";
-    if (transient.state === "unknown") return "unknown";
+    if (transient.state === "active") { this.resetFooterFallback(); return "transient"; }
+    if (transient.state === "unknown") { this.resetFooterFallback(); return "unknown"; }
     if (this.needsStartupInputProof()) {
       return await this.hasPositiveDeliveryInput() ? "ready" : "transient";
     }
