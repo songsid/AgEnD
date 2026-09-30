@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 
 /** Resolve the AgEnD data directory. Override with AGEND_HOME env var. */
 export function getAgendHome(): string {
@@ -46,6 +46,8 @@ export function getTmuxSocketName(): string | null {
 /** Ensure an auto-created workspace has a .git directory (best effort). */
 export function ensureWorkspaceGit(dir: string): void {
   if (!existsSync(join(dir, ".git"))) {
-    try { execSync(`git init "${dir}"`, { stdio: "ignore" }); } catch { /* best effort */ }
+    // Treat user-supplied paths as one argument, never shell syntax. The option
+    // terminator also keeps relative names such as "--bare" from becoming flags.
+    try { execFileSync("git", ["init", "--", dir], { stdio: "ignore" }); } catch { /* best effort */ }
   }
 }
