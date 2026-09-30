@@ -6829,10 +6829,11 @@ export class Daemon extends EventEmitter {
       return;
     }
 
-    if (tool === "set_display_name" || tool === "set_description" || tool === "list_emojis" || tool === "set_persona_emoji") {
+    if (tool === "set_display_name" || tool === "set_description" || tool === "list_emojis" || tool === "set_persona_emoji" || tool === "preview_emojis") {
       const type = tool === "set_display_name" ? "fleet_set_display_name"
         : tool === "set_description" ? "fleet_set_description"
-        : tool === "list_emojis" ? "fleet_list_emojis" : "fleet_set_persona_emoji";
+        : tool === "list_emojis" ? "fleet_list_emojis"
+        : tool === "preview_emojis" ? "fleet_preview_emojis" : "fleet_set_persona_emoji";
       const fleetReqId = `${tool === "set_display_name" ? "dn" : tool === "set_description" ? "desc" : "emoji"}_${++this.fleetRequestSeq}_${requestId}`;
       const timeout = setTimeout(() => {
         this.pendingIpcRequests.delete(fleetReqId);

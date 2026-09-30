@@ -99,6 +99,7 @@ export interface AgentEndpointContext extends OutboundContext {
   handleSetDescriptionHttp(instance: string, description: string): Promise<unknown>;
   handleListEmojisHttp(instance: string, refresh: boolean): Promise<unknown>;
   handleSetPersonaEmojiHttp(instance: string, args: Record<string, unknown>): Promise<unknown>;
+  handlePreviewEmojisHttp(instance: string, args: Record<string, unknown>): Promise<unknown>;
 }
 
 const DURABLE_HTTP_TOOLS = new Set([
@@ -301,6 +302,9 @@ export async function dispatchAgentOperation(
   }
   if (op === "persona-emoji") {
     return ctx.handleSetPersonaEmojiHttp(instance, args);
+  }
+  if (op === "emoji-preview") {
+    return ctx.handlePreviewEmojisHttp(instance, args);
   }
 
   // Map CLI op to internal tool name

@@ -32,7 +32,7 @@ import type { FleetConfig, RawFleetConfig, InstanceConfig, ChannelConfig, CostGu
 const DEFAULT_OPEN_ACCESS: AccessConfig = { mode: "open", allowed_users: [], max_pending_codes: 0, code_expiry_minutes: 0 };
 import {
   STATUS_EMOJI_CONFIG_KEYS, STATUS_EMOJI_KEYS, STATUS_EMOJI_SUGGESTIONS, TELEGRAM_REACTION_EMOJIS,
-  builtinStatusEmojis, customEmojiValue, normalizeEmoji, previewStatusEmojis, reactionForm, reactionMatchKey, resolveStatusEmojis,
+  builtinStatusEmojis, customEmojiValue, emojiImageUrl, normalizeEmoji, previewStatusEmojis, reactionForm, reactionMatchKey, resolveStatusEmojis,
   statusAvoidList, statusEmojiProblem, statusMatchKey, statusMatchKeys, textForm,
   type DeliveryStatus, type GuildEmoji, type GuildEmojiGroup, type ResolvedStatusEmojis, type StatusEmojiKey,
 } from "./status-emojis.js";
@@ -6222,7 +6222,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       : type.startsWith("fleet_decision_") ? "fleet_decision_response"
       : type === "fleet_task" ? "fleet_task_response"
       : type === "fleet_set_display_name" ? "fleet_display_name_response"
-      : type === "fleet_list_emojis" || type === "fleet_set_persona_emoji" ? "fleet_persona_emoji_response"
+      : type === "fleet_list_emojis" || type === "fleet_set_persona_emoji" || type === "fleet_preview_emojis" ? "fleet_persona_emoji_response"
       : "fleet_description_response";
     ipc.send({ type: responseType, fleetRequestId, error: message });
   }
@@ -6234,17 +6234,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (type === "fleet_task") { this.handleTaskCrud(name, msg); return; }
     if (type === "fleet_set_display_name") { this.handleSetDisplayName(name, msg); return; }
     if (type === "fleet_set_description") { this.handleSetDescription(name, msg); return; }
-    if (type === "fleet_list_emojis" || type === "fleet_set_persona_emoji") { this.handlePersonaEmoji(name, msg); return; }
+    if (type === "fleet_list_emojis" || type === "fleet_set_persona_emoji" || type === "fleet_preview_emojis") { this.handlePersonaEmoji(name, msg); return; }
   }
 
-  /** `list_emojis` / `set_persona_emoji` over IPC; the agent endpoint calls the same two methods. */
+  /** `list_emojis` / `set_persona_emoji` / `preview_emojis` over IPC; the agent endpoint calls the same methods. */
   private handlePersonaEmoji(instanceName: string, msg: Record<string, unknown>): void {
     const fleetRequestId = msg.fleetRequestId as string;
     const payload = (msg.payload ?? {}) as Record<string, unknown>;
     const ipc = this.instanceIpcClients.get(instanceName);
     if (!ipc) return;
-    const op = msg.type === "fleet_list_emojis"
-      ? this.listEmojisFor(instanceName, payload.refresh === true)
+    const op = msg.type === "fleet_list_emojis" ? this.listEmojisFor(instanceName, payload.refresh === true)
+      : msg.type === "fleet_preview_emojis" ? this.previewEmojis(instanceName, payload)
       : this.setPersonaEmoji(instanceName, payload);
     op.then(
       (r) => typeof r.error === "string"
@@ -6612,6 +6612,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   async handleSetPersonaEmojiHttp(instance: string, args: Record<string, unknown>): Promise<unknown> {
     return this.setPersonaEmoji(instance, args);
+  }
+
+  async handlePreviewEmojisHttp(instance: string, args: Record<string, unknown>): Promise<unknown> {
+    return this.previewEmojis(instance, args);
   }
 
   async handleSetDescriptionHttp(instance: string, description: string): Promise<unknown> {
@@ -7407,11 +7411,97 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const listed = await this.listGuildEmojis(worldId, refresh);
       out.server_emojis = listed.ok
         ? listed.guilds.map(g => g.emojis
-          ? { server: g.name || g.id, primary: g.primary, emojis: g.emojis.filter(e => e.available).map(e => customEmojiValue(e)) }
+          ? {
+            server: g.name || g.id, primary: g.primary,
+            emojis: g.emojis.filter(e => e.available).map(e => {
+              const value = customEmojiValue(e);
+              return { value, image_url: emojiImageUrl(value) };
+            }),
+          }
           : { server: g.name || g.id, primary: g.primary, error: g.error })
         : { error: listed.error };
     }
     return out;
+  }
+
+  /**
+   * `preview_emojis` (#1040): download a few Discord server emojis so an agent
+   * can look at them before it picks one — a name and an id say nothing about
+   * what an emoji looks like. The fleet fetches, not the agent (not every
+   * backend can), and returns a local path per emoji to Read, as
+   * download_attachment does for an attachment.
+   *
+   * SSRF-safe by construction: nothing from the caller reaches a URL. The
+   * caller names emojis; each must be an available one in a server this bot
+   * can draw on (the list set_persona_emoji checks), and the CDN URL is built
+   * from that listed emoji's numeric id. Static PNG, size-capped, cached by id.
+   */
+  async previewEmojis(instanceName: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const self = this.fleetConfig?.instances[instanceName];
+    if (!self) return { error: this.personaEmojiMissing(instanceName) };
+    const wanted = args.emojis;
+    if (!Array.isArray(wanted) || wanted.length === 0 || wanted.some(e => typeof e !== "string")) {
+      return { error: "emojis is required: a list of <:name:id> values from list_emojis" };
+    }
+    if (wanted.length > FleetManager.EMOJI_PREVIEW_MAX) {
+      return { error: `at most ${FleetManager.EMOJI_PREVIEW_MAX} at a time: narrow them down by name first` };
+    }
+    const { platform } = this.resolveStatusEmojisFor(instanceName);
+    const worldId = this.getInstanceAdapterId(instanceName);
+    if (platform !== "discord" || !worldId) {
+      return { error: "only Discord server emojis need a preview; standard emojis are what they look like" };
+    }
+    const listed = await this.listGuildEmojis(worldId);
+    if (!listed.ok) return { error: `cannot list this bot's server emojis: ${listed.error}` };
+    const previews: Array<{ emoji: string; path: string }> = [];
+    const errors: Array<{ emoji: string; error: string }> = [];
+    for (const raw of wanted as string[]) {
+      const e = normalizeEmoji(raw);
+      if (e?.kind !== "custom") { errors.push({ emoji: raw, error: "not a server emoji (a standard emoji needs no preview)" }); continue; }
+      const found = listed.emojis.find(g => g.id === e.id);
+      if (!found?.available) { errors.push({ emoji: raw, error: "not a server emoji this bot can use" }); continue; }
+      try {
+        previews.push({ emoji: customEmojiValue(found), path: await this.fetchEmojiPreview(found.id) });
+      } catch (err) {
+        errors.push({ emoji: raw, error: `download failed: ${(err as Error).message}` });
+      }
+    }
+    return { previews, errors, note: "Read each path to see the emoji (a static PNG)." };
+  }
+
+  private static EMOJI_PREVIEW_MAX = 8;
+  private static EMOJI_PREVIEW_MAX_BYTES = 256 * 1024;
+  private static EMOJI_PREVIEW_TTL_MS = 24 * 60 * 60_000;
+
+  /** One emoji's static PNG under the inbox, reused while fresh; stale ones are pruned. */
+  private async fetchEmojiPreview(id: string): Promise<string> {
+    if (!/^\d{15,25}$/.test(id)) throw new Error("not a Discord emoji id");
+    const dir = join(this.dataDir, "inbox", "emoji-previews");
+    mkdirSync(dir, { recursive: true });
+    const now = Date.now();
+    for (const name of readdirSync(dir)) {
+      try { if (now - statSync(join(dir, name)).mtimeMs > FleetManager.EMOJI_PREVIEW_TTL_MS) unlinkSync(join(dir, name)); } catch { /* raced */ }
+    }
+    const path = join(dir, `${id}.png`);
+    if (existsSync(path)) return path;
+    const response = await fetch(`https://cdn.discordapp.com/emojis/${id}.png?size=96`, { signal: AbortSignal.timeout(10_000), redirect: "error" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    if (!/^image\/png\b/.test(response.headers.get("content-type") ?? "")) throw new Error("not a PNG");
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error("empty response");
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > FleetManager.EMOJI_PREVIEW_MAX_BYTES) { await reader.cancel(); throw new Error("image too large"); }
+      chunks.push(value);
+    }
+    const tmp = `${path}.${process.pid}.tmp`;
+    writeFileSync(tmp, Buffer.concat(chunks));
+    renameSync(tmp, path);
+    return path;
   }
 
   /**

@@ -17,6 +17,11 @@ is checked the way Settings checks it: Telegram's reaction set on Telegram,
 one emoji only, and a server emoji only from a server the bot is in. The
 bundled `persona-emoji` skill walks a worker through it. ClassicBot instances
 have no per-instance stamps, and the tool says so.
+A name and an id say nothing about what a server emoji looks like, so
+`preview_emojis` downloads up to 8 of them and returns a local image path for
+each, which the agent reads before picking (#1040). The fleet builds the CDN
+address from the id of an emoji the bot can use, never from anything the
+agent passes, and keeps only small PNGs.
 
 **The Settings emoji picker lists every server the bot can draw on (#1021).**
 Besides the connection's own server, it now lists the other servers the bot

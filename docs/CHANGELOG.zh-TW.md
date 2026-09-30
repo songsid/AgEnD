@@ -7,7 +7,7 @@
 ## [未發佈] (Unreleased)
 
 ### 新增 (Added)
-- **Agent 可以自己挑 persona emoji。** 多個 bot 在同一個頻道時，大家在處理過的訊息上都蓋同一個 ✅。`list_emojis` 列出 instance 能用的 emoji：平台接受的標準 emoji，Discord 上再加上 bot 能拿來加反應的伺服器 emoji。`set_persona_emoji` 把自己的 `delivered` 標記（或指定的其他狀態）寫進自己的 `status_emojis` 覆寫，就像 `set_display_name` 設名字。驗證方式和 Settings 相同：Telegram 只能用它的反應集、只能一個 emoji、伺服器 emoji 只能來自 bot 所在的伺服器。內建的 `persona-emoji` skill 教 worker 怎麼挑。ClassicBot instance 沒有 per-instance 標記，工具會直接說明。
+- **Agent 可以自己挑 persona emoji。** 多個 bot 在同一個頻道時，大家在處理過的訊息上都蓋同一個 ✅。`list_emojis` 列出 instance 能用的 emoji：平台接受的標準 emoji，Discord 上再加上 bot 能拿來加反應的伺服器 emoji。`set_persona_emoji` 把自己的 `delivered` 標記（或指定的其他狀態）寫進自己的 `status_emojis` 覆寫，就像 `set_display_name` 設名字。驗證方式和 Settings 相同：Telegram 只能用它的反應集、只能一個 emoji、伺服器 emoji 只能來自 bot 所在的伺服器。內建的 `persona-emoji` skill 教 worker 怎麼挑。ClassicBot instance 沒有 per-instance 標記，工具會直接說明。伺服器 emoji 光看名字和 id 看不出長相，所以 `preview_emojis` 一次最多下載 8 個，每個回傳一個本機圖片路徑，讓 agent 先看過再挑（#1040）。CDN 位址由 fleet 用 bot 可用 emoji 的 id 自己組，不採用 agent 傳入的任何內容，而且只保留小的 PNG。
 - **Settings 的 emoji 選擇器列出 bot 能用的每個伺服器（#1021）。** 除了連線本身的伺服器，也列出 bot 所在、且 ClassicBot `allowed_guilds` 允許的其他伺服器，依伺服器分組、主伺服器在前。某個伺服器讀不到時只在該伺服器顯示原因，不影響其他。用其他伺服器的 emoji 加反應，bot 在該頻道需有「使用外部表情符號」權限，選擇器會提示。
 
 ### 升級注意事項 (Upgrade Notes)
