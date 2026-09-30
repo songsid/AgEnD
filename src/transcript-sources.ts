@@ -54,6 +54,8 @@ export interface TranscriptSource {
   reset(): void;
   /** Optional durable-delivery checkpoint taken immediately before pane paste. */
   checkpoint?(): Promise<TranscriptCheckpoint | null>;
+  /** Release anything held between polls; the next poll may acquire it again. */
+  close?(): void;
 }
 
 const EMPTY: TranscriptEvents = { toolUses: [], toolResults: [], assistantTexts: [] };
@@ -256,6 +258,18 @@ export class KiroSessionSource implements TranscriptSource {
   private dbHistoryCursor = 0;
   private dbSignature = "";
   private dbToolNames = new Map<string, string>();
+  /**
+   * One read-only handle for the life of the poll loop (#1048). Kiro's store
+   * is one database for every conversation — ~1 GB on a lived-in machine —
+   * and opening it per poll, for every kiro instance every 2 s, ran on the
+   * fleet's event loop.
+   */
+  private db: Database.Database | null = null;
+  /** The store file the handle was opened on; a replaced file is reopened. */
+  private dbIno = 0;
+  private newestRowStmt: Database.Statement | null = null;
+  private historyStmt: Database.Statement | null = null;
+  private createdAtStmt: Database.Statement | null = null;
 
   constructor(
     private workingDirectory: string,
@@ -268,6 +282,8 @@ export class KiroSessionSource implements TranscriptSource {
   }
 
   reset(): void {
+    this.close();
+    this.dbKeys = null;
     this.currentFile = null;
     this.byteOffset = 0;
     this.dbConversationId = null;
@@ -277,26 +293,81 @@ export class KiroSessionSource implements TranscriptSource {
     this.snapshotDbBaseline();
   }
 
+  /** Resolved once per baseline: realpath is a syscall, and this runs every poll. */
+  private dbKeys: string[] | null = null;
   private workingDirectoryKeys(): string[] {
+    if (this.dbKeys) return this.dbKeys;
     const keys = new Set([this.workingDirectory, resolve(this.workingDirectory)]);
     try { keys.add(realpathSync(this.workingDirectory)); } catch { /* keep literal/absolute cwd */ }
-    return [...keys];
+    this.dbKeys = [...keys];
+    return this.dbKeys;
   }
 
-  private newestDbRow(db: Database.Database): { conversation_id: string; created_at: number; updated_at: number; size: number; value?: string } | undefined {
+  close(): void {
+    try { this.db?.close(); } catch { /* already closed */ }
+    this.db = null;
+    this.newestRowStmt = null;
+    this.historyStmt = null;
+    this.createdAtStmt = null;
+  }
+
+  /** The shared handle, opened on first use; null while the store is absent. */
+  private openDb(): Database.Database | null {
+    let ino: number;
+    try { ino = statSync(this.dbPath).ino; } catch { this.close(); return null; }
+    // A handle keeps reading the file it opened: if kiro replaced the store,
+    // that is a stale copy that never errors, so follow the path instead.
+    if (this.db && ino === this.dbIno) return this.db;
+    this.close();
+    this.db = new Database(this.dbPath, { readonly: true, fileMustExist: true });
+    this.dbIno = ino;
+    return this.db;
+  }
+
+  /**
+   * The newest conversation for this workspace and its change signal. The
+   * size is `octet_length`, which SQLite answers from the record header:
+   * `length()` on TEXT counts characters, so it read every conversation in
+   * full on every poll (#1048) — 56 ms a round across 13 real kiro
+   * workspaces, against 0.05 ms for this. The size stays in the signature
+   * because two saves inside one millisecond share an `updated_at`.
+   * No `created_at` either: it is stored after `value`, so reading it walks
+   * the whole conversation too (9 ms for one 18 MB row); `updated_at` comes
+   * from the key index. `conversationCreatedAt()` reads it on a switch.
+   */
+  private newestDbRow(db: Database.Database): { conversation_id: string; updated_at: number; size: number } | undefined {
     const keys = this.workingDirectoryKeys();
-    const placeholders = keys.map(() => "?").join(", ");
-    return db.prepare(
-      `SELECT conversation_id, created_at, updated_at, length(value) AS size
-       FROM conversations_v2 WHERE key IN (${placeholders})
-       ORDER BY updated_at DESC LIMIT 1`,
-    ).get(...keys) as { conversation_id: string; created_at: number; updated_at: number; size: number } | undefined;
+    if (!this.newestRowStmt || this.newestRowStmt.database !== db) {
+      this.newestRowStmt = db.prepare(
+        `SELECT conversation_id, updated_at, octet_length(value) AS size
+         FROM conversations_v2 WHERE key IN (?, ?, ?)
+         ORDER BY updated_at DESC LIMIT 1`,
+      );
+    }
+    // Always three parameters, so one prepared statement serves every call.
+    const [a, b = a, c = b] = keys;
+    return this.newestRowStmt.get(a, b, c) as { conversation_id: string; updated_at: number; size: number } | undefined;
   }
 
+  /** When a conversation began; read only when the poll switches to it. */
+  private conversationCreatedAt(db: Database.Database, conversationId: string): number {
+    if (!this.createdAtStmt || this.createdAtStmt.database !== db) {
+      this.createdAtStmt = db.prepare(
+        "SELECT created_at FROM conversations_v2 WHERE conversation_id = ? ORDER BY updated_at DESC LIMIT 1",
+      );
+    }
+    const row = this.createdAtStmt.get(conversationId) as { created_at: number } | undefined;
+    return row?.created_at ?? 0;
+  }
+
+  /** The whole history, read only when the signature says it changed. */
   private readDbHistory(db: Database.Database, conversationId: string): unknown[] | null {
-    const row = db.prepare(
-      "SELECT value FROM conversations_v2 WHERE conversation_id = ? ORDER BY updated_at DESC LIMIT 1",
-    ).get(conversationId) as { value: string } | undefined;
+    if (!this.historyStmt || this.historyStmt.database !== db) {
+      this.historyStmt = db.prepare(
+        "SELECT value FROM conversations_v2 WHERE conversation_id = ? ORDER BY updated_at DESC LIMIT 1",
+      );
+    }
+    const row = this.historyStmt.get(conversationId) as { value: string } | undefined;
     if (!row) return null;
     try {
       const parsed = JSON.parse(row.value) as { history?: unknown };
@@ -310,10 +381,9 @@ export class KiroSessionSource implements TranscriptSource {
    * never replayed as live tool progress.
    */
   private snapshotDbBaseline(): void {
-    if (!existsSync(this.dbPath)) return;
-    let db: Database.Database | undefined;
     try {
-      db = new Database(this.dbPath, { readonly: true, fileMustExist: true });
+      const db = this.openDb();
+      if (!db) return;
       const row = this.newestDbRow(db);
       if (!row) return;
       const history = this.readDbHistory(db, row.conversation_id);
@@ -321,15 +391,16 @@ export class KiroSessionSource implements TranscriptSource {
       this.dbConversationId = row.conversation_id;
       this.dbHistoryCursor = history.length;
       this.dbSignature = `${row.updated_at}:${row.size}`;
-    } catch { /* old Kiro schema or busy DB — legacy JSONL remains available */ }
-    finally { try { db?.close(); } catch { /* already closed */ } }
+    } catch {
+      // Old Kiro schema or busy DB — legacy JSONL remains available.
+      this.close();
+    }
   }
 
   private pollDb(): TranscriptEvents | null {
-    if (!existsSync(this.dbPath)) return null;
-    let db: Database.Database | undefined;
     try {
-      db = new Database(this.dbPath, { readonly: true, fileMustExist: true });
+      const db = this.openDb();
+      if (!db) return null;
       const row = this.newestDbRow(db);
       if (!row) return null;
       const signature = `${row.updated_at}:${row.size}`;
@@ -342,7 +413,7 @@ export class KiroSessionSource implements TranscriptSource {
         this.dbToolNames.clear();
         // A conversation created after this monitor belongs to this daemon;
         // an older conversation selected by --resume is history to baseline.
-        this.dbHistoryCursor = row.created_at >= this.createdAt ? 0 : history.length;
+        this.dbHistoryCursor = this.conversationCreatedAt(db, row.conversation_id) >= this.createdAt ? 0 : history.length;
       }
       if (history.length < this.dbHistoryCursor) {
         // Compaction can replace history with a shorter summary. Treat the new
@@ -360,9 +431,9 @@ export class KiroSessionSource implements TranscriptSource {
       this.dbSignature = signature;
       return events;
     } catch {
+      // A replaced or corrupted store: drop the handle so the next poll reopens.
+      this.close();
       return null;
-    } finally {
-      try { db?.close(); } catch { /* already closed */ }
     }
   }
 
