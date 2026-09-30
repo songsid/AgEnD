@@ -68,7 +68,7 @@ describe("/install-cli", () => {
 
   it("runs the shared install command in a session and offers login on success", async () => {
     const { fm, notifyAlert, sendText, chat } = setup();
-    const verify = vi.spyOn(fm as any, "verifyBinaryOnLoginShell").mockReturnValue(true);
+    const verify = vi.spyOn(fm as any, "locateBinaryOnLoginShell").mockReturnValue("/usr/local/bin/codex");
     const started = await fm.startInstallSession("codex", chat);
     expect(started).toContain("codex");
     expect(fakeSessions).toHaveLength(1);
@@ -90,7 +90,7 @@ describe("/install-cli", () => {
 
   it("keeps the durable success feedback when the optional login buttons fail", async () => {
     const { fm, notifyAlert, sendText, chat } = setup();
-    vi.spyOn(fm as any, "verifyBinaryOnLoginShell").mockReturnValue(true);
+    vi.spyOn(fm as any, "locateBinaryOnLoginShell").mockReturnValue("/usr/local/bin/codex");
     notifyAlert.mockRejectedValueOnce(new Error("adapter offline"));
 
     await fm.startInstallSession("codex", chat);
@@ -103,7 +103,7 @@ describe("/install-cli", () => {
 
   it("reports a PATH-verification failure instead of offering login", async () => {
     const { fm, notifyAlert, sendText, chat } = setup();
-    vi.spyOn(fm as any, "verifyBinaryOnLoginShell").mockReturnValue(false);
+    vi.spyOn(fm as any, "locateBinaryOnLoginShell").mockReturnValue(null);
     await fm.startInstallSession("grok", chat);
     await fakeSessions[0].events.onDone({ ok: true, detail: "clean exit" });
     expect(notifyAlert).not.toHaveBeenCalled();
@@ -112,7 +112,7 @@ describe("/install-cli", () => {
 
   it("opencode installs without a login offer (no login flow exists)", async () => {
     const { fm, notifyAlert, sendText, chat } = setup();
-    vi.spyOn(fm as any, "verifyBinaryOnLoginShell").mockReturnValue(true);
+    vi.spyOn(fm as any, "locateBinaryOnLoginShell").mockReturnValue("/usr/local/bin/opencode");
     await fm.startInstallSession("opencode", chat);
     expect(fakeSessions[0].flow.command).toContain("opencode.ai/install");
     await fakeSessions[0].events.onDone({ ok: true, detail: "clean exit" });
@@ -150,7 +150,7 @@ describe("/install-cli", () => {
 
   it("the sign-in button chains into the login flow", async () => {
     const { fm, notifyAlert, adapter, chat } = setup();
-    vi.spyOn(fm as any, "verifyBinaryOnLoginShell").mockReturnValue(true);
+    vi.spyOn(fm as any, "locateBinaryOnLoginShell").mockReturnValue("/usr/local/bin/codex");
     const login = vi.spyOn(fm, "startLoginSession").mockResolvedValue("login-started");
     await fm.startInstallSession("codex", chat);
     await fakeSessions[0].events.onDone({ ok: true, detail: "clean exit" });

@@ -1,11 +1,11 @@
-import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync, readdirSync, renameSync, copyFileSync, chmodSync, statSync, type Dirent } from "node:fs";
+import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync, readdirSync, renameSync, copyFileSync, chmodSync, statSync, accessSync, constants as fsConstants, type Dirent } from "node:fs";
 import { randomBytes, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { freemem, totalmem, cpus } from "node:os";
 import { access } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { Worker } from "node:worker_threads";
-import { join, dirname, basename } from "node:path";
+import { join, dirname, basename, delimiter, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { getAgendHome, ensureWorkspaceGit } from "./paths.js";
@@ -10480,11 +10480,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         }
         // The installer may only have added the binary to a profile PATH; a
         // fresh login shell sees that, the fleet process's PATH may not.
-        if (!this.verifyBinaryOnLoginShell(info.binary)) {
+        const installedAt = this.locateBinaryOnLoginShell(info.binary);
+        if (!installedAt) {
           await chat.adapter.sendText(chat.chatId, t("install.verify_failed", backend, info.binary),
             { threadId: chat.threadId }).catch(() => {});
           return;
         }
+        // #1059: make it reachable from this process too. `/login` lists what
+        // `which` finds on the fleet's own PATH, and instances resolve their
+        // binary the same way, so a binary only a login shell could see was
+        // installed, reported as verified, and then offered nowhere.
+        this.adoptBinaryDirectory(installedAt, backend);
         if (!LOGIN_FLOWS[backend]) {
           await chat.adapter.sendText(chat.chatId, t("install.success_no_login", backend),
             { threadId: chat.threadId }).catch(() => {});
@@ -10548,13 +10554,31 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** `command -v` on a login shell, so PATH additions from rc files count. */
-  private verifyBinaryOnLoginShell(binary: string): boolean {
+  /**
+   * The absolute path a fresh login shell resolves `binary` to, or null. Only
+   * a real executable file counts: `command -v` also answers with an alias
+   * definition or a function name, neither of which a spawn could run.
+   */
+  private locateBinaryOnLoginShell(binary: string): string | null {
     try {
-      const result = spawnSync("bash", ["-lc", `command -v ${binary}`], { timeout: 10_000, stdio: "pipe" });
-      return result.status === 0;
+      const result = spawnSync("bash", ["-lc", `command -v ${binary}`], { timeout: 10_000, stdio: "pipe", encoding: "utf8" });
+      if (result.status !== 0) return null;
+      const path = String(result.stdout ?? "").trim().split("\n").pop()?.trim() ?? "";
+      if (!isAbsolute(path)) return null;
+      accessSync(path, fsConstants.X_OK);
+      return statSync(path).isFile() ? path : null;
     } catch {
-      return false;
+      return null;
     }
+  }
+
+  /** Put an installed binary's directory on the fleet's PATH (#1059), once. */
+  private adoptBinaryDirectory(binaryPath: string, backend: string): void {
+    const dir = dirname(binaryPath);
+    const entries = (process.env.PATH ?? "").split(delimiter).filter(Boolean);
+    if (entries.includes(dir)) return;
+    process.env.PATH = [dir, ...entries].join(delimiter);
+    this.logger.info({ backend, dir }, "Added the installed CLI's directory to the fleet PATH");
   }
 
   /** "Sign in now?" button after a successful install. */
