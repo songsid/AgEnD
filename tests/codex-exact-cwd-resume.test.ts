@@ -5,7 +5,7 @@
  * codex-cli 0.157.0 schema; every case calls the production buildCommand.
  */
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -294,6 +294,35 @@ describe("the lookup reads the state DB Codex actually writes (#1028)", () => {
     const { cmd, warning } = build(a, [b]);
     expect(cmd).toContain(` resume '${OWN}' `);
     expect(warning).toBeNull();
+  });
+
+  it.each([
+    ["a row for the same working directory", true],
+    ["no row for it", false],
+  ] as const)("a private DB that exists but cannot be read stays unreadable even when the shared DB has %s", (_label, sharedHasRow) => {
+    // The shared file is not what this home resumes from: answering from it
+    // would silently resume a session this CODEX_HOME cannot see, or
+    // silently start fresh without the warning.
+    const { a, b } = worktrees();
+    const { home, build } = instance();
+    writeFileSync(join(home, "state_5.sqlite"), "this is not a SQLite database");
+    writeState(sharedHasRow ? [{ id: SIBLING, cwd: a, recency: 900 }] : [{ id: SIBLING, cwd: b, recency: 900 }]);
+    const { cmd, warning } = build(a, [b]);
+    expect(cmd).not.toContain(" resume '");
+    expect(cmd).not.toContain(SIBLING);
+    expect(warning).toMatch(/could not be read/);
+  });
+
+  it("a private DB with a schema this code does not know stays unreadable too", () => {
+    const { a, b } = worktrees();
+    const { home, build } = instance();
+    const db = new Database(join(home, "state_5.sqlite"));
+    db.exec("CREATE TABLE threads (id TEXT PRIMARY KEY, cwd TEXT)"); // drifted schema
+    db.close();
+    writeState([{ id: SIBLING, cwd: a, recency: 900 }]);
+    const { cmd, warning } = build(a, [b]);
+    expect(cmd).not.toContain(SIBLING);
+    expect(warning).toMatch(/could not be read/);
   });
 
   it("with no DB in either home stays unreadable and keeps the warned fallback", () => {
