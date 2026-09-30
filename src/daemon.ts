@@ -3435,6 +3435,10 @@ export class Daemon extends EventEmitter {
     // A pause already pending unconditionally stays unconditional.
     this.pauseReconfirmAuth = this.pausePending ? this.pauseReconfirmAuth && reconfirm : reconfirm;
     this.pausePending = true;
+    // A conditional request is the only pause path it has (#1044): decide on
+    // the current pane now instead of at the next state sweep, so a pane that
+    // is already idle is not left open to a delivery in the meantime.
+    if (reconfirm) void this.captureAndEvaluateInstanceState("deferred_pause");
   }
 
   /** The backend's own auth-error pattern, within the pane's last rows. */

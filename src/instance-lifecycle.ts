@@ -1168,13 +1168,18 @@ export class InstanceLifecycle {
         // credit and lost work. pause() alone no-ops while the pane is busy (the
         // usual state when auth fails), so mark it to pause as soon as it idles.
         // Queued messages survive: delivery wakes a paused instance.
-        void this.pause(name)
-          .catch(err => this.ctx.logger.warn({ err, name }, "auth-error pause failed"))
+        if (data.type === "auth_error" && authVerdict === "unknown") {
           // Nothing vouched for an auth hit the CLI could not be asked about
           // (#1044): pause only if it is still on screen when the turn ends.
-          .finally(() => {
-            if (!this.isPaused(name)) daemon.requestPauseWhenIdle({ reconfirmAuth: data.type === "auth_error" && authVerdict === "unknown" });
-          });
+          // Never the direct pause here — on an already-idle pane it would
+          // /quit before anything looked, and the check would never run. The
+          // daemon evaluates at once, so an idle pane is decided now.
+          daemon.requestPauseWhenIdle({ reconfirmAuth: true });
+        } else {
+          void this.pause(name)
+            .catch(err => this.ctx.logger.warn({ err, name }, "auth-error pause failed"))
+            .finally(() => { if (!this.isPaused(name)) daemon.requestPauseWhenIdle(); });
+        }
       }
     }, this.ctx.logger, `daemon.pty_error[${name}]`));
   }

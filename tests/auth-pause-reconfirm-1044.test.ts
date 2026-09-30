@@ -160,9 +160,17 @@ describe("the lifecycle asks for the reconfirmation only when nothing could vouc
         const daemon = Object.assign(new EventEmitter(), { requestPauseWhenIdle: vi.fn(), clearSuspectedAuthFailure: vi.fn(() => true) });
         lc.attachIncidentHandlers("worker", daemon as any);
         (lc as any).daemons.set("worker", daemon);
+        const directPause = vi.spyOn(lc as any, "pause");
         daemon.emit("pty_error", { name: "worker", type: "auth_error", action: "pause", message: "401" });
         await vi.waitFor(() => expect(daemon.requestPauseWhenIdle).toHaveBeenCalled());
-        expect(daemon.requestPauseWhenIdle, JSON.stringify(result)).toHaveBeenCalledWith({ reconfirmAuth: reconfirm });
+        if (reconfirm) {
+          expect(daemon.requestPauseWhenIdle).toHaveBeenCalledWith({ reconfirmAuth: true });
+          // Never the direct pause: on an idle pane it would /quit before any check.
+          expect(directPause).not.toHaveBeenCalled();
+        } else {
+          expect(daemon.requestPauseWhenIdle, JSON.stringify(result)).toHaveBeenCalledWith();
+          expect(directPause).toHaveBeenCalled();
+        }
       }
     } finally {
       setAuthCheckRunnerForTests(null);
@@ -184,6 +192,53 @@ describe("the lifecycle asks for the reconfirmation only when nothing could vouc
     (lc as any).daemons.set("worker", daemon);
     daemon.emit("pty_error", { name: "worker", type: "config_error", action: "pause", message: "claude.json is corrupt" });
     await vi.waitFor(() => expect(daemon.requestPauseWhenIdle).toHaveBeenCalled());
-    expect(daemon.requestPauseWhenIdle).toHaveBeenCalledWith({ reconfirmAuth: false });
+    expect(daemon.requestPauseWhenIdle).toHaveBeenCalledWith();
+  });
+});
+
+describe("#1058 review: the pane is already idle when the lifecycle's handler runs", () => {
+  /**
+   * The error monitor saw the hit mid-turn; by the time the async handler
+   * runs, the turn has ended. A direct pause would /quit on the spot, so the
+   * lifecycle must hand the decision to the daemon, which looks at once.
+   */
+  async function idleMuseUnderLifecycle(pane: string) {
+    const { InstanceLifecycle } = await import("../src/instance-lifecycle.js");
+    const { PaneStateMachine } = await import("../src/daemon.js");
+    const { daemon, pauses } = museDaemon();
+    daemon.tmux = { isWindowAlive: vi.fn(async () => true), capturePane: vi.fn(async () => pane), getWindowId: () => "@1" };
+    // What spawn sets up: the state machine on muse's own patterns, monitor on.
+    daemon.instanceStateMachine = new PaneStateMachine(daemon.backend.getReadyPattern(), 600_000, Date.now(), daemon.backend.getBusyPattern());
+    daemon.instanceStateMonitorActive = true;
+    daemon.instanceState = "idle";
+    const lc = new InstanceLifecycle({
+      fleetConfig: { instances: { "muse-worker": { backend: "muse" } }, defaults: {} },
+      logger: { info() {}, warn() {}, error() {}, debug() {} }, eventLog: null,
+      isPlannedRestart: () => false, notifyInstanceTopic: vi.fn(), offerBackendLogin: vi.fn(async () => {}),
+      webhookEmit: vi.fn(), clearCancelButton: vi.fn(), checkModelFailover() {}, restartSingleInstance: async () => {},
+      getInstanceDir: (n: string) => `/nonexistent/${n}`,
+    } as any);
+    lc.attachIncidentHandlers("muse-worker", daemon);
+    (lc as any).daemons.set("muse-worker", daemon);
+    const directPause = vi.spyOn(lc as any, "pause");
+    daemon.emit("pty_error", { name: "muse-worker", type: "auth_error", action: "pause", message: "Muse authentication error" });
+    await vi.waitFor(() => expect(daemon.tmux.capturePane).toHaveBeenCalled());
+    await new Promise(r => setTimeout(r, 20));
+    return { pauses, directPause, daemon };
+  }
+
+  it("the hit has scrolled out of the bottom rows → no pause", async () => {
+    const more = Array.from({ length: 20 }, (_, i) => `  step ${i}: kept working`);
+    const { pauses, directPause, daemon } = await idleMuseUnderLifecycle(
+      idlePane("  so the refresh fails with: still unauthorized after a token refresh; run `muse login` again", ...more, "◆ Done."));
+    expect(directPause).not.toHaveBeenCalled();
+    expect(pauses).toEqual([]);
+    expect(daemon.pausePending).toBe(false);
+  });
+
+  it("a real auth failure still at the bottom → paused", async () => {
+    const { pauses, directPause } = await idleMuseUnderLifecycle(idlePane("◆ Looking at it.", AUTH));
+    expect(directPause).not.toHaveBeenCalled(); // the pause comes from the daemon's decision
+    expect(pauses).toHaveLength(1);
   });
 });
