@@ -2075,7 +2075,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const query = () => {
         const ipc = this.instanceIpcClients.get(instanceName);
         if (ipc?.connected) {
-          ipc.send({ type: "query_instance_state", requestId: `idle-gate-${Date.now()}` });
+          // The daemon owns the backend/TTY proof and its 10s startup-input
+          // timer. A cache-only query can never discover a Context-less idle
+          // pane, and a second fleet timer would stack another 10s wait.
+          ipc.send({ type: "query_instance_state", requestId: `idle-gate-${Date.now()}`, deliveryIdle: true });
         }
         check();
       };
@@ -2091,8 +2094,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /**
    * Ask the daemon to capture the pane before answering, then wait for any state
    * report produced after this request. The ordinary query is intentionally
-   * cache-only (idle gates call it frequently); this opt-in refresh is reserved
-   * for lifecycle decisions where a stale state would strand UI.
+   * cache-only; delivery idle gates opt into their own pane/input proof, and
+   * this refresh serves lifecycle decisions where a stale state would strand UI.
    */
   private refreshInstanceExecutionState(instanceName: string, timeoutMs: number): Promise<boolean> {
     const ipc = this.instanceIpcClients.get(instanceName);
