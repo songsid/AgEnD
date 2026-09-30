@@ -265,7 +265,7 @@
       statusEmojis: "Status emojis", statusEmojisInstance: "This agent's status emojis (override the connection's)", statusEmojisChannel: "Status emojis for this connection's bots",
       se_received: "Received", se_queued: "Queued", se_processing: "Processing", se_delivered: "Delivered", se_failed: "Failed", se_progress_prefix: "Progress prefix",
       se_src_instance: "agent", se_src_platform: "connection", se_src_builtin: "default", se_pick: "Pick…", se_useDefault: "Use the default", se_fallback: "the default is used instead",
-      se_unicode: "Emoji", se_telegramOnly: "Telegram allows only these reactions", se_serverEmojis: "This server's emojis", se_noServerEmojis: "This server has no custom emojis.", se_unavailable: "unavailable",
+      se_unicode: "Emoji", se_telegramOnly: "Telegram allows only these reactions", se_serverEmojis: "Server emojis", se_noServerEmojis: "No custom emojis on this server.", se_primaryServer: "primary", se_externalEmojiHint: "Another server's emoji needs the bot's Use External Emojis permission in the channel it reacts in.", se_unavailable: "unavailable",
       se_hint: "Empty keeps the default. The preview is resolved by AgEnD exactly as the bot will react.",
       detection: "Detection", startup: "Startup", backendSection: "Backend", advancedSection: "Advanced & Access", hangEnabled: "Hang detector enabled", hangTimeout: "Stuck timeout", agentMode: "Agent mode", toolSet: "Tool set", toolProgress: "Tool progress", replyCompletionGuard: "Require a delivered reply", replyGuardSupported: "Active for Claude Code in MCP mode.", replyGuardUnsupported: "Stored but inactive: {0} in {1} mode does not support reply-drop recovery.", logLevel: "Log level", concurrency: "Startup concurrency", staggerDelay: "Stagger delay", lightweight: "Lightweight mode", modelFailover: "Fallback model", displayName: "Display name", pause: "Pause", wake: "Wake", accessMode: "Access mode", affected: "Affected instances",
       language: "Language (bot replies)", defaultBackend: "Default backend", defaultModel: "Default model", allowedUsers: "Allowed users (primary bot)",
@@ -317,7 +317,7 @@
       statusEmojis: "狀態 emoji", statusEmojisInstance: "此 Agent 的狀態 emoji（覆蓋連線設定）", statusEmojisChannel: "此連線 bot 的狀態 emoji",
       se_received: "已收到", se_queued: "排隊中", se_processing: "處理中", se_delivered: "已送達", se_failed: "失敗", se_progress_prefix: "進度前綴",
       se_src_instance: "Agent", se_src_platform: "連線", se_src_builtin: "預設", se_pick: "選擇…", se_useDefault: "使用預設", se_fallback: "改用預設值",
-      se_unicode: "Emoji", se_telegramOnly: "Telegram 只允許這些反應", se_serverEmojis: "此伺服器的 emoji", se_noServerEmojis: "此伺服器沒有自訂 emoji。", se_unavailable: "無法使用",
+      se_unicode: "Emoji", se_telegramOnly: "Telegram 只允許這些反應", se_serverEmojis: "伺服器 emoji", se_noServerEmojis: "此伺服器沒有自訂 emoji。", se_primaryServer: "主伺服器", se_externalEmojiHint: "使用其他伺服器的 emoji，bot 在要加反應的頻道需有「使用外部表情符號」權限。", se_unavailable: "無法使用",
       se_hint: "留空即使用預設值。預覽由 AgEnD 依 bot 實際 react 的方式解析。",
       title: "⚙️ AgEnD 設定", reloadFleet: "↻ 重新載入", myAgents: "🤖 我的 Agent", bots: "🔌 機器人", classicChannels: "🎮 ClassicBot 頻道", noClassic: "沒有 ClassicBot 頻道 — 在聊天中用 /start 建立。",
       general: "⚙️ 一般設定", whatsNew: "🆕 更新重點", advanced: "📋 進階",
@@ -569,15 +569,27 @@
           const list = await fetchGuildEmojis(channelId, refreshList);
           guildBox.innerHTML = "";
           if (list.error) { guildBox.append(el("div", { class: "feedback error" }, `✗ ${list.error}`)); return; }
-          if (!list.emojis.length) { guildBox.append(el("div", { class: "hint" }, t("se_noServerEmojis"))); return; }
-          // An unavailable emoji (e.g. the server lost the Boost tier it
-          // needs) cannot be reacted with; picking it would preview fine and
-          // then fail silently on every status. Shown, but not pickable.
-          guildBox.append(grid(list.emojis.map(e => el("button", {
-            type: "button", class: "sm" + (e.available ? "" : " off"), title: `:${e.name}:${e.available ? "" : ` (${t("se_unavailable")})`}`,
-            ...(e.available ? {} : { disabled: "disabled", "aria-disabled": "true" }),
-            onclick: () => { if (e.available) choose(e.value); },
-          }, emojiImg(e.image_url, `:${e.name}:`)))));
+          // One group per server the bot can draw on (#1021), primary first;
+          // a bot reacts with a custom emoji from any server it is in.
+          const groups = list.guilds;
+          // Discord checks Use External Emojis in the channel being reacted in.
+          if (groups.length > 1) guildBox.append(el("div", { class: "hint" }, t("se_externalEmojiHint")));
+          for (const g of groups) {
+            if (groups.length > 1) {
+              guildBox.append(el("div", { class: "hint se-guild" }, g.name || g.id,
+                ...(g.primary ? [" ", el("span", { class: "tag" }, t("se_primaryServer"))] : [])));
+            }
+            if (g.error) { guildBox.append(el("div", { class: "feedback error" }, `✗ ${g.error}`)); continue; }
+            if (!g.emojis.length) { guildBox.append(el("div", { class: "hint" }, t("se_noServerEmojis"))); continue; }
+            // An unavailable emoji (e.g. the server lost the Boost tier it
+            // needs) cannot be reacted with; picking it would preview fine and
+            // then fail silently on every status. Shown, but not pickable.
+            guildBox.append(grid(g.emojis.map(e => el("button", {
+              type: "button", class: "sm" + (e.available ? "" : " off"), title: `:${e.name}:${e.available ? "" : ` (${t("se_unavailable")})`}`,
+              ...(e.available ? {} : { disabled: "disabled", "aria-disabled": "true" }),
+              onclick: () => { if (e.available) choose(e.value); },
+            }, emojiImg(e.image_url, `:${e.name}:`)))));
+          }
         };
         picker.append(el("div", { class: "hint", style: "display:flex;gap:8px;align-items:center" }, t("se_serverEmojis"),
           el("button", { type: "button", class: "sm ghost", onclick: () => load(true) }, "↻")), guildBox);

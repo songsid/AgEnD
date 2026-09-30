@@ -188,6 +188,22 @@ export const STATUS_EMOJI_SUGGESTIONS: readonly string[] = [
   "🦊", "🍎", "🐱", "🐶", "🐼", "🦉", "🐙", "🌟", "⭐", "🔥", "💡", "📌",
 ];
 
+/** A Discord server emoji as the picker lists it: public fields only. */
+export interface GuildEmoji { id: string; name: string; animated: boolean; available: boolean }
+
+/**
+ * One server's emojis in the picker (#1021). `name` is empty when Discord did
+ * not give one; `error` replaces `emojis` when that server could not be read.
+ */
+export interface GuildEmojiGroup {
+  id: string;
+  name: string;
+  primary: boolean;
+  fetched_at?: number;
+  emojis?: GuildEmoji[];
+  error?: string;
+}
+
 /** Stored config form of a Discord server emoji. */
 export function customEmojiValue(e: { name: string; id: string; animated?: boolean }): string {
   return `<${e.animated ? "a" : ""}:${e.name}:${e.id}>`;

@@ -1253,17 +1253,33 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
   }
 
   /**
-   * The server's custom emojis, for the Settings status-emoji picker (#1005).
-   * Enumerating needs the bot token (rendering a known id does not — that is
-   * the public CDN), so this stays server-side and returns only public fields.
+   * A server's custom emojis, for the Settings status-emoji picker (#1005);
+   * the primary server unless another is named (#1021). Enumerating needs the
+   * bot token (rendering a known id does not — that is the public CDN), so
+   * this stays server-side and returns only public fields.
    */
-  async listGuildEmojis(): Promise<Array<{ id: string; name: string; animated: boolean; available: boolean }>> {
-    const raw = await ((await this.readyClient()) as any).rest.get(`/guilds/${this.guildId}/emojis`) as unknown;
+  async listGuildEmojis(guildId: string = this.guildId): Promise<Array<{ id: string; name: string; animated: boolean; available: boolean }>> {
+    const raw = await ((await this.readyClient()) as any).rest.get(`/guilds/${guildId}/emojis`) as unknown;
     if (!Array.isArray(raw)) return [];
     return raw
       .filter((e): e is { id: string; name: string; animated?: boolean; available?: boolean } =>
         !!e && typeof e.id === "string" && typeof e.name === "string")
       .map(e => ({ id: e.id, name: e.name, animated: e.animated === true, available: e.available !== false }));
+  }
+
+  /**
+   * The servers this bot is a member of, primary first (#1021). A bot can
+   * react with a custom emoji from any server it is in, so these are where
+   * the picker may draw from. From the gateway's guild cache: the Guilds
+   * intent delivers every member server at ready, with no extra request.
+   */
+  async listMemberGuilds(): Promise<Array<{ id: string; name: string; primary: boolean }>> {
+    const cache = ((await this.readyClient()) as any).guilds?.cache as Map<string, { id: string; name?: string }> | undefined;
+    const others = [...(cache?.values() ?? [])]
+      .filter(g => g.id !== this.guildId)
+      .map(g => ({ id: g.id, name: typeof g.name === "string" ? g.name : "", primary: false }));
+    const primaryName = cache?.get(this.guildId)?.name;
+    return [{ id: this.guildId, name: typeof primaryName === "string" ? primaryName : "", primary: true }, ...others];
   }
 
   async react(chatId: string, messageId: string, emoji: string, threadId?: string): Promise<void> {

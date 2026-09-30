@@ -8,7 +8,7 @@
  * and the page's own editor code on a minimal DOM.
  */
 import { EventEmitter } from "node:events";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import vm from "node:vm";
@@ -18,6 +18,7 @@ import { FleetManager } from "../src/fleet-manager.js";
 import { AdapterWorld } from "../src/adapter-world.js";
 import { AccessManager } from "../src/channel/access-manager.js";
 import { DiscordAdapter } from "../src/channel/adapters/discord.js";
+import { ClassicChannelManager } from "../src/classic-channel-manager.js";
 import { previewStatusEmojis, TELEGRAM_REACTION_EMOJIS } from "../src/status-emojis.js";
 import type { ChannelAdapter } from "../src/channel/types.js";
 import type { ChannelConfig } from "../src/types.js";
@@ -533,5 +534,150 @@ describe("the Settings editor binds by status name, never by position", () => {
     expect(Object.fromEntries(entries.map(e => [e.key, e.source]))).toEqual({
       received: "platform", queued: "platform", processing: "builtin", delivered: "builtin", failed: "builtin", progress_prefix: "builtin",
     });
+  });
+});
+
+// ── #1021: every server the bot can draw on, not just group_id ─────────────
+
+describe("the picker lists each server the bot is in that ClassicBot admits (#1021)", () => {
+  const EMOJIS: Record<string, unknown[]> = {
+    "/guilds/guild-1/emojis": [{ id: "111111111111111111", name: "home", animated: false, available: true }],
+    "/guilds/guild-2/emojis": [{ id: "222222222222222222", name: "away", animated: true, available: true }],
+    "/guilds/guild-3/emojis": [{ id: "333333333333333333", name: "blocked", animated: false, available: true }],
+  };
+  /** A running Discord connection whose bot is in three servers; `allowed` is ClassicBot's allowed_guilds. */
+  function fleetInThreeServers(allowed: string[] | undefined, get = vi.fn(async (route: string) => EMOJIS[route] ?? [])) {
+    const dir = tmp();
+    if (allowed) writeFileSync(join(dir, "classicBot.yaml"), `defaults:\n  allowed_guilds: [${allowed.map(g => `"${g}"`).join(", ")}]\n`);
+    const fleet = new FleetManager(dir);
+    fleet.classicChannels = new ClassicChannelManager(dir, { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } as any);
+    const adapter = new DiscordAdapter({
+      id: "dc", botToken: "fake-token", accessManager: new AccessManager(DISCORD.access, join(dir, "a.json")),
+      inboxDir: dir, guildId: "guild-1", registerCommands: false,
+    });
+    // Gateway cache order is not primary-first; the listing must be.
+    const cache = new Map([["guild-3", { id: "guild-3", name: "Elsewhere" }], ["guild-2", { id: "guild-2", name: "Classic HQ" }], ["guild-1", { id: "guild-1", name: "Main" }]]);
+    vi.spyOn(adapter as any, "readyClient").mockResolvedValue({ rest: { get }, guilds: { cache } });
+    fleet.worlds.set("dc", new AdapterWorld("dc", adapter, new AccessManager(DISCORD.access, join(dir, "b.json")), DISCORD));
+    return { fleet, adapter, get };
+  }
+
+  it("primary first, then allowed_guilds servers; a server the whitelist excludes is not listed or fetched", async () => {
+    const { fleet, adapter, get } = fleetInThreeServers(["guild-2"]);
+    try {
+      const r = await fleet.listGuildEmojis("dc");
+      expect(r).toMatchObject({ ok: true, guilds: [
+        { id: "guild-1", name: "Main", primary: true, emojis: EMOJIS["/guilds/guild-1/emojis"] },
+        { id: "guild-2", name: "Classic HQ", primary: false, emojis: EMOJIS["/guilds/guild-2/emojis"] },
+      ] });
+      expect((r as any).guilds).toHaveLength(2);
+      expect((r as any).emojis.map((e: any) => e.name)).toEqual(["home", "away"]);
+      expect(get.mock.calls.map(c => c[0]).sort()).toEqual(["/guilds/guild-1/emojis", "/guilds/guild-2/emojis"]);
+    } finally { await adapter.stop(); }
+  });
+
+  it("an unset allowed_guilds admits every server, as classic routing does", async () => {
+    const { fleet, adapter } = fleetInThreeServers(undefined);
+    try {
+      const r = await fleet.listGuildEmojis("dc");
+      expect((r as any).guilds.map((g: any) => g.id)).toEqual(["guild-1", "guild-3", "guild-2"]);
+    } finally { await adapter.stop(); }
+  });
+
+  it("the primary server is listed even when the whitelist leaves it out", async () => {
+    const { fleet, adapter } = fleetInThreeServers(["guild-3"]);
+    try {
+      expect(((await fleet.listGuildEmojis("dc")) as any).guilds.map((g: any) => g.id)).toEqual(["guild-1", "guild-3"]);
+    } finally { await adapter.stop(); }
+  });
+
+  it("caches per server, refresh refetches each, and one server refusing does not hide the others", async () => {
+    const get = vi.fn(async (route: string) => {
+      if (route === "/guilds/guild-2/emojis") throw new Error("Missing Access");
+      return EMOJIS[route] ?? [];
+    });
+    const { fleet, adapter } = fleetInThreeServers(["guild-2"], get);
+    try {
+      const r = await fleet.listGuildEmojis("dc");
+      expect(r).toMatchObject({ ok: true, guilds: [
+        { id: "guild-1", emojis: EMOJIS["/guilds/guild-1/emojis"] },
+        { id: "guild-2", error: "Discord refused the emoji list: Missing Access" },
+      ] });
+      expect((r as any).guilds[1]).not.toHaveProperty("emojis");
+      expect(get).toHaveBeenCalledTimes(2);
+      await fleet.listGuildEmojis("dc");
+      // guild-1 is cached; the refusal is not, so guild-2 is asked again.
+      expect(get.mock.calls.map(c => c[0])).toEqual(["/guilds/guild-1/emojis", "/guilds/guild-2/emojis", "/guilds/guild-2/emojis"]);
+      await fleet.listGuildEmojis("dc", true);
+      expect(get).toHaveBeenCalledTimes(5);
+    } finally { await adapter.stop(); }
+  });
+
+  it("fails as a whole only when no server could be read", async () => {
+    const get = vi.fn(async () => { throw new Error("Missing Access"); });
+    const { fleet, adapter } = fleetInThreeServers(["guild-2"], get);
+    try {
+      expect(await fleet.listGuildEmojis("dc")).toEqual({ ok: false, error: "Discord refused the emoji list: Missing Access" });
+    } finally { await adapter.stop(); }
+  });
+
+  it("the route serves each server's emojis in the stored form, and a refused server with its reason", async () => {
+    const ctx = context({ listGuildEmojis: async () => ({ ok: true as const, fetched_at: 1,
+      emojis: [{ id: "111111111111111111", name: "home", animated: false, available: true }],
+      guilds: [
+        { id: "guild-1", name: "Main", primary: true, fetched_at: 1, emojis: [{ id: "111111111111111111", name: "home", animated: false, available: true }] },
+        { id: "guild-2", name: "Classic HQ", primary: false, error: "Discord refused the emoji list: Missing Access" },
+      ] }) });
+    const r = await request("/api/settings/status-emojis/guild-emojis?channel=dc", ctx);
+    expect(r.status).toBe(200);
+    expect(r.body.guilds).toEqual([
+      { id: "guild-1", name: "Main", primary: true, emojis: [{ id: "111111111111111111", name: "home", animated: false, available: true,
+        value: "<:home:111111111111111111>", image_url: "https://cdn.discordapp.com/emojis/111111111111111111.png" }] },
+      { id: "guild-2", name: "Classic HQ", primary: false, error: "Discord refused the emoji list: Missing Access" },
+    ]);
+  });
+
+  it("the editor groups by server; an emoji picked from another server is stored and previewed in the form the bot reacts with", async () => {
+    const { fleet, adapter } = fleetInThreeServers(["guild-2"]);
+    try {
+      const ctx = context({ listGuildEmojis: (c: string, refresh?: boolean) => fleet.listGuildEmojis(c, refresh) });
+      const { api } = realApi(ctx);
+      const editor = loadEditor(api)(undefined, {
+        platform: () => "discord", channelId: () => "dc",
+        previewBody: (map: unknown) => ({ channel_id: "dc", instance_config: map }),
+      });
+      await settle();
+      const row = editor.box.all(e => e.className === "se-row").find(r => r.textContent.startsWith("se_delivered"))!;
+      buttons(row, "se_pick")[0]!.fire("click");
+      await settle();
+      const headings = row.all(e => e.className === "hint se-guild").map(e => e.textContent);
+      expect(headings).toEqual(["Main se_primaryServer", "Classic HQ"]);
+      expect(row.all(e => e.textContent === "se_externalEmojiHint")).toHaveLength(1);
+      const away = row.all(e => e.tag === "button" && e.attrs.title === ":away:")[0]!;
+      expect(away.all(e => e.tag === "img")[0]!.attrs.src).toBe("https://cdn.discordapp.com/emojis/222222222222222222.gif");
+      away.fire("click");
+      await settle();
+      expect(editor.value()).toEqual({ delivered: "<a:away:222222222222222222>" });
+      const preview = await request("/api/settings/status-emojis/preview", ctx, "POST", { channel_id: "dc", instance_config: editor.value() });
+      expect(preview.body.entries.find((e: any) => e.key === "delivered")).toMatchObject({ applied: "away:222222222222222222", source: "instance" });
+    } finally { await adapter.stop(); }
+  });
+
+  it("a single server keeps the plain grid, with no server headings", async () => {
+    const { fleet, adapter } = fleetInThreeServers(["guild-9"]);
+    try {
+      const ctx = context({ listGuildEmojis: (c: string, refresh?: boolean) => fleet.listGuildEmojis(c, refresh) });
+      const editor = loadEditor(realApi(ctx).api)(undefined, {
+        platform: () => "discord", channelId: () => "dc",
+        previewBody: (map: unknown) => ({ channel_id: "dc", instance_config: map }),
+      });
+      await settle();
+      const row = editor.box.all(e => e.className === "se-row").find(r => r.textContent.startsWith("se_delivered"))!;
+      buttons(row, "se_pick")[0]!.fire("click");
+      await settle();
+      expect(row.all(e => e.className === "hint se-guild")).toEqual([]);
+      expect(row.all(e => e.textContent === "se_externalEmojiHint")).toEqual([]);
+      expect(row.all(e => e.tag === "button" && e.attrs.title === ":home:")).toHaveLength(1);
+    } finally { await adapter.stop(); }
   });
 });
