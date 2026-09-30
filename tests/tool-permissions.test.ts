@@ -39,6 +39,8 @@ const BEFORE: Record<string, string[]> = {
     "reply", "react", "edit_message",
     "send_to_instance", "broadcast", "list_instances", "describe_instance", "delivery_status",
     "list_decisions", "post_decision", "task", "set_display_name", "set_description",
+    // Persona emoji: its own status stamp, beside its own name and description.
+    "list_emojis", "set_persona_emoji",
     "validate_config", "get_fleet_status", "get_usage", "get_effort", "get_instance_logs", "get_fleet_config",
     // #895: self-scheduling, scoped by target in scheduleOpRefusal.
     "create_schedule", "list_schedules", "update_schedule", "delete_schedule",

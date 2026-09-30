@@ -97,6 +97,8 @@ export interface AgentEndpointContext extends OutboundContext {
   handleTaskCrudHttp(instance: string, args: Record<string, unknown>): Promise<unknown>;
   handleSetDisplayNameHttp(instance: string, name: string): Promise<unknown>;
   handleSetDescriptionHttp(instance: string, description: string): Promise<unknown>;
+  handleListEmojisHttp(instance: string, refresh: boolean): Promise<unknown>;
+  handleSetPersonaEmojiHttp(instance: string, args: Record<string, unknown>): Promise<unknown>;
 }
 
 const DURABLE_HTTP_TOOLS = new Set([
@@ -217,7 +219,7 @@ export class ToolNotPermittedError extends Error {
 /**
  * The tool an op means, whichever way it is dispatched.
  *
- * `OP_MAP` alone would miss six: the schedule, decision, task, usage and rename
+ * `OP_MAP` alone would miss these: the schedule, decision, task, usage, rename and emoji
  * ops are answered before it is consulted, so a permission table built from it
  * would have had holes exactly where the early returns are.
  */
@@ -293,6 +295,12 @@ export async function dispatchAgentOperation(
   }
   if (op === "set-description") {
     return ctx.handleSetDescriptionHttp(instance, args.description as string ?? "");
+  }
+  if (op === "emojis") {
+    return ctx.handleListEmojisHttp(instance, args.refresh === true || args.refresh === "true");
+  }
+  if (op === "persona-emoji") {
+    return ctx.handleSetPersonaEmojiHttp(instance, args);
   }
 
   // Map CLI op to internal tool name

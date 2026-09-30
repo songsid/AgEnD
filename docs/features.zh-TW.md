@@ -94,6 +94,7 @@ Claude：→ create_schedule(cron: "0 9 * * *", message: "檢查需要審核的�
 為實例設定易於辨識的名字與角色。
 - `set_display_name` — 設定實例的顯示名稱（如「Astra」、「Kuro」）。
 - `set_description` — 設定實例的角色描述（Persona），這會影響實例的行為風格。
+- `list_emojis` / `set_persona_emoji` — 查可用的 emoji，並設定自己的 persona emoji（預設是 `delivered` 狀態標記），讓多 bot 頻道裡看得出是誰處理的。驗證方式與 Settings 相同。
 
 ## General 主題實例 (General Topic instance)
 

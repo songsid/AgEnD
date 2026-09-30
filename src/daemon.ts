@@ -1090,6 +1090,12 @@ export class BlockingProcessDetector {
   }
 }
 
+/** Response types the fleet sends back for tool calls the daemon forwarded. */
+const FLEET_RESPONSE_TYPES = new Set([
+  "fleet_schedule_response", "fleet_outbound_response", "fleet_decision_response", "fleet_task_response",
+  "fleet_display_name_response", "fleet_description_response", "fleet_persona_emoji_response",
+]);
+
 export class Daemon extends EventEmitter {
   /** Identity of this live Daemon object; changes on object stop/restart. */
   readonly bootId = randomUUID();
@@ -1702,20 +1708,7 @@ export class Daemon extends EventEmitter {
     ipcListening = true;
 
     // Permanent IPC dispatcher: routes responses to pending requests by type+id key
-    this.ipcServer.on("message", (msg: Record<string, unknown>) => {
-      const type = msg.type as string | undefined;
-      if (!type) return;
-      // Build lookup key matching the pattern used when registering
-      let key: string | undefined;
-      if ((type === "fleet_schedule_response" || type === "fleet_outbound_response" || type === "fleet_decision_response" || type === "fleet_task_response" || type === "fleet_display_name_response" || type === "fleet_description_response") && msg.fleetRequestId) {
-        key = String(msg.fleetRequestId);
-      }
-      if (key && this.pendingIpcRequests.has(key)) {
-        const handler = this.pendingIpcRequests.get(key)!;
-        this.pendingIpcRequests.delete(key);
-        handler(msg);
-      }
-    });
+    this.ipcServer.on("message", (msg: Record<string, unknown>) => this.routeFleetResponse(msg));
 
     // IPC message relay: when daemon wants to push a channel message to Claude,
     // it broadcasts to all IPC clients (the MCP server is one of them).
@@ -6773,6 +6766,17 @@ export class Daemon extends EventEmitter {
     return undefined;
   }
 
+  /** The fleet's answers to forwarded tool calls: settle the pending request they name. */
+  private routeFleetResponse(msg: Record<string, unknown>): void {
+    const type = msg.type as string | undefined;
+    if (!type || !FLEET_RESPONSE_TYPES.has(type) || !msg.fleetRequestId) return;
+    const key = String(msg.fleetRequestId);
+    const handler = this.pendingIpcRequests.get(key);
+    if (!handler) return;
+    this.pendingIpcRequests.delete(key);
+    handler(msg);
+  }
+
   /**
    * Handle a tool call from the MCP server (forwarded by Claude).
    * Routes to the channel adapter via MessageBus.
@@ -6825,9 +6829,11 @@ export class Daemon extends EventEmitter {
       return;
     }
 
-    if (tool === "set_display_name" || tool === "set_description") {
-      const type = tool === "set_display_name" ? "fleet_set_display_name" : "fleet_set_description";
-      const fleetReqId = `${tool === "set_display_name" ? "dn" : "desc"}_${++this.fleetRequestSeq}_${requestId}`;
+    if (tool === "set_display_name" || tool === "set_description" || tool === "list_emojis" || tool === "set_persona_emoji") {
+      const type = tool === "set_display_name" ? "fleet_set_display_name"
+        : tool === "set_description" ? "fleet_set_description"
+        : tool === "list_emojis" ? "fleet_list_emojis" : "fleet_set_persona_emoji";
+      const fleetReqId = `${tool === "set_display_name" ? "dn" : tool === "set_description" ? "desc" : "emoji"}_${++this.fleetRequestSeq}_${requestId}`;
       const timeout = setTimeout(() => {
         this.pendingIpcRequests.delete(fleetReqId);
         respond(null, `${tool} timed out`);
