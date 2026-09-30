@@ -1,0 +1,15 @@
+  390 +    const db = new Database(dbPath);
+  391 +    db.exec(`CREATE TABLE conversations_v2 (
+  392 +      key TEXT NOT NULL, conversation_id TEXT NOT NULL, value TEXT NOT NULL,
+  393 +      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+  394 +      PRIMARY KEY (key, conversation_id))`);
+  395 +    const seed = [{ user: { content: {} }, assistant: { Response: { message_id: "k0", content: "seed-text ".repeat(12) } } }];
+  396 +    const updatedAt = Date.now() - 10_000;
+  397 +    db.prepare("INSERT INTO conversations_v2 VALUES (?, ?, ?, ?, ?)")
+  398 +      .run(WORK_DIR, "conversation-live", JSON.stringify({ history: seed }), Date.now() - 60_000, updatedAt);
+  399 +    const sessionsDir = join(root, "no-jsonl-here");
+  400 +    const source = new KiroSessionSource(WORK_DIR, sessionsDir, Date.now(), dbPath);
+  401 +    expect((await source.poll()).assistantTexts).toHaveLength(0);
+  402 +
+  403 +    // Same signature (same updated_at, same byte length) but one MORE history
+  404 +    // entry: without the unchanged-signature early return the monitor would                                       … 18 more lines

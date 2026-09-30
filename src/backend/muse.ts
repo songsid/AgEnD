@@ -388,7 +388,17 @@ export class MuseBackend implements CliBackend {
     // matches it, and nothing that does should be added.
     return [
       { pattern: /rate.?limit|too many requests|\b429\b/i, type: "rate_limit", action: "failover", message: "Muse rate limit reached" },
-      { pattern: /unauthorized|authentication (failed|error)|\b401\b|muse login/i, type: "auth_error", action: "pause", message: "Muse authentication error" },
+      // Muse's own sign-in failures, read from the 1.4.1 binary; "still
+      // unauthorized after a token refresh" ends in "run `muse login` again",
+      // so the last alternative covers it. Not a bare
+      // `401` or `unauthorized`: this scans the whole pane, and muse's diff
+      // view numbers its rows — editing line 401 of any file matched, paused
+      // the instance and /quit it mid-task (#1042). An auth pause cannot be
+      // second-guessed for muse either: it has no token-free auth check.
+      {
+        pattern: /your saved login is no longer valid|\bNot logged in\b|run `muse login`/i,
+        type: "auth_error", action: "pause", message: "Muse authentication error",
+      },
       { pattern: /quota|usage limit|out of credits/i, type: "quota", action: "notify", message: "Muse quota exhausted" },
     ];
   }
