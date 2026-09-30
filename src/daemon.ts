@@ -5500,10 +5500,58 @@ export class Daemon extends EventEmitter {
     try {
       const mode = await this.tmux.getPaneInputMode?.();
       if (mode !== "raw") return false;
-      return check.call(this.backend, await this.tmux.capturePane());
+      return this.deliveryInputReadyPane(await this.tmux.capturePane());
     } catch {
       return false;
     }
+  }
+
+  /** Pane text of the current footer-fallback candidate, and since when it has been unchanged. */
+  private footerFallbackPaneKey: string | null = null;
+  private footerFallbackStableSince = 0;
+  private footerFallbackWarnedGeneration: number | null = null;
+
+  /**
+   * The input-row proof used before a paste (#931/#947), with one fallback
+   * (#1031). Codex sometimes paints an idle composer without its Context
+   * status item even though tui.status_line asks for it: after four fleet
+   * restarts, sol's resumed session showed only `⚠ 2 warnings · f2 to view`.
+   * The proof needs a recognised footer, so the first delivery after each
+   * restart waited 30 minutes, failed, and waited again, for seven hours.
+   *
+   * When the footer is the only thing missing, the #978 structural evidence
+   * stands in for it, all of it required: the backend's own stable-unknown
+   * idle check (an empty live composer; no busy row, esc-to-interrupt row,
+   * queued ↳ input or known picker), no input transient such as the resume
+   * load, and the same screen for UNKNOWN_LAYOUT_STABLE_MS. The raw-tty
+   * requirement stays with the caller.
+   */
+  private deliveryInputReadyPane(pane: string): boolean {
+    const check = this.backend?.isDeliveryInputReadyPane;
+    if (!check) return true;
+    if (check.call(this.backend, pane)) {
+      this.footerFallbackPaneKey = null;
+      return true;
+    }
+    const stableUnknown = this.backend?.isStableUnknownLayoutIdlePane;
+    if (!stableUnknown?.call(this.backend, pane) || this.inputTransientInPane(pane)) {
+      this.footerFallbackPaneKey = null;
+      return false;
+    }
+    const key = pane.replace(/⋆/gu, "").replace(/[ \t]+$/gmu, "");
+    const now = Date.now();
+    if (key !== this.footerFallbackPaneKey) {
+      this.footerFallbackPaneKey = key;
+      this.footerFallbackStableSince = now;
+      return false;
+    }
+    if (now - this.footerFallbackStableSince < UNKNOWN_LAYOUT_STABLE_MS) return false;
+    if (this.footerFallbackWarnedGeneration !== this.spawnGeneration) {
+      this.footerFallbackWarnedGeneration = this.spawnGeneration;
+      this.logger.warn({ backend: this.backend?.binaryName, stableForMs: now - this.footerFallbackStableSince },
+        "Idle footer not recognised — delivering on the #978 fallback (stable empty composer, no busy/queued/dialog, raw tty, no transient)");
+    }
+    return true;
   }
 
   /**
@@ -5673,7 +5721,7 @@ export class Daemon extends EventEmitter {
     try { pane = await this.tmux!.capturePane(); } catch { return "unknown"; }
     if (this.inputTransientInPane(pane)) return "busy";
     if (this.backend?.getBusyPattern?.()?.test(pane)) return "busy";
-    if (this.backend?.isDeliveryInputReadyPane && !this.backend.isDeliveryInputReadyPane(pane)) return "busy";
+    if (!this.deliveryInputReadyPane(pane)) return "busy";
     if (strandedAgendMessageInInput(pane, prompt)) return "stranded";
     // Kiro uses the bottom row; Codex's positive prompt/footer check above
     // rules out a historical transcript echo or a transition/modal screen.

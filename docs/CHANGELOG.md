@@ -114,6 +114,15 @@ The panel can restart AgEnD itself for a change only a fresh process can adopt, 
 - **A failed self-restart needs the change applied again** — if the restart cannot be launched, its row is marked failed and the job is finished rather than left open for another attempt. Press Apply again to get a fresh job whose fleet row can be restarted. This is the fail-closed side of "one restart per job": a job whose launch failed must not stay a reusable restart button.
 
 ### Fixed
+- **A codex instance whose idle footer lacks the Context item no longer waits for ever for its
+  first message (#1031).** After a restart, codex sometimes draws its idle composer without the
+  `Context N% left` status item (seen on a resumed session whose footer showed only
+  `⚠ 2 warnings · f2 to view`). The first delivery after a restart needs a recognised footer,
+  so it waited 30 minutes, failed as retryable, and waited again: one instance sat on a queued
+  task for seven hours. When the footer is the only thing missing, AgEnD now uses the same
+  structural evidence it already uses to call an unknown screen idle. All of it is required:
+  an empty input box, no busy row, queued input or known picker, no resume load on screen, the
+  same screen for 10 seconds, and a terminal ready for input. It logs a warning when it does.
 - **Codex instances resume their own session even when their session database is private (#1028).**
   If `~/.codex` had no session database yet when an instance first started (for example, AgEnD
   was the first thing to run Codex on the machine), Codex created a private one in that
