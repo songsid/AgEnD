@@ -18,6 +18,13 @@ one emoji only, and a server emoji only from a server the bot is in. The
 bundled `persona-emoji` skill walks a worker through it. ClassicBot instances
 have no per-instance stamps, and the tool says so.
 
+**The Settings emoji picker lists every server the bot can draw on (#1021).**
+Besides the connection's own server, it now lists the other servers the bot
+is in that ClassicBot's `allowed_guilds` admits, grouped by server, primary
+first. A server that refuses its list shows the reason without hiding the
+others. Reacting with another server's emoji needs the bot's Use External
+Emojis permission in that channel, and the picker says so.
+
 **Tool access is decided by the fleet, not by what a model happens to be shown.**
 Every route into AgEnD's tools — the MCP tool list, a `tools/call` naming a tool
 directly, a write straight to the instance's socket, and `POST /agent` — now
