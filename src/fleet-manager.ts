@@ -7431,8 +7431,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!STATUS_EMOJI_CONFIG_KEYS.includes(status)) {
       return { error: `status must be one of ${STATUS_EMOJI_CONFIG_KEYS.join(", ")}` };
     }
-    const raw = typeof args.emoji === "string" ? args.emoji.trim() : "";
-    const map = { ...(self.status_emojis ?? {}) } as Record<string, string>;
+    // Only an explicit "" removes the override. The agent endpoint, typed IPC
+    // and agent-cli do not run the MCP schema, so a call missing `emoji` must
+    // be refused here, never read as "clear my delivered stamp".
+    if (typeof args.emoji !== "string") {
+      return { error: 'emoji is required: one emoji, a <:name:id> from list_emojis, or "" to remove your override' };
+    }
+    const raw = args.emoji.trim();
     let value: string | undefined;
     if (raw) {
       const { platform } = this.resolveStatusEmojisFor(instanceName);
@@ -7452,16 +7457,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       } else {
         value = e.value;
       }
-      map[status] = value;
-    } else {
-      delete map[status];
     }
-    if (Object.keys(map).length) self.status_emojis = map;
-    else delete self.status_emojis;
+    // Re-read after the validation above, which may have waited on Discord:
+    // another set_persona_emoji or a Settings save can have changed another
+    // status, or replaced this instance's config object, meanwhile. Change
+    // only this one key on what is there now.
+    const current = this.fleetConfig?.instances[instanceName];
+    if (!current) return { error: this.personaEmojiMissing(instanceName) };
+    const map = { ...(current.status_emojis ?? {}) } as Record<string, string>;
+    if (value) map[status] = value;
+    else delete map[status];
+    if (Object.keys(map).length) current.status_emojis = map;
+    else delete current.status_emojis;
     this.saveFleetConfig();
     this.logger.info({ instanceName, status, value: value ?? null }, value ? "Persona emoji set" : "Persona emoji cleared");
     const resolved = this.resolveStatusEmojisFor(instanceName);
-    return { status, value: value ?? null, now: resolved[status], status_emojis: self.status_emojis ?? null };
+    return { status, value: value ?? null, now: resolved[status], status_emojis: current.status_emojis ?? null };
   }
 
   private personaEmojiMissing(instanceName: string): string {

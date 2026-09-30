@@ -8,7 +8,9 @@
  * the typed-IPC door with its permission check, the daemon's tool routing and
  * the agent endpoint.
  */
+import { execFile } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import yaml from "js-yaml";
@@ -163,6 +165,80 @@ describe("set_persona_emoji writes the instance's own override, judged like Sett
     });
     expect(await fm.setPersonaEmoji("nobody", { emoji: "🦊" })).toEqual({ error: "Instance 'nobody' not found" });
   });
+});
+
+describe("#1039 review: a concurrent change survives, and a malformed call clears nothing", () => {
+  it("another status changed while Discord was being asked is kept; only the named key changes", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>(r => { release = r; });
+    const get = vi.fn(async (route: string) => { await gate; return EMOJIS[route] ?? []; });
+    const { fm, saved } = fleet(get);
+    const pending = fm.setPersonaEmoji("worker", { emoji: "<:fox:111111111111111111>" });
+    await vi.waitFor(() => expect(get).toHaveBeenCalled());
+    // Meanwhile: another set_persona_emoji on another key, then a Settings
+    // save that replaces the instance's config object outright.
+    await fm.setPersonaEmoji("worker", { emoji: "🧠", status: "processing" });
+    const cfg = (fm as any).fleetConfig;
+    cfg.instances.worker = { ...cfg.instances.worker, status_emojis: { ...cfg.instances.worker.status_emojis, queued: "⌛" } };
+    release();
+    expect(await pending).toMatchObject({ value: "<:fox:111111111111111111>" });
+    const expected = { failed: "🐙", processing: "🧠", queued: "⌛", delivered: "<:fox:111111111111111111>" };
+    expect(cfg.instances.worker.status_emojis).toEqual(expected);
+    expect(saved().worker.status_emojis).toEqual(expected);
+  });
+
+  it("a missing or non-string emoji is refused and leaves the override alone; only \"\" clears", async () => {
+    const { fm, saved } = fleet();
+    await fm.setPersonaEmoji("worker", { emoji: "🦊" });
+    for (const args of [{}, { emoji: undefined }, { emoji: null }, { emoji: 5 }, { status: "delivered" }]) {
+      expect(await fm.setPersonaEmoji("worker", args as any)).toEqual({
+        error: 'emoji is required: one emoji, a <:name:id> from list_emojis, or "" to remove your override',
+      });
+    }
+    expect(saved().worker.status_emojis.delivered).toBe("🦊");
+    // The doors that run no schema: typed IPC and the agent endpoint.
+    const ipcSend = vi.fn();
+    (fm as any).instanceIpcClients.set("worker", { send: ipcSend });
+    (fm as any).dispatchTypedIpc("worker", { type: "fleet_set_persona_emoji", fleetRequestId: "m1", payload: {} });
+    await vi.waitFor(() => expect(ipcSend).toHaveBeenCalledOnce());
+    expect(ipcSend.mock.calls[0]![0]).toMatchObject({ fleetRequestId: "m1", error: expect.stringContaining("emoji is required") });
+    const ctx = Object.assign(Object.create(fm), { dataDir: "/tmp", logger: pino({ level: "silent" }) });
+    ctx.fleetConfig = (fm as any).fleetConfig;
+    expect(await dispatchAgentOperation(ctx, "worker", "persona-emoji", {})).toMatchObject({ error: expect.stringContaining("emoji is required") });
+    expect(saved().worker.status_emojis.delivered).toBe("🦊");
+    expect(await dispatchAgentOperation(ctx, "worker", "persona-emoji", { emoji: "" })).toMatchObject({ value: null });
+    expect(saved().worker.status_emojis).toEqual({ failed: "🐙" });
+  });
+
+  it("agent-cli refuses `persona-emoji` with no argument instead of sending a clear, and sends an explicit \"\"", async () => {
+    const posts: unknown[] = [];
+    const server = createServer((req, res) => {
+      let body = "";
+      req.on("data", c => { body += c; });
+      req.on("end", () => { posts.push(JSON.parse(body)); res.end(JSON.stringify({ ok: true })); });
+    });
+    await new Promise<void>(r => server.listen(0, "127.0.0.1", () => r()));
+    const port = (server.address() as any).port;
+    const home = mkdtempSync(join(tmpdir(), "agend-persona-cli-"));
+    dirs.push(home);
+    const run = (...argv: string[]) => new Promise<{ code: number; out: string }>(resolve => {
+      execFile(process.execPath, ["--import", "tsx", join(process.cwd(), "src/agent-cli.ts"), ...argv], {
+        env: { ...process.env, AGEND_PORT: String(port), AGEND_INSTANCE_NAME: "worker", AGEND_HOME: home },
+        timeout: 30_000,
+      }, (err, stdout) => resolve({ code: err ? (err as any).code ?? 1 : 0, out: stdout }));
+    });
+    try {
+      const missing = await run("persona-emoji");
+      expect(missing.code).toBe(1);
+      expect(missing.out).toContain("Usage: agend-agent persona-emoji");
+      expect(posts).toEqual([]);
+      const cleared = await run("persona-emoji", "");
+      expect(cleared.code).toBe(0);
+      expect(posts).toEqual([{ instance: "worker", op: "persona-emoji", args: { emoji: "" } }]);
+    } finally {
+      await new Promise(r => server.close(r));
+    }
+  }, 60_000);
 });
 
 describe("list_emojis shows what the instance may pick", () => {
