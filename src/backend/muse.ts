@@ -532,7 +532,16 @@ export class MuseBackend implements CliBackend {
       ));
       if (typeof settings.model === "string") currentModel = settings.model;
     } catch { /* best effort */ }
-    return { version: probeCliVersion(this.binaryPath), models: await this.listModels(), currentModel };
+    return {
+      version: probeCliVersion(this.binaryPath, {
+        ...process.env,
+        // The launcher checks for and may install updates on startup. A
+        // diagnostic version probe should not trigger that updater.
+        MUSE_UPDATE_INTERVAL_SECONDS: "31536000",
+      }),
+      models: await this.listModels(),
+      currentModel,
+    };
   }
 
   cleanup(config: CliBackendConfig): void {

@@ -45,7 +45,7 @@ import type { AdapterHealthSnapshot, AlertData, ChannelAdapter, InboundMessage, 
 import { createAdapter } from "./channel/factory.js";
 import { TelegramAdapter } from "./channel/adapters/telegram.js";
 import { createBackend } from "./backend/factory.js";
-import { isModelCompatible } from "./backend/types.js";
+import { isModelCompatible, SYSINFO_BACKEND_IDS, type BackendCliVersionSnapshot } from "./backend/types.js";
 import { createLogger, rotateLogIfNeeded, type Logger } from "./logger.js";
 import { processAttachments } from "./channel/attachment-handler.js";
 import { routeToolCall } from "./channel/tool-router.js";
@@ -4333,7 +4333,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         await data.respond(text);
       } else if (data.command === "sysinfo") {
         // Slash commands are Discord-only; use plain lines (no markdown table)
-        await data.respond(this.topicCommands.getSysInfoText({ platform: "discord" }));
+        await data.respond(await this.topicCommands.getSysInfoTextAsync({ platform: "discord" }));
       } else if (data.command === "dashboard") {
         // Reply is ephemeral (adapter defers non-chat commands ephemerally), so
         // the web-token-bearing URLs are only visible to the caller.
@@ -4633,7 +4633,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         await data.respond(text);
       } else if (data.command === "sysinfo") {
         // Slash commands are Discord-only; use plain lines (no markdown table)
-        await data.respond(this.topicCommands.getSysInfoText({ platform: "discord" }));
+        await data.respond(await this.topicCommands.getSysInfoTextAsync({ platform: "discord" }));
       } else if (data.command === "dashboard") {
         // Reply is ephemeral (adapter defers non-chat commands ephemerally), so
         // the web-token-bearing URLs are only visible to the caller.
@@ -11234,6 +11234,36 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       if (typeof env?.probedAt === "number" && Date.now() - env.probedAt < CLI_ENV_TTL_MS) return env;
     } catch { /* missing / stale / corrupt */ }
     return null;
+  }
+
+  /**
+   * Return cached CLI versions immediately and re-probe stale/missing backends
+   * in the background. /sysinfo must not wait for a local CLI or vendor.
+   */
+  getBackendCliVersionSnapshot(): BackendCliVersionSnapshot {
+    const snapshot = {} as BackendCliVersionSnapshot;
+    for (const backend of SYSINFO_BACKEND_IDS) {
+      const cached = this.readCliEnv(backend);
+      const needsRefresh = this.cliEnvNeedsRefresh(cached);
+      if (needsRefresh) {
+        // Defer starting the existing probe until after /sysinfo has returned.
+        // Backend probes may do bounded synchronous CLI work before their first
+        // await, so calling probeBackendBounded inline could still block here.
+        setImmediate(() => {
+          void this.probeBackendBounded(backend).catch(err => {
+            this.logger.debug({ err, backend }, "Background CLI version refresh failed");
+          });
+        });
+      }
+      const version = typeof cached?.version === "string" && cached.version.trim()
+        ? cached.version.trim()
+        : null;
+      snapshot[backend] = {
+        version,
+        probing: needsRefresh && version === null,
+      };
+    }
+    return snapshot;
   }
 
   /** True when a cached CLI env is old enough that `/model` should re-probe. */
