@@ -1,0 +1,1 @@
+failed to fetch model catalog: authentication failed: your API key from META_API_KEY was rejected — update or unset it
