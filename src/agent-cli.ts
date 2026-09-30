@@ -107,6 +107,10 @@ async function main(): Promise<void> {
       if (rest[0] === undefined) die('Usage: agend-agent persona-emoji <emoji | ""> [status]');
       args = { emoji: rest[0], ...(rest[1] ? { status: rest[1] } : {}) };
       break;
+    case "emoji-preview":
+      if (rest.length === 0) die("Usage: agend-agent emoji-preview <:name:id> [more…]");
+      args = { emojis: rest };
+      break;
 
     // Task board
     case "task": {

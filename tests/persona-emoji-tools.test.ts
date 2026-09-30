@@ -9,7 +9,7 @@
  * the agent endpoint.
  */
 import { execFile } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -257,8 +257,9 @@ describe("list_emojis shows what the instance may pick", () => {
     expect(r.statuses).toContainEqual({ status: "delivered", value: "✅", source: "builtin" });
     expect((r.standard as any).suggestions).toContain("🦊");
     expect(r.server_emojis).toEqual([
-      { server: "Main", primary: true, emojis: ["<:fox:111111111111111111>"] }, // the unavailable one is left out
-      { server: "Classic HQ", primary: false, emojis: ["<a:owl:222222222222222222>"] },
+      // the unavailable one is left out
+      { server: "Main", primary: true, emojis: [{ value: "<:fox:111111111111111111>", image_url: "https://cdn.discordapp.com/emojis/111111111111111111.png" }] },
+      { server: "Classic HQ", primary: false, emojis: [{ value: "<a:owl:222222222222222222>", image_url: "https://cdn.discordapp.com/emojis/222222222222222222.gif" }] },
     ]);
   });
 
@@ -340,4 +341,166 @@ describe("the tools reach the fleet through the doors the other identity tools u
     expect(saved().worker.status_emojis.processing).toBe("🧠");
     expect(await dispatchAgentOperation(ctx, "worker", "emojis", {})).toMatchObject({ platform: "discord" });
   });
+});
+
+// ── #1040: preview_emojis ──────────────────────────────────────────────────
+
+const PNG = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex"); // a PNG signature + IHDR start
+function cdn(opts: { type?: string; body?: Uint8Array; status?: number } = {}) {
+  return vi.fn(async (_url: string, _init?: RequestInit) => new Response(new Uint8Array(opts.body ?? PNG), {
+    status: opts.status ?? 200, headers: { "content-type": opts.type ?? "image/png" },
+  }));
+}
+
+describe("preview_emojis downloads a few server emojis for the agent to look at (#1040)", () => {
+  it("fetches each from the CDN URL it builds from the listed id, and returns a path to Read", async () => {
+    const { fm, dir } = fleet();
+    const fetchMock = cdn();
+    vi.stubGlobal("fetch", fetchMock);
+    const r = await fm.previewEmojis("worker", { emojis: ["<:fox:111111111111111111>", "anything:222222222222222222"] });
+    expect(r.errors).toEqual([]);
+    expect(r.previews).toEqual([
+      { emoji: "<:fox:111111111111111111>", path: join(dir, "inbox", "emoji-previews", "111111111111111111.png") },
+      { emoji: "<a:owl:222222222222222222>", path: join(dir, "inbox", "emoji-previews", "222222222222222222.png") },
+    ]);
+    expect(fetchMock.mock.calls.map(c => c[0])).toEqual([
+      "https://cdn.discordapp.com/emojis/111111111111111111.png?size=96",
+      "https://cdn.discordapp.com/emojis/222222222222222222.png?size=96", // static PNG, animated too
+    ]);
+    expect(fetchMock.mock.calls[0]![1]).toMatchObject({ redirect: "error" });
+    expect(readFileSync((r.previews as any)[0].path)).toEqual(PNG);
+    // Cached by id: asking again downloads nothing.
+    await fm.previewEmojis("worker", { emojis: ["<:fox:111111111111111111>"] });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    vi.unstubAllGlobals();
+  });
+
+  it("never fetches anything the bot cannot use, and takes no URL", async () => {
+    const { fm } = fleet();
+    const fetchMock = cdn();
+    vi.stubGlobal("fetch", fetchMock);
+    const r = await fm.previewEmojis("worker", { emojis: [
+      "<:ghost:999999999999999999>", "<:old:444444444444444444>",
+      "https://169.254.169.254/latest/meta-data", "🦊",
+    ] });
+    expect(r.previews).toEqual([]);
+    expect(r.errors).toEqual([
+      { emoji: "<:ghost:999999999999999999>", error: "not a server emoji this bot can use" },
+      { emoji: "<:old:444444444444444444>", error: "not a server emoji this bot can use" },
+      { emoji: "https://169.254.169.254/latest/meta-data", error: "not a server emoji (a standard emoji needs no preview)" },
+      { emoji: "🦊", error: "not a server emoji (a standard emoji needs no preview)" },
+    ]);
+    expect(fetchMock).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it("refuses a malformed or oversized request, Telegram, and ClassicBot, before any download", async () => {
+    const { fm } = fleet();
+    const fetchMock = cdn();
+    vi.stubGlobal("fetch", fetchMock);
+    for (const emojis of [undefined, [], "<:fox:111111111111111111>", [5]]) {
+      expect(await fm.previewEmojis("worker", { emojis } as any)).toEqual({ error: "emojis is required: a list of <:name:id> values from list_emojis" });
+    }
+    expect(await fm.previewEmojis("worker", { emojis: Array(9).fill("<:fox:111111111111111111>") }))
+      .toEqual({ error: "at most 8 at a time: narrow them down by name first" });
+    expect(await fm.previewEmojis("tgworker", { emojis: ["👍"] }))
+      .toEqual({ error: "only Discord server emojis need a preview; standard emojis are what they look like" });
+    expect(await fm.previewEmojis("classic-room", { emojis: ["<:fox:111111111111111111>"] }))
+      .toMatchObject({ error: expect.stringContaining("ClassicBot") });
+    expect(fetchMock).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it("keeps nothing that is not a small PNG", async () => {
+    const { fm, dir } = fleet();
+    const file = join(dir, "inbox", "emoji-previews", "111111111111111111.png");
+    for (const [cdnReply, error] of [
+      [{ type: "text/html" }, "download failed: not a PNG"],
+      [{ status: 404, type: "application/json" }, "download failed: HTTP 404"],
+      [{ body: new Uint8Array(256 * 1024 + 1) }, "download failed: image too large"],
+    ] as const) {
+      vi.stubGlobal("fetch", cdn(cdnReply));
+      expect(await fm.previewEmojis("worker", { emojis: ["<:fox:111111111111111111>"] }))
+        .toMatchObject({ previews: [], errors: [{ emoji: "<:fox:111111111111111111>", error }] });
+      expect(existsSync(file)).toBe(false);
+    }
+    vi.unstubAllGlobals();
+  });
+
+  it("a stale preview is pruned and fetched again", async () => {
+    const { fm } = fleet();
+    const fetchMock = cdn();
+    vi.stubGlobal("fetch", fetchMock);
+    const first = await fm.previewEmojis("worker", { emojis: ["<:fox:111111111111111111>"] });
+    const path = (first.previews as any)[0].path;
+    const old = new Date(Date.now() - 25 * 60 * 60_000);
+    utimesSync(path, old, old);
+    await fm.previewEmojis("worker", { emojis: ["<:fox:111111111111111111>"] });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    vi.unstubAllGlobals();
+  });
+
+  it("reaches the fleet through the same doors as the other persona-emoji tools", async () => {
+    expect(TOOLS.map(t => t.name)).toContain("preview_emojis");
+    expect([...toolsFor("worker")]).toContain("preview_emojis");
+    expect([...toolsFor("standard")]).toContain("preview_emojis");
+    expect([...toolsFor("general")]).not.toContain("preview_emojis");
+    expect([...toolsFor("minimal")]).not.toContain("preview_emojis");
+
+    const dir = mkdtempSync(join(tmpdir(), "agend-preview-daemon-"));
+    dirs.push(dir);
+    const daemon = new Daemon("worker", {
+      working_directory: dir, log_level: "silent",
+      restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
+      context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
+    } as any, dir, true, undefined, undefined, pino({ level: "silent" }) as Logger) as any;
+    const broadcast = vi.fn();
+    daemon.ipcServer = { broadcast, send: vi.fn(() => true) };
+    daemon.handleToolCall({ tool: "preview_emojis", args: { emojis: ["<:fox:111111111111111111>"] }, requestId: 1 }, { destroyed: false });
+    expect(broadcast.mock.calls[0]![0]).toMatchObject({ type: "fleet_preview_emojis", payload: { emojis: ["<:fox:111111111111111111>"] } });
+
+    const { fm } = fleet();
+    vi.stubGlobal("fetch", cdn());
+    const ipcSend = vi.fn();
+    (fm as any).instanceIpcClients.set("worker", { send: ipcSend });
+    (fm as any).dispatchTypedIpc("worker", { type: "fleet_preview_emojis", fleetRequestId: "p1", payload: { emojis: ["<:fox:111111111111111111>"] } });
+    await vi.waitFor(() => expect(ipcSend).toHaveBeenCalledOnce());
+    expect(ipcSend.mock.calls[0]![0]).toMatchObject({ type: "fleet_persona_emoji_response", fleetRequestId: "p1", result: { previews: [{ emoji: "<:fox:111111111111111111>" }] } });
+    (fm as any).refuseTypedIpc("worker", { type: "fleet_preview_emojis", fleetRequestId: "p2" }, "no");
+    expect(ipcSend).toHaveBeenLastCalledWith({ type: "fleet_persona_emoji_response", fleetRequestId: "p2", error: "no" });
+    const ctx = Object.assign(Object.create(fm), { dataDir: "/tmp", logger: pino({ level: "silent" }) });
+    ctx.fleetConfig = (fm as any).fleetConfig;
+    expect(await dispatchAgentOperation(ctx, "worker", "emoji-preview", { emojis: ["<:fox:111111111111111111>"] }))
+      .toMatchObject({ previews: [{ emoji: "<:fox:111111111111111111>" }] });
+    vi.unstubAllGlobals();
+  });
+
+  it("agent-cli refuses `emoji-preview` with nothing to preview, and sends the list it was given", async () => {
+    const posts: unknown[] = [];
+    const server = createServer((req, res) => {
+      let body = "";
+      req.on("data", c => { body += c; });
+      req.on("end", () => { posts.push(JSON.parse(body)); res.end("{}"); });
+    });
+    await new Promise<void>(r => server.listen(0, "127.0.0.1", () => r()));
+    const port = (server.address() as any).port;
+    const home = mkdtempSync(join(tmpdir(), "agend-preview-cli-"));
+    dirs.push(home);
+    const run = (...argv: string[]) => new Promise<{ code: number; out: string }>(resolve => {
+      execFile(process.execPath, ["--import", "tsx", join(process.cwd(), "src/agent-cli.ts"), ...argv], {
+        env: { ...process.env, AGEND_PORT: String(port), AGEND_INSTANCE_NAME: "worker", AGEND_HOME: home },
+        timeout: 30_000,
+      }, (err, stdout) => resolve({ code: err ? (err as any).code ?? 1 : 0, out: stdout }));
+    });
+    try {
+      const none = await run("emoji-preview");
+      expect(none.code).toBe(1);
+      expect(none.out).toContain("Usage: agend-agent emoji-preview");
+      expect(posts).toEqual([]);
+      expect((await run("emoji-preview", "<:fox:111111111111111111>", "<a:owl:222222222222222222>")).code).toBe(0);
+      expect(posts).toEqual([{ instance: "worker", op: "emoji-preview", args: { emojis: ["<:fox:111111111111111111>", "<a:owl:222222222222222222>"] } }]);
+    } finally {
+      await new Promise(r => server.close(r));
+    }
+  }, 60_000);
 });

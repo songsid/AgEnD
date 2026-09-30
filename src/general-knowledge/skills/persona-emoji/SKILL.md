@@ -17,24 +17,31 @@ persona emoji replaces your `delivered` stamp with one of your own, the way
 - `list_emojis` — your current stamps (`statuses`, with `source`: instance =
   yours, platform = the connection's, builtin = AgEnD's), the standard emojis
   your platform accepts (`standard`), and on Discord the server emojis your
-  bot can react with (`server_emojis`, grouped by server; values are ready to
-  pass on, e.g. `<:fox:123456789012345678>`). `refresh: true` refetches those.
+  bot can react with (`server_emojis`, grouped by server; each has a `value`
+  ready to pass on, e.g. `<:fox:123456789012345678>`, and its `image_url`).
+  `refresh: true` refetches those.
+- `preview_emojis` — up to 8 server emojis at a time; downloads each and
+  returns a local `path`. Read the path to see the emoji. A name or an id says
+  nothing about what a server emoji looks like.
 - `set_persona_emoji` — `emoji` plus optional `status` (default `delivered`).
-  An empty `emoji` removes your override and you are back to the default.
+  Exactly `""` removes your override and you are back to the default.
 
 ## Pick → set
 
 1. `list_emojis`. Note your `platform`.
-2. Choose ONE emoji that reflects you (your role, your name, your
+2. On Discord, shortlist a few server emojis by name, `preview_emojis` them
+   and Read each path. Pick by what you saw, never by the name alone. Don't
+   preview a whole server: it fills your context for nothing.
+3. Choose ONE emoji that reflects you (your role, your name, your
    personality). Rules the tool enforces:
    - **Telegram**: only an emoji from `standard.reactions`. No server emoji.
    - **Discord**: any single emoji, or a value from `server_emojis`.
    - Exactly one emoji: `👀✅` or text is refused.
    - Avoid one another bot in your channel already uses, and avoid ⏳ 👀 ❌:
      those read as queued / processing / failed.
-3. `set_persona_emoji` with it. The answer's `now` is what your bot will
+4. `set_persona_emoji` with it. The answer's `now` is what your bot will
    stamp from the next message on.
-4. If it is refused, the error says why; pick again from `list_emojis`.
+5. If it is refused, the error says why; pick again from `list_emojis`.
    Don't retry the same value.
 
 Only change your own `delivered` stamp unless someone asked for more. The

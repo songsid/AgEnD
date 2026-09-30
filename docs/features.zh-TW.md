@@ -95,6 +95,7 @@ Claude：→ create_schedule(cron: "0 9 * * *", message: "檢查需要審核的�
 - `set_display_name` — 設定實例的顯示名稱（如「Astra」、「Kuro」）。
 - `set_description` — 設定實例的角色描述（Persona），這會影響實例的行為風格。
 - `list_emojis` / `set_persona_emoji` — 查可用的 emoji，並設定自己的 persona emoji（預設是 `delivered` 狀態標記），讓多 bot 頻道裡看得出是誰處理的。驗證方式與 Settings 相同。
+- `preview_emojis` — 下載最多 8 個 Discord 伺服器 emoji 並回傳本機圖片路徑，讓 agent 看過圖再挑。
 
 ## General 主題實例 (General Topic instance)
 

@@ -124,6 +124,8 @@ const DEFS: Array<[string, ZodType, string]> = [
     "Set your display name. This name will be shown in Telegram messages, activity logs, and when other agents refer to you."],
   ["list_emojis", schemas.ListEmojisArgs,
     "List the emojis you can use as your persona emoji: your current status stamps, the standard emojis your platform accepts, and (Discord) the server emojis your bot can react with."],
+  ["preview_emojis", schemas.PreviewEmojisArgs,
+    "Download up to 8 Discord server emojis from list_emojis so you can see them: returns a local image path per emoji to Read before you pick one."],
   ["set_persona_emoji", schemas.SetPersonaEmojiArgs,
     "Set your persona emoji: the status stamp (default: delivered) your bot puts on messages it handles, so people can tell you apart from other bots. Validated the way Settings validates it; takes effect on your next stamp."],
   ["set_description", schemas.SetDescriptionArgs,

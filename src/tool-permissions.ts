@@ -43,7 +43,7 @@ const WORKER: readonly string[] = [
   "get_fleet_status", "get_fleet_config", "get_usage", "get_effort", "get_instance_logs",
   "list_decisions", "list_schedules", "list_deployments", "validate_config",
   // Its own things.
-  "task", "post_decision", "set_display_name", "set_description", "list_emojis", "set_persona_emoji",
+  "task", "post_decision", "set_display_name", "set_description", "list_emojis", "set_persona_emoji", "preview_emojis",
   // Its own schedules. Present here, but not a free hand: scheduleOpRefusal
   // limits a non-coordinator to schedules that target itself and that it
   // created (#895). The target is the control, not whether the tool is listed.
@@ -91,7 +91,7 @@ export const TOOL_PROFILES: Readonly<Record<ToolSetName, readonly string[]>> = {
   standard: [
     "reply", "react", "edit_message",
     "send_to_instance", "broadcast", "list_instances", "describe_instance", "delivery_status",
-    "list_decisions", "post_decision", "task", "set_display_name", "set_description", "list_emojis", "set_persona_emoji",
+    "list_decisions", "post_decision", "task", "set_display_name", "set_description", "list_emojis", "set_persona_emoji", "preview_emojis",
     "validate_config", "get_fleet_status", "get_usage", "get_effort", "get_instance_logs", "get_fleet_config",
     // Self-scheduling, same scope as worker (#895).
     "create_schedule", "list_schedules", "update_schedule", "delete_schedule",
@@ -202,6 +202,7 @@ export const IPC_TYPE_TOOLS: Readonly<Record<string, string>> = {
   fleet_set_description: "set_description",
   fleet_list_emojis: "list_emojis",
   fleet_set_persona_emoji: "set_persona_emoji",
+  fleet_preview_emojis: "preview_emojis",
 };
 
 /**
@@ -227,6 +228,7 @@ export const EARLY_AGENT_OP_TOOLS: Readonly<Record<string, string>> = {
   "set-description": "set_description",
   emojis: "list_emojis",
   "persona-emoji": "set_persona_emoji",
+  "emoji-preview": "preview_emojis",
 };
 
 /**

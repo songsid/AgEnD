@@ -142,6 +142,11 @@ export const ListEmojisArgs = z.object({
   refresh: z.boolean().optional().describe("Refetch the Discord server emoji lists instead of using the cache"),
 });
 
+export const PreviewEmojisArgs = z.object({
+  emojis: z.array(z.string()).min(1).max(8)
+    .describe("Up to 8 server emojis as <:name:id> from list_emojis; narrow them down by name first"),
+});
+
 export const SetPersonaEmojiArgs = z.object({
   emoji: z.string().describe(
     "One emoji, or a Discord server emoji as <:name:id> from list_emojis. Empty string removes your override for that status.",
