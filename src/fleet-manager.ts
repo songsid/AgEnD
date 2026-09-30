@@ -7438,6 +7438,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return { error: 'emoji is required: one emoji, a <:name:id> from list_emojis, or "" to remove your override' };
     }
     const raw = args.emoji.trim();
+    // Whitespace is not an explicit "": a stray " " must not clear the stamp either.
+    if (!raw && args.emoji !== "") {
+      return { error: 'emoji is blank: pass one emoji, a <:name:id> from list_emojis, or exactly "" to remove your override' };
+    }
     let value: string | undefined;
     if (raw) {
       const { platform } = this.resolveStatusEmojisFor(instanceName);

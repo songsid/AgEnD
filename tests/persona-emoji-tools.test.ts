@@ -187,12 +187,18 @@ describe("#1039 review: a concurrent change survives, and a malformed call clear
     expect(saved().worker.status_emojis).toEqual(expected);
   });
 
-  it("a missing or non-string emoji is refused and leaves the override alone; only \"\" clears", async () => {
+  it("a missing, non-string or blank emoji is refused and leaves the override alone; only exactly \"\" clears", async () => {
     const { fm, saved } = fleet();
     await fm.setPersonaEmoji("worker", { emoji: "🦊" });
     for (const args of [{}, { emoji: undefined }, { emoji: null }, { emoji: 5 }, { status: "delivered" }]) {
       expect(await fm.setPersonaEmoji("worker", args as any)).toEqual({
         error: 'emoji is required: one emoji, a <:name:id> from list_emojis, or "" to remove your override',
+      });
+    }
+    // Whitespace only is not an explicit "" either.
+    for (const emoji of [" ", "\t", "\n", "  \t\n "]) {
+      expect(await fm.setPersonaEmoji("worker", { emoji })).toEqual({
+        error: 'emoji is blank: pass one emoji, a <:name:id> from list_emojis, or exactly "" to remove your override',
       });
     }
     expect(saved().worker.status_emojis.delivered).toBe("🦊");
@@ -205,6 +211,7 @@ describe("#1039 review: a concurrent change survives, and a malformed call clear
     const ctx = Object.assign(Object.create(fm), { dataDir: "/tmp", logger: pino({ level: "silent" }) });
     ctx.fleetConfig = (fm as any).fleetConfig;
     expect(await dispatchAgentOperation(ctx, "worker", "persona-emoji", {})).toMatchObject({ error: expect.stringContaining("emoji is required") });
+    expect(await dispatchAgentOperation(ctx, "worker", "persona-emoji", { emoji: " " })).toMatchObject({ error: expect.stringContaining("emoji is blank") });
     expect(saved().worker.status_emojis.delivered).toBe("🦊");
     expect(await dispatchAgentOperation(ctx, "worker", "persona-emoji", { emoji: "" })).toMatchObject({ value: null });
     expect(saved().worker.status_emojis).toEqual({ failed: "🐙" });
