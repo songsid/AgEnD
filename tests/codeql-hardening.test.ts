@@ -6,6 +6,7 @@ import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { ensureWorkspaceGit } from "../src/paths.js";
 import { FleetManager } from "../src/fleet-manager.js";
+import { builtinStatusEmojis } from "../src/status-emojis.js";
 
 const tempDirs: string[] = [];
 function temp(): string {
@@ -18,7 +19,7 @@ const globalTargets = [Object.prototype, Object, Object.prototype.toString, Obje
 const fields = ["display_name", "description"] as const;
 let globalDescriptors: Array<{ target: object; field: string; descriptor: PropertyDescriptor | undefined }>;
 beforeEach(() => {
-  globalDescriptors = globalTargets.flatMap(target => fields.map(field => ({
+  globalDescriptors = globalTargets.flatMap(target => [...fields, "status_emojis"].map(field => ({
     target, field, descriptor: Object.getOwnPropertyDescriptor(target, field),
   })));
 });
@@ -159,5 +160,111 @@ describe("identity metadata prototype pollution (CodeQL #9/#10)", () => {
     expect(setDisplayNameByInstance).toHaveBeenCalledWith("classic-worker", "Classic");
     expect(setDescriptionByInstance).toHaveBeenCalledWith("classic-worker", "legacy");
     expect(h.save).not.toHaveBeenCalled();
+  });
+});
+
+describe("persona emoji instance-config prototype pollution (CodeQL #21/#22)", () => {
+  const customEmoji = { id: "111111111111111111", name: "fox", animated: false, available: true };
+  const catalog = { ok: true as const, fetched_at: 1, emojis: [customEmoji], guilds: [] };
+
+  function fleet(instances: Record<string, unknown> = { alpha: { working_directory: "/tmp" } }) {
+    const fm = new FleetManager(temp());
+    const internal = fm as any;
+    internal.fleetConfig = { instances, defaults: {} };
+    const save = vi.spyOn(internal, "saveFleetConfig").mockImplementation(() => {});
+    // Keep validation and the write path real; stub the platform/network boundary.
+    const resolve = vi.spyOn(fm, "resolveStatusEmojisFor").mockReturnValue({ ...builtinStatusEmojis("discord"), platform: "discord" });
+    vi.spyOn(internal, "getInstanceAdapterId").mockReturnValue("dc");
+    const list = vi.spyOn(fm, "listGuildEmojis").mockResolvedValue(catalog);
+    return { fm, internal, instances, save, resolve, list };
+  }
+
+  it("sets and clears only the named status on an own instance", async () => {
+    const entry = { working_directory: "/tmp", status_emojis: { failed: "🐙" } };
+    const h = fleet({ alpha: entry });
+    await expect(h.fm.handleSetPersonaEmojiHttp("alpha", { emoji: "🦊" })).resolves.toMatchObject({ value: "🦊" });
+    expect(entry.status_emojis).toEqual({ failed: "🐙", delivered: "🦊" });
+    await expect(h.fm.handleSetPersonaEmojiHttp("alpha", { emoji: "" })).resolves.toMatchObject({ value: null });
+    expect(entry.status_emojis).toEqual({ failed: "🐙" });
+    await h.fm.handleSetPersonaEmojiHttp("alpha", { emoji: "", status: "failed" });
+    expect(entry).not.toHaveProperty("status_emojis");
+    expect(h.save).toHaveBeenCalledTimes(3);
+    expectGlobalsUnchanged();
+  });
+
+  it.each(["__proto__", "constructor", "prototype", "toString", "hasOwnProperty"])("rejects inherited persona name %s before validation or Discord work", async name => {
+    const h = fleet();
+    await expect(h.fm.handleSetPersonaEmojiHttp(name, { emoji: "<:fox:111111111111111111>" })).resolves.toEqual({ error: `Instance '${name}' not found` });
+    expectGlobalsUnchanged();
+    expect(h.resolve).not.toHaveBeenCalled();
+    expect(h.list).not.toHaveBeenCalled();
+    expect(h.save).not.toHaveBeenCalled();
+  });
+
+  it("an inherited persona clear cannot delete existing prototype metadata", async () => {
+    const h = fleet();
+    Object.defineProperty(Object.prototype, "status_emojis", { value: { delivered: "🦊" }, writable: true, configurable: true });
+    const before = Object.getOwnPropertyDescriptor(Object.prototype, "status_emojis");
+    const result = await h.fm.handleSetPersonaEmojiHttp("__proto__", { emoji: "" });
+    expect(Object.getOwnPropertyDescriptor(Object.prototype, "status_emojis")).toEqual(before);
+    expect(result).toEqual({ error: "Instance '__proto__' not found" });
+    expect(h.save).not.toHaveBeenCalled();
+  });
+
+  it.each(["__proto__", "constructor", "toString", "hasOwnProperty"])("rejects persona %s removed during Discord validation without mutating an inherited target", async name => {
+    const entry = { working_directory: "/tmp", status_emojis: { failed: "🐙" } };
+    const h = fleet(Object.fromEntries([[name, entry]]));
+    let release!: () => void;
+    const gate = new Promise<void>(r => { release = r; });
+    h.list.mockImplementation(async () => { await gate; return catalog; });
+    const pending = h.fm.handleSetPersonaEmojiHttp(name, { emoji: "<:fox:111111111111111111>" });
+    try {
+      await vi.waitFor(() => expect(h.list).toHaveBeenCalledOnce());
+      delete h.instances[name];
+      release();
+      const result = await pending;
+      expectGlobalsUnchanged();
+      expect(result).toEqual({ error: `Instance '${name}' not found` });
+      expect(entry.status_emojis).toEqual({ failed: "🐙" });
+      expect(h.save).not.toHaveBeenCalled();
+    } finally {
+      release();
+      await pending;
+    }
+  });
+
+  it("rejects an inherited replacement config after Discord validation", async () => {
+    const original = { working_directory: "/tmp" };
+    const inherited = { working_directory: "/elsewhere" };
+    const h = fleet({ alpha: original });
+    h.list.mockImplementation(async () => {
+      h.internal.fleetConfig.instances = Object.create({ alpha: inherited });
+      return catalog;
+    });
+    await expect(h.fm.handleSetPersonaEmojiHttp("alpha", { emoji: "<:fox:111111111111111111>" })).resolves.toEqual({ error: "Instance 'alpha' not found" });
+    expect(inherited).toEqual({ working_directory: "/elsewhere" });
+    expect(original).toEqual({ working_directory: "/tmp" });
+    expect(h.save).not.toHaveBeenCalled();
+    expectGlobalsUnchanged();
+  });
+
+  it("accepts explicitly owned special names without changing any global prototype", async () => {
+    const h = fleet(JSON.parse('{"__proto__":{"working_directory":"/tmp"},"constructor":{"working_directory":"/tmp"},"hasOwnProperty":{"working_directory":"/tmp"}}'));
+    for (const name of ["__proto__", "constructor", "hasOwnProperty"]) {
+      await expect(h.fm.handleSetPersonaEmojiHttp(name, { emoji: "🦊" })).resolves.toMatchObject({ value: "🦊" });
+      expect(h.instances[name]).toMatchObject({ status_emojis: { delivered: "🦊" } });
+      await expect(h.fm.handleSetPersonaEmojiHttp(name, { emoji: "" })).resolves.toMatchObject({ value: null });
+      expect(h.instances[name]).not.toHaveProperty("status_emojis");
+    }
+    expect(h.save).toHaveBeenCalledTimes(6);
+    expectGlobalsUnchanged();
+  });
+
+  it("supports own persona config in a null-prototype dictionary", async () => {
+    const h = fleet(Object.assign(Object.create(null), { alpha: { working_directory: "/tmp" } }));
+    await expect(h.fm.handleSetPersonaEmojiHttp("alpha", { emoji: "🦊" })).resolves.toMatchObject({ value: "🦊" });
+    await expect(h.fm.handleSetPersonaEmojiHttp("__proto__", { emoji: "🦊" })).resolves.toHaveProperty("error");
+    expect(h.save).toHaveBeenCalledOnce();
+    expectGlobalsUnchanged();
   });
 });

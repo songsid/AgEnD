@@ -7524,7 +7524,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * An empty emoji removes that status's override.
    */
   async setPersonaEmoji(instanceName: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
-    const self = this.fleetConfig?.instances[instanceName];
+    const self = this.ownInstanceConfig(instanceName);
     if (!self) return { error: this.personaEmojiMissing(instanceName) };
     const status = (args.status ?? "delivered") as StatusEmojiKey;
     if (!STATUS_EMOJI_CONFIG_KEYS.includes(status)) {
@@ -7564,8 +7564,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Re-read after the validation above, which may have waited on Discord:
     // another set_persona_emoji or a Settings save can have changed another
     // status, or replaced this instance's config object, meanwhile. Change
-    // only this one key on what is there now.
-    const current = this.fleetConfig?.instances[instanceName];
+    // only this one key on what is there now. Ownership must still hold:
+    // removal during the await must not fall through to an inherited entry.
+    const current = this.ownInstanceConfig(instanceName);
     if (!current) return { error: this.personaEmojiMissing(instanceName) };
     const map = { ...(current.status_emojis ?? {}) } as Record<string, string>;
     if (value) map[status] = value;
