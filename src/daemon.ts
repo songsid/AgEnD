@@ -5292,9 +5292,11 @@ export class Daemon extends EventEmitter {
       // The pane text comes back with the verdict: a transient that is still
       // repainting is still working, and that is the only thing separating a
       // slow resume from a wedged one.
+      if (transient) this.resetFooterFallback();
       return transient ? { state: "active", transient, pane } : { state: "clear" };
     } catch (err) {
       this.logger.debug({ err }, "capture-pane failed during the input-transient probe — pane state unknown");
+      this.resetFooterFallback();
       return { state: "unknown" };
     }
   }
@@ -5499,11 +5501,75 @@ export class Daemon extends EventEmitter {
     if (!check || !this.tmux) return !check;
     try {
       const mode = await this.tmux.getPaneInputMode?.();
-      if (mode !== "raw") return false;
-      return check.call(this.backend, await this.tmux.capturePane());
+      if (mode !== "raw") { this.resetFooterFallback(); return false; }
+      return this.deliveryInputReadyPane(await this.tmux.capturePane());
     } catch {
+      this.resetFooterFallback();
       return false;
     }
+  }
+
+  /** Pane text of the current footer-fallback candidate, and since when it has been unchanged. */
+  private footerFallbackPaneKey: string | null = null;
+  private footerFallbackStableSince = 0;
+  /** The launch the candidate was seen in: a new spawn or launch attempt starts over. */
+  private footerFallbackEpoch: string | null = null;
+
+  /**
+   * Forget the footer-fallback candidate. Called whenever the pane is seen
+   * outside the candidate state (busy, a dialog, a transient, unreadable) and
+   * on every spawn: "stable for UNKNOWN_LAYOUT_STABLE_MS" must mean this screen,
+   * continuously, not time accumulated across an interruption.
+   */
+  private resetFooterFallback(): void {
+    this.footerFallbackPaneKey = null;
+    this.footerFallbackEpoch = null;
+  }
+  private footerFallbackWarnedGeneration: number | null = null;
+
+  /**
+   * The input-row proof used before a paste (#931/#947), with one fallback
+   * (#1031). Codex sometimes paints an idle composer without its Context
+   * status item even though tui.status_line asks for it: after four fleet
+   * restarts, sol's resumed session showed only `⚠ 2 warnings · f2 to view`.
+   * The proof needs a recognised footer, so the first delivery after each
+   * restart waited 30 minutes, failed, and waited again, for seven hours.
+   *
+   * When the footer is the only thing missing, the #978 structural evidence
+   * stands in for it, all of it required: the backend's own stable-unknown
+   * idle check (an empty live composer; no busy row, esc-to-interrupt row,
+   * queued ↳ input or known picker), no input transient such as the resume
+   * load, and the same screen for UNKNOWN_LAYOUT_STABLE_MS. The raw-tty
+   * requirement stays with the caller.
+   */
+  private deliveryInputReadyPane(pane: string): boolean {
+    const check = this.backend?.isDeliveryInputReadyPane;
+    if (!check) return true;
+    if (check.call(this.backend, pane)) {
+      this.footerFallbackPaneKey = null;
+      return true;
+    }
+    const stableUnknown = this.backend?.isStableUnknownLayoutIdlePane;
+    if (!stableUnknown?.call(this.backend, pane) || this.inputTransientInPane(pane)) {
+      this.footerFallbackPaneKey = null;
+      return false;
+    }
+    const key = pane.replace(/⋆/gu, "").replace(/[ \t]+$/gmu, "");
+    const epoch = `${this.spawnGeneration}:${this.launchAttempt}`;
+    const now = Date.now();
+    if (key !== this.footerFallbackPaneKey || epoch !== this.footerFallbackEpoch) {
+      this.footerFallbackPaneKey = key;
+      this.footerFallbackEpoch = epoch;
+      this.footerFallbackStableSince = now;
+      return false;
+    }
+    if (now - this.footerFallbackStableSince < UNKNOWN_LAYOUT_STABLE_MS) return false;
+    if (this.footerFallbackWarnedGeneration !== this.spawnGeneration) {
+      this.footerFallbackWarnedGeneration = this.spawnGeneration;
+      this.logger.warn({ backend: this.backend?.binaryName, stableForMs: now - this.footerFallbackStableSince },
+        "Idle footer not recognised — delivering on the #978 fallback (stable empty composer, no busy/queued/dialog, raw tty, no transient)");
+    }
+    return true;
   }
 
   /**
@@ -5514,12 +5580,14 @@ export class Daemon extends EventEmitter {
    * pane proves nothing. The silence gate comes first and costs no capture.
    */
   private async paneReadinessForDelivery(windowId: string): Promise<"ready" | "busy" | "dialog" | "transient" | "unknown"> {
-    if (!this.isPaneIdleForDelivery(windowId)) return "busy";
+    // Each early return below is the pane seen outside the footer-fallback
+    // candidate state, and never reaches deliveryInputReadyPane: reset here.
+    if (!this.isPaneIdleForDelivery(windowId)) { this.resetFooterFallback(); return "busy"; }
     const probe = await this.probeBlockingDialog();
-    if (probe.state !== "clear") return probe.state;
+    if (probe.state !== "clear") { this.resetFooterFallback(); return probe.state; }
     const transient = await this.probeInputTransient();
-    if (transient.state === "active") return "transient";
-    if (transient.state === "unknown") return "unknown";
+    if (transient.state === "active") { this.resetFooterFallback(); return "transient"; }
+    if (transient.state === "unknown") { this.resetFooterFallback(); return "unknown"; }
     if (this.needsStartupInputProof()) {
       return await this.hasPositiveDeliveryInput() ? "ready" : "transient";
     }
@@ -5673,7 +5741,7 @@ export class Daemon extends EventEmitter {
     try { pane = await this.tmux!.capturePane(); } catch { return "unknown"; }
     if (this.inputTransientInPane(pane)) return "busy";
     if (this.backend?.getBusyPattern?.()?.test(pane)) return "busy";
-    if (this.backend?.isDeliveryInputReadyPane && !this.backend.isDeliveryInputReadyPane(pane)) return "busy";
+    if (!this.deliveryInputReadyPane(pane)) return "busy";
     if (strandedAgendMessageInInput(pane, prompt)) return "stranded";
     // Kiro uses the bottom row; Codex's positive prompt/footer check above
     // rules out a historical transcript echo or a transition/modal screen.
