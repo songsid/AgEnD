@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { freemem, totalmem, cpus } from "node:os";
 import { access } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
+import { Worker } from "node:worker_threads";
 import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
@@ -4333,7 +4334,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         await data.respond(text);
       } else if (data.command === "sysinfo") {
         // Slash commands are Discord-only; use plain lines (no markdown table)
-        await data.respond(await this.topicCommands.getSysInfoTextAsync({ platform: "discord" }));
+        await this.topicCommands.sendSysInfo(text => data.respond(text), { platform: "discord" });
       } else if (data.command === "dashboard") {
         // Reply is ephemeral (adapter defers non-chat commands ephemerally), so
         // the web-token-bearing URLs are only visible to the caller.
@@ -4633,7 +4634,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         await data.respond(text);
       } else if (data.command === "sysinfo") {
         // Slash commands are Discord-only; use plain lines (no markdown table)
-        await data.respond(await this.topicCommands.getSysInfoTextAsync({ platform: "discord" }));
+        await this.topicCommands.sendSysInfo(text => data.respond(text), { platform: "discord" });
       } else if (data.command === "dashboard") {
         // Reply is ephemeral (adapter defers non-chat commands ephemerally), so
         // the web-token-bearing URLs are only visible to the caller.
@@ -7253,6 +7254,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private deliveryStatusChains = new Map<string, Promise<void>>();
   /** #725: in-flight CLI env probes, keyed by backend name. Coalesces concurrent /model requests. */
   private pendingCliEnvProbes = new Map<string, Promise<import("./backend/types.js").CliEnv | null>>();
+  /** Forced vendor catalog refreshes are separate flights, but sysinfo joins either flight. */
+  private pendingVendorCliEnvProbes = new Map<string, Promise<import("./backend/types.js").CliEnv | null>>();
 
   /**
    * The status emojis for an instance (#1005): its own `status_emojis`, then
@@ -11236,25 +11239,12 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     return null;
   }
 
-  /**
-   * Return cached CLI versions immediately and re-probe stale/missing backends
-   * in the background. /sysinfo must not wait for a local CLI or vendor.
-   */
+  /** Return cached CLI versions immediately. Refresh is started after /sysinfo is sent. */
   getBackendCliVersionSnapshot(): BackendCliVersionSnapshot {
     const snapshot = {} as BackendCliVersionSnapshot;
     for (const backend of SYSINFO_BACKEND_IDS) {
       const cached = this.readCliEnv(backend);
       const needsRefresh = this.cliEnvNeedsRefresh(cached);
-      if (needsRefresh) {
-        // Defer starting the existing probe until after /sysinfo has returned.
-        // Backend probes may do bounded synchronous CLI work before their first
-        // await, so calling probeBackendBounded inline could still block here.
-        setImmediate(() => {
-          void this.probeBackendBounded(backend).catch(err => {
-            this.logger.debug({ err, backend }, "Background CLI version refresh failed");
-          });
-        });
-      }
       const version = typeof cached?.version === "string" && cached.version.trim()
         ? cached.version.trim()
         : null;
@@ -11264,6 +11254,16 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       };
     }
     return snapshot;
+  }
+
+  /** Called only after the user-visible sysinfo send/respond has settled. */
+  refreshBackendCliVersions(): void {
+    for (const backend of SYSINFO_BACKEND_IDS) {
+      if (!this.cliEnvNeedsRefresh(this.readCliEnv(backend))) continue;
+      void this.probeBackendBounded(backend, { nonBlocking: true }).catch(err => {
+        this.logger.debug({ err, backend }, "Background CLI version refresh failed");
+      });
+    }
   }
 
   /** True when a cached CLI env is old enough that `/model` should re-probe. */
@@ -11278,21 +11278,22 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    */
   private async probeBackendBounded(
     backend: string,
-    opts: { refreshVendorCatalog?: boolean } = {},
+    opts: { refreshVendorCatalog?: boolean; nonBlocking?: boolean } = {},
   ): Promise<import("./backend/types.js").CliEnv | null> {
-    // #725: single-flight per backend — if a probe for this backend is already
-    // in flight, return the same promise instead of starting a duplicate.
-    // Refresh probes (refreshVendorCatalog=true) are always started fresh since
-    // the caller explicitly asked for a new vendor fetch.
-    if (!opts.refreshVendorCatalog) {
-      const existing = this.pendingCliEnvProbes.get(backend);
-      if (existing) return existing;
-    }
-    const work = this.probeBackend(backend, opts);
+    // #725: single-flight per backend. Explicit vendor refreshes remain a
+    // separate flight from an ordinary probe, while sysinfo can join either.
+    const regularFlight = this.pendingCliEnvProbes.get(backend);
+    const vendorFlight = this.pendingVendorCliEnvProbes.get(backend);
+    if (opts.refreshVendorCatalog && vendorFlight) return vendorFlight;
+    if (!opts.refreshVendorCatalog && (vendorFlight || regularFlight)) return vendorFlight ?? regularFlight!;
+
+    const worker = opts.nonBlocking ? this.startCliEnvProbeWorker(backend, opts) : undefined;
+    const work = worker?.promise ?? this.probeBackend(backend, opts);
     work.catch(() => { /* surfaced through the race, or already too late to matter */ });
     let timer: ReturnType<typeof setTimeout> | undefined;
     const deadline = new Promise<null>(resolve => {
       timer = setTimeout(() => {
+        worker?.terminate();
         this.logger.warn({ backend, deadlineMs: CLI_ENV_PROBE_DEADLINE_MS },
           "CLI env live probe exceeded its deadline — serving the cached model list");
         resolve(null);
@@ -11300,10 +11301,73 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     });
     const bounded = Promise.race([work, deadline]).finally(() => {
       clearTimeout(timer);
-      if (this.pendingCliEnvProbes.get(backend) === bounded) this.pendingCliEnvProbes.delete(backend);
+      const flights = opts.refreshVendorCatalog ? this.pendingVendorCliEnvProbes : this.pendingCliEnvProbes;
+      if (flights.get(backend) === bounded) flights.delete(backend);
     });
-    if (!opts.refreshVendorCatalog) this.pendingCliEnvProbes.set(backend, bounded);
+    (opts.refreshVendorCatalog ? this.pendingVendorCliEnvProbes : this.pendingCliEnvProbes).set(backend, bounded);
     return bounded;
+  }
+
+  private startCliEnvProbeWorker(backend: string, opts: { refreshVendorCatalog?: boolean }): {
+    promise: Promise<import("./backend/types.js").CliEnv | null>;
+    terminate: () => void;
+  } {
+    const workerData = {
+      backend,
+      instanceDir: join(getAgendHome(), "cli-env"),
+      config: {
+        workingDirectory: "",
+        instanceDir: join(getAgendHome(), "cli-env"),
+        instanceName: `probe-${backend}`,
+        mcpServers: {},
+      },
+      refreshVendorCatalog: opts.refreshVendorCatalog === true,
+    };
+    // `tsx src/cli.ts` needs its TS module resolver inside the separate isolate.
+    // Published builds load the compiled worker and require no tsx dependency.
+    const worker = import.meta.url.endsWith(".ts")
+      ? new Worker(
+        `const { workerData } = require("node:worker_threads"); import("tsx/esm/api").then(({ tsImport }) => tsImport(workerData.entry, workerData.entry));`,
+        { eval: true, execArgv: [], workerData: { ...workerData, entry: new URL("./backend/cli-env-probe-worker.ts", import.meta.url).href } },
+      )
+      : new Worker(new URL("./backend/cli-env-probe-worker.js", import.meta.url), { execArgv: [], workerData });
+    let settled = false;
+    let resolveProbe!: (value: import("./backend/types.js").CliEnv | null) => void;
+    const promise = new Promise<import("./backend/types.js").CliEnv | null>(resolve => { resolveProbe = resolve; });
+    const finish = (value: import("./backend/types.js").CliEnv | null) => {
+      if (settled) return;
+      settled = true;
+      resolveProbe(value);
+      void worker.terminate().catch(err => {
+        this.logger.debug({ backend, err }, "CLI env worker termination failed");
+      });
+    };
+    worker.once("message", (message: { ok?: boolean; result?: Omit<import("./backend/types.js").CliEnv, "backend" | "probedAt"> | null; error?: string }) => {
+      if (settled) return;
+      if (!message.ok) {
+        this.logger.warn({ backend, error: message.error }, "CLI env worker failed");
+        finish(null);
+      } else if (!message.result) {
+        finish(null);
+      } else {
+        try { finish(this.persistCliEnvProbeResult(backend, message.result)); }
+        catch (err) {
+          this.logger.warn({ backend, err }, "CLI env cache write failed");
+          finish(null);
+        }
+      }
+    });
+    worker.once("error", err => {
+      if (settled) return;
+      this.logger.warn({ backend, err }, "CLI env worker crashed");
+      finish(null);
+    });
+    worker.once("exit", code => {
+      if (settled) return;
+      this.logger.warn({ backend, code }, "CLI env worker exited without a result");
+      finish(null);
+    });
+    return { promise, terminate: () => { finish(null); } };
   }
 
   /**
@@ -11382,31 +11446,39 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       if (!be.probeCLIEnv) return null;
       if (opts.refreshVendorCatalog && be.refreshModelCatalog) await be.refreshModelCatalog();
       const probed = await be.probeCLIEnv({ workingDirectory: "", instanceDir: join(getAgendHome(), "cli-env"), instanceName: `probe-${backend}`, mcpServers: {} });
-      const env: import("./backend/types.js").CliEnv = { backend, probedAt: Date.now(), ...probed };
-      // An empty result must never overwrite a catalog we already have. Some
-      // probes hit the network (`agy models` fetches, 5s cap), so a slow moment
-      // returns [] — and writing that would blank the list for the whole 24h
-      // TTL, long after the CLI recovered. Observed live: a good 11-model
-      // antigravity cache replaced by an empty one. Keep the known models and
-      // let the fresher currentModel/version through.
-      if (!env.models?.length) {
-        const previous = this.readCliEnv(backend);
-        if (previous?.models?.length) env.models = previous.models;
-      }
-      // Same protection for the extended catalog: one offline moment must not
-      // blank a good account list for the whole cache TTL.
-      if (!env.apiModels?.length) {
-        const previous = this.readCliEnv(backend);
-        if (previous?.apiModels?.length) env.apiModels = previous.apiModels;
-      }
-      const path = this.cliEnvPath(backend);
-      mkdirSync(dirname(path), { recursive: true });
-      writeFileSync(path, JSON.stringify(env, null, 2));
-      return env;
+      return this.persistCliEnvProbeResult(backend, probed);
     } catch (err) {
       this.logger.warn({ err, backend }, "CLI env probe failed");
       return null;
     }
+  }
+
+  /** Preserve the existing cache merge rules for both in-process and worker probes. */
+  private persistCliEnvProbeResult(
+    backend: string,
+    probed: Omit<import("./backend/types.js").CliEnv, "backend" | "probedAt">,
+  ): import("./backend/types.js").CliEnv {
+    const env: import("./backend/types.js").CliEnv = { backend, probedAt: Date.now(), ...probed };
+    // An empty result must never overwrite a catalog we already have. Some
+    // probes hit the network (`agy models` fetches, 5s cap), so a slow moment
+    // returns [] — and writing that would blank the list for the whole 24h
+    // TTL, long after the CLI recovered. Observed live: a good 11-model
+    // antigravity cache replaced by an empty one. Keep the known models and
+    // let the fresher currentModel/version through.
+    if (!env.models?.length) {
+      const previous = this.readCliEnv(backend);
+      if (previous?.models?.length) env.models = previous.models;
+    }
+    // Same protection for the extended catalog: one offline moment must not
+    // blank a good account list for the whole cache TTL.
+    if (!env.apiModels?.length) {
+      const previous = this.readCliEnv(backend);
+      if (previous?.apiModels?.length) env.apiModels = previous.apiModels;
+    }
+    const path = this.cliEnvPath(backend);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, JSON.stringify(env, null, 2));
+    return env;
   }
 
   /** Background-probe every distinct backend in use at startup (non-blocking). */

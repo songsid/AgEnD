@@ -1,12 +1,28 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const probeCLIEnv = vi.fn();
-vi.mock("../src/backend/factory.js", () => ({
-  createBackend: () => ({ probeCLIEnv }),
+const { probeCLIEnv, refreshModelCatalog, workers } = vi.hoisted(() => ({
+  probeCLIEnv: vi.fn(),
+  refreshModelCatalog: vi.fn(),
+  workers: [] as any[],
 }));
+vi.mock("../src/backend/factory.js", () => ({
+  createBackend: () => ({ probeCLIEnv, refreshModelCatalog }),
+}));
+vi.mock("node:worker_threads", async () => {
+  const { EventEmitter } = await import("node:events");
+  return {
+    Worker: class extends EventEmitter {
+      terminate = vi.fn().mockResolvedValue(0);
+      constructor(readonly url: URL, readonly options: any) {
+        super();
+        workers.push(this);
+      }
+    },
+  };
+});
 
 import { TopicCommands } from "../src/topic-commands.js";
 import { getLocale, setLocale } from "../src/locale.js";
@@ -31,6 +47,8 @@ beforeEach(() => {
   process.env.AGEND_HOME = home;
   dataDir = mkdtempSync(join(tmpdir(), "agend-sysinfo-data-"));
   probeCLIEnv.mockReset();
+  refreshModelCatalog.mockReset().mockResolvedValue(undefined);
+  workers.length = 0;
 });
 
 afterEach(() => {
@@ -62,7 +80,13 @@ function seedAll(ageFor: (backend: string) => number = () => 5 * 60 * 1000): voi
   for (const backend of BACKEND_IDS) seed(backend, ageFor(backend), `${backend}-cli 1.2.3`);
 }
 
-async function makeCommands(): Promise<TopicCommands> {
+function seedWithoutMuse(): void {
+  for (const backend of BACKEND_IDS.filter(id => id !== "muse")) {
+    seed(backend, 5 * 60 * 1000, `${backend}-cli 1.2.3`);
+  }
+}
+
+async function makeCommands(): Promise<{ commands: TopicCommands; fleet: any }> {
   const { FleetManager } = await import("../src/fleet-manager.js");
   const fleet = new FleetManager(dataDir) as any;
   fleet.fleetConfig = { defaults: {}, instances: {} };
@@ -77,17 +101,25 @@ async function makeCommands(): Promise<TopicCommands> {
     fleet_mem_mb: null,
     system_mem_gb: { used: 1, total: 2 },
   });
-  return new TopicCommands(fleet);
+  return { commands: new TopicCommands(fleet), fleet };
+}
+
+async function finishFlights(fleet: any): Promise<void> {
+  await Promise.all([...fleet.pendingCliEnvProbes.values(), ...fleet.pendingVendorCliEnvProbes.values()]);
 }
 
 describe("/sysinfo backend CLI cache", () => {
   it("renders all six fresh cached versions without starting probes", async () => {
     seedAll();
-    const commands = await makeCommands();
+    const { commands } = await makeCommands();
+    const telegramSend = vi.fn().mockResolvedValue(undefined);
+    const discordSend = vi.fn().mockResolvedValue(undefined);
 
-    const telegram = await commands.getSysInfoTextAsync();
-    const discord = await commands.getSysInfoTextAsync({ platform: "discord" });
+    await commands.sendSysInfo(telegramSend);
+    await commands.sendSysInfo(discordSend, { platform: "discord" });
 
+    const telegram = telegramSend.mock.calls[0][0];
+    const discord = discordSend.mock.calls[0][0];
     expect(telegram).toContain("**Backend CLIs**");
     for (const backend of BACKEND_IDS) {
       const row = `- ${BACKEND_LABELS[backend]}: ${backend}-cli 1.2.3`;
@@ -95,50 +127,122 @@ describe("/sysinfo backend CLI cache", () => {
       expect(discord).toContain(row);
     }
     expect(discord).not.toContain("|--------|");
-    await nextImmediate();
+    expect(workers).toHaveLength(0);
     expect(probeCLIEnv).not.toHaveBeenCalled();
   });
 
-  it("serves the stale cached version and refreshes it in the background", async () => {
+  it.each(["telegram", "discord"] as const)("does not start refresh while the %s send is pending", async platform => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    seedWithoutMuse();
+    const { commands } = await makeCommands();
+    let releaseSend!: () => void;
+    const send = vi.fn((_text: string) => new Promise<void>(resolve => { releaseSend = resolve; }));
+
+    const response = commands.sendSysInfo(send, { platform });
+    await nextImmediate();
+
+    expect(send).toHaveBeenCalledOnce();
+    expect(send.mock.calls[0][0]).toContain("- Muse Code: probing…");
+    expect(workers).toHaveLength(0);
+    expect(probeCLIEnv).not.toHaveBeenCalled();
+
+    releaseSend();
+    await response;
+
+    expect(workers).toHaveLength(1);
+    expect(workers[0].options.workerData.backend).toBe("muse");
+    expect(probeCLIEnv).not.toHaveBeenCalled();
+  });
+
+  it("serves stale cached versions and runs refresh outside the fleet event loop", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     seedAll(backend => backend === "codex" ? 2 * HOUR : 5 * 60 * 1000);
-    probeCLIEnv.mockImplementation(() => new Promise(() => { /* deliberately slow probe */ }));
-    const commands = await makeCommands();
+    const { commands } = await makeCommands();
+    const send = vi.fn().mockResolvedValue(undefined);
 
-    const text = await commands.getSysInfoTextAsync();
+    await commands.sendSysInfo(send);
 
-    expect(text).toContain("- Codex: codex-cli 1.2.3");
+    expect(send.mock.calls[0][0]).toContain("- Codex: codex-cli 1.2.3");
+    expect(workers).toHaveLength(1);
+    expect(workers[0].options.workerData.config.instanceName).toBe("probe-codex");
     expect(probeCLIEnv).not.toHaveBeenCalled();
-    await nextImmediate();
-    expect(probeCLIEnv).toHaveBeenCalledOnce();
-    expect(probeCLIEnv).toHaveBeenCalledWith(expect.objectContaining({ instanceName: "probe-codex" }));
-  }, 1_000);
+  });
 
-  it("shows probing for a cache miss and returns before the background probe finishes", async () => {
+  it("starts all six missing probes in workers without invoking a backend on the fleet thread", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    for (const backend of BACKEND_IDS.filter(id => id !== "muse")) seed(backend, 5 * 60 * 1000, `${backend}-cli 1.2.3`);
-    probeCLIEnv.mockImplementation(() => new Promise(() => { /* deliberately slow probe */ }));
-    const commands = await makeCommands();
+    const { commands } = await makeCommands();
 
-    const text = await commands.getSysInfoTextAsync();
+    await commands.sendSysInfo(async () => {});
 
-    expect(text).toContain("- Muse Code: probing…");
+    expect(workers.map(worker => worker.options.workerData.backend)).toEqual(BACKEND_IDS);
     expect(probeCLIEnv).not.toHaveBeenCalled();
+  });
+
+  it("updates a cache miss after a successful background probe for the next sysinfo", async () => {
+    seedWithoutMuse();
+    const { commands, fleet } = await makeCommands();
+    const firstSend = vi.fn().mockResolvedValue(undefined);
+    await commands.sendSysInfo(firstSend);
+    expect(firstSend.mock.calls[0][0]).toContain("- Muse Code: probing…");
+
+    workers[0].emit("message", { ok: true, result: { version: "Muse Code 1.3.0", models: [] } });
+    await finishFlights(fleet);
+
+    const saved = JSON.parse(readFileSync(join(home, "cli-env", "muse.json"), "utf-8"));
+    expect(saved.version).toBe("Muse Code 1.3.0");
+    const secondSend = vi.fn().mockResolvedValue(undefined);
+    await commands.sendSysInfo(secondSend);
+    expect(secondSend.mock.calls[0][0]).toContain("- Muse Code: Muse Code 1.3.0");
+    expect(workers).toHaveLength(1);
+    expect(workers[0].terminate).toHaveBeenCalledOnce();
+  });
+
+  it.each([false, true])("joins an existing backend probe (vendor refresh=%s)", async refreshVendorCatalog => {
+    seedAll(backend => backend === "codex" ? 2 * HOUR : 5 * 60 * 1000);
+    let releaseProbe!: (value: any) => void;
+    probeCLIEnv.mockImplementation(() => new Promise(resolve => { releaseProbe = resolve; }));
+    const { commands, fleet } = await makeCommands();
+    const flight = fleet.probeBackendBounded("codex", { refreshVendorCatalog });
     await nextImmediate();
     expect(probeCLIEnv).toHaveBeenCalledOnce();
-    expect(probeCLIEnv).toHaveBeenCalledWith(expect.objectContaining({ instanceName: "probe-muse" }));
-  }, 1_000);
+
+    await commands.sendSysInfo(async () => {});
+
+    expect(workers).toHaveLength(0);
+    expect(probeCLIEnv).toHaveBeenCalledOnce();
+    releaseProbe({ version: "codex-cli 0.159.0", models: [] });
+    await flight;
+    await finishFlights(fleet);
+    expect(await commands.getSysInfoTextAsync()).toContain("- Codex: codex-cli 0.159.0");
+  });
+
+  it("terminates a timed-out worker and ignores a late result", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    seedWithoutMuse();
+    const { commands, fleet } = await makeCommands();
+    const { CLI_ENV_PROBE_DEADLINE_MS } = await import("../src/fleet-manager.js");
+    await commands.sendSysInfo(async () => {});
+
+    await vi.advanceTimersByTimeAsync(CLI_ENV_PROBE_DEADLINE_MS + 1);
+    await finishFlights(fleet);
+    expect(workers[0].terminate).toHaveBeenCalledOnce();
+    expect(fleet.pendingCliEnvProbes.size).toBe(0);
+
+    workers[0].emit("message", { ok: true, result: { version: "late", models: [] } });
+    expect(existsSync(join(home, "cli-env", "muse.json"))).toBe(false);
+  });
 
   it("localizes unknown cache entries instead of dropping backend rows", async () => {
     setLocale("zh-TW");
-    for (const backend of BACKEND_IDS) seed(backend, 5 * 60 * 1000, `${backend}-cli 1.2.3`);
+    seedAll();
     seed("codex", 5 * 60 * 1000);
-    const commands = await makeCommands();
+    const { commands } = await makeCommands();
 
     const text = await commands.getSysInfoTextAsync();
 
     expect(text).toContain("**Backend CLI 版本**");
     expect(text).toContain("Codex: 未知／未安裝");
+    expect(workers).toHaveLength(0);
     expect(probeCLIEnv).not.toHaveBeenCalled();
   });
 });

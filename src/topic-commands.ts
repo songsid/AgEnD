@@ -1173,8 +1173,20 @@ export class TopicCommands {
     const adapter = this.getReplyAdapter(msg);
     if (!adapter) return;
     const platform = adapter.type === "discord" ? "discord" : "telegram";
-    const text = await this.getSysInfoTextAsync({ platform });
-    await adapter.sendText(msg.chatId, text, { threadId: msg.threadId });
+    await this.sendSysInfo(text => adapter.sendText(msg.chatId, text, { threadId: msg.threadId }), { platform });
+  }
+
+  /** Share the send-completion gate across topic messages and Discord slash replies. */
+  async sendSysInfo(
+    send: (text: string) => Promise<unknown>,
+    opts?: { platform?: "telegram" | "discord" },
+  ): Promise<void> {
+    const text = await this.getSysInfoTextAsync(opts);
+    try {
+      await send(text);
+    } finally {
+      this.ctx.refreshBackendCliVersions?.();
+    }
   }
 
   /**
