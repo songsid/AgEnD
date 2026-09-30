@@ -395,9 +395,11 @@ export class MuseBackend implements CliBackend {
       // instance and /quit it mid-task) or the conversation. Muse has no
       // token-free auth check to overrule a false hit. So: whole muse
       // sentences (1.4.1 binary; the API-key one observed live), on a row that
-      // is not one of the transcript's own (❯ user, ◆ assistant).
+      // is not one of the transcript's own: ❯ user, ◆ assistant, or a numbered
+      // diff row (`401 +`, `582 -`, `25  ` context) — an edit to a file that
+      // holds these sentences, this one included, shows them there.
       {
-        pattern: new RegExp("^(?![ \\t]*[❯◆])[^\\n]*(?:"
+        pattern: new RegExp("^(?![ \\t]*(?:[❯◆]|\\d+ [+\\- ]))[^\\n]*(?:"
           + "still unauthorized after a token refresh; run `muse login` again"
           + "|your saved login is no longer valid\\. Log in again or use a different account"
           + "|your API key from META_API_KEY was rejected"

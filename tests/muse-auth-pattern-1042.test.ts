@@ -58,4 +58,25 @@ describe("muse auth_error matches muse's sign-in failures, not the transcript (#
       "  ◆ The rejected-key error reads \"your API key from META_API_KEY was rejected\".",
     ]) expect(hits(`${quoted}\n`), quoted).toBe(0);
   });
+
+  it("muse's own sentences on a numbered diff row are not: an added, removed or context line", () => {
+    const sentence = "still unauthorized after a token refresh; run `muse login` again";
+    for (const row of [
+      `  402 +      + "${sentence}"`,
+      `  582 -    { pattern: /your saved login is no longer valid\\. Log in again or use a different account/ },`,
+      `   25      // your API key from META_API_KEY was rejected`,
+      `  1402 +  "Not logged in. Run \`muse login\` again to log in.",`,
+    ]) expect(hits(`${row}\n`), row).toBe(0);
+  });
+
+  it("this change's own files, shown as a muse diff, do not trigger it", () => {
+    for (const file of ["../src/backend/muse.ts", "./muse-auth-pattern-1042.test.ts"]) {
+      const source = readFileSync(new URL(file, import.meta.url), "utf8").split("\n");
+      expect(source.some(l => l.includes("your saved login is no longer valid"))).toBe(true);
+      for (const sign of ["+", "-", " "]) {
+        const asDiff = source.map((l, i) => `  ${String(i + 1).padStart(4)} ${sign}  ${l}`).join("\n");
+        expect(hits(asDiff), `${file} as ${JSON.stringify(sign)} rows`).toBe(0);
+      }
+    }
+  });
 });
