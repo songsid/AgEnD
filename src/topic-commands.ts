@@ -10,6 +10,7 @@ import type { FleetContext } from "./fleet-context.js";
 import type { ChannelAdapter, InboundMessage } from "./channel/types.js";
 import { DEFAULT_INSTANCE_CONFIG } from "./config.js";
 import { formatCents } from "./cost-guard.js";
+import { truncateDisplay, MODEL_DISPLAY_WIDTH_MAX } from "./ls-rows.js";
 import { detectPlatform } from "./service-installer.js";
 import { getTmuxSocketName, getTmuxSessionName } from "./paths.js";
 import { t, getLocale } from "./locale.js";
@@ -1114,25 +1115,29 @@ export class TopicCommands {
 
       const costCents = this.ctx.costGuard?.getDailyCostCents(name) ?? 0;
 
-      let icon: string;
-      if (costPaused || status === "paused") icon = "⏸";
-      else if (status === "running") icon = "🟢";
-      else if (status === "crashed") icon = "🔴";
-      else icon = "⚪";
-
-      const stateLabel = executionState === "idle" ? `🟢 ${t("state.idle")}`
-        : executionState === "working" ? `🔵 ${t("state.working")}`
-          : executionState === "stuck" ? `🔴 ${t("state.stuck")}`
-            : executionState === "paused" ? `⏸ ${t("state.paused")}`
-              : "—";
+      // Merged State (#1052): lifecycle + execution state in one column. The
+      // old Status icon column duplicated it (⏸/⏸, 🟢/🟢); IPC duplicated it
+      // too (✗ exactly when State is stopped/crashed/—) and stays queryable
+      // via /api/fleet's per-instance `ipc` flag.
+      const stateLabel = status === "paused" || costPaused || executionState === "paused" ? `⏸ ${t("state.paused")}`
+        : status === "stopped" ? `✗ ${t("state.stopped")}`
+          : status === "crashed" ? `🔴 ${t("state.crashed")}`
+            : executionState === "idle" ? `🟢 ${t("state.idle")}`
+              : executionState === "working" ? `🔵 ${t("state.working")}`
+                : executionState === "stuck" ? `🔴 ${t("state.stuck")}`
+                  : "—";
       const displayName = this.shortInstanceName(name);
-      // IPC reachability moved here from /sysinfo: it is per-instance health, and
-      // /status is now the one place that shows the fleet per instance.
-      const ipc = this.ctx.instanceIpcClients.has(name) ? "✓" : "✗";
+      // Model: same source as /ctx — live statusline for claude-code, the
+      // effective resolver otherwise — capped so one long name cannot blow
+      // the table wider.
+      const modelDisplay = backend === "claude-code"
+        ? readStatuslineModel(this.ctx.dataDir, name) ?? this.ctx.modelDisplayForInstance?.(name) ?? "default"
+        : this.ctx.modelDisplayForInstance?.(name) ?? "default";
+      const model = truncateDisplay(modelDisplay, MODEL_DISPLAY_WIDTH_MAX);
       // "-" distinguishes "backend has no effort setting" from an unset one:
       // an empty cell would read as missing data rather than not-applicable.
       const effort = this.ctx.resolveInstanceEffort?.(name).effort ?? "-";
-      rows.push(`| ${displayName} | ${backend} | ${contextStr} | ${effort} | ${formatCents(costCents)} | ${icon} | ${stateLabel} | ${ipc} |`);
+      rows.push(`| ${displayName} | ${backend} | ${model} | ${contextStr} | ${effort} | ${formatCents(costCents)} | ${stateLabel} |`);
     }
 
     if (rows.length === 0) return t("status.no_instances");
@@ -1141,7 +1146,7 @@ export class TopicCommands {
       `## ${t("status.title")}`,
       "",
       t("status.table_header"),
-      "|----------|---------|-----|--------|------|--------|-------|-----|",
+      "|----------|---------|-------|-----|--------|------|-------|",
       ...rows,
       "",
       t("status.paused_count", pausedCount),
