@@ -12,8 +12,8 @@
  * docs/design/984-codex-exact-cwd-resume.zh-TW.md.
  */
 import { execFileSync } from "node:child_process";
-import { closeSync, openSync, readSync, realpathSync } from "node:fs";
-import { resolve } from "node:path";
+import { closeSync, openSync, readdirSync, readSync, realpathSync, statSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import Database from "better-sqlite3";
 
@@ -170,6 +170,68 @@ export function rolloutRecordsTurn(path: string): boolean {
     }
   } catch {
     return false;
+  } finally {
+    if (fd !== null) try { closeSync(fd); } catch { /* already closed */ }
+  }
+}
+
+/**
+ * #1053: a conversation this workspace had but the lookup did not return.
+ *
+ * `planCodexResume` starts fresh on "none", and "never had a conversation"
+ * and "had one the lookup missed" look the same from there: #1028 (reading a
+ * database this CODEX_HOME does not write) was a silent new session on every
+ * restart, the old one still in `codex resume`. The rollout files are the
+ * ground truth the database indexes: each begins with `session_meta` naming
+ * its cwd. The newest interactive rollout of this directory with a turn in
+ * it, if any; null for a workspace that never had one. Read only when the
+ * lookup already said "none", so the walk costs nothing on a normal resume.
+ */
+export function newestMissedCwdRollout(
+  sessionsDir: string,
+  workingDirectory: string,
+  rolloutHasTurn: (path: string) => boolean = rolloutRecordsTurn,
+): { id: string; path: string } | null {
+  const candidates = new Set(cwdCandidates(workingDirectory));
+  const files: Array<{ path: string; mtimeMs: number }> = [];
+  const walk = (dir: string, depth: number): void => {
+    let entries: string[];
+    try { entries = readdirSync(dir); } catch { return; }
+    for (const e of entries) {
+      const p = join(dir, e);
+      try {
+        const st = statSync(p);
+        if (st.isDirectory() && depth < 4) walk(p, depth + 1);
+        else if (st.isFile() && e.startsWith("rollout-") && e.endsWith(".jsonl")) files.push({ path: p, mtimeMs: st.mtimeMs });
+      } catch { /* raced with deletion */ }
+    }
+  };
+  walk(sessionsDir, 0);
+  files.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  for (const f of files) {
+    const meta = rolloutSessionMeta(f.path);
+    if (!meta || !candidates.has(resolve(meta.cwd)) || meta.source !== "cli") continue;
+    if (rolloutHasTurn(f.path)) return { id: meta.id, path: f.path };
+  }
+  return null;
+}
+
+/** The first line of a rollout, when it is the session_meta the thread was created with. */
+function rolloutSessionMeta(path: string): { id: string; cwd: string; source: unknown } | null {
+  let fd: number | null = null;
+  try {
+    fd = openSync(path, "r");
+    // session_meta can carry long instructions; its line is still bounded.
+    const buf = Buffer.alloc(ROLLOUT_CHUNK_BYTES);
+    const read = readSync(fd, buf, 0, ROLLOUT_CHUNK_BYTES, 0);
+    const first = buf.toString("utf8", 0, read).split("\n")[0] ?? "";
+    const entry = JSON.parse(first) as { type?: unknown; payload?: { id?: unknown; cwd?: unknown; source?: unknown } };
+    const payload = entry.payload;
+    if (entry.type !== "session_meta" || typeof payload?.cwd !== "string") return null;
+    if (typeof payload.id !== "string" || !SESSION_ID_RE.test(payload.id)) return null;
+    return { id: payload.id, cwd: payload.cwd, source: payload.source };
+  } catch {
+    return null;
   } finally {
     if (fd !== null) try { closeSync(fd); } catch { /* already closed */ }
   }
