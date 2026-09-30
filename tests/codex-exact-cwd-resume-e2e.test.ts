@@ -14,12 +14,12 @@
  * one. Resuming a thread does not call the model.
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 const AUTH = process.env.AGEND_CODEX_E2E_AUTH || join(homedir(), ".codex", "auth.json");
 
@@ -167,5 +167,135 @@ describe.skipIf(!enabled)("real codex 0.157: an instance in a git worktree resum
     expect(pane, pane).not.toMatch(/Working directory · resume/);
     expect(pane, pane).not.toMatch(/open in another app/);
     expect(isIdle(backend, pane), pane).toBe(true);
+  }, 90_000);
+});
+
+/** #1034: exercise the real daemon path, plus the embedded --no-daemon control. */
+describe.skipIf(!enabled || !/\b0\.157\.\d+\b/.test(version ?? ""))("real codex 0.157: private app-server runtime directories (#1034)", () => {
+  const runtimeDirs = ["app-server-daemon", "app-server-control"] as const;
+  let runtimeRoot = "";
+  let privateHome = "";
+
+  beforeEach(() => {
+    runtimeRoot = mkdtempSync(join(tmpdir(), "agend-1034-e2e-"));
+    privateHome = "";
+    socket = `agend-e2e-1034-${process.pid}`;
+    process.env.AGEND_HOME = join(runtimeRoot, "agend");
+    process.env.CODEX_HOME = join(runtimeRoot, "shared");
+    mkdirSync(process.env.CODEX_HOME, { recursive: true });
+    symlinkSync(AUTH, join(process.env.CODEX_HOME, "auth.json"));
+    writeFileSync(join(process.env.CODEX_HOME, "config.toml"), "[features]\ndaemon_auto_start = true\n");
+    for (const name of runtimeDirs) {
+      mkdirSync(join(process.env.CODEX_HOME, name), { mode: 0o700 });
+      writeFileSync(join(process.env.CODEX_HOME, name, "source-marker"), name);
+    }
+  });
+
+  afterEach(() => {
+    try { tmux("kill-server"); } catch { /* not started */ }
+    // Kill only the daemon scoped to this test's private home, never the user's.
+    if (privateHome && existsSync(join(privateHome, "app-server-daemon"))
+      && !lstatSync(join(privateHome, "app-server-daemon")).isSymbolicLink()) {
+      try {
+        // The CLI normally grants 60s on stop. This throwaway daemon has no
+        // model turn to preserve; use its supported setting for bounded cleanup.
+        const settingsPath = join(privateHome, "app-server-daemon", "settings.json");
+        let settings = {};
+        try { settings = JSON.parse(readFileSync(settingsPath, "utf8")); } catch { /* defaults */ }
+        writeFileSync(settingsPath, JSON.stringify({ ...settings, shutdownGraceSeconds: 0 }), { mode: 0o600 });
+        execFileSync("codex", ["app-server", "daemon", "stop"], {
+          env: { ...process.env, CODEX_HOME: privateHome }, timeout: 15_000, stdio: "ignore",
+        });
+      } catch { /* no daemon if the TUI failed before auto-start */ }
+      // `daemon stop` leaves the updater running. Verify this test's managed
+      // executable before terminating either remaining PID from its records.
+      for (const name of ["daemon.pid", "daemon-updater.pid"]) {
+        let pid: number;
+        try { pid = JSON.parse(readFileSync(join(privateHome, "app-server-daemon", name), "utf8")).pid; }
+        catch { continue; }
+        if (!Number.isSafeInteger(pid) || pid <= 0) continue;
+        let command: string;
+        try { command = execFileSync("ps", ["-p", String(pid), "-o", "command="], { encoding: "utf8", timeout: 5_000 }).trim(); }
+        catch { continue; } // already exited
+        expect(command.startsWith(join(privateHome, "packages") + "/"), command).toBe(true);
+        try { process.kill(pid, "SIGKILL"); } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+        }
+      }
+    }
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    if (runtimeRoot) rmSync(runtimeRoot, { recursive: true, force: true });
+  }, 30_000);
+
+  it.each(["fresh", "legacy-links", "no-daemon", "unfixed-links", "unfixed-no-daemon"] as const)("checks resume with %s and leaves shared runtime contents intact", async mode => {
+    const { CodexBackend } = await import("../src/backend/codex.js");
+    const shared = process.env.CODEX_HOME!;
+    const cwd = join(runtimeRoot, "repo");
+    execFileSync("git", ["init", "-q", cwd]);
+    const id = "019fa7a4-0000-7000-8000-000000001034";
+    const mark = "E2E-RESUMED-THREAD-1034";
+    const now = Date.now();
+    writeState(shared, [{ id, cwd, mark, recency: now, rollout: writeRollout(shared, id, cwd, mark, new Date(now).toISOString()) }]);
+    const instanceDir = join(runtimeRoot, "agend", "instances", "runtime-worker-t1503382598640996543");
+    mkdirSync(instanceDir, { recursive: true });
+    if (mode === "legacy-links") {
+      const legacy = join(instanceDir, "codex-home");
+      mkdirSync(legacy);
+      for (const name of runtimeDirs) symlinkSync(join(shared, name), join(legacy, name), "dir");
+    }
+    const backend = new CodexBackend(instanceDir);
+    privateHome = CodexBackend.shortHomeFor(instanceDir);
+    const config = { workingDirectory: cwd, instanceDir, instanceName: "runtime-worker", mcpServers: {} };
+    backend.writeConfig(config);
+    backend.preTrust(cwd);
+    for (const name of runtimeDirs) expect(() => lstatSync(join(privateHome, name))).toThrow(/ENOENT/);
+    if (mode.startsWith("unfixed-")) {
+      // Positive control: recreate the old mirror pass's links AFTER preparation.
+      for (const name of runtimeDirs) symlinkSync(join(shared, name), join(privateHome, name), "dir");
+    }
+    // 0.157 excludes daemon auto-start for these CLI overrides (its
+    // daemon_startup::config_exclusion). The private config already disables
+    // update checks. Omit the overrides here to exercise a managed daemon.
+    const command = backend.buildCommand(config)
+      .replace(" -c check_for_update_on_startup=false", "")
+      .replace(" -c features.instant_interrupt=false", "")
+      + (mode.includes("no-daemon") ? " --no-daemon" : "");
+    expect(command).toContain(` resume '${id}' `);
+    tmux("new-session", "-d", "-s", "e2e", "-x", "120", "-y", "36", "-c", cwd, `${command}; sleep 600`);
+    let pane = "";
+    const socketDirError = /socket\s+directory path exists and is not a directory/;
+    const deadline = Date.now() + 45_000;
+    for (;;) {
+      pane = tmux("capture-pane", "-p", "-t", "e2e");
+      if ((isIdle(backend, pane) && pane.includes(mark))
+        || socketDirError.test(pane) || Date.now() > deadline) break;
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    for (const name of runtimeDirs) {
+      expect(lstatSync(join(shared, name)).isDirectory()).toBe(true);
+      expect(readFileSync(join(shared, name, "source-marker"), "utf8")).toBe(name);
+      expect(readdirSync(join(shared, name))).toEqual(["source-marker"]);
+    }
+    if (mode === "unfixed-links") {
+      expect(pane, pane).toMatch(socketDirError);
+      expect(pane, pane).not.toContain(mark);
+      return;
+    }
+    expect(pane, pane).not.toMatch(socketDirError);
+    expect(pane, pane).toContain(mark);
+    expect(isIdle(backend, pane), pane).toBe(true);
+    if (!mode.includes("no-daemon")) {
+      for (const name of runtimeDirs) {
+        expect(lstatSync(join(privateHome, name)).isSymbolicLink()).toBe(false);
+        expect(lstatSync(join(privateHome, name)).isDirectory()).toBe(true);
+      }
+      const daemonVersion = JSON.parse(execFileSync("codex", ["app-server", "daemon", "version"], {
+        env: { ...process.env, CODEX_HOME: privateHome }, encoding: "utf8", timeout: 10_000,
+      }));
+      expect(daemonVersion.appServerVersion).toBe("0.157.0");
+    }
   }, 90_000);
 });
