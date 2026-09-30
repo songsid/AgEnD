@@ -17,12 +17,30 @@ export function renderCrossInstanceHandoffMetadata(meta: Record<string, string>)
   return rows.length ? `\n(${rows.join(" | ")})` : "";
 }
 
+/**
+ * A task_summary that merely echoes the body is noise in the injected block
+ * (#1037): senders auto-derive it from the first 200 chars when none is
+ * given. It is redundant iff the body already opens with it — an explicit
+ * summary carrying anything beyond the body is still shown.
+ */
+export function isRedundantTaskSummary(content: string, taskSummary: string | undefined): boolean {
+  const summary = (taskSummary ?? "").trim();
+  if (!summary) return false;
+  const body = (content ?? "").trim();
+  return body.length > 0 && body.startsWith(summary);
+}
+
 /** Exact cross-instance block pasted by the receiving daemon. */
 export function formatCrossInstanceInboundMessage(content: string, meta: Record<string, string>): string {
   const fromInstance = meta.from_instance || "unknown";
   const fromLabel = meta.from_display ? `${meta.from_display} (${fromInstance})` : fromInstance;
   let formatted = `[from:${fromLabel}] ${content}`;
-  formatted += renderCrossInstanceHandoffMetadata(meta);
+  // Dedup only the injected block — logs and Telegram labels keep the raw
+  // task_summary exactly as the sender provided it.
+  const renderMeta = isRedundantTaskSummary(content, meta.task_summary)
+    ? { ...meta, task_summary: "" }
+    : meta;
+  formatted += renderCrossInstanceHandoffMetadata(renderMeta);
   formatted += meta.requires_reply === "true"
     ? "\n(A reply IS required: use report_result with the correlation_id above — or send_to_instance. Not direct text.)"
     : "\n(If you need to reply, use send_to_instance tool, NOT direct text. If there is nothing to add, you may stay silent.)";
