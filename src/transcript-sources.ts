@@ -319,16 +319,6 @@ export function readKiroConversationStatus(
   }
 }
 
-/**
- * Read-only point-in-time read of the newest kiro conversation for a working
- * directory. One-shot consumers (the #995 scanner) use this; the live monitor
- * uses {@link readKiroConversationStatus} with the metadata fast path.
- */
-export function readKiroConversation(dbPath: string, workingDirectory: string): KiroConversation | null {
-  const read = readKiroConversationStatus(dbPath, workingDirectory, true);
-  return read.status === "ok" ? read.conversation : null;
-}
-
 /** Strings a kiro assistant turn can carry: plain response + tool-call text. */
 export function extractKiroAssistantStrings(entry: unknown): string[] {
   if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
@@ -533,13 +523,6 @@ export class KiroSessionSource implements TranscriptSource {
       this.close();
       return null;
     }
-    const events = emptyEvents();
-    for (const entry of history.slice(this.dbHistoryCursor)) {
-      collectKiroDbEvents(entry, events, this.dbToolNames);
-    }
-    this.dbHistoryCursor = history.length;
-    this.dbSignature = fullSignature;
-    return events;
   }
 
   private resolveActiveSession(): { jsonlPath: string; createdAtMs: number } | null {

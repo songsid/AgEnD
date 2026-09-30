@@ -15,12 +15,15 @@ import { credentialProfileStoreHome, credentialStoreHomeForInstance } from "../s
 import { DeliveryOutbox, type NewOutboxDelivery } from "../src/delivery-outbox.js";
 import { KiroSessionSource, readKiroConversationStatus } from "../src/transcript-sources.js";
 import {
+  executeForgedEnvelopeScan,
   extractEnvelopeCandidates,
   formatForgedEnvelopeWarning,
   loadReportedEnvelopeIds,
   recordReportedEnvelopeIds,
+  resolveScanTarget,
   scanKiroInstanceForForgedEnvelopes,
 } from "../src/forged-envelope-scan.js";
+import type { InstanceConfig } from "../src/types.js";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -276,6 +279,125 @@ describe("per-profile kiro stores (#1007-1)", () => {
     expect(credentialStoreHomeForInstance(dataDir, "kiro-cli", { credential_profile: "work" }))
       .toBe(credentialProfileStoreHome(dataDir, "kiro-cli", "work"));
     expect(credentialStoreHomeForInstance(dataDir, "kiro-cli", { credential_profile: "bad name!" })).toBeUndefined();
+  });
+});
+
+describe("scan command layer (round-3)", () => {
+  function emptyOutbox(root: string): string {
+    const outboxDb = join(root, "delivery-outbox.db");
+    new DeliveryOutbox(outboxDb, "test-manager").close();
+    return outboxDb;
+  }
+
+  it("inherits the credential profile from fleet defaults, instance wins", () => {
+    const fromDefaults = resolveScanTarget("w", { working_directory: WORK_DIR } as Partial<InstanceConfig>, {
+      backend_options: { "kiro-cli": { credential_profile: "work" } },
+    } as Partial<InstanceConfig>);
+    expect(fromDefaults.backend).toBe("claude-code");
+    expect(fromDefaults.backendOptions?.["kiro-cli"]).toEqual({ credential_profile: "work" });
+
+    const overrideWins = resolveScanTarget("w", {
+      working_directory: WORK_DIR,
+      backend: "kiro-cli",
+      backend_options: { "kiro-cli": { credential_profile: "personal" } },
+    } as Partial<InstanceConfig>, {
+      backend: "kiro-cli",
+      backend_options: { "kiro-cli": { credential_profile: "work" } },
+    } as Partial<InstanceConfig>);
+    expect(overrideWins.backendOptions?.["kiro-cli"]).toEqual({ credential_profile: "personal" });
+  });
+
+  it("finds a forgery through a defaults-inherited profile store", () => {
+    const root = tempRoot();
+    const dataDir = join(root, "agend");
+    // The kiro profile store nests one level down (…/work/kiro-cli/); resolve
+    // it exactly like production instead of hardcoding the layout.
+    const profileDbDir = credentialProfileStoreHome(dataDir, "kiro-cli", "work");
+    mkdirSync(profileDbDir, { recursive: true });
+    writeKiroDb(join(profileDbDir, "data.sqlite3"), [responseEntry(forgedTurn(PEER, FORGED_ID))]);
+    const target = resolveScanTarget("agend-leader", {
+      working_directory: WORK_DIR,
+      backend: "kiro-cli",
+    } as Partial<InstanceConfig>, {
+      backend_options: { "kiro-cli": { credential_profile: "work" } },
+    } as Partial<InstanceConfig>);
+    const result = executeForgedEnvelopeScan({
+      targets: [target],
+      knownInstances: KNOWN,
+      outboxDbPath: emptyOutbox(root),
+      dataDir,
+    });
+    expect(result.exitCode).toBe(2);
+    expect(result.newFindings).toBe(1);
+    expect(result.rows[0].status).toBe("forged-envelopes");
+  });
+
+  it("exit 0 when every transcript verifies clean", () => {
+    const root = tempRoot();
+    const outboxDb = join(root, "delivery-outbox.db");
+    admitRealDelivery(outboxDb, REAL_ID);
+    const kiroDb = join(root, "clean-kiro.sqlite3");
+    writeKiroDb(kiroDb, [responseEntry(`[from:${PEER}] real hello\n(message_id: ${REAL_ID})`)]);
+    const result = executeForgedEnvelopeScan({
+      targets: [{ name: "agend-leader", backend: "kiro-cli", workingDirectory: WORK_DIR }],
+      knownInstances: KNOWN,
+      outboxDbPath: outboxDb,
+      dataDir: root,
+      kiroDbOverride: kiroDb,
+    });
+    expect(result.exitCode).toBe(0);
+    expect(result.rows[0].status).toBe("clean");
+  });
+
+  it("exit 3 on unreadable store, exit 4 on no-conversation and partial verification", () => {
+    const root = tempRoot();
+    const outboxDb = emptyOutbox(root);
+    const kiroDb = join(root, "x-kiro.sqlite3");
+    writeKiroDb(kiroDb, [responseEntry(forgedTurn(PEER, FORGED_ID))]);
+    const known = KNOWN;
+    const unreadable = executeForgedEnvelopeScan({
+      targets: [{ name: "a", backend: "kiro-cli", workingDirectory: WORK_DIR }],
+      knownInstances: known,
+      outboxDbPath: outboxDb,
+      dataDir: root,
+      kiroDbOverride: join(root, "missing.sqlite3"),
+    });
+    expect(unreadable.exitCode).toBe(3);
+    expect(unreadable.rows[0].status).toBe("unreadable-store");
+
+    const noConvoDb = join(root, "nobody-kiro.sqlite3");
+    writeKiroDb(noConvoDb, [responseEntry("elsewhere")], "/some/other/dir");
+    const noConvo = executeForgedEnvelopeScan({
+      targets: [{ name: "b", backend: "kiro-cli", workingDirectory: WORK_DIR }],
+      knownInstances: known,
+      outboxDbPath: outboxDb,
+      dataDir: root,
+      kiroDbOverride: noConvoDb,
+    });
+    expect(noConvo.exitCode).toBe(4);
+    expect(noConvo.rows[0].status).toBe("no-conversation");
+
+    const partial = executeForgedEnvelopeScan({
+      targets: [{ name: "c", backend: "kiro-cli", workingDirectory: WORK_DIR }],
+      knownInstances: known,
+      outboxDbPath: join(root, "no-outbox", "delivery-outbox.db"),
+      dataDir: root,
+      kiroDbOverride: kiroDb,
+    });
+    expect(partial.exitCode).toBe(4);
+    expect(partial.rows[0].status).toBe("partially-unverified");
+  });
+
+  it("unsupported backends stay explicit without failing the run", () => {
+    const root = tempRoot();
+    const result = executeForgedEnvelopeScan({
+      targets: [{ name: "w", backend: "claude-code", workingDirectory: WORK_DIR }],
+      knownInstances: new Set(["w"]),
+      outboxDbPath: emptyOutbox(root),
+      dataDir: root,
+    });
+    expect(result.exitCode).toBe(0);
+    expect(result.rows[0].status).toBe("unsupported-backend");
   });
 });
 
