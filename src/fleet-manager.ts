@@ -6363,10 +6363,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       ?? instanceName;
   }
 
+  /** Inherited keys such as __proto__ must never resolve to a mutable instance. */
+  private ownInstanceConfig(instanceName: string): FleetConfig["instances"][string] | undefined {
+    const instances = this.fleetConfig?.instances;
+    return instances && Object.hasOwn(instances, instanceName) ? instances[instanceName] : undefined;
+  }
+
   /** Persist identity to the instance's actual config store. Classic instances
    * are registry rows in classicBot.yaml, not fleet.yaml instance entries. */
   private setInstanceDisplayName(instanceName: string, displayName: string): boolean {
-    const fleetInstance = this.fleetConfig?.instances[instanceName];
+    const fleetInstance = this.ownInstanceConfig(instanceName);
     if (fleetInstance) {
       fleetInstance.display_name = displayName;
       this.saveFleetConfig();
@@ -6376,7 +6382,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private setInstanceDescription(instanceName: string, description: string): boolean {
-    const fleetInstance = this.fleetConfig?.instances[instanceName];
+    const fleetInstance = this.ownInstanceConfig(instanceName);
     if (fleetInstance) {
       fleetInstance.description = description;
       this.saveFleetConfig();
