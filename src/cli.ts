@@ -2387,7 +2387,8 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean }): Promise<
 
     // Row collection runs concurrently (see ls-rows.ts): the per-instance
     // tmux captures overlap instead of stacking their 2s bounds serially.
-    const { collectLsRows, capturePaneAsync, formatTimeSince } = await import("./ls-rows.js");
+    const { collectLsRows, capturePaneAsync, formatTimeSince, lsStatusIcon, lsStatusLabel, displayWidth } =
+      await import("./ls-rows.js");
     const { getTmuxSocketName } = await import("./paths.js");
     const socketName = getTmuxSocketName();
     const rows = await collectLsRows(
@@ -2463,38 +2464,10 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean }): Promise<
       return;
     }
 
-    // Status icon — prefer tri-state 'state' field, fall back to idle boolean
-    const statusIcon = (s: string, idle?: boolean, state?: string | null) => {
-      if (s === "crashed") return "\x1b[31m●\x1b[0m";
-      if (s === "stopped") return "\x1b[90m○\x1b[0m";
-      if (state === "stuck") return "\x1b[31m●\x1b[0m";
-      if (state === "paused" || s === "paused") return "\x1b[2;33m●\x1b[0m";
-      if (state === "working") return "\x1b[34m●\x1b[0m";
-      if (state === "idle") return "\x1b[32m●\x1b[0m";
-      // Fallback for when API is unreachable
-      if (s === "running") return idle === false ? "\x1b[34m●\x1b[0m" : "\x1b[32m●\x1b[0m";
-      return "\x1b[90m○\x1b[0m";
-    };
-    const statusLabel = (s: string, idle?: boolean, state?: string | null) => {
-      if (s === "crashed") return "Crashed";
-      if (s === "stopped") return "Stopped";
-      if (state === "stuck") return "Stuck";
-      if (state === "paused" || s === "paused") return "Paused";
-      if (state === "working") return "Working";
-      if (state === "idle") return "Idle";
-      if (s === "running") return idle === false ? "Busy" : "Idle";
-      return "Stopped";
-    };
-
-    /** Get display width accounting for fullwidth (CJK) characters */
-    const displayWidth = (s: string): number => {
-      let w = 0;
-      for (const ch of s) {
-        const cp = ch.codePointAt(0)!;
-        w += (cp > 0x7f && cp !== 0x200b) ? 2 : 1;
-      }
-      return w;
-    };
+    // Merged State column (#1052): one glyph per lifecycle/execution state,
+    // shared with /status via ls-rows (○ paused, ✗ stopped).
+    const statusIcon = lsStatusIcon;
+    const statusLabel = lsStatusLabel;
     const padDisplay = (s: string, width: number): string => s + " ".repeat(Math.max(0, width - displayWidth(s)));
 
     const displayName = (row: { name: string; classic: boolean }): string => row.name;

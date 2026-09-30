@@ -73,6 +73,69 @@ export interface LsRow {
 /** Generous backstop: a healthy row resolves inside the 2s capture bound. */
 export const LS_ROW_TIMEOUT_MS = 10_000;
 
+/* ---------------------------------------------------------- shared display */
+
+/** Display width accounting for fullwidth (CJK) characters. */
+export function displayWidth(s: string): number {
+  let w = 0;
+  for (const ch of s) {
+    const cp = ch.codePointAt(0)!;
+    // … and ─ render one column despite being above ASCII; zero-width
+    // space renders none.
+    w += (cp > 0x7f && cp !== 0x200b && cp !== 0x2026 && !(cp >= 0x2500 && cp <= 0x257f)) ? 2 : 1;
+  }
+  return w;
+}
+
+/**
+ * Truncate to a display width, keeping room for the ellipsis. Real model
+ * names run to 23 columns (gemini-3.8-flash-medium, "Opus 5.5 (1M context)");
+ * table columns cap them so Model never blows the table wider (#1052
+ * measured the live fleet's ls table at ~121 wide on names alone).
+ */
+export function truncateDisplay(s: string, maxWidth: number): string {
+  if (displayWidth(s) <= maxWidth) return s;
+  let w = 0;
+  let out = "";
+  for (const ch of s) {
+    const cw = displayWidth(ch);
+    if (w + cw + 1 > maxWidth) break;
+    out += ch;
+    w += cw;
+  }
+  return `${out}…`;
+}
+
+/** Max model column: fits claude-sonnet-4.6 whole, truncates the 21+ ones. */
+export const MODEL_DISPLAY_WIDTH_MAX = 20;
+
+/**
+ * Status icon shared by `agend ls` and /status's merged State column (#1052):
+ * one glyph per lifecycle/execution state — ⏸ paused, ✗ stopped.
+ */
+export function lsStatusIcon(s: string, idle?: boolean, state?: string | null): string {
+  if (s === "crashed") return "\x1b[31m●\x1b[0m";
+  if (s === "stopped") return "\x1b[90m✗\x1b[0m";
+  if (state === "stuck") return "\x1b[31m●\x1b[0m";
+  if (state === "paused" || s === "paused") return "\x1b[2;33m○\x1b[0m";
+  if (state === "working") return "\x1b[34m●\x1b[0m";
+  if (state === "idle") return "\x1b[32m●\x1b[0m";
+  // Fallback for when API is unreachable
+  if (s === "running") return idle === false ? "\x1b[34m●\x1b[0m" : "\x1b[32m●\x1b[0m";
+  return "\x1b[90m✗\x1b[0m";
+}
+
+export function lsStatusLabel(s: string, idle?: boolean, state?: string | null): string {
+  if (s === "crashed") return "Crashed";
+  if (s === "stopped") return "Stopped";
+  if (state === "stuck") return "Stuck";
+  if (state === "paused" || s === "paused") return "Paused";
+  if (state === "working") return "Working";
+  if (state === "idle") return "Idle";
+  if (s === "running") return idle === false ? "Busy" : "Idle";
+  return "Stopped";
+}
+
 function degradedRow(input: LsRowInput): LsRow {
   return {
     name: input.name, backend: input.backend, status: input.status,

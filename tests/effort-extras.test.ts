@@ -34,10 +34,11 @@ describe("/status shows effort", () => {
     } as never);
 
     const text = await commands.getStatusText();
-    expect(text).toContain("| Instance | Backend | Ctx | Effort |");
-    expect(text).toMatch(/\| alpha \| claude-code \| - \| xhigh \|/);
+    expect(text).toContain("| Instance | Backend | Model | Ctx | Effort |");
+    // No modelDisplayForInstance stub here: Model falls back to "default".
+    expect(text).toMatch(/\| alpha \| claude-code \| default \| - \| xhigh \|/);
     // "-" rather than blank: an empty cell reads as missing data, not "unset".
-    expect(text).toMatch(/\| beta \| opencode \| - \| - \|/);
+    expect(text).toMatch(/\| beta \| opencode \| default \| - \| - \|/);
   });
 });
 
