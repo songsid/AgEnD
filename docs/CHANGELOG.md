@@ -114,6 +114,13 @@ The panel can restart AgEnD itself for a change only a fresh process can adopt, 
 - **A failed self-restart needs the change applied again** — if the restart cannot be launched, its row is marked failed and the job is finished rather than left open for another attempt. Press Apply again to get a fresh job whose fleet row can be restarted. This is the fail-closed side of "one restart per job": a job whose launch failed must not stay a reusable restart button.
 
 ### Fixed
+- **Codex instances resume their own session even when their session database is private (#1028).**
+  If `~/.codex` had no session database yet when an instance first started (for example, AgEnD
+  was the first thing to run Codex on the machine), Codex created a private one in that
+  instance's home and kept using it. AgEnD looked only in the shared home, found nothing, and
+  every restart fell back to `codex resume --last` or a fresh start, with a "could not be read"
+  warning. AgEnD now reads the database the instance's Codex actually uses, and falls back to
+  the shared one only when the instance has none. It stays read-only.
 - **Settings › "Restart AgEnD" now shows that it is restarting, and cannot be pressed twice.**
   The restart really happened, but the button stayed enabled, the panel kept saying "Saved —
   restart AgEnD to apply" while AgEnD was going down, and nothing watched for it to come back —

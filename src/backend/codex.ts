@@ -1833,7 +1833,20 @@ export class CodexBackend implements CliBackend {
 
   /** Which Codex session this launch resumes (#984). Reads, never writes, Codex state. */
   private planResume(config: CliBackendConfig): CodexResumePlan {
-    const lookup = findExactCwdCodexSession(join(this.sharedCodexHome, "state_5.sqlite"), config.workingDirectory);
+    // Read the database Codex actually writes: the one in this instance's
+    // CODEX_HOME. Normally that is a link to the shared file (same result).
+    // But when the shared home had no state DB yet at the first launch, Codex
+    // created a private one in the instance home, and the shared path reads
+    // as missing for ever: every restart fell back to `--last` or a fresh
+    // start (#1028). The shared file is only a fallback for an instance home
+    // that has none.
+    const instanceDb = join(this.isolatedCodexHome, "state_5.sqlite");
+    let lookup = findExactCwdCodexSession(instanceDb, config.workingDirectory);
+    const sharedDb = join(this.sharedCodexHome, "state_5.sqlite");
+    if (lookup.kind === "unreadable" && sharedDb !== instanceDb) {
+      const shared = findExactCwdCodexSession(sharedDb, config.workingDirectory);
+      if (shared.kind !== "unreadable") lookup = shared;
+    }
     return planCodexResume(lookup, () => {
       // Without the fleet's peer list the repository cannot be proven
       // sibling-free, so `--last` stays off the table.

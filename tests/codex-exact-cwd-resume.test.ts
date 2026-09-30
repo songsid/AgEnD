@@ -52,8 +52,8 @@ function worktrees(): { a: string; b: string } {
   return { a, b };
 }
 
-function writeState(threads: Array<{ id: string; cwd: string; recency: number }>): void {
-  const db = new Database(join(shared, "state_5.sqlite"));
+function writeState(threads: Array<{ id: string; cwd: string; recency: number }>, path = join(shared, "state_5.sqlite")): void {
+  const db = new Database(path);
   db.pragma("journal_mode = WAL");
   db.exec(SCHEMA);
   // has_user_event 0 + a first message: the shape real 0.157 sessions have (#1017).
@@ -242,5 +242,65 @@ describe("a launch warning from the FIRST spawn reaches the operator (#984)", ()
     expect(eventLogInsert).toHaveBeenCalledWith("worker", "backend_launch_warning",
       { message: "session DB unreadable — started a NEW conversation" });
     expect(notifyInstanceTopic).toHaveBeenCalledWith("worker", expect.stringContaining("started a NEW conversation"));
+  });
+});
+
+describe("the lookup reads the state DB Codex actually writes (#1028)", () => {
+  const savedAgendHome = process.env.AGEND_HOME;
+  beforeEach(() => { process.env.AGEND_HOME = join(root, "agend"); });
+  afterEach(() => { if (savedAgendHome === undefined) delete process.env.AGEND_HOME; else process.env.AGEND_HOME = savedAgendHome; });
+
+  /** An instance whose CODEX_HOME exists, as after its first launch. */
+  function instance() {
+    const instanceDir = join(root, "agend", "instances", "worker");
+    mkdirSync(instanceDir, { recursive: true });
+    const backend = new CodexBackend(instanceDir);
+    const home = (backend as unknown as { isolatedCodexHome: string }).isolatedCodexHome;
+    mkdirSync(home, { recursive: true });
+    const build = (workingDirectory: string, peers: string[]) => {
+      const cmd = backend.buildCommand({ workingDirectory, instanceDir, instanceName: "worker", mcpServers: {}, peerWorkingDirectories: () => peers });
+      return { cmd, warning: backend.consumeLaunchWarning() };
+    };
+    return { backend, home, instanceDir, build };
+  }
+
+  it("resumes from a private DB in the instance home when the shared home has none", () => {
+    // The shared home had no state DB at the instance's first launch, so
+    // Codex created its own in the instance home — and has used it since.
+    const { a, b } = worktrees();
+    const { home, build } = instance();
+    writeState([{ id: OWN, cwd: a, recency: 100 }], join(home, "state_5.sqlite"));
+    const { cmd, warning } = build(a, [b]);
+    expect(cmd).toContain(` resume '${OWN}' `);
+    expect(cmd).not.toContain("--last");
+    expect(warning).toBeNull();
+  });
+
+  it("prefers the instance's own DB over the shared one: only its threads can be resumed from that home", () => {
+    const { a, b } = worktrees();
+    const { home, build } = instance();
+    writeState([{ id: OWN, cwd: a, recency: 100 }], join(home, "state_5.sqlite"));
+    writeState([{ id: SIBLING, cwd: a, recency: 900 }]); // newer, but in a DB this home does not use
+    const { cmd } = build(a, [b]);
+    expect(cmd).toContain(` resume '${OWN}' `);
+    expect(cmd).not.toContain(SIBLING);
+  });
+
+  it("follows the usual link to the shared DB", () => {
+    const { a, b } = worktrees();
+    writeState([{ id: OWN, cwd: a, recency: 100 }]);
+    const { backend, instanceDir, build } = instance();
+    backend.writeConfig({ workingDirectory: a, instanceDir, instanceName: "worker", mcpServers: {} });
+    const { cmd, warning } = build(a, [b]);
+    expect(cmd).toContain(` resume '${OWN}' `);
+    expect(warning).toBeNull();
+  });
+
+  it("with no DB in either home stays unreadable and keeps the warned fallback", () => {
+    const { a, b } = worktrees();
+    const { build } = instance();
+    const { cmd, warning } = build(a, [b]);
+    expect(cmd).not.toContain(" resume");
+    expect(warning).toMatch(/could not be read/);
   });
 });
