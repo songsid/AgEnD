@@ -3384,16 +3384,18 @@ export class Daemon extends EventEmitter {
   /**
    * Answer a FleetManager state query. Most callers only need the cached state,
    * but lifecycle decisions such as post-reply Cancel retirement need an
-   * authoritative pane observation: after startup the last transition can stay
-   * "working" even though the CLI has since settled without emitting another
-   * control-mode output record.
+   * authoritative pane observation, as do delivery idle gates: after startup
+   * the last transition can stay "working" even though the CLI has since
+   * settled without emitting another control-mode output record.
    */
   private async respondToInstanceStateQuery(
     msg: Record<string, unknown>,
     socket: import("node:net").Socket,
   ): Promise<void> {
     try {
-      if (msg.refresh === true) {
+      if (msg.deliveryIdle === true) {
+        await this.captureAndEvaluateInstanceState("delivery_idle_gate");
+      } else if (msg.refresh === true) {
         await this.captureAndEvaluateInstanceState("state_query");
       }
       const snapshot = this.getInstanceStateSnapshot();
@@ -4081,8 +4083,24 @@ export class Daemon extends EventEmitter {
     }
     this.statePollInFlight = true;
     const captureStartedAt = Date.now();
+    const captureEpoch = `${this.spawnGeneration}:${this.launchAttempt}`;
+    const currentDeliveryCapture = () => captureEpoch === `${this.spawnGeneration}:${this.launchAttempt}`
+      && !this.spawning && !this.runtimeMonitorsFrozen && this.instanceStateMonitorActive;
     try {
       const pane = await this.tmux.capturePane();
+      // An old capture must not retire a new launch's transient guard either.
+      if (reason === "delivery_idle_gate" && !currentDeliveryCapture()) {
+        this.resetFooterFallback();
+        return;
+      }
+      // Delivery's unknown-footer proof also awaits the TTY mode. Validate
+      // output and launch freshness AFTER both awaits, before accepting it.
+      const deliveryCandidate = reason === "delivery_idle_gate"
+        ? await this.probeDeliveryIdleFallback(pane) : null;
+      if (reason === "delivery_idle_gate" && !currentDeliveryCapture()) {
+        this.resetFooterFallback();
+        return;
+      }
       this.updateInputBlockedState(pane);
       // Output received while capture-pane was in flight makes this snapshot
       // stale. Its output handler has already armed a new debounce.
@@ -4090,6 +4108,7 @@ export class Daemon extends EventEmitter {
         (expectedOutputAt > 0 && this.instanceStateLastOutputAt > expectedOutputAt)
         || (this.instanceStateLastOutputAt > 0 && this.instanceStateLastOutputAt >= captureStartedAt);
       if (outputMovedDuringCapture) {
+        if (reason === "delivery_idle_gate") this.resetFooterFallback();
         if (reason === "output_probe") {
           // A second burst overtook the probe. Do not bless its stale capture as
           // idle: continuous output is the safer working signal, while the next
@@ -4102,6 +4121,16 @@ export class Daemon extends EventEmitter {
         }
         return;
       }
+
+      // A monitor/lifecycle capture can see a busy moment between fleet polls.
+      // Any observed change to this candidate breaks continuous stability.
+      if (currentDeliveryCapture() && this.footerFallbackPaneKey !== null
+        && pane.replace(/⋆/gu, "").replace(/[ \t]+$/gmu, "") !== this.footerFallbackPaneKey) {
+        this.resetFooterFallback();
+      }
+      // Advance the shared 10s timer only for a fresh capture of this launch.
+      const deliveryFallback = deliveryCandidate === true
+        ? this.deliveryInputReadyPane(pane) : deliveryCandidate;
 
       const observedChangeAt = expectedOutputAt || captureStartedAt;
       // One observation per capture. This used to call observe() twice with the
@@ -4118,7 +4147,16 @@ export class Daemon extends EventEmitter {
       // observe twice, which silently disabled the "content moved" branch.
       const structuredPeriodicIdle = this.backend?.isPeriodicRedrawIdlePane;
       let snapshot: InstanceStateSnapshot;
-      if (structuredPeriodicIdle && reason === "output_probe") {
+      if (deliveryFallback !== null) {
+        // A missing footer cannot fall through to a broad ready match. All
+        // of the same #1032 conditions must hold continuously for 10 seconds.
+        snapshot = this.instanceStateMachine.observe(pane, Date.now(), {
+          settled: true,
+          changeAt: observedChangeAt,
+          forceReady: deliveryFallback,
+          forceBusy: !deliveryFallback || paneActivity !== null,
+        });
+      } else if (structuredPeriodicIdle && reason === "output_probe") {
         const idlePane = structuredPeriodicIdle.call(this.backend, pane);
         if (idlePane) {
           if (this.instanceState === "idle") {
@@ -4251,6 +4289,7 @@ export class Daemon extends EventEmitter {
         this.scheduleInstanceStateStuckDeadline(this.instanceStateLastOutputAt || captureStartedAt);
       }
     } catch (err) {
+      if (reason === "delivery_idle_gate") this.resetFooterFallback();
       this.logger.debug({ err: (err as Error).message, reason }, "Instance state capture failed");
     } finally {
       this.statePollInFlight = false;
@@ -5485,6 +5524,35 @@ export class Daemon extends EventEmitter {
   private needsStartupInputProof(): boolean {
     return !!this.backend?.isDeliveryInputReadyPane
       && this.inputTransientGuardGeneration === this.spawnGeneration;
+  }
+
+  /**
+   * null preserves native readiness; false is an ineligible unknown layout.
+   * true means the caller may advance the timer after checking freshness.
+   * Share #1032's candidate/timer with the later paste gate, rather than
+   * reporting idle after 10s only to make that gate wait another 10s (#1035).
+   */
+  private async probeDeliveryIdleFallback(pane: string): Promise<boolean | null> {
+    const inputReady = this.backend?.isDeliveryInputReadyPane;
+    const stableUnknown = this.backend?.isStableUnknownLayoutIdlePane;
+    if (!inputReady || !stableUnknown || inputReady.call(this.backend, pane)) {
+      this.resetFooterFallback();
+      return null;
+    }
+    const busy = this.backend?.getBusyPattern?.();
+    if (busy) busy.lastIndex = 0;
+    if (!stableUnknown.call(this.backend, pane) || busy?.test(pane)
+      || this.backend?.getPaneActivity?.(pane)
+      || this.deliveryBlockingDialogs().some(dialog => Daemon.dialogMatches(dialog, pane))
+      || this.inputTransientInPane(pane)) {
+      this.resetFooterFallback();
+      return false;
+    }
+    if (await this.tmux?.getPaneInputMode?.() !== "raw") {
+      this.resetFooterFallback();
+      return false;
+    }
+    return true;
   }
 
   /** Codex can paint a prompt before the TTY enters raw mode. Both are required. */
