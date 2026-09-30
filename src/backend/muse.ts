@@ -287,13 +287,19 @@ export class MuseBackend implements CliBackend {
    *
    *   ◇ Thinking (2s · esc to interrupt)
    *   ◆ Double checking (4s · esc to interrupt)
+   *   ◈ Calling tools (1m 31s · esc to interrupt)
+   *
+   * The timer grows units: past a minute it reads `1m 31s` (#1045). Matching
+   * seconds only let every turn longer than a minute read as not busy — 87
+   * of the 196 working rows in a real muse log — so the idle proof passed
+   * mid-turn and idle-edge actions (a deferred pause's `/quit`, #1042) fired.
    *
    * Anchoring on the glyph would be wrong in a way that matters: completed
    * output lines start with `◆ ` too (`◆ Panes split the dark screen`), so a
    * glyph-anchored pattern would pin a finished instance in `working` forever.
    */
   getBusyPattern(): RegExp {
-    return /\(\s*\d+(?:\.\d+)?s\s*·\s*esc to interrupt\s*\)/;
+    return /\(\s*(?:\d+(?:\.\d+)?[hms]\s*)+·\s*esc to interrupt\s*\)/;
   }
 
   /**
