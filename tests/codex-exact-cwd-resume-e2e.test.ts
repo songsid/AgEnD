@@ -171,7 +171,9 @@ describe.skipIf(!enabled)("real codex 0.157: an instance in a git worktree resum
 });
 
 /** #1034: exercise the real daemon path, plus the embedded --no-daemon control. */
-describe.skipIf(!enabled || !/\b0\.157\.\d+\b/.test(version ?? ""))("real codex 0.157: private app-server runtime directories (#1034)", () => {
+// Every SUPPORTED_CODEX version, not 0.157 alone: the fleet runs 0.159 and the
+// daemon path must be proven on what it runs (verified on 0.159.2).
+describe.skipIf(!enabled)("real codex: private app-server runtime directories (#1034)", () => {
   const runtimeDirs = ["app-server-daemon", "app-server-control"] as const;
   let runtimeRoot = "";
   let privateHome = "";
@@ -295,7 +297,8 @@ describe.skipIf(!enabled || !/\b0\.157\.\d+\b/.test(version ?? ""))("real codex 
       const daemonVersion = JSON.parse(execFileSync("codex", ["app-server", "daemon", "version"], {
         env: { ...process.env, CODEX_HOME: privateHome }, encoding: "utf8", timeout: 10_000,
       }));
-      expect(daemonVersion.appServerVersion).toBe("0.157.0");
+      // The managed daemon is the CLI under test, whichever supported version.
+      expect(daemonVersion.appServerVersion).toBe(version!.match(/\d+\.\d+\.\d+/)![0]);
     }
   }, 90_000);
 });
