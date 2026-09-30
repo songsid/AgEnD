@@ -36,6 +36,7 @@ describe("muse reads as busy for the whole turn, not just its first minute (#104
       "◆ The timer (1m 31s) shows how long it took.",
       "  (esc to interrupt)",
       "  (· esc to interrupt)", // the timer is what makes it a working row
+      "◈ Thinking (1m 31s esc to interrupt)", // …and so is the middle dot
     ]) expect(busy.test(row), row).toBe(false);
   });
 
