@@ -31,8 +31,10 @@ import type { FleetConfig, RawFleetConfig, InstanceConfig, ChannelConfig, CostGu
 /** Fallback access policy for a channel with no `access:` block — open (no gate). */
 const DEFAULT_OPEN_ACCESS: AccessConfig = { mode: "open", allowed_users: [], max_pending_codes: 0, code_expiry_minutes: 0 };
 import {
-  STATUS_EMOJI_KEYS, builtinStatusEmojis, reactionForm, reactionMatchKey, resolveStatusEmojis, statusAvoidList, statusMatchKey, statusMatchKeys, textForm,
-  type DeliveryStatus, type GuildEmoji, type GuildEmojiGroup, type ResolvedStatusEmojis,
+  STATUS_EMOJI_CONFIG_KEYS, STATUS_EMOJI_KEYS, STATUS_EMOJI_SUGGESTIONS, TELEGRAM_REACTION_EMOJIS,
+  builtinStatusEmojis, customEmojiValue, normalizeEmoji, previewStatusEmojis, reactionForm, reactionMatchKey, resolveStatusEmojis,
+  statusAvoidList, statusEmojiProblem, statusMatchKey, statusMatchKeys, textForm,
+  type DeliveryStatus, type GuildEmoji, type GuildEmojiGroup, type ResolvedStatusEmojis, type StatusEmojiKey,
 } from "./status-emojis.js";
 import { isProbeableRouteTarget, type RouteTarget } from "./fleet-context.js";
 import { loadFleetConfig, loadRawFleetConfig, DEFAULT_COST_GUARD, DEFAULT_DAILY_SUMMARY, DEFAULT_INSTANCE_CONFIG } from "./config.js";
@@ -6220,6 +6222,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       : type.startsWith("fleet_decision_") ? "fleet_decision_response"
       : type === "fleet_task" ? "fleet_task_response"
       : type === "fleet_set_display_name" ? "fleet_display_name_response"
+      : type === "fleet_list_emojis" || type === "fleet_set_persona_emoji" ? "fleet_persona_emoji_response"
       : "fleet_description_response";
     ipc.send({ type: responseType, fleetRequestId, error: message });
   }
@@ -6231,6 +6234,24 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (type === "fleet_task") { this.handleTaskCrud(name, msg); return; }
     if (type === "fleet_set_display_name") { this.handleSetDisplayName(name, msg); return; }
     if (type === "fleet_set_description") { this.handleSetDescription(name, msg); return; }
+    if (type === "fleet_list_emojis" || type === "fleet_set_persona_emoji") { this.handlePersonaEmoji(name, msg); return; }
+  }
+
+  /** `list_emojis` / `set_persona_emoji` over IPC; the agent endpoint calls the same two methods. */
+  private handlePersonaEmoji(instanceName: string, msg: Record<string, unknown>): void {
+    const fleetRequestId = msg.fleetRequestId as string;
+    const payload = (msg.payload ?? {}) as Record<string, unknown>;
+    const ipc = this.instanceIpcClients.get(instanceName);
+    if (!ipc) return;
+    const op = msg.type === "fleet_list_emojis"
+      ? this.listEmojisFor(instanceName, payload.refresh === true)
+      : this.setPersonaEmoji(instanceName, payload);
+    op.then(
+      (r) => typeof r.error === "string"
+        ? ipc.send({ type: "fleet_persona_emoji_response", fleetRequestId, error: r.error })
+        : ipc.send({ type: "fleet_persona_emoji_response", fleetRequestId, result: r }),
+      (err: unknown) => ipc.send({ type: "fleet_persona_emoji_response", fleetRequestId, error: (err as Error).message }),
+    );
   }
 
   private handleScheduleCrud(instanceName: string, msg: Record<string, unknown>): void {
@@ -6583,6 +6604,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!name || name.length > 30) return { error: "Name must be 1-30 characters" };
     if (!this.setInstanceDisplayName(instance, name)) return { error: `Instance '${instance}' not found` };
     return { display_name: name };
+  }
+
+  async handleListEmojisHttp(instance: string, refresh: boolean): Promise<unknown> {
+    return this.listEmojisFor(instance, refresh);
+  }
+
+  async handleSetPersonaEmojiHttp(instance: string, args: Record<string, unknown>): Promise<unknown> {
+    return this.setPersonaEmoji(instance, args);
   }
 
   async handleSetDescriptionHttp(instance: string, description: string): Promise<unknown> {
@@ -7352,6 +7381,94 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** Keyed `<connection>\0<server id>`. */
   private guildEmojiCache = new Map<string, { fetched_at: number; emojis: GuildEmoji[] }>();
   private guildEmojiFetches = new Map<string, Promise<{ fetched_at: number; emojis: GuildEmoji[] }>>();
+
+  /**
+   * What `instanceName` may pick as its persona emoji (the `list_emojis`
+   * tool): its current status set with where each value comes from, the
+   * standard emojis its platform takes, and on Discord the server emojis its
+   * bot can draw on — the same lists, and the same resolution, as the
+   * Settings picker (#1005/#1021), so an agent and an operator see one truth.
+   */
+  async listEmojisFor(instanceName: string, refresh = false): Promise<Record<string, unknown>> {
+    const self = this.fleetConfig?.instances[instanceName];
+    if (!self) return { error: this.personaEmojiMissing(instanceName) };
+    const worldId = this.getInstanceAdapterId(instanceName);
+    const { platform } = this.resolveStatusEmojisFor(instanceName);
+    const channel = (worldId ? this.worlds.get(worldId)?.channelConfig : undefined) ?? this.getChannelConfig(worldId ?? undefined);
+    const current = previewStatusEmojis({ platform, platformConfig: channel?.options?.status_emojis, instanceConfig: self.status_emojis });
+    const out: Record<string, unknown> = {
+      platform: platform ?? null,
+      statuses: current.entries.map(e => ({ status: e.key, value: e.value, source: e.source })),
+      standard: platform === "telegram"
+        ? { reactions: [...TELEGRAM_REACTION_EMOJIS], note: "Telegram reacts only with these; progress_prefix may be any single emoji" }
+        : { suggestions: STATUS_EMOJI_SUGGESTIONS, note: "any single emoji works" },
+    };
+    if (platform === "discord" && worldId) {
+      const listed = await this.listGuildEmojis(worldId, refresh);
+      out.server_emojis = listed.ok
+        ? listed.guilds.map(g => g.emojis
+          ? { server: g.name || g.id, primary: g.primary, emojis: g.emojis.filter(e => e.available).map(e => customEmojiValue(e)) }
+          : { server: g.name || g.id, primary: g.primary, error: g.error })
+        : { error: listed.error };
+    }
+    return out;
+  }
+
+  /**
+   * `set_persona_emoji`: `instanceName` sets one of its own status emojis —
+   * `delivered` unless it names another — in its per-instance `status_emojis`
+   * override (#1005 addendum 2), so its stamp is told apart from other bots'
+   * on a shared message. The value is judged exactly as Settings and the
+   * react path judge it (statusEmojiProblem on the instance's platform), and
+   * a Discord server emoji must be one its bot can use: an emoji from a
+   * server it is not in would be stored, preview fine, and fail every react.
+   * An empty emoji removes that status's override.
+   */
+  async setPersonaEmoji(instanceName: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const self = this.fleetConfig?.instances[instanceName];
+    if (!self) return { error: this.personaEmojiMissing(instanceName) };
+    const status = (args.status ?? "delivered") as StatusEmojiKey;
+    if (!STATUS_EMOJI_CONFIG_KEYS.includes(status)) {
+      return { error: `status must be one of ${STATUS_EMOJI_CONFIG_KEYS.join(", ")}` };
+    }
+    const raw = typeof args.emoji === "string" ? args.emoji.trim() : "";
+    const map = { ...(self.status_emojis ?? {}) } as Record<string, string>;
+    let value: string | undefined;
+    if (raw) {
+      const { platform } = this.resolveStatusEmojisFor(instanceName);
+      const problem = statusEmojiProblem(platform, status, raw);
+      if (problem) return { error: `${problem}. Call list_emojis for what ${platform ?? "this channel"} accepts.` };
+      const e = normalizeEmoji(raw)!;
+      if (e.kind === "custom") {
+        const worldId = this.getInstanceAdapterId(instanceName);
+        if (!worldId) return { error: "no connection to check that server emoji against" };
+        const listed = await this.listGuildEmojis(worldId);
+        if (!listed.ok) return { error: `cannot check that server emoji: ${listed.error}` };
+        const found = listed.emojis.find(g => g.id === e.id);
+        if (!found?.available) {
+          return { error: `${raw} is not a server emoji this bot can use${found ? " (Discord marks it unavailable)" : ""}. Call list_emojis for the ones it can.` };
+        }
+        value = customEmojiValue(found);
+      } else {
+        value = e.value;
+      }
+      map[status] = value;
+    } else {
+      delete map[status];
+    }
+    if (Object.keys(map).length) self.status_emojis = map;
+    else delete self.status_emojis;
+    this.saveFleetConfig();
+    this.logger.info({ instanceName, status, value: value ?? null }, value ? "Persona emoji set" : "Persona emoji cleared");
+    const resolved = this.resolveStatusEmojisFor(instanceName);
+    return { status, value: value ?? null, now: resolved[status], status_emojis: self.status_emojis ?? null };
+  }
+
+  private personaEmojiMissing(instanceName: string): string {
+    return this.classicChannels?.getAll().some(c => c.instanceName === instanceName)
+      ? "ClassicBot instances have no per-instance status emojis; an operator sets the connection's in Settings"
+      : `Instance '${instanceName}' not found`;
+  }
 
   /** What the instructions tell `instanceName` not to react with (its own status set). */
   statusEmojiAvoidList(instanceName: string): string[] {

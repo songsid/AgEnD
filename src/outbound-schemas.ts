@@ -138,6 +138,18 @@ export const SetDisplayNameArgs = z.object({
   name: NonEmptyString.describe("Your chosen display name"),
 });
 
+export const ListEmojisArgs = z.object({
+  refresh: z.boolean().optional().describe("Refetch the Discord server emoji lists instead of using the cache"),
+});
+
+export const SetPersonaEmojiArgs = z.object({
+  emoji: z.string().describe(
+    "One emoji, or a Discord server emoji as <:name:id> from list_emojis. Empty string removes your override for that status.",
+  ),
+  status: z.enum(["received", "queued", "processing", "delivered", "failed", "progress_prefix"]).optional()
+    .describe("Which of your status stamps to set (default: delivered, the one that stays on a handled message)"),
+});
+
 export const SetDescriptionArgs = z.object({
   description: NonEmptyString.describe(
     "Your role description, e.g. 'Code reviewer focused on security and error handling'",

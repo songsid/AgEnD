@@ -7,6 +7,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+**An agent can pick its own persona emoji.** In a channel with several bots every
+one stamped the same ✅ on the messages it handled. `list_emojis` shows an
+instance what it may use: the standard emojis its platform takes and, on
+Discord, the server emojis its bot can react with. `set_persona_emoji` then
+sets its own `delivered` stamp (or another status it names) in its
+`status_emojis` override, the way `set_display_name` sets its name. The value
+is checked the way Settings checks it: Telegram's reaction set on Telegram,
+one emoji only, and a server emoji only from a server the bot is in. The
+bundled `persona-emoji` skill walks a worker through it. ClassicBot instances
+have no per-instance stamps, and the tool says so.
+
 **Tool access is decided by the fleet, not by what a model happens to be shown.**
 Every route into AgEnD's tools — the MCP tool list, a `tools/call` naming a tool
 directly, a write straight to the instance's socket, and `POST /agent` — now

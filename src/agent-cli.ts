@@ -101,6 +101,8 @@ async function main(): Promise<void> {
     case "replace": args = { name: rest[0] ?? "", reason: rest[1] }; break;
     case "rename": args = { name: rest[0] ?? "" }; break;
     case "set-description": args = { description: rest[0] ?? "" }; break;
+    case "emojis": args = { ...(rest[0] === "--refresh" ? { refresh: true } : {}) }; break;
+    case "persona-emoji": args = { emoji: rest[0] ?? "", ...(rest[1] ? { status: rest[1] } : {}) }; break;
 
     // Task board
     case "task": {

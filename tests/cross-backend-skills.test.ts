@@ -173,6 +173,7 @@ describe("cross-backend skill publishing", () => {
     expect(published).toEqual([
       "cross-instance-messaging",
       "model-discovery",
+      "persona-emoji",
       "scheduling",
       "worker-collaboration",
     ]);
