@@ -31,7 +31,7 @@ import {
 } from "./credential-profile.js";
 import { getAgendHome } from "../paths.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
-import { type CodexResumePlan, codexSiblingState, findExactCwdCodexSession, planCodexResume } from "./codex-session-lookup.js";
+import { type CodexResumePlan, codexSiblingState, findExactCwdCodexSession, planCodexResume, newestMissedCwdRollout } from "./codex-session-lookup.js";
 import { t } from "../locale.js";
 import { parse as parseToml } from "smol-toml";
 
@@ -958,6 +958,13 @@ export class CodexBackend implements CliBackend {
       if (plan.mode === "last") this.launchWarning = t("codex.resume_db_unreadable_last", plan.cause);
       else if (plan.mode === "fresh" && plan.reason === "unreadable-with-siblings") {
         this.launchWarning = t("codex.resume_db_unreadable_fresh", plan.cause);
+      } else if (plan.mode === "fresh") {
+        // #1053: "none" is also what a lookup that missed looks like (#1028
+        // was a silent new session per restart). A workspace that never had
+        // a conversation stays quiet; one whose rollout shows a turn is told
+        // which conversation to resume by hand.
+        const missed = newestMissedCwdRollout(join(this.isolatedCodexHome, "sessions"), config.workingDirectory);
+        if (missed) this.launchWarning = t("codex.resume_none_but_history", config.workingDirectory, missed.id);
       }
     }
     if (config.model) {
