@@ -1210,18 +1210,31 @@ export class CodexBackend implements CliBackend {
   }
 
   /**
-   * Preserve Codex login/session/cache behavior while isolating config.toml.
-   * Before this fix all instances shared CODEX_HOME, so sharing these runtime
-   * files is intentionally unchanged. Only config.toml (which contains MCP
-   * capabilities and AGEND_DECISIONS) becomes private to this instance.
+   * Preserve Codex login/session/cache sharing while isolating config.toml
+   * and the CODEX_HOME-scoped app-server daemon/control runtime directories.
    */
   /** Session dirs every instance must share with the terminal CLI (#506). */
   private static readonly SHARED_SESSION_DIRS = ["sessions", "archived_sessions"] as const;
+  private static readonly PRIVATE_RUNTIME_DIRS = new Set(["app-server-daemon", "app-server-control"]);
 
   private prepareIsolatedHome(): void {
     mkdirSync(this.isolatedCodexHome, { recursive: true, mode: 0o700 });
     chmodSync(this.isolatedCodexHome, 0o700);
     if (this.sharedCodexHome === this.isolatedCodexHome) return;
+
+    // #1034: Codex's private socket directory check rejects directory symlinks.
+    // Detach only the exact shared-home links the old mirror pass created,
+    // including dangling links. Leave private directories and other links
+    // alone; Codex will create its own real runtime directories on launch.
+    for (const name of CodexBackend.PRIVATE_RUNTIME_DIRS) {
+      const target = join(this.isolatedCodexHome, name);
+      try {
+        if (lstatSync(target).isSymbolicLink()
+          && readlinkSync(target) === join(this.sharedCodexHome, name)) {
+          unlinkSync(target);
+        }
+      } catch { /* absent, or another startup already detached the link */ }
+    }
 
     // The session dirs must exist in the SHARED home before the symlink pass:
     // on a fresh install they don't yet, so no link was created, and the first
@@ -1268,6 +1281,7 @@ export class CodexBackend implements CliBackend {
     this.linkAuthFile();
 
     for (const name of readdirSync(this.sharedCodexHome)) {
+      if (CodexBackend.PRIVATE_RUNTIME_DIRS.has(name)) continue;
       if (name === "config.toml" || name === AGEND_MCP_CLEANUP_LOCK || name.startsWith(".config.toml.")) continue;
       if (name === CODEX_AUTH_FILE) continue; // handled above, possibly from a profile
       // SQLite resolves a symlinked base DB to the shared path and creates its
