@@ -4,10 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [2.1.8] - Unreleased
+
+### Upgrade Notes
+- **Codex instances keep their app-server runtime directories private (#1034).**
+  Each instance's `CODEX_HOME` used to mirror `~/.codex/app-server-daemon` and
+  `~/.codex/app-server-control` as links, so a Codex that starts its managed
+  daemon failed with "socket directory path exists and is not a directory", and
+  a daemon started through the link would have been your own, with your
+  config. The first start after upgrading removes only the links AgEnD created
+  (an exact match on the target), leaves real directories and your own links
+  alone, and never touches `~/.codex`. Sessions and the session database stay
+  shared. Rolling back is safe: private directories are kept and nothing is
+  deleted.
 
 ### Added
-**An agent can pick its own persona emoji.** In a channel with several bots every
+**An agent can pick its own persona emoji (#1039).** In a channel with several bots every
 one stamped the same ✅ on the messages it handled. `list_emojis` shows an
 instance what it may use: the standard emojis its platform takes and, on
 Discord, the server emojis its bot can react with. `set_persona_emoji` then
@@ -30,42 +42,105 @@ first. A server that refuses its list shows the reason without hiding the
 others. Reacting with another server's emoji needs the bot's Use External
 Emojis permission in that channel, and the picker says so.
 
-**Tool access is decided by the fleet, not by what a model happens to be shown.**
-Every route into AgEnD's tools — the MCP tool list, a `tools/call` naming a tool
-directly, a write straight to the instance's socket, and `POST /agent` — now
-passes one permission table checked on the server side. Before, only the first
-of those consulted a tool list at all, so narrowing an instance's profile saved
-tokens without denying anything. A refused call says which profile the instance
-is running under and what to do instead, because the agent reads the error as an
-instruction.
+**`/sysinfo` shows each backend CLI's version (#1027)** — Claude Code, Codex,
+Kiro CLI, Grok, Antigravity and Muse — from the existing CLI-environment cache.
+A stale value stays visible while it refreshes, and the refresh probes run in
+a worker thread so a slow CLI cannot block the fleet.
 
-**One fleet can now run on more than one subscription of the same backend.** An
-instance carries `backend_options.<backend>.credential_profile: <name>`, and
-instances naming the same profile share one login while instances naming
-different profiles have different ones. An instance with no profile is
-untouched: nothing is added to its launch and no directory is created, so a
-fleet that does not use this cannot be affected by it. Implemented for
-`kiro-cli`; the mechanism is one record per backend (`CREDENTIAL_HOMES`), not a
-kiro-shaped design.
+### Fixed
+- **Messages reach a Codex instance whose idle footer lacks the Context item
+  in about 10 seconds instead of 70 (#1035).** The fleet's own idle wait,
+  before a delivery reaches the instance, now accepts the same strict evidence
+  as the instance-side fallback below, so it no longer waits out its full
+  minute first.
+- **A codex instance whose idle footer lacks the Context item no longer waits for ever for its
+  first message (#1031).** After a restart, codex sometimes draws its idle composer without the
+  `Context N% left` status item (seen on a resumed session whose footer showed only
+  `⚠ 2 warnings · f2 to view`). The first delivery after a restart needs a recognised footer,
+  so it waited 30 minutes, failed as retryable, and waited again: one instance sat on a queued
+  task for seven hours. When the footer is the only thing missing, AgEnD now uses the same
+  structural evidence it already uses to call an unknown screen idle. All of it is required:
+  an empty input box, no busy row, queued input or known picker, no resume load on screen, the
+  same screen for 10 seconds, and a terminal ready for input. It logs a warning when it does.
+- **Codex instances resume their own session even when their session database is private (#1028).**
+  If `~/.codex` had no session database yet when an instance first started (for example, AgEnD
+  was the first thing to run Codex on the machine), Codex created a private one in that
+  instance's home and kept using it. AgEnD looked only in the shared home, found nothing, and
+  every restart fell back to `codex resume --last` or a fresh start, with a "could not be read"
+  warning. AgEnD now reads the database the instance's Codex actually uses, and falls back to
+  the shared one only when the instance has none. It stays read-only.
+- **A Codex launch that starts a new conversation says so when this workspace
+  had one (#1053).** When the resume lookup finds nothing, AgEnD starts fresh,
+  and until now said nothing — "never had a conversation" and "the lookup
+  missed it" looked the same, which is how #1028 went unnoticed. The launch
+  now checks Codex's own rollout files for an interactive conversation of this
+  directory with a turn in it, and if there is one, the instance's topic is
+  told a new conversation was started and how to continue the earlier one
+  (`codex resume <id>`). A workspace that never had a conversation stays quiet.
+- **muse instances are no longer paused and `/quit` mid-task by a false
+  sign-in error (#1042).** The muse sign-in pattern matched a bare `401`, and
+  muse's diff view numbers its rows: editing line 401 of any file was read as
+  an expired login, the pause waited for the turn to end, and AgEnD sent
+  `/quit` before the agent could commit or report ("Quit when idle" in the
+  pane is the description of muse's `/quit`). The pattern now needs one of
+  muse's own sign-in sentences, on a row that is not the conversation's or a
+  diff's.
+- **The kiro transcript poll no longer stalls the whole fleet (#1048).** Every
+  kiro instance polls its transcript every 2 seconds, and each poll opened
+  kiro's conversation store (over 1 GB on a lived-in machine) and read every
+  conversation of its workspace in full to learn whether anything had changed.
+  With 13 kiro instances that was about 100 ms of blocking work every round on
+  the fleet's event loop: Discord `/ctx` missed its 3-second deadline, the View
+  stopped streaming, and a local request took up to 16 seconds. The poll now
+  keeps one read-only handle and learns about changes from the index and the
+  record header alone: 0.25 ms per round on the same store.
+- **Settings › "Restart AgEnD" now shows that it is restarting, and cannot be pressed twice (#1024).**
+  The restart really happened, but the button stayed enabled, the panel kept saying "Saved —
+  restart AgEnD to apply" while AgEnD was going down, and nothing watched for it to come back —
+  so people pressed it again. The click handed the *finished* job it was holding to the watcher,
+  whose loop only runs while a job is "running", so it returned at once and re-drew a fresh
+  button. It now disables and relabels the button the moment it is pressed ("Restarting…"), asks
+  for one confirmation and posts one request, watches the job the server moved to "running",
+  shows "Restarting AgEnD…" with an explanation, keeps polling through the seconds when the
+  server is unreachable, and reports "Changes applied" and refreshes the page once AgEnD is back.
+  A refused restart gives the button back with the reason.
+- **Settings › Start / Stop / Pause / Wake on an agent show that they are working (#1024).** They were
+  fire-and-forget (a failed stop said nothing, and a second press sent a second request). While
+  one is in flight the agent's buttons are disabled and the pressed one reads "Working…", only one
+  action per agent runs at a time, and a failure is reported.
+- **Codex 0.158 and 0.159 are supported; deliveries wait out a 0.159 resume again (#1025).** Right
+  after a restart Codex draws its composer about a second before input is live, and AgEnD
+  holds deliveries until then. 0.159 redrew the header without its box, which the hold
+  depended on, so on 0.159 a message sent straight after a restart could land during the
+  load. The hold now recognises both header layouts. It is also tied to AgEnD's own launch
+  state rather than to the screen alone: it applies only after AgEnD launched a resume, and
+  it stops once the load has been seen to end or the screen has not changed for 30 seconds.
+  So a conversation that quotes the loading screen cannot hold deliveries. AgEnD also launches Codex with
+  `features.instant_interrupt` off: 0.159's opt-in setting makes new input steer the running
+  reply instead of queueing behind it. Codex before 0.159 lists that key as "ignored" among
+  its startup warnings; nothing else changes. On 0.158, instances that run with approvals
+  on (`--full-auto`, i.e. `skipPermissions: false`) may see a new approval prompt for
+  elevated commands. The default launch bypasses approvals and is unaffected.
+- **Settings › Connections & Bots rows no longer break words or clip (#1022).** Since v2.1.7 each
+  row (bot type, id, token env var, group/guild, access mode, allowed users, token status,
+  connection state, Settings button) was a non-wrapping flex row, so every item shrank and
+  wrapped inside its own box — "存取模式:" and "設定" split mid-word, chips became two lines —
+  and the tail ("Connected") was clipped by the card. Items now keep their own text on one
+  line, the row wraps *between* items when it is too long, and the token-status / state /
+  Settings cluster stays together at the end. Long values (env names, user ids) break
+  anywhere rather than widen the row. CSS/markup layout only; nothing about the data or the
+  Settings button changed. Checked in Chromium at nine widths (1280–390 px) in both languages.
+- **Settings › status emojis: every preview value now says where it comes from (#1023).** A report
+  said that after picking Received and Queued, the 👀 "moved" to Processing. Nothing moved and
+  nothing was mis-stored — the editor binds every value to its status name, and the request
+  it sends carries exactly the keys that were picked (`{"received":…,"queued":…}`). 👀 is simply
+  the built-in for Received, Processing *and* Progress prefix, and only non-default values were
+  labelled, so the 👀 left under Processing looked like a displaced one. Built-in values now
+  carry a "default" tag next to the "connection" / "agent" ones. A regression test drives the
+  page's real editor code through every pair of picks (in both orders) and asserts each value
+  lands on, previews as, and is stored under its own status name.
 
-A profile lives in `~/.agend/credential-profiles/<backend>/<profile>` and is
-logged in once from the host. Only the login is duplicated — kiro's
-multi-gigabyte runtimes are symlinked back to the shared copy, so a second
-subscription costs megabytes. The credential store itself is never a symlink,
-because SQLite follows a linked database to its target and would leave the
-profile sharing the login it exists to separate.
-
-General can create an agent on a subscription or move one between them, in plain
-language, and `/usage`, `get_usage` and the dashboard show **one row per
-subscription** rather than one per backend — `Kiro (work)` beside
-`Kiro (personal)`, each read from its own store and never added together. A
-profile that is configured but not yet logged in still gets a row, reading
-"Signed out", because that is the row you need to see while setting a second
-subscription up.
-
-Settings now applies changes as a job you can watch. `POST /api/settings/apply` returns one row per affected agent and `GET /api/settings/apply/:jobId` is the authority on it; the job is stored on disk, so a change that restarts AgEnD itself no longer takes the answer down with it. The client generates the idempotency key before its first attempt, so the retry that follows a lost response rejoins the original job instead of applying everything twice.
-
-The panel can restart AgEnD itself for a change only a fresh process can adopt, behind its own confirmation, its own idempotency key, and a rate limit of one restart per 10 minutes and three per hour that is written to disk before anything is launched. The restart is announced in the chat channel first and is refused if it cannot be announced, so a panel restart is never invisible to the people who would notice it was not them.
+## [2.1.7] - 2026-09-30
 
 ### Upgrade Notes
 - **[Behaviour change] Codex instances resume their own conversation, not a
@@ -89,7 +164,81 @@ The panel can restart AgEnD itself for a change only a fresh process can adopt, 
     already taken over before this release (for example a fork created from the
     lock screen) stays where Codex recorded it: check it, and archive a wrong
     fork in Codex, before restarting an affected instance.
-- **[Behaviour change] Agents no longer get every tool by default.** An instance
+- **Delivery-status emojis are configurable, and the filter now keys on who
+  reacted (#1005).** A human reaction is never swallowed as a status stamp any
+  more, whatever emoji it uses; only the fleet's own bots' stamps are filtered.
+  A fleet that does not configure `status_emojis` keeps the built-in set.
+
+### Added
+**Delivery-status emojis can be configured per platform and per agent
+(#1005).** `status_emojis` on a connection (`channels[].options`) or on an
+instance sets the received / queued / processing / delivered / failed stamps
+and the progress prefix, including Discord server emojis (`<:name:id>`).
+Values are checked the way each platform accepts them — Telegram only takes
+its fixed reaction set — and an unusable one falls back to the default with a
+warning. The instructions' "don't react with these" list follows the resolved
+set. Settings has an emoji picker with a live preview resolved by the same
+code the bots react with, listing the server's custom emojis fetched with the
+bot token (unavailable ones are shown but cannot be picked).
+
+**Requests that require a reply are tracked until they get one (#926).** A
+`requires_reply` request is recorded durably; when the reply is overdue the
+owner is reminded and the requester is told, instead of the request quietly
+expiring.
+
+**Cross-instance delivery goes through a durable outbox (#929).** Messages
+between instances are admitted to an on-disk outbox before they are sent,
+reconciled after a restart, and can be looked up with `delivery_status`
+(including silent schedules, which are admitted as raw pastes).
+
+**A peer message can be verified by its message id (#856).** Each delivered
+message carries an id and a payload digest, and `delivery_status` confirms
+whether a given message was really delivered by the fleet — the check to make
+before acting destructively on another instance's word.
+
+**`/view` has a sidebar filter** and a more readable usage panel (#999).
+`agend ls` collects its rows concurrently and no longer waits on one slow
+instance (#997). Shell completion says when `bash <TAB>` will not work, can
+install itself, and reports its status (#1003).
+
+### Fixed
+- **Codex resumes real sessions again (#1017).** The exact-directory lookup
+  introduced for #984 only accepted threads with `has_user_event = 1`, which no
+  real Codex 0.157 session carries, so every restart silently started a new
+  conversation. A thread is now resumable once any turn ran in it, checked
+  against Codex's own rollout when the listing is empty.
+- **Codex session-lock and resume-directory screens no longer stall delivery
+  silently (#984).** Codex's "This conversation is open in another app (r retry /
+  f fork)" screen and its "Working directory · resume" picker matched nothing, so
+  startup assumed the screen was ready and messages waited 30 minutes in the idle
+  gate before failing. Both are now held: delivery stays blocked, the operator is
+  told, and AgEnD never presses `r`, `f` or a picker option for you.
+- **Codex's "switch model" nudge on a rate limit is turned off in fleet
+  instances (#1008)** (`notice.hide_rate_limit_model_nudge` in each instance's
+  config); the screen is still held, never answered, if it appears anyway.
+- **Codex's Context status item is found in any status-line position and is
+  verified to be in the status line (#931, #978),** with a warning when it
+  cannot be added; a status row whose title is the model's reasoning reads as
+  busy on every readiness path (#964); no-context readiness and a stale
+  capacity baseline are fixed (#947, #949).
+- **GitHub credentials stay out of worktree remotes (#855, #963).** Worktrees
+  no longer get a token embedded in their remote URL, and an existing one gets
+  an advisory warning.
+- **Usage survives a failed fetch (#719):** a transient error shows the
+  last good numbers instead of blanking the panel; fetch and startup probes are
+  bounded and single-flight (#720, #724, #725).
+- **Reactions:** a delivery-status emoji replaces the previous one instead of
+  stacking (#868), statuses are only ever added and unreacted when leaving ❌
+  (#972), a reaction counts as completing a reply (#877), and the reply-drop
+  recovery prompt offers "react or reply" (#960).
+- **grok's weekly-limit screen is held** instead of being answered (#992);
+  **muse's idle check is anchored to the live input box** (#958); **fleet
+  restart progress edits are throttled** and retried on Discord 429s (#965).
+
+## [2.1.6] - 2026-09-26
+
+### Upgrade Notes
+- **[Behaviour change] Agents no longer get every tool by default (#804).** An instance
   with no `tool_set` in `fleet.yaml` used to be handed all 47 of AgEnD's tools,
   including `create_instance`, `delete_instance`, `deploy_template` and
   `update_fleet_defaults`. Nobody chose that; it was what "unset" meant. The
@@ -119,92 +268,137 @@ The panel can restart AgEnD itself for a change only a fresh process can adopt, 
   `update_instance_config` tool has no such field, so the value is dropped
   silently. Mark coordinators through Settings or by editing `fleet.yaml`
   (#814).
-- **Switching an agent's subscription starts a new conversation** — kiro keeps
+- **[Behaviour change] Codex instances get a short `CODEX_HOME` (#953).** Codex
+  0.157 puts a socket under `CODEX_HOME`, and for instances with long names
+  the path exceeded the Unix socket limit. Each instance's home moves to
+  `~/.agend/cx/<hash>/` on first use after upgrading; the move is automatic
+  and idempotent.
+- **Codex resumes with `codex resume --last` again (#933).** The explicit
+  per-instance session resume of #913 was reverted; its pane detection for
+  Codex 0.155/0.156 (#914) was kept.
+- **`kiro_ui: v3` is refused** until kiro's v3 interface can run unattended
+  (#850): measured on kiro-cli 2.23.0 it stopped at a migration dialog and a
+  trust screen whose default is "No, exit".
+- **Switching an agent's subscription starts a new conversation (#798)** — kiro keeps
   its conversations in the same `data.sqlite3` as its login, so a different
   credential profile is a different set of conversations and there is nothing to
   resume. The first launch after a switch skips resume outright, and the new
   session is handed a summary of what the old one was doing (the reply reports
   `conversation_carried_over: false` and `handover_chars`). Say anything that
   must survive verbatim in the channel before switching.
-- **Switching to a credential profile that has never been logged in is refused**
+- **Switching to a credential profile that has never been logged in is refused (#798)**
   — kiro-cli does not start a signed-out session, it stops at a sign-in prompt
   and waits, so the agent would sit on a login screen until its startup budget
   expired and then restart into the same screen. The error carries the command
   to log the profile in. Going back to the default login is never refused.
-- **A busy health port no longer terminates whatever `fleet.pid` names** — the takeover used to signal that pid on sight, and a stale or wrong entry names whatever holds it now. The target's command line is checked first, and when it cannot be confirmed the signal is not sent. `fleet.lock` also records whether a fleet or the setup page owns it, so the two refuse each other in both directions instead of one stealing the lock from the other.
-- **Dashboard and Settings links now exchange their token for a session cookie** — opening a link redeems `?token=` once, sets an `HttpOnly; SameSite=Strict` cookie, and redirects to the same page without the token, so the credential stays out of the address bar, browser history and any log that records request URLs. `X-Agend-Token` still works for scripts and the CLI, but a URL token is no longer accepted for a write. `agend web-token rotate` revokes every issued link and cookie at once.
-- **Fewer changes ask for a full AgEnD restart** — "restart AgEnD" used to appear for every cold fleet default, including `backend` and `model`, which the agents absorb by restarting. It is now limited to settings read once when a subsystem is constructed (channel bindings, `health_port`, `defaults.locale`, `cost_guard`, `webhooks`, `daily_summary`, and the two scheduler keys the scheduler captures at startup).
-- **A failed self-restart needs the change applied again** — if the restart cannot be launched, its row is marked failed and the job is finished rather than left open for another attempt. Press Apply again to get a fresh job whose fleet row can be restarted. This is the fail-closed side of "one restart per job": a job whose launch failed must not stay a reusable restart button.
+- **A busy health port no longer terminates whatever `fleet.pid` names (#792)** — the takeover used to signal that pid on sight, and a stale or wrong entry names whatever holds it now. The target's command line is checked first, and when it cannot be confirmed the signal is not sent. `fleet.lock` also records whether a fleet or the setup page owns it, so the two refuse each other in both directions instead of one stealing the lock from the other.
+- **Dashboard and Settings links now exchange their token for a session cookie (#786)** — opening a link redeems `?token=` once, sets an `HttpOnly; SameSite=Strict` cookie, and redirects to the same page without the token, so the credential stays out of the address bar, browser history and any log that records request URLs. `X-Agend-Token` still works for scripts and the CLI, but a URL token is no longer accepted for a write. `agend web-token rotate` revokes every issued link and cookie at once.
+- **Fewer changes ask for a full AgEnD restart (#787)** — "restart AgEnD" used to appear for every cold fleet default, including `backend` and `model`, which the agents absorb by restarting. It is now limited to settings read once when a subsystem is constructed (channel bindings, `health_port`, `defaults.locale`, `cost_guard`, `webhooks`, `daily_summary`, and the two scheduler keys the scheduler captures at startup).
+- **A failed self-restart needs the change applied again (#789)** — if the restart cannot be launched, its row is marked failed and the job is finished rather than left open for another attempt. Press Apply again to get a fresh job whose fleet row can be restarted. This is the fail-closed side of "one restart per job": a job whose launch failed must not stay a reusable restart button.
+
+### Added
+**Tool access is decided by the fleet, not by what a model happens to be shown (#804).**
+Every route into AgEnD's tools — the MCP tool list, a `tools/call` naming a tool
+directly, a write straight to the instance's socket, and `POST /agent` — now
+passes one permission table checked on the server side. Before, only the first
+of those consulted a tool list at all, so narrowing an instance's profile saved
+tokens without denying anything. A refused call says which profile the instance
+is running under and what to do instead, because the agent reads the error as an
+instruction.
+
+**One fleet can now run on more than one subscription of the same backend (#795–#798).** An
+instance carries `backend_options.<backend>.credential_profile: <name>`, and
+instances naming the same profile share one login while instances naming
+different profiles have different ones. An instance with no profile is
+untouched: nothing is added to its launch and no directory is created, so a
+fleet that does not use this cannot be affected by it. Implemented for
+`kiro-cli`; the mechanism is one record per backend (`CREDENTIAL_HOMES`), not a
+kiro-shaped design.
+
+A profile lives in `~/.agend/credential-profiles/<backend>/<profile>` and is
+logged in once from the host. Only the login is duplicated — kiro's
+multi-gigabyte runtimes are symlinked back to the shared copy, so a second
+subscription costs megabytes. The credential store itself is never a symlink,
+because SQLite follows a linked database to its target and would leave the
+profile sharing the login it exists to separate.
+
+General can create an agent on a subscription or move one between them, in plain
+language, and `/usage`, `get_usage` and the dashboard show **one row per
+subscription** rather than one per backend — `Kiro (work)` beside
+`Kiro (personal)`, each read from its own store and never added together. A
+profile that is configured but not yet logged in still gets a row, reading
+"Signed out", because that is the row you need to see while setting a second
+subscription up.
+
+Settings now applies changes as a job you can watch (#788). `POST /api/settings/apply` returns one row per affected agent and `GET /api/settings/apply/:jobId` is the authority on it; the job is stored on disk, so a change that restarts AgEnD itself no longer takes the answer down with it. The client generates the idempotency key before its first attempt, so the retry that follows a lost response rejoins the original job instead of applying everything twice.
+
+The panel can restart AgEnD itself (#789) for a change only a fresh process can adopt, behind its own confirmation, its own idempotency key, and a rate limit of one restart per 10 minutes and three per hour that is written to disk before anything is launched. The restart is announced in the chat channel first and is refused if it cannot be announced, so a panel restart is never invisible to the people who would notice it was not them.
+
+**Codex can use credential profiles too (#806).** A Codex profile swaps only
+`auth.json`; sessions, the session database and caches stay shared, so
+switching accounts does not have to start a new conversation. `/usage` shows
+`Codex (work)` and `Codex (personal)` as separate rows.
+
+**Meta Muse Code is a supported backend (`backend: muse`, #827).** Each
+instance gets its own MCP configuration (#903), and muse's subscription usage
+is relayed from its response stream into `/usage` (#894).
+
+**The Settings panel was rebuilt (#785–#792).** Rows with modals, an advanced
+drawer and a global search; a guided four-step quickstart; a pre-fleet setup
+page with safe takeover and locking; and the page gate moved to an HttpOnly
+session cookie with Origin checks and token rotation. Connections can rotate
+their bot token securely (#864) and rebind to a verified guild or group
+(#870), and provider API keys are verified before they are saved (#873).
+
+**The setup page can be reached from a phone through a cloudflared tunnel
+(#799–#803).** Every tunnel needs its own confirmation on a terminal — there
+is no flag, env var or config that pre-answers it — and the warning says what
+passes through Cloudflare. Without cloudflared, the command says so and gives
+the local alternative.
+
+**Discord bot activity shows usage (#866),** refreshed eagerly, scoped per
+adapter and in a compact form (#891, #901, #921). `/model` has a
+"🔄 Refresh models" item (#887), a Claude Code usage-limit pause is reported with
+its automatic resume time (#820), `/ctx` shows the auto-pause setting and pause state (#952), and
+the daemon logs why a CLI died and whether AgEnD stopped it (#942). Every
+instance may now manage its own schedules; scheduling for others stays with
+coordinators (#896). The documentation site moved to Astro Starlight, in
+English and zh-TW (#825, #832).
 
 ### Fixed
-- **A codex instance whose idle footer lacks the Context item no longer waits for ever for its
-  first message (#1031).** After a restart, codex sometimes draws its idle composer without the
-  `Context N% left` status item (seen on a resumed session whose footer showed only
-  `⚠ 2 warnings · f2 to view`). The first delivery after a restart needs a recognised footer,
-  so it waited 30 minutes, failed as retryable, and waited again: one instance sat on a queued
-  task for seven hours. When the footer is the only thing missing, AgEnD now uses the same
-  structural evidence it already uses to call an unknown screen idle. All of it is required:
-  an empty input box, no busy row, queued input or known picker, no resume load on screen, the
-  same screen for 10 seconds, and a terminal ready for input. It logs a warning when it does.
-- **Codex instances resume their own session even when their session database is private (#1028).**
-  If `~/.codex` had no session database yet when an instance first started (for example, AgEnD
-  was the first thing to run Codex on the machine), Codex created a private one in that
-  instance's home and kept using it. AgEnD looked only in the shared home, found nothing, and
-  every restart fell back to `codex resume --last` or a fresh start, with a "could not be read"
-  warning. AgEnD now reads the database the instance's Codex actually uses, and falls back to
-  the shared one only when the instance has none. It stays read-only.
-- **Settings › "Restart AgEnD" now shows that it is restarting, and cannot be pressed twice.**
-  The restart really happened, but the button stayed enabled, the panel kept saying "Saved —
-  restart AgEnD to apply" while AgEnD was going down, and nothing watched for it to come back —
-  so people pressed it again. The click handed the *finished* job it was holding to the watcher,
-  whose loop only runs while a job is "running", so it returned at once and re-drew a fresh
-  button. It now disables and relabels the button the moment it is pressed ("Restarting…"), asks
-  for one confirmation and posts one request, watches the job the server moved to "running",
-  shows "Restarting AgEnD…" with an explanation, keeps polling through the seconds when the
-  server is unreachable, and reports "Changes applied" and refreshes the page once AgEnD is back.
-  A refused restart gives the button back with the reason.
-- **Settings › Start / Stop / Pause / Wake on an agent show that they are working.** They were
-  fire-and-forget (a failed stop said nothing, and a second press sent a second request). While
-  one is in flight the agent's buttons are disabled and the pressed one reads "Working…", only one
-  action per agent runs at a time, and a failure is reported.
-- **Codex 0.158 and 0.159 are supported; deliveries wait out a 0.159 resume again.** Right
-  after a restart Codex draws its composer about a second before input is live, and AgEnD
-  holds deliveries until then. 0.159 redrew the header without its box, which the hold
-  depended on, so on 0.159 a message sent straight after a restart could land during the
-  load. The hold now recognises both header layouts. It is also tied to AgEnD's own launch
-  state rather than to the screen alone: it applies only after AgEnD launched a resume, and
-  it stops once the load has been seen to end or the screen has not changed for 30 seconds.
-  So a conversation that quotes the loading screen cannot hold deliveries. AgEnD also launches Codex with
-  `features.instant_interrupt` off: 0.159's opt-in setting makes new input steer the running
-  reply instead of queueing behind it. Codex before 0.159 lists that key as "ignored" among
-  its startup warnings; nothing else changes. On 0.158, instances that run with approvals
-  on (`--full-auto`, i.e. `skipPermissions: false`) may see a new approval prompt for
-  elevated commands. The default launch bypasses approvals and is unaffected.
-- **Settings › Connections & Bots rows no longer break words or clip.** Since v2.1.7 each
-  row (bot type, id, token env var, group/guild, access mode, allowed users, token status,
-  connection state, Settings button) was a non-wrapping flex row, so every item shrank and
-  wrapped inside its own box — "存取模式:" and "設定" split mid-word, chips became two lines —
-  and the tail ("Connected") was clipped by the card. Items now keep their own text on one
-  line, the row wraps *between* items when it is too long, and the token-status / state /
-  Settings cluster stays together at the end. Long values (env names, user ids) break
-  anywhere rather than widen the row. CSS/markup layout only; nothing about the data or the
-  Settings button changed. Checked in Chromium at nine widths (1280–390 px) in both languages.
-- **Settings › status emojis: every preview value now says where it comes from.** A report
-  said that after picking Received and Queued, the 👀 "moved" to Processing. Nothing moved and
-  nothing was mis-stored — the editor binds every value to its status name, and the request
-  it sends carries exactly the keys that were picked (`{"received":…,"queued":…}`). 👀 is simply
-  the built-in for Received, Processing *and* Progress prefix, and only non-default values were
-  labelled, so the 👀 left under Processing looked like a displaced one. Built-in values now
-  carry a "default" tag next to the "connection" / "agent" ones. A regression test drives the
-  page's real editor code through every pair of picks (in both orders) and asserts each value
-  lands on, previews as, and is stored under its own status name.
-- **Codex session-lock and resume-directory screens no longer stall delivery
-  silently (#984).** Codex's "This conversation is open in another app (r retry /
-  f fork)" screen and its "Working directory · resume" picker matched nothing, so
-  startup assumed the screen was ready and messages waited 30 minutes in the idle
-  gate before failing. Both are now held: delivery stays blocked, the operator is
-  told, and AgEnD never presses `r`, `f` or a picker option for you.
-
+- **Codex 0.155, 0.156 and 0.157 are supported (#914, #953).** Their pane
+  layouts are recognised, and the folder-trust prompt at startup is handled
+  safely (#919).
+- **Codex usage limits:** "Continue with Luna Reserve" is chosen automatically
+  on the usage-limit menu and the pane stays alive after it (#945, #940), the
+  first delivery waits for the reserve to settle (#941), usage shows the
+  reserve as "Luna Reserve" even at 0% (#937), and a model-capacity error
+  backs off and restarts instead of pausing the instance (#905).
+- **Codex:** the Context item is injected into status-line configs that quote
+  their keys (#931), and false delivery failures during wake are gone (#918).
+- **kiro:** the first delivery stays pending until its submission is proven
+  (#934), busy turns are drained before a fleet stop (#938), and the
+  unavailable-model picker is held and escalated (#925).
+- **muse:** the idle gate is no longer blocked by muse's periodic redraw
+  (#932), the second Enter muse asks for is sent (#831), an idle usage snapshot
+  is kept (marked stale) while its windows stand (#904), and the usage relay
+  resumes directly and notifies when recovery is exhausted (#899).
+- **Claude Code's dangerous-command dialog heals itself:** it is denied
+  automatically and the agent is told (#881).
+- **Delivery and replies:** the resume wait is measured by progress, not wall
+  clock (#869); late Cancel buttons are retired (#784) and armed prompts are
+  retired on shutdown (#840); a refused artifact tells the agent how to send
+  it (#885) and a reply reports the ids of the messages that carry its
+  attachments (#836); Discord truncation keeps markdown fences intact (#838);
+  a transient tmux `load-buffer` failure is retried (#841).
+- **Configuration and access:** a state file that overrides `fleet.yaml`
+  access is reported (#833); schedules keep the reply adapter they were
+  created on (#844) and refuse a non-string target or id instead of crashing
+  (#898); `list_models` honours the one-hour CLI-environment freshness window
+  (#902); onboarding keeps the install result and discovers login backends
+  (#859); Kiro Pro shows as unlimited (#892); Codex usage sources are split
+  and unavailable presence rows hidden (#875); all loggers share one pino
+  transport (#845).
 
 ## [2.1.5] - 2026-09-16
 

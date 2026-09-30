@@ -4,11 +4,30 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)。
 
-## [未發佈] (Unreleased)
+## [2.1.8] - 未發佈 (Unreleased)
+
+### 升級注意事項 (Upgrade Notes)
+- **Codex instance 的 app-server 執行期目錄改為私有（#1034）。** 以前每個 instance 的 `CODEX_HOME` 都用連結鏡像 `~/.codex/app-server-daemon` 與 `~/.codex/app-server-control`，所以 Codex 啟動它的 managed daemon 時會失敗（「socket directory path exists and is not a directory」），而且透過連結啟動的 daemon 其實是你自己的那一個、用的是你的設定。升級後第一次啟動只會移除 AgEnD 自己建立的連結（目標完全相符才移除），真正的目錄與你自己建的連結都不動，也絕不碰 `~/.codex`。Session 與 session 資料庫仍然共用。回退版本是安全的：私有目錄會保留，什麼都不刪。
 
 ### 新增 (Added)
-- **Agent 可以自己挑 persona emoji。** 多個 bot 在同一個頻道時，大家在處理過的訊息上都蓋同一個 ✅。`list_emojis` 列出 instance 能用的 emoji：平台接受的標準 emoji，Discord 上再加上 bot 能拿來加反應的伺服器 emoji。`set_persona_emoji` 把自己的 `delivered` 標記（或指定的其他狀態）寫進自己的 `status_emojis` 覆寫，就像 `set_display_name` 設名字。驗證方式和 Settings 相同：Telegram 只能用它的反應集、只能一個 emoji、伺服器 emoji 只能來自 bot 所在的伺服器。內建的 `persona-emoji` skill 教 worker 怎麼挑。ClassicBot instance 沒有 per-instance 標記，工具會直接說明。伺服器 emoji 光看名字和 id 看不出長相，所以 `preview_emojis` 一次最多下載 8 個，每個回傳一個本機圖片路徑，讓 agent 先看過再挑（#1040）。CDN 位址由 fleet 用 bot 可用 emoji 的 id 自己組，不採用 agent 傳入的任何內容，而且只保留小的 PNG。
+- **Agent 可以自己挑 persona emoji（#1039）。** 多個 bot 在同一個頻道時，大家在處理過的訊息上都蓋同一個 ✅。`list_emojis` 列出 instance 能用的 emoji：平台接受的標準 emoji，Discord 上再加上 bot 能拿來加反應的伺服器 emoji。`set_persona_emoji` 把自己的 `delivered` 標記（或指定的其他狀態）寫進自己的 `status_emojis` 覆寫，就像 `set_display_name` 設名字。驗證方式和 Settings 相同：Telegram 只能用它的反應集、只能一個 emoji、伺服器 emoji 只能來自 bot 所在的伺服器。內建的 `persona-emoji` skill 教 worker 怎麼挑。ClassicBot instance 沒有 per-instance 標記，工具會直接說明。伺服器 emoji 光看名字和 id 看不出長相，所以 `preview_emojis` 一次最多下載 8 個，每個回傳一個本機圖片路徑，讓 agent 先看過再挑（#1040）。CDN 位址由 fleet 用 bot 可用 emoji 的 id 自己組，不採用 agent 傳入的任何內容，而且只保留小的 PNG。
 - **Settings 的 emoji 選擇器列出 bot 能用的每個伺服器（#1021）。** 除了連線本身的伺服器，也列出 bot 所在、且 ClassicBot `allowed_guilds` 允許的其他伺服器，依伺服器分組、主伺服器在前。某個伺服器讀不到時只在該伺服器顯示原因，不影響其他。用其他伺服器的 emoji 加反應，bot 在該頻道需有「使用外部表情符號」權限，選擇器會提示。
+- **`/sysinfo` 顯示各 backend CLI 的版本（#1027）**：Claude Code、Codex、Kiro CLI、Grok、Antigravity 與 Muse，資料來自既有的 CLI 環境快取。重新整理期間會繼續顯示舊值，而重新探測在 worker thread 裡執行，慢的 CLI 不會卡住 fleet。
+
+### 修正 (Fixed)
+- **閒置 footer 缺少 Context 項目的 Codex instance，訊息大約 10 秒就能送達，不再要 70 秒（#1035）。** 訊息送進 instance 之前，fleet 自己的閒置等待現在也接受與下面 instance 端 fallback 相同的嚴格證據，不會先把整整一分鐘等完。
+- **閒置 footer 缺少 Context 項目的 codex instance，不再永遠等不到第一則訊息（#1031）。** 重啟後，codex 有時畫出的閒置輸入框沒有 `Context N% left` 狀態項目（曾在恢復的 session 上看到，footer 只剩 `⚠ 2 warnings · f2 to view`）。重啟後的第一則投遞需要認得的 footer，於是等 30 分鐘、以可重試失敗、再等一次：某個 instance 因此卡著一個排隊中的任務七個小時。現在當唯一缺少的是 footer 時，AgEnD 會改用它原本判斷未知畫面閒置時所用的結構證據，而且全部都要成立：輸入框是空的、沒有忙碌列、排隊中的輸入或已知的選單、畫面上沒有恢復 session 的載入、畫面 10 秒內沒有變化、終端已可接受輸入。使用這個判斷時會記一筆警告。
+- **Codex instance 的 session 資料庫是私有的時候，也能恢復自己的對話（#1028）。** 如果某個 instance 第一次啟動時 `~/.codex` 裡還沒有 session 資料庫（例如這台機器上第一個執行 Codex 的就是 AgEnD），Codex 會在該 instance 的 home 裡建立一個私有的資料庫並一直使用它。AgEnD 以前只讀共用 home，讀不到，於是每次重啟都退回 `codex resume --last` 或開新對話，並出現「無法讀取」的警告。現在 AgEnD 會讀該 instance 的 Codex 實際使用的資料庫，只有在 instance 沒有資料庫時才改讀共用的那一個。全程唯讀。
+- **Codex 啟動時若開了新對話、而這個工作目錄其實有過對話，現在會明說（#1053）。** resume 查不到對話時，AgEnD 會開新對話，而以前什麼都不說 —「從來沒有對話」和「查詢漏掉了」看起來一模一樣，#1028 就是這樣一直沒被發現。現在啟動時會檢查 Codex 自己的 rollout 檔，看這個目錄有沒有做過至少一輪的互動對話；有的話，會通知該 instance 的 topic：這次開了新對話，以及怎麼接回之前那段（`codex resume <id>`）。從來沒有對話的工作目錄則維持安靜。
+- **muse instance 不再因為誤判的登入錯誤，在工作途中被暫停並 `/quit`（#1042）。** muse 的登入錯誤 pattern 會命中單獨的 `401`，而 muse 的 diff 畫面會替每一列編號：只要改到任何檔案的第 401 行，就被當成登入過期，暫停等到這一輪結束，AgEnD 便在 agent 來得及 commit 或回報之前送出 `/quit`（畫面上的「Quit when idle」其實是 muse `/quit` 指令的說明文字）。現在這個 pattern 需要 muse 自己的完整登入錯誤句子，而且不能出現在對話列或 diff 列上。
+- **kiro 的 transcript 輪詢不再卡住整個 fleet（#1048）。** 每個 kiro instance 每 2 秒輪詢一次 transcript，而每次輪詢都會開啟 kiro 的對話資料庫（用久了的機器上超過 1 GB），並把該工作目錄的每段對話整個讀一遍，只為了知道有沒有變化。13 個 kiro instance 下，每一輪在 fleet 的 event loop 上要阻塞約 100 ms：Discord 的 `/ctx` 趕不上 3 秒期限、View 無法串流畫面、本機請求要等到 16 秒。現在輪詢只保留一個唯讀連線，並且只從索引與紀錄標頭判斷有沒有變化：同一個資料庫上每輪 0.25 ms。
+- **Settings ›「重新啟動 AgEnD」現在會顯示重啟中，且不能重複按（#1024）。** 重啟確實發生了，但按鈕仍可再按、面板在 AgEnD 關閉的當下還顯示「已儲存 —— 重新啟動 AgEnD 才會生效」，也沒有任何東西在等它回來 — 所以使用者一直重按。原因是按鈕把手上「已結束」的舊 job 交給了觀察函式，而它的迴圈只在 job 為 "running" 時執行，於是立刻返回並重畫出一顆新的、可按的按鈕。現在按下的瞬間就會停用按鈕並改成「重啟中…」，只詢問一次確認、只送出一個請求，監看伺服器已改成 "running" 的那個 job，顯示「AgEnD 重新啟動中…」與說明，在伺服器連不上的那幾秒持續輪詢，並在 AgEnD 回來後顯示「變更已套用」並重新整理頁面。被拒絕的重啟會把按鈕還給使用者並說明原因。
+- **Settings › Agent 的 啟動 / 停止 / 暫停 / 喚醒 現在會顯示執行中（#1024）。** 這些按鈕以前是送出就不管了（停止失敗不會有任何提示，連按兩次就送兩個請求）。現在請求進行中，該 Agent 的按鈕會被停用、被按的那顆顯示「執行中…」，每個 Agent 同一時間只執行一個動作，失敗也會回報。
+- **支援 Codex 0.158 與 0.159；0.159 恢復 session 時投遞會再次等它載入完（#1025）。** 重啟後 Codex 會在輸入真正可用前約一秒就畫出輸入框，AgEnD 會在這段期間暫緩投遞。0.159 把標題改成沒有外框的樣式，而這個暫緩判斷依賴外框，因此在 0.159 上重啟後立刻送出的訊息可能落在載入中。現在兩種標題樣式都能辨識，而且這個暫緩也改為依 AgEnD 自己的啟動狀態判斷，不再只看畫面：只在 AgEnD 啟動的是恢復 session 時才生效，一旦看到載入結束，或畫面 30 秒沒有變化，就停止。因此對話內容引用載入畫面時，不會卡住投遞。AgEnD 也改為以關閉 `features.instant_interrupt` 的方式啟動 Codex：0.159 的這個選用設定會讓新輸入直接改寫進行中的回覆，而不是排在後面。0.159 之前的 Codex 會在啟動警告中列出這個設定「已忽略」，其他沒有影響。0.158 對提權指令預設啟用核准提示，只影響開啟核准的 instance（`--full-auto`，即 `skipPermissions: false`）；預設的啟動方式會略過核准，不受影響。
+- **Settings › Connections & Bots 的每一列不再斷字或被裁掉（#1022）。** 自 v2.1.7 起，每一列（bot 類型、id、token 環境變數、群組/guild、存取模式、允許的使用者、token 狀態、連線狀態、設定按鈕）是不換行的 flex 列，所有項目被壓縮並在自己的框內換行 — 「存取模式:」與「設定」在字中間斷開、標籤變成兩行 — 尾端的「Connected」還被卡片裁掉。現在每個項目的文字保持單行，列太長時是在項目之間換行，token 狀態 / 連線狀態 / 設定按鈕這一組會一起留在列尾。很長的值（環境變數名稱、使用者 id）會在任意位置斷開，而不是把列撐寬。只改版面（CSS 與標記），資料與設定按鈕的行為沒有變。已用 Chromium 在 9 種寬度（1280–390 px）與兩種語言下檢查。
+- **Settings › 狀態 emoji：預覽的每個值現在都標示來源（#1023）。** 有回報說選了「已收到」與「排隊中」之後，👀「跑到」了「處理中」。實際上什麼都沒有移動，也沒有存錯 — 編輯器把每個值綁在它的狀態名稱上，送出的請求只帶有被選的那些 key（`{"received":…,"queued":…}`）。👀 本來就是「已收到」、「處理中」與「進度前綴」三者的內建值，而以前只有非預設值有標籤，所以留在「處理中」底下的 👀 看起來像是被擠過去的。現在內建值也會在「連線」/「Agent」標籤旁顯示「預設」。新增的回歸測試用頁面真正的編輯器程式碼跑過每一組（兩種順序的）兩項選擇，確認每個值都落在、預覽在、並儲存在它自己的狀態名稱下。
+
+## [2.1.7] - 2026-09-30
 
 ### 升級注意事項 (Upgrade Notes)
 - **[行為變更] Codex instance 改為恢復自己的對話，不再拿到兄弟 worktree 的（#984）。** Codex 0.157 的 `codex resume --last` 會挑整個 git repo 裡最新的 session，所以同一個 repo 的不同 worktree 上的 AgEnD instance 會互搶 session：對方還在跑時卡在「conversation is open in another app」lock 畫面，否則就默默接著跑對方的對話。現在 AgEnD 會以唯讀方式讀 Codex 的 session 資料庫，對「工作目錄完全相符」的最新 session 執行 `codex resume <id>`。對你的影響：
@@ -16,16 +35,117 @@
   - 同一個 repo 已有其他 Codex instance 時，**新建**的 instance 會從**新對話**開始，不會繼承兄弟的。
   - 如果讀不到 session 資料庫（例如 Codex 改了 schema）：同 repo 有其他 Codex instance 時開新對話；沒有時退回 `codex resume --last`。兩種情況都會在該 instance 的 topic 發通知。舊對話不會被刪，可以用 `codex resume <id>` 手動接回。
   - 不做任何搬移，AgEnD 也不寫入任何 Codex state。這個版本之前已經被搶走的對話（例如從 lock 畫面按 fork 產生的），Codex 記在哪裡就還在哪裡：重啟受影響的 instance 前，請先確認，並在 Codex 裡把錯誤的 fork 封存。
+- **投遞狀態 emoji 可以設定，而且過濾改為依「誰加的反應」判斷（#1005）。** 人加的反應不管用哪個 emoji，都不會再被當成狀態標記吞掉；只有 fleet 自己 bot 的標記會被過濾。沒有設定 `status_emojis` 的 fleet 維持內建的那一組。
+
+### 新增 (Added)
+- **投遞狀態 emoji 可以依平台、依 agent 設定（#1005）。** 在連線（`channels[].options`）或 instance 上設定 `status_emojis`，就能指定已收到 / 排隊中 / 處理中 / 已送達 / 失敗 的標記與進度前綴，也能用 Discord 伺服器 emoji（`<:name:id>`）。每個值都依該平台接受的方式檢查 — Telegram 只接受它固定的反應集 — 不能用的值會退回預設並記一筆警告。指示裡「不要用這些 emoji 加反應」的清單也跟著實際生效的那一組。Settings 有 emoji 選擇器，即時預覽由 bot 加反應用的同一套程式解析，並列出用 bot token 取得的伺服器自訂 emoji（無法使用的會顯示，但不能選）。
+- **要求回覆的請求會一直追蹤到有回覆為止（#926）。** `requires_reply` 的請求會被持久記錄；逾時沒回覆時會提醒負責的 instance、並告知請求方，不會再默默過期。
+- **跨 instance 投遞改走持久化的 outbox（#929）。** instance 之間的訊息在送出前會先寫進磁碟上的 outbox，重啟後會對帳，也可以用 `delivery_status` 查詢（包含靜默排程，它們以 raw paste 的形式寫入）。
+- **可以用 message id 驗證同伴送來的訊息（#856）。** 每則投遞的訊息都帶有 id 與內容摘要，`delivery_status` 能確認某則訊息是否真的由 fleet 投遞 — 依另一個 instance 的話做破壞性操作前，就該做這個檢查。
+- **`/view` 側欄可以篩選**，用量面板也更好讀（#999）。`agend ls` 會並行收集每一列，不再被單一個慢的 instance 卡住（#997）。Shell 自動補全會說明 `bash <TAB>` 何時無法運作、可以自行安裝，並回報狀態（#1003）。
 
 ### 修正 (Fixed)
-- **閒置 footer 缺少 Context 項目的 codex instance，不再永遠等不到第一則訊息（#1031）。** 重啟後，codex 有時畫出的閒置輸入框沒有 `Context N% left` 狀態項目（曾在恢復的 session 上看到，footer 只剩 `⚠ 2 warnings · f2 to view`）。重啟後的第一則投遞需要認得的 footer，於是等 30 分鐘、以可重試失敗、再等一次：某個 instance 因此卡著一個排隊中的任務七個小時。現在當唯一缺少的是 footer 時，AgEnD 會改用它原本判斷未知畫面閒置時所用的結構證據，而且全部都要成立：輸入框是空的、沒有忙碌列、排隊中的輸入或已知的選單、畫面上沒有恢復 session 的載入、畫面 10 秒內沒有變化、終端已可接受輸入。使用這個判斷時會記一筆警告。
-- **Codex instance 的 session 資料庫是私有的時候，也能恢復自己的對話（#1028）。** 如果某個 instance 第一次啟動時 `~/.codex` 裡還沒有 session 資料庫（例如這台機器上第一個執行 Codex 的就是 AgEnD），Codex 會在該 instance 的 home 裡建立一個私有的資料庫並一直使用它。AgEnD 以前只讀共用 home，讀不到，於是每次重啟都退回 `codex resume --last` 或開新對話，並出現「無法讀取」的警告。現在 AgEnD 會讀該 instance 的 Codex 實際使用的資料庫，只有在 instance 沒有資料庫時才改讀共用的那一個。全程唯讀。
-- **Settings ›「重新啟動 AgEnD」現在會顯示重啟中，且不能重複按。** 重啟確實發生了，但按鈕仍可再按、面板在 AgEnD 關閉的當下還顯示「已儲存 —— 重新啟動 AgEnD 才會生效」，也沒有任何東西在等它回來 — 所以使用者一直重按。原因是按鈕把手上「已結束」的舊 job 交給了觀察函式，而它的迴圈只在 job 為 "running" 時執行，於是立刻返回並重畫出一顆新的、可按的按鈕。現在按下的瞬間就會停用按鈕並改成「重啟中…」，只詢問一次確認、只送出一個請求，監看伺服器已改成 "running" 的那個 job，顯示「AgEnD 重新啟動中…」與說明，在伺服器連不上的那幾秒持續輪詢，並在 AgEnD 回來後顯示「變更已套用」並重新整理頁面。被拒絕的重啟會把按鈕還給使用者並說明原因。
-- **Settings › Agent 的 啟動 / 停止 / 暫停 / 喚醒 現在會顯示執行中。** 這些按鈕以前是送出就不管了（停止失敗不會有任何提示，連按兩次就送兩個請求）。現在請求進行中，該 Agent 的按鈕會被停用、被按的那顆顯示「執行中…」，每個 Agent 同一時間只執行一個動作，失敗也會回報。
-- **支援 Codex 0.158 與 0.159；0.159 恢復 session 時投遞會再次等它載入完。** 重啟後 Codex 會在輸入真正可用前約一秒就畫出輸入框，AgEnD 會在這段期間暫緩投遞。0.159 把標題改成沒有外框的樣式，而這個暫緩判斷依賴外框，因此在 0.159 上重啟後立刻送出的訊息可能落在載入中。現在兩種標題樣式都能辨識，而且這個暫緩也改為依 AgEnD 自己的啟動狀態判斷，不再只看畫面：只在 AgEnD 啟動的是恢復 session 時才生效，一旦看到載入結束，或畫面 30 秒沒有變化，就停止。因此對話內容引用載入畫面時，不會卡住投遞。AgEnD 也改為以關閉 `features.instant_interrupt` 的方式啟動 Codex：0.159 的這個選用設定會讓新輸入直接改寫進行中的回覆，而不是排在後面。0.159 之前的 Codex 會在啟動警告中列出這個設定「已忽略」，其他沒有影響。0.158 對提權指令預設啟用核准提示，只影響開啟核准的 instance（`--full-auto`，即 `skipPermissions: false`）；預設的啟動方式會略過核准，不受影響。
-- **Settings › Connections & Bots 的每一列不再斷字或被裁掉。** 自 v2.1.7 起，每一列（bot 類型、id、token 環境變數、群組/guild、存取模式、允許的使用者、token 狀態、連線狀態、設定按鈕）是不換行的 flex 列，所有項目被壓縮並在自己的框內換行 — 「存取模式:」與「設定」在字中間斷開、標籤變成兩行 — 尾端的「Connected」還被卡片裁掉。現在每個項目的文字保持單行，列太長時是在項目之間換行，token 狀態 / 連線狀態 / 設定按鈕這一組會一起留在列尾。很長的值（環境變數名稱、使用者 id）會在任意位置斷開，而不是把列撐寬。只改版面（CSS 與標記），資料與設定按鈕的行為沒有變。已用 Chromium 在 9 種寬度（1280–390 px）與兩種語言下檢查。
-- **Settings › 狀態 emoji：預覽的每個值現在都標示來源。** 有回報說選了「已收到」與「排隊中」之後，👀「跑到」了「處理中」。實際上什麼都沒有移動，也沒有存錯 — 編輯器把每個值綁在它的狀態名稱上，送出的請求只帶有被選的那些 key（`{"received":…,"queued":…}`）。👀 本來就是「已收到」、「處理中」與「進度前綴」三者的內建值，而以前只有非預設值有標籤，所以留在「處理中」底下的 👀 看起來像是被擠過去的。現在內建值也會在「連線」/「Agent」標籤旁顯示「預設」。新增的回歸測試用頁面真正的編輯器程式碼跑過每一組（兩種順序的）兩項選擇，確認每個值都落在、預覽在、並儲存在它自己的狀態名稱下。
+- **Codex 又能恢復真正的 session 了（#1017）。** 為 #984 加上的「工作目錄完全相符」查詢，只接受 `has_user_event = 1` 的 thread，而真實的 Codex 0.157 session 都沒有這個值，所以每次重啟都默默開了新對話。現在只要 thread 裡跑過任何一輪，就視為可恢復；列表資訊是空的時候，改看 Codex 自己的 rollout 判斷。
 - **Codex 的 session lock 畫面與 resume 目錄選擇器不再讓投遞默默卡住（#984）。** 「This conversation is open in another app（r retry / f fork）」畫面和「Working directory · resume」選擇器原本都認不出來，啟動時被當成已就緒，訊息會在 idle gate 等滿 30 分鐘後失敗。現在兩者都會被 hold：投遞維持擋住、通知 operator，AgEnD 絕不會替你按 `r`、`f` 或選擇器的任何選項。
+- **fleet instance 裡關掉了 Codex 在 rate limit 時的「切換模型」提示（#1008）**（在每個 instance 的設定寫入 `notice.hide_rate_limit_model_nudge`）；萬一還是出現，畫面仍會被 hold，AgEnD 不會替你回答。
+- **Codex 的 Context 狀態項目在 status line 的任何位置都認得，並會確認它真的寫進了 status line（#931、#978）**，寫不進去時會警告；標題是模型推理內容的狀態列，在每條就緒判斷路徑上都視為忙碌（#964）；修正無 context 時的就緒判斷與過期的 capacity 基準（#947、#949）。
+- **GitHub 憑證不再出現在 worktree 的 remote 裡（#855、#963）。** worktree 的 remote URL 不再內嵌 token，已經內嵌的會收到提醒。
+- **用量在取得失敗時也撐得住（#719）：** 暫時性錯誤會顯示上一次成功的數字，而不是把面板清空；取得與啟動探測都有上限並且只跑一份（#720、#724、#725）。
+- **反應：** 投遞狀態 emoji 會取代前一個，不再疊加（#868）；狀態只會新增，只有離開 ❌ 時才移除反應（#972）；加反應也算完成回覆（#877）；漏回覆的補救提示改為「加反應或回覆」（#960）。
+- **grok 的每週額度畫面會被 hold**，不會被自動回答（#992）；**muse 的閒置判斷改以實際輸入框為準**（#958）；**fleet 重啟進度的編輯會節流**，遇到 Discord 429 會重試（#965）。
+
+## [2.1.6] - 2026-09-26
+
+### 升級注意事項 (Upgrade Notes)
+- **[行為變更] Agent 不再預設拿到所有工具（#804）。** 沒有在 `fleet.yaml` 設定 `tool_set` 的 instance，以前會拿到 AgEnD 全部 47 個工具，包括 `create_instance`、`delete_instance`、`deploy_template` 與 `update_fleet_defaults`。沒有人選擇過這件事，只是「沒設定」就代表這樣。現在預設是 `worker`：能和人、和同伴溝通，能讀所有東西，能做事 — 但沒有任何管理 fleet 的動作。
+
+  **你可能需要做的事。** 真的在協調其他 agent 的 instance — team lead、類似 General 的調度者、任何會重啟或建立其他 agent 的 — 需要在 instance（或 `defaults`）上設定 `tool_set: coordinator`。**升級後第一次啟動時，AgEnD 會告訴你是哪些**：它讀取過去三十天的活動，列出真的用過 worker 不再擁有的工具的 instance，以及用了什麼。只是委派工作的 instance 不在清單上，因為 `delegate_task` 仍屬於 worker，它們什麼都不會失去。
+
+  **不會替你改寫任何東西。** 明確寫著 `tool_set: full` 仍然完全照寫的生效，包括 `defaults.tool_set: full` — 這也表示有這一行的 fleet，在你改掉它之前，所有 agent 都還是拿到所有工具。通知會說明這點，而不會去改你的檔案。
+
+  設定檔的層級是 `worker`（預設）⊂ `coordinator`（手動設定）與 `full`；`standard` 與 `minimal` 不變。`general` 仍是一種身分而不是選項：它來自 `general_topic`，手動寫入仍會被拒絕。
+
+  一個要知道的缺口：General 目前無法替你設定 `tool_set` — 它的 `update_instance_config` 工具沒有這個欄位，值會被默默丟掉。請透過 Settings 或直接編輯 `fleet.yaml` 標示 coordinator（#814）。
+- **[行為變更] Codex instance 改用較短的 `CODEX_HOME`（#953）。** Codex 0.157 會在 `CODEX_HOME` 底下建立 socket，名稱很長的 instance 會超過 Unix socket 路徑上限。升級後第一次使用時，每個 instance 的 home 會搬到 `~/.agend/cx/<hash>/`；搬移是自動且可重複執行的。
+- **Codex 恢復對話改回使用 `codex resume --last`（#933）。** #913 的「每個 instance 明確指定 session」恢復方式已撤回；它為 Codex 0.155/0.156 做的畫面偵測（#914）則保留。
+- **`kiro_ui: v3` 會被拒絕**，直到 kiro 的 v3 介面能無人值守運作為止（#850）：在 kiro-cli 2.23.0 上實測，它會停在一個設定遷移對話框，以及一個預設選項為「No, exit」的信任畫面。
+- **切換 agent 的訂閱會開始新的對話（#798）** — kiro 把對話存在和登入資訊同一個 `data.sqlite3` 裡，所以不同的 credential profile 就是另一組對話，沒有東西可以恢復。切換後的第一次啟動會直接略過恢復，而新的 session 會收到舊 session 在做什麼的摘要（回覆會帶有 `conversation_carried_over: false` 與 `handover_chars`）。任何必須原樣保留的內容，請在切換前先在頻道裡說清楚。
+- **切換到從未登入過的 credential profile 會被拒絕（#798）** — kiro-cli 不會以未登入狀態啟動，而是停在登入提示等待，agent 會一直卡在登入畫面直到啟動時限用完，然後重啟又回到同一個畫面。錯誤訊息會附上替這個 profile 登入的指令。切回預設登入永遠不會被拒絕。
+- **health port 被佔用時，不再直接終止 `fleet.pid` 指到的程序（#792）** — 以前接管時會直接對那個 pid 送訊號，而過期或錯誤的紀錄指到的是現在佔用它的任何程序。現在會先檢查目標的命令列，無法確認就不送訊號。`fleet.lock` 也會記錄是 fleet 還是設定頁持有它，兩者會互相拒絕，而不是其中一方搶走另一方的鎖。
+- **Dashboard 與 Settings 的連結現在會把 token 換成 session cookie（#786）** — 開啟連結時會兌換一次 `?token=`，設定 `HttpOnly; SameSite=Strict` 的 cookie，再轉到不含 token 的同一頁，讓憑證不會留在網址列、瀏覽紀錄或任何記錄請求 URL 的 log 裡。`X-Agend-Token` 對腳本與 CLI 仍然有效，但網址上的 token 不再能用來寫入。`agend web-token rotate` 會一次撤銷所有已發出的連結與 cookie。
+- **需要完整重啟 AgEnD 的變更變少了（#787）** — 以前每個冷的 fleet 預設值（包括 `backend` 與 `model`，agent 自己重啟就能吸收）都會出現「重新啟動 AgEnD」。現在只限於子系統建構時讀一次的設定（channel 綁定、`health_port`、`defaults.locale`、`cost_guard`、`webhooks`、`daily_summary`，以及 scheduler 啟動時擷取的兩個 scheduler 設定）。
+- **自我重啟失敗時，需要再套用一次變更（#789）** — 如果重啟無法啟動，該列會標為失敗，job 也會結束，而不是留著等下一次嘗試。再按一次 Apply 取得新的 job，它的 fleet 列就可以重啟。這是「每個 job 只重啟一次」fail-closed 的那一面：啟動失敗的 job 不能繼續當成可重複使用的重啟按鈕。
+
+### 新增 (Added)
+- **工具存取由 fleet 決定，而不是看模型剛好被展示了什麼（#804）。** 進入 AgEnD 工具的每一條路 — MCP 工具清單、直接指名工具的 `tools/call`、直接寫入 instance 的 socket、以及 `POST /agent` — 現在都經過同一張在伺服器端檢查的權限表。以前只有第一條會參考工具清單，所以縮小 instance 的設定檔只省了 token，並沒有真的拒絕任何東西。被拒絕的呼叫會說明 instance 用的是哪個設定檔、以及改做什麼，因為 agent 會把錯誤當成指示來讀。
+- **同一個 fleet 現在可以在同一個 backend 上使用多個訂閱（#795–#798）。** instance 帶有 `backend_options.<backend>.credential_profile: <name>`，指定同一個 profile 的 instance 共用一份登入，指定不同 profile 的則各有各的。沒有 profile 的 instance 完全不受影響：啟動參數不會多任何東西、也不會建立任何目錄，所以不使用這個功能的 fleet 不可能受它影響。已在 `kiro-cli` 實作；機制是每個 backend 一筆紀錄（`CREDENTIAL_HOMES`），並不是只為 kiro 設計的。
+
+  profile 放在 `~/.agend/credential-profiles/<backend>/<profile>`，從主機登入一次即可。只有登入資訊會被複製 — kiro 數 GB 的執行環境會用 symlink 連回共用的那一份，所以第二個訂閱只多幾 MB。憑證儲存本身絕不是 symlink，因為 SQLite 會跟著連結開啟目標資料庫，這樣 profile 就又共用了它本來要分開的那份登入。
+
+  General 可以用一般對話建立使用某個訂閱的 agent、或把 agent 在訂閱之間移動，而 `/usage`、`get_usage` 與 dashboard 會**每個訂閱一列**，而不是每個 backend 一列 — `Kiro (work)` 與 `Kiro (personal)` 並排，各自從自己的儲存讀取，絕不相加。已設定但尚未登入的 profile 也會有一列，顯示「已登出」，因為在設定第二個訂閱時，你需要看到的就是這一列。
+- **Settings 現在以可追蹤的 job 套用變更（#788）。** `POST /api/settings/apply` 會為每個受影響的 agent 回傳一列，`GET /api/settings/apply/:jobId` 是它的權威來源；job 存在磁碟上，所以會重啟 AgEnD 本身的變更，不會再連答案一起帶走。客戶端在第一次嘗試前就產生冪等鍵，所以回應遺失後的重試會加入原本的 job，而不是把所有東西套用兩次。
+
+  面板可以為只有新程序才能採用的變更重啟 AgEnD 本身（#789），並有自己的確認、自己的冪等鍵，以及寫進磁碟後才會啟動任何東西的頻率限制（每 10 分鐘一次、每小時三次）。重啟會先在聊天頻道公告，無法公告就拒絕，所以面板發起的重啟，絕不會瞞過那些會注意到「不是自己做的」的人。
+- **Codex 也可以使用 credential profile（#806）。** Codex 的 profile 只替換 `auth.json`；session、session 資料庫與快取仍然共用，所以切換帳號不必開新對話。`/usage` 會把 `Codex (work)` 與 `Codex (personal)` 分成兩列。
+- **支援 Meta Muse Code backend（`backend: muse`，#827）。** 每個 instance 有自己的 MCP 設定（#903），muse 的訂閱用量會從它的回應串流轉到 `/usage`（#894）。
+- **Settings 面板改版（#785–#792）。** 改成列 + modal、進階抽屜與全域搜尋；四步驟的引導式 quickstart；有安全接管與鎖定的 fleet 前置設定頁；頁面存取改用 HttpOnly session cookie，並加上 Origin 檢查與 token 輪替。連線可以安全地輪替 bot token（#864）、重新綁定到經過驗證的 guild 或群組（#870），provider API key 儲存前會先驗證（#873）。
+- **可以透過 cloudflared tunnel 從手機開啟設定頁（#799–#803）。** 每一次開 tunnel 都要在終端上個別確認 — 沒有任何旗標、環境變數或設定能事先回答 — 警告會說明哪些內容會經過 Cloudflare。沒有 cloudflared 時，指令會直接說明並提供本機替代方案。
+- **Discord bot 的狀態列會顯示用量（#866）**，會主動更新、依 adapter 分開、並以精簡格式顯示（#891、#901、#921）。`/model` 有「🔄 重新整理模型」項目（#887）；Claude Code 的用量上限暫停會附上自動恢復時間回報（#820）；`/ctx` 會顯示自動暫停設定與暫停狀態（#952）；daemon 會記錄 CLI 為什麼結束、以及是不是 AgEnD 停掉的（#942）。每個 instance 現在都能管理自己的排程；替別人排程仍限 coordinator（#896）。文件網站改用 Astro Starlight，提供英文與繁體中文（#825、#832）。
+
+### 修正 (Fixed)
+- **支援 Codex 0.155、0.156 與 0.157（#914、#953）。** 能辨識它們的畫面版型，啟動時的資料夾信任提示也會安全處理（#919）。
+- **Codex 用量上限：** 用量上限選單會自動選「Continue with Luna Reserve」，之後畫面也會保持存活（#945、#940）；第一則投遞會等 reserve 穩定下來（#941）；用量即使在 0% 也會顯示為「Luna Reserve」（#937）；模型容量錯誤會退避並重啟，而不是暫停 instance（#905）。
+- **Codex：** 會把 Context 項目注入 key 有加引號的 status line 設定（#931）；喚醒期間不再出現誤報的投遞失敗（#918）。
+- **kiro：** 第一則投遞會維持待處理，直到確認送出（#934）；fleet 停止前會先等忙碌中的那一輪結束（#938）；模型無法使用的選擇器會被 hold 並升級通知（#925）。
+- **muse：** 閒置判斷不再被 muse 的週期性重繪擋住（#932）；會送出 muse 要求的第二個 Enter（#831）；在視窗仍存在時保留閒置時的用量快照（並標記為過期）（#904）；用量 relay 在復原次數用盡時會直接恢復並通知（#899）。
+- **Claude Code 的危險指令對話框會自我修復：** 自動拒絕並通知 agent（#881）。
+- **投遞與回覆：** 恢復 session 的等待改以進度衡量，而不是牆上時間（#869）；過晚的取消按鈕會被收回（#784），關機時也會收回已啟用的提示（#840）；被拒絕的附件會告訴 agent 該怎麼送（#885），回覆會回報帶著附件的那些訊息 id（#836）；Discord 截斷時會保留 markdown 程式碼區塊（#838）；tmux `load-buffer` 暫時失敗會重試（#841）。
+- **設定與存取：** 狀態檔覆蓋 `fleet.yaml` 的存取設定時會說明（#833）；排程會保留建立時的回覆 adapter（#844），遇到非字串的 target 或 id 會拒絕而不是當掉（#898）；`list_models` 遵守 CLI 環境一小時的新鮮度（#902）；onboarding 會保留安裝結果並找出可登入的 backend（#859）；Kiro Pro 顯示為無限（#892）；Codex 用量來源分開、無法取得的狀態列會隱藏（#875）；所有 logger 共用同一個 pino transport（#845）。
+
+## [2.1.5] - 2026-09-16
+
+### 升級注意事項 (Upgrade Notes)
+- **`allowed_users` 為空時，`/restart full` 改為 fail-closed** — 以前 fleet.yaml 裡空的 `allowed_users` 清單會允許任何使用者執行管理操作。這個版本把空清單視為「沒有人被允許」，必須明確填入允許清單。如果你依賴管理指令，升級前請先檢查 fleet.yaml（#726）。
+- **多 adapter 的 fleet：回覆上下文需要綁定 adapter** — 在同時執行多個頻道 adapter 的 fleet（例如 Telegram + Discord）裡，如果 `last-chat.json` 是舊版本寫的、沒有 `adapterId` 欄位，重啟後的第一則回覆會以「no adapter bound」失敗，直到有一則收到的訊息重新建立綁定為止。這是刻意的：失敗比把 chat id 送進錯誤平台的 bot 安全。只有單一 adapter 的 fleet 不受影響（#752）。
+- **[行為變更] 可讀取畫面的 backend 遇到無法驗證的投遞時改為失敗** — 當無法證明投遞已經離開輸入列（基準確認失敗三次，且沒有偵測到唯一特徵）時，daemon 會回報 ❌，而不是靠輸出訊號去猜 ✅。原則是「寧可失敗也不要猜」— 使用者看得到失敗，也可以重試。這影響 Codex 與 Kiro；Claude Code 與 Antigravity 有可靠的送出訊號，不受影響（#757、#759）。
+- **[行為變更] topic 消失會觸發隔離，而不是刪除** — 當 Discord gateway 中斷或 channelDelete 事件讓某個 topic 看起來不見了，daemon 現在會隔離該 instance（撤銷它的路由、保留所有資料），而不是自動刪除 instance 與它的 worktree。破壞性的移除需要透過 dashboard 的確認對話框或 `delete_instance` 工具明確授權。這可以避免 adapter 暫時斷線時的資料遺失（#765、#766、#767）。
+- **Classic 的冷欄位仍需要重啟** — 新的 fleet 層級行為開關（`tool_progress`、`reply_completion_guard`）會即時套用到 fleet topic 與已存在的 Classic 頻道。但 ClassicBot 的「冷」欄位 — `backend`、`model`、`effort` 與 `working_directory` — 仍需要重啟 instance（或 `/stop` + `/start`）才會生效；只送 SIGHUP 不會重啟 Classic instance。這和以前的行為一致，也避免在對話途中切換 backend（#775）。
+
+### 新增 (Added)
+2.1.4 推出的 `/login` 斜線指令在這個版本有大幅強化。登入現在在有 token 保護的網頁終端裡進行，為所有 backend 提供安全的瀏覽器登入流程。Codex 在無頭環境使用 device-auth 模式。登入成功後，系統會立即回報結果，不必等 instance 重啟，而重啟也會帶著看得見的期限，讓使用者知道 fleet 什麼時候會回來。認證失敗的警告旁邊現在會有一個內嵌的「重新登入」按鈕，operator 點一下就能修好過期的憑證，不必手動輸入指令（#715、#717、#729、#733、#748）。
+
+新的 `/install-cli` 指令讓 operator 可以遠端安裝 CLI backend，而 ClassicBot instance 在 backend 登入後會自動恢復，不再需要手動介入（#733）。
+
+`/ctx` 指令現在會在模型旁顯示設定的推理強度（#738）。`list_instances` MCP 工具改為漸進式揭露：第一次回應顯示精簡的 fleet 摘要，依 backend、狀態與標籤計數，並說明如何深入查詢。查詢參數（`tags`、`backend`、`status`、`name`）可以篩選清單，`describe_instance` 則回傳單一 instance 的完整資訊。有的話會包含 Claude Code 的即時模型（從 statusline 讀取），而 `get_instance_logs` 預設最多 200 行，避免失控地消耗 context（#740）。
+
+網頁 dashboard 現在顯示更豐富的 instance 資訊。詳細頁標題與側欄的滑鼠提示會顯示即時模型（與 `/ctx` 的解析一致）、帶有「(configured)」標記的設定強度、backend，以及有設定時的 instance 顯示名稱。`/ui/instance/:name` 與 `/api/profiles` 端點新增 `model_source`、`effort_source`、`context_pct` 與 `display_name` 欄位，讓外部工具能分辨即時值與設定值（#762、#764、#770）。
+
+`/restart full` 可以從聊天中完整重新載入程序，能感知服務管理並且只跑一份。systemd 交接逾時的結果現在會被正確追蹤，重新載入也會與獨立的更新互相隔開，所以進行中的 `agend update` 不會與它競爭（#726）。
+
+Settings 與 fleet.yaml 現在開放兩個 fleet 層級的行為開關。`tool_progress` 控制工作中的訊息泡泡是否在工具執行時列出它們（預設關閉；設為 `standard` 顯示語意標籤，`verbose` 顯示指令預覽）。`reply_completion_guard` 啟用 #750 的漏回覆保護；預設為 `true`，如果干擾某個特定工作流程，可以依 instance 關閉。兩個開關都依照其他 Classic 設定使用的同一條鏈解析：channel → classicBot 預設 → fleet 預設 → 硬性預設，並可透過 SIGHUP 或 Settings 編輯即時套用，不需要重啟（#775）。
+
+### 修正 (Fixed)
+這個版本處理了幾個會讓使用者訊息無聲消失、而且沒有錯誤的情況。
+
+**[P0 資料遺失修正] Discord gateway 中斷可能會毀掉 instance 與 worktree。** adapter 暫時斷線時，topic 清理輪詢與 `channelDelete` 處理器把不見的 topic 誤判為永久刪除，於是自動移除 instance、刪除它的 git worktree 並改寫 fleet.yaml — 即使那個 topic 在 Discord 上其實還在。在找到這個 bug 之前，一位使用者失去了 8 個 instance 與 2 個 worktree。修正是 fail-closed：adapter 的拓撲探測現在回傳三種狀態（存在 / 不見 / 不確定），而「不見」需要 provider 提供正面證據。清理動作使用擁有該 topic 的 adapter、只跑一份的快照，以及世代隔離；大量「不見」的結果會觸發斷路器。自動的 topic 不見與 channelDelete 處理現在只做非破壞性的隔離（撤銷路由、保留一切）。破壞性的 `removeInstance` 與 worktree 刪除需要一個無法偽造的授權 token，只有 dashboard 的確認對話框或 `delete_instance` 能發出（#765、#766、#767）。**這個 bug 也影響 v2.1.4。**
+
+**Codex 在重啟或喚醒後，第一則投遞會卡住。** 重啟或喚醒後，第一則訊息可能被 CLI 的畫面重繪吞掉，daemon 卻回報 ✅。根本原因是 Enter 被重繪吸收了，而 daemon 相信了一個其實並不對應真正送出的輸出訊號。修正是把送出驗證綁定到 backend 的能力：可讀取畫面的 backend 必須正面證明文字已經離開輸入列。新的 `InputUnavailableTransient` 能力處理 Codex 0.154.0 的 `Resuming session…` 暫態期間，這段時間裡 Enter 會被吸收。四道關卡加上世代隔離，確保 CLI 真的準備好接收輸入之前，不會確認任何投遞（#757、#759、#760、#761）。
+
+Kiro 的就緒狀態偵測現在能區分 transcript 殘留與真的卡在輸入列的文字，消除了訊息其實已送出卻回報 ❌ 的誤報（#736）。Kiro CLI 2.14+ 會在提示符前以方括號印出 agent 名稱（例如 `[Agent Name] ❯`）；偵測器現在認得這個格式（#746）。Kiro session 的 token 過期時，CLI 會退回登入畫面。AgEnD 現在以結構（而不只是關鍵字）偵測這個畫面，並在後續探測通過時撤回認證疑慮旗標。誤判這個畫面會壓下 hang 通知並停用 MCP 自動重啟 —**不會**擋住投遞 — 所以這個修正是恢復監控的正確性，而不是解開某條投遞路徑（#746、#747）。
+
+Codex 可能在訊息根本沒送出時回報投遞成功。根本原因是輸入列快照與實際貼上之間的競爭：daemon 在輸入區看到文字，就以為已經送出並回報成功。修正把送出證據綁定到那一次特定的貼上，並明確送出任何卡住的文字，而不是重新貼上。此外，Codex 的更新選擇器佔用畫面時會暫緩投遞，而仍留在輸入列的訊息絕不會被確認為已送達（#745）。
+
+啟動逾時不再放棄 session。以前 instance 啟動太久時，daemon 會放棄並建立新的 session，默默丟掉對話歷史。現在 session 會被保留並改名，以便手動恢復（#737）。
+
+現在能偵測 Claude Code 結束一輪卻沒有得到平台確認的回覆。發生時，daemon 會發出中性的狀態訊息（「agent 沒有回覆；重試一次」），並注入一次性的補救提示，要求模型送出它的結論。如果補救的那一輪也沒送出回覆，這一輪會以明確的「未恢復的漏回覆」通知結束，而不是默默遺失。這處理了 #664、#662 與 #649 的根本原因（#750）。
+
+`/model` 指令現在會重新探測過期的 CLI 環境，新發布的模型不必冷啟動就會出現（#721）。`/update` 指令保證最終進度會送達，修正最後狀態訊息遺失的情況（#722）。某個 provider 很慢時，用量面板不再卡住；每個廠商的收集各自有上限（#718）。
+
+修正兩個通知 bug：fleet 層級的通知現在會發到頻道，而不是默默失敗；排程的通知會正確送回它的來源聊天（#732）。暖機重載通知不再叫一個正在恢復重載的 backend 重新載入它的指示（#727）。網頁終端現在發出帶結尾斜線的路徑，讓相對路徑的資源能正確解析（#729）。一個不穩定的網頁終端整合測試已經穩定下來（#742）。
+
+跨頻道世界的訊息路由已經強化。當排程觸發、而它的回覆座標屬於另一個頻道世界時 — 例如在 Telegram 群組建立、目標是 Discord instance 的排程 — 那些座標不再被設為目標 instance 的回覆上下文。以前這會讓 instance 之後每一則頻道回覆都用 Telegram 的 chat id 送到 Discord，連續幾十分鐘產生「Unknown Channel」錯誤，直到有一則真的使用者訊息覆寫掉過期的上下文。此外，Discord adapter 收到明顯屬於其他平台的 chat id（代表 Telegram 群組的負數，或短到不可能是 Discord snowflake 的數字）時，現在會回傳明確的錯誤，而不是含糊的 `10003 Unknown Channel`。在沒有指定世界的多 adapter 設定裡，系統現在會回報路由錯誤，而不是猜第一個可用的 adapter（#752、#753）。
+
+dashboard 與 `/view` 的側欄現在以原始 instance 名稱作為主要標籤，顯示名稱（不同時）作為下方的第二行。以前顯示名稱會完全取代 instance 名稱，失去了用來對照 fleet.yaml 與 log 的穩定識別。兩行各自截斷，而且這只是視覺上的變更 — 排序、點擊目標與 API 內容都不受影響（#774）。
 
 ## [2.1.4] - 2026-09-07
 
