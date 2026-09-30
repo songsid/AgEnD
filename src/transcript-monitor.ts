@@ -199,6 +199,9 @@ export class TranscriptMonitor extends EventEmitter {
       clearInterval(this.pollTimer);
       this.pollTimer = null;
     }
+    // A paused instance must not keep a source's resources (kiro's store
+    // handle, #1048); startPolling after wake lets the source reacquire them.
+    this.source?.close?.();
     this.saveOffset();
   }
 
