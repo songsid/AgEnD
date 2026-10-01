@@ -35,6 +35,8 @@ vi.mock("../src/daemon.js", async importOriginal => {
     async abortStartup() {}
     async stop() {}
     async pause() { this.isPaused = true; }
+    clearPendingDeliveries() {}
+    async sendEscape() {}
     async wake() { this.isPaused = false; }
     get lastPausedAt() { return null; }
     getProcessStatus() { return "running"; }
@@ -45,7 +47,7 @@ vi.mock("../src/daemon.js", async importOriginal => {
 import { FleetManager } from "../src/fleet-manager.js";
 import { TargetQueueWorker } from "../src/target-queue-worker.js";
 
-type Script = "complete" | "hold" | "throwAfterBegin" | "notSent";
+type Script = "complete" | "hold" | "throwAfterBegin" | "notSent" | "gated";
 
 const dirs: string[] = [];
 const fleets: FleetManager[] = [];
@@ -84,6 +86,8 @@ async function fleet(mode: "off" | "wake_only" | "on", perInstance: Record<strin
 
   /** Per target, the next scripts for its hand-offs (default: complete). */
   const scripts = new Map<string, Script[]>();
+  /** For "gated": the hand-off returns only when the test releases this. */
+  const handoffGate = { promise: Promise.resolve(), release: () => {} };
   const handoffs: Array<{ target: string; deliveryId: string; attempt: number; inFlightAtHandoff: number }> = [];
   let violations = 0;
   const inFlight = (t: string) => outbox.countForTarget(t, ["delivering", "submission_started"]);
@@ -101,6 +105,7 @@ async function fleet(mode: "off" | "wake_only" | "on", perInstance: Record<strin
     outbox.begin(deliveryId, row.targetDaemonBootId, attempt);
     if (script === "throwAfterBegin") throw new Error("IPC socket closed");
     if (script === "complete") setTimeout(() => outbox.complete(deliveryId, row.targetDaemonBootId, attempt, "delivered"), 5);
+    if (script === "gated") await handoffGate.promise;
     return true;
   });
   const admit = (target: string) => {
@@ -110,7 +115,8 @@ async function fleet(mode: "off" | "wake_only" | "on", perInstance: Record<strin
     });
     return r.deliveryId as string;
   };
-  return { fm, outbox, admit, scripts, handoffs, violations: () => violations, inFlight };
+  const gateHandoff = () => { handoffGate.promise = new Promise<void>(r => { handoffGate.release = r; }); return handoffGate; };
+  return { fm, outbox, admit, scripts, handoffs, violations: () => violations, inFlight, gateHandoff };
 }
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
@@ -443,5 +449,56 @@ describe("a transient claim error does not leak the budget (#1079 review P2-3)",
     expect((fm as any).activeDurableTargets.has("a")).toBe(false);
     (fm as any).scheduleDeliveryOutboxPump();
     await vi.waitFor(() => expect(outbox.get(id).state).toBe("delivered"));
+  });
+});
+
+
+describe("the pump is told once the claimed hand-off has settled (#1079 review r2)", () => {
+  for (const back of ["off", "wake_only"] as const) {
+    it(`the row completes before its hand-off returns, then on → ${back}: the idle owner is released and the next row delivered`, async () => {
+      const { fm, outbox, admit, scripts, gateHandoff } = await fleet("on");
+      scripts.set("a", ["gated"]);
+      const gate = gateHandoff();
+      const first = admit("a");
+      await vi.waitFor(() => expect(outbox.get(first).state).toBe("submission_started"));
+      (fm.fleetConfig as any).defaults.delivery_worker = back;
+      const second = admit("a");
+      const row = outbox.get(first);
+      outbox.complete(first, row.targetDaemonBootId, row.attemptNo, "delivered"); // state event first…
+      await sleep(30); // …its pump pass runs while the worker is still busy
+      expect(fm.queueWorkers.has("a")).toBe(true);
+      gate.release(); // …then the hand-off returns
+      await vi.waitFor(() => expect(outbox.get(second).state).toBe("delivered"));
+      expect(fm.queueWorkers.has("a")).toBe(false);
+    });
+  }
+});
+
+
+describe("event order on the real delivery path (#1079 review r2, production variant)", () => {
+  it("handoff waiting in the real idle gate, off, generation requeue, then the user cancels: the pump takes over (FIFO kept)", async () => {
+    const { fm, outbox, admit } = await fleet("on");
+    (fm.deliverToInstance as any).mockRestore(); // the real facade: idle gate, epochs, IPC wait
+    const dispatch = vi.spyOn(fm as any, "dispatchDurableDelivery");
+    (fm as any).instanceStateCache.set("a", { state: "working", observedAt: Date.now() }); // the gate waits
+    const first = admit("a");
+    await vi.waitFor(() => expect(outbox.get(first).state).toBe("delivering"));
+    const worker = fm.queueWorkers.get("a")!;
+    (fm.fleetConfig as any).defaults.delivery_worker = "off";
+    const second = admit("a");
+    // The daemon generation changes: the claimed row is requeued and an outbox event fires
+    (fm.lifecycle.daemons.get("a") as any).bootId = "boot-regen";
+    outbox.recoverTargetGeneration("a", "boot-regen");
+    await sleep(30); // that event's pump pass sees the worker busy and keeps it
+    expect(fm.queueWorkers.get("a")).toBe(worker);
+    // The user cancels: the old hand-off ends (epoch moved), the dispatch settles
+    expect(fm.cancelInstance("a")).toBe(true);
+    await vi.waitFor(() => expect(fm.queueWorkers.has("a")).toBe(false));
+    await vi.waitFor(() => expect(outbox.get(first).state).toBe("delivering")); // re-claimed by the pump
+    expect(outbox.get(first).attemptNo).toBe(2);
+    expect(outbox.get(second).state).toBe("queued"); // FIFO: behind the first
+    const last = dispatch.mock.calls.at(-1)!;
+    expect((last[0] as any).deliveryId).toBe(first);
+    expect(last[1]).toBeUndefined(); // the pump's dispatch, not the worker's
   });
 });

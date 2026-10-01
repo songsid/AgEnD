@@ -1130,7 +1130,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         return true;
       },
       releaseBudget: () => { this.activeDurableTargets.delete(target); },
-      dispatch: claimed => this.dispatchDurableDelivery(claimed, { holdLaneOnTransportError: true }),
+      dispatch: async claimed => {
+        try {
+          await this.dispatchDurableDelivery(claimed, { holdLaneOnTransportError: true });
+        } finally {
+          // The row's state event can fire before the hand-off settles; the
+          // pump pass it starts then still sees this worker busy and keeps it
+          // as owner. One kick after the dispatch has really settled lets the
+          // pump release an owner that is no longer wanted (or claim the next
+          // row). The no-claim path never kicks, so no retry hot loop.
+          this.scheduleDeliveryOutboxPump();
+        }
+      },
       kickCoordinator: () => this.wakeCoordinator?.kick(),
       logger: this.logger,
     });

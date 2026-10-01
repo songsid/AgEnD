@@ -39,10 +39,9 @@ export interface TargetQueueWorkerDeps {
   /**
    * Return the budget taken for one attempt, exactly once. It never kicks the
    * pump: with nothing claimable (e.g. a retry not yet due) a kick would turn
-   * an unexpired retry_wait into a zero-delay claim loop. Every way a
-   * dispatch ends changes the row's state, and that outbox event already
-   * re-runs the pump; a not-yet-due retry is woken by the pump's nextRetryAt
-   * timer.
+   * an unexpired retry_wait into a zero-delay claim loop; a not-yet-due retry
+   * is woken by the pump's nextRetryAt timer. The kick after a *claimed* row
+   * belongs to `dispatch` (it runs once the hand-off has settled).
    */
   releaseBudget(): void;
   /** HANDOFF + AWAIT_RESULT: resolves when the row has left delivering/submission_started. */
