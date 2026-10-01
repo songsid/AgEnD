@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync, readdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync, readdirSync, renameSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync, execSync, spawnSync } from "node:child_process";
@@ -245,6 +245,33 @@ export function installService(vars: ServiceVars): string {
     writeFileSync(unitPath, renderSystemdUnit(vars));
     return unitPath;
   }
+}
+
+/**
+ * #908: bring an installed AgEnD unit up to `KillMode=mixed` before it is
+ * restarted. Units written before this have none, so systemd used its default
+ * (control-group) and SIGTERMed the tmux server and every CLI at the same
+ * moment as the fleet. Only an absent KillMode is filled in: an explicit value
+ * is the operator's own choice and is left as it is.
+ */
+export function ensureSystemdKillModeMixed(unitPath: string): "added" | "present" | "custom" | "unreadable" {
+  let text: string;
+  try { text = readFileSync(unitPath, "utf-8"); } catch { return "unreadable"; }
+  const lines = text.split("\n");
+  const service = lines.findIndex(l => l.trim() === "[Service]");
+  if (service < 0) return "unreadable";
+  let end = lines.findIndex((l, i) => i > service && /^\s*\[.+\]\s*$/.test(l));
+  if (end < 0) end = lines.length;
+  const existing = lines.slice(service + 1, end).find(l => /^\s*KillMode\s*=/.test(l));
+  if (existing) return /^\s*KillMode\s*=\s*mixed\s*$/.test(existing) ? "present" : "custom";
+  // After the section's last directive, before the blank line that ends it.
+  let at = end;
+  while (at > service + 1 && lines[at - 1].trim() === "") at--;
+  lines.splice(at, 0, "KillMode=mixed");
+  const tmp = `${unitPath}.agend-${process.pid}.tmp`;
+  writeFileSync(tmp, lines.join("\n"));
+  renameSync(tmp, unitPath);
+  return "added";
 }
 
 const SERVICE_LABEL = "com.agend.fleet";

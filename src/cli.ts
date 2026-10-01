@@ -1677,6 +1677,7 @@ program
       getSystemServicePath,
       getSystemdServiceState,
       restartSystemdService,
+      ensureSystemdKillModeMixed,
     } = await import("./service-installer.js");
     const { spawn, spawnSync } = await import("node:child_process");
     const plat = detectPlatform();
@@ -1713,7 +1714,36 @@ program
         process.exitCode = 1;
         return;
       }
-      run(systemdTarget.user ? "systemctl --user daemon-reload" : "systemctl daemon-reload");
+      // #908: before this restart's stop, so it already lets the fleet quit
+      // each CLI itself instead of systemd SIGTERMing them all at once. A
+      // restart that would still run on control-group (the line could not be
+      // read, written or loaded) is refused: it is exactly the restart that
+      // aborts kiro-cli into a core dump.
+      const unitPath = systemdTarget.user ? getServicePath() : getSystemServicePath();
+      const reloadCmd = systemdTarget.user ? "systemctl --user daemon-reload" : "systemctl daemon-reload";
+      let outcome: ReturnType<typeof ensureSystemdKillModeMixed> | "unwritable" = "present";
+      if (unitPath) {
+        try { outcome = ensureSystemdKillModeMixed(unitPath); } catch { outcome = "unwritable"; }
+      }
+      if (outcome === "unreadable" || outcome === "unwritable") {
+        console.error(`  ✗ Could not ${outcome === "unreadable" ? "read" : "update"} ${unitPath}, so this restart would still let systemd SIGTERM every CLI at once (kiro-cli core dumps, #908).`);
+        console.error(`    Not restarting. Add KillMode=mixed under [Service] in ${unitPath}, run \`${reloadCmd}\`, then \`agend restart\`.`);
+        process.exitCode = 1;
+        return;
+      }
+      if (outcome === "custom") console.log(`  ⚠ ${unitPath} sets its own KillMode; left as is. KillMode=mixed avoids kiro-cli core dumps on restart (#908).`);
+      const reloaded = run(reloadCmd);
+      if (outcome === "added") {
+        if (!reloaded) {
+          // systemd still holds the old unit: restarting now would stop the
+          // fleet with control-group after all.
+          console.error(`  ✗ Added KillMode=mixed to ${unitPath}, but \`${reloadCmd}\` failed, so systemd would still stop the fleet the old way.`);
+          console.error(`    Not restarting. Run \`${reloadCmd}\`, then \`agend restart\`.`);
+          process.exitCode = 1;
+          return;
+        }
+        console.log(`  ✓ ${unitPath}: added KillMode=mixed (the fleet stops its CLIs; systemd no longer signals them all at once)`);
+      }
       if (systemdTarget.user) {
         try { execSync("systemctl --user reset-failed com.agend.fleet", { stdio: "pipe", timeout: 5000 }); } catch { /* best effort */ }
       }
