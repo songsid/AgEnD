@@ -204,9 +204,23 @@ export class WakeCoordinator {
     return this.reserved.size;
   }
 
-  /** One pass over the pending queue: wake what needs waking, park what will not take work. */
+  /**
+   * One pass over the pending queue: wake what needs waking, park what will
+   * not take work. Runs from timers, so it must never throw: an exception
+   * there is uncaught and takes the whole fleet process down (e.g. a scan
+   * landing after the outbox's database was closed). The next kick or the
+   * watchdog retries.
+   */
   scan(): void {
     if (this.stopped) return;
+    try {
+      this.scanOnce();
+    } catch (err) {
+      this.deps.logger.warn({ err: err instanceof Error ? err.message : String(err) }, "Wake coordinator scan failed; will retry");
+    }
+  }
+
+  private scanOnce(): void {
     const now = this.deps.now();
     const byTarget = new Map<string, OutboxDelivery[]>();
     for (const row of this.deps.listPending()) {

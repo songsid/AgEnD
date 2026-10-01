@@ -354,3 +354,14 @@ describe("passive kinds (none today) — the whole-queue rule", () => {
     expect(passive.w.wakes).toEqual([]);
   });
 });
+
+
+describe("the scan never throws from its timer (#1078 CI)", () => {
+  it("a failing pending-queue read (e.g. the outbox database already closed) is logged, not thrown", () => {
+    const { c } = setup();
+    const deps = (c as any).deps;
+    deps.listPending = () => { throw new TypeError("The database connection is not open"); };
+    expect(() => c.scan()).not.toThrow();
+    expect(deps.logger.warn).toHaveBeenCalledWith(expect.objectContaining({ err: "The database connection is not open" }), expect.any(String));
+  });
+});
