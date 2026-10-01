@@ -29,6 +29,8 @@
  * untouched by design.
  */
 
+import { claudeLoginScreenActive } from "./backend/claude-code.js";
+
 export interface AuthCheck {
   /** argv of a cheap, LLM-token-free status probe (5s timeout). */
   argv: string[];
@@ -52,6 +54,21 @@ export interface LoginFlow {
    * incident, not a crash and not an MCP failure.
    */
   loginScreenPattern?: RegExp;
+  /**
+   * Structural check for the logged-out screen, used INSTEAD of the bare
+   * `loginScreenPattern.test` when present. Needed where the pattern's wording
+   * can also sit in a resumed transcript (a conversation about the login menu):
+   * the predicate anchors on the live bottom of the pane.
+   */
+  loginScreenActive?: (pane: string) => boolean;
+  /**
+   * Evaluate the login screen BEFORE the ready pattern during the startup scan.
+   * Claude's login menu and OAuth prompt carry the `❯` selector that its ready
+   * pattern matches, so checked after ready (the default) the screen was
+   * declared ready and the check never ran. Opt-in: other backends' patterns
+   * are loose substrings that a resumed transcript could contain.
+   */
+  loginScreenBeforeReady?: true;
   /** Arrow-key selector shown by the CLI (kiro). Option N = Down×N then Enter. */
   menu?: {
     promptPattern: RegExp;
@@ -227,7 +244,9 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
     backend: "claude-code",
     command: "claude auth login",
     authCheck: { argv: ["claude", "auth", "status"], validPattern: /"loggedIn":\s*true/ },
-    loginScreenPattern: /Select login method:|Sign in (?:to|with) your Anthropic account/,
+    loginScreenPattern: /Select login method:|Sign in (?:to|with) your Anthropic account|Paste code here if prompted >/,
+    loginScreenActive: claudeLoginScreenActive,
+    loginScreenBeforeReady: true,
     inputPrompt: /Paste code here if prompted/,
     successPattern: /Login successful|Logged in as/,
     timeoutMs: LOGIN_TIMEOUT_MS,

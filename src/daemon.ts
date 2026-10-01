@@ -1265,6 +1265,15 @@ export class Daemon extends EventEmitter {
   private authFailureUnresolved = false;
   /** One login-screen auth report per spawn — the screen persists across polls. */
   private loginScreenReported = false;
+  /**
+   * While the lifecycle is still starting this daemon, `pty_error` has no
+   * listener and `InstanceLifecycle.daemons` has no entry — so an incident the
+   * startup scan raises (sign-in screen, fatal modal) would be dropped on the
+   * floor while its dedupe flag stays set forever. Held here, then re-emitted by
+   * releaseStartupIncidents() once the handlers and the registry are in place.
+   */
+  private holdingStartupIncidents = false;
+  private heldStartupIncidents: unknown[][] = [];
   /** A fatal startup screen (see StartupDialog.fatal) was already reported this run. */
   private fatalStartupReported = false;
   /**
@@ -1482,6 +1491,26 @@ export class Daemon extends EventEmitter {
     const key = `${type}:${pattern.source}`;
     this.lastErrorCount.set(key, count);
     this.seededErrorCountBaselines.set(key, count);
+  }
+
+  /** Start buffering `pty_error` until releaseStartupIncidents(); see holdingStartupIncidents. */
+  holdStartupIncidents(): void {
+    this.holdingStartupIncidents = true;
+  }
+
+  /** Stop buffering and deliver, in order, every `pty_error` raised while the lifecycle was starting us. */
+  releaseStartupIncidents(): void {
+    this.holdingStartupIncidents = false;
+    const held = this.heldStartupIncidents.splice(0);
+    for (const args of held) super.emit("pty_error", ...args);
+  }
+
+  override emit(event: string | symbol, ...args: unknown[]): boolean {
+    if (event === "pty_error" && this.holdingStartupIncidents) {
+      this.heldStartupIncidents.push(args);
+      return true;
+    }
+    return super.emit(event, ...args);
   }
 
   /**
@@ -2746,6 +2775,13 @@ export class Daemon extends EventEmitter {
 
         const pane = await this.tmux.capturePane();
         const inputBlockedDialog = this.updateInputBlockedState(pane, dialogs);
+
+        // A sign-in screen that appears AFTER the startup scan ended (first run:
+        // theme → login can take longer than its budget) is the same auth
+        // incident the scan reports. Structural predicate only — the loose
+        // patterns are for a fresh startup pane, not a long-lived transcript.
+        const loginFlow = LOGIN_FLOWS[this.config.backend ?? "claude-code"];
+        if (loginFlow?.loginScreenActive && this.reportLoginScreen(pane)) return;
 
         const interactivePrompt = this.interactivePromptDetector.observe(
           pane,
@@ -8222,6 +8258,29 @@ export class Daemon extends EventEmitter {
   }
 
   /**
+   * Report the CLI's logged-out startup screen as an auth incident. Returns true
+   * when this call reported it (the scan is then over: only re-login ends the
+   * state); false when the screen is absent or was already reported this spawn.
+   * `loginScreenActive`, when the backend flow has one, replaces the bare
+   * pattern test so a transcript that merely mentions the screen cannot trip it.
+   */
+  private reportLoginScreen(pane: string): boolean {
+    const flow = LOGIN_FLOWS[this.config.backend ?? "claude-code"];
+    const onScreen = flow?.loginScreenActive ? flow.loginScreenActive(pane) : flow?.loginScreenPattern?.test(pane) === true;
+    if (!onScreen || this.loginScreenReported) return false;
+    this.loginScreenReported = true;
+    this.authFailureUnresolved = true;
+    this.logger.warn({ backend: this.config.backend }, "CLI is waiting at its sign-in screen — reporting auth error");
+    this.emit("pty_error", {
+      name: this.name,
+      type: "auth_error",
+      action: "pause",
+      message: "CLI is waiting at its sign-in screen — credentials are missing or expired",
+    });
+    return true;
+  }
+
+  /**
    * Poll the pane within a wall-clock budget, dismiss the confirmation dialogs
    * the backend knows, and return true once the CLI shows a ready prompt with
    * no dialog on screen for two consecutive polls.
@@ -8386,6 +8445,11 @@ export class Daemon extends EventEmitter {
         }
         if (this.dialogParkedSince !== 0 && !this.deliveryBlockingDialogs().some(d => Daemon.dialogMatches(d, pane))) this.trackDialogParked(null);
 
+        // A sign-in screen that carries the ready pattern's own glyph (Claude's
+        // `❯ 1. …` login menu) must be recognised BEFORE the ready check, or the
+        // ready check swallows it and the incident is never reported (#1074).
+        if (LOGIN_FLOWS[this.config.backend ?? "claude-code"]?.loginScreenBeforeReady && this.reportLoginScreen(pane)) return true;
+
         // CLI is ready (pattern defined by each backend). Require it on two
         // consecutive polls: the first ready frame is also the moment a late
         // dialog is about to be painted over it.
@@ -8417,19 +8481,7 @@ export class Daemon extends EventEmitter {
         // an auth error (the lifecycle double-checks with the token-free probe)
         // instead of letting it decay into crash/hang/MCP-died noise, and stop
         // the retry loop — only re-login (see /login) ends this state.
-        const loginScreen = LOGIN_FLOWS[this.config.backend ?? "claude-code"]?.loginScreenPattern;
-        if (loginScreen?.test(pane) && !this.loginScreenReported) {
-          this.loginScreenReported = true;
-          this.authFailureUnresolved = true;
-          this.logger.warn({ backend: this.config.backend }, "CLI is waiting at its sign-in screen — reporting auth error");
-          this.emit("pty_error", {
-            name: this.name,
-            type: "auth_error",
-            action: "pause",
-            message: "CLI is waiting at its sign-in screen — credentials are missing or expired",
-          });
-          return true;
-        }
+        if (this.reportLoginScreen(pane)) return true;
 
         // Fatal: command not found (must match full phrase to avoid false positives
         // like Kiro's "agent X not found, using default")
