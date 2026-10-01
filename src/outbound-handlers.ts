@@ -87,6 +87,8 @@ export interface OutboundContext {
   lastActivityMs(name: string): number;
   startInstance(name: string, config: InstanceConfig, topicMode: boolean): Promise<void>;
   restartSingleInstance(name: string, opts?: { freshStart?: boolean }): Promise<void>;
+  /** Phase 2b: an operator wake that respects the warm hard cap (FleetManager.explicitWake). */
+  explicitWake?(name: string, timeoutMs?: number): Promise<void>;
   connectIpcToInstance(name: string): Promise<void>;
   /** FleetManager facade that wakes paused instances before delivery. */
   deliverToInstance?(
@@ -834,7 +836,7 @@ const startInstance: Handler = async (ctx, rawArgs, respond) => {
   // marker is cleared and the next state snapshot is visible to `agend ls`.
   if (ctx.lifecycle.isPaused?.(targetName)) {
     try {
-      await ctx.lifecycle.wake(targetName, 30_000);
+      await (ctx.explicitWake ? ctx.explicitWake(targetName, 30_000) : ctx.lifecycle.wake(targetName, 30_000));
       respond({ success: true, status: "started" });
     } catch (err) {
       respond(null, `Failed to wake instance '${targetName}': ${sanitizeError(err, ctx, `start_instance(${targetName})`)}`);
@@ -913,7 +915,7 @@ const wakeInstance: Handler = async (ctx, rawArgs, respond) => {
   const v = validateArgs(WakeInstanceArgs, rawArgs, "wake_instance");
   if (!v.ok) { respond(null, v.error); return; }
   try {
-    await ctx.lifecycle.wake(v.data.name);
+    await (ctx.explicitWake ? ctx.explicitWake(v.data.name) : ctx.lifecycle.wake(v.data.name));
     respond({ success: true, status: "waking" });
   } catch (err) {
     respond(null, `Failed to wake '${v.data.name}': ${(err as Error).message}`);

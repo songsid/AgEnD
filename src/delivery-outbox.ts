@@ -55,6 +55,8 @@ export interface OutboxDelivery {
   state: OutboxState;
   attemptNo: number;
   createdSeq: number;
+  /** ISO admission time. */
+  createdAt?: string;
   managerBootId: string | null;
   responseDeliveredAt: string | null;
   nextAttemptAt: string | null;
@@ -246,6 +248,7 @@ function mapRow(row: OutboxRow): OutboxDelivery {
       : row.state,
     attemptNo: row.attempt_no,
     createdSeq: row.created_seq,
+    createdAt: row.created_at,
     managerBootId: row.manager_boot_id,
     responseDeliveredAt: row.response_delivered_at,
     nextAttemptAt: row.next_attempt_at,
@@ -1056,7 +1059,12 @@ export class DeliveryOutbox extends EventEmitter {
   }
 
   /** Bound both unavailable rows and unresolved reconciliation without stealing a live lease. */
-  expireStale(nowMs = Date.now(), maxAgeMs = DURABLE_DELIVERY_MAX_AGE_MS): number {
+  expireStale(
+    nowMs = Date.now(),
+    maxAgeMs = DURABLE_DELIVERY_MAX_AGE_MS,
+    /** Phase 2b: a target-specific reason (e.g. "target could not be woken: …") for its expired rows. */
+    reasonFor?: (target: string) => string | undefined,
+  ): number {
     const cutoff = new Date(nowMs - maxAgeMs).toISOString();
     const now = new Date(nowMs).toISOString();
     const transaction = this.db.transaction(() => {
@@ -1066,14 +1074,18 @@ export class DeliveryOutbox extends EventEmitter {
         ORDER BY created_seq
       `).all(cutoff) as OutboxRow[];
       const update = this.db.prepare(`
-        UPDATE deliveries SET state='failed',updated_at=?,finished_at=?,last_error='delivery TTL expired before target became available',next_attempt_at=NULL
+        UPDATE deliveries SET state='failed',updated_at=?,finished_at=?,last_error=?,next_attempt_at=NULL
         WHERE delivery_id=? AND state IN ('queued','retry_wait')
       `);
       let changed = 0;
       let uncertain = 0;
       for (const row of stale) {
-        if (update.run(now, now, row.delivery_id).changes !== 1) continue;
-        this.insertFailureNotice(row, "failed", "delivery TTL expired before target became available", now);
+        const specific = reasonFor?.(row.target_instance);
+        const reason = specific
+          ? `delivery TTL expired: ${specific}`.slice(0, 300)
+          : "delivery TTL expired before target became available";
+        if (update.run(now, now, reason, row.delivery_id).changes !== 1) continue;
+        this.insertFailureNotice(row, "failed", reason, now);
         changed++;
       }
       const unresolved = this.db.prepare(`

@@ -98,6 +98,8 @@ import { validateFleetConfig } from "./config-validator.js";
 import type { InstanceState, InstanceStateSnapshot } from "./backend/types.js";
 import { readLastInboundAt } from "./daemon.js";
 import { clearPausedMarker, readPausedAt, readPauseReason, writePausedMarker } from "./pause-marker.js";
+import { DEFAULT_WARM_OVERFLOW, WakeCoordinator } from "./wake-coordinator.js";
+import { resolveDeliveryWorkerMode } from "./types.js";
 import { isFleetStartCommandLine, readProcessCommandLine, releaseProcessFleetLock } from "./fleet-lock.js";
 import { isSetupComplete, markSetupComplete } from "./setup-marker.js";
 import { manualCleanupMessage, reapStaleTunnel } from "./tunnel/lease.js";
@@ -491,6 +493,12 @@ export interface DeliveryOptions {
   waitForIdle?: boolean;
   /** Test/operational override; normal deliveries use the 60 second backstop. */
   idleTimeoutMs?: number;
+  /**
+   * Phase 2b: never wake inline. Durable dispatch to a `wake_only` target sets
+   * it — the wake coordinator is that target's only waker, so a target that
+   * paused after its row was claimed is handed back instead of woken here.
+   */
+  noInlineWake?: boolean;
 }
 
 const CLASSIC_BACKEND_SELECTION_TIMEOUT_MS = 60_000;
@@ -581,6 +589,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   readonly managerBootId = randomUUID();
   deliveryOutbox: DeliveryOutbox | null = null;
   private deliveryOutboxRecovered = false;
+  /** Phase 2b: wakes paused targets for queued durable work (delivery_worker ≠ off). */
+  wakeCoordinator: WakeCoordinator | null = null;
   private deliveryPumpScheduled = false;
   private deliveryPumpRunning = false;
   private deliveryPumpTimer: ReturnType<typeof setTimeout> | null = null;
@@ -874,9 +884,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger.info({ ...recovered }, "Recovered durable delivery outbox for this process boot");
       this.deliveryOutboxRecovered = true;
     }
-    outbox.on("admitted", () => this.scheduleDeliveryOutboxPump());
+    outbox.on("admitted", () => { this.scheduleDeliveryOutboxPump(); this.wakeCoordinator?.kick(); });
     outbox.on("state", (event: { deliveryId?: string; state?: string }) => {
       this.scheduleDeliveryOutboxPump();
+      this.wakeCoordinator?.kick();
+      if (event.deliveryId && event.state === "delivered") {
+        const target = outbox.get(event.deliveryId)?.targetInstance;
+        if (target) this.wakeCoordinator?.noteDelivered(target);
+      }
       if (event.deliveryId && (event.state === "failed" || event.state === "uncertain")) {
         const row = outbox.get(event.deliveryId);
         if (row && row.kind !== "delivery_outcome_notice" && row.kind !== "post_restart_outcome_notice") {
@@ -895,8 +910,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     outbox.on("content_digest_mismatch", (event: { deliveryId: string; attemptNo: number; targetInstance?: string }) => {
       this.logger.warn(event, "Delivered text differs from the admitted text (content digest mismatch)");
     });
+    this.wakeCoordinator = this.createWakeCoordinator();
+    this.wakeCoordinator.start();
     outbox.on("expired", (event: { count?: number; uncertain?: number }) => {
       this.scheduleDeliveryOutboxPump();
+      this.wakeCoordinator?.kick();
       if (event.count) this.notifyFleetError(
         `${event.count} durable delivery row(s) reached the 24-hour outbox bound; ${event.uncertain ?? 0} unresolved submissions are uncertain and sender notices were queued.`,
       );
@@ -932,6 +950,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       kind: input.kind,
     }, "Durable cross-instance delivery accepted");
     this.scheduleDeliveryOutboxPump();
+    // Phase 2b: a paused wake_only target is woken by the coordinator, never by
+    // the pump; admission must tell it, or the work waits for the watchdog.
+    this.wakeCoordinator?.kick();
     return {
       deliveryId: admitted.delivery.deliveryId,
       state: admitted.delivery.state,
@@ -1017,11 +1038,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.deliveryPumpRunning = true;
     this.deliveryPumpScheduled = false;
     try {
-      outbox.expireStale();
+      outbox.expireStale(undefined, undefined, target => {
+        const failure = this.wakeCoordinator?.wakeFailure(target);
+        return failure ? `target could not be woken (${failure})` : undefined;
+      });
       while (this.activeDurableTargets.size < 8) {
         const claimed = outbox.claimNext(
           this.managerBootId,
-          target => this.isInstanceRestarting(target) ? null : this.daemons.get(target)?.bootId ?? null,
+          // Phase 2b: a wake_only target is claimed only once it is awake; the
+          // wake coordinator, not this pump, wakes it (no claim, no attempt).
+          target => this.isInstanceRestarting(target) || this.wakeCoordinator?.blocksClaim(target)
+            ? null
+            : this.daemons.get(target)?.bootId ?? null,
           this.activeDurableTargets,
         );
         if (!claimed) break;
@@ -1073,7 +1101,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           content: payload.content,
           delivery_id: claimed.deliveryId,
           delivery_attempt: String(claimed.attemptNo),
-        }, { waitForIdle: false });
+        }, { waitForIdle: false, noInlineWake: this.deliveryWorkerMode(target) !== "off" });
       } else {
         payload.meta = {
           ...rawMeta,
@@ -1087,6 +1115,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         sent = await this.deliverToInstance(target, payload, {
           isCrossInstance: true,
           waitForIdle: claimed.kind !== "steer",
+          noInlineWake: this.deliveryWorkerMode(target) !== "off",
         });
       }
       if (!sent) {
@@ -2139,11 +2168,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     payload: Record<string, unknown>,
     timeoutMs: number,
     deliveryEpoch: number,
+    noInlineWake = false,
   ): Promise<boolean> {
     if (this.shuttingDown || !this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return false;
     await this.holdDeliveryForStorm(instanceName, deliveryEpoch);
     if (this.shuttingDown || !this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return false;
     let idleObservedAfter = this.lastDeliveryAt.get(instanceName) ?? 0;
+    if (this.lifecycle.isPaused(instanceName) && noInlineWake) {
+      // Paused after its row was claimed (an operator or auth pause): hand the
+      // row back; the coordinator decides whether and when to wake it.
+      this.wakeCoordinator?.kick();
+      return false;
+    }
     if (this.lifecycle.isPaused(instanceName)) {
       const wakeStartedAt = Date.now();
       await this.lifecycle.wake(instanceName, 30_000);
@@ -2284,6 +2320,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     if (!waitForIdle) {
       if (this.lifecycle.isPaused(instanceName)) {
+        if (options.noInlineWake) { this.wakeCoordinator?.kick(); return false; }
         await this.lifecycle.wake(instanceName, 30_000);
         if (!this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return false;
         this.enforceWarmCap(instanceName); // woke one → evict a different LRU idle if over cap
@@ -2304,6 +2341,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       deliveryPayload,
       options.idleTimeoutMs ?? 60_000,
       deliveryEpoch,
+      options.noInlineWake === true,
     ));
     this.idleGatedDeliveryTails.set(instanceName, delivery);
     try {
@@ -2321,9 +2359,95 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return allowed.some(entry => String(entry) === String(userId));
   }
 
+  /** Phase 2: delivery_worker for a target (instance override → fleet default → off). */
+  deliveryWorkerMode(target: string): ReturnType<typeof resolveDeliveryWorkerMode> {
+    return resolveDeliveryWorkerMode(this.fleetConfig, target);
+  }
+
+  /** Instances counted against warm_cap: running daemons (the same set enforceWarmCap counts). */
+  private warmInstanceNames(): string[] {
+    return [...this.daemons.keys()].filter(name => this.getInstanceStatus(name) === "running");
+  }
+
+  private createWakeCoordinator(): WakeCoordinator {
+    return new WakeCoordinator({
+      mode: target => this.deliveryWorkerMode(target),
+      listPending: () => this.deliveryOutbox?.listPending() ?? [],
+      isPaused: target => this.lifecycle.isPaused(target),
+      pauseReason: target => readPauseReason(this.getInstanceDir(target)),
+      isRestarting: target => this.isInstanceRestarting(target),
+      wake: async target => {
+        await this.lifecycle.wake(target, 30_000, undefined, { source: "coordinator" });
+        // The soft cap still applies: evict a different, unleased idle instance.
+        this.enforceWarmCap(target);
+      },
+      residentNames: () => this.warmInstanceNames(),
+      warmCap: () => this.fleetConfig?.defaults?.warm_cap ?? 0,
+      warmOverflow: () => this.fleetConfig?.defaults?.warm_overflow ?? DEFAULT_WARM_OVERFLOW,
+      wokeAt: target => this.lifecycle.wokeAtFor(target),
+      notAcceptingReason: target => this.daemons.get(target)?.notAcceptingReason?.() ?? null,
+      notifyTarget: (target, text) => { this.notifyInstanceTopic(target, text); },
+      notifySender: (source, text) => { this.notifyInstanceTopic(source, text); },
+      kickPump: () => this.scheduleDeliveryOutboxPump(),
+      now: () => Date.now(),
+      logger: this.logger,
+    });
+  }
+
+  /** LifecycleContext: an operator or user wake clears the coordinator's park/backoff for it. */
+  onExternalWake(name: string): void {
+    this.wakeCoordinator?.noteExternalWake(name);
+  }
+
+  /**
+   * An operator's wake (/wake, wake_instance, start_instance on a paused
+   * instance, Settings). With delivery_worker off it is the old wake. Otherwise
+   * it takes a warm slot under the hard cap first (design §1.6): when none is
+   * free it pauses one unleased idle instance and waits for that to finish; if
+   * nothing can be evicted, it says so instead of exceeding the cap.
+   */
+  async explicitWake(name: string, timeoutMs = 30_000): Promise<void> {
+    const coordinator = this.wakeCoordinator;
+    if (!coordinator || this.deliveryWorkerMode(name) === "off" || !this.lifecycle.isPaused(name)) {
+      // Exactly the pre-2b wake: callers keep their own warm-cap handling.
+      await this.lifecycle.wake(name, timeoutMs);
+      return;
+    }
+    coordinator.noteExternalWake(name);
+    let token = coordinator.tryReserve(name);
+    if (!token) {
+      const victim = this.lruUnleasedIdle(name);
+      if (victim) {
+        await this.lifecycle.pause(victim, "warm_cap");
+        token = coordinator.tryReserve(name);
+      }
+    }
+    if (!token) {
+      throw new Error(`No warm slot is free for '${name}' (warm_cap + overflow reached and no idle instance can be paused); try again when one goes idle`);
+    }
+    try {
+      await this.lifecycle.wake(name, timeoutMs);
+      this.enforceWarmCap(name);
+    } finally {
+      coordinator.release(name, token);
+      coordinator.kick();
+    }
+  }
+
+  /** The least-recently-active idle, unleased, non-general running instance other than `exclude`. */
+  private lruUnleasedIdle(exclude: string): string | undefined {
+    return this.warmInstanceNames()
+      .filter(name => name !== exclude
+        && !this.warmCapEvicting.has(name)
+        && !isGeneralInstance(this.fleetConfig, name)
+        && this.getInstanceExecutionState(name) === "idle"
+        && !this.lifecycle.hasWorkLease(name))
+      .sort((a, b) => (readLastInboundAt(this.getInstanceDir(a)) ?? 0) - (readLastInboundAt(this.getInstanceDir(b)) ?? 0))[0];
+  }
+
   async changeInstancePauseState(name: string, action: "pause" | "wake"): Promise<"paused" | "awake" | "not_idle"> {
     if (action === "wake") {
-      await this.lifecycle.wake(name, 30_000);
+      await this.explicitWake(name, 30_000);
       this.enforceWarmCap(name); // manual wake still respects the fleet warm cap
       return "awake";
     }
@@ -12942,6 +13066,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (this.updateCheckTimer) { clearTimeout(this.updateCheckTimer as any); clearInterval(this.updateCheckTimer as any); this.updateCheckTimer = null; }
     if (this.eventLogPruneTimer) { clearInterval(this.eventLogPruneTimer); this.eventLogPruneTimer = null; }
     if (this.replyObligationTimer) { clearInterval(this.replyObligationTimer); this.replyObligationTimer = null; }
+    this.wakeCoordinator?.stop();
     if (this.logRotateTimer) { clearInterval(this.logRotateTimer); this.logRotateTimer = null; }
     if (this.discordPresenceTimer) { clearInterval(this.discordPresenceTimer); this.discordPresenceTimer = null; }
     if (this.discordPresenceEagerTimer) { clearTimeout(this.discordPresenceEagerTimer); this.discordPresenceEagerTimer = null; }

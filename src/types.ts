@@ -103,6 +103,12 @@ export interface InstanceConfig {
    */
   warm_cap?: number;
   /**
+   * Phase 2b: how far `defaults.warm_cap` may be exceeded to wake targets for
+   * queued durable work (delivery_worker ≠ off). Default 2. The hard cap is
+   * warm_cap + warm_overflow; with warm_cap 0 there is no cap at all.
+   */
+  warm_overflow?: number;
+  /**
    * Phase 2 delivery owner for this target (docs/design/phase2-submit-contract.md):
    * `off` (default) keeps the current outbox pump, `wake_only` adds the wake
    * coordinator (2b), `on` hands claim/submit to the per-target worker (2c).
