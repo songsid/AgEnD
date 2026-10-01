@@ -67,8 +67,15 @@ describe("existing installs are brought up to KillMode=mixed before a restart", 
 
 describe("`agend restart` (what `agend update` spawns) fixes the unit before reloading it", () => {
   const cli = join(process.cwd(), "dist", "cli.js");
-  /** The built CLI's `agend restart` with a throwaway HOME and a recording stub systemctl. */
-  function restart(unitText: string | null, opts: { failReload?: boolean; unreadable?: boolean; readOnlyDir?: boolean } = {}) {
+  /**
+   * The built CLI's `agend restart` with a throwaway HOME and a recording stub
+   * systemctl. The stub keeps what systemd has LOADED apart from the file, as
+   * systemd does: it starts at `loaded` (default control-group, a unit loaded
+   * before #908), a successful daemon-reload loads the file's KillMode, and
+   * `show -p KillMode --value` prints the loaded one. `pinLoaded` keeps the
+   * loaded value whatever a reload says; `failShow` makes `show` fail.
+   */
+  function restart(unitText: string | null, opts: { failReload?: boolean; unreadable?: boolean; readOnlyDir?: boolean; loaded?: string; pinLoaded?: boolean; failShow?: boolean } = {}) {
     const home = tmp();
     const unitDir = join(home, ".config", "systemd", "user");
     mkdirSync(unitDir, { recursive: true });
@@ -80,12 +87,23 @@ describe("`agend restart` (what `agend update` spawns) fixes the unit before rel
     mkdirSync(bin);
     const log = join(home, "systemctl.log");
     writeFileSync(log, "");
+    const loaded = join(home, "systemctl.loaded");
+    writeFileSync(loaded, `${opts.loaded ?? "control-group"}\n`);
     // Records each call with whether the unit already had KillMode=mixed then.
     writeFileSync(join(bin, "systemctl"), `#!/bin/sh
 has=no; grep -q '^KillMode=mixed$' '${unit}' 2>/dev/null && has=yes
 echo "$* killmode=$has" >> '${log}'
 case "$*" in *is-active*) echo active;; esac
-case "$*" in *daemon-reload*) [ "${opts.failReload ? "1" : "0"}" = 1 ] && exit 1;; esac
+case "$*" in *daemon-reload*)
+  [ "${opts.failReload ? "1" : "0"}" = 1 ] && exit 1
+  if [ "${opts.pinLoaded ? "1" : "0"}" = 0 ]; then
+    v=$(sed -n 's/^KillMode=//p' '${unit}' 2>/dev/null | head -n1); echo "\${v:-control-group}" > '${loaded}'
+  fi;;
+esac
+case "$*" in *"show -p KillMode --value"*)
+  [ "${opts.failShow ? "1" : "0"}" = 1 ] && exit 1
+  cat '${loaded}';;
+esac
 exit 0
 `);
     chmodSync(join(bin, "systemctl"), 0o755);
@@ -125,6 +143,37 @@ exit 0
       const { r, calls, out, restarted } = restart(text, opts);
       expect(restarted, `${label}\n${out}\n${calls.join("\n")}`).toBe(false);
       expect(calls.some(c => c.startsWith("--user daemon-reload")), label).toBe(false);
+      expect(r.status, label).toBe(1);
+      expect(r.stderr, label).toContain("Not restarting");
+    }
+  });
+
+  // The path `agend update` takes: the new binary's `install --no-activate`
+  // has already written KillMode=mixed, so this restart finds it "present".
+  it.skipIf(!existsSync(cli))("a unit that already has mixed in the file still needs systemd to have LOADED it", () => {
+    const failed = restart(renderSystemdUnit(vars), { failReload: true });
+    expect(failed.restarted, `${failed.out}\n${failed.calls.join("\n")}`).toBe(false);
+    expect(failed.r.status).toBe(1);
+    expect(failed.r.stderr).toContain("KillMode=control-group loaded");
+    expect(failed.r.stderr).toContain("Not restarting");
+
+    const ok = restart(renderSystemdUnit(vars));
+    expect(ok.restarted, `${ok.out}\n${ok.calls.join("\n")}`).toBe(true);
+    expect(ok.r.status).toBe(0);
+    const order = ok.calls.map(c => c.split(" ").slice(0, 2).join(" "));
+    expect(order.indexOf("--user show")).toBeGreaterThan(order.indexOf("--user daemon-reload"));
+    expect(order.indexOf("--user restart")).toBeGreaterThan(order.indexOf("--user show"));
+  });
+
+  it.skipIf(!existsSync(cli))("a reload that succeeds but leaves systemd on another KillMode, or an unreadable one, is refused", () => {
+    for (const [label, text, opts] of [
+      ["added, loaded stays control-group", legacyUnit(), { pinLoaded: true }],
+      ["present, loaded stays control-group", renderSystemdUnit(vars), { pinLoaded: true }],
+      ["show fails", renderSystemdUnit(vars), { failShow: true }],
+    ] as const) {
+      const { r, calls, out, restarted } = restart(text, opts);
+      expect(calls.some(c => c.startsWith("--user daemon-reload")), label).toBe(true);
+      expect(restarted, `${label}\n${out}\n${calls.join("\n")}`).toBe(false);
       expect(r.status, label).toBe(1);
       expect(r.stderr, label).toContain("Not restarting");
     }

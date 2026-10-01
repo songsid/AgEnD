@@ -1733,15 +1733,22 @@ program
       }
       if (outcome === "custom") console.log(`  ⚠ ${unitPath} sets its own KillMode; left as is. KillMode=mixed avoids kiro-cli core dumps on restart (#908).`);
       const reloaded = run(reloadCmd);
-      if (outcome === "added") {
-        if (!reloaded) {
-          // systemd still holds the old unit: restarting now would stop the
-          // fleet with control-group after all.
-          console.error(`  ✗ Added KillMode=mixed to ${unitPath}, but \`${reloadCmd}\` failed, so systemd would still stop the fleet the old way.`);
-          console.error(`    Not restarting. Run \`${reloadCmd}\`, then \`agend restart\`.`);
+      if (outcome !== "custom") {
+        // Gate on what systemd has LOADED, not on what this run wrote: `agend
+        // update` runs the new binary's `install --no-activate` first, which
+        // already puts KillMode=mixed in the file, so a failed reload here
+        // would otherwise go unnoticed and stop the fleet with control-group.
+        const showCmd = `systemctl${systemdTarget.user ? " --user" : ""} show -p KillMode --value ${systemdTarget.unit}`;
+        let loaded = "";
+        try { loaded = execSync(showCmd, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 5000 }).trim(); } catch { /* unknown → refused below */ }
+        if (loaded !== "mixed") {
+          console.error(`  ✗ systemd has ${loaded ? `KillMode=${loaded}` : "an unknown KillMode"} loaded for ${systemdTarget.unit}${reloaded ? "" : ` (\`${reloadCmd}\` failed)`}, so it would still SIGTERM every CLI at once (kiro-cli core dumps, #908).`);
+          console.error(`    Not restarting. Make sure ${unitPath ?? "the unit"} has KillMode=mixed under [Service], run \`${reloadCmd}\`, then \`agend restart\`.`);
           process.exitCode = 1;
           return;
         }
+      }
+      if (outcome === "added") {
         console.log(`  ✓ ${unitPath}: added KillMode=mixed (the fleet stops its CLIs; systemd no longer signals them all at once)`);
       }
       if (systemdTarget.user) {
