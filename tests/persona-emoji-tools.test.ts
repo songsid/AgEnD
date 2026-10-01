@@ -24,7 +24,7 @@ import { ClassicChannelManager } from "../src/classic-channel-manager.js";
 import { Daemon } from "../src/daemon.js";
 import { dispatchAgentOperation } from "../src/agent-endpoint.js";
 import { TOOLS } from "../src/channel/mcp-tools.js";
-import { toolsFor } from "../src/tool-permissions.js";
+import { mayUseTool, toolsFor } from "../src/tool-permissions.js";
 import type { ChannelAdapter } from "../src/channel/types.js";
 import type { Logger } from "../src/logger.js";
 
@@ -444,8 +444,9 @@ describe("preview_emojis downloads a few server emojis for the agent to look at 
     expect(TOOLS.map(t => t.name)).toContain("preview_emojis");
     expect([...toolsFor("worker")]).toContain("preview_emojis");
     expect([...toolsFor("standard")]).toContain("preview_emojis");
-    expect([...toolsFor("general")]).not.toContain("preview_emojis");
-    expect([...toolsFor("minimal")]).not.toContain("preview_emojis");
+    // v2.1.9: every profile can see the server's emojis.
+    expect([...toolsFor("general")]).toContain("preview_emojis");
+    expect([...toolsFor("minimal")]).toContain("preview_emojis");
 
     const dir = mkdtempSync(join(tmpdir(), "agend-preview-daemon-"));
     dirs.push(dir);
@@ -503,4 +504,26 @@ describe("preview_emojis downloads a few server emojis for the agent to look at 
       await new Promise(r => server.close(r));
     }
   }, 60_000);
+});
+
+
+describe("persona-emoji tools per profile (v2.1.9: every instance can see server emojis)", () => {
+  const SEE = ["list_emojis", "preview_emojis"];
+  const SET = "set_persona_emoji";
+  it("every profile can see: list_emojis and preview_emojis", () => {
+    for (const profile of ["general", "minimal", "worker", "standard", "coordinator", "full"] as const) {
+      for (const tool of SEE) expect(mayUseTool(profile, tool), `${profile}/${tool}`).toBe(true);
+    }
+  });
+  it("setting a stamp: every profile but minimal", () => {
+    for (const profile of ["general", "worker", "standard", "coordinator", "full"] as const) {
+      expect(mayUseTool(profile, SET), profile).toBe(true);
+    }
+    expect(mayUseTool("minimal", SET)).toBe(false);
+  });
+  it("minimal stays minimal otherwise: no mutating identity tools", () => {
+    for (const tool of ["set_persona_emoji", "set_display_name", "set_description"]) {
+      expect(mayUseTool("minimal", tool), tool).toBe(false);
+    }
+  });
 });
