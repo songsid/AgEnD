@@ -1,7 +1,7 @@
 # Phase 2：submit-contract — 可靠的 auto-pause → wake → 投遞
 
-狀態：設計草案 v3（未實作）。base：main `c5b269c4`。
-v2 依 sol 複審（cid-1790841023206-uaa7pa，P1-1…P2-3）修訂；v3 再補上 P1-3（lease 的界限）、P1-6（原子 reservation）、P1-5（epoch 傳到發布點）。每段標出對應的 finding。
+狀態：設計草案 v4（未實作）。base：main `c5b269c4`。
+v2 依 sol 複審（cid-1790841023206-uaa7pa，P1-1…P2-3）修訂；v3 再補上 P1-3（lease 的界限）、P1-6（原子 reservation）、P1-5（epoch 傳到發布點）；v4 補齊 resident wake 的名額轉換，以及顯式 wake 對 park 的覆蓋。每段標出對應的 finding。
 
 方向：sol 的減法設計。一次 send 就好，喚醒和投遞都由系統負責。
 
@@ -116,6 +116,9 @@ v1 寫「任一層單獨足以防重複 paste」，這是錯的。`claimNext` �
   - **park**：釋放之後，target 帶著 `{reason, until}` 進入 parked。parked 期間 coordinator **不會**再次喚醒它、也不會再取得 lease，**新 admission 也不例外**。這樣就不會形成「醒 → 被 hold → 被 evict → 馬上又醒」的迴圈。parked 的 target 和一般 instance 一樣可以被 idle eviction。離開 park 只有兩種方式：
     - 對 hold 型的 park，daemon 回報 `accepting` 的上升邊緣，也就是 hold 解除。只有 target 還常駐時才可能發生；
     - park 退避到期。退避時間從 1 分鐘開始，每次 ×2，最長 30 分鐘。只要成功送出一筆，退避就歸零。
+  - **park 只擋自動喚醒和新 admission**（v4）。顯式 wake 和 restart（操作者，延續 1.3 的「顯式 wake 可覆蓋 auth pause」）會立刻主動嘗試**一次**。這次嘗試照樣走同一條 `TransitionQueue`、`CapacityLedger` 和 epoch fence，**不會**繞過名額或世代檢查。
+    - 嘗試成功就清除 park；
+    - 仍然失敗或又遇到 hold，就重新 park，退避**不歸零**。顯式動作不會因此解開自動喚醒的緊密迴圈。
     - claim 前的阻塞告警（1.4）仍然照發，每一段阻塞發一次。
   - **submission lease（不限時）**：從 claim 起，到該 row 依 1.5-B 釋放 lane 為止。**沒有逾時**。lease 的任何計時都**不會**釋放 writer lane 或 reconciliation lane，lane 只依 1.5-B 的規則釋放。
 - 只是 queue 裡有 row、但沒有 lease 的 target，包括 parked、在長時間 backoff 中、或日後的 passive-only，**照常可以被 idle eviction**。row 不會遺失。
@@ -126,7 +129,10 @@ v1 寫「任一層單獨足以防重複 paste」，這是錯的。`claimNext` �
       - t 已經常駐：不需要名額；
       - `resident + reserved ≥ 硬上限`：不 spawn，進入 `capacity_wait`。等待者依各自最舊 pending row 的 `created_seq` 排序，名額釋放時由最前面的取得；
       - 否則取得一個名額。
-    - **成功**：在 1.3 的發布點，也就是通過 `isCurrent()` 之後、`daemons.set` 的同一個同步區段內，把 reservation 原子轉成 resident。
+    - **成功時把名額轉成 resident，兩條路徑共用同一份 token promotion 契約**（v4）：
+      - **cold start**（只剩 marker）：在 1.3 的發布點，也就是通過 `isCurrent()` 之後、與 `daemons.set` 同一個同步區段內完成。
+      - **resident wake**（daemon 一直留在 map 裡，走 `Daemon.wake`，**不會**再經過 `daemons.set`）：在通過 epoch fence、`pauseWakeState` 轉成 `active` 的同一個同步區段內完成。
+      - 兩條路徑都是「reserved 減一、resident 加一」，用 token 冪等保證只算一次。之後這個 instance 再被 pause 或 stop 時，resident 減一，名額可以給下一個 target 用。
     - **失敗、stale epoch、cancel**：spawn promise **settle 之後**才歸還名額，而且只歸還一次（token 冪等）。spawn 一旦開始，**絕不因逾時提前歸還**，因為 spawn 無法取消。
     - 所有經 coordinator 的喚醒來源都共用這套 admission，包括 durable、使用者訊息路徑、`startInstance(resumePaused)`。
     - **顯式 wake**（操作者）一樣要取得名額。名額滿時先依現行 `enforceWarmCap` 驅逐一個沒有 lease 的 LRU idle instance，**等它真的停掉、resident 減一之後**才 reserve。沒有可驅逐的對象時排進 `capacity_wait`，並回覆操作者「等待名額」。不會繞過硬上限。
@@ -192,7 +198,7 @@ feature flag `defaults.delivery_worker: off | wake_only | on`，可以覆寫到�
 | 段 | 內容 | lane owner | 驗收（每項都是要新寫的測試，不是已經通過的結果） | rollback |
 |---|---|---|---|---|
 | **2a** | Bug2（3.3）、Bug1'（3.2，含失敗時寫回 marker）、`lifecycleEpoch`、pause reason 寫進 marker。不動 dispatcher | pump | ① 跨 instance 送達後 last-activity 更新；② wake 或 restart 出來的新 daemon 在門檻內不會 pause（重現 14:48:08→09）；③ restart 一個 paused instance 成功 → running、沒有 marker；**start 拋錯 → marker 寫回、之後可以重試**；④ stop 之後才完成的 wake 不會讓 instance 復活；⑤ **在註冊前卡住舊 start，插入 restart 或 stop，再放行 → 舊世代不註冊、不覆蓋 `daemons`、socket、`window-id`，也不清掉 replacement**；任何時刻已發布的 daemon ≤ 1（另外記錄歷史 spawn 次數，不拿它當判準）；⑥ 顯式 wake 遇到 restart 會 join 該 transition | revert（marker 的 reason 欄位是可選的，舊版會忽略） |
-| **2b** `wake_only` | 新增 `WakeCoordinator`（1.2、1.3、1.6 的 lease 和常駐上限、1.4 的 claim 前阻塞告警、開機掃描）。pump 只 claim 醒著而且 accepting 的 target；移除 durable 路徑上 `deliverWithIdleGate` 內嵌的喚醒。**worker 物件尚未建立，pump 仍是唯一的 claimer** | pump | ① **只剩 marker** + 跨 instance task → 喚醒一次 → 送達；② **常駐 paused** + task → 喚醒一次 → 送達；③ 兩種情況喚醒失敗 → row 仍是 queued、`attempt_no` 不變、每段退避只通知一次、只有一套 retry timer；④ 只剩 marker + head 是 notice、後面是 task → 只喚醒一次，notice→task 順序不變；⑤ `reply_obligation_notice` 不會被永久延後；⑥ pending + auth-deferred → 仍然可以安全 pause，而且不會自動喚醒；⑦ wake→claim 的空檔中不會 auto-pause；⑧ pending 的 target 遠多於 cap、其中部分被永久 hold → 常駐數 ≤ cap+overflow，row 留存，資源釋放後繼續；⑨ 並行的 wake、restart、顯式 wake 不會產生兩個有效 writer；⑩ **wake 成功後才出現永久 hold → 沒有 claim、pre-claim lease 在 2 分鐘內結束、target 進入 park、可以被 idle eviction、其他 target 能前進；park 期間的新 admission 不會再喚醒它**；⑪ **只剩一個名額、兩個 target 同時 wake、兩個 spawn promise 都卡住 → 只有一個開始；失敗或 stale epoch 清理後名額可重用，不洩漏、不重複計算** | flag 改 `off`（coordinator 停止排程；pump 的 claim 條件放寬回舊版） |
+| **2b** `wake_only` | 新增 `WakeCoordinator`（1.2、1.3、1.6 的 lease 和常駐上限、1.4 的 claim 前阻塞告警、開機掃描）。pump 只 claim 醒著而且 accepting 的 target；移除 durable 路徑上 `deliverWithIdleGate` 內嵌的喚醒。**worker 物件尚未建立，pump 仍是唯一的 claimer** | pump | ① **只剩 marker** + 跨 instance task → 喚醒一次 → 送達；② **常駐 paused** + task → 喚醒一次 → 送達；③ 兩種情況喚醒失敗 → row 仍是 queued、`attempt_no` 不變、每段退避只通知一次、只有一套 retry timer；④ 只剩 marker + head 是 notice、後面是 task → 只喚醒一次，notice→task 順序不變；⑤ `reply_obligation_notice` 不會被永久延後；⑥ pending + auth-deferred → 仍然可以安全 pause，而且不會自動喚醒；⑦ wake→claim 的空檔中不會 auto-pause；⑧ pending 的 target 遠多於 cap、其中部分被永久 hold → 常駐數 ≤ cap+overflow，row 留存，資源釋放後繼續；⑨ 並行的 wake、restart、顯式 wake 不會產生兩個有效 writer；⑩ **wake 成功後才出現永久 hold → 沒有 claim、pre-claim lease 在 2 分鐘內結束、target 進入 park、可以被 idle eviction、其他 target 能前進；park 期間的新 admission 不會再喚醒它**；⑪ **只剩一個名額、兩個 target 同時 wake、兩個 spawn promise 都卡住 → 只有一個開始；失敗或 stale epoch 清理後名額可重用，不洩漏、不重複計算**；**warm 分支：常駐 paused 的 instance 成功 wake → reserved 歸零、resident 加一且只算一次；之後再 pause 或 stop → 名額可以給下一個 target 用**；⑫ **auth hold 造成 park、之後被 pause，修好登入後顯式 wake → 立刻進入受控嘗試，不必等 30 分鐘；一般的新 admission 仍然不會解除 park** | flag 改 `off`（coordinator 停止排程；pump 的 claim 條件放寬回舊版） |
 | **2c** `on`（金絲雀） | `TargetQueueWorker` 經 `grantLane` 取得金絲雀 target 的 lane，負責 claim、handoff、result；1.5-B 的 lane 釋放規則生效 | 金絲雀 = worker；其他 = pump | ① 同一個 target 永遠不會有兩筆 row 同時 in-flight（DB 不變式加並行壓測）；② 等待中切換 flag → 所有權在 drain 完之後才轉移；③ 舊 attempt 的 ACK 不會改到新 attempt；④ **begin 之後卡住 paste promise、斷 IPC、再 enqueue 下一筆 → 下一筆不會越過還沒結束的 writer；恢復之後不會混進舊 composer 的內容**；⑤ busy 或 dialog 時不送；⑥ **begin 之後卡住 paste promise、等 lease 計時到期 → 下一筆仍然不會越過還在進行的 writer**；⑦ 金絲雀跑 1–2 天，**沒有無法解釋的 stall**（合法的長時間 hold 會有可見原因） | flag 改回 `wake_only`。worker drain 完已 claim 的 row 才 release，pump 依 1.5-A 取得 lane。**IPC 斷線留下的 lane 和 pending/auth 的 pause 規則不會因為 flag 回切而被繞過** |
 | **2d** | 預設 `on`。一個版本之後刪掉 pump 的 claim/dispatch 和 durable 的 idle-gate tail | worker | 全套 CI，2b 和 2c 的驗收清單再跑一次 | 刪除程式碼之前隨時可以回到 `wake_only` |
 
