@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { LOGIN_FLOWS } from "../src/login-flows.js";
 import {
   WebTerminalSession, generateAccessToken, nonEmptyTail, shellQuote, segmentInput,
   ACCESS_TOKEN_LENGTH, MAX_TOKEN_ATTEMPTS, MAX_TTL_MS, MAX_PENDING_INPUT_BYTES, MAX_PENDING_JOBS, MAX_PROBE_FAILURES,
@@ -359,6 +360,18 @@ describe("lifecycle", () => {
 });
 
 describe("observation", () => {
+  it("waits for the Codex code, then posts only its device endpoint once", async () => {
+    const { session, backend, hints } = make({ observe: LOGIN_FLOWS.codex });
+    await session.start();
+    backend.pane = "http://localhost:40475/t/session/\nhttps://127.0.0.1:1455/callback\nhttps://auth.openai.com/codex/device\n";
+    await session.poll();
+    expect(hints).toEqual([]);
+    backend.pane += "ABCD-1234\n";
+    await session.poll(); await session.poll();
+    expect(hints).toEqual([["https://auth.openai.com/codex/device", "ABCD-1234"]]);
+    await session.cancel();
+  });
+
   it("posts the device URL + code once per distinct URL, never the token", async () => {
     const { session, backend, hints, audits } = make({ observe: { codePattern: /Code:\s*([A-Z0-9-]+)/ } });
     await session.start();

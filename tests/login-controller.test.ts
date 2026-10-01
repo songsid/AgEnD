@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "node:events";
 import { LoginController, LOGIN_TOKEN_RESEND_PREFIX, START_RATE_LIMIT, type LoginControllerDeps, type LoginChat } from "../src/login-controller.js";
 import { LoginWindowLock } from "../src/login-window-lock.js";
-import { LOGIN_FLOWS } from "../src/login-flows.js";
+import { extractLoginHint, LOGIN_FLOWS } from "../src/login-flows.js";
 import { setLocale, t } from "../src/locale.js";
 import type { WebTerminalEvents, WebTerminalResult, WebTerminalSpec } from "../src/web-terminal.js";
 
@@ -15,6 +15,8 @@ import type { WebTerminalEvents, WebTerminalResult, WebTerminalSpec } from "../s
  *   session · resend only by the requester · secret-bearing send errors logged
  *   without their message · audit without secrets · rate limit · noShellEscape
  *   allowlist · shutdown cancels and waits.
+ * Generic browser-terminal cases use Claude; Codex's device-only path has
+ * separate assertions below and must never expose a terminal link/token.
  */
 class FakeSession extends EventEmitter {
   state: "created" | "running" | "finished" = "created";
@@ -99,12 +101,88 @@ const allText = (m: { mock: { calls: unknown[][] } }) => m.mock.calls.map(c => J
 beforeEach(() => { FakeHttp.failListen = false; });
 afterEach(() => setLocale("en"));
 
+describe("Codex device-auth presentation", () => {
+  it.each(["discord", "telegram"] as const)("%s posts only the provider URL/code, without a browser listener or token", async type => {
+    const createHttp: NonNullable<LoginControllerDeps["createHttp"]> = vi.fn((session, _logger, opts) =>
+      new FakeHttp(session as unknown as FakeSession, opts) as never);
+    const { controller, sessions, buttons, lock } = make({ config: { hostname: "localhost" }, createHttp });
+    const adapter = adapterOf(type);
+    const started = await controller.start("codex", chat(adapter), CONFIRMED);
+    expect(controller.isActive()).toBe(true);
+    expect(lock.isHeld).toBe(true);
+    expect(sessions[0].spec.command).toBe("codex login --device-auth");
+    const pane = "http://localhost:40475/t/session/\nhttps://127.0.0.1:1455/callback\n"
+      + "https://auth.openai.com/codex/device\nABCD-1234\n";
+    const hint = extractLoginHint(pane, sessions[0].spec.observe!);
+    expect(hint).toEqual({ url: "https://auth.openai.com/codex/device", code: "ABCD-1234" });
+    await sessions[0].events.onHint!(hint.url!, hint.code);
+    const text = allText(adapter.sendText);
+    expect(text).toContain("https://auth.openai.com/codex/device");
+    expect(text).toContain("ABCD-1234");
+    expect(text).not.toMatch(/localhost|127\.0\.0\.1|\/t\/|browser terminal|瀏覽器終端/);
+    expect(text).not.toContain(TOKEN);
+    expect(started).toBe(t("login.started", "codex"));
+    if (type === "telegram") expect(text).toContain("<tg-spoiler>");
+    expect(createHttp).not.toHaveBeenCalled();
+    expect(adapter.sendDirect).not.toHaveBeenCalled();
+    expect(buttons).toHaveLength(0);
+    expect(await controller.resendToken("admin-1")).toBe(t("login.no_session"));
+    expect(adapter.sendDirect).not.toHaveBeenCalled();
+    expect(await controller.cancel()).toBe(t("login.cancelled", "codex"));
+    expect(lock.isHeld).toBe(false);
+  });
+
+  it.each(["en", "zh-TW"] as const)("%s confirmation describes device auth and releases the claim", async locale => {
+    setLocale(locale);
+    const { controller, sessions, buttons, lock } = make();
+    expect(await controller.start("codex", chat(adapterOf("discord")))).toBeNull();
+    expect(buttons[0].message).toBe(t("login.device_confirm", "codex"));
+    expect(buttons[0].message).not.toMatch(/browser terminal|瀏覽器終端|token/);
+    expect(buttons[0].choices[0]).toEqual({ action: "go", label: t("login.device_confirm_go") });
+    expect(sessions).toHaveLength(0);
+    expect(lock.isHeld).toBe(false);
+  });
+
+  it("keeps admission, the fleet window, completion and backend recovery", async () => {
+    const adapter = adapterOf("discord");
+    const denied = make({ admin: false });
+    expect(await denied.controller.start("codex", chat(adapter), CONFIRMED)).toBe(t("permission.denied"));
+    expect(denied.sessions).toHaveLength(0);
+    const { controller, sessions, recover, lock } = make();
+    await controller.start("codex", chat(adapter), CONFIRMED);
+    expect(await controller.start("grok", chat(adapter), CONFIRMED)).toBe(t("login.busy", "codex"));
+    await sessions[0].finish({ ok: true, reason: "exit", exitCode: 0, detail: "clean exit" });
+    expect(recover).toHaveBeenCalledWith("codex");
+    expect(controller.isActive()).toBe(false);
+    expect(lock.isHeld).toBe(false);
+  });
+
+  it("a shutdown while starting device auth cancels it without publishing a terminal", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>(r => { release = r; });
+    const { controller, lock } = make({ createSession: (spec, events) => {
+      const session = new FakeSession(spec, events);
+      session.start = async () => { await gate; };
+      return session as never;
+    } });
+    const adapter = adapterOf("discord");
+    const starting = controller.start("codex", chat(adapter), CONFIRMED);
+    await controller.shutdown();
+    release();
+    expect(await starting).toBe(t("login.web_shutting_down"));
+    expect(controller.isActive()).toBe(false);
+    expect(lock.isHeld).toBe(false);
+    expect(adapter.sendDirect).not.toHaveBeenCalled();
+    expect(allText(adapter.sendText)).not.toMatch(/\/t\/|localhost/);
+  });
+});
+
 describe("authorization gate", () => {
   it("re-checks admin inside start(): a non-admin (or missing user id) is denied and audited, no session is created", async () => {
     const { controller, sessions, events } = make({ admin: false });
-    expect(await controller.start("codex", chat(adapterOf("discord")), CONFIRMED)).toBe(t("permission.denied"));
+    expect(await controller.start("claude-code", chat(adapterOf("discord")), CONFIRMED)).toBe(t("permission.denied"));
     const { controller: c2, sessions: s2 } = make();
-    expect(await c2.start("codex", chat(adapterOf("discord"), NO_USER), CONFIRMED)).toBe(t("permission.denied"));
+    expect(await c2.start("claude-code", chat(adapterOf("discord"), NO_USER), CONFIRMED)).toBe(t("permission.denied"));
     expect(sessions).toHaveLength(0);
     expect(s2).toHaveLength(0);
     expect(events.some(e => e[0] === "login_web_denied")).toBe(true);
@@ -112,7 +190,7 @@ describe("authorization gate", () => {
 
   it("web_terminal.enabled: false refuses with guidance; unknown backend is unsupported", async () => {
     const { controller, sessions } = make({ config: { web_terminal: { enabled: false } } });
-    expect(await controller.start("codex", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.web_disabled"));
+    expect(await controller.start("claude-code", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.web_disabled"));
     expect(await controller.start("nonesuch", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.unsupported", "nonesuch"));
     expect(sessions).toHaveLength(0);
   });
@@ -148,25 +226,25 @@ describe("authorization gate", () => {
     let now = 1_000_000;
     const { controller, sessions } = make({ now: () => now });
     for (let i = 0; i < START_RATE_LIMIT; i++) {
-      expect(await controller.start("codex", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.web_started", "codex"));
+      expect(await controller.start("claude-code", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.web_started", "claude-code"));
       await sessions[i].finish({ ok: false, reason: "cancel", detail: "cancelled" });
     }
-    expect(await controller.start("codex", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.web_rate_limited", "3", "5"));
+    expect(await controller.start("claude-code", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.web_rate_limited", "3", "5"));
     expect(sessions).toHaveLength(START_RATE_LIMIT);
     now += 5 * 60_000 + 1;
-    expect(await controller.start("codex", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.web_started", "codex"));
+    expect(await controller.start("claude-code", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.web_started", "claude-code"));
   });
 
   it("one window fleet-wide: an active web login, or a held relay/install claim, blocks a second start", async () => {
     const { controller, sessions, lock } = make();
-    expect(await controller.start("codex", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.web_started", "codex"));
+    expect(await controller.start("claude-code", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.web_started", "claude-code"));
     expect(controller.isActive()).toBe(true);
-    expect(await controller.start("grok", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.busy", "codex"));
+    expect(await controller.start("grok", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.busy", "claude-code"));
     expect(sessions).toHaveLength(1);
     const lock2 = new LoginWindowLock();
     lock2.tryClaim("install", "grok");
     const { controller: c2, sessions: s2 } = make({ lock: lock2 });
-    expect(await c2.start("codex", chat(adapterOf("discord")), CONFIRMED)).toBe(t("install.busy"));
+    expect(await c2.start("claude-code", chat(adapterOf("discord")), CONFIRMED)).toBe(t("install.busy"));
     expect(s2).toHaveLength(0);
     expect(lock.isHeld).toBe(true);
   });
@@ -176,9 +254,9 @@ describe("authorization gate", () => {
     const gate = new Promise<void>(r => { release = r; });
     // The confirmed path has no awaits before claiming; exercise the unconfirmed path (pre-check await) racing a confirmed one.
     const { controller, sessions, buttons, lock } = make({ checkAuth: async () => { await gate; return "invalid"; } });
-    const a = controller.start("codex", chat(adapterOf("discord")));            // parks in pre-check, window claimed
+    const a = controller.start("claude-code", chat(adapterOf("discord")));            // parks in pre-check, window claimed
     const b = controller.start("grok", chat(adapterOf("discord")), CONFIRMED);   // must NOT get the window meanwhile
-    expect(await b).toBe(t("login.busy", "codex"));
+    expect(await b).toBe(t("login.busy", "claude-code"));
     release();
     expect(await a).toBeNull();                                                 // buttons posted, window released
     expect(buttons).toHaveLength(1);
@@ -191,7 +269,7 @@ describe("authorization gate", () => {
 describe("confirmation and kiro logout-first", () => {
   it("an unconfirmed start posts the risk confirmation and starts nothing; the window is released", async () => {
     const { controller, sessions, buttons, lock } = make();
-    expect(await controller.start("codex", chat(adapterOf("discord")))).toBeNull();
+    expect(await controller.start("claude-code", chat(adapterOf("discord")))).toBeNull();
     expect(sessions).toHaveLength(0);
     expect(buttons).toHaveLength(1);
     expect(buttons[0].prefix).toBe("login-confirm:");
@@ -224,7 +302,7 @@ describe("confirmation and kiro logout-first", () => {
     expect(a.sessions[0].spec.observe?.successPattern).toBeInstanceOf(RegExp);
     expect(a.sessions[0].spec.ttlMs).toBe(10 * 60_000);
     expect(a.sessions[0].spec.requester).toEqual({ adapterId: "discord", userId: "admin-1", chatId: "chat", threadId: "topic" });
-    const b = make({ config: { web_terminal: { ttl_minutes: 50 } } }); await b.controller.start("codex", chat(adapterOf("discord")), CONFIRMED);
+    const b = make({ config: { web_terminal: { ttl_minutes: 50 } } }); await b.controller.start("claude-code", chat(adapterOf("discord")), CONFIRMED);
     expect(b.sessions[0].spec.ttlMs).toBe(20 * 60_000);
   });
 });
@@ -233,7 +311,7 @@ describe("two messages: link to the chat, token only privately", () => {
   it("Discord: the chat gets the URL without the token; the token goes through sendDirect without the URL; both audited without secrets", async () => {
     const adapter = adapterOf("discord");
     const { controller, events } = make({ config: { hostname: "fleet.example" } });
-    await controller.start("codex", chat(adapter), CONFIRMED);
+    await controller.start("claude-code", chat(adapter), CONFIRMED);
     const chatMsgs = adapter.sendText.mock.calls.map(c => String(c[1]));
     expect(chatMsgs).toHaveLength(1);
     expect(chatMsgs[0]).toContain("http://fleet.example:40001/t/");
@@ -254,7 +332,7 @@ describe("two messages: link to the chat, token only privately", () => {
   it("Telegram: the private token message is HTML with a spoiler; the chat link suppresses previews", async () => {
     const adapter = adapterOf("telegram");
     const { controller } = make();
-    await controller.start("codex", chat(adapter), CONFIRMED);
+    await controller.start("claude-code", chat(adapter), CONFIRMED);
     const [, dmText, dmOpts] = adapter.sendDirect!.mock.calls[0];
     expect(String(dmText)).toContain(`<tg-spoiler>${TOKEN}</tg-spoiler>`);
     expect(dmOpts).toMatchObject({ format: "html" });
@@ -264,7 +342,7 @@ describe("two messages: link to the chat, token only privately", () => {
   it("DM failure: the token NEVER reaches the channel; a resend button is offered; resend works only for the requester while unredeemed", async () => {
     const adapter = adapterOf("discord", { directFails: true });
     const { controller, buttons, events, sessions } = make();
-    expect(await controller.start("codex", chat(adapter), CONFIRMED)).toBe(t("login.web_started", "codex"));
+    expect(await controller.start("claude-code", chat(adapter), CONFIRMED)).toBe(t("login.web_started", "claude-code"));
     for (const call of adapter.sendText.mock.calls) expect(String(call[1])).not.toContain(TOKEN);
     expect(buttons.map(b => b.prefix)).toEqual([LOGIN_TOKEN_RESEND_PREFIX]);
     expect(buttons[0].choices[0].action).toBe("resend");
@@ -283,7 +361,7 @@ describe("two messages: link to the chat, token only privately", () => {
   it("an adapter without sendDirect behaves like a DM failure (button, no token in channel)", async () => {
     const adapter = adapterOf("discord", { noDirect: true });
     const { controller, buttons } = make();
-    await controller.start("codex", chat(adapter), CONFIRMED);
+    await controller.start("claude-code", chat(adapter), CONFIRMED);
     expect(buttons.map(b => b.prefix)).toEqual([LOGIN_TOKEN_RESEND_PREFIX]);
     for (const call of adapter.sendText.mock.calls) expect(String(call[1])).not.toContain(TOKEN);
   });
@@ -297,7 +375,7 @@ describe("two messages: link to the chat, token only privately", () => {
     };
     const adapter = adapterOf("discord", { directFails: poison });
     const { controller, logger, events } = make();
-    await controller.start("codex", chat(adapter), CONFIRMED);
+    await controller.start("claude-code", chat(adapter), CONFIRMED);
     const logged = allText(logger.warn) + allText(logger.info) + allText(logger.error) + allText(logger.debug) + JSON.stringify(events);
     expect(logged).not.toContain(TOKEN);
     expect(logged).toContain("web terminal token DM failed");
@@ -306,7 +384,7 @@ describe("two messages: link to the chat, token only privately", () => {
     for (const code of [TOKEN, `E${TOKEN.slice(1)}`, "E_" + TOKEN, "ENOTREAL"]) {
       const a = adapterOf("discord", { directFails: () => Object.assign(new Error("x"), { code }) });
       const { controller: c, logger: l, events: e } = make();
-      await c.start("codex", chat(a), CONFIRMED);
+      await c.start("claude-code", chat(a), CONFIRMED);
       const out = allText(l.warn) + allText(l.info) + JSON.stringify(e);
       expect(out).not.toContain(TOKEN);
       expect(out).not.toContain(TOKEN.slice(1));
@@ -314,11 +392,11 @@ describe("two messages: link to the chat, token only privately", () => {
     }
     const adapter3 = adapterOf("discord", { directFails: () => Object.assign(new Error("x"), { code: "EPIPE" }) });
     const { controller: c3, logger: l3 } = make();
-    await c3.start("codex", chat(adapter3), CONFIRMED);
+    await c3.start("claude-code", chat(adapter3), CONFIRMED);
     expect(allText(l3.warn)).toContain("EPIPE");                     // exact known errno stays useful
     const adapter4 = adapterOf("discord", { directFails: () => Object.assign(new Error("x"), { code: 429 }) });
     const { controller: c4, logger: l4 } = make();
-    await c4.start("codex", chat(adapter4), CONFIRMED);
+    await c4.start("claude-code", chat(adapter4), CONFIRMED);
     expect(allText(l4.warn)).toContain("429");
   });
 
@@ -329,7 +407,7 @@ describe("two messages: link to the chat, token only privately", () => {
     adapter.sendText.mockImplementation(async () => { lock.close(); await controllerRef.shutdown(); return { messageId: "m1", chatId: "chat" }; });
     const { controller, sessions } = make({ lock });
     controllerRef = controller;
-    const text = await controller.start("codex", chat(adapter), CONFIRMED);
+    const text = await controller.start("claude-code", chat(adapter), CONFIRMED);
     expect(text).toBe(t("login.web_shutting_down"));
     expect(adapter.sendDirect!).not.toHaveBeenCalled();
     expect(sessions[0].state).toBe("finished");
@@ -348,7 +426,7 @@ describe("two messages: link to the chat, token only privately", () => {
     });
     const { controller, sessions } = make({ lock });
     controllerRef = controller;
-    const text = await controller.start("codex", chat(adapter), CONFIRMED);
+    const text = await controller.start("claude-code", chat(adapter), CONFIRMED);
     expect(text).toBe(t("login.web_shutting_down"));
     expect(adapter.sendDirect!).not.toHaveBeenCalled();
     expect(sessions[0].state).toBe("finished");
@@ -356,7 +434,7 @@ describe("two messages: link to the chat, token only privately", () => {
     expect(lock.isHeld).toBe(false);
     // the NEW generation works normally
     adapter.sendText.mockImplementation(async () => ({ messageId: "m2", chatId: "chat" }));
-    expect(await controller.start("codex", chat(adapter), CONFIRMED)).toBe(t("login.web_started", "codex"));
+    expect(await controller.start("claude-code", chat(adapter), CONFIRMED)).toBe(t("login.web_started", "claude-code"));
   });
 
   it("B3 (round 4): a shutdown+reopen while the confirmation is being posted is detected as stale even though stopping is false again", async () => {
@@ -366,7 +444,7 @@ describe("two messages: link to the chat, token only privately", () => {
       lock.close(); await controllerRef.shutdown(); lock.reopen(); controllerRef.reopen();
     } });
     controllerRef = controller;
-    expect(await controller.start("codex", chat(adapterOf("discord")))).toBeNull();
+    expect(await controller.start("claude-code", chat(adapterOf("discord")))).toBeNull();
     expect(events.some(e => e[0] === "login_web_stale_confirmation")).toBe(true);
   });
 
@@ -375,19 +453,19 @@ describe("two messages: link to the chat, token only privately", () => {
     let controllerRef!: LoginController;
     const { controller, events } = make({ lock, postButtons: async () => { lock.close(); await controllerRef.shutdown(); } });
     controllerRef = controller;
-    expect(await controller.start("codex", chat(adapterOf("discord")))).toBeNull();
+    expect(await controller.start("claude-code", chat(adapterOf("discord")))).toBeNull();
     expect(events.some(e => e[0] === "login_web_stale_confirmation")).toBe(true);
-    expect(await controller.start("codex", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.web_shutting_down"));
+    expect(await controller.start("claude-code", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.web_shutting_down"));
     controller.reopen(); lock.reopen();
-    expect(await controller.start("codex", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.web_started", "codex"));
+    expect(await controller.start("claude-code", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.web_started", "claude-code"));
   });
 
   it("M1 (round 2): a failed resend closes the session instead of leaving a token-less window holding the lock", async () => {
     const adapter = adapterOf("discord", { directFails: true });
     const { controller, sessions, lock } = make();
-    await controller.start("codex", chat(adapter), CONFIRMED);       // DM failed → resend button
+    await controller.start("claude-code", chat(adapter), CONFIRMED);       // DM failed → resend button
     const text = await controller.resendToken("admin-1");            // DMs still off
-    expect(text).toBe(t("login.web_token_resend_failed", "codex"));
+    expect(text).toBe(t("login.web_token_resend_failed", "claude-code"));
     expect(sessions[0].cancelled).toEqual(["token resend failed"]);
     expect(controller.isActive()).toBe(false);
     expect(lock.isHeld).toBe(false);
@@ -397,18 +475,18 @@ describe("two messages: link to the chat, token only privately", () => {
   it("B1 (round 2): a throwing session factory releases the claim — the next start can claim", async () => {
     let boom = true;
     const { controller, lock } = make({ createSession: (spec, ev) => { if (boom) throw new Error("factory exploded"); return new FakeSession(spec, ev) as never; } });
-    await expect(controller.start("codex", chat(adapterOf("discord")), CONFIRMED)).rejects.toThrow(/factory exploded/);
+    await expect(controller.start("claude-code", chat(adapterOf("discord")), CONFIRMED)).rejects.toThrow(/factory exploded/);
     expect(lock.isHeld).toBe(false);
     expect(controller.isActive()).toBe(false);
     boom = false;
-    expect(await controller.start("codex", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.web_started", "codex"));
+    expect(await controller.start("claude-code", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.web_started", "claude-code"));
   });
 
   it("B2 (round 2): shutdown while a start is parked in its pre-check — no buttons, no session, nothing held", async () => {
     let release!: () => void;
     const gate = new Promise<void>(r => { release = r; });
     const { controller, lock, buttons, sessions } = make({ checkAuth: async () => { await gate; return "invalid"; } });
-    const pending = controller.start("codex", chat(adapterOf("discord")));      // claim held, awaiting the probe
+    const pending = controller.start("claude-code", chat(adapterOf("discord")));      // claim held, awaiting the probe
     expect(lock.isHeld).toBe(true);
     lock.close();                                                              // FleetManager.shutdownLoginWindows does this first
     await controller.shutdown();
@@ -418,9 +496,9 @@ describe("two messages: link to the chat, token only privately", () => {
     expect(sessions).toHaveLength(0);
     expect(lock.isHeld).toBe(false);
     // and no new window can be claimed while closed
-    expect(await controller.start("codex", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.web_shutting_down"));
+    expect(await controller.start("claude-code", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.web_shutting_down"));
     lock.reopen(); controller.reopen();                                        // what startAll does on an in-process restart
-    expect(await controller.start("codex", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.web_started", "codex"));
+    expect(await controller.start("claude-code", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.web_started", "claude-code"));
   });
 
   it("B2 (round 2): shutdown between session.start and listen aborts quietly instead of publishing a window", async () => {
@@ -434,7 +512,7 @@ describe("two messages: link to the chat, token only privately", () => {
       },
     });
     const adapter = adapterOf("discord");
-    expect(await controller.start("codex", chat(adapter), CONFIRMED)).toBe(t("login.web_shutting_down"));
+    expect(await controller.start("claude-code", chat(adapter), CONFIRMED)).toBe(t("login.web_shutting_down"));
     expect(made[0].cancelled).toEqual(["fleet shutdown"]);
     expect(adapter.sendText).not.toHaveBeenCalled();
     expect(adapter.sendDirect!).not.toHaveBeenCalled();
@@ -445,7 +523,7 @@ describe("two messages: link to the chat, token only privately", () => {
     const adapter = adapterOf("telegram");
     adapter.sendText.mockImplementationOnce(async () => ({ messageId: "link", chatId: "chat" }));
     const { controller, sessions, logger } = make();
-    await controller.start("codex", chat(adapter), CONFIRMED);
+    await controller.start("claude-code", chat(adapter), CONFIRMED);
     adapter.sendText.mockImplementation(async (_c: string, text: string) => { throw new Error(`rejected: ${text}`); });
     await sessions[0].events.onHint!("https://auth.example/device?user_code=ZZZZ-9999", "ZZZZ-9999");
     expect(allText(logger.warn)).not.toContain("ZZZZ-9999");
@@ -455,8 +533,8 @@ describe("two messages: link to the chat, token only privately", () => {
   it("M1: an undeliverable link cancels the session — no token is sent, one failure report, window released", async () => {
     const adapter = adapterOf("discord", { textFails: true });
     const { controller, sessions, lock } = make();
-    const text = await controller.start("codex", chat(adapter), CONFIRMED);
-    expect(text).toBe(t("login.failed", "codex", t("login.web_link_failed")));
+    const text = await controller.start("claude-code", chat(adapter), CONFIRMED);
+    expect(text).toBe(t("login.failed", "claude-code", t("login.web_link_failed")));
     expect(sessions[0].cancelled).toEqual(["link delivery failed"]);
     expect(adapter.sendDirect!).not.toHaveBeenCalled();
     expect(controller.isActive()).toBe(false);
@@ -468,8 +546,8 @@ describe("two messages: link to the chat, token only privately", () => {
   it("M1: DM failure AND resend-button failure cancels the session with an explicit report; the token never entered the channel", async () => {
     const adapter = adapterOf("discord", { directFails: true });
     const { controller, sessions, lock } = make({ postButtons: async () => { throw new Error("buttons unavailable"); } });
-    const text = await controller.start("codex", chat(adapter), CONFIRMED);
-    expect(text).toBe(t("login.failed", "codex", t("login.web_token_failed")));
+    const text = await controller.start("claude-code", chat(adapter), CONFIRMED);
+    expect(text).toBe(t("login.failed", "claude-code", t("login.web_token_failed")));
     expect(sessions[0].cancelled).toEqual(["token delivery failed"]);
     for (const call of adapter.sendText.mock.calls) expect(String(call[1])).not.toContain(TOKEN);
     expect(controller.isActive()).toBe(false);
@@ -481,7 +559,7 @@ describe("session outcome", () => {
   it("device URL + code observed in the pane is relayed as a spoiler-style hint to the chat", async () => {
     const adapter = adapterOf("telegram");
     const { controller, sessions } = make();
-    await controller.start("codex", chat(adapter), CONFIRMED);
+    await controller.start("claude-code", chat(adapter), CONFIRMED);
     await sessions[0].events.onHint!("https://auth.example/device?user_code=ABCD-1234", "ABCD-1234");
     const hint = String(adapter.sendText.mock.calls.at(-1)![1]);
     expect(hint).toContain("<tg-spoiler>");
@@ -491,18 +569,18 @@ describe("session outcome", () => {
   it("success → instances recovered and reported; the slot and window are released", async () => {
     const adapter = adapterOf("discord");
     const { controller, sessions, recover, lock } = make();
-    await controller.start("codex", chat(adapter), CONFIRMED);
+    await controller.start("claude-code", chat(adapter), CONFIRMED);
     await sessions[0].finish({ ok: true, reason: "exit", exitCode: 0, detail: "clean exit" });
-    expect(recover).toHaveBeenCalledWith("codex");
+    expect(recover).toHaveBeenCalledWith("claude-code");
     // Two messages, in this order. The login result must not wait for the
     // recovery: it used to be built only after recoverBackendInstances
     // returned, so a slow restart left the user with nothing to read at all.
     const texts = adapter.sendText.mock.calls.map((c: unknown[]) => String(c[1]));
-    expect(texts.at(-2)).toBe(t("login.completed", "codex"));
-    expect(texts.at(-1)).toBe(t("login.recovered", "codex", "kiro-a", "kiro-b"));
+    expect(texts.at(-2)).toBe(t("login.completed", "claude-code"));
+    expect(texts.at(-1)).toBe(t("login.recovered", "claude-code", "kiro-a", "kiro-b"));
     expect(controller.isActive()).toBe(false);
     expect(lock.isHeld).toBe(false);
-    expect(await controller.start("codex", chat(adapter), CONFIRMED)).toBe(t("login.web_started", "codex"));
+    expect(await controller.start("claude-code", chat(adapter), CONFIRMED)).toBe(t("login.web_started", "claude-code"));
   });
 
   it("failure carries the mapped message and suggestion; cleanupFailed adds the operator warning", async () => {
@@ -519,9 +597,9 @@ describe("session outcome", () => {
   it("/login cancel routes to the session and does not double-announce", async () => {
     const adapter = adapterOf("discord");
     const { controller, sessions } = make();
-    await controller.start("codex", chat(adapter), CONFIRMED);
+    await controller.start("claude-code", chat(adapter), CONFIRMED);
     const before = adapter.sendText.mock.calls.length;
-    expect(await controller.cancel()).toBe(t("login.cancelled", "codex"));
+    expect(await controller.cancel()).toBe(t("login.cancelled", "claude-code"));
     expect(sessions[0].cancelled).toEqual(["cancelled"]);
     expect(adapter.sendText.mock.calls.length).toBe(before);
     expect(await controller.cancel()).toBe(t("login.no_session"));
@@ -531,7 +609,7 @@ describe("session outcome", () => {
     FakeHttp.failListen = true;
     const adapter = adapterOf("discord");
     const { controller, sessions, lock } = make();
-    const text = await controller.start("codex", chat(adapter), CONFIRMED);
+    const text = await controller.start("claude-code", chat(adapter), CONFIRMED);
     expect(text).toContain("EADDRINUSE");
     expect(controller.isActive()).toBe(false);
     expect(lock.isHeld).toBe(false);
@@ -543,7 +621,7 @@ describe("session outcome", () => {
   it("B1: a late failure of an older entry never clears a newer owner (identity-guarded release)", async () => {
     const adapter = adapterOf("discord");
     const { controller, sessions, lock } = make();
-    await controller.start("codex", chat(adapter), CONFIRMED);
+    await controller.start("claude-code", chat(adapter), CONFIRMED);
     const first = sessions[0];
     await first.finish({ ok: false, reason: "ttl", detail: "time limit reached" });
     await controller.start("grok", chat(adapter), CONFIRMED);
@@ -556,7 +634,7 @@ describe("session outcome", () => {
   it("B3: shutdown cancels the active session quietly, closes the listener, and releases the window", async () => {
     const adapter = adapterOf("discord");
     const { controller, sessions, lock } = make();
-    await controller.start("codex", chat(adapter), CONFIRMED);
+    await controller.start("claude-code", chat(adapter), CONFIRMED);
     const before = adapter.sendText.mock.calls.length;
     await controller.shutdown();
     expect(sessions[0].cancelled).toEqual(["fleet shutdown"]);
@@ -578,7 +656,7 @@ describe("session outcome", () => {
           return s as never;
         },
       });
-      await controller.start("codex", chat(adapterOf("discord")), CONFIRMED);
+      await controller.start("claude-code", chat(adapterOf("discord")), CONFIRMED);
       let settled = false;
       const shutting = controller.shutdown().then(() => { settled = true; });
       await vi.advanceTimersByTimeAsync(60_000);
@@ -596,7 +674,7 @@ describe("session outcome", () => {
 
   it("engine audits are forwarded to the event log under the login_web_ prefix", async () => {
     const { controller, sessions, events } = make();
-    await controller.start("codex", chat(adapterOf("discord")), CONFIRMED);
+    await controller.start("claude-code", chat(adapterOf("discord")), CONFIRMED);
     sessions[0].events.onAudit!("web_terminal_opened", { sid: "x", ip: "127.0.0.1" });
     expect(events.some(e => e[0] === "login_web_opened")).toBe(true);
   });
@@ -608,7 +686,7 @@ describe("session outcome", () => {
       "login.web_suggest_relogin", "login.web_suggest_check_args", "login.web_code_not_needed", "login.still_valid_precommand",
       "login.web_confirm", "login.web_confirm_go", "login.web_confirm_failed", "login.web_rate_limited", "login.web_flow_not_allowed",
       "login.web_link_failed", "login.web_token_failed", "login.web_token_resend_failed", "login.web_shutting_down",
-      "login.remote_unsupported_agent_cli"]) {
+      "login.remote_unsupported_agent_cli", "login.device_confirm", "login.device_confirm_go"]) {
       expect(t(key as never, "a", "b", "c", "d")).not.toBe(key);
     }
   });

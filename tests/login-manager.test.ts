@@ -45,6 +45,23 @@ function session(flow: LoginFlow, tmux: LoginTmux, ev: LoginSessionEvents): Logi
 }
 
 describe("LoginSession", () => {
+  it("Codex relay waits for the device code and never posts a localhost callback", async () => {
+    let pane = "http://localhost:40475/t/session/\nhttps://127.0.0.1:1455/callback\nhttps://auth.openai.com/codex/device\n";
+    const capture = vi.fn(async () => pane);
+    const tmux = fakeTmux({ capturePaneJoined: capture });
+    const ev = events();
+    const s = session(LOGIN_FLOWS.codex, tmux, ev);
+    await s.start();
+    await vi.waitFor(() => expect(capture.mock.calls.length).toBeGreaterThan(1));
+    expect(ev.hints).toEqual([]);
+    pane += "ABCD-1234\n";
+    await vi.waitFor(() => expect(ev.hints).toEqual([{ url: "https://auth.openai.com/codex/device", code: "ABCD-1234" }]));
+    pane += "Successfully logged in.\n";
+    await vi.waitFor(() => expect(ev.done).toHaveLength(1));
+    expect(ev.hints).toHaveLength(1);
+    expect(tmux.killed()).toBe(true);
+  });
+
   it("posts the auth hint exactly once and finishes on the success pattern", async () => {
     const panes = [
       "starting device flow…",

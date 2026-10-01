@@ -85,6 +85,32 @@ describe("extractLoginHint", () => {
     const hint = extractLoginHint("Visit https://accounts.x.ai/sign-in then enter code: QRST-1234", LOGIN_FLOWS["grok"]);
     expect(hint.code).toBe("QRST-1234");
   });
+
+  it.each(["http://localhost:40475/t/session/", "http://127.0.0.1:1455/auth/callback",
+    "https://localhost:1455/auth/callback", "https://127.0.0.1:1455/auth/callback"])(
+    "Codex ignores %s and selects only its device endpoint", callback => {
+      const pane = `${callback}\nhttps://example.com/help\nhttps://auth.openai.com/codex/device\nABCD-1234\n`;
+      expect(extractLoginHint(pane, LOGIN_FLOWS.codex)).toEqual({
+        url: "https://auth.openai.com/codex/device", code: "ABCD-1234",
+      });
+      expect(extractLoginHint(`${callback}\nABCD-1234`, LOGIN_FLOWS.codex).url).toBeNull();
+    });
+
+  it("waits for the Codex device code and rejects lookalike endpoints", () => {
+    expect(extractLoginHint("https://auth.openai.com/codex/device\n", LOGIN_FLOWS.codex)).toEqual({ url: null, code: null });
+    for (const url of ["https://auth.openai.com.evil.test/codex/device", "https://auth.openai.com/codex/device-other"]) {
+      expect(extractLoginHint(`${url}\nABCD-1234`, LOGIN_FLOWS.codex).url).toBeNull();
+    }
+  });
+
+  it("parses the sanitized live Codex 0.159.2 device-auth output", () => {
+    const pane = "Welcome to Codex [v0.159.2]\nOpenAI's command-line coding agent\n\n"
+      + "Follow these steps to sign in with ChatGPT using device code authorization:\n\n"
+      + "1. Open this link in your browser and sign in to your account\n"
+      + "   https://auth.openai.com/codex/device\n\n"
+      + "2. Enter this one-time code (expires in 15 minutes)\n   TEST-CODE\n";
+    expect(extractLoginHint(pane, LOGIN_FLOWS.codex)).toEqual({ url: "https://auth.openai.com/codex/device", code: "TEST-CODE" });
+  });
 });
 
 describe("checkAuthStatus", () => {
