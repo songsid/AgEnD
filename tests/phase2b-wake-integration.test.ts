@@ -301,3 +301,23 @@ describe("admission tells the coordinator", () => {
     expect(kick).toHaveBeenCalled();
   });
 });
+
+
+describe("a closed outbox database (#1078 CI: 9 unhandled 'database connection is not open')", () => {
+  it("timers and kicks that fire after the outbox closed read nothing, throw nothing, and stop the coordinator", async () => {
+    const { fm, outbox, admit, dir } = fleet("wake_only");
+    writePausedMarker(dir, 1_000, "idle");
+    fake.failStarts = 100; // keep it in backoff so a retry timer is pending
+    admit();
+    await vi.waitFor(() => expect(fm.wakeCoordinator!.wakeFailure("worker")).toBe("spawn failed"));
+    const warn = vi.spyOn((fm as any).logger, "warn");
+    const listPending = vi.spyOn(outbox, "listPending");
+    outbox.close();
+    fm.wakeCoordinator!.kick();
+    fm.wakeCoordinator!.scan();
+    await new Promise(r => setTimeout(r, 1_200)); // past the 1 s backoff timer
+    expect(listPending).not.toHaveBeenCalled();
+    expect(warn.mock.calls.some(c => String(c[1]).includes("scan failed"))).toBe(false);
+    expect((fm.wakeCoordinator as any).stopped).toBe(true);
+  });
+});

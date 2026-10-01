@@ -1342,6 +1342,11 @@ export class DeliveryOutbox extends EventEmitter {
     this.db.close();
   }
 
+  /** False once the database connection is closed: callers on timers check it before reading. */
+  get isOpen(): boolean {
+    return this.db.open;
+  }
+
   /** Must be called inside the same SQLite transaction as the terminal transition. */
   private insertFailureNotice(parent: OutboxRow, outcome: "failed" | "uncertain", reason: string, now: string): void {
     if (parent.kind === "delivery_outcome_notice" || parent.kind === "post_restart_outcome_notice"

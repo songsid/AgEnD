@@ -2372,6 +2372,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private createWakeCoordinator(): WakeCoordinator {
     return new WakeCoordinator({
       mode: target => this.deliveryWorkerMode(target),
+      available: () => !this.shuttingDown && this.deliveryOutbox?.isOpen === true,
       listPending: () => this.deliveryOutbox?.listPending() ?? [],
       isPaused: target => this.lifecycle.isPaused(target),
       pauseReason: target => readPauseReason(this.getInstanceDir(target)),

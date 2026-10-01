@@ -37,6 +37,12 @@ export const WATCHDOG_INTERVAL_MS = 30_000;
 
 export interface WakeCoordinatorDeps {
   mode(target: string): DeliveryWorkerMode;
+  /**
+   * Whether the outbox can be read now. False once its database is closed
+   * (fleet shutdown, a test tearing down): the coordinator then does nothing,
+   * and stops itself, instead of querying a closed connection.
+   */
+  available(): boolean;
   /** Rows still to deliver: queued, retry_wait, delivering, submission_started (created_seq order). */
   listPending(): OutboxDelivery[];
   isPaused(target: string): boolean;
@@ -104,6 +110,7 @@ export class WakeCoordinator {
   /** Schedule a scan soon (coalesced). Safe to call from any event. */
   kick(delayMs = 0): void {
     if (this.stopped) return;
+    if (!this.deps.available()) { this.stop(); return; }
     if (this.scanTimer) {
       if (delayMs > 0) return;
       clearTimeout(this.scanTimer);
@@ -213,6 +220,7 @@ export class WakeCoordinator {
    */
   scan(): void {
     if (this.stopped) return;
+    if (!this.deps.available()) { this.stop(); return; }
     try {
       this.scanOnce();
     } catch (err) {
@@ -259,7 +267,7 @@ export class WakeCoordinator {
     }
     if (Number.isFinite(nextDue)) this.kick(Math.max(1, nextDue - now));
     // Awake targets with work still waiting: make sure the pump looks again.
-    if (wakeableAwake) this.deps.kickPump();
+    if (wakeableAwake && !this.stopped) this.deps.kickPump();
   }
 
   /**
@@ -302,7 +310,7 @@ export class WakeCoordinator {
     const s = this.state(target);
     this.deps.logger.info({ target, queued: waiting.length }, "Waking a paused target for queued durable work");
     this.deps.wake(target).then(() => {
-      this.deps.kickPump();
+      if (!this.stopped) this.deps.kickPump();
       s.failures = 0;
       s.backoffUntil = 0;
       s.lastError = null;

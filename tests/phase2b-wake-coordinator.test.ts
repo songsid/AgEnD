@@ -37,16 +37,18 @@ interface World {
   wokeAt: Map<string, number>;
   holdReason: Map<string, string>;
   pumpKicks: number;
+  available: boolean;
 }
 
 function setup(over: Partial<World> = {}) {
   const w: World = {
     rows: [], paused: new Set(), reasons: new Map(), resident: new Set(), wakes: [], notices: [],
-    wakeImpl: async () => {}, mode: "wake_only", cap: 0, overflow: 2, wokeAt: new Map(), holdReason: new Map(), pumpKicks: 0,
+    wakeImpl: async () => {}, mode: "wake_only", cap: 0, overflow: 2, wokeAt: new Map(), holdReason: new Map(), pumpKicks: 0, available: true,
     ...over,
   };
   const deps: WakeCoordinatorDeps = {
     mode: () => w.mode as any,
+    available: () => w.available,
     listPending: () => w.rows.filter(r => ["queued", "retry_wait", "delivering", "submission_started"].includes(r.state)),
     isPaused: t => w.paused.has(t),
     pauseReason: t => w.reasons.get(t) ?? null,
@@ -363,5 +365,53 @@ describe("the scan never throws from its timer (#1078 CI)", () => {
     deps.listPending = () => { throw new TypeError("The database connection is not open"); };
     expect(() => c.scan()).not.toThrow();
     expect(deps.logger.warn).toHaveBeenCalledWith(expect.objectContaining({ err: "The database connection is not open" }), expect.any(String));
+  });
+});
+
+
+describe("lifecycle: nothing runs once the outbox is gone or the coordinator stopped (#1078 CI)", () => {
+  it("stop() clears every timer it owns, and kick/scan are no-ops afterwards", () => {
+    vi.useFakeTimers();
+    const { w, c } = setup();
+    c.start(); // watchdog interval + an immediate scan timer
+    c.kick(5_000);
+    expect(vi.getTimerCount()).toBe(2);
+    c.stop();
+    expect(vi.getTimerCount()).toBe(0); // cleared, not merely forgotten
+    expect((c as any).watchdog).toBeNull();
+    expect((c as any).scanTimer).toBeNull();
+    w.paused.add("t"); w.rows.push(row("t"));
+    c.kick(); c.scan();
+    expect((c as any).scanTimer).toBeNull();
+    expect(w.wakes).toEqual([]);
+  });
+
+  it("an unavailable outbox: the scan does not read it and the coordinator stops itself", () => {
+    const { w, c } = setup();
+    const listPending = vi.spyOn((c as any).deps, "listPending");
+    w.available = false;
+    w.paused.add("t"); w.rows.push(row("t"));
+    c.scan();
+    expect(listPending).not.toHaveBeenCalled();
+    expect(w.wakes).toEqual([]);
+    expect((c as any).stopped).toBe(true);
+  });
+
+  it("a kick with the outbox unavailable schedules nothing", () => {
+    const { w, c } = setup();
+    w.available = false;
+    c.kick(); c.kick(5_000);
+    expect((c as any).scanTimer).toBeNull();
+    expect((c as any).stopped).toBe(true);
+  });
+
+  it("a wake that settles after stop() does not kick the pump", async () => {
+    const gate = deferred();
+    const { w, c } = setup({ wakeImpl: () => gate.promise });
+    w.paused.add("t"); w.rows.push(row("t"));
+    c.scan();
+    c.stop();
+    gate.release(); await settle();
+    expect(w.pumpKicks).toBe(0);
   });
 });
