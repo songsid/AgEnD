@@ -553,6 +553,11 @@ const MUSE_DIRECT_RESUME_IDLE_POLL_MS = 5_000;
  * verified prompt before asking the native process to exit. Each instance is
  * bounded so a fleet update can stop all daemons in parallel. */
 const KIRO_STOP_IDLE_BUDGET_MS = 15_000;
+/**
+ * Bound after a non-stop quit before a dead pane with no relaunch is a wedge
+ * (#1030). Exceeds the wake budget (30s+) so a slow relaunch never trips it.
+ */
+const QUIT_RELAUNCH_WATCH_MS = 90_000;
 const KIRO_STOP_QUIT_GRACE_MS = 5_000;
 const KIRO_STOP_SIGTERM_GRACE_MS = 2_000;
 /**
@@ -1330,6 +1335,8 @@ export class Daemon extends EventEmitter {
   private lastProgressBroadcastAt = 0;
   // PTY error pattern monitoring
   private errorMonitorTimer: ReturnType<typeof setInterval> | null = null;
+  private quitWatchTimer: ReturnType<typeof setTimeout> | null = null;
+  private quitWatchToken: object | null = null;
   private readonly interactivePromptDetector = new InteractivePromptDetector();
   private readonly blockingProcessDetector = new BlockingProcessDetector();
   /** Same 5-min gate the error monitor uses, so a dead MCP server alerts once. */
@@ -3241,29 +3248,125 @@ export class Daemon extends EventEmitter {
     }
   }
 
-  /** Send the backend-specific graceful quit command/key sequence. */
-  private async sendQuitSequence(reason = "unspecified"): Promise<boolean> {
+  /**
+   * Send the backend-specific graceful quit command/key sequence.
+   *
+   * Observability (#1030): every send is logged with reason + caller, the
+   * outcome is logged, and a non-stop quit arms a bounded relaunch watch —
+   * sol's silent wedge (quit landed, codex exited to its resume screen, no
+   * relaunch, daemon still running) was invisible precisely because none of
+   * this existed.
+   */
+  private async sendQuitSequence(
+    reason = "unspecified",
+    caller = "unknown",
+    opts?: { watchRelaunch?: boolean; watchMs?: number },
+  ): Promise<boolean> {
     if (!this.tmux || !this.backend) return false;
 
+    const backend = this.backend.binaryName;
     const quitCmd = this.backend.getQuitCommand();
     const quitKey = this.backend.getQuitKey?.();
-    if (quitCmd || quitKey) this.noteStopRequest(quitCmd ? `quit command ${quitCmd}` : `quit key ${quitKey}`, reason);
+    const quitVia = quitCmd ? `quit command ${quitCmd}` : quitKey ? `quit key ${quitKey}` : "no quit sequence";
+    this.logger.info({ backend, quit: quitCmd ?? quitKey ?? null, reason, caller }, `Sending backend quit sequence (${reason} via ${caller})`);
+    if (quitCmd || quitKey) this.noteStopRequest(quitVia, reason);
+    let sent = false;
+    let step = "sendKeys";
     if (quitCmd) {
-      if (!await this.tmux.sendKeys(quitCmd)) return false;
-      // Delay before Enter to prevent tmux server races when instances stop in
-      // parallel (same pattern as pasteText).
-      await new Promise(r => setTimeout(r, 150));
-      return this.tmux.sendSpecialKey("Enter");
+      if (await this.tmux.sendKeys(quitCmd)) {
+        // Delay before Enter to prevent tmux server races when instances stop in
+        // parallel (same pattern as pasteText).
+        await new Promise(r => setTimeout(r, 150));
+        step = "enter";
+        sent = await this.tmux.sendSpecialKey("Enter");
+      }
+    } else if (quitKey) {
+      step = "quit key";
+      sent = true;
+      const presses = Math.max(1, Math.floor(this.backend.getQuitKeyPresses?.() ?? 1));
+      for (let i = 0; i < presses; i++) {
+        if (!await this.tmux.sendSpecialKey(quitKey as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left" | "C-c" | "C-q")) {
+          sent = false;
+          break;
+        }
+        if (i + 1 < presses) await new Promise(r => setTimeout(r, 250));
+      }
+    } else {
+      this.logger.warn({ backend, reason, caller }, "Backend has no quit command or key — nothing sent");
+      return false;
     }
-    if (!quitKey) return false;
+    if (sent) {
+      this.logger.info({ backend, quit: quitCmd ?? quitKey, reason, caller }, "Backend quit sequence sent");
+      if (opts?.watchRelaunch) this.armQuitRelaunchWatch(reason, caller, opts.watchMs);
+    } else {
+      this.logger.warn({ backend, quit: quitCmd ?? quitKey, reason, caller, step }, "Backend quit sequence failed to send");
+    }
+    return sent;
+  }
 
-    const presses = Math.max(1, Math.floor(this.backend.getQuitKeyPresses?.() ?? 1));
-    for (let i = 0; i < presses; i++) {
-      const sent = await this.tmux.sendSpecialKey(quitKey as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left" | "C-c" | "C-q");
-      if (!sent) return false;
-      if (i + 1 < presses) await new Promise(r => setTimeout(r, 250));
+  /**
+   * Codex names its own resume command on its exit screen — the wedge
+   * signature. Backend-generic shell, codex-specific match (#1030 ask 4):
+   * other backends' panes simply never match.
+   */
+  private isCodexResumeScreen(pane: string): boolean {
+    return /codex\s+resume\b/i.test(pane);
+  }
+
+  private clearQuitRelaunchWatch(): void {
+    if (this.quitWatchTimer) {
+      clearTimeout(this.quitWatchTimer);
+      this.quitWatchTimer = null;
     }
-    return true;
+    // Invalidates any already-started checkQuitRelaunch whose pane reads are
+    // still pending: it must bail on return, not warn from stale results.
+    this.quitWatchToken = null;
+  }
+
+  /**
+   * After a non-stop quit, warn if the backend exited but nothing relaunched
+   * within the bound while this daemon still considers itself active.
+   * Skipped when paused/pausing/waking/stopped or a relaunch (new spawn
+   * generation) already happened — only the wedged state warns.
+   */
+  private armQuitRelaunchWatch(reason: string, caller: string, delayMs = QUIT_RELAUNCH_WATCH_MS): void {
+    this.clearQuitRelaunchWatch();
+    const generation = this.spawnGeneration;
+    const quitAt = Date.now();
+    const token: object = {};
+    this.quitWatchToken = token;
+    this.quitWatchTimer = setTimeout(() => {
+      this.quitWatchTimer = null;
+      void this.checkQuitRelaunch({ reason, caller, generation, quitAt, token }).catch(() => {});
+    }, delayMs);
+  }
+
+  private async checkQuitRelaunch(opts: { reason: string; caller: string; generation: number; quitAt: number; token?: object }): Promise<void> {
+    if (this.pauseWakeState !== "active") return;
+    if (opts.generation !== this.spawnGeneration) return;
+    if (!this.tmux) return;
+    // TOCTOU guard: the token is captured at arm time, so a beginSpawn/stop
+    // that lands while the pane reads below are pending invalidates this
+    // check. Re-validate after every await before using the results.
+    const token = opts.token ?? this.quitWatchToken;
+    let pane: string | undefined;
+    let alive = true;
+    try {
+      const status = await this.tmux.getPaneStatus();
+      alive = !!status?.alive;
+      pane = await this.tmux.capturePane().catch(() => undefined);
+    } catch {
+      return;
+    }
+    if (this.pauseWakeState !== "active") return;
+    if (opts.generation !== this.spawnGeneration) return;
+    if (token !== this.quitWatchToken) return;
+    const resumeScreen = !!pane && this.isCodexResumeScreen(pane);
+    if (alive && !resumeScreen) return;
+    this.logger.warn(
+      { backend: this.backend?.binaryName, reason: opts.reason, caller: opts.caller, quitAt: opts.quitAt, paneAlive: alive, resumeScreen },
+      "codex-exited-without-relaunch: backend quit but no relaunch followed while this daemon is still active",
+    );
   }
 
   /**
@@ -3288,6 +3391,7 @@ export class Daemon extends EventEmitter {
 
   async stop(): Promise<void> {
     this.logger.info("Stopping daemon instance");
+    this.clearQuitRelaunchWatch();
     this.fenceDeliveryWritesForStop();
     this.turnReplyGuard.reset();
     // Invalidate any bounded pre-Enter wait from the process generation being
@@ -3314,7 +3418,7 @@ export class Daemon extends EventEmitter {
       let killed = false;
       const windowId = this.tmux.getWindowId();
       const kiroReady = windowId ? await this.drainBusyKiroForStop(windowId) : true;
-      const quitSent = kiroReady && await this.sendQuitSequence("graceful stop");
+      const quitSent = kiroReady && await this.sendQuitSequence("graceful stop", "stop");
       const quitGraceMs = this.backend?.binaryName === "kiro-cli"
         ? KIRO_STOP_QUIT_GRACE_MS : 3_000;
       const sigtermGraceMs = this.backend?.binaryName === "kiro-cli"
@@ -3478,7 +3582,7 @@ export class Daemon extends EventEmitter {
     const transition = (async () => {
       try {
         this.saveSessionId();
-        await this.sendQuitSequence(pauseReason);
+        await this.sendQuitSequence(pauseReason, "pause", { watchRelaunch: true });
 
         let exited = false;
         for (let i = 0; i < 15; i++) {
@@ -7350,6 +7454,8 @@ export class Daemon extends EventEmitter {
    * into exactly the window this exists to close.
    */
   private beginSpawn(): void {
+    // A relaunch settles any outstanding quit watch: the CLI came back.
+    this.clearQuitRelaunchWatch();
     // A restarted CLI has no trustworthy turn edge for the process it replaced.
     // v1 deliberately does not persist obligations across restarts: missing one
     // warning is safer than treating the replacement's startup idle as the old
