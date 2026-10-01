@@ -415,3 +415,32 @@ describe("lifecycle: nothing runs once the outbox is gone or the coordinator sto
     expect(w.pumpKicks).toBe(0);
   });
 });
+
+
+describe("stop() fences outstanding wake completions (#1078 review P2-5)", () => {
+  it("a wake that resolves after stop: no pump kick, no state change, slot still returned once", async () => {
+    const g = deferred();
+    const { w, c } = setup({ wakeImpl: () => g.promise });
+    w.paused.add("t"); w.rows.push(row("t"));
+    c.scan();
+    (c as any).states.get("t").failures = 2;
+    c.stop();
+    g.release(); await settle(); await settle();
+    expect(w.pumpKicks).toBe(0);
+    expect((c as any).states.get("t").failures).toBe(2);
+    expect(c.reservedCount).toBe(0);
+  });
+
+  it("a wake that rejects after stop (would be the 3rd failure): no notices, slot returned", async () => {
+    const g = deferred();
+    const { w, c } = setup({ wakeImpl: () => g.promise });
+    w.paused.add("t"); w.rows.push(row("t"));
+    c.scan();
+    (c as any).states.get("t").failures = 2;
+    c.stop();
+    g.fail(new Error("spawn failed")); await settle(); await settle();
+    expect(w.notices).toEqual([]);
+    expect((c as any).states.get("t").failures).toBe(2);
+    expect(c.reservedCount).toBe(0);
+  });
+});

@@ -2182,7 +2182,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     if (this.lifecycle.isPaused(instanceName)) {
       const wakeStartedAt = Date.now();
-      await this.lifecycle.wake(instanceName, 30_000);
+      await this.explicitWake(instanceName, 30_000);
       if (!this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return false;
       // Waking added one to the warm count — make room by evicting a different
       // LRU idle instance (never this one; it's about to work).
@@ -2321,7 +2321,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!waitForIdle) {
       if (this.lifecycle.isPaused(instanceName)) {
         if (options.noInlineWake) { this.wakeCoordinator?.kick(); return false; }
-        await this.lifecycle.wake(instanceName, 30_000);
+        await this.explicitWake(instanceName, 30_000);
         if (!this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return false;
         this.enforceWarmCap(instanceName); // woke one → evict a different LRU idle if over cap
       }
@@ -2401,37 +2401,52 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /**
-   * An operator's wake (/wake, wake_instance, start_instance on a paused
-   * instance, Settings). With delivery_worker off it is the old wake. Otherwise
-   * it takes a warm slot under the hard cap first (design §1.6): when none is
-   * free it pauses one unleased idle instance and waits for that to finish; if
-   * nothing can be evicted, it says so instead of exceeding the cap.
+   * Phase 2b shared warm-slot admission (design §1.3, §1.6) for every wake
+   * that is not the coordinator's own: an operator's wake, a user's message,
+   * an explicit start or a restart of a paused instance. With delivery_worker
+   * off, or for a target that is not paused (an active restart is already
+   * counted), nothing is reserved. A target already being woken is joined —
+   * its flight holds the slot — rather than reserved twice. Otherwise a slot
+   * is taken under the hard cap, an unleased idle instance is paused to make
+   * one, and if none can be, the wake is refused instead of exceeding the cap.
    */
-  async explicitWake(name: string, timeoutMs = 30_000): Promise<void> {
+  private async acquireWakeSlot(name: string): Promise<symbol | null> {
     const coordinator = this.wakeCoordinator;
-    if (!coordinator || this.deliveryWorkerMode(name) === "off" || !this.lifecycle.isPaused(name)) {
-      // Exactly the pre-2b wake: callers keep their own warm-cap handling.
-      await this.lifecycle.wake(name, timeoutMs);
-      return;
-    }
-    coordinator.noteExternalWake(name);
+    if (!coordinator || this.deliveryWorkerMode(name) === "off" || !this.lifecycle.isPaused(name)) return null;
+    if (coordinator.isWaking(name)) return null;
     let token = coordinator.tryReserve(name);
     if (!token) {
       const victim = this.lruUnleasedIdle(name);
       if (victim) {
         await this.lifecycle.pause(victim, "warm_cap");
+        if (coordinator.isWaking(name)) return null;
         token = coordinator.tryReserve(name);
       }
     }
     if (!token) {
       throw new Error(`No warm slot is free for '${name}' (warm_cap + overflow reached and no idle instance can be paused); try again when one goes idle`);
     }
+    return token;
+  }
+
+  private releaseWakeSlot(name: string, token: symbol | null): void {
+    if (!token || !this.wakeCoordinator) return;
+    this.wakeCoordinator.release(name, token);
+    this.wakeCoordinator.kick();
+  }
+
+  /**
+   * An operator's or user's wake (/wake, wake_instance, start_instance on a
+   * paused instance, Settings, a channel message). With delivery_worker off it
+   * is exactly the old lifecycle wake; otherwise it goes through the shared
+   * slot admission and joins any wake already in flight for the target.
+   */
+  async explicitWake(name: string, timeoutMs = 30_000): Promise<void> {
+    const token = await this.acquireWakeSlot(name);
     try {
       await this.lifecycle.wake(name, timeoutMs);
-      this.enforceWarmCap(name);
     } finally {
-      coordinator.release(name, token);
-      coordinator.kick();
+      this.releaseWakeSlot(name, token);
     }
   }
 
@@ -2591,7 +2606,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // into a running instance — harmless, but noisy — or race this start).
     this.cancelStartupRetry(name);
     if (resumePaused && this.lifecycle.isPaused(name)) {
-      await this.lifecycle.wake(name, 30_000);
+      await this.explicitWake(name, 30_000);
       // A successful wake clears the persisted pause marker and produces a
       // fresh instance_state snapshot.  Drop any stale process error left by a
       // pre-pause crash so /api/fleet and `agend ls` converge on running.
@@ -3160,6 +3175,24 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     const config = this.fleetConfig?.instances[name];
     const wasPaused = this.lifecycle.isPaused(name);
+    // A paused instance's restart is a wake: it takes a warm slot like any other
+    // (refused before anything is stopped when none can be had). An active
+    // restart is already counted and reserves nothing.
+    const slot = await this.acquireWakeSlot(name);
+    try {
+      await this.doRestartWithSlot(name, opts, transition, config, wasPaused);
+    } finally {
+      this.releaseWakeSlot(name, slot);
+    }
+  }
+
+  private async doRestartWithSlot(
+    name: string,
+    opts: { freshStart?: boolean } | undefined,
+    transition: TransitionHandle,
+    config: InstanceConfig | undefined,
+    wasPaused: boolean,
+  ): Promise<void> {
     const pausedAt = wasPaused ? (this.lifecycle.getLastPausedAt(name) ?? readPausedAt(this.getInstanceDir(name))) : null;
     const pauseReason = wasPaused ? readPauseReason(this.getInstanceDir(name)) : null;
     if (config) {

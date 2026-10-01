@@ -15,6 +15,8 @@ const fake = vi.hoisted(() => ({
   created: [] as any[],
   hold: null as null | Promise<void>,
   failStarts: 0,
+  /** notAcceptingReason a newly created daemon starts with. */
+  initialHold: null as null | string,
 }));
 
 vi.mock("../src/daemon.js", async importOriginal => {
@@ -29,7 +31,7 @@ vi.mock("../src/daemon.js", async importOriginal => {
     stopped = false;
     wakes = 0;
     pauses: string[] = [];
-    constructor(public name: string) { super(); fake.created.push(this); }
+    constructor(public name: string) { super(); this.holdReason = fake.initialHold; fake.created.push(this); }
     setDeliveryOutboxPort() {}
     setPeerWorkingDirectories() {}
     setStatusEmojiAvoidList() {}
@@ -37,7 +39,10 @@ vi.mock("../src/daemon.js", async importOriginal => {
     seedActivityNow() {}
     requestPauseWhenIdle() {}
     clearSuspectedAuthFailure() {}
-    notAcceptingReason() { return null; }
+    holdReason: string | null = null;
+    notAcceptingReason() { return this.holdReason; }
+    wakeHold: Promise<void> | null = null;
+    wakeFail: Error | null = null;
     fenceDeliveryWritesForStop() {}
     async waitForDeliveryWritesToDrain() { return true; }
     async start() {
@@ -49,7 +54,12 @@ vi.mock("../src/daemon.js", async importOriginal => {
     async abortStartup() { this.aborted = true; }
     async stop() { this.stopped = true; }
     async pause(reason: string) { this.pauses.push(reason); this.isPaused = true; }
-    async wake() { this.wakes++; this.isPaused = false; }
+    async wake() {
+      this.wakes++;
+      if (this.wakeHold) await this.wakeHold;
+      if (this.wakeFail) { const e = this.wakeFail; this.wakeFail = null; throw e; }
+      this.isPaused = false;
+    }
     get lastPausedAt() { return this.isPaused ? 1 : null; }
     getProcessStatus() { return "running"; }
   }
@@ -70,7 +80,7 @@ afterEach(() => {
     try { (fm as any).deliveryOutbox?.close(); } catch { /* closed */ }
   }
   vi.restoreAllMocks();
-  fake.created.length = 0; fake.hold = null; fake.failStarts = 0;
+  fake.created.length = 0; fake.hold = null; fake.failStarts = 0; fake.initialHold = null;
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 
@@ -319,5 +329,150 @@ describe("a closed outbox database (#1078 CI: 9 unhandled 'database connection i
     expect(listPending).not.toHaveBeenCalled();
     expect(warn.mock.calls.some(c => String(c[1]).includes("scan failed"))).toBe(false);
     expect((fm.wakeCoordinator as any).stopped).toBe(true);
+  });
+});
+
+
+const gate = () => { let release!: () => void; const promise = new Promise<void>(r => { release = r; }); return { promise, release }; };
+
+describe("the claim waits for the daemon to accept input (#1078 review P1-1)", () => {
+  it("woken but held by a dialog: not claimed (queued, attempt 0), the pre-claim lease ends, other targets progress", async () => {
+    const { fm, outbox, admit, delivered, config, dir } = fleet("wake_only");
+    await fm.startInstance("other", config("other"), false);
+    writePausedMarker(dir, 1_000, "idle");
+    fake.initialHold = "a dialog is holding its input (trust)"; // the woken CLI comes up behind a dialog
+    const row = admit("worker");
+    await vi.waitFor(() => expect(fm.lifecycle.daemons.has("worker")).toBe(true));
+    const worker = fm.lifecycle.daemons.get("worker") as any;
+    // the pump runs again (any admission does it) — worker must still not be claimed
+    const otherRow = admit("other");
+    await vi.waitFor(() => expect(delivered.map(d => d.target)).toContain("other"));
+    await new Promise(r => setTimeout(r, 50));
+    expect(outbox.get(otherRow.deliveryId).attemptNo).toBe(1);
+    expect(delivered.map(d => d.target)).not.toContain("worker");
+    expect(outbox.get(row.deliveryId)).toMatchObject({ state: "queued", attemptNo: 0 });
+    expect(fm.lifecycle.hasWorkLease("worker", Date.now() + 120_001)).toBe(false);
+    // the hold clears → the next scan kicks the pump → claimed
+    worker.holdReason = null;
+    fm.wakeCoordinator!.scan();
+    await vi.waitFor(() => expect(delivered.map(d => d.target)).toContain("worker"));
+    expect(outbox.get(row.deliveryId).attemptNo).toBe(1);
+  });
+
+  it("blocksClaim reads the daemon's own verdict; off ignores it", async () => {
+    const on = fleet("wake_only");
+    await on.fm.startInstance("worker", on.config("worker"), false);
+    (on.fm.lifecycle.daemons.get("worker") as any).holdReason = "the CLI looks stuck";
+    expect(on.fm.wakeCoordinator!.blocksClaim("worker")).toBe(true);
+    const off = fleet("off");
+    await off.fm.startInstance("worker", off.config("worker"), false);
+    (off.fm.lifecycle.daemons.get("worker") as any).holdReason = "the CLI looks stuck";
+    expect(off.fm.wakeCoordinator!.blocksClaim("worker")).toBe(false);
+  });
+});
+
+describe("every non-coordinator wake shares the warm-slot admission (#1078 review P1-2)", () => {
+  async function fullCap(mode: "off" | "wake_only") {
+    const f = fleet(mode, { warm_cap: 1, warm_overflow: 0 });
+    await f.fm.startInstance("other", f.config("other"), false);
+    (f.fm as any).instanceStateCache.set("other", { state: "working" }); // cannot be evicted
+    writePausedMarker(f.dir, 1_000, "idle");
+    (f.fm.deliverToInstance as any).mockRestore();
+    return f;
+  }
+
+  it("a user's channel message to a paused target is refused at a full cap (wake_only)", async () => {
+    const { fm } = await fullCap("wake_only");
+    await expect(fm.deliverToInstance("worker", { type: "fleet_inbound", content: "hi", meta: { chat_id: "c1" } }, { waitForIdle: false }))
+      .rejects.toThrow(/No warm slot is free/);
+    expect(fm.lifecycle.daemons.has("worker")).toBe(false);
+  });
+
+  it("an explicit start of a paused target is refused at a full cap (wake_only)", async () => {
+    const { fm, config } = await fullCap("wake_only");
+    await expect(fm.startInstance("worker", config("worker"), false, "fleet-topic", true)).rejects.toThrow(/No warm slot is free/);
+    expect(fm.lifecycle.daemons.has("worker")).toBe(false);
+  });
+
+  it("a restart of a paused target is refused before anything is stopped (wake_only)", async () => {
+    const { fm, dir } = await fullCap("wake_only");
+    await expect(fm.restartSingleInstance("worker")).rejects.toThrow(/No warm slot is free/);
+    expect(fm.lifecycle.daemons.has("worker")).toBe(false);
+    expect(hasPausedMarker(dir)).toBe(true);
+  });
+
+  it("a restart of an active instance reserves nothing (already counted)", async () => {
+    const { fm } = await fullCap("wake_only");
+    await fm.restartSingleInstance("other");
+    expect(fm.lifecycle.daemons.has("other")).toBe(true);
+  });
+
+  it("off: all three still wake the target as before (resident becomes 2)", async () => {
+    const { fm, config } = await fullCap("off");
+    await fm.startInstance("worker", config("worker"), false, "fleet-topic", true);
+    expect(fm.lifecycle.daemons.has("worker")).toBe(true);
+  });
+});
+
+describe("an explicit wake joins a resident wake already in flight (#1078 review P2-3)", () => {
+  it("coordinator waking a resident target + an operator wake: joined, one wake, no false 'no slot'", async () => {
+    const { fm, admit, config } = fleet("wake_only");
+    await fm.startInstance("worker", config("worker"), false);
+    const d = fake.created[0];
+    d.isPaused = true;
+    const g = gate();
+    d.wakeHold = g.promise;
+    admit();
+    await vi.waitFor(() => expect(d.wakes).toBe(1));
+    expect(fm.wakeCoordinator!.isWaking("worker")).toBe(true);
+    const explicit = fm.explicitWake("worker");
+    g.release();
+    await explicit;
+    expect(d.wakes).toBe(1);
+  });
+
+  it("two operator wakes of a resident target at once: one wake", async () => {
+    const { fm, config } = fleet("wake_only", { warm_cap: 3 });
+    await fm.startInstance("worker", config("worker"), false);
+    const d = fake.created[0];
+    d.isPaused = true;
+    const g = gate();
+    d.wakeHold = g.promise;
+    const a = fm.explicitWake("worker");
+    const b = fm.explicitWake("worker");
+    g.release();
+    await Promise.all([a, b]);
+    expect(d.wakes).toBe(1);
+    expect(fm.wakeCoordinator!.reservedCount).toBe(0);
+  });
+});
+
+describe("a failed explicit attempt keeps the park (#1078 review P2-4)", () => {
+  it("park + backoff survive a failed explicit wake; a success lifts them", async () => {
+    const { fm, dir } = fleet("wake_only");
+    const s = (fm.wakeCoordinator as any).state("worker");
+    const until = Date.now() + 30 * 60_000;
+    Object.assign(s, { parkedUntil: until, parkLevel: 5, backoffUntil: until });
+    writePausedMarker(dir, 1_000, "idle");
+    fake.failStarts = 1;
+    await expect(fm.explicitWake("worker")).rejects.toThrow("spawn failed");
+    expect(s.parkedUntil).toBe(until);
+    expect(s.backoffUntil).toBe(until);
+    expect(s.parkLevel).toBe(5);
+    await fm.explicitWake("worker");
+    expect(fm.wakeCoordinator!.isParked("worker")).toBe(false);
+    expect(s.parkLevel).toBe(5); // the level is reset only by a delivery
+  });
+
+  it("a capacity refusal does not touch the park either", async () => {
+    const { fm, config, dir } = fleet("wake_only", { warm_cap: 1, warm_overflow: 0 });
+    await fm.startInstance("other", config("other"), false);
+    (fm as any).instanceStateCache.set("other", { state: "working" });
+    const s = (fm.wakeCoordinator as any).state("worker");
+    const until = Date.now() + 30 * 60_000;
+    s.parkedUntil = until;
+    writePausedMarker(dir, 1_000, "idle");
+    await expect(fm.explicitWake("worker")).rejects.toThrow(/No warm slot/);
+    expect(s.parkedUntil).toBe(until);
   });
 });

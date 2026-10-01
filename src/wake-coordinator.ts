@@ -135,10 +135,17 @@ export class WakeCoordinator {
     return this.deps.mode(target) !== "off";
   }
 
-  /** The pump must not claim this target: it is paused, being woken, or in wake backoff (§3.1). */
+  /**
+   * The pump must not claim this target (§3.1, §1.4): it is paused, being
+   * woken, or awake but not accepting input by the daemon's own account
+   * (a dialog, a login failure, stuck). Called from the pump's claim
+   * callback, in the same synchronous step that reads the daemon's bootId, so
+   * the verdict and the claim are about the same daemon generation. A busy
+   * (working) target is accepting: the manager's idle gate still waits it out.
+   */
   blocksClaim(target: string): boolean {
     if (!this.active(target)) return false;
-    return this.reserved.has(target) || this.deps.isPaused(target);
+    return this.reserved.has(target) || this.deps.isPaused(target) || this.deps.notAcceptingReason(target) !== null;
   }
 
   isWaking(target: string): boolean {
@@ -157,9 +164,12 @@ export class WakeCoordinator {
 
   /**
    * A wake that did not come from here (an operator's /wake or wake_instance,
-   * a user's channel message): park and backoff block only *automatic* wakes,
-   * so an explicit one clears them and gets its one controlled attempt (§1.6).
-   * A failure afterwards re-parks without resetting the backoff.
+   * a user's channel message) *succeeded*. Park and backoff block only
+   * automatic wakes, so such a wake always gets its one attempt (§1.6); only
+   * its success lifts them. A failed attempt, or a refusal for capacity,
+   * leaves the park and backoff exactly as they were. If the hold persists
+   * after a successful wake, the park comes back on its next window with the
+   * level kept (it is reset only by a delivery).
    */
   noteExternalWake(target: string): void {
     const s = this.states.get(target);
@@ -309,13 +319,17 @@ export class WakeCoordinator {
     }
     const s = this.state(target);
     this.deps.logger.info({ target, queued: waiting.length }, "Waking a paused target for queued durable work");
+    // Completions are fenced on stop(): once stopped, a late settle only
+    // returns its slot (exactly once) — no state change, notice or kick.
     this.deps.wake(target).then(() => {
-      if (!this.stopped) this.deps.kickPump();
+      if (this.stopped) return;
+      this.deps.kickPump();
       s.failures = 0;
       s.backoffUntil = 0;
       s.lastError = null;
       s.failureNoticeSent = false;
     }, (err: unknown) => {
+      if (this.stopped) return;
       const message = err instanceof Error ? err.message : String(err);
       s.failures += 1;
       s.lastError = message;
@@ -330,9 +344,11 @@ export class WakeCoordinator {
           if (source && source !== target && source !== "agend-system") this.deps.notifySender(source, text);
         }
       }
+    }).catch((err: unknown) => {
+      this.deps.logger.warn({ target, err: err instanceof Error ? err.message : String(err) }, "Wake coordinator completion handler failed");
     }).finally(() => {
       this.release(target, token);
-      this.kick();
+      if (!this.stopped) this.kick();
     });
   }
 }
