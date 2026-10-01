@@ -140,7 +140,7 @@ export interface WebApiContext {
   emitSseEvent(event: string, data: unknown): void;
   startInstance(name: string, config: unknown, topicMode: boolean): Promise<void>;
   stopInstance(name: string): Promise<void>;
-  restartSingleInstance(name: string): Promise<void>;
+  restartSingleInstance(name: string, opts?: { explicit?: boolean }): Promise<void>;
   removeInstance(name: string, authorization: ExplicitInstanceRemoval): Promise<void>;
   lastInboundUser: Map<string, string>;
   saveFleetConfig(): void;
@@ -437,7 +437,7 @@ export function handleWebRequest(
     const name = decodeURIComponent(restartMatch[1]);
     (async () => {
       try {
-        await ctx.restartSingleInstance(name);
+        await ctx.restartSingleInstance(name, { explicit: true });
         ctx.emitSseEvent("status", ctx.getUiStatus());
         json(res, 200, { restarted: name });
       } catch (err) {

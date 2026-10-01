@@ -72,6 +72,8 @@ export interface SettingsApiContext {
     wake(name: string, timeoutMs?: number): Promise<void>;
   };
   isClassicInstance?(name: string): boolean;
+  /** Phase 2b: an operator wake that respects the warm hard cap (FleetManager.explicitWake). */
+  explicitWake?(name: string, timeoutMs?: number): Promise<void>;
   restartClassicInstanceFromSettings?(instanceName: string, changedFields?: string[]): Promise<void>;
   /** Present on a real fleet; absent in unit contexts that only exercise CRUD. */
   applyJobs?: ApplyJobStore;
@@ -594,7 +596,9 @@ export function handleSettingsRequest(
     if (!name || !/^[^\\/\x00]+$/.test(name)) { json(res, 400, { error: "invalid instance name" }); return true; }
     if (!cfg?.instances[name] && !ctx.isClassicInstance?.(name)) { json(res, 404, { error: "instance not found" }); return true; }
     const action = actionMatch[2];
-    const operation = action === "pause" ? ctx.lifecycle.pause(name) : ctx.lifecycle.wake(name, 30_000);
+    const operation = action === "pause"
+      ? ctx.lifecycle.pause(name)
+      : ctx.explicitWake ? ctx.explicitWake(name, 30_000) : ctx.lifecycle.wake(name, 30_000);
     operation.then(() => json(res, 200, { ok: true, name, status: action === "pause" ? "paused" : "running" }))
       .catch(err => json(res, 409, { error: (err as Error).message }));
     return true;

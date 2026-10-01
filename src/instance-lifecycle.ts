@@ -197,6 +197,8 @@ export interface LifecycleContext {
   startPersistedPausedInstance(name: string, transition?: TransitionHandle): Promise<void>;
   /** The restart already in flight for `name`, if any — an explicit wake joins it (Phase 2a). */
   restartInFlight?(name: string): Promise<void> | undefined;
+  /** Phase 2b: a wake that the wake coordinator did not start (operator, user message) succeeded. */
+  onExternalWake?(name: string): void;
 }
 
 /**
@@ -1539,7 +1541,24 @@ export class InstanceLifecycle {
     }
   }
 
-  async wake(name: string, timeoutMs = 30_000, transition?: TransitionHandle): Promise<void> {
+  /** When `name` was last woken or (re)started for work, if recorded. */
+  wokeAtFor(name: string): number | undefined {
+    return this.wokeAt.get(name);
+  }
+
+  async wake(
+    name: string,
+    timeoutMs = 30_000,
+    transition?: TransitionHandle,
+    opts: { source?: "coordinator" | "external" } = {},
+  ): Promise<void> {
+    const woke = await this.wakeInner(name, timeoutMs, transition);
+    // Only a successful operator/user wake lifts the coordinator's park.
+    if (opts.source !== "coordinator") this.ctx.onExternalWake?.(name);
+    return woke;
+  }
+
+  private async wakeInner(name: string, timeoutMs: number, transition?: TransitionHandle): Promise<void> {
     if (this.holds(name, transition)) return this.wakeInTransition(name, timeoutMs, transition);
     // An explicit wake that meets a restart joins it: the restart of a paused
     // instance is itself a wake (Phase 2a), and a second flight would race it.

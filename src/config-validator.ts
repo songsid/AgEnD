@@ -279,6 +279,9 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     }
     validateAutoPause(config.defaults.auto_pause_after, "defaults.auto_pause_after");
     validateDeliveryWorker(config.defaults.delivery_worker, "defaults.delivery_worker");
+    if (config.defaults.warm_overflow !== undefined && (!Number.isInteger(config.defaults.warm_overflow) || (config.defaults.warm_overflow as number) < 0)) {
+      err("defaults.warm_overflow", "must be a non-negative integer");
+    }
     if (config.defaults.warm_cap !== undefined && (!Number.isInteger(config.defaults.warm_cap) || (config.defaults.warm_cap as number) < 0)) {
       err("defaults.warm_cap", "must be a non-negative integer (0 = unlimited)");
     }

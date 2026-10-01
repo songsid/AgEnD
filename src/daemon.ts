@@ -1731,6 +1731,19 @@ export class Daemon extends EventEmitter {
     this.autoPauseController.recordActivity(now);
   }
 
+  /**
+   * Phase 2b (design §1.4): why this awake instance is not taking input, in
+   * words for a notice, or null when nothing known holds it. Read from the
+   * daemon's own state only; it never inspects the pane itself.
+   */
+  notAcceptingReason(): string | null {
+    if (this.pauseWakeState !== "active") return `it is ${this.pauseWakeState}`;
+    if (this.inputBlockedDialogKey !== null) return `a dialog is holding its input (${this.inputBlockedDialogKey})`;
+    if (this.authFailureUnresolved) return "its login is failing";
+    if (this.instanceState === "stuck") return "the CLI looks stuck";
+    return null;
+  }
+
   private workLeaseCheck: (() => boolean) | null = null;
   /** Lifecycle-provided: whether the fleet holds a work lease on this instance. */
   setWorkLeaseCheck(check: (() => boolean) | undefined): void {
