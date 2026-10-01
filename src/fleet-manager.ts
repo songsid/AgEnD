@@ -99,6 +99,7 @@ import type { InstanceState, InstanceStateSnapshot } from "./backend/types.js";
 import { readLastInboundAt } from "./daemon.js";
 import { clearPausedMarker, readPausedAt, readPauseReason, writePausedMarker } from "./pause-marker.js";
 import { DEFAULT_WARM_OVERFLOW, WakeCoordinator } from "./wake-coordinator.js";
+import { TargetQueueWorker } from "./target-queue-worker.js";
 import { resolveDeliveryWorkerMode } from "./types.js";
 import { isFleetStartCommandLine, readProcessCommandLine, releaseProcessFleetLock } from "./fleet-lock.js";
 import { isSetupComplete, markSetupComplete } from "./setup-marker.js";
@@ -591,6 +592,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private deliveryOutboxRecovered = false;
   /** Phase 2b: wakes paused targets for queued durable work (delivery_worker ≠ off). */
   wakeCoordinator: WakeCoordinator | null = null;
+  /**
+   * Phase 2c: targets whose durable lane a TargetQueueWorker owns
+   * (delivery_worker: on). Granted and released only in the pump's
+   * synchronous section and only while the lane is empty; the pump skips them.
+   */
+  readonly queueWorkers = new Map<string, TargetQueueWorker>();
   private deliveryPumpScheduled = false;
   private deliveryPumpRunning = false;
   private deliveryPumpTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1045,12 +1052,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const failure = this.wakeCoordinator?.wakeFailure(target);
         return failure ? `target could not be woken (${failure})` : undefined;
       });
+      this.reconcileQueueWorkers(outbox);
       while (this.activeDurableTargets.size < 8) {
         const claimed = outbox.claimNext(
           this.managerBootId,
           // Phase 2b: a wake_only target is claimed only once it is awake; the
           // wake coordinator, not this pump, wakes it (no claim, no attempt).
-          target => this.isInstanceRestarting(target) || this.wakeCoordinator?.blocksClaim(target)
+          // Phase 2c: a lane a queue worker owns is never claimed here.
+          target => this.queueWorkers.has(target) || this.isInstanceRestarting(target) || this.wakeCoordinator?.blocksClaim(target)
             ? null
             : this.daemons.get(target)?.bootId ?? null,
           this.activeDurableTargets,
@@ -1079,7 +1088,78 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
-  private async dispatchDurableDelivery(claimed: ClaimedOutboxDelivery): Promise<void> {
+  /**
+   * Phase 2c ownership (design §1.5-A), called synchronously from the pump
+   * before its claim loop, so a grant and the pump's own claims cannot
+   * interleave. A worker is granted a target's lane only when the target is
+   * `on` and its lane is empty: no row in flight in the outbox and no pump
+   * dispatch holding it. It gives the lane back only when it is idle and the
+   * target is no longer `on` (or has nothing pending). A flag change never
+   * takes a lane mid-drain.
+   */
+  private reconcileQueueWorkers(outbox: DeliveryOutbox): void {
+    const pendingTargets = new Set(outbox.listPending().map(row => row.targetInstance));
+    for (const [target, worker] of this.queueWorkers) {
+      const keep = this.deliveryWorkerMode(target) === "on" && pendingTargets.has(target);
+      if (!keep && !worker.busy && !worker.inFlight) this.queueWorkers.delete(target);
+    }
+    for (const target of pendingTargets) {
+      if (this.queueWorkers.has(target) || this.deliveryWorkerMode(target) !== "on") continue;
+      const laneEmpty = !this.activeDurableTargets.has(target)
+        && outbox.countForTarget(target, ["delivering", "submission_started"]) === 0;
+      if (laneEmpty) this.queueWorkers.set(target, this.createQueueWorker(target));
+    }
+    for (const worker of this.queueWorkers.values()) void worker.drain();
+  }
+
+  private createQueueWorker(target: string): TargetQueueWorker {
+    const worker: TargetQueueWorker = new TargetQueueWorker(target, {
+      owns: () => this.queueWorkers.get(target) === worker,
+      wanted: () => this.deliveryWorkerMode(target) === "on",
+      available: () => !this.shuttingDown && this.deliveryOutbox?.isOpen === true,
+      blocked: () => this.isInstanceRestarting(target) || this.wakeCoordinator?.blocksClaim(target) === true,
+      daemonBootId: () => this.daemons.get(target)?.bootId ?? null,
+      claim: bootId => this.deliveryOutbox?.claimNext(
+        this.managerBootId,
+        candidate => candidate === target ? bootId : null,
+        new Set(),
+      ),
+      tryAcquireBudget: () => {
+        if (this.activeDurableTargets.size >= 8) return false;
+        this.activeDurableTargets.add(target);
+        return true;
+      },
+      releaseBudget: () => { this.activeDurableTargets.delete(target); },
+      dispatch: async claimed => {
+        try {
+          await this.dispatchDurableDelivery(claimed, { holdLaneOnTransportError: true });
+        } finally {
+          // The row's state event can fire before the hand-off settles; the
+          // pump pass it starts then still sees this worker busy and keeps it
+          // as owner. One kick after the dispatch has really settled lets the
+          // pump release an owner that is no longer wanted (or claim the next
+          // row). The no-claim path never kicks, so no retry hot loop.
+          this.scheduleDeliveryOutboxPump();
+        }
+      },
+      kickCoordinator: () => this.wakeCoordinator?.kick(),
+      logger: this.logger,
+    });
+    return worker;
+  }
+
+  private async dispatchDurableDelivery(
+    claimed: ClaimedOutboxDelivery,
+    opts: {
+      /**
+       * Phase 2c (design §1.5-B): a transport error after the daemon began the
+       * submission does not end the writer, which runs in this process. The
+       * lane stays held until the daemon's verdict or the end of its
+       * generation (reconciliation); the row is not terminalized here.
+       */
+      holdLaneOnTransportError?: boolean;
+    } = {},
+  ): Promise<void> {
     const outbox = this.deliveryOutbox;
     if (!outbox) return;
     const target = claimed.targetInstance;
@@ -1132,7 +1212,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     } catch (err) {
       const latest = outbox.get(claimed.deliveryId);
       const reason = err instanceof Error ? err.message : String(err);
-      if (latest?.state === "submission_started") {
+      if (opts.holdLaneOnTransportError && (latest?.state === "submission_started" || latest?.state === "reconciliation_pending")) {
+        this.logger.warn({ deliveryId: claimed.deliveryId, target, attempt, err: reason },
+          "Transport failed after the submission began; holding the lane for the daemon's verdict or its generation's reconciliation");
+      } else if (latest?.state === "submission_started") {
         outbox.complete(claimed.deliveryId, claimed.targetDaemonBootId, claimed.attemptNo, "uncertain", reason);
       } else {
         outbox.retryBeforeBegin(claimed.deliveryId, claimed.targetDaemonBootId, claimed.attemptNo, reason,
