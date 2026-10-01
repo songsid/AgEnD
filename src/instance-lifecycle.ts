@@ -250,6 +250,9 @@ export interface IncidentEventSource {
   getErrorPatternOccurrenceCount?(type: "model_error", pattern: RegExp): number;
   /** Present on real daemons; hang buttons attach only when it returns one. */
   getHangDetector?(): { on(event: string, handler: (...args: any[]) => void): unknown } | null;
+  /** Real daemons buffer `pty_error` raised by the startup scan until the lifecycle can handle it. */
+  holdStartupIncidents?(): void;
+  releaseStartupIncidents?(): void;
 }
 
 /** Arguments accepted by handleCreate — mirrors CreateInstanceArgs in outbound-schemas.ts
@@ -1440,6 +1443,10 @@ export class InstanceLifecycle {
       await daemon.abortStartup().catch(() => {});
       throw new SupersededStartError(name);
     }
+    // The startup scan can raise an incident (sign-in screen, fatal modal)
+    // before the handlers below exist and before this daemon is registered;
+    // hold it and deliver it once both are true.
+    (daemon as IncidentEventSource).holdStartupIncidents?.();
     await InstanceLifecycle.startOrDispose(daemon, name, this.ctx.logger);
     // Publication fence (Phase 2a): the spawn cannot be cancelled, so a stop or
     // restart requested meanwhile has been waiting behind this transition. A
@@ -1488,6 +1495,9 @@ export class InstanceLifecycle {
 
     this.ctx.setTopicIcon(name, "green");
     this.ctx.touchActivity(name);
+    // Last: handlers attached and daemon registered, so a held startup incident
+    // (pause, notify) finds both.
+    (daemon as IncidentEventSource).releaseStartupIncidents?.();
   }
 
   isPaused(name: string): boolean {

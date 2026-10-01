@@ -14,6 +14,7 @@ import {
   claudeTerminalSetupActive,
   claudeThemePickerActive,
   claudeTrustDialogState,
+  claudeUnrecognisedConfirmActive,
 } from "../src/backend/claude-code.js";
 import { LOGIN_FLOWS } from "../src/login-flows.js";
 
@@ -63,13 +64,13 @@ const startupHit = (pane: string) => startupDialogs.find(d => (d.isActive ? d.is
 const dirs: string[] = [];
 afterEach(() => { vi.useRealTimers(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
-function makeDaemon(initialPane: string, backendOverride?: unknown) {
+function makeDaemon(initialPane: string, backendOverride?: unknown, configBackend = "claude-code") {
   const dir = mkdtempSync(join(tmpdir(), "agend-1074-")); dirs.push(dir);
   writeFileSync(join(dir, "window-id"), "@9");
   const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
   const daemon = new Daemon("claude-1074", {
     working_directory: "/tmp",
-    backend: "claude-code",
+    backend: configBackend,
     restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
     context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
     hang_detector: { enabled: false, timeout_minutes: 10, idle_debounce_ms: 10 },
@@ -210,9 +211,6 @@ describe("(a) trust + Bypass Permissions are answerable at runtime", () => {
         expect(hit!.keys.includes("Down") && hit!.keys.includes("Enter"), `${name}: ${hit!.description}`).toBe(false);
       }
     }
-    // The loose fallback (structural entries bypassed) is stepwise as well.
-    const loose = startupDialogs.find(d => d.pattern.source === /[❯›]\s*No, exit/m.source)!;
-    expect(loose.keys).toEqual(["Down"]);
   });
 
   /** A confirm dialog that swallows the first `refused` Downs, then behaves; Enter only counts on the accepting row. */
@@ -310,6 +308,119 @@ describe("(a) trust + Bypass Permissions are answerable at runtime", () => {
     daemon.startErrorMonitor();
     await vi.advanceTimersByTimeAsync(11_000);
     expect(keys).toEqual([]);
+    daemon.freezeRuntimeMonitors();
+  });
+});
+
+describe("review #1077 P1-1: every startup key path shares the structural + cursor evidence", () => {
+  const noFooterNoCursor = (pane: string, first: string) =>
+    pane.replace("Enter to confirm · Esc to cancel", "Press any key to continue").replace(`❯ ${first}`, `  ${first}`);
+
+  it("a verbatim quote of the dialog followed by the real composer gets NO key from the startup scan", async () => {
+    for (const pane of [quoted(TRUST), quoted(BYPASS)]) {
+      expect(startupHit(pane)).toBeUndefined();
+      const { daemon, keys } = makeDaemon(pane);
+      expect(await daemon.dismissDialogsUntilReady(1_500, 0)).toBe(true);
+      expect(keys).toEqual([]);                      // was ["Down"] via the loose /No, exit/ entry
+    }
+  });
+
+  it("an unrecognised shape (reworded footer, no cursor) is held — no key, and not declared deliverable", async () => {
+    for (const [pane, first] of [[TRUST, "No, exit"], [BYPASS, "No, exit"]] as const) {
+      const odd = noFooterNoCursor(pane, first);
+      expect(claudeTrustDialogState(odd).active).toBe(false);
+      expect(claudeBypassDialogState(odd).active).toBe(false);
+      expect(claudeUnrecognisedConfirmActive(odd)).toBe(true);
+      for (const hit of [startupHit(odd)!, runtimeHit(odd)!]) {
+        expect(hit.holdOnly).toBe(true);
+        expect(hit.keys).toEqual([]);                // was ["Enter"] via the loose /I trust|I accept/ entry
+        expect(hit.blocksDelivery).toBe(true);
+      }
+      const { daemon, keys, logger } = makeDaemon(odd);
+      expect(await daemon.dismissDialogsUntilReady(1_500, 0)).toBe(true);
+      expect(keys).toEqual([]);
+      expect(JSON.stringify(logger.warn.mock.calls)).toMatch(/not auto-answering|dialog still on screen/);
+    }
+  });
+
+  it("the same held shape sends no key from the runtime monitor either", async () => {
+    vi.useFakeTimers();
+    const { daemon, keys } = makeDaemon(noFooterNoCursor(TRUST, "No, exit"));
+    daemon.startErrorMonitor();
+    await vi.advanceTimersByTimeAsync(16_000);
+    expect(keys).toEqual([]);
+    daemon.freezeRuntimeMonitors();
+  });
+
+  it("the hold shape does not fire for a ready pane, a quote, or prose", () => {
+    for (const pane of [READY, THEME, LOGIN_MENU, quoted(TRUST), quoted(noFooterNoCursor(BYPASS, "No, exit")), "I trust this is fine. Yes, I accept the plan.\n❯ "]) {
+      expect(claudeUnrecognisedConfirmActive(pane), pane.slice(0, 40)).toBe(false);
+    }
+  });
+
+  it("no startup entry matches trust/Bypass text without going through a structural check", () => {
+    for (const d of startupDialogs) {
+      if (d.pattern.test("Yes, I trust this folder") || d.pattern.test("❯ No, exit") || d.pattern.test("Yes, I accept")) {
+        expect(d.isActive, d.description).toBeTypeOf("function");
+      }
+    }
+  });
+});
+
+describe("review #1077 P1-3: a sign-in screen after the startup scan is an auth incident", () => {
+  it("runtime table holds delivery on the live login screens and ignores quotes", () => {
+    for (const pane of [LOGIN_MENU, OAUTH_URL]) {
+      const hit = runtimeHit(pane)!;
+      expect(hit.holdOnly).toBe(true);
+      expect(hit.blocksDelivery).toBe(true);
+      expect(hit.keys).toEqual([]);
+    }
+    expect(runtimeHit(quoted(LOGIN_MENU))).toBeUndefined();
+    expect(runtimeHit(quoted(OAUTH_URL))).toBeUndefined();
+  });
+
+  it("theme → Enter → login menu AFTER the startup scan ended: one Enter, one auth_error/pause, authFailureUnresolved set, no repeat", async () => {
+    vi.useFakeTimers();
+    const { daemon, state, keys, errors } = makeDaemon(THEME);
+    state.onKey = k => { if (k === "Enter") state.pane = LOGIN_MENU; };
+    daemon.startErrorMonitor();
+    await vi.advanceTimersByTimeAsync(16_000);
+    expect(keys).toEqual(["Enter"]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ type: "auth_error", action: "pause" });
+    expect(daemon.authFailureUnresolved).toBe(true);
+    await vi.advanceTimersByTimeAsync(31_000);
+    expect(errors).toHaveLength(1);                  // once per spawn
+    expect(keys).toEqual(["Enter"]);                 // the login menu is never answered
+    daemon.freezeRuntimeMonitors();
+  });
+
+  it("the OAuth paste-code screen reaching the runtime monitor is the same incident", async () => {
+    vi.useFakeTimers();
+    const { daemon, errors } = makeDaemon(OAUTH_URL);
+    daemon.startErrorMonitor();
+    await vi.advanceTimersByTimeAsync(6_000);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ type: "auth_error", action: "pause" });
+    daemon.freezeRuntimeMonitors();
+  });
+
+  it("a long-lived transcript that quotes the login menu is not an incident", async () => {
+    vi.useFakeTimers();
+    const { daemon, errors } = makeDaemon(quoted(LOGIN_MENU));
+    daemon.startErrorMonitor();
+    await vi.advanceTimersByTimeAsync(16_000);
+    expect(errors).toHaveLength(0);
+    expect(daemon.authFailureUnresolved).toBe(false);
+    daemon.freezeRuntimeMonitors();
+  });
+
+  it("other backends keep their order: runtime never evaluates a loose startup-only login pattern", async () => {
+    vi.useFakeTimers();
+    const { daemon, errors } = makeDaemon("Welcome to Codex\n  Sign in with ChatGPT to continue.\n› ", undefined, "codex");
+    daemon.startErrorMonitor();
+    await vi.advanceTimersByTimeAsync(11_000);
+    expect(errors).toHaveLength(0);
     daemon.freezeRuntimeMonitors();
   });
 });

@@ -271,6 +271,28 @@ const bypassOnDecline = (pane: string): boolean => { const s = claudeBypassDialo
 const bypassOnAccept = (pane: string): boolean => { const s = claudeBypassDialogState(pane); return s.active && s.cursor === "accept"; };
 const bypassUnknown = (pane: string): boolean => { const s = claudeBypassDialogState(pane); return s.active && s.cursor === "unknown"; };
 
+/**
+ * A trust / Bypass Permissions screen the strict predicates above do NOT
+ * recognise (reworded footer, moved or missing cursor, renumbered options).
+ * Not answerable — no key is safe without a verified cursor — but it must not
+ * pass for "ready" either: the dialog's `❯` satisfies the ready pattern, so an
+ * unrecognised shape would be declared ready and the first delivery pasted into
+ * it. Identity is the dialog's own text near the bottom of the pane with no
+ * composer below it (the input box's rule line, or a `❯` row that is not one of
+ * the dialog's options): a transcript quote is always followed by the real
+ * composer, a live dialog replaces it.
+ */
+const CONFIRM_DIALOG_IDENTITY = /Yes, I trust this folder|Yes, I accept|Accessing workspace:|WARNING: Claude Code running in Bypass Permissions mode/;
+export function claudeUnrecognisedConfirmActive(pane: string): boolean {
+  const tail = claudeRows(pane).slice(-16);
+  const at = tail.findIndex(r => CONFIRM_DIALOG_IDENTITY.test(r));
+  if (at < 0) return false;
+  return !tail.slice(at + 1).some(r =>
+    /^[ \t]*[─━╌]{20,}[ \t]*$/.test(r)
+    || (/^[ \t]*❯/.test(r) && !/^[ \t]*❯[ \t]*(?:\d+\.|No\b|Yes\b)/.test(r)));
+}
+const CLAUDE_CONFIRM_IDENTITY_PATTERN = CONFIRM_DIALOG_IDENTITY;
+
 /** Identity/pre-filter patterns for the active predicates above; never authoritative alone. */
 export const CLAUDE_TRUST_DIALOG_PATTERN = /Yes, I trust this folder/;
 export const CLAUDE_BYPASS_DIALOG_PATTERN = /WARNING: Claude Code running in Bypass Permissions mode/;
@@ -746,17 +768,11 @@ export class ClaudeCodeBackend implements CliBackend {
       // not on "No, exit" is never blindly navigated.
       ...claudeConfirmDialogEntries(CLAUDE_BYPASS_DIALOG_PATTERN, "Claude Bypass Permissions warning", CLAUDE_BYPASS_ENTRIES, bypassUnknown),
       ...claudeConfirmDialogEntries(CLAUDE_TRUST_DIALOG_PATTERN, "Claude workspace trust dialog", CLAUDE_TRUST_ENTRIES, trustUnknown),
-      { pattern: /[❯›]\s*\d+\.\s*No/m, keys: ["Down", "Enter"], description: "Claude 'No, exit' confirmation — navigate to Yes" },
-      // Fallback for a workspace-trust screen the structural entries above no longer
-      // recognise (footer or title reworded). It must be matched BEFORE the generic
-      // /I trust/ Enter fallback below: that pattern also matches the screen's
-      // "Yes, I trust this folder" text, and a bare Enter with the cursor on
-      // "❯ No, exit" quits the CLI. Down ONLY: the next poll sees the cursor on
-      // "Yes, I trust this folder" and the generic entry confirms it — a blind
-      // Down+Enter is what quit the CLI when Down was swallowed (see
-      // claudeConfirmDialogEntries). preTrust() normally prevents the dialog.
-      { pattern: /[❯›]\s*No, exit/m, keys: ["Down"], description: "Claude workspace trust dialog — move to 'Yes, I trust this folder'" },
-      { pattern: /I accept|I trust/i, keys: ["Enter"], description: "Claude 'Yes, I accept' trust dialog" },
+      // No loose trust/accept fallbacks: a bare /No, exit/ or /I trust/ cannot tell
+      // a live dialog from a quote, and sends a key without seeing the cursor — a
+      // blind Enter on "No, exit" quits the CLI. Whatever the strict entries above
+      // do not recognise is held for a human instead.
+      { pattern: CLAUDE_CONFIRM_IDENTITY_PATTERN, isActive: claudeUnrecognisedConfirmActive, keys: [], holdOnly: true, blocksDelivery: true, description: "Claude trust/Bypass Permissions screen (unrecognised shape) — holding for a human, never auto-selecting" },
       { pattern: /Resume Session/i, keys: ["Escape"], description: "Claude resume session picker — start fresh" },
     ];
   }
@@ -826,6 +842,11 @@ export class ClaudeCodeBackend implements CliBackend {
       // claudeConfirmDialogEntries).
       ...claudeConfirmDialogEntries(CLAUDE_TRUST_DIALOG_PATTERN, "Claude workspace trust dialog", CLAUDE_TRUST_ENTRIES, trustUnknown),
       ...claudeConfirmDialogEntries(CLAUDE_BYPASS_DIALOG_PATTERN, "Claude Bypass Permissions warning", CLAUDE_BYPASS_ENTRIES, bypassUnknown),
+      { pattern: CLAUDE_CONFIRM_IDENTITY_PATTERN, isActive: claudeUnrecognisedConfirmActive, keys: [], holdOnly: true, blocksDelivery: true, inputBlocked: true, description: "Claude trust/Bypass Permissions screen (unrecognised shape) — holding for a human, never auto-selecting" },
+      // The sign-in screen can arrive after the startup scan ended too (theme →
+      // login on a first run). No key answers it: hold delivery; the daemon's
+      // runtime monitor reports the auth incident (LOGIN_FLOWS loginScreenActive).
+      { pattern: /Select login method:|Paste code here if prompted >/, isActive: claudeLoginScreenActive, keys: [], holdOnly: true, blocksDelivery: true, description: "Claude sign-in screen — waiting for a human login, never auto-selecting" },
       // A first run can also reach these after the startup scan ended (slow
       // preflight, cold start). Both are harmless to answer.
       { pattern: /Choose the text style that looks best with your terminal/, isActive: claudeThemePickerActive, keys: ["Enter"], description: "Claude onboarding theme picker — accept the highlighted theme", blocksDelivery: true, verifyAfterKeys: true, autoResolutionKey: "claude-onboarding-theme" },

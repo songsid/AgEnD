@@ -1265,6 +1265,15 @@ export class Daemon extends EventEmitter {
   private authFailureUnresolved = false;
   /** One login-screen auth report per spawn — the screen persists across polls. */
   private loginScreenReported = false;
+  /**
+   * While the lifecycle is still starting this daemon, `pty_error` has no
+   * listener and `InstanceLifecycle.daemons` has no entry — so an incident the
+   * startup scan raises (sign-in screen, fatal modal) would be dropped on the
+   * floor while its dedupe flag stays set forever. Held here, then re-emitted by
+   * releaseStartupIncidents() once the handlers and the registry are in place.
+   */
+  private holdingStartupIncidents = false;
+  private heldStartupIncidents: unknown[][] = [];
   /** A fatal startup screen (see StartupDialog.fatal) was already reported this run. */
   private fatalStartupReported = false;
   /**
@@ -1482,6 +1491,26 @@ export class Daemon extends EventEmitter {
     const key = `${type}:${pattern.source}`;
     this.lastErrorCount.set(key, count);
     this.seededErrorCountBaselines.set(key, count);
+  }
+
+  /** Start buffering `pty_error` until releaseStartupIncidents(); see holdingStartupIncidents. */
+  holdStartupIncidents(): void {
+    this.holdingStartupIncidents = true;
+  }
+
+  /** Stop buffering and deliver, in order, every `pty_error` raised while the lifecycle was starting us. */
+  releaseStartupIncidents(): void {
+    this.holdingStartupIncidents = false;
+    const held = this.heldStartupIncidents.splice(0);
+    for (const args of held) super.emit("pty_error", ...args);
+  }
+
+  override emit(event: string | symbol, ...args: unknown[]): boolean {
+    if (event === "pty_error" && this.holdingStartupIncidents) {
+      this.heldStartupIncidents.push(args);
+      return true;
+    }
+    return super.emit(event, ...args);
   }
 
   /**
@@ -2746,6 +2775,13 @@ export class Daemon extends EventEmitter {
 
         const pane = await this.tmux.capturePane();
         const inputBlockedDialog = this.updateInputBlockedState(pane, dialogs);
+
+        // A sign-in screen that appears AFTER the startup scan ended (first run:
+        // theme → login can take longer than its budget) is the same auth
+        // incident the scan reports. Structural predicate only — the loose
+        // patterns are for a fresh startup pane, not a long-lived transcript.
+        const loginFlow = LOGIN_FLOWS[this.config.backend ?? "claude-code"];
+        if (loginFlow?.loginScreenActive && this.reportLoginScreen(pane)) return;
 
         const interactivePrompt = this.interactivePromptDetector.observe(
           pane,
