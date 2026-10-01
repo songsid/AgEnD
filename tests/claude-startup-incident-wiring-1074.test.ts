@@ -94,7 +94,8 @@ describe("startup incidents reach the lifecycle (production wiring)", () => {
     expect((lc as any).pause.mock.calls[0][0]).toBe("worker");
     expect(pausedWhile).toEqual([{ registered: true }]);               // pause could find the daemon
     expect(state.keys).toEqual([]);                                    // the login menu is never answered
-    expect(logged.errors).toEqual([]);                                 // no "Unhandled error in async handler"
+    // (not "no errors at all": a CI host without a claude binary logs "binary not found in PATH")
+    expect(logged.errors.filter(a => /Unhandled error in async handler/.test(String(a[1])))).toEqual([]);
   });
 
   it("a normal ready pane raises no incident", async () => {
