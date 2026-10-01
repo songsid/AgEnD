@@ -45,7 +45,8 @@ const BEFORE: Record<string, string[]> = {
     // #895: self-scheduling, scoped by target in scheduleOpRefusal.
     "create_schedule", "list_schedules", "update_schedule", "delete_schedule",
   ],
-  minimal: ["reply", "send_to_instance", "delivery_status", "list_decisions", "download_attachment"],
+  // v2.1.9: persona emoji see-only (no set_persona_emoji).
+  minimal: ["reply", "send_to_instance", "delivery_status", "list_decisions", "download_attachment", "list_emojis", "preview_emojis"],
   general: [
     "reply", "react", "edit_message", "download_attachment",
     "list_teams", "list_instances", "describe_instance", "get_fleet_status", "get_usage", "get_effort", "list_models",
@@ -54,6 +55,8 @@ const BEFORE: Record<string, string[]> = {
     "task", "list_decisions", "post_decision",
     // #895 added update_schedule: general could already create and delete.
     "create_schedule", "list_schedules", "update_schedule", "delete_schedule",
+    // v2.1.9: persona emoji — see the server's emojis and set its own stamp.
+    "list_emojis", "preview_emojis", "set_persona_emoji",
   ],
 };
 

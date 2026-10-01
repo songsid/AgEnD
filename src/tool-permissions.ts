@@ -87,6 +87,9 @@ export const TOOL_PROFILES: Readonly<Record<ToolSetName, readonly string[]>> = {
     "create_instance", "start_instance", "restart_instance", "wake_instance",
     "task", "list_decisions", "post_decision",
     "create_schedule", "list_schedules", "update_schedule", "delete_schedule",
+    // Persona emoji (v2.1.9): every instance can see the server's emojis, and
+    // a dispatcher can choose its own status stamp like any worker.
+    "list_emojis", "preview_emojis", "set_persona_emoji",
   ],
   standard: [
     "reply", "react", "edit_message",
@@ -97,8 +100,10 @@ export const TOOL_PROFILES: Readonly<Record<ToolSetName, readonly string[]>> = {
     "create_schedule", "list_schedules", "update_schedule", "delete_schedule",
   ],
   // No schedules: keep `minimal` narrow while preserving the status lookup a
-  // minimal sender needs to resolve an accepted operation safely.
-  minimal: ["reply", "send_to_instance", "delivery_status", "list_decisions", "download_attachment"],
+  // minimal sender needs to resolve an accepted operation safely. Persona emoji
+  // is see-only here (v2.1.9): listing and previewing the server's emojis
+  // change nothing; setting a stamp stays with the larger profiles.
+  minimal: ["reply", "send_to_instance", "delivery_status", "list_decisions", "download_attachment", "list_emojis", "preview_emojis"],
 };
 
 const PROFILE_SETS = Object.fromEntries(
