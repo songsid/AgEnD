@@ -116,11 +116,73 @@ describe("the pause reason reaches the marker", async () => {
     }
   });
 
-  it("an auth-deferred pause from a stuck pane records auth", async () => {
+  it("the marker records exactly the reason it was given (no stuck-pane override)", async () => {
     const { daemon, dir } = pausable();
     daemon.instanceState = "stuck";
     daemon.pauseAllowStuck = true;
-    await daemon.pause("idle");
-    expect(readPauseReason(dir)).toBe("auth");
+    await daemon.pause("error");
+    expect(readPauseReason(dir)).toBe("error");
+  });
+
+});
+
+
+describe("a deferred pause emits the reason it was requested with (#1075 review P2-3)", () => {
+  const stuck = (d: any) => d.applyInstanceStateSnapshot(
+    { state: "stuck", observedAt: Date.now(), stateChangedAt: Date.now(), unchangedForMs: 0 }, "❯");
+  it("default (auth error) → auth", () => {
+    const { daemon, pauses } = staleDaemon();
+    daemon.requestPauseWhenIdle();
+    stuck(daemon);
+    expect(pauses.at(-1)?.reason).toBe("auth");
+  });
+  it("a capacity/error deferral → error", () => {
+    const { daemon, pauses } = staleDaemon();
+    daemon.requestPauseWhenIdle({ reason: "error" });
+    stuck(daemon);
+    expect(pauses.at(-1)?.reason).toBe("error");
+  });
+  it("auth wins when both are pending", () => {
+    const { daemon, pauses } = staleDaemon();
+    daemon.requestPauseWhenIdle();
+    daemon.requestPauseWhenIdle({ reason: "error" });
+    stuck(daemon);
+    expect(pauses.at(-1)?.reason).toBe("auth");
+  });
+});
+
+describe("every post-write durable outcome is activity (#1075 review P2-4)", () => {
+  it("an uncertain completion from an error branch (pane write started, then failed) counts", () => {
+    const { daemon, dir, pauses, idle } = staleDaemon();
+    const before = Date.now();
+    daemon.finishDurableDelivery({ deliveryId: "d1", attemptNo: 1 }, "uncertain", "paste threw after write");
+    expect(readLastInboundAt(dir)).toBeGreaterThanOrEqual(before);
+    idle();
+    expect(pauses).toEqual([]);
+  });
+
+  it("a failed outcome is not activity", () => {
+    const { daemon, dir, pauses, idle } = staleDaemon();
+    daemon.finishDurableDelivery({ deliveryId: "d1", attemptNo: 1 }, "failed", "rejected");
+    expect(readLastInboundAt(dir)).toBeLessThan(Date.now() - 60_000);
+    idle();
+    expect(pauses).toHaveLength(1);
+  });
+
+  it("the real raw-paste path: write started then deliverMessage false → uncertain and activity", async () => {
+    const { daemon, dir } = staleDaemon();
+    const completes: string[] = [];
+    daemon.setDeliveryOutboxPort({
+      begin: () => "begun", markEnterStarted: () => true, abort: () => true,
+      complete: (_id: string, _boot: string, _n: number, outcome: string) => { completes.push(outcome); return true; },
+      retryBeforeBegin: () => true,
+    });
+    daemon.tmux = { getWindowId: () => "@1" };
+    daemon.deliverMessage = async (_t: string, _status: unknown, opts: any) => { opts.verdict.paneWriteStarted = true; return false; };
+    const before = Date.now();
+    daemon.queueRawPaste("schedule text", daemon.deliveryEpoch, false,
+      { deliveryId: "d1", attemptNo: 1, submissionMode: "raw_paste" });
+    await vi.waitFor(() => expect(completes).toContain("uncertain"));
+    expect(readLastInboundAt(dir)).toBeGreaterThanOrEqual(before);
   });
 });

@@ -9,8 +9,9 @@ const LEGACY_PAUSED_MARKER_FILE = "paused-state.json";
  * rollback keeps working. Absent means "unknown" (written before this file).
  */
 export const PAUSE_REASON_FILE = "paused-reason";
-export type PauseReason = "idle" | "warm_cap" | "operator" | "auth";
-const PAUSE_REASONS: readonly PauseReason[] = ["idle", "warm_cap", "operator", "auth"];
+/** `error`: a non-auth error pause (e.g. model capacity exhausted); `auth`: a login failure. */
+export type PauseReason = "idle" | "warm_cap" | "operator" | "auth" | "error";
+const PAUSE_REASONS: readonly PauseReason[] = ["idle", "warm_cap", "operator", "auth", "error"];
 
 export function hasPausedMarker(instanceDir: string): boolean {
   return existsSync(join(instanceDir, PAUSED_MARKER_FILE))

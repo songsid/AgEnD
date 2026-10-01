@@ -22,7 +22,6 @@ import type { TmuxControlClient } from "./tmux-control.js";
 import type { FleetInstructionsParams } from "./instructions.js";
 import type { DeliveryStatus } from "./status-emojis.js";
 import { clearPausedMarker, hasPausedMarker, readPausedAt, readPauseReason, writePausedMarker, type PauseReason } from "./pause-marker.js";
-import { AsyncLocalStorage } from "node:async_hooks";
 import { reportProviderRateLimit } from "./usage/provider-alerts.js";
 import { isFleetStartCommandLine } from "./fleet-lock.js";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
@@ -195,9 +194,20 @@ export interface LifecycleContext {
   finishDeliveryStatus?(instanceName: string, chatId: string, messageId: string, status: DeliveryStatus, threadId?: string): void;
   /** #1005: the instance's own status emojis, for the instructions' "avoid these" line. */
   statusEmojiAvoidList?(instanceName: string): string[];
-  startPersistedPausedInstance(name: string): Promise<void>;
+  startPersistedPausedInstance(name: string, transition?: TransitionHandle): Promise<void>;
   /** The restart already in flight for `name`, if any — an explicit wake joins it (Phase 2a). */
   restartInFlight?(name: string): Promise<void> | undefined;
+}
+
+/**
+ * Proof that the caller is running inside `name`'s current transition. Only
+ * direct internal calls hand it on (restart → stop → start, wake → marker-only
+ * start); a detached callback — an event handler, timer or setImmediate fired
+ * while a transition is still awaiting — has none and queues behind it.
+ */
+export interface TransitionHandle {
+  readonly name: string;
+  readonly token: symbol;
 }
 
 /** Thrown by a start whose generation was invalidated (stop/restart) before it could publish. */
@@ -233,7 +243,7 @@ export function peerWorkingDirectories(fleetConfig: FleetConfig | null, name: st
 /** What attachIncidentHandlers needs from a Daemon — the real one satisfies it. */
 export interface IncidentEventSource {
   on(event: string, handler: (...args: any[]) => void): unknown;
-  requestPauseWhenIdle(opts?: { reconfirmAuth?: boolean }): void;
+  requestPauseWhenIdle(opts?: { reconfirmAuth?: boolean; reason?: PauseReason }): void;
   /** Re-checks that a Codex pane is live after an async quota probe. */
   isCodexLivePane?(): Promise<boolean>;
   /** Existing occurrence count used to preserve Codex capacity history on restart. */
@@ -385,12 +395,11 @@ export class InstanceLifecycle {
   readonly daemons = new Map<string, Daemon>();
   /**
    * Phase 2a: one transition (start / stop / wake / restart) at a time per
-   * instance. A call made from inside the transition that currently holds an
-   * instance (restart → stop → start) runs inline; anything else queues.
+   * instance. A call that passes the current transition's handle runs inline;
+   * anything else queues.
    */
   private transitionTails = new Map<string, Promise<void>>();
   private activeTransition = new Map<string, symbol>();
-  private transitionScope = new AsyncLocalStorage<ReadonlyMap<string, symbol>>();
   /** Bumped synchronously by stop/restart: a start begun under an older epoch must not publish. */
   private lifecycleEpochs = new Map<string, number>();
   /** Single wake flight per instance: concurrent wakes share it. */
@@ -1161,9 +1170,9 @@ export class InstanceLifecycle {
           this.ctx.logger.warn({ name, attempts }, "Model still at capacity after max retries — pausing");
           const notificationTarget = this.ptyErrorNotificationTarget(name);
           if (notificationTarget) this.notifyIncident(notificationTarget, "pty_error", t("inst.codex_capacity_backoff_exhausted", name, String(attempts)));
-          void this.pause(name)
+          void this.pause(name, "error")
             .catch(err => this.ctx.logger.warn({ err, name }, "capacity-exhausted pause failed"))
-            .finally(() => { if (!this.isPaused(name)) this.daemons.get(name)?.requestPauseWhenIdle(); });
+            .finally(() => { if (!this.isPaused(name)) this.daemons.get(name)?.requestPauseWhenIdle({ reason: "error" }); });
         } else {
           const delays = InstanceLifecycle.CAPACITY_BACKOFF_DELAYS_MS;
           const delayMs = delays[Math.min(attempts, delays.length - 1)];
@@ -1210,9 +1219,12 @@ export class InstanceLifecycle {
           // daemon evaluates at once, so an idle pane is decided now.
           daemon.requestPauseWhenIdle({ reconfirmAuth: true });
         } else {
-          void this.pause(name)
+          // The marker must say auth (2b never auto-wakes a login failure); any
+          // other pause-action error is an error pause, not an operator one.
+          const reason: PauseReason = data.type === "auth_error" ? "auth" : "error";
+          void this.pause(name, reason)
             .catch(err => this.ctx.logger.warn({ err, name }, "auth-error pause failed"))
-            .finally(() => { if (!this.isPaused(name)) daemon.requestPauseWhenIdle(); });
+            .finally(() => { if (!this.isPaused(name)) daemon.requestPauseWhenIdle({ reason }); });
         }
       }
     }, this.ctx.logger, `daemon.pty_error[${name}]`));
@@ -1227,24 +1239,21 @@ export class InstanceLifecycle {
     this.lifecycleEpochs.set(name, this.epochOf(name) + 1);
   }
 
-  /** Whether the caller is running inside the transition that currently holds `name`. */
-  holdsTransition(name: string): boolean {
-    const token = this.transitionScope.getStore()?.get(name);
-    return token !== undefined && this.activeTransition.get(name) === token;
+  /** Whether `transition` is `name`'s transition and is the one running now. */
+  holds(name: string, transition: TransitionHandle | undefined): transition is TransitionHandle {
+    return transition !== undefined && transition.name === name && this.activeTransition.get(name) === transition.token;
   }
 
-  /** Run `fn` as `name`'s next transition (inline when the caller already holds it). */
-  async runTransition<T>(name: string, fn: () => Promise<T>): Promise<T> {
-    if (this.holdsTransition(name)) return fn();
+  /** Run `fn` as `name`'s next transition, or inline when `parent` is the transition running now. */
+  async runTransition<T>(name: string, fn: (transition: TransitionHandle) => Promise<T>, parent?: TransitionHandle): Promise<T> {
+    if (this.holds(name, parent)) return fn(parent);
     const previous = this.transitionTails.get(name) ?? Promise.resolve();
-    const token = Symbol(name);
-    const scope = new Map(this.transitionScope.getStore() ?? []);
-    scope.set(name, token);
+    const handle: TransitionHandle = { name, token: Symbol(name) };
     const run = previous.then(() => {
-      this.activeTransition.set(name, token);
-      return this.transitionScope.run(scope, fn);
+      this.activeTransition.set(name, handle.token);
+      return fn(handle);
     }).finally(() => {
-      if (this.activeTransition.get(name) === token) this.activeTransition.delete(name);
+      if (this.activeTransition.get(name) === handle.token) this.activeTransition.delete(name);
     });
     const tail = run.then(() => {}, () => {});
     this.transitionTails.set(name, tail);
@@ -1291,8 +1300,9 @@ export class InstanceLifecycle {
     config: InstanceConfig,
     topicMode: boolean,
     runtimeIdentity?: FleetInstructionsParams["runtimeIdentity"],
+    transition?: TransitionHandle,
   ): Promise<void> {
-    return this.runTransition(name, () => this.startInTransition(name, config, topicMode, runtimeIdentity));
+    return this.runTransition(name, () => this.startInTransition(name, config, topicMode, runtimeIdentity), transition);
   }
 
   private async startInTransition(
@@ -1519,25 +1529,29 @@ export class InstanceLifecycle {
     }
   }
 
-  async wake(name: string, timeoutMs = 30_000): Promise<void> {
+  async wake(name: string, timeoutMs = 30_000, transition?: TransitionHandle): Promise<void> {
+    if (this.holds(name, transition)) return this.wakeInTransition(name, timeoutMs, transition);
     // An explicit wake that meets a restart joins it: the restart of a paused
     // instance is itself a wake (Phase 2a), and a second flight would race it.
-    if (!this.holdsTransition(name)) {
-      const restarting = this.ctx.restartInFlight?.(name);
-      if (restarting) { await restarting; return; }
-    }
+    const restarting = this.ctx.restartInFlight?.(name);
+    if (restarting) { await restarting; return; }
     const inFlight = this.wakeFlights.get(name);
     if (inFlight) return inFlight;
-    const flight = this.runTransition(name, () => this.wakeInTransition(name, timeoutMs))
+    const flight = this.runTransition(name, handle => this.wakeInTransition(name, timeoutMs, handle))
       .finally(() => { if (this.wakeFlights.get(name) === flight) this.wakeFlights.delete(name); });
     this.wakeFlights.set(name, flight);
     return flight;
   }
 
-  private async wakeInTransition(name: string, timeoutMs: number): Promise<void> {
+  private async wakeInTransition(name: string, timeoutMs: number, transition: TransitionHandle): Promise<void> {
+    const epoch = this.epochOf(name);
     const daemon = this.daemons.get(name);
     if (daemon) {
       await daemon.wake(timeoutMs);
+      // A stop/restart requested while the resident CLI was respawning is
+      // queued behind this wake and will tear it down next: do not open a
+      // pre-claim window or restart its watchers on the way out.
+      if (this.epochOf(name) !== epoch) return;
     } else {
       const instanceDir = this.ctx.getInstanceDir(name);
       if (!hasPausedMarker(instanceDir)) throw new Error(`Cannot wake stopped instance '${name}'`);
@@ -1546,7 +1560,7 @@ export class InstanceLifecycle {
       clearPausedMarker(instanceDir);
       this.markActivitySeedNow(name);
       try {
-        await this.ctx.startPersistedPausedInstance(name);
+        await this.ctx.startPersistedPausedInstance(name, transition);
       } catch (err) {
         this.clearActivitySeedNow(name);
         writePausedMarker(instanceDir, pausedAt, reason);
@@ -1584,11 +1598,11 @@ export class InstanceLifecycle {
     return true;
   }
 
-  async stop(name: string): Promise<void> {
+  async stop(name: string, transition?: TransitionHandle): Promise<void> {
     // Synchronously, before queueing: a start still spawning must see this and
     // not publish when it finishes (Phase 2a publication fence).
-    if (!this.holdsTransition(name)) this.invalidate(name);
-    return this.runTransition(name, () => this.stopInTransition(name));
+    if (!this.holds(name, transition)) this.invalidate(name);
+    return this.runTransition(name, () => this.stopInTransition(name), transition);
   }
 
   private async stopInTransition(name: string): Promise<void> {

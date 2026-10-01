@@ -52,7 +52,16 @@ vi.mock("../src/daemon.js", async importOriginal => {
     async stop() { this.stopped = true; }
     async pause(reason: string) { this.pauseReasons.push(reason); this.isPaused = true; }
     wakes = 0;
-    async wake() { this.wakes++; this.isPaused = false; }
+    /** When set, the next wake() runs this (inside the wake) and then waits on `wakeHold`. */
+    onWake: null | (() => void) = null;
+    wakeHold: null | Promise<void> = null;
+    async wake() {
+      this.wakes++;
+      this.onWake?.();
+      if (this.wakeHold) await this.wakeHold;
+      this.isPaused = false;
+    }
+    clearSuspectedAuthFailure() {}
     get lastPausedAt() { return this.isPaused ? 1_234 : null; }
     getProcessStatus() { return "running"; }
   }
@@ -391,5 +400,102 @@ describe("a superseded unattended start is not retried behind the operator", () 
     fake.failNextStart = new Error("spawn failed");
     expect(await (fm as any).startInstanceUnattended("worker", config, false, "instance")).toBe(false);
     expect(retry).toHaveBeenCalledWith("worker", 0);
+  });
+});
+
+
+describe("only explicit internal calls nest; detached callbacks queue (#1075 review P1-1)", () => {
+  it("a restart fired from a callback scheduled inside a resident wake waits for the wake", async () => {
+    const { fm, config, maxPublished } = fleet();
+    await fm.startInstance("worker", config, false);
+    const old = fake.created[0];
+    old.isPaused = true;
+    const gate = deferred();
+    let restarting: Promise<void> | undefined;
+    // What an incident handler does: a detached setImmediate inside the wake.
+    old.onWake = () => setImmediate(() => { restarting = fm.restartSingleInstance("worker"); });
+    old.wakeHold = gate.promise;
+    const waking = fm.lifecycle.wake("worker");
+    await vi.waitFor(() => expect(restarting).toBeDefined());
+    await new Promise(r => setTimeout(r, 20));
+    expect(old.stopped).toBe(false); // queued behind the wake, not run inline
+    expect(fake.created).toHaveLength(1);
+    gate.release();
+    await waking;
+    await restarting;
+    expect(old.stopped).toBe(true);
+    expect(fm.lifecycle.daemons.get("worker")).toBe(fake.created[1]);
+    expect(maxPublished()).toBe(1);
+  });
+
+  it("a resident wake that completes after a stop was requested does not restart its watchers", async () => {
+    const { fm, config } = fleet();
+    await fm.startInstance("worker", config, false);
+    const old = fake.created[0];
+    old.isPaused = true;
+    const gate = deferred();
+    old.wakeHold = gate.promise;
+    const watch = vi.spyOn(fm, "startStatuslineWatcher");
+    const waking = fm.lifecycle.wake("worker");
+    await vi.waitFor(() => expect(old.wakes).toBe(1));
+    const stopping = fm.stopInstance("worker");
+    expect(old.stopped).toBe(false);
+    gate.release();
+    await waking;
+    await stopping;
+    expect(watch).not.toHaveBeenCalled();
+    expect(old.stopped).toBe(true);
+  });
+
+  it("an ordinary resident wake still restarts its watchers", async () => {
+    const { fm, config } = fleet();
+    await fm.startInstance("worker", config, false);
+    fake.created[0].isPaused = true;
+    const watch = vi.spyOn(fm, "startStatuslineWatcher");
+    await fm.lifecycle.wake("worker");
+    expect(watch).toHaveBeenCalledWith("worker");
+  });
+});
+
+describe("the automatic startup retry does not resurrect a stopped instance (#1075 review P1-2)", () => {
+  it("a retry start superseded by a stop schedules no further retry", async () => {
+    const { fm } = fleet();
+    const retry = vi.spyOn(fm, "scheduleStartupRetry").mockImplementation(() => {});
+    const gate = deferred();
+    fake.hold = gate.promise;
+    const retrying = (fm as any).runStartupRetry("worker", 0);
+    await vi.waitFor(() => expect(fake.created).toHaveLength(1));
+    const stopping = fm.stopInstance("worker");
+    gate.release();
+    await retrying;
+    await stopping;
+    expect(fake.created[0].aborted).toBe(true);
+    expect(retry).not.toHaveBeenCalled();
+    expect(fm.lifecycle.daemons.has("worker")).toBe(false);
+  });
+
+  it("a real retry failure still schedules the next attempt", async () => {
+    const { fm } = fleet();
+    const retry = vi.spyOn(fm, "scheduleStartupRetry").mockImplementation(() => {});
+    fake.failNextStart = new Error("spawn failed");
+    await (fm as any).runStartupRetry("worker", 0);
+    expect(retry).toHaveBeenCalledWith("worker", 1);
+  });
+});
+
+describe("error pauses carry their real reason (#1075 review P2-3)", () => {
+  it("a verified-invalid auth error pauses with reason auth", async () => {
+    const { fm, config } = fleet();
+    await fm.startInstance("worker", config, false);
+    vi.spyOn(fm.lifecycle as any, "verifyAuthError").mockResolvedValue("invalid");
+    fake.created[0].emit("pty_error", { name: "worker", type: "auth_error", action: "pause", message: "401 Unauthorized" });
+    await vi.waitFor(() => expect(fake.created[0].pauseReasons).toEqual(["auth"]));
+  });
+
+  it("a non-auth pause-action error pauses with reason error, not operator", async () => {
+    const { fm, config } = fleet();
+    await fm.startInstance("worker", config, false);
+    fake.created[0].emit("pty_error", { name: "worker", type: "unknown_error", action: "pause", message: "boom" });
+    await vi.waitFor(() => expect(fake.created[0].pauseReasons).toEqual(["error"]));
   });
 });

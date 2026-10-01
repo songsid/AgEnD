@@ -1654,6 +1654,10 @@ export class Daemon extends EventEmitter {
     evidence?: string,
   ): void {
     if (!delivery) return;
+    // Delivered or uncertain means the pane write started: the work reached
+    // the CLI (or may have), so it is activity (Phase 2a). Only a failure is
+    // not — a pre-write failure never gets here; it is retried before begin.
+    if (outcome !== "failed") this.noteWorkActivity();
     this.deliveryOutbox?.complete(delivery.deliveryId, this.bootId, delivery.attemptNo, outcome, evidence);
   }
 
@@ -1661,10 +1665,6 @@ export class Daemon extends EventEmitter {
     delivery: { deliveryId: string; attemptNo: number } | null,
     verdict: DeliveryVerdict,
   ): void {
-    // Submitted work is activity (Phase 2a): before this only a user's channel
-    // message reset the idle clock, so an instance busy with cross-instance
-    // tasks and schedules for days looked idle and was paused on every wake.
-    if (delivery) this.noteWorkActivity();
     // Legacy backends may accept a pane write without enough pane evidence to
     // claim submission. Keep that row inspectable instead of recording a false
     // delivered state; reconciliation can classify it in a later phase.
@@ -3571,9 +3571,13 @@ export class Daemon extends EventEmitter {
    * failures: pause() alone no-ops while the CLI is busy/stuck, which is the
    * usual state when the error surfaces. Cleared by a successful pause or wake.
    */
-  requestPauseWhenIdle(opts: { reconfirmAuth?: boolean } = {}): void {
+  requestPauseWhenIdle(opts: { reconfirmAuth?: boolean; reason?: PauseReason } = {}): void {
     if (this.pauseWakeState === "paused") return;
     const reconfirm = opts.reconfirmAuth === true;
+    // An auth request wins over a pending non-auth one: the marker must not
+    // later read as auto-wakeable when a login failure is among the causes.
+    const reason = opts.reason ?? "auth";
+    this.pendingPauseReason = this.pausePending && this.pendingPauseReason === "auth" ? "auth" : reason;
     // A pause already pending unconditionally stays unconditional.
     this.pauseReconfirmAuth = this.pausePending ? this.pauseReconfirmAuth && reconfirm : reconfirm;
     this.pausePending = true;
@@ -3592,6 +3596,8 @@ export class Daemon extends EventEmitter {
       .some(ep => new RegExp(ep.pattern.source, ep.pattern.flags.replace("g", "")).test(bottom));
   }
   private static readonly AUTH_RECONFIRM_ROWS = 15;
+  /** Why the deferred pause was requested; what its marker records (Phase 2a). */
+  private pendingPauseReason: PauseReason = "auth";
 
   async pause(reason: PauseReason = "operator"): Promise<void> {
     if (this.pauseWakeState === "paused") return;
@@ -3644,7 +3650,7 @@ export class Daemon extends EventEmitter {
 
         this.pauseWakeState = "paused";
         this.autoPauseController.markPaused();
-        writePausedMarker(this.instanceDir, this.lastPausedAt ?? Date.now(), allowStuck ? "auth" : reason);
+        writePausedMarker(this.instanceDir, this.lastPausedAt ?? Date.now(), reason);
         this.logger.info({ pausedAt: this.lastPausedAt }, "Instance auto-paused");
         this.ipcServer?.broadcast({
           type: "instance_state", instanceName: this.name, state: "paused", pausedAt: this.lastPausedAt,
@@ -3805,7 +3811,9 @@ export class Daemon extends EventEmitter {
         return;
       }
       this.pauseAllowStuck = snapshot.state === "stuck";
-      this.emit("auto_pause_requested", { name: this.name, idleSince: snapshot.stateChangedAt, reason: "auth" satisfies PauseReason });
+      const reason = this.pendingPauseReason;
+      this.pendingPauseReason = "auth";
+      this.emit("auto_pause_requested", { name: this.name, idleSince: snapshot.stateChangedAt, reason });
       return;
     }
     // A restart deferred by a dead MCP server: the turn it must not interrupt is

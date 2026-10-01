@@ -1198,6 +1198,8 @@ describe("FleetManager", () => {
       }),
       false,
       "classic",
+      false,
+      undefined,
     );
     } finally {
       if (previousAgendHome === undefined) delete process.env.AGEND_HOME;
