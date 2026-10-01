@@ -127,7 +127,7 @@ const DEFS: Array<[string, ZodType, string]> = [
   ["preview_emojis", schemas.PreviewEmojisArgs,
     "Download up to 8 Discord server emojis from list_emojis so you can see them: returns a local image path per emoji to Read before you pick one."],
   ["set_persona_emoji", schemas.SetPersonaEmojiArgs,
-    "Set your persona emoji: the status stamp (default: delivered) your bot puts on messages it handles, so people can tell you apart from other bots. Validated the way Settings validates it; takes effect on your next stamp."],
+    "Set your persona emoji: the status stamp (default: delivered) your bot puts on messages it handles, so people can tell you apart from other bots. Other statuses: received, queued, processing, failed, progress_prefix, and photo / attachment (the stamp on a photo / file your bot saved). Validated the way Settings validates it; takes effect on your next stamp."],
   ["set_description", schemas.SetDescriptionArgs,
     "Set your role description. This is injected into your system prompt as your role definition. Takes effect on next session restart."],
   ["checkout_repo", schemas.CheckoutRepoArgs,

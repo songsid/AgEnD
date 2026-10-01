@@ -62,7 +62,9 @@ describe("status-emoji catalog and preview routes (#1005 phase 3.2)", () => {
   it("serves the keys, both platforms' built-ins and Telegram's whole reaction set", async () => {
     const r = await request("/api/settings/status-emojis", context());
     expect(r.status).toBe(200);
-    expect(r.body.keys).toEqual(["received", "queued", "processing", "delivered", "failed", "progress_prefix"]);
+    expect(r.body.keys).toEqual(["received", "queued", "processing", "delivered", "failed", "progress_prefix", "photo", "attachment"]);
+    expect(r.body.builtins.discord).toMatchObject({ photo: "📸", attachment: "📎" });
+    expect(r.body.builtins.telegram).toMatchObject({ photo: "👌", attachment: "👍" });
     expect(r.body.builtins.telegram.failed).toBe("👎");
     expect(r.body.builtins.discord.delivered).toBe("✅");
     expect(r.body.telegram_allowed).toEqual([...TELEGRAM_REACTION_EMOJIS]);
@@ -437,9 +439,9 @@ describe("the agent editor stages its status emojis into the instance PATCH (#10
 // Processing before any pick. These pin what is actually true — every value is bound to its status
 // *name*, a pick changes only that name, and what is left shows (and stores) its own value.
 describe("the Settings editor binds by status name, never by position", () => {
-  const KEYS = ["received", "queued", "processing", "delivered", "failed", "progress_prefix"] as const;
-  const BUILTIN: Record<string, string> = { received: "👀", queued: "⏳", processing: "👀", delivered: "✅", failed: "❌", progress_prefix: "👀" };
-  const PICKS = ["🦊", "🍎", "🐱", "🐶", "🐼", "🦉"];
+  const KEYS = ["received", "queued", "processing", "delivered", "failed", "progress_prefix", "photo", "attachment"] as const;
+  const BUILTIN: Record<string, string> = { received: "👀", queued: "⏳", processing: "👀", delivered: "✅", failed: "❌", progress_prefix: "👀", photo: "📸", attachment: "📎" };
+  const PICKS = ["🦊", "🍎", "🐱", "🐶", "🐼", "🦉", "🐙", "🌟"];
 
   // The preview is debounced 150ms; one wait past that is enough here.
   const quick = () => new Promise(r => setTimeout(r, 260));
@@ -486,12 +488,12 @@ describe("the Settings editor binds by status name, never by position", () => {
     const { pick, editor } = await open();
     const sourceOf = () => Object.fromEntries(editor.box.querySelector("se-preview")!.all(e => e.className.split(" ").includes("se-item"))
       .map(e => [String(e.attrs.title).split(": ")[0]!, e.all(x => x.className.split(" ").includes("tag"))[0]?.textContent ?? "(none)"]));
-    expect(sourceOf()).toEqual({ received: "se_src_builtin", queued: "se_src_builtin", processing: "se_src_builtin", delivered: "se_src_builtin", failed: "se_src_builtin", progress_prefix: "se_src_builtin" });
+    expect(sourceOf()).toEqual({ received: "se_src_builtin", queued: "se_src_builtin", processing: "se_src_builtin", delivered: "se_src_builtin", failed: "se_src_builtin", progress_prefix: "se_src_builtin", photo: "se_src_builtin", attachment: "se_src_builtin" });
 
     await pick("received", "🦊");
     await pick("queued", "🍎");
 
-    expect(sourceOf()).toEqual({ received: "se_src_platform", queued: "se_src_platform", processing: "se_src_builtin", delivered: "se_src_builtin", failed: "se_src_builtin", progress_prefix: "se_src_builtin" });
+    expect(sourceOf()).toEqual({ received: "se_src_platform", queued: "se_src_platform", processing: "se_src_builtin", delivered: "se_src_builtin", failed: "se_src_builtin", progress_prefix: "se_src_builtin", photo: "se_src_builtin", attachment: "se_src_builtin" });
     const html = readFileSync(join(process.cwd(), "src", "ui", "settings.html"), "utf8");
     expect(html).toContain("se_src_builtin: \"default\"");
     expect(html).toContain("se_src_builtin: \"預設\"");
@@ -513,7 +515,7 @@ describe("the Settings editor binds by status name, never by position", () => {
         for (const k of KEYS) expect(input(k).value, `${k} after ${label}`).toBe(k === KEYS[a] || k === KEYS[b] ? expected[k] : "");
       }
     }
-    expect(n).toBe(15);
+    expect(n).toBe(28);   // C(8,2) pairs
   }, 120_000);
 
   it("clearing one picks its default back without moving another", async () => {
@@ -532,7 +534,7 @@ describe("the Settings editor binds by status name, never by position", () => {
     const entries = previewStatusEmojis({ platform: "discord", platformConfig: { received: "🦊", queued: "🍎" } }).entries;
     expect(Object.fromEntries(entries.map(e => [e.key, e.value]))).toEqual({ ...BUILTIN, received: "🦊", queued: "🍎" });
     expect(Object.fromEntries(entries.map(e => [e.key, e.source]))).toEqual({
-      received: "platform", queued: "platform", processing: "builtin", delivered: "builtin", failed: "builtin", progress_prefix: "builtin",
+      received: "platform", queued: "platform", processing: "builtin", delivered: "builtin", failed: "builtin", progress_prefix: "builtin", photo: "builtin", attachment: "builtin",
     });
   });
 });

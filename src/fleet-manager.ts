@@ -7957,6 +7957,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return reactionForm(resolved.platform, resolved.received);
   }
 
+  /**
+   * The stamp for an inbound photo / file a classic bot saved (#1080): the
+   * instance's `status_emojis.photo|attachment`, then its connection's, then
+   * the built-in (📸/📎, or 👌/👍 on Telegram — what these paths always stamped).
+   * Anything else a saved attachment can be counts as a file.
+   */
+  private savedAttachmentReactionFor(
+    instanceName: string, adapter: ChannelAdapter, adapterId: string | undefined, kind: string,
+  ): string {
+    const resolved = this.resolveStatusEmojisFor(instanceName, adapterId, adapter);
+    return reactionForm(resolved.platform, kind === "photo" ? resolved.photo : resolved.attachment);
+  }
+
   reactMessageStatus(
     instanceName: string, chatId: string, messageId: string, status: DeliveryStatus, threadId?: string,
   ): void {
@@ -11527,9 +11540,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
           const reactAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter;
           const noMentionReactChatId = msg.threadId ?? msg.chatId;
           if (reactAdapter && noMentionReactChatId && msg.messageId) {
-            const emoji = msg.source === "telegram"
-              ? (saved.kind === "photo" ? "👌" : "👍")
-              : (saved.kind === "photo" ? "📸" : "📎");
+            const emoji = this.savedAttachmentReactionFor(instanceName, reactAdapter, msg.adapterId, saved.kind);
             reactAdapter.react(noMentionReactChatId, msg.messageId, emoji)
               .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
           }
@@ -11562,9 +11573,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
       // Attachments already saved at the top of the collab block.
       if (saved && classicAdapter && collabReactChatId && msg.messageId) {
-        const emoji = msg.source === "telegram"
-          ? (saved.kind === "photo" ? "👌" : "👍")
-          : (saved.kind === "photo" ? "📸" : "📎");
+        const emoji = this.savedAttachmentReactionFor(instanceName, classicAdapter, msg.adapterId, saved.kind);
         classicAdapter.react(collabReactChatId, msg.messageId, emoji)
           .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
       }
@@ -11614,10 +11623,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       const reactAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter;
       const reactChatId = msg.threadId ?? msg.chatId;
       if (saved && reactAdapter && reactChatId && msg.messageId) {
-        // Telegram only supports limited emoji for reactions; use 👌 for photo, 👍 for file
-        const emoji = msg.source === "telegram"
-          ? (saved.kind === "photo" ? "👌" : "👍")
-          : (saved.kind === "photo" ? "📸" : "📎");
+        const emoji = this.savedAttachmentReactionFor(instanceName, reactAdapter, msg.adapterId, saved.kind);
         reactAdapter.react(reactChatId, msg.messageId, emoji)
           .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
       }
@@ -11662,9 +11668,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       classicMsgAdapter.react(reactChatId, msg.messageId, this.receivedReactionFor(instanceName, classicMsgAdapter, msg.adapterId))
         .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
       if (saved) {
-        const savedEmoji = msg.source === "telegram"
-          ? (saved.kind === "photo" ? "👌" : "👍")
-          : (saved.kind === "photo" ? "📸" : "📎");
+        const savedEmoji = this.savedAttachmentReactionFor(instanceName, classicMsgAdapter, msg.adapterId, saved.kind);
         classicMsgAdapter.react(reactChatId, msg.messageId, savedEmoji)
           .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
       }

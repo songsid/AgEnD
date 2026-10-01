@@ -250,6 +250,12 @@ describe("validate status_emojis (#1005)", () => {
     expect(res.warnings.map(w => w.path)).toEqual(expect.arrayContaining([
       "channels[0].options.status_emojis.failed", "channels[0].options.status_emojis.bogus", "instances.alpha.status_emojis.delivered",
     ]));
+    // photo / attachment are known keys now (#1080): a Telegram reaction passes, 📸/📎 are warned like any non-reaction, a typo is still unknown.
+    const media = validateFleetConfig(base({ status_emojis: { photo: "🔥", attachment: "📎" } }, { status_emojis: { photo: "📸", attachment: "👍", phto: "🔥" } }));
+    expect(media.errors).toEqual([]);
+    expect(media.warnings.map(w => w.path).filter(p => p.includes("status_emojis")).sort()).toEqual([
+      "channels[0].options.status_emojis.photo", "channels[0].options.status_emojis.phto", "instances.alpha.status_emojis.attachment",
+    ]);
     const bad = validateFleetConfig(base({ status_emojis: ["👍"] }, { status_emojis: { delivered: 5 } }));
     expect(bad.errors.map(e => e.path)).toEqual(expect.arrayContaining(["instances.alpha.status_emojis", "channels[0].options.status_emojis.delivered"]));
   });

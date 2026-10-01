@@ -72,6 +72,8 @@ The delivery-status emojis this channel's bots stamp on inbound messages. Every 
 | `delivered` | ✅ | 👀 | the agent started on it |
 | `failed` | ❌ | 👎 | delivery failed |
 | `progress_prefix` | 👀 / ⏳ | 👀 / ⏳ | leads the "處理中…" progress message |
+| `photo` | 📸 | 👌 | a ClassicBot saved an inbound photo |
+| `attachment` | 📎 | 👍 | a ClassicBot saved an inbound file |
 
 ```yaml
 channels:
@@ -86,7 +88,7 @@ channels:
 - **Telegram** takes only its fixed reaction set and no custom emoji. A value outside the set logs a warning once and falls back to the built-in; the reaction still goes out.
 - `instances.<name>.status_emojis` overrides this per instance. Resolution, per key: instance → channel → built-in.
 - Reactions an AgEnD bot stamps from its own status set never reach an instance as a user reaction. Once every bot's user id is known, humans' reactions always pass, whatever emoji they use.
-- Each instance's instructions list its own status set as the emojis to avoid.
+- Each instance's instructions list its own status set as the emojis to avoid (the five delivery statuses; `photo`/`attachment` are stamps on a saved file, not part of that ladder).
 - **Settings** edits both maps: the connection's (Bots → Settings → Status emojis) and an agent's override (agent → Status emojis). The picker offers unicode emojis, Telegram's reaction set on a Telegram connection, and on Discord the server's own custom emojis, fetched with the bot token. The preview is resolved by AgEnD exactly as the bot will react.
 
 ---

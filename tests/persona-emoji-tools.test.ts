@@ -110,7 +110,7 @@ describe("set_persona_emoji writes the instance's own override, judged like Sett
     await fm.setPersonaEmoji("worker", { emoji: "🧠", status: "processing" });
     expect(saved().worker.status_emojis).toEqual({ failed: "🐙", processing: "🧠" });
     expect(await fm.setPersonaEmoji("worker", { emoji: "🦊", status: "done" })).toEqual({
-      error: "status must be one of received, queued, processing, delivered, failed, progress_prefix",
+      error: "status must be one of received, queued, processing, delivered, failed, progress_prefix, photo, attachment",
     });
   });
 
@@ -525,5 +525,186 @@ describe("persona-emoji tools per profile (v2.1.9: every instance can see server
     for (const tool of ["set_persona_emoji", "set_display_name", "set_description"]) {
       expect(mayUseTool("minimal", tool), tool).toBe(false);
     }
+  });
+});
+
+// ── #1080: the photo / attachment stamps are persona emoji too ───────────────
+
+describe("set_persona_emoji / list_emojis cover the photo and attachment stamps (#1080)", () => {
+  it("sets photo and attachment in the instance's own override, judged like every other status", async () => {
+    const { fm, saved } = fleet();
+    expect(await fm.setPersonaEmoji("worker", { emoji: "🦊", status: "photo" })).toEqual({
+      status: "photo", value: "🦊", now: "🦊", status_emojis: { failed: "🐙", photo: "🦊" },
+    });
+    expect(await fm.setPersonaEmoji("worker", { emoji: "<:fox:111111111111111111>", status: "attachment" })).toMatchObject({
+      status: "attachment", value: "<:fox:111111111111111111>",
+    });
+    expect(saved().worker.status_emojis).toEqual({ failed: "🐙", photo: "🦊", attachment: "<:fox:111111111111111111>" });
+    expect(fm.resolveStatusEmojisFor("worker")).toMatchObject({ photo: "🦊", attachment: "<:fox:111111111111111111>", delivered: "✅" });
+  });
+
+  it("refuses several emojis, text, and (on Telegram) a non-reaction, exactly as for delivered", async () => {
+    const { fm, saved } = fleet();
+    for (const status of ["photo", "attachment"]) {
+      expect(await fm.setPersonaEmoji("worker", { emoji: "🦊🍎", status })).toMatchObject({ error: expect.stringContaining("not an emoji") });
+      expect(await fm.setPersonaEmoji("worker", { emoji: "fox", status })).toMatchObject({ error: expect.stringContaining("not an emoji") });
+      expect(await fm.setPersonaEmoji("tgworker", { emoji: "🦊", status })).toMatchObject({ error: expect.stringContaining("not in Telegram's allowed reaction set") });
+      expect(await fm.setPersonaEmoji("tgworker", { emoji: "<:fox:111111111111111111>", status })).toMatchObject({ error: expect.stringContaining("Telegram has no server custom emoji") });
+    }
+    expect(await fm.setPersonaEmoji("worker", { emoji: "<:ghost:999999999999999999>", status: "photo" })).toMatchObject({ error: expect.stringContaining("not a server emoji this bot can use") });
+    expect(saved().worker.status_emojis).toEqual({ failed: "🐙" });
+    expect(saved().tgworker.status_emojis).toBeUndefined();
+    // a Telegram reaction is accepted (unlike 📸/📎 themselves, which Telegram does not have)
+    expect(await fm.setPersonaEmoji("tgworker", { emoji: "🔥", status: "photo" })).toMatchObject({ value: "🔥" });
+    expect(await fm.setPersonaEmoji("tgworker", { emoji: "📸", status: "photo" })).toMatchObject({ error: expect.stringContaining("not in Telegram's allowed reaction set") });
+  });
+
+  it('exactly "" removes just that override, and the built-in stamp is back', async () => {
+    const { fm, saved } = fleet();
+    await fm.setPersonaEmoji("worker", { emoji: "🦊", status: "photo" });
+    await fm.setPersonaEmoji("worker", { emoji: "🍎", status: "attachment" });
+    expect(await fm.setPersonaEmoji("worker", { emoji: "", status: "photo" })).toMatchObject({ status: "photo", value: null, now: "📸" });
+    expect(saved().worker.status_emojis).toEqual({ failed: "🐙", attachment: "🍎" });
+  });
+
+  it("list_emojis names both stamps with their source — builtin until the instance sets one", async () => {
+    const { fm } = fleet();
+    let r = await fm.listEmojisFor("worker");
+    expect(r.statuses).toContainEqual({ status: "photo", value: "📸", source: "builtin" });
+    expect(r.statuses).toContainEqual({ status: "attachment", value: "📎", source: "builtin" });
+    await fm.setPersonaEmoji("worker", { emoji: "🦊", status: "photo" });
+    r = await fm.listEmojisFor("worker");
+    expect(r.statuses).toContainEqual({ status: "photo", value: "🦊", source: "instance" });
+    expect(r.statuses).toContainEqual({ status: "attachment", value: "📎", source: "builtin" });
+    const tg = await fm.listEmojisFor("tgworker");
+    expect(tg.statuses).toContainEqual({ status: "photo", value: "👌", source: "builtin" });
+    expect(tg.statuses).toContainEqual({ status: "attachment", value: "👍", source: "builtin" });
+  });
+
+  it("they are stamps on a saved file, not delivery statuses: the avoid list and the own-reaction ladder do not grow", async () => {
+    const { fm } = fleet();
+    await fm.setPersonaEmoji("worker", { emoji: "🦊", status: "photo" });
+    await fm.setPersonaEmoji("worker", { emoji: "🍎", status: "attachment" });
+    expect(fm.statusEmojiAvoidList("worker")).toEqual(["👀", "⏳", "✅", "🐙"]);
+    const { previewStatusEmojis } = await import("../src/status-emojis.js");
+    expect(previewStatusEmojis({ platform: "discord", instanceConfig: { photo: "🦊" } }).avoid).toEqual(["👀", "⏳", "✅", "❌"]);
+  });
+
+  it("is still the same tool for the same roles, and the schema takes the two new statuses", async () => {
+    const { SetPersonaEmojiArgs } = await import("../src/outbound-schemas.js");
+    for (const status of ["photo", "attachment", "delivered", "progress_prefix"]) {
+      expect(SetPersonaEmojiArgs.safeParse({ emoji: "🦊", status }).success, status).toBe(true);
+    }
+    expect(SetPersonaEmojiArgs.safeParse({ emoji: "🦊", status: "video" }).success).toBe(false);
+    expect([...toolsFor("worker")]).toEqual(expect.arrayContaining(["list_emojis", "set_persona_emoji"]));
+    expect([...toolsFor("standard")]).toEqual(expect.arrayContaining(["list_emojis", "set_persona_emoji"]));
+  });
+});
+
+describe("the four saved-attachment stamps read the configured emoji (#1080)", () => {
+  type Msg = Record<string, unknown>;
+  interface Internals {
+    classicChannels: { isCollab: (c: string, a?: string) => boolean };
+    saveClassicAttachment: (n: string, m: Msg) => Promise<unknown>;
+    forwardToClassicInstance: (...a: unknown[]) => Promise<void>;
+    handleClassicChannelMessage(name: string, msg: Msg): Promise<void>;
+  }
+
+  /** The four code paths that stamp a saved photo / file, each as the message that reaches it. */
+  const SITES = [
+    { name: "collab, not @mentioned", collab: true, text: "look at this", mention: false },
+    { name: "collab, @mentioned", collab: true, text: "<@BOT> look at this", mention: true },
+    { name: "plain classic, no /chat", collab: false, text: "look at this", mention: false },
+    { name: "plain classic, /chat", collab: false, text: "/chat look at this", mention: false },
+  ] as const;
+
+  async function run(
+    site: typeof SITES[number], kind: "photo" | "document",
+    opts: { instance?: string; world?: "dc" | "tg"; channelOptions?: Record<string, unknown>; instanceOverride?: Record<string, string> } = {},
+  ) {
+    vi.spyOn(ClassicChannelManager, "logMessage").mockImplementation(() => {});
+    const { fm } = fleet();
+    const instance = opts.instance ?? "classic-room";
+    const worldId = opts.world ?? "dc";
+    const world = fm.worlds.get(worldId)!;
+    const react = vi.fn(async (..._a: unknown[]) => {});
+    (world.adapter as any).react = react;
+    world.botUserId = "BOT";
+    if (opts.channelOptions) (world.channelConfig as any).options = { status_emojis: opts.channelOptions };
+    if (opts.instanceOverride) (fm as any).fleetConfig.instances[instance] = { working_directory: "/c", status_emojis: opts.instanceOverride };
+    const internals = fm as unknown as Internals;
+    internals.classicChannels = { isCollab: () => site.collab } as any;
+    internals.saveClassicAttachment = vi.fn(async () => ({ path: "/inbox/f", paths: ["/inbox/f"], kind }));
+    internals.forwardToClassicInstance = vi.fn(async () => {});
+    await internals.handleClassicChannelMessage(instance, {
+      source: worldId === "tg" ? "telegram" : "discord", adapterId: worldId, chatId: "guild-1", threadId: "555", messageId: "m-1",
+      userId: "u", username: "han", text: site.text, timestamp: new Date(),
+      attachments: [{ kind, fileId: "f1", filename: "x" }],
+    });
+    // the received 👀 is stamped too; the saved-attachment stamp is the other call
+    return react.mock.calls.map(c => c[2] as string);
+  }
+
+  it.each(SITES.map(s => [s.name, s] as const))("%s: the built-in stamp is unchanged without an override (📸 / 📎)", async (_n, site) => {
+    expect(await run(site, "photo")).toContain("📸");
+    expect(await run(site, "document")).toContain("📎");
+  });
+
+  it.each(SITES.map(s => [s.name, s] as const))("%s: a connection override is used for each kind", async (_n, site) => {
+    const options = { photo: "🦊", attachment: "🍎" };
+    const photo = await run(site, "photo", { channelOptions: options });
+    expect(photo).toContain("🦊");
+    expect(photo).not.toContain("📸");
+    expect(photo).not.toContain("🍎");
+    const file = await run(site, "document", { channelOptions: options });
+    expect(file).toContain("🍎");
+    expect(file).not.toContain("📎");
+    expect(file).not.toContain("🦊");
+  });
+
+  it.each(SITES.map(s => [s.name, s] as const))("%s: the instance's own override wins over the connection's, and only for its kind", async (_n, site) => {
+    const photo = await run(site, "photo", { instance: "worker", channelOptions: { photo: "🦊", attachment: "🍎" }, instanceOverride: { photo: "🐙" } });
+    expect(photo).toContain("🐙");
+    expect(photo).not.toContain("🦊");
+    const file = await run(site, "document", { instance: "worker", channelOptions: { photo: "🦊", attachment: "🍎" }, instanceOverride: { photo: "🐙" } });
+    expect(file).toContain("🍎");            // no instance attachment override → the connection's
+  });
+
+  it.each(SITES.map(s => [s.name, s] as const))("%s: a Discord server emoji is reacted with as name:id", async (_n, site) => {
+    const photo = await run(site, "photo", { channelOptions: { photo: "<:fox:111111111111111111>" } });
+    expect(photo).toContain("fox:111111111111111111");
+  });
+
+  it.each(SITES.map(s => [s.name, s] as const))("%s: on Telegram the stamp stays 👌 / 👍 unless a valid reaction is configured; an invalid one falls back", async (_n, site) => {
+    // The shared fixture's tg adapter is a plain stub; make it a real TelegramAdapter so the platform resolves to telegram.
+    const { TelegramAdapter } = await import("../src/channel/adapters/telegram.js");
+    vi.spyOn(ClassicChannelManager, "logMessage").mockImplementation(() => {});
+    const go = async (kind: "photo" | "document", options?: Record<string, unknown>) => {
+      const { fm } = fleet();
+      const tgWorld = fm.worlds.get("tg")!;
+      const react = vi.fn(async (..._a: unknown[]) => {});
+      const adapter = Object.assign(Object.create(TelegramAdapter.prototype), { id: "tg", react, unreact: vi.fn(async () => {}) });
+      (tgWorld as any).adapter = adapter;
+      tgWorld.botUserId = "BOT";
+      if (options) (tgWorld.channelConfig as any).options = { status_emojis: options };
+      const internals = fm as unknown as Internals;
+      internals.classicChannels = { isCollab: () => site.collab } as any;
+      internals.saveClassicAttachment = vi.fn(async () => ({ path: "/i/f", paths: ["/i/f"], kind }));
+      internals.forwardToClassicInstance = vi.fn(async () => {});
+      await internals.handleClassicChannelMessage("classic-room", {
+        source: "telegram", adapterId: "tg", chatId: "-100", threadId: "7", messageId: "m-1", userId: "u", username: "han",
+        text: site.text, timestamp: new Date(), attachments: [{ kind, fileId: "f1", filename: "x" }],
+      });
+      return react.mock.calls.map(c => c[2] as string);
+    };
+    const photoDefault = await go("photo");
+    const fileDefault = await go("document");
+    expect(photoDefault).toContain("👌");
+    expect(fileDefault).toContain("👍");
+    expect(await go("photo", { photo: "🔥" })).toContain("🔥");
+    expect(await go("document", { attachment: "🎉" })).toContain("🎉");
+    const bad = await go("photo", { photo: "📸" });            // not a Telegram reaction → ignored, built-in used
+    expect(bad).toContain("👌");
+    expect(bad).not.toContain("📸");
   });
 });

@@ -45,8 +45,11 @@ persona emoji replaces your `delivered` stamp with one of your own, the way
    Don't retry the same value.
 
 Only change your own `delivered` stamp unless someone asked for more. The
-other statuses are how people see a message is still in progress, and
-`progress_prefix` is the emoji leading your progress messages.
+other statuses are how people see a message is still in progress,
+`progress_prefix` is the emoji leading your progress messages, and `photo` /
+`attachment` are the stamps on a photo / file your bot saved (default 📸 / 📎;
+👌 / 👍 on Telegram, which only takes its fixed reaction set — the same check
+applies to them).
 
 ClassicBot instances have no per-instance stamps. The tool says so, and the
 connection's emojis are set by an operator in Settings.

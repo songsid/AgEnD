@@ -121,7 +121,7 @@ export interface InstanceConfig {
   /**
    * #1005: this instance's own delivery-status emojis, overriding its
    * channel's `options.status_emojis` per key. Keys: received, queued,
-   * processing, delivered, failed, progress_prefix.
+   * processing, delivered, failed, progress_prefix, photo, attachment.
    */
   status_emojis?: import("./status-emojis.js").StatusEmojiConfig;
   /** Human-readable description of what this instance does */

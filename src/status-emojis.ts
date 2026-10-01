@@ -13,8 +13,16 @@
 
 export const STATUS_EMOJI_KEYS = ["received", "queued", "processing", "delivered", "failed"] as const;
 export type DeliveryStatus = typeof STATUS_EMOJI_KEYS[number];
-export type StatusEmojiKey = DeliveryStatus | "progress_prefix";
-export const STATUS_EMOJI_CONFIG_KEYS: readonly StatusEmojiKey[] = [...STATUS_EMOJI_KEYS, "progress_prefix"];
+/**
+ * The stamps a classic bot puts on an inbound photo / file it saved (#1080).
+ * Configurable like the delivery statuses, but not delivery statuses: they are
+ * not part of the received → delivered ladder, so they stay out of
+ * STATUS_EMOJI_KEYS (the avoid list and the own-reaction filter).
+ */
+export const MEDIA_STAMP_KEYS = ["photo", "attachment"] as const;
+export type MediaStamp = typeof MEDIA_STAMP_KEYS[number];
+export type StatusEmojiKey = DeliveryStatus | "progress_prefix" | MediaStamp;
+export const STATUS_EMOJI_CONFIG_KEYS: readonly StatusEmojiKey[] = [...STATUS_EMOJI_KEYS, "progress_prefix", ...MEDIA_STAMP_KEYS];
 
 export type StatusEmojiConfig = Partial<Record<StatusEmojiKey, string>>;
 export type ResolvedStatusEmojis = Record<StatusEmojiKey, string>;
@@ -32,10 +40,13 @@ export const TELEGRAM_REACTION_EMOJIS: ReadonlySet<string> = new Set([
 
 const BUILTIN_DEFAULT: ResolvedStatusEmojis = {
   received: "👀", queued: "⏳", processing: "👀", delivered: "✅", failed: "❌", progress_prefix: "👀",
+  photo: "📸", attachment: "📎",
 };
 /** Telegram's smaller vocabulary: ⏳/✅/❌ are not valid Telegram reactions. */
 const BUILTIN_TELEGRAM: ResolvedStatusEmojis = {
   received: "👀", queued: "👀", processing: "👀", delivered: "👀", failed: "👎", progress_prefix: "👀",
+  // 📸/📎 are not Telegram reactions; these are the ones the bot has always stamped there.
+  photo: "👌", attachment: "👍",
 };
 
 export function builtinStatusEmojis(platform: string | undefined): ResolvedStatusEmojis {
