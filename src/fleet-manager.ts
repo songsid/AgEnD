@@ -65,6 +65,7 @@ import { safeHandler } from "./safe-async.js";
 import { RoutingEngine } from "./routing-engine.js";
 import {
   InstanceLifecycle,
+  SupersededStartError,
   BACKEND_INSTALLATION_INFO,
   checkBinaryInstalled,
   type LifecycleContext,
@@ -95,7 +96,7 @@ import { assertExplicitInstanceRemoval, type ExplicitInstanceRemoval } from "./i
 import { validateFleetConfig } from "./config-validator.js";
 import type { InstanceState, InstanceStateSnapshot } from "./backend/types.js";
 import { readLastInboundAt } from "./daemon.js";
-import { clearPausedMarker } from "./pause-marker.js";
+import { clearPausedMarker, readPausedAt, readPauseReason, writePausedMarker } from "./pause-marker.js";
 import { isFleetStartCommandLine, readProcessCommandLine, releaseProcessFleetLock } from "./fleet-lock.js";
 import { isSetupComplete, markSetupComplete } from "./setup-marker.js";
 import { manualCleanupMessage, reapStaleTunnel } from "./tunnel/lease.js";
@@ -2031,13 +2032,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       exclude,
       isEvicting: name => this.warmCapEvicting.has(name),
       isGeneral: name => isGeneralInstance(this.fleetConfig, name),
-      isIdle: name => this.getInstanceExecutionState(name) === "idle",
+      // A work lease (Phase 2a) keeps a just-woken or mid-submission instance
+      // out of the eviction candidates; it is not idle in the sense that matters.
+      isIdle: name => this.getInstanceExecutionState(name) === "idle" && !this.lifecycle.hasWorkLease(name),
       lastInboundAt: name => readLastInboundAt(this.getInstanceDir(name)) ?? 0,
     });
     for (const victim of victims) {
       this.warmCapEvicting.add(victim);
       this.logger.info({ instance: victim, warm: warm.length, cap }, "warm_cap exceeded — auto-pausing LRU idle instance");
-      this.lifecycle.pause(victim)
+      this.lifecycle.pause(victim, "warm_cap")
         .catch(err => this.logger.warn({ err, instance: victim }, "warm_cap auto-pause failed"))
         .finally(() => this.warmCapEvicting.delete(victim));
     }
@@ -2487,6 +2490,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger.info({ name }, "Instance already running, skipping");
       return;
     }
+    // An explicit start (CLI/API) begins a fresh idle window; boot and
+    // reconcile starts keep the persisted last-inbound seed (Phase 2a).
+    if (resumePaused) this.lifecycle.markActivitySeedNow(name);
     const backend = config.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code";
     if (config.general_topic) {
       this.ensureGeneralInstructions(config.working_directory, backend, name);
@@ -2589,6 +2595,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await this.startInstance(name, config, topicMode);
       return this.daemons.has(name);
     } catch (err) {
+      // Superseded by a stop/restart (Phase 2a): that transition owns the
+      // outcome. Retrying would start an instance the operator just stopped.
+      if (err instanceof SupersededStartError) return false;
       this.logger.error({ err, name }, `Failed to start ${what}`);
       this.scheduleStartupRetry(name, 0);
       return false;
@@ -2758,6 +2767,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       );
       return this.daemons.has(ch.instanceName);
     } catch (err) {
+      if (err instanceof SupersededStartError) return false;
       this.logger.warn({ err, instanceName: ch.instanceName }, `Failed to start ${what}`);
       this.scheduleStartupRetry(ch.instanceName, 0);
       return false;
@@ -2962,11 +2972,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return inFlight;
     }
     const workingDirectory = this.fleetConfig?.instances[name]?.working_directory || this.getInstanceDir(name);
-    const run = this.spawnGate.run({
+    // Phase 2a: invalidate synchronously so a start still spawning does not
+    // publish, then queue behind it as this instance's next transition. The
+    // spawn gate is taken inside the transition, never the other way round, so
+    // the start being waited for can still get its own gate slot.
+    if (!this.lifecycle.holdsTransition(name)) this.lifecycle.invalidate(name);
+    const run = this.lifecycle.runTransition(name, () => this.spawnGate.run({
       instanceName: name,
       workingDirectory,
       reason: "restart",
-    }, () => this.doRestartSingleInstance(name, opts))
+    }, () => this.doRestartSingleInstance(name, opts)))
       .finally(() => {
         this.restartsInFlight.delete(name);
         this.scheduleDeliveryOutboxPump();
@@ -2979,6 +2994,33 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.restartsInFlight.has(name);
   }
 
+  /** InstanceLifecycleContext: an explicit wake joins the restart in flight. */
+  restartInFlight(name: string): Promise<void> | undefined {
+    return this.restartsInFlight.get(name);
+  }
+
+  /**
+   * Phase 2a: restarting a paused instance is a wake. The stop leaves the
+   * pause marker in place, and the start used to skip on it ("Persisted
+   * paused instance"), turning a resident pause into a marker-only one that
+   * nothing would wake. Clear it before the start; if the start fails, put it
+   * back so the instance stays wakeable instead of becoming plain stopped.
+   */
+  private async startAfterRestart(name: string, wasPaused: boolean, pausedAt: number | null,
+    reason: ReturnType<typeof readPauseReason>, start: () => Promise<void>): Promise<void> {
+    const instanceDir = this.getInstanceDir(name);
+    if (wasPaused) clearPausedMarker(instanceDir);
+    this.lifecycle.markActivitySeedNow(name);
+    try {
+      await start();
+    } catch (err) {
+      if (wasPaused && !this.daemons.has(name)) writePausedMarker(instanceDir, pausedAt ?? Date.now(), reason);
+      throw err;
+    } finally {
+      this.lifecycle.clearActivitySeedNow(name);
+    }
+  }
+
   private async doRestartSingleInstance(name: string, opts?: { freshStart?: boolean }): Promise<void> {
     if (this.configPath) {
       this.loadConfig(this.configPath);
@@ -2986,11 +3028,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.reregisterClassicChannels();
     }
     const config = this.fleetConfig?.instances[name];
+    const wasPaused = this.lifecycle.isPaused(name);
+    const pausedAt = wasPaused ? (this.lifecycle.getLastPausedAt(name) ?? readPausedAt(this.getInstanceDir(name))) : null;
+    const pauseReason = wasPaused ? readPauseReason(this.getInstanceDir(name)) : null;
     if (config) {
       await this.stopInstance(name);
       if (opts?.freshStart) this.writeFreshStartMarker(name);
       const topicMode = this.fleetConfig?.channel?.mode === "topic";
-      await this.startInstance(name, config, topicMode ?? false);
+      await this.startAfterRestart(name, wasPaused, pausedAt, pauseReason,
+        () => this.startInstance(name, config, topicMode ?? false));
       this.stormWindow.markRecovered(name);
       return;
     }
@@ -3002,13 +3048,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await this.stopInstance(name);
       await new Promise(r => setTimeout(r, 1000)); // let tmux clean up
       if (opts?.freshStart) this.writeFreshStartMarker(name);
-      await this.startClassicInstance(
+      await this.startAfterRestart(name, wasPaused, pausedAt, pauseReason, () => this.startClassicInstance(
         name,
         this.classicChannels!.getBackendByInstance(name, fleetBackend),
         this.classicChannels!.getPreTaskCommand(channelId, adapterId),
         this.classicChannels!.getModel(channelId, adapterId, this.fleetConfig?.defaults?.model),
         this.classicChannels!.getAutoPauseAfter(channelId, adapterId, this.fleetConfig?.defaults?.auto_pause_after),
-      );
+      ));
       this.stormWindow.markRecovered(name);
       return;
     }

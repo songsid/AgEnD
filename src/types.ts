@@ -77,6 +77,20 @@ export interface ChannelConfig {
   mirror_topic_id?: number | string;
 }
 
+export type DeliveryWorkerMode = "off" | "wake_only" | "on";
+export const DELIVERY_WORKER_MODES: readonly DeliveryWorkerMode[] = ["off", "wake_only", "on"];
+
+/** The delivery_worker mode for `name`: instance override, then fleet default, then "off". */
+export function resolveDeliveryWorkerMode(
+  config: { defaults?: { delivery_worker?: unknown }; instances?: Record<string, { delivery_worker?: unknown }> } | null | undefined,
+  name: string,
+): DeliveryWorkerMode {
+  for (const value of [config?.instances?.[name]?.delivery_worker, config?.defaults?.delivery_worker]) {
+    if (typeof value === "string" && (DELIVERY_WORKER_MODES as readonly string[]).includes(value)) return value as DeliveryWorkerMode;
+  }
+  return "off";
+}
+
 export interface InstanceConfig {
   working_directory: string;
   /** Minutes an idle CLI may remain resident before auto-pause. 0 disables it. */
@@ -88,6 +102,14 @@ export interface InstanceConfig {
    * 0 = unlimited (default). Complementary to auto_pause_after (time-based).
    */
   warm_cap?: number;
+  /**
+   * Phase 2 delivery owner for this target (docs/design/phase2-submit-contract.md):
+   * `off` (default) keeps the current outbox pump, `wake_only` adds the wake
+   * coordinator (2b), `on` hands claim/submit to the per-target worker (2c).
+   * Read from `defaults.delivery_worker` with a per-instance override. In 2a
+   * only the setting exists — every mode behaves as `off`.
+   */
+  delivery_worker?: DeliveryWorkerMode;
   /** Agent display name (e.g. "Kuro", "Luna") — chosen by the agent itself */
   display_name?: string;
   /**

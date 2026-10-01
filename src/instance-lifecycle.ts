@@ -21,7 +21,8 @@ import type { EventLog } from "./event-log.js";
 import type { TmuxControlClient } from "./tmux-control.js";
 import type { FleetInstructionsParams } from "./instructions.js";
 import type { DeliveryStatus } from "./status-emojis.js";
-import { clearPausedMarker, hasPausedMarker, readPausedAt, writePausedMarker } from "./pause-marker.js";
+import { clearPausedMarker, hasPausedMarker, readPausedAt, readPauseReason, writePausedMarker, type PauseReason } from "./pause-marker.js";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { reportProviderRateLimit } from "./usage/provider-alerts.js";
 import { isFleetStartCommandLine } from "./fleet-lock.js";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
@@ -195,7 +196,24 @@ export interface LifecycleContext {
   /** #1005: the instance's own status emojis, for the instructions' "avoid these" line. */
   statusEmojiAvoidList?(instanceName: string): string[];
   startPersistedPausedInstance(name: string): Promise<void>;
+  /** The restart already in flight for `name`, if any — an explicit wake joins it (Phase 2a). */
+  restartInFlight?(name: string): Promise<void> | undefined;
 }
+
+/** Thrown by a start whose generation was invalidated (stop/restart) before it could publish. */
+export class SupersededStartError extends Error {
+  constructor(name: string) {
+    super(`Start of '${name}' was superseded by a stop or restart before it registered`);
+    this.name = "SupersededStartError";
+  }
+}
+
+/**
+ * How long a target just woken for queued work is held from idle auto-pause
+ * before its first queued delivery is claimed (Phase 2 design §1.6): the
+ * cross-instance idle gate (60s) plus a 60s grace.
+ */
+export const PRECLAIM_LEASE_MS = 120_000;
 
 type Daemon = InstanceType<typeof import("./daemon.js").Daemon>;
 
@@ -365,6 +383,22 @@ export async function verifyClaudeQuotaStatus(
 export class InstanceLifecycle {
   /** Active daemon processes: instanceName → Daemon */
   readonly daemons = new Map<string, Daemon>();
+  /**
+   * Phase 2a: one transition (start / stop / wake / restart) at a time per
+   * instance. A call made from inside the transition that currently holds an
+   * instance (restart → stop → start) runs inline; anything else queues.
+   */
+  private transitionTails = new Map<string, Promise<void>>();
+  private activeTransition = new Map<string, symbol>();
+  private transitionScope = new AsyncLocalStorage<ReadonlyMap<string, symbol>>();
+  /** Bumped synchronously by stop/restart: a start begun under an older epoch must not publish. */
+  private lifecycleEpochs = new Map<string, number>();
+  /** Single wake flight per instance: concurrent wakes share it. */
+  private wakeFlights = new Map<string, Promise<void>>();
+  /** Starts that begin their idle window now instead of at the persisted last inbound. */
+  private activitySeedNow = new Set<string>();
+  /** When each instance was last woken or started for work — the pre-claim lease clock. */
+  private wokeAt = new Map<string, number>();
   /** backend → last auth-error alert time, so one expiry sends one alert. */
   private lastAuthAlertAt = new Map<string, number>();
   /**
@@ -1184,12 +1218,91 @@ export class InstanceLifecycle {
     }, this.ctx.logger, `daemon.pty_error[${name}]`));
   }
 
+  epochOf(name: string): number {
+    return this.lifecycleEpochs.get(name) ?? 0;
+  }
+
+  /** Invalidate every start/wake already running for `name` (they will not publish). */
+  invalidate(name: string): void {
+    this.lifecycleEpochs.set(name, this.epochOf(name) + 1);
+  }
+
+  /** Whether the caller is running inside the transition that currently holds `name`. */
+  holdsTransition(name: string): boolean {
+    const token = this.transitionScope.getStore()?.get(name);
+    return token !== undefined && this.activeTransition.get(name) === token;
+  }
+
+  /** Run `fn` as `name`'s next transition (inline when the caller already holds it). */
+  async runTransition<T>(name: string, fn: () => Promise<T>): Promise<T> {
+    if (this.holdsTransition(name)) return fn();
+    const previous = this.transitionTails.get(name) ?? Promise.resolve();
+    const token = Symbol(name);
+    const scope = new Map(this.transitionScope.getStore() ?? []);
+    scope.set(name, token);
+    const run = previous.then(() => {
+      this.activeTransition.set(name, token);
+      return this.transitionScope.run(scope, fn);
+    }).finally(() => {
+      if (this.activeTransition.get(name) === token) this.activeTransition.delete(name);
+    });
+    const tail = run.then(() => {}, () => {});
+    this.transitionTails.set(name, tail);
+    try {
+      return await run;
+    } finally {
+      if (this.transitionTails.get(name) === tail) this.transitionTails.delete(name);
+    }
+  }
+
+  /** The next start of `name` is a wake/restart/explicit start: begin its idle window now. */
+  markActivitySeedNow(name: string): void {
+    this.activitySeedNow.add(name);
+  }
+
+  /** Drop a seed request that no start consumed (the start returned early or failed before it). */
+  clearActivitySeedNow(name: string): void {
+    this.activitySeedNow.delete(name);
+  }
+
+  /** Record that `name` was just woken or (re)started, opening its pre-claim lease window. */
+  noteWokeForWork(name: string, now = Date.now()): void {
+    this.wokeAt.set(name, now);
+  }
+
+  /**
+   * Phase 2a work lease (design §1.6). Held while a durable submission to the
+   * target is in flight (unbounded: no timer releases a writer), or for
+   * PRECLAIM_LEASE_MS after a wake/start while queued work is still waiting to
+   * be claimed. It holds only the idle-timeout pause and warm-cap eviction —
+   * never an auth-deferred or operator pause.
+   */
+  hasWorkLease(name: string, now = Date.now()): boolean {
+    const outbox = this.ctx.deliveryOutbox;
+    if (!outbox) return false;
+    if (outbox.countForTarget(name, ["delivering", "submission_started"]) > 0) return true;
+    const woke = this.wokeAt.get(name);
+    if (woke === undefined || now - woke >= PRECLAIM_LEASE_MS) return false;
+    return outbox.countForTarget(name, ["queued", "retry_wait"]) > 0;
+  }
+
   async start(
     name: string,
     config: InstanceConfig,
     topicMode: boolean,
     runtimeIdentity?: FleetInstructionsParams["runtimeIdentity"],
   ): Promise<void> {
+    return this.runTransition(name, () => this.startInTransition(name, config, topicMode, runtimeIdentity));
+  }
+
+  private async startInTransition(
+    name: string,
+    config: InstanceConfig,
+    topicMode: boolean,
+    runtimeIdentity?: FleetInstructionsParams["runtimeIdentity"],
+  ): Promise<void> {
+    const epoch = this.epochOf(name);
+    const seedNow = this.activitySeedNow.delete(name);
     if (this.daemons.has(name)) {
       this.ctx.logger.info({ name }, "Instance already running, skipping");
       return;
@@ -1248,6 +1361,8 @@ export class InstanceLifecycle {
       this.ctx.backendOutage,
     );
     daemon.setDeliveryOutboxPort(this.ctx.deliveryOutbox ?? undefined);
+    daemon.setWorkLeaseCheck(() => this.hasWorkLease(name));
+    if (seedNow) daemon.seedActivityNow();
     // Read at each spawn so a fleet.yaml reload is honoured (#984).
     daemon.setPeerWorkingDirectories(() => peerWorkingDirectories(this.ctx.fleetConfig, name, backendName));
     daemon.setStatusEmojiAvoidList(() => this.ctx.statusEmojiAvoidList?.(name));
@@ -1310,14 +1425,28 @@ export class InstanceLifecycle {
         throw new Error(message);
       }
     }
+    if (this.epochOf(name) !== epoch) {
+      // A stop/restart arrived while this start was reconciling: do not spawn.
+      await daemon.abortStartup().catch(() => {});
+      throw new SupersededStartError(name);
+    }
     await InstanceLifecycle.startOrDispose(daemon, name, this.ctx.logger);
+    // Publication fence (Phase 2a): the spawn cannot be cancelled, so a stop or
+    // restart requested meanwhile has been waiting behind this transition. A
+    // superseded start must not register, signal ready, or keep its window.
+    if (this.epochOf(name) !== epoch) {
+      await daemon.abortStartup().catch(err =>
+        this.ctx.logger.warn({ err, name }, "Failed to dispose a superseded start"));
+      throw new SupersededStartError(name);
+    }
     this.capacityBackoffBaselines.delete(name);
     this.daemons.set(name, daemon);
+    if (seedNow) this.noteWokeForWork(name);
     this.ctx.onDaemonReady?.(name, daemon.bootId);
 
 
-    daemon.on("auto_pause_requested", safeHandler(async () => {
-      await this.pause(name);
+    daemon.on("auto_pause_requested", safeHandler(async (data?: { reason?: PauseReason }) => {
+      await this.pause(name, data?.reason ?? "idle");
     }, this.ctx.logger, `autoPause[${name}]`));
 
     daemon.on("auto_paused", (data: { pausedAt: number }) => {
@@ -1359,7 +1488,7 @@ export class InstanceLifecycle {
     return this.daemons.get(name)?.lastPausedAt ?? readPausedAt(this.ctx.getInstanceDir(name));
   }
 
-  async pause(name: string): Promise<void> {
+  async pause(name: string, reason: PauseReason = "operator"): Promise<void> {
     // Final backstop shared by slash, MCP, Settings, warm-cap, and any future
     // caller. General is the coordinator and must remain resident to route work.
     if (isGeneralInstance(this.ctx.fleetConfig, name)) {
@@ -1382,7 +1511,7 @@ export class InstanceLifecycle {
     }
     this.ctx.stopStatuslineWatcher(name);
     try {
-      await daemon.pause();
+      await daemon.pause(reason);
     } finally {
       // A rejected/no-op pause leaves the instance active and must not strand
       // its fleet-level statusline watcher in the frozen state.
@@ -1391,6 +1520,21 @@ export class InstanceLifecycle {
   }
 
   async wake(name: string, timeoutMs = 30_000): Promise<void> {
+    // An explicit wake that meets a restart joins it: the restart of a paused
+    // instance is itself a wake (Phase 2a), and a second flight would race it.
+    if (!this.holdsTransition(name)) {
+      const restarting = this.ctx.restartInFlight?.(name);
+      if (restarting) { await restarting; return; }
+    }
+    const inFlight = this.wakeFlights.get(name);
+    if (inFlight) return inFlight;
+    const flight = this.runTransition(name, () => this.wakeInTransition(name, timeoutMs))
+      .finally(() => { if (this.wakeFlights.get(name) === flight) this.wakeFlights.delete(name); });
+    this.wakeFlights.set(name, flight);
+    return flight;
+  }
+
+  private async wakeInTransition(name: string, timeoutMs: number): Promise<void> {
     const daemon = this.daemons.get(name);
     if (daemon) {
       await daemon.wake(timeoutMs);
@@ -1398,14 +1542,18 @@ export class InstanceLifecycle {
       const instanceDir = this.ctx.getInstanceDir(name);
       if (!hasPausedMarker(instanceDir)) throw new Error(`Cannot wake stopped instance '${name}'`);
       const pausedAt = readPausedAt(instanceDir) ?? Date.now();
+      const reason = readPauseReason(instanceDir);
       clearPausedMarker(instanceDir);
+      this.markActivitySeedNow(name);
       try {
         await this.ctx.startPersistedPausedInstance(name);
       } catch (err) {
-        writePausedMarker(instanceDir, pausedAt);
+        this.clearActivitySeedNow(name);
+        writePausedMarker(instanceDir, pausedAt, reason);
         throw err;
       }
     }
+    this.noteWokeForWork(name);
     this.ctx.startStatuslineWatcher(name);
   }
 
@@ -1437,6 +1585,15 @@ export class InstanceLifecycle {
   }
 
   async stop(name: string): Promise<void> {
+    // Synchronously, before queueing: a start still spawning must see this and
+    // not publish when it finishes (Phase 2a publication fence).
+    if (!this.holdsTransition(name)) this.invalidate(name);
+    return this.runTransition(name, () => this.stopInTransition(name));
+  }
+
+  private async stopInTransition(name: string): Promise<void> {
+    this.invalidate(name);
+    this.wokeAt.delete(name);
     this.ctx.setTopicIcon(name, "remove");
     // B1: cancel any pending capacity backoff timer so a stopped/removed
     // instance is not restarted behind the user's back.
