@@ -271,16 +271,17 @@ export class LoginController {
       if (this.stale(generation, claim)) return t("login.web_shutting_down");
       this.deps.releaseWindow(claim);                       // nothing runs until the button is pressed
       const logoutFirst = tokenPresent && flow.preCommand?.when === "token-present";
+      const confirmation = t(flow.deviceAuth ? "login.device_confirm" : "login.web_confirm", backend);
       try {
         await this.deps.postButtons({
           prefix: "login-confirm:",
           instanceName: backend,
           chat,
           message: logoutFirst
-            ? `${t("login.web_confirm", backend)}\n${t("login.still_valid_precommand", backend, flow.preCommand!.command)}`
-            : t("login.web_confirm", backend),
+            ? `${confirmation}\n${t("login.still_valid_precommand", backend, flow.preCommand!.command)}`
+            : confirmation,
           choices: [
-            { action: tokenPresent ? "go-relogin" : "go", label: t("login.web_confirm_go") },
+            { action: tokenPresent ? "go-relogin" : "go", label: t(flow.deviceAuth ? "login.device_confirm_go" : "login.web_confirm_go") },
             { action: "cancel", label: t("login.relogin_cancel") },
           ],
           expiredText: t("buttons.stale"),
@@ -310,6 +311,7 @@ export class LoginController {
       observe: {
         urlPattern: flow.urlPattern,
         codePattern: flow.codePattern,
+        deviceAuth: flow.deviceAuth,
         successPattern: flow.successPattern,
         failures: flow.failures,
       },
@@ -339,6 +341,10 @@ export class LoginController {
     try {
       await entry.session.start();
       if (this.stale(generation, claim)) return this.abort(entry, t("login.web_shutting_down"), "fleet shutdown");
+      // Device auth needs only the provider link/code emitted by onHint.
+      // Keep the engine's TTL, cancellation and recovery, without exposing a
+      // second browser terminal URL or sending an unused access token.
+      if (flow.deviceAuth) return t("login.started", backend);
       const http = (this.deps.createHttp ?? ((s, l, o) => new WebTerminalHttpServer(s, l, o)))(entry.session, logger, {
         bind: cfg?.web_terminal?.bind,
         hostname: cfg?.hostname || "localhost",
@@ -401,7 +407,7 @@ export class LoginController {
   /** The "resend token" button: only the requester, only while the token is unredeemed. */
   async resendToken(requesterUserId: string | undefined): Promise<string> {
     const entry = this.active;
-    if (!entry) return t("login.no_session");
+    if (!entry || !entry.http) return t("login.no_session");
     if (!requesterUserId || requesterUserId !== entry.requesterUserId) {
       this.audit("token_resend_denied", { backend: entry.backend, requester: requesterUserId ?? null });
       return t("permission.denied");

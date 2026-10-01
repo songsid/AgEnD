@@ -64,6 +64,8 @@ export interface LoginFlow {
   urlPattern?: RegExp;
   /** One-time user code displayed next to the URL, when the CLI prints one. */
   codePattern?: RegExp;
+  /** Present the provider URL + code together, without an AgEnD browser terminal. */
+  deviceAuth?: true;
   /** Pane content that proves the CLI finished signing in. */
   successPattern: RegExp;
   /** Hard cap for the whole login session. */
@@ -161,6 +163,8 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
     command: "codex login --device-auth",
     authCheck: { argv: ["codex", "login", "status"] },
     loginScreenPattern: /Sign in with ChatGPT/,
+    deviceAuth: true,
+    urlPattern: /https:\/\/auth\.openai\.com\/codex\/device(?=$|[\s"'<>\]),.])/,
     codePattern: STANDALONE_DEVICE_CODE,
     successPattern: /Successfully logged in/,
     timeoutMs: LOGIN_TIMEOUT_MS,
@@ -269,7 +273,7 @@ export const LOGIN_BACKEND_ALIASES: Record<string, string> = {
  */
 export function extractLoginHint(
   pane: string,
-  flow: Pick<LoginFlow, "urlPattern" | "codePattern">,
+  flow: Pick<LoginFlow, "urlPattern" | "codePattern" | "deviceAuth">,
 ): { url: string | null; code: string | null } {
   const urlMatch = pane.match(flow.urlPattern ?? GENERIC_URL);
   // A trailing period/comma is prose punctuation, not part of the URL.
@@ -277,7 +281,9 @@ export function extractLoginHint(
   const codeMatch = flow.codePattern ? pane.match(flow.codePattern) : null;
   // Alternation patterns carry several capture groups — take the one that hit.
   const code = codeMatch ? codeMatch.slice(1).find(group => group !== undefined) ?? null : null;
-  return { url, code };
+  // Pane output can arrive in pieces. Do not latch a device URL before its
+  // code is visible, or observers that deduplicate URLs would lose the code.
+  return { url: flow.deviceAuth && !code ? null : url, code };
 }
 
 export type AuthCheckResult = "valid" | "invalid" | "unknown";

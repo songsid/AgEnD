@@ -33,6 +33,7 @@ import { mkdtempSync, openSync, rmSync, readFileSync, unlinkSync, constants as f
 import { Socket as NetSocket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { extractLoginHint } from "./login-flows.js";
 
 // ── Public types ─────────────────────────────────────────────────────────────
 
@@ -41,6 +42,8 @@ export interface WebTerminalObserve {
   urlPattern?: RegExp;
   /** One-time device code shown next to the URL. First capture group wins. */
   codePattern?: RegExp;
+  /** Wait for both provider URL and code before emitting the device-auth hint. */
+  deviceAuth?: true;
   /** Pane text that proves the command achieved its purpose (login done). */
   successPattern?: RegExp;
   /** Known failure strings → human wording + suggested next step. */
@@ -149,7 +152,6 @@ const TMUX_EXEC_TIMEOUT_MS = 10_000;
 const KILL_OP_TIMEOUT_MS = 5_000;
 /** Consecutive failed pane probes before the session is ended as unreachable. */
 export const MAX_PROBE_FAILURES = 3;
-const GENERIC_URL = /https:\/\/[^\s"'<>\])]+/;
 /** RFC 4648 base32 alphabet without padding — unambiguous when typed on a phone. */
 const BASE32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
@@ -529,13 +531,10 @@ export class WebTerminalSession extends EventEmitter {
   private observe(pane: string): void {
     const obs = this.spec.observe;
     if (!obs || !pane) return;
-    const urlMatch = pane.match(obs.urlPattern ?? GENERIC_URL);
-    if (urlMatch) {
-      const url = urlMatch[0].replace(/[.,]+$/, "");
+    const { url, code } = extractLoginHint(pane, obs);
+    if (url) {
       if (!this.sentUrls.has(url)) {
         this.sentUrls.add(url);
-        const codeMatch = obs.codePattern ? pane.match(obs.codePattern) : null;
-        const code = codeMatch ? codeMatch.slice(1).find(g => g !== undefined) ?? null : null;
         this.audit("web_terminal_hint", { host: safeHost(url), hasCode: code !== null });
         void Promise.resolve(this.events.onHint?.(url, code)).catch(err =>
           this.logger.warn({ err: (err as Error).message }, "web terminal hint handler failed"));
