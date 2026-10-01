@@ -131,12 +131,18 @@ function updateClaudeJson(mutate: (cfg: Record<string, unknown>) => boolean): vo
 
 
 /**
- * Claude's session-resume prompt with the cursor on the destructive default
- * (captured from the 2.1.261 binary: "❯ 1. Resume from summary (recommended)" /
- * "  2. Resume full session as-is"). Anchored to the selector + option number so
- * transcript prose quoting the sentence never matches.
+ * Claude's session-resume prompt with the cursor on the destructive default.
+ * 2.1.261 painted two options; 2.1.286 paints three (captured live, see
+ * tests/fixtures/claude-2.1.286-resume-three-options.pane.txt):
+ *
+ *   ❯ 1. Resume from summary (recommended)      ← "(instant, recommended)" when
+ *     2. Resume full session as-is                 a summary is already computed
+ *     3. Don't ask me again
+ *
+ * Anchored to the selector + option number so transcript prose quoting the
+ * sentence never matches.
  */
-export const CLAUDE_RESUME_PROMPT_DEFAULT = /^[ \t]*[❯›][ \t]*1\.[ \t]*Resume from summary \(recommended\)/m;
+export const CLAUDE_RESUME_PROMPT_DEFAULT = /^[ \t]*[❯›][ \t]*1\.[ \t]*Resume from summary \((?:instant, )?recommended\)/m;
 /**
  * The resume prompt's two-option menu in ANY arrangement: two consecutive
  * numbered "Resume …" rows. Matches the default shape too, so it must be
@@ -146,6 +152,8 @@ export const CLAUDE_RESUME_PROMPT_DEFAULT = /^[ \t]*[❯›][ \t]*1\.[ \t]*Resum
 export const CLAUDE_RESUME_PROMPT_MENU = /^[ \t]*[❯›]?[ \t]*\d\.[ \t]*Resume (?:full session as-is|from summary)[^\n]*\n[ \t]*[❯›]?[ \t]*\d\.[ \t]*Resume (?:full session as-is|from summary)/m;
 
 const RESUME_OPTION_ROW = /^[ \t]*[❯›]?[ \t]*\d\.[ \t]*Resume (?:full session as-is|from summary)/;
+/** 2.1.286 appends a persistent "never ask" option after the two Resume rows. */
+const RESUME_NEVER_ASK_ROW = /^[ \t]*[❯›]?[ \t]*\d\.[ \t]*Don't ask me again[ \t]*$/;
 const RESUME_DIALOG_FOOTER = /Enter to confirm|Esc to cancel|↑↓|to select|to navigate/i;
 
 /**
@@ -163,12 +171,165 @@ export function claudeResumeMenuState(pane: string): { active: boolean; defaultC
   }
   if (start < 0) return { active: false, defaultCursor: false };
   const trailing = rows.slice(start + 2).filter(r => r.trim().length > 0);
+  // The third option belongs to the menu, not to whatever follows it: skip it
+  // (once, directly under the pair) before judging what trails the menu.
+  if (trailing.length > 0 && RESUME_NEVER_ASK_ROW.test(trailing[0])) trailing.shift();
   const active = trailing.length <= 2 && trailing.every(r => RESUME_DIALOG_FOOTER.test(r));
-  const defaultCursor = /^[ \t]*[❯›][ \t]*1\.[ \t]*Resume from summary \(recommended\)/.test(rows[start]);
+  const defaultCursor = /^[ \t]*[❯›][ \t]*1\.[ \t]*Resume from summary \((?:instant, )?recommended\)/.test(rows[start]);
   return { active, defaultCursor };
 }
 const resumeDefaultActive = (pane: string): boolean => { const s = claudeResumeMenuState(pane); return s.active && s.defaultCursor; };
 const resumeMenuActive = (pane: string): boolean => claudeResumeMenuState(pane).active;
+
+// ── First-run / trust / bypass screens (captured live from Claude Code 2.1.286) ──
+//
+// Fixtures: tests/fixtures/claude-2.1.286-*.pane.txt. Every predicate below is
+// BOTTOM-ANCHORED on purpose, like claudeResumeMenuState: the runtime scanner
+// sends keys whenever a dialog's `isActive` holds, so a transcript that quotes
+// one of these screens (this very bug being discussed, a pasted capture) must
+// never count — a quote is followed by more transcript and the real `❯` input
+// row, a live dialog is the last thing on the screen.
+
+/** Pane rows without carriage returns and without the blank rows tmux pads below the TUI. */
+function claudeRows(pane: string): string[] {
+  const rows = pane.replace(/\r/g, "").split("\n");
+  while (rows.length > 0 && rows[rows.length - 1].trim() === "") rows.pop();
+  return rows;
+}
+
+/** The footer every confirm-style select dialog ends with (trust, bypass, MCP, resume, …). */
+const CLAUDE_CONFIRM_FOOTER = /^[ \t]*Enter to confirm · Esc to cancel[ \t]*$/;
+
+export interface ClaudeChoiceDialogState {
+  /** The dialog is the live, bottom-most interactive region. */
+  active: boolean;
+  /** Where the cursor sits: the first (declining) row, the second (accepting) row, or neither. */
+  cursor: "decline" | "accept" | "unknown";
+  /** The declining row's label — "No, exit" normally, a different one for the trust backstop variant. */
+  declineLabel: string | null;
+}
+
+/**
+ * A two-option confirm dialog: title text somewhere above, then exactly
+ *   [❯] <decline row>
+ *   [❯] <accept row>
+ * then the confirm footer as the LAST row on screen. The decline option is
+ * listed first and holds the cursor by default (`cancelFirst`, `focus:"cancel"`
+ * in the binary), which is why a bare Enter is never the right answer here.
+ */
+function claudeChoiceDialogState(
+  pane: string,
+  title: RegExp,
+  declineRow: RegExp,
+  acceptRow: RegExp,
+): ClaudeChoiceDialogState {
+  const none: ClaudeChoiceDialogState = { active: false, cursor: "unknown", declineLabel: null };
+  const rows = claudeRows(pane);
+  if (rows.length < 4 || !CLAUDE_CONFIRM_FOOTER.test(rows[rows.length - 1])) return none;
+  let end = rows.length - 2;
+  while (end >= 0 && rows[end].trim() === "") end--;
+  if (end < 1) return none;
+  const decline = declineRow.exec(rows[end - 1]);
+  const accept = acceptRow.exec(rows[end]);
+  if (!decline || !accept) return none;
+  // The title must belong to THIS dialog: close above the options, with no
+  // composer row (`❯` alone) in between.
+  const above = rows.slice(Math.max(0, end - 1 - 30), end - 1);
+  let titleAt = -1;
+  for (let i = above.length - 1; i >= 0; i--) if (title.test(above[i])) { titleAt = i; break; }
+  if (titleAt < 0) return none;
+  if (above.slice(titleAt).some(r => /^[ \t]*❯[ \t]*$/.test(r))) return none;
+  const declineCursor = decline[1] !== undefined;
+  const acceptCursor = accept[1] !== undefined;
+  const cursor = declineCursor === acceptCursor ? "unknown" : declineCursor ? "decline" : "accept";
+  return { active: true, cursor, declineLabel: decline[2] };
+}
+
+const TRUST_TITLE = /Accessing workspace:|Quick safety check: Is this a project you created or one you trust/;
+// "No, exit" normally; "No, continue without these permissions" when the folder
+// was already trusted but its repo config still asks for confirmation (backstop).
+const TRUST_DECLINE_ROW = /^[ \t]*([❯›])?[ \t]*(No, exit|No, continue without these permissions)[ \t]*$/;
+const TRUST_ACCEPT_ROW = /^[ \t]*([❯›])?[ \t]*Yes, I trust this folder[ \t]*$/;
+export const claudeTrustDialogState = (pane: string): ClaudeChoiceDialogState =>
+  claudeChoiceDialogState(pane, TRUST_TITLE, TRUST_DECLINE_ROW, TRUST_ACCEPT_ROW);
+
+const BYPASS_TITLE = /WARNING: Claude Code running in Bypass Permissions mode/;
+const BYPASS_DECLINE_ROW = /^[ \t]*([❯›])?[ \t]*(No, exit)[ \t]*$/;
+const BYPASS_ACCEPT_ROW = /^[ \t]*([❯›])?[ \t]*Yes, I accept[ \t]*$/;
+export const claudeBypassDialogState = (pane: string): ClaudeChoiceDialogState =>
+  claudeChoiceDialogState(pane, BYPASS_TITLE, BYPASS_DECLINE_ROW, BYPASS_ACCEPT_ROW);
+
+// Down+Enter lands on the accepting row ONLY from the declining row; with the
+// cursor already on the accepting row a Down would wrap it back to "No, exit".
+const trustOnDecline = (pane: string): boolean => { const s = claudeTrustDialogState(pane); return s.active && s.cursor === "decline" && s.declineLabel === "No, exit"; };
+// "No, continue without these permissions" keeps the existing trust and just
+// moves on — it is the safe, non-exiting answer, so a bare Enter is right.
+const trustOnContinue = (pane: string): boolean => { const s = claudeTrustDialogState(pane); return s.active && s.cursor === "decline" && s.declineLabel !== "No, exit"; };
+const trustOnAccept = (pane: string): boolean => { const s = claudeTrustDialogState(pane); return s.active && s.cursor === "accept"; };
+const trustUnknown = (pane: string): boolean => { const s = claudeTrustDialogState(pane); return s.active && s.cursor === "unknown"; };
+const bypassOnDecline = (pane: string): boolean => { const s = claudeBypassDialogState(pane); return s.active && s.cursor === "decline"; };
+const bypassOnAccept = (pane: string): boolean => { const s = claudeBypassDialogState(pane); return s.active && s.cursor === "accept"; };
+const bypassUnknown = (pane: string): boolean => { const s = claudeBypassDialogState(pane); return s.active && s.cursor === "unknown"; };
+
+/** Identity/pre-filter patterns for the active predicates above; never authoritative alone. */
+export const CLAUDE_TRUST_DIALOG_PATTERN = /Yes, I trust this folder/;
+export const CLAUDE_BYPASS_DIALOG_PATTERN = /WARNING: Claude Code running in Bypass Permissions mode/;
+
+// First-run onboarding (theme → login → security notes), shown instead of the
+// REPL until `hasCompletedOnboarding` is set. The theme picker's `❯ ✔ Dark
+// mode` and the login menu's `❯ 1. …` both satisfy the `❯` ready pattern.
+const THEME_TITLE = /^[ \t]*Choose the text style that looks best with your terminal[ \t]*$/;
+// Rows the theme screen legitimately paints below its title: the hint, the
+// seven theme options, the diff preview and its syntax-theme line.
+const THEME_BELOW_ROW = /^[ \t]*(?:$|To change this later, run \/theme|[❯›]?[ \t]*(?:✔[ \t]*)?(?:Auto \(match terminal\)|(?:Dark|Light) mode(?: \([^)]*\))?)|[╌─]+|\d+[ \t]+.*|.*Syntax theme:.*|.*Syntax highlighting.*)[ \t]*$/;
+export function claudeThemePickerActive(pane: string): boolean {
+  const rows = claudeRows(pane);
+  let t = -1;
+  for (let i = rows.length - 1; i >= 0; i--) if (THEME_TITLE.test(rows[i])) { t = i; break; }
+  if (t < 0) return false;
+  return rows.slice(t + 1).every(r => THEME_BELOW_ROW.test(r));
+}
+
+// The security-notes step ends with a bare "Press Enter to continue…" prompt.
+// NOT live-captured (a real capture needs a completed OAuth login): wording is
+// taken from the 2.1.286 onboarding component, so keep it exact and anchored.
+export function claudeSecurityNotesActive(pane: string): boolean {
+  const rows = claudeRows(pane);
+  if (rows.length < 2 || !/^[ \t]*Press Enter to continue(?:…|\.\.\.)?[ \t]*$/.test(rows[rows.length - 1])) return false;
+  return rows.slice(Math.max(0, rows.length - 16), rows.length - 1).some(r => /^[ \t]*Security notes:[ \t]*$/.test(r));
+}
+
+// The terminal-setup offer (shown by onboarding only for some terminals) ends
+// with "Enter to confirm · Esc to skip". Source-derived, not live-captured:
+// Escape is its documented skip.
+export function claudeTerminalSetupActive(pane: string): boolean {
+  const rows = claudeRows(pane);
+  if (rows.length < 4 || !/^[ \t]*Enter to confirm · Esc to skip[ \t]*$/.test(rows[rows.length - 1])) return false;
+  const above = rows.slice(Math.max(0, rows.length - 14), rows.length - 1);
+  return above.some(r => /^[ \t]*Use Claude Code's terminal setup\?[ \t]*$/.test(r))
+    && above.some(r => /No, maybe later with \/terminal-setup/.test(r));
+}
+
+/**
+ * The CLI parked at a sign-in screen: the login-method menu or the OAuth URL /
+ * paste-code prompt (both captured live, 2.1.286). No key can answer these —
+ * only a human completing the login — so the daemon reports an auth incident.
+ */
+export function claudeLoginScreenActive(pane: string): boolean {
+  const rows = claudeRows(pane);
+  if (rows.length === 0) return false;
+  // OAuth URL screen: the paste-code prompt is the last row.
+  if (/Paste code here if prompted >[ \t]*$/.test(rows[rows.length - 1])) {
+    return rows.slice(Math.max(0, rows.length - 14), rows.length - 1)
+      .some(r => /Browser didn't open\? Use the url below to sign in|oauth\/authorize/.test(r));
+  }
+  // Login-method menu: only numbered option rows may follow the title.
+  let t = -1;
+  for (let i = rows.length - 1; i >= 0; i--) if (/^[ \t]*Select login method:[ \t]*$/.test(rows[i])) { t = i; break; }
+  if (t < 0) return false;
+  const below = rows.slice(t + 1).filter(r => r.trim() !== "");   // a blank row separates title and menu
+  return below.length >= 2 && below.every(r => /^[ \t]*[❯›]?[ \t]*\d\.[ \t]+\S/.test(r));
+}
 
 /**
  * Claude Code's destructive shell-command confirmation menu.  Claude renders
@@ -245,6 +406,57 @@ const dangerPromptUnknown = (pane: string): boolean => {
 /** This text is code-owned and intentionally never includes the command. */
 export const CLAUDE_DANGEROUS_COMMAND_BLOCKED_NOTICE =
   "[system:dangerous-command-blocked]\nThe previous command was classified as dangerous and was automatically denied. Do not retry it. Use a safe form instead (for example `${VAR:?}` validation, a literal path, or skip the destructive operation).";
+
+/**
+ * Entries for one two-option confirm dialog (trust, Bypass Permissions): one per
+ * known cursor position, plus a hold-only entry for an arrangement we cannot
+ * navigate. All block delivery and own stdin.
+ *
+ * The answer is STEPWISE and state-driven, never a blind `Down, Enter`: with the
+ * cursor on the declining row the only key sent is `Down`, and `Enter` is sent
+ * only on a later poll that sees the cursor on the accepting row. Claude's
+ * confirm dialog refuses input for a short window after it mounts (captured
+ * live on 2.1.286: a Down painted-and-sent immediately is swallowed while an
+ * Enter 200 ms later is accepted) — so a blind pair selected "No, exit" and the
+ * CLI quit, in 3 of 4 trials. Each step is idempotent: a refused Down is simply
+ * repeated, a refused Enter is repeated, and no state ever sends Enter on "No".
+ */
+function claudeConfirmDialogEntries(
+  pattern: RegExp,
+  name: string,
+  known: Array<{ isActive: (pane: string) => boolean; keys: string[]; what: string }>,
+  unknown: (pane: string) => boolean,
+): StartupDialog[] {
+  return [
+    ...known.map((k): StartupDialog => ({
+      pattern,
+      isActive: k.isActive,
+      keys: k.keys,
+      description: `${name} — ${k.what}`,
+      blocksDelivery: true,
+      inputBlocked: true,
+    })),
+    {
+      pattern,
+      isActive: unknown,
+      keys: [],
+      holdOnly: true,
+      blocksDelivery: true,
+      inputBlocked: true,
+      description: `${name} (unrecognised cursor) — holding for a human, never auto-selecting`,
+    },
+  ];
+}
+
+const CLAUDE_TRUST_ENTRIES = [
+  { isActive: trustOnDecline, keys: ["Down"], what: "move the cursor to 'Yes, I trust this folder'" },
+  { isActive: trustOnContinue, keys: ["Enter"], what: "continue without the folder's extra permissions" },
+  { isActive: trustOnAccept, keys: ["Enter"], what: "confirm 'Yes, I trust this folder'" },
+];
+const CLAUDE_BYPASS_ENTRIES = [
+  { isActive: bypassOnDecline, keys: ["Down"], what: "move the cursor to 'Yes, I accept'" },
+  { isActive: bypassOnAccept, keys: ["Enter"], what: "confirm 'Yes, I accept'" },
+];
 
 /** Startup budget for a resuming claude-code launch (fresh starts keep the default). */
 export const CLAUDE_RESUME_STARTUP_BUDGET_MS = 60_000;
@@ -336,6 +548,13 @@ export class ClaudeCodeBackend implements CliBackend {
         command: statusLineCommand,
       },
     };
+    // The Bypass Permissions warning appears on a first run (and whenever the
+    // user's own settings have not recorded the acceptance) for every launch
+    // with --dangerously-skip-permissions. AgEnD passes that flag deliberately,
+    // so record the acceptance in the flag-level settings this file is loaded as
+    // (--settings): claude 2.1.286 then never paints the dialog (verified live).
+    // Only when the flag is actually passed — see buildCommand.
+    if (config.skipPermissions !== false) settings.skipDangerousModePermissionPrompt = true;
     writeFileSync(
       join(this.instanceDir, "claude-settings.json"),
       JSON.stringify(settings),
@@ -513,15 +732,30 @@ export class ClaudeCodeBackend implements CliBackend {
       // two-option menu structure, never answered — a blind Enter would take
       // the default and drop the full context. Hold the pane, report for a human.
       { pattern: CLAUDE_RESUME_PROMPT_MENU, isActive: resumeMenuActive, keys: [], holdOnly: true, blocksDelivery: true, description: "Claude session resume prompt (unrecognised variant) — holding for a human, never auto-selecting" },
+      // First-run onboarding. The theme picker's `❯ ✔ Dark mode` satisfies the
+      // ready pattern, so without these entries a first launch was declared
+      // ready while sitting in the picker (#1074). Sign-in screens are NOT here:
+      // no key answers them — the daemon reports them as an auth incident
+      // (LOGIN_FLOWS loginScreenActive).
+      { pattern: /Choose the text style that looks best with your terminal/, isActive: claudeThemePickerActive, keys: ["Enter"], description: "Claude onboarding theme picker — accept the highlighted theme" },
+      { pattern: /Press Enter to continue/, isActive: claudeSecurityNotesActive, keys: ["Enter"], description: "Claude onboarding security notes — continue" },
+      { pattern: /Use Claude Code's terminal setup\?/, isActive: claudeTerminalSetupActive, keys: ["Escape"], description: "Claude onboarding terminal-setup offer — skip" },
+      // The Bypass Permissions warning has the same `❯ No, exit` / Yes shape as
+      // the trust dialog (cursor on the exiting option). Own entries, ahead of the
+      // trust pattern below, so it is named for what it is and a cursor that is
+      // not on "No, exit" is never blindly navigated.
+      ...claudeConfirmDialogEntries(CLAUDE_BYPASS_DIALOG_PATTERN, "Claude Bypass Permissions warning", CLAUDE_BYPASS_ENTRIES, bypassUnknown),
+      ...claudeConfirmDialogEntries(CLAUDE_TRUST_DIALOG_PATTERN, "Claude workspace trust dialog", CLAUDE_TRUST_ENTRIES, trustUnknown),
       { pattern: /[❯›]\s*\d+\.\s*No/m, keys: ["Down", "Enter"], description: "Claude 'No, exit' confirmation — navigate to Yes" },
-      // The 2.1.250 workspace-trust dialog has no numbered options — the cursor
-      // sits on "❯ No, exit" above "Yes, I trust this folder" (captured live).
-      // It must be matched BEFORE the generic /I trust/ Enter fallback below:
-      // that pattern also matches this screen's "Yes, I trust this folder" text,
-      // and a bare Enter there confirms "No, exit" — the dialog fallback itself
-      // used to exit the CLI. preTrust() normally prevents the dialog entirely;
-      // this is the recovery path when the config write was skipped.
-      { pattern: /[❯›]\s*No, exit/m, keys: ["Down", "Enter"], description: "Claude workspace trust dialog — navigate to 'Yes, I trust this folder'" },
+      // Fallback for a workspace-trust screen the structural entries above no longer
+      // recognise (footer or title reworded). It must be matched BEFORE the generic
+      // /I trust/ Enter fallback below: that pattern also matches the screen's
+      // "Yes, I trust this folder" text, and a bare Enter with the cursor on
+      // "❯ No, exit" quits the CLI. Down ONLY: the next poll sees the cursor on
+      // "Yes, I trust this folder" and the generic entry confirms it — a blind
+      // Down+Enter is what quit the CLI when Down was swallowed (see
+      // claudeConfirmDialogEntries). preTrust() normally prevents the dialog.
+      { pattern: /[❯›]\s*No, exit/m, keys: ["Down"], description: "Claude workspace trust dialog — move to 'Yes, I trust this folder'" },
       { pattern: /I accept|I trust/i, keys: ["Enter"], description: "Claude 'Yes, I accept' trust dialog" },
       { pattern: /Resume Session/i, keys: ["Escape"], description: "Claude resume session picker — start fresh" },
     ];
@@ -584,6 +818,19 @@ export class ClaudeCodeBackend implements CliBackend {
         description: "Claude dangerous-command prompt (unknown cursor) — holding for a human, never auto-selecting",
         autoResolutionKey: "claude-dangerous-command",
       },
+      // Trust and Bypass Permissions are STARTUP dialogs, but on a first run
+      // they come after theme → login → security — long after the 30s startup
+      // scan has given up — so they must be answerable here too (#1074). Every
+      // entry is bottom-anchored (see claudeChoiceDialogState): a transcript
+      // quoting the screen never receives keys; answered stepwise (see
+      // claudeConfirmDialogEntries).
+      ...claudeConfirmDialogEntries(CLAUDE_TRUST_DIALOG_PATTERN, "Claude workspace trust dialog", CLAUDE_TRUST_ENTRIES, trustUnknown),
+      ...claudeConfirmDialogEntries(CLAUDE_BYPASS_DIALOG_PATTERN, "Claude Bypass Permissions warning", CLAUDE_BYPASS_ENTRIES, bypassUnknown),
+      // A first run can also reach these after the startup scan ended (slow
+      // preflight, cold start). Both are harmless to answer.
+      { pattern: /Choose the text style that looks best with your terminal/, isActive: claudeThemePickerActive, keys: ["Enter"], description: "Claude onboarding theme picker — accept the highlighted theme", blocksDelivery: true, verifyAfterKeys: true, autoResolutionKey: "claude-onboarding-theme" },
+      { pattern: /Press Enter to continue/, isActive: claudeSecurityNotesActive, keys: ["Enter"], description: "Claude onboarding security notes — continue", blocksDelivery: true, verifyAfterKeys: true, autoResolutionKey: "claude-onboarding-security" },
+      { pattern: /Use Claude Code's terminal setup\?/, isActive: claudeTerminalSetupActive, keys: ["Escape"], description: "Claude onboarding terminal-setup offer — skip", blocksDelivery: true, verifyAfterKeys: true, autoResolutionKey: "claude-onboarding-terminal-setup" },
     ];
   }
 
@@ -673,7 +920,8 @@ export class ClaudeCodeBackend implements CliBackend {
    * this folder?" and nothing in tmux answers it, so the process exits and the
    * instance crash-loops. No CLI flag skips it interactively (verified on
    * 2.1.250 — only -p / non-TTY stdout bypass the dialog); the recognised
-   * signal is projects[<cwd>].hasTrustDialogAccepted in claude.json.
+   * signal is projects[<cwd>].hasTrustDialogAccepted in claude.json. Also marks
+   * onboarding complete for an already-authenticated account (see below).
    */
   preTrust(workingDirectory: string): void {
     const cwd = workingDirectory?.trim();
@@ -702,6 +950,18 @@ export class ClaudeCodeBackend implements CliBackend {
           if (entry.hasTrustDialogAccepted === true) continue;
           entry.hasTrustDialogAccepted = true;
           projects[p] = entry;
+          changed = true;
+        }
+        // `claude auth login` (what /login runs) saves the account but, unlike
+        // the in-TUI login, never sets hasCompletedOnboarding — so the first
+        // launch after /login replays theme → login method → OAuth in the pane
+        // even though credentials exist (verified live on 2.1.286). A recorded
+        // account is exactly the state claude's own refresh-token login marks as
+        // onboarded; do the same, and only then. A fresh machine with no account
+        // keeps its onboarding (the startup scan reports the sign-in screen).
+        const account = cfg.oauthAccount as { accountUuid?: unknown } | undefined;
+        if (cfg.hasCompletedOnboarding !== true && typeof account?.accountUuid === "string" && account.accountUuid) {
+          cfg.hasCompletedOnboarding = true;
           changed = true;
         }
         return changed;

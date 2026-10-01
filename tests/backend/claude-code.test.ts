@@ -364,8 +364,11 @@ describe("ClaudeCodeBackend", () => {
     });
 
     it("navigates the trust dialog to 'Yes' instead of Enter-confirming the selected 'No, exit'", () => {
+      // Stepwise since #1074: Down now, Enter only on a later poll that sees the
+      // cursor on "Yes" (a blind Down+Enter quit the CLI when Down was swallowed
+      // by the dialog's input-refusal window). Never a bare Enter on "No, exit".
       const dialog = firstMatch(TRUST_DIALOG);
-      expect(dialog?.keys).toEqual(["Down", "Enter"]);
+      expect(dialog?.keys).toEqual(["Down"]);
       expect(dialog?.description).toContain("trust");
     });
   });
