@@ -1677,6 +1677,7 @@ program
       getSystemServicePath,
       getSystemdServiceState,
       restartSystemdService,
+      ensureSystemdKillModeMixed,
     } = await import("./service-installer.js");
     const { spawn, spawnSync } = await import("node:child_process");
     const plat = detectPlatform();
@@ -1712,6 +1713,16 @@ program
         console.error(`Check: ${statusCommand}`);
         process.exitCode = 1;
         return;
+      }
+      // #908: before this restart's stop, so it already lets the fleet quit
+      // each CLI itself instead of systemd SIGTERMing them all at once.
+      const unitPath = systemdTarget.user ? getServicePath() : getSystemServicePath();
+      if (unitPath) {
+        let outcome: ReturnType<typeof ensureSystemdKillModeMixed> | "unwritable";
+        try { outcome = ensureSystemdKillModeMixed(unitPath); } catch { outcome = "unwritable"; }
+        if (outcome === "added") console.log(`  ✓ ${unitPath}: added KillMode=mixed (the fleet stops its CLIs; systemd no longer signals them all at once)`);
+        else if (outcome === "custom") console.log(`  ⚠ ${unitPath} sets its own KillMode; left as is. KillMode=mixed avoids kiro-cli core dumps on restart (#908).`);
+        else if (outcome === "unwritable") console.log(`  ⚠ Could not add KillMode=mixed to ${unitPath}; add it under [Service] to avoid kiro-cli core dumps on restart (#908).`);
       }
       run(systemdTarget.user ? "systemctl --user daemon-reload" : "systemctl daemon-reload");
       if (systemdTarget.user) {
