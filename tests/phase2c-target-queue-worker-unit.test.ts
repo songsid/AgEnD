@@ -6,20 +6,22 @@ function setup(over: Partial<TargetQueueWorkerDeps> = {}, rows = 2) {
   let queue = rows;
   let budget = 0;
   const claims: string[] = [];
+  let releases = 0;
   const deps: TargetQueueWorkerDeps = {
     owns: () => true,
+    wanted: () => true,
     available: () => true,
     blocked: () => false,
     daemonBootId: () => "boot-1",
     claim: (boot: string) => { if (queue <= 0) return undefined; queue--; claims.push(boot); return { deliveryId: `d${claims.length}` } as any; },
     tryAcquireBudget: () => { budget++; return true; },
-    releaseBudget: () => { budget--; },
+    releaseBudget: () => { budget--; releases++; },
     dispatch: async () => {},
     kickCoordinator: vi.fn(),
     logger: { warn: vi.fn() },
     ...over,
   };
-  return { worker: new TargetQueueWorker("t", deps), deps, claims, budget: () => budget };
+  return { worker: new TargetQueueWorker("t", deps), deps, claims, releases: () => releases, budget: () => budget };
 }
 
 describe("TargetQueueWorker", () => {
@@ -51,7 +53,7 @@ describe("TargetQueueWorker", () => {
   });
 
   it("no budget, no ownership or no outbox: nothing is claimed", async () => {
-    for (const over of [{ tryAcquireBudget: () => false }, { owns: () => false }, { available: () => false }]) {
+    for (const over of [{ tryAcquireBudget: () => false }, { owns: () => false }, { available: () => false }, { wanted: () => false }]) {
       const s = setup(over);
       await s.worker.drain();
       expect(s.claims).toEqual([]);
@@ -76,5 +78,30 @@ describe("TargetQueueWorker", () => {
     expect(s.deps.logger.warn).toHaveBeenCalled();
     expect(s.budget()).toBe(0);
     expect(s.worker.inFlight).toBe(false);
+  });
+});
+
+
+describe("TargetQueueWorker review fixes (#1079)", () => {
+  it("no longer wanted (flag switched back): finishes the claimed row, claims no further one", async () => {
+    let wanted = true;
+    const s = setup({ wanted: () => wanted, dispatch: async () => { wanted = false; } }, 3);
+    await s.worker.drain();
+    expect(s.claims).toHaveLength(1);
+  });
+
+  it("every acquired budget is returned exactly once (claimed or not)", async () => {
+    const s = setup({}, 2);
+    await s.worker.drain();
+    expect(s.releases()).toBe(3); // two rows + the final empty claim
+    expect(s.budget()).toBe(0);
+  });
+
+  it("a claim that throws (e.g. SQLITE_BUSY) returns the budget exactly once", async () => {
+    const s = setup({ claim: () => { throw new Error("SQLITE_BUSY: database is locked"); } });
+    await s.worker.drain();
+    expect(s.budget()).toBe(0);
+    expect(s.releases()).toBe(1);
+    expect(s.deps.logger.warn).toHaveBeenCalled();
   });
 });

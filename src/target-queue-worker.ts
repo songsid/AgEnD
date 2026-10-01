@@ -19,6 +19,13 @@ import type { ClaimedOutboxDelivery } from "./delivery-outbox.js";
 export interface TargetQueueWorkerDeps {
   /** Whether this worker still owns its target's lane. */
   owns(): boolean;
+  /**
+   * Whether the target is still `delivery_worker: on`. Checked before every
+   * claim: after a switch back, the worker finishes only the row it already
+   * claimed and then stops, so the pump takes the lane over (synchronously,
+   * in its next pass) instead of the worker draining the queue to the end.
+   */
+  wanted(): boolean;
   /** Whether the outbox can be queried (closed database / shutting down → false). */
   available(): boolean;
   /** Paused, being woken, restarting, or not accepting by the daemon's own account. */
@@ -29,6 +36,14 @@ export interface TargetQueueWorkerDeps {
   claim(bootId: string): ClaimedOutboxDelivery | undefined;
   /** Shared active-delivery budget with the pump. */
   tryAcquireBudget(): boolean;
+  /**
+   * Return the budget taken for one attempt, exactly once. It never kicks the
+   * pump: with nothing claimable (e.g. a retry not yet due) a kick would turn
+   * an unexpired retry_wait into a zero-delay claim loop. Every way a
+   * dispatch ends changes the row's state, and that outbox event already
+   * re-runs the pump; a not-yet-due retry is woken by the pump's nextRetryAt
+   * timer.
+   */
   releaseBudget(): void;
   /** HANDOFF + AWAIT_RESULT: resolves when the row has left delivering/submission_started. */
   dispatch(claimed: ClaimedOutboxDelivery): Promise<void>;
@@ -69,14 +84,22 @@ export class TargetQueueWorker {
     do {
       this.again = false;
       for (;;) {
-        if (!this.deps.owns() || !this.deps.available()) return;
+        if (!this.deps.owns() || !this.deps.wanted() || !this.deps.available()) return;
         // WAIT_ACCEPTING and CLAIM in one synchronous step: the verdict, the
         // bootId and the claim are about the same daemon generation.
         if (this.deps.blocked()) { this.deps.kickCoordinator(); break; }
         const bootId = this.deps.daemonBootId();
         if (!bootId) { this.deps.kickCoordinator(); break; }
         if (!this.deps.tryAcquireBudget()) break;
-        const claimed = this.deps.claim(bootId);
+        let claimed: ClaimedOutboxDelivery | undefined;
+        try {
+          claimed = this.deps.claim(bootId);
+        } catch (err) {
+          // e.g. SQLITE_BUSY: nothing was claimed, so the budget goes back now —
+          // a leaked slot here would starve every lane once eight leaked.
+          this.deps.releaseBudget();
+          throw err;
+        }
         if (!claimed) { this.deps.releaseBudget(); break; }
         this.inFlight = true;
         try {

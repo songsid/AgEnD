@@ -1115,6 +1115,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private createQueueWorker(target: string): TargetQueueWorker {
     const worker: TargetQueueWorker = new TargetQueueWorker(target, {
       owns: () => this.queueWorkers.get(target) === worker,
+      wanted: () => this.deliveryWorkerMode(target) === "on",
       available: () => !this.shuttingDown && this.deliveryOutbox?.isOpen === true,
       blocked: () => this.isInstanceRestarting(target) || this.wakeCoordinator?.blocksClaim(target) === true,
       daemonBootId: () => this.daemons.get(target)?.bootId ?? null,
@@ -1128,10 +1129,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.activeDurableTargets.add(target);
         return true;
       },
-      releaseBudget: () => {
-        this.activeDurableTargets.delete(target);
-        this.scheduleDeliveryOutboxPump();
-      },
+      releaseBudget: () => { this.activeDurableTargets.delete(target); },
       dispatch: claimed => this.dispatchDurableDelivery(claimed, { holdLaneOnTransportError: true }),
       kickCoordinator: () => this.wakeCoordinator?.kick(),
       logger: this.logger,

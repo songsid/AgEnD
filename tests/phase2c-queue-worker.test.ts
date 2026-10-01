@@ -375,3 +375,73 @@ describe("a worker never touches a closed outbox", () => {
     expect(warn.mock.calls.some(c => String(c[1]).includes("Queue worker drain failed"))).toBe(false);
   });
 });
+
+
+describe("rollback hands the lane back after the claimed row (#1079 review P1-1)", () => {
+  for (const back of ["wake_only", "off"] as const) {
+    it(`on → ${back}: the next row is claimed by the pump, with the pump's semantics`, async () => {
+      const { fm, outbox, admit, scripts } = await fleet("on");
+      const dispatch = vi.spyOn(fm as any, "dispatchDurableDelivery");
+      scripts.set("a", ["hold"]);
+      const first = admit("a");
+      await vi.waitFor(() => expect(outbox.get(first).state).toBe("submission_started"));
+      (fm.fleetConfig as any).defaults.delivery_worker = back;
+      const second = admit("a");
+      (fm as any).scheduleDeliveryOutboxPump();
+      await sleep(30);
+      expect(outbox.get(second).state).toBe("queued");
+      const row = outbox.get(first);
+      outbox.complete(first, row.targetDaemonBootId, row.attemptNo, "delivered");
+      await vi.waitFor(() => expect(outbox.get(second).state).toBe("delivered"));
+      const byRow = new Map(dispatch.mock.calls.map(c => [(c[0] as any).deliveryId, c[1]]));
+      expect(byRow.get(first)).toEqual({ holdLaneOnTransportError: true }); // the worker's row
+      expect(byRow.get(second)).toBeUndefined(); // the pump's dispatch: no lane-hold option
+      expect(fm.queueWorkers.has("a")).toBe(false);
+    });
+  }
+
+  it("continuous admissions cannot keep a switched-back worker as owner", async () => {
+    const { fm, outbox, admit, scripts } = await fleet("on");
+    scripts.set("a", ["hold"]);
+    const first = admit("a");
+    await vi.waitFor(() => expect(outbox.get(first).state).toBe("submission_started"));
+    (fm.fleetConfig as any).defaults.delivery_worker = "wake_only";
+    const later = [admit("a"), admit("a"), admit("a")];
+    const row = outbox.get(first);
+    outbox.complete(first, row.targetDaemonBootId, row.attemptNo, "delivered");
+    await vi.waitFor(() => expect(later.every(id => outbox.get(id).state === "delivered")).toBe(true));
+    expect(fm.queueWorkers.has("a")).toBe(false);
+  });
+});
+
+describe("an unexpired retry does not spin the claim loop (#1079 review P1-2)", () => {
+  it("a row in retry_wait for ~1 s: only a handful of claim attempts, and it is retried when due", async () => {
+    const { outbox, admit, scripts, handoffs } = await fleet("on");
+    scripts.set("a", ["notSent"]); // first hand-off refused → retry_wait (1 s)
+    const claim = vi.spyOn(outbox, "claimNext");
+    const id = admit("a");
+    await vi.waitFor(() => expect(outbox.get(id).state).toBe("retry_wait"));
+    const before = claim.mock.calls.length;
+    await sleep(300);
+    expect(claim.mock.calls.length - before).toBeLessThanOrEqual(3);
+    await vi.waitFor(() => expect(outbox.get(id).state).toBe("delivered"), { timeout: 4_000 });
+    expect(handoffs.filter(h => h.deliveryId === id)).toHaveLength(2);
+  });
+});
+
+describe("a transient claim error does not leak the budget (#1079 review P2-3)", () => {
+  it("claimNext throws SQLITE_BUSY once: the budget is returned and delivery recovers", async () => {
+    const { fm, outbox, admit } = await fleet("on");
+    const real = outbox.claimNext.bind(outbox);
+    let fail = true;
+    vi.spyOn(outbox, "claimNext").mockImplementation((...args: any[]) => {
+      if (fail) { fail = false; throw new Error("SQLITE_BUSY: database is locked"); }
+      return real(...args);
+    });
+    const id = admit("a");
+    await sleep(30);
+    expect((fm as any).activeDurableTargets.has("a")).toBe(false);
+    (fm as any).scheduleDeliveryOutboxPump();
+    await vi.waitFor(() => expect(outbox.get(id).state).toBe("delivered"));
+  });
+});
