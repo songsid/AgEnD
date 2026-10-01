@@ -7,7 +7,7 @@ import { EventEmitter } from "node:events";
 import type { InstanceConfig, RotationSnapshot, RotationSnapshotEvent } from "./types.js";
 import { rotateLogIfNeeded, type Logger } from "./logger.js";
 import { mcpServerState } from "./mcp-liveness.js";
-import { clearPausedMarker, writePausedMarker } from "./pause-marker.js";
+import { clearPausedMarker, writePausedMarker, type PauseReason } from "./pause-marker.js";
 import { TmuxManager, resolveTmuxLogicalSize } from "./tmux-manager.js";
 import { TranscriptMonitor } from "./transcript-monitor.js";
 import { createTranscriptSource } from "./transcript-sources.js";
@@ -1654,6 +1654,10 @@ export class Daemon extends EventEmitter {
     evidence?: string,
   ): void {
     if (!delivery) return;
+    // Delivered or uncertain means the pane write started: the work reached
+    // the CLI (or may have), so it is activity (Phase 2a). Only a failure is
+    // not — a pre-write failure never gets here; it is retried before begin.
+    if (outcome !== "failed") this.noteWorkActivity();
     this.deliveryOutbox?.complete(delivery.deliveryId, this.bootId, delivery.attemptNo, outcome, evidence);
   }
 
@@ -1675,6 +1679,40 @@ export class Daemon extends EventEmitter {
     const delivery = this.durableDeliveryAttempt(meta);
     if (delivery === null || delivery === false) return;
     this.retryDurableDeliveryBeforeBegin(delivery, reason);
+  }
+
+  /** Restart the idle clock for work that reached the CLI, and persist it like a user inbound. */
+  private noteWorkActivity(now = Date.now()): void {
+    this.autoPauseController.recordActivity(now);
+    try {
+      writeLastInboundAt(this.instanceDir, now);
+    } catch (err) {
+      this.logger.warn({ err: (err as Error).message }, "Failed to persist last activity timestamp");
+    }
+  }
+
+  /**
+   * A daemon started to wake, restart or explicitly start an instance begins
+   * its idle window now (Phase 2a). Only the fleet's own boot keeps the
+   * persisted last-inbound seed, so a long-idle fleet still pauses after a
+   * restart; a woken instance used to inherit a week-old timestamp and pause
+   * one second after it became ready.
+   */
+  seedActivityNow(now = Date.now()): void {
+    this.autoPauseController.recordActivity(now);
+  }
+
+  private workLeaseCheck: (() => boolean) | null = null;
+  /** Lifecycle-provided: whether the fleet holds a work lease on this instance. */
+  setWorkLeaseCheck(check: (() => boolean) | undefined): void {
+    this.workLeaseCheck = check ?? null;
+  }
+  private workLeaseActive(): boolean {
+    try { return this.workLeaseCheck?.() === true; }
+    catch (err) {
+      this.logger.debug({ err }, "Work lease check failed; treating as no lease");
+      return false;
+    }
   }
 
   async start(): Promise<void> {
@@ -3533,9 +3571,13 @@ export class Daemon extends EventEmitter {
    * failures: pause() alone no-ops while the CLI is busy/stuck, which is the
    * usual state when the error surfaces. Cleared by a successful pause or wake.
    */
-  requestPauseWhenIdle(opts: { reconfirmAuth?: boolean } = {}): void {
+  requestPauseWhenIdle(opts: { reconfirmAuth?: boolean; reason?: PauseReason } = {}): void {
     if (this.pauseWakeState === "paused") return;
     const reconfirm = opts.reconfirmAuth === true;
+    // An auth request wins over a pending non-auth one: the marker must not
+    // later read as auto-wakeable when a login failure is among the causes.
+    const reason = opts.reason ?? "auth";
+    this.pendingPauseReason = this.pausePending && this.pendingPauseReason === "auth" ? "auth" : reason;
     // A pause already pending unconditionally stays unconditional.
     this.pauseReconfirmAuth = this.pausePending ? this.pauseReconfirmAuth && reconfirm : reconfirm;
     this.pausePending = true;
@@ -3554,8 +3596,10 @@ export class Daemon extends EventEmitter {
       .some(ep => new RegExp(ep.pattern.source, ep.pattern.flags.replace("g", "")).test(bottom));
   }
   private static readonly AUTH_RECONFIRM_ROWS = 15;
+  /** Why the deferred pause was requested; what its marker records (Phase 2a). */
+  private pendingPauseReason: PauseReason = "auth";
 
-  async pause(): Promise<void> {
+  async pause(reason: PauseReason = "operator"): Promise<void> {
     if (this.pauseWakeState === "paused") return;
     if (this.pauseWakeState === "pausing" || this.pauseWakeState === "waking") {
       await this.pauseWakeTransition;
@@ -3606,7 +3650,7 @@ export class Daemon extends EventEmitter {
 
         this.pauseWakeState = "paused";
         this.autoPauseController.markPaused();
-        writePausedMarker(this.instanceDir, this.lastPausedAt ?? Date.now());
+        writePausedMarker(this.instanceDir, this.lastPausedAt ?? Date.now(), reason);
         this.logger.info({ pausedAt: this.lastPausedAt }, "Instance auto-paused");
         this.ipcServer?.broadcast({
           type: "instance_state", instanceName: this.name, state: "paused", pausedAt: this.lastPausedAt,
@@ -3767,7 +3811,9 @@ export class Daemon extends EventEmitter {
         return;
       }
       this.pauseAllowStuck = snapshot.state === "stuck";
-      this.emit("auto_pause_requested", { name: this.name, idleSince: snapshot.stateChangedAt });
+      const reason = this.pendingPauseReason;
+      this.pendingPauseReason = "auth";
+      this.emit("auto_pause_requested", { name: this.name, idleSince: snapshot.stateChangedAt, reason });
       return;
     }
     // A restart deferred by a dead MCP server: the turn it must not interrupt is
@@ -3776,9 +3822,14 @@ export class Daemon extends EventEmitter {
       this.fireMcpRestartRequest("idle_edge");
       return;
     }
-    if (!this.pauseRequested && this.pasteQueueDepth === 0 && this.autoPauseController.observe(snapshot.state)) {
+    // A work lease (Phase 2a) holds only this idle-timeout pause: a target the
+    // fleet just woke for queued work, or one with a submission in flight, must
+    // not be put back to sleep before that work reaches it. The auth-deferred
+    // pause above and operator pauses never consult it.
+    if (!this.pauseRequested && this.pasteQueueDepth === 0 && this.autoPauseController.observe(snapshot.state)
+      && !this.workLeaseActive()) {
       this.pauseRequested = true;
-      this.emit("auto_pause_requested", { name: this.name, idleSince: snapshot.stateChangedAt });
+      this.emit("auto_pause_requested", { name: this.name, idleSince: snapshot.stateChangedAt, reason: "idle" satisfies PauseReason });
     }
   }
 

@@ -73,7 +73,7 @@ describe("General manual pause guard", () => {
     try {
       (fm as any).enforceWarmCap();
       expect(pause).toHaveBeenCalledOnce();
-      expect(pause).toHaveBeenCalledWith("worker");
+      expect(pause).toHaveBeenCalledWith("worker", "warm_cap");
       expect(pause).not.toHaveBeenCalledWith("coordinator");
     } finally {
       rmSync(dataDir, { recursive: true, force: true });

@@ -168,8 +168,8 @@ describe("the lifecycle asks for the reconfirmation only when nothing could vouc
           // Never the direct pause: on an idle pane it would /quit before any check.
           expect(directPause).not.toHaveBeenCalled();
         } else {
-          expect(daemon.requestPauseWhenIdle, JSON.stringify(result)).toHaveBeenCalledWith();
-          expect(directPause).toHaveBeenCalled();
+          expect(daemon.requestPauseWhenIdle, JSON.stringify(result)).toHaveBeenCalledWith({ reason: "auth" });
+          expect(directPause).toHaveBeenCalledWith("worker", "auth");
         }
       }
     } finally {
@@ -192,7 +192,7 @@ describe("the lifecycle asks for the reconfirmation only when nothing could vouc
     (lc as any).daemons.set("worker", daemon);
     daemon.emit("pty_error", { name: "worker", type: "config_error", action: "pause", message: "claude.json is corrupt" });
     await vi.waitFor(() => expect(daemon.requestPauseWhenIdle).toHaveBeenCalled());
-    expect(daemon.requestPauseWhenIdle).toHaveBeenCalledWith();
+    expect(daemon.requestPauseWhenIdle).toHaveBeenCalledWith({ reason: "error" });
   });
 });
 

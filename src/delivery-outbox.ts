@@ -796,6 +796,16 @@ export class DeliveryOutbox extends EventEmitter {
     return rows.map(mapRow);
   }
 
+  /** Rows addressed to `target` in any of `states` (indexed: target_instance, state). */
+  countForTarget(target: string, states: readonly OutboxState[]): number {
+    if (states.length === 0) return 0;
+    const row = this.db.prepare(`
+      SELECT COUNT(*) AS n FROM deliveries
+      WHERE target_instance=? AND state IN (${states.map(() => "?").join(",")})
+    `).get(target, ...states) as { n: number };
+    return row.n;
+  }
+
   nextRetryAt(): string | null {
     const row = this.db.prepare(`
       SELECT MIN(next_attempt_at) AS next_attempt_at FROM deliveries

@@ -336,13 +336,15 @@ describe("/login auth pre-check", () => {
       await vi.advanceTimersByTimeAsync(1_000);
       await restart;
 
-      expect(stop).toHaveBeenCalledExactlyOnceWith("classic-kiro");
+      // Called directly, outside restartSingleInstance, so no transition handle (Phase 2a).
+      expect(stop).toHaveBeenCalledExactlyOnceWith("classic-kiro", undefined);
       expect(startClassic).toHaveBeenCalledExactlyOnceWith(
         "classic-kiro",
         "kiro-cli",
         "prepare-classic",
         "classic-model",
         42,
+        undefined,
       );
     } finally {
       vi.useRealTimers();

@@ -1,4 +1,5 @@
 import { validateProvider } from "./backend/types.js";
+import { DELIVERY_WORKER_MODES } from "./types.js";
 import { credentialHomeSpec, resolveCredentialProfile } from "./backend/credential-profile.js";
 import { STATUS_EMOJI_CONFIG_KEYS, statusEmojiProblem, type StatusEmojiKey } from "./status-emojis.js";
 
@@ -45,6 +46,11 @@ export function validateFleetConfig(config: unknown): ValidationResult {
   const validateAutoPause = (value: unknown, path: string) => {
     if (value !== undefined && (typeof value !== "number" || !Number.isFinite(value) || value < 0)) {
       err(path, "must be a non-negative finite number of minutes (0 disables auto-pause)");
+    }
+  };
+  const validateDeliveryWorker = (value: unknown, path: string) => {
+    if (value !== undefined && !(typeof value === "string" && (DELIVERY_WORKER_MODES as readonly string[]).includes(value))) {
+      err(path, `must be one of ${DELIVERY_WORKER_MODES.join(", ")}`);
     }
   };
   /**
@@ -272,6 +278,7 @@ export function validateFleetConfig(config: unknown): ValidationResult {
       err("defaults.backend", `unknown backend "${String(b)}" (known: ${KNOWN_BACKENDS.join(", ")})`);
     }
     validateAutoPause(config.defaults.auto_pause_after, "defaults.auto_pause_after");
+    validateDeliveryWorker(config.defaults.delivery_worker, "defaults.delivery_worker");
     if (config.defaults.warm_cap !== undefined && (!Number.isInteger(config.defaults.warm_cap) || (config.defaults.warm_cap as number) < 0)) {
       err("defaults.warm_cap", "must be a non-negative integer (0 = unlimited)");
     }
@@ -328,6 +335,7 @@ export function validateFleetConfig(config: unknown): ValidationResult {
         err(`instances.${name}.working_directory`, "must be a string path");
       }
       validateAutoPause(inst.auto_pause_after, `instances.${name}.auto_pause_after`);
+      validateDeliveryWorker(inst.delivery_worker, `instances.${name}.delivery_worker`);
       validateInstanceOptions(inst, `instances.${name}`);
     }
   }

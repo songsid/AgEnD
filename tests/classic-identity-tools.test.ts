@@ -92,6 +92,8 @@ describe("Classic identity tools", () => {
       expect.objectContaining({ display_name: "Nova", description: "Helps the Room" }),
       expect.any(Boolean),
       "classic",
+      false,
+      undefined,
     );
   });
 

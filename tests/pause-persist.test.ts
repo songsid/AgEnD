@@ -68,7 +68,7 @@ describe("persisted pause markers", () => {
     const start = vi.spyOn(fm, "startInstance").mockRejectedValueOnce(new Error("boom"));
 
     await expect(fm.lifecycle.wake("worker")).rejects.toThrow("boom");
-    expect(start).toHaveBeenCalledWith("worker", config, false);
+    expect(start).toHaveBeenCalledWith("worker", config, false, "fleet-topic", false, expect.objectContaining({ name: "worker" }));
     expect(hasPausedMarker(instanceDir)).toBe(true);
 
     start.mockResolvedValueOnce(undefined);
@@ -89,7 +89,7 @@ describe("persisted pause markers", () => {
 
     await fm.lifecycle.wake("classic-one");
 
-    expect(start).toHaveBeenCalledWith("classic-one", "codex", undefined, undefined, undefined);
+    expect(start).toHaveBeenCalledWith("classic-one", "codex", undefined, undefined, undefined, expect.objectContaining({ name: "classic-one" }));
     expect(hasPausedMarker(fm.getInstanceDir("classic-one"))).toBe(false);
   });
 });
