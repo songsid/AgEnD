@@ -67,20 +67,25 @@ describe("existing installs are brought up to KillMode=mixed before a restart", 
 
 describe("`agend restart` (what `agend update` spawns) fixes the unit before reloading it", () => {
   const cli = join(process.cwd(), "dist", "cli.js");
-  it.skipIf(!existsSync(cli))("adds KillMode=mixed before `systemctl --user daemon-reload` (built CLI, stubbed systemctl)", () => {
+  /** The built CLI's `agend restart` with a throwaway HOME and a recording stub systemctl. */
+  function restart(unitText: string | null, opts: { failReload?: boolean; unreadable?: boolean; readOnlyDir?: boolean } = {}) {
     const home = tmp();
     const unitDir = join(home, ".config", "systemd", "user");
     mkdirSync(unitDir, { recursive: true });
     const unit = join(unitDir, "com.agend.fleet.service");
-    writeFileSync(unit, legacyUnit());
+    if (unitText !== null) writeFileSync(unit, unitText);
+    if (opts.unreadable) chmodSync(unit, 0o000);
+    if (opts.readOnlyDir) chmodSync(unitDir, 0o555);
     const bin = join(home, "bin");
     mkdirSync(bin);
     const log = join(home, "systemctl.log");
+    writeFileSync(log, "");
     // Records each call with whether the unit already had KillMode=mixed then.
     writeFileSync(join(bin, "systemctl"), `#!/bin/sh
-has=no; grep -q '^KillMode=mixed$' '${unit}' && has=yes
+has=no; grep -q '^KillMode=mixed$' '${unit}' 2>/dev/null && has=yes
 echo "$* killmode=$has" >> '${log}'
 case "$*" in *is-active*) echo active;; esac
+case "$*" in *daemon-reload*) [ "${opts.failReload ? "1" : "0"}" = 1 ] && exit 1;; esac
 exit 0
 `);
     chmodSync(join(bin, "systemctl"), 0o755);
@@ -88,11 +93,48 @@ exit 0
       env: { ...process.env, HOME: home, AGEND_HOME: join(home, ".agend"), PATH: `${bin}:${process.env.PATH}` },
       encoding: "utf8", timeout: 60_000,
     });
-    const calls = readFileSync(log, "utf8").trim().split("\n");
+    if (opts.unreadable) chmodSync(unit, 0o600);
+    if (opts.readOnlyDir) chmodSync(unitDir, 0o755);
+    const calls = readFileSync(log, "utf8").trim().split("\n").filter(Boolean);
+    return { r, calls, unit, out: `${r.stdout}\n${r.stderr}`, restarted: calls.some(c => /^--user restart com\.agend\.fleet/.test(c)) };
+  }
+
+  it.skipIf(!existsSync(cli))("adds KillMode=mixed before `systemctl --user daemon-reload` (built CLI, stubbed systemctl)", () => {
+    const { r, calls, out, restarted } = restart(legacyUnit());
     const reload = calls.find(c => c.startsWith("--user daemon-reload"));
-    expect(reload, `${r.stdout}\n${r.stderr}\n${calls.join("\n")}`).toBe("--user daemon-reload killmode=yes");
-    expect(calls.some(c => c.includes("restart com.agend.fleet") && c.endsWith("killmode=yes"))).toBe(true);
+    expect(reload, `${out}\n${calls.join("\n")}`).toBe("--user daemon-reload killmode=yes");
+    expect(restarted).toBe(true);
+    expect(calls.find(c => c.startsWith("--user restart"))).toMatch(/killmode=yes$/);
     expect(r.stdout).toContain("KillMode=mixed");
+  });
+
+  it.skipIf(!existsSync(cli))("if the reload fails after adding it, it does not restart on the old control-group unit (#1070 review)", () => {
+    const { r, calls, out, restarted } = restart(legacyUnit(), { failReload: true });
+    expect(calls.some(c => c.startsWith("--user daemon-reload")), out).toBe(true);
+    expect(restarted, `${out}\n${calls.join("\n")}`).toBe(false);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain("Not restarting");
+  });
+
+  it.skipIf(!existsSync(cli))("a unit it cannot read or parse is not restarted blind (#1070 review)", () => {
+    for (const [label, text, opts] of [
+      ["no [Service] section", "[Unit]\nDescription=x\n", {}],
+      ["unreadable file", legacyUnit(), { unreadable: true }],
+      ["unit it cannot update", legacyUnit(), { readOnlyDir: true }],
+    ] as const) {
+      const { r, calls, out, restarted } = restart(text, opts);
+      expect(restarted, `${label}\n${out}\n${calls.join("\n")}`).toBe(false);
+      expect(calls.some(c => c.startsWith("--user daemon-reload")), label).toBe(false);
+      expect(r.status, label).toBe(1);
+      expect(r.stderr, label).toContain("Not restarting");
+    }
+  });
+
+  it.skipIf(!existsSync(cli))("an operator's own KillMode is respected: warned, and the restart goes ahead", () => {
+    const { r, out, restarted, unit } = restart(legacyUnit().replace("TimeoutStopSec=60", "TimeoutStopSec=60\nKillMode=process"));
+    expect(restarted, out).toBe(true);
+    expect(r.stdout).toContain("sets its own KillMode");
+    expect(readFileSync(unit, "utf8")).toContain("KillMode=process");
   });
 });
 
