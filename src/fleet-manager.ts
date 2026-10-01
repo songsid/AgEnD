@@ -1015,7 +1015,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private scheduleDeliveryOutboxPump(delayMs = 0): void {
-    if (!this.deliveryOutbox || this.shuttingDown) return;
+    if (!this.deliveryOutbox || this.shuttingDown || !this.deliveryOutbox.isOpen) return;
     if (this.deliveryPumpTimer) {
       if (delayMs > 0) return;
       clearTimeout(this.deliveryPumpTimer);
@@ -1034,7 +1034,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private async runDeliveryOutboxPump(): Promise<void> {
     const outbox = this.deliveryOutbox;
-    if (!outbox || this.shuttingDown || this.deliveryPumpRunning) return;
+    // A closed database is never queried: this runs from timers, where a throw
+    // is an unhandled rejection. Checking here covers the finally block too:
+    // the body below never awaits, so the database cannot close in between.
+    if (!outbox || this.shuttingDown || this.deliveryPumpRunning || !outbox.isOpen) return;
     this.deliveryPumpRunning = true;
     this.deliveryPumpScheduled = false;
     try {
@@ -2364,9 +2367,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return resolveDeliveryWorkerMode(this.fleetConfig, target);
   }
 
-  /** Instances counted against warm_cap: running daemons (the same set enforceWarmCap counts). */
+  /** Active instances mid-restart: they keep their warm slot through the stop → replacement gap. */
+  private restartsHoldingSlot = new Set<string>();
+
+  /**
+   * Instances counted against the wake coordinator's hard cap: running
+   * daemons, plus active instances whose restart is between stopping the old
+   * daemon and publishing the replacement.
+   */
   private warmInstanceNames(): string[] {
-    return [...this.daemons.keys()].filter(name => this.getInstanceStatus(name) === "running");
+    const names = new Set([...this.daemons.keys()].filter(name => this.getInstanceStatus(name) === "running"));
+    for (const name of this.restartsHoldingSlot) names.add(name);
+    return [...names];
   }
 
   private createWakeCoordinator(): WakeCoordinator {
@@ -3107,7 +3119,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** Restart a single instance, reloading fleet.yaml first to pick up config changes. */
-  async restartSingleInstance(name: string, opts?: { freshStart?: boolean }): Promise<void> {
+  async restartSingleInstance(name: string, opts?: { freshStart?: boolean; explicit?: boolean }): Promise<void> {
     // One restart at a time per instance. Multiple sources can ask concurrently
     // (MCP revival, /restart, pty_error, model failover); a second stop/start
     // interleaved with the first tears down the window the first just created.
@@ -3167,7 +3179,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
-  private async doRestartSingleInstance(name: string, opts: { freshStart?: boolean } | undefined, transition: TransitionHandle): Promise<void> {
+  private async doRestartSingleInstance(name: string, opts: { freshStart?: boolean; explicit?: boolean } | undefined, transition: TransitionHandle): Promise<void> {
     if (this.configPath) {
       this.loadConfig(this.configPath);
       this.routing.rebuild(this.fleetConfig!);
@@ -3179,16 +3191,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // (refused before anything is stopped when none can be had). An active
     // restart is already counted and reserves nothing.
     const slot = await this.acquireWakeSlot(name);
+    // An active instance keeps the slot it already occupies across its own
+    // stop → replacement gap: counted as warm until the replacement is
+    // published or the restart settles, so no other target can take it.
+    if (!wasPaused) this.restartsHoldingSlot.add(name);
     try {
       await this.doRestartWithSlot(name, opts, transition, config, wasPaused);
+      // An explicit restart of a paused instance is an operator wake (§1.6):
+      // its success lifts the coordinator's park/backoff (the level stays).
+      // Automatic restarts never do.
+      if (wasPaused && opts?.explicit && this.daemons.has(name)) this.wakeCoordinator?.noteExternalWake(name);
     } finally {
+      this.restartsHoldingSlot.delete(name);
       this.releaseWakeSlot(name, slot);
     }
   }
 
   private async doRestartWithSlot(
     name: string,
-    opts: { freshStart?: boolean } | undefined,
+    opts: { freshStart?: boolean; explicit?: boolean } | undefined,
     transition: TransitionHandle,
     config: InstanceConfig | undefined,
     wasPaused: boolean,
@@ -15143,7 +15164,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         this.logger.info({ name }, "Instance restart requested via HTTP");
         (async () => {
           try {
-            await this.restartSingleInstance(name);
+            await this.restartSingleInstance(name, { explicit: true });
             this.logger.info({ name }, "Instance restarted");
             this.emitSseEvent("status", this.getUiStatus());
             res.writeHead(200);

@@ -311,6 +311,18 @@ export class WakeCoordinator {
     }
   }
 
+  /**
+   * Whether a wake completion must do nothing but return its slot: the
+   * coordinator was stopped, or the outbox went away while the wake was in
+   * flight (the coordinator stops itself then). Checked before any side
+   * effect, so a late completion can never kick a pump at a closed database.
+   */
+  private fencedCompletion(): boolean {
+    if (this.stopped) return true;
+    if (!this.deps.available()) { this.stop(); return true; }
+    return false;
+  }
+
   private startWake(target: string, waiting: OutboxDelivery[]): void {
     const token = this.tryReserve(target);
     if (!token) {
@@ -322,14 +334,14 @@ export class WakeCoordinator {
     // Completions are fenced on stop(): once stopped, a late settle only
     // returns its slot (exactly once) — no state change, notice or kick.
     this.deps.wake(target).then(() => {
-      if (this.stopped) return;
+      if (this.fencedCompletion()) return;
       this.deps.kickPump();
       s.failures = 0;
       s.backoffUntil = 0;
       s.lastError = null;
       s.failureNoticeSent = false;
     }, (err: unknown) => {
-      if (this.stopped) return;
+      if (this.fencedCompletion()) return;
       const message = err instanceof Error ? err.message : String(err);
       s.failures += 1;
       s.lastError = message;

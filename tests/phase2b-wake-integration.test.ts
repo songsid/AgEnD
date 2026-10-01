@@ -378,6 +378,10 @@ describe("every non-coordinator wake shares the warm-slot admission (#1078 revie
     (f.fm as any).instanceStateCache.set("other", { state: "working" }); // cannot be evicted
     writePausedMarker(f.dir, 1_000, "idle");
     (f.fm.deliverToInstance as any).mockRestore();
+    // A connected IPC for the worker: if a mutation lets the wake through, the
+    // send succeeds at once and the "should be refused" assertion fails,
+    // instead of the test hanging on the IPC reconnect grace.
+    (f.fm as any).instanceIpcClients.set("worker", { connected: true, send: () => true });
     return f;
   }
 
@@ -474,5 +478,93 @@ describe("a failed explicit attempt keeps the park (#1078 review P2-4)", () => {
     writePausedMarker(dir, 1_000, "idle");
     await expect(fm.explicitWake("worker")).rejects.toThrow(/No warm slot/);
     expect(s.parkedUntil).toBe(until);
+  });
+});
+
+
+describe("round 2 (#1078 review r2)", () => {
+  it("the outbox closes while a wake is still in flight: its completion kicks nothing and the coordinator stops", async () => {
+    const { fm, outbox, admit, config } = fleet("wake_only");
+    await fm.startInstance("worker", config("worker"), false);
+    const d = fake.created[0];
+    d.isPaused = true;
+    const g = gate();
+    d.wakeHold = g.promise;
+    admit();
+    await vi.waitFor(() => expect(d.wakes).toBe(1));
+    const schedule = vi.spyOn(fm as any, "scheduleDeliveryOutboxPump"); // calls through to the real pump
+    outbox.close();
+    g.release();
+    await new Promise(r => setTimeout(r, 50));
+    expect(schedule).not.toHaveBeenCalled();
+    expect((fm.wakeCoordinator as any).stopped).toBe(true);
+    expect(fm.wakeCoordinator!.reservedCount).toBe(0);
+  });
+
+  it("the pump itself never queries a closed outbox", async () => {
+    const { fm, outbox } = fleet("wake_only");
+    const pending = (fm as any).deliveryPumpTimer; // scheduled at setup, before the close
+    if (pending) { clearTimeout(pending); (fm as any).deliveryPumpTimer = null; }
+    const queried = ["expireStale", "claimNext", "nextRetryAt", "nextExpiryAt"].map(m => vi.spyOn(outbox, m));
+    outbox.close();
+    await expect((fm as any).runDeliveryOutboxPump()).resolves.toBeUndefined();
+    for (const spy of queried) expect(spy).not.toHaveBeenCalled();
+    (fm as any).scheduleDeliveryOutboxPump();
+    expect((fm as any).deliveryPumpTimer).toBeNull();
+  });
+
+  it("an active restart keeps its slot through stop → replacement: no other target takes it", async () => {
+    const { fm, admit, config, dir } = fleet("wake_only", { warm_cap: 1, warm_overflow: 0 });
+    await fm.startInstance("other", config("other"), false);
+    writePausedMarker(dir, 1_000, "idle");
+    const g = gate();
+    fake.hold = g.promise; // the replacement's start
+    const restarting = fm.restartSingleInstance("other");
+    await vi.waitFor(() => expect(fake.created).toHaveLength(2)); // old + replacement (held)
+    admit("worker");
+    fm.wakeCoordinator!.scan();
+    await new Promise(r => setTimeout(r, 50));
+    expect(fake.created).toHaveLength(2); // the worker was not started into the gap
+    g.release();
+    await restarting;
+    fm.wakeCoordinator!.scan();
+    await new Promise(r => setTimeout(r, 50));
+    expect(fake.created).toHaveLength(2);
+    expect(fm.lifecycle.daemons.has("worker")).toBe(false);
+  });
+
+  it("a successful explicit restart of a paused instance lifts its park (level kept); automatic and failed ones do not", async () => {
+    const { fm, dir } = fleet("wake_only");
+    const s = (fm.wakeCoordinator as any).state("worker");
+    const park = () => Object.assign(s, { parkedUntil: Date.now() + 30 * 60_000, parkLevel: 5 });
+    // automatic (no explicit flag): park kept
+    park(); writePausedMarker(dir, 1_000, "idle");
+    await fm.restartSingleInstance("worker");
+    expect(fm.wakeCoordinator!.isParked("worker")).toBe(true);
+    // failed explicit: park kept
+    await fm.stopInstance("worker");
+    writePausedMarker(dir, 1_000, "idle");
+    fake.failStarts = 1;
+    await expect(fm.restartSingleInstance("worker", { explicit: true })).rejects.toThrow("spawn failed");
+    expect(fm.wakeCoordinator!.isParked("worker")).toBe(true);
+    // successful explicit: lifted, level kept
+    await fm.restartSingleInstance("worker", { explicit: true });
+    expect(fm.lifecycle.daemons.has("worker")).toBe(true);
+    expect(fm.wakeCoordinator!.isParked("worker")).toBe(false);
+    expect(s.parkLevel).toBe(5);
+  });
+});
+
+
+describe("round 2: the held slot is returned when an active restart fails", () => {
+  it("a failed replacement frees the slot: another target can then be woken", async () => {
+    const { fm, admit, config, dir } = fleet("wake_only", { warm_cap: 1, warm_overflow: 0 });
+    await fm.startInstance("other", config("other"), false);
+    fake.failStarts = 1; // the replacement fails
+    await expect(fm.restartSingleInstance("other")).rejects.toThrow("spawn failed");
+    expect(fm.lifecycle.daemons.has("other")).toBe(false);
+    writePausedMarker(dir, 1_000, "idle");
+    admit("worker");
+    await vi.waitFor(() => expect(fm.lifecycle.daemons.has("worker")).toBe(true));
   });
 });

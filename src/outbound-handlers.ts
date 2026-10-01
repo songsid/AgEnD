@@ -86,7 +86,7 @@ export interface OutboundContext {
   } | null;
   lastActivityMs(name: string): number;
   startInstance(name: string, config: InstanceConfig, topicMode: boolean): Promise<void>;
-  restartSingleInstance(name: string, opts?: { freshStart?: boolean }): Promise<void>;
+  restartSingleInstance(name: string, opts?: { freshStart?: boolean; explicit?: boolean }): Promise<void>;
   /** Phase 2b: an operator wake that respects the warm hard cap (FleetManager.explicitWake). */
   explicitWake?(name: string, timeoutMs?: number): Promise<void>;
   connectIpcToInstance(name: string): Promise<void>;
@@ -889,7 +889,7 @@ const restartInstance: Handler = async (ctx, rawArgs, respond) => {
   if (!v.ok) { respond(null, v.error); return; }
   const targetName = v.data.name;
   try {
-    await ctx.restartSingleInstance(targetName);
+    await ctx.restartSingleInstance(targetName, { explicit: true });
     respond({ success: true, status: "restarted" });
   } catch (err) {
     respond(null, `Failed to restart instance '${targetName}': ${sanitizeError(err, ctx, `restart_instance(${targetName})`)}`);
