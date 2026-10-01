@@ -255,6 +255,25 @@ export class GrokBackend implements CliBackend {
       { pattern: /rate.?limit|too many requests|\b429\b/i, type: "rate_limit", action: "failover", message: "Grok rate limit reached" },
       { pattern: /unauthorized|authentication (failed|error)|\b401\b/i, type: "auth_error", action: "pause", message: "Grok authentication error" },
       { pattern: /quota|insufficient credits|out of credits/i, type: "quota", action: "notify", message: "Grok quota/credits exhausted" },
+      // #1066: the server refuses an outdated CLI (HTTP 426, Upgrade Required):
+      //   Request failed (426) — Your Grok CLI version (1.0.5) is outdated.
+      //   Please update to version 1.0.13 or later via `grok update` or …
+      // Neither failover nor a pause helps: only `grok update` does, so tell
+      // the operator what to run, on every occurrence (each refused request).
+      // Anchored on the server's own wording, spaced to survive a pane wrap —
+      // not a bare `426`, which a diff's line numbers or prose also contain.
+      {
+        pattern: /Your\s+Grok\s+CLI\s+version\s+\(\s*v?(\d+(?:\.\d+)+)\s*\)\s+is\s+outdated\b(?:[\s\S]{0,160}?update\s+to\s+version\s+v?(\d+(?:\.\d+)+))?|Request\s+failed\s+\(426\)/i,
+        type: "outdated_cli",
+        action: "notify",
+        skipCooldown: true,
+        message: "Grok CLI is outdated — run `grok update`",
+        formatMessage: (m) => {
+          const [, current, required] = m;
+          return `Grok CLI is outdated${current ? ` (${current})` : ""} — run \`grok update\``
+            + (required ? ` (needs ${required} or later)` : "");
+        },
+      },
     ];
   }
 
