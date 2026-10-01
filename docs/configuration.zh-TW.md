@@ -166,7 +166,7 @@ teams:
 |------|------|------|------|
 | `working_directory` | string | 自動 | 專案目錄路徑。省略時自動建立 `~/.agend/workspaces/<name>` |
 | `display_name` | string | — | Agent 顯示名稱（例："Kuro"）。用 `set_display_name` 設定 |
-| `status_emojis` | object | — | 此 instance 自己的投遞狀態 emoji，逐鍵覆蓋 channel 的 `options.status_emojis`。鍵：`received`、`queued`、`processing`、`delivered`、`failed`、`progress_prefix`。解析順序：instance → channel → 內建。Discord 可用伺服器自訂 emoji（`<:name:id>`、`<a:name:id>`、`name:id`）；Telegram 只接受固定反應集合，無效值只警告一次並退回內建值。Settings 可用選擇器編輯（Discord 會列出伺服器自訂 emoji），預覽與 bot 實際 react 的結果一致 |
+| `status_emojis` | object | — | 此 instance 自己的投遞狀態 emoji，逐鍵覆蓋 channel 的 `options.status_emojis`。鍵：`received`、`queued`、`processing`、`delivered`、`failed`、`progress_prefix`、`photo`、`attachment`（ClassicBot 存下圖片／檔案時的貼圖）。解析順序：instance → channel → 內建。Discord 可用伺服器自訂 emoji（`<:name:id>`、`<a:name:id>`、`name:id`）；Telegram 只接受固定反應集合，無效值只警告一次並退回內建值。Settings 可用選擇器編輯（Discord 會列出伺服器自訂 emoji），預覽與 bot 實際 react 的結果一致 |
 | `description` | string | — | 角色描述。透過 MCP server instructions 注入為 `## Role` |
 | `topic_id` | number\|string | 自動 | 頻道 topic/thread ID。建立時自動分配 |
 | `general_topic` | boolean | `false` | 標記為 General Topic（接收未路由的訊息） |
