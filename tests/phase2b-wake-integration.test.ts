@@ -292,3 +292,12 @@ describe("which wakes lift a park", () => {
     expect(coordinator.isParked("worker")).toBe(false);
   });
 });
+
+describe("admission tells the coordinator", () => {
+  it("a durable admission kicks the coordinator synchronously (not only the watchdog)", () => {
+    const { fm, admit } = fleet("wake_only");
+    const kick = vi.spyOn(fm.wakeCoordinator!, "kick");
+    admit();
+    expect(kick).toHaveBeenCalled();
+  });
+});
