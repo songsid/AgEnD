@@ -5402,7 +5402,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     threadId: string | undefined,
   ): { adapterId: string | undefined; authoritative: boolean } {
     if (threadId && !this.classicChannels?.hasChannel(threadId)) {
-      const target = this.routing.resolve(threadId);
+      const target = this.resolveInboundTarget(msg, threadId);
       if (target) {
         const owner = this.getInstanceAdapterId(target.name);
         if (owner) return { adapterId: owner, authoritative: true };
@@ -5436,7 +5436,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private topicOwnerDropReason(msg: InboundMessage, threadId: string | undefined): string | null {
     if (!threadId || !msg.adapterId) return null;
     if (this.classicChannels?.hasChannel(threadId)) return null;
-    const target = this.routing.resolve(threadId);
+    const target = this.resolveInboundTarget(msg, threadId);
     if (!target) return null;
     const ownerAdapterId = this.getInstanceAdapterId(target.name);
     if (ownerAdapterId && msg.adapterId !== ownerAdapterId) {
@@ -5467,7 +5467,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (!this.classicChannels.isCollab(threadId, msg.adapterId)) return "classic: collab off";
       return null;
     }
-    const target = this.routing.resolve(threadId);
+    const target = this.resolveInboundTarget(msg, threadId);
     if (!target) return "fleet topic: no instance routed for this thread";
     // Fleet topic: this gate lets the copy through when the adapter is open OR
     // collab is on for the instance. "Through" is not "delivered" — access
@@ -5503,8 +5503,42 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     );
   }
 
+  /**
+   * #1085: the thread id inbound routing may use. Telegram topic ids are small
+   * integers numbered per group, but the routing table is keyed by topic id
+   * alone — so a message in topic 30 of ANY group the bot is in resolved to
+   * the fleet instance that owns topic 30 of the fleet's own group (and a group
+   * that never ran /start was bound by coincidence). A Telegram topic counts
+   * as a fleet topic only in the fleet's group: `chat_id == group_id` of the
+   * receiving bot's channel. From any other group the message is a ClassicBot
+   * candidate keyed by its chat id (served only if /start registered it,
+   * ignored otherwise). Discord channel ids are global, so they are unaffected.
+   */
+  private inboundRouteThreadId(msg: InboundMessage): string | undefined {
+    const raw = msg.threadId || undefined;
+    if (!raw || msg.source !== "telegram") return raw;
+    const fleetGroupId = this.getChannelConfig(msg.adapterId)?.group_id;
+    if (fleetGroupId != null && String(fleetGroupId) === msg.chatId) return raw;
+    this.logger.debug({ adapterId: msg.adapterId, chatId: msg.chatId, threadId: raw },
+      "Telegram topic outside the fleet group — not a fleet topic (#1085)");
+    return undefined;
+  }
+
+  /**
+   * #1085, defense in depth: a routed Telegram target must belong to the group
+   * the message came from — its own world's group_id. Two Telegram fleet
+   * worlds can number topics alike; a coincidence is dropped, never delivered.
+   */
+  private resolveInboundTarget(msg: InboundMessage, threadId: string): RouteTarget | undefined {
+    if (msg.source !== "telegram") return this.routing.resolve(threadId);
+    return this.routing.resolveAll(threadId).find(target => {
+      const ownerGroupId = this.getChannelConfig(this.getInstanceAdapterId(target.name))?.group_id;
+      return ownerGroupId != null && String(ownerGroupId) === msg.chatId;
+    });
+  }
+
   private async handleInboundMessage(msg: InboundMessage): Promise<void> {
-    const threadId = msg.threadId || undefined;
+    const threadId = this.inboundRouteThreadId(msg);
 
     this.logger.debug({ source: msg.source, chatId: msg.chatId, threadId, userId: msg.userId, isBotMessage: msg.isBotMessage, textLen: (msg.text ?? "").length, text: (msg.text ?? "").slice(0, 80) }, "handleInboundMessage entry");
 
@@ -5569,7 +5603,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // the message (the @mention filter downstream decides who actually forwards).
     // Key the dedup per-adapter there so a sibling bot's copy isn't dropped.
     if (msg.messageId) {
-      const classicCid = msg.threadId || msg.chatId;
+      const classicCid = threadId || msg.chatId;
       const isClassicMsg = this.classicChannels?.hasChannel(classicCid) ?? false;
       const dedupKey = isClassicMsg
         ? `${msg.source}:${msg.chatId}:${msg.messageId}:${msg.adapterId ?? ""}`
@@ -5971,7 +6005,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
 
-    const target = this.routing.resolve(threadId);
+    const target = this.resolveInboundTarget(msg, threadId);
     if (!target) {
       // Only show unbound message for actual forum topics (same group, has threadId)
       const adapterGroupId = String(this.getChannelConfig(msg.adapterId)?.group_id ?? "");
@@ -7349,7 +7383,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     evidence: { source: "provider-event" | "provider-probe"; adapterId?: string; generation?: number },
   ): void {
     if (!isProbeableRouteTarget(target) || this.routing.resolve(threadId) !== target) return;
-    this.routing.unregister(threadId);
+    this.routing.unregister(threadId, target.name);
     this.logger.error({ instanceName: target.name, threadId, ...evidence },
       "Topic is confirmed missing — route quarantined; instance configuration and user data were retained");
     this.notifyFleetError(t("fleet.topic_quarantined", target.name, threadId));
