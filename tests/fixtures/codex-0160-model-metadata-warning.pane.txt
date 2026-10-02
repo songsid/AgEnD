@@ -1,0 +1,45 @@
+
+  >_ OpenAI Codex (v0.160.0)
+     /home/user/project
+
+  How’s life between the brackets?
+
+  Tip: Maximize usage with GPT-6.1 Sol. Try it on complex work for near-Astra performance at a lower cost.
+
+
+› hello
+
+
+• ok
+
+  Worked for <1s • 16:44
+
+  Warnings · 1 of 1 · Startup
+
+  Model metadata for `totally-unknown-model-xyz` not found. Defaulting to fallback metadata; this can degrade performance and cause issues.
+
+
+
+
+
+
+
+
+  k keep & next · esc dismiss & close · ctrl+o copy · ←/→ warning · ↓ scroll
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
