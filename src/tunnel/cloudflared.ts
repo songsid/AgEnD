@@ -16,6 +16,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { accessSync, constants as fsConstants } from "node:fs";
 import { delimiter, isAbsolute, join } from "node:path";
 import { probeProcess } from "../web-terminal.js";
+import { fetchViaPublicResolver, type ProbeResponse } from "./public-fetch.js";
 import {
   TunnelStartError,
   TUNNEL_STARTUP_DEADLINE_MS,
@@ -150,12 +151,29 @@ function resolveBinary(name: string, env: NodeJS.ProcessEnv): string | null {
   return null;
 }
 
+/**
+ * How cloudflared reaches Cloudflare's edge.
+ *
+ * `http2` (TCP 443) is the default because QUIC (UDP 7844) is blocked on many
+ * corporate networks and VMs, and when it is blocked cloudflared spends a long
+ * time failing over before it connects — or never does. TCP 443 is open
+ * wherever HTTPS is. `quic` and `auto` (cloudflared's own choice) are for
+ * networks where that is known to be better.
+ */
+export type CloudflaredProtocol = "http2" | "quic" | "auto";
+
 export interface CloudflaredOptions {
   binaryName?: string;
+  protocol?: CloudflaredProtocol;
+  /** Public resolvers the readiness probe asks first. Empty disables that path (system DNS only). */
+  publicResolvers?: readonly string[];
+  /** Test seams for the public-resolver probe. */
+  resolve4?: (host: string) => Promise<string[]>;
+  request?: typeof import("node:https").request;
   /** Test seam: the real one spawns a process. */
   spawnProcess?: typeof spawn;
   /** Test seam for the readiness GET. */
-  fetchPage?: (url: string, signal: AbortSignal) => Promise<{ status: number; contentType: string; body: string }>;
+  fetchPage?: (url: string, signal: AbortSignal) => Promise<ProbeResponse>;
   now?: () => number;
   deadlineMs?: number;
   graceMs?: number;
@@ -207,10 +225,12 @@ export class CloudflaredProvider implements TunnelProvider {
     const spawnProcess = this.opts.spawnProcess ?? spawn;
     let child: ChildProcess;
     try {
+      const protocol = this.opts.protocol ?? "http2";
       child = spawnProcess(pre.binaryPath, [
         "tunnel",
         "--no-autoupdate",
         "--config", "/dev/null",
+        ...(protocol === "auto" ? [] : ["--protocol", protocol]),
         "--url", ctx.origin.origin,
       ], {
         // No shell, ever: the arguments are fixed and one of them is an origin.
@@ -249,7 +269,12 @@ export class CloudflaredProvider implements TunnelProvider {
   }
 
   private async probeReady(pageUrl: string, ctx: TunnelStartContext, deadline: number, now: () => number): Promise<void> {
-    const fetchPage = this.opts.fetchPage ?? defaultFetchPage;
+    const fetchPage = this.opts.fetchPage ?? ((url: string, signal: AbortSignal) => fetchViaPublicResolver(url, signal, {
+      resolvers: this.opts.publicResolvers,
+      resolve4: this.opts.resolve4,
+      request: this.opts.request,
+      fallback: defaultFetchPage,
+    }));
     let lastDetail = "no attempt completed";
     while (now() < deadline) {
       if (ctx.signal.aborted) throw new TunnelStartError("cancelled", "cancelled during readiness probe");
@@ -274,7 +299,7 @@ export class CloudflaredProvider implements TunnelProvider {
   }
 }
 
-async function defaultFetchPage(url: string, signal: AbortSignal): Promise<{ status: number; contentType: string; body: string }> {
+async function defaultFetchPage(url: string, signal: AbortSignal): Promise<ProbeResponse> {
   // `manual`: a redirect is not this page, and following one would let the edge
   // decide what we call ready.
   const res = await fetch(url, { signal, redirect: "manual", cache: "no-store" });

@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { CloudflaredProvider, extractTunnelUrl, minimalChildEnv, validateQuickTunnelUrl } from "../src/tunnel/cloudflared.js";
 import { ManagedTunnel } from "../src/tunnel/manager.js";
 import { clearLease, leasePath, manualCleanupMessage, reapStaleTunnel, readLease, writeLease } from "../src/tunnel/lease.js";
-import { TunnelStartError, type TunnelProvider, type TunnelStartContext } from "../src/tunnel/types.js";
+import { TunnelStartError, TUNNEL_STARTUP_DEADLINE_MS, type TunnelProvider, type TunnelStartContext } from "../src/tunnel/types.js";
 import type { TunnelHandle } from "../src/tunnel/types.js";
 
 const dirs: string[] = [];
@@ -339,9 +339,57 @@ describe("how the child is started", () => {
     // Fixed argv is the whole defence against command injection here — one of
     // these arguments is an origin, and a shell would make it a command.
     expect(call.args).toEqual([
-      "tunnel", "--no-autoupdate", "--config", "/dev/null", "--url", "http://127.0.0.1:45678",
+      "tunnel", "--no-autoupdate", "--config", "/dev/null", "--protocol", "http2", "--url", "http://127.0.0.1:45678",
     ]);
     expect(call.options.shell).toBe(false);
+  });
+
+  it("reaches the edge over http2 unless told otherwise, because QUIC is blocked on many networks", async () => {
+    const argsFor = async (over: Record<string, unknown>) => {
+      const child = new FakeChild();
+      const provider = providerWith(child, { fetchPage: async () => ({ status: 200, contentType: "text/html", body: "agend-setup-marker" }), ...over });
+      setTimeout(() => child.say("https://calm-river-9.trycloudflare.com\n"), 5);
+      await provider.start(context());
+      return provider.spawnCalls[0]!.args;
+    };
+    expect(await argsFor({})).toContain("--protocol");
+    expect((await argsFor({}))[(await argsFor({})).indexOf("--protocol") + 1]).toBe("http2");
+    const quic = await argsFor({ protocol: "quic" });
+    expect(quic[quic.indexOf("--protocol") + 1]).toBe("quic");
+    // `auto` hands the choice back to cloudflared: no flag at all.
+    expect(await argsFor({ protocol: "auto" })).not.toContain("--protocol");
+  });
+
+  it("allows a minute for a tunnel to become reachable (QUIC fallback and slow DNS can eat 30 s)", () => {
+    expect(TUNNEL_STARTUP_DEADLINE_MS).toBeGreaterThanOrEqual(45_000);
+    expect(TUNNEL_STARTUP_DEADLINE_MS).toBeLessThanOrEqual(60_000);
+  });
+
+  it("probes readiness through the public resolver by default, with the system resolver only as a fallback", async () => {
+    const child = new FakeChild();
+    const asked: string[] = [];
+    const connected: Array<Record<string, unknown>> = [];
+    const provider = providerWith(child, {
+      deadlineMs: 5_000,
+      resolve4: async (host: string) => { asked.push(host); return ["104.16.230.132"]; },
+      request: ((options: Record<string, unknown>, cb: (res: unknown) => void) => {
+        connected.push(options);
+        const req = new EventEmitter() as EventEmitter & { end(): void; destroy(): void };
+        req.destroy = () => {};
+        req.end = () => {
+          const res = new EventEmitter() as EventEmitter & { statusCode: number; headers: Record<string, string> };
+          res.statusCode = 200; res.headers = { "content-type": "text/html" };
+          cb(res);
+          queueMicrotask(() => { res.emit("data", Buffer.from("<html>agend-setup-marker</html>")); res.emit("end"); });
+        };
+        return req;
+      }) as never,
+    });
+    setTimeout(() => child.say("https://calm-river-7.trycloudflare.com\n"), 5);
+    const handle = await provider.start(context());
+    expect(handle.pageUrl).toBe("https://calm-river-7.trycloudflare.com/s/abc/");
+    expect(asked).toEqual(["calm-river-7.trycloudflare.com"]);
+    expect(connected[0]).toMatchObject({ host: "104.16.230.132", servername: "calm-river-7.trycloudflare.com" });
   });
 
   it("hands the child only the variables on the allow list", async () => {

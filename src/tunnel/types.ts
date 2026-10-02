@@ -123,8 +123,14 @@ export class TunnelStartError extends Error {
   }
 }
 
-/** One wall-clock budget for spawn, URL and readiness together — not per step. */
-export const TUNNEL_STARTUP_DEADLINE_MS = 30_000;
+/**
+ * One wall-clock budget for spawn, URL and readiness together — not per step.
+ *
+ * A minute: with QUIC blocked and a slow resolver in between, a tunnel that does
+ * work can take well over thirty seconds to become reachable, and giving up on it
+ * is a worse outcome than waiting for it.
+ */
+export const TUNNEL_STARTUP_DEADLINE_MS = 60_000;
 /** Preflight is a stat, not a network call. */
 export const TUNNEL_PREFLIGHT_TIMEOUT_MS = 5_000;
 /** How long a polite stop is given before escalating, and again before giving up. */
