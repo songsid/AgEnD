@@ -36,7 +36,7 @@ AgEnD (**Agent Engineering Daemon**) turns your Telegram or Discord into a comma
 
 🚀 **Fleet Management** — One bot, N projects. Each Telegram Forum Topic is an isolated agent session.
 
-🔄 **Multi-Backend** — Claude Code, Codex, OpenCode, Kiro CLI, Antigravity CLI. Switch or mix freely.
+🔄 **Multi-Backend** — Claude Code, Codex, OpenCode, Kiro CLI, Antigravity CLI, Grok Build, Meta Muse Code. Switch or mix freely.
 
 🤝 **Agent Collaboration** — Agents discover, wake, and message each other via MCP tools. A General Topic routes tasks to the right agent using natural language.
 
@@ -121,7 +121,10 @@ graph LR
 | OpenCode | `curl -fsSL https://opencode.ai/install \| bash` | `opencode` (configure provider) |
 | Kiro CLI | `curl -fsSL https://cli.kiro.dev/install | bash` | `kiro-cli login` (AWS Builder ID) |
 | Antigravity CLI | `curl -fsSL https://antigravity.google/cli/install.sh \| bash` | `agy` (Google Sign-In) |
-| Grok Build | `curl -fsSL https://x.ai/cli/install.sh \| bash` | `grok` (x.ai OAuth device flow) |
+| Grok Build | `curl -fsSL https://x.ai/cli/install.sh \| bash` | `grok` (x.ai OAuth device flow). Needs CLI 1.0.13 or later; run `grok update` if the server refuses an older one |
+| Meta Muse Code | `curl -fsSL https://api.meta.ai/muse-launcher.sh \| bash` | `muse login` |
+
+**Tested CLI versions (AgEnD 2.1.9).** Codex 0.155 to 0.159. Claude Code 2.1.286 (first-run, trust and resume screens captured from the real CLI). Kiro CLI 1.25 or later; `kiro_ui: v3` is not supported yet (#849). Grok CLI 1.0.13 or later. Muse 1.3.0. Antigravity and OpenCode have no pinned version. Other versions usually work, but a new CLI release can change its screens, so AgEnD only claims a version after testing against it.
 
 ## Requirements
 

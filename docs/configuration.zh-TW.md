@@ -134,6 +134,13 @@ health_port: 19280
 | `events` | string[] | 通知事件：`rotation`、`hang`、`cost_warn`、`cost_limit`、`crash_loop` |
 | `headers` | object | 選用的 HTTP headers |
 
+### defaults.delivery_worker 與 defaults.warm_overflow（2.1.9）
+
+| 欄位 | 型別 | 預設 | 說明 |
+|------|------|------|------|
+| `delivery_worker` | `"off"` \| `"wake_only"` \| `"on"` | `"off"` | Phase 2 投遞負責者。`off` 維持原本所有投遞路徑；`wake_only` 會在有跨 instance 工作排隊時喚醒暫停中的目標；`on`（canary）另外把該目標的投遞 lane 交給專屬 worker。可用 `instances.<name>.delivery_worker` 逐 instance 覆寫 |
+| `warm_overflow` | number | `2` | `delivery_worker` 為 `wake_only` 或 `on` 時，為了喚醒有排隊工作的目標，`warm_cap` 最多可以超出的數量。`warm_cap` 為 `0` 時沒有作用 |
+
 ---
 
 ## teams.\<name\>
@@ -170,12 +177,12 @@ teams:
 | `description` | string | — | 角色描述。透過 MCP server instructions 注入為 `## Role` |
 | `topic_id` | number\|string | 自動 | 頻道 topic/thread ID。建立時自動分配 |
 | `general_topic` | boolean | `false` | 標記為 General Topic（接收未路由的訊息） |
-| `backend` | string | `"claude-code"` | CLI backend：`claude-code`、`codex`、`gemini-cli`、`opencode`、`kiro-cli`、`antigravity`、`grok` |
-| `kiro_ui` | `"legacy"` \| `"tui"` \| `"v3"` | `"legacy"` | 僅供 Kiro 使用的啟動模式。`tui` 使用 Kiro 目前的預設 UI；`v3` 啟用實驗中的 v3 agent。 |
+| `backend` | string | `"claude-code"` | CLI backend：`claude-code`、`codex`、`opencode`、`kiro-cli`、`antigravity`、`grok`、`muse`、`gemini-cli`（⚠️ 已停用） |
+| `kiro_ui` | `"legacy"` \| `"tui"` | `"legacy"` | 僅供 Kiro 使用的啟動模式。`tui` 使用 Kiro 目前的預設 UI。在 Kiro v3 介面能無人值守執行之前，`"v3"` 會被設定驗證拒絕（#849）。 |
 | `auto_pause_after` | number | `0`（停用） | 閒置多少分鐘後自動暫停。0 = 不暫停。 |
-| `model` | string | — | 模型。Claude：`sonnet`、`opus`、`haiku`、`opusplan`。Codex：`gpt-4o`。Gemini：`gemini-2.5-pro`。Kiro：`auto`、`claude-sonnet-4.5`、`claude-haiku-4.5` |
+| `model` | string | — | 模型。Claude：`sonnet`、`opus`、`haiku`、`opusplan`。Codex：`gpt-4o`。Kiro：`auto`、`claude-sonnet-4.5`、`claude-haiku-4.5` |
 | `model_failover` | string[] | — | 被限速時的備用模型（例：`["opus", "sonnet"]`）。5 分鐘冷卻期，防止同一時間窗口內重複 failover |
-| `tool_set` | string | `"worker"` | 工具組：`worker`（預設 —— 對話、查詢、做事，沒有管理 fleet 的動詞）、`coordinator`（worker 再加上建立／刪除／重啟 instance、deploy、team、schedule 等）、`full`（全部）、`standard`（18 個）、`minimal`（4 個）。`general` 不可手設：它由 `general_topic` 指派，手寫會驗證失敗。 |
+| `tool_set` | string | `"worker"` | 工具組：`worker`（預設 —— 對話、查詢、做事，沒有管理 fleet 的動詞）、`coordinator`（worker 再加上建立／刪除／重啟 instance、deploy、team、schedule 等）、`full`（全部）、`standard`（26 個）、`minimal`（7 個）。`general` 不可手設：它由 `general_topic` 指派，手寫會驗證失敗。 |
 | `systemPrompt` | string | — | 自訂指令，透過 MCP server instructions 注入。內嵌字串或 `file:./path.md` 從外部檔案載入（路徑相對於 `working_directory`）。不會修改 CLI 的內建 system prompt。範例：`systemPrompt: "file:./prompts/role.md"` |
 | `skipPermissions` | boolean | `true` | 跳過 CLI 權限檢查。設 `false` 啟用 |
 | `lightweight` | boolean | `false` | 跳過 transcript monitor、context guardian 等非必要子系統 |
@@ -231,7 +238,7 @@ MCP server 將這些組合成一個 `instructions` 字串，CLI 透過 MCP proto
 這個方式的好處：
 - CLI 的內建 system prompt **不會被修改**（Claude Code 保留 tool 指引、Gemini 保留 skills 等）
 - 專案的 instruction 檔案（CLAUDE.md、AGENTS.md、GEMINI.md）**不受影響**
-- 所有 backend（Claude Code、Codex、Gemini CLI、OpenCode、Kiro CLI）使用相同的注入路徑
+- 所有 backend（Claude Code、Codex、OpenCode、Kiro CLI、Antigravity CLI、Grok Build、Meta Muse Code）使用相同的注入路徑
 
 ### 已知限制：OpenCode MCP instructions
 
@@ -284,14 +291,14 @@ ClassicBot 模式使用獨立設定檔 `~/.agend/classicBot.yaml`。首次在 Di
 
 ```yaml
 # ClassicBot 設定
-# 可用 backends: claude-code, gemini-cli, codex, opencode, kiro-cli, antigravity, grok
+# 可用 backends: claude-code, codex, opencode, kiro-cli, antigravity, grok, muse（gemini-cli 已停用）
 defaults:
   backend: claude-code          # 所有 classic channel 的預設 backend
 
 channels:
   general-chat:                 # Channel key（用於推導 instance 名稱：classic-general-chat）
     channelId: "1234567890"     # Discord channel ID
-    backend: gemini-cli         # 可選：覆蓋此 channel 的預設 backend
+    backend: antigravity        # 可選：覆蓋此 channel 的預設 backend
     createdBy: "123456789012345678"
     createdAt: "2026-04-12T02:00:00Z"
   dev-help:

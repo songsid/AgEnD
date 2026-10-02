@@ -21,7 +21,7 @@ Schedules can target a specific instance or the same instance that created them.
 
 ## Crash recovery
 
-Watches Claude's status line JSON for context usage metrics (used for dashboard and logging). All CLI backends (Claude Code, Codex, OpenCode, Kiro CLI, Antigravity CLI) have built-in auto-compact that handles context limits internally — AgEnD does not trigger restarts based on context usage or session age.
+Watches Claude's status line JSON for context usage metrics (used for dashboard and logging). All CLI backends (Claude Code, Codex, OpenCode, Kiro CLI, Antigravity CLI, Grok Build, Meta Muse Code) have built-in auto-compact that handles context limits internally — AgEnD does not trigger restarts based on context usage or session age.
 
 When a CLI process crashes, the daemon's health check detects the dead tmux window and:
 
@@ -110,6 +110,18 @@ Message delivery progress is shown visually:
 | Failed | ❌ | Delivery or processing error |
 
 The status message is posted immediately on receipt and updated as the agent processes. On completion, the cancel button is removed and ✅ is shown.
+
+The emojis are configurable per channel and per instance with `status_emojis` (see [configuration](configuration.md#channeloptionsstatus_emojis-discord-and-telegram)), including `photo` and `attachment`, the stamps a ClassicBot puts on a photo or file it saved.
+
+### Persona emoji
+
+In a channel with several bots, each agent can pick an emoji that stands for it, so people can see who handled a message. Three MCP tools do this, and the bundled `persona-emoji` skill walks an agent through them:
+
+- `list_emojis` — the emojis this instance may use: the platform's standard set and, on Discord, the server emojis its bot can react with.
+- `preview_emojis` — downloads up to 8 server emojis and returns a local image path for each, so the agent can look before it picks. The fleet builds the image address from the emoji id itself and keeps only small PNGs.
+- `set_persona_emoji` — sets the instance's own `delivered` stamp (or another status it names), checked the same way Settings checks it.
+
+Every tool profile can list and preview. Every profile except `minimal` can also set its own stamp (`general` since 2.1.9). ClassicBot instances can list and preview, but setting a stamp is done in Settings. The tools only ever change the calling instance's own entry.
 
 ## Peer-to-peer agent collaboration
 
@@ -200,18 +212,18 @@ fleet rather than by what the model was shown. Three profiles matter:
 
 | profile | how you get it | what it is |
 |---|---|---|
-| `worker` | **the default** | Talk to people and to peers, read the fleet, do the work. `reply`, `send_to_instance`, `report_result`, `request_information`, `delegate_task`, `task`, `checkout_repo`, and every read-only query — including `list_schedules` and `list_deployments`, so it can see what exists without being able to change it. 28 tools. |
+| `worker` | **the default** | Talk to people and to peers, read the fleet, do the work. `reply`, `send_to_instance`, `report_result`, `request_information`, `delegate_task`, `task`, `checkout_repo`, and every read-only query — including `list_schedules` and `list_deployments`, so it can see what exists without being able to change it. Since 2.1.6 it may also create and change schedules that target itself (#896), and it can list, preview and set its own persona emoji. 35 tools. |
 | `coordinator` | `tool_set: coordinator` | Everything a worker has, plus the verbs that run the fleet: create/delete/replace/start/stop/restart/wake instances, deploy and tear down templates, team CRUD, creating and changing schedules, `update_instance_config`, `update_fleet_defaults`, `update_decision`. |
 | `full` | `tool_set: full` | Every tool AgEnD has. |
 
-**`coordinator` and `full` are the same 47 tools today** — the difference is what
+**`coordinator` and `full` are the same 51 tools today** — the difference is what
 they mean, not what they contain. `coordinator` says "this agent runs the fleet",
 and will be narrowed if a verb turns out not to belong there; `full` says "give
 this one everything regardless", and is the name the old default had. If you want
 an agent to coordinate, write `coordinator` — reaching for `full` to get *more*
 gets you nothing extra and opts you out of every future refinement.
 
-`standard` (18 tools) and `minimal` (4) still exist and are unchanged.
+`standard` (26 tools) and `minimal` (7) still exist. `minimal` gained `list_emojis` and `preview_emojis` in 2.1.9.
 **`general` is an identity, not a profile you can pick**: it is assigned to
 instances with `general_topic: true`, and writing it by hand fails validation —
 two ways of being a General would eventually disagree.
@@ -285,15 +297,13 @@ When an instance approaches the limit, a warning is posted to its Telegram topic
 
 ## Fleet status
 
-Use `/status` in the General topic to see a live overview:
+Use `/status` in the General topic to see a live overview. It is a table with one row per instance:
 
 ```
-🟢 proj-a — ctx 42%, $3.20 today
-🟢 proj-b — ctx 67%, $8.50 today
-⏸ proj-c — paused (cost limit)
-
-Fleet: $11.70 / $50.00 daily
+| Instance | Backend | Model | Ctx | Effort | Cost | State |
 ```
+
+State combines paused, stopped or crashed with the execution state, and Model is the live model, the same one `/ctx` reports. `agend ls` uses the same State icons. (The IPC column was removed in 2.1.9.)
 
 ## Daily summary
 
@@ -547,7 +557,7 @@ When auto-creating the General topic instance, AgEnD writes the correct instruct
 
 - Claude Code → `CLAUDE.md`
 - Codex → `AGENTS.md`
-- Gemini CLI → `GEMINI.md`
+- Gemini CLI (deprecated) → `GEMINI.md`
 - Kiro CLI → `.kiro/steering/project.md`
 - OpenCode → uses MCP instructions directly
 
@@ -573,7 +583,7 @@ Fleet instructions are injected additively — they don't override the CLI's bui
 
 - Claude Code: `--append-system-prompt-file`
 - Kiro CLI: `.kiro/steering/` directory
-- Gemini CLI: `GEMINI.md` in working directory
+- Gemini CLI (deprecated): `GEMINI.md` in working directory
 - Codex: `AGENTS.md` in working directory
 - OpenCode: MCP instructions
 
@@ -629,13 +639,13 @@ Instances sharing the same working directory are serialized within a group to av
 
 ## Antigravity CLI backend
 
-AgEnD supports Google's Antigravity CLI (`agy`) as a backend. Since agy does not support MCP, it operates in CLI mode (`agent_mode: cli`) by default — using `agend-agent` commands for fleet communication.
+AgEnD supports Google's Antigravity CLI (`agy`) as a backend. Like every other backend it uses MCP by default. Set `agent_mode: cli` to use `agend-agent` commands for fleet communication instead.
 
 ```yaml
 instances:
   my-agent:
     backend: antigravity
-    # agent_mode defaults to "cli" for antigravity
+    # agent_mode defaults to "mcp"; set "cli" to use agend-agent commands
 ```
 
 ### Workspace handling
@@ -646,11 +656,21 @@ Agy rejects working directories under hidden paths (dot-prefixed ancestors like 
 
 Agy's "Do you trust this folder?" prompt is automatically dismissed on startup.
 
+## Meta Muse Code backend
+
+Meta Muse Code (`muse`) is supported as a backend since 2.1.6.
+
+```yaml
+instances:
+  my-muse:
+    backend: muse
+```
+
+Install with `curl -fsSL https://api.meta.ai/muse-launcher.sh | bash` (or `/install-cli muse`) and sign in with `muse login`. `/login` does not cover muse yet. Muse steers rather than queues: a message sent while a turn is running is taken into that turn, so `/steer` works (verified on muse 1.3.0). `/clear` starts a new conversation. Subscription usage is relayed from muse's response stream into `/usage`.
+
 ## Grok Build backend
 
-Grok Build (`grok`) is supported as a backend.
-
-AgEnD supports xAI's Grok Build CLI as a backend.
+AgEnD supports xAI's Grok Build CLI (`grok`) as a backend. It needs Grok CLI 1.0.13 or later: the server refuses older versions (HTTP 426), and AgEnD then tells the operator to run `grok update`.
 
 ```yaml
 instances:
@@ -762,6 +782,28 @@ defaults:
   warm_cap: 15   # at most 15 instances resident at once; excess idle instances get evicted
 ```
 
+## Waking paused instances for queued work (`delivery_worker`)
+
+Since 2.1.9, restarting a paused instance wakes it, and a woken instance stays awake until its queued work is done: work from other instances counts as activity. Start, stop, wake and restart of one instance run one at a time.
+
+Before 2.1.9, a cross-instance message to an instance that had been paused across a fleet restart stayed queued until someone woke it by hand. The opt-in `delivery_worker` setting fixes that:
+
+| Value | What it does |
+|-------|--------------|
+| `off` (default) | Every delivery path stays as it was. |
+| `wake_only` | A wake coordinator wakes a paused target when queued work is waiting, through the same single wake `/wake` uses. It retries with backoff, tells both topics after three failures in a row, and never wakes an instance paused for a login failure. |
+| `on` (canary) | As `wake_only`, and one worker owns the target's delivery lane: it waits until the CLI accepts input, then hands over one message at a time. |
+
+With `wake_only` or `on`, `defaults.warm_overflow` (default 2) is how far `warm_cap` may be exceeded to wake a target for queued work.
+
+```yaml
+defaults:
+  delivery_worker: wake_only
+instances:
+  my-agent:
+    delivery_worker: on   # per-instance override
+```
+
 ## IPC + adapter auto-reconnect
 
 When network interruptions cause IPC connections or Telegram/Discord adapters to drop, AgEnD automatically recovers:
@@ -774,6 +816,8 @@ Both mechanisms are suppressed during intentional shutdown (`agend stop` / fleet
 ## Parallel instance stop
 
 Instance shutdown uses concurrency of 5 to speed up `agend fleet stop` and `agend stop`. The systemd timeout is extended accordingly to prevent premature kill during large fleet shutdowns.
+
+Since 2.1.9 the systemd unit uses `KillMode=mixed`: systemd signals only the fleet, which then quits each CLI in turn. Before this, every CLI got SIGTERM at the same moment, and on WSL kiro-cli aborted into a core dump of about 1 GB each time (#908). `agend restart` adds the line to an older unit; see [CLI reference](cli.md#setup--installation).
 
 ## Beta update channel
 

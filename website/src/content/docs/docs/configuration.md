@@ -71,6 +71,8 @@ Every `instances.<name>` field can be set here. These are defaults-only:
 |---|---|---|---|
 | `locale` | `en` \| `zh-TW` | from timezone | Language of user-facing text |
 | `warm_cap` | number | `0` (unlimited) | Cap on simultaneously running instances. Over the cap, the least-recently-active idle instance is paused. General instances are never evicted |
+| `delivery_worker` | `off` \| `wake_only` \| `on` | `off` | `wake_only` wakes a paused instance when work from another instance is queued for it; `on` (canary) also gives it a dedicated delivery worker. Can be set per instance |
+| `warm_overflow` | number | `2` | With `wake_only` or `on`, how far `warm_cap` may be exceeded to wake an instance with queued work |
 | `max_cross_instance_message_bytes` | number | `12288` | Largest cross-instance message body. Oversized ones are rejected with advice to send a file path instead |
 | `progress_min_elapsed` | number | `30` | Seconds before the live-progress line starts showing elapsed time |
 | `startup.concurrency` | number | `10` | Instances starting at once |
@@ -123,8 +125,8 @@ instances:
 | `startup_timeout_ms` | number | `25000` | How long the CLI gets to come up |
 | `log_level` | string | `info` | `debug`, `info`, `warn`, `error` |
 | `lightweight` | boolean | `false` | Skip non-essential subsystems |
-| `agent_mode` | `mcp` \| `cli` | `mcp` | `cli` for antigravity |
-| `kiro_ui` | `legacy` \| `tui` \| `v3` | `legacy` | Kiro launch mode |
+| `agent_mode` | `mcp` \| `cli` | `mcp` | `cli` uses agend-agent commands instead of MCP |
+| `kiro_ui` | `legacy` \| `tui` | `legacy` | Kiro launch mode (`v3` is refused until it can run unattended) |
 | `worktree_source` | string | — | The original repo, when this is a git worktree |
 | `cost_guard` | CostGuardConfig | — | Per-instance limit, overrides the fleet one |
 | `restart_policy.max_retries` | number | `10` | Crash restarts before giving up |
@@ -142,7 +144,7 @@ instances:
 | `worker` | the default | Talk to people and peers, read the fleet, do the work, and schedule for itself |
 | `coordinator` | `tool_set: coordinator` | Worker, plus the verbs that run the fleet: create, delete, restart instances, teams, and schedules for other instances |
 | `full` | `tool_set: full` | Every tool |
-| `standard` / `minimal` | set by hand | 22 tools / 4 tools |
+| `standard` / `minimal` | set by hand | 26 tools / 7 tools |
 
 `general` is assigned to General instances and cannot be set by hand — writing it fails validation.
 

@@ -4,10 +4,10 @@
 
 | Command | Description |
 |---------|-------------|
-| `/status` | Show fleet status, context %, and costs (admin only) |
+| `/status` | Fleet table with Backend, Model, Ctx, Effort, Cost and State columns (admin only) |
 | `/restart` | In-process restart all instances (no process exit) |
 | `/update` | Update AgEnD to the latest version (admin only) |
-| `/sysinfo` | Show detailed system diagnostics (version, load, IPC status) |
+| `/sysinfo` | Show detailed system diagnostics (version, load, IPC status, each backend CLI's version) |
 | `/pause` | Manually pause an instance (admin only) |
 | `/wake` | Wake a paused instance (admin only) |
 
@@ -21,7 +21,7 @@ agend stop                      # Stop AgEnD service
 agend restart                   # Restart AgEnD service
 agend update                    # Update AgEnD to latest version and restart
 agend update --beta             # Install from beta channel instead of latest
-agend update --version 2.1.2    # Install a specific version
+agend update --version 2.1.9    # Install a specific version
 agend update --force            # Force reinstall and restart even when already up to date
 agend reload                    # Hot-reload config (sends SIGHUP to fleet process)
 ```
@@ -129,6 +129,7 @@ agend health                    # Fleet health check — shows problems and diag
 agend validate                  # Validate fleet.yaml and classicBot.yaml
 agend backend doctor [backend]  # Check backend environment (binary, auth, tmux, TERM)
 agend backend trust <backend>   # Pre-trust working directories (avoid CLI trust dialogs)
+agend delivery scan-forged-envelopes --instance <name>  # Check a kiro instance's transcript for peer envelopes the fleet never delivered (--all, --json)
 ```
 
 ## Web Dashboard
@@ -334,6 +335,8 @@ agend export [path]             # Export config for device migration
 agend export --full [path]      # Export config + all instance data
 agend import <file>             # Import config from export file
 ```
+
+On Linux the systemd unit uses `KillMode=mixed`, so stopping or updating the service stops the fleet first and lets it quit each CLI in turn (#908). `agend restart`, which `agend update` runs, adds the line to an older unit and reloads systemd. If it cannot, the restart is refused with instructions. A `KillMode` you set yourself is left alone.
 
 ## Environment variables
 

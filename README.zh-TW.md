@@ -35,7 +35,7 @@ AgEnD（**Agent Engineering Daemon**）把你的 Telegram 或 Discord 變成 AI 
 
 🚀 **Fleet 管理** — 一個 bot、N 個專案。每個 Telegram Forum Topic 就是獨立的 agent session。
 
-🔄 **多後端支援** — Claude Code、Gemini CLI、Codex、OpenCode、Kiro CLI、Antigravity CLI、Grok Build（experimental），自由切換或混用。
+🔄 **多後端支援** — Claude Code、Codex、OpenCode、Kiro CLI、Antigravity CLI、Grok Build、Meta Muse Code，自由切換或混用（Gemini CLI 已於 2026-06-18 停用）。
 
 🤝 **Agent 協作** — Agent 之間透過 MCP tools 互相發現、喚醒、傳訊。General Topic 用自然語言把任務路由到對的 agent。
 
@@ -83,7 +83,7 @@ graph LR
   subgraph Fleet
     Daemon --> General["General<br/>Dispatcher"]
     Daemon --> A["Instance A<br/>Claude Code<br/>專案 X"]
-    Daemon --> B["Instance B<br/>Gemini CLI<br/>專案 Y"]
+    Daemon --> B["Instance B<br/>Antigravity CLI<br/>專案 Y"]
     A <-.->|MCP Tools| B
     General -.->|路由任務| A
     General -.->|路由任務| B
@@ -102,11 +102,14 @@ graph LR
 |---------|------|------|
 | Claude Code | `curl -fsSL https://claude.ai/install.sh \| bash` | `claude`（OAuth）或 `ANTHROPIC_API_KEY` |
 | OpenAI Codex | `curl -fsSL https://chatgpt.com/codex/install.sh \| sh` | `codex`（ChatGPT 登入）或 `OPENAI_API_KEY` |
-| Gemini CLI | `npm i -g @google/gemini-cli` | `gemini`（Google OAuth） |
+| Gemini CLI | `npm i -g @google/gemini-cli` | `gemini`（Google OAuth）⚠️ 2026-06-18 起已停用 |
 | OpenCode | `curl -fsSL https://opencode.ai/install \| bash` | `opencode`（設定 provider） |
 | Kiro CLI | `curl -fsSL https://cli.kiro.dev/install | bash` | `kiro-cli login`（AWS Builder ID） |
 | Antigravity CLI | `curl -fsSL https://antigravity.google/cli/install.sh \| bash` | `agy`（Google Sign-In） |
-| Grok Build | `curl -fsSL https://x.ai/cli/install.sh \| bash` | `grok`（x.ai OAuth device flow）⚠️ Experimental |
+| Grok Build | `curl -fsSL https://x.ai/cli/install.sh \| bash` | `grok`（x.ai OAuth device flow）。CLI 需 1.0.13 以上，舊版會被伺服器拒絕，請執行 `grok update` |
+| Meta Muse Code | `curl -fsSL https://api.meta.ai/muse-launcher.sh \| bash` | `muse login` |
+
+**已測試的 CLI 版本（AgEnD 2.1.9）**：Codex 0.155 到 0.159；Claude Code 2.1.286（首次啟動、trust、resume 畫面都從真實 CLI 擷取）；Kiro CLI 1.25 以上，`kiro_ui: v3` 尚未支援（#849）；Grok CLI 1.0.13 以上；Muse 1.3.0。Antigravity 與 OpenCode 沒有釘定版本。其他版本通常也能用，但 CLI 新版可能改動畫面，所以 AgEnD 只在實測過後才宣稱支援某個版本。
 
 ## 系統需求
 
@@ -133,6 +136,7 @@ graph LR
 - 支援 macOS（launchd）和 Linux（systemd），不支援 Windows
 - 全域 `enabledPlugins` 裡有官方 Telegram plugin 會造成 409 polling 衝突
 - OpenCode 和 Kiro CLI 不讀取 MCP server 的 `instructions` 欄位 — fleet context 和 workflow template 不會注入到這些 backend 的 system prompt。等待上游修復。
+- Gemini CLI 自 2026-06-18 起停用 — 請改用 Antigravity CLI（`agy`）
 
 ## 授權
 

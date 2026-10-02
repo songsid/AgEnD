@@ -4,10 +4,10 @@
 
 | 指令 | 描述 |
 |---------|-------------|
-| `/status` | 顯示 Fleet 狀態、Context % 和成本 |
+| `/status` | 顯示 Fleet 表格：Backend、Model、Context、推理強度、花費、執行狀態 |
 | `/restart` | 在進程內重啟所有實例（不結束進程） |
 | `/upgrade` | 結束進程以套用新代碼（需 launchd/systemd 自動重啟） |
-| `/sysinfo` | 顯示詳細的系統診斷資訊（版本、負載、IPC 狀態） |
+| `/sysinfo` | 顯示詳細的系統診斷資訊（版本、負載、IPC 狀態、各 backend CLI 版本） |
 
 所有其他操作（建立/刪除/啟動實例、委派任務）均由 General 實例透過自然語言處理。
 
@@ -21,7 +21,7 @@ agend stop                      # 停止 AgEnD 服務
 agend restart                   # 重啟 AgEnD 服務
 agend update                    # 更新 AgEnD 到最新版本並重啟服務
 agend update --beta             # 安裝 beta 版本
-agend update --version 1.23.0   # 安裝指定版本
+agend update --version 2.1.9    # 安裝指定版本
 agend reload                    # 熱讀取配置（重新讀取 fleet.yaml，啟動新實例）
 ```
 
@@ -44,7 +44,8 @@ agend fleet cleanup             # 移除孤兒實例目錄
 
 ```bash
 agend backend doctor [backend]  # 檢查後端環境（代碼、驗證、tmux、TERM）
-agend backend trust <backend>   # 預先核准工作目錄（避免 Gemini CLI 的信任對話框）
+agend backend trust <backend>   # 預先核准工作目錄（避免 CLI 的信任對話框）
+agend delivery scan-forged-envelopes --instance <name>  # 檢查 kiro instance 的 transcript 裡是否有 fleet 從未投遞過的 peer envelope（--all、--json）
 ```
 
 ## 排程 (Schedules)
@@ -86,3 +87,5 @@ agend uninstall                 # 移除系統服務
 agend export [path]             # 匯出配置以用於遷移
 agend import <file>             # 從匯出檔案匯入配置
 ```
+
+在 Linux 上，systemd unit 使用 `KillMode=mixed`：停止或更新服務時會先停 fleet，再由 fleet 依序結束各個 CLI（#908）。`agend restart`（`agend update` 也會執行它）會替舊的 unit 補上這一行並重新載入 systemd；如果做不到，會拒絕重啟並說明怎麼手動處理。你自己設定的 `KillMode` 不會被更動。

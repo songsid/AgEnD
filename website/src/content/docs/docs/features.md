@@ -61,12 +61,10 @@ You get a warning in the topic at the warn threshold, and at the limit the insta
 `/status` in the General topic shows where the money went:
 
 ```
-🟢 proj-a — ctx 42%, $3.20 today
-🟢 proj-b — ctx 67%, $8.50 today
-⏸ proj-c — paused (cost limit)
-
-Fleet: $11.70 / $50.00 daily
+| Instance | Backend | Model | Ctx | Effort | Cost | State |
 ```
+
+One row per instance. State combines paused, stopped or crashed with what the instance is doing.
 
 A summary of the same is posted daily at 21:00 by default.
 
@@ -159,9 +157,9 @@ A shared **task board** tracks multi-step work across instances, so one agent ca
 |---|---|
 | Claude Code | The most complete integration |
 | OpenAI Codex | Native input queue; resumes sessions |
-| Kiro CLI | `kiro_ui` chooses legacy, tui, or the v3 agent |
-| Antigravity CLI | Runs in `agent_mode: cli` |
-| Grok Build | |
+| Kiro CLI | `kiro_ui` chooses legacy or tui; v3 is not supported yet |
+| Antigravity CLI | MCP by default; `agent_mode: cli` to use agend-agent commands |
+| Grok Build | Needs Grok CLI 1.0.13 or later (`grok update`) |
 | Meta Muse Code | Escape cancels; Ctrl+C quits |
 | OpenCode | |
 | Gemini CLI | Deprecated since 2026-06-18 |
