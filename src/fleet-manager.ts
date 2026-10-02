@@ -10159,6 +10159,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         releaseWindow: claim => { this.loginWindow.release(claim); },
         isClaimCurrent: claim => this.loginWindow.isCurrent(claim),
         windowBusyMessage: () => this.loginWindow.busyMessage(),
+        tunnelDataDir: () => this.dataDir,
         postButtons: async ({ prefix, instanceName, chat, message, choices, expiredText }) => {
           await this.postNonceButtonPrompt({
             prefix, alertType: "login", instanceName,
@@ -10413,7 +10414,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   async startLoginSession(backendArg: string, chat: {
     adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string; userId?: string;
-  }, opts: { skipAuthCheck?: boolean; tokenPresent?: boolean } = {}): Promise<string | null> {
+  }, opts: { skipAuthCheck?: boolean; tokenPresent?: boolean; tunnel?: boolean } = {}): Promise<string | null> {
     if (this.webLogin.mode() === "web") return this.webLogin.start(backendArg, chat, opts);
     // ── legacy relay mode (login.mode: relay) — removed in 2.1.6 ──
     const backend = LOGIN_BACKEND_ALIASES[backendArg.toLowerCase()] ?? backendArg.toLowerCase();
@@ -10734,7 +10735,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   ): Promise<boolean> {
     const claimed = this.consumeNonceCallback(
       LOGIN_CONFIRM_CALLBACK_PREFIX,
-      /^login-confirm:([0-9a-f]+):(go|go-relogin|cancel)$/,
+      /^login-confirm:([0-9a-f]+):(go|go-relogin|go-tunnel|go-relogin-tunnel|cancel)$/,
       data,
       callbackAdapterId,
       receivingAdapter,
@@ -10754,7 +10755,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       chatId: entry.chatId,
       threadId: entry.threadId,
       userId: data.userId,
-    }, { skipAuthCheck: true, tokenPresent: action === "go-relogin" });
+    }, {
+      skipAuthCheck: true,
+      tokenPresent: action === "go-relogin" || action === "go-relogin-tunnel",
+      // The consent is the button itself: only the explicit "Open public link" actions carry it.
+      tunnel: action === "go-tunnel" || action === "go-relogin-tunnel",
+    });
     if (text) await entry.adapter.sendText(entry.chatId, text, { threadId: entry.threadId }).catch(() => {});
     return true;
   }
