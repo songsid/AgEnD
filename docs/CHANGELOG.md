@@ -4,7 +4,99 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [2.1.8] - Unreleased
+## [2.1.9] - 2026-10-02
+
+### Upgrade Notes
+- **The systemd unit stops the fleet, not every CLI at once (#908).** With
+  systemd's default `KillMode=control-group`, stopping or updating the service
+  sent SIGTERM to the fleet, the tmux server and every CLI at the same moment,
+  before the fleet could quit them one by one. On WSL kiro-cli aborted into a
+  core dump of about 1 GB each time. New units use `KillMode=mixed`, and
+  `agend restart` (which `agend update` runs) adds it to an existing unit and
+  reloads systemd before restarting (#1070). If the line cannot be written, or
+  systemd still has another mode loaded after the reload, the restart is
+  refused with what to do, instead of stopping the fleet the old way (#1073).
+  A `KillMode` you set yourself is left alone.
+- **Restarting a paused instance now wakes it (#1075).** It used to come back
+  still paused, and after a fleet restart nothing woke it. If the start fails,
+  it stays paused and can be woken again.
+- **New opt-in delivery setting `delivery_worker` (default `off`; #1075,
+  #1078, #1079).** `off` keeps every delivery path as it was. See Added for
+  `wake_only` and `on`. With either, `defaults.warm_overflow` (default 2) is
+  how far `warm_cap` may be exceeded to wake a target for queued work.
+
+### Added
+**Cross-instance messages wake a paused instance reliably (opt-in,
+`delivery_worker: wake_only`; #1078).** A message to an instance paused across
+a fleet restart used to stay queued at attempt 0 until someone woke it by
+hand. A wake coordinator now wakes a paused target when queued work is
+waiting, through the same single wake an operator's `/wake` uses. It retries
+with backoff, tells both topics after repeated failures, and never wakes an
+instance paused for a login failure. It also keeps the number of awake
+instances within `warm_cap` plus `warm_overflow`. Each instance can be set
+separately.
+
+**Per-instance delivery worker (canary, `delivery_worker: on`; #1079).** For an
+instance set to `on`, one worker owns its delivery lane: it waits until the
+CLI accepts input, by the daemon's own account, then claims, hands off and
+waits for the result, one message at a time. Ownership moves only when nothing
+is in flight, and a lost connection after typing began never lets the next
+message overtake the unfinished one.
+
+**Persona emoji for photos and attachments (#1080, #1082).** The stamp a bot
+puts on a photo or file it saved (📸 / 📎, 👌 / 👍 on Telegram) is now two more
+`status_emojis` keys, `photo` and `attachment`, settable in Settings and with
+`set_persona_emoji`.
+
+**Every instance can see server emojis (#1081, #1083).** `general` can now
+list, preview and set its own stamp; `minimal` can list and preview. ClassicBot
+instances get the server emojis from `list_emojis` and can use
+`preview_emojis`; only `set_persona_emoji` refuses them and points to
+Settings.
+
+**`/status` merges State and adds Model (#1052).** The State column combines
+paused, stopped or crashed with the execution state, and Model shows the live
+model, the same one `/ctx` reports. The IPC column is gone, and `agend ls`
+uses the same State icons.
+
+**`agend delivery scan-forged-envelopes` (#995).** It scans a kiro instance's
+own transcript for fleet message envelopes naming real instances and checks
+each message id against the durable delivery record. It reports any that the
+fleet never delivered. It fails closed on anything it cannot read.
+
+**Quits are logged with their reason and caller (#1030).** A Codex that exits
+without relaunching is now reported.
+
+### Fixed
+- **Claude Code's first run no longer stops at the trust dialog or quits
+  there (#1074).** Its confirm dialogs ignore keys for a moment after they
+  appear, so a quick Down then Enter could land on "No, exit". Trust and
+  bypass are now answered step by step on a verified cursor. The onboarding
+  screens (theme, security notes, terminal setup) are recognised instead of
+  being mistaken for a ready prompt, and the login screen is checked before
+  readiness.
+- **Woken instances stay awake for their work (#1075).** Work from other
+  instances now counts as activity, and a woken instance starts its idle timer
+  afresh. An instance busy only with delegated tasks used to pause again a
+  second after every wake. Start, stop, wake and restart of one instance now
+  run one at a time, so a late start can no longer take over from a newer one.
+- **grok tells the operator to run `grok update` (#1066).** This replaces
+  failing quietly when the server refuses an outdated CLI.
+- **Codex remote login offers only device authentication (#1072).**
+- **A CLI installed with `/install-cli` can be used by `/login` without
+  restarting the fleet (#1059).**
+- **A login-error match that cannot be verified pauses the instance only if
+  it is still on screen when the turn ends (#1044).** A muse turn past its
+  first minute still reads as busy (#1045).
+- **The injected envelope no longer repeats a `task_summary` that only echoes
+  the message (#1037).**
+- **Security:** workspace paths can no longer inject shell commands, and
+  identity settings can no longer write to object prototypes (#1061).
+  Persona-emoji tools act only on an instance's own config entry (#1062,
+  #1065). `list_emojis` and `preview_emojis` refuse inherited names such as
+  `constructor` (#1083).
+
+## [2.1.8] - 2026-09-30
 
 ### Upgrade Notes
 - **Codex instances keep their app-server runtime directories private (#1034).**

@@ -4,7 +4,33 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)。
 
-## [2.1.8] - 未發佈 (Unreleased)
+## [2.1.9] - 2026-10-02
+
+### 升級注意事項 (Upgrade Notes)
+- **systemd 停止服務時只停 fleet，不再一次停掉所有 CLI（#908）。** systemd 預設的 `KillMode=control-group` 在停止或更新服務時，會同時對 fleet、tmux server 和所有 CLI 送 SIGTERM，fleet 來不及逐一結束它們；在 WSL 上 kiro-cli 每次都會 abort，留下約 1 GB 的 core dump。新的 unit 使用 `KillMode=mixed`，而 `agend restart`（`agend update` 會執行它）會在重啟前替既有的 unit 加上這一行並重新載入 systemd（#1070）。如果這一行寫不進去，或 reload 之後 systemd 載入的仍是其他模式，重啟會被拒絕並說明該怎麼做，不會照舊方式停掉 fleet（#1073）。你自己設定的 `KillMode` 不會被更動。
+- **重啟一個 paused 的 instance 現在等於喚醒它（#1075）。** 以前重啟後它仍是 paused，fleet 重啟後也沒有東西會喚醒它。啟動失敗時，它會維持 paused、之後仍能喚醒。
+- **新的選用投遞設定 `delivery_worker`（預設 `off`；#1075、#1078、#1079）。** `off` 時所有投遞路徑和以前一樣。`wake_only` 和 `on` 見「新增」。使用這兩種時，`defaults.warm_overflow`（預設 2）是為了替待送工作喚醒 target 時，`warm_cap` 最多可超出的數量。
+
+### 新增 (Added)
+- **跨 instance 訊息能可靠地喚醒 paused 的 instance（選用，`delivery_worker: wake_only`；#1078）。** 以前送給在 fleet 重啟前就 paused 的 instance 的訊息，會停在 attempt 0，直到有人手動喚醒。現在 wake coordinator 會在有待送工作時喚醒 paused 的 target，走的是和操作者 `/wake` 相同的單一喚醒流程；失敗時依退避重試，連續失敗後通知雙方的 topic，並且絕不自動喚醒因登入失敗而暫停的 instance。它也會把醒著的 instance 數維持在 `warm_cap` 加 `warm_overflow` 以內。每個 instance 可以分別設定。
+- **每個 instance 的投遞 worker（金絲雀，`delivery_worker: on`；#1079）。** 設為 `on` 的 instance 由一個 worker 擁有它的投遞通道：先以 daemon 自己的判斷等到 CLI 可以接受輸入，再一次一筆地認領、交付、等待結果。只有在沒有任何進行中的訊息時才會轉移擁有權；開始輸入後若連線中斷，下一則訊息也絕不會越過還沒完成的那一則。
+- **照片和附件的 persona emoji（#1080、#1082）。** bot 在它存下的照片或檔案上蓋的標記（📸 / 📎，Telegram 上是 👌 / 👍）現在是 `status_emojis` 的兩個新 key：`photo` 和 `attachment`，可在 Settings 或用 `set_persona_emoji` 設定。
+- **每個 instance 都能看到伺服器 emoji（#1081、#1083）。** `general` 現在可以列出、預覽並設定自己的標記；`minimal` 可以列出和預覽。ClassicBot instance 的 `list_emojis` 會回傳伺服器 emoji，也能使用 `preview_emojis`；只有 `set_persona_emoji` 會拒絕它，並指向 Settings。
+- **`/status` 合併 State 欄並新增 Model 欄（#1052）。** State 欄把 paused、stopped 或 crashed 和執行狀態合在一起；Model 顯示即時模型，與 `/ctx` 回報的相同。IPC 欄已移除，`agend ls` 也改用相同的 State 圖示。
+- **`agend delivery scan-forged-envelopes`（#995）。** 掃描 kiro instance 自己的 transcript，找出指名真實 instance 的 fleet 訊息信封，並用持久化的投遞紀錄核對每個 message id，回報 fleet 從未投遞過的那些。讀不到的內容一律以失敗收場（fail closed）。
+- **結束 CLI 時會記錄原因與呼叫者（#1030）。** Codex 結束後沒有重新啟動時，現在會回報。
+
+### 修正 (Fixed)
+- **Claude Code 第一次啟動不再停在信任對話框或在那裡退出（#1074）。** 它的確認對話框在剛出現的一小段時間內不接受按鍵，所以連續送出 Down、Enter 可能落在「No, exit」。現在信任和略過權限對話框會在確認游標位置後一步一步回答；onboarding 畫面（主題、安全說明、終端設定）會被辨識，不再被誤當成可輸入的提示；登入畫面也會在判斷就緒之前先檢查。
+- **被喚醒的 instance 會撐到工作送達（#1075）。** 其他 instance 交付的工作現在算作活動，被喚醒的 instance 也會重新開始計算閒置時間；以前只接委派工作的 instance 每次被喚醒後一秒就又暫停。同一個 instance 的啟動、停止、喚醒和重啟現在一次只執行一個，晚到的啟動不會再蓋掉較新的那一個。
+- **grok 會告訴操作者執行 `grok update`（#1066）。** 不再在伺服器拒絕過舊的 CLI 時安靜地失敗。
+- **Codex 遠端登入只提供裝置驗證（#1072）。**
+- **用 `/install-cli` 安裝的 CLI，`/login` 不必重啟 fleet 就能使用（#1059）。**
+- **無法驗證的登入錯誤比對，只在這一輪結束時仍在畫面上才會暫停 instance（#1044）。** muse 超過第一分鐘的回合仍會被判為忙碌（#1045）。
+- **注入的訊息信封不再重複只是照抄訊息內容的 `task_summary`（#1037）。**
+- **安全性：** 工作目錄路徑不能再注入 shell 指令，身分設定也不能再寫入物件原型（#1061）；persona emoji 工具只會作用在 instance 自己的設定項目上（#1062、#1065）；`list_emojis` 和 `preview_emojis` 會拒絕 `constructor` 之類的繼承名稱（#1083）。
+
+## [2.1.8] - 2026-09-30
 
 ### 升級注意事項 (Upgrade Notes)
 - **Codex instance 的 app-server 執行期目錄改為私有（#1034）。** 以前每個 instance 的 `CODEX_HOME` 都用連結鏡像 `~/.codex/app-server-daemon` 與 `~/.codex/app-server-control`，所以 Codex 啟動它的 managed daemon 時會失敗（「socket directory path exists and is not a directory」），而且透過連結啟動的 daemon 其實是你自己的那一個、用的是你的設定。升級後第一次啟動只會移除 AgEnD 自己建立的連結（目標完全相符才移除），真正的目錄與你自己建的連結都不動，也絕不碰 `~/.codex`。Session 與 session 資料庫仍然共用。回退版本是安全的：私有目錄會保留，什麼都不刪。
