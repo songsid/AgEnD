@@ -232,7 +232,31 @@ function validateWebTerminalConfig(raw: unknown): FleetConfig["web_terminal"] {
   if (out.bind !== undefined && (typeof out.bind !== "string" || !out.bind.trim())) {
     throw new Error("web_terminal.bind: expected a non-empty host/IP string");
   }
+  if (out.tunnel !== undefined) out.tunnel = validateWebTerminalTunnelConfig(out.tunnel);
   return out;
+}
+
+/**
+ * Strict, because this is the switch that lets a login terminal leave the machine: a quoted
+ * "false" would read as truthy, and a misspelt key silently doing nothing is how an operator
+ * ends up believing a setting is on (or off) when it is not.
+ */
+function validateWebTerminalTunnelConfig(raw: unknown): NonNullable<FleetConfig["web_terminal"]>["tunnel"] {
+  if (!isPlainObject(raw)) throw new Error(`web_terminal.tunnel: expected a mapping, got ${JSON.stringify(raw)}`);
+  const known = new Set(["provider", "allow_public", "protocol"]);
+  for (const key of Object.keys(raw)) {
+    if (!known.has(key)) throw new Error(`web_terminal.tunnel.${key}: unknown key (expected provider, allow_public, protocol)`);
+  }
+  if (raw.allow_public !== undefined && typeof raw.allow_public !== "boolean") {
+    throw new Error(`web_terminal.tunnel.allow_public: expected true or false (unquoted), got ${JSON.stringify(raw.allow_public)}`);
+  }
+  if (raw.provider !== undefined && raw.provider !== "cloudflared") {
+    throw new Error(`web_terminal.tunnel.provider: only "cloudflared" is supported, got ${JSON.stringify(raw.provider)}`);
+  }
+  if (raw.protocol !== undefined && raw.protocol !== "http2" && raw.protocol !== "quic" && raw.protocol !== "auto") {
+    throw new Error(`web_terminal.tunnel.protocol: expected http2, quic or auto, got ${JSON.stringify(raw.protocol)}`);
+  }
+  return { ...raw } as NonNullable<FleetConfig["web_terminal"]>["tunnel"];
 }
 
 /** Read the user-authored config without applying defaults or normalization. */

@@ -104,6 +104,13 @@ export interface LoginFlow {
    */
   noShellEscape?: true;
   /**
+   * This flow may be offered over a public tunnel (web_terminal.tunnel.allow_public) — an
+   * ADDITIONAL review on top of `noShellEscape`: the link then reaches the internet instead of
+   * this machine, so it is opt-in per flow and only for CLIs whose login terminal was checked
+   * to put nothing sensitive on screen beyond the sign-in itself.
+   */
+  tunnelOk?: true;
+  /**
    * Remote /login is declined outright for this backend (every mode), with a
    * user-facing reason. Kept in LOGIN_FLOWS only for authCheck /
    * loginScreenPattern, which the daemon still uses.
@@ -199,6 +206,7 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
   },
   "kiro-cli": {
     noShellEscape: true,   // login TUI reviewed: menu/prompts/device code only, no shell
+    tunnelOk: true,        // the escape hatch exists for this flow: a phone can finish the browser sign-in
     backend: "kiro-cli",
     command: "kiro-cli login",
     authCheck: { argv: ["kiro-cli", "whoami", "--format", "json"] },

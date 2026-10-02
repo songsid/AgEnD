@@ -153,3 +153,16 @@ describe("checkAuthStatus", () => {
     expect(await checkAuthStatus(LOGIN_FLOWS["grok"].authCheck!)).toBe("unknown");
   });
 });
+
+describe("tunnelOk", () => {
+  it("is set only on flows reviewed for a public link — today kiro-cli alone", () => {
+    const tunnelable = Object.entries(LOGIN_FLOWS).filter(([, f]) => f.tunnelOk === true).map(([name]) => name);
+    expect(tunnelable).toEqual(["kiro-cli"]);
+  });
+
+  it("never applies to a flow the browser terminal itself is not cleared for", () => {
+    for (const [name, flow] of Object.entries(LOGIN_FLOWS)) {
+      if (flow.tunnelOk) expect(flow.noShellEscape, name).toBe(true);
+    }
+  });
+});

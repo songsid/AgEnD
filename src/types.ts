@@ -335,6 +335,23 @@ export interface LoginConfig {
   mode?: "web" | "relay";
 }
 
+/**
+ * `web_terminal.tunnel:` — the escape hatch for finishing a /login from somewhere that cannot
+ * reach this machine (a phone away from the desk). Off unless `allow_public` is true, and even
+ * then each login asks first and only flows marked `tunnelOk` may use it.
+ */
+export interface WebTerminalTunnelConfig {
+  /** The only provider today: a Cloudflare Quick Tunnel. */
+  provider?: "cloudflared";
+  /**
+   * Whether /login may offer to open a temporary public HTTPS link to its terminal.
+   * Default false — nothing is ever exposed beyond this machine unless you set it.
+   */
+  allow_public?: boolean;
+  /** How cloudflared reaches Cloudflare. Default http2 (QUIC is blocked on many networks); auto lets cloudflared choose. */
+  protocol?: "http2" | "quic" | "auto";
+}
+
 /** `web_terminal:` section — the browser terminal behind /login and /install-cli. */
 export interface WebTerminalConfig {
   /** Default true. false makes /login refuse in web mode. */
@@ -343,6 +360,8 @@ export interface WebTerminalConfig {
   bind?: string;
   /** Session time limit. 1..20 (engine hard cap 20), default 10. */
   ttl_minutes?: number;
+  /** Optional public link for /login (see WebTerminalTunnelConfig). Absent = never. */
+  tunnel?: WebTerminalTunnelConfig;
 }
 
 export interface FleetConfig {
