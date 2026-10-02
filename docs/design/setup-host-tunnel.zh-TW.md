@@ -8,6 +8,8 @@
 
 ## 1. tunnel provider 實作狀態：**零**
 
+> **更新（2026-10-02）：此節為寫作當時的查證，現已過時 —— tunnel provider 已實作**（`src/tunnel/{types,cloudflared,manager,lease}.ts`，`CloudflaredProvider` 為 Quick Tunnel，唯一消費者是 `agend setup --tunnel`）；fleet dashboard 與 Web Terminal 仍未接 tunnel。現況見 `docs/design/web-unification-secure-login.zh-TW.md` §1.3。以下保留原文作為當時的紀錄。
+
 查證結果（`grep -rn cloudflared|TunnelProvider|trycloudflare src/ tests/`）：
 
 - **沒有任何 tunnel provider 實作。** 整個 codebase 只有三處「tunnel」字樣，全是註解裡對未來的預期：`web-terminal-http.ts:5`（「a tunnel pointed at it (phase 3) can reach…」）、`web-auth.ts:174`（`X-Forwarded-Proto` 的來源說明）、`fleet-manager.ts:12339`（Referrer-Policy 對 tunnel host 的考量）。
