@@ -1,0 +1,36 @@
+
+ ▐▛███▛█   Claude Code v2.1.287
+▝▜██████▀  Opus 5.5 · API Usage Billing
+ ▝▝   ▝▝   /…/project
+
+
+❯ hello
+
+● API Error: Repeated 529 Overloaded errors. The API is at capacity — this is usually temporary. Try again in a
+  moment. If it persists, check your inference gateway (127.0.0.1:18767).
+
+✻ Sautéed for 2s · done 4:32 PM
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents

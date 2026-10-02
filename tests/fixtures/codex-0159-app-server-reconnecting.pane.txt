@@ -1,0 +1,45 @@
+
+  >_ OpenAI Codex (v0.159.2)
+     /home/user/project
+
+  Welcome to the neighborhood. Lots of characters here.
+
+  Tip: Maximize usage with GPT-6.1 Sol. Try it on complex work for near-Astra performance at a lower cost.
+
+
+› hello
+
+
+• ok
+
+  Worked for <1s • 16:08
+
+■ Connection lost. Attempting to reconnect…
+
+• Reconnecting to app-server… (8s)
+
+
+› Ask Codex to do anything
+
+  ctrl+c quit
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

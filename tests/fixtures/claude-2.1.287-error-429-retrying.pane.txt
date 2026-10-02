@@ -1,0 +1,36 @@
+
+ ▐▛███▛█   Claude Code v2.1.287
+▝▜██████▀  Opus 5.5 · API Usage Billing
+ ▝▝   ▝▝   /…/project
+
+
+❯ hello
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+✻ 429 Number of request tokens has exceeded your per-minute rate limit · Retrying in 11s · attempt 6/10
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · esc to interrupt · ← for agents

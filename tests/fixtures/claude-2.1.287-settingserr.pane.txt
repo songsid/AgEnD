@@ -1,0 +1,50 @@
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Settings Error
+
+  /home/user/project/.claude/settings.json
+  ├ model: Expected string, but received number
+  └ permissions.allow: Expected array, but received string
+
+  Permission rules must be in an array. Format: ["Tool(specifier)"]. Examples: ["Bash(npm run build)", "Edit(docs/**)", "Read(~/.zshrc)"]. Use * for
+  wildcards.
+  Learn more: https://code.claude.com/docs/en/iam#configuring-permissions
+
+
+  Files with errors are skipped entirely, not just the invalid settings.
+
+  ❯ 1. Fix with Claude
+    2. Exit and fix manually
+    3. Continue without these settings
+
+  Enter to confirm · Esc to cancel
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
