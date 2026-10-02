@@ -666,6 +666,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     "provider-unavailable",
   ]);
   logger: Logger = createLogger("info");
+  /** Report each bundled skill collision once per fleet, across instance starts. */
+  private skippedBundledSkills = new Set<string>();
   private topicCommands: TopicCommands;
   // sessionName → instanceName mapping for external sessions
   sessionRegistry: Map<string, string> = new Map();
@@ -3632,8 +3634,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.loadEnvFile();
     this.ensureDeliveryOutbox();
 
-    // Rotate fleet.log if oversized (before any logging)
-    rotateLogIfNeeded(join(this.dataDir, "fleet.log"));
+    this.rotateFleetLogs();
 
     const fleet = this.loadConfig(configPath);
     this.slimFleetConfigAtStartup();
@@ -3762,9 +3763,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // Rotate classic channel chat logs daily
       this.classicChannels?.rotateLogs();
       this.rotateInboxes();
-      // Rotate fleet.log daily too (besides the startup size check above), so a
-      // long-running fleet doesn't accumulate an unbounded log.
-      rotateLogIfNeeded(join(this.dataDir, "fleet.log"));
+      this.rotateFleetLogs();
       // Instance output.log is pipe-pane (TUI ANSI). Daemon health ticks rotate a
       // running instance's own log; this sweep is the safety net for every other
       // kind. One implementation, so the two cannot cover different sets.
@@ -4006,11 +4005,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.eventLogPruneTimer = setInterval(() => this.pruneEventLog(), 24 * 60 * 60_000);
     this.eventLogPruneTimer.unref?.();
 
-    // Same shape for pipe-pane logs, and for the same reason: the only sweep that
+    // Same shape for logs, and for the same reason: the only sweep that
     // covered them lived inside the daily-summary callback, so it did not run at
     // all when summaries were off.
     this.rotateAllInstanceLogs();
-    this.logRotateTimer = setInterval(() => this.rotateAllInstanceLogs(), 24 * 60 * 60_000);
+    this.logRotateTimer = setInterval(() => {
+      this.rotateFleetLogs();
+      this.rotateAllInstanceLogs();
+    }, 24 * 60 * 60_000);
     this.logRotateTimer.unref?.();
 
     // Phase 2: Start remaining instances with staggered concurrency
@@ -8252,7 +8254,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
-  /** Drop event/activity rows older than the retention window. Best-effort. */
+  /** Cap both structured runtime logs and service bootstrap diagnostics. */
+  private rotateFleetLogs(): void {
+    rotateLogIfNeeded(join(this.dataDir, "daemon.log"));
+    rotateLogIfNeeded(join(this.dataDir, "fleet.log"));
+  }
+
   /**
    * Cap every instance's pipe-pane log, walking the instances **directory** rather
    * than the config.
@@ -8287,6 +8294,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
+  /** Drop event/activity rows older than the retention window. Best-effort. */
   private pruneEventLog(): void {
     try {
       this.eventLog?.prune(FleetManager.EVENT_LOG_RETENTION_DAYS);
@@ -11496,9 +11504,12 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       const dest = join(destDir, "SKILL.md");
       const isOurs = previouslyManaged.includes(name) || !existsSync(destDir);
       if (!isOurs) {
-        // Name collision with a user-authored skill: theirs wins, loudly.
-        this.logger.warn({ skill: name, destSkills },
-          "Skipping bundled skill — a skill of this name exists but was not published by AgEnD");
+        // The user's skill still wins on every sync; only the warning is deduped.
+        if (!this.skippedBundledSkills.has(name)) {
+          this.skippedBundledSkills.add(name);
+          this.logger.warn({ skill: name, destSkills },
+            "Skipping bundled skill — a skill of this name exists but was not published by AgEnD");
+        }
         continue;
       }
       managed.push(name);
@@ -13880,7 +13891,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       return {
         ok: false,
         status: 409,
-        error: `fleet.yaml and the running configuration disagree on ${this.fleetSignatureMismatch.join(", ")} — check fleet.log before restarting`,
+        error: `fleet.yaml and the running configuration disagree on ${this.fleetSignatureMismatch.join(", ")} — check daemon.log before restarting`,
       };
     }
 
@@ -13960,7 +13971,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       this.applyJobs.setTargetStatus(jobId, APPLY_FLEET_TARGET, "failed", "restart could not be launched");
       this.applyJobs.finish(jobId, "restart could not be launched");
       this.emitSseEvent("apply_progress", viewOf(this.applyJobs.get(jobId)!));
-      return { ok: false, status: 409, error: "the restart could not be launched — see fleet.log" };
+      return { ok: false, status: 409, error: "the restart could not be launched — see daemon.log" };
     }
     return { ok: true, jobId };
   }

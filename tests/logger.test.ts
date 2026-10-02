@@ -13,14 +13,14 @@ describe("logger stdout formatting", () => {
     });
   });
 
-  it("adds a date and removes ANSI colors when stdout is fleet.log", () => {
+  it("supports file-style console formatting for callers", () => {
     expect(getStdoutPrettyOptions(true)).toMatchObject({
       colorize: false,
       translateTime: "SYS:yyyy-mm-dd HH:MM:ss",
     });
   });
 
-  it("writes the full date when the process stdout fd is a regular file", () => {
+  it("writes structured entries only to daemon.log when service stdout/stderr share fleet.log", () => {
     const dir = mkdtempSync(join(tmpdir(), "agend-logger-"));
     const fleetLog = join(dir, "fleet.log");
     const fd = openSync(fleetLog, "w");
@@ -30,22 +30,43 @@ describe("logger stdout formatting", () => {
         "--import", "tsx",
         "--input-type=module",
         "--eval",
-        `import { createLogger } from ${JSON.stringify(loggerUrl)}; const logger = createLogger(); logger.info("date-probe"); await new Promise(resolve => setTimeout(resolve, 250));`,
+        `import { createLogger } from ${JSON.stringify(loggerUrl)}; const logger = createLogger("debug"); logger.info("date-probe"); logger.child({ instance: "worker" }, { level: "debug" }).debug("child-probe"); console.error("bootstrap-error"); process.emitWarning("other-warning", { code: "AGEND_TEST" }); await new Promise(resolve => setTimeout(resolve, 250));`,
       ], {
         cwd: process.cwd(),
-        env: { ...process.env, AGEND_HOME: dir },
-        stdio: ["ignore", fd, "pipe"],
+        env: { ...process.env, AGEND_HOME: dir, NODE_OPTIONS: "", NODE_NO_WARNINGS: "" },
+        stdio: ["ignore", fd, fd],
         encoding: "utf-8",
+        timeout: 8_000,
       });
       expect(child.status, child.stderr).toBe(0);
+      const bootstrap = readFileSync(fleetLog, "utf-8");
+      expect(bootstrap).not.toContain("date-probe");
+      expect(bootstrap).not.toContain("child-probe");
+      expect(bootstrap).toContain("bootstrap-error");
+      expect(bootstrap).toContain("[AGEND_TEST] Warning: other-warning");
+      const output = readFileSync(join(dir, "daemon.log"), "utf-8");
+      expect(output).toMatch(/^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] INFO: date-probe/m);
+      expect(output.match(/date-probe/g)).toHaveLength(1);
+      expect(output.match(/child-probe/g)).toHaveLength(1);
+      expect(output).not.toContain("\u001b[");
+      expect(output).not.toContain("bootstrap-error");
     } finally {
       closeSync(fd);
+      rmSync(dir, { recursive: true, force: true });
     }
+  });
 
-    const output = readFileSync(fleetLog, "utf-8");
-    expect(output).toMatch(/^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] INFO: date-probe/m);
-    expect(output).not.toContain("\u001b[");
-    rmSync(dir, { recursive: true, force: true });
+  it.each([false, true])("only mirrors structured logs to stdout for an interactive terminal (isTTY=%s)", isTTY => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-logger-console-"));
+    try {
+      const loggerUrl = new URL("../src/logger.ts", import.meta.url).href;
+      const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval",
+        `Object.defineProperty(process.stdout, "isTTY", { value: ${isTTY} }); const { createLogger } = await import(${JSON.stringify(loggerUrl)}); createLogger().info("console-probe"); await new Promise(resolve => setTimeout(resolve, 250));`,
+      ], { cwd: process.cwd(), env: { ...process.env, AGEND_HOME: dir }, encoding: "utf8", timeout: 8_000 });
+      expect(child.status, child.stderr).toBe(0);
+      expect(child.stdout.includes("console-probe")).toBe(isTTY);
+      expect(readFileSync(join(dir, "daemon.log"), "utf8").match(/console-probe/g)).toHaveLength(1);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 });
 
@@ -83,4 +104,3 @@ describe("rotateLogIfNeeded", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 });
-

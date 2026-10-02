@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync, existsSync, readFileSync, openSync, writeSync, closeSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FleetManager } from "../src/fleet-manager.js";
@@ -35,6 +35,24 @@ function makeFleet() {
 }
 
 describe("instance log sweep", () => {
+  it("copytruncates both fleet log destinations while keeping a held runtime fd usable", () => {
+    const { dir, fm } = makeFleet();
+    const runtime = join(dir, "daemon.log");
+    const bootstrap = join(dir, "fleet.log");
+    writeFileSync(runtime, Buffer.alloc(OVER_LIMIT, 0x41));
+    writeFileSync(bootstrap, Buffer.alloc(OVER_LIMIT, 0x42));
+    const fd = openSync(runtime, "a");
+    try {
+      (fm as unknown as { rotateFleetLogs(): void }).rotateFleetLogs();
+      for (const log of [runtime, bootstrap]) {
+        expect(statSync(log).size).toBe(0);
+        expect(statSync(`${log}.1`).size).toBe(OVER_LIMIT);
+      }
+      writeSync(fd, "after rotation\n");
+      expect(readFileSync(runtime, "utf8")).toBe("after rotation\n");
+    } finally { closeSync(fd); rmSync(dir, { recursive: true, force: true }); }
+  });
+
   it("rotates a directory that is no longer in the config", () => {
     const { dir, fm, sweep, writeLog } = makeFleet();
     try {

@@ -8470,7 +8470,7 @@ export class Daemon extends EventEmitter {
         // Transient tmux trouble is not evidence about the CLI. Returning false
         // here would clear the session; retry within the budget instead.
         captureFailures++;
-        this.logger.warn({ err, captureFailures }, "capture-pane failed during the startup dialog scan — retrying");
+        this.logger.debug({ err, captureFailures }, "capture-pane failed during the startup dialog scan — retrying");
         // Only a POSITIVE dead pane ends the scan; an unanswerable liveness
         // query is the same transient trouble and must not clear the session.
         if ((await this.paneLiveness()) === "dead") return false;

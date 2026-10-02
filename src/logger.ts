@@ -9,9 +9,8 @@ const MAX_LOG_SIZE = 10 * 1024 * 1024; // 10 MB
 const ROTATE_MAX_FILES = 3;
 
 /**
- * fleet.log is the service manager's stdout destination, not pino's direct
- * file transport (which writes daemon.log). Detect that regular-file stdout so
- * it receives a date; terminals and pipes keep the compact console format.
+ * Console formatting for interactive output. The file-format option remains
+ * available to callers, although service stdout no longer gets a pino copy.
  */
 function stdoutIsRegularFile(): boolean {
   try { return fstatSync(1).isFile(); } catch { return false; }
@@ -86,7 +85,12 @@ let sharedTransport: ReturnType<typeof pino.transport> | undefined;
 function transportStream() {
   // Typed loosely on purpose: pino.transport()'s own option type narrows
   // `destination` to a file descriptor, while pino-pretty takes a path.
-  const targets: { target: string; options: Record<string, unknown>; level: string }[] = [
+  const targets: { target: string; options: Record<string, unknown>; level: string }[] = [];
+  // Service managers already capture stdout/stderr in fleet.log (or journal).
+  // Keep structured logs in daemon.log; only an interactive terminal gets a
+  // console copy. This also avoids duplicating entries when stdout is piped.
+  if (process.stdout.isTTY === true) {
+    targets.push(
       {
         target: "pino-pretty",
         options: getStdoutPrettyOptions(),
@@ -95,6 +99,9 @@ function transportStream() {
         // by an info-level fleet root before it reaches the shared worker.
         level: "trace",
       },
+    );
+  }
+  targets.push(
       {
         target: "pino-pretty",
         options: {
@@ -105,7 +112,7 @@ function transportStream() {
         },
         level: "trace",
       },
-  ];
+  );
   sharedTransport ??= pino.transport({ targets });
   return sharedTransport;
 }

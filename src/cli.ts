@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import "./node-warnings.js";
 import { applyNetworkReliabilityDefaults } from "./network-family.js";
 
 // Preserve Node's dual-stack Happy Eyeballs behavior, but avoid its 250ms
@@ -2907,7 +2908,10 @@ program
   .option("-f, --follow", "Follow log output (like tail -f)")
   .option("--instance <name>", "Filter by instance name")
   .action((opts: { lines: string; follow?: boolean; instance?: string }) => {
-    const logPath = join(DATA_DIR, "fleet.log");
+    // Structured runtime logs live in daemon.log. Before pino has started,
+    // service-manager stdout/stderr still leaves diagnostics in fleet.log.
+    const daemonLog = join(DATA_DIR, "daemon.log");
+    const logPath = existsSync(daemonLog) ? daemonLog : join(DATA_DIR, "fleet.log");
     if (!existsSync(logPath)) {
       console.error("No fleet log found. Is the fleet running?");
       process.exit(1);

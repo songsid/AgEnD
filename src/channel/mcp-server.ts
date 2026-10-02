@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import "../node-warnings.js";
 /**
  * MCP Tool Server for agend.
  *

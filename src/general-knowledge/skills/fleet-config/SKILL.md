@@ -29,7 +29,7 @@ templates:        # Reusable fleet deployment templates
 - Classic bot: `~/.agend/classicBot.yaml`
 - Environment: `~/.agend/.env` (bot tokens, API keys)
 - Instance logs: `~/.agend/instances/<name>/output.log`
-- Fleet log: `~/.agend/fleet.log`
+- Runtime logs: `agend logs` / `~/.agend/daemon.log`; service startup errors and Node warnings: `~/.agend/fleet.log`
 
 ## kiro-cli UI mode (kiro_ui)
 
