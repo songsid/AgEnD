@@ -206,7 +206,7 @@ describe("FleetManager runs the repair at startup and says so once", () => {
     const internals = manager as unknown as Record<string, unknown>;
     // Everything else finishStartup does is somebody else's business here.
     for (const name of ["announceToolPermissionsChange", "scheduleReconcile", "sweepOrphanedCancelButtons", "checkStartupSignatureConsistency"]) {
-      if (typeof internals[name] === "function") vi.spyOn(manager as never, name as never).mockImplementation((() => undefined) as never);
+      if (typeof internals[name] === "function") internals[name] = () => undefined;
     }
     (internals.finishStartup as () => void).call(manager);
     expect([a, root].map(mode)).toEqual([0o700, 0o700]);
