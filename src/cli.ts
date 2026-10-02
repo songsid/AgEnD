@@ -133,7 +133,12 @@ fleet
         await fetch(`http://127.0.0.1:${port}/health`);
         {
           try {
-            const resp = await fetch(`http://127.0.0.1:${port}/api/instance/${encodeURIComponent(instance)}/start`, { method: "POST" });
+            let token = "";
+            try { token = readFileSync(join(DATA_DIR, "web.token"), "utf-8").trim(); } catch { /* fleet may not be running */ }
+            const resp = await fetch(`http://127.0.0.1:${port}/api/instance/${encodeURIComponent(instance)}/start`, {
+              method: "POST",
+              headers: token ? { "X-Agend-Token": token } : {},
+            });
             const body = await resp.json() as Record<string, unknown>;
             if (resp.ok) {
               console.log(`Instance "${instance}" started via running fleet daemon`);
