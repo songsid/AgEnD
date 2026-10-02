@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync, readdirSync, renameSync, copyFileSync, chmodSync, statSync, accessSync, constants as fsConstants, type Dirent } from "node:fs";
 import { randomBytes, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { freemem, totalmem, cpus } from "node:os";
+import { freemem, totalmem, cpus, homedir } from "node:os";
 import { access } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { Worker } from "node:worker_threads";
@@ -68,6 +68,7 @@ import {
   SupersededStartError,
   type TransitionHandle,
   BACKEND_INSTALLATION_INFO,
+  type BackendInstallationInfo,
   checkBinaryInstalled,
   type LifecycleContext,
 } from "./instance-lifecycle.js";
@@ -10867,7 +10868,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         }
         // The installer may only have added the binary to a profile PATH; a
         // fresh login shell sees that, the fleet process's PATH may not.
-        const installedAt = this.locateBinaryOnLoginShell(info.binary);
+        const installedAt = this.locateBinaryOnLoginShell(info.binary) ?? this.locateInInstallerBinDirs(info);
         if (!installedAt) {
           await chat.adapter.sendText(chat.chatId, t("install.verify_failed", backend, info.binary),
             { threadId: chat.threadId }).catch(() => {});
@@ -10957,6 +10958,24 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     } catch {
       return null;
     }
+  }
+
+  /**
+   * #1092: the binary in one of the directories its own installer installs to,
+   * when no login shell can see it (the installer recorded its PATH in an
+   * interactive-only rc file). The same executable-file check as the login
+   * shell lookup; a symlink to an executable counts, as codex's launcher is one.
+   */
+  private locateInInstallerBinDirs(info: BackendInstallationInfo): string | null {
+    for (const dir of info.binDirs?.(process.env, homedir()) ?? []) {
+      if (!isAbsolute(dir)) continue;
+      const path = join(dir, info.binary);
+      try {
+        accessSync(path, fsConstants.X_OK);
+        if (statSync(path).isFile()) return path;
+      } catch { /* not there */ }
+    }
+    return null;
   }
 
   /** Put an installed binary's directory on the fleet's PATH (#1059), once. */
