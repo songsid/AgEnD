@@ -7,6 +7,7 @@
 ## [未發佈] (Unreleased)
 
 ### 升級注意事項 (Upgrade Notes)
+- **[行為變更] 一個壞掉的 MCP server 不會再讓所有 kiro instance 起不來（#1111）。** AgEnD 以前啟動 kiro-cli 時會帶 `--require-mcp-startup`，只要「任何一個」啟用中的 MCP server 啟動失敗，kiro 就會直接結束（exit code 3）——包括你自己在 `~/.kiro/settings/mcp.json` 設定的 server。因此某個第三方 server 在 kiro-cli 2.27 上壞掉時，所有 kiro instance 都無法啟動。現在 kiro 跟 claude、codex 一樣：你自己的 server 失敗只會少掉它自己的工具（kiro 會在 pane 裡顯示 `✗`）。AgEnD 自己的 fleet server 有沒有連上，改由 daemon 檢查，而且適用所有 backend：CLI 啟動 90 秒後 AgEnD 的 MCP server 仍未連上時，instance 會回報它沒有 agend 工具，並在 `mcp_auto_restart`（預設開啟）下等閒置後重啟再試。server 若之後才連上，該回報會被撤回。
 - **[行為變更] tunnel 改走 http2 並最多等一分鐘。** cloudflared provider 現在預設傳 `--protocol http2`（QUIC/UDP 7844 在很多公司網路與 VM 被擋，
   cloudflared 否則要花很久才 failover 或根本連不上），就緒檢查改為先經 Cloudflare 公共解析器（1.1.1.1 / 1.0.0.1）、系統解析器當後備；啟動預算由 30 秒
   改為 60 秒。`agend setup --tunnel` 同樣適用。若要沿用 cloudflared 自己的選擇，可設 `web_terminal.tunnel.protocol: quic`（或 `auto`）。

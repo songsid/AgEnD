@@ -22,7 +22,7 @@ function required(pattern: RegExp | null | undefined, what: string): RegExp {
 
 // Kiro legacy-UI prompt marker, as implemented by the backend.
 const legacyKiro = () => new KiroBackend("/tmp/kiro-residue-test", {
-  version: "kiro-cli 2.21.0", supportsRequireMcpStartup: true, supportsLegacyUi: true, supportsEffortFlag: true, source: "version",
+  version: "kiro-cli 2.21.0", supportsLegacyUi: true, supportsEffortFlag: true, source: "version",
 });
 const PROMPT = required(legacyKiro().getBottomReadyPattern(), "a bottom-row ready pattern");
 const BUSY = required(legacyKiro().getBusyPattern(), "a busy pattern");
@@ -176,7 +176,7 @@ describe("pane-input-residue: did our paste get submitted?", () => {
 });
 
 describe("pane-input-residue: prompt pattern follows the launched UI and trust mode", () => {
-  const compat = { version: "kiro-cli 2.21.0", supportsRequireMcpStartup: true, supportsLegacyUi: true, supportsEffortFlag: true, source: "version" as const };
+  const compat = { version: "kiro-cli 2.21.0", supportsLegacyUi: true, supportsEffortFlag: true, source: "version" as const };
   const base = { workingDirectory: "/tmp", instanceName: "x" } as any;
 
   it("is legacy-only: a v3 or new-TUI launch disables the Enter-drop gate", () => {

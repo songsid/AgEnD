@@ -15,17 +15,14 @@ import { KIRO_EXPIRED_LOGIN_SCREEN } from "../login-flows.js";
 // Kiro CLI feature gates. These are deliberately separate: the flags shipped
 // in different releases, so one broad "old Kiro" check would still crash some
 // supported versions with an unknown argument.
-// - 1.25.0: https://kiro.dev/changelog/cli/1-25/ (MCP startup checks)
 // - 1.27.0: verified against Kiro's archived 1.26.0/1.27.0 binaries. Before
 //   this, classic was the only UI and neither --legacy-ui nor --classic existed.
 // - 2.6.0: https://kiro.dev/changelog/cli/2-6/ (initial effort flag)
-export const KIRO_REQUIRE_MCP_MIN = "1.25.0";
 export const KIRO_LEGACY_UI_MIN = "1.27.0";
 export const KIRO_EFFORT_FLAG_MIN = "2.6.0";
 
 export interface KiroCliCompatibility {
   version?: string;
-  supportsRequireMcpStartup: boolean;
   supportsLegacyUi: boolean;
   supportsEffortFlag: boolean;
   source: "version" | "help" | "unknown";
@@ -34,7 +31,6 @@ export interface KiroCliCompatibility {
 type KiroProbeRunner = (binaryPath: string, args: string[]) => string;
 
 const UNKNOWN_KIRO_COMPATIBILITY: KiroCliCompatibility = {
-  supportsRequireMcpStartup: false,
   supportsLegacyUi: false,
   supportsEffortFlag: false,
   source: "unknown",
@@ -180,7 +176,6 @@ export function probeKiroCliCompatibility(
   if (parsed) {
     return {
       version,
-      supportsRequireMcpStartup: versionAtLeast(parsed, KIRO_REQUIRE_MCP_MIN),
       supportsLegacyUi: versionAtLeast(parsed, KIRO_LEGACY_UI_MIN),
       supportsEffortFlag: versionAtLeast(parsed, KIRO_EFFORT_FLAG_MIN),
       source: "version",
@@ -191,7 +186,6 @@ export function probeKiroCliCompatibility(
     const help = run(binaryPath, ["chat", "--help"]);
     return {
       version,
-      supportsRequireMcpStartup: helpAdvertisesFlag(help, "--require-mcp-startup"),
       supportsLegacyUi: helpAdvertisesFlag(help, "--legacy-ui"),
       supportsEffortFlag: helpAdvertisesFlag(help, "--effort"),
       source: "help",
@@ -377,7 +371,14 @@ export class KiroBackend implements CliBackend {
         console.warn(`[agend] kiro-cli ${detected} does not support the --effort launch flag (requires >= ${KIRO_EFFORT_FLAG_MIN}); configured effort "${effort}" was not applied`);
       }
     }
-    if (this.compatibility.supportsRequireMcpStartup) cmd += " --require-mcp-startup";
+    // Deliberately NOT `--require-mcp-startup` (#1111). Kiro has no per-server
+    // "required": the flag exits 3 when ANY enabled MCP server fails, and that
+    // includes the user's own servers from ~/.kiro/settings/mcp.json. One
+    // third-party server breaking on a kiro-cli update (outline, 2.27) took
+    // down every kiro instance at once. Like claude and codex, a broken
+    // third-party server now costs only its own tools; whether AgEnD's fleet
+    // server connected is the daemon's check (fleet MCP startup watch), which
+    // knows which server is which.
     return this.withCredentialProfile(config, cmd);
   }
 

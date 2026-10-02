@@ -170,7 +170,6 @@ describe("Daemon", () => {
     mkdirSync(instanceDir, { recursive: true });
     const backend = new KiroBackend(instanceDir, {
       version: "kiro-cli 2.21.0",
-      supportsRequireMcpStartup: true,
       supportsLegacyUi: true,
       supportsEffortFlag: true,
       source: "version",
@@ -219,7 +218,6 @@ describe("Daemon", () => {
     mkdirSync(instanceDir, { recursive: true });
     const backend = new KiroBackend(instanceDir, {
       version: "kiro-cli 2.21.0",
-      supportsRequireMcpStartup: true,
       supportsLegacyUi: true,
       supportsEffortFlag: true,
       source: "version",

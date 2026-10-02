@@ -1354,6 +1354,17 @@ export class Daemon extends EventEmitter {
   private lastMcpDeathNotifiedAt = 0;
   private mcpDeathNotifiedForPid: number | null = null;
   /**
+   * How long after the CLI finished starting its fleet MCP server may take to
+   * show up before "it never connected" is an incident. Servers connect within
+   * seconds of the prompt (kiro loads MCP after it, claude/codex around it);
+   * 90s leaves room for a slow npx/node cold start on a loaded host.
+   */
+  private static readonly FLEET_MCP_STARTUP_GRACE_MS = 90_000;
+  /** spawnGeneration in which a server for this instance was last seen serving. */
+  private mcpServedGeneration = -1;
+  /** spawnGeneration whose "fleet MCP never connected" incident was reported. */
+  private mcpNeverConnectedReportedGeneration = -1;
+  /**
    * Ceiling on how long a dead MCP server waits for an idle window before the
    * auto-restart fires anyway. A toolless instance cannot reply or report, so
    * whatever a very long turn produces is stranded until the restart happens —
@@ -2053,6 +2064,7 @@ export class Daemon extends EventEmitter {
     if (this.isPaused) return;
     const status = mcpServerState(this.instanceDir);
     if (status.state === "alive") {
+      this.mcpServedGeneration = this.spawnGeneration;
       if (this.mcpDeathNotifiedForPid != null) this.emitMcpRecovered("pid", status.pid);
       this.mcpDeathNotifiedForPid = null; // the CLI respawned it — re-arm
       this.mcpDeathDeferredForPid = null;
@@ -2080,7 +2092,13 @@ export class Daemon extends EventEmitter {
       this.noteMcpProofOfLife("connection", livePid);
       return;
     }
-    if (status.state === "unknown") return; // never started, or nothing left to watch — as before
+    if (status.state === "unknown") {
+      // Never started, or nothing left to watch. The CLI may legitimately not
+      // have spawned it yet, but past the startup grace a CLI that never
+      // brought up AgEnD's server is running without fleet tools.
+      this.checkFleetMcpNeverConnected();
+      return;
+    }
     // Dead: report once per pid, and at most once per cooldown window.
     if (this.mcpDeathNotifiedForPid === status.pid) return;
     // An auth-broken CLI cannot keep an MCP server alive, and restarting it
@@ -2112,6 +2130,39 @@ export class Daemon extends EventEmitter {
     this.lastMcpDeathNotifiedAt = Date.now();
     this.logger.error({ pid: status.pid, autoRestart, authSuspected }, "MCP server process is gone — instance has no agend tools");
     this.emit("mcp_died", { name: this.name, pid: status.pid, autoRestart, authSuspected });
+    if (autoRestart) this.armMcpRestartWhenIdle();
+  }
+
+  /**
+   * The CLI has been up past the startup grace and no server for this instance
+   * has ever served it: AgEnD's fleet tools are missing, so the agent cannot
+   * reply or reach other instances. Reported once per spawn, through the same
+   * mcp_died path (auth check, notice, idle-gated revival restart under the
+   * lifecycle's cooldown) as a server that died.
+   *
+   * This is the check that lets the CLI tolerate the user's OTHER servers
+   * failing (#1111): kiro's --require-mcp-startup could not tell the fleet
+   * server from a third-party one, and failed the whole launch for either.
+   */
+  private checkFleetMcpNeverConnected(): void {
+    if (this.config.agent_mode === "cli") return; // no MCP server by design
+    if (this.lastSpawnAt === 0 || this.mcpServedGeneration === this.spawnGeneration) return;
+    if (this.mcpNeverConnectedReportedGeneration === this.spawnGeneration) return;
+    if (Date.now() - this.lastSpawnAt < Daemon.FLEET_MCP_STARTUP_GRACE_MS) return;
+    if (this.liveMcpSockets().length > 0) {
+      this.mcpServedGeneration = this.spawnGeneration;
+      return;
+    }
+    this.mcpNeverConnectedReportedGeneration = this.spawnGeneration;
+    // pid 0 stands for "no server ever had a pid": a late-connecting server
+    // still finds an alarm to retract (noteMcpProofOfLife / the alive branch).
+    this.mcpDeathNotifiedForPid = 0;
+    const authSuspected = this.authFailureUnresolved;
+    const autoRestart = this.config.mcp_auto_restart !== false && !authSuspected;
+    this.lastMcpDeathNotifiedAt = Date.now();
+    this.logger.error({ autoRestart, authSuspected, graceMs: Daemon.FLEET_MCP_STARTUP_GRACE_MS },
+      "Fleet MCP server never connected after the CLI started — instance has no agend tools");
+    this.emit("mcp_died", { name: this.name, pid: 0, autoRestart, authSuspected, neverConnected: true });
     if (autoRestart) this.armMcpRestartWhenIdle();
   }
 
@@ -2329,6 +2380,7 @@ export class Daemon extends EventEmitter {
    * if an alarm had already gone out, retracts it.
    */
   private noteMcpProofOfLife(source: "mcp_ready" | "tool_call" | "connection", pid?: number): void {
+    this.mcpServedGeneration = this.spawnGeneration;
     const hadAlarm = this.mcpDeathNotifiedForPid != null;
     const hadPending = this.mcpRestartPending || this.mcpDeathDeferredForPid != null;
     if (!hadAlarm && !hadPending) return;
@@ -2341,6 +2393,8 @@ export class Daemon extends EventEmitter {
   }
 
   private emitMcpRecovered(source: string, pid?: number): void {
+    // The retracted alarm was "never connected", not a death: say so.
+    if (this.mcpDeathNotifiedForPid === 0) source = "late_connect";
     this.logger.info({ source, pid }, "MCP server recovered — retracting the earlier death report");
     this.emit("mcp_recovered", { name: this.name, source, pid });
   }
