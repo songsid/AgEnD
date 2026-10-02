@@ -254,6 +254,13 @@ describe("the IPC socket's parent-directory warning", () => {
     expect(second.warn).not.toHaveBeenCalled();                  // 423 of these was the problem
   });
 
+  it("fires for a group-writable directory even when other users cannot enter it, and not for a group-readable one", async () => {
+    const writable = await listenIn(loose(join(tmp(), "gw"), 0o770)); open.push(writable.server);
+    expect(writable.warn).toHaveBeenCalledTimes(1);
+    const readable = await listenIn(loose(join(tmp(), "gr"), 0o750)); open.push(readable.server);
+    expect(readable.warn).not.toHaveBeenCalled();
+  });
+
   it("is silent once the instance directory is private — the repair removes the warning rather than the check", async () => {
     const dir = loose(join(tmp(), "inst"));
     ensureInstanceDir(dir);
