@@ -20,8 +20,54 @@ Located at `~/.agend/fleet.yaml`. The primary configuration file for the fleet.
 | `profiles` | object | no | — | Reusable backend/model presets |
 | `health_port` | number | no | `19280` | HTTP health endpoint port |
 | `web` | object | no | — | Web UI feature toggles — `web.usage_panel: false` hides the AI subscription usage panel on /view and disables `/api/ai-usage` (default `true`); `web.allowed_hosts: [name, …]` adds `Host` names the dashboard answers to when reached through a reverse proxy or port forward (default: `localhost`, `127.0.0.1`, `[::1]` and `hostname`; any other `Host` gets 403 — this is what stops DNS rebinding; the `/login` browser terminal's listener uses the same list) |
+| `web_terminal` | object | no | — | The browser terminal behind `/login` and `/install-cli`: `enabled` (default `true`), `bind` (default `127.0.0.1`), `ttl_minutes` (1–20, default 10), and `tunnel` — an opt-in public link for `/login`, see [Finishing a /login away from the machine](#finishing-a-login-away-from-the-machine-public-link) |
 
 ---
+
+
+### Finishing a /login away from the machine (public link)
+
+By default a `/login` terminal link only works on this machine (SSH forwarding, tailscale, a proxy you run).
+For a phone that cannot reach it, a `kiro-cli` login can open a temporary **public https link** through a
+Cloudflare Quick Tunnel. It is off unless you turn it on:
+
+```yaml
+web_terminal:
+  tunnel:
+    allow_public: true      # default false — nothing is ever offered without it
+    # provider: cloudflared # the only provider
+    # protocol: http2       # http2 (default) | quic | auto — see below
+```
+
+Requires the `cloudflared` binary on `PATH` (AgEnD never downloads it). When enabled, the `/login kiro` confirmation
+shows three buttons — **Open public link**, **Local link only**, **Cancel** — and pressing the first one is the
+consent, once per login; a link is never kept or reused.
+
+What it does and does not do:
+
+- The tunnel fronts **only that login's terminal** (a listener of its own), never the dashboard. The terminal page
+  alone grants nothing: you still need the one-time **access token**.
+- The public link and the token are sent to **you, as two private messages** (Discord/Telegram DM) — never in the channel,
+  which gets one status line. If either private message cannot be delivered (for example you never opened a chat with
+  the bot), the login is closed instead; there is no "post it in the channel" fallback.
+- It **fails closed**: if the tunnel cannot start, dies, or the login ends in any way (done, cancelled, timeout, fleet
+  shutdown), the tunnel is stopped before the next login can start. A tunnel that cannot be confirmed stopped is
+  announced in the chat with its pid and blocks further tunnels until it is dealt with.
+- **Cloudflare carries the traffic.** A Quick Tunnel terminates TLS at Cloudflare's edge, so Cloudflare can see the
+  page, the access token and everything typed or shown in that terminal. The consent text says so; if that is not
+  acceptable for a login, use **Local link only**.
+- The tunnel's public name is never written to the log or the audit trail. Treat the link like the token's other half:
+  do not forward or bookmark it.
+- Only flows reviewed for it may use it — today `kiro-cli` only (`tunnelOk` in `src/login-flows.ts`).
+
+`protocol`: cloudflared defaults to QUIC (UDP 7844), which many corporate networks and VMs block; cloudflared then
+spends a long time failing over or never connects. AgEnD therefore passes `--protocol http2` (TCP to Cloudflare's edge on port 7844 — the same port number as QUIC's UDP,
+which networks that drop the UDP usually still allow, but a strict firewall can close it too) unless you set
+`quic` or `auto` (cloudflared decides). The same default applies to `agend setup --tunnel`. The readiness check also
+resolves the tunnel's name through Cloudflare's public resolvers (1.1.1.1 / 1.0.0.1) and connects to that address with the
+real host name as SNI, falling back to the system resolver: a brand-new `trycloudflare.com` name can take a minute to
+resolve through a corporate DNS forwarder. The only thing that leaves the machine for this is one DNS query for the
+tunnel's random host name. Startup is allowed up to a minute.
 
 ### channels[]
 

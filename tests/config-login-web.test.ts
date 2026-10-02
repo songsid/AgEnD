@@ -63,3 +63,31 @@ web_terminal:
     expect(() => load("defaults: {}\ninstances: {}\nweb_terminal:\n  bind: ''\n")).toThrow(/bind/);
   });
 });
+
+describe("web_terminal.tunnel config", () => {
+  const withTunnel = (body: string) => `defaults: {}\ninstances: {}\nweb_terminal:\n  tunnel:\n${body}\n`;
+
+  it("is absent by default — nothing is ever offered unless it is configured", () => {
+    expect(load("defaults: {}\ninstances: {}\nweb_terminal:\n  enabled: true\n").web_terminal?.tunnel).toBeUndefined();
+  });
+
+  it("parses a full block", () => {
+    const cfg = load(withTunnel("    provider: cloudflared\n    allow_public: true\n    protocol: quic"));
+    expect(cfg.web_terminal?.tunnel).toEqual({ provider: "cloudflared", allow_public: true, protocol: "quic" });
+  });
+
+  it("allow_public must be a real boolean: a quoted \"false\" would read as truthy", () => {
+    expect(() => load(withTunnel("    allow_public: \"false\""))).toThrow(/allow_public: expected true or false/);
+    expect(() => load(withTunnel("    allow_public: 1"))).toThrow(/allow_public: expected true or false/);
+  });
+
+  it("refuses an unknown key, so a misspelt switch cannot silently do nothing", () => {
+    expect(() => load(withTunnel("    allow_publc: true"))).toThrow(/web_terminal\.tunnel\.allow_publc: unknown key/);
+  });
+
+  it("refuses an unsupported provider or protocol, and a non-mapping", () => {
+    expect(() => load(withTunnel("    provider: ngrok"))).toThrow(/provider: only "cloudflared"/);
+    expect(() => load(withTunnel("    protocol: udp"))).toThrow(/protocol: expected http2, quic or auto/);
+    expect(() => load("defaults: {}\ninstances: {}\nweb_terminal:\n  tunnel: true\n")).toThrow(/web_terminal\.tunnel: expected a mapping/);
+  });
+});

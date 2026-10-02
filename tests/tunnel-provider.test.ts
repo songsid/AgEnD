@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { CloudflaredProvider, extractTunnelUrl, minimalChildEnv, validateQuickTunnelUrl } from "../src/tunnel/cloudflared.js";
 import { ManagedTunnel } from "../src/tunnel/manager.js";
 import { clearLease, leasePath, manualCleanupMessage, reapStaleTunnel, readLease, writeLease } from "../src/tunnel/lease.js";
-import { TunnelStartError, type TunnelProvider, type TunnelStartContext } from "../src/tunnel/types.js";
+import { TunnelStartError, TUNNEL_STARTUP_DEADLINE_MS, type TunnelProvider, type TunnelStartContext } from "../src/tunnel/types.js";
 import type { TunnelHandle } from "../src/tunnel/types.js";
 
 const dirs: string[] = [];
@@ -339,9 +339,57 @@ describe("how the child is started", () => {
     // Fixed argv is the whole defence against command injection here — one of
     // these arguments is an origin, and a shell would make it a command.
     expect(call.args).toEqual([
-      "tunnel", "--no-autoupdate", "--config", "/dev/null", "--url", "http://127.0.0.1:45678",
+      "tunnel", "--no-autoupdate", "--config", "/dev/null", "--protocol", "http2", "--url", "http://127.0.0.1:45678",
     ]);
     expect(call.options.shell).toBe(false);
+  });
+
+  it("reaches the edge over http2 unless told otherwise, because QUIC is blocked on many networks", async () => {
+    const argsFor = async (over: Record<string, unknown>) => {
+      const child = new FakeChild();
+      const provider = providerWith(child, { fetchPage: async () => ({ status: 200, contentType: "text/html", body: "agend-setup-marker" }), ...over });
+      setTimeout(() => child.say("https://calm-river-9.trycloudflare.com\n"), 5);
+      await provider.start(context());
+      return provider.spawnCalls[0]!.args;
+    };
+    expect(await argsFor({})).toContain("--protocol");
+    expect((await argsFor({}))[(await argsFor({})).indexOf("--protocol") + 1]).toBe("http2");
+    const quic = await argsFor({ protocol: "quic" });
+    expect(quic[quic.indexOf("--protocol") + 1]).toBe("quic");
+    // `auto` hands the choice back to cloudflared: no flag at all.
+    expect(await argsFor({ protocol: "auto" })).not.toContain("--protocol");
+  });
+
+  it("allows a minute for a tunnel to become reachable (QUIC fallback and slow DNS can eat 30 s)", () => {
+    expect(TUNNEL_STARTUP_DEADLINE_MS).toBeGreaterThanOrEqual(45_000);
+    expect(TUNNEL_STARTUP_DEADLINE_MS).toBeLessThanOrEqual(60_000);
+  });
+
+  it("probes readiness through the public resolver by default, with the system resolver only as a fallback", async () => {
+    const child = new FakeChild();
+    const asked: string[] = [];
+    const connected: Array<Record<string, unknown>> = [];
+    const provider = providerWith(child, {
+      deadlineMs: 5_000,
+      resolve4: async (host: string) => { asked.push(host); return ["104.16.230.132"]; },
+      request: ((options: Record<string, unknown>, cb: (res: unknown) => void) => {
+        connected.push(options);
+        const req = new EventEmitter() as EventEmitter & { end(): void; destroy(): void };
+        req.destroy = () => {};
+        req.end = () => {
+          const res = new EventEmitter() as EventEmitter & { statusCode: number; headers: Record<string, string> };
+          res.statusCode = 200; res.headers = { "content-type": "text/html" };
+          cb(res);
+          queueMicrotask(() => { res.emit("data", Buffer.from("<html>agend-setup-marker</html>")); res.emit("end"); });
+        };
+        return req;
+      }) as never,
+    });
+    setTimeout(() => child.say("https://calm-river-7.trycloudflare.com\n"), 5);
+    const handle = await provider.start(context());
+    expect(handle.pageUrl).toBe("https://calm-river-7.trycloudflare.com/s/abc/");
+    expect(asked).toEqual(["calm-river-7.trycloudflare.com"]);
+    expect(connected[0]).toMatchObject({ host: "104.16.230.132", servername: "calm-river-7.trycloudflare.com" });
   });
 
   it("hands the child only the variables on the allow list", async () => {
@@ -792,5 +840,217 @@ describe("preflight looks, and does nothing else", () => {
 
     await expect(new CloudflaredProvider({ env: { PATH: dir } }).preflight(new AbortController().signal))
       .resolves.toEqual({ ok: true, binaryPath: join(dir, "cloudflared") });
+  });
+});
+
+// ── A lease that cannot be written must not orphan the tunnel it describes ──
+
+/** Make the next lease write fail: a directory where the file goes makes the final rename throw. */
+function breakLease(dir: string): void {
+  rmSync(leasePath(dir), { force: true });
+  mkdirSync(leasePath(dir));
+}
+
+describe("a lease that cannot be recorded after the tunnel is up", () => {
+  it("stops the tunnel it was handed instead of losing it", async () => {
+    const dir = tempDir();
+    const managed = new ManagedTunnel({ dataDir: dir, probe: () => ({ kind: "gone" }) });
+    const stops: string[] = [];
+    const provider = fakeProvider({
+      start: async () => {
+        breakLease(dir);                                   // the first write succeeded; the second will not
+        return handleStub(4242, "id", async reason => { stops.push(reason); return { confirmed: true }; });
+      },
+    });
+
+    const result = await managed.start(provider, context());
+
+    expect(result).toMatchObject({ ok: false, errorKind: "spawn-failed", leaseHeld: false });
+    expect(stops).toHaveLength(1);                         // the handle was stopped — it did not vanish with the failure
+    expect(managed.handle).toBeNull();
+    // Nothing left blocking: the tunnel is provably gone (the test's own breakage of the lease path is undone).
+    rmSync(leasePath(dir), { recursive: true, force: true });
+    const next = await managed.start(fakeProvider({ start: async () => handleStub(1, null) }), context());
+    expect(next.ok).toBe(true);
+  });
+
+  it("when that stop cannot be proven, says so, holds the block and keeps pid and identity", async () => {
+    const dir = tempDir();
+    const logs: string[] = [];
+    const managed = new ManagedTunnel({ dataDir: dir, probe: () => ({ kind: "gone" }), log: m => logs.push(m) });
+    const provider = fakeProvider({
+      start: async () => {
+        breakLease(dir);
+        return handleStub(4242, "linux:777", async () => ({ confirmed: false as const, reason: "did not exit", pid: 4242, identity: "linux:777" }));
+      },
+    });
+
+    const result = await managed.start(provider, context());
+
+    expect(result).toMatchObject({ ok: false, leaseHeld: true });
+    expect(result.ok === false && result.message).toContain("could not be confirmed stopped");
+    expect(logs.join("\n")).toContain("4242");
+    const next = await managed.start(fakeProvider({ start: async () => handleStub(1, null) }), context());
+    expect(next).toMatchObject({ ok: false, errorKind: "lease-held", leaseHeld: true });
+  });
+});
+
+describe("a lease that cannot be recorded for a child that could not be proven dead", () => {
+  it("still blocks and announces — the failure does not escape as a plain rejection", async () => {
+    const dir = tempDir();
+    const managed = new ManagedTunnel({ dataDir: dir, probe: () => ({ kind: "gone" }) });
+    const provider = fakeProvider({
+      start: async () => {
+        breakLease(dir);
+        throw new TunnelStartError("readiness-failed", "never ready", { pid: 4242, identity: "linux:777" });
+      },
+    });
+
+    const result = await managed.start(provider, context());
+
+    expect(result).toMatchObject({ ok: false, leaseHeld: true });
+    expect(result.ok === false && result.message).toContain("pid 4242");
+    const next = await managed.start(fakeProvider({ start: async () => handleStub(1, null) }), context());
+    expect(next).toMatchObject({ ok: false, errorKind: "lease-held" });
+  });
+});
+
+// ── A tunnel is not ready if its process is already gone ──
+
+describe("readiness is refused for a tunnel that has died or been cancelled", () => {
+  it("fails fast when the process exits while the probe is still waiting", async () => {
+    const child = new FakeChild();
+    const provider = providerWith(child, { deadlineMs: 8_000, fetchPage: async () => ({ status: 502, contentType: "text/html", body: "" }) });
+    setTimeout(() => child.say("https://calm-river-2.trycloudflare.com\n"), 5);
+    setTimeout(() => child.die(1), 120);
+    const started = Date.now();
+    const err = await provider.start(context()).catch(e => e as TunnelStartError);
+    expect(err).toBeInstanceOf(TunnelStartError);
+    expect((err as TunnelStartError).errorKind).toBe("no-url");
+    expect(Date.now() - started).toBeLessThan(3_000);        // not the whole deadline
+  }, 15_000);
+
+  it("does not publish a handle when the probe succeeded against a process that has since died", async () => {
+    const child = new FakeChild();
+    const provider = providerWith(child, {
+      deadlineMs: 8_000,
+      fetchPage: async () => { child.die(1); return { status: 200, contentType: "text/html", body: "agend-setup-marker" }; },
+    });
+    setTimeout(() => child.say("https://calm-river-2.trycloudflare.com\n"), 5);
+    const err = await provider.start(context()).catch(e => e as TunnelStartError);
+    expect(err).toBeInstanceOf(TunnelStartError);
+    expect((err as TunnelStartError).errorKind).toBe("no-url");
+    expect((err as TunnelStartError).unconfirmed).toBeUndefined();   // it is provably gone
+  }, 15_000);
+
+  it("does not publish a handle when the start was cancelled while the probe was answering", async () => {
+    const child = new FakeChild();
+    const abort = new AbortController();
+    const provider = providerWith(child, {
+      deadlineMs: 8_000,
+      fetchPage: async () => { abort.abort(); return { status: 200, contentType: "text/html", body: "agend-setup-marker" }; },
+    });
+    setTimeout(() => child.say("https://calm-river-2.trycloudflare.com\n"), 5);
+    const err = await provider.start(context({ signal: abort.signal })).catch(e => e as TunnelStartError);
+    expect((err as TunnelStartError).errorKind).toBe("cancelled");
+  }, 15_000);
+
+  async function published() {
+    const child = new FakeChild();
+    const provider = providerWith(child, { fetchPage: async () => ({ status: 200, contentType: "text/html", body: "agend-setup-marker" }) });
+    setTimeout(() => child.say("https://calm-river-2.trycloudflare.com\n"), 5);
+    return { child, handle: await provider.start(context()) };
+  }
+
+  it("tells a listener attached after the process already exited (the wiring gap)", async () => {
+    const { child, handle } = await published();
+    child.die(7);
+    const heard = vi.fn();
+    handle.onUnexpectedExit(heard);
+    await new Promise<void>(r => setImmediate(r));
+    expect(heard).toHaveBeenCalledTimes(1);
+    expect(heard).toHaveBeenCalledWith({ code: 7, signal: null });
+  });
+
+  it("does not replay an exit that was asked for", async () => {
+    const { child, handle } = await published();
+    child.kill = () => { child.die(0); return true; };
+    await handle.stop("done");
+    const heard = vi.fn();
+    handle.onUnexpectedExit(heard);
+    await new Promise<void>(r => setImmediate(r));
+    expect(heard).not.toHaveBeenCalled();
+  });
+
+  it("tells a listener that was attached in time exactly once", async () => {
+    const { child, handle } = await published();
+    const heard = vi.fn();
+    handle.onUnexpectedExit(heard);
+    child.die(3);
+    await new Promise<void>(r => setImmediate(r));
+    expect(heard).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("the default readiness probe is bounded when it falls back to the system resolver", () => {
+  const MARK = "agend-setup-marker";
+  const html = (body: string) => (async () => new Response(body, { status: 200, headers: { "content-type": "text/html" } })) as unknown as typeof fetch;
+
+  it("becomes ready on a page of exactly the cap, and not on one byte more", async () => {
+    const cap = 256 * 1024;
+    const okChild = new FakeChild();
+    const okProvider = providerWith(okChild, { deadlineMs: 4_000, publicResolvers: [], fetchImpl: html(MARK + "x".repeat(cap - MARK.length)) });
+    setTimeout(() => okChild.say("https://calm-river-2.trycloudflare.com\n"), 5);
+    await expect(okProvider.start(context())).resolves.toBeTruthy();
+
+    const bigChild = new FakeChild();
+    const bigProvider = providerWith(bigChild, { deadlineMs: 900, publicResolvers: [], fetchImpl: html(MARK + "x".repeat(cap - MARK.length + 1)) });
+    setTimeout(() => bigChild.say("https://calm-river-2.trycloudflare.com\n"), 5);
+    const err = await bigProvider.start(context()).catch(e => e as TunnelStartError);
+    expect((err as TunnelStartError).errorKind).toBe("readiness-failed");
+    expect((err as TunnelStartError).message).toContain("too large");
+  }, 15_000);
+});
+
+describe("a child that could not be proven dead stays unconfirmed — it is not forgotten when the handle is dropped", () => {
+  const stuck = async () => ({ confirmed: false as const, reason: "did not exit", pid: 4242, identity: "linux:777" });
+
+  it("every later stop() says unconfirmed, with the pid and identity that were recorded", async () => {
+    const dir = tempDir();
+    const managed = new ManagedTunnel({ dataDir: dir, probe: () => ({ kind: "gone" }) });
+    await managed.start(fakeProvider({ start: async () => handleStub(4242, "linux:777", stuck) }), context());
+
+    const first = await managed.stop("login ended");
+    const second = await managed.stop("login ended again");
+
+    expect(first).toEqual({ confirmed: false, reason: "did not exit", pid: 4242, identity: "linux:777" });
+    expect(second).toEqual(first);                           // not `confirmed: true` because `active` is now empty
+    expect(await managed.stop("third")).toEqual(first);
+  });
+
+  it("the same holds for a failed start that left a child it could not prove dead", async () => {
+    const dir = tempDir();
+    const managed = new ManagedTunnel({ dataDir: dir, probe: () => ({ kind: "gone" }) });
+    const started = await managed.start(fakeProvider({
+      start: async () => { throw new TunnelStartError("readiness-failed", "never ready", { pid: 4242, identity: "linux:777" }); },
+    }), context());
+    expect(started).toMatchObject({ ok: false, leaseHeld: true });
+
+    expect(await managed.stop("cleanup")).toMatchObject({ confirmed: false, pid: 4242, identity: "linux:777" });
+  });
+
+  it("a stop with nothing ever running is still simply confirmed", async () => {
+    const managed = new ManagedTunnel({ dataDir: tempDir(), probe: () => ({ kind: "gone" }) });
+    expect(await managed.stop("nothing")).toEqual({ confirmed: true });
+  });
+
+  it("a lease that cannot be written, followed by a stop that cannot be proven, keeps the identity too", async () => {
+    const dir = tempDir();
+    const managed = new ManagedTunnel({ dataDir: dir, probe: () => ({ kind: "gone" }) });
+    const result = await managed.start(fakeProvider({
+      start: async () => { breakLease(dir); return handleStub(4242, "linux:777", stuck); },
+    }), context());
+    expect(result).toMatchObject({ ok: false, leaseHeld: true });
+    expect(await managed.stop("cleanup")).toEqual({ confirmed: false, reason: "did not exit", pid: 4242, identity: "linux:777" });
   });
 });

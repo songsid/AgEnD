@@ -39,6 +39,12 @@ export class ManagedTunnel {
   private active: TunnelHandle | null = null;
   /** Set when a stop could not be proven; blocks every later start in this process. */
   private blocked: string | null = null;
+  /**
+   * What is known about a child we could not prove dead: its pid, its fingerprint and why we could not tell.
+   * Kept — not cleared with `active` — so that EVERY later stop() answers "unconfirmed, and here is who", never
+   * "confirmed" just because the handle is no longer held. Same lifetime as `blocked`: until a human resolves it.
+   */
+  private unconfirmed: { reason: string; pid: number | null; identity: string | null } | null = null;
 
   constructor(private readonly opts: ManagedTunnelOptions) {}
 
@@ -117,16 +123,27 @@ export class ManagedTunnel {
         // A child exists and we cannot prove otherwise. The lease stays, and so
         // does the block: this is the one case where doing nothing further is
         // the correct, and only honest, behaviour.
-        writeLease(this.opts.dataDir, {
-          sid: ctx.sid,
-          provider: provider.name,
-          originPort: Number(ctx.origin.port),
-          providerPid: startError.unconfirmed.pid,
-          strongIdentity: startError.unconfirmed.identity,
-          expiresAt: ctx.expiresAt,
-          ownerPid: process.pid,
-          ownerIdentity: this.ownerIdentity(),
-        });
+        // Best effort, and never allowed to throw past the block below: a full disk here must not turn
+        // "a child we cannot prove dead" into a rejected start with no block and no announcement.
+        try {
+          writeLease(this.opts.dataDir, {
+            sid: ctx.sid,
+            provider: provider.name,
+            originPort: Number(ctx.origin.port),
+            providerPid: startError.unconfirmed.pid,
+            strongIdentity: startError.unconfirmed.identity,
+            expiresAt: ctx.expiresAt,
+            ownerPid: process.pid,
+            ownerIdentity: this.ownerIdentity(),
+          });
+        } catch (leaseErr) {
+          this.log(`Could not record the unconfirmed tunnel in the lease: ${(leaseErr as Error).message}`);
+        }
+        this.unconfirmed = {
+          reason: "a tunnel process could not be confirmed stopped after a failed start",
+          pid: startError.unconfirmed.pid,
+          identity: startError.unconfirmed.identity,
+        };
         this.blocked = `A tunnel process could not be confirmed stopped after a failed start`
           + `${startError.unconfirmed.pid !== null ? ` (pid ${startError.unconfirmed.pid})` : ""}. `
           + "No new tunnel will be opened until it is resolved.";
@@ -144,17 +161,32 @@ export class ManagedTunnel {
       };
     }
 
-    writeLease(this.opts.dataDir, {
-      sid: ctx.sid,
-      provider: provider.name,
-      originPort: Number(ctx.origin.port),
-      providerPid: handle.pid,
-      strongIdentity: handle.identity,
-      expiresAt: ctx.expiresAt,
-      ownerPid: process.pid,
-      ownerIdentity: this.ownerIdentity(),
-    });
+    // Owned from the moment it exists, BEFORE anything else can fail: a handle that is only held by a local
+    // variable is a live tunnel nobody can stop. If recording the lease fails (disk full, permissions) the
+    // tunnel is stopped on proof — and if that cannot be proven the failure says so and blocks the next start.
     this.active = handle;
+    try {
+      writeLease(this.opts.dataDir, {
+        sid: ctx.sid,
+        provider: provider.name,
+        originPort: Number(ctx.origin.port),
+        providerPid: handle.pid,
+        strongIdentity: handle.identity,
+        expiresAt: ctx.expiresAt,
+        ownerPid: process.pid,
+        ownerIdentity: this.ownerIdentity(),
+      });
+    } catch (leaseErr) {
+      this.log(`Could not record the tunnel in the lease: ${(leaseErr as Error).message}`);
+      const stopped = await this.stop("the lease could not be recorded");
+      return {
+        ok: false,
+        errorKind: "spawn-failed",
+        message: `the tunnel's lease could not be recorded (${(leaseErr as Error).message})`
+          + (stopped.confirmed ? "; the tunnel was stopped" : "; and the tunnel could not be confirmed stopped"),
+        leaseHeld: !stopped.confirmed,
+      };
+    }
     return { ok: true, handle };
   }
 
@@ -167,13 +199,18 @@ export class ManagedTunnel {
    */
   async stop(reason: string): Promise<TunnelStopResult> {
     const handle = this.active;
-    if (!handle) return { confirmed: true };
+    if (!handle) {
+      // No handle is not the same as nothing running: a child we could not prove dead stays unconfirmed, with the
+      // pid and identity we recorded, however many times and from however many callers this is asked.
+      return this.unconfirmed ? { confirmed: false, ...this.unconfirmed } : { confirmed: true };
+    }
     const result = await handle.stop(reason);
     this.active = null;
     if (result.confirmed) {
       clearLease(this.opts.dataDir);
       return result;
     }
+    this.unconfirmed = { reason: result.reason, pid: result.pid, identity: result.identity };
     this.blocked = `A tunnel could not be confirmed closed`
       + `${result.pid !== null ? ` (pid ${result.pid})` : ""}: ${result.reason}. `
       + "No new tunnel will be opened until it is resolved.";

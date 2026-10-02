@@ -26,6 +26,22 @@
  *     step is audited to the event log without token/cookie/URL secrets
  *   - fleet shutdown cancels the active session and waits for the confirmed
  *     tmux kill (no orphaned login CLI)
+ *
+ * Public link (web_terminal.tunnel.allow_public, default OFF — with it off none of this
+ * exists): for a flow marked `tunnelOk` the confirmation grows an "Open public link" button
+ * beside "Local link only". Pressing it is the consent, once per login — nothing is ever
+ * exposed on a standing basis. Then:
+ *   - a Cloudflare Quick Tunnel is put in front of THIS session's listener only, through the
+ *     fleet-wide ManagedTunnel (lease, confirmed stop); the listener is told the tunnel's
+ *     exact host before the readiness probe arrives under it, and marks cookies Secure on it
+ *   - the public URL and the access token go ONLY to the requester, as two private messages;
+ *     the channel gets one line and never the URL. If either private message cannot be
+ *     delivered the tunnel and session are closed — there is no "post it in the channel" path
+ *   - fail closed: a tunnel that dies ends the session; a session that ends (done, cancelled,
+ *     TTL, shutdown, failed delivery) closes the tunnel BEFORE the window is released, and a
+ *     tunnel that cannot be confirmed stopped is announced loudly and blocks further tunnels
+ *   - the link is minted fresh each time and never logged or audited (the host name is part of
+ *     the capability)
  */
 import { homedir } from "node:os";
 import type { ChannelAdapter } from "./channel/types.js";
@@ -39,6 +55,9 @@ import {
 } from "./web-terminal.js";
 import { WebTerminalHttpServer, type WebTerminalHttpOptions } from "./web-terminal-http.js";
 import { allowedHostNames } from "./web-host-guard.js";
+import { ManagedTunnel, newTunnelSid, type ManagedStartResult } from "./tunnel/manager.js";
+import { CloudflaredProvider } from "./tunnel/cloudflared.js";
+import type { TunnelHandle, TunnelStartContext, TunnelStopResult } from "./tunnel/types.js";
 
 export const LOGIN_TOKEN_RESEND_PREFIX = "login-token:";
 export const DEFAULT_WEB_TERMINAL_TTL_MINUTES = 10;
@@ -125,6 +144,18 @@ export interface LoginStartOptions {
   skipAuthCheck?: boolean;
   /** From the confirmation button: the pre-check had found a live token (kiro logout-first applies). */
   tokenPresent?: boolean;
+  /**
+   * From the "Open public link" button: the admin consented to a temporary public tunnel for
+   * THIS login. Re-checked against the config and the flow inside start() — a stale button or
+   * a config change in between gets a refusal, not a tunnel.
+   */
+  tunnel?: boolean;
+}
+
+/** What the controller needs from a tunnel — a fake in tests, ManagedTunnel + cloudflared for real. */
+export interface LoginTunnelPort {
+  start(ctx: TunnelStartContext): Promise<ManagedStartResult>;
+  stop(reason: string): Promise<TunnelStopResult>;
 }
 
 export interface LoginControllerDeps {
@@ -151,6 +182,13 @@ export interface LoginControllerDeps {
   createSession?: (spec: WebTerminalSpec, events: WebTerminalEvents, logger: TerminalLogger) => WebTerminalSession;
   createHttp?: (session: WebTerminalSession, logger: TerminalLogger, opts: WebTerminalHttpOptions) => WebTerminalHttpServer;
   now?: () => number;
+  /**
+   * Where the fleet-wide tunnel lease lives. Without it (and without `createTunnel`) a public
+   * link is never offered, whatever the config says.
+   */
+  tunnelDataDir?: () => string;
+  /** Test seam: replaces ManagedTunnel + CloudflaredProvider. */
+  createTunnel?: (cfg: FleetConfig | null) => LoginTunnelPort;
 }
 
 interface ActiveLogin {
@@ -164,6 +202,15 @@ interface ActiveLogin {
   tokenDelivered: boolean;
   /** The caller already reported this session's end (startup/delivery failure, shutdown): onDone stays quiet. */
   silent: boolean;
+  /** Present only for a public-link login. */
+  tunnel: {
+    port: LoginTunnelPort;
+    abort: AbortController;
+    /** The in-flight start, so a close can wait for it instead of racing it. */
+    starting: Promise<ManagedStartResult> | null;
+    handle: TunnelHandle | null;
+    closing: Promise<void> | null;
+  } | null;
 }
 
 /**
@@ -196,6 +243,8 @@ export class LoginController {
   private shutdownGeneration = 0;
   private readonly backendFactory = new TmuxTerminalBackend();
   private readonly startTimes = new Map<string, number[]>();
+  /** One tunnel owner for the process: the lease it writes is fleet-wide, so this must not be per-login. */
+  private managedTunnel: ManagedTunnel | null = null;
 
   constructor(private readonly deps: LoginControllerDeps) {}
 
@@ -272,7 +321,9 @@ export class LoginController {
       if (this.stale(generation, claim)) return t("login.web_shutting_down");
       this.deps.releaseWindow(claim);                       // nothing runs until the button is pressed
       const logoutFirst = tokenPresent && flow.preCommand?.when === "token-present";
-      const confirmation = t(flow.deviceAuth ? "login.device_confirm" : "login.web_confirm", backend);
+      const publicLink = this.tunnelAllowed(cfg, flow);
+      const confirmation = t(flow.deviceAuth ? "login.device_confirm" : "login.web_confirm", backend)
+        + (publicLink ? t("login.tunnel_confirm_extra") : "");
       try {
         await this.deps.postButtons({
           prefix: "login-confirm:",
@@ -282,7 +333,12 @@ export class LoginController {
             ? `${confirmation}\n${t("login.still_valid_precommand", backend, flow.preCommand!.command)}`
             : confirmation,
           choices: [
-            { action: tokenPresent ? "go-relogin" : "go", label: t(flow.deviceAuth ? "login.device_confirm_go" : "login.web_confirm_go") },
+            // Consent is a separate, labelled button — never a side effect of the ordinary one.
+            ...(publicLink ? [{ action: tokenPresent ? "go-relogin-tunnel" : "go-tunnel", label: t("login.tunnel_go") }] : []),
+            {
+              action: tokenPresent ? "go-relogin" : "go",
+              label: publicLink ? t("login.tunnel_go_local") : t(flow.deviceAuth ? "login.device_confirm_go" : "login.web_confirm_go"),
+            },
             { action: "cancel", label: t("login.relogin_cancel") },
           ],
           expiredText: t("buttons.stale"),
@@ -301,6 +357,12 @@ export class LoginController {
     }
 
     const userId = chat.userId as string;
+    const wantTunnel = opts.tunnel === true;
+    if (wantTunnel && !this.tunnelAllowed(cfg, flow)) {
+      // A stale button, or the config was switched off after the prompt went out.
+      this.audit("tunnel_refused", { backend, requester: userId });
+      return t("login.tunnel_not_allowed", backend);
+    }
     const command = this.buildCommand(flow, opts.tokenPresent === true);
     const ttlMs = this.ttlMs(cfg);
     const spec: WebTerminalSpec = {
@@ -322,11 +384,24 @@ export class LoginController {
     const logger = this.deps.logger;
     const entry: ActiveLogin = {
       claim, session: null as unknown as WebTerminalSession, http: null, backend, chat,
-      requesterUserId: userId, url: "", tokenDelivered: false, silent: false,
+      requesterUserId: userId, url: "", tokenDelivered: false, silent: false, tunnel: null,
     };
     const events: WebTerminalEvents = {
-      onHint: (url, code) => this.sendHint(chat, backend, url, code),
+      // A public-link login never relays the provider's own sign-in URL/code to the channel: they are as
+      // sensitive as the link and token that were kept out of it, the browser terminal already shows them,
+      // and the channel is the one place this mode promises not to put anything. Local and device-auth
+      // logins keep their contract.
+      onHint: (url, code) => {
+        if (wantTunnel) {
+          this.audit("hint_not_relayed", { backend, requester: userId, hadCode: code !== null });
+          return Promise.resolve();
+        }
+        return this.sendHint(chat, backend, url, code);
+      },
       onDone: async result => {
+        // The tunnel goes first and the window is held until it is confirmed gone: a login that
+        // is over must not leave its listener reachable while the fleet believes it is free.
+        await this.closeTunnel(entry);
         this.releaseEntry(entry);
         if (!entry.silent) await this.reportDone(chat, backend, result);
       },
@@ -352,10 +427,19 @@ export class LoginController {
         allowedHosts: allowedHostNames(cfg),
       });
       entry.http = http;
-      entry.url = (await http.listen()).url;
+      const listening = await http.listen();
+      entry.url = listening.url;
       if (this.stale(generation, claim)) return this.abort(entry, t("login.web_shutting_down"), "fleet shutdown");
+      if (wantTunnel) {
+        const failed = await this.openTunnel(entry, http, listening.port, cfg, ttlMs);
+        if (failed !== null) return failed;
+        if (this.stale(generation, claim)) return this.abort(entry, t("login.web_shutting_down"), "fleet shutdown");
+      }
     } catch (err) {
-      return this.abort(entry, t("login.failed", backend, (err as Error).message), "startup failed");
+      // In public mode the text is fixed: nothing a provider or the network said goes to the chat.
+      return this.abort(entry, wantTunnel
+        ? t("login.tunnel_failed", t("login.tunnel_reason.other"))
+        : t("login.failed", backend, (err as Error).message), "startup failed");
     }
 
     // Delivery is part of starting: a link nobody received, or a token that
@@ -363,6 +447,17 @@ export class LoginController {
     // must not stay open (sol M1). A shutdown landing during any of these
     // awaits aborts instead of announcing a terminal that no longer exists.
     if (this.stale(generation, claim)) return this.abort(entry, t("login.web_shutting_down"), "fleet shutdown");
+    if (entry.tunnel) {
+      // Public mode never uses the channel for the link or the token (D-b): two private
+      // messages or nothing. The caller posts the one-line status we return.
+      const minutes = Math.round(ttlMs / 60_000);
+      if (!(await this.sendTunnelLink(entry, minutes, command)) || !(await this.sendToken(entry, { offerResend: false }))) {
+        return this.abort(entry, t("login.tunnel_dm_failed"), "private delivery failed");
+      }
+      if (this.stale(generation, claim)) return this.abort(entry, t("login.web_shutting_down"), "fleet shutdown");
+      this.audit("tunnel_delivered", { backend, requester: userId });
+      return t("login.tunnel_started", backend, String(minutes));
+    }
     if (!(await this.sendLink(entry, Math.round(ttlMs / 60_000), command))) {
       return this.abort(entry, t("login.failed", backend, t("login.web_link_failed")), "link delivery failed");
     }
@@ -399,6 +494,7 @@ export class LoginController {
     // kill ≤31 s). Releasing ownership early would let the fleet exit while
     // the dedicated tmux server is still being torn down.
     await entry.session.cancel("fleet shutdown").catch(err => this.deps.logger.warn(safeErr(err), "web login shutdown failed"));
+    await this.closeTunnel(entry);
     await entry.http?.close().catch(() => { /* already closed on finish */ });
     this.releaseEntry(entry);
   }
@@ -447,10 +543,148 @@ export class LoginController {
     if (entry.session.state === "running") {
       await entry.session.cancel(detail).catch(err => this.deps.logger.warn(safeErr(err), "web login abort failed"));
     }
+    await this.closeTunnel(entry);
     await entry.http?.close().catch(() => { /* closed on finish */ });
     this.releaseEntry(entry);
     this.audit("aborted", { backend: entry.backend, requester: entry.requesterUserId, detail });
     return report;
+  }
+
+  // ── Public link ──
+
+  /**
+   * Whether this flow may be offered over a public tunnel right now. Every term is required, and
+   * the answer is recomputed at both ends of the button press.
+   */
+  private tunnelAllowed(cfg: FleetConfig | null, flow: LoginFlow): boolean {
+    if (flow.tunnelOk !== true || flow.noShellEscape !== true || flow.deviceAuth) return false;
+    if (cfg?.web_terminal?.enabled === false) return false;
+    if (cfg?.web_terminal?.tunnel?.allow_public !== true) return false;
+    return this.deps.createTunnel !== undefined || this.deps.tunnelDataDir !== undefined;
+  }
+
+  private tunnelPort(cfg: FleetConfig | null): LoginTunnelPort {
+    if (this.deps.createTunnel) return this.deps.createTunnel(cfg);
+    const dataDir = this.deps.tunnelDataDir!();
+    this.managedTunnel ??= new ManagedTunnel({ dataDir, log: m => this.deps.logger.info({}, m) });
+    const managed = this.managedTunnel;
+    const provider = new CloudflaredProvider({ protocol: cfg?.web_terminal?.tunnel?.protocol });
+    return { start: ctx => managed.start(provider, ctx), stop: reason => managed.stop(reason) };
+  }
+
+  /**
+   * Put a tunnel in front of this session's listener. Returns null on success, or the report to
+   * hand the caller after the session has been aborted.
+   */
+  private async openTunnel(
+    entry: ActiveLogin, http: WebTerminalHttpServer, port: number, cfg: FleetConfig | null, ttlMs: number,
+  ): Promise<string | null> {
+    const abort = new AbortController();
+    const tunnel = { port: this.tunnelPort(cfg), abort, starting: null as Promise<ManagedStartResult> | null, handle: null as TunnelHandle | null, closing: null as Promise<void> | null };
+    entry.tunnel = tunnel;
+    this.audit("tunnel_requested", { backend: entry.backend, requester: entry.requesterUserId });
+    tunnel.starting = tunnel.port.start({
+      sid: newTunnelSid(),
+      origin: new URL(`http://127.0.0.1:${port}`),
+      pagePath: new URL(entry.url).pathname,
+      readinessMarker: http.readinessMarker,
+      expiresAt: (this.deps.now ?? Date.now)() + ttlMs,
+      signal: abort.signal,
+      // The provider's readiness probe arrives under the public host: the listener has to
+      // expect exactly that one name before it, and drop it again if no tunnel results.
+      onCandidateHost: host => http.setExternalHost(host),
+    });
+    let result: ManagedStartResult;
+    try {
+      result = await tunnel.starting;
+    } catch (err) {
+      http.setExternalHost(null);
+      const kind = tunnelErrorKind((err as { errorKind?: unknown } | null)?.errorKind);
+      this.audit("tunnel_failed", { backend: entry.backend, requester: entry.requesterUserId, errorKind: kind });
+      return this.abort(entry, t("login.tunnel_failed", t(`login.tunnel_reason.${kind}`)), "tunnel failed");
+    }
+    // The login ended (cancel, TTL, shutdown) while the tunnel was coming up: closeTunnel is already
+    // on its way to stop it, and nothing here may re-publish a host it just took away.
+    if (tunnel.closing !== null) {
+      return this.abort(entry, t("login.cancelled", entry.backend), "closed while the tunnel was starting");
+    }
+    if (!result.ok) {
+      http.setExternalHost(null);
+      const kind = tunnelErrorKind(result.errorKind);
+      this.audit("tunnel_failed", { backend: entry.backend, requester: entry.requesterUserId, errorKind: kind, leaseHeld: result.leaseHeld });
+      // Only the allowlisted kind becomes words: `result.message` is the provider's own text, and a TLS or
+      // network error in it can carry the tunnel's random host name straight into the channel.
+      // `leaseHeld`: a tunnel process exists that nobody can account for. Not a fallback — a stop.
+      const report = result.leaseHeld
+        ? t("login.tunnel_unconfirmed", "", t("login.tunnel_reason.lease-held"))
+        : t("login.tunnel_failed", t(`login.tunnel_reason.${kind}`));
+      return this.abort(entry, report, "tunnel failed");
+    }
+    tunnel.handle = result.handle;
+    http.setExternalHost(new URL(result.handle.baseUrl).host);
+    entry.url = result.handle.pageUrl;
+    result.handle.onUnexpectedExit(() => {
+      this.audit("tunnel_lost", { backend: entry.backend, requester: entry.requesterUserId });
+      // The page is gone the moment the tunnel is: end the login rather than leave a window open on nothing.
+      void entry.session.cancel(t("login.tunnel_lost")).catch(err => this.deps.logger.warn(safeErr(err), "web login tunnel-loss cancel failed"));
+    });
+    return null;
+  }
+
+  /** Idempotent: every end of a public-link login funnels through here, and the second caller joins the first. */
+  private closeTunnel(entry: ActiveLogin): Promise<void> {
+    const tunnel = entry.tunnel;
+    if (!tunnel) return Promise.resolve();
+    tunnel.closing ??= this.doCloseTunnel(entry, tunnel);
+    return tunnel.closing;
+  }
+
+  private async doCloseTunnel(entry: ActiveLogin, tunnel: NonNullable<ActiveLogin["tunnel"]>): Promise<void> {
+    // Nothing may reach this listener under the public name from here on, whatever the process does next.
+    entry.http?.setExternalHost(null);
+    tunnel.abort.abort();
+    // A start still in flight is cancelled by the abort and settles after proving its child gone; stopping
+    // before it settles would find nothing active and let the start finish into a tunnel nobody owns.
+    await tunnel.starting?.catch(() => { /* reported by openTunnel */ });
+    let result: TunnelStopResult;
+    try {
+      result = await tunnel.port.stop("login ended");
+    } catch {
+      result = { confirmed: false, reason: "stopping the tunnel threw", pid: null, identity: null };
+    }
+    // Again, after the stop: whatever ran in between, the public name is not this listener's any more.
+    entry.http?.setExternalHost(null);
+    if (result.confirmed) {
+      this.audit("tunnel_closed", { backend: entry.backend, requester: entry.requesterUserId });
+      return;
+    }
+    this.audit("tunnel_unconfirmed", { backend: entry.backend, requester: entry.requesterUserId, pid: result.pid });
+    this.deps.logger.error({ pid: result.pid }, "login tunnel could not be confirmed stopped");
+    const where = result.pid !== null ? ` (pid ${result.pid})` : "";
+    await entry.chat.adapter.sendText(entry.chat.chatId, t("login.tunnel_unconfirmed", where, t("login.tunnel_reason.stop-unconfirmed")), { threadId: entry.chat.threadId })
+      .catch(() => { /* chat gone; the log line above stands */ });
+  }
+
+  /** First of the two private messages: the public link. Never the channel. Returns delivery success. */
+  private async sendTunnelLink(entry: ActiveLogin, ttlMinutes: number, command: string): Promise<boolean> {
+    const { chat } = entry;
+    if (typeof chat.adapter.sendDirect !== "function") {
+      this.audit("tunnel_link_failed", { backend: entry.backend, requester: entry.requesterUserId, via: "none" });
+      return false;
+    }
+    try {
+      await chat.adapter.sendDirect(entry.requesterUserId, t("login.tunnel_link", entry.backend, String(ttlMinutes), command, entry.url), {
+        format: "text",
+        disablePreview: true,
+      });
+      this.audit("tunnel_link_sent", { backend: entry.backend, requester: entry.requesterUserId, via: "dm" });
+      return true;
+    } catch (err) {
+      // Never the message: a provider error may echo the payload (the URL).
+      this.deps.logger.warn({ ...safeErr(err), backend: entry.backend }, "web terminal tunnel link DM failed");
+      this.audit("tunnel_link_failed", { backend: entry.backend, requester: entry.requesterUserId, via: "dm", ...safeErr(err) });
+      return false;
+    }
   }
 
   private buildCommand(flow: LoginFlow, tokenPresent: boolean): string {
@@ -570,6 +804,19 @@ export class LoginController {
   private audit(event: string, fields: Record<string, unknown>): void {
     try { this.deps.eventLog()?.insert("login", `login_web_${event}`, fields); } catch { /* never break the flow */ }
   }
+}
+
+/**
+ * The only tunnel failure vocabulary that reaches a chat. A provider's message is free text — it can
+ * contain the tunnel's host (a TLS name mismatch does) — so it is mapped to one of these kinds, each of
+ * which has a fixed sentence in the locale table, and anything unrecognised becomes "other".
+ */
+const TUNNEL_ERROR_KINDS: ReadonlySet<string> = new Set([
+  "binary-missing", "binary-not-executable", "not-logged-in", "spawn-failed", "no-url",
+  "bad-url", "readiness-failed", "timeout", "cancelled", "lease-held",
+]);
+function tunnelErrorKind(kind: unknown): string {
+  return typeof kind === "string" && TUNNEL_ERROR_KINDS.has(kind) ? kind : "other";
 }
 
 function escapeHtml(s: string): string {

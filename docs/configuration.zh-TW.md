@@ -55,8 +55,40 @@ health_port: 19280
 | `teams` | object | `{}` | 具名 instance 群組，用於精準廣播 |
 | `workflow` | string \| false | `"builtin"` | Fleet 協作工作流程模板。`"builtin"` = 標準工作流程，`"file:./path.md"` = 自訂，`false` = 停用 |
 | `health_port` | number | `19280` | HTTP 健康檢查/API 伺服器埠 |
+| `web_terminal` | object | — | `/login`、`/install-cli` 背後的瀏覽器終端：`enabled`（預設 `true`）、`bind`（預設 `127.0.0.1`）、`ttl_minutes`（1–20，預設 10），以及 `tunnel` —— `/login` 的選用公開連結，見下方「人不在機器旁完成 /login」 |
 
 ---
+
+
+### 人不在機器旁完成 /login（公開連結）
+
+預設 `/login` 的終端連結只能在這台機器上用（SSH 轉發、tailscale、你自己的反向代理）。手機連不到時，`kiro-cli` 登入可以透過
+Cloudflare Quick Tunnel 開一個臨時的**公開 https 連結**。預設關閉：
+
+```yaml
+web_terminal:
+  tunnel:
+    allow_public: true      # 預設 false —— 沒設就絕不提供
+    # provider: cloudflared # 目前唯一的 provider
+    # protocol: http2       # http2（預設）| quic | auto
+```
+
+需要 `PATH` 上有 `cloudflared`（AgEnD 不會幫你下載）。啟用後，`/login kiro` 的確認會有三個按鈕：**開啟公開連結**、**只用本機連結**、**取消**；
+按第一個就是同意，每次登入一次，連結不會保留或重用。
+
+- tunnel 只代理**那一次登入的終端**（它自己的 listener），不是 dashboard。光有終端頁面不能做任何事：還需要一次性**存取 token**。
+- 公開連結與 token 會**分成兩則私訊**傳給你（Discord/Telegram DM），絕不貼在頻道；頻道只有一行狀態。任何一則私訊送不到（例如你從未與 bot
+  開過私聊），就直接關閉這次登入，沒有「改貼在頻道」的後路。
+- **失敗即關閉**：tunnel 起不來、中途死掉，或登入以任何方式結束（完成、取消、逾時、fleet 關閉），都會在下一次登入之前先停掉 tunnel。無法確認已停止的
+  tunnel 會在聊天裡連同 pid 公告，並在處理之前封鎖後續 tunnel。
+- **流量會經過 Cloudflare。** Quick Tunnel 在 Cloudflare 邊緣終止 TLS，所以 Cloudflare 看得到頁面、存取 token，以及終端裡輸入或顯示的一切。同意文字有寫明；若這對某次登入不可接受，請選**只用本機連結**。
+- tunnel 的公開名稱不會寫進 log 或稽核紀錄。把連結當成 token 的另一半：請勿轉傳或加書籤。
+- 只有審核過的 flow 才能用，目前只有 `kiro-cli`（`src/login-flows.ts` 的 `tunnelOk`）。
+
+`protocol`：cloudflared 預設走 QUIC（UDP 7844），很多公司網路與 VM 會擋，之後要花很久才 failover 或根本連不上。所以 AgEnD 預設傳
+`--protocol http2`（連到 Cloudflare 邊緣的 TCP 7844 —— 與 QUIC 的 UDP 同一個埠號，擋 UDP 的網路通常仍放行 TCP，但嚴格的防火牆也可能關掉它），除非你設 `quic` 或 `auto`（交給 cloudflared 決定）。`agend setup --tunnel` 同樣使用這個預設。就緒檢查也會先用
+Cloudflare 的公共解析器（1.1.1.1 / 1.0.0.1）解析 tunnel 名稱，再以真正的主機名稱當 SNI 連到該位址，失敗才退回系統解析器：全新的
+`trycloudflare.com` 名稱透過公司 DNS 轉發器可能要一分鐘才解析得到。為此離開這台機器的只有一筆對 tunnel 隨機主機名稱的 DNS 查詢。啟動最多給一分鐘。
 
 ## channel
 

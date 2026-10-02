@@ -234,3 +234,31 @@ describe("refusals are logged once per name, without the raw header", () => {
     expect(log.warn.mock.calls.length).toBe(16);
   });
 });
+
+describe("the page carries a readiness marker for the tunnel's probe", () => {
+  it("serves this session's marker, and the placeholder never leaks", async () => {
+    const { http, port } = await start();
+    const res = await send(port, "GET", `/t/${SID}/`, { host: `127.0.0.1:${port}` });
+    expect(res.status).toBe(200);
+    expect(http.readinessMarker).toBe(`agend-terminal:${SID}`);
+    expect(res.body).toContain(`<meta name="agend-terminal" content="agend-terminal:${SID}">`);
+    expect(res.body).not.toContain("__AGEND_TERMINAL_MARKER__");
+  });
+
+  it("is per session: another session's marker is not in this page", async () => {
+    const { port } = await start();
+    const res = await send(port, "GET", `/t/${SID}/`, { host: `127.0.0.1:${port}` });
+    expect(res.body).not.toContain(`agend-terminal:${"cd".repeat(16)}`);
+  });
+
+  it("does not consume the token or touch the session (a probe is a plain GET)", async () => {
+    const session = fakeSession();
+    const redeem = vi.fn(session.redeemToken.bind(session));
+    (session as unknown as { redeemToken: typeof redeem }).redeemToken = redeem;
+    const http = new WebTerminalHttpServer(session, logger(), { assetsDir: ASSETS, hostname: "127.0.0.1" });
+    servers.push(http);
+    const { port } = await http.listen();
+    await send(port, "GET", `/t/${SID}/`, { host: `127.0.0.1:${port}` });
+    expect(redeem).not.toHaveBeenCalled();
+  });
+});
