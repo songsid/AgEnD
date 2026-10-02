@@ -34,7 +34,6 @@ function makeConfig(overrides?: Partial<CliBackendConfig>): CliBackendConfig {
 
 const LATEST_KIRO: KiroCliCompatibility = {
   version: "kiro-cli 2.21.0",
-  supportsRequireMcpStartup: true,
   supportsLegacyUi: true,
   supportsEffortFlag: true,
   source: "version",
@@ -139,7 +138,15 @@ describe("KiroBackend", () => {
       expect(cmd).toContain("--legacy-ui");
       expect(cmd).toContain("--trust-all-tools");
       expect(cmd).toContain("--resume");
-      expect(cmd).toContain("--require-mcp-startup");
+    });
+
+    it("never requires every MCP server to start (#1111)", () => {
+      // --require-mcp-startup exits 3 when ANY enabled server fails, the user's
+      // third-party ones included — one broken server stopped the whole fleet.
+      for (const kiroUi of ["legacy", "tui"] as const) {
+        const cmd = makeBackend().buildCommand(makeConfig({ kiroUi }));
+        expect(cmd).not.toContain("--require-mcp-startup");
+      }
     });
 
     it("uses Kiro's default TUI without a UI override flag", () => {
@@ -177,34 +184,34 @@ describe("KiroBackend", () => {
     it.each([
       {
         version: "1.24.9",
-        expected: { requireMcp: false, legacyUi: false, effort: false },
+        expected: { legacyUi: false, effort: false },
       },
       {
         version: "1.25.0",
-        expected: { requireMcp: true, legacyUi: false, effort: false },
+        expected: { legacyUi: false, effort: false },
       },
       {
         version: "1.26.9",
-        expected: { requireMcp: true, legacyUi: false, effort: false },
+        expected: { legacyUi: false, effort: false },
       },
       {
         version: "1.27.0",
-        expected: { requireMcp: true, legacyUi: true, effort: false },
+        expected: { legacyUi: true, effort: false },
       },
       {
         version: "2.5.99",
-        expected: { requireMcp: true, legacyUi: true, effort: false },
+        expected: { legacyUi: true, effort: false },
       },
       {
         version: "2.6.0",
-        expected: { requireMcp: true, legacyUi: true, effort: true },
+        expected: { legacyUi: true, effort: true },
       },
     ])("gates launch flags for kiro-cli $version", ({ version, expected }) => {
       const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
       const backend = makeBackend(compatibilityForVersion(version));
       const cmd = backend.buildCommand(makeConfig({ effort: "high" }));
 
-      expect(cmd.includes("--require-mcp-startup")).toBe(expected.requireMcp);
+      expect(cmd).not.toContain("--require-mcp-startup");
       expect(cmd.includes("--legacy-ui")).toBe(expected.legacyUi);
       expect(cmd.includes("--effort high")).toBe(expected.effort);
       expect(cmd).not.toContain("--classic");
@@ -241,7 +248,6 @@ describe("KiroBackend", () => {
       expect(calls).toEqual([["--version"], ["chat", "--help"]]);
       expect(compatibility).toEqual({
         version: undefined,
-        supportsRequireMcpStartup: true,
         supportsLegacyUi: true,
         supportsEffortFlag: true,
         source: "help",
@@ -256,7 +262,6 @@ describe("KiroBackend", () => {
 
       expect(compatibility).toMatchObject({
         version: "kiro-cli development build",
-        supportsRequireMcpStartup: true,
         supportsLegacyUi: false,
         supportsEffortFlag: false,
         source: "help",

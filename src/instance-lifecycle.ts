@@ -842,7 +842,7 @@ export class InstanceLifecycle {
       this.notifyIncident(name, "muse_relay_exhausted", t("inst.muse_relay_exhausted", name));
     }, this.ctx.logger, `daemon.muse_relay_exhausted[${name}]`));
 
-    daemon.on("mcp_died", safeHandler(async (data: { name: string; pid: number; autoRestart?: boolean; authSuspected?: boolean }) => {
+    daemon.on("mcp_died", safeHandler(async (data: { name: string; pid: number; autoRestart?: boolean; authSuspected?: boolean; neverConnected?: boolean }) => {
       const stormAtDetection = this.ctx.stormWindow?.isActive() === true;
       const incident = this.mcpIncident(name);
       const generation = ++incident.gen;
@@ -877,6 +877,11 @@ export class InstanceLifecycle {
       // restore its tools. With mcp_auto_restart (default) the daemon requests an
       // idle-gated restart itself — an immediate one would interrupt whatever the
       // agent is doing. With it off, tell the operator what to run, as before.
+      if (data.neverConnected) {
+        incident.deathNoticeSent = this.notifyIncident(name, "mcp_died",
+          t(data.autoRestart ? "inst.mcp_never_connected_auto" : "inst.mcp_never_connected_manual", name));
+        return;
+      }
       incident.deathNoticeSent = this.notifyIncident(name, "mcp_died",
         `⚠️ \`${name}\` 的 MCP server 已終止 — 這個 instance 目前無法使用 agend 工具（無法 reply / 跨 instance 通訊）。\n`
         + (data.autoRestart
@@ -897,7 +902,8 @@ export class InstanceLifecycle {
         return;
       }
       incident.deathNoticeSent = false;
-      this.notifyIncident(name, "mcp_recovered", t("inst.mcp_recovered", name));
+      this.notifyIncident(name, "mcp_recovered",
+        t(data.source === "late_connect" ? "inst.mcp_connected_late" : "inst.mcp_recovered", name));
     }, this.ctx.logger, `daemon.mcp_recovered[${name}]`));
 
     daemon.on("mcp_proxy_reply", safeHandler((data: { name: string; correlationId?: string }) => {

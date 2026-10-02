@@ -194,7 +194,7 @@ All fields from `instances.<name>` can be set here as shared defaults. Additiona
 | `terminal.enabled` | boolean | `true` | Logical terminal size feature toggle. `false` pins the window to tmux's historical 80x24 for compatibility. |
 | `terminal.columns` | number | `120` | Terminal width when `terminal.enabled` is `true`. |
 | `terminal.rows` | number | `36` | Terminal height when `terminal.enabled` is `true`. |
-| `mcp_auto_restart` | boolean | `true` | Restart the instance (idle-gated, session resumed) when its MCP server dies. `false` = notify only. |
+| `mcp_auto_restart` | boolean | `true` | Restart the instance (idle-gated, session resumed) when its MCP server dies, or never connects within 90 seconds of the CLI starting. `false` = notify only. |
 | `mcp_proxy_reply` | boolean | `false` | Opt-in: when the MCP server is dead at end of turn and no reply was sent, the daemon relays the pane's final text to the channel (marked ⚠️ as proxy reply). Off by default — raw pane text can leak content redaction doesn't catch. |
 | `lightweight` | boolean | `false` | Skip non-essential subsystems |
 | `systemPrompt` | string | — | Custom system prompt (supports `file:path` syntax) |

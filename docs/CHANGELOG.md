@@ -7,6 +7,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Upgrade Notes
+- **[Behaviour change] One broken MCP server no longer stops every kiro instance (#1111).**
+  AgEnD launched kiro-cli with `--require-mcp-startup`, which exits (code 3) when ANY
+  enabled MCP server fails to start. That includes the servers you configured yourself
+  in `~/.kiro/settings/mcp.json`, so a third-party server that broke on kiro-cli 2.27
+  kept every kiro instance from starting. kiro now starts like claude and codex do: a
+  failing server of yours only loses its own tools (kiro shows it as `✗` in the pane).
+  Whether AgEnD's own fleet server connected is checked by the daemon instead, for every
+  backend: if a CLI has been up for 90 seconds and AgEnD's MCP server never connected,
+  the instance reports that it has no agend tools and, with `mcp_auto_restart` (the
+  default), restarts once idle to retry. A server that connects late retracts the report.
 - **[Behaviour change] Tunnels reach Cloudflare over http2 and wait up to a minute.** The cloudflared provider now
   passes `--protocol http2` by default (QUIC/UDP 7844 is blocked on many corporate networks and VMs, where cloudflared
   otherwise spends a long time failing over or never connects) and probes readiness through Cloudflare's public

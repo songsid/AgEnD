@@ -19,7 +19,7 @@ import { setLocale } from "../src/locale.js";
  */
 
 const KIRO_COMPAT = {
-  version: "kiro-cli 2.21.0", supportsRequireMcpStartup: true, supportsLegacyUi: true, supportsEffortFlag: true, source: "version" as const,
+  version: "kiro-cli 2.21.0", supportsLegacyUi: true, supportsEffortFlag: true, source: "version" as const,
 };
 const OUTAGE_PANE = [
   "Picking up where we left off...",
