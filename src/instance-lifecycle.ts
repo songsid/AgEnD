@@ -333,17 +333,28 @@ const AUTH_ALERT_COOLDOWN_MS = 5 * 60_000;
 const AUTH_VERIFY_CACHE_MS = 60_000;
 
 const CODEX_QUOTA_VERIFY_TIMEOUT_MS = 5_000;
-export type CodexQuotaVerdict = "available" | "exhausted" | "unknown";
+/**
+ * What the live usage endpoint says about whether this Codex login can work:
+ *   available — no regular window is full: the usage-limit text is stale;
+ *   reserve   — a regular window is full but the Luna Reserve still has room:
+ *               codex continues on the reserve by itself, nothing to pause;
+ *   exhausted — a regular window is full and there is no reserve (or it is full too);
+ *   unknown   — no usable answer (no OAuth login, API-key auth, expired token,
+ *               network, timeout, an unfamiliar response shape).
+ */
+export type CodexQuotaVerdict = "available" | "reserve" | "exhausted" | "unknown";
 type CodexUsageResult = Omit<ProviderUsage, "id" | "name">;
 const CLAUDE_QUOTA_VERIFY_TIMEOUT_MS = 5_000;
 export type ClaudeQuotaVerdict = "available" | "exhausted" | "unknown";
 type ClaudeUsageResult = Omit<ProviderUsage, "id" | "name">;
 
 /**
- * Convert the live Codex usage row into a conservative quota verdict. A
- * successful response with at least one window below 100% proves that stale
- * terminal text is no longer current only when no other window is exhausted.
- * Missing credentials, API errors, and metric-less responses prove nothing.
+ * Convert the live Codex usage row into a conservative quota verdict. The
+ * provider names the reserve's rows (`note: "gpt-reserve"`, label "<Model>
+ * Reserve …"); they are judged apart from the regular windows, because a full
+ * regular window with a reserve that still has room is not a reason to stop
+ * (#1103). Missing credentials, API errors, and responses without a regular
+ * window prove nothing.
  */
 export function codexQuotaVerdictFromUsage(usage: CodexUsageResult): CodexQuotaVerdict {
   if (usage.status !== "ok") return "unknown";
@@ -353,8 +364,13 @@ export function codexQuotaVerdictFromUsage(usage: CodexUsageResult): CodexQuotaV
     && Number.isFinite(metric.used)
     && metric.windowMs != null,
   );
-  if (windows.length === 0) return "unknown";
-  return windows.some(metric => (metric.used ?? 0) >= 100) ? "exhausted" : "available";
+  const isReserve = (metric: (typeof windows)[number]): boolean =>
+    /\breserve\b/i.test(metric.note ?? "") || /\breserve\b/i.test(metric.label ?? "");
+  const regular = windows.filter(metric => !isReserve(metric));
+  const reserve = windows.filter(isReserve);
+  if (regular.length === 0) return "unknown";
+  if (!regular.some(metric => (metric.used ?? 0) >= 100)) return "available";
+  return reserve.length > 0 && reserve.every(metric => (metric.used ?? 0) < 100) ? "reserve" : "exhausted";
 }
 
 /** Run only the Codex usage provider, bounded independently of its network timeout. */
@@ -1060,27 +1076,31 @@ export class InstanceLifecycle {
 
       // Codex keeps old errors in pane scrollback. After a restart, the new
       // daemon has no occurrence baseline and can mistake yesterday's
-      // `You've hit your usage limit` for a current failure, pause, wake, then
-      // repeat forever. A live, non-LLM usage query and a post-probe pane
-      // recheck distinguish an available account or a live Luna Reserve
-      // composer from that stale text before any notification/pause. Only
-      // pause-class quota errors need this gate; low-quota notifications remain
-      // immediate. Unknown (timeout/auth/API failure) stays fail-closed unless
-      // the current pane proves that the reserve session is live.
+      // `You’ve hit your usage limit` for a current failure, pause, wake, then
+      // repeat forever. A live, non-LLM usage query decides whether the account
+      // can still work (#1103): a window with room → the text is stale; a full
+      // regular window with Luna Reserve room → codex continues on the reserve
+      // by itself; otherwise it cannot work and is paused. The pane's composer
+      // is deliberately NOT evidence here — codex paints one after a plain hit
+      // too. (The daemon already withheld this event for text it knows belongs
+      // to a Luna Reserve menu it handled.) Only pause-class quota errors need
+      // this gate; low-quota notifications remain immediate. Unknown (no OAuth
+      // login, API-key auth, timeout, API failure) pauses: a reserve is a
+      // ChatGPT-plan feature, so an account that cannot be asked is almost
+      // always a plain one, and a wrongly paused reserve wakes with /wake while
+      // a missed pause fails silently forever.
       if (data.type === "quota" && data.action === "pause" && this.backendOf(name) === "codex") {
         const verdict = await this.verifyCodexQuota();
+        this.ctx.logger.info({ name, backend: "codex", decision: verdict === "available" || verdict === "reserve" ? "ignore" : "pause", evidence: `usage-${verdict}` },
+          `codex usage-limit decision: decision=${verdict === "available" || verdict === "reserve" ? "ignore" : "pause"} evidence=usage-${verdict}`);
         if (verdict === "available") {
           this.ctx.logger.debug({ name, backend: "codex" },
             "quota pattern ignored — live usage has capacity (stale pane history)");
           return;
         }
-        // The user may have just selected Luna Reserve while the non-LLM
-        // usage probe was in flight. The provider can still report the primary
-        // account as exhausted, so trust the current pane's positive live
-        // composer + Context footer proof before issuing the destructive pause.
-        if (await daemon.isCodexLivePane?.()) {
+        if (verdict === "reserve") {
           this.ctx.logger.debug({ name, backend: "codex" },
-            "quota pattern ignored — Codex reserve session is live");
+            "quota pattern ignored — the regular limit is full but Luna Reserve has room, codex continues on it");
           return;
         }
         if (verdict === "unknown") {
