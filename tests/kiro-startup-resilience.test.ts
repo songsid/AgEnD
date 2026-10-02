@@ -8,7 +8,8 @@ import { KiroBackend, KIRO_RESUME_STARTUP_BUDGET_MS } from "../src/backend/kiro.
 import { BackendOutageTracker, BACKEND_OUTAGE_ACTIVE_MS } from "../src/backend-outage.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { InstanceLifecycle, type IncidentEventSource, type LifecycleContext } from "../src/instance-lifecycle.js";
-import { setLocale } from "../src/locale.js";
+import { setLocale, t } from "../src/locale.js";
+import { UnsupportedCliError } from "../src/backend/types.js";
 
 /**
  * kiro startup resilience (2026-09-03 field incident): runtime.us-east-1.kiro.dev
@@ -19,7 +20,7 @@ import { setLocale } from "../src/locale.js";
  */
 
 const KIRO_COMPAT = {
-  version: "kiro-cli 2.21.0", supportsLegacyUi: true, supportsEffortFlag: true, source: "version" as const,
+  version: "kiro-cli 2.21.0", supportsLegacyUi: true, supportsTui: true, supportsV3: true, agentEngines: ["v2", "v1", "v3"], supportsEffortFlag: true, source: "version" as const,
 };
 const OUTAGE_PANE = [
   "Picking up where we left off...",
@@ -301,6 +302,33 @@ describe("#1 wake uses the resume budget too (sol blocker 1)", () => {
 });
 
 describe("crash-respawn during an outage hands off instead of stranding `crashed` (sol blocker 3)", () => {
+  it("a kiro-cli that refuses this instance (#1109) rejects the spawn with the refusal itself — no resume retry, no session clearing", async () => {
+    const refusing = new KiroBackend("/tmp/kiro-1109-spawn", {
+      version: "kiro-cli 3.0.0", supportsLegacyUi: false, supportsTui: true, supportsV3: true,
+      agentEngines: ["v2", "v3"], supportsEffortFlag: true, source: "help",
+    });
+    const h = makeSpawnHarness(refusing);
+    h.trySpawn.mockImplementation(async () => {
+      refusing.buildCommand({ workingDirectory: "/tmp", instanceName: "kiro-a", instanceDir: h.dir, mcpServers: {} } as any);
+      return true;
+    });
+    await expect(h.daemon.spawnClaudeWindow()).rejects.toBeInstanceOf(UnsupportedCliError);
+    expect(h.trySpawn).toHaveBeenCalledTimes(1);
+    expect(h.killed).toBe(0);
+    expect(existsSync(join(h.dir, "session-id"))).toBe(true);
+  });
+
+  it("an unsupported CLI on crash-respawn (#1109) stops supervision with the reason, instead of failing every tick", () => {
+    const h = makeSpawnHarness(kiro());
+    const ended: Array<{ reason: string }> = [];
+    h.daemon.on("supervision_ended", (e: { reason: string }) => ended.push(e));
+    expect(h.daemon.stopOnUnsupportedCliRespawn(new Error("CLI failed to start after retry"))).toBe(false);
+    expect(h.daemon.healthCheckPaused).toBe(false);
+    expect(h.daemon.stopOnUnsupportedCliRespawn(new UnsupportedCliError("kiro-cli 3.0.0 no longer offers the legacy UI"))).toBe(true);
+    expect(h.daemon.healthCheckPaused).toBe(true);
+    expect(ended.map(e => e.reason)).toEqual(["kiro-cli 3.0.0 no longer offers the legacy UI"]);
+  });
+
   it("emits startup_backend_unreachable and pauses health monitoring when the fleet is listening", () => {
     const h = makeSpawnHarness(kiro());
     const events: unknown[] = [];
@@ -490,6 +518,43 @@ const entries = () => [["a", { working_directory: "/tmp/a" }], ["b", { working_d
 
 describe("#3 delayed automatic startup retries", () => {
   beforeEach(() => vi.useFakeTimers());
+
+  it("a scheduled retry that turns into an unsupported CLI (#1109) stops there and reports it (Prism #5)", async () => {
+    const { fm, notifyFleetError, startInstance, cleanup } = makeFleet();
+    const reason = "kiro-cli 3.0.0 no longer offers the legacy UI (--legacy-ui) this instance runs on.";
+    startInstance.mockRejectedValueOnce(new Error("kiro-cli did not answer --version")) // unknown: retryable
+      .mockRejectedValueOnce(new Error("kiro-cli did not answer --version"));
+    try {
+      await (fm as any).startInstancesWithConcurrency(entries(), false);
+      expect(fm.pendingStartupRetry("a")).toEqual({ attempt: 0 });
+      startInstance.mockRejectedValue(new UnsupportedCliError(reason));
+      await vi.advanceTimersByTimeAsync(60_000);                 // attempt 1 now knows
+      expect(fm.pendingStartupRetry("a")).toBeNull();
+      expect(fm.pendingStartupRetry("b")).toBeNull();
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(notifyFleetError).toHaveBeenLastCalledWith(t("fleet.cli_unsupported", "a, b", reason));
+      const calls = startInstance.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(60 * 60_000);
+      expect(startInstance.mock.calls.length).toBe(calls);       // never retried again
+    } finally { cleanup(); for (const p of (fm as any).unsupportedCliNotices.values()) clearTimeout(p.timer); }
+  });
+
+  it("an unsupported CLI (#1109) is reported once with its reason and NOT retried", async () => {
+    const { fm, notifyFleetError, startInstance, cleanup } = makeFleet();
+    const reason = "kiro-cli 3.0.0 no longer offers the legacy UI (--legacy-ui) this instance runs on.";
+    startInstance.mockRejectedValue(new UnsupportedCliError(reason));
+    try {
+      await (fm as any).startInstancesWithConcurrency(entries(), false);
+      expect(fm.pendingStartupRetry("a")).toBeNull();
+      expect(fm.pendingStartupRetry("b")).toBeNull();
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(notifyFleetError).toHaveBeenCalledTimes(1);           // one notice for both
+      expect(notifyFleetError.mock.calls[0][0]).toBe(t("fleet.cli_unsupported", "a, b", reason));
+      await vi.advanceTimersByTimeAsync(60 * 60_000);
+      expect(startInstance).toHaveBeenCalledTimes(2);              // never retried
+      expect(notifyFleetError).toHaveBeenCalledTimes(1);
+    } finally { cleanup(); for (const p of (fm as any).unsupportedCliNotices.values()) clearTimeout(p.timer); }
+  });
 
   it("retries at 1m / 5m / 15m with one aggregated notice, then gives up with one notice", async () => {
     const { fm, notifyFleetError, startInstance, cleanup } = makeFleet();

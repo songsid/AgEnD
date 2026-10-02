@@ -171,6 +171,9 @@ describe("Daemon", () => {
     const backend = new KiroBackend(instanceDir, {
       version: "kiro-cli 2.21.0",
       supportsLegacyUi: true,
+      supportsTui: true,
+      supportsV3: true,
+      agentEngines: ["v2", "v1", "v3"],
       supportsEffortFlag: true,
       source: "version",
     });
@@ -219,6 +222,9 @@ describe("Daemon", () => {
     const backend = new KiroBackend(instanceDir, {
       version: "kiro-cli 2.21.0",
       supportsLegacyUi: true,
+      supportsTui: true,
+      supportsV3: true,
+      agentEngines: ["v2", "v1", "v3"],
       supportsEffortFlag: true,
       source: "version",
     });

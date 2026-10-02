@@ -40,7 +40,7 @@ const SUBMITTED_WITHOUT_SPINNER = [
 ].join("\n");
 
 const KIRO_COMPAT = {
-  version: "kiro-cli 2.21.0", supportsLegacyUi: true, supportsEffortFlag: true, source: "version" as const,
+  version: "kiro-cli 2.21.0", supportsLegacyUi: true, supportsTui: true, supportsV3: true, agentEngines: ["v2", "v1", "v3"], supportsEffortFlag: true, source: "version" as const,
 };
 
 interface Harness {

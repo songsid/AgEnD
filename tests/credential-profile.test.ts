@@ -219,7 +219,7 @@ describe("the profile home", () => {
 describe("the kiro launch command", () => {
   function backend(): KiroBackend {
     return new KiroBackend(tempDir(), {
-      supportsLegacyUi: true, supportsEffortFlag: false, version: "2.22.0",
+      supportsLegacyUi: true, supportsTui: true, supportsV3: true, agentEngines: ["v2", "v1", "v3"], supportsEffortFlag: false, version: "2.22.0",
     } as never);
   }
 
