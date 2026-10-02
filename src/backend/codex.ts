@@ -457,6 +457,44 @@ function codexRateSwitchVisible(pane: string): boolean {
   return tail.some(row => /^\s*[›❯>]?\s*\d+\.\s*(?:Switch to|Keep current model)\b/i.test(row));
 }
 
+/**
+ * The exact "Approaching rate limits" picker, as codex 0.157.1 and 0.159.2 both
+ * paint it (captured live, tests/fixtures/codex-0157-rate-limit-picker.pane.txt):
+ *
+ *   Approaching rate limits
+ *   Switch to gpt-6-luna for lower credit usage?
+ *
+ * › 1. Switch to gpt-6-luna                   Fast and affordable model for easier tasks.
+ *   2. Keep current model
+ *   3. Keep current model (never show again)  Hide future rate limit reminders about switching models
+ *
+ *   enter select · esc back
+ *
+ * The cursor starts on 1 = SWITCH, so an Enter (or a delivery's paste+Enter)
+ * changes the user's model. Escape selects nothing: it closes the picker, the
+ * model stays, and the picker does not come back while usage stays high (live,
+ * both versions). Anything that is not exactly this shape — reworded footer,
+ * options reordered, a different count — is NOT matched here and stays with the
+ * hold-only rate-switch entry, which never presses a key.
+ *
+ * Bottom-anchored: the hint row must be the last row, the three options directly
+ * above it, the subtitle and title directly above those. A quote of the picker
+ * in the transcript is followed by the composer and never matches.
+ */
+function codexRateSwitchPickerVisible(pane: string): boolean {
+  const rows = pane.replace(/\r/g, "").split("\n");
+  const nonBlank: string[] = [];
+  for (let i = rows.length - 1; i >= 0 && nonBlank.length < 7; i--) if (rows[i].trim() !== "") nonBlank.push(rows[i]);
+  if (nonBlank.length < 6) return false;
+  const [footer, third, second, first, subtitle, title] = nonBlank as [string, string, string, string, string, string];
+  return /^\s*enter select\s*[·•]\s*esc back\s*$/i.test(footer)
+    && /^\s*[›>]?\s*3\.\s+Keep current model \(never show again\)(?:\s{2,}\S.*)?$/.test(third)
+    && /^\s*[›>]?\s*2\.\s+Keep current model\s*$/.test(second)
+    && /^\s*[›>]?\s*1\.\s+Switch to \S.*$/.test(first)
+    && /^\s*Switch to \S.{0,120} for lower credit usage\?\s*$/.test(subtitle)
+    && /^\s*Approaching rate limits\s*$/.test(title);
+}
+
 /** Unknown pickers own stdin too; never type or press Enter into one. */
 function codexUnknownSelectionVisible(pane: string): boolean {
   const rows = pane.replace(/\r/g, "").split("\n");
@@ -1700,6 +1738,7 @@ export class CodexBackend implements CliBackend {
       },
       trustHold,
       this.updatePickerDialog(),
+      this.rateSwitchPickerDialog(),
       ...this.sessionHoldDialogs(),
       this.unknownSelectionHoldDialog(),
     ];
@@ -1742,6 +1781,31 @@ export class CodexBackend implements CliBackend {
       blocksDelivery: true,
       inputBlocked: true,
       isActive: codexTrustVariantActive,
+    };
+  }
+
+  /**
+   * #1008: the rate-limit model-switch picker parked unattended instances (it
+   * waits forever and its default option changes the model). Prevention is
+   * `notice.hide_rate_limit_model_nudge` (hideRateLimitModelNudge — real and
+   * effective on 0.157.1 and 0.159.2, verified live); this is the answer for a
+   * picker that appears anyway (config not applied, a CLI that moved the key).
+   *
+   * Escape, not a navigated Enter: it selects nothing, so it can never take
+   * option 1 (switch model) or option 3 (writes "never show again" into the
+   * config). Deliberately not one-shot: if the picker swallowed the key it is
+   * simply sent again on the next poll, and a repeated Escape is harmless.
+   */
+  private rateSwitchPickerDialog(): RuntimeDialog {
+    return {
+      // Narrower than the hold entry's pattern on purpose: ordinary prose about
+      // the picker must not even reach the structural check.
+      pattern: /Keep current model \(never show again\)/,
+      keys: ["Escape"],
+      description: "Codex rate-limit model-switch picker — Escape keeps the current model",
+      blocksDelivery: true,
+      inputBlocked: true,
+      isActive: codexRateSwitchPickerVisible,
     };
   }
 
@@ -1811,6 +1875,7 @@ export class CodexBackend implements CliBackend {
   getRuntimeDialogs(): RuntimeDialog[] {
     return [
       this.trustHoldDialog(),
+      this.rateSwitchPickerDialog(),
       {
         // Codex 0.156 may change the wording/order of this credit-cost choice.
         // Never navigate it by position: a moved option could switch to a
