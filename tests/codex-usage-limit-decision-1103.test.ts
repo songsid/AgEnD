@@ -236,6 +236,40 @@ describe("after AgEnD answered the Luna Reserve menu, its stale text never pause
     daemon.freezeRuntimeMonitors();
   });
 
+  it("the handled lines scrolling out lowers the proof: 1 → 0 → a NEW single hit is still a candidate", async () => {
+    vi.useFakeTimers();
+    const { daemon, state, pauses } = makeDaemon(RESERVE_MENU);
+    state.onKey = k => { if (k === "Escape") state.pane = AFTER_ESCAPE; };
+    daemon.startErrorMonitor();
+    await vi.advanceTimersByTimeAsync(11_000);
+    expect(pauses()).toBe(0);
+    state.pane = ["› and so on", "• ok", "  Worked for 3s", COMPOSER].join("\n");        // the old line scrolled out: 0
+    await vi.advanceTimersByTimeAsync(6_000);
+    expect(pauses()).toBe(0);
+    state.pane = ["• ok", "› again", ERROR_LINE.replace("8:00 AM", "9:30 AM"), COMPOSER].join("\n");   // one NEW hit: 1
+    await vi.advanceTimersByTimeAsync(11_000);
+    expect(pauses()).toBe(1);                                      // before: swallowed for good (1 <= the menu-time 1)
+    daemon.freezeRuntimeMonitors();
+  });
+
+  it("…and partially: 2 → 1 → a NEW hit makes 2 again, which is a candidate", async () => {
+    vi.useFakeTimers();
+    const second = ERROR_LINE.replace("8:00 AM", "7:00 AM");
+    const MENU_WITH_TWO = RESERVE_MENU.replace("› hello", `› earlier\n${second}\n› hello`);
+    const { daemon, state, pauses } = makeDaemon(MENU_WITH_TWO);
+    state.onKey = k => { if (k === "Escape") state.pane = ["› earlier", second, "› hello", ERROR_LINE, "• ok", COMPOSER].join("\n"); };
+    daemon.startErrorMonitor();
+    await vi.advanceTimersByTimeAsync(11_000);
+    expect(pauses()).toBe(0);                                      // both old lines: stale, same as before
+    state.pane = ["› hello", ERROR_LINE, "• ok", COMPOSER].join("\n");                      // the older one scrolled out: 1
+    await vi.advanceTimersByTimeAsync(6_000);
+    expect(pauses()).toBe(0);
+    state.pane = ["› hello", ERROR_LINE, "• ok", "› again", ERROR_LINE.replace("8:00 AM", "9:30 AM"), COMPOSER].join("\n");   // new hit: 2
+    await vi.advanceTimersByTimeAsync(11_000);
+    expect(pauses()).toBe(1);
+    daemon.freezeRuntimeMonitors();
+  });
+
   it("the proof belongs to its spawn: after a respawn the same stale line is a candidate again", async () => {
     vi.useFakeTimers();
     const { daemon, state, pauses } = makeDaemon(RESERVE_MENU);

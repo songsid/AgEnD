@@ -3120,7 +3120,13 @@ export class Daemon extends EventEmitter {
       if (Daemon.isCodexUsageLimitPause(ep)) {
         const ack = this.codexReserveAck;
         if (ack && ack.generation === this.spawnGeneration && count <= ack.count) {
-          if (count > 0) this.lastErrorCount.set(key, count);
+          // The handled incident's lines can scroll out of the capture buffer as
+          // the reserve session talks on. Lower the proof (and the occurrence
+          // baseline) with them: otherwise `count <= ack.count` would keep
+          // swallowing a NEW hit — the reserve running out — until it exceeded
+          // the menu-time count, and it would never reach the lifecycle probe.
+          if (count < ack.count) ack.count = count;
+          this.lastErrorCount.set(key, count);
           this.logger.debug({ decision: "ignore", evidence: "reserve-menu-seen", count, acknowledged: ack.count },
             "codex usage-limit: stale text of the handled Luna Reserve incident");
           continue;
