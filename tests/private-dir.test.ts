@@ -55,7 +55,7 @@ describe("tightenDir", () => {
   });
 
   it("ignores a file", () => {
-    const f = join(tmp(), "file"); writeFileSync(f, "x", { mode: 0o644 });
+    const f = join(tmp(), "file"); writeFileSync(f, "x"); chmodSync(f, 0o644);
     expect(tightenDir(f)).toEqual({ kind: "skipped", why: "not-a-directory" });
     expect(mode(f)).toBe(0o644);
   });
@@ -100,7 +100,8 @@ describe("ensureInstanceDir", () => {
 
   it("changes only the directory: files and subdirectories the user put there keep their modes", () => {
     const d = loose(join(tmp(), "worker"));
-    writeFileSync(join(d, "notes.txt"), "mine", { mode: 0o644 });
+    writeFileSync(join(d, "notes.txt"), "mine");
+    chmodSync(join(d, "notes.txt"), 0o644);
     loose(join(d, "scratch"), 0o755);
     ensureInstanceDir(d);
     expect(mode(d)).toBe(0o700);
@@ -125,9 +126,11 @@ describe("tightenInstanceDirs — the one-time startup repair", () => {
     const c = loose(join(root, "c"), 0o700);
     const outside = loose(join(dataDir, "outside"), 0o777);
     symlinkSync(outside, join(root, "link"));
-    writeFileSync(join(root, "stray.txt"), "x", { mode: 0o644 });
+    writeFileSync(join(root, "stray.txt"), "x");
+    chmodSync(join(root, "stray.txt"), 0o644);
     writeFileSync(join(a, "agent.token"), "secret", { mode: 0o600 });
-    writeFileSync(join(a, "mine.txt"), "mine", { mode: 0o664 });
+    writeFileSync(join(a, "mine.txt"), "mine");
+    chmodSync(join(a, "mine.txt"), 0o664);                  // explicit: a creation mode is filtered by the umask (CI runs 022)
     return { dataDir, root, a, b, c, outside };
   }
 
