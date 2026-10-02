@@ -1,6 +1,6 @@
 # 網頁一體化與安全登入：設計與分階段計畫
 
-狀態：**草案 v1，待 leader review，尚未經 Prism 安全 review。本文件不含任何 production code，review 通過前不動工。**
+狀態：**設計已通過 leader review（2026-09-29）；P0–P3a 與 D5 已實作（P0 為 #1090，其餘在 #1018，尚待 Prism 安全審）；3b 未做。** 實作當時與本文不同之處、各決定的採用值與下一步，見文末 **§10**。本文 §1 的 file:line 引用以 2026-09-29（base `2a74737e`）為準，之後 `fleet-manager.ts` 等檔案行號已位移，僅作證據索引，不作為現行定位。
 
 範圍：把 `/dashboard`（`/ui`）、`/view`、`/settings` 整合成一個以 session 登入的網頁，並讓它能透過 Cloudflare tunnel 從外網安全使用。
 
@@ -469,3 +469,46 @@ SPA/框架/bundler；OAuth、passkey、TOTP（之後可獨立做，passkey 是�
 | Web Terminal 無 Host 檢查 | `web-terminal-http.ts`（grep 無 allowlist） |
 | Settings 呼叫的 fleet 控制路由 | `settings.html:1096-1097,1644` |
 | 未使用的 `/ui/js/` 掛鉤 | `web-api.ts:230-247`；`src/ui/` 無 `.js` |
+
+---
+
+## 10. 實作狀態與偏離（2026-10-02 更新）
+
+### 10.1 各階段現況
+
+| 階段 | 內容 | 狀態 |
+|---|---|---|
+| P0 | `Host` allowlist（含 `/health`、`/agent`）+ 框架/快取標頭 + `web.allowed_hosts` | **#1090**，獨立 PR、待 Prism 安全審；main 上 DNS rebinding 讀 `/view` 終端畫面的洞仍在，這是最優先的一塊 |
+| P1a | server-side session、一次性登入碼、CSRF、`/signin`、`/auth/*` | 已實作，**#1018**（WIP） |
+| P1b | `/view` 寫入改吃 session、`web.view_access`、移除 `view.token` 死碼 | 已實作，#1018 |
+| P2 | 共用導覽 + Session 選單、SSE 退回輪詢、CSP、移除 Google Fonts | 已實作，#1018 |
+| P3a | gateway listener（`web.external_hosts` + `web.gateway_port`，BYO tunnel / `tailscale serve` / proxy） | 已實作，#1018 |
+| D5 | gateway session 的 Tier-2 操作要求 30 分鐘內登入（`403 reauth_required`） | 已實作，#1018 |
+| P3b | AgEnD 代管的 Quick Tunnel（逐次同意、TTL、關閉時撤銷） | **未做、也不建議做**：Quick Tunnel 無 SSE、無 SLA；Named Tunnel / `tailscale serve` 已能經 3a 使用。仍等 D2 |
+
+#1018 另含 sol 的 concurrency 審 3 項修正（撤銷後復活、SSE 生命週期、shutdown flush）與 3 個 CodeQL alert 的修正（後者 main 已由 #1061 修掉，rebase 時會捨棄那一部分）。待辦：Prism 整包安全審、rebase 到最新 main（衝突目前只見於 CHANGELOG 與 `docs/commands.md`，未走完全部 commit）。
+
+### 10.2 決定的採用值（§8）
+
+D1 `/view` 在 loopback 讀取維持 `open`（`web.view_access` 可收緊），gateway 一律要 session；D3 只做手輸登入碼；D4 local 絕對 12h／閒置 2h，gateway 絕對 4h／閒置 30m；D5 已實作；D6 唯讀 tier 未做；D7 新登入通知預設開（`web.notify_login`）；D8 `?token=` 兌換保留（改發真 session、標 deprecated）。D2（Cloudflare 帳號＋網域）使用者未回覆，不影響 3a。
+
+### 10.3 與本文設計不同之處
+
+- **Tier-2 預設拒絕**：本文 §3.5 把 tasks／schedules／teams 列為 Tier 1；實作改為「除了 `/view` 的 profile／avatar／sort-order 與 `/auth/*` 之外的任何寫入都是 Tier 2」，之後新增的寫入路由自動受保護，且 tasks／schedules 是 agent 會照做的訊息。
+- **session 只在建立它的 listener 有效**：本文只寫 `surface` 欄位用來在 tunnel 關閉時撤銷；實作進一步在每次驗證時強制 surface 相符（local cookie 在 gateway 無效，反之亦然），並讓 gateway 完全不接受 `X-Agend-Token` 與 `?token=`。
+- **gateway cookie 永遠 `Secure` + `__Host-`**，由「哪個 listener」決定，不看 `X-Forwarded-Proto`；因此 gateway 不支援明文 http。
+- **gateway 路徑 allowlist 以實際呼叫為準**：逐一列出三個面板真正呼叫的路由（含 Settings 會用到的 `/api/fleet`、`/stop/*`、`/api/instance/*/start`；`/restart/*` 沒有被任何面板使用，所以不在 gateway 上），並用真瀏覽器逐一確認沒有面板呼叫被擋。
+- **`handleHttpRequest` 抽出**：為了讓兩個 listener 共用同一份 Host 檢查、gate 與 handler，把 `fleet-manager.ts` 裡約 300 行的 request callback 抽成方法（review 請用 `git diff -w`）。
+- **以 session 持久化的失敗路徑為重點**：本文只要求「持久化」；實作加上「寫入失敗時維持待寫、必要時移除舊檔，避免重啟後復活被撤銷的 session」。
+
+### 10.4 實作中查到、設計時沒有的事
+
+- 一個格式錯誤的 request target（`GET http://[bad/`）會讓 `new URL` 在 request callback 內丟出未捕捉例外而使整個 fleet 結束；現在兩個 listener 都有 error boundary 回 400（在 #1018，與 gateway 無關的既有 bug，但 gateway 讓它可從網路觸發）。
+- main 上 `agend start <instance>` 對執行中 fleet 沒帶 `X-Agend-Token`（#1016，已另修）。
+- Quick Tunnel 不支援 SSE 與 chat 訊息只存在於串流中：因此 P2 為 `/ui/poll` 加了帶編號的訊息緩衝，退回輪詢時不會漏訊息、也不會重複。
+- 設計時列為「未驗證」的項目：`SameSite=Strict` 從聊天連結進入的體驗，已用 Chromium 驗證（`/signin` 殼自動轉回）；`trycloudflare.com` 是否在 Public Suffix List 與聊天預覽 bot 是否執行 JS 仍未驗證（設計不依賴前者；後者只影響日後的一鍵連結）；Firefox／WebKit 未測。
+
+### 10.5 下一步
+
+P0（#1090）過安全審並 merge → #1018 的其餘階段依 Prism 的時間，逐階段切成小 PR（P1a、P1b、P2、P3a＋D5）或整包審；envelope 第 31 條（`web-terminal-http.ts` 臨時埠的 Host allowlist）等到 setup／web-terminal 真要接 tunnel 時再補；3b 在使用者要求前不做。
+
