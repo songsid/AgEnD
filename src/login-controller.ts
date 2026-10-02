@@ -38,6 +38,7 @@ import {
   type TerminalLogger, type WebTerminalEvents, type WebTerminalResult, type WebTerminalSpec,
 } from "./web-terminal.js";
 import { WebTerminalHttpServer, type WebTerminalHttpOptions } from "./web-terminal-http.js";
+import { allowedHostNames } from "./web-host-guard.js";
 
 export const LOGIN_TOKEN_RESEND_PREFIX = "login-token:";
 export const DEFAULT_WEB_TERMINAL_TTL_MINUTES = 10;
@@ -348,6 +349,7 @@ export class LoginController {
       const http = (this.deps.createHttp ?? ((s, l, o) => new WebTerminalHttpServer(s, l, o)))(entry.session, logger, {
         bind: cfg?.web_terminal?.bind,
         hostname: cfg?.hostname || "localhost",
+        allowedHosts: allowedHostNames(cfg),
       });
       entry.http = http;
       entry.url = (await http.listen()).url;

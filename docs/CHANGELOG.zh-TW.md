@@ -7,6 +7,7 @@
 ## [未發佈] (Unreleased)
 
 ### 升級注意事項 (Upgrade Notes)
+- **[行為變更] `/login` 的瀏覽器終端採用同一套 `Host` 規則。** 每次 `/login`（與 `/install-cli`）會開一個自己的短命 listener。它只檢查 `Origin` 等於 `Host` — 這一點 DNS rebinding 頁面天生就會滿足 — 而且對任何 `Host` 都回應。現在凡是不是 `localhost`/`127.0.0.1`/`[::1]`、fleet 的 `hostname:`、或 `web.allowed_hosts` 項目（dashboard 已在用的同一個設定）的名稱，任何路徑與 WebSocket upgrade 都一律回相同的 403。**如果你是透過反向代理或區網位址開啟終端連結，請把該名稱加進 `web.allowed_hosts`。** 這個 listener 也可以被告知「再多放行一個精確名稱」，並依該名稱（而非 `X-Forwarded-Proto`）決定 cookie 是否 `Secure`；目前沒有任何功能使用它（這是日後讓登入終端經由 tunnel 對外的前置工作）。
 - **[行為變更] dashboard 現在會拒絕 `Host` 不認得的請求。** health/dashboard server 雖然只綁 127.0.0.1，但這擋不住 DNS rebinding：網頁可以把自己的網域解析到 127.0.0.1，再用 script 讀取不需要 cookie 的路由，包含 `/view` 的即時終端畫面（`/api/pane/*`）。這種網頁唯一改不了的是瀏覽器送出的 `Host`，所以所有路由（含 `/health`、`/agent`）現在只有在 `Host` 是 `localhost`、`127.0.0.1`、`[::1]`、fleet 的 `hostname:`，或新增的 `web.allowed_hosts` 列出的名稱時才回應，其餘一律 403（不比對 port）。**如果你是透過反向代理或 port forward、且它呈現的是別的名稱，請把該名稱加進 `web.allowed_hosts`**；每個被拒的名稱第一次出現時，`fleet.log` 會記一行並附上這個提示。CLI、`agend web`、`/dashboard` 與內部呼叫都用 loopback 名稱，不受影響。
 
 ### 修正 (Fixed)
