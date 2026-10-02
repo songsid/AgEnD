@@ -3,15 +3,18 @@ title = "AgEnD gitleaks configuration"
 [extend]
 useDefault = true
 
-[[allowlists]]
-description = "Known fake JWT used to verify progress-log redaction"
-paths = ['''^tests/tool-progress\.test\.ts$''']
-
-[[allowlists]]
-description = "Sec-WebSocket-Key is a public protocol field (base64 nonce in HTTP header), not a secret"
+# Single [allowlist] table, not [[allowlists]]: the gitleaks-action pins gitleaks
+# 8.24.3, which silently ignores the plural form (added in 8.25), so entries
+# written that way never applied in CI. A finding is allowed if it matches any
+# of the paths or regexes below.
+[allowlist]
+description = "Confirmed false positives: a fake JWT fixture, public WebSocket handshake nonces, vendored xterm.js"
+paths = [
+  # Known fake JWT used to verify progress-log redaction
+  '''^tests/tool-progress\.test\.ts$''',
+  # Vendored third-party xterm.js (minified high-entropy strings, not secrets)
+  '''^src/ui/web-terminal/vendor/.*\.js$''',
+]
+# Sec-WebSocket-Key is a public protocol field (base64 nonce in an HTTP header), not a secret
 regexTarget = "line"
-regexes = ['''Sec-WebSocket-Key''']
-
-[[allowlists]]
-description = "Vendored third-party xterm.js (minified high-entropy strings, not secrets)"
-paths = ['''^src/ui/web-terminal/vendor/.*\.js$''']
+regexes = ['''(?i)sec-websocket-key''']
