@@ -405,8 +405,8 @@ describe("preview_emojis downloads a few server emojis for the agent to look at 
       .toEqual({ error: "at most 8 at a time: narrow them down by name first" });
     expect(await fm.previewEmojis("tgworker", { emojis: ["👍"] }))
       .toEqual({ error: "only Discord server emojis need a preview; standard emojis are what they look like" });
-    expect(await fm.previewEmojis("classic-room", { emojis: ["<:fox:111111111111111111>"] }))
-      .toMatchObject({ error: expect.stringContaining("ClassicBot") });
+    expect(await fm.previewEmojis("nobody", { emojis: ["<:fox:111111111111111111>"] }))
+      .toEqual({ error: "Instance 'nobody' not found" });
     expect(fetchMock).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
   });
@@ -706,5 +706,52 @@ describe("the four saved-attachment stamps read the configured emoji (#1080)", (
     const bad = await go("photo", { photo: "📸" });            // not a Telegram reaction → ignored, built-in used
     expect(bad).toContain("👌");
     expect(bad).not.toContain("📸");
+  });
+});
+
+
+describe("ClassicBot instances can see emojis; only setting a stamp is refused (beta.11 report)", () => {
+  it("list_emojis: server emojis and standard emojis, with the connection's statuses and a Settings note", async () => {
+    const { fm } = fleet();
+    const r = await fm.listEmojisFor("classic-room");
+    expect(r).not.toHaveProperty("error");
+    expect(r.platform).toBe("discord");
+    expect(r.standard).toMatchObject({ note: "any single emoji works" });
+    const servers = r.server_emojis as Array<{ server: string; emojis?: Array<{ value: string }> }>;
+    expect(servers.flatMap(g => g.emojis ?? []).map(e => e.value)).toEqual(
+      expect.arrayContaining(["<:fox:111111111111111111>", "<a:owl:222222222222222222>"]));
+    // No per-instance layer: nothing comes from an instance config.
+    expect((r.statuses as Array<{ source: string }>).every(e => e.source !== "instance")).toBe(true);
+    expect(r.note).toEqual(expect.stringContaining("Settings"));
+  });
+
+  it("preview_emojis: works with a value from that list", async () => {
+    const { fm, dir } = fleet();
+    const fetchMock = cdn();
+    vi.stubGlobal("fetch", fetchMock);
+    const r = await fm.previewEmojis("classic-room", { emojis: ["<:fox:111111111111111111>"] });
+    expect(r.errors).toEqual([]);
+    expect(r.previews).toEqual([{ emoji: "<:fox:111111111111111111>", path: join(dir, "inbox", "emoji-previews", "111111111111111111.png") }]);
+    vi.unstubAllGlobals();
+  });
+
+  it("set_persona_emoji is still refused for ClassicBot, pointing at Settings", async () => {
+    const { fm } = fleet();
+    expect(await fm.setPersonaEmoji("classic-room", { emoji: "🦊" })).toEqual({
+      error: "ClassicBot instances have no per-instance status emojis; an operator sets the connection's in Settings",
+    });
+  });
+
+  it("an unknown instance is still refused by list and preview", async () => {
+    const { fm } = fleet();
+    expect(await fm.listEmojisFor("nobody")).toEqual({ error: "Instance 'nobody' not found" });
+    expect(await fm.previewEmojis("nobody", { emojis: ["<:fox:111111111111111111>"] })).toEqual({ error: "Instance 'nobody' not found" });
+  });
+
+  it("a fleet-topic instance is unchanged: its own override still shows as source instance, no ClassicBot note", async () => {
+    const { fm } = fleet();
+    const r = await fm.listEmojisFor("worker");
+    expect((r.statuses as Array<{ status: string; source: string }>).find(e => e.status === "failed")).toMatchObject({ source: "instance" });
+    expect(r).not.toHaveProperty("note");
   });
 });
