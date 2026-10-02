@@ -7,6 +7,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Upgrade Notes
+- **[Behaviour change] kiro instances are pinned to their engine on every launch, and
+  refused rather than moved when that is impossible (#1109).** kiro-cli 3.0 (October
+  2026) deprecates the classic UI and may default to its V3 engine; kiro also offers a
+  "switch to 3.0" prompt whose answer is saved for the whole machine. An instance's
+  conversation lives in its engine's store, and moving between engines forks it one
+  way. AgEnD now launches `kiro_ui: legacy` as `--legacy-ui --agent-engine=v1` and
+  `kiro_ui: tui` as `--tui --agent-engine=v2` (flags outrank saved settings), reading
+  what each kiro-cli accepts from its version — or, for anything newer than 2.27, from
+  its own `chat --help` (2.3's `--agent-engine` took `rust|kas`, so it gets
+  `--legacy-ui` alone). A kiro-cli that can no longer run an instance on its engine is
+  not started: one notice says why, and there is no automatic retry; a kiro-cli
+  replaced under a running instance is caught at its next respawn. A missing selector
+  in `--help` is never taken as proof of an old binary. The "switch to 3.0" and
+  "upgrade your agent configs" launch prompts are answered with the choice that changes
+  nothing, one key at a time and only on a cursor AgEnD has seen there; any other state
+  of them (an unrecognised cursor, "Don't ask again", a key that did not move it) is
+  held for a human with deliveries blocked. kiro-cli older than 2.21 or newer than 2.27
+  gets a one-time notice; it still starts.
 - **[Behaviour change] One broken MCP server no longer stops every kiro instance (#1111).**
   AgEnD launched kiro-cli with `--require-mcp-startup`, which exits (code 3) when ANY
   enabled MCP server fails to start. That includes the servers you configured yourself

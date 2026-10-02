@@ -22,7 +22,7 @@ function required(pattern: RegExp | null | undefined, what: string): RegExp {
 
 // Kiro legacy-UI prompt marker, as implemented by the backend.
 const legacyKiro = () => new KiroBackend("/tmp/kiro-residue-test", {
-  version: "kiro-cli 2.21.0", supportsLegacyUi: true, supportsEffortFlag: true, source: "version",
+  version: "kiro-cli 2.21.0", supportsLegacyUi: true, supportsTui: true, supportsV3: true, agentEngines: ["v2", "v1", "v3"], supportsEffortFlag: true, source: "version",
 });
 const PROMPT = required(legacyKiro().getBottomReadyPattern(), "a bottom-row ready pattern");
 const BUSY = required(legacyKiro().getBusyPattern(), "a busy pattern");
@@ -176,7 +176,7 @@ describe("pane-input-residue: did our paste get submitted?", () => {
 });
 
 describe("pane-input-residue: prompt pattern follows the launched UI and trust mode", () => {
-  const compat = { version: "kiro-cli 2.21.0", supportsLegacyUi: true, supportsEffortFlag: true, source: "version" as const };
+  const compat = { version: "kiro-cli 2.21.0", supportsLegacyUi: true, supportsTui: true, supportsV3: true, agentEngines: ["v2", "v1", "v3"], supportsEffortFlag: true, source: "version" as const };
   const base = { workingDirectory: "/tmp", instanceName: "x" } as any;
 
   it("is legacy-only: a v3 or new-TUI launch disables the Enter-drop gate", () => {
@@ -190,8 +190,8 @@ describe("pane-input-residue: prompt pattern follows the launched UI and trust m
     expect(be.dropsEnterWhileBusy()).toBe(true);
   });
 
-  it("treats a legacy request on a binary without --legacy-ui as the new TUI", () => {
-    const be = new KiroBackend("/tmp/kiro-residue-test", { ...compat, supportsLegacyUi: false });
+  it("does not arm the legacy prompt gate on a binary from before --legacy-ui (classic-only, <1.27)", () => {
+    const be = new KiroBackend("/tmp/kiro-residue-test", { ...compat, supportsLegacyUi: false, supportsTui: false, supportsV3: false, agentEngines: null });
     be.buildCommand({ ...base, kiroUi: "legacy" });
     expect(be.dropsEnterWhileBusy()).toBe(false);
   });

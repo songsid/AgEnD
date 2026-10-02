@@ -48,7 +48,7 @@ import type { AdapterHealthSnapshot, AlertData, ChannelAdapter, InboundMessage, 
 import { createAdapter } from "./channel/factory.js";
 import { TelegramAdapter } from "./channel/adapters/telegram.js";
 import { createBackend } from "./backend/factory.js";
-import { isModelCompatible, SYSINFO_BACKEND_IDS, type BackendCliVersionSnapshot } from "./backend/types.js";
+import { isModelCompatible, SYSINFO_BACKEND_IDS, UnsupportedCliError, type BackendCliVersionSnapshot } from "./backend/types.js";
 import { createLogger, rotateLogIfNeeded, type Logger } from "./logger.js";
 import { processAttachments } from "./channel/attachment-handler.js";
 import { routeToolCall } from "./channel/tool-router.js";
@@ -735,6 +735,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private stopsInFlight = new Map<string, Promise<void>>();
   /** Aggregation window for the "N instances failed to start" notice. */
   private startupRetryNotices = new Map<"scheduled" | "gave_up", { names: string[]; delayMs: number; timer: NodeJS.Timeout }>();
+  /** Unsupported-CLI refusals waiting to go out, grouped by reason (#1109). */
+  private unsupportedCliNotices = new Map<string, { names: string[]; timer: NodeJS.Timeout }>();
   /** Backoff between automatic startup retries; the last step repeats while the backend is down. */
   static readonly STARTUP_RETRY_BACKOFF_MS = [60_000, 5 * 60_000, 15 * 60_000];
   /** Hard cap on automatic startup retries (3 backoff steps + up to 3 more during a backend outage). */
@@ -2839,6 +2841,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // Superseded by a stop/restart (Phase 2a): that transition owns the
       // outcome. Retrying would start an instance the operator just stopped.
       if (err instanceof SupersededStartError) return false;
+      if (this.stopOnUnsupportedCli(name, err, what)) return false;
       this.logger.error({ err, name }, `Failed to start ${what}`);
       this.scheduleStartupRetry(name, 0);
       return false;
@@ -2955,6 +2958,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     } catch (err) {
       // Superseded by a stop/restart: that transition owns the outcome.
       if (err instanceof SupersededStartError) return;
+      // An earlier attempt could not tell (unknown probe); this one could.
+      if (this.stopOnUnsupportedCli(name, err, "instance")) return;
       this.logger.error({ err, name, attempt: attempt + 1 }, "Automatic startup retry failed");
       this.scheduleStartupRetry(name, attempt + 1);
     }
@@ -3065,6 +3070,37 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * fails many instances within the same second. Two notices per incident at
    * most — "N failed, retrying in X" and, if it comes to that, "gave up on N".
    */
+  /**
+   * The CLI refuses this instance as configured (#1109): the same binary would
+   * refuse every retry, so say why once and leave it stopped. Shared by the
+   * first unattended start and every scheduled retry.
+   */
+  private stopOnUnsupportedCli(name: string, err: unknown, what: string): boolean {
+    if (!(err instanceof UnsupportedCliError)) return false;
+    this.logger.error({ name, reason: err.message }, `Not starting ${what}: the installed CLI cannot run it as configured`);
+    this.queueUnsupportedCliNotice(name, err.message);
+    return true;
+  }
+
+  /**
+   * One notice per refusal reason: a kiro-cli that dropped the legacy UI
+   * refuses every kiro instance at once, and that is one message, not ten.
+   */
+  private queueUnsupportedCliNotice(name: string, reason: string): void {
+    const pending = this.unsupportedCliNotices.get(reason);
+    if (pending) {
+      if (!pending.names.includes(name)) pending.names.push(name);
+      return;
+    }
+    const timer = setTimeout(() => {
+      const entry = this.unsupportedCliNotices.get(reason);
+      this.unsupportedCliNotices.delete(reason);
+      if (entry) this.notifyFleetError(t("fleet.cli_unsupported", entry.names.join(", "), reason));
+    }, FleetManager.STARTUP_RETRY_NOTICE_AGGREGATE_MS);
+    timer.unref?.();
+    this.unsupportedCliNotices.set(reason, { names: [name], timer });
+  }
+
   private queueStartupRetryNotice(kind: "scheduled" | "gave_up", name: string, delayMs: number): void {
     const pending = this.startupRetryNotices.get(kind);
     if (pending) {

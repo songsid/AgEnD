@@ -32,7 +32,7 @@ const cases: Array<{
 }> = [
   {
     name: "kiro-cli",
-    backend: () => new KiroBackend(INSTANCE_DIR),
+    backend: () => new KiroBackend(INSTANCE_DIR, { version: "kiro-cli 2.27.0", supportsLegacyUi: true, supportsTui: true, supportsV3: true, agentEngines: ["v2", "v1", "v3"], supportsEffortFlag: true, source: "version" }),
     expected: `--model '${UNKNOWN_MODEL}'`,
     warns: true,
   },

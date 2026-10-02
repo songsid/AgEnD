@@ -23,6 +23,20 @@ export interface McpServerEntry {
   env: Record<string, string>;
 }
 
+/**
+ * The installed CLI cannot run this instance as configured without changing
+ * what it is — e.g. a kiro-cli that no longer offers the engine the instance's
+ * conversation lives in (#1109). Thrown by buildCommand before anything is
+ * launched. The fleet reports it and does not auto-retry: the same binary
+ * refuses the same way until someone changes the binary or the config.
+ */
+export class UnsupportedCliError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UnsupportedCliError";
+  }
+}
+
 export interface CliBackendConfig {
   workingDirectory: string;
   instanceDir: string;

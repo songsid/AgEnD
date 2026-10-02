@@ -21,7 +21,7 @@ import { IpcServer } from "./channel/ipc-bridge.js";
 import { daemonBudgetMs } from "./channel/ipc-timeouts.js";
 import { MessageBus } from "./channel/message-bus.js";
 import type { CliBackend, CliBackendConfig, ErrorPattern, InputUnavailableTransient, InstanceState, InstanceStateSnapshot, RuntimeDialog, StartupDialog } from "./backend/types.js";
-import { shellQuote } from "./backend/types.js";
+import { shellQuote, UnsupportedCliError } from "./backend/types.js";
 import type { ChannelAdapter, InboundMessage } from "./channel/types.js";
 import { getTmuxSession } from "./config.js";
 import { routeToolCall } from "./channel/tool-router.js";
@@ -2771,6 +2771,10 @@ export class Daemon extends EventEmitter {
             // so its chat notification is suppressed into the fleet summary.
             if (crashType === "server") this.stormWindow?.markRecovered(this.name);
           } catch (err) {
+            if (this.stopOnUnsupportedCliRespawn(err)) {
+              this.healthCheckTimer = null;
+              return;
+            }
             if (!this.handOffBackendUnreachableRespawn(err)) {
               this.logger.error({ err }, `Failed to respawn ${cliLabel} window`);
             }
@@ -2806,6 +2810,21 @@ export class Daemon extends EventEmitter {
    * the pane monitor to capture it would re-create a false idle state.
    */
   /**
+   * The CLI was replaced under a running instance by one that cannot run it as
+   * configured — kiro-cli auto-updating to a release without the instance's
+   * UI/engine (#1109). Every respawn would refuse the same way, so stop
+   * supervising and say why instead of failing every 30 seconds.
+   */
+  private stopOnUnsupportedCliRespawn(err: unknown): boolean {
+    if (!(err instanceof UnsupportedCliError)) return false;
+    this.healthCheckPaused = true;
+    this.logger.error({ reason: err.message }, "Not respawning: the installed CLI cannot run this instance as configured");
+    this.emitSupervisionEnded(err.message, "Install a CLI version that supports this instance's configuration, then start it again.");
+    return true;
+  }
+
+  /**
+   * Announce that this instance is no longer being supervised.  /**
    * Announce that this instance is no longer being supervised.
    *
    * Four health-check exits set `healthCheckPaused = true` and returned without
@@ -5816,10 +5835,16 @@ export class Daemon extends EventEmitter {
       return { state: "unknown" };
     }
     for (const dialog of dialogs) {
-      if (Daemon.dialogMatches(dialog, pane)) {
-        this.trackDialogParked(dialog);
-        return { state: "dialog", dialog };
-      }
+      if (!Daemon.dialogMatches(dialog, pane)) continue;
+      // Same one-shot fence as the scanners: a safety choice already sent in
+      // this spawn is not what the screen is waiting on any more — the entry
+      // after it (typically a hold) describes it.
+      if (dialog.verifyAfterKeys && dialog.autoResolutionKey
+        && this.autoResolvedDialogGeneration === this.spawnGeneration
+        && this.autoResolvedDialogKey === dialog.autoResolutionKey
+        && dialogs.some(other => other !== dialog && Daemon.dialogMatches(other, pane))) continue;
+      this.trackDialogParked(dialog);
+      return { state: "dialog", dialog };
     }
     this.trackDialogParked(null);
     return { state: "clear" };

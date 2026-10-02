@@ -9,7 +9,7 @@ import {
   resetKiroCompatibilityCacheForTests,
   type KiroCliCompatibility,
 } from "../../src/backend/kiro.js";
-import type { CliBackendConfig } from "../../src/backend/types.js";
+import { UnsupportedCliError, type CliBackendConfig } from "../../src/backend/types.js";
 
 // Use unique temp directories per test run to avoid collisions when multiple
 // vitest processes run in parallel (issue #669)
@@ -35,6 +35,9 @@ function makeConfig(overrides?: Partial<CliBackendConfig>): CliBackendConfig {
 const LATEST_KIRO: KiroCliCompatibility = {
   version: "kiro-cli 2.21.0",
   supportsLegacyUi: true,
+  supportsTui: true,
+  supportsV3: true,
+  agentEngines: ["v2", "v1", "v3"],
   supportsEffortFlag: true,
   source: "version",
 };
@@ -134,8 +137,7 @@ describe("KiroBackend", () => {
     it("generates chat command with --trust-all-tools and --resume", () => {
       const backend = makeBackend();
       const cmd = backend.buildCommand(makeConfig());
-      expect(cmd).toContain("chat");
-      expect(cmd).toContain("--legacy-ui");
+      expect(cmd).toContain("chat --legacy-ui --agent-engine=v1");
       expect(cmd).toContain("--trust-all-tools");
       expect(cmd).toContain("--resume");
     });
@@ -149,9 +151,10 @@ describe("KiroBackend", () => {
       }
     });
 
-    it("uses Kiro's default TUI without a UI override flag", () => {
+    it("pins the terminal UI to its v2 engine instead of kiro's default (#1109)", () => {
       const backend = makeBackend();
       const cmd = backend.buildCommand(makeConfig({ kiroUi: "tui" }));
+      expect(cmd).toContain("chat --tui --agent-engine=v2");
       expect(cmd).not.toContain("--legacy-ui");
       expect(cmd).not.toContain("--v3");
     });
@@ -238,17 +241,22 @@ describe("KiroBackend", () => {
       const compatibility = probeKiroCliCompatibility("/fake/kiro-cli", (_binary, args) => {
         calls.push(args);
         if (args[0] === "--version") throw new Error("version unavailable");
-        return `
-          --require-mcp-startup  Require MCP startup
-          --legacy-ui            Use the legacy UI
-          --effort <EFFORT>      Initial effort
-        `;
+        return [
+          "Usage: kiro-cli-chat chat [OPTIONS] [INPUT]",
+          "  -r, --resume           Resume the most recent conversation",
+          "  -a, --trust-all-tools  Allows the model to use any tool",
+          "      --legacy-ui        Use the legacy UI",
+          "      --effort <EFFORT>  Initial effort",
+        ].join("\n");
       });
 
       expect(calls).toEqual([["--version"], ["chat", "--help"]]);
       expect(compatibility).toEqual({
         version: undefined,
         supportsLegacyUi: true,
+        supportsTui: false,
+        supportsV3: false,
+        agentEngines: null,
         supportsEffortFlag: true,
         source: "help",
       });
@@ -257,7 +265,7 @@ describe("KiroBackend", () => {
     it("uses help fallback for an unparseable version string", () => {
       const compatibility = probeKiroCliCompatibility("/fake/kiro-cli", (_binary, args) => {
         if (args[0] === "--version") return "kiro-cli development build";
-        return "  --require-mcp-startup  Require MCP startup\n";
+        return "Usage: kiro-cli-chat chat [OPTIONS]\n  -r, --resume  Resume\n  -a, --trust-all-tools  Trust\n";
       });
 
       expect(compatibility).toMatchObject({
@@ -282,20 +290,20 @@ describe("KiroBackend", () => {
       expect(run).toHaveBeenCalledTimes(2);
     });
 
-    it("conservatively omits all gated flags when version and help both fail", () => {
+    it("refuses to launch blind when version and help both fail — a retryable error, not a refusal (#1109)", () => {
       const compatibility = probeKiroCliCompatibility("/fake/kiro-cli", () => {
         throw new Error("binary unavailable");
       });
-      const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
       const backend = makeBackend(compatibility);
-      const cmd = backend.buildCommand(makeConfig({ effort: "max" }));
 
       expect(compatibility.source).toBe("unknown");
-      expect(cmd).not.toContain("--require-mcp-startup");
-      expect(cmd).not.toContain("--legacy-ui");
-      expect(cmd).not.toContain("--effort");
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining("unknown version"));
-      warn.mockRestore();
+      // Launching without knowing the engine flags could start kiro on its
+      // default engine. Plain Error: the fleet's startup retry re-probes.
+      let thrown: unknown;
+      try { backend.buildCommand(makeConfig({ effort: "max" })); } catch (err) { thrown = err; }
+      expect(thrown).toBeInstanceOf(Error);
+      expect(thrown).not.toBeInstanceOf(UnsupportedCliError);
+      expect(String(thrown)).toContain("#1109");
     });
 
     it("keeps the effort configuration surface stable while gating only the launch flag", () => {

@@ -8,22 +8,41 @@ import {
 } from "./credential-profile.js";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, unlinkSync, statSync } from "node:fs";
-import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, resolveBinary, shellQuote, validateEffort, validateModel, warnIfModelMismatch } from "./types.js";
+import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, UnsupportedCliError, resolveBinary, shellQuote, validateEffort, validateModel, warnIfModelMismatch } from "./types.js";
 import { PIE_CLASS } from "../tui-glyphs.js";
 import { KIRO_EXPIRED_LOGIN_SCREEN } from "../login-flows.js";
+import { t } from "../locale.js";
 
 // Kiro CLI feature gates. These are deliberately separate: the flags shipped
 // in different releases, so one broad "old Kiro" check would still crash some
-// supported versions with an unknown argument.
-// - 1.27.0: verified against Kiro's archived 1.26.0/1.27.0 binaries. Before
-//   this, classic was the only UI and neither --legacy-ui nor --classic existed.
+// supported versions with an unknown argument. Every row below was read from
+// `chat --help` of the archived release binary (tests/fixtures/kiro-help/).
+// - 1.27.0: --tui / --legacy-ui. Before this, classic was the only UI and
+//   neither --legacy-ui nor --classic existed.
+// - 2.3.0: --agent-engine, but its values were `rust` (default) | `kas`:
+//   `--agent-engine=v1` exits 2 there.
+// - 2.4.0: --agent-engine v1|v2|kas, and `--legacy-ui` only with v1.
 // - 2.6.0: https://kiro.dev/changelog/cli/2-6/ (initial effort flag)
+// - 2.8.0: --agent-engine v1|v2|v3, plus --v3.
 export const KIRO_LEGACY_UI_MIN = "1.27.0";
 export const KIRO_EFFORT_FLAG_MIN = "2.6.0";
+/** Oldest kiro-cli AgEnD claims: older ones still launch, with a warning. */
+export const KIRO_SUPPORTED_MIN = "2.21.0";
+/**
+ * Newest kiro-cli run live under AgEnD. Above it the launch flags come from
+ * the binary's own --help instead of the version table, and the operator is
+ * told the version is unverified.
+ */
+export const KIRO_TESTED_MAX = "2.27.0";
 
 export interface KiroCliCompatibility {
   version?: string;
   supportsLegacyUi: boolean;
+  supportsTui: boolean;
+  /** `--v3` exists, i.e. this binary has an engine AgEnD must not drift into. */
+  supportsV3: boolean;
+  /** Values `--agent-engine` accepts; null when the flag does not exist. */
+  agentEngines: readonly string[] | null;
   supportsEffortFlag: boolean;
   source: "version" | "help" | "unknown";
 }
@@ -32,6 +51,9 @@ type KiroProbeRunner = (binaryPath: string, args: string[]) => string;
 
 const UNKNOWN_KIRO_COMPATIBILITY: KiroCliCompatibility = {
   supportsLegacyUi: false,
+  supportsTui: false,
+  supportsV3: false,
+  agentEngines: null,
   supportsEffortFlag: false,
   source: "unknown",
 };
@@ -39,10 +61,13 @@ const UNKNOWN_KIRO_COMPATIBILITY: KiroCliCompatibility = {
 interface CachedKiroCompatibility {
   cacheKey: string;
   compatibility: KiroCliCompatibility;
+  probedAt: number;
 }
 
 const compatibilityCache = new Map<string, CachedKiroCompatibility>();
 const warnedUnsupportedEffortCacheKeys = new Set<string>();
+/** Binary generations whose version-gate warning already went out. */
+const warnedVersionGateCacheKeys = new Set<string>();
 
 /**
  * A picker may change its model labels or credit wording between Kiro releases.
@@ -140,6 +165,132 @@ export function kiroUnavailableModelPickerActive(pane: string): boolean {
   return cursorCount === 1 && modelCount >= 1;
 }
 
+interface KiroLaunchPromptSpec {
+  /** Text that identifies the prompt; the LAST occurrence heads it. */
+  header: string;
+  /** Option labels, in screen order (matched as a row prefix). */
+  options: readonly string[];
+}
+
+export interface KiroLaunchPromptState {
+  /** The prompt is the current interactive region of the pane. */
+  active: boolean;
+  /** Index into `options` of the one row with a recognised cursor; null = unknown. */
+  cursor: number | null;
+}
+
+const KIRO_PROMPT_CURSOR = /^[❯›>]$/;
+const KIRO_PROMPT_FOOTER = /navigate|select|↑|↓|\benter\b|\besc\b/i;
+
+/**
+ * Whether a kiro launch prompt owns the pane right now, and where its cursor
+ * is. Bottom-anchored on purpose: below the header come only its description,
+ * then exactly its option rows in order, then at most a short key-hint footer.
+ * A quoted copy of the prompt in a transcript has the reply and the composer
+ * row (`12% !>`) below it, so it is not active and never receives a key.
+ *
+ * The cursor is known only when exactly one option row carries a glyph AgEnD
+ * recognises; any other glyph, none, or two is "unknown" — still active, so
+ * it is held for a human, never answered.
+ */
+export function kiroLaunchPromptState(pane: string, spec: KiroLaunchPromptSpec): KiroLaunchPromptState {
+  const none: KiroLaunchPromptState = { active: false, cursor: null };
+  const rows = pane.replace(/\r/g, "").split("\n").map(row => row.replace(/\s+$/, ""));
+  let header = -1;
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (rows[i].includes(spec.header)) { header = i; break; }
+  }
+  if (header < 0) return none;
+  const body = rows.slice(header + 1);
+  const optionRow = (row: string, label: string) => {
+    const match = /^\s*(?:(\S)\s+)?(.*)$/.exec(row);
+    if (match && match[2].startsWith(label)) return { glyph: match[1] ?? null };
+    // No glyph: the label itself starts the row.
+    return row.trim().startsWith(label) ? { glyph: null } : null;
+  };
+  const first = body.findIndex(row => optionRow(row, spec.options[0]) !== null);
+  if (first < 0) return none;
+  // A composer row anywhere below the header — before the options or after
+  // them — means this is quoted history with the input box back on screen.
+  // Checked before the footer test, whose keywords (enter/select/esc) a
+  // composer line can contain.
+  if (body.some(row => KIRO_COMPOSER_ROW.test(row))) return none;
+  const optionRows = body.slice(first).filter(row => row.trim());
+  if (optionRows.length < spec.options.length) return none;
+  const glyphs: (string | null)[] = [];
+  for (let i = 0; i < spec.options.length; i++) {
+    const hit = optionRow(optionRows[i], spec.options[i]);
+    if (!hit) return none;
+    glyphs.push(hit.glyph);
+  }
+  const trailing = optionRows.slice(spec.options.length);
+  if (trailing.length > 2 || !trailing.every(row => KIRO_PROMPT_FOOTER.test(row))) return none;
+  const marked = glyphs.map((g, i) => (g !== null ? i : -1)).filter(i => i >= 0);
+  if (marked.length !== 1 || !KIRO_PROMPT_CURSOR.test(glyphs[marked[0]]!)) return { active: true, cursor: null };
+  return { active: true, cursor: marked[0] };
+}
+
+/** kiro's input row: legacy `12% !>` / `[agent] 3% λ !>`, or a bare `>`/`❯`. */
+const KIRO_COMPOSER_ROW = /^\s*(?:\[[^\]]*\]\s*)?\d+%\s*\S{0,2}\s*!?\s*[❯>]|^\s*[!❯>]\s*$/;
+
+/**
+ * Launch prompts that would move an instance off its engine (#1109). Text
+ * from the kiro-cli 2.27.0 binary (crates/chat-cli/src/launch/v3_ease_in.rs,
+ * auto_migrate.rs); not yet seen live — the V3 prompt is offered to 25% of
+ * internal users only.
+ *
+ * The first option of each is the one that switches, so it is never confirmed:
+ * a cursor verified on it gets ONE Down, and only a later capture that shows
+ * the cursor on the option that changes nothing gets Enter. Anything else —
+ * an unrecognised cursor, "Don't ask again" (saved for the whole machine), or
+ * a Down that did not move the cursor — is held for a human: deliveries stay
+ * blocked and the parked-dialog report fires.
+ */
+const KIRO_V3_EASE_IN: KiroLaunchPromptSpec = {
+  header: "CLI 3.0 is becoming the default experience",
+  options: ["Switch to 3.0 and upgrade my configs", "Remind me later", "Don't ask again"],
+};
+const KIRO_AGENT_UPGRADE: KiroLaunchPromptSpec = {
+  header: "Your agent configs are still in the 2.0 format",
+  options: ["Enable auto-upgrade", "Not now"],
+};
+
+function kiroLaunchPromptDialogs(spec: KiroLaunchPromptSpec, name: string, key: string, keep: number): RuntimeDialog[] {
+  const pattern = new RegExp(spec.header.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const state = (pane: string) => kiroLaunchPromptState(pane, spec);
+  const guarded = { pattern, blocksDelivery: true, inputBlocked: true, verifyAfterKeys: true } as const;
+  return [
+    {
+      ...guarded,
+      keys: ["Down"],
+      description: `${name} — cursor on '${spec.options[0]}': one step down`,
+      isActive: pane => { const s = state(pane); return s.active && s.cursor === 0; },
+      autoResolutionKey: `${key}-step`,
+    },
+    {
+      ...guarded,
+      keys: ["Enter"],
+      description: `${name} — confirm '${spec.options[keep]}'`,
+      isActive: pane => { const s = state(pane); return s.active && s.cursor === keep; },
+      autoResolutionKey: `${key}-confirm`,
+    },
+    {
+      pattern,
+      keys: [],
+      holdOnly: true,
+      blocksDelivery: true,
+      inputBlocked: true,
+      description: `${name} — not on a choice AgEnD can make safely; holding for a human`,
+      isActive: pane => state(pane).active,
+    },
+  ];
+}
+
+const KIRO_ENGINE_PROMPT_DIALOGS: RuntimeDialog[] = [
+  ...kiroLaunchPromptDialogs(KIRO_V3_EASE_IN, "Kiro V3 ease-in prompt", "kiro-v3-ease-in", 1),
+  ...kiroLaunchPromptDialogs(KIRO_AGENT_UPGRADE, "Kiro 3.0 agent-config upgrade prompt", "kiro-agent-upgrade", 1),
+];
+
 function parseSemver(value: string | undefined): [number, number, number] | undefined {
   const match = value?.match(/\b(\d+)\.(\d+)\.(\d+)\b/);
   if (!match) return undefined;
@@ -155,10 +306,85 @@ function versionAtLeast(version: [number, number, number], minimum: string): boo
 }
 
 function helpAdvertisesFlag(help: string, flag: string): boolean {
-  return new RegExp(`^\\s*${flag}(?:[ =<]|$)`, "m").test(help);
+  // clap prints a short alias first when there is one: `  -r, --resume`.
+  return new RegExp(`^\\s*(?:-[A-Za-z0-9],\\s*)?${flag}(?:[ =<,]|$)`, "m").test(help);
 }
 
-/** Probe once per backend construction, falling back from semver to --help. */
+/**
+ * The values `chat --help` lists for --agent-engine, or null without the flag.
+ * clap prints them as `[possible values: v2, v1, v3]` a few lines below the
+ * flag; the quoted names in its description are the fallback.
+ */
+export function parseKiroAgentEngines(help: string): string[] | null {
+  const lines = help.split("\n");
+  const at = lines.findIndex(line => KIRO_HELP_OPTION_ROW.test(line) && /--agent-engine\b/.test(line));
+  if (at < 0) return null;
+  // Only this option's own description/value block: it ends at the next
+  // option row, so a neighbour's `[possible values: …]` is never read as ours.
+  let end = at + 1;
+  while (end < lines.length && !KIRO_HELP_OPTION_ROW.test(lines[end])) end++;
+  const block = lines.slice(at, end);
+  for (const line of block) {
+    const listed = line.match(/\[possible values:\s*([^\]]+)\]/);
+    if (listed) return listed[1].split(",").map(v => v.trim()).filter(Boolean);
+  }
+  const quoted = [...block.slice(1).join(" ").matchAll(/"([a-z0-9]+)"/gi)].map(m => m[1]);
+  // Present but without legible values: [] — nothing to pin to, so refused.
+  return [...new Set(quoted)];
+}
+
+/** A clap option row: `  -r, --resume`, `      --agent-engine <ENGINE>`. */
+const KIRO_HELP_OPTION_ROW = /^\s*(?:-[A-Za-z0-9],\s*)?--[a-z][a-z0-9-]*/;
+
+/**
+ * Whether `help` is kiro's `chat --help` at all. Every release from 1.26 to
+ * 2.27 prints the clap usage line and the --trust-all-tools / --resume options
+ * AgEnD launches with. An empty or truncated help proves nothing — in
+ * particular not that the binary is old enough to have no engine to pin.
+ */
+function isKiroChatHelp(help: string): boolean {
+  return /^Usage:\s+\S*kiro\S*\s+chat\b/m.test(help)
+    && helpAdvertisesFlag(help, "--trust-all-tools")
+    && helpAdvertisesFlag(help, "--resume");
+}
+
+/** What a released kiro-cli version accepts, per the table above. */
+function compatibilityFromVersion(version: string, parsed: [number, number, number]): KiroCliCompatibility {
+  const has = (min: string) => versionAtLeast(parsed, min);
+  return {
+    version,
+    supportsLegacyUi: has(KIRO_LEGACY_UI_MIN),
+    supportsTui: has(KIRO_LEGACY_UI_MIN),
+    supportsV3: has("2.8.0"),
+    agentEngines: has("2.8.0") ? ["v2", "v1", "v3"]
+      : has("2.4.0") ? ["v2", "v1", "kas"]
+      : has("2.3.0") ? ["rust", "kas"]
+      : null,
+    supportsEffortFlag: has(KIRO_EFFORT_FLAG_MIN),
+    source: "version",
+  };
+}
+
+function compatibilityFromHelp(version: string | undefined, help: string): KiroCliCompatibility {
+  if (!isKiroChatHelp(help)) return { ...UNKNOWN_KIRO_COMPATIBILITY, version };
+  return {
+    version,
+    supportsLegacyUi: helpAdvertisesFlag(help, "--legacy-ui"),
+    supportsTui: helpAdvertisesFlag(help, "--tui"),
+    supportsV3: helpAdvertisesFlag(help, "--v3"),
+    agentEngines: parseKiroAgentEngines(help),
+    supportsEffortFlag: helpAdvertisesFlag(help, "--effort"),
+    source: "help",
+  };
+}
+
+/**
+ * Probe once per binary generation. A version AgEnD has run (<= TESTED_MAX)
+ * is answered from the table without a second CLI call; anything newer, or a
+ * version string that does not parse, is answered by the binary's own
+ * `chat --help` — 3.0 included, which is exactly where the table stops being
+ * evidence.
+ */
 export function probeKiroCliCompatibility(
   binaryPath: string,
   run: KiroProbeRunner = (binary, args) => execFileSync(binary, args, {
@@ -173,26 +399,83 @@ export function probeKiroCliCompatibility(
   } catch { /* fall through to capability help */ }
 
   const parsed = parseSemver(version);
-  if (parsed) {
-    return {
-      version,
-      supportsLegacyUi: versionAtLeast(parsed, KIRO_LEGACY_UI_MIN),
-      supportsEffortFlag: versionAtLeast(parsed, KIRO_EFFORT_FLAG_MIN),
-      source: "version",
-    };
+  if (parsed && !versionAtLeast(parsed, nextPatch(KIRO_TESTED_MAX))) {
+    return compatibilityFromVersion(version!, parsed);
   }
-
   try {
-    const help = run(binaryPath, ["chat", "--help"]);
-    return {
-      version,
-      supportsLegacyUi: helpAdvertisesFlag(help, "--legacy-ui"),
-      supportsEffortFlag: helpAdvertisesFlag(help, "--effort"),
-      source: "help",
-    };
+    return compatibilityFromHelp(version, run(binaryPath, ["chat", "--help"]));
   } catch {
+    // An untested 2.x whose help cannot be read is still a 2.x; a 3.x or an
+    // unidentified binary is not something to guess about.
+    if (parsed && !versionAtLeast(parsed, "3.0.0")) return compatibilityFromVersion(version!, parsed);
     return { ...UNKNOWN_KIRO_COMPATIBILITY, version };
   }
+}
+
+function nextPatch(version: string): string {
+  const [major, minor, patch] = parseSemver(version)!;
+  return `${major}.${minor}.${patch + 1}`;
+}
+
+export type KiroLaunchPlan =
+  | { kind: "launch"; ui: "legacy" | "tui" | "v3"; flags: string[] }
+  | { kind: "refuse"; reason: string };
+
+/**
+ * Pin the UI AND the engine on every launch (#1109). A flag outranks kiro's
+ * persisted `chat.agentEngine`, which the V3 ease-in prompt writes for the
+ * whole machine and which kiro 3.0 may default to V3. An instance's
+ * conversation lives in its engine's store — classic sqlite, V2 JSON, V3 KAS —
+ * and moving between them forks it one way, so a launch AgEnD cannot pin to
+ * the instance's own engine is refused, never run on whatever kiro defaults to.
+ */
+export function planKiroLaunch(ui: "legacy" | "tui" | "v3", compat: KiroCliCompatibility): KiroLaunchPlan {
+  const version = compat.version ?? "of unknown version";
+  if (ui === "v3") return { kind: "launch", ui, flags: ["--v3"] };
+  const engines = compat.agentEngines;
+  // A binary with no engine choice at all (before 2.3) has nowhere to drift —
+  // but only a version AgEnD knows proves that. Read from --help, a missing
+  // selector is just a missing selector: a new release that dropped it must
+  // not be launched on its default.
+  const knownOld = compat.source === "version";
+  const singleEngine = knownOld && engines === null && !compat.supportsV3;
+  // 2.3 offered rust|kas with rust (the legacy engine) as its default. Only
+  // the version table may say "this is 2.3": a newer help that happens to
+  // list `rust` without v1/v2 is a new release, and its default is unknown.
+  const rustEra = knownOld && engines?.includes("rust") === true && !compat.supportsV3;
+  if (ui === "legacy") {
+    if (!compat.supportsLegacyUi) {
+      // Before 1.27 classic was the only UI: nothing to select.
+      if (!compat.supportsTui && singleEngine) return { kind: "launch", ui, flags: [] };
+      return {
+        kind: "refuse",
+        reason: `kiro-cli ${version} no longer offers the legacy UI (--legacy-ui) this instance runs on. `
+          + "AgEnD will not start it on another UI or engine: its conversation would not come along (#1109). "
+          + "Install a kiro-cli 2.x to keep using it; moving instances to the terminal UI is #1110.",
+      };
+    }
+    if (engines?.includes("v1")) return { kind: "launch", ui, flags: ["--legacy-ui", "--agent-engine=v1"] };
+    if (singleEngine || rustEra) return { kind: "launch", ui, flags: ["--legacy-ui"] };
+    return {
+      kind: "refuse",
+      reason: `kiro-cli ${version} has --legacy-ui but no v1 agent engine to pin it to `
+        + `(--agent-engine accepts: ${engines?.join(", ") || "nothing AgEnD recognises"}). `
+        + "AgEnD will not let it pick an engine on its own (#1109).",
+    };
+  }
+  // tui
+  if (!compat.supportsTui) {
+    if (singleEngine) return { kind: "launch", ui, flags: [] };
+    return { kind: "refuse", reason: `kiro-cli ${version} has no --tui flag; AgEnD cannot tell which UI it would start (#1109).` };
+  }
+  if (engines?.includes("v2")) return { kind: "launch", ui, flags: ["--tui", "--agent-engine=v2"] };
+  if (singleEngine || rustEra) return { kind: "launch", ui, flags: ["--tui"] };
+  return {
+    kind: "refuse",
+    reason: `kiro-cli ${version} has no v2 agent engine to pin the terminal UI to `
+      + `(--agent-engine accepts: ${engines?.join(", ") || "nothing AgEnD recognises"}). `
+      + "AgEnD will not let it pick an engine on its own (#1109).",
+  };
 }
 
 function kiroBinaryCacheKey(binaryPath: string): string {
@@ -209,11 +492,20 @@ function kiroBinaryCacheKey(binaryPath: string): string {
   }
 }
 
+/**
+ * How long an "unknown" probe result is reused. A binary that exists but did
+ * not answer (a 5s timeout on a loaded host) refuses its launch, and the
+ * fleet's startup retry must get a fresh probe rather than the same miss.
+ */
+const UNKNOWN_COMPATIBILITY_TTL_MS = 60_000;
+
 function cachedKiroCliCompatibility(binaryPath: string, run?: KiroProbeRunner): CachedKiroCompatibility {
   const cacheKey = kiroBinaryCacheKey(binaryPath);
   const cached = compatibilityCache.get(cacheKey);
-  if (cached) return cached;
-  const entry = { cacheKey, compatibility: probeKiroCliCompatibility(binaryPath, run) };
+  if (cached && (cached.compatibility.source !== "unknown" || Date.now() - cached.probedAt < UNKNOWN_COMPATIBILITY_TTL_MS)) {
+    return cached;
+  }
+  const entry = { cacheKey, compatibility: probeKiroCliCompatibility(binaryPath, run), probedAt: Date.now() };
   compatibilityCache.set(cacheKey, entry);
   return entry;
 }
@@ -230,6 +522,7 @@ export function getCachedKiroCliCompatibility(
 export function resetKiroCompatibilityCacheForTests(): void {
   compatibilityCache.clear();
   warnedUnsupportedEffortCacheKeys.clear();
+  warnedVersionGateCacheKeys.clear();
 }
 
 /** Startup budget for a `--resume` launch (60% first output, 40% ready). */
@@ -238,8 +531,10 @@ export const KIRO_RESUME_STARTUP_BUDGET_MS = 60_000;
 export class KiroBackend implements CliBackend {
   readonly binaryName = "kiro-cli";
   private binaryPath: string;
-  private readonly compatibility: KiroCliCompatibility;
-  private readonly compatibilityCacheKey?: string;
+  private compatibility: KiroCliCompatibility;
+  private compatibilityCacheKey?: string;
+  /** Injected by tests: never re-probed. */
+  private readonly fixedCompatibility: boolean;
   private warnedUnsupportedEffort = false;
   /**
    * UI flavour and trust mode of the LAST command built. The Enter-drop
@@ -251,9 +546,12 @@ export class KiroBackend implements CliBackend {
    */
   private activeUi: "legacy" | "tui" | "v3" = "legacy";
   private activeTrustAll = true;
+  /** Version-gate notice for the launch just built (consumeLaunchWarning). */
+  private launchWarning: string | null = null;
 
   constructor(private instanceDir: string, compatibility?: KiroCliCompatibility) {
     this.binaryPath = resolveBinary("kiro-cli");
+    this.fixedCompatibility = compatibility !== undefined;
     if (compatibility) {
       this.compatibility = compatibility;
     } else {
@@ -333,13 +631,30 @@ export class KiroBackend implements CliBackend {
 
   buildCommand(config: CliBackendConfig): string {
     const ui = config.kiroUi ?? "legacy";
+    // Every launch re-reads the binary generation: a crash-respawn reuses this
+    // backend, and kiro-cli may have replaced itself in place since the last
+    // launch (an auto-update to a release without this instance's engine).
+    // Cheap — a stat and a map lookup unless the binary changed.
+    if (!this.fixedCompatibility) {
+      const current = cachedKiroCliCompatibility(this.binaryPath);
+      this.compatibility = current.compatibility;
+      this.compatibilityCacheKey = current.cacheKey;
+    }
+    if (this.compatibility.source === "unknown") {
+      // Neither --version nor chat --help answered: a missing or wedged binary,
+      // or a loaded host timing out. Launching blind could start kiro on its
+      // default engine; fail this attempt and let the startup retry re-probe.
+      throw new Error(`kiro-cli at ${this.binaryPath} did not answer --version or chat --help, so AgEnD cannot pin its UI and engine; not launching (#1109)`);
+    }
+    const plan = planKiroLaunch(ui, this.compatibility);
+    if (plan.kind === "refuse") throw new UnsupportedCliError(plan.reason);
     let cmd = `${this.binaryPath} chat`;
-    if (ui === "legacy" && this.compatibility.supportsLegacyUi) cmd += " --legacy-ui";
-    else if (ui === "v3") cmd += " --v3";
+    for (const flag of plan.flags) cmd += ` ${flag}`;
+    this.noteVersionGate();
     // Record what is actually being launched for the delivery gate (see
-    // dropsEnterWhileBusy): a "legacy" request on a binary without --legacy-ui
-    // runs the default new TUI, not the legacy screen.
-    this.activeUi = ui === "legacy" && this.compatibility.supportsLegacyUi ? "legacy" : ui === "v3" ? "v3" : "tui";
+    // dropsEnterWhileBusy): the legacy prompt row exists only under
+    // --legacy-ui; a binary from before 1.27 paints its own classic screen.
+    this.activeUi = plan.flags.includes("--legacy-ui") ? "legacy" : ui === "v3" ? "v3" : "tui";
     this.activeTrustAll = config.skipPermissions !== false;
     if (config.skipPermissions !== false) cmd += " --trust-all-tools";
     // --resume is boolean: Kiro auto-resumes latest conversation for this working directory.
@@ -396,6 +711,34 @@ export class KiroBackend implements CliBackend {
     const home = credentialProfileHome(getAgendHome(), this.binaryName, profile);
     prepareCredentialProfileHome(spec, home);
     return `${spec.env}=${shellQuote(home)} ${cmd}`;
+  }
+
+  /**
+   * P3 of #1109: tell the operator, once per binary generation, when the
+   * kiro-cli in use is outside the range AgEnD has run. Never blocks a launch:
+   * below KIRO_SUPPORTED_MIN it still works, and above KIRO_TESTED_MAX the
+   * flags were already checked against the binary's own --help.
+   */
+  private noteVersionGate(): void {
+    const parsed = parseSemver(this.compatibility.version);
+    if (!parsed) return;
+    const key = this.compatibilityCacheKey ?? `instance:${this.compatibility.version}`;
+    if (warnedVersionGateCacheKeys.has(key)) return;
+    let warning: string | null = null;
+    if (!versionAtLeast(parsed, KIRO_SUPPORTED_MIN)) {
+      warning = t("kiro.version_below_supported", this.compatibility.version!, KIRO_SUPPORTED_MIN);
+    } else if (versionAtLeast(parsed, nextPatch(KIRO_TESTED_MAX))) {
+      warning = t("kiro.version_untested", this.compatibility.version!, KIRO_TESTED_MAX);
+    }
+    if (!warning) return;
+    warnedVersionGateCacheKeys.add(key);
+    this.launchWarning = warning;
+  }
+
+  consumeLaunchWarning(): string | null {
+    const warning = this.launchWarning;
+    this.launchWarning = null;
+    return warning;
   }
 
   private shouldWarnUnsupportedEffort(): boolean {
@@ -674,6 +1017,7 @@ export class KiroBackend implements CliBackend {
 
   getStartupDialogs(): StartupDialog[] {
     return [
+      ...KIRO_ENGINE_PROMPT_DIALOGS,
       {
         // Kiro CLI --trust-all-tools now shows a confirmation prompt.
         // Default cursor is on "No, exit" — press Down then Enter to select "Yes, I accept".
@@ -686,6 +1030,8 @@ export class KiroBackend implements CliBackend {
 
   getRuntimeDialogs(): RuntimeDialog[] {
     return [
+      // The engine prompts can paint after the startup scan has moved on.
+      ...KIRO_ENGINE_PROMPT_DIALOGS,
       {
         // A service/model outage can drop Kiro into the interactive /model
         // picker. Its choices range across credit multipliers and capability
