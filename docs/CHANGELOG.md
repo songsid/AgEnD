@@ -7,6 +7,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Upgrade Notes
+- **[Behaviour change] The `/login` browser terminal applies the same `Host` rule.** Each
+  `/login` (and `/install-cli`) opens a short-lived listener of its own. It checked that
+  `Origin` equals `Host` — which a DNS-rebinding page satisfies by construction — and
+  answered to any `Host`. It now refuses, with the same 403 on every path and on the
+  WebSocket upgrade, any name that is not `localhost`/`127.0.0.1`/`[::1]`, the fleet
+  `hostname:` or a `web.allowed_hosts` entry (the setting the dashboard already uses).
+  **If you open the terminal link through a reverse proxy or a LAN address, add that
+  name to `web.allowed_hosts`.** The listener can also be told one more exact name, and
+  to set its cookie `Secure` from that name rather than from `X-Forwarded-Proto`; nothing
+  uses that yet (it is the groundwork for exposing a login terminal through a tunnel).
 - **[Behaviour change] The dashboard now refuses requests whose `Host` is not a
   name it knows.** The health/dashboard server listens on 127.0.0.1, but that does
   not stop DNS rebinding: a web page can point its own domain at 127.0.0.1 and

@@ -3,15 +3,24 @@ title = "AgEnD gitleaks configuration"
 [extend]
 useDefault = true
 
-[[allowlists]]
-description = "Known fake JWT used to verify progress-log redaction"
-paths = ['''^tests/tool-progress\.test\.ts$''']
-
-[[allowlists]]
-description = "Sec-WebSocket-Key is a public protocol field (base64 nonce in HTTP header), not a secret"
-regexTarget = "line"
-regexes = ['''Sec-WebSocket-Key''']
-
-[[allowlists]]
-description = "Vendored third-party xterm.js (minified high-entropy strings, not secrets)"
-paths = ['''^src/ui/web-terminal/vendor/.*\.js$''']
+# Single [allowlist] table, not [[allowlists]]: the gitleaks-action pins gitleaks
+# 8.24.3, which silently ignores the plural form (added in 8.25), so entries
+# written that way never applied in CI. A finding is allowed if it matches any
+# of the paths or regexes below.
+[allowlist]
+description = "Confirmed false positives: a fake JWT fixture, public WebSocket handshake nonces, vendored xterm.js"
+paths = [
+  # Known fake JWT used to verify progress-log redaction
+  '''^tests/tool-progress\.test\.ts$''',
+  # Vendored third-party xterm.js (minified high-entropy strings, not secrets)
+  '''^src/ui/web-terminal/vendor/.*\.js$''',
+]
+# Sec-WebSocket-Key is a public protocol field (base64 nonce in an HTTP header), not a secret.
+# Matched against the finding's own match text, not the whole line: with
+# regexTarget = "line" any real key that merely shares a line with the words
+# "Sec-WebSocket-Key" (a trailing comment, a neighbouring header) would be hidden too.
+# The match must be the header field followed by exactly a 16-byte nonce (22 base64
+# chars + "=="); gitleaks' generic match may carry a stray leading word character
+# and a trailing quote, ";" or a literal \r / \n, which the tail allows.
+regexTarget = "match"
+regexes = ['''(?i)sec-websocket-key["'\x60]?\s*[:=]\s*["'\x60]?[A-Za-z0-9+/]{22}==(?:\\[nr]|["'\x60;\s])?$''']

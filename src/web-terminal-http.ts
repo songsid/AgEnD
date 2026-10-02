@@ -31,6 +31,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { acceptWebSocket, rejectUpgrade, type WsConnection } from "./ws-server.js";
 import type { WebTerminalSession, TerminalLogger } from "./web-terminal.js";
+import { hostnameOf, LOOPBACK_HOST_NAMES } from "./web-host-guard.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ASSETS_DIR = join(__dirname, "ui", "web-terminal");
@@ -59,6 +60,13 @@ export interface WebTerminalHttpOptions {
   /** Host name used in the URL handed to the admin (fleet `hostname`, default "localhost"). */
   hostname?: string;
   assetsDir?: string;
+  /**
+   * The `Host` names this listener answers to (see `allowedHostNames` in web-host-guard.ts):
+   * loopback, the fleet's `hostname:` and `web.allowed_hosts`. Anything else — a rebinding
+   * page, a scanner, a tunnel nobody told it about — is refused before the path is looked at.
+   * Default: loopback names plus `hostname`.
+   */
+  allowedHosts?: ReadonlySet<string>;
 }
 
 /**
@@ -85,6 +93,11 @@ export class WebTerminalHttpServer {
   private readonly assetsDir: string;
   private readonly bind: string;
   private readonly hostname: string;
+  private readonly allowedHosts: Set<string>;
+  /** The one extra name a tunnel in front of this listener answers on — set only while that tunnel is up. */
+  private externalHost: string | null = null;
+  /** Distinct refused names already logged; bounded so a scanner cannot grow it. */
+  private readonly rejectedHostsLogged = new Set<string>();
   private unsubscribeFinished: (() => void) | null = null;
   /** Immutable assets, read once at listen() — no per-request disk I/O (M3). */
   private readonly assetCache = new Map<string, Buffer>();
@@ -97,6 +110,21 @@ export class WebTerminalHttpServer {
     this.assetsDir = opts.assetsDir ?? DEFAULT_ASSETS_DIR;
     this.bind = opts.bind ?? "127.0.0.1";
     this.hostname = opts.hostname ?? "localhost";
+    this.allowedHosts = new Set(opts.allowedHosts ?? LOOPBACK_HOST_NAMES);
+    const own = hostnameOf(this.hostname);
+    if (own) this.allowedHosts.add(own);
+  }
+
+  /**
+   * Let exactly one more name through — the public host of a tunnel pointed at this listener — and
+   * treat requests that arrive on it as https. `null` takes it away again.
+   *
+   * One exact name, set when the tunnel is known and cleared when it is not: a wildcard such as
+   * `*.trycloudflare.com` would also admit every other tunnel on that domain, and a stale name
+   * would admit whoever is handed this port number next.
+   */
+  setExternalHost(host: string | null): void {
+    this.externalHost = host === null ? null : hostnameOf(host);
   }
 
   get pagePath(): string { return `/t/${this.session.sid}`; }
@@ -184,6 +212,11 @@ export class WebTerminalHttpServer {
     res.setHeader("Referrer-Policy", "no-referrer");
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-Frame-Options", "DENY");
+    // Before the path, so a refused Host learns nothing about which paths exist.
+    if (!this.hostAllowed(req)) {
+      this.noteRejectedHost(req.headers.host);
+      return this.text(res, 403, "forbidden");
+    }
     const path = safeRequestPath(req.url);
     if (path === null) return this.text(res, 400, "bad request");
     const base = this.pagePath;
@@ -291,6 +324,10 @@ export class WebTerminalHttpServer {
     this.sockets.add(socket);
     socket.on("error", () => { /* peer reset */ });
     socket.on("close", () => this.sockets.delete(socket));
+    if (!this.hostAllowed(req)) {
+      this.noteRejectedHost(req.headers.host);
+      return rejectUpgrade(socket, 403, "Forbidden");
+    }
     const path = safeRequestPath(req.url);
     if (path === null) return rejectUpgrade(socket, 400, "Bad Request");
     if (path !== `${this.pagePath}/ws`) return rejectUpgrade(socket, 404, "Not Found");
@@ -360,7 +397,26 @@ export class WebTerminalHttpServer {
     try { return new URL(String(origin)).host === String(host); } catch { return false; }
   }
 
+  /** Exact match on the parsed host name (port ignored); a missing or malformed `Host` is refused. */
+  private hostAllowed(req: IncomingMessage): boolean {
+    const raw = req.headers.host;
+    const name = typeof raw === "string" ? hostnameOf(raw) : null;
+    return name !== null && (this.allowedHosts.has(name) || name === this.externalHost);
+  }
+
+  /** Say once per name why a request was refused; only the parsed name is logged, never the raw header. */
+  private noteRejectedHost(header: string | undefined): void {
+    const name = typeof header === "string" ? (hostnameOf(header) ?? "(malformed)") : "(missing)";
+    if (this.rejectedHostsLogged.has(name) || this.rejectedHostsLogged.size >= 16) return;
+    this.rejectedHostsLogged.add(name);
+    this.logger.warn({ sid: this.session.sid, host: name }, "web terminal request refused: Host is not allowed (add it to web.allowed_hosts if this is a proxy you run)");
+  }
+
   private isHttps(req: IncomingMessage): boolean {
+    // Our own tunnel is https by construction: decided from the name we were told, not from a header the
+    // request carries.
+    const name = typeof req.headers.host === "string" ? hostnameOf(req.headers.host) : null;
+    if (this.externalHost !== null && name === this.externalHost) return true;
     const proto = String(req.headers["x-forwarded-proto"] ?? "").split(",")[0].trim().toLowerCase();
     return proto === "https" || Boolean((req.socket as Socket & { encrypted?: boolean }).encrypted);
   }

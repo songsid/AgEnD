@@ -101,6 +101,20 @@ const allText = (m: { mock: { calls: unknown[][] } }) => m.mock.calls.map(c => J
 beforeEach(() => { FakeHttp.failListen = false; });
 afterEach(() => setLocale("en"));
 
+describe("the browser terminal's Host allowlist comes from the fleet's own configuration", () => {
+  it("hands the listener loopback, the fleet hostname and web.allowed_hosts — and no more", async () => {
+    const createHttp: NonNullable<LoginControllerDeps["createHttp"]> = vi.fn((session, _logger, opts) =>
+      new FakeHttp(session as unknown as FakeSession, opts) as never);
+    const { controller } = make({ config: { hostname: "Fleet.Example", web: { allowed_hosts: ["proxy.example:8443", "10.0.0.5"] } }, createHttp });
+    await controller.start("kiro-cli", chat(adapterOf("telegram")), CONFIRMED);
+
+    expect(createHttp).toHaveBeenCalledTimes(1);
+    const opts = (createHttp as unknown as { mock: { calls: Array<[unknown, unknown, { allowedHosts?: ReadonlySet<string> }]> } }).mock.calls[0]![2];
+    expect([...(opts.allowedHosts ?? [])].sort()).toEqual(["10.0.0.5", "127.0.0.1", "[::1]", "fleet.example", "localhost", "proxy.example"].sort());
+    await controller.cancel();
+  });
+});
+
 describe("Codex device-auth presentation", () => {
   it.each(["discord", "telegram"] as const)("%s posts only the provider URL/code, without a browser listener or token", async type => {
     const createHttp: NonNullable<LoginControllerDeps["createHttp"]> = vi.fn((session, _logger, opts) =>
