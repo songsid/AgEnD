@@ -6,6 +6,14 @@
 
 ## [未發佈] (Unreleased)
 
+### 安全 (Security)
+- **instance 目錄改為 0700（既有的在啟動時一次性修正）。** `<data dir>/instances/<name>` 裡有 `agent.token` 與 IPC socket，
+  卻是用行程 umask 建立的 —— 通常是 0775，也就是群組可寫、本機所有使用者都能穿越（裡面的檔案本來就是 0600，開著的是目錄這道門）。
+  新建的 instance 目錄一律 0700；啟動時 fleet 會把 `instances` 目錄與其下每個 instance 目錄一次性收成 0700，只記一行 log，
+  且不動裡面的任何東西（你放進去的檔案維持原權限）。symlink 與他人擁有的目錄不會被動，並會在警告中點名。
+  過去每次啟動 instance 都出現、卻從沒人處理的「IPC socket parent directory is world-accessible」警告，現在只會在仍然開放且
+  無法修正的目錄上、每個目錄報一次。**若有其他使用者或服務原本靠群組權限讀取 instance 目錄，請改為明確授權 —— 群組不再有權限。**（#1118）
+
 ### 升級注意事項 (Upgrade Notes)
 - **[行為變更] kiro instance 每次啟動都會鎖定自己的 engine；做不到時會拒絕啟動，而不是換掉 engine（#1109）。** kiro-cli 3.0（2026 年 10 月）會棄用 classic UI，而且可能預設改用 V3 engine；kiro 還會跳出「切換到 3.0」的提示，答案會存成整台機器共用的設定。instance 的對話存在它所屬 engine 的資料庫裡，換 engine 會單向分叉。現在 AgEnD 會以 `--legacy-ui --agent-engine=v1` 啟動 `kiro_ui: legacy`、以 `--tui --agent-engine=v2` 啟動 `kiro_ui: tui`（啟動參數優先於已存的設定）。每個 kiro-cli 能接受哪些值，依版本判斷；比 2.27 更新的版本則讀它自己的 `chat --help`（2.3 的 `--agent-engine` 只接受 `rust|kas`，所以只帶 `--legacy-ui`）。若 kiro-cli 已無法讓 instance 跑在原本的 engine 上，就不會啟動：會發一則說明原因的通知，且不自動重試。執行中的 instance 若 kiro-cli 被就地換掉，會在下次重啟時被擋下。`--help` 裡少了選擇器，絕不會被當成「這是舊版」的證據。「切換到 3.0」和「升級 agent 設定」這兩個啟動提示，會選擇不做任何變更的選項：一次只按一個鍵，而且只在確認游標確實停在該選項時才按；其他狀態（游標無法辨識、停在「Don't ask again」、按了鍵游標卻沒動）都會停下來等人處理，期間暫停傳送訊息。kiro-cli 比 2.21 舊或比 2.27 新時會通知一次，但仍會啟動。
 - **[行為變更] 一個壞掉的 MCP server 不會再讓所有 kiro instance 起不來（#1111）。** AgEnD 以前啟動 kiro-cli 時會帶 `--require-mcp-startup`，只要「任何一個」啟用中的 MCP server 啟動失敗，kiro 就會直接結束（exit code 3）——包括你自己在 `~/.kiro/settings/mcp.json` 設定的 server。因此某個第三方 server 在 kiro-cli 2.27 上壞掉時，所有 kiro instance 都無法啟動。現在 kiro 跟 claude、codex 一樣：你自己的 server 失敗只會少掉它自己的工具（kiro 會在 pane 裡顯示 `✗`）。AgEnD 自己的 fleet server 有沒有連上，改由 daemon 檢查，而且適用所有 backend：CLI 啟動 90 秒後 AgEnD 的 MCP server 仍未連上時，instance 會回報它沒有 agend 工具，並在 `mcp_auto_restart`（預設開啟）下等閒置後重啟再試。server 若之後才連上，該回報會被撤回。
