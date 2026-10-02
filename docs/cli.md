@@ -65,6 +65,12 @@ agend export-chat               # Export fleet activity as HTML chat log
 agend export-chat --from <date> --to <date> -o <path>
 ```
 
+`agend logs` reads `~/.agend/daemon.log`, which holds the fleet's runtime logs.
+Service stdout/stderr remains in `~/.agend/fleet.log` for startup errors and Node
+warnings; inspect that file if the service cannot start. If `daemon.log` does
+not exist yet, `agend logs` falls back to `fleet.log`. Structured logs are also
+shown on stdout when running interactively in a terminal.
+
 ## Shell completion
 
 Tab-completes instance names for `agend attach` and `agend fleet start|stop|restart`,

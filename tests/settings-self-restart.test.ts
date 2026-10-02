@@ -374,7 +374,7 @@ describe("startup signature consistency", () => {
     const result = await fm.requestSettingsSelfRestart(job.id, "key-mismatch-restart");
 
     expect(result).toMatchObject({ ok: false, status: 409 });
-    expect((result as { error: string }).error).toContain("fleet.log");
+    expect((result as { error: string }).error).toContain("daemon.log");
     expect(fullRestart).not.toHaveBeenCalled();
   });
 });

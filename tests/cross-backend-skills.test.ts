@@ -86,6 +86,30 @@ describe("cross-backend skill publishing", () => {
     expect(existsSync(join(workDir, ".claude", "skills", "delegation-playbook", "SKILL.md"))).toBe(true);
   });
 
+  it("warns once per collided skill across repeated syncs and multiple instance destinations", () => {
+    const warn = vi.spyOn(fm.logger, "warn").mockImplementation(() => {});
+    const source = join(workDir, "source");
+    const names = ["user-collision-a", "user-collision-b"];
+    for (const name of names) {
+      mkdirSync(join(source, name), { recursive: true });
+      writeFileSync(join(source, name, "SKILL.md"), "---\nroles: [worker]\n---\nbundled\n");
+    }
+    for (const instance of ["one", "two"]) {
+      const dest = join(workDir, instance, "skills");
+      for (const name of names) {
+        mkdirSync(join(dest, name), { recursive: true });
+        writeFileSync(join(dest, name, "SKILL.md"), `user ${instance}\n`);
+      }
+      for (let i = 0; i < 3; i++) (fm as any).syncManagedSkills(dest, source, "worker");
+      for (const name of names) expect(readFileSync(join(dest, name, "SKILL.md"), "utf8")).toBe(`user ${instance}\n`);
+      expect(JSON.parse(readFileSync(join(dest, ".agend-managed-skills.json"), "utf8"))).toEqual([]);
+    }
+    expect(warn).toHaveBeenCalledTimes(2);
+    expect(warn.mock.calls.map(call => (call[0] as { skill: string }).skill)).toEqual(names);
+    expect(warn.mock.calls.every(call => String(call[1]).startsWith("Skipping bundled skill"))).toBe(true);
+    warn.mockRestore();
+  });
+
   it("adopts and refreshes pre-manifest Kiro General skills on upgrade", () => {
     const skills = join(workDir, ".kiro", "skills");
     const legacyFleetHealth = join(skills, "fleet-health", "SKILL.md");

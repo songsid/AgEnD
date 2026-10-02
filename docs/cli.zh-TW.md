@@ -33,12 +33,18 @@ agend fleet stop                # 停止所有實例
 agend fleet restart             # 優雅重啟（等待閒置，相同代碼）
 agend fleet restart --reload    # 使用新代碼重啟（自殺並等待系統重啟）
 agend fleet status              # 顯示實例狀態概覽
-agend fleet logs <name>         # 顯示特定實例日誌
+agend fleet logs                # 提示改用 agend logs
 agend fleet history             # 顯示事件歷史（成本、輪轉、懸掛）
 agend fleet activity            # 顯示活動日誌（協作、工具呼叫、訊息）
 agend fleet activity --format mermaid # 以 Mermaid 序列圖格式輸出活動
 agend fleet cleanup             # 移除孤兒實例目錄
 ```
+
+`agend logs` 讀取 `~/.agend/daemon.log` 的 Fleet 執行日誌，支援 `-n 100`、
+`-f` 和 `--instance <name>`。服務的 stdout/stderr 留在 `~/.agend/fleet.log`，
+用來查啟動錯誤和 Node 警告；若服務無法啟動，請查看該檔。
+`daemon.log` 尚未建立時，`agend logs` 會先讀 `fleet.log`。
+在互動式終端執行時，執行日誌也會顯示在 stdout。
 
 ## 後端診斷 (Backend Diagnostics)
 

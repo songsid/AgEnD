@@ -151,6 +151,30 @@ describe("claude-code resume-prompt patterns are structural, never prose", () =>
 });
 
 describe("startup scan: the resume prompt painted AFTER the first quiet moment", () => {
+  it("logs normal capture retries at debug and still reaches the ready prompt", async () => {
+    const { daemon, logger, keys } = makeDaemon();
+    const err = new Error("window not created yet");
+    daemon.tmux.capturePane = vi.fn()
+      .mockRejectedValueOnce(err).mockRejectedValueOnce(err)
+      .mockResolvedValue(READY);
+    expect(await daemon.dismissDialogsUntilReady(1_000, 0)).toBe(true);
+    expect(daemon.tmux.capturePane).toHaveBeenCalledTimes(4);
+    expect(keys).toEqual([]);
+    expect(logger.debug).toHaveBeenCalledWith({ err, captureFailures: 1 }, "capture-pane failed during the startup dialog scan — retrying");
+    expect(logger.debug).toHaveBeenCalledWith({ err, captureFailures: 2 }, "capture-pane failed during the startup dialog scan — retrying");
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it("keeps a warning if capture failures exhaust the startup budget", async () => {
+    vi.useFakeTimers();
+    const { daemon, logger } = makeDaemon();
+    daemon.tmux.capturePane = vi.fn(async () => { throw new Error("capture unavailable"); });
+    expect(await settle(daemon.dismissDialogsUntilReady(1_000, 100), 2_000)).toBe(true);
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({ captureFailures: expect.any(Number), budgetMs: 1_000 }),
+      "Startup scan exhausted without a ready prompt or a known dialog — assuming ready (unknown CLI screen)");
+  });
+
   it("keeps polling, dismisses the late dialog with Down+Enter, and reports ready only after two clean polls", async () => {
     const { daemon, keys } = makeDaemon();
     const frames = [LOADING, LOADING, LOADING, RESUME_DIALOG, READY, READY];
