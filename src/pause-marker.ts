@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { ensureInstanceDir } from "./private-dir.js";
 import { join } from "node:path";
 
 export const PAUSED_MARKER_FILE = "paused";
@@ -19,7 +20,7 @@ export function hasPausedMarker(instanceDir: string): boolean {
 }
 
 export function writePausedMarker(instanceDir: string, pausedAt = Date.now(), reason?: PauseReason | null): void {
-  mkdirSync(instanceDir, { recursive: true });
+  ensureInstanceDir(instanceDir);
   writeFileSync(join(instanceDir, PAUSED_MARKER_FILE), String(pausedAt), { encoding: "utf8", mode: 0o600 });
   if (reason) writeFileSync(join(instanceDir, PAUSE_REASON_FILE), reason, { encoding: "utf8", mode: 0o600 });
   else { try { unlinkSync(join(instanceDir, PAUSE_REASON_FILE)); } catch { /* absent */ } }

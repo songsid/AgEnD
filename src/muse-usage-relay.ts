@@ -3,7 +3,6 @@ import { request as httpsRequest } from "node:https";
 import { createBrotliDecompress, createGunzip } from "node:zlib";
 import { join } from "node:path";
 import {
-  mkdirSync,
   readdirSync,
   readFileSync,
   renameSync,
@@ -12,6 +11,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { getAgendHome } from "./paths.js";
+import { ensureInstanceDir } from "./private-dir.js";
 import type { ClientRequest, IncomingHttpHeaders } from "node:http";
 
 /** The upstream is deliberately code-owned: callers cannot turn this into an open proxy. */
@@ -171,7 +171,7 @@ export function readMuseUsageSnapshot(instanceDir: string): MuseUsageSnapshot | 
 }
 
 export function writeMuseUsageSnapshot(instanceDir: string, snapshot: MuseUsageSnapshot): void {
-  mkdirSync(instanceDir, { recursive: true });
+  ensureInstanceDir(instanceDir);
   const target = usageStatePath(instanceDir);
   const temp = `${target}.${process.pid}.tmp`;
   writeFileSync(temp, JSON.stringify(snapshot), { mode: 0o600 });

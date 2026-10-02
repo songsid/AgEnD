@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Security
+- **Instance directories are now 0700 (and existing ones are fixed at startup).** `<data dir>/instances/<name>`
+  holds `agent.token` and the IPC socket, but was created with the process umask — typically 0775, so
+  group-writable and traversable by every user on the machine (the files inside were already 0600, the
+  directory was the open door). New instance directories are created 0700; on start the fleet makes the
+  `instances` directory and each instance directory under it 0700 once, logs a single line saying so, and
+  never touches anything inside them (a file you put there keeps its mode). Symlinks and directories owned by
+  someone else are left alone and named in a warning. The "IPC socket parent directory is world-accessible"
+  warning, which fired on every instance start and was never acted on, now fires only for a directory that is
+  still open and could not be fixed, once per directory. **If another user or service relied on reading an
+  instance directory through group access, give it access explicitly — the group no longer has it.** (#1118)
+
 ### Upgrade Notes
 - **[Behaviour change] kiro instances are pinned to their engine on every launch, and
   refused rather than moved when that is impossible (#1109).** kiro-cli 3.0 (October

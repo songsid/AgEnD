@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
+import { ensureInstanceDir } from "./private-dir.js";
 import { execFileSync } from "node:child_process";
 import { join, basename, dirname, resolve, sep as pathSep } from "node:path";
 import { access, unlink } from "node:fs/promises";
@@ -1384,7 +1385,7 @@ export class InstanceLifecycle {
     }
 
     const instanceDir = this.ctx.getInstanceDir(name);
-    mkdirSync(instanceDir, { recursive: true });
+    ensureInstanceDir(instanceDir);
 
     // Defense-in-depth: clear crash state before daemon start
     try { await unlink(join(instanceDir, "crash-state.json")); } catch {}

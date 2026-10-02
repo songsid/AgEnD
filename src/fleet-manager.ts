@@ -87,6 +87,7 @@ import { handleViewRequest, isViewPath } from "./view-api.js";
 import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, usageProviderIdForBackend } from "./usage/usage-api.js";
 import { LOGIN_FLOWS, LOGIN_BACKEND_ALIASES, checkAuthStatus, type LoginFlow, type AuthCheckResult } from "./login-flows.js";
 import { LoginSession } from "./login-manager.js";
+import { tightenInstanceDirs } from "./private-dir.js";
 import { LoginController, LOGIN_TOKEN_RESEND_PREFIX, POST_LOGIN_RECOVERY_DEADLINE_MS, announcePostLoginRecovery, type PostLoginRecovery } from "./login-controller.js";
 import { runBeforeDeadline } from "./deadline.js";
 import { LoginWindowLock, type LoginWindowClaim } from "./login-window-lock.js";
@@ -1404,6 +1405,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // the next tunnel and says so, it does not block the fleet.
     this.announceToolPermissionsChange();
 
+    this.tightenInstanceDirectories();
+
     void reapStaleTunnel(this.dataDir)
       .then(outcome => {
         if (outcome.kind === "manual") this.logger.warn({ tunnel: outcome }, manualCleanupMessage(outcome));
@@ -1632,6 +1635,30 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   getInstanceDir(name: string): string {
     return join(this.dataDir, "instances", name);
+  }
+
+  /**
+   * One-time repair of what earlier versions left behind: instance directories (agent.token and the IPC
+   * socket live in them) created with the process umask — typically 0775, group-writable and traversable
+   * by everyone. They are made 0700 here, once, and said so once; new ones are born 0700 (ensureInstanceDir).
+   * Idempotent, so a restart that finds nothing to do logs nothing. Never throws.
+   */
+  private tightenInstanceDirectories(): void {
+    try {
+      const report = tightenInstanceDirs(this.dataDir);
+      if (report.tightened.length > 0) {
+        this.logger.info({
+          count: report.tightened.length,
+          modes: [...new Set(report.tightened.map(t => t.from))],
+        }, "Instance directories were open to other users; set to 0700 (they hold agent.token and the IPC socket)");
+      }
+      if (report.skipped.length > 0) {
+        this.logger.warn({ dirs: report.skipped.map(s => `${s.dir} (${s.why})`) },
+          "Could not tighten these instance directories — fix their owner/permissions by hand (chmod 700)");
+      }
+    } catch (err) {
+      this.logger.warn({ err }, "Instance directory permission check failed");
+    }
   }
 
   /** AgEnD package version (for the Settings "current version" / What's New). */

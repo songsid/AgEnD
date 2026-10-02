@@ -1,4 +1,5 @@
 import { dirname, join } from "node:path";
+import { ensureInstanceDir } from "../private-dir.js";
 import { homedir } from "node:os";
 import { execFileSync } from "node:child_process";
 import {
@@ -118,7 +119,7 @@ export class AntigravityBackend implements CliBackend {
   private writeMcpEnvWrapper(config: CliBackendConfig): void {
     const entry = Object.values(config.mcpServers)[0];
     if (!entry) return;
-    mkdirSync(this.instanceDir, { recursive: true });
+    ensureInstanceDir(this.instanceDir);
     const exports = Object.entries({ ...entry.env, AGEND_INSTANCE_NAME: config.instanceName })
       .map(([key, value]) => `export ${key}=${shellQuote(String(value))}`)
       .join("\n");

@@ -46,6 +46,9 @@ function makeLineParser(onMessage: (msg: unknown) => void, onOverflow?: () => vo
   };
 }
 
+/** Directories already reported, so a fleet of instances in one open directory warns once. */
+const warnedOpenParents = new Set<string>();
+
 export class IpcServer extends EventEmitter {
   private sockPath: string;
   private server: Server | null = null;
@@ -76,13 +79,18 @@ export class IpcServer extends EventEmitter {
       }
     }
 
-    // Warn if parent directory is world-readable
+    // The socket's own mode (0600) is the lock; the directory is the second one. This only reports — it
+    // must never chmod a directory it did not create (a socket path can be configured into /tmp). The
+    // owners of instance directories make them 0700 (ensureInstanceDir / the startup pass), so for those
+    // this stays silent; for a directory that is still open (not ours to fix) it says so once per
+    // directory per process, not once per instance start.
     try {
       const parentDir = dirname(this.sockPath);
       const parentMode = statSync(parentDir).mode & 0o777;
-      if (parentMode & 0o007) {
+      if ((parentMode & 0o027) !== 0 && !warnedOpenParents.has(parentDir)) {
+        warnedOpenParents.add(parentDir);
         this.logger?.warn({ dir: parentDir, mode: `0o${parentMode.toString(8)}` },
-          "IPC socket parent directory is world-accessible");
+          "IPC socket parent directory is open to group or other users (group-writable or world-accessible); restrict it with chmod 700");
       }
     } catch { /* stat may fail on some systems */ }
 
