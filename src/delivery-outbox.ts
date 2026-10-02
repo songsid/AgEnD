@@ -258,12 +258,14 @@ function mapRow(row: OutboxRow): OutboxDelivery {
   };
 }
 
-function safeErrorSummary(error: string | null): string | null {
+function safeErrorSummary(error: string | null, state?: OutboxState): string | null {
   if (!error) return null;
   const normalized = error.toLowerCase();
   if (normalized.includes("ttl expired")) return t("delivery.error_expired");
   if (normalized.includes("attempt limit")) return t("delivery.error_attempts");
   if (normalized.includes("reconcil") || normalized.includes("uncertain") || normalized.includes("restart") || normalized.includes("unverified") || normalized.includes("unverifiable")) {
+    // Retry guidance comes from the recorded outcome, not a historical diagnostic.
+    if (state && safeToRetry(state)) return t("delivery.error_recorded");
     return t("delivery.error_unconfirmed");
   }
   return t("delivery.error_recorded");
@@ -380,7 +382,7 @@ function queryStatusPage(
       created_at: row.created_at,
       updated_at: row.updated_at,
       status_summary: statusSummary(row.state),
-      error_summary: safeErrorSummary(row.last_error),
+      error_summary: safeErrorSummary(row.last_error, row.state),
       safe_to_retry: safeToRetry(row.state),
       // Text only for the explicit verification query (#856), and only to the
       // row's own source/target; every other query keeps #982's redaction.
@@ -1347,7 +1349,7 @@ export class DeliveryOutbox extends EventEmitter {
     // Keep raw phase/proof in last_error and attempt evidence; render a safe summary here.
     const payload = {
       type: "fleet_inbound",
-      content: t(`delivery.outcome_${outcome}`, parent.target_instance, safeErrorSummary(reason) ?? "", parent.operation_id, parent.delivery_id),
+      content: t(`delivery.outcome_${outcome}`, parent.target_instance, safeErrorSummary(reason, outcome) ?? "", parent.operation_id, parent.delivery_id),
       meta: {
         user: "AgEnD delivery outbox",
         user_id: "agend-system",

@@ -95,7 +95,12 @@ describe.each<Locale>(["en", "zh-TW"])("delivery notices in %s", locale => {
     expect(text).toContain(`delivery_id=${row.deliveryId}`);
     expect(text).toContain(locale === "en" ? (outcome === "uncertain" ? "Do not resend" : "Report this to the operator") : (outcome === "uncertain" ? "不要重送" : "請向操作者回報"));
     expect(outbox.get(row.deliveryId)).toMatchObject({ state: outcome, lastError: "best-effort-submission:unverified", payload: { content: "original message" } });
-    expect(outbox.queryStatusForInstance("sender", { deliveryId: row.deliveryId }).items[0]?.safe_to_retry).toBe(outcome === "failed");
+    const status = outbox.queryStatusForInstance("sender", { deliveryId: row.deliveryId }).items[0]!;
+    expect(status.safe_to_retry).toBe(outcome === "failed");
+    if (outcome === "failed") {
+      expect(text).not.toContain(locale === "en" ? "Do not resend" : "不要重送");
+      expect(status.error_summary).not.toContain(locale === "en" ? "Do not resend" : "不要重送");
+    }
   });
 
   it("localizes every status and error summary without exposing raw errors", () => {
@@ -105,8 +110,10 @@ describe.each<Locale>(["en", "zh-TW"])("delivery notices in %s", locale => {
     const states: OutboxState[] = ["queued", "delivering", "retry_wait", "submission_started", "reconciliation_pending", "delivered", "failed", "uncertain", "cancelled"];
     for (const state of states) {
       db.prepare("UPDATE deliveries SET state=?,reconciliation_pending=? WHERE delivery_id=?").run(state === "reconciliation_pending" ? "submission_started" : state, Number(state === "reconciliation_pending"), row.deliveryId);
+      db.prepare("UPDATE deliveries SET last_error=? WHERE delivery_id=?").run("best-effort-submission:unverified", row.deliveryId);
       const result = outbox.queryStatusForInstance("sender", { deliveryId: row.deliveryId }).items[0]!;
       readable(result.status_summary, locale);
+      if (result.safe_to_retry) expect(result.error_summary).not.toContain(locale === "en" ? "Do not resend" : "不要重送");
       expect(result.state).toBe(state);
       expect(result.safe_to_retry).toBe(["queued", "delivering", "retry_wait", "failed"].includes(state));
       if (state === "delivered") expect(result.status_summary).toContain(locale === "en" ? "does not mean the agent finished" : "不代表 agent 已處理完畢");
@@ -153,6 +160,7 @@ describe.each<Locale>(["en", "zh-TW"])("delivery notices in %s", locale => {
     readable(first, locale);
     expect(first).toContain(locale === "en" ? "could not be confirmed" : "無法確認");
     expect(first).toContain(`delivery_id=${row.deliveryId}`);
+    expect(first).toContain("target=worker");
     // Expiry creates a failed sender notice and a batch notice; do not alter either event.
     const expired = admit(outbox, "op-expiry");
     expect(outbox.expireStale(Date.parse(expired.createdAt!) + DURABLE_DELIVERY_MAX_AGE_MS + 1)).toBeGreaterThan(0);
