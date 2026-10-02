@@ -2,6 +2,7 @@ import { join, dirname, basename, resolve } from "node:path";
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, unlinkSync, rmSync, appendFileSync, statSync, chmodSync, renameSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
+import { ensureInstanceDir } from "./private-dir.js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import type { InstanceConfig, RotationSnapshot, RotationSnapshotEvent } from "./types.js";
@@ -186,7 +187,7 @@ export function readLastInboundAt(instanceDir: string, now = Date.now()): number
 
 /** Atomically persist the last real channel inbound timestamp. */
 export function writeLastInboundAt(instanceDir: string, timestamp: number): void {
-  mkdirSync(instanceDir, { recursive: true });
+  ensureInstanceDir(instanceDir);
   const target = join(instanceDir, LAST_INBOUND_FILE);
   const temp = `${target}.${process.pid}.tmp`;
   writeFileSync(temp, String(timestamp));
@@ -1802,7 +1803,7 @@ export class Daemon extends EventEmitter {
   }
 
   async start(): Promise<void> {
-    mkdirSync(this.instanceDir, { recursive: true });
+    ensureInstanceDir(this.instanceDir);
     writeFileSync(join(this.instanceDir, "daemon.pid"), String(process.pid));
     this.logger.info(`Starting ${this.name}`);
 
