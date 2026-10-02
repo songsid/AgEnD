@@ -18,6 +18,20 @@
   #sidebar { width: 240px; flex: 0 0 240px; background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
   /* The list scrolls; the filter stays pinned to the bottom of the sidebar. */
   #list { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+  /* The UA's default scrollbar is a light grey bar with arrows on this dark panel.
+     Tinted from the sidebar's own --dim; scoped to #list so the terminal's own
+     scrollbar (#term) is left alone. WebKit/Blink get the pseudo-elements (thin,
+     rounded, no arrows, a hover state); Chromium 121+ would ignore them if
+     scrollbar-color were also set, so the standard properties are Firefox-only. */
+  #list::-webkit-scrollbar { width: 10px; }
+  #list::-webkit-scrollbar-track { background: transparent; }
+  #list::-webkit-scrollbar-button { display: none; }
+  #list::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--dim) 35%, transparent); background-clip: padding-box; border: 2px solid transparent; border-radius: 5px; }
+  #list::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--dim) 70%, transparent); background-clip: padding-box; }
+  @supports (-moz-appearance: none) {
+    #list { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--dim) 35%, transparent) transparent; }
+    #list:hover { scrollbar-color: color-mix(in srgb, var(--dim) 70%, transparent) transparent; }
+  }
   #filterBar { flex: 0 0 auto; border-top: 1px solid var(--border); padding: 8px 10px 9px; background: var(--panel); }
   .filter-wrap { position: relative; display: flex; align-items: center; }
   .filter-wrap .filter-icon { position: absolute; left: 8px; width: 13px; height: 13px; color: var(--dim); pointer-events: none; }
