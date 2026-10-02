@@ -1,10 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "node:events";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { LoginController, type LoginControllerDeps, type LoginChat, type LoginTunnelPort } from "../src/login-controller.js";
 import { LoginWindowLock } from "../src/login-window-lock.js";
 import { setLocale, t } from "../src/locale.js";
-import type { ManagedStartResult } from "../src/tunnel/manager.js";
-import type { TunnelHandle, TunnelStartContext, TunnelStopResult } from "../src/tunnel/types.js";
+import { ManagedTunnel, type ManagedStartResult } from "../src/tunnel/manager.js";
+import { leasePath } from "../src/tunnel/lease.js";
+import { TunnelStartError, type TunnelHandle, type TunnelProvider, type TunnelStartContext, type TunnelStopResult } from "../src/tunnel/types.js";
 import type { WebTerminalEvents, WebTerminalResult, WebTerminalSpec } from "../src/web-terminal.js";
 
 /**
@@ -601,5 +605,65 @@ describe("the provider's own sign-in URL and code stay out of a public-link logi
     expect(said).toContain("ABCD-EFGH");
     expect(said).toContain("<tg-spoiler>");
     await controller.cancel();
+  });
+});
+
+describe("the real ManagedTunnel behind the controller: a lease that cannot be written, a child that cannot be proven dead", () => {
+  const dirs: string[] = [];
+  afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
+
+  /** ENOSPC-ish: a directory where the lease file goes makes every write after the first fail. */
+  function breakLease(dir: string): void { rmSync(leasePath(dir), { recursive: true, force: true }); mkdirSync(leasePath(dir)); }
+
+  function withManaged(provider: TunnelProvider) {
+    const dataDir = mkdtempSync(join(tmpdir(), "agend-login-tunnel-"));
+    dirs.push(dataDir);
+    const managed = new ManagedTunnel({ dataDir, probe: () => ({ kind: "gone" }) });
+    const port: LoginTunnelPort = { start: ctx => managed.start(provider, ctx), stop: reason => managed.stop(reason) };
+    return { managed, dataDir, tunnel: { port, calls: { ctx: [] as TunnelStartContext[], stops: [] as string[], stoppedBeforeStartSettled: [] as boolean[] }, die: () => {} } };
+  }
+  const stuckHandle = (dataDir: string): TunnelHandle => ({
+    ...okHandle(),
+    pid: 4242, identity: "linux:777",
+    stop: async () => ({ confirmed: false, reason: "did not exit", pid: 4242, identity: "linux:777" }),
+  });
+  const provider = (start: (ctx: TunnelStartContext) => Promise<TunnelHandle>): TunnelProvider => ({
+    name: "fake", preflight: async () => ({ ok: true as const, binaryPath: "/bin/true" }), start,
+  });
+
+  async function expectUnconfirmedAnnouncedNotClosed(made: ReturnType<typeof withManaged>) {
+    const adapter = adapterOf("discord");
+    const ctl = make({ config: ON, tunnel: made.tunnel as never });
+    await ctl.controller.start("kiro-cli", chat(adapter), CONFIRMED_TUNNEL);
+
+    const events = ctl.events.map(e => e[0]);
+    expect(events).toContain("login_web_tunnel_unconfirmed");
+    expect(events).not.toContain("login_web_tunnel_closed");              // never "closed" for a child that may still run
+    expect(all(adapter.sendText)).toContain("4242");                       // the warning names the pid …
+    expect(all(adapter.sendText)).not.toContain(TUNNEL_HOST);              // … and still none of the provider's words
+    expect(ctl.lock.isHeld).toBe(false);
+    // The manager still answers honestly, and further tunnels stay blocked.
+    expect(await made.managed.stop("again")).toMatchObject({ confirmed: false, pid: 4242, identity: "linux:777" });
+    const next = await made.managed.start(provider(async () => okHandle()), {
+      sid: "x", origin: new URL("http://127.0.0.1:1"), pagePath: "/", readinessMarker: "m", expiresAt: Date.now() + 60_000, signal: new AbortController().signal,
+    });
+    expect(next).toMatchObject({ ok: false, errorKind: "lease-held", leaseHeld: true });
+  }
+
+  it("(a) the provider hands over a handle, the second lease write fails, and that tunnel cannot be stopped", async () => {
+    let dir = "";
+    const made = withManaged(provider(async () => { breakLease(dir); return stuckHandle(dir); }));
+    dir = made.dataDir;
+    await expectUnconfirmedAnnouncedNotClosed(made);
+  });
+
+  it("(b) the start fails leaving a child it cannot prove dead, and the lease write fails too", async () => {
+    let dir = "";
+    const made = withManaged(provider(async () => {
+      breakLease(dir);
+      throw new TunnelStartError("readiness-failed", `never ready at ${TUNNEL_HOST}`, { pid: 4242, identity: "linux:777" });
+    }));
+    dir = made.dataDir;
+    await expectUnconfirmedAnnouncedNotClosed(made);
   });
 });

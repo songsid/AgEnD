@@ -1011,3 +1011,46 @@ describe("the default readiness probe is bounded when it falls back to the syste
     expect((err as TunnelStartError).message).toContain("too large");
   }, 15_000);
 });
+
+describe("a child that could not be proven dead stays unconfirmed — it is not forgotten when the handle is dropped", () => {
+  const stuck = async () => ({ confirmed: false as const, reason: "did not exit", pid: 4242, identity: "linux:777" });
+
+  it("every later stop() says unconfirmed, with the pid and identity that were recorded", async () => {
+    const dir = tempDir();
+    const managed = new ManagedTunnel({ dataDir: dir, probe: () => ({ kind: "gone" }) });
+    await managed.start(fakeProvider({ start: async () => handleStub(4242, "linux:777", stuck) }), context());
+
+    const first = await managed.stop("login ended");
+    const second = await managed.stop("login ended again");
+
+    expect(first).toEqual({ confirmed: false, reason: "did not exit", pid: 4242, identity: "linux:777" });
+    expect(second).toEqual(first);                           // not `confirmed: true` because `active` is now empty
+    expect(await managed.stop("third")).toEqual(first);
+  });
+
+  it("the same holds for a failed start that left a child it could not prove dead", async () => {
+    const dir = tempDir();
+    const managed = new ManagedTunnel({ dataDir: dir, probe: () => ({ kind: "gone" }) });
+    const started = await managed.start(fakeProvider({
+      start: async () => { throw new TunnelStartError("readiness-failed", "never ready", { pid: 4242, identity: "linux:777" }); },
+    }), context());
+    expect(started).toMatchObject({ ok: false, leaseHeld: true });
+
+    expect(await managed.stop("cleanup")).toMatchObject({ confirmed: false, pid: 4242, identity: "linux:777" });
+  });
+
+  it("a stop with nothing ever running is still simply confirmed", async () => {
+    const managed = new ManagedTunnel({ dataDir: tempDir(), probe: () => ({ kind: "gone" }) });
+    expect(await managed.stop("nothing")).toEqual({ confirmed: true });
+  });
+
+  it("a lease that cannot be written, followed by a stop that cannot be proven, keeps the identity too", async () => {
+    const dir = tempDir();
+    const managed = new ManagedTunnel({ dataDir: dir, probe: () => ({ kind: "gone" }) });
+    const result = await managed.start(fakeProvider({
+      start: async () => { breakLease(dir); return handleStub(4242, "linux:777", stuck); },
+    }), context());
+    expect(result).toMatchObject({ ok: false, leaseHeld: true });
+    expect(await managed.stop("cleanup")).toEqual({ confirmed: false, reason: "did not exit", pid: 4242, identity: "linux:777" });
+  });
+});

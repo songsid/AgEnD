@@ -39,6 +39,12 @@ export class ManagedTunnel {
   private active: TunnelHandle | null = null;
   /** Set when a stop could not be proven; blocks every later start in this process. */
   private blocked: string | null = null;
+  /**
+   * What is known about a child we could not prove dead: its pid, its fingerprint and why we could not tell.
+   * Kept — not cleared with `active` — so that EVERY later stop() answers "unconfirmed, and here is who", never
+   * "confirmed" just because the handle is no longer held. Same lifetime as `blocked`: until a human resolves it.
+   */
+  private unconfirmed: { reason: string; pid: number | null; identity: string | null } | null = null;
 
   constructor(private readonly opts: ManagedTunnelOptions) {}
 
@@ -133,6 +139,11 @@ export class ManagedTunnel {
         } catch (leaseErr) {
           this.log(`Could not record the unconfirmed tunnel in the lease: ${(leaseErr as Error).message}`);
         }
+        this.unconfirmed = {
+          reason: "a tunnel process could not be confirmed stopped after a failed start",
+          pid: startError.unconfirmed.pid,
+          identity: startError.unconfirmed.identity,
+        };
         this.blocked = `A tunnel process could not be confirmed stopped after a failed start`
           + `${startError.unconfirmed.pid !== null ? ` (pid ${startError.unconfirmed.pid})` : ""}. `
           + "No new tunnel will be opened until it is resolved.";
@@ -188,13 +199,18 @@ export class ManagedTunnel {
    */
   async stop(reason: string): Promise<TunnelStopResult> {
     const handle = this.active;
-    if (!handle) return { confirmed: true };
+    if (!handle) {
+      // No handle is not the same as nothing running: a child we could not prove dead stays unconfirmed, with the
+      // pid and identity we recorded, however many times and from however many callers this is asked.
+      return this.unconfirmed ? { confirmed: false, ...this.unconfirmed } : { confirmed: true };
+    }
     const result = await handle.stop(reason);
     this.active = null;
     if (result.confirmed) {
       clearLease(this.opts.dataDir);
       return result;
     }
+    this.unconfirmed = { reason: result.reason, pid: result.pid, identity: result.identity };
     this.blocked = `A tunnel could not be confirmed closed`
       + `${result.pid !== null ? ` (pid ${result.pid})` : ""}: ${result.reason}. `
       + "No new tunnel will be opened until it is resolved.";
