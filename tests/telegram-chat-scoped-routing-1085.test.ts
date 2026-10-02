@@ -228,3 +228,74 @@ describe("RoutingEngine keeps every owner of a topic id (#1085)", async () => {
     expect(r.resolve("1")).toEqual({ kind: "general", name: "g" });
   });
 });
+
+describe("a registered Telegram forum ClassicBot keeps the topic end to end (#1085 review)", async () => {
+  const { ClassicChannelManager } = await import("../src/classic-channel-manager.js");
+  const pino = (await import("pino")).default;
+
+  async function classicFleet() {
+    const s = setup();
+    s.classic.mockRestore(); // the real ClassicBot handler from here on
+    vi.spyOn(ClassicChannelManager, "logMessage").mockImplementation(() => {});
+    vi.spyOn(s.fm as any, "getRecentChatLog").mockReturnValue("");
+    vi.spyOn(s.fm as any, "sendCancelButton").mockResolvedValue(undefined);
+    const cm = new ClassicChannelManager(dir, pino({ level: "silent" }) as any);
+    cm.setPrimaryAdapterId("tg");
+    cm.register(FOREIGN_GROUP, "tg", "classic-fish", "魚機組", "owner", "claude-code");
+    s.fm.classicChannels = cm;
+    return s;
+  }
+
+  async function replyAs(fm: FleetManager, meta: Record<string, string>) {
+    await (fm as any).handleOutboundFromInstance("classic-fish", {
+      type: "fleet_outbound", tool: "reply", requestId: 1, adapterId: meta.adapter_id,
+      args: { chat_id: meta.chat_id, thread_id: meta.thread_id, text: "回覆" },
+    });
+  }
+
+  it("a message in topic 30 of the group: delivery meta, reply context and the real reply all keep topic 30", async () => {
+    const { fm, deliver } = await classicFleet();
+    await feed(fm, tgMsg({ chatId: FOREIGN_GROUP, threadId: "30", text: "@fleetbot hello" }));
+    expect(deliveredTo(deliver)).toEqual(["classic-fish"]);
+    const meta = (deliver.mock.calls[0][1] as any).meta;
+    expect(meta).toMatchObject({ chat_id: FOREIGN_GROUP, thread_id: "30" });
+    expect((fm as any).lastInboundMsg.get("classic-fish")).toMatchObject({ chatId: FOREIGN_GROUP, threadId: "30" });
+    await replyAs(fm, meta);
+    const send = (fm.worlds.get("tg") as any).adapter.sendText;
+    await vi.waitFor(() => expect(send).toHaveBeenCalled());
+    expect(send.mock.calls[0][0]).toBe(FOREIGN_GROUP);
+    expect(send.mock.calls[0][2]).toMatchObject({ threadId: "30" });
+  });
+
+  it("a threadless Telegram ClassicBot group is unchanged: the reply goes to the chat with no thread", async () => {
+    const { fm, deliver } = await classicFleet();
+    await feed(fm, tgMsg({ chatId: FOREIGN_GROUP, threadId: undefined, text: "@fleetbot hello" }));
+    const meta = (deliver.mock.calls[0][1] as any).meta;
+    expect(meta.thread_id).toBe(FOREIGN_GROUP); // the registry key, as before
+    await replyAs(fm, meta);
+    const send = (fm.worlds.get("tg") as any).adapter.sendText;
+    await vi.waitFor(() => expect(send).toHaveBeenCalled());
+    expect(send.mock.calls[0][0]).toBe(FOREIGN_GROUP);
+    expect(send.mock.calls[0][2]?.threadId).toBeUndefined();
+  });
+});
+
+describe("a Discord ClassicBot still replies only in its own channel (#1085 review)", async () => {
+  const { ClassicChannelManager } = await import("../src/classic-channel-manager.js");
+  const pino = (await import("pino")).default;
+  it("a thread_id naming another channel is cleared, as before", async () => {
+    const { fm } = setup({ discord: true });
+    const cm = new ClassicChannelManager(dir, pino({ level: "silent" }) as any);
+    cm.setPrimaryAdapterId("dc");
+    cm.register("dc-chan", "dc", "classic-dc", "room", "owner", "claude-code");
+    fm.classicChannels = cm;
+    await (fm as any).handleOutboundFromInstance("classic-dc", {
+      type: "fleet_outbound", tool: "reply", requestId: 1, adapterId: "dc",
+      args: { chat_id: "guild", thread_id: "some-other-channel", text: "hi" },
+    });
+    const send = (fm.worlds.get("dc") as any).adapter.sendText;
+    await vi.waitFor(() => expect(send).toHaveBeenCalled());
+    expect(send.mock.calls[0][0]).toBe("dc-chan");
+    expect(send.mock.calls[0][2]?.threadId).toBeUndefined();
+  });
+});

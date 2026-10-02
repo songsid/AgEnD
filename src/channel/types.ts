@@ -205,6 +205,13 @@ export interface InboundMessage {
   adapterId: string;
   chatId: string;
   threadId?: string;
+  /**
+   * #1085: the platform thread the message really came from, when `threadId`
+   * has been set to a ClassicBot registry key (a Telegram chat id). A
+   * registered Telegram forum group keys its ClassicBot by chat id, but the
+   * agent's reply belongs in the topic it was asked in.
+   */
+  transportThreadId?: string;
   messageId: string;
   userId: string;
   username: string;

@@ -5903,7 +5903,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           // TG ClassicBot: group requires @mention, private chat forwards directly.
           if (!isPrivateChat && !isBotMentioned) {
             // No trigger: save attachments + react, log, but don't forward to agent
-            const syntheticMsg = { ...msg, threadId: chatId, text: rawText.startsWith("/") ? "" : rawText };
+            const syntheticMsg = { ...msg, threadId: chatId, transportThreadId: msg.threadId || undefined, text: rawText.startsWith("/") ? "" : rawText };
             await this.handleClassicChannelMessage(classicName, syntheticMsg);
             return;
           }
@@ -5917,7 +5917,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             await msgAdapter?.sendText(chatId, t("cmd.admin_required", "/raw"));
             return;
           }
-          const syntheticMsg = { ...msg, threadId: chatId, text: `/chat ${cleanText}` };
+          const syntheticMsg = { ...msg, threadId: chatId, transportThreadId: msg.threadId || undefined, text: `/chat ${cleanText}` };
           await this.handleClassicChannelMessage(classicName, syntheticMsg);
           return;
         }
@@ -6256,8 +6256,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const classicChannelId = this.classicChannels?.getChannelIdByInstance(senderInstanceName ?? instanceName);
     if (classicChannelId) {
       args.chat_id = classicChannelId;
-      delete args.thread_id;
-      threadId = undefined;
+      // #1085: a Telegram forum ClassicBot replies in the topic it was asked
+      // in. Any other thread_id (threadless Telegram, where it echoes the chat
+      // id, or a Discord channel) is still cleared, as before.
+      const topic = typeof args.thread_id === "string" ? args.thread_id : "";
+      const telegram = (contextWorld?.adapter ?? outAdapter)?.type === "telegram";
+      if (telegram && topic && topic !== classicChannelId) {
+        threadId = topic;
+      } else {
+        delete args.thread_id;
+        threadId = undefined;
+      }
     }
 
     // Reply dedup: retries land here when the agent was told a send failed
@@ -11766,9 +11775,12 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   private async forwardToClassicInstance(
     instanceName: string,
     text: string,
-    msg: { chatId: string; threadId?: string; messageId: string; userId: string; username: string; source: string; timestamp: Date; replyToText?: string; adapterId?: string },
+    msg: { chatId: string; threadId?: string; transportThreadId?: string; messageId: string; userId: string; username: string; source: string; timestamp: Date; replyToText?: string; adapterId?: string },
     extraMeta?: Record<string, string>,
   ): Promise<void> {
+    // #1085: a Telegram forum ClassicBot is keyed by chat id (threadId), but the
+    // reply context must carry the topic the message was really asked in.
+    const replyThreadId = msg.transportThreadId ?? msg.threadId;
     // Resolve the channel/adapter from the instance itself so per-channel context
     // config is correct even for a same-channel second bot.
     const ctxAdapterId = this.classicChannels?.getAdapterIdByInstance(instanceName);
@@ -11785,7 +11797,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       user: msg.username,
       user_id: msg.userId,
       ts: msg.timestamp.toISOString(),
-      thread_id: msg.threadId ?? "",
+      thread_id: replyThreadId ?? "",
       ...(msg.adapterId ? { adapter_id: msg.adapterId } : {}),
       source: msg.source,
       ...extraMeta,
@@ -11824,7 +11836,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     }
     this.lastInboundUser.set(instanceName, msg.username);
     this.logger.info(`${msg.username} → ${instanceName} (classic): ${text.slice(0, 100)}`);
-    this.trackInboundMsg(instanceName, msg);
+    this.trackInboundMsg(instanceName, { ...msg, threadId: replyThreadId });
     void this.sendCancelButton(instanceName);
   }
 
