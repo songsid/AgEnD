@@ -1737,10 +1737,10 @@ export class Daemon extends EventEmitter {
    * daemon's own state only; it never inspects the pane itself.
    */
   notAcceptingReason(): string | null {
-    if (this.pauseWakeState !== "active") return `it is ${this.pauseWakeState}`;
-    if (this.inputBlockedDialogKey !== null) return `a dialog is holding its input (${this.inputBlockedDialogKey})`;
-    if (this.authFailureUnresolved) return "its login is failing";
-    if (this.instanceState === "stuck") return "the CLI looks stuck";
+    if (this.pauseWakeState !== "active") return t("delivery.hold_state", this.pauseWakeState);
+    if (this.inputBlockedDialogKey !== null) return t("delivery.hold_dialog", this.inputBlockedDialogKey);
+    if (this.authFailureUnresolved) return t("delivery.hold_auth");
+    if (this.instanceState === "stuck") return t("delivery.hold_stuck");
     return null;
   }
 

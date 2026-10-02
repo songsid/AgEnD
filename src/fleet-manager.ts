@@ -904,7 +904,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (event.deliveryId && (event.state === "failed" || event.state === "uncertain")) {
         const row = outbox.get(event.deliveryId);
         if (row && row.kind !== "delivery_outcome_notice" && row.kind !== "post_restart_outcome_notice") {
-          const notice = `Durable delivery ${row.state}: operation_id=${row.operationId}; target=${row.targetInstance}; delivery_id=${row.deliveryId}.`;
+          const notice = t(`delivery.fleet_${row.state}`, row.targetInstance, row.operationId, row.deliveryId);
           this.logger.error({ deliveryId: row.deliveryId, operationId: row.operationId, target: row.targetInstance, state: row.state }, notice);
           this.notifyFleetError(notice);
         }
@@ -925,7 +925,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.scheduleDeliveryOutboxPump();
       this.wakeCoordinator?.kick();
       if (event.count) this.notifyFleetError(
-        `${event.count} durable delivery row(s) reached the 24-hour outbox bound; ${event.uncertain ?? 0} unresolved submissions are uncertain and sender notices were queued.`,
+        t("delivery.expired", event.count, event.uncertain ?? 0),
       );
     });
     this.scheduleDeliveryOutboxPump();
@@ -1253,7 +1253,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           && current.targetDaemonBootId === claimed.targetDaemonBootId
           && current.managerBootId === claimed.managerBootId) {
           this.notifyFleetError(
-            `Durable delivery to ${claimed.targetInstance} is still waiting after ${Math.round(DURABLE_DELIVERY_LANE_ALERT_MS / 60_000)} minutes; the same daemon generation retains delivery ${deliveryId}'s lane until it reports or is replaced.`,
+            t("delivery.lane_waiting", claimed.targetInstance, Math.round(DURABLE_DELIVERY_LANE_ALERT_MS / 60_000), deliveryId),
           );
         }
       }, DURABLE_DELIVERY_LANE_ALERT_MS);
@@ -5119,6 +5119,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           const targetInstance = String(msg.targetInstance ?? name);
           const correlationId = String(msg.correlationId ?? "unknown");
           const error = String(msg.error ?? "unknown delivery failure");
+          const displayError = error.replace(/^delivery failed: phase=(.*); proof=(.*)$/,
+            (_match, phase: string, proof: string) => t("delivery.pane_failure", phase, proof));
           const senderInstance = this.instanceIpcClients.has(senderSession)
             ? senderSession
             : this.sessionRegistry.get(senderSession);
@@ -5129,12 +5131,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           });
           if (senderInstance) {
             this.notifyInstanceTopic(senderInstance, t(
-              "cross_instance.delivery_failed_notice", targetInstance, error, correlationId,
+              "cross_instance.delivery_failed_notice", targetInstance, displayError, correlationId,
             ));
             void this.deliverToInstance(senderInstance, {
               type: "fleet_inbound",
               targetSession: senderSession,
-              content: t("cross_instance.delivery_failed_agent", targetInstance, error, correlationId),
+              content: t("cross_instance.delivery_failed_agent", targetInstance, displayError, correlationId),
               meta: {
                 chat_id: "",
                 message_id: `delivery-failed-${Date.now()}`,

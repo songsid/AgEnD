@@ -77,7 +77,7 @@ describe("safety net 1: remind the owner (#926)", () => {
     expect(outbox.remindReplyObligations("reviewer", { now: at(59), graceMs: 60_000, reason: "turn-ended" })).toBe(0);
     expect(outbox.remindReplyObligations("reviewer", { now: at(61), graceMs: 60_000, reason: "turn-ended" })).toBe(1);
     expect(outbox.remindReplyObligations("reviewer", { now: at(600), graceMs: 60_000, reason: "turn-ended" })).toBe(0);
-    expect(notices(outbox)).toEqual([{ target: "reviewer", cid: "cid-925", text: expect.stringMatching(/^\[system:reply-pending\] Your turn ended without answering leader \(correlation_id cid-925.*report_result.*terminal does not reach them/) }]);
+    expect(notices(outbox)).toEqual([{ target: "reviewer", cid: "cid-925", text: expect.stringMatching(/^\[system:reply-pending\] Your turn ended without answering leader.*report_result.*terminal text does not reach them\.\ncorrelation_id=cid-925/) }]);
     expect(outbox.getReplyObligation("cid-925", "leader", "reviewer")?.nudgedAt).toBe(at(61).toISOString());
     outbox.close();
   });
@@ -99,7 +99,7 @@ describe("safety net 1: remind the owner (#926)", () => {
     const restart = at(958);  // the 21:25:51 fleet restart, relative to the 21:09:53 ask
     expect(outbox.remindReplyObligations("reviewer", { now: restart, graceMs: 0, reason: "restart", since: restart })).toBe(1);
     expect(outbox.remindReplyObligations("reviewer", { now: at(960), graceMs: 0, reason: "restart", since: restart })).toBe(0);
-    expect(notices(outbox).at(-1)!.text).toMatch(/^\[system:reply-pending\] A restart interrupted your work on correlation_id cid-925 from leader/);
+    expect(notices(outbox).at(-1)!.text).toMatch(/^\[system:reply-pending\] A restart interrupted your work for leader.*report_result.*\ncorrelation_id=cid-925/);
     outbox.close();
   });
 
@@ -124,7 +124,7 @@ describe("safety net 2: tell the requester (#926)", () => {
     expect(outbox.notifyOverdueReplyObligations({ now: at(61 + 15 * 60), overdueMs: minutes(15), ownerIdle: idle })).toBe(1);
     expect(outbox.notifyOverdueReplyObligations({ now: at(99_999), overdueMs: minutes(15), ownerIdle: idle })).toBe(0);
     expect(notices(outbox).at(-1)).toEqual({ target: "leader", cid: "cid-925",
-      text: expect.stringMatching(/^\[system:reply-overdue\] reviewer has not answered correlation_id cid-925 .*reminded .*describe_instance or delivery_status/) });
+      text: expect.stringMatching(/^\[system:reply-overdue\] reviewer has not replied.*describe_instance or delivery_status.*\ncorrelation_id=cid-925; asked=.*; reminded=/) });
     outbox.close();
   });
 
@@ -223,7 +223,7 @@ describe("the #925 shape: the whole process dies mid-review (#926)", () => {
     const { fm, outbox } = quietFleet(root);
     expect(outbox.getReplyObligation("cid-925", "leader", "reviewer")).toMatchObject({ state: "open" });
     fm.onDaemonReady("reviewer", "reviewer-boot-after-restart");
-    expect(notices(outbox)).toEqual([expect.objectContaining({ target: "reviewer", cid: "cid-925", text: expect.stringMatching(/A restart interrupted your work on correlation_id cid-925 from leader/) })]);
+    expect(notices(outbox)).toEqual([expect.objectContaining({ target: "reviewer", cid: "cid-925", text: expect.stringMatching(/A restart interrupted your work for leader.*\ncorrelation_id=cid-925/) })]);
     outbox.close();
   }, 30_000);
 });
@@ -255,7 +255,7 @@ describe("a reminder reaches the owner's pane through the real dispatcher and Da
     vi.spyOn(fm, "waitForDurableLaneRelease").mockReturnValue(Promise.resolve());
     await fm.dispatchDurableDelivery(claimed);
     await vi.waitFor(() => expect(pasted.length).toBeGreaterThan(0), { timeout: 10_000 });
-    expect(pasted[0]).toContain("[system:reply-pending] Your turn ended without answering leader (correlation_id cid-925");
+    expect(pasted[0]).toContain("[system:reply-pending] Your turn ended without answering leader.");
     outbox.close();
   }, 20_000);
 });

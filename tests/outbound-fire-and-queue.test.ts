@@ -170,8 +170,8 @@ describe("cross-instance tools are fire-and-queue", () => {
 
       expect(error).toBeUndefined();
       expect(result).toMatchObject({ sent: true, queued: true, delivery_mode: "idle_queue" });
-      expect(result.warning).toContain(`'${backend}' backend cannot accept mid-turn input`);
-      expect(result.warning).toContain("safely queued for idle delivery");
+      expect(result.warning).toContain(`${backend} cannot accept mid-turn input`);
+      expect(result.warning).toContain("queued for when it is idle");
       expect(ctx.deliverToInstance).toHaveBeenCalledWith(
         "target",
         expect.objectContaining({ type: "fleet_inbound", content: "correction" }),
@@ -189,7 +189,7 @@ describe("cross-instance tools are fire-and-queue", () => {
 
     expect(error).toBeUndefined();
     expect(result).toMatchObject({ sent: true, queued: true, delivery_mode: "idle_queue" });
-    expect(result.warning).toContain("target backend could not be confirmed");
+    expect(result.warning).toContain("could not confirm the recipient's backend");
     expect(ctx.deliverToInstance).toHaveBeenCalledWith(
       "target",
       expect.objectContaining({ type: "fleet_inbound", content: "correction" }),
@@ -225,7 +225,7 @@ describe("cross-instance tools are fire-and-queue", () => {
 
     expect(error).toBeUndefined();
     expect(result).toMatchObject({ sent: true, queued: true, delivery_mode: "idle_queue" });
-    expect(result.warning).toContain("external sessions cannot be targeted safely");
+    expect(result.warning).toContain("External sessions cannot safely receive mid-turn input");
     expect(ctx.deliverToInstance).toHaveBeenCalledWith(
       "target",
       expect.objectContaining({
@@ -247,8 +247,8 @@ describe("cross-instance tools are fire-and-queue", () => {
 
     expect(error).toBeUndefined();
     expect(result).toMatchObject({ sent: true, queued: true, delivery_mode: "idle_queue" });
-    expect(result.warning).toContain("previous message to this target is still queued");
-    expect(result.warning).toContain("would overtake it");
+    expect(result.warning).toContain("previous message is still queued");
+    expect(result.warning).toContain("keep the message order");
     expect(ctx.deliverToInstance).toHaveBeenCalledWith(
       "target",
       expect.objectContaining({ type: "fleet_inbound", content: "supplement" }),
@@ -436,5 +436,46 @@ describe("cross-instance tools are fire-and-queue", () => {
     expect(result.sent_to).toEqual(["a", "b"]);
     expect(result.failed).toEqual(["ghost"]);
     expect(Date.now() - started).toBeLessThan(1_000);
+  });
+});
+
+
+describe.each(["en", "zh-TW"] as const)("delivery replies in %s", locale => {
+  beforeEach(() => setLocale(locale));
+  it("localizes admission failure and status errors", async () => {
+    const ctx = makeContext({ deliver: neverSettles() });
+    ctx.admitDurableDelivery = () => { throw new Error("storage offline"); };
+    const admission = await callTool("send_to_instance", ctx, { instance_name: "target", message: "hello" });
+    expect(admission.result).toBeNull();
+    expect(admission.error).toContain(locale === "en" ? "Could not accept the message" : "無法收下");
+    expect(admission.error).not.toContain("Durable delivery");
+    const unavailable = await callTool("delivery_status", ctx, { delivery_id: "d-test" });
+    expect(unavailable.error).toBe(locale === "en" ? "Delivery status is unavailable" : "目前無法查詢送達狀態");
+    ctx.queryDurableDeliveryStatus = () => ({ items: [], next_cursor: null });
+    const missing = await callTool("delivery_status", ctx, { delivery_id: "d-test" });
+    expect(missing.error).toContain("Delivery not found");
+    if (locale === "zh-TW") expect(missing.error).toContain("找不到");
+  });
+  it("localizes steer and recipient warnings without claiming confirmed delivery", async () => {
+    const ctx = makeContext({ deliver: neverSettles() });
+    ctx.fleetConfig.instances.target.backend = "kiro-cli";
+    ctx.lifecycle.daemons.set("target", { isErrorState: true, isCrashLoop: false, lastErrorType: "auth_error" });
+    const { result, error } = await callTool("send_to_instance", ctx, { instance_name: "target", message: "hello", steer: true });
+    expect(error).toBeUndefined();
+    expect(result).toMatchObject({ sent: true, queued: true });
+    expect(result.warning).toContain(locale === "en" ? "cannot accept mid-turn input" : "不支援工作中插話");
+    expect(result.warning).toContain(locale === "en" ? "authentication error" : "登入失敗");
+    expect(result.warning).not.toContain("Message delivered");
+  });
+  it("localizes legacy retry exhaustion notices to both topics", async () => {
+    const ctx = makeContext({ deliver: async () => { throw new Error("target offline"); } });
+    const { result } = await callTool("send_to_instance", ctx, { instance_name: "target", message: "hello" });
+    expect(result).toMatchObject({ queued: true });
+    await vi.waitFor(() => expect(ctx.notifyInstanceTopic).toHaveBeenCalledTimes(2));
+    for (const [, text] of ctx.notifyInstanceTopic.mock.calls) {
+      expect(text).toContain(locale === "en" ? "could not be delivered after 3 attempts" : "嘗試 3 次後仍未送達");
+      expect(text.split("\n")[0]).not.toContain("correlation_id");
+      expect(text).toContain("correlation_id=");
+    }
   });
 });

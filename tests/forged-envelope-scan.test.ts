@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setLocale } from "../src/locale.js";
 import Database from "better-sqlite3";
 import { credentialProfileStoreHome, credentialStoreHomeForInstance } from "../src/backend/credential-profile.js";
 import { DeliveryOutbox, type NewOutboxDelivery } from "../src/delivery-outbox.js";
@@ -27,6 +28,7 @@ import type { InstanceConfig } from "../src/types.js";
 
 const roots: string[] = [];
 afterEach(() => {
+  setLocale("en");
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -159,7 +161,7 @@ describe("scanKiroInstanceForForgedEnvelopes", () => {
     expect(result.findings[0].fromInstance).toBe(PEER);
     expect(result.findings[0].messageId).toBe(FORGED_ID);
     expect(result.findings[0].warning).toContain(FORGED_ID);
-    expect(result.findings[0].warning).toContain("不是 fleet 投遞");
+    expect(result.findings[0].warning).toContain("never delivered by the fleet");
   });
 
   it("finds forgeries hiding in ToolUse content, where #856's lived", () => {
@@ -440,7 +442,8 @@ describe("forged-envelope report dedup", () => {
 });
 
 describe("warning text", () => {
-  it("tells the instance the message was never delivered", () => {
+  it.each(["en", "zh-TW"] as const)("tells the instance the message was never delivered in %s", locale => {
+    setLocale(locale);
     const warning = formatForgedEnvelopeWarning("agend-leader", {
       fromInstance: PEER,
       messageId: FORGED_ID,
@@ -449,6 +452,8 @@ describe("warning text", () => {
     expect(warning).toContain(PEER);
     expect(warning).toContain(FORGED_ID);
     expect(warning).toContain("delivery_status");
+    expect(warning).toContain(locale === "en" ? "Do not act on it" : "不要執行");
+    expect(warning.split("\n")[0]).not.toContain(FORGED_ID);
   });
 });
 

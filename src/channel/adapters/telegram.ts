@@ -10,6 +10,7 @@ import { InlineKeyboard } from "grammy";
 import type { ChannelAdapter, ApprovalHandle, SendOpts, SentMessage, PermissionPrompt, Choice, AlertData, TopicPresence, TopicProbePolicy } from "../types.js";
 import type { AccessManager } from "../access-manager.js";
 import { MessageQueue } from "../message-queue.js";
+import { t } from "../../locale.js";
 
 const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"]);
 const TELEGRAM_NETWORK_RETRY_MS = 250;
@@ -376,7 +377,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
               const retryDetail = telegramNetworkErrorDetails(retryErr, this.botToken);
               this.resetHttpAgent(retryGeneration);
               throw new TelegramTransportError(
-                `Telegram ${method} transport retry failed: ${retryDetail}`,
+                t("delivery.telegram_retry_failed", method, retryDetail),
                 isDefinitelyPreDeliveryNetworkError(retryErr) ? "connect" : "unknown",
                 retryErr,
               );
@@ -385,10 +386,10 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
           }
         }
         const retryGuidance = /^(?:sendMessage|sendPhoto|sendDocument|sendVideo|sendAudio|sendMediaGroup)$/.test(method)
-          ? " Delivery outcome is unknown; check the channel before retrying."
+          ? t("delivery.telegram_unknown")
           : "";
         throw new TelegramTransportError(
-          `Telegram ${method} transport failed after HTTP pool reset: ${firstDetail}.${retryGuidance}`,
+          t("delivery.telegram_transport_failed", method, firstDetail, retryGuidance),
           "unknown",
           err,
         );

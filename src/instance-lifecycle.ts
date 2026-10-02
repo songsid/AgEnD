@@ -1461,7 +1461,7 @@ export class InstanceLifecycle {
         this.ctx.logger.warn({ name, ...reconciled }, "Some durable submissions need operator reconciliation");
       }
       if (!reconciled.safeToStart) {
-        const message = `Instance '${name}' remains stopped because its previous CLI window could not be confirmed retired during durable delivery reconciliation`;
+        const message = t("delivery.restart_blocked", name);
         this.ctx.logger.error({ name, ...reconciled }, message);
         this.ctx.notifyFleetError?.(message);
         await daemon.abortStartup().catch(err =>

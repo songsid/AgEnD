@@ -13,6 +13,7 @@
  * Active only for targets whose `delivery_worker` is `wake_only` or `on`;
  * `off` (the default) leaves every path as it was.
  */
+import { t } from "./locale.js";
 import type { DeliveryWorkerMode } from "./types.js";
 import type { OutboxDelivery } from "./delivery-outbox.js";
 import type { PauseReason } from "./pause-marker.js";
@@ -262,7 +263,7 @@ export class WakeCoordinator {
         if (this.deps.pauseReason(target) === "auth") {
           if (!s.authNoticeSent) {
             s.authNoticeSent = true;
-            this.deps.notifyTarget(target, `⏸️ ${target} is paused because its login failed; ${waiting.length} queued message(s) are waiting. Fix the login and /wake it.`);
+            this.deps.notifyTarget(target, t("delivery.wake_auth", target, waiting.length));
           }
           continue;
         }
@@ -306,7 +307,7 @@ export class WakeCoordinator {
       const reason = this.deps.notAcceptingReason(target);
       if (reason) {
         s.claimBlockNoticeSent = true;
-        this.deps.notifyTarget(target, `⚠️ ${target} has ${waiting.length} queued message(s) waiting ${Math.round(headAge / 60_000)} min: ${reason}.`);
+        this.deps.notifyTarget(target, t("delivery.wake_waiting", target, waiting.length, Math.round(headAge / 60_000), reason));
       }
     }
   }
@@ -350,7 +351,7 @@ export class WakeCoordinator {
       this.deps.logger.warn({ target, failures: s.failures, retryInMs: delay, err: message }, "Wake for queued durable work failed; rows stay queued");
       if (s.failures >= WAKE_FAILURE_NOTICE_AFTER && !s.failureNoticeSent) {
         s.failureNoticeSent = true;
-        const text = `⚠️ ${target} could not be woken (${s.failures} attempts): ${message}. ${waiting.length} message(s) are still queued and will be retried.`;
+        const text = t("delivery.wake_failed", target, s.failures, waiting.length, message);
         this.deps.notifyTarget(target, text);
         for (const source of new Set(waiting.map(r => r.sourceInstance))) {
           if (source && source !== target && source !== "agend-system") this.deps.notifySender(source, text);

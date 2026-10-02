@@ -69,7 +69,7 @@ describe("delivery_status query access", () => {
       correlationId: "shared-correlation", limit: 1, cursor: firstPage.next_cursor!,
     });
     expect(secondPage.items).toMatchObject([
-      { delivery_id: third.deliveryId, error_summary: "A delivery error was recorded; details are omitted for safety." },
+      { delivery_id: third.deliveryId, error_summary: "A delivery error was recorded; check the logs for details." },
     ]);
     expect(secondPage.next_cursor).toBeNull();
     expect(outbox.queryStatusForInstance("worker", { operationId: "op-visible-1" }).items)

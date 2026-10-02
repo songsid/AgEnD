@@ -23,6 +23,15 @@ import { encodeOperationError, encodeOperationSuccess } from "./mcp-operation-re
 import { buildMcpCoreInstructions } from "../instructions.js";
 import { reconnectDelayMs } from "./reconnect-backoff.js";
 import { mcpTimeoutMs } from "./ipc-timeouts.js";
+import { loadRawFleetConfig } from "../config.js";
+import { getAgendHome } from "../paths.js";
+import { detectLocale, setLocale } from "../locale.js";
+
+// This CLI child has its own locale module; use the same selection as the fleet.
+setLocale(detectLocale());
+try {
+  setLocale(detectLocale(loadRawFleetConfig(join(getAgendHome(), "fleet.yaml"))));
+} catch { /* missing or malformed config: keep timezone-based selection */ }
 
 // ---------------------------------------------------------------------------
 // Configuration

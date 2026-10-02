@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import pino from "pino";
 import { Daemon } from "../src/daemon.js";
+import { setLocale } from "../src/locale.js";
 import { DeliveryOutbox } from "../src/delivery-outbox.js";
 import { reconcileTargetBeforeStart } from "../src/delivery-reconciliation.js";
 import { FleetManager } from "../src/fleet-manager.js";
@@ -596,7 +597,8 @@ describe("MCP durable response delivery tracking", () => {
     }
   });
 
-  it("keeps a target fenced when reconciliation cannot confirm the old window is retired", async () => {
+  it.each(["en", "zh-TW"] as const)("keeps a target fenced and explains the closed-window check in %s", async locale => {
+    setLocale(locale);
     const root = mkdtempSync(join(tmpdir(), "agend-outbox-start-fence-"));
     roots.push(root);
     const dbPath = join(root, "delivery-outbox.db");
@@ -639,11 +641,13 @@ describe("MCP durable response delivery tracking", () => {
     const start = vi.spyOn(Daemon.prototype, "start").mockResolvedValue();
     const notify = vi.spyOn(manager as any, "notifyFleetError");
     try {
-      await expect(manager.lifecycle.start("worker", config, false)).rejects.toThrow("could not be confirmed retired");
+      await expect(manager.lifecycle.start("worker", config, false)).rejects.toThrow(locale === "en" ? "could not confirm that its previous CLI window closed" : "無法確認先前的 CLI 視窗已關閉");
       expect(start).not.toHaveBeenCalled();
       expect(replacementStore.get(row.deliveryId)).toMatchObject({ state: "uncertain", reconciliationPending: false });
       expect(notify).toHaveBeenCalledOnce();
+      expect(String(notify.mock.calls[0]![0])).not.toContain("durable delivery reconciliation");
     } finally {
+      setLocale("en");
       vi.restoreAllMocks();
       replacementStore.close();
     }
