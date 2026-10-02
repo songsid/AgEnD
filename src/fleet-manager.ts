@@ -7718,18 +7718,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * Settings picker (#1005/#1021), so an agent and an operator see one truth.
    */
   async listEmojisFor(instanceName: string, refresh = false): Promise<Record<string, unknown>> {
-    const self = this.fleetConfig?.instances[instanceName];
-    if (!self) return { error: this.personaEmojiMissing(instanceName) };
+    // Seeing is not setting: a ClassicBot instance has no per-instance stamp,
+    // but it reacts in its own channel like any bot and must be able to see
+    // the emojis it can use (only set_persona_emoji refuses it).
+    // Own entries only: an inherited name (constructor, __proto__, toString…)
+    // is not a fleet instance, as set_persona_emoji already holds.
+    const self = this.ownInstanceConfig(instanceName);
+    const classic = !self && this.isClassicPersonaTarget(instanceName);
+    if (!self && !classic) return { error: this.personaEmojiMissing(instanceName) };
     const worldId = this.getInstanceAdapterId(instanceName);
     const { platform } = this.resolveStatusEmojisFor(instanceName);
     const channel = (worldId ? this.worlds.get(worldId)?.channelConfig : undefined) ?? this.getChannelConfig(worldId ?? undefined);
-    const current = previewStatusEmojis({ platform, platformConfig: channel?.options?.status_emojis, instanceConfig: self.status_emojis });
+    const current = previewStatusEmojis({ platform, platformConfig: channel?.options?.status_emojis, instanceConfig: self?.status_emojis });
     const out: Record<string, unknown> = {
       platform: platform ?? null,
       statuses: current.entries.map(e => ({ status: e.key, value: e.value, source: e.source })),
       standard: platform === "telegram"
         ? { reactions: [...TELEGRAM_REACTION_EMOJIS], note: "Telegram reacts only with these; progress_prefix may be any single emoji" }
         : { suggestions: STATUS_EMOJI_SUGGESTIONS, note: "any single emoji works" },
+      ...(classic ? { note: "ClassicBot instances have no per-instance status emojis: the statuses above are the connection's, which an operator sets in Settings. You can still use any emoji listed here in your own reactions." } : {}),
     };
     if (platform === "discord" && worldId) {
       const listed = await this.listGuildEmojis(worldId, refresh);
@@ -7761,8 +7768,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * from that listed emoji's numeric id. Static PNG, size-capped, cached by id.
    */
   async previewEmojis(instanceName: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
-    const self = this.fleetConfig?.instances[instanceName];
-    if (!self) return { error: this.personaEmojiMissing(instanceName) };
+    // Seeing, like list_emojis: ClassicBot instances may preview too.
+    if (!this.ownInstanceConfig(instanceName) && !this.isClassicPersonaTarget(instanceName)) {
+      return { error: this.personaEmojiMissing(instanceName) };
+    }
     const wanted = args.emojis;
     if (!Array.isArray(wanted) || wanted.length === 0 || wanted.some(e => typeof e !== "string")) {
       return { error: "emojis is required: a list of <:name:id> values from list_emojis" };
@@ -7892,6 +7901,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.logger.info({ instanceName, status, value: value ?? null }, value ? "Persona emoji set" : "Persona emoji cleared");
     const resolved = this.resolveStatusEmojisFor(instanceName);
     return { status, value: value ?? null, now: resolved[status], status_emojis: current.status_emojis ?? null };
+  }
+
+  /** A ClassicBot instance: it may see (list/preview) emojis, never set a per-instance stamp. */
+  private isClassicPersonaTarget(instanceName: string): boolean {
+    return this.classicChannels?.getAll().some(c => c.instanceName === instanceName) ?? false;
   }
 
   private personaEmojiMissing(instanceName: string): string {
