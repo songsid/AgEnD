@@ -46,3 +46,13 @@ opencode.json
 .kiro/skills/
 soul.md
 CLAUDE.md
+
+# Working files that fleet instances leave in a checkout. None of them is
+# source; a `git add -A` in a dev worktree would otherwise commit them.
+# AgEnD writes AGENTS.md into a Codex instance's working directory.
+AGENTS.md
+.artifacts/
+.review-*/
+.codex*-*/
+HANDOVER*.md
+raw/
