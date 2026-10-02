@@ -1,0 +1,45 @@
+  >_ OpenAI Codex (v0.160.0)
+     /home/user/project
+
+  Shall we see where this goes?
+
+  Tip: Maximize usage with GPT-6.1 Sol. Try it on complex work for near-Astra performance at a lower cost.
+
+
+› hello
+
+
+• ok
+
+  Worked for <1s • 16:03
+
+
+› again
+
+
+• ok
+
+  Worked for 9s • 16:03
+
+
+› third
+
+
+• ok
+
+⚠ Heads up, you have less than 5% of your weekly limit left. Run /status for a breakdown.
+
+⚠ Heads up, you have less than 5% of your 5h limit left. Run /status for a breakdown.
+
+  Worked for <1s • 16:03
+
+
+  Approaching rate limits
+  Switch to gpt-6-luna for lower credit usage?
+
+
+› 1. Switch to gpt-6-luna                   Fast and affordable model for easier tasks.
+  2. Keep current model
+  3. Keep current model (never show again)  Hide future rate limit reminders about switching models
+
+  enter select · esc back

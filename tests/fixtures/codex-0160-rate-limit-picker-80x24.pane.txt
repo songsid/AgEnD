@@ -1,0 +1,24 @@
+
+
+• ok
+
+⚠ Heads up, you have less than 5% of your weekly limit left. Run /status for a
+  breakdown.
+
+⚠ Heads up, you have less than 5% of your 5h limit left. Run /status for a
+  breakdown.
+
+  Worked for <1s • 16:35
+
+
+  Approaching rate limits
+  Switch to gpt-6-luna for lower credit usage?
+
+
+› 1. Switch to gpt-6-luna                   Fast and affordable model for easier
+                                            tasks.
+  2. Keep current model
+  3. Keep current model (never show again)  Hide future rate limit reminders
+                                            about switching models
+
+  enter select · esc back
