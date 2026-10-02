@@ -306,10 +306,10 @@ zsh 需要先初始化補全系統。如果 `~/.zshrc` 裡還沒有 `autoload -U
 
 | 指令 | 作用 |
 |---|---|
-| `/status` | Fleet 狀態、context 用量、花費 |
+| `/status` | Fleet 表格：backend、model、context、推理強度、花費、執行狀態 |
 | `/restart` | 就地重啟所有 instance，程序不結束 |
 | `/update` | 更新 AgEnD 到最新版 |
-| `/sysinfo` | 版本、負載、IPC 狀態 |
+| `/sysinfo` | 版本、負載、IPC 狀態、各 backend CLI 版本 |
 | `/pause` | 暫停某個 instance |
 | `/wake` | 喚醒暫停中的 instance |
 

@@ -11,7 +11,7 @@
   "hero": {
     "tagline": "你的 AI 艦隊，",
     "taglineAccent": "一則訊息掌控。",
-    "subtitle": "Agent Engineering Daemon — 從 Telegram 或 Discord 管理 AI 編碼 Agent。6 種後端、艦隊模式、Agent 協作、零維護。",
+    "subtitle": "Agent Engineering Daemon — 從 Telegram 或 Discord 管理 AI 編碼 Agent。7 種後端、艦隊模式、Agent 協作、零維護。",
     "cta": "快速開始",
     "github": "GitHub",
     "badges": "macOS · Linux · Windows (WSL) · MIT 授權"
@@ -60,7 +60,7 @@
       {
         "icon": "shuffle",
         "name": "多 Backend",
-        "desc": "Claude Code、Codex、Antigravity、Kiro CLI、Grok、OpenCode，自由切換或混用。"
+        "desc": "Claude Code、Codex、Antigravity、Kiro CLI、Grok、Meta Muse Code、OpenCode，自由切換或混用。"
       },
       {
         "icon": "users",
@@ -215,6 +215,10 @@
         "by": "xAI"
       },
       {
+        "name": "Meta Muse Code",
+        "by": "Meta"
+      },
+      {
         "name": "OpenCode",
         "by": "Community"
       }
@@ -230,7 +234,7 @@
       },
       {
         "q": "支援哪些 backend？",
-        "a": "Claude Code、OpenAI Codex、Antigravity CLI、Kiro CLI、Grok Build、OpenCode。也可以透過 CliBackend interface 自行擴充。"
+        "a": "Claude Code、OpenAI Codex、Antigravity CLI、Kiro CLI、Grok Build、Meta Muse Code、OpenCode。也可以透過 CliBackend interface 自行擴充。"
       },
       {
         "q": "支援哪些通訊管道？",

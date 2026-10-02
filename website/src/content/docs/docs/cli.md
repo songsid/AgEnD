@@ -306,10 +306,10 @@ These run in the chat app, in the General topic, and are admin-only:
 
 | Command | What it does |
 |---|---|
-| `/status` | Fleet status, context usage, costs |
+| `/status` | Fleet table: backend, model, context, effort, cost, state |
 | `/restart` | Restart every instance in place, without exiting the process |
 | `/update` | Update AgEnD to the latest version |
-| `/sysinfo` | Version, load, IPC status |
+| `/sysinfo` | Version, load, IPC status, each backend CLI's version |
 | `/pause` | Pause an instance |
 | `/wake` | Wake a paused instance |
 

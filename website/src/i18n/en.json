@@ -11,7 +11,7 @@
   "hero": {
     "tagline": "Your AI fleet,",
     "taglineAccent": "one chat away.",
-    "subtitle": "Agent Engineering Daemon — manage coding agents from Telegram or Discord. 6 backends, fleet mode, agent collaboration, zero babysitting.",
+    "subtitle": "Agent Engineering Daemon — manage coding agents from Telegram or Discord. 7 backends, fleet mode, agent collaboration, zero babysitting.",
     "cta": "Get Started",
     "github": "GitHub",
     "badges": "macOS · Linux · Windows (WSL) · MIT License"
@@ -60,7 +60,7 @@
       {
         "icon": "shuffle",
         "name": "Multi-Backend",
-        "desc": "Claude Code, Codex, Antigravity, Kiro CLI, Grok, OpenCode. Switch or mix freely."
+        "desc": "Claude Code, Codex, Antigravity, Kiro CLI, Grok, Meta Muse Code, OpenCode. Switch or mix freely."
       },
       {
         "icon": "users",
@@ -215,6 +215,10 @@
         "by": "xAI"
       },
       {
+        "name": "Meta Muse Code",
+        "by": "Meta"
+      },
+      {
         "name": "OpenCode",
         "by": "Community"
       }
@@ -230,7 +234,7 @@
       },
       {
         "q": "Which backends are supported?",
-        "a": "Claude Code, OpenAI Codex, Antigravity CLI, Kiro CLI, Grok Build, and OpenCode. Add your own via the CliBackend interface."
+        "a": "Claude Code, OpenAI Codex, Antigravity CLI, Kiro CLI, Grok Build, Meta Muse Code, and OpenCode. Add your own via the CliBackend interface."
       },
       {
         "q": "Which messaging channels?",

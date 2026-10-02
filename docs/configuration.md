@@ -115,6 +115,8 @@ All fields from `instances.<name>` can be set here as shared defaults. Additiona
 | `scheduler.retry_interval_ms` | number | — | Schedule retry interval |
 | `webhooks` | WebhookConfig[] | — | Outbound webhook notifications |
 | `warm_cap` | number | `0` (unlimited) | Fleet-wide cap on simultaneously warm (running) instances. When the running count exceeds it, the least-recently-active idle instance is auto-paused. `general` instances are never evicted. Complementary to `auto_pause_after` (time-based). |
+| `warm_overflow` | number | `2` | With `delivery_worker` set to `wake_only` or `on`, how far `warm_cap` may be exceeded to wake a target that has queued work. No effect when `warm_cap` is `0` |
+| `delivery_worker` | `"off"` \| `"wake_only"` \| `"on"` | `"off"` | Phase 2 delivery owner (2.1.9). `off` keeps every delivery path as before. `wake_only` wakes a paused target when cross-instance work is queued for it. `on` (canary) also hands that target's delivery lane to a per-instance worker. Can be overridden per instance (`instances.<name>.delivery_worker`) |
 | `progress_min_elapsed` | number | `30` | Seconds before the live-progress line / cancel button starts showing elapsed time. |
 | `max_cross_instance_message_bytes` | number | `12288` | Maximum UTF-8 byte size of a cross-instance message body. Oversized messages are rejected with guidance to shorten them or send a file path. |
 | `locale` | `"en"` \| `"zh-TW"` | auto-detects from timezone | UI/notification language for user-facing text. |
@@ -133,13 +135,13 @@ All fields from `instances.<name>` can be set here as shared defaults. Additiona
 | `topic_id` | number \| string | auto-created | Telegram topic ID or Discord thread ID |
 | `channel_id` | string | — | Bound channel adapter ID (for multi-channel) |
 | `general_topic` | boolean | `false` | Mark as General dispatcher instance |
-| `backend` | string | `"claude-code"` | CLI backend: `claude-code`, `codex`, `opencode`, `kiro-cli`, `antigravity`, `grok`, `gemini-cli` (⚠️ deprecated) |
-| `kiro_ui` | `"legacy"` \| `"tui"` \| `"v3"` | `"legacy"` | Kiro-only launch mode. `tui` uses Kiro's current default UI; `v3` opts into the experimental v3 agent. |
+| `backend` | string | `"claude-code"` | CLI backend: `claude-code`, `codex`, `opencode`, `kiro-cli`, `antigravity`, `grok`, `muse`, `gemini-cli` (⚠️ deprecated) |
+| `kiro_ui` | `"legacy"` \| `"tui"` | `"legacy"` | Kiro-only launch mode. `tui` uses Kiro's current default UI. `"v3"` is refused by validation until Kiro's v3 interface can run unattended (#849). |
 | `model` | string | — | Model override (format depends on backend) |
 | `model_failover` | string[] | — | Ordered fallback models on rate limit |
 | `auto_pause_after` | number | `0` (disabled) | Minutes idle before auto-pause. 0 = disabled. |
-| `agent_mode` | `"mcp"` \| `"cli"` | `"mcp"` | Communication mode (`"cli"` for antigravity) |
-| `tool_set` | string | `"worker"` | Tool profile: `"worker"` (the default — talk, read, do the work), `"coordinator"` (worker plus the verbs that run the fleet: create/delete/restart instances, teams, schedules), `"full"` (every tool), `"standard"` (18), `"minimal"` (4). Not user-settable: `"general"` (dispatcher profile) is assigned internally to General instances only — setting it by hand fails validation. |
+| `agent_mode` | `"mcp"` \| `"cli"` | `"mcp"` | Communication mode. `"mcp"` is the default for every backend, Antigravity included; `"cli"` opts into `agend-agent` HTTP commands |
+| `tool_set` | string | `"worker"` | Tool profile: `"worker"` (the default — talk, read, do the work), `"coordinator"` (worker plus the verbs that run the fleet: create/delete/restart instances, teams, schedules), `"full"` (every tool), `"standard"` (26), `"minimal"` (7). Not user-settable: `"general"` (dispatcher profile) is assigned internally to General instances only — setting it by hand fails validation. |
 | `tool_progress` | `"off"` \| `"standard"` \| `"verbose"` | `"off"` | Tool-activity detail shown in the channel's processing bubble. `standard` shows semantic labels with no shell arguments; `verbose` adds truncated command previews. Opt-in — the bubble broadcasts activity into the channel. |
 | `effort` | string | — | Default reasoning effort for this instance (`low`/`medium`/`high`/`xhigh`/`max`, clamped per backend). Runtime override via the `/effort` command — see [commands.md](./commands.md). |
 | `backend_options` | object | — | Per-backend options keyed by backend name, e.g. `{ codex: { provider: "glm" } }`. See **Credential profiles** below for `credential_profile`. |

@@ -21,7 +21,7 @@ Claude：→ create_schedule(cron: "0 9 * * *", message: "檢查需要審核的�
 
 ## Crash Recovery
 
-監控 CLI 的狀態行 (status line) JSON 以取得 context 使用量指標（用於儀表板和日誌）。所有 CLI 後端（Claude Code、Codex、Gemini CLI、OpenCode、Kiro CLI）都有內建的 auto-compact 來處理 context 限制 — AgEnD 不會根據 context 使用量或 session 存留時間觸發重啟。
+監控 CLI 的狀態行 (status line) JSON 以取得 context 使用量指標（用於儀表板和日誌）。所有 CLI 後端（Claude Code、Codex、OpenCode、Kiro CLI、Antigravity CLI、Grok Build、Meta Muse Code）都有內建的 auto-compact 來處理 context 限制 — AgEnD 不會根據 context 使用量或 session 存留時間觸發重啟。
 
 當 CLI 程序崩潰時，daemon 的健康檢查偵測到死掉的 tmux 視窗並：
 
@@ -167,15 +167,13 @@ defaults:
 
 ## Fleet 狀態 (Fleet status)
 
-在 General 主題中使用 `/status` 查看即時概覽：
+在 General 主題中使用 `/status` 查看即時概覽，每個 instance 一列：
 
 ```
-🟢 proj-a — ctx 42%, $3.20 today
-🟢 proj-b — ctx 67%, $8.50 today
-⏸ proj-c — paused (cost limit)
-
-Fleet: $11.70 / $50.00 daily
+| instance | Backend | Model | Context | 推理強度 | 花費 | 執行狀態 |
 ```
+
+執行狀態欄把暫停、停止、當機與執行中的狀態合併顯示；Model 是目前實際使用的模型，與 `/ctx` 顯示的相同。`agend ls` 使用相同的狀態圖示。（2.1.9 起移除 IPC 欄。）
 
 ## 每日摘要 (Daily summary)
 
@@ -429,7 +427,7 @@ AgEnD 不寫入任何 Codex state，也不搬移 session 檔；session 與 lock 
 
 - Claude Code → `CLAUDE.md`
 - Codex → `AGENTS.md`
-- Gemini CLI → `GEMINI.md`
+- Gemini CLI（已停用）→ `GEMINI.md`
 - Kiro CLI → `.kiro/steering/project.md`
 - OpenCode → 直接使用 MCP instructions
 
@@ -439,13 +437,13 @@ AgEnD 不寫入任何 Codex state，也不搬移 session 檔；session 與 lock 
 
 ## Antigravity CLI 後端
 
-AgEnD 支援 Google 的 Antigravity CLI（`agy`）作為後端。由於 agy 不支援 MCP，預設以 CLI 模式（`agent_mode: cli`）運作 — 使用 `agend-agent` 指令進行 fleet 通訊。
+AgEnD 支援 Google 的 Antigravity CLI（`agy`）作為後端。它跟其他後端一樣預設使用 MCP；若要改用 `agend-agent` 指令進行 fleet 通訊，設定 `agent_mode: cli`。
 
 ```yaml
 instances:
   my-agent:
     backend: antigravity
-    # agent_mode 預設為 "cli"（antigravity 後端）
+    # agent_mode 預設為 "mcp"；設為 "cli" 可改用 agend-agent 指令
 ```
 
 ### Workspace 處理
@@ -456,11 +454,21 @@ Agy 拒絕在隱藏路徑（如 `~/.agend/`）下運作。當 workspace 位於�
 
 Agy 的「Do you trust this folder?」提示會在啟動時自動 dismiss。
 
+## Meta Muse Code 後端
+
+Meta Muse Code（`muse`）自 2.1.6 起作為正式後端支援。
+
+```yaml
+instances:
+  my-muse:
+    backend: muse
+```
+
+用 `curl -fsSL https://api.meta.ai/muse-launcher.sh | bash`（或 `/install-cli muse`）安裝，再用 `muse login` 登入。`/login` 目前還不支援 muse。Muse 收到新訊息時會併入正在執行的 turn，而不是排隊，所以 `/steer` 可以使用（已在 muse 1.3.0 驗證）。`/clear` 會開始新對話。訂閱用量會從 muse 的回應串流轉送到 `/usage`。
+
 ## Grok Build 後端
 
-Grok Build（`grok`）已作為正式後端支援。
-
-AgEnD 支援 xAI 的 Grok Build CLI 作為後端。
+AgEnD 支援 xAI 的 Grok Build CLI（`grok`）作為正式後端。Grok CLI 需要 1.0.13 以上：較舊的版本會被伺服器拒絕（HTTP 426），AgEnD 會提示操作者執行 `grok update`。
 
 ```yaml
 instances:
@@ -551,6 +559,14 @@ instances:
 ## 平行 Instance 停止
 
 Instance 關閉使用併發數 5 加速 `agend fleet stop` 和 `agend stop`。systemd timeout 相應延長，防止大型 fleet 關閉時被過早終止。
+
+自 2.1.9 起，systemd unit 使用 `KillMode=mixed`：systemd 只對 fleet 送訊號，再由 fleet 依序結束每個 CLI。在此之前，所有 CLI 會在同一瞬間收到 SIGTERM，WSL 上的 kiro-cli 每次都會 abort 並寫出約 1GB 的 core dump（#908）。`agend restart` 會替舊的 unit 補上這一行。
+
+## 喚醒有排隊工作的暫停 instance（`delivery_worker`）
+
+自 2.1.9 起，重啟一個暫停中的 instance 會把它喚醒，而且被喚醒的 instance 會保持清醒直到排隊的工作做完（來自其他 instance 的工作也算活動）。同一個 instance 的啟動、停止、喚醒、重啟一次只會跑一個。
+
+在 2.1.9 以前，傳給一個跨 fleet 重啟仍保持暫停的 instance 的跨 instance 訊息，會一直排隊到有人手動喚醒它。選用設定 `delivery_worker` 解決這個問題：`off`（預設）維持原本的投遞路徑；`wake_only` 會在有排隊工作時喚醒暫停中的目標（走跟 `/wake` 相同的路徑、失敗會退避重試、連續三次失敗通知雙方 topic、不會喚醒因登入失敗而暫停的 instance）；`on`（canary）另外讓一個專屬 worker 負責該目標的投遞，等 CLI 可以接受輸入後一次交付一則。設為 `wake_only` 或 `on` 時，`defaults.warm_overflow`（預設 2）是為了喚醒排隊目標，`warm_cap` 最多可以超出的數量。
 
 ## Beta 更新頻道
 

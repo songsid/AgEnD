@@ -71,6 +71,8 @@ Telegram 吃 `topic_probe`，預設 `on-demand`：只有在實際送訊息失敗
 |---|---|---|---|
 | `locale` | `en` \| `zh-TW` | 依時區判斷 | 使用者看到的文字語言 |
 | `warm_cap` | number | `0`（無限） | 同時執行的 instance 上限。超過時，最久沒動作的 idle instance 會被自動暫停。General instance 永遠不會被踢 |
+| `delivery_worker` | `off` \| `wake_only` \| `on` | `off` | `wake_only` 會在有其他 instance 的工作排隊時喚醒暫停中的 instance；`on`（canary）另外給它一個專屬的投遞 worker。可逐 instance 設定 |
+| `warm_overflow` | number | `2` | 設為 `wake_only` 或 `on` 時，為了喚醒有排隊工作的 instance，`warm_cap` 最多可以超出的數量 |
 | `max_cross_instance_message_bytes` | number | `12288` | 跨 instance 訊息本文的大小上限。超過會被拒絕，並建議改傳檔案路徑 |
 | `progress_min_elapsed` | number | `30` | 即時進度列開始顯示經過時間前的秒數 |
 | `startup.concurrency` | number | `10` | 同時啟動的 instance 數 |
@@ -123,8 +125,8 @@ instances:
 | `startup_timeout_ms` | number | `25000` | 給 CLI 啟動的時間 |
 | `log_level` | string | `info` | `debug`、`info`、`warn`、`error` |
 | `lightweight` | boolean | `false` | 跳過非必要子系統 |
-| `agent_mode` | `mcp` \| `cli` | `mcp` | antigravity 用 `cli` |
-| `kiro_ui` | `legacy` \| `tui` \| `v3` | `legacy` | Kiro 啟動模式 |
+| `agent_mode` | `mcp` \| `cli` | `mcp` | `cli` 改用 agend-agent 指令取代 MCP |
+| `kiro_ui` | `legacy` \| `tui` | `legacy` | Kiro 啟動模式（`v3` 在能無人值守執行前會被拒絕） |
 | `worktree_source` | string | — | 用 git worktree 時的原始 repo |
 | `cost_guard` | CostGuardConfig | — | 單一 instance 的上限，覆寫 fleet 的 |
 | `restart_policy.max_retries` | number | `10` | 放棄前的 crash 重啟次數 |
@@ -142,7 +144,7 @@ instances:
 | `worker` | 預設 | 跟人和同儕說話、讀 fleet、把工作做完、替自己排程 |
 | `coordinator` | `tool_set: coordinator` | worker 再加上經營 fleet 的動詞：建立、刪除、重啟 instance、team、替其他 instance 排程 |
 | `full` | `tool_set: full` | 所有工具 |
-| `standard` / `minimal` | 手動設定 | 22 個 / 4 個工具 |
+| `standard` / `minimal` | 手動設定 | 26 個 / 7 個工具 |
 
 `general` 是指派給 General instance 的，不能手動設定 — 手寫會驗證失敗。
 

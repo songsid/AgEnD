@@ -61,12 +61,10 @@ defaults:
 在 General topic 打 `/status` 看錢花到哪去：
 
 ```
-🟢 proj-a — ctx 42%, $3.20 today
-🟢 proj-b — ctx 67%, $8.50 today
-⏸ proj-c — paused (cost limit)
-
-Fleet: $11.70 / $50.00 daily
+| instance | Backend | Model | Context | 推理強度 | 花費 | 執行狀態 |
 ```
+
+每個 instance 一列。執行狀態欄把暫停、停止、當機和目前在做什麼合併顯示。
 
 同樣的內容預設每天 21:00 會發一份摘要。
 
@@ -159,9 +157,9 @@ teams:
 |---|---|
 | Claude Code | 整合最完整 |
 | OpenAI Codex | 有原生輸入佇列；支援 session resume |
-| Kiro CLI | `kiro_ui` 可選 legacy、tui 或 v3 agent |
-| Antigravity CLI | 跑在 `agent_mode: cli` |
-| Grok Build | |
+| Kiro CLI | `kiro_ui` 可選 legacy 或 tui；v3 尚未支援 |
+| Antigravity CLI | 預設 MCP；設 `agent_mode: cli` 可改用 agend-agent 指令 |
+| Grok Build | 需要 Grok CLI 1.0.13 以上（`grok update`） |
 | Meta Muse Code | Escape 是取消；Ctrl+C 是離開 |
 | OpenCode | |
 | Gemini CLI | 2026-06-18 起已棄用 |
