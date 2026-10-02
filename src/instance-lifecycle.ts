@@ -1824,9 +1824,10 @@ export class InstanceLifecycle {
       this.ctx.instanceIpcClients.delete(name);
     }
 
-    // Remove from routing table
+    // Remove from routing table (this instance only: #1085, another Telegram
+    // world may own the same topic number)
     if (config.topic_id != null) {
-      this.ctx.routing.unregister(config.topic_id);
+      this.ctx.routing.unregister(config.topic_id, name);
     }
 
     // Remove from fleet config and save
@@ -2070,7 +2071,7 @@ export class InstanceLifecycle {
       }
       if (newInstanceName && this.ctx.fleetConfig?.instances[newInstanceName]) {
         delete this.ctx.fleetConfig.instances[newInstanceName];
-        if (createdTopicId) this.ctx.routing.unregister(createdTopicId);
+        if (createdTopicId) this.ctx.routing.unregister(createdTopicId, newInstanceName);
         this.ctx.saveFleetConfig();
       }
       if (createdTopicId) {
@@ -2157,7 +2158,7 @@ export class InstanceLifecycle {
     if (oldIpc) { await oldIpc.close(); this.ctx.instanceIpcClients.delete(instanceName); }
 
     // 4. Remove old config + routing (so new instance can reuse the name/topic)
-    if (topicId != null) this.ctx.routing.unregister(topicId);
+    if (topicId != null) this.ctx.routing.unregister(topicId, instanceName);
     delete this.ctx.fleetConfig!.instances[instanceName];
     this.ctx.saveFleetConfig();
 
