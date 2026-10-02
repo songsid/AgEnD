@@ -120,6 +120,13 @@ export const DEFAULT_STATE_SAFETY_SWEEP_MS = 60_000;
 export const PERIODIC_REDRAW_PROBE_MS = 25;
 /** Do not turn a streaming Codex turn into one capture-pane per burst. */
 export const STRUCTURED_IDLE_PROBE_MS = 500;
+/**
+ * An instance publishing more than this many execution-state edges inside the
+ * window is flapping; its edges stop being logged one by one (#1116). One
+ * flapping muse wrote 89,532 of the fleet's 91,000 state-change lines.
+ */
+export const STATE_EDGE_LOG_BURST = 10;
+export const STATE_EDGE_LOG_WINDOW_MS = 60_000;
 /** How long an unrecognised-but-empty composer must stay unchanged before it counts as idle (#978). */
 export const UNKNOWN_LAYOUT_STABLE_MS = 10_000;
 /** A foreground server/port-forward should hand control back or be acknowledged. */
@@ -1222,6 +1229,10 @@ export class Daemon extends EventEmitter {
   /** Consecutive structural idle captures for a noisy, periodically-redrawing
    * pane.  Two are required before a working -> idle transition. */
   private instanceStatePeriodicIdleConfirmations = 0;
+  /** Recent execution-state edge times, for the flap log limiter (#1116). */
+  private stateEdgeTimes: number[] = [];
+  private stateEdgesNotLogged = 0;
+  private stateEdgeSummaryAt = 0;
   /** #978: last unrecognised-but-empty-composer capture and since when it has been unchanged. */
   private unknownLayoutPaneKey: string | null = null;
   private unknownLayoutStableSince = 0;
@@ -3915,6 +3926,40 @@ export class Daemon extends EventEmitter {
     }
   }
 
+  /**
+   * One line per edge, until the instance is flapping. The edges themselves are
+   * still published to every observer; only the log is limited, so the next
+   * flap cannot bury the fleet log the way #1116 did. The first suppressed edge
+   * warns once (that is the signal worth reading), and a summary follows every
+   * window while it lasts and at the first edge after it calms.
+   */
+  private logStateEdge(previous: InstanceState, snapshot: InstanceStateSnapshot): void {
+    const now = Date.now();
+    this.stateEdgeTimes.push(now);
+    while (this.stateEdgeTimes.length && this.stateEdgeTimes[0] <= now - STATE_EDGE_LOG_WINDOW_MS) this.stateEdgeTimes.shift();
+    const edges = this.stateEdgeTimes.length;
+    const fields = { previousState: previous, state: snapshot.state, unchangedForMs: snapshot.unchangedForMs };
+    if (edges <= STATE_EDGE_LOG_BURST) {
+      if (this.stateEdgesNotLogged > 0) {
+        this.logger.info({ notLogged: this.stateEdgesNotLogged }, "Instance execution state edges were not logged while it was flapping");
+        this.stateEdgesNotLogged = 0;
+      }
+      this.logger.info(fields, "Instance execution state changed");
+      return;
+    }
+    if (this.stateEdgesNotLogged === 0) {
+      this.stateEdgeSummaryAt = now;
+      this.logger.warn({ edgesInWindow: edges, windowMs: STATE_EDGE_LOG_WINDOW_MS, backend: this.backend?.binaryName },
+        "Instance execution state is flapping — per-edge logging suppressed; the pane is repainting without a stable idle/working reading");
+    } else if (now - this.stateEdgeSummaryAt >= STATE_EDGE_LOG_WINDOW_MS) {
+      this.stateEdgeSummaryAt = now;
+      this.logger.warn({ notLogged: this.stateEdgesNotLogged, edgesInWindow: edges },
+        "Instance execution state is still flapping");
+    }
+    this.stateEdgesNotLogged++;
+    this.logger.debug(fields, "Instance execution state changed (flapping, not logged at info)");
+  }
+
   private applyInstanceStateSnapshot(snapshot: InstanceStateSnapshot, pane?: string): void {
     const previous = this.instanceState;
     // A live safety menu owns stdin.  It may still contain Claude's persistent
@@ -3952,11 +3997,7 @@ export class Daemon extends EventEmitter {
     }
 
     if (snapshot.state !== previous) {
-      this.logger.info({
-        previousState: previous,
-        state: snapshot.state,
-        unchangedForMs: snapshot.unchangedForMs,
-      }, "Instance execution state changed");
+      this.logStateEdge(previous, snapshot);
       this.emit("instance_state", { name: this.name, ...snapshot });
       this.ipcServer?.broadcast({ type: "instance_state", instanceName: this.name, ...snapshot });
       if (snapshot.state === "stuck" && pane && this.instanceStateReadyPattern) {
@@ -4484,6 +4525,18 @@ export class Daemon extends EventEmitter {
       if (outputMovedDuringCapture) {
         if (reason === "delivery_idle_gate") this.resetFooterFallback();
         if (reason === "output_probe") {
+          // A TUI that repaints without changing a cell (muse parks its cursor
+          // ~18 times a second while idle; Codex's star field) never leaves the
+          // probe a quiet moment, so roughly one probe in five is overtaken. An
+          // idle instance whose stale capture still shows the structural idle
+          // layout has nothing to be called working on: the rule that cosmetic
+          // output must not manufacture an idle -> working edge holds here too.
+          // Without this every overtaken probe published the edge, and the next
+          // clean probe (one confirmation was still banked) published it back —
+          // a pair every ~1.6s for as long as the repaint lasted (#1116). Real
+          // work cannot hide behind this: it changes the layout, the next
+          // output arms another probe, and the debounce capture still fires.
+          if (this.instanceState === "idle" && this.backend?.isPeriodicRedrawIdlePane?.(pane) === true) return;
           // A second burst overtook the probe. Do not bless its stale capture as
           // idle: continuous output is the safer working signal, while the next
           // quiet probe/debounce can still prove that it was only repainting.
