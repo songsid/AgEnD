@@ -7,6 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Upgrade Notes
+- **[Behaviour change] Tunnels reach Cloudflare over http2 and wait up to a minute.** The cloudflared provider now
+  passes `--protocol http2` by default (QUIC/UDP 7844 is blocked on many corporate networks and VMs, where cloudflared
+  otherwise spends a long time failing over or never connects) and probes readiness through Cloudflare's public
+  resolvers (1.1.1.1 / 1.0.0.1) with the system resolver as fallback; the startup budget goes from 30 s to 60 s. This
+  applies to `agend setup --tunnel` too. Set `web_terminal.tunnel.protocol: quic` (or `auto`) to keep cloudflared's own
+  choice for the login tunnel.
 - **[Behaviour change] The `/login` browser terminal applies the same `Host` rule.** Each
   `/login` (and `/install-cli`) opens a short-lived listener of its own. It checked that
   `Origin` equals `Host` — which a DNS-rebinding page satisfies by construction — and
@@ -30,6 +36,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the first refusal of each name is logged in `fleet.log` with that hint. The
   CLI, `agend web`, `/dashboard` and every internal caller use loopback names and
   are unaffected.
+
+### Added
+- **Finish a `kiro-cli` `/login` from your phone: optional public link
+  (`web_terminal.tunnel.allow_public`, default off).** When enabled, the login confirmation offers
+  **Open public link** beside **Local link only**; the press is the consent, per login. A Cloudflare Quick
+  Tunnel fronts only that login's terminal; the public link and the access token go to the requester as two
+  private messages (never the channel); a failed delivery, a failed or lost tunnel, a cancel, a timeout or a
+  shutdown all close the tunnel before the next login can start, and a tunnel that cannot be confirmed
+  stopped is announced and blocks further tunnels. The tunnel's public name is never logged. Needs
+  `cloudflared` on `PATH`. See "Finishing a /login away from the machine" in `docs/configuration.md`.
 
 ### Fixed
 - **Dashboard responses can no longer be framed, sniffed or cached.** Every
