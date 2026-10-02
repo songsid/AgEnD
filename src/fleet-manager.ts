@@ -7721,7 +7721,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Seeing is not setting: a ClassicBot instance has no per-instance stamp,
     // but it reacts in its own channel like any bot and must be able to see
     // the emojis it can use (only set_persona_emoji refuses it).
-    const self = this.fleetConfig?.instances[instanceName];
+    // Own entries only: an inherited name (constructor, __proto__, toString…)
+    // is not a fleet instance, as set_persona_emoji already holds.
+    const self = this.ownInstanceConfig(instanceName);
     const classic = !self && this.isClassicPersonaTarget(instanceName);
     if (!self && !classic) return { error: this.personaEmojiMissing(instanceName) };
     const worldId = this.getInstanceAdapterId(instanceName);
@@ -7767,7 +7769,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   async previewEmojis(instanceName: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
     // Seeing, like list_emojis: ClassicBot instances may preview too.
-    if (!this.fleetConfig?.instances[instanceName] && !this.isClassicPersonaTarget(instanceName)) {
+    if (!this.ownInstanceConfig(instanceName) && !this.isClassicPersonaTarget(instanceName)) {
       return { error: this.personaEmojiMissing(instanceName) };
     }
     const wanted = args.emojis;

@@ -755,3 +755,22 @@ describe("ClassicBot instances can see emojis; only setting a stamp is refused (
     expect(r).not.toHaveProperty("note");
   });
 });
+
+
+describe("inherited names are not instances (#1083 review)", () => {
+  it("constructor, __proto__, toString: all three tools refuse, with no REST or CDN call", async () => {
+    const get = vi.fn(async (route: string) => EMOJIS[route] ?? []);
+    const { fm } = fleet(get);
+    const fetchMock = cdn();
+    vi.stubGlobal("fetch", fetchMock);
+    for (const name of ["constructor", "__proto__", "toString"]) {
+      const missing = { error: `Instance '${name}' not found` };
+      expect(await fm.listEmojisFor(name), name).toEqual(missing);
+      expect(await fm.previewEmojis(name, { emojis: ["<:fox:111111111111111111>"] }), name).toEqual(missing);
+      expect(await fm.setPersonaEmoji(name, { emoji: "🦊" }), name).toEqual(missing);
+    }
+    expect(get).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+});
