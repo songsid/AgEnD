@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ensureInstanceDir, tightenDir, tightenInstanceDirs } from "../src/private-dir.js";
@@ -67,8 +67,37 @@ describe("tightenDir", () => {
     expect(mode(d)).toBe(0o775);
   });
 
-  it("reports a path that does not exist as unreadable, without throwing", () => {
-    expect(tightenDir(join(tmp(), "nope"))).toEqual({ kind: "skipped", why: "unreadable" });
+  it("reports a path that does not exist as missing, without throwing", () => {
+    expect(tightenDir(join(tmp(), "nope"))).toEqual({ kind: "skipped", why: "missing" });
+  });
+
+  it("is bound to the directory it checked: a swap for a symlink after the open cannot redirect the chmod", () => {
+    const root = tmp();
+    const dir = loose(join(root, "inst"));
+    const victim = join(root, "victim.txt");
+    writeFileSync(victim, "not a directory of ours"); chmodSync(victim, 0o664);
+    const outcome = tightenDir(dir, {
+      afterOpen: () => { renameSync(dir, `${dir}.moved`); symlinkSync(victim, dir); },     // exactly where a path-based chmod would follow it
+    });
+    expect(outcome.kind).toBe("tightened");
+    expect(mode(victim)).toBe(0o664);                       // the file the new symlink points at is untouched
+    expect(mode(`${dir}.moved`)).toBe(0o700);               // the directory that was actually checked is the one that changed
+  });
+
+  it("refuses a symlink that is already there when it opens, whatever it points at", () => {
+    const root = tmp();
+    const victim = loose(join(root, "victim"), 0o777);
+    symlinkSync(victim, join(root, "link"));
+    expect(tightenDir(join(root, "link"))).toEqual({ kind: "skipped", why: "symlink" });
+    expect(mode(victim)).toBe(0o777);
+  });
+
+  it.skipIf(process.getuid?.() === 0)("reports a directory its owner cannot open instead of changing it by path", () => {
+    const d = loose(join(tmp(), "inst"), 0o300);
+    try {
+      expect(tightenDir(d)).toEqual({ kind: "skipped", why: "unreadable" });
+      expect(mode(d)).toBe(0o300);
+    } finally { chmodSync(d, 0o700); }
   });
 });
 
@@ -164,6 +193,32 @@ describe("tightenInstanceDirs — the one-time startup repair", () => {
     expect(tightenInstanceDirs(join(tmp(), "never-created"))).toEqual({ tightened: [], skipped: [] });
   });
 
+  it("does not walk through an instances directory that is a symlink: what it points at is left alone and the link is reported", () => {
+    const dataDir = tmp();
+    const external = loose(join(tmp(), "external"), 0o755);
+    const shared = loose(join(external, "shared-service"), 0o775);
+    symlinkSync(external, join(dataDir, "instances"));
+    const report = tightenInstanceDirs(dataDir);
+    expect(mode(shared)).toBe(0o775);
+    expect(mode(external)).toBe(0o755);
+    expect(report.tightened).toEqual([]);
+    expect(report.skipped).toEqual([{ dir: join(dataDir, "instances"), why: "symlink" }]);
+  });
+
+  it("does not walk an instances 'directory' that is a file", () => {
+    const dataDir = tmp();
+    writeFileSync(join(dataDir, "instances"), "x");
+    expect(tightenInstanceDirs(dataDir)).toEqual({ tightened: [], skipped: [{ dir: join(dataDir, "instances"), why: "not-a-directory" }] });
+  });
+
+  it.skipIf(process.getuid?.() === 0)("an instances directory its owner cannot open is reported, not mistaken for 'no instances'", () => {
+    const dataDir = tmp();
+    const root = loose(join(dataDir, "instances"), 0o300);
+    try {
+      expect(tightenInstanceDirs(dataDir)).toEqual({ tightened: [], skipped: [{ dir: root, why: "unreadable" }] });
+    } finally { chmodSync(root, 0o700); }
+  });
+
   it("reports directories it is not allowed to change instead of failing", () => {
     const f = fixture();
     vi.spyOn(process, "getuid").mockReturnValue(statSync(f.a).uid + 1);
@@ -213,6 +268,19 @@ describe("FleetManager runs the repair at startup and says so once", () => {
     }
     (internals.finishStartup as () => void).call(manager);
     expect([a, root].map(mode)).toEqual([0o700, 0o700]);
+  });
+
+  it.skipIf(process.getuid?.() === 0)("an instances directory it cannot open is warned about once, with the remedy", () => {
+    const dataDir = tmp();
+    const root = loose(join(dataDir, "instances"), 0o300);
+    try {
+      const { manager, warn, info } = fm(dataDir);
+      (manager as unknown as { tightenInstanceDirectories(): void }).tightenInstanceDirectories();
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(JSON.stringify(warn.mock.calls[0])).toContain("unreadable");
+      expect(JSON.stringify(warn.mock.calls[0])).toContain("chmod 700");
+      expect(info).not.toHaveBeenCalled();
+    } finally { chmodSync(root, 0o700); }
   });
 
   it("a second start finds nothing and logs nothing", () => {
