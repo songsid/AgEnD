@@ -36,6 +36,9 @@ import { hostnameOf, LOOPBACK_HOST_NAMES } from "./web-host-guard.js";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ASSETS_DIR = join(__dirname, "ui", "web-terminal");
 
+/** terminal.html's stand-in for the per-session readiness marker (see `readinessMarker`). */
+const PAGE_MARKER_PLACEHOLDER = "__AGEND_TERMINAL_MARKER__";
+
 const MAX_OPEN_BODY = 1024;
 const MAX_WS_FRAME = 4096;
 const MAX_FRAMES_PER_SECOND = 64;
@@ -128,6 +131,16 @@ export class WebTerminalHttpServer {
   }
 
   get pagePath(): string { return `/t/${this.session.sid}`; }
+
+  /**
+   * A string that appears in this session's page and nowhere else.
+   *
+   * The tunnel's readiness probe fetches the page back through the public URL and
+   * looks for this: "the edge reaches the exact listener we meant", not just "some
+   * server answered". It is derived from the sid, which is already in the page's
+   * own path, so it adds nothing a link holder does not have.
+   */
+  get readinessMarker(): string { return `agend-terminal:${this.session.sid}`; }
 
   /**
    * The URL handed to the admin ends with "/" on purpose: terminal.html loads
@@ -268,6 +281,8 @@ export class WebTerminalHttpServer {
       if (!existsSync(p)) continue;
       try { this.assetCache.set(rel, readFileSync(p)); } catch { /* served as 404/500 */ }
     }
+    const page = this.assetCache.get("terminal.html");
+    if (page) this.assetCache.set("terminal.html", Buffer.from(page.toString("utf8").replace(PAGE_MARKER_PLACEHOLDER, this.readinessMarker), "utf8"));
   }
 
   private readAsset(rel: string): Buffer | null {
