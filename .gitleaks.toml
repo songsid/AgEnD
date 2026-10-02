@@ -15,6 +15,12 @@ paths = [
   # Vendored third-party xterm.js (minified high-entropy strings, not secrets)
   '''^src/ui/web-terminal/vendor/.*\.js$''',
 ]
-# Sec-WebSocket-Key is a public protocol field (base64 nonce in an HTTP header), not a secret
-regexTarget = "line"
-regexes = ['''(?i)sec-websocket-key''']
+# Sec-WebSocket-Key is a public protocol field (base64 nonce in an HTTP header), not a secret.
+# Matched against the finding's own match text, not the whole line: with
+# regexTarget = "line" any real key that merely shares a line with the words
+# "Sec-WebSocket-Key" (a trailing comment, a neighbouring header) would be hidden too.
+# The match must be the header field followed by exactly a 16-byte nonce (22 base64
+# chars + "=="); gitleaks' generic match may carry a stray leading word character
+# and a trailing quote, ";" or a literal \r / \n, which the tail allows.
+regexTarget = "match"
+regexes = ['''(?i)sec-websocket-key["'\x60]?\s*[:=]\s*["'\x60]?[A-Za-z0-9+/]{22}==(?:\\[nr]|["'\x60;\s])?$''']
