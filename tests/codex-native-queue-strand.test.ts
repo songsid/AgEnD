@@ -345,17 +345,17 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
     await expect(h.daemon.isCodexLivePane()).resolves.toBe(true);
   });
 
-  it("baselines stale usage-limit text when the current pane is a live reserve composer", () => {
+  it("a live composer under the usage-limit line is NOT proof of Luna Reserve: it raises the pause candidate (#1103)", () => {
     const h = makeHarness(); dirs.push(h.dir);
-    const errors: unknown[] = [];
-    h.daemon.on("pty_error", (error: unknown) => errors.push(error));
+    const errors: Array<{ type: string; action: string }> = [];
+    h.daemon.on("pty_error", (error: { type: string; action: string }) => errors.push(error));
     const backend = h.daemon.backend as CodexBackend;
     const patterns = backend.getErrorPatterns();
     const pane = `■ You've hit your usage limit.\n${READY_EMPTY}`;
 
     h.daemon.evaluateErrorPatterns(pane, patterns, backend.getReadyPattern(), 1_000_000);
 
-    expect(errors).toHaveLength(0);
+    expect(errors.map(e => `${e.type}/${e.action}`)).toContain("quota/pause");
   });
 
   it("classifies a quiet resume screen as transient rather than native-queue busy", async () => {

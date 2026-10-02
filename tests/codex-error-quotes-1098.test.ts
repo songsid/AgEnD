@@ -99,13 +99,12 @@ describe("the pause is raised by the daemon when the pane is not a live composer
     expect(evaluate("› hello\n• ok\n  Worked for <1s\n› Ask Codex to do anything\n  Context 100% left")).toEqual([]);
   });
 
-  // Found while fixing this: on the real pane shape — the error line followed by
-  // the live composer + Context footer — the "stale Luna Reserve text" guard in
-  // Daemon.evaluateErrorPatterns (codexLivePane) baselines the match, so even
-  // with the pattern fixed nothing pauses there. The guard cannot tell a reserve
-  // session that is running from an account that simply hit its limit. Tracked
-  // separately: this change is the pattern only.
-  it.todo("pauses on the real hit-limit pane shape (error line, then the live composer) — currently suppressed by the stale-reserve guard");
+  // Found while fixing #1098: the old "stale Luna Reserve" guard swallowed this
+  // pane (error line, then the live composer + Context footer). Fixed in #1103.
+  it("pauses on the real hit-limit pane shape: the error line followed by the live composer", () => {
+    expect(evaluate(REAL_CURLY)).toContain("quota/pause");
+    expect(evaluate(REAL_CURLY.replace("’", "'"))).toContain("quota/pause");
+  });
 });
 
 describe("the model-metadata fallback warning matches the text codex really prints", () => {

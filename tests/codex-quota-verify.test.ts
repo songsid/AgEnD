@@ -91,22 +91,25 @@ describe("Codex quota second opinion", () => {
     },
   );
 
-  it("does not pause after the usage dialog resolves into a live Luna Reserve pane", async () => {
-    const { daemons, notifyInstanceTopic, clearCancelButton } = lifecycle(async () => "exhausted", ["worker"], true);
+  it("a live composer is not evidence of Luna Reserve: an exhausted account with a live pane still pauses (#1103)", async () => {
+    // codex paints the composer after a plain hit too; only the usage probe's reserve row
+    // (or the daemon having seen the reserve menu, upstream of this handler) says otherwise.
+    for (const live of [true, false]) {
+      const { daemons, notifyInstanceTopic } = lifecycle(async () => "exhausted", ["worker"], live);
+      daemons[0].emit("pty_error", quotaError("worker"));
+      await vi.waitFor(() => expect(notifyInstanceTopic).toHaveBeenCalledTimes(1));
+      expect(daemons[0].requestPauseWhenIdle).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("does not pause when the regular limit is full but Luna Reserve still has room (codex continues on it)", async () => {
+    const { daemons, notifyInstanceTopic, clearCancelButton } = lifecycle(async () => "reserve");
     daemons[0].emit("pty_error", quotaError("worker"));
     await new Promise(resolve => setTimeout(resolve, 20));
 
     expect(notifyInstanceTopic).not.toHaveBeenCalled();
     expect(clearCancelButton).not.toHaveBeenCalled();
     expect(daemons[0].requestPauseWhenIdle).not.toHaveBeenCalled();
-  });
-
-  it("still pauses when the quota pane has no live composer proof", async () => {
-    const { daemons, notifyInstanceTopic } = lifecycle(async () => "exhausted", ["worker"], false);
-    daemons[0].emit("pty_error", quotaError("worker"));
-
-    await vi.waitFor(() => expect(notifyInstanceTopic).toHaveBeenCalledTimes(1));
-    expect(daemons[0].requestPauseWhenIdle).toHaveBeenCalledTimes(1);
   });
 
   it("joins simultaneous quota alerts to one in-flight live check", async () => {

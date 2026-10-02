@@ -1195,6 +1195,15 @@ export class Daemon extends EventEmitter {
   /** Generation/signature fence for safety dialogs while their screen is still visible. */
   private autoResolvedDialogKey: string | null = null;
   private autoResolvedDialogGeneration = 0;
+  /**
+   * (#1103) Proof that THIS spawn's Codex went onto Luna Reserve: AgEnD saw (and
+   * answered) the usage-limit menu that codex shows when it switches itself to
+   * the reserve. `count` is how many usage-limit lines the pane held at that
+   * moment; only occurrences up to it are the text of the incident we already
+   * handled. A later, larger count is a NEW hit (the reserve ran out too).
+   * Keyed by spawn generation, so a respawn starts without any proof.
+   */
+  private codexReserveAck: { generation: number; count: number } | null = null;
   private backgroundSessionRecoveryAttempted = false;
   /** Whether the last spawn started a fresh session (not resumed). */
   isNewSession = false;
@@ -1447,6 +1456,30 @@ export class Daemon extends EventEmitter {
     } catch {
       return false;
     }
+  }
+
+  /** The Codex "usage limit reached" pause pattern (the only one the reserve proof applies to). */
+  private static isCodexUsageLimitPause(ep: ErrorPattern): boolean {
+    return ep.type === "quota" && ep.action === "pause" && ep.message.startsWith("Codex usage limit reached");
+  }
+
+  private static countPatternMatches(pattern: RegExp, text: string): number {
+    const flags = pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g";
+    return (text.match(new RegExp(pattern.source, flags)) || []).length;
+  }
+
+  /**
+   * Record that the Luna Reserve menu is (or was just) on screen, for the
+   * usage-limit decision in evaluateErrorPatterns. Called wherever a dialog is
+   * matched, before any key is sent.
+   */
+  private noteCodexReserveDialog(dialog: RuntimeDialog, pane: string): void {
+    if (dialog.autoResolutionKey !== "codex-usage-limit-luna-reserve" || this.backend?.binaryName !== "codex") return;
+    const ep = this.backend.getErrorPatterns?.().find(candidate => Daemon.isCodexUsageLimitPause(candidate));
+    const count = ep ? Daemon.countPatternMatches(ep.pattern, pane) : 0;
+    this.codexReserveAck = { generation: this.spawnGeneration, count };
+    this.logger.info({ backend: "codex", evidence: "reserve-menu-seen", usageLimitLines: count },
+      "codex usage-limit: the Luna Reserve menu was seen — usage-limit text up to this count is stale");
   }
 
   /** Re-check the current pane after an async quota probe before pausing it. */
@@ -2888,6 +2921,7 @@ export class Daemon extends EventEmitter {
         let blockingSeen: RuntimeDialog | null = null;
         for (const dialog of dialogs) {
           if (!Daemon.dialogMatches(dialog, pane)) continue;
+          this.noteCodexReserveDialog(dialog, pane);
           if (dialog.blocksDelivery || dialog.holdOnly) blockingSeen = dialog;
           if (dialog.holdOnly) break; // recognised, deliberately not answered; trackDialogParked reports it
           const autoKey = dialog.autoResolutionKey;
@@ -3077,14 +3111,30 @@ export class Daemon extends EventEmitter {
       const seen = this.lastErrorCount.get(key) ?? 0;
 
       // The generic Codex usage-limit line remains in scrollback after the
-      // user selects Luna Reserve. A live composer + Context footer is positive
-      // evidence that the pane recovered; baseline the stale occurrence so it
-      // cannot reach the destructive quota pause path.
-      if (codexLivePane && ep.type === "quota" && ep.action === "pause"
-        && ep.message.startsWith("Codex usage limit reached")) {
-        if (count > 0) this.lastErrorCount.set(key, count);
-        this.logger.debug("Codex usage-limit text is stale — live reserve pane is running");
-        continue;
+      // user selects Luna Reserve. What proves that is NOT a live composer —
+      // codex paints one after a plain hit too, and the old live-composer guard
+      // therefore swallowed every real hit (#1103) — but AgEnD having seen the
+      // Luna Reserve menu in this spawn. Occurrences up to that point are the
+      // incident we already handled; anything beyond is a new hit and goes on to
+      // the lifecycle, whose usage probe decides (available / reserve / exhausted).
+      if (Daemon.isCodexUsageLimitPause(ep)) {
+        const ack = this.codexReserveAck;
+        if (ack && ack.generation === this.spawnGeneration && count <= ack.count) {
+          // The handled incident's lines can scroll out of the capture buffer as
+          // the reserve session talks on. Lower the proof (and the occurrence
+          // baseline) with them: otherwise `count <= ack.count` would keep
+          // swallowing a NEW hit — the reserve running out — until it exceeded
+          // the menu-time count, and it would never reach the lifecycle probe.
+          if (count < ack.count) ack.count = count;
+          this.lastErrorCount.set(key, count);
+          this.logger.debug({ decision: "ignore", evidence: "reserve-menu-seen", count, acknowledged: ack.count },
+            "codex usage-limit: stale text of the handled Luna Reserve incident");
+          continue;
+        }
+        if (count > seen) {
+          this.logger.info({ decision: "candidate", evidence: ack && ack.generation === this.spawnGeneration ? "new-hit-after-reserve" : "no-reserve-proof", count, livePane: codexLivePane },
+            "codex usage-limit: new occurrence — handing to the quota probe");
+        }
       }
 
       if (count <= seen) {
@@ -8425,6 +8475,7 @@ export class Daemon extends EventEmitter {
                 || (this.autoResolvedDialogGeneration === this.spawnGeneration
                   && this.autoResolvedDialogKey === dialog.autoResolutionKey))) continue;
             lastDialog = dialog;
+            this.noteCodexReserveDialog(dialog, pane);
             cleanReadyPolls = 0;
             // Start the parked clock for every delivery-blocking dialog, exact
             // ones included: if the auto-dismiss keeps failing here, the human
