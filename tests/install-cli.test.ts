@@ -104,6 +104,9 @@ describe("/install-cli", () => {
   it("reports a PATH-verification failure instead of offering login", async () => {
     const { fm, notifyAlert, sendText, chat } = setup();
     vi.spyOn(fm as any, "locateBinaryOnLoginShell").mockReturnValue(null);
+    // Found nowhere: not by a login shell, and not in grok's own installer
+    // directory either (#1092) — this host may have a real ~/.grok/bin/grok.
+    vi.spyOn(fm as any, "locateInInstallerBinDirs").mockReturnValue(null);
     await fm.startInstallSession("grok", chat);
     await fakeSessions[0].events.onDone({ ok: true, detail: "clean exit" });
     expect(notifyAlert).not.toHaveBeenCalled();

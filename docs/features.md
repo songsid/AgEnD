@@ -666,7 +666,7 @@ instances:
     backend: muse
 ```
 
-Install with `curl -fsSL https://api.meta.ai/muse-launcher.sh | bash` (or `/install-cli muse`) and sign in with `muse login`. `/login` does not cover muse yet. Muse steers rather than queues: a message sent while a turn is running is taken into that turn, so `/steer` works (verified on muse 1.3.0). `/clear` starts a new conversation. Subscription usage is relayed from muse's response stream into `/usage`.
+Install with `/install-cli muse`, or in a shell: `mkdir -p "$HOME/.local/bin" && curl -fsSL https://api.meta.ai/muse-launcher.sh -o "$HOME/.local/bin/muse" && chmod +x "$HOME/.local/bin/muse" && MUSE_LAUNCHER_INSTALL=1 "$HOME/.local/bin/muse"`. The launcher keeps its binary next to itself, so it is saved as `~/.local/bin/muse` first; piped straight into `bash` it would download into the current directory instead and sign in with `muse login`. `/login` does not cover muse yet. Muse steers rather than queues: a message sent while a turn is running is taken into that turn, so `/steer` works (verified on muse 1.3.0). `/clear` starts a new conversation. Subscription usage is relayed from muse's response stream into `/usage`.
 
 ## Grok Build backend
 

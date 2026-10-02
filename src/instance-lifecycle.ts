@@ -45,20 +45,49 @@ export { isFleetStartCommandLine } from "./fleet-lock.js";
 export interface BackendInstallationInfo {
   binary: string;
   install: string;
+  /**
+   * #1092: where this backend's own installer puts the binary, read from the
+   * installer script itself. /install-cli verifies on a fresh login shell
+   * first, but an installer may record its PATH only in a file a login shell
+   * never runs: codex's writes `~/.bashrc` when `$SHELL` is bash, below the
+   * stock early `return` for non-interactive shells. Checked only when the
+   * login shell cannot find the binary.
+   */
+  binDirs?: (env: NodeJS.ProcessEnv, home: string) => string[];
 }
+
+const localBin = (home: string) => join(home, ".local", "bin");
 
 /** Shared CLI metadata used by startup validation and ClassicBot onboarding. */
 export const BACKEND_INSTALLATION_INFO: Readonly<Record<string, BackendInstallationInfo>> = {
-  "claude-code": { binary: "claude", install: "curl -fsSL https://claude.ai/install.sh | bash" },
+  "claude-code": { binary: "claude", install: "curl -fsSL https://claude.ai/install.sh | bash", binDirs: (_env, home) => [localBin(home)] },
   "gemini-cli": { binary: "gemini", install: "npm i -g @google/gemini-cli" },
   // The curl installer serves Linux and macOS (verified: 200, text/x-shellscript);
   // the previous `brew install --cask` form only worked on macOS.
-  "kiro-cli": { binary: "kiro-cli", install: "curl -fsSL https://cli.kiro.dev/install | bash" },
-  codex: { binary: "codex", install: "curl -fsSL https://chatgpt.com/codex/install.sh | sh" },
-  opencode: { binary: "opencode", install: "curl -fsSL https://opencode.ai/install | bash" },
-  antigravity: { binary: "agy", install: "curl -fsSL https://antigravity.google/cli/install.sh | bash" },
-  grok: { binary: "grok", install: "curl -fsSL https://x.ai/cli/install.sh | bash" },
-  muse: { binary: "muse", install: "curl -fsSL https://api.meta.ai/muse-launcher.sh | bash" },
+  "kiro-cli": { binary: "kiro-cli", install: "curl -fsSL https://cli.kiro.dev/install | bash", binDirs: (_env, home) => [localBin(home)] },
+  // install.sh: BIN_DIR="${CODEX_INSTALL_DIR:-$HOME/.local/bin}"; codex there is
+  // a symlink into ~/.codex/packages/standalone/current/bin (#1092).
+  codex: {
+    binary: "codex", install: "curl -fsSL https://chatgpt.com/codex/install.sh | sh",
+    binDirs: (env, home) => [env.CODEX_INSTALL_DIR, localBin(home)].filter((d): d is string => !!d),
+  },
+  opencode: { binary: "opencode", install: "curl -fsSL https://opencode.ai/install | bash", binDirs: (_env, home) => [join(home, ".opencode", "bin")] },
+  antigravity: { binary: "agy", install: "curl -fsSL https://antigravity.google/cli/install.sh | bash", binDirs: (_env, home) => [localBin(home)] },
+  grok: {
+    binary: "grok", install: "curl -fsSL https://x.ai/cli/install.sh | bash",
+    binDirs: (env, home) => [env.GROK_BIN_DIR, join(home, ".grok", "bin")].filter((d): d is string => !!d),
+  },
+  // #1092: the muse launcher keeps its binary NEXT TO ITSELF. Piped into bash
+  // it has no file of its own, so it downloaded the binary into the current
+  // directory and then started muse there, leaving no `muse` command anywhere.
+  // Its install mode (MUSE_LAUNCHER_INSTALL=1, read from the launcher) is run
+  // on the launcher saved as ~/.local/bin/muse: it downloads beside it and
+  // exits without launching.
+  muse: {
+    binary: "muse",
+    install: 'mkdir -p "$HOME/.local/bin" && curl -fsSL https://api.meta.ai/muse-launcher.sh -o "$HOME/.local/bin/muse" && chmod +x "$HOME/.local/bin/muse" && MUSE_LAUNCHER_INSTALL=1 "$HOME/.local/bin/muse"',
+    binDirs: (_env, home) => [localBin(home)],
+  },
 };
 
 /** Check one executable using the same PATH visible to the fleet process. */

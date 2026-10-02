@@ -464,7 +464,7 @@ instances:
     backend: muse
 ```
 
-用 `curl -fsSL https://api.meta.ai/muse-launcher.sh | bash`（或 `/install-cli muse`）安裝，再用 `muse login` 登入。`/login` 目前還不支援 muse。Muse 收到新訊息時會併入正在執行的 turn，而不是排隊，所以 `/steer` 可以使用（已在 muse 1.3.0 驗證）。`/clear` 會開始新對話。訂閱用量會從 muse 的回應串流轉送到 `/usage`。
+用 `/install-cli muse` 安裝，或在 shell 執行：`mkdir -p "$HOME/.local/bin" && curl -fsSL https://api.meta.ai/muse-launcher.sh -o "$HOME/.local/bin/muse" && chmod +x "$HOME/.local/bin/muse" && MUSE_LAUNCHER_INSTALL=1 "$HOME/.local/bin/muse"`。launcher 會把 binary 放在自己旁邊，所以要先存成 `~/.local/bin/muse`；直接 pipe 給 `bash` 會下載到目前的目錄，再用 `muse login` 登入。`/login` 目前還不支援 muse。Muse 收到新訊息時會併入正在執行的 turn，而不是排隊，所以 `/steer` 可以使用（已在 muse 1.3.0 驗證）。`/clear` 會開始新對話。訂閱用量會從 muse 的回應串流轉送到 `/usage`。
 
 ## Grok Build 後端
 

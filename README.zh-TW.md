@@ -104,10 +104,12 @@ graph LR
 | OpenAI Codex | `curl -fsSL https://chatgpt.com/codex/install.sh \| sh` | `codex`（ChatGPT 登入）或 `OPENAI_API_KEY` |
 | Gemini CLI | `npm i -g @google/gemini-cli` | `gemini`（Google OAuth）⚠️ 2026-06-18 起已停用 |
 | OpenCode | `curl -fsSL https://opencode.ai/install \| bash` | `opencode`（設定 provider） |
-| Kiro CLI | `curl -fsSL https://cli.kiro.dev/install | bash` | `kiro-cli login`（AWS Builder ID） |
+| Kiro CLI | `curl -fsSL https://cli.kiro.dev/install \| bash` | `kiro-cli login`（AWS Builder ID） |
 | Antigravity CLI | `curl -fsSL https://antigravity.google/cli/install.sh \| bash` | `agy`（Google Sign-In） |
 | Grok Build | `curl -fsSL https://x.ai/cli/install.sh \| bash` | `grok`（x.ai OAuth device flow）。CLI 需 1.0.13 以上，舊版會被伺服器拒絕，請執行 `grok update` |
-| Meta Muse Code | `curl -fsSL https://api.meta.ai/muse-launcher.sh \| bash` | `muse login` |
+| Meta Muse Code | `mkdir -p "$HOME/.local/bin" && curl -fsSL https://api.meta.ai/muse-launcher.sh -o "$HOME/.local/bin/muse" && chmod +x "$HOME/.local/bin/muse" && MUSE_LAUNCHER_INSTALL=1 "$HOME/.local/bin/muse"`（launcher 會把 binary 放在自己旁邊，所以要先存檔） | `muse login` |
+
+**也可以在聊天室用 `/install-cli <backend>` 安裝**（Telegram 上是 `/install_cli`；beta、僅限 fleet 管理員），不必 SSH 進主機。它會在 fleet 視窗執行上表的指令，接著到安裝程式實際放置的位置找到 CLI，把那個目錄加進 fleet 的 PATH，並提供 `/login`。上表除了 Gemini CLI 以外的 backend 都可以用。
 
 **已測試的 CLI 版本（AgEnD 2.1.9）**：Codex 0.155 到 0.159；Claude Code 2.1.286（首次啟動、trust、resume 畫面都從真實 CLI 擷取）；Kiro CLI 1.25 以上，`kiro_ui: v3` 尚未支援（#849）；Grok CLI 1.0.13 以上；Muse 1.3.0。Antigravity 與 OpenCode 沒有釘定版本。其他版本通常也能用，但 CLI 新版可能改動畫面，所以 AgEnD 只在實測過後才宣稱支援某個版本。
 
