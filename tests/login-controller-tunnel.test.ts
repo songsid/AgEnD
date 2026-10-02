@@ -320,7 +320,8 @@ describe("a tunnel that does not come up fails closed", () => {
     const adapter = adapterOf("discord");
     const { controller, sessions, https, lock } = make({ config: ON, tunnel });
     const reply = await controller.start("kiro-cli", chat(adapter), CONFIRMED_TUNNEL);
-    expect(reply).toBe(t("login.tunnel_failed", "the public URL never served this page (status 502)"));
+    expect(reply).toBe(t("login.tunnel_failed", t("login.tunnel_reason.readiness-failed")));
+    expect(reply).not.toContain("502");
     expect(sessions[0]!.cancelled).toHaveLength(1);
     expect(https[0]!.externalHost).toBeNull();                    // the candidate host was taken back
     expect(adapter.sendDirect).not.toHaveBeenCalled();
@@ -331,7 +332,7 @@ describe("a tunnel that does not come up fails closed", () => {
     const tunnel = fakeTunnel({ start: async () => ({ ok: false, errorKind: "timeout", message: "A tunnel process could not be confirmed stopped (pid 77).", leaseHeld: true }) });
     const { controller, lock } = make({ config: ON, tunnel });
     const reply = await controller.start("kiro-cli", chat(adapterOf("discord")), CONFIRMED_TUNNEL);
-    expect(reply).toBe(t("login.tunnel_unconfirmed", "", "A tunnel process could not be confirmed stopped (pid 77)."));
+    expect(reply).toBe(t("login.tunnel_unconfirmed", "", t("login.tunnel_reason.lease-held")));
     expect(lock.isHeld).toBe(false);
   });
 });
@@ -413,7 +414,7 @@ describe("a stop that cannot be proven is announced, not swallowed", () => {
     const adapter = adapterOf("discord");
     await controller.start("kiro-cli", chat(adapter), CONFIRMED_TUNNEL);
     await controller.cancel();
-    expect(all(adapter.sendText)).toContain(t("login.tunnel_unconfirmed", " (pid 4242)", "the process did not exit after SIGTERM and SIGKILL").replace(/\n/g, "\\n"));
+    expect(all(adapter.sendText)).toContain(t("login.tunnel_unconfirmed", " (pid 4242)", t("login.tunnel_reason.stop-unconfirmed")).replace(/\n/g, "\\n"));
     expect(events.map(e => e[0])).toContain("login_web_tunnel_unconfirmed");
     expect(logger.error).toHaveBeenCalled();
     expect(lock.isHeld).toBe(false);
@@ -506,5 +507,99 @@ describe("the listener learns the tunnel's host at the right moments", () => {
     await down;
     await starting;
     expect(tunnel.calls.stoppedBeforeStartSettled).toEqual([false]);
+  });
+});
+
+describe("the provider's own words never reach the channel", () => {
+  // What Node's TLS layer really says on a name mismatch: it names the host.
+  const TLS_MESSAGE = `Hostname/IP does not match certificate's altnames: Host: ${TUNNEL_HOST}. is not in the cert's altnames: DNS:other.example`;
+  const KINDS = ["binary-missing", "binary-not-executable", "not-logged-in", "spawn-failed", "no-url", "bad-url", "readiness-failed", "timeout", "cancelled"] as const;
+
+  it.each(KINDS)("a failed start of kind %s becomes that kind's fixed sentence, not the message", async kind => {
+    const tunnel = fakeTunnel({ start: async () => ({ ok: false, errorKind: kind, message: TLS_MESSAGE, leaseHeld: false }) });
+    const { controller } = make({ config: ON, tunnel });
+    const reply = await controller.start("kiro-cli", chat(adapterOf("discord")), CONFIRMED_TUNNEL);
+    expect(reply).toBe(t("login.tunnel_failed", t(`login.tunnel_reason.${kind}`)));
+    expect(reply).not.toContain(TUNNEL_HOST);
+    expect(reply).not.toContain("altnames");
+  });
+
+  it("an unrecognised kind falls back to a generic sentence", async () => {
+    const tunnel = fakeTunnel({ start: async () => ({ ok: false, errorKind: `x ${TUNNEL_HOST}`, message: TLS_MESSAGE, leaseHeld: false }) });
+    const { controller, events } = make({ config: ON, tunnel });
+    const reply = await controller.start("kiro-cli", chat(adapterOf("discord")), CONFIRMED_TUNNEL);
+    expect(reply).toBe(t("login.tunnel_failed", t("login.tunnel_reason.other")));
+    expect(JSON.stringify(events)).not.toContain(TUNNEL_HOST);          // the kind is normalised before it is audited too
+  });
+
+  it("a start that throws — with the host in its message — says nothing of it", async () => {
+    const tunnel = fakeTunnel({ start: async () => { throw Object.assign(new Error(TLS_MESSAGE), { errorKind: "readiness-failed" }); } });
+    const { controller } = make({ config: ON, tunnel });
+    const reply = await controller.start("kiro-cli", chat(adapterOf("discord")), CONFIRMED_TUNNEL);
+    expect(reply).toBe(t("login.tunnel_failed", t("login.tunnel_reason.readiness-failed")));
+    expect(reply).not.toContain(TUNNEL_HOST);
+    const plain = fakeTunnel({ start: async () => { throw new Error(TLS_MESSAGE); } });
+    const second = make({ config: ON, tunnel: plain });
+    expect(await second.controller.start("kiro-cli", chat(adapterOf("discord")), CONFIRMED_TUNNEL))
+      .toBe(t("login.tunnel_failed", t("login.tunnel_reason.other")));
+  });
+
+  it("an unaccounted-for tunnel is announced without the provider's text", async () => {
+    const tunnel = fakeTunnel({ start: async () => ({ ok: false, errorKind: "timeout", message: `${TLS_MESSAGE} (pid 77)`, leaseHeld: true }) });
+    const { controller } = make({ config: ON, tunnel });
+    const reply = await controller.start("kiro-cli", chat(adapterOf("discord")), CONFIRMED_TUNNEL);
+    expect(reply).not.toContain(TUNNEL_HOST);
+    expect(reply).toContain(t("login.tunnel_reason.lease-held"));
+  });
+
+  it("an unconfirmed stop announces the pid but not the provider's reason", async () => {
+    const tunnel = fakeTunnel({ stop: async () => ({ confirmed: false, reason: `still running ${TUNNEL_HOST}`, pid: 4242, identity: "id" }) });
+    const { controller } = make({ config: ON, tunnel });
+    const adapter = adapterOf("discord");
+    await controller.start("kiro-cli", chat(adapter), CONFIRMED_TUNNEL);
+    await controller.cancel();
+    const said = all(adapter.sendText);
+    expect(said).toContain("4242");
+    expect(said).not.toContain(TUNNEL_HOST);
+  });
+
+  it("every user-facing kind has a sentence in both languages", () => {
+    for (const locale of ["en", "zh-TW"] as const) {
+      setLocale(locale);
+      for (const kind of [...KINDS, "lease-held", "stop-unconfirmed", "other"]) {
+        const key = `login.tunnel_reason.${kind}`;
+        expect(t(key), `${locale} ${key}`).not.toBe(key);
+      }
+    }
+  });
+});
+
+describe("the provider's own sign-in URL and code stay out of a public-link login's channel", () => {
+  const DEVICE_URL = "https://view.awsapps.com/start/#/device?user_code=ABCD-EFGH";
+
+  it.each(["discord", "telegram"] as const)("%s: a hint from the CLI is not relayed anywhere", async type => {
+    const { controller, sessions, events } = make({ config: ON });
+    const adapter = adapterOf(type);
+    await controller.start("kiro-cli", chat(adapter), CONFIRMED_TUNNEL);
+    const dmsBefore = adapter.sendDirect!.mock.calls.length;
+    await sessions[0]!.events.onHint!(DEVICE_URL, "ABCD-EFGH");
+    expect(adapter.sendText).not.toHaveBeenCalled();
+    expect(adapter.sendDirect!.mock.calls.length).toBe(dmsBefore);
+    expect(JSON.stringify([adapter.sendText.mock.calls, adapter.sendDirect!.mock.calls.slice(dmsBefore)])).not.toMatch(/ABCD-EFGH|awsapps/);
+    expect(events.map(e => e[0])).toContain("login_web_hint_not_relayed");
+    expect(JSON.stringify(events)).not.toContain("ABCD-EFGH");
+    await controller.cancel();
+  });
+
+  it("a local-only login still relays it, exactly as before (Telegram keeps its spoiler)", async () => {
+    const { controller, sessions } = make({ config: ON });
+    const adapter = adapterOf("telegram");
+    await controller.start("kiro-cli", chat(adapter), CONFIRMED);
+    await sessions[0]!.events.onHint!(DEVICE_URL, "ABCD-EFGH");
+    const said = all(adapter.sendText);
+    expect(said).toContain("awsapps.com");
+    expect(said).toContain("ABCD-EFGH");
+    expect(said).toContain("<tg-spoiler>");
+    await controller.cancel();
   });
 });

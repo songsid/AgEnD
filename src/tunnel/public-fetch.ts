@@ -26,8 +26,8 @@ export const PUBLIC_RESOLVERS: readonly string[] = ["1.1.1.1", "1.0.0.1"];
 
 /** One DNS attempt is short: the caller retries, and the whole probe has a deadline. */
 const RESOLVE_TIMEOUT_MS = 3_000;
-/** The probe wants a page, not a download. */
-const MAX_PROBE_BODY = 256 * 1024;
+/** The probe wants a page, not a download. Exactly this many bytes are accepted; one more is refused. */
+export const MAX_PROBE_BODY = 256 * 1024;
 
 export interface ProbeResponse { status: number; contentType: string; body: string }
 
@@ -99,6 +99,15 @@ function requestAt(address: string, target: URL, signal: AbortSignal, request: t
       signal,
     };
     const req = request(options, res => {
+      const status = res.statusCode ?? 0;
+      const contentType = String(res.headers["content-type"] ?? "");
+      res.on("error", reject);
+      // Only a 200 can be the page. Any other body is discarded as it arrives, not collected.
+      if (status !== 200) {
+        res.on("end", () => resolve({ status, contentType, body: "" }));
+        res.resume();
+        return;
+      }
       const chunks: Buffer[] = [];
       let size = 0;
       res.on("data", (chunk: Buffer) => {
@@ -106,15 +115,49 @@ function requestAt(address: string, target: URL, signal: AbortSignal, request: t
         if (size > MAX_PROBE_BODY) { req.destroy(new Error("probe response too large")); return; }
         chunks.push(chunk);
       });
-      res.on("end", () => resolve({
-        status: res.statusCode ?? 0,
-        contentType: String(res.headers["content-type"] ?? ""),
-        // Only a 200 can be the page; any other body is not looked at.
-        body: res.statusCode === 200 ? Buffer.concat(chunks).toString("utf8") : "",
-      }));
-      res.on("error", reject);
+      res.on("end", () => resolve({ status, contentType, body: Buffer.concat(chunks).toString("utf8") }));
     });
     req.on("error", reject);
     req.end();
   });
+}
+
+/**
+ * The ordinary path — the system resolver, a plain `fetch` — with the same limits as the public one.
+ *
+ * `res.text()` has no ceiling, and this is the path taken exactly when public DNS is unavailable, so the
+ * cap has to live here too. A redirect is not this page, and following one would let the edge decide
+ * what we call ready.
+ */
+export async function fetchViaSystemResolver(
+  url: string,
+  signal: AbortSignal,
+  fetchImpl: typeof fetch = fetch,
+): Promise<ProbeResponse> {
+  const res = await fetchImpl(url, { signal, redirect: "manual", cache: "no-store" });
+  const contentType = res.headers.get("content-type") ?? "";
+  if (res.status !== 200) {
+    await res.body?.cancel().catch(() => { /* nothing to read */ });
+    return { status: res.status, contentType, body: "" };
+  }
+  return { status: 200, contentType, body: await readBoundedText(res.body) };
+}
+
+async function readBoundedText(body: ReadableStream<Uint8Array> | null): Promise<string> {
+  if (!body) return "";
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > MAX_PROBE_BODY) throw new Error("probe response too large");
+      chunks.push(value);
+    }
+  } finally {
+    await reader.cancel().catch(() => { /* already finished */ });
+  }
+  return Buffer.concat(chunks).toString("utf8");
 }

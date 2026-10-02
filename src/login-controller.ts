@@ -387,7 +387,17 @@ export class LoginController {
       requesterUserId: userId, url: "", tokenDelivered: false, silent: false, tunnel: null,
     };
     const events: WebTerminalEvents = {
-      onHint: (url, code) => this.sendHint(chat, backend, url, code),
+      // A public-link login never relays the provider's own sign-in URL/code to the channel: they are as
+      // sensitive as the link and token that were kept out of it, the browser terminal already shows them,
+      // and the channel is the one place this mode promises not to put anything. Local and device-auth
+      // logins keep their contract.
+      onHint: (url, code) => {
+        if (wantTunnel) {
+          this.audit("hint_not_relayed", { backend, requester: userId, hadCode: code !== null });
+          return Promise.resolve();
+        }
+        return this.sendHint(chat, backend, url, code);
+      },
       onDone: async result => {
         // The tunnel goes first and the window is held until it is confirmed gone: a login that
         // is over must not leave its listener reachable while the fleet believes it is free.
@@ -426,7 +436,10 @@ export class LoginController {
         if (this.stale(generation, claim)) return this.abort(entry, t("login.web_shutting_down"), "fleet shutdown");
       }
     } catch (err) {
-      return this.abort(entry, t("login.failed", backend, (err as Error).message), "startup failed");
+      // In public mode the text is fixed: nothing a provider or the network said goes to the chat.
+      return this.abort(entry, wantTunnel
+        ? t("login.tunnel_failed", t("login.tunnel_reason.other"))
+        : t("login.failed", backend, (err as Error).message), "startup failed");
     }
 
     // Delivery is part of starting: a link nobody received, or a token that
@@ -586,8 +599,9 @@ export class LoginController {
       result = await tunnel.starting;
     } catch (err) {
       http.setExternalHost(null);
-      this.audit("tunnel_failed", { backend: entry.backend, requester: entry.requesterUserId, ...safeErr(err) });
-      return this.abort(entry, t("login.tunnel_failed", (err as Error)?.message ?? "error"), "tunnel failed");
+      const kind = tunnelErrorKind((err as { errorKind?: unknown } | null)?.errorKind);
+      this.audit("tunnel_failed", { backend: entry.backend, requester: entry.requesterUserId, errorKind: kind });
+      return this.abort(entry, t("login.tunnel_failed", t(`login.tunnel_reason.${kind}`)), "tunnel failed");
     }
     // The login ended (cancel, TTL, shutdown) while the tunnel was coming up: closeTunnel is already
     // on its way to stop it, and nothing here may re-publish a host it just took away.
@@ -596,11 +610,14 @@ export class LoginController {
     }
     if (!result.ok) {
       http.setExternalHost(null);
-      this.audit("tunnel_failed", { backend: entry.backend, requester: entry.requesterUserId, errorKind: result.errorKind, leaseHeld: result.leaseHeld });
+      const kind = tunnelErrorKind(result.errorKind);
+      this.audit("tunnel_failed", { backend: entry.backend, requester: entry.requesterUserId, errorKind: kind, leaseHeld: result.leaseHeld });
+      // Only the allowlisted kind becomes words: `result.message` is the provider's own text, and a TLS or
+      // network error in it can carry the tunnel's random host name straight into the channel.
       // `leaseHeld`: a tunnel process exists that nobody can account for. Not a fallback — a stop.
       const report = result.leaseHeld
-        ? t("login.tunnel_unconfirmed", "", result.message)
-        : t("login.tunnel_failed", result.message);
+        ? t("login.tunnel_unconfirmed", "", t("login.tunnel_reason.lease-held"))
+        : t("login.tunnel_failed", t(`login.tunnel_reason.${kind}`));
       return this.abort(entry, report, "tunnel failed");
     }
     tunnel.handle = result.handle;
@@ -644,7 +661,7 @@ export class LoginController {
     this.audit("tunnel_unconfirmed", { backend: entry.backend, requester: entry.requesterUserId, pid: result.pid });
     this.deps.logger.error({ pid: result.pid }, "login tunnel could not be confirmed stopped");
     const where = result.pid !== null ? ` (pid ${result.pid})` : "";
-    await entry.chat.adapter.sendText(entry.chat.chatId, t("login.tunnel_unconfirmed", where, result.reason), { threadId: entry.chat.threadId })
+    await entry.chat.adapter.sendText(entry.chat.chatId, t("login.tunnel_unconfirmed", where, t("login.tunnel_reason.stop-unconfirmed")), { threadId: entry.chat.threadId })
       .catch(() => { /* chat gone; the log line above stands */ });
   }
 
@@ -787,6 +804,19 @@ export class LoginController {
   private audit(event: string, fields: Record<string, unknown>): void {
     try { this.deps.eventLog()?.insert("login", `login_web_${event}`, fields); } catch { /* never break the flow */ }
   }
+}
+
+/**
+ * The only tunnel failure vocabulary that reaches a chat. A provider's message is free text — it can
+ * contain the tunnel's host (a TLS name mismatch does) — so it is mapped to one of these kinds, each of
+ * which has a fixed sentence in the locale table, and anything unrecognised becomes "other".
+ */
+const TUNNEL_ERROR_KINDS: ReadonlySet<string> = new Set([
+  "binary-missing", "binary-not-executable", "not-logged-in", "spawn-failed", "no-url",
+  "bad-url", "readiness-failed", "timeout", "cancelled", "lease-held",
+]);
+function tunnelErrorKind(kind: unknown): string {
+  return typeof kind === "string" && TUNNEL_ERROR_KINDS.has(kind) ? kind : "other";
 }
 
 function escapeHtml(s: string): string {

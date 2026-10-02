@@ -117,16 +117,22 @@ export class ManagedTunnel {
         // A child exists and we cannot prove otherwise. The lease stays, and so
         // does the block: this is the one case where doing nothing further is
         // the correct, and only honest, behaviour.
-        writeLease(this.opts.dataDir, {
-          sid: ctx.sid,
-          provider: provider.name,
-          originPort: Number(ctx.origin.port),
-          providerPid: startError.unconfirmed.pid,
-          strongIdentity: startError.unconfirmed.identity,
-          expiresAt: ctx.expiresAt,
-          ownerPid: process.pid,
-          ownerIdentity: this.ownerIdentity(),
-        });
+        // Best effort, and never allowed to throw past the block below: a full disk here must not turn
+        // "a child we cannot prove dead" into a rejected start with no block and no announcement.
+        try {
+          writeLease(this.opts.dataDir, {
+            sid: ctx.sid,
+            provider: provider.name,
+            originPort: Number(ctx.origin.port),
+            providerPid: startError.unconfirmed.pid,
+            strongIdentity: startError.unconfirmed.identity,
+            expiresAt: ctx.expiresAt,
+            ownerPid: process.pid,
+            ownerIdentity: this.ownerIdentity(),
+          });
+        } catch (leaseErr) {
+          this.log(`Could not record the unconfirmed tunnel in the lease: ${(leaseErr as Error).message}`);
+        }
         this.blocked = `A tunnel process could not be confirmed stopped after a failed start`
           + `${startError.unconfirmed.pid !== null ? ` (pid ${startError.unconfirmed.pid})` : ""}. `
           + "No new tunnel will be opened until it is resolved.";
@@ -144,17 +150,32 @@ export class ManagedTunnel {
       };
     }
 
-    writeLease(this.opts.dataDir, {
-      sid: ctx.sid,
-      provider: provider.name,
-      originPort: Number(ctx.origin.port),
-      providerPid: handle.pid,
-      strongIdentity: handle.identity,
-      expiresAt: ctx.expiresAt,
-      ownerPid: process.pid,
-      ownerIdentity: this.ownerIdentity(),
-    });
+    // Owned from the moment it exists, BEFORE anything else can fail: a handle that is only held by a local
+    // variable is a live tunnel nobody can stop. If recording the lease fails (disk full, permissions) the
+    // tunnel is stopped on proof — and if that cannot be proven the failure says so and blocks the next start.
     this.active = handle;
+    try {
+      writeLease(this.opts.dataDir, {
+        sid: ctx.sid,
+        provider: provider.name,
+        originPort: Number(ctx.origin.port),
+        providerPid: handle.pid,
+        strongIdentity: handle.identity,
+        expiresAt: ctx.expiresAt,
+        ownerPid: process.pid,
+        ownerIdentity: this.ownerIdentity(),
+      });
+    } catch (leaseErr) {
+      this.log(`Could not record the tunnel in the lease: ${(leaseErr as Error).message}`);
+      const stopped = await this.stop("the lease could not be recorded");
+      return {
+        ok: false,
+        errorKind: "spawn-failed",
+        message: `the tunnel's lease could not be recorded (${(leaseErr as Error).message})`
+          + (stopped.confirmed ? "; the tunnel was stopped" : "; and the tunnel could not be confirmed stopped"),
+        leaseHeld: !stopped.confirmed,
+      };
+    }
     return { ok: true, handle };
   }
 

@@ -16,7 +16,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { accessSync, constants as fsConstants } from "node:fs";
 import { delimiter, isAbsolute, join } from "node:path";
 import { probeProcess } from "../web-terminal.js";
-import { fetchViaPublicResolver, type ProbeResponse } from "./public-fetch.js";
+import { fetchViaPublicResolver, fetchViaSystemResolver, type ProbeResponse } from "./public-fetch.js";
 import {
   TunnelStartError,
   TUNNEL_STARTUP_DEADLINE_MS,
@@ -154,11 +154,14 @@ function resolveBinary(name: string, env: NodeJS.ProcessEnv): string | null {
 /**
  * How cloudflared reaches Cloudflare's edge.
  *
- * `http2` (TCP 443) is the default because QUIC (UDP 7844) is blocked on many
- * corporate networks and VMs, and when it is blocked cloudflared spends a long
- * time failing over before it connects — or never does. TCP 443 is open
- * wherever HTTPS is. `quic` and `auto` (cloudflared's own choice) are for
- * networks where that is known to be better.
+ * `http2` is the default because QUIC (UDP 7844) is blocked on many corporate
+ * networks and VMs, and when it is blocked cloudflared spends a long time
+ * failing over before it connects — or never does. http2 is TCP to the same
+ * edge port number (7844, per Cloudflare's firewall documentation), which
+ * networks that drop the UDP usually allow — but it is still an outbound port
+ * a strict firewall can close, so "HTTPS works" does not imply it. `quic` and
+ * `auto` (cloudflared's own choice) are for networks where that is known to be
+ * better.
  */
 export type CloudflaredProtocol = "http2" | "quic" | "auto";
 
@@ -167,6 +170,8 @@ export interface CloudflaredOptions {
   protocol?: CloudflaredProtocol;
   /** Public resolvers the readiness probe asks first. Empty disables that path (system DNS only). */
   publicResolvers?: readonly string[];
+  /** Test seam: the system-resolver fallback's fetch (the default path has to be bounded too). */
+  fetchImpl?: typeof fetch;
   /** Test seams for the public-resolver probe. */
   resolve4?: (host: string) => Promise<string[]>;
   request?: typeof import("node:https").request;
@@ -250,7 +255,11 @@ export class CloudflaredProvider implements TunnelProvider {
       // Host through to the origin, so the origin has to be expecting it or it
       // will refuse our own readiness check.
       ctx.onCandidateHost?.(new URL(base).host);
-      await this.probeReady(pageUrl, ctx, deadline, now);
+      await this.probeReady(pageUrl, ctx, deadline, now, () => state.hasExited);
+      // A probe can succeed against a tunnel that has already died (the edge answers for a while) or been
+      // cancelled. Publishing that would hand back a handle whose exit nobody will ever be told about.
+      if (ctx.signal.aborted) throw new TunnelStartError("cancelled", "cancelled before the tunnel was published");
+      if (state.hasExited) throw new TunnelStartError("no-url", "cloudflared exited before the tunnel became ready");
       state.publish(base, pageUrl);
       return state;
     } catch (err) {
@@ -268,16 +277,18 @@ export class CloudflaredProvider implements TunnelProvider {
     }
   }
 
-  private async probeReady(pageUrl: string, ctx: TunnelStartContext, deadline: number, now: () => number): Promise<void> {
+  private async probeReady(pageUrl: string, ctx: TunnelStartContext, deadline: number, now: () => number, isDead: () => boolean): Promise<void> {
     const fetchPage = this.opts.fetchPage ?? ((url: string, signal: AbortSignal) => fetchViaPublicResolver(url, signal, {
       resolvers: this.opts.publicResolvers,
       resolve4: this.opts.resolve4,
       request: this.opts.request,
-      fallback: defaultFetchPage,
+      fallback: (u, sig) => fetchViaSystemResolver(u, sig, this.opts.fetchImpl),
     }));
     let lastDetail = "no attempt completed";
     while (now() < deadline) {
       if (ctx.signal.aborted) throw new TunnelStartError("cancelled", "cancelled during readiness probe");
+      // No point asking the edge about a tunnel whose process is gone.
+      if (isDead()) throw new TunnelStartError("no-url", "cloudflared exited while waiting for the tunnel to become ready");
       const attempt = new AbortController();
       const timer = setTimeout(() => attempt.abort(), Math.max(1, Math.min(5_000, deadline - now())));
       try {
@@ -297,17 +308,6 @@ export class CloudflaredProvider implements TunnelProvider {
     }
     throw new TunnelStartError("readiness-failed", `the public URL never served this page (${lastDetail})`);
   }
-}
-
-async function defaultFetchPage(url: string, signal: AbortSignal): Promise<ProbeResponse> {
-  // `manual`: a redirect is not this page, and following one would let the edge
-  // decide what we call ready.
-  const res = await fetch(url, { signal, redirect: "manual", cache: "no-store" });
-  return {
-    status: res.status,
-    contentType: res.headers.get("content-type") ?? "",
-    body: res.status === 200 ? await res.text() : "",
-  };
 }
 
 class CloudflaredHandle implements TunnelHandle {
@@ -333,6 +333,8 @@ class CloudflaredHandle implements TunnelHandle {
   private spawnError: Error | null = null;
   private exitListeners = new Set<(exit: TunnelExit) => void>();
   private published = false;
+  /** Set once we asked it to stop: from then on an exit is expected, never "unexpected". */
+  private stopRequested = false;
   private stopping: Promise<TunnelStopResult> | null = null;
 
   constructor(
@@ -372,6 +374,8 @@ class CloudflaredHandle implements TunnelHandle {
   private get neverStarted(): boolean {
     return this.pid === null && this.spawnError !== null;
   }
+
+  get hasExited(): boolean { return this.exit !== null; }
 
   publish(base: string, pageUrl: string): void {
     this.baseUrl = base;
@@ -417,6 +421,13 @@ class CloudflaredHandle implements TunnelHandle {
 
   onUnexpectedExit(listener: (exit: TunnelExit) => void): () => void {
     this.exitListeners.add(listener);
+    // An exit that happened before anyone was listening is still an unexpected exit: replaying it closes the
+    // gap between "published" and "listener attached", so a tunnel that died in that window is not silent.
+    // (A stop() clears the listeners, so an exit we asked for is never replayed.)
+    if (this.published && this.exit && !this.stopRequested) {
+      const exit = this.exit;
+      queueMicrotask(() => { if (this.exitListeners.has(listener)) listener(exit); });
+    }
     return () => { this.exitListeners.delete(listener); };
   }
 
@@ -428,6 +439,7 @@ class CloudflaredHandle implements TunnelHandle {
 
   private async doStop(reason: string): Promise<TunnelStopResult> {
     void reason;
+    this.stopRequested = true;
     this.exitListeners.clear();
     if (this.exit) return { confirmed: true };
     // Proven, not assumed: Node reported the spawn itself failed and never
