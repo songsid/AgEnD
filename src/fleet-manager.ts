@@ -116,6 +116,7 @@ import {
   type ToolSink,
 } from "./tool-permissions.js";
 import { decideWebGate, loadOrCreateWebToken, readWebToken } from "./web-auth.js";
+import { allowedHostNames, applyWebSecurityHeaders, hostnameOf, isHostAllowed, WEB_HOST_REJECTED_MESSAGE } from "./web-host-guard.js";
 import { fleetLevelDifferences, fleetLevelSignature } from "./fleet-level-config.js";
 import { checkSelfRestartAllowance, recordSelfRestartAttempt } from "./self-restart-limit.js";
 import { SecretStore } from "./secret-store.js";
@@ -15074,6 +15075,21 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
   // ── Health HTTP endpoint ─────────────────────────────────────────────
 
+  /** Distinct rejected Host names already logged; bounded so a scanner cannot grow it. */
+  private readonly rejectedHostsLogged = new Set<string>();
+
+  /**
+   * Say once per name why a request was refused, so a reverse-proxy deployment
+   * that stopped working after the Host check is diagnosable from fleet.log.
+   * Only the parsed host name is logged, never the raw header.
+   */
+  private noteRejectedHost(header: string | string[] | undefined): void {
+    const name = typeof header === "string" ? (hostnameOf(header) ?? "(malformed)") : "(missing)";
+    if (this.rejectedHostsLogged.has(name) || this.rejectedHostsLogged.size >= 32) return;
+    this.rejectedHostsLogged.add(name);
+    this.logger.warn({ host: name }, "Web request refused: Host is not allowed (add it to web.allowed_hosts if this is a proxy you run)");
+  }
+
   private startHealthServer(port: number): void {
     this.startedAt = Date.now();
     this.healthServerListening = false;
@@ -15089,6 +15105,18 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       // Authorization now depends on a cookie, so a shared cache (a tunnel, a
       // corporate proxy) must not serve one visitor's response to another.
       res.setHeader("Vary", "Cookie");
+      applyWebSecurityHeaders(res);
+
+      // Before any route, /health and /agent included: loopback binding does not
+      // stop DNS rebinding, and the Host the browser sends is the one thing a
+      // rebinding page cannot change.
+      if (!isHostAllowed(req.headers.host, allowedHostNames(this.fleetConfig))) {
+        this.noteRejectedHost(req.headers.host);
+        res.writeHead(403);
+        res.end(JSON.stringify({ error: WEB_HOST_REJECTED_MESSAGE }));
+        return;
+      }
+
       const requestPath = new URL(req.url ?? "/", `http://localhost:${port}`).pathname;
 
       // Browsers request this automatically and AgEnD does not ship an icon.
