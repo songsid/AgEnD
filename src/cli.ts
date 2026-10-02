@@ -519,7 +519,7 @@ delivery
   .action((opts: { deliveryId?: string; operationId?: string; correlationId?: string; messageId?: string; limit: string; cursor?: string }) => {
     const dbPath = join(DATA_DIR, "delivery-outbox.db");
     if (!existsSync(dbPath)) {
-      console.error("No durable delivery records are available.");
+      console.error(t("delivery.no_records"));
       process.exitCode = 1;
       return;
     }
@@ -532,7 +532,7 @@ delivery
       ...(opts.cursor ? { cursor: opts.cursor } : {}),
     });
     if (!parsed.success) {
-      console.error("Specify exactly one of --delivery-id, --operation-id, --correlation-id, or --message-id; limit must be 1–100.");
+      console.error(t("delivery.invalid_selector"));
       process.exitCode = 1;
       return;
     }
@@ -560,7 +560,7 @@ delivery
       chmodSync(auditPath, 0o600);
       console.log(JSON.stringify(page, null, 2));
     } catch (err) {
-      console.error(`Could not read delivery status: ${(err as Error).message}`);
+      console.error(t("delivery.read_failed", (err as Error).message));
       process.exitCode = 1;
     }
   });

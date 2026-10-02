@@ -315,9 +315,7 @@ async function deliverCrossInstanceWithRetry(
     error: lastError.message,
   });
 
-  const notice = `❌ Message from ${senderLabel} to ${targetLabel} could not be delivered after `
-    + `${crossInstanceRetry.retries + 1} attempts (${lastError.message}). `
-    + `correlation_id: ${correlationId}`;
+  const notice = t("delivery.legacy_failed", senderLabel, targetLabel, crossInstanceRetry.retries + 1, lastError.message, correlationId);
   // Both topics: the sender's agent needs to know its send did not land, and a human
   // watching the target needs to know something was addressed to it and never arrived.
   ctx.notifyInstanceTopic?.(senderLabel, notice);
@@ -408,12 +406,12 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   const useSteer = steerCapable && !queuedPredecessor;
   const steerFallbackWarning = steer === true && !useSteer
     ? isExternalSession
-      ? "Steer was not applied because external sessions cannot be targeted safely at pane level. The message was safely queued for idle delivery instead."
+      ? t("delivery.steer_external")
       : queuedPredecessor
-        ? "Steer was not applied because a previous message to this target is still queued and steering would overtake it. The supplement was safely queued behind it for idle delivery instead."
+        ? t("delivery.steer_predecessor")
       : targetBackend === undefined
-        ? "Steer was not applied because the target backend could not be confirmed. The message was safely queued for idle delivery instead."
-        : `Steer was not applied because the '${targetBackend}' backend cannot accept mid-turn input. The message was safely queued for idle delivery instead.`
+        ? t("delivery.steer_unknown")
+        : t("delivery.steer_unsupported", targetBackend)
     : undefined;
 
   const correlationId = parsedCorrelationId || `cid-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -471,7 +469,7 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
       });
     } catch (err) {
       ctx.logger.error({ err, source: meta.instanceName, target: targetInstanceName }, "Durable outbound admission failed closed");
-      respond(null, `Durable delivery could not be accepted: ${sanitizeError(err, ctx, "durable delivery admission")}`);
+      respond(null, t("delivery.admission_failed", sanitizeError(err, ctx, "durable delivery admission")));
       return;
     }
   } else {
@@ -553,12 +551,12 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   const targetDaemon = ctx.lifecycle.daemons.get(targetInstanceName);
   const targetStateWarning = targetDaemon?.isErrorState
     ? targetDaemon.isCrashLoop
-      ? `${targetName} is in a crash loop — restart or replace required. Message delivered but may not be processed.`
+      ? t("delivery.target_crash", targetName)
       : targetDaemon.lastErrorType === "rate_limit" || targetDaemon.lastErrorType === "timeout"
-        ? `${targetName} is rate-limited by provider — paused. Message delivered but may be delayed.`
+        ? t("delivery.target_limit", targetName)
         : targetDaemon.lastErrorType === "auth_error"
-          ? `${targetName} has an authentication error — paused. Check credentials. Message delivered but may not be processed.`
-          : `${targetName} is in an error state (paused due to repeated errors). Message delivered but may not be processed.`
+          ? t("delivery.target_auth", targetName)
+          : t("delivery.target_error", targetName)
     : undefined;
   const warnings = [steerFallbackWarning, targetStateWarning].filter((value): value is string => !!value);
   respond({ sent: true, queued: true, target: targetName, target_state: state,
@@ -1827,12 +1825,12 @@ const deliveryStatus: Handler = (ctx, rawArgs, respond, meta) => {
   const v = validateArgs(DeliveryStatusArgs, rawArgs, "delivery_status");
   if (!v.ok) { respond(null, v.error); return; }
   if (!ctx.queryDurableDeliveryStatus) {
-    respond(null, "Delivery status is unavailable");
+    respond(null, t("delivery.unavailable"));
     return;
   }
   if (typeof meta.instanceName !== "string" || meta.instanceName.length === 0) {
     // Missing authenticated identity is never an operator query.
-    respond(null, "Delivery not found");
+    respond(null, t("delivery.not_found"));
     return;
   }
   const selector: DeliveryStatusSelector = deliveryStatusSelector(v.data);
@@ -1841,13 +1839,13 @@ const deliveryStatus: Handler = (ctx, rawArgs, respond, meta) => {
     // token. Ignore any identity-like argument; the schema is strict as well.
     const page = ctx.queryDurableDeliveryStatus(meta.instanceName, selector);
     if (page.items.length === 0) {
-      respond(null, "Delivery not found");
+      respond(null, t("delivery.not_found"));
       return;
     }
     respond(page);
   } catch (err) {
     ctx.logger.warn({ err, caller: meta.instanceName }, "Delivery status query failed");
-    respond(null, "Delivery status is unavailable");
+    respond(null, t("delivery.unavailable"));
   }
 };
 

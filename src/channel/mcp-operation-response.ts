@@ -1,3 +1,5 @@
+import { t } from "../locale.js";
+
 /** Keep durable tool outcomes identifiable even when the daemon response is lost. */
 export function encodeOperationSuccess(result: unknown, operationId: string): string {
   const response = result && typeof result === "object" && !Array.isArray(result)
@@ -13,9 +15,9 @@ export function encodeOperationError(message: string, operationId: string): stri
   const isUnknownOutcome = /timed out|IPC disconnected/i.test(message);
   const isKnownNotSent = /Not connected to daemon IPC|IPC send failed/i.test(message);
   const detail = isUnknownOutcome
-    ? `Outcome unknown; do not resend this operation. operation_id=${operationId}. Ask the operator to inspect its delivery status. Error: ${message}`
+    ? t("delivery.operation_unknown", operationId, message)
     : isKnownNotSent
-      ? `Operation was not sent to the daemon and was not admitted. It is safe to retry. operation_id=${operationId}. Error: ${message}`
-    : `${message} (operation_id=${operationId})`;
-  return `Error: ${detail}`;
+      ? t("delivery.operation_not_sent", operationId, message)
+    : t("delivery.operation_error", message, operationId);
+  return t("delivery.operation_error_prefix", detail);
 }

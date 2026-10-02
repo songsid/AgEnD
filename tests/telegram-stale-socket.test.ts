@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setLocale } from "../src/locale.js";
 import { HttpError } from "grammy";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -33,6 +34,7 @@ function fetchError(code: string, syscall = "write"): HttpError {
 }
 
 afterEach(() => {
+  setLocale("en");
   vi.restoreAllMocks();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
@@ -218,5 +220,26 @@ describe("Telegram stale HTTP socket recovery", () => {
     expect(send).not.toHaveBeenCalled();
     (adapter as any).httpAgent.destroy();
     (adapter as any).httpsAgent.destroy();
+  });
+});
+
+
+describe.each(["en", "zh-TW"] as const)("unconfirmed Telegram sends in %s", locale => {
+  it("localizes the warning without replaying the send or exposing credentials", async () => {
+    setLocale(locale);
+    const adapter = makeAdapter();
+    const transformer = (adapter.getBot().api.config as any).installedTransformers()[0];
+    const prev = vi.fn().mockRejectedValue(fetchError("ECONNRESET"));
+    try {
+      const failure = await transformer(prev, "sendMessage", { chat_id: 1, text: "hello" }).catch((e: Error) => e);
+      expect(failure.deliveryPhase).toBe("unknown");
+      expect(failure.message).toContain(locale === "en" ? "check the channel before retrying" : "請先查看頻道");
+      expect(failure.message).toContain("ECONNRESET");
+      expect(failure.message).not.toContain(TOKEN);
+      expect(prev).toHaveBeenCalledOnce();
+    } finally {
+      (adapter as any).httpAgent.destroy();
+      (adapter as any).httpsAgent.destroy();
+    }
   });
 });

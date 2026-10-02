@@ -10,6 +10,7 @@ import {
   CLAIM_BLOCK_NOTICE_MS, PARK_BASE_MS, PRECLAIM_WINDOW_MS, WAKE_BACKOFF_MAX_MS, WakeCoordinator,
   type WakeCoordinatorDeps,
 } from "../src/wake-coordinator.js";
+import { setLocale } from "../src/locale.js";
 import type { OutboxDelivery } from "../src/delivery-outbox.js";
 
 let seq = 0;
@@ -78,7 +79,7 @@ const settle = () => new Promise(r => setTimeout(r, 0));
 const deferred = () => { let release!: () => void; let fail!: (e: Error) => void; const promise = new Promise<void>((r, j) => { release = r; fail = j; }); return { promise, release, fail }; };
 
 beforeEach(() => { clock = 1_000_000; seq = 0; });
-afterEach(() => { vi.useRealTimers(); });
+afterEach(() => { vi.useRealTimers(); setLocale("en"); });
 
 describe("what is woken", () => {
   it("a paused target with queued work is woken once, even when scanned again mid-wake", async () => {
@@ -442,5 +443,41 @@ describe("stop() fences outstanding wake completions (#1078 review P2-5)", () =>
     expect(w.notices).toEqual([]);
     expect((c as any).states.get("t").failures).toBe(2);
     expect(c.reservedCount).toBe(0);
+  });
+});
+
+
+describe.each(["en", "zh-TW"] as const)("queue notifications in %s", locale => {
+  beforeEach(() => setLocale(locale));
+  it("localizes login holds and long queue waits", () => {
+    const { w, c } = setup();
+    w.paused.add("auth"); w.reasons.set("auth", "auth"); w.rows.push(row("auth"));
+    c.scan();
+    expect(w.notices[0]!.text).toContain(locale === "en" ? "login failed" : "登入失敗");
+    expect(w.notices[0]!.text).toContain("/wake");
+    expect(w.wakes).toEqual([]);
+    w.rows.push(row("busy")); w.holdReason.set("busy", "dialog");
+    clock += CLAIM_BLOCK_NOTICE_MS;
+    c.scan();
+    const wait = w.notices.find(n => n.to === "busy")!;
+    expect(wait.text).toContain(locale === "en" ? "message(s) waiting" : "筆訊息已等了");
+    expect(wait.text).toContain("dialog");
+    expect(wait.text).not.toContain("queued message(s)");
+  });
+  it("localizes wake failure for both topics without losing retries", async () => {
+    const { w, c } = setup({ wakeImpl: async () => { throw new Error("spawn failed"); } });
+    w.paused.add("t"); w.rows.push(row("t"));
+    for (let i = 0; i < 3; i++) {
+      c.scan(); await settle();
+      clock = (c as any).states.get("t").backoffUntil;
+    }
+    expect(w.notices.map(n => n.to).sort()).toEqual(["sender", "t"]);
+    for (const n of w.notices) {
+      expect(n.text).toContain(locale === "en" ? "3 attempts" : "嘗試 3 次");
+      expect(n.text).toContain(locale === "en" ? "will try again" : "系統會再試");
+      expect(n.text).not.toContain("spawn failed.");
+    }
+    expect(w.rows[0]!.state).toBe("queued");
+    expect(w.rows[0]!.attemptNo).toBe(0);
   });
 });

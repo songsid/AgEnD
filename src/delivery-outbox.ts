@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { chmodSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import { t } from "./locale.js";
 import type { QueueResumePolicy } from "./delivery-queue-evidence.js";
 
 export const DURABLE_DELIVERY_MAX_ATTEMPTS = 8;
@@ -260,26 +261,16 @@ function mapRow(row: OutboxRow): OutboxDelivery {
 function safeErrorSummary(error: string | null): string | null {
   if (!error) return null;
   const normalized = error.toLowerCase();
-  if (normalized.includes("ttl expired")) return "Delivery expired before the target became available.";
-  if (normalized.includes("attempt limit")) return "Delivery exhausted its bounded retry attempts.";
-  if (normalized.includes("reconcil") || normalized.includes("uncertain") || normalized.includes("restart")) {
-    return "Submission may have occurred; do not resend until the outcome is reconciled.";
+  if (normalized.includes("ttl expired")) return t("delivery.error_expired");
+  if (normalized.includes("attempt limit")) return t("delivery.error_attempts");
+  if (normalized.includes("reconcil") || normalized.includes("uncertain") || normalized.includes("restart") || normalized.includes("unverified") || normalized.includes("unverifiable")) {
+    return t("delivery.error_unconfirmed");
   }
-  return "A delivery error was recorded; details are omitted for safety.";
+  return t("delivery.error_recorded");
 }
 
 function statusSummary(state: OutboxState): string {
-  switch (state) {
-    case "queued": return "Accepted and waiting for delivery.";
-    case "delivering": return "Waiting for the target to become ready; submission has not started.";
-    case "retry_wait": return "Waiting for a bounded retry; submission has not started for the next attempt.";
-    case "submission_started":
-    case "reconciliation_pending": return "Submission may have occurred; do not resend.";
-    case "delivered": return "Delivery was confirmed; this does not mean the agent finished processing it.";
-    case "failed": return "Delivery failed after bounded retries or expiry.";
-    case "uncertain": return "Delivery may have occurred; do not resend blindly.";
-    case "cancelled": return "Delivery was cancelled.";
-  }
+  return t(`delivery.status_${state}`);
 }
 
 function safeToRetry(state: OutboxState): boolean {
@@ -608,8 +599,8 @@ export class DeliveryOutbox extends EventEmitter {
       let count = 0;
       for (const row of due) {
         const content = opts.reason === "turn-ended"
-          ? `[system:reply-pending] Your turn ended without answering ${row.requester_instance} (correlation_id ${row.correlation_id}, asked ${row.last_asked_at}). Send your conclusion with report_result (correlation_id ${row.correlation_id}) now — text you write in the terminal does not reach them.`
-          : `[system:reply-pending] A restart interrupted your work on correlation_id ${row.correlation_id} from ${row.requester_instance} (asked ${row.last_asked_at}). Resume it and answer with report_result (correlation_id ${row.correlation_id}); terminal text does not reach them.`;
+          ? t("delivery.reply_turn_ended", row.requester_instance, row.correlation_id, row.last_asked_at)
+          : t("delivery.reply_restart", row.requester_instance, row.correlation_id, row.last_asked_at);
         const key = `reply-pending:${opts.reason}:${row.correlation_id}:${row.requester_instance}:${row.owner_instance}:${opts.reason === "turn-ended" ? row.last_asked_at : sinceIso}`;
         if (this.insertReplyObligationNotice(row.owner_instance, row.correlation_id, key, content, nowIso)) count++;
         this.db.prepare(`
@@ -639,7 +630,7 @@ export class DeliveryOutbox extends EventEmitter {
       for (const row of open) {
         const quietSince = Math.max(Date.parse(row.last_asked_at), row.nudged_at ? Date.parse(row.nudged_at) : 0);
         if (now.getTime() - quietSince < opts.overdueMs || !opts.ownerIdle(row.owner_instance)) continue;
-        const content = `[system:reply-overdue] ${row.owner_instance} has not answered correlation_id ${row.correlation_id} (asked ${row.last_asked_at}${row.nudged_at ? `, reminded ${row.nudged_at}` : ""}) and is not working on anything now. Check with describe_instance or delivery_status (correlation_id ${row.correlation_id}), or ask again.`;
+        const content = t("delivery.reply_overdue", row.owner_instance, row.correlation_id, row.last_asked_at, row.nudged_at ? t("delivery.reply_reminded", row.nudged_at) : "");
         const key = `reply-overdue:${row.correlation_id}:${row.requester_instance}:${row.owner_instance}:${row.last_asked_at}`;
         if (this.insertReplyObligationNotice(row.requester_instance, row.correlation_id, key, content, nowIso)) count++;
         this.db.prepare(`
@@ -1157,7 +1148,7 @@ export class DeliveryOutbox extends EventEmitter {
     const operationId = `notice:${parent.sourceDaemonBootId}:${parent.operationId}:${parent.targetInstance}`;
     const now = new Date().toISOString();
     const deliveryId = randomUUID();
-    const noticeText = `[system:delivery-outcome] A previous tool operation was durably accepted before restart. operation_id=${parent.operationId}; target=${parent.targetInstance}; current_state=${parent.state}. Do not resend this operation. Ask the operator to inspect its delivery status.`;
+    const noticeText = t("delivery.post_restart", parent.targetInstance, statusSummary(parent.state), parent.operationId, parent.state);
     const payload = {
       type: "fleet_inbound",
       content: noticeText,
@@ -1353,9 +1344,10 @@ export class DeliveryOutbox extends EventEmitter {
       || parent.kind === REPLY_OBLIGATION_NOTICE_KIND) return;
     const noticeId = randomUUID();
     const operationId = `notice:${parent.operation_id}:${parent.delivery_id}`;
+    // Keep raw phase/proof in last_error and attempt evidence; render a safe summary here.
     const payload = {
       type: "fleet_inbound",
-      content: `[system:delivery-outcome] Cross-instance operation outcome: operation_id=${parent.operation_id}; delivery_id=${parent.delivery_id}; target=${parent.target_instance}; state=${outcome}; detail=${reason.slice(0, 200)}. ${outcome === "uncertain" ? "Do not resend until an operator reconciles this delivery." : "The delivery failed after bounded retries; report this outcome to the operator."}`,
+      content: t(`delivery.outcome_${outcome}`, parent.target_instance, safeErrorSummary(reason) ?? "", parent.operation_id, parent.delivery_id),
       meta: {
         user: "AgEnD delivery outbox",
         user_id: "agend-system",
