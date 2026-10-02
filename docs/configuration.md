@@ -61,7 +61,8 @@ What it does and does not do:
 - Only flows reviewed for it may use it — today `kiro-cli` only (`tunnelOk` in `src/login-flows.ts`).
 
 `protocol`: cloudflared defaults to QUIC (UDP 7844), which many corporate networks and VMs block; cloudflared then
-spends a long time failing over or never connects. AgEnD therefore passes `--protocol http2` (TCP 443) unless you set
+spends a long time failing over or never connects. AgEnD therefore passes `--protocol http2` (TCP to Cloudflare's edge on port 7844 — the same port number as QUIC's UDP,
+which networks that drop the UDP usually still allow, but a strict firewall can close it too) unless you set
 `quic` or `auto` (cloudflared decides). The same default applies to `agend setup --tunnel`. The readiness check also
 resolves the tunnel's name through Cloudflare's public resolvers (1.1.1.1 / 1.0.0.1) and connects to that address with the
 real host name as SNI, falling back to the system resolver: a brand-new `trycloudflare.com` name can take a minute to

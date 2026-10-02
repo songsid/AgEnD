@@ -86,7 +86,7 @@ web_terminal:
 - 只有審核過的 flow 才能用，目前只有 `kiro-cli`（`src/login-flows.ts` 的 `tunnelOk`）。
 
 `protocol`：cloudflared 預設走 QUIC（UDP 7844），很多公司網路與 VM 會擋，之後要花很久才 failover 或根本連不上。所以 AgEnD 預設傳
-`--protocol http2`（TCP 443），除非你設 `quic` 或 `auto`（交給 cloudflared 決定）。`agend setup --tunnel` 同樣使用這個預設。就緒檢查也會先用
+`--protocol http2`（連到 Cloudflare 邊緣的 TCP 7844 —— 與 QUIC 的 UDP 同一個埠號，擋 UDP 的網路通常仍放行 TCP，但嚴格的防火牆也可能關掉它），除非你設 `quic` 或 `auto`（交給 cloudflared 決定）。`agend setup --tunnel` 同樣使用這個預設。就緒檢查也會先用
 Cloudflare 的公共解析器（1.1.1.1 / 1.0.0.1）解析 tunnel 名稱，再以真正的主機名稱當 SNI 連到該位址，失敗才退回系統解析器：全新的
 `trycloudflare.com` 名稱透過公司 DNS 轉發器可能要一分鐘才解析得到。為此離開這台機器的只有一筆對 tunnel 隨機主機名稱的 DNS 查詢。啟動最多給一分鐘。
 
