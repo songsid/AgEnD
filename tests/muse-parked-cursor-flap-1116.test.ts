@@ -129,6 +129,23 @@ describe("an idle muse repainting its parked cursor does not flap (#1116)", () =
     expect(h.daemon.instanceState).toBe("idle");
   });
 
+  it("a streaming turn, where EVERY probe is overtaken, is still published as working", async () => {
+    const h = harness();
+    await h.repaint(5_000);
+    // Output every 10ms is inside every 15ms capture: no probe ever gets a quiet
+    // moment. The idle proof alone must not let this pass for the idle repaint —
+    // the capture shows the working row, not the idle layout.
+    h.state.pane = WORKING;
+    for (let i = 0; i < 400; i++) {
+      h.state.lastOutputAt = Date.now();
+      h.daemon.controlClient.emit("output:@7", { paneId: "%1", windowId: "@7", at: Date.now() });
+      await vi.advanceTimersByTimeAsync(10);
+    }
+    expect(h.state.overtaken).toBeGreaterThan(3);
+    expect(h.edges.map(e => `${e.previous}->${e.state}`)).toEqual(["idle->working"]);
+    expect(h.daemon.instanceState).toBe("working");
+  });
+
   it("work that starts right after an overtaken probe is picked up by the next one", async () => {
     const h = harness();
     await h.repaint(10_000);
