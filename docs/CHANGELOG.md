@@ -103,6 +103,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `cloudflared` on `PATH`. See "Finishing a /login away from the machine" in `docs/configuration.md`.
 
 ### Fixed
+- **A fleet started with a throwaway `HOME` no longer joins the real fleet's tmux server (#1126).**
+  Only the user's real `~/.agend` (from the password database, not `$HOME`) uses tmux's default
+  socket (if that database cannot be read, no home is the default). Before, a fleet run with `HOME` and `AGEND_HOME` both pointed at a scratch directory
+  counted as "default", attached to the live `agend` server, and its startup cleanup killed the
+  live fleet's windows as orphans. Nothing changes for an unset `AGEND_HOME`, one set to your real
+  `~/.agend`, or any other custom value: each keeps the socket it had.
 - **Dashboard responses can no longer be framed, sniffed or cached.** Every
   response from the dashboard/health server now carries `X-Frame-Options: DENY`,
   `Content-Security-Policy: frame-ancestors 'none'` (the pages have buttons that
