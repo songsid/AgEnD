@@ -22,14 +22,14 @@ defaults: {}
 instances: {}
 hostname: fleet.example
 login:
-  mode: relay
+  mode: web
 web_terminal:
   enabled: true
   bind: 100.64.0.7
   ttl_minutes: 5
 `);
     expect(cfg.hostname).toBe("fleet.example");
-    expect(cfg.login).toEqual({ mode: "relay" });
+    expect(cfg.login).toEqual({ mode: "web" });
     expect(cfg.web_terminal).toEqual({ enabled: true, bind: "100.64.0.7", ttl_minutes: 5 });
   });
 
@@ -38,6 +38,10 @@ web_terminal:
     expect(cfg.login).toBeUndefined();
     expect(cfg.web_terminal).toBeUndefined();
     expect(cfg.hostname).toBeUndefined();
+  });
+
+  it("login.mode: relay (removed, #1139) still loads — an upgrade must not stop an existing fleet from starting", () => {
+    expect(load("defaults: {}\ninstances: {}\nlogin:\n  mode: relay\n").login).toEqual({ mode: "relay" });
   });
 
   it("clamps ttl_minutes into the engine's 1..20 range", () => {

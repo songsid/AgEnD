@@ -66,14 +66,6 @@ describe("kiro sign-in screen after token expiry", () => {
     expect(kiroLoginScreen().test(LOGIN_MENU_PANE)).toBe(true);
   });
 
-  it("leaves the menu automation pattern matching only the menu", () => {
-    // menu.promptPattern drives the option walk; widening it would make the
-    // automation try to answer a screen that has no options.
-    const menuPrompt = LOGIN_FLOWS["kiro-cli"].menu!.promptPattern;
-    expect(menuPrompt.test(LOGIN_MENU_PANE)).toBe(true);
-    expect(menuPrompt.test(EXPIRED_LOGIN_PANE)).toBe(false);
-  });
-
   /**
    * The real pane, from the reported screenshot: the two lines, then a blank
    * row, then the empty input row (a cursor block draws no text, so it is

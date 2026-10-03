@@ -76,14 +76,6 @@ export interface LoginFlow {
    * are loose substrings that a resumed transcript could contain.
    */
   loginScreenBeforeReady?: true;
-  /** Arrow-key selector shown by the CLI (kiro). Option N = Down×N then Enter. */
-  menu?: {
-    promptPattern: RegExp;
-    /** Labels in on-screen order — the order defines the Down-key count. */
-    options: string[];
-  };
-  /** Pane prompt that requires admin-supplied text (`/login code <text>`). */
-  inputPrompt?: RegExp;
   /** Overrides the generic first-URL capture when the CLI prints several URLs. */
   urlPattern?: RegExp;
   /** One-time user code displayed next to the URL, when the CLI prints one. */
@@ -235,15 +227,6 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
     // and both of its lines are required together, so prose that happens to
     // mention one of them does not read as a live sign-in screen.
     loginScreenPattern: KIRO_LOGIN_SCREEN,
-    menu: {
-      // Deliberately NOT the pattern above: this one drives the menu
-      // automation, and it must match only the menu.
-      promptPattern: /Select login method/,
-      // Binary-verified on-screen order; "Your Organization" = Identity Center
-      // and is followed by the Start URL / Region text prompts below.
-      options: ["Builder ID", "Google", "GitHub", "Your Organization"],
-    },
-    inputPrompt: /Enter Start URL|Enter Region/,
     codePattern: /Code:\s*([A-Z0-9][A-Z0-9-]{3,})/,
     successPattern: /Logged in successfully|Logged in with /,
     timeoutMs: LOGIN_TIMEOUT_MS,
@@ -268,7 +251,6 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
     loginScreenPattern: /Select login method:|Sign in (?:to|with) your Anthropic account|Paste code here if prompted >/,
     loginScreenActive: claudeLoginScreenActive,
     loginScreenBeforeReady: true,
-    inputPrompt: /Paste code here if prompted/,
     successPattern: /Login successful|Logged in as/,
     timeoutMs: LOGIN_TIMEOUT_MS,
   },

@@ -19,8 +19,6 @@ vi.mock("../src/login-manager.js", async (importOriginal) => {
       fakeSessions[fakeSessions.length - 1].cancelled = true;
       await this.events.onDone({ ok: false, detail: "cancelled" });
     }
-    async submitInput() { return true; }
-    async selectMenuOption() { return true; }
   }
   return { ...real, LoginSession: FakeLoginSession };
 });
@@ -185,8 +183,8 @@ describe("the install /login runs for a missing CLI (#1131: one entry point)", (
     expect(await fm.startInstallSession("claude", chat)).toContain("already");
     expect(await fm.startInstallSession("notreal", chat)).toContain("notreal");
 
-    // A login (web or relay) holds the fleet-wide window; install must yield.
-    const loginClaim = (fm as any).loginWindow.tryClaim("relay", "codex");
+    // A web login holds the fleet-wide window; install must yield.
+    const loginClaim = (fm as any).loginWindow.tryClaim("web", "codex");
     expect(await fm.startInstallSession("grok", chat)).toContain("codex");
     (fm as any).loginWindow.release(loginClaim);
 
@@ -236,7 +234,6 @@ describe("slash helpers", () => {
     const { fm, adapter, respond } = setup();
     vi.spyOn(fm, "isFleetAdmin").mockReturnValue(true);
     const cancel = vi.spyOn(fm, "cancelLoginSession").mockResolvedValue("cancelled");
-    const input = vi.spyOn(fm, "loginSubmitInput").mockResolvedValue("pasted");
     const start = vi.spyOn(fm, "startLoginSession").mockResolvedValue("started");
     const chooser = vi.spyOn(fm, "promptLoginBackends").mockResolvedValue(undefined);
 
@@ -244,7 +241,8 @@ describe("slash helpers", () => {
     expect(cancel).toHaveBeenCalled();
     // `code` and `reinstall` are no longer options (#1137): ignored if a stale client sends them.
     await (fm as any).handleLoginSlash({ userId: "a", channelId: "c", options: { code: "AB-12" }, respond }, "discord", adapter);
-    expect(input).not.toHaveBeenCalled();
+    expect(start).not.toHaveBeenCalled();
+    expect(chooser).toHaveBeenCalledTimes(1);                  // …it is just the bare /login
     await (fm as any).handleLoginSlash({ userId: "a", channelId: "c", options: { backend: "codex" }, respond }, "discord", adapter);
     expect(start).toHaveBeenCalledWith("codex", expect.objectContaining({ chatId: "c" }));
     await (fm as any).handleLoginSlash({ userId: "a", channelId: "c", respond }, "discord", adapter);

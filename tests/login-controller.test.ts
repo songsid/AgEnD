@@ -697,7 +697,7 @@ describe("session outcome", () => {
     setLocale("zh-TW");
     for (const key of ["login.web_started", "login.web_link", "login.web_token", "login.web_token_dm_failed", "login.web_resend",
       "login.web_token_resent", "login.web_token_already_used", "login.web_disabled", "login.web_cleanup_failed",
-      "login.web_suggest_relogin", "login.web_suggest_check_args", "login.web_code_not_needed", "login.still_valid_precommand",
+      "login.web_suggest_relogin", "login.web_suggest_check_args", "login.still_valid_precommand",
       "login.web_confirm", "login.web_confirm_go", "login.web_confirm_failed", "login.web_rate_limited", "login.web_flow_not_allowed",
       "login.web_link_failed", "login.web_token_failed", "login.web_token_resend_failed", "login.web_shutting_down",
       "login.remote_unsupported_agent_cli", "login.device_confirm", "login.device_confirm_go"]) {

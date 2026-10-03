@@ -125,7 +125,7 @@ describe("a chooser that cannot be posted says so", () => {
     const ctx = {
       adapter, fleetConfig: { defaults: {}, instances: {} }, isFleetAdmin: () => true,
       promptLoginBackends: vi.fn(async () => "⚠️ login chooser failed"),
-      startLoginSession: vi.fn(), loginSubmitInput: vi.fn(), cancelLoginSession: vi.fn(),
+      startLoginSession: vi.fn(), cancelLoginSession: vi.fn(),
     } as any;
     const commands = new TopicCommands(ctx);
     const msg = (text: string) => ({ text, chatId: "chat", threadId: "topic", userId: "u1", adapterId: "telegram", username: "admin" }) as any;

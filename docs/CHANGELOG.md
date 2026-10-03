@@ -36,6 +36,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   instance directory through group access, give it access explicitly — the group no longer has it.** (#1118)
 
 ### Upgrade Notes
+- **[Behaviour change] The legacy chat-relay `/login` mode is removed (#1139).** `login.mode: relay` was the
+  pre-2.1.6 way to sign in (AgEnD drove the login CLI in a tmux window and relayed its menus, authorization URL
+  and text prompts through chat); `/login` has run in the token-gated browser terminal by default since 2.1.5
+  and `/login code` has had no entry point since #1137. **A fleet.yaml that still sets `login.mode: relay` keeps
+  loading** — the setting is ignored, with one warning in the log; remove it. Nothing else changes for `/login`
+  (web terminal, device-code, public link) or for installing a CLI. A provider-picker button from before the
+  upgrade now answers "expired" when tapped.
 - **[Behaviour change] One tap for a public `/login` link — AgEnD gets cloudflared itself (#1137).**
   The kiro-cli and claude-code login confirmation now offers **I understand (temporary public link)**,
   **I understand (local network)** and **Cancel** without any configuration: `web_terminal.tunnel.allow_public`

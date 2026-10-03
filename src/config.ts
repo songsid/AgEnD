@@ -210,6 +210,7 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
 function validateLoginConfig(raw: unknown): FleetConfig["login"] {
   if (raw === undefined || raw === null) return undefined;
   if (!isPlainObject(raw)) throw new Error(`login: expected a mapping, got ${JSON.stringify(raw)}`);
+  // "relay" was removed (#1139) but stays accepted: rejecting it would stop an existing fleet from starting after an upgrade.
   if (raw.mode !== undefined && raw.mode !== "web" && raw.mode !== "relay") {
     throw new Error(`login.mode: expected "web" or "relay", got ${JSON.stringify(raw.mode)}`);
   }

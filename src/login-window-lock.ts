@@ -1,7 +1,7 @@
 /**
  * Fleet-wide "one login/install window at a time" reservation.
  *
- * Web login, the legacy relay login and the install `/login` runs all share this lock. The
+ * Web login and the install `/login` runs all share this lock. The
  * claim is SYNCHRONOUS and must be taken before the caller's first await
  * (auth pre-check, tmux ensureSession, …) — a check-then-await-then-claim
  * sequence lets two concurrent starts both pass (sol B1, round 1).
@@ -18,7 +18,7 @@
  */
 import { t } from "./locale.js";
 
-export type LoginWindowKind = "web" | "relay" | "install";
+export type LoginWindowKind = "web" | "install";
 
 export interface LoginWindowClaim {
   readonly id: number;
