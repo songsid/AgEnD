@@ -12,8 +12,6 @@ function makeCommands(ctxOverrides: Record<string, unknown> = {}) {
     startLoginSession: vi.fn(async (backend: string) => `started:${backend}`),
     loginSubmitInput: vi.fn(async (text: string) => `input:${text}`),
     cancelLoginSession: vi.fn(async () => "cancelled"),
-    startInstallSession: vi.fn(async (backend: string) => `installing:${backend}`),
-    cancelInstallSession: vi.fn(async () => "install-cancelled"),
     ...ctxOverrides,
   } as any;
   return { commands: new TopicCommands(ctx), ctx, sendText };
@@ -59,23 +57,36 @@ describe("/login command", () => {
   });
 });
 
-describe("/install-cli command", () => {
-  it("accepts both spellings (Telegram menus cannot register hyphens)", async () => {
-    const { commands, ctx } = makeCommands();
-    expect(await commands.handleGeneralCommand(msg("/install-cli grok"))).toBe(true);
-    expect(await commands.handleGeneralCommand(msg("/install_cli codex"))).toBe(true);
-    expect(ctx.startInstallSession).toHaveBeenNthCalledWith(1, "grok", expect.objectContaining({ chatId: "chat" }));
-    expect(ctx.startInstallSession).toHaveBeenNthCalledWith(2, "codex", expect.objectContaining({ chatId: "chat" }));
+describe("/login reinstall, and /install-cli as a typed alias for 2.1.10 (#1131)", () => {
+  it("/login reinstall <backend> reinstalls; without a backend it is a usage error", async () => {
+    const { commands, ctx, sendText } = makeCommands();
+    await commands.handleGeneralCommand(msg("/login reinstall codex"));
+    expect(ctx.startLoginSession).toHaveBeenCalledWith("codex", expect.objectContaining({ chatId: "chat" }), { reinstall: true });
+    await commands.handleGeneralCommand(msg("/login reinstall"));
+    expect(sendText.mock.calls.at(-1)![1]).toContain("Usage");
+    expect(ctx.startLoginSession).toHaveBeenCalledTimes(1);
   });
 
-  it("denies non-admins and routes cancel", async () => {
-    const denied = makeCommands({ isFleetAdmin: vi.fn(() => false) });
-    await denied.commands.handleGeneralCommand(msg("/install-cli grok"));
-    expect(denied.ctx.startInstallSession).not.toHaveBeenCalled();
+  it("/install-cli <backend> (either spelling) says where it went, then reinstalls through /login", async () => {
+    const { commands, ctx, sendText } = makeCommands();
+    expect(await commands.handleGeneralCommand(msg("/install-cli grok"))).toBe(true);
+    expect(await commands.handleGeneralCommand(msg("/install_cli codex"))).toBe(true);
+    expect(sendText.mock.calls.filter(c => String(c[1]).includes("now part of `/login`"))).toHaveLength(2);
+    expect(ctx.startLoginSession.mock.calls.map((c: unknown[]) => [c[0], c[2]])).toEqual([["grok", { reinstall: true }], ["codex", { reinstall: true }]]);
+  });
 
+  it("bare /install-cli opens the /login picker, /install-cli cancel cancels", async () => {
     const { commands, ctx } = makeCommands();
+    await commands.handleGeneralCommand(msg("/install-cli"));
+    expect(ctx.promptLoginBackends).toHaveBeenCalledTimes(1);
     await commands.handleGeneralCommand(msg("/install-cli cancel"));
-    expect(ctx.cancelInstallSession).toHaveBeenCalledTimes(1);
-    expect(ctx.startInstallSession).not.toHaveBeenCalled();
+    expect(ctx.cancelLoginSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("a non-admin gets the pointer and then the same refusal as /login", async () => {
+    const { commands, ctx, sendText } = makeCommands({ isFleetAdmin: vi.fn(() => false) });
+    await commands.handleGeneralCommand(msg("/install-cli grok"));
+    expect(ctx.startLoginSession).not.toHaveBeenCalled();
+    expect(sendText.mock.calls.at(-1)![1]).toContain("Permission denied");
   });
 });

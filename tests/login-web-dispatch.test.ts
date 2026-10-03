@@ -52,6 +52,9 @@ describe("/login mode dispatch and exclusivity", () => {
     const fm = new FleetManager(tmpDir);
     fm.fleetConfig = { defaults: {}, instances: {}, login: mode ? { mode } : undefined } as any;
     vi.spyOn(fm, "isFleetAdmin").mockReturnValue(true);
+    // These are sign-in paths: the CLIs count as installed (on a host without
+    // them, /login would install first — covered in login-one-entry-1131).
+    vi.spyOn(fm, "isCliInstalled").mockReturnValue(true);
     const adapter = {
       id: "discord", type: "discord",
       sendText: vi.fn().mockResolvedValue({ messageId: "m1" }),

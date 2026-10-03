@@ -358,7 +358,7 @@ export interface WebTerminalTunnelConfig {
   protocol?: "http2" | "quic" | "auto";
 }
 
-/** `web_terminal:` section — the browser terminal behind /login and /install-cli. */
+/** `web_terminal:` section — the browser terminal behind /login (sign-in and install). */
 export interface WebTerminalConfig {
   /** Default true. false makes /login refuse in web mode. */
   enabled?: boolean;
@@ -384,7 +384,7 @@ export interface FleetConfig {
   /** Host name used when building URLs handed to users (/dashboard, web terminal). Default "localhost". */
   hostname?: string;
   /**
-   * How this fleet names itself in `/login` and `/install-cli` (slash command
+   * How this fleet names itself in `/login` (slash command
    * descriptions, backend pickers) — tells apart several fleets' bots in one
    * guild. Default: the machine's host name.
    */

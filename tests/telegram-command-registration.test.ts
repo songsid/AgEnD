@@ -52,19 +52,19 @@ describe("Telegram command-menu registration", () => {
     for (const payload of fleetPayloads) {
       expect(payload.commands.map((c: { command: string }) => c.command)).toEqual([
         "status", "sysinfo", "dashboard", "ctx", "compact", "steer", "btw", "clear", "model", "effort",
-        "pause", "wake", "restart", "collab", "update", "doctor", "login", "install_cli", "usage", "tips",
+        "pause", "wake", "restart", "collab", "update", "doctor", "login", "usage", "tips",
       ]);
       expect(payload.commands.find((c: { command: string }) => c.command === "login")?.description)
-        .toBe("🔒 Re-login a CLI backend remotely (beta)");
-      expect(payload.commands.find((c: { command: string }) => c.command === "install_cli")?.description)
-        .toBe("🔒 Install a CLI backend remotely (beta)");
+        .toBe("🔒 Sign in or install a CLI backend remotely (beta)");
+      // One entry point since #1131: /login installs a missing CLI too.
+      expect(payload.commands.some((c: { command: string }) => c.command === "install_cli")).toBe(false);
       expect(payload.commands.find((c: { command: string }) => c.command === "restart")?.description)
         .toContain("full");
     }
     expect(payloads.find(p => p.scope.type === "default").commands.map((c: { command: string }) => c.command))
       .toEqual(["start", "stop", "compact", "steer", "btw", "clear", "model", "effort", "pause", "wake", "ctx"]);
     expect(info).toHaveBeenCalledWith(
-      expect.objectContaining({ adapterId: "telegram-main", fleetCommandCount: 20 }),
+      expect.objectContaining({ adapterId: "telegram-main", fleetCommandCount: 19 }),
       expect.stringContaining("Registered Telegram bot commands"),
     );
     expect(warn).not.toHaveBeenCalled();
@@ -81,9 +81,7 @@ describe("Telegram command-menu registration", () => {
     const payloads = fetchMock.mock.calls.map(([, init]) => JSON.parse(String(init?.body)));
     const fleetCommands = payloads.find(p => p.scope.type === "chat").commands;
     expect(fleetCommands.find((c: { command: string }) => c.command === "login")?.description)
-      .toBe("🔒 遠端重新登入 CLI Backend（Beta）");
-    expect(fleetCommands.find((c: { command: string }) => c.command === "install_cli")?.description)
-      .toBe("🔒 遠端安裝 CLI Backend（Beta）");
+      .toBe("🔒 遠端登入或安裝 CLI Backend（Beta）");
   });
 
   it("does not report success when Telegram rejects setMyCommands", async () => {

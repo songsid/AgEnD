@@ -73,7 +73,7 @@ class FakeClient extends EventEmitter {
   destroy() { this.ws.status = Status.Disconnected; }
 }
 
-describe("Discord names the fleet in /login and /install-cli", () => {
+describe("Discord names the fleet in /login", () => {
   it("both descriptions carry the label the factory passes", async () => {
     const clients: FakeClient[] = [];
     const adapter = await createAdapter(
@@ -88,13 +88,13 @@ describe("Discord names the fleet in /login and /install-cli", () => {
     const commands = (client.application.commands.set.mock.calls[0] as any)[0] as Array<{ name: string; description: string }>;
     const description = (name: string) => commands.find(c => c.name === name)!.description;
     expect(description("login")).toBe(`🔒 ${t("slash.login")} · han-pc`);
-    expect(description("install-cli")).toBe(`🔒 ${t("slash.install_cli")} · han-pc`);
+    expect(commands.some(c => c.name === "install-cli")).toBe(false);
     await adapter.stop();
   });
 });
 
 describe("the pickers say which fleet they belong to", () => {
-  it("/login and /install-cli choosers end with the fleet line", async () => {
+  it("the /login chooser ends with the fleet line", async () => {
     const fm = new FleetManager(scratch());
     fm.fleetConfig = { defaults: {}, instances: {}, fleet_label: "lab-box" } as any;
     vi.spyOn(fm as any, "configuredBackendInstanceNames").mockReturnValue([]);
@@ -106,10 +106,8 @@ describe("the pickers say which fleet they belong to", () => {
       sendText: vi.fn(async () => ({ messageId: "t", chatId: "c" })),
     } as any;
     await fm.promptLoginBackends({ adapter, adapterId: "discord", chatId: "c" });
-    await fm.promptInstallBackends({ adapter, adapterId: "discord", chatId: "c" });
     expect(messages).toEqual([
       `${t("login.choose_backend")}\n${t("fleet.label_line", "lab-box")}`,
-      `${t("install.choose_backend")}\n${t("fleet.label_line", "lab-box")}`,
     ]);
   });
 });

@@ -1,7 +1,7 @@
 /**
  * Web terminal session: one command, one tmux pane, one browser, a few minutes.
  *
- * This is the core of remote `/login` and `/install-cli` (v2.1.5). The fleet
+ * This is the core of remote `/login`, including the installs it runs (v2.1.5). The fleet
  * starts exactly one command inside a *dedicated* tmux server and hands the
  * admin a browser terminal onto that single pane. Nothing here interprets the
  * CLI's screens or presses keys on the user's behalf — the human is the TUI's

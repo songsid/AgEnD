@@ -5,7 +5,7 @@
  * A. The slash command addresses its channel as the chat, so the prompt was
  *    bound to chatId = <channel>; the adapter reports every button click as
  *    chatId = <guild>, threadId = <channel>, and the nonce check rejected the
- *    click as "mismatched". `/install-cli` had the same defect.
+ *    click as "mismatched".
  * B. A button outside the primary guild or a known open channel was
  *    acknowledged and then dropped without a word, although the slash command
  *    that posted it is accepted from anywhere.
@@ -114,20 +114,6 @@ describe("A: a picker posted by a Discord slash command is clickable (#1131)", (
     expect(startLogin).toHaveBeenCalledWith("codex", expect.objectContaining({ chatId: GUILD, threadId: "ops-channel" }));
   });
 
-  it("/install-cli: the backend button starts that backend's install", async () => {
-    const { adapter, fm, posted, warn, startInstall, click, slash } = setup();
-    await (fm as any).handleInstallCliSlash(slash("ops-channel"), "discord", adapter);
-    expect(posted).toHaveLength(1);
-    const button = posted[0]!.ids[0]!;
-    expect(button).toMatch(/^install-select:[0-9a-f]{32}:[a-z-]+$/);
-
-    await click(button, { guildId: GUILD, channelId: "ops-channel", messageId: "msg-1" });
-
-    expect(warn).not.toHaveBeenCalledWith(expect.anything(), "Rejected unauthorized or mismatched button callback");
-    expect(startInstall).toHaveBeenCalledOnce();
-    expect(startInstall).toHaveBeenCalledWith(button.split(":")[2], expect.objectContaining({ chatId: GUILD, threadId: "ops-channel" }));
-  });
-
   it("the click is still bound to its prompt: the same button in another channel is rejected", async () => {
     const { adapter, fm, posted, warn, startLogin, click, slash } = setup();
     await (fm as any).handleLoginSlash(slash("ops-channel"), "discord", adapter);
@@ -148,14 +134,6 @@ describe("A without a configured group_id (group_id is optional; the adapter's g
     expect(startLogin).toHaveBeenCalledWith("codex", expect.objectContaining({ threadId: "ops-channel" }));
   });
 
-  it("/install-cli: the picker's button still starts the install", async () => {
-    const { adapter, fm, posted, warn, startInstall, click, slash } = setup("");
-    await (fm as any).handleInstallCliSlash(slash("ops-channel"), "discord", adapter);
-    const button = posted[0]!.ids[0]!;
-    await click(button, { guildId: "the-real-guild", channelId: "ops-channel", messageId: "msg-1" });
-    expect(warn).not.toHaveBeenCalledWith(expect.anything(), "Rejected unauthorized or mismatched button callback");
-    expect(startInstall).toHaveBeenCalledOnce();
-  });
 });
 
 describe("B: a prompt button outside the primary guild is not dropped silently (#1131)", () => {

@@ -1,8 +1,8 @@
 /**
- * #1133: in the escape-hatch `/login` and `/install-cli` flows, a prompt that
+ * #1133: in the escape-hatch `/login` flow, a prompt that
  * cannot be posted and a click that is refused must never be silent.
  *
- *  - Discord: buttons in rows of five (one row of seven made `/install-cli`'s
+ *  - Discord: buttons in rows of five (one row of seven made a seven-backend
  *    chooser impossible to post); more than 25 is an error.
  *  - A chooser that cannot be posted says so — never "chooser posted".
  *  - A refused click (expired, wrong place, not an admin) tells the clicker why:
@@ -97,46 +97,40 @@ describe("Discord lays buttons out in rows of five", () => {
     expect(() => buttonRows(choices(26))).toThrow(/at most 25 buttons/);
   });
 
-  it("/install-cli's seven-backend chooser is posted and its buttons work", async () => {
-    const { adapter, fm, posted, startInstall, click, slash } = discordFleet();
+  it("/login's chooser of every installable backend (more than five) is posted and its last button works", async () => {
+    const { adapter, fm, posted, startLogin, click, slash } = discordFleet();
     const data = slash("ops");
-    await (fm as any).handleInstallCliSlash(data, "discord", adapter);
+    await (fm as any).handleLoginSlash(data, "discord", adapter);
     expect(posted).toHaveLength(1);
     expect(posted[0]!.rows.flat().length).toBeGreaterThan(5);
     expect(posted[0]!.rows.every(r => r.length <= 5)).toBe(true);
-    expect(data.respond).toHaveBeenCalledWith(t("install.chooser_posted"));
+    expect(data.respond).toHaveBeenCalledWith(t("login.chooser_posted"));
     const last = posted[0]!.rows.flat().at(-1)!;
     await click(last, { channelId: "ops", messageId: "msg-1" });
-    expect(startInstall).toHaveBeenCalledWith(last.split(":")[2], expect.anything());
+    expect(startLogin).toHaveBeenCalledWith(last.split(":")[2], expect.anything());
   });
 });
 
 describe("a chooser that cannot be posted says so", () => {
-  it("Discord slash /login and /install-cli answer with the failure, not \"chooser posted\"", async () => {
+  it("Discord slash /login answers with the failure, not \"chooser posted\"", async () => {
     const { adapter, fm, slash } = discordFleet({ sendError: new Error("Missing Permissions") });
     const login = slash("ops");
     await (fm as any).handleLoginSlash(login, "discord", adapter);
     expect(login.respond).toHaveBeenCalledWith(t("buttons.post_failed", "Missing Permissions"));
-    const install = slash("ops");
-    await (fm as any).handleInstallCliSlash(install, "discord", adapter);
-    expect(install.respond).toHaveBeenCalledWith(t("buttons.post_failed", "Missing Permissions"));
   });
 
-  it("text /login and /install-cli post the failure in the chat", async () => {
+  it("text /login posts the failure in the chat", async () => {
     const sendText = vi.fn().mockResolvedValue({ messageId: "m" });
     const adapter = { id: "telegram", type: "telegram", sendText };
     const ctx = {
       adapter, fleetConfig: { defaults: {}, instances: {} }, isFleetAdmin: () => true,
       promptLoginBackends: vi.fn(async () => "⚠️ login chooser failed"),
-      promptInstallBackends: vi.fn(async () => "⚠️ install chooser failed"),
       startLoginSession: vi.fn(), loginSubmitInput: vi.fn(), cancelLoginSession: vi.fn(),
-      startInstallSession: vi.fn(), cancelInstallSession: vi.fn(),
     } as any;
     const commands = new TopicCommands(ctx);
     const msg = (text: string) => ({ text, chatId: "chat", threadId: "topic", userId: "u1", adapterId: "telegram", username: "admin" }) as any;
     await commands.handleGeneralCommand(msg("/login"));
-    await commands.handleGeneralCommand(msg("/install-cli"));
-    expect(sendText.mock.calls.map(c => c[1])).toEqual(["⚠️ login chooser failed", "⚠️ install chooser failed"]);
+    expect(sendText.mock.calls.map(c => c[1])).toEqual(["⚠️ login chooser failed"]);
   });
 
   it("the web login's button poster rejects when the prompt cannot be posted (the controller reports it)", async () => {

@@ -39,7 +39,7 @@ type Alert = { choices: { id: string }[] };
 const alertAt = (notifyAlert: { mock: { calls: unknown[][] } }, i = 0): Alert =>
   notifyAlert.mock.calls[i][1] as Alert;
 
-describe("/install-cli", () => {
+describe("the install /login runs for a missing CLI (#1131: one entry point)", () => {
   let tmpDir: string;
   beforeEach(() => {
     tmpDir = join(tmpdir(), `install-cli-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -66,39 +66,91 @@ describe("/install-cli", () => {
     return { fm, adapter, notifyAlert, sendText, chat };
   }
 
-  it("runs the shared install command in a session and offers login on success", async () => {
-    const { fm, notifyAlert, sendText, chat } = setup();
+  it("/login of a CLI that is missing installs it, then signs in", async () => {
+    const { fm, sendText, chat } = setup();
     const verify = vi.spyOn(fm as any, "locateBinaryOnLoginShell").mockReturnValue("/usr/local/bin/codex");
-    const started = await fm.startInstallSession("codex", chat);
-    expect(started).toContain("codex");
+    const started = await fm.startLoginSession("codex", chat);
+    expect(started).toBe(t("install.started", "codex"));
     expect(fakeSessions).toHaveLength(1);
     expect(fakeSessions[0].flow.command).toBe("curl -fsSL https://chatgpt.com/codex/install.sh | sh");
     expect(fakeSessions[0].started).toBe(true);
 
+    // The installed CLI is on PATH now: the sign-in that follows is a login.
+    installedBinaries.add("codex");
+    const signIn = vi.spyOn(fm as any, "launchSignIn").mockResolvedValue("login-started");
     await fakeSessions[0].events.onDone({ ok: true, detail: "clean exit" });
     expect(verify).toHaveBeenCalledWith("codex");
-    expect(sendText).toHaveBeenCalledWith(
-      "chat",
-      expect.stringMatching(/codex.*verified.*codex.*login codex/i),
-      { threadId: "topic" },
-    );
-    expect(notifyAlert).toHaveBeenCalledTimes(1);
-    expect(sendText.mock.invocationCallOrder[0]).toBeLessThan(notifyAlert.mock.invocationCallOrder[0]);
-    const ids = alertAt(notifyAlert).choices.map(c => c.id);
-    expect(ids[0]).toMatch(/^install-login:[0-9a-f]{32}:go$/);
+    expect(sendText.mock.calls.map(call => call[1])).toEqual([t("install.success", "codex", "codex"), "login-started"]);
+    expect(signIn).toHaveBeenCalledWith("codex", expect.objectContaining({ chatId: "chat", threadId: "topic", userId: "admin" }), {});
   });
 
-  it("keeps the durable success feedback when the optional login buttons fail", async () => {
-    const { fm, notifyAlert, sendText, chat } = setup();
+  it("an install whose binary is still not visible signs in once, never installs again", async () => {
+    const { fm, chat } = setup();
     vi.spyOn(fm as any, "locateBinaryOnLoginShell").mockReturnValue("/usr/local/bin/codex");
-    notifyAlert.mockRejectedValueOnce(new Error("adapter offline"));
-
-    await fm.startInstallSession("codex", chat);
+    vi.spyOn(fm as any, "adoptBinaryDirectory").mockImplementation(() => {});
+    await fm.startLoginSession("codex", chat);
+    // installedBinaries stays empty: the fleet still cannot see codex.
+    const signIn = vi.spyOn(fm as any, "launchSignIn").mockResolvedValue("login-started");
+    const install = vi.spyOn(fm, "startInstallSession");
     await fakeSessions[0].events.onDone({ ok: true, detail: "clean exit" });
+    expect(signIn).toHaveBeenCalledOnce();
+    expect(install).not.toHaveBeenCalled();
+    expect(fakeSessions).toHaveLength(1);
+  });
 
-    expect(sendText).toHaveBeenCalledTimes(1);
-    expect(String(sendText.mock.calls[0][1])).toContain("/login codex");
-    expect(notifyAlert).toHaveBeenCalledTimes(1);
+  it("a confirmed sign-in (the go button) never installs, even if the binary is missing (#1136 review)", async () => {
+    const { fm, adapter, chat } = setup();
+    const signIn = vi.spyOn(fm as any, "launchSignIn").mockResolvedValue("signing in");
+    const install = vi.spyOn(fm, "startInstallSession");
+    // A real nonce-armed confirmation, as the login controller posts it; codex is not on PATH.
+    await (fm as any).postNonceButtonPrompt({
+      prefix: "login-confirm:", alertType: "login", instanceName: "codex", adapter, adapterId: "discord",
+      chatId: "chat", threadId: "topic", message: "Sign in?", choices: [{ action: "go", label: "Go" }], expiredText: "expired",
+    });
+    const nonce = [...(fm as any).pendingNonceButtons.keys()][0];
+    await (fm as any).handleLoginConfirm({ callbackData: `login-confirm:${nonce}:go`, chatId: "chat", threadId: "topic", messageId: "prompt-1", userId: "admin" }, "discord", adapter);
+    expect(install).not.toHaveBeenCalled();
+    expect(fakeSessions).toHaveLength(0);
+    expect(signIn).toHaveBeenCalledWith("codex", expect.objectContaining({ chatId: "chat" }), expect.objectContaining({ skipAuthCheck: true }));
+  });
+
+  it("/login cancel between a finished install and its sign-in stops the sign-in (#1136 review)", async () => {
+    const { fm, sendText, chat } = setup();
+    vi.spyOn(fm as any, "locateBinaryOnLoginShell").mockReturnValue("/usr/local/bin/codex");
+    const signIn = vi.spyOn(fm as any, "launchSignIn").mockResolvedValue("signing in");
+    await fm.startInstallSession("codex", chat);
+    let release!: () => void;
+    sendText.mockImplementationOnce(() => new Promise(r => { release = () => r({ messageId: "s" }); }));
+    const done = fakeSessions[0].events.onDone({ ok: true, detail: "clean exit" });
+    await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+    expect(await fm.cancelLoginSession()).toBe(t("login.cancelled", "codex"));
+    release();
+    await done;
+    expect(signIn).not.toHaveBeenCalled();
+    // Nothing left to cancel afterwards.
+    expect(await fm.cancelLoginSession()).toBe(t("login.no_session"));
+  });
+
+  it("/login of an installed CLI signs in without installing", async () => {
+    const { fm, chat } = setup();
+    installedBinaries.add("codex");
+    const signIn = vi.spyOn(fm as any, "launchSignIn").mockResolvedValue("login-started");
+    expect(await fm.startLoginSession("codex", chat)).toBe("login-started");
+    expect(fakeSessions).toHaveLength(0);
+    expect(signIn).toHaveBeenCalledOnce();
+  });
+
+  it("a sign-in that cannot start after the install is reported after the success line", async () => {
+    const { fm, sendText, chat } = setup();
+    vi.spyOn(fm as any, "locateBinaryOnLoginShell").mockReturnValue("/usr/local/bin/codex");
+    await fm.startInstallSession("codex", chat);
+    installedBinaries.add("codex");
+    vi.spyOn(fm as any, "launchSignIn").mockRejectedValue(new Error("tmux gone"));
+    await fakeSessions[0].events.onDone({ ok: true, detail: "clean exit" });
+    expect(sendText.mock.calls.map(call => call[1])).toEqual([
+      t("install.success", "codex", "codex"),
+      t("login.failed", "codex", "tmux gone"),
+    ]);
   });
 
   it("reports a PATH-verification failure instead of offering login", async () => {
@@ -107,20 +159,32 @@ describe("/install-cli", () => {
     // Found nowhere: not by a login shell, and not in grok's own installer
     // directory either (#1092) — this host may have a real ~/.grok/bin/grok.
     vi.spyOn(fm as any, "locateInInstallerBinDirs").mockReturnValue(null);
+    const signIn = vi.spyOn(fm as any, "launchSignIn");
     await fm.startInstallSession("grok", chat);
     await fakeSessions[0].events.onDone({ ok: true, detail: "clean exit" });
     expect(notifyAlert).not.toHaveBeenCalled();
+    expect(signIn).not.toHaveBeenCalled();
     expect(String(sendText.mock.calls.at(-1)![1])).toContain("PATH");
   });
 
   it("opencode installs without a login offer (no login flow exists)", async () => {
     const { fm, notifyAlert, sendText, chat } = setup();
     vi.spyOn(fm as any, "locateBinaryOnLoginShell").mockReturnValue("/usr/local/bin/opencode");
-    await fm.startInstallSession("opencode", chat);
+    const signIn = vi.spyOn(fm as any, "launchSignIn");
+    await fm.startLoginSession("opencode", chat);
     expect(fakeSessions[0].flow.command).toContain("opencode.ai/install");
     await fakeSessions[0].events.onDone({ ok: true, detail: "clean exit" });
     expect(notifyAlert).not.toHaveBeenCalled();
+    expect(signIn).not.toHaveBeenCalled();
     expect(String(sendText.mock.calls.at(-1)![1])).toContain("opencode");
+  });
+
+  it("reinstall runs the installer over an installed CLI", async () => {
+    const { fm, chat } = setup();
+    installedBinaries.add("claude");
+    expect(await fm.startLoginSession("claude", chat, { reinstall: true })).toBe(t("install.started", "claude-code"));
+    expect(fakeSessions).toHaveLength(1);
+    expect(await fm.startLoginSession("notreal", chat, { reinstall: true })).toContain("notreal");
   });
 
   it("guards: already installed, unknown backend, busy slots", async () => {
@@ -151,16 +215,11 @@ describe("/install-cli", () => {
     expect(await fm.cancelInstallSession()).not.toContain("grok");
   });
 
-  it("the sign-in button chains into the login flow", async () => {
-    const { fm, notifyAlert, adapter, chat } = setup();
-    vi.spyOn(fm as any, "locateBinaryOnLoginShell").mockReturnValue("/usr/local/bin/codex");
-    const login = vi.spyOn(fm, "startLoginSession").mockResolvedValue("login-started");
-    await fm.startInstallSession("codex", chat);
-    await fakeSessions[0].events.onDone({ ok: true, detail: "clean exit" });
-    const goId = alertAt(notifyAlert).choices[0].id;
-    const click = { chatId: "chat", threadId: "topic", messageId: "prompt-1", userId: "admin", callbackData: goId } as any;
-    expect(await (fm as any).handleInstallLoginConfirm(click, "discord", adapter)).toBe(true);
-    expect(login).toHaveBeenCalledWith("codex", expect.objectContaining({ chatId: "chat" }));
+  it("/login cancel stops an install /login started", async () => {
+    const { fm, chat } = setup();
+    await fm.startLoginSession("grok", chat);
+    expect(await fm.cancelLoginSession()).toBe(t("install.cancelled", "grok"));
+    expect(fakeSessions[0].cancelled).toBe(true);
   });
 });
 
@@ -173,13 +232,12 @@ describe("slash helpers", () => {
     return { fm, adapter, respond };
   }
 
-  it("denies non-admin /login and /install-cli slashes", async () => {
+  it("denies a non-admin /login slash", async () => {
     const { fm, adapter, respond } = setup();
     vi.spyOn(fm, "isFleetAdmin").mockReturnValue(false);
     await (fm as any).handleLoginSlash({ userId: "u", channelId: "c", respond }, "discord", adapter);
-    await (fm as any).handleInstallCliSlash({ userId: "u", channelId: "c", respond }, "discord", adapter);
-    expect(respond).toHaveBeenCalledTimes(2);
-    for (const call of respond.mock.calls) expect(String(call[0])).toContain("Permission");
+    expect(respond).toHaveBeenCalledOnce();
+    expect(String(respond.mock.calls[0]![0])).toContain("Permission");
   });
 
   it("routes /login slash options to the right session methods", async () => {
@@ -198,44 +256,31 @@ describe("slash helpers", () => {
     expect(start).toHaveBeenCalledWith("codex", expect.objectContaining({ chatId: "c" }));
     await (fm as any).handleLoginSlash({ userId: "a", channelId: "c", respond }, "discord", adapter);
     expect(chooser).toHaveBeenCalled();
-    expect(respond).toHaveBeenCalledTimes(4);
+    await (fm as any).handleLoginSlash({ userId: "a", channelId: "c", options: { backend: "grok", reinstall: true }, respond }, "discord", adapter);
+    expect(start).toHaveBeenLastCalledWith("grok", expect.objectContaining({ chatId: "c" }), { reinstall: true });
+    await (fm as any).handleLoginSlash({ userId: "a", channelId: "c", options: { reinstall: true }, respond }, "discord", adapter);
+    expect(String(respond.mock.calls.at(-1)![0])).toContain("Usage");
+    expect(respond).toHaveBeenCalledTimes(6);
   });
 
-  it("routes /install-cli slash options", async () => {
-    const { fm, adapter, respond } = setup();
-    vi.spyOn(fm, "isFleetAdmin").mockReturnValue(true);
-    const start = vi.spyOn(fm, "startInstallSession").mockResolvedValue("installing");
-    const cancel = vi.spyOn(fm, "cancelInstallSession").mockResolvedValue("cancelled");
-    await (fm as any).handleInstallCliSlash({ userId: "a", channelId: "c", options: { backend: "grok" }, respond }, "discord", adapter);
-    expect(start).toHaveBeenCalledWith("grok", expect.objectContaining({ chatId: "c" }));
-    await (fm as any).handleInstallCliSlash({ userId: "a", channelId: "c", options: { cancel: true }, respond }, "discord", adapter);
-    expect(cancel).toHaveBeenCalled();
-    // Bare call now opens the backend chooser instead of printing a usage line
-    // the admin would have to retype — matching bare `/login`.
-    const chooser = vi.spyOn(fm as any, "promptInstallBackends").mockResolvedValue(undefined);
-    await (fm as any).handleInstallCliSlash({ userId: "a", channelId: "c", respond }, "discord", adapter);
-    expect(chooser).toHaveBeenCalledWith(expect.objectContaining({ chatId: "c" }));
-    expect(String(respond.mock.calls.at(-1)![0])).not.toContain("Usage");
-  });
 });
 
 describe("discord registration includes the new commands", () => {
-  it("registers /login and /install-cli with backend choices", async () => {
+  it("registers one /login (with opencode among its backends) and no /install-cli", async () => {
     const { readFileSync } = await import("node:fs");
     const src = readFileSync(join(__dirname, "../src/channel/adapters/discord.ts"), "utf8");
     expect(src).toContain('name: "login", description: withFleetLabel("🔒 " + t("slash.login"), this.fleetLabel)');
-    expect(src).toContain('name: "install-cli", description: withFleetLabel("🔒 " + t("slash.install_cli"), this.fleetLabel)');
+    expect(src).not.toContain('name: "install-cli"');
+    expect(src).toContain('{ name: "reinstall", description: t("slash.option.login_reinstall"), type: ApplicationCommandOptionType.Boolean, required: false }');
     expect(src).toContain('{ name: "opencode", value: "opencode" }');
   });
 
   it("sources the Beta marker from the shared locale descriptions", () => {
     try {
       setLocale("en");
-      expect(t("slash.login")).toBe("Re-login a CLI backend remotely (beta)");
-      expect(t("slash.install_cli")).toBe("Install a CLI backend remotely (beta)");
+      expect(t("slash.login")).toBe("Sign in or install a CLI backend remotely (beta)");
       setLocale("zh-TW");
-      expect(t("slash.login")).toBe("遠端重新登入 CLI Backend（Beta）");
-      expect(t("slash.install_cli")).toBe("遠端安裝 CLI Backend（Beta）");
+      expect(t("slash.login")).toBe("遠端登入或安裝 CLI Backend（Beta）");
     } finally {
       setLocale("en");
     }

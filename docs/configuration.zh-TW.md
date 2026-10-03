@@ -55,15 +55,15 @@ health_port: 19280
 | `teams` | object | `{}` | 具名 instance 群組，用於精準廣播 |
 | `workflow` | string \| false | `"builtin"` | Fleet 協作工作流程模板。`"builtin"` = 標準工作流程，`"file:./path.md"` = 自訂，`false` = 停用 |
 | `health_port` | number | `19280` | HTTP 健康檢查/API 伺服器埠 |
-| `fleet_label` | string | 主機名稱 | 這個 fleet 在 `/login` 與 `/install-cli` 裡的名稱：附加在 Discord slash 指令說明後面，並顯示在每個 backend 選單下方（`🖥 Fleet：…`）。同一個 guild 裡每個 AgEnD bot 都會註冊自己的 `/login`，而且只控制執行它的那個 fleet——這個標籤用來分辨它們。預設：本機主機名稱；AgEnD home 不是 `~/.agend` 時再加上該目錄名稱 |
-| `web_terminal` | object | — | `/login`、`/install-cli` 背後的瀏覽器終端：`enabled`（預設 `true`）、`bind`（預設 `127.0.0.1`）、`ttl_minutes`（1–20，預設 10），以及 `tunnel` —— `/login` 的選用公開連結，見下方「人不在機器旁完成 /login」 |
+| `fleet_label` | string | 主機名稱 | 這個 fleet 在 `/login` 裡的名稱：附加在 Discord slash 指令說明後面，並顯示在每個 backend 選單下方（`🖥 Fleet：…`）。同一個 guild 裡每個 AgEnD bot 都會註冊自己的 `/login`，而且只控制執行它的那個 fleet——這個標籤用來分辨它們。預設：本機主機名稱；AgEnD home 不是 `~/.agend` 時再加上該目錄名稱 |
+| `web_terminal` | object | — | `/login`（登入與安裝）背後的瀏覽器終端：`enabled`（預設 `true`）、`bind`（預設 `127.0.0.1`）、`ttl_minutes`（1–20，預設 10），以及 `tunnel` —— `/login` 的選用公開連結，見下方「人不在機器旁完成 /login」 |
 
 ---
 
 
 ### 同一個 Discord guild 裡有多個 fleet
 
-每個 AgEnD bot 都會註冊自己的 `/login` 與 `/install-cli`，而且只控制執行該 bot 的 fleet。Discord 會把它們並排列出，所以每個指令說明的結尾都帶著它的 fleet 標籤（`fleet_label`，預設為主機名稱），每個 backend 選單也會顯示 `🖥 Fleet：<標籤>`。請選標籤是你要操作的那個 fleet 的指令。
+每個 AgEnD bot 都會註冊自己的 `/login`，而且只控制執行該 bot 的 fleet。Discord 會把它們並排列出，所以每個指令說明的結尾都帶著它的 fleet 標籤（`fleet_label`，預設為主機名稱），每個 backend 選單也會顯示 `🖥 Fleet：<標籤>`。請選標籤是你要操作的那個 fleet 的指令。
 
 ### 人不在機器旁完成 /login（公開連結）
 
