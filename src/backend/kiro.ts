@@ -1,3 +1,4 @@
+import { EFFORT_CAPABILITIES } from "./effort-metadata.js";
 import { join } from "node:path";
 import { getAgendHome } from "../paths.js";
 import {
@@ -1151,8 +1152,8 @@ export class KiroBackend implements CliBackend {
   // `/effort` in the TUI command table, so changing it needs a respawn. Keep
   // this capability surface stable when the binary is absent or old; buildCommand
   // is the compatibility boundary that omits an unsupported flag and warns.
-  getEffortStrategy(): "runtime" | "restart" { return "restart"; }
-  getEffortLevels(): string[] { return ["low", "medium", "high", "xhigh", "max"]; }
+  getEffortStrategy(): "runtime" | "restart" { return EFFORT_CAPABILITIES["kiro-cli"].strategy; }
+  getEffortLevels(): string[] { return [...EFFORT_CAPABILITIES["kiro-cli"].levels]; }
 
   cleanup(config: CliBackendConfig): void {
     // Only remove namespaced keys — non-namespaced "agend" key may belong to

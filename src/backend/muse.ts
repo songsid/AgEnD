@@ -1,3 +1,4 @@
+import { EFFORT_CAPABILITIES } from "./effort-metadata.js";
 import { join, resolve } from "node:path";
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync, chmodSync, lstatSync, readlinkSync, symlinkSync, renameSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
@@ -524,10 +525,10 @@ export class MuseBackend implements CliBackend {
   getCancelKey(): string { return "Escape"; }
 
   // `/effort` is in the TUI command list, so a level change needs no restart.
-  getEffortStrategy(): "runtime" | "restart" | "unsupported" { return "runtime"; }
+  getEffortStrategy(): "runtime" | "restart" | "unsupported" { return EFFORT_CAPABILITIES["muse"].strategy; }
   // muse also accepts none|minimal|ultra, which AgEnD has no level for; the
   // canonical five map straight through.
-  getEffortLevels(): string[] { return ["low", "medium", "high", "xhigh", "max"]; }
+  getEffortLevels(): string[] { return [...EFFORT_CAPABILITIES["muse"].levels]; }
 
   // `/model` opens an arrow-key picker, not a one-shot command → restart.
   getModelSwitchStrategy(): "runtime" | "restart" { return "restart"; }

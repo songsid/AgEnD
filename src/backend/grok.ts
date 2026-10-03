@@ -1,3 +1,4 @@
+import { EFFORT_CAPABILITIES } from "./effort-metadata.js";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync, chmodSync } from "node:fs";
@@ -386,8 +387,8 @@ export class GrokBackend implements CliBackend {
   // verified from `grok --help` and the binary's command table on 2026-08-02.
   // The help does not enumerate values, so only the canonical three are offered;
   // grok rejects an unknown level itself rather than us guessing a wider set.
-  getEffortStrategy(): "runtime" | "restart" | "unsupported" { return "runtime"; }
-  getEffortLevels(): string[] { return ["low", "medium", "high"]; }
+  getEffortStrategy(): "runtime" | "restart" | "unsupported" { return EFFORT_CAPABILITIES["grok"].strategy; }
+  getEffortLevels(): string[] { return [...EFFORT_CAPABILITIES["grok"].levels]; }
 
   // grok's in-session model switch is a picker → restart to apply reliably.
   getModelSwitchStrategy(): "runtime" | "restart" { return "restart"; }

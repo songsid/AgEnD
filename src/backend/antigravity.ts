@@ -1,3 +1,4 @@
+import { EFFORT_CAPABILITIES } from "./effort-metadata.js";
 import { dirname, join } from "node:path";
 import { ensureInstanceDir } from "../private-dir.js";
 import { homedir } from "node:os";
@@ -343,8 +344,8 @@ node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{t
   // `agy --help`: "--effort  Reasoning effort for the current CLI session
   // (low|medium|high)" — three levels only, so xhigh/max clamp to high, which
   // the caller reports rather than swallowing.
-  getEffortStrategy(): "runtime" | "restart" | "unsupported" { return "runtime"; }
-  getEffortLevels(): string[] { return ["low", "medium", "high"]; }
+  getEffortStrategy(): "runtime" | "restart" | "unsupported" { return EFFORT_CAPABILITIES["antigravity"].strategy; }
+  getEffortLevels(): string[] { return [...EFFORT_CAPABILITIES["antigravity"].levels]; }
 
   // agy's model switch is an interactive TUI change → restart to apply reliably.
   getModelSwitchStrategy(): "runtime" | "restart" { return "restart"; }
