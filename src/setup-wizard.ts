@@ -268,7 +268,7 @@ export const BACKENDS: Array<{
     auth: "grok (x.ai OAuth device flow)" },
   { id: "muse", binary: "muse", label: "Meta Muse Code",
     installUrl: "https://api.meta.ai/muse-launcher.sh",
-    // Same as /install-cli (BACKEND_INSTALLATION_INFO.muse, #1092): piped
+    // Same as /login's install (BACKEND_INSTALLATION_INFO.muse, #1092): piped
     // into bash the launcher installs into the current directory instead.
     install: 'mkdir -p "$HOME/.local/bin" && curl -fsSL https://api.meta.ai/muse-launcher.sh -o "$HOME/.local/bin/muse" && chmod +x "$HOME/.local/bin/muse" && MUSE_LAUNCHER_INSTALL=1 "$HOME/.local/bin/muse"',
     auth: "muse login (Meta account device flow)" },

@@ -48,7 +48,7 @@ export interface BackendInstallationInfo {
   install: string;
   /**
    * #1092: where this backend's own installer puts the binary, read from the
-   * installer script itself. /install-cli verifies on a fresh login shell
+   * installer script itself. `/login`'s install verifies on a fresh login shell
    * first, but an installer may record its PATH only in a file a login shell
    * never runs: codex's writes `~/.bashrc` when `$SHELL` is bash, below the
    * stock early `return` for non-interactive shells. Checked only when the

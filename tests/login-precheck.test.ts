@@ -24,6 +24,9 @@ describe("/login auth pre-check", () => {
   function setup() {
     const fm = new FleetManager(tmpDir);
     fm.fleetConfig = { ...{ defaults: {}, instances: {} }, login: { mode: "relay" } } as any;   // legacy relay path under test; web mode is covered by login-controller.test.ts
+    // Sign-in paths under test: the CLIs count as installed whatever this host
+    // has on PATH (CI has none — /login would install first, #1131).
+    vi.spyOn(fm, "isCliInstalled").mockReturnValue(true);
     const notifyAlert = vi.fn(async (chatId: string, _alert: unknown, opts?: { threadId?: string }) => ({
       messageId: "prompt-1", chatId, threadId: opts?.threadId,
     }));
@@ -281,11 +284,14 @@ describe("/login auth pre-check", () => {
 
     await fm.promptLoginBackends(chat);
 
-    const choiceIds = alertAt(notifyAlert).choices.map(choice => choice.id);
-    expect(choiceIds).toEqual([
+    // Since #1131 the chooser also offers CLIs to install; the installed ones
+    // are offered for sign-in, and the ClassicBot's backend counts as configured.
+    const signIn = alertAt(notifyAlert).choices.filter(choice => String(choice.label).includes("Installed"));
+    expect(signIn.map(choice => choice.id)).toEqual([
       expect.stringMatching(/:codex$/),
       expect.stringMatching(/:kiro-cli$/),
     ]);
+    expect(String(signIn[1]!.label)).toContain("Configured");
   });
 
   it("shows a freshly installed but not-yet-configured backend", async () => {
@@ -296,10 +302,11 @@ describe("/login auth pre-check", () => {
     await fm.promptLoginBackends(chat);
 
     const alert = alertAt(notifyAlert);
-    expect(alert.choices).toHaveLength(1);
-    expect(alert.choices[0].id).toMatch(/:grok$/);
-    expect(alert.choices[0].label).toContain("Installed");
-    expect(alert.choices[0].label).toContain("Auth");
+    const grok = alert.choices.find(choice => /:grok$/.test(choice.id))!;
+    expect(String(grok.label)).toContain("Installed");
+    expect(String(grok.label)).toContain("Auth");
+    // Everything else on offer is an install (#1131).
+    expect(alert.choices.filter(choice => choice !== grok).every(choice => String(choice.label).includes("Not installed"))).toBe(true);
   });
 
   it("explains installed backends without a remote login flow", async () => {
@@ -309,10 +316,11 @@ describe("/login auth pre-check", () => {
 
     await fm.promptLoginBackends(chat);
 
-    expect(notifyAlert).not.toHaveBeenCalled();
+    // An installed CLI without a sign-in flow is explained, never offered.
     expect(sendText).toHaveBeenCalledTimes(1);
     expect(String(sendText.mock.calls[0][1])).toContain("OpenCode");
     expect(String(sendText.mock.calls[0][1])).toContain("opencode auth");
+    expect(alertAt(notifyAlert).choices.some(choice => /:opencode$/.test(choice.id))).toBe(false);
   });
 
   it("the post-login restart rebuilds a ClassicBot with its own runtime settings", async () => {

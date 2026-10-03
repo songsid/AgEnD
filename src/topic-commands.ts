@@ -371,12 +371,19 @@ export class TopicCommands {
       return true;
     }
 
-    // Telegram command names cannot contain "-", so the menu registers
-    // /install_cli; accept both spellings as typed text.
-    if (/^\/install[-_]cli(?:@\S+)?(?:\s|$)/.test(text)) {
-      await this.handleInstallCliCommand(msg);
+    // `/install-cli` became part of `/login` (#1131). Typed, it still works for
+    // one release (2.1.10) — with a line saying where it went — and is in no
+    // command menu. Both spellings: Telegram command names cannot contain "-".
+    const legacyInstall = text.match(/^\/install[-_]cli(?:@\S+)?(?:\s+([\s\S]*))?$/);
+    if (legacyInstall) {
+      const adapter = this.getReplyAdapter(msg);
+      if (adapter) await adapter.sendText(msg.chatId, t("login.install_cli_moved"), { threadId: msg.threadId }).catch(() => {});
+      const rest = (legacyInstall[1] ?? "").trim();
+      const mapped = rest === "" ? "/login" : rest === "cancel" ? "/login cancel" : `/login reinstall ${rest}`;
+      await this.handleLoginCommand({ ...msg, text: mapped });
       return true;
     }
+
 
     if (text === "/update" || text.startsWith("/update@")) {
       await this.handleUpdateCommand(msg);
@@ -958,6 +965,13 @@ export class TopicCommands {
       await adapter.sendText(msg.chatId, reply, { threadId: msg.threadId });
       return;
     }
+    const reinstall = arg.match(/^reinstall(?:\s+(\S+))?$/);
+    if (reinstall || arg.startsWith("reinstall ")) {
+      const backend = reinstall?.[1];
+      const reply = backend ? await this.ctx.startLoginSession(backend, chat, { reinstall: true }) : t("login.usage");
+      if (reply) await adapter.sendText(msg.chatId, reply, { threadId: msg.threadId });
+      return;
+    }
     if (/\s/.test(arg)) {
       await adapter.sendText(msg.chatId, t("login.usage"), { threadId: msg.threadId });
       return;
@@ -965,48 +979,6 @@ export class TopicCommands {
     const started = await this.ctx.startLoginSession(arg, chat);
     // null → the still-valid-auth confirmation prompt was posted instead.
     if (started) await adapter.sendText(msg.chatId, started, { threadId: msg.threadId });
-  }
-
-  /** `/install-cli <backend> | cancel` — remote CLI install. Fleet-admin only. */
-  private async handleInstallCliCommand(msg: InboundMessage): Promise<void> {
-    const adapter = this.getReplyAdapter(msg);
-    if (!adapter) return;
-    if (!this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) {
-      await adapter.sendText(msg.chatId, t("permission.denied"), { threadId: msg.threadId });
-      return;
-    }
-    if (!this.ctx.startInstallSession || !this.ctx.cancelInstallSession) {
-      await adapter.sendText(msg.chatId, t("install.no_session"), { threadId: msg.threadId });
-      return;
-    }
-    const arg = msg.text.trim().replace(/^\/install[-_]cli(?:@\S+)?/, "").trim();
-    // Bare call → offer the backends, matching bare `/login`. A multi-word arg
-    // is still a usage error: it means they typed something, just not a backend.
-    if (!arg && this.ctx.promptInstallBackends) {
-      const failure = await this.ctx.promptInstallBackends({
-        adapter,
-        adapterId: msg.adapterId ?? adapter.id,
-        chatId: msg.chatId,
-        threadId: msg.threadId,
-      });
-      if (failure) await adapter.sendText(msg.chatId, failure, { threadId: msg.threadId });
-      return;
-    }
-    if (!arg || /\s/.test(arg)) {
-      await adapter.sendText(msg.chatId, t("install.usage"), { threadId: msg.threadId });
-      return;
-    }
-    if (arg === "cancel") {
-      await adapter.sendText(msg.chatId, await this.ctx.cancelInstallSession(), { threadId: msg.threadId });
-      return;
-    }
-    const chat = {
-      adapter,
-      adapterId: msg.adapterId ?? adapter.id,
-      chatId: msg.chatId,
-      threadId: msg.threadId,
-    };
-    await adapter.sendText(msg.chatId, await this.ctx.startInstallSession(arg, chat), { threadId: msg.threadId });
   }
 
   private async handleTipsCommand(msg: InboundMessage): Promise<void> {
@@ -1489,7 +1461,6 @@ export class TopicCommands {
           { command: "update", description: "🔒 " + t("slash.update") },
           { command: "doctor", description: "🔒 " + t("slash.doctor") },
           { command: "login", description: "🔒 " + t("slash.login") },
-          { command: "install_cli", description: "🔒 " + t("slash.install_cli") },
           { command: "usage", description: t("slash.usage") },
           { command: "tips", description: t("slash.tips") },
         ];

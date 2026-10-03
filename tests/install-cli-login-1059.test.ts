@@ -77,22 +77,25 @@ function fleet() {
   return { fm, chat, sendText, loginChoices };
 }
 
-describe("a CLI installed with /install-cli is offered by /login right away (#1059)", () => {
+describe("a CLI /login installed is offered for sign-in right away (#1059)", () => {
   it("the reported state: only a login shell can see the new binary", () => {
     expect(checkBinaryInstalled("grok")).toBe(false);
   });
 
   it("after a verified install, /login lists it, `which` finds it and a spawn resolves it", async () => {
     const { fm, chat, sendText, loginChoices } = fleet();
-    expect((await loginChoices()).some(l => l.startsWith("grok"))).toBe(false);
+    const grokLabel = async () => (await loginChoices()).find(l => l.startsWith("grok"))!;
+    expect(await grokLabel()).toContain("Not installed");
+    const signIn = vi.spyOn(fm as any, "launchSignIn").mockResolvedValue("signing in");
     await fm.startInstallSession("grok", chat);
     await fakeSessions[0]!.events.onDone({ ok: true, detail: "clean exit" });
-    // The durable completion notice with the next step.
-    expect(sendText.mock.calls.map(c => String(c[1]))).toContainEqual(expect.stringMatching(/grok.*verified.*\/login grok/));
+    // The durable completion notice, then the sign-in it leads to (#1131).
+    expect(sendText.mock.calls.map(c => String(c[1]))).toEqual([expect.stringMatching(/grok.*verified/), "signing in"]);
+    expect(signIn).toHaveBeenCalledWith("grok", expect.anything(), {});
     expect(process.env.PATH!.split(":")[0]).toBe(profileBin);
     expect(checkBinaryInstalled("grok")).toBe(true);
     expect(resolveBinary("grok")).toBe(join(profileBin, "grok"));
-    expect((await loginChoices()).some(l => l.startsWith("grok"))).toBe(true);
+    expect(await grokLabel()).toMatch(/Installed.*Auth/);
   });
 
   it("does not add a directory twice", async () => {
@@ -111,7 +114,7 @@ describe("a CLI installed with /install-cli is offered by /login right away (#10
     await fakeSessions[0]!.events.onDone({ ok: true, detail: "clean exit" });
     expect(String(sendText.mock.calls.at(-1)![1])).toContain("PATH");
     expect(process.env.PATH).toBe("/usr/bin:/bin");
-    expect((await loginChoices()).some(l => l.startsWith("grok"))).toBe(false);
+    expect((await loginChoices()).find(l => l.startsWith("grok"))).toContain("Not installed");
   });
 });
 
@@ -123,7 +126,7 @@ describe("every way an install ends is reported, with the next step (#1059)", ()
     const text = String(sendText.mock.calls.at(-1)![1]);
     expect(text).toContain("grok");
     expect(text).toContain("exit 1");
-    expect(text).toContain("/install-cli grok");
+    expect(text).toContain("/login grok");
   });
 });
 

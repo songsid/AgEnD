@@ -109,13 +109,6 @@ export interface FleetContext {
   ): Promise<"posted" | "empty" | "unavailable">;
   /** Persistently enable advanced tips without waiting for the dismissal threshold. */
   unlockAdvancedTips?(userId: string): boolean;
-  /** `/install-cli` backend chooser buttons. Caller enforces fleet-admin. */
-  promptInstallBackends?(chat: {
-    adapter: import("./channel/types.js").ChannelAdapter;
-    adapterId: string;
-    chatId: string;
-    threadId?: string;
-  }): Promise<string | undefined>;
   /** `/login` backend chooser buttons. Caller enforces fleet-admin. Returns why it could not be posted. */
   promptLoginBackends?(chat: {
     adapter: import("./channel/types.js").ChannelAdapter;
@@ -134,20 +127,11 @@ export interface FleetContext {
     threadId?: string;
     /** The requesting human — required by web mode (admin re-check, private token delivery). */
     userId?: string;
-  }, opts?: { skipAuthCheck?: boolean; tokenPresent?: boolean }): Promise<string | null>;
+  }, opts?: { skipAuthCheck?: boolean; tokenPresent?: boolean; reinstall?: boolean }): Promise<string | null>;
   /** Paste admin-supplied text (auth code / start URL) into the login window. */
   loginSubmitInput?(text: string): Promise<string>;
   /** Abort the active login session. */
   cancelLoginSession?(): Promise<string>;
-  /** `/install-cli <backend>` — install a CLI in a dedicated window; returns a status line. */
-  startInstallSession?(backend: string, chat: {
-    adapter: import("./channel/types.js").ChannelAdapter;
-    adapterId: string;
-    chatId: string;
-    threadId?: string;
-  }): Promise<string>;
-  /** Abort the active install session. */
-  cancelInstallSession?(): Promise<string>;
   /** Human-readable effective model for an instance (resolves inherited defaults). */
   modelDisplayForInstance?(name: string): string;
   /** How this instance's backend takes a reasoning-effort setting, if at all. */

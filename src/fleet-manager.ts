@@ -529,11 +529,12 @@ const CLEAR_CONFIRM_CALLBACK_PREFIX = "clear-confirm:";
 const TIP_DISMISS_CALLBACK_PREFIX = "tip-dismiss:";
 const TIP_UNLOCK_CALLBACK_PREFIX = "tip-unlock:";
 export const LOGIN_CALLBACK_PREFIX = "login:";
-const INSTALL_CALLBACK_PREFIX = "install-select:";
+/** Prompt kinds `/install-cli` used, before it became part of `/login` (#1131). */
+const RETIRED_PROMPT_PREFIXES = ["install-select:", "install-login:"] as const;
+const NEVER_MATCHES = /(?!)/;
 const CLASSIC_APPROVE_CALLBACK_PREFIX = "classic-approve:";
 const LOGIN_MENU_CALLBACK_PREFIX = "login-menu:";
 const LOGIN_CONFIRM_CALLBACK_PREFIX = "login-confirm:";
-const INSTALL_LOGIN_CALLBACK_PREFIX = "install-login:";
 const CLEAR_CONFIRM_TIMEOUT_MS = 15_000;
 /** Default lifetime for long-lived nonce prompts (clear overrides this to 15s). */
 const NONCE_BUTTON_TIMEOUT_MS = 15 * 60_000;
@@ -3096,7 +3097,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /**
    * Probe the same executable set exposed by the web backend catalog.
    *
-   * This deliberately has no cache: an `/install-cli` completion can add a
+   * This deliberately has no cache: an install `/login` ran can add a
    * binary to PATH while the fleet process remains alive, and the next bare
    * `/login` must see it without requiring a restart or an explicit cache
    * invalidation call.
@@ -4658,8 +4659,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         await data.respond(result);
       } else if (data.command === "login") {
         await this.handleLoginSlash(data, adapterId, this.adapter!);
-      } else if (data.command === "install-cli") {
-        await this.handleInstallCliSlash(data, adapterId, this.adapter!);
       } else if (data.command === "clear") {
         await this.handleClearSlash(data, adapterId);
       } else if (data.command === "model") {
@@ -4779,8 +4778,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         await data.respond(result);
       } else if (data.command === "login") {
         await this.handleLoginSlash(data, adapterId, this.adapter!);
-      } else if (data.command === "install-cli") {
-        await this.handleInstallCliSlash(data, adapterId, this.adapter!);
       }
     }, this.logger, "adapter.slash_command"));
 
@@ -5060,8 +5057,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         await data.respond(result);
       } else if (data.command === "login") {
         await this.handleLoginSlash(data, adapterId, adapter);
-      } else if (data.command === "install-cli") {
-        await this.handleInstallCliSlash(data, adapterId, adapter);
       }
     }, this.logger, `adapter[${adapterId}].slash_command`));
 
@@ -8800,6 +8795,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
+  /**
+   * A button from a prompt kind that no longer exists (#1131: `/install-cli`'s
+   * picker and its "sign in now?" prompt). Still on screen after an upgrade;
+   * a click gets the expired-prompt treatment — a private notice, the buttons
+   * collapsed — instead of nothing.
+   */
+  private handleRetiredPromptButton(data: AdapterCallbackData, adapterId: string, adapter: ChannelAdapter | undefined): boolean {
+    for (const prefix of RETIRED_PROMPT_PREFIXES) {
+      if (this.consumeNonceCallback(prefix, NEVER_MATCHES, data, adapterId, adapter) !== null) return true;
+    }
+    return false;
+  }
+
   /** Routes a click to the handler that owns its prefix; false when none does. */
   private async dispatchAdapterCallback(
     data: AdapterCallbackData,
@@ -8809,12 +8817,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (await this.handleTipDismiss(data, adapterId, adapter)) return true;
     if (await this.handleTipUnlock(data, adapterId, adapter)) return true;
     if (await this.handleLoginBackendSelect(data, adapterId, adapter)) return true;
-    if (await this.handleInstallBackendSelect(data, adapterId, adapter)) return true;
     if (await this.handleClassicApproval(data, adapterId, adapter)) return true;
     if (await this.handleLoginMenuSelect(data, adapterId, adapter)) return true;
+    if (this.handleRetiredPromptButton(data, adapterId, adapter)) return true;
     if (await this.handleLoginConfirm(data, adapterId, adapter)) return true;
     if (await this.handleLoginTokenResend(data, adapterId, adapter)) return true;
-    if (await this.handleInstallLoginConfirm(data, adapterId, adapter)) return true;
     if (await this.handleClearConfirmation(data, adapterId, adapter)) return true;
     if (await this.handleExitRestartPrompt(data, adapterId, adapter)) return true;
     if (await this.handleInteractivePromptAssist(data, adapterId, adapter)) return true;
@@ -10342,24 +10349,36 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       configured.add(this.backendNameOf(name));
     }
     const installed = this.probeInstalledBackends();
-    const candidates = new Set<string>([...installed, ...configured]);
+    // One entry point for "get this CLI working" (#1131): a backend that is
+    // not installed is offered too, and the click installs it first, then
+    // signs in (startLoginSession routes it). gemini-cli is not recommended,
+    // as before; `/login gemini-cli` still installs it.
+    const installable = new Set(Object.keys(BACKEND_INSTALLATION_INFO).filter(backend => backend !== "gemini-cli"));
+    const candidates = new Set<string>([...installed, ...configured, ...installable]);
     const unsupported: Array<{ backend: string; flow?: LoginFlow; status: string[] }> = [];
     const choices = [...candidates].sort().flatMap(backend => {
       const flow = LOGIN_FLOWS[backend];
       const remoteLogin = !!flow && flow.remoteLogin !== "unsupported";
+      const isInstalled = installed.has(backend);
       const status: string[] = [];
-      if (installed.has(backend)) status.push(t("login.status_installed"));
+      status.push(t(isInstalled ? "login.status_installed" : "login.status_not_installed"));
       if (configured.has(backend)) status.push(t("login.status_configured"));
-      if (remoteLogin) status.push(t("login.status_auth"));
-      else status.push(t("login.status_unsupported"));
-      if (!remoteLogin) {
-        unsupported.push({ backend, flow, status });
-        return [];
+      if (!isInstalled && installable.has(backend)) {
+        status.push(t(remoteLogin ? "login.status_install_then_auth" : "login.status_install"));
+        return [{ action: backend, label: `${backend} · ${status.join(" · ")}` }];
       }
-      return [{ action: backend, label: `${backend} · ${status.join(" · ")}` }];
+      if (remoteLogin && isInstalled) {
+        status.push(t("login.status_auth"));
+        return [{ action: backend, label: `${backend} · ${status.join(" · ")}` }];
+      }
+      status.push(t("login.status_unsupported"));
+      unsupported.push({ backend, flow, status });
+      return [];
     });
     if (unsupported.length) {
-      const guidance = unsupported.map(({ backend, flow, status }) => `${backend} · ${status.join(" · ")} — ${flow?.remoteLogin === "unsupported"
+      const guidance = unsupported.map(({ backend, flow, status }) => `${backend} · ${status.join(" · ")} — ${!installed.has(backend)
+        ? (BACKEND_INSTALLATION_INFO[backend] ? t("login.install_by_name", backend) : t("login.install_on_host", backend))
+        : flow?.remoteLogin === "unsupported"
         ? t("login.remote_unsupported_agent_cli", backend, flow.command)
         : backend === "opencode" ? t("login.unsupported", backend) : t("login.no_remote_flow", backend)}`).join("\n");
       await chat.adapter.sendText(chat.chatId, guidance, { threadId: chat.threadId })
@@ -10524,74 +10543,48 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return true;
   }
 
-    /**
-   * Backend chooser for a bare `/install-cli`, mirroring promptLoginBackends so
-   * both commands feel the same. Built on postNonceButtonPrompt rather than the
-   * `/model` selection coordinator: that is the mechanism `/login` already uses,
-   * and the one whose canonical-address binding (#682) makes the buttons answer
-   * in a Telegram General topic.
-   *
-   * Unlike the login chooser this does NOT filter to backends the fleet already
-   * runs. Installing is how you get a backend you do not have yet, so filtering
-   * by configured backends would hide the only entry the admin came for.
-   *
-   * gemini-cli is omitted: it is deprecated (see backend/factory.ts). Typing
-   * `/install-cli gemini-cli` still works — this only stops recommending it.
-   */
-  async promptInstallBackends(chat: {
-    adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string;
-  }): Promise<string | undefined> {
-    const choices = Object.keys(BACKEND_INSTALLATION_INFO)
-      .filter(backend => backend !== "gemini-cli")
-      .map(backend => ({ action: backend, label: backend }));
-    return this.postChooser({
-      prefix: INSTALL_CALLBACK_PREFIX,
-      alertType: "install",
-      instanceName: "install",
-      adapter: chat.adapter,
-      adapterId: chat.adapterId,
-      chatId: chat.chatId,
-      threadId: chat.threadId,
-      message: `${t("install.choose_backend")}\n${t("fleet.label_line", fleetLabel(this.fleetConfig))}`,
-      choices,
-      expiredText: t("buttons.stale"),
-    });
-  }
-
-  /** Backend chooser button → start that backend's install session. */
-  private async handleInstallBackendSelect(
-    data: AdapterCallbackData,
-    callbackAdapterId: string,
-    receivingAdapter?: ChannelAdapter,
-  ): Promise<boolean> {
-    const claimed = this.consumeNonceCallback(
-      INSTALL_CALLBACK_PREFIX,
-      /^install-select:([0-9a-f]+):([a-z][a-z-]*)$/,
-      data,
-      callbackAdapterId,
-      receivingAdapter,
-    );
-    if (claimed === null) return false;
-    if (claimed === "consumed") return true;
-    const { entry, action: backend } = claimed;
-    await this.retireNonceButtons(entry, entry.messageId ?? data.messageId,
-      t("install.starting_backend", backend));
-    const text = await this.startInstallSession(backend, {
-      adapter: entry.adapter,
-      adapterId: entry.adapterId,
-      chatId: entry.chatId,
-      threadId: entry.threadId,
-    });
-    if (text) await this.postPromptOutcome(entry, text);
-    return true;
-  }
-
   /**
    * Start a login session for one backend. Caller enforces admin.
    * Returns a status line to post, or null when a confirmation prompt was
    * posted instead (auth still valid — see the pre-check below).
    */
   async startLoginSession(backendArg: string, chat: {
+    adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string; userId?: string;
+  }, opts: { skipAuthCheck?: boolean; tokenPresent?: boolean; tunnel?: boolean; reinstall?: boolean } = {}): Promise<string | null> {
+    // `/login` is the one entry point (#1131): a CLI that is not installed yet
+    // is installed first, and the install's success signs in (startInstallSession);
+    // `reinstall` runs the installer even over an installed CLI.
+    // A confirmation click (skipAuthCheck) continues a sign-in already decided:
+    // straight to it, never back through the install routing — a binary that
+    // went missing meanwhile must not start an installer from a "go" button.
+    if (opts.skipAuthCheck) return this.launchSignIn(backendArg, chat, opts);
+    const wanted = LOGIN_BACKEND_ALIASES[backendArg.toLowerCase()] ?? backendArg.toLowerCase();
+    const installer = BACKEND_INSTALLATION_INFO[wanted];
+    if (opts.reinstall) {
+      if (!installer) return t("install.unsupported", backendArg);
+      this.recordLoginFlow(wanted, "reinstall", chat.userId);
+      return this.startInstallSession(wanted, chat, { reinstall: true });
+    }
+    if (installer && !this.isCliInstalled(wanted)) {
+      const flow = LOGIN_FLOWS[wanted];
+      this.recordLoginFlow(wanted, flow && flow.remoteLogin !== "unsupported" ? "install_then_login" : "install_only", chat.userId);
+      return this.startInstallSession(wanted, chat);
+    }
+    this.recordLoginFlow(wanted, "login", chat.userId);
+    return this.launchSignIn(backendArg, chat, opts);
+  }
+
+  /** Which way a `/login` went (#1131) — so the event log shows what users actually need. */
+  private recordLoginFlow(backend: string, flow: "login" | "install_then_login" | "install_only" | "reinstall", requester?: string): void {
+    try {
+      this.eventLog?.insert("login", "login_entry", { backend, flow, requester: requester ?? null });
+    } catch (err) {
+      this.logger.debug({ err, backend, flow }, "Could not record the /login flow");
+    }
+  }
+
+  /** The sign-in itself (web, or the legacy relay) for a CLI that is installed. */
+  private async launchSignIn(backendArg: string, chat: {
     adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string; userId?: string;
   }, opts: { skipAuthCheck?: boolean; tokenPresent?: boolean; tunnel?: boolean } = {}): Promise<string | null> {
     if (this.webLogin.mode() === "web") return this.webLogin.start(backendArg, chat, opts);
@@ -10791,6 +10784,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** `/login cancel` — abort the active session and remove its window. */
   async cancelLoginSession(): Promise<string> {
+    // `/login cancel` also stops an install that `/login` started — and the
+    // sign-in an install that just succeeded is about to hand over to.
+    if (this.activeInstall) return this.cancelInstallSession();
+    if (this.installHandoff) {
+      const { backend } = this.installHandoff;
+      this.installHandoff.cancelled = true;
+      this.installHandoff = null;
+      return t("login.cancelled", backend);
+    }
     if (this.loginController?.isActive()) return this.loginController.cancel();
     if (!this.activeLogin) return t("login.no_session");
     const backend = this.activeLogin.backend;
@@ -10993,26 +10995,28 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return true;
   }
 
-  // ── Remote CLI install (`/install-cli`) ──────────────────────────────────
+  // ── Remote CLI install (run by `/login` for a CLI that is missing) ──────────────────────────────────
   //
   // Same dedicated-window model as /login (and the same LoginSession state
   // machine — an install is a login flow with no auth hints): run the
   // installer, judge by exit code, verify the binary on a fresh login shell,
-  // then offer to chain straight into /login.
+  // then sign in (the hand-off below).
   private activeInstall: {
     session: LoginSession;
     backend: string;
     chat: { adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string };
   } | null = null;
+  /** An install that succeeded, between its success line and the sign-in it hands over to (#1131). */
+  private installHandoff: { backend: string; cancelled: boolean } | null = null;
 
   /** Start a CLI install session. Caller enforces admin. */
   async startInstallSession(backendArg: string, chat: {
-    adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string;
-  }): Promise<string> {
+    adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string; userId?: string;
+  }, opts: { reinstall?: boolean } = {}): Promise<string> {
     const backend = LOGIN_BACKEND_ALIASES[backendArg.toLowerCase()] ?? backendArg.toLowerCase();
     const info = BACKEND_INSTALLATION_INFO[backend];
     if (!info) return t("install.unsupported", backendArg);
-    if (checkBinaryInstalled(info.binary)) return t("install.already", backend, info.binary);
+    if (!opts.reinstall && checkBinaryInstalled(info.binary)) return t("install.already", backend, info.binary);
     // Reserve the fleet-wide window before the first await (shared with web/relay
     // login). Owned by this method until the session is published.
     const claim = this.loginWindow.tryClaim("install", backend);
@@ -11080,24 +11084,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // publish a durable completion line first so a successful install can
         // never look like it silently disappeared.  Include the binary that
         // passed the fresh-login-shell verification and the exact next step.
+        // Between the install ending and the sign-in starting there is no
+        // session to cancel; this hand-off is what `/login cancel` stops.
+        const handoff = { backend, cancelled: false };
+        this.installHandoff = handoff;
         await chat.adapter.sendText(chat.chatId, t("install.success", backend, info.binary),
           { threadId: chat.threadId }).catch(err => this.logger.warn({ err, backend },
             "Failed to send durable install success notification"));
-        await this.postNonceButtonPrompt({
-          prefix: INSTALL_LOGIN_CALLBACK_PREFIX,
-          alertType: "login",
-          instanceName: backend,
-          adapter: chat.adapter,
-          adapterId: chat.adapterId,
-          chatId: chat.chatId,
-          threadId: chat.threadId,
-          message: t("install.login_prompt", backend),
-          choices: [
-            { action: "go", label: t("install.login_now") },
-            { action: "later", label: t("install.later") },
-          ],
-          expiredText: t("install.later_ack", backend),
-        });
+        if (handoff.cancelled || this.installHandoff !== handoff) return;
+        this.installHandoff = null;
+        // The user asked `/login` for a working CLI: sign in straight away
+        // (#1131). The login has its own confirmation, so nothing starts
+        // without a click.
+        // launchSignIn, not startLoginSession: if the new binary were still
+        // not visible, startLoginSession would route straight back to an install.
+        const next = await this.launchSignIn(backend, chat, {}).catch((err: unknown) =>
+          t("login.failed", backend, (err as Error)?.message ?? String(err)));
+        if (next) {
+          await chat.adapter.sendText(chat.chatId, next, { threadId: chat.threadId })
+            .catch(err => this.logger.warn({ err, backend }, "Could not post the sign-in step after an install"));
+        }
       },
     }, this.logger);
 
@@ -11124,7 +11130,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return t("install.started", backend);
   }
 
-  /** `/install-cli cancel` — abort the active install and remove its window. */
+  /** Whether this backend's CLI is on the fleet's PATH (what `/login` installs when it is not). */
+  isCliInstalled(backend: string): boolean {
+    const info = BACKEND_INSTALLATION_INFO[backend];
+    return !!info && checkBinaryInstalled(info.binary);
+  }
+
+  /** Abort the active install (`/login cancel`) and remove its window. */
   async cancelInstallSession(): Promise<string> {
     if (!this.activeInstall) return t("install.no_session");
     const backend = this.activeInstall.backend;
@@ -11178,39 +11190,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.logger.info({ backend, dir }, "Added the installed CLI's directory to the fleet PATH");
   }
 
-  /** "Sign in now?" button after a successful install. */
-  private async handleInstallLoginConfirm(
-    data: AdapterCallbackData,
-    callbackAdapterId: string,
-    receivingAdapter?: ChannelAdapter,
-  ): Promise<boolean> {
-    const claimed = this.consumeNonceCallback(
-      INSTALL_LOGIN_CALLBACK_PREFIX,
-      /^install-login:([0-9a-f]+):(go|later)$/,
-      data,
-      callbackAdapterId,
-      receivingAdapter,
-    );
-    if (claimed === null) return false;
-    if (claimed === "consumed") return true;
-    const { entry, action } = claimed;
-    const backend = entry.instanceName;
-    if (action === "later") {
-      await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, t("install.later_ack", backend));
-      return true;
-    }
-    await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, t("login.starting_backend", backend));
-    const text = await this.startLoginSession(backend, {
-      adapter: entry.adapter,
-      adapterId: entry.adapterId,
-      chatId: entry.chatId,
-      threadId: entry.threadId,
-      userId: data.userId,
-    });
-    if (text) await this.postPromptOutcome(entry, text);
-    return true;
-  }
-
   /** Discord native `/login` slash — shared by every adapter dispatch block. */
   private async handleLoginSlash(
     data: { userId?: string; channelId: string; options?: Record<string, unknown>; respond: (text: string) => Promise<unknown> },
@@ -11226,6 +11205,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const code = String(data.options?.code ?? "").trim();
     if (code) { await data.respond(await this.loginSubmitInput(code)); return; }
     const backend = String(data.options?.backend ?? "").trim();
+    if (data.options?.reinstall === true) {
+      await data.respond(backend
+        ? await this.startLoginSession(backend, chat, { reinstall: true }) ?? t("login.confirm_posted")
+        : t("login.usage"));
+      return;
+    }
     if (backend) {
       const text = await this.startLoginSession(backend, chat);
       await data.respond(text ?? t("login.confirm_posted"));
@@ -11233,29 +11218,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     const failure = await this.promptLoginBackends(chat);
     await data.respond(failure ?? t("login.chooser_posted"));
-  }
-
-  /** Discord native `/install-cli` slash — shared by every dispatch block. */
-  private async handleInstallCliSlash(
-    data: { userId?: string; channelId: string; options?: Record<string, unknown>; respond: (text: string) => Promise<unknown> },
-    adapterId: string,
-    adapter: ChannelAdapter,
-  ): Promise<void> {
-    if (!data.userId || !this.isFleetAdmin(data.userId, adapterId)) {
-      await data.respond(t("permission.denied"));
-      return;
-    }
-    if (data.options?.cancel === true) { await data.respond(await this.cancelInstallSession()); return; }
-    const backend = String(data.options?.backend ?? "").trim();
-    if (!backend) {
-      // Bare call: offer the backends instead of printing a usage line the user
-      // then has to retype. A Discord slash that DID pick the native `backend`
-      // choice never lands here, so the two paths cannot both fire.
-      const failure = await this.promptInstallBackends({ adapter, adapterId, chatId: data.channelId });
-      await data.respond(failure ?? t("install.chooser_posted"));
-      return;
-    }
-    await data.respond(await this.startInstallSession(backend, { adapter, adapterId, chatId: data.channelId }));
   }
 
   queueMirrorMessage(text: string): void {

@@ -19,6 +19,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   instance directory through group access, give it access explicitly — the group no longer has it.** (#1118)
 
 ### Upgrade Notes
+- **[Behaviour change] `/install-cli` is gone: `/login` installs a missing CLI, then signs in (#1131).**
+  One command for "make this CLI work", so a guild with several AgEnD bots shows one entry per bot
+  and there is nothing to mistype (`/install`, `/login-cli`). `/login`'s picker lists every backend
+  the fleet can install or sign in to, each labelled with what a click does: an installed CLI signs
+  in; a missing one is installed (its official script, verified on PATH) and signing in follows by
+  itself. `/login <backend>` does the same, `/login reinstall <backend>` (Discord: the `reinstall`
+  option) reinstalls an installed CLI, and `/login cancel` also stops an install. `opencode` and
+  `muse` install but have no sign-in flow; `/login gemini-cli` still installs Gemini CLI, which the
+  picker does not offer. The Discord slash command and the Telegram menu entry `/install_cli` are
+  removed. Typing `/install-cli` (or `/install_cli`) still works in 2.1.10 — it says where the
+  command went and runs the matching `/login` — and will be removed in 2.1.11.
 - **[Behaviour change] A paused instance now wakes by itself when another instance sends it work
   (#1129).** `delivery_worker` defaults to `wake_only` instead of `off`. Under `off`, a task delegated
   to an instance that had been paused across a fleet restart waited until someone ran `/wake`, with
@@ -78,7 +89,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   applies to `agend setup --tunnel` too. Set `web_terminal.tunnel.protocol: quic` (or `auto`) to keep cloudflared's own
   choice for the login tunnel.
 - **[Behaviour change] The `/login` browser terminal applies the same `Host` rule.** Each
-  `/login` (and `/install-cli`) opens a short-lived listener of its own. It checked that
+  `/login` opens a short-lived listener of its own. It checked that
   `Origin` equals `Host` — which a DNS-rebinding page satisfies by construction — and
   answered to any `Host`. It now refuses, with the same 403 on every path and on the
   WebSocket upgrade, any name that is not `localhost`/`127.0.0.1`/`[::1]`, the fleet
@@ -102,10 +113,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   are unaffected.
 
 ### Added
-- **`/login` and `/install-cli` say which fleet they belong to.** Every AgEnD bot in a Discord guild
-  registers its own `/login`, so the slash menu listed identical commands and a picker could come
-  from another fleet than the one you meant. Their descriptions now end with the fleet's label, and
-  each backend picker shows `🖥 Fleet: <label>`. The label is `fleet_label` in fleet.yaml, by default
+- **`/login` says which fleet it belongs to.** Every AgEnD bot in a Discord guild registers its own
+  `/login`, so the slash menu listed identical commands and a picker could come from another fleet
+  than the one you meant. Its description now ends with the fleet's label, and the backend picker
+  shows `🖥 Fleet: <label>`. The label is `fleet_label` in fleet.yaml, by default
   the host name (plus the AgEnD home's name when it is not `~/.agend`).
 - **Finish a `kiro-cli` `/login` from your phone: optional public link
   (`web_terminal.tunnel.allow_public`, default off).** When enabled, the login confirmation offers
@@ -118,11 +129,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 - **A rejected Discord slash command registration is reported (#1131).** It was swallowed without a
-  log line, and Discord keeps the previous command list when it rejects one, so a new command such as
-  `/install-cli` could silently never appear. The fleet now logs every registration (the command
+  log line, and Discord keeps the previous command list when it rejects one, so a new or changed
+  command could silently never appear. The fleet now logs every registration (the command
   count, or Discord's error code and message) and tells General once when Discord rejects it.
-- **Button prompts never fail silently (#1133).** On Discord, `/install-cli`'s backend chooser (seven
-  backends) could not be posted at all: Discord allows five buttons to a row, and all of them were
+- **Button prompts never fail silently (#1133).** On Discord, a backend chooser with more than five
+  backends could not be posted at all: Discord allows five buttons to a row, and all of them were
   in one. Buttons are now laid out in rows of five. A chooser or confirmation that cannot be posted
   now says so instead of reporting "chooser posted" or stopping at "Starting…". A click that cannot
   act — the prompt expired, it is not your prompt, or you are not a fleet admin — now tells you why,
@@ -130,7 +141,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   click once the fleet has decided, so a failed answer no longer loses the click. When an outcome
   cannot be written into the prompt it is posted as a message, and a click nothing handles is
   logged.
-- **Discord: the `/login` and `/install-cli` backend buttons respond to clicks (#1131).** A picker posted by
+- **Discord: the `/login` backend buttons respond to clicks (#1131).** A picker posted by
   the native slash command was bound to the channel, while Discord reports every button click by
   guild and channel, so each click was rejected as a mismatch and nothing happened. Buttons now carry
   the same address their clicks report. A picker posted in a channel outside the bot's main server

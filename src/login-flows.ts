@@ -290,7 +290,7 @@ export const LOGIN_BACKEND_ALIASES: Record<string, string> = {
   "kiro-cli": "kiro-cli",
   "agy": "antigravity",
   "antigravity": "antigravity",
-  // /install-cli accepts opencode too; /login keeps rejecting it (no flow).
+  // opencode can be installed by `/login`, but has no sign-in flow.
   "opencode": "opencode",
 };
 

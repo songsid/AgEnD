@@ -73,7 +73,7 @@ export interface DiscordAdapterOptions {
   categoryName?: string;
   generalChannelId?: string;
   registerCommands?: boolean;
-  /** This fleet's label, appended to the `/login` and `/install-cli` descriptions. */
+  /** This fleet's label, appended to the `/login` description. */
   fleetLabel?: string;
   /** Test seams; production callers leave these unset. */
   clientFactory?: () => Client;
@@ -89,8 +89,8 @@ const MAX_BUTTON_ROWS = 5;
 
 /**
  * Buttons laid out in rows of five (#1133). One row used to hold them all, and
- * Discord rejects a row of more than five: the `/install-cli` chooser (seven
- * backends) could never be posted. More than 25 cannot be shown at all — an
+ * Discord rejects a row of more than five, so a chooser of seven backends
+ * could never be posted. More than 25 cannot be shown at all — an
  * error, never a silent truncation.
  */
 export function buttonRows(choices: ReadonlyArray<{ id: string; label: string }>): ActionRowBuilder<ButtonBuilder>[] {
@@ -1071,29 +1071,12 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
                   { name: "grok", value: "grok" },
                   { name: "muse", value: "muse" },
                   { name: "antigravity", value: "antigravity" },
+                  { name: "opencode", value: "opencode" },
                 ],
               },
               { name: "code", description: t("slash.option.login_code"), type: ApplicationCommandOptionType.String, required: false },
               { name: "cancel", description: t("slash.option.login_cancel"), type: ApplicationCommandOptionType.Boolean, required: false },
-            ],
-          },
-          {
-            name: "install-cli", description: withFleetLabel("🔒 " + t("slash.install_cli"), this.fleetLabel),
-            options: [
-              {
-                name: "backend", description: t("slash.option.install_backend"),
-                type: ApplicationCommandOptionType.String, required: false,
-                choices: [
-                  { name: "claude-code", value: "claude-code" },
-                  { name: "codex", value: "codex" },
-                  { name: "kiro-cli", value: "kiro-cli" },
-                  { name: "grok", value: "grok" },
-                  { name: "muse", value: "muse" },
-                  { name: "antigravity", value: "antigravity" },
-                  { name: "opencode", value: "opencode" },
-                ],
-              },
-              { name: "cancel", description: t("slash.option.install_cancel"), type: ApplicationCommandOptionType.Boolean, required: false },
+              { name: "reinstall", description: t("slash.option.login_reinstall"), type: ApplicationCommandOptionType.Boolean, required: false },
             ],
           },
           { name: "clear", description: "🔒 " + t("slash.clear") },
