@@ -990,7 +990,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       // Register classic bot slash commands (skipped for a secondary bot sharing
       // a guild with the primary — only the primary owns the guild's commands).
       if (this.registerCommands) try {
-        await client.application?.commands.set([
+        const registered = await client.application?.commands.set([
           {
             name: "start", description: t("slash.start"),
             options: [{
@@ -1126,8 +1126,18 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
           },
           { name: "cancel", description: t("slash.cancel") },
         ]);
+        this.emitFromClient(client, generation, "slash_registration", { ok: true, count: registered?.size });
       } catch (err) {
-        // Non-fatal — slash commands may fail on network issues
+        // Non-fatal, and no retry here (the next ready registers again) — but
+        // never silent (#1131): Discord keeps the previous command list when a
+        // registration is rejected, so a new command just never appears.
+        const e = err as { code?: unknown; status?: unknown; message?: unknown };
+        this.emitFromClient(client, generation, "slash_registration", {
+          ok: false,
+          code: e?.code,
+          status: e?.status,
+          message: String(e?.message ?? err),
+        });
       }
       if (!this.isCurrentClient(client, generation)) return;
       this.emit("started", client.user?.username ?? "discord-bot", client.user?.id);

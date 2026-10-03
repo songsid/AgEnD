@@ -699,6 +699,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private instanceStateCache = new Map<string, InstanceStateSnapshot & { receivedAt: number }>();
   /** CLI pane status overrides; daemon.pid alone only proves FleetManager lives. */
   private instanceProcessStatus = new Map<string, "crashed" | "stopped">();
+  /** Adapters whose last slash command registration failed and General was told (#1131). */
+  private slashRegistrationFailed = new Set<string>();
   /** Instances currently being auto-paused by warm_cap, so concurrent checks don't double-evict. */
   private warmCapEvicting = new Set<string>();
   /** Per-instance tail keeps cross-instance and scheduled deliveries FIFO. */
@@ -4411,6 +4413,28 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private bindAdapterHealth(adapter: ChannelAdapter, adapterId: string): void {
+    // Discord slash command registration, every gateway ready (#1131). A
+    // rejected registration leaves the previous command list in place, so a
+    // new command silently never appears: log every outcome, and tell General
+    // once per failure streak (a reconnect loop must not repeat it).
+    adapter.on("slash_registration", (outcome: { ok: boolean; count?: number; code?: unknown; status?: unknown; message?: string }) => {
+      if (this.adapters.get(adapterId) !== adapter) return;
+      if (outcome.ok) {
+        this.slashRegistrationFailed.delete(adapterId);
+        this.logger.info({ adapterId, count: outcome.count }, "Registered Discord slash commands");
+        return;
+      }
+      this.logger.warn({ adapterId, code: outcome.code, status: outcome.status, error: outcome.message },
+        "Discord rejected the slash command registration; the previous command list stays");
+      if (this.slashRegistrationFailed.has(adapterId)) return;
+      const detail = [outcome.code, outcome.message].filter(v => v !== undefined && v !== "").join(" ");
+      // The streak is the de-duplication (not the shared text throttle), and
+      // it counts as told only once General actually got it: with nowhere to
+      // post yet, the next failure tries again.
+      if (this.notifyFleetError(t("discord.slash_registration_failed", adapterId, detail), { throttle: false })) {
+        this.slashRegistrationFailed.add(adapterId);
+      }
+    });
     adapter.on("gateway_health", (snapshot: AdapterHealthSnapshot) => {
       // A token rotation tears down the old EventEmitter before constructing
       // the replacement. A late health frame from that old client must never
@@ -8425,13 +8449,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       .catch(e => this.logger.warn({ err: e }, "Failed to send daily summary"));
   }
 
-  notifyFleetError(text: string): void {
+  /**
+   * Returns whether the notice was dispatched. `throttle: false` is for a
+   * caller that does its own de-duplication (one notice per failure streak):
+   * the shared 10-minute text throttle would otherwise swallow the next
+   * streak's notice, and it is neither consulted nor recorded.
+   */
+  notifyFleetError(text: string, opts: { throttle?: boolean } = {}): boolean {
+    const throttled = opts.throttle !== false;
     const now = Date.now();
     const key = text.slice(0, 200);
-    const seen = this.fleetErrorNotices.get(key);
+    const seen = throttled ? this.fleetErrorNotices.get(key) : undefined;
     if (seen && now - seen.at < FleetManager.FLEET_ERROR_THROTTLE_MS) {
       seen.suppressed++;
-      return;
+      return false;
     }
     const suppressed = seen?.suppressed ?? 0;
     const body = suppressed > 0
@@ -8472,9 +8503,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // through. The counter is not reset either: nothing was shown.
       this.logger.warn({ text: body },
         "Fleet error could not be delivered (no adapter or no target yet) — not consuming the throttle window");
-      return;
+      return false;
     }
 
+    if (!throttled) return true;
     this.fleetErrorNotices.set(key, { at: now, suppressed: 0 });
     // Bound the map: it is keyed by message text, and a message with a varying
     // suffix (a path, an id) would otherwise grow it without limit.
@@ -8482,6 +8514,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const oldest = this.fleetErrorNotices.keys().next().value;
       if (oldest !== undefined) this.fleetErrorNotices.delete(oldest);
     }
+    return true;
   }
 
   private static readonly FLEET_ERROR_THROTTLE_MS = 10 * 60_000;

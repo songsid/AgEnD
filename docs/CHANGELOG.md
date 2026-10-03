@@ -117,6 +117,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `cloudflared` on `PATH`. See "Finishing a /login away from the machine" in `docs/configuration.md`.
 
 ### Fixed
+- **A rejected Discord slash command registration is reported (#1131).** It was swallowed without a
+  log line, and Discord keeps the previous command list when it rejects one, so a new command such as
+  `/install-cli` could silently never appear. The fleet now logs every registration (the command
+  count, or Discord's error code and message) and tells General once when Discord rejects it.
 - **Button prompts never fail silently (#1133).** On Discord, `/install-cli`'s backend chooser (seven
   backends) could not be posted at all: Discord allows five buttons to a row, and all of them were
   in one. Buttons are now laid out in rows of five. A chooser or confirmation that cannot be posted

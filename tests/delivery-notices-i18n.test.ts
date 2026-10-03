@@ -39,7 +39,7 @@ function quietFleet() {
   const fm = new FleetManager(tempRoot()) as any;
   fm.fleetConfig = { defaults: {}, instances: {} };
   fm.scheduleDeliveryOutboxPump = () => {};
-  const notify = vi.spyOn(fm, "notifyFleetError").mockImplementation(() => {});
+  const notify = vi.spyOn(fm, "notifyFleetError").mockReturnValue(true);
   fm.ensureDeliveryOutbox();
   managers.push(fm);
   stores.push(fm.deliveryOutbox);

@@ -34,6 +34,7 @@
   見 `docs/configuration.zh-TW.md`「人不在機器旁完成 /login」。
 
 ### 修正 (Fixed)
+- **Discord 拒絕 slash 指令註冊時會回報（#1131）。** 以前註冊失敗不會留下任何記錄，而 Discord 拒絕時會保留先前的指令清單，所以像 `/install-cli` 這樣的新指令可能就這樣默默不出現。現在 fleet 會記錄每次註冊的結果（指令數量，或 Discord 的錯誤代碼與訊息），被拒絕時也會在 General 通知一次。
 - **按鈕提示不會再無聲失敗（#1133）。** 在 Discord 上，`/install-cli` 的 Backend 選單（七個 backend）根本貼不出來：Discord 一列最多五個按鈕，而它們全放在同一列。現在按鈕會每五個一列排好。無法貼出的選單或確認提示會直接說明，不再回報「已送出選單」或停在「正在啟動…」。無法執行的點擊——提示已逾時、不是你的提示、或你不是 fleet 管理員——現在會私下告訴你原因（Discord 用只有你看得到的訊息，Telegram 用按鈕的回應）。Telegram 改為在 fleet 做出決定後才回應點擊，所以回應失敗不會再讓點擊遺失。結果無法寫回提示時，會改以訊息送出；沒有人處理的點擊會留下記錄。
 - **Discord：`/login` 與 `/install-cli` 的 backend 按鈕按了會有反應（#1131）。** 原生 slash 指令貼出的選單綁定的是頻道，但 Discord 回報每次按鈕點擊時用的是 guild 加頻道，所以每次點擊都被判定為不相符而被丟掉，按了沒有任何反應。現在按鈕帶的位址和點擊回報的一致。在 bot 主要伺服器以外的頻道（那裡也接受 slash 指令）貼出的選單現在也能點；那類頻道的其他按鈕仍會被忽略，但會留下記錄，不再默默丟掉。slash 回覆也改用 `flags`，取代 discord.js 已棄用的 `ephemeral` 選項，client 改為監聽 `clientReady`。
 - **在 systemd 主機上用 `agend update` / `/update` 升到 2.1.10-beta.2 會失敗（「fleet restart failed」），而且舊的 fleet 會繼續執行（#1113 hotfix）。** systemd 249 會默默忽略 unit 檔裡的 `CoredumpFilter=`，所以 beta.2「確認 systemd 已載入 `CoredumpFilter=0`」的檢查會拒絕每一次 `agend restart`。這個檢查已移除（載入值不是 0 時只會提示）。在 Linux 上，fleet 現在會在啟動時把自己的 `/proc/self/coredump_filter` 設成 0，每次啟動 CLI 時也會先在 pane 的 shell 裡設好——所以不論 systemd 版本、即使 tmux server 不是這個 fleet 起的，crash dump 都只有幾 KB。`AGEND_KEEP_COREDUMP_FILTER=1` 可關閉這個行為（行程改用繼承來的 mask，不一定是完整 dump）。另外，`agend update` 遇到比已安裝版本更早啟動的 fleet 時會補做重啟，不再只顯示「已是最新」——但只限依命令列確認確實是 fleet 的行程；`fleet.pid` 若指向其他行程，一律不重啟也不送訊號——所以因 restart 失敗而停在舊版的 fleet 也能跟上。

@@ -682,7 +682,7 @@ describe("a Settings apply drives the real reconcile", () => {
       getConfigSnapshot: () => structuredClone(fm.fleetConfig!.instances.one!),
       applyConfigUpdate: vi.fn(),
     } as never);
-    vi.spyOn(fm, "notifyFleetError").mockImplementation(() => {});
+    vi.spyOn(fm, "notifyFleetError").mockReturnValue(true);
     // A channel with no type or token env: valid YAML, refused configuration.
     // The instance change rides along so the job has a row to be honest about.
     writeFileSync(configPath, [

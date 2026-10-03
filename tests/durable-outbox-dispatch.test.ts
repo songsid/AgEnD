@@ -104,7 +104,7 @@ describe("durable outbox dispatcher", () => {
     const claimed = outbox.claimNext("manager-1", () => "target-boot", new Set())!;
     let resolveHandoff!: (result: boolean) => void;
     vi.spyOn(fm, "deliverToInstance").mockImplementation(() => new Promise(resolve => { resolveHandoff = resolve; }));
-    const fleetNotice = vi.spyOn(fm, "notifyFleetError").mockImplementation(() => {});
+    const fleetNotice = vi.spyOn(fm, "notifyFleetError").mockReturnValue(true);
 
     const dispatch = (fm as any).dispatchDurableDelivery(claimed) as Promise<void>;
     await vi.advanceTimersByTimeAsync(DURABLE_DELIVERY_LANE_ALERT_MS + 10 * 60_000);
