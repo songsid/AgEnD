@@ -99,6 +99,7 @@ import { runBeforeDeadline } from "./deadline.js";
 import { LoginWindowLock } from "./login-window-lock.js";
 import { handleSettingsRequest, type RawConfigPatch } from "./settings-api.js";
 import { setLocale, detectLocale, getLocale, t } from "./locale.js";
+import { recentChatContext } from "./log-tail.js";
 import { describeSignalSource, recordInternalRequest, withOrigin } from "./fleet-control-audit.js";
 import { handleAgentRequest, ToolNotPermittedError, type AgentEndpointContext } from "./agent-endpoint.js";
 import { ClassicChannelManager, getClassicBackendChoices, isSelectableClassicBackend, readClassicLastActivityAt } from "./classic-channel-manager.js";
@@ -543,6 +544,9 @@ const RETIRED_PROMPT_PREFIXES = ["install-select:", "install-login:", "login-men
 const NEVER_MATCHES = /(?!)/;
 const CLASSIC_APPROVE_CALLBACK_PREFIX = "classic-approve:";
 const LOGIN_CONFIRM_CALLBACK_PREFIX = "login-confirm:";
+/** How much of the end of a Classic chat log is read for context, and the most it grows to. */
+const CHAT_LOG_TAIL_BYTES = 64 * 1024;
+const CHAT_LOG_TAIL_MAX_BYTES = 4 * 1024 * 1024;
 const CLEAR_CONFIRM_TIMEOUT_MS = 15_000;
 /** Default lifetime for long-lived nonce prompts (clear overrides this to 15s). */
 const NONCE_BUTTON_TIMEOUT_MS = 15 * 60_000;
@@ -13037,20 +13041,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const logFile = join(logDir, `${today}.log`);
     try {
       if (!existsSync(logFile)) return undefined;
-      const lines = readFileSync(logFile, "utf-8").trim().split("\n");
-      // The triggering message is written before forwardToClassicInstance runs
-      // and is included separately under [User message]. Exclude that newest
-      // log entry so the agent does not receive the same message twice. A chat
-      // message may span physical lines, so remove from its timestamped entry
-      // header rather than blindly dropping only the final continuation line.
-      const entryHeader = /^\[\d{4}-\d{2}-\d{2}T[^\]]+\] <.*> /;
-      let currentEntryStart = lines.length - 1;
-      while (currentEntryStart > 0 && !entryHeader.test(lines[currentEntryStart])) {
-        currentEntryStart--;
-      }
-      lines.splice(currentEntryStart);
-      if (lines.length === 0 || maxLines <= 0) return undefined;
-      return lines.slice(-maxLines).join("\n") || undefined;
+      // Only the end of today's log is needed (#1161): a day's log used to be read and split whole for every message.
+      return recentChatContext(logFile, maxLines, CHAT_LOG_TAIL_BYTES, CHAT_LOG_TAIL_MAX_BYTES);
     } catch { return undefined; }
   }
 
