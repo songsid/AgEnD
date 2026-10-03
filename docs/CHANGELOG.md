@@ -7,6 +7,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Security
+- **Discord slash commands now go through an authorization door (#1148).** AgEnD registers its slash commands
+  globally, so every guild the bot is in — and every DM with it — shows the same menu, and the lock emoji in a
+  description is only a label. Until now a slash command skipped the allowlist that guards the same words typed
+  as a message and never looked at which guild or DM it came from (only `/start` did): anyone who shared any
+  server with the bot could `/steer`, `/compact` or `/cancel` a fleet instance or read `/sysinfo`. Now, before
+  any command runs: a **DM is refused**; a command from **another guild** is honoured only for a registered
+  ClassicBot channel or `/start` (which still checks `allowed_guilds`); and in a fleet channel the caller must be
+  someone the **typed-message path would also hear** — the access policy of the adapter that owns the channel's
+  instance (an explicit fleet admin always speaks). ClassicBot channels stay open to everyone, as before.
+- **`/update`, `/doctor`, `/dashboard` and `/collab` (in a fleet channel) now require a fleet admin of the adapter
+  the command came through, and an empty `allowed_users` means nobody.** They used to read the *primary* channel's
+  list (`channels[0]`, not the adapter in use) and, for `/update`, `/doctor` and `/collab`, treat an empty list as
+  "everyone" — so on a fleet without one, anyone able to type a slash command could run `agend update` on the
+  host — while the typed `/update` treated empty as "disabled". Slash and typed now agree. **If you rely on these
+  commands, list yourself under that adapter's `access.allowed_users`.**
+
+### Security
 - **Instance directories are now 0700 (and existing ones are fixed at startup).** `<data dir>/instances/<name>`
   holds `agent.token` and the IPC socket, but was created with the process umask — typically 0775, so
   group-writable and traversable by every user on the machine (the files inside were already 0600, the
