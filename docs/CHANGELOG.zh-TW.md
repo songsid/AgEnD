@@ -32,6 +32,7 @@
   見 `docs/configuration.zh-TW.md`「人不在機器旁完成 /login」。
 
 ### 修正 (Fixed)
+- **用暫時的 `HOME` 啟動的 fleet 不會再連上真正 fleet 的 tmux server（#1126）。** 只有使用者真實的 `~/.agend`（依帳號資料，而不是 `$HOME`）會使用 tmux 的預設 socket（讀不到帳號資料時，沒有任何 home 算預設）。以前，把 `HOME` 和 `AGEND_HOME` 都指向暫存目錄來啟動 fleet，也會被當成「預設」，因而連上執行中的 `agend` server，它的啟動清理會把真正 fleet 的視窗當成孤兒殺掉。`AGEND_HOME` 未設定、設成你真實的 `~/.agend`，或其他自訂值，行為都不變，各自沿用原本的 socket。
 - **dashboard 的回應不會再被 iframe 嵌入、被猜測型別或被快取。** dashboard/health server 的每個回應現在都帶 `X-Frame-Options: DENY`、`Content-Security-Policy: frame-ancestors 'none'`（這些頁面有重啟 instance 的按鈕，被嵌入就可能被誘導點擊）、`X-Content-Type-Options: nosniff` 與 `Cache-Control: no-store`（自己設定 Cache-Control 的路由，例如 SSE 與頭像，維持原樣）。
 
 ## [2.1.9] - 2026-10-02
