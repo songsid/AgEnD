@@ -35,7 +35,7 @@ class FakeDiscordClient extends EventEmitter {
     this.ready = true;
     this.ws.status = Status.Ready;
     for (const shard of this.ws.shards.values()) shard.status = Status.Ready;
-    this.emit("ready", this);
+    this.emit("clientReady", this);
     return "redacted-token";
   }
   destroy(): void {
@@ -80,6 +80,15 @@ afterEach(() => {
 });
 
 describe("Discord gateway watchdog", () => {
+  it("runs its ready step on clientReady, the event discord.js v15 keeps (#1131)", async () => {
+    const h = harness({ registerCommands: true });
+    await h.adapter.start();
+    const client = h.clients.at(-1)!;
+    // Only the ready step registers the slash commands.
+    await vi.waitFor(() => expect(client.application.commands.set).toHaveBeenCalled());
+    await h.adapter.stop();
+  });
+
   it("sets a Watching activity only after the client is ready", async () => {
     const h = harness();
     expect(h.adapter.setActivity("⚡ Claude 12% weekly")).toBe(false);

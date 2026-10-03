@@ -10,6 +10,7 @@ import {
 } from "../src/service-restart-selection.js";
 import { AccessManager } from "../src/channel/access-manager.js";
 import { DiscordAdapter } from "../src/channel/adapters/discord.js";
+import { MessageFlags } from "discord.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { RestartProgress } from "../src/restart-progress.js";
 import { TopicCommands } from "../src/topic-commands.js";
@@ -123,13 +124,13 @@ describe("/restart full command surface", () => {
     const full = interaction("full");
     (adapter as any).client.emit("interactionCreate", full);
     await vi.waitFor(() => expect(events).toHaveLength(1));
-    expect(full.deferReply).toHaveBeenCalledWith({ ephemeral: false });
+    expect(full.deferReply).toHaveBeenCalledWith({});
     expect(events[0]).toMatchObject({ command: "restart", options: { mode: "full" } });
 
     const normal = interaction(null);
     (adapter as any).client.emit("interactionCreate", normal);
     await vi.waitFor(() => expect(events).toHaveLength(2));
-    expect(normal.deferReply).toHaveBeenCalledWith({ ephemeral: true });
+    expect(normal.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral });
     expect(events[1]).toMatchObject({ command: "restart", options: {} });
 
     await adapter.stop();
