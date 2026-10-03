@@ -112,6 +112,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `cloudflared` on `PATH`. See "Finishing a /login away from the machine" in `docs/configuration.md`.
 
 ### Fixed
+- **Discord: the `/login` and `/install-cli` backend buttons respond to clicks (#1131).** A picker posted by
+  the native slash command was bound to the channel, while Discord reports every button click by
+  guild and channel, so each click was rejected as a mismatch and nothing happened. Buttons now carry
+  the same address their clicks report. A picker posted in a channel outside the bot's main server
+  (slash commands are accepted there) is now clickable too; any other button from such a channel is
+  still ignored, and is logged instead of dropped silently. Slash replies also use `flags` instead of
+  discord.js's deprecated `ephemeral` option, and the client listens for `clientReady`.
 - **`agend update` / `/update` to 2.1.10-beta.2 failed with "fleet restart failed" on systemd hosts,
   and left the old fleet running (#1113 hotfix).** systemd 249 silently ignores `CoredumpFilter=`
   in a unit file, so beta.2's check that systemd had loaded `CoredumpFilter=0` refused every

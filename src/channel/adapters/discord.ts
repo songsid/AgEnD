@@ -18,6 +18,7 @@ import {
   ChannelType,
   PermissionFlagsBits,
   MessageFlags,
+  Events,
   Status,
   ActivityType,
   type TextChannel,
@@ -79,6 +80,12 @@ export interface DiscordAdapterOptions {
   staleThresholdMs?: number;
   reconnectBaseDelayMs?: number;
 }
+
+/**
+ * A nonce-armed prompt button (`postNonceButtonPrompt`): `<prefix>:<32 hex>:<action>`.
+ * Fleet-manager validates these against the prompt that created them.
+ */
+const NONCE_BUTTON_ID = /^[a-z][a-z-]*:[0-9a-f]{32}:[a-z0-9-]+$/;
 
 export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
   readonly type = "discord";
@@ -259,7 +266,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       if (!this.isCurrentClient(client, generation)) return;
       if ((packet as { t?: unknown }).t) this.lastDispatchAt = this.now();
     });
-    client.once("ready", () => void this.handleClientReady(client, generation));
+    client.once(Events.ClientReady, () => void this.handleClientReady(client, generation));
 
     // Reactions on the bot's messages, as inbound events (#408). Both add and remove
     // are reported so an agent can see an approval being withdrawn.
@@ -518,9 +525,14 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
         // decide not to act on it.
         if (interaction.isButton()) {
           try { await interaction.deferUpdate(); } catch { /* already acknowledged / unknown interaction */ }
-          // Only act on buttons from the primary guild or a known open channel.
-          if (interaction.guildId !== this.guildId && !this.openChannels.has(interaction.channelId ?? "")) {
-            // console.log(`[discord] ignoring button from non-primary guild ${interaction.guildId} channel ${interaction.channelId}`);
+          // Act on buttons from the primary guild or a known open channel, and
+          // on nonce-armed prompts from anywhere (#1131): a slash command is
+          // accepted from other guilds, so the prompt it posts there must be
+          // clickable. Fleet-manager checks those fail-closed — nonce, chat,
+          // message and fleet admin. Anything else is dropped, with a log line.
+          if (interaction.guildId !== this.guildId && !this.openChannels.has(interaction.channelId ?? "")
+            && !NONCE_BUTTON_ID.test(interaction.customId)) {
+            console.info(`[discord:${this.id}] ignored a button outside the primary guild (guild ${interaction.guildId ?? "none"}, channel ${interaction.channelId ?? "none"})`);
             return;
           }
           this.emitFromClient(client, generation, "callback_query", {
@@ -584,7 +596,8 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
             // Discord ephemeral interaction replies cannot.
             const fullRestart = interaction.commandName === "restart"
               && interaction.options.getString("mode") === "full";
-            await interaction.deferReply({ ephemeral: interaction.commandName !== "update" && !fullRestart });
+            const ephemeral = interaction.commandName !== "update" && !fullRestart;
+            await interaction.deferReply(ephemeral ? { flags: MessageFlags.Ephemeral } : {});
             // Extract options as key-value pairs for fleet-manager
             const options: Record<string, string | boolean> = {};
             for (const opt of interaction.options.data) {
@@ -1105,7 +1118,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     const chunks = splitTextFenceAware(reply, EMBED_MAX);
     const message = await interaction.editReply({ content: "", embeds: [{ description: chunks[0] }], components: [] });
     for (let i = 1; i < chunks.length; i++) {
-      await interaction.followUp({ ephemeral: true, embeds: [{ description: chunks[i] }] });
+      await interaction.followUp({ flags: MessageFlags.Ephemeral, embeds: [{ description: chunks[i] }] });
     }
     return message.id;
   }
@@ -1517,7 +1530,13 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       }
 
       const msg = await channel.send({ content: alert.message, components: [row] });
-      return { messageId: msg.id, chatId, threadId: opts?.threadId };
+      // The address this adapter's own callbacks report for these buttons
+      // (guild + channel as thread), not the caller's spelling of it (#1131).
+      // A native slash command addresses its channel as the chat; the button
+      // click then arrived with chatId = guild and every nonce check rejected it.
+      // Exactly the callback's value, even when no group_id is configured
+      // (guildId is then "" in both places).
+      return { messageId: msg.id, chatId: this.guildId, threadId: channelId };
     }
     return this.sendText(chatId, alert.message, opts);
   }
