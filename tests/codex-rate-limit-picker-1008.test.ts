@@ -30,6 +30,10 @@ const PICKER_159 = pane("0159-rate-limit-picker");
 const DISMISSED_157 = pane("0157-rate-limit-dismissed");
 const DISMISSED_159 = pane("0159-rate-limit-dismissed");
 const HIDDEN_BY_CONFIG = pane("0159-rate-limit-hidden-by-config");
+// #1100: the same picker at 80x24 (AgEnD's legacy size), the option descriptions wrapped under their column.
+const PICKER_159_80 = pane("0159-rate-limit-picker-80x24");
+const PICKER_160_80 = pane("0160-rate-limit-picker-80x24");
+const PICKER_160 = pane("0160-rate-limit-picker");
 
 const backend = new CodexBackend("/tmp/agend-codex-1008");
 const startup = backend.getStartupDialogs();
@@ -198,5 +202,76 @@ describe("the daemon answers it unattended: Escape, nothing else", () => {
     await vi.advanceTimersByTimeAsync(4_000);
     expect(keys.filter(k => k.startsWith("paste:") || k === "Enter")).toEqual([]);
     void state;
+  });
+});
+
+describe("the 80-column picker, option descriptions wrapped onto indented rows (#1100)", () => {
+  const NARROW: Array<[string, string]> = [["0.159.2 @80x24", PICKER_159_80], ["0.160.0 @80x24", PICKER_160_80]];
+  const bottom = (p: string) => p.trimEnd().split("\n").slice(-9).join("\n");
+
+  it.each(NARROW)("%s: the real wrapped shape (a description row under option 1, another under option 3)", (_v, p) => {
+    expect(bottom(p)).toMatch(/Switch to gpt-6-luna +Fast and affordable model for easier\n {20,}tasks\.\n/);
+    expect(bottom(p)).toMatch(/\(never show again\) +Hide future rate limit reminders\n {20,}about switching models\n/);
+  });
+
+  it.each(NARROW)("%s: still the exact picker — Escape, in the startup AND runtime tables, blocking delivery", (_v, p) => {
+    for (const table of [startup, runtime]) {
+      const d = hit(table, p)!;
+      expect(d.keys).toEqual(["Escape"]);
+      expect(d.holdOnly).toBeFalsy();
+      expect(d.blocksDelivery).toBe(true);
+    }
+  });
+
+  it("the 120-column pictures (0.157.1, 0.159.2, 0.160.0) are unchanged", () => {
+    for (const p of [PICKER_157, PICKER_159, PICKER_160]) expect(hit(runtime, p)!.keys).toEqual(["Escape"]);
+  });
+
+  it("a quote of the wrapped picker with the real composer under it gets no key", () => {
+    for (const [, p] of NARROW) {
+      expect(hit(runtime, quoted(p))).toBeUndefined();
+      expect(hit(startup, quoted(p))).toBeUndefined();
+    }
+  });
+
+  it("what wrapping may add is only descriptions: any other change is held, never keyed", () => {
+    const base = PICKER_159_80;
+    const WRAP = " ".repeat(44);
+    const VARIANTS: Array<[string, string]> = [
+      ["a wrapped row that starts at the left margin", reword(base, `${WRAP}tasks.`, "tasks.")],
+      ["a wrapped row indented like an option", reword(base, `${WRAP}tasks.`, "  tasks.")],
+      ["a 'continuation' that is itself an option", reword(base, `${WRAP}tasks.`, `${WRAP}4. Something else`)],
+      ["more wrapped rows than a description can take", reword(base, `${WRAP}tasks.`, [1, 2, 3, 4].map(n => `${WRAP}row ${n}`).join("\n"))],
+      ["a wrapped row between subtitle and option 1", reword(base, "› 1. Switch to gpt-6-luna", `${WRAP}Choose one:\n› 1. Switch to gpt-6-luna`)],
+      ["a wrapped row between title and subtitle", reword(base, "  Switch to gpt-6-luna for lower credit usage?", `${WRAP}wait\n  Switch to gpt-6-luna for lower credit usage?`)],
+      ["a wrapped row under the footer", `${base.trimEnd()}\n${WRAP}extra\n`],
+      ["footer reworded", reword(base, "enter select · esc back", "enter select · esc cancel")],
+      ["options reordered", reword(reword(base, "2. Keep current model\n", "2. Switch to gpt-5\n"), "› 1. Switch to gpt-6-luna", "› 1. Keep current model")],
+      ["option 3 relabelled", reword(base, "3. Keep current model (never show again)", "3. Keep current model (always)")],
+      ["no never-show option", reword(base, /^ {2}3\. Keep current model \(never show again\).*\n.*\n/m, "")],
+    ];
+    for (const [name, p] of VARIANTS) {
+      for (const table of [startup, runtime]) {
+        expect(hit(table, p)?.keys ?? [], name).toEqual([]);
+      }
+    }
+  });
+
+  it("the footer/option variants that still read as the rate-limit screen stay held by the hold-only entry", () => {
+    const d = hit(runtime, reword(PICKER_159_80, "enter select · esc back", "enter select · esc cancel"))!;
+    expect(d.holdOnly).toBe(true);
+    expect(d.blocksDelivery).toBe(true);
+  });
+
+  it("through the daemon: the wrapped picker gets exactly one Escape (it used to be parked, unattended, for ever)", async () => {
+    vi.useFakeTimers();
+    for (const [, p] of NARROW) {
+      const { daemon, state, keys } = makeDaemon(p);
+      state.onKey = k => { if (k === "Escape") state.pane = DISMISSED_159; };
+      daemon.startErrorMonitor();
+      await vi.advanceTimersByTimeAsync(11_000);
+      expect(keys).toEqual(["Escape"]);
+      daemon.freezeRuntimeMonitors();
+    }
   });
 });
