@@ -10,7 +10,6 @@ function makeCommands(ctxOverrides: Record<string, unknown> = {}) {
     isFleetAdmin: vi.fn(() => true),
     promptLoginBackends: vi.fn(async () => {}),
     startLoginSession: vi.fn(async (backend: string) => `started:${backend}`),
-    loginSubmitInput: vi.fn(async (text: string) => `input:${text}`),
     cancelLoginSession: vi.fn(async () => "cancelled"),
     ...ctxOverrides,
   } as any;
@@ -42,7 +41,7 @@ describe("/login command", () => {
     expect(ctx.startLoginSession).toHaveBeenCalledWith("codex", expect.objectContaining({ chatId: "chat" }));
 
     await commands.handleGeneralCommand(msg("/login code ABCD-1234"));
-    expect(ctx.loginSubmitInput).not.toHaveBeenCalled();
+    expect(ctx.startLoginSession).toHaveBeenCalledTimes(1);       // only the first one started anything
     expect(sendText.mock.calls.at(-1)![1]).toContain("Usage");
 
     await commands.handleGeneralCommand(msg("/login cancel"));

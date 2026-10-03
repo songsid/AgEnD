@@ -1,18 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { join } from "node:path";
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 
-// Legacy relay sessions must never touch a real tmux server in unit tests.
-const relaySessions: Array<{ flow: any; cancelled: string[]; events?: any }> = [];
-let onRelayStart: (() => Promise<void>) | null = null;
+// Install sessions must never touch a real tmux server in unit tests.
+const installSessions: Array<{ flow: any; cancelled: string[]; events?: any }> = [];
+let onInstallStart: (() => Promise<void>) | null = null;
 vi.mock("../src/login-manager.js", async (importOriginal) => {
   const real = await importOriginal<typeof import("../src/login-manager.js")>();
   class FakeLoginSession {
     state = "starting";
     record: { flow: any; cancelled: string[]; events?: any };
-    constructor(readonly flow: any, _tmux: any, readonly events: any) { this.record = { flow, cancelled: [], events }; relaySessions.push(this.record); }
-    async start() { if (onRelayStart) await onRelayStart(); }
+    constructor(readonly flow: any, _tmux: any, readonly events: any) { this.record = { flow, cancelled: [], events }; installSessions.push(this.record); }
+    async start() { if (onInstallStart) await onInstallStart(); }
     async cancel(detail = "cancelled") { this.state = "done"; this.record.cancelled.push(detail); await this.events.onDone({ ok: false, detail }); }
     async submitInput() { return true; }
     async selectMenuOption() { return true; }
@@ -30,16 +30,16 @@ import { setAuthCheckRunnerForTests } from "../src/login-flows.js";
 import { t } from "../src/locale.js";
 
 /**
- * FleetManager side of PR-B: `login.mode` dispatch, and the fleet-wide
- * single-window rule across web login, relay login and install.
+ * FleetManager side of PR-B: the fleet-wide single-window rule across web
+ * login and install, and the shutdown teardown of both.
  */
-describe("/login mode dispatch and exclusivity", () => {
+describe("/login dispatch and exclusivity", () => {
   let tmpDir: string;
   beforeEach(() => {
     tmpDir = join(tmpdir(), `login-web-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     mkdirSync(tmpDir, { recursive: true });
-    relaySessions.length = 0;
-    onRelayStart = null;
+    installSessions.length = 0;
+    onInstallStart = null;
     setAuthCheckRunnerForTests(async () => ({ code: 1, output: "logged out" }));   // pre-check: invalid → straight to login
   });
   afterEach(() => {
@@ -48,9 +48,9 @@ describe("/login mode dispatch and exclusivity", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  function setup(mode?: "web" | "relay") {
+  function setup(login?: { mode: "relay" }) {
     const fm = new FleetManager(tmpDir);
-    fm.fleetConfig = { defaults: {}, instances: {}, login: mode ? { mode } : undefined } as any;
+    fm.fleetConfig = { defaults: {}, instances: {}, login } as any;
     vi.spyOn(fm, "isFleetAdmin").mockReturnValue(true);
     // These are sign-in paths: the CLIs count as installed (on a host without
     // them, /login would install first — covered in login-one-entry-1131).
@@ -66,26 +66,47 @@ describe("/login mode dispatch and exclusivity", () => {
     return { fm, adapter, chat };
   }
 
-  it("default (no login section) is web mode: the controller starts, no relay session is created", async () => {
+  it("/login signs in through the web controller; no login window session is created by the sign-in itself", async () => {
     const { fm, chat } = setup();
     const start = vi.spyOn(LoginController.prototype, "start").mockResolvedValue("web-started");
     expect(await fm.startLoginSession("codex", chat)).toBe("web-started");
     expect(start).toHaveBeenCalledWith("codex", expect.objectContaining({ userId: "admin" }), expect.anything());
-    expect(relaySessions).toHaveLength(0);
+    expect(installSessions).toHaveLength(0);
   });
 
-  it("login.mode: relay keeps the legacy path: a relay LoginSession is created and the controller is never asked", async () => {
-    const { fm, chat } = setup("relay");
-    const start = vi.spyOn(LoginController.prototype, "start");
-    const text = await fm.startLoginSession("codex", chat);
-    expect(text).toBe(t("login.started", "codex"));
-    expect(relaySessions).toHaveLength(1);
-    expect(relaySessions[0].flow.backend).toBe("codex");
-    expect(start).not.toHaveBeenCalled();
+  it("login.mode: relay (removed, #1139) is accepted and ignored: the same web path, one warning", async () => {
+    const { fm, chat } = setup({ mode: "relay" });
+    const start = vi.spyOn(LoginController.prototype, "start").mockResolvedValue("web-started");
+    expect(await fm.startLoginSession("codex", chat)).toBe("web-started");
+    expect(start).toHaveBeenCalledTimes(1);
+    expect(installSessions).toHaveLength(0);
   });
 
-  it("while a web login is active: install is refused, /login code is redirected, /login cancel reaches the controller", async () => {
-    const { fm, chat } = setup("web");
+  it("the removed login.mode: relay logs ONE warning per process, however often the config is reloaded; web / no mode say nothing", () => {
+    const configPath = join(tmpDir, "fleet.yaml");
+    const fm = new FleetManager(tmpDir);
+    const warn = vi.spyOn((fm as any).logger, "warn").mockImplementation((() => {}) as never);
+    writeFileSync(configPath, "defaults: {}\ninstances: {}\nlogin:\n  mode: web\n");
+    fm.loadConfig(configPath);
+    expect(warn).not.toHaveBeenCalled();
+    writeFileSync(configPath, "defaults: {}\ninstances: {}\nlogin:\n  mode: relay\n");
+    fm.loadConfig(configPath);
+    fm.loadConfig(configPath);
+    const mentions = warn.mock.calls.filter(call => String(call[0]).includes("login.mode: relay"));
+    expect(mentions).toHaveLength(1);
+    expect(String(mentions[0]![0])).toContain("web terminal");
+  });
+
+  it("a login-menu: button from before the upgrade gets the expired-prompt treatment, not silence", async () => {
+    const { fm, adapter } = setup();
+    const claimed = vi.spyOn(fm as any, "consumeNonceCallback").mockImplementation(((prefix: string) => prefix === "login-menu:" ? { entry: {}, action: "0" } : null) as never);
+    const handled = (fm as any).handleRetiredPromptButton({ callbackData: "login-menu:abc:0", userId: "admin", chatId: "chat" }, "discord", adapter);
+    expect(handled).toBe(true);
+    expect(claimed.mock.calls.map(call => call[0])).toContain("login-menu:");
+  });
+
+  it("while a web login is active: install is refused and /login cancel reaches the controller", async () => {
+    const { fm, chat } = setup();
     vi.spyOn(LoginController.prototype, "start").mockResolvedValue("web-started");
     vi.spyOn(LoginController.prototype, "isActive").mockReturnValue(true);
     vi.spyOn(LoginController.prototype, "activeBackend", "get").mockReturnValue("codex");
@@ -93,98 +114,23 @@ describe("/login mode dispatch and exclusivity", () => {
     await fm.startLoginSession("codex", chat);
     (fm as any).loginWindow.tryClaim("web", "codex");                             // what the real start() does before its first await
     expect(await fm.startInstallSession("grok", chat)).toBe(t("login.busy", "codex"));
-    expect(await fm.loginSubmitInput("XYZ")).toBe(t("login.web_code_not_needed"));
     expect(await fm.cancelLoginSession()).toBe("web-cancelled");
     expect(cancel).toHaveBeenCalledTimes(1);
   });
 
-  it("in relay mode a held window (web login) blocks the legacy launcher (one window fleet-wide)", async () => {
-    const { fm, chat } = setup("relay");
-    const claim = (fm as any).loginWindow.tryClaim("web", "kiro-cli");
-    expect(claim).not.toBeNull();
-    expect(await fm.startLoginSession("codex", chat)).toBe(t("login.busy", "kiro-cli"));
-    expect(relaySessions).toHaveLength(0);
-    (fm as any).loginWindow.release(claim);
-    expect(await fm.startLoginSession("codex", chat)).toBe(t("login.started", "codex"));
-  });
-
-  it("B1: relay login racing install — both check-then-await — exactly one wins the window", async () => {
-    const { fm, chat } = setup("relay");
-    let releaseAuth!: (v: { code: number; output: string }) => void;
-    setAuthCheckRunnerForTests(() => new Promise(r => { releaseAuth = r; }));   // relay pre-check parks here
-    const relay = fm.startLoginSession("codex", chat);
-    const install = fm.startInstallSession("grok", chat);                        // arrives while relay awaits its pre-check
-    releaseAuth({ code: 1, output: "logged out" });
-    const [relayText, installText] = await Promise.all([relay, install]);
-    expect(relayText).toBe(t("login.started", "codex"));
-    expect(installText).toBe(t("login.busy", "codex"));
-    expect(relaySessions).toHaveLength(1);
-  });
-
-  it("B1: the relay pre-check that ends in a confirmation prompt releases the window", async () => {
-    const { fm, chat } = setup("relay");
-    setAuthCheckRunnerForTests(async () => ({ code: 0, output: "logged in" }));   // valid → buttons, no session
-    expect(await fm.startLoginSession("codex", chat)).toBeNull();
-    expect((fm as any).loginWindow.isHeld).toBe(false);
-    setAuthCheckRunnerForTests(async () => ({ code: 1, output: "logged out" }));
-    expect(await fm.startInstallSession("grok", chat)).toBe(t("install.started", "grok"));
-  });
-
-  it("B1 (round 2): a rejected ensureSession releases the relay and install claims — the next start can claim", async () => {
-    const { fm, chat } = setup("relay");
+  it("B1 (round 2): a rejected ensureSession releases the install claim — the next start can claim", async () => {
+    const { fm, chat } = setup();
     const ensure = vi.spyOn(TmuxManager, "ensureSession").mockRejectedValueOnce(new Error("tmux server unavailable"));
-    expect(await fm.startLoginSession("codex", chat)).toBe(t("login.failed", "codex", "tmux server unavailable"));
-    expect((fm as any).loginWindow.isHeld).toBe(false);
-    ensure.mockRejectedValueOnce(new Error("tmux server unavailable"));
     expect(await fm.startInstallSession("grok", chat)).toBe(t("install.failed", "grok", "tmux server unavailable"));
     expect((fm as any).loginWindow.isHeld).toBe(false);
     ensure.mockResolvedValue(undefined);
     expect(await fm.startInstallSession("grok", chat)).toBe(t("install.started", "grok"));
   });
 
-  it("B2 (round 2): a relay start parked in its pre-check does not launch after shutdown", async () => {
-    const { fm, chat, adapter } = setup("relay");
-    let releaseAuth!: (v: { code: number; output: string }) => void;
-    setAuthCheckRunnerForTests(() => new Promise(r => { releaseAuth = r; }));
-    const ensure = vi.spyOn(TmuxManager, "ensureSession").mockResolvedValue(undefined);
-    const pending = fm.startLoginSession("codex", chat);                    // claim held, awaiting the probe
-    await (fm as any).shutdownLoginWindows();                                // fleet stops meanwhile
-    releaseAuth({ code: 1, output: "logged out" });
-    expect(await pending).toBe(t("login.web_shutting_down"));
-    expect(ensure).not.toHaveBeenCalled();
-    expect(relaySessions).toHaveLength(0);
-    expect((fm as any).loginWindow.isHeld).toBe(false);
-    expect(adapter.notifyAlert).not.toHaveBeenCalled();                      // no confirmation buttons either
-    // closed lock refuses new windows until reopened by start()
-    expect(await fm.startInstallSession("grok", chat)).toBe(t("login.web_shutting_down"));
-    (fm as any).loginWindow.reopen();
-    expect(await fm.startInstallSession("grok", chat)).toBe(t("install.started", "grok"));
-  });
-
-  it("B1 (round 3): shutdown landing during a relay session.start cancels it and frees the window", async () => {
-    const { fm, chat } = setup("relay");
-    vi.spyOn(TmuxManager, "ensureSession").mockResolvedValue(undefined);
-    onRelayStart = async () => { await (fm as any).shutdownLoginWindows(); };
-    expect(await fm.startLoginSession("codex", chat)).toBe(t("login.web_shutting_down"));
-    expect(relaySessions[0].cancelled).toEqual(["cancelled"]);
-    expect((fm as any).activeLogin).toBeNull();
-    expect((fm as any).loginWindow.isHeld).toBe(false);
-  });
-
-  it("M1 (round 4): a legacy window whose late kill could not be confirmed tells the operator instead of a silent success", async () => {
-    const { fm, chat, adapter } = setup("relay");
-    vi.spyOn(TmuxManager, "ensureSession").mockResolvedValue(undefined);
-    await fm.startLoginSession("codex", chat);
-    await relaySessions[0].events.onDone({ ok: false, detail: "cancelled", cleanupFailed: true });
-    const texts = adapter.sendText.mock.calls.map((c: unknown[]) => String(c[1]));
-    expect(texts.some((x: string) => x.includes("could not be confirmed dead"))).toBe(true);
-    expect((fm as any).loginWindow.isHeld).toBe(false);
-  });
-
   it("B1 (round 6): the shutdown deadline is loud and releases nothing — a teardown still running at 60 s is still awaited, at 120 s it is reported", async () => {
     vi.useFakeTimers();
     try {
-      const { fm } = setup("relay");
+      const { fm } = setup();
       let release!: () => void;
       vi.spyOn(LoginController.prototype, "shutdown").mockImplementation(() => new Promise<void>(r => { release = r; }));
       (fm as any).webLogin;
@@ -210,7 +156,7 @@ describe("/login mode dispatch and exclusivity", () => {
   it("M1 (round 7): a teardown that completes quickly leaves no armed deadline — 130 s later there is no error and no event", async () => {
     vi.useFakeTimers();
     try {
-      const { fm } = setup("relay");
+      const { fm } = setup();
       vi.spyOn(LoginController.prototype, "shutdown").mockResolvedValue(undefined);
       (fm as any).webLogin;
       const errors: string[] = [];
@@ -226,34 +172,24 @@ describe("/login mode dispatch and exclusivity", () => {
     }
   });
 
-  it("B2 (round 6): a relay start that fails after possibly creating a window reports the cleanup failure to the chat", async () => {
-    const { fm, chat } = setup("relay");
-    vi.spyOn(TmuxManager, "ensureSession").mockResolvedValue(undefined);
-    onRelayStart = async () => { throw Object.assign(new Error("new-window timed out"), { cleanupFailed: true }); };
-    const text = await fm.startLoginSession("codex", chat);
-    expect(text).toContain("new-window timed out");
-    expect(text).toContain("could not be confirmed dead");
-    expect((fm as any).loginWindow.isHeld).toBe(false);
-  });
-
-  it("Antigravity: relay mode declines too — no silent fallback, no relay session", async () => {
-    const { fm, chat } = setup("relay");
+  it("Antigravity declines — no silent fallback, no session", async () => {
+    const { fm, chat } = setup();
     const text = await fm.startLoginSession("agy", chat);
     expect(text).toBe(t("login.remote_unsupported_agent_cli", "antigravity", "agy"));
-    expect(relaySessions).toHaveLength(0);
+    expect(installSessions).toHaveLength(0);
     expect((fm as any).loginWindow.isHeld).toBe(false);
   });
 
-  it("N1: legacy windows cancelled by shutdown stay quiet — no 'failed — fleet shutdown' message", async () => {
-    const { fm, chat, adapter } = setup("relay");
+  it("N1: install windows cancelled by shutdown stay quiet — no 'failed — fleet shutdown' message", async () => {
+    const { fm, chat, adapter } = setup();
     await fm.startInstallSession("grok", chat);
     const before = adapter.sendText.mock.calls.length;
     await (fm as any).shutdownLoginWindows();
     expect(adapter.sendText.mock.calls.length).toBe(before);
   });
 
-  it("B3: stopAll shuts the web login controller down and cancels relay/install windows before adapters go", async () => {
-    const { fm, chat } = setup("relay");
+  it("B3: stopAll shuts the web login controller down and cancels install windows before adapters go", async () => {
+    const { fm, chat } = setup();
     const shutdown = vi.spyOn(LoginController.prototype, "shutdown").mockResolvedValue(undefined);
     (fm as any).webLogin;                                                        // controller exists
     await fm.startInstallSession("grok", chat);
@@ -262,7 +198,7 @@ describe("/login mode dispatch and exclusivity", () => {
     inst.session.cancel = async (why: string) => { cancelled.push(why); };
     await (fm as any).shutdownLoginWindows();
     expect(shutdown).toHaveBeenCalledTimes(1);
-    expect(cancelled).toEqual(["cancelled"]);                                 // the silent detail both legacy onDone handlers respect
+    expect(cancelled).toEqual(["cancelled"]);                                 // the silent detail the install onDone handler respects
     expect((fm as any).loginWindow.isClosed).toBe(true);
   });
 });
