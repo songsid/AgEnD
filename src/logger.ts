@@ -1,6 +1,6 @@
 import pino from "pino";
 import { join } from "node:path";
-import { mkdirSync, statSync, fstatSync, existsSync, unlinkSync, renameSync, copyFileSync, truncateSync } from "node:fs";
+import { mkdirSync, statSync, fstatSync, existsSync, unlinkSync, renameSync, copyFileSync, truncateSync, promises as fsp } from "node:fs";
 import { getAgendHome } from "./paths.js";
 
 const DATA_DIR = getAgendHome();
@@ -35,6 +35,8 @@ export function getStdoutPrettyOptions(destinationIsFile = stdoutIsRegularFile()
  * writing to the now-empty file. Copying before truncating means no data loss.
  */
 export function rotateLogIfNeeded(logPath: string, maxSize = MAX_LOG_SIZE, maxFiles = ROTATE_MAX_FILES): void {
+  // An async rotation of this very file is under way: it owns the shift/copy/truncate (#1161).
+  if (rotationsInFlight.has(logPath)) return;
   try {
     if (!existsSync(logPath)) return;
     const stat = statSync(logPath);
@@ -64,6 +66,76 @@ export function rotateLogIfNeeded(logPath: string, maxSize = MAX_LOG_SIZE, maxFi
     copyFileSync(logPath, `${logPath}.1`);
     truncateSync(logPath, 0);
   } catch { /* best effort */ }
+}
+
+/** Rotations running right now, by path: a second request for the same file joins the first. */
+const rotationsInFlight = new Map<string, Promise<void>>();
+
+/** Bytes appended to the live log while its copy was being made, picked up before the truncate. */
+const MAX_DELTA_PASSES = 3;
+
+/**
+ * The same copytruncate rotation as `rotateLogIfNeeded`, without blocking the event
+ * loop (#1161): the 10–100 MiB copy runs on the libuv pool instead of the fleet thread.
+ *
+ *   - the size check stays synchronous and cheap (one stat), so a caller on a hot path —
+ *     the daemon's health tick — pays only that when nothing is due, and may fire this
+ *     and forget it: the returned promise never rejects
+ *   - one rotation per file at a time: a request that arrives while one is running
+ *     gets that rotation's promise (the daemon's spawn/wake await it before attaching
+ *     pipe-pane, so they still see a rotated file), and the sync version stands aside
+ *   - same inode, same .1 → .2 → .3 shift, same drop-in-place for a ballooned log
+ *   - bytes the writer appended while the copy ran are copied too before the truncate,
+ *     which narrows the window in which they used to be lost to the truncate itself
+ */
+export function rotateLogIfNeededAsync(logPath: string, maxSize = MAX_LOG_SIZE, maxFiles = ROTATE_MAX_FILES): Promise<void> {
+  const running = rotationsInFlight.get(logPath);
+  if (running) return running;
+  let size: number;
+  try {
+    if (!existsSync(logPath)) return Promise.resolve();
+    size = statSync(logPath).size;
+  } catch { return Promise.resolve(); }
+  if (size < maxSize) return Promise.resolve();
+  const rotation = rotateAsync(logPath, size, maxSize, maxFiles)
+    .catch(() => { /* best effort, like the sync version */ })
+    .finally(() => { rotationsInFlight.delete(logPath); });
+  rotationsInFlight.set(logPath, rotation);
+  return rotation;
+}
+
+async function rotateAsync(logPath: string, size: number, maxSize: number, maxFiles: number): Promise<void> {
+  if (size > maxSize * 10) {
+    // Ballooned: drop in place, nothing worth copying (see rotateLogIfNeeded).
+    for (let i = 1; i <= maxFiles; i++) await fsp.unlink(`${logPath}.${i}`).catch(() => {});
+    await fsp.truncate(logPath, 0);
+    return;
+  }
+  for (let i = maxFiles; i >= 2; i--) {
+    const src = `${logPath}.${i - 1}`;
+    const dst = `${logPath}.${i}`;
+    if (i === maxFiles) await fsp.unlink(dst).catch(() => {});
+    await fsp.rename(src, dst).catch(() => {});       // a missing source is the normal first rotation
+  }
+  const rotated = `${logPath}.1`;
+  await fsp.copyFile(logPath, rotated);
+  // The writer kept appending while we copied: carry what it added, then truncate.
+  let copied = (await fsp.stat(rotated)).size;
+  for (let pass = 0; pass < MAX_DELTA_PASSES; pass++) {
+    const live = (await fsp.stat(logPath)).size;
+    if (live <= copied) break;
+    const handle = await fsp.open(logPath, "r");
+    try {
+      const tail = Buffer.alloc(live - copied);
+      const { bytesRead } = await handle.read(tail, 0, tail.length, copied);
+      await fsp.appendFile(rotated, tail.subarray(0, bytesRead));
+      copied += bytesRead;
+      if (bytesRead < tail.length) break;
+    } finally {
+      await handle.close();
+    }
+  }
+  await fsp.truncate(logPath, 0);
 }
 
 /**
