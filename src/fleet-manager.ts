@@ -57,7 +57,7 @@ import { Scheduler } from "./scheduler/index.js";
 import type { Schedule, SchedulerConfig } from "./scheduler/index.js";
 import { DEFAULT_SCHEDULER_CONFIG } from "./scheduler/index.js";
 import type { FleetContext } from "./fleet-context.js";
-import { TopicCommands, saveCommandForBackend, parseSaveFilename, parsePauseWakeCommand, SAVE_FILENAME_RE, resolveInstanceContext, forgetInstanceContext, readStatuslineModel } from "./topic-commands.js";
+import { TopicCommands, saveCommandForBackend, parseSaveFilename, parsePauseWakeCommand, parseCompactCommand, SAVE_FILENAME_RE, resolveInstanceContext, forgetInstanceContext, readStatuslineModel } from "./topic-commands.js";
 import type { HangDetector } from "./hang-detector.js";
 import { DailySummary } from "./daily-summary.js";
 import { WebhookEmitter } from "./webhook-emitter.js";
@@ -4697,7 +4697,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       } else if (data.command === "compact") {
         const name = this.resolveSlashTarget(data.channelId, adapterId);
         if (!name) { await data.respond(t("classic.no_agent")); return; }
-        const result = await this.topicCommands.sendCompact(name);
+        const result = await this.topicCommands.sendCompact(name, String(data.options?.instructions ?? ""));
         await data.respond(result);
       } else if (data.command === "steer") {
         const name = this.resolveSlashTarget(data.channelId, adapterId);
@@ -4813,7 +4813,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       } else if (data.command === "compact") {
         const name = this.resolveSlashTarget(data.channelId, adapterId);
         if (!name) { await data.respond(t("classic.no_agent")); return; }
-        const result = await this.topicCommands.sendCompact(name);
+        const result = await this.topicCommands.sendCompact(name, String(data.options?.instructions ?? ""));
         await data.respond(result);
       } else if (data.command === "steer") {
         const name = this.resolveSlashTarget(data.channelId, adapterId);
@@ -5091,7 +5091,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       } else if (data.command === "compact") {
         const name = this.resolveSlashTarget(data.channelId, adapterId);
         if (!name) { await data.respond(t("classic.no_agent")); return; }
-        const result = await this.topicCommands.sendCompact(name);
+        const result = await this.topicCommands.sendCompact(name, String(data.options?.instructions ?? ""));
         await data.respond(result);
       } else if (data.command === "steer") {
         const name = this.resolveSlashTarget(data.channelId, adapterId);
@@ -5905,7 +5905,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         }
 
         // Handle /compact command (admin only)
-        if (text === "/compact" || text.startsWith("/compact@")) {
+        const classicCompact = parseCompactCommand(text);
+        if (classicCompact) {
           if (!this.classicChannels.isAdmin(msg.userId)) {
             await msgAdapter?.sendText(chatId, t("cmd.admin_required", "/compact"));
             return;
@@ -5915,7 +5916,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             await msgAdapter?.sendText(chatId, t("classic.no_agent_start"));
             return;
           }
-          const result = await this.topicCommands.sendCompact(compactName);
+          const result = await this.topicCommands.sendCompact(compactName, classicCompact.instructions);
           await msgAdapter?.sendText(chatId, result);
           return;
         }

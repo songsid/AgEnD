@@ -1,0 +1,36 @@
+
+  >_ OpenAI Codex (v0.160.0)
+     /home/user/project
+
+  Hello again. What’s the plot this time?
+
+  Tip: Maximize usage with GPT-6.1 Sol. Try it on complex work for near-Astra performance at a lower cost.
+
+
+› hello there
+
+
+• SUMMARY-OR-OK 1
+
+  Worked for <1s • 02:23
+
+
+› /compact FOCUS-ON-MARKER-XYZ keep the file names
+
+
+• SUMMARY-OR-OK 3
+
+  Worked for <1s • 02:24
+
+• Context compacted · 0s
+
+  Worked for <1s • 02:24
+
+
+› Ask Codex to do anything
+
+  GPT-5.5 default · /home/user/project…  ⚠ 1 warning · f2 to view
+
+
+
+
