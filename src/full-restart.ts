@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { withOrigin } from "./fleet-control-audit.js";
 
 export interface FullRestartHelperCompletion {
   code: number | null;
@@ -32,7 +33,7 @@ export function launchFullRestartHelper(
       child = spawnProcess(
         process.execPath,
         [cliEntry, "restart"],
-        { detached: true, stdio: "ignore" },
+        { detached: true, stdio: "ignore", env: withOrigin("full-restart-helper") },
       );
     } catch (err) {
       reject(err);

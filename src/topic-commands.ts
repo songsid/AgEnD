@@ -23,6 +23,7 @@ import {
 import { isGeneralInstance } from "./general-instance.js";
 import { backendSupportsSteer } from "./steer-capability.js";
 import { SYSINFO_BACKEND_IDS, type BackendCliVersionSnapshot, type SysInfoBackendId } from "./backend/types.js";
+import { recordInternalRequest, withOrigin } from "./fleet-control-audit.js";
 
 export { parseContextPercent, parseTokenContextRatio } from "./context-percent.js";
 export type { TokenContextRatio } from "./context-percent.js";
@@ -940,6 +941,7 @@ export class TopicCommands {
       return;
     }
 
+    recordInternalRequest(this.ctx.dataDir, "restart", `command /restart ${mode ?? "graceful"} by ${msg.adapterId}:${msg.userId}`);
     if (mode !== "full") {
       await adapter.sendText(chatId, t("restart.graceful"), { threadId });
       process.kill(process.pid, "SIGUSR2");
@@ -1315,7 +1317,11 @@ export class TopicCommands {
     const currentVersion: string = createRequire(import.meta.url)("../package.json").version ?? "";
     const updateCmd = currentVersion.includes("beta") ? "agend update --beta" : "agend update";
     const { spawn } = await import("node:child_process");
-    const child = spawn("sh", ["-c", `sleep 2 && ${updateCmd}`], { detached: true, stdio: "ignore" });
+    const origin = `command /update by ${msg.adapterId}:${msg.userId}`;
+    recordInternalRequest(this.ctx.dataDir, "update", origin);
+    const child = spawn("sh", ["-c", `sleep 2 && ${updateCmd}`], {
+      detached: true, stdio: "ignore", env: withOrigin(origin),
+    });
     child.once("error", err => this.ctx.failUpdateProgress?.(err.message));
     child.unref();
   }

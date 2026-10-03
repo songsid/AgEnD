@@ -313,7 +313,7 @@ syncBuiltinESMExports();
       preload = ["--import", `file://${file}`];
     }
     const r = spawnSync(process.execPath, [...preload, cli, "restart"], {
-      env: { ...process.env, HOME: home, AGEND_HOME: join(home, ".agend"), PATH: `${bin}:${process.env.PATH}` },
+      env: { ...process.env, AGEND_ALLOW_TEST_FLEET_CONTROL: "1", AGEND_INSTANCE_NAME: "", HOME: home, AGEND_HOME: join(home, ".agend"), PATH: `${bin}:${process.env.PATH}` },
       encoding: "utf8", timeout: 60_000,
     });
     if (opts.unreadable) chmodSync(unit, 0o600);

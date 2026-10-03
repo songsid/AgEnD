@@ -221,7 +221,7 @@ exit 0
     chmodSync(join(bin, "npm"), 0o755);
     chmodSync(join(bin, "systemctl"), 0o755);
     const r = spawnSync(process.execPath, [join(pkg, "dist", "cli.js"), "update", "--beta"], {
-      env: { ...process.env, HOME: home, AGEND_HOME: agendHome, PATH: `${bin}:${process.env.PATH}` },
+      env: { ...process.env, AGEND_ALLOW_TEST_FLEET_CONTROL: "1", AGEND_INSTANCE_NAME: "", HOME: home, AGEND_HOME: agendHome, PATH: `${bin}:${process.env.PATH}` },
       encoding: "utf8", timeout: 60_000,
     });
     const calls = readFileSync(log, "utf8").trim().split("\n").filter(Boolean);
@@ -275,7 +275,7 @@ describe("detached `agend restart` signals only a confirmed fleet (built CLI; `a
     chmodSync(join(bin, "agend"), 0o755);
     chmodSync(join(bin, "systemctl"), 0o755);
     const r = spawnSync(process.execPath, [cli, "restart"], {
-      env: { ...process.env, HOME: home, AGEND_HOME: agendHome, PATH: `${bin}:${process.env.PATH}` },
+      env: { ...process.env, AGEND_ALLOW_TEST_FLEET_CONTROL: "1", AGEND_INSTANCE_NAME: "", HOME: home, AGEND_HOME: agendHome, PATH: `${bin}:${process.env.PATH}` },
       encoding: "utf8", timeout: 60_000,
     });
     spawnSync("sleep", ["0.5"]);
@@ -398,7 +398,7 @@ exit 0
 `);
     for (const f of ["npm", "agend", "systemctl"]) chmodSync(join(bin, f), 0o755);
     const r = spawnSync(process.execPath, [cli, "update", "--beta"], {
-      env: { ...process.env, HOME: home, AGEND_HOME: agendHome, PATH: `${bin}:${process.env.PATH}` },
+      env: { ...process.env, AGEND_ALLOW_TEST_FLEET_CONTROL: "1", AGEND_INSTANCE_NAME: "", HOME: home, AGEND_HOME: agendHome, PATH: `${bin}:${process.env.PATH}` },
       encoding: "utf8", timeout: 120_000,
     });
     const calls = readFileSync(log, "utf8").trim().split("\n").filter(Boolean);

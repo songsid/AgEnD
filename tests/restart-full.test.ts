@@ -23,6 +23,7 @@ import {
   updateProgressOperation,
 } from "../src/update-marker.js";
 import type { ChannelAdapter } from "../src/channel/types.js";
+import { describeSignalSource, gateFleetControl } from "../src/fleet-control-audit.js";
 
 const dirs: string[] = [];
 
@@ -53,6 +54,7 @@ function inbound(text: string, userId = "admin") {
 
 describe("/restart full command surface", () => {
   it("preserves bare /restart and accepts the Telegram bot-suffixed full variant", async () => {
+    const auditDir = tempDir();
     const kill = vi.spyOn(process, "kill").mockImplementation(() => true);
     const sendText = vi.fn().mockResolvedValue({
       messageId: "progress-1",
@@ -67,10 +69,13 @@ describe("/restart full command surface", () => {
       fleetConfig: { channel: { access: { allowed_users: ["admin"] } } },
       isFleetAdmin: (userId: string) => userId === "admin",
       requestFullRestart,
+      dataDir: auditDir,
     } as any);
 
     expect(await commands.handleGeneralCommand(inbound("/restart"))).toBe(true);
     expect(kill).toHaveBeenCalledWith(process.pid, "SIGUSR2");
+    // #1120: the signal the fleet is about to receive can be traced to the person who asked
+    expect(describeSignalSource(auditDir, "SIGUSR2")).toMatch(/requested by restart.*command \/restart graceful by .*:/);
     expect(requestFullRestart).not.toHaveBeenCalled();
 
     kill.mockClear();
@@ -136,8 +141,30 @@ describe("/restart full command surface", () => {
     await adapter.stop();
   });
 
+  it("SIGUSR2 and SIGUSR1 log who asked, from the CLI's audit line (#1120)", async () => {
+    const auditDir = tempDir();
+    const fleet = new FleetManager(auditDir) as any;
+    const info = vi.spyOn(fleet.logger, "info");
+    vi.spyOn(fleet, "restartInstances").mockResolvedValue(undefined);
+    vi.spyOn(fleet, "gracefulShutdownForReload").mockResolvedValue(undefined);
+    const exit = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+    gateFleetControl(auditDir, "fleet-restart", {}, { AGEND_INSTANCE_NAME: "agend-leader" , AGEND_ALLOW: "x" } as any);   // refused → not blamed
+    gateFleetControl(auditDir, "fleet-restart-reload", { yes: true }, { AGEND_INSTANCE_NAME: "agend-leader" });
+
+    const rearm = vi.fn();
+    fleet.onGracefulRestartSignal(rearm);
+    await vi.waitFor(() => expect(rearm).toHaveBeenCalledOnce());
+    fleet.onFullRestartSignal();
+    await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(0));
+
+    const said = info.mock.calls.map(call => String(call[0]));
+    expect(said.find(m => m.startsWith("Received SIGUSR2"))).toContain("from agent session agend-leader");
+    expect(said.find(m => m.startsWith("Received SIGUSR1"))).toContain("fleet-restart-reload");
+  });
+
   it("binds a Discord full restart to the public response in its real channel", async () => {
-    const fleet = new FleetManager(tempDir());
+    const auditDir = tempDir();
+    const fleet = new FleetManager(auditDir);
     fleet.fleetConfig = {
       defaults: {},
       channels: [{
@@ -165,6 +192,7 @@ describe("/restart full command surface", () => {
 
     expect(respond).toHaveBeenCalledWith(expect.stringContaining("Full process reload requested"));
     expect(request).toHaveBeenCalledWith(adapter, "guild", "channel", "public-progress");
+    expect(describeSignalSource(auditDir, "SIGUSR1")).toContain("slash /restart full by discord-main:admin");   // #1120
   });
 
   it("uses the invoking adapter's admin allowlist for Discord full restart", async () => {
@@ -268,7 +296,7 @@ describe("full-restart helper hand-off", () => {
     expect(spawnProcess).toHaveBeenCalledWith(
       process.execPath,
       ["/opt/agend/dist/cli.js", "restart"],
-      { detached: true, stdio: "ignore" },
+      { detached: true, stdio: "ignore", env: expect.objectContaining({ AGEND_RESTART_ORIGIN: "full-restart-helper" }) },
     );
     expect(child.unref).toHaveBeenCalledOnce();
 
