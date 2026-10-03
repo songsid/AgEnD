@@ -1,9 +1,18 @@
 import { EventEmitter } from "node:events";
 
 export type StormPhase = "closed" | "backing_off" | "recovering";
+/**
+ * What opened the window. `server`: the tmux server died or was replaced (every
+ * window is gone, spawning is held for a backoff). `window_loss`: the server is
+ * fine but several instances lost their windows within seconds of each other
+ * (#1127) — a host or tmux-level event, not N independent crashes; nothing is
+ * held, but the recoveries run at the storm rate and as ONE incident.
+ */
+export type StormKind = "server" | "window_loss";
 
 export interface StormSnapshot {
   phase: StormPhase;
+  kind: StormKind;
   generation: number;
   crashLevel: number;
   crashCount: number;
@@ -22,6 +31,9 @@ export interface StormWindowOptions {
   backoffsMs?: readonly number[];
   stableResetMs?: number;
   recoveryTimeoutMs?: number;
+  /** Distinct instances losing their window inside `windowLossWindowMs` that count as one event (#1127). */
+  windowLossThreshold?: number;
+  windowLossWindowMs?: number;
 }
 
 const STORM_INCIDENT_KINDS = new Set([
@@ -48,7 +60,12 @@ export class StormWindow extends EventEmitter {
   private readonly backoffsMs: readonly number[];
   private readonly stableResetMs: number;
   private readonly recoveryTimeoutMs: number;
+  private readonly windowLossThreshold: number;
+  /** The span in which `windowLossThreshold` distinct losses make one event. */
+  readonly windowLossWindowMs: number;
   private phase: StormPhase = "closed";
+  private kind: StormKind = "server";
+  private windowLosses = new Map<string, number>();
   private generation = 0;
   private crashLevel = 0;
   private crashCount = 0;
@@ -74,11 +91,14 @@ export class StormWindow extends EventEmitter {
     this.backoffsMs = options.backoffsMs ?? [30_000, 2 * 60_000, 10 * 60_000];
     this.stableResetMs = options.stableResetMs ?? 10 * 60_000;
     this.recoveryTimeoutMs = options.recoveryTimeoutMs ?? 10 * 60_000;
+    this.windowLossThreshold = Math.max(2, options.windowLossThreshold ?? 4);
+    this.windowLossWindowMs = options.windowLossWindowMs ?? 60_000;
   }
 
   snapshot(): StormSnapshot {
     return {
       phase: this.phase,
+      kind: this.kind,
       generation: this.generation,
       crashLevel: this.crashLevel,
       crashCount: this.crashCount,
@@ -145,6 +165,45 @@ export class StormWindow extends EventEmitter {
     }
   }
 
+  /**
+   * An instance confirmed that its tmux window is gone while the server is
+   * alive. One such loss is an ordinary crash; several inside the window are one
+   * infrastructure event, and N independent respawn loops would stampede (#1127).
+   * Returns true when THIS call opens the window. Once a window is open, a loss
+   * simply joins it.
+   */
+  noteWindowLoss(name: string): boolean {
+    if (this.stopped) return false;
+    const now = this.now();
+    for (const [other, at] of this.windowLosses) {
+      if (now - at > this.windowLossWindowMs) this.windowLosses.delete(other);
+    }
+    this.windowLosses.set(name, now);
+    if (this.isActive()) {
+      this.addAffected(name);
+      return false;
+    }
+    if (this.windowLosses.size < this.windowLossThreshold) return false;
+    this.openWindowLossBurst([...this.windowLosses.keys()]);
+    return true;
+  }
+
+  private openWindowLossBurst(names: string[]): void {
+    this.kind = "window_loss";
+    this.generation++;
+    this.phase = "recovering";
+    this.backoffMs = 0;
+    this.retryAt = null;
+    this.affected = new Set(names);
+    this.recovered.clear();
+    this.suppressed.clear();
+    if (this.stableTimer) { this.clearTimer!(this.stableTimer); this.stableTimer = null; }
+    if (this.recoveryTimer) this.clearTimer!(this.recoveryTimer);
+    this.recoveryTimer = this.setTimer!(() => this.closeWindow("timeout"), this.recoveryTimeoutMs);
+    (this.recoveryTimer as any)?.unref?.();
+    this.emit("opened", this.snapshot());
+  }
+
   shouldSuppress(kind: string): boolean {
     if (!this.isActive() || !STORM_INCIDENT_KINDS.has(kind)) return false;
     this.suppressed.set(kind, (this.suppressed.get(kind) ?? 0) + 1);
@@ -179,6 +238,7 @@ export class StormWindow extends EventEmitter {
   private recordDistinctCrash(): void {
     const now = this.now();
     const wasClosed = this.phase === "closed";
+    this.kind = "server";
     this.generation++;
     this.crashCount++;
     this.crashLevel = Math.min(this.crashLevel + 1, this.backoffsMs.length);
@@ -224,6 +284,8 @@ export class StormWindow extends EventEmitter {
     this.release(this.spawnWaiters);
     this.releaseAllDelivery();
     this.emit("closed", snapshot, reason);
+    this.windowLosses.clear();
+    this.kind = "server";
     this.affected.clear();
     this.recovered.clear();
     this.suppressed.clear();
