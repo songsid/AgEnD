@@ -6,7 +6,7 @@ import { ensureInstanceDir } from "./private-dir.js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import type { InstanceConfig, RotationSnapshot, RotationSnapshotEvent } from "./types.js";
-import { rotateLogIfNeeded, type Logger } from "./logger.js";
+import { rotateLogIfNeededAsync, type Logger } from "./logger.js";
 import { coredumpFilterLaunchPrefix } from "./coredump-filter.js";
 import { mcpServerState } from "./mcp-liveness.js";
 import { clearPausedMarker, writePausedMarker, type PauseReason } from "./pause-marker.js";
@@ -1968,7 +1968,7 @@ export class Daemon extends EventEmitter {
       // we attach — pipe-pane uses `cat >>` on the same inode, so copytruncate
       // keeps the writer attached after size resets.
       const outputLog = join(this.instanceDir, "output.log");
-      rotateLogIfNeeded(outputLog);
+      await rotateLogIfNeededAsync(outputLog);
       await this.tmux.pipeOutput(outputLog).catch(() => {});
 
       // 4. Transcript monitor. claude-code is handled inside the monitor
@@ -2516,8 +2516,11 @@ export class Daemon extends EventEmitter {
             this.stormWindow?.noteWindowAlive(this.name);
             // Instance output.log is fed by tmux pipe-pane and was previously never
             // rotated (only fleet.log / daemon.log were). Cap growth every tick.
+            // Fire and forget, on purpose: the size check is one stat, the copy of a
+            // 10–100 MiB log runs off the event loop, and this tick must not wait for
+            // it (#1161) — scheduleNext() below is not delayed by a rotation.
             if (!this.config.lightweight) {
-              rotateLogIfNeeded(join(this.instanceDir, "output.log"));
+              void rotateLogIfNeededAsync(join(this.instanceDir, "output.log"));
             }
             scheduleNext();
             return;
@@ -8445,7 +8448,7 @@ export class Daemon extends EventEmitter {
     });
     if (reuseWindow && !this.config.lightweight) {
       const outputLog = join(this.instanceDir, "output.log");
-      rotateLogIfNeeded(outputLog);
+      await rotateLogIfNeededAsync(outputLog);
       await this.tmux!.pipeOutput(outputLog).catch(err => {
         this.logger.warn({ err }, "Failed to restore pipe-pane after wake");
       });

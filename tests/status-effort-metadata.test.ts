@@ -35,6 +35,7 @@ vi.mock("node:fs", async importOriginal => {
 vi.mock("../src/logger.js", () => ({
   createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: vi.fn() }),
   rotateLogIfNeeded: vi.fn(),
+  rotateLogIfNeededAsync: vi.fn(async () => {}),
 }));
 // Context refresh has its own async tmux path; this test targets effort metadata.
 vi.mock("../src/topic-commands.js", async importOriginal => ({
