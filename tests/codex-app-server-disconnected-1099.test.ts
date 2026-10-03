@@ -67,6 +67,26 @@ describe("a pane with no app-server behind it is never an idle or deliverable pa
     expect(machine.observe(pane, 10_000, { settled: true }).state).toBe("working");
   });
 
+  it("the user's own `›` echo higher up is not mistaken for the composer (compact rendering, no blank rows)", () => {
+    const compact = (pane: string) => pane.split("\n").filter(row => row.trim() !== "").join("\n");
+    const withEcho = DISCONNECTED.filter(([, pane]) => pane.includes("› hello"));
+    expect(withEcho).toHaveLength(2);   // the two captures taken after a turn
+    for (const [label, pane] of withEcho) {
+      const dense = compact(pane);
+      expect(dense, label).toMatch(/^› hello$/m);
+      expect(dense.split("\n").length, label).toBeLessThan(13);
+      expect(codexAppServerDisconnected(dense), label).toBe(true);
+      expect(backend.isStableUnknownLayoutIdlePane(dense), label).toBe(false);
+    }
+  });
+
+  it("a transcript item BELOW the composer means the status row is not the live one", () => {
+    for (const [label, pane] of DISCONNECTED) {
+      const later = `${pane.trimEnd()}\n• Back online.\n`;
+      expect(codexAppServerDisconnected(later), label).toBe(false);
+    }
+  });
+
   it("a draft the user left in the composer does not make it deliverable", () => {
     for (const [label, pane] of DISCONNECTED) {
       const draft = pane.replace("› Ask Codex to do anything", "› please remember to rebase\n  before merging");
