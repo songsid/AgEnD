@@ -491,7 +491,7 @@ function codexRateSwitchPickerVisible(pane: string): boolean {
   // options; everything else keeps the exact shape. A row of free text indented
   // that far is a continuation too, which is why the options themselves,
   // the title, the subtitle and the footer are still matched row by row.
-  const wrapped = (row: string) => /^[ \t]{6,}\S/.test(row) && !/^\s*[›>]?\s*\d+\./.test(row);
+  const wrapped = (row: string) => /^[ \t]{6,}\S/.test(row) && !/^\s*[›❯>]?\s*\d+\./.test(row);
   const MAX_WRAPPED = 3;
   let i = rows.length - 1;
   const take = (shape: RegExp, allowWrapped: boolean): boolean => {

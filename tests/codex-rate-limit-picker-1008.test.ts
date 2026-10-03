@@ -241,6 +241,9 @@ describe("the 80-column picker, option descriptions wrapped onto indented rows (
       ["a wrapped row that starts at the left margin", reword(base, `${WRAP}tasks.`, "tasks.")],
       ["a wrapped row indented like an option", reword(base, `${WRAP}tasks.`, "  tasks.")],
       ["a 'continuation' that is itself an option", reword(base, `${WRAP}tasks.`, `${WRAP}4. Something else`)],
+      // every cursor glyph the hold matchers know (›, ❯, >) marks an option, wrapped or not
+      ...["›", "❯", ">"].map((glyph): [string, string] => [`a 'continuation' that is a ${glyph}-marked fourth option, option 1 unmarked`,
+        reword(reword(base, `${WRAP}tasks.`, `${WRAP.slice(0, 6)}${glyph} 4. Something else`), "› 1. Switch to gpt-6-luna", "  1. Switch to gpt-6-luna")]),
       ["more wrapped rows than a description can take", reword(base, `${WRAP}tasks.`, [1, 2, 3, 4].map(n => `${WRAP}row ${n}`).join("\n"))],
       ["a wrapped row between subtitle and option 1", reword(base, "› 1. Switch to gpt-6-luna", `${WRAP}Choose one:\n› 1. Switch to gpt-6-luna`)],
       ["a wrapped row between title and subtitle", reword(base, "  Switch to gpt-6-luna for lower credit usage?", `${WRAP}wait\n  Switch to gpt-6-luna for lower credit usage?`)],
