@@ -259,7 +259,7 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
     // full agent CLI (tools, permission prompts, MCP) and has no isolated
     // login sub-command — "logging in" means running the whole agent, which
     // violates the web terminal's "one login command, no shell" boundary.
-    // /login agy is declined in every mode (no relay fallback) until upstream
+    // /login agy is declined outright (there is no fallback mode) until upstream
     // ships a dedicated login command. authCheck / loginScreenPattern stay for
     // the daemon's own use.
     remoteLogin: "unsupported",
