@@ -399,19 +399,15 @@ syncBuiltinESMExports();
     expect(r.stdout).toContain("CoredumpFilter");
   });
 
-  it.skipIf(!existsSync(cli))("#1113: a reload that leaves systemd on the default CoredumpFilter is refused (systemd 246+)", () => {
+  it.skipIf(!existsSync(cli))("#1113 hotfix: a loaded CoredumpFilter=0x33 (systemd 249 ignores the unit-file line) never blocks the restart — info only", () => {
     const { r, calls, out, restarted } = restart(legacyUnit(), { pinFilter: true });
-    expect(restarted, `${out}\n${calls.join("\n")}`).toBe(false);
-    expect(r.status).toBe(1);
-    expect(r.stderr).toContain("CoredumpFilter=0x33 loaded");
-    expect(r.stderr).toContain("Not restarting");
+    expect(restarted, `${out}\n${calls.join("\n")}`).toBe(true);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain("CoredumpFilter=0x33 loaded");
+    expect(r.stdout).toContain("the fleet sets coredump_filter=0 itself");
+    expect(r.stderr).not.toContain("Not restarting");
   });
 
-  it.skipIf(!existsSync(cli))("#1113: a systemd that predates CoredumpFilter is warned about, not locked out of restarts", () => {
-    const { r, calls, out, restarted } = restart(legacyUnit(), { pinFilter: true, systemdVersion: 245 });
-    expect(restarted, `${out}\n${calls.join("\n")}`).toBe(true);
-    expect(r.stdout).toContain("predates CoredumpFilter");
-  });
 
   it.skipIf(!existsSync(cli))("#1113: an operator's own CoredumpFilter is left alone, warned, and not gated", () => {
     const { r, out, restarted, unit } = restart(legacyUnit().replace("TimeoutStopSec=60", "TimeoutStopSec=60\nCoredumpFilter=0x33"));
@@ -438,26 +434,28 @@ syncBuiltinESMExports();
     expect(late.r.stdout).toContain("sets its own CoredumpFilter");
   });
 
-  it.skipIf(!existsSync(cli))("#1122 r2: a trailing empty CoredumpFilter= (inherit) is the operator's, not gated; with no operator mask the loaded value still gates", () => {
+  it.skipIf(!existsSync(cli))("#1122 r2: a trailing empty CoredumpFilter= (inherit) is reported as the operator's; with no operator mask the loaded value is only info", () => {
     const inherit = restart(renderSystemdUnit(vars).replace("CoredumpFilter=0", "CoredumpFilter=0\nCoredumpFilter="), { pinFilter: true });
     expect(inherit.restarted, inherit.out).toBe(true);
     expect(inherit.r.stdout).toContain("sets its own CoredumpFilter");
-    // No operator mask anywhere, loaded still 0x33: refused (the gate is not bypassed by any nonzero loaded value).
-    const gated = restart(renderSystemdUnit(vars), { pinFilter: true });
-    expect(gated.restarted, gated.out).toBe(false);
-    expect(gated.r.stderr).toContain("Not restarting");
+    // No operator mask anywhere, loaded still 0x33: not the operator's — reported as info, and restarted.
+    const plain = restart(renderSystemdUnit(vars), { pinFilter: true });
+    expect(plain.restarted, plain.out).toBe(true);
+    expect(plain.r.stdout).not.toContain("sets its own CoredumpFilter");
+    expect(plain.r.stdout).toContain("CoredumpFilter=0x33 loaded");
   });
 
-  it.skipIf(!existsSync(cli))("#1122 r3: a unit-specific drop-in elsewhere (reported by systemd) shadows a same-named service.d one — reload failed, loaded 0x33 → refused", () => {
+  it.skipIf(!existsSync(cli))("#1122 r3: a unit-specific drop-in elsewhere (reported by systemd) shadows a same-named service.d one — classified as AgEnD's 0, not the operator's", () => {
     const other = join(tmp(), "com.agend.fleet.service.d");
     mkdirSync(other);
     writeFileSync(join(other, "50-custom.conf"), "[Service]\nCoredumpFilter=\nCoredumpFilter=0\n");
     const { r, out, restarted } = restart(renderSystemdUnit(vars), {
       typeDropIn: "[Service]\nCoredumpFilter=0x33\n", dropInPaths: join(other, "50-custom.conf"), pinFilter: true, failReload: true, loaded: "mixed",
     });
-    expect(restarted, out).toBe(false);
-    expect(r.status).toBe(1);
-    expect(r.stderr).toContain("CoredumpFilter=0x33 loaded"); // refused by the filter gate, not KillMode
+    // The shadowed type-wide 0x33 is not the operator's effective mask: info, not "sets its own" — and never a refusal.
+    expect(restarted, out).toBe(true);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain("CoredumpFilter=0x33 loaded");
     expect(r.stdout).not.toContain("sets its own CoredumpFilter");
   });
 
