@@ -4,37 +4,25 @@ import { LOGIN_FLOWS, type LoginFlow } from "../src/login-flows.js";
 
 const silentLogger = { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} } as any;
 
-function fakeTmux(overrides: Partial<LoginTmux> = {}): LoginTmux & { keys: string[]; pasted: string[]; killed: () => boolean } {
+function fakeTmux(overrides: Partial<LoginTmux> = {}): LoginTmux & { killed: () => boolean } {
   let killed = false;
-  const keys: string[] = [];
-  const pasted: string[] = [];
   return {
-    keys,
-    pasted,
     killed: () => killed,
     createWindow: vi.fn(async () => "@9"),
     setRemainOnExit: vi.fn(async () => {}),
     capturePaneJoined: vi.fn(async () => ""),
     getPaneStatus: vi.fn(async () => ({ alive: true })),
     killWindow: vi.fn(async () => { killed = true; }),
-    sendSpecialKey: vi.fn(async (key: string) => { keys.push(key); return true; }),
-    pasteText: vi.fn(async (text: string) => { pasted.push(text); return true; }),
     ...overrides,
   };
 }
 
 function events(overrides: Partial<LoginSessionEvents> = {}): LoginSessionEvents & {
-  menus: string[][]; hints: Array<{ url: string; code: string | null }>; inputs: string[]; done: Array<{ ok: boolean; detail: string }>;
+  done: Array<{ ok: boolean; detail: string }>;
 } {
-  const menus: string[][] = [];
-  const hints: Array<{ url: string; code: string | null }> = [];
-  const inputs: string[] = [];
   const done: Array<{ ok: boolean; detail: string }> = [];
   return {
-    menus, hints, inputs, done,
-    onMenu: (options) => { menus.push(options); },
-    onAuthHint: (url, code) => { hints.push({ url, code }); },
-    onNeedInput: (prompt) => { inputs.push(prompt); },
+    done,
     onDone: (result) => { done.push(result); },
     ...overrides,
   };
@@ -44,83 +32,32 @@ function session(flow: LoginFlow, tmux: LoginTmux, ev: LoginSessionEvents): Logi
   return new LoginSession(flow, tmux, ev, silentLogger, 5);
 }
 
-describe("LoginSession", () => {
-  it("Codex relay waits for the device code and never posts a localhost callback", async () => {
-    let pane = "http://localhost:40475/t/session/\nhttps://127.0.0.1:1455/callback\nhttps://auth.openai.com/codex/device\n";
-    const capture = vi.fn(async () => pane);
-    const tmux = fakeTmux({ capturePaneJoined: capture });
+describe("LoginSession (a command run in a dedicated window — today the CLI installers)", () => {
+  it("finishes on the success pattern, once, and removes the window", async () => {
+    let pane = "downloading…";
+    const tmux = fakeTmux({ capturePaneJoined: vi.fn(async () => pane) });
     const ev = events();
-    const s = session(LOGIN_FLOWS.codex, tmux, ev);
+    const s = session(LOGIN_FLOWS["codex"], tmux, ev);
     await s.start();
-    await vi.waitFor(() => expect(capture.mock.calls.length).toBeGreaterThan(1));
-    expect(ev.hints).toEqual([]);
-    pane += "ABCD-1234\n";
-    await vi.waitFor(() => expect(ev.hints).toEqual([{ url: "https://auth.openai.com/codex/device", code: "ABCD-1234" }]));
-    pane += "Successfully logged in.\n";
+    expect(s.state).toBe("starting");
+    pane = "Successfully logged in.";
     await vi.waitFor(() => expect(ev.done).toHaveLength(1));
-    expect(ev.hints).toHaveLength(1);
-    expect(tmux.killed()).toBe(true);
-  });
-
-  it("posts the auth hint exactly once and finishes on the success pattern", async () => {
-    const panes = [
-      "starting device flow…",
-      "Open https://accounts.x.ai/oauth2/device?user_code=WXYZ-7890 and enter code: WXYZ-7890",
-      "Open https://accounts.x.ai/oauth2/device?user_code=WXYZ-7890 and enter code: WXYZ-7890",
-      " Signed in as dev@example.com",
-    ];
-    let call = 0;
-    const tmux = fakeTmux({ capturePaneJoined: vi.fn(async () => panes[Math.min(call++, panes.length - 1)]) });
-    const ev = events();
-    const s = session(LOGIN_FLOWS["grok"], tmux, ev);
-    await s.start();
-    await vi.waitFor(() => expect(ev.done).toHaveLength(1));
-    expect(ev.hints).toEqual([{ url: "https://accounts.x.ai/oauth2/device?user_code=WXYZ-7890", code: "WXYZ-7890" }]);
     expect(ev.done[0]).toEqual({ ok: true, detail: "success" });
     expect(tmux.killed()).toBe(true);
     expect(s.state).toBe("done");
   });
 
-  it("drives the kiro selector: menu event once, Down×N + Enter on selection", async () => {
-    let pane = "? Select login method ›\n  Builder ID\n  Google\n  GitHub\n  Your Organization";
-    const tmux = fakeTmux({ capturePaneJoined: vi.fn(async () => pane) });
+  it("what the pane shows besides the verdict is nobody's business: URLs, menus and prompts raise nothing", async () => {
+    const pane = "? Select login method ›\n  Builder ID\nEnter Start URL ›\nhttps://auth.openai.com/codex/device\nABCD-1234\n";
+    const capture = vi.fn(async () => pane);
+    const tmux = fakeTmux({ capturePaneJoined: capture });
     const ev = events();
     const s = session(LOGIN_FLOWS["kiro-cli"], tmux, ev);
     await s.start();
-    await vi.waitFor(() => expect(ev.menus).toHaveLength(1));
-    expect(s.state).toBe("menu");
-
-    expect(await s.selectMenuOption(9)).toBe(false); // out of range
-    expect(await s.selectMenuOption(2)).toBe(true);  // GitHub
-    expect(tmux.keys).toEqual(["Down", "Down", "Enter"]);
-    expect(s.state).toBe("waiting");
-
-    pane = "Logged in successfully";
-    await vi.waitFor(() => expect(ev.done).toHaveLength(1));
-    expect(ev.done[0].ok).toBe(true);
-    // Menu event never repeats even though the prompt stayed on screen.
-    expect(ev.menus).toHaveLength(1);
-  });
-
-  it("notifies once per distinct input prompt and pastes submitted text", async () => {
-    let pane = "Enter Start URL ›";
-    const tmux = fakeTmux({ capturePaneJoined: vi.fn(async () => pane) });
-    const ev = events();
-    const s = session(LOGIN_FLOWS["kiro-cli"], tmux, ev);
-    await s.start();
-    await vi.waitFor(() => expect(ev.inputs).toEqual(["Enter Start URL"]));
-    expect(s.state).toBe("input");
-
-    expect(await s.submitInput("https://corp.awsapps.com/start")).toBe(true);
-    expect(tmux.pasted).toEqual(["https://corp.awsapps.com/start"]);
-    expect(s.state).toBe("waiting");
-
-    pane = "Enter Region ›";
-    await vi.waitFor(() => expect(ev.inputs).toEqual(["Enter Start URL", "Enter Region"]));
-
-    pane = "Logged in with IAM Identity Center";
-    await vi.waitFor(() => expect(ev.done).toHaveLength(1));
-    expect(ev.done[0].ok).toBe(true);
+    await vi.waitFor(() => expect(capture.mock.calls.length).toBeGreaterThan(3));
+    expect(ev.done).toEqual([]);
+    expect(s.state).toBe("starting");
+    await s.cancel();
   });
 
   it("treats a clean CLI exit as success and a non-zero exit as failure with evidence", async () => {
@@ -139,7 +76,7 @@ describe("LoginSession", () => {
     }
   });
 
-  it("cancel kills the window, reports cancelled, and blocks later input", async () => {
+  it("cancel kills the window and reports cancelled", async () => {
     const tmux = fakeTmux();
     const ev = events();
     const s = session(LOGIN_FLOWS["claude-code"], tmux, ev);
@@ -147,7 +84,6 @@ describe("LoginSession", () => {
     await s.cancel();
     expect(ev.done).toEqual([{ ok: false, detail: "cancelled" }]);
     expect(tmux.killed()).toBe(true);
-    expect(await s.submitInput("late")).toBe(false);
     // finish() is idempotent — a racing poll cannot double-report.
     await s.cancel();
     expect(ev.done).toHaveLength(1);

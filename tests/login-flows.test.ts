@@ -32,12 +32,6 @@ describe("LOGIN_FLOWS table", () => {
     expect(LOGIN_BACKEND_ALIASES["agy"]).toBe("antigravity");
   });
 
-  it("kiro menu matches the CLI's binary-verified selector", () => {
-    const menu = LOGIN_FLOWS["kiro-cli"].menu!;
-    expect(menu.promptPattern.test("? Select login method ›")).toBe(true);
-    expect(menu.options).toEqual(["Builder ID", "Google", "GitHub", "Your Organization"]);
-  });
-
   it("success patterns match the strings the CLIs actually print", () => {
     expect(LOGIN_FLOWS["codex"].successPattern.test("Successfully logged in.")).toBe(true);
     expect(LOGIN_FLOWS["grok"].successPattern.test("Login successful!")).toBe(true);

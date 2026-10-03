@@ -10986,9 +10986,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       timeoutMs: 10 * 60 * 1000,
     };
     const session = new LoginSession(flow, tmux, {
-      onMenu: () => {},
-      onAuthHint: () => {},
-      onNeedInput: () => {},
       onDone: async ({ ok, detail, cleanupFailed }) => {
         this.activeInstall = null;
         this.loginWindow.release(claim);

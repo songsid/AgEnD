@@ -25,14 +25,11 @@ function harness(opts: { confirmable?: boolean; killFails?: boolean; deferKill?:
     async capturePaneJoined() { return ""; },
     async getPaneStatus() { return { alive }; },
     async killWindow() { kills.push(Date.now()); if (!opts.killFails) alive = false; },   // production killWindow swallows errors
-    async sendSpecialKey() { return true; },
-    async pasteText() { return true; },
     ...(opts.confirmable ? { async killWindowConfirmed() { if (opts.deferKill) await killGate; kills.push(Date.now()); if (!opts.killFails) alive = false; return !alive; } } : {}),
   };
   const flow: LoginFlow = { backend: "codex", command: "codex login --device-auth", successPattern: /never/, timeoutMs: 60_000 };
   const done: unknown[] = [];
   const session = new LoginSession(flow, tmux, {
-    onMenu: () => {}, onAuthHint: () => {}, onNeedInput: () => {},
     onDone: r => { done.push(r); },
   }, { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never, 50);
   return { session, releaseCreate, releaseKill, isAlive: () => alive, kills, done };

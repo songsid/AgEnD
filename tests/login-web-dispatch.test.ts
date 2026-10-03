@@ -14,8 +14,6 @@ vi.mock("../src/login-manager.js", async (importOriginal) => {
     constructor(readonly flow: any, _tmux: any, readonly events: any) { this.record = { flow, cancelled: [], events }; installSessions.push(this.record); }
     async start() { if (onInstallStart) await onInstallStart(); }
     async cancel(detail = "cancelled") { this.state = "done"; this.record.cancelled.push(detail); await this.events.onDone({ ok: false, detail }); }
-    async submitInput() { return true; }
-    async selectMenuOption() { return true; }
   }
   return { ...real, LoginSession: FakeLoginSession };
 });

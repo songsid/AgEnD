@@ -19,8 +19,6 @@ vi.mock("../src/login-manager.js", async (importOriginal) => {
       fakeSessions[fakeSessions.length - 1].cancelled = true;
       await this.events.onDone({ ok: false, detail: "cancelled" });
     }
-    async submitInput() { return true; }
-    async selectMenuOption() { return true; }
   }
   return { ...real, LoginSession: FakeLoginSession };
 });
