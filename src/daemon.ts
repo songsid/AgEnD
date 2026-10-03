@@ -2778,6 +2778,11 @@ export class Daemon extends EventEmitter {
 
           try {
             await this.checkpointSessionId();
+            // stop() / pause() may have landed while this tick sat in the backoff delay or in the
+            // (bounded) session lookup. They only stop LATER ticks; this continuation is already
+            // past that check and must not clear the process/window or respawn an instance that
+            // was just stopped or paused (#1160 review).
+            if (this.runtimeMonitorsFrozen || this.healthCheckPaused) return;
             this.transcriptMonitor?.resetOffset();
             // Kill orphan MCP server from the crashed CLI session.
             // MCP server writes its PID to channel.mcp.pid on startup.

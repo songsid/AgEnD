@@ -251,3 +251,80 @@ describe("crash respawn inside the health tick", () => {
     d.stopHealthCheck?.();
   });
 });
+
+describe("a crash tick that is already past the health check when stop() / pause() lands (#1160 review)", () => {
+  function rig(backendKind: "opencode" | "claude", lookupMs: number | "pending") {
+    vi.spyOn(TmuxManager, "sessionExists").mockResolvedValue(true);
+    vi.spyOn(TmuxManager, "getServerPid").mockResolvedValue(4242);
+    vi.spyOn(TmuxManager, "listWindows").mockResolvedValue([] as never);
+    const id = { current: "ses_cached" as string | null };
+    const { backend, release } = backendWith(backendKind, "none", id);
+    const order: string[] = [];
+    if (backendKind === "opencode") {
+      backend.refreshSessionId = vi.fn(() => {
+        order.push("lookup:start");
+        return new Promise<string | null>(resolve => {
+          const done = () => { order.push("lookup:done"); resolve(id.current); };
+          if (lookupMs === "pending") release2 = done; else setTimeout(done, lookupMs);
+        });
+      });
+    }
+    let release2: () => void = () => {};
+    const d = daemon(backend);
+    const killWindow = vi.fn(async () => {});
+    d.tmux = { getPaneStatus: vi.fn(async () => null), getWindowId: () => "@1", capturePaneWithHistory: vi.fn(async () => ""), killWindow };
+    d.lastSpawnAt = 1;
+    d.setProcessStatus("running");
+    d.checkMcpServerAlive = () => {};
+    d.spawnClaudeWindow = vi.fn(async () => { order.push("respawn"); return true; });
+    d.writeRotationSnapshot = vi.fn(); d.injectSnapshotMessage = async () => {};
+    d.transcriptMonitor = { resetOffset: vi.fn(), stop: () => {} };
+    return { d, order, releaseLookup: () => release2(), killWindow };
+  }
+
+  it("stop() during the session lookup: when it settles nothing is cleared and nothing is respawned", async () => {
+    const { d, order, releaseLookup } = rig("opencode", "pending");
+    d.startHealthCheck();
+    await vi.advanceTimersByTimeAsync(6_000);
+    expect(order).toEqual(["lookup:start"]);                  // the tick is parked in the lookup
+    d.healthCheckPaused = true;                               // what stop() does
+    releaseLookup();
+    await vi.advanceTimersByTimeAsync(6_000);
+    expect(order).toEqual(["lookup:start", "lookup:done"]);   // no "respawn"
+    expect(d.spawnClaudeWindow).not.toHaveBeenCalled();
+    expect(d.transcriptMonitor.resetOffset).not.toHaveBeenCalled();
+    expect(d.writeRotationSnapshot).not.toHaveBeenCalled();
+    d.stopHealthCheck?.();
+  });
+
+  it("pause() (runtime monitors frozen) during the lookup: the same", async () => {
+    const { d, order, releaseLookup } = rig("opencode", "pending");
+    d.startHealthCheck();
+    await vi.advanceTimersByTimeAsync(6_000);
+    d.runtimeMonitorsFrozen = true;                           // what pause() does (freezeRuntimeMonitors)
+    releaseLookup();
+    await vi.advanceTimersByTimeAsync(6_000);
+    expect(d.spawnClaudeWindow).not.toHaveBeenCalled();
+    expect(order).not.toContain("respawn");
+    d.stopHealthCheck?.();
+  });
+
+  it("stop() during the BACKOFF delay (a backend with no lookup): no respawn either — the hole was older than the lookup", async () => {
+    const { d } = rig("claude", 0);
+    d.startHealthCheck();
+    await vi.advanceTimersByTimeAsync(2_700);                 // tick + 1.5 s recheck, now inside the 1 s backoff delay
+    d.healthCheckPaused = true;
+    await vi.advanceTimersByTimeAsync(6_000);
+    expect(d.spawnClaudeWindow).not.toHaveBeenCalled();
+    d.stopHealthCheck?.();
+  });
+
+  it("control: with nobody stopping it the same tick does respawn after the lookup", async () => {
+    const { d, order } = rig("opencode", 800);
+    d.startHealthCheck();
+    await vi.advanceTimersByTimeAsync(9_000);
+    expect(order.slice(0, 3)).toEqual(["lookup:start", "lookup:done", "respawn"]);
+    d.stopHealthCheck?.();
+  });
+});
+
