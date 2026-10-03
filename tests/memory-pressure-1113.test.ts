@@ -60,6 +60,21 @@ describe("host memory pressure", () => {
     expect(pressure.sample().level).toBe("normal");
   });
 
+  it.each([
+    [850, 4_000, 960, 4_000],
+    [4_000, 480, 4_000, 801],
+  ])("keeps hysteresis after recovery with RAM=%s MiB and swap=%s MiB", async (available, swap, clearRam, clearSwap) => {
+    let state = memory(100, 0);
+    const pressure = new MemoryPressure({ read: () => state });
+    expect(pressure.sample().level).toBe("critical");
+    state = memory(available, swap);
+    expect(pressure.sample()).toMatchObject({ level: "elevated", recovering: true });
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(pressure.sample()).toMatchObject({ level: "elevated", recovering: false });
+    state = memory(clearRam, clearSwap);
+    expect(pressure.sample()).toMatchObject({ level: "normal", recovering: false });
+  });
+
   it("bounds sampling/trends, and health reads cannot earn recovery time", async () => {
     let sample = memory();
     const pressure = new MemoryPressure({ read: () => sample });

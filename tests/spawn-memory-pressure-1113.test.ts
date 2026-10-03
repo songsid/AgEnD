@@ -94,6 +94,64 @@ describe("SpawnGate memory resilience", () => {
     } finally { pressure.stop(); }
   });
 
+  it.each([undefined, "lifecycle"] as const)("does not spend recovery time while an old %s slot is occupied", async stage => {
+    let state = memory();
+    const pressure = new MemoryPressure({ read: () => state });
+    const gate = own(new SpawnGate({ storm: new StormWindow(), memoryPressure: pressure,
+      concurrency: () => 10, staggerMs: () => 0 }));
+    const blockers = [deferred(), deferred(), deferred()];
+    const started: Array<{ name: string; at: number }> = [];
+    const base = Date.now();
+    const a = gate.run({ ...task("old"), stage }, async () => {
+      started.push({ name: "old", at: Date.now() - base }); await blockers[0].promise;
+    });
+    state = memory(100, 0);
+    const b = gate.run(task("b"), async () => {
+      started.push({ name: "b", at: Date.now() - base }); await blockers[1].promise;
+    });
+    const c = gate.run(task("c"), async () => {
+      started.push({ name: "c", at: Date.now() - base }); await blockers[2].promise;
+    });
+    try {
+      state = memory();
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(started).toEqual([{ name: "old", at: 0 }]);
+      blockers[0].resolve();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(started).toEqual([{ name: "old", at: 0 }, { name: "b", at: 20_000 }]);
+      await vi.advanceTimersByTimeAsync(29_999);
+      expect(started.map(s => s.name)).toEqual(["old", "b"]);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(started).toEqual([{ name: "old", at: 0 }, { name: "b", at: 20_000 }, { name: "c", at: 50_000 }]);
+      blockers.forEach(blocker => blocker.resolve());
+      await Promise.all([a, b, c]);
+    } finally { blockers.forEach(blocker => blocker.resolve()); gate.shutdown(); }
+  });
+
+  it("starts a held task's recovery ramp after the configured stagger has elapsed", async () => {
+    let state = memory();
+    const gate = make(() => state, 10, 10_000);
+    await gate.run(task("old"), async () => {});
+    state = memory(100, 0);
+    const blocker = deferred();
+    const started: string[] = [];
+    const b = gate.run(task("b"), async () => { started.push("b"); await blocker.promise; });
+    const c = gate.run(task("c"), async () => { started.push("c"); });
+    try {
+      state = memory();
+      await vi.advanceTimersByTimeAsync(9_999);
+      expect(started).toEqual([]);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(started).toEqual(["b"]);
+      await vi.advanceTimersByTimeAsync(29_999);
+      expect(started).toEqual(["b"]);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(started).toEqual(["b", "c"]);
+      blocker.resolve();
+      await Promise.all([b, c]);
+    } finally { blocker.resolve(); gate.shutdown(); }
+  });
+
   it("slowly resumes queued work with no recovery herd, then restores configured concurrency", async () => {
     let state = memory(100, 0);
     const gate = make(() => state, 10);

@@ -96,7 +96,7 @@ export class MemoryPressure {
         this.recoveryUntil = 0;
       } else {
         if (this.current.level === "critical") this.recoveryUntil = at + MEMORY_RECOVERY_MS;
-        const lingering = this.current.level === "elevated" && !this.current.recovering
+        const lingering = this.current.level === "elevated"
           && (memory.availableBytes < low * 1.2 || (swapRatio !== null && swapRatio <= 0.1));
         level = memory.availableBytes < low || swapTight || lingering || at < this.recoveryUntil ? "elevated" : "normal";
       }

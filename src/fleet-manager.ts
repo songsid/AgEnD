@@ -2867,6 +2867,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     /** Phase 2a: the caller's transition, for a start made from inside a restart or wake. */
     transition?: TransitionHandle,
   ): Promise<void> {
+    // CLI single-instance cold starts bypass startAll. Start diagnostics before
+    // any lifecycle/wake work; a shutdown must not revive the stopped sampler.
+    if (!this.shuttingDown) this.memoryPressure?.start();
     // Any start supersedes a pending automatic retry (it would otherwise fire
     // into a running instance — harmless, but noisy — or race this start).
     this.cancelStartupRetry(name);

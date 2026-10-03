@@ -97,10 +97,9 @@ export class SpawnGate {
           this.pressureRetryMs = Math.min(60_000, this.pressureRetryMs * 2);
           return;
         }
-        if (this.pressureHeld) {
-          pressure = this.memoryPressure.startRecoveryWindow().level;
-          this.pressureHeld = false;
-        }
+        // A recovered host still uses slow admission while a held task waits
+        // for capacity. Start its full recovery window only when it can run.
+        if (this.pressureHeld && pressure === "normal") pressure = "elevated";
         this.pressureRetryMs = 5_000;
         const configured = Math.max(1, Math.min(20, this.options.concurrency()));
         const limit = Math.min(pressure === "normal" ? configured : 1, this.options.storm.isActive() ? 4 : configured);
@@ -122,6 +121,10 @@ export class SpawnGate {
         const delay = nested && pressure === "normal" ? 0 : Math.max(0, this.lastStartedAt + stagger + jitter - Date.now());
         if (delay > 0) { this.wait(delay); return; }
         const [item] = nested ? this.nestedQueue.splice(0, 1) : this.queue.splice(index, 1);
+        if (this.pressureHeld) {
+          this.memoryPressure.startRecoveryWindow();
+          this.pressureHeld = false;
+        }
         if (!nested) {
           this.active++;
           this.activeDirectories.add(item.task.workingDirectory);

@@ -155,6 +155,55 @@ describe("fleet host memory wiring", () => {
     expect(read).toHaveBeenCalledTimes(reads);
   });
 
+  it("monitors a single-instance cold start before its real gate holds any CLI", async () => {
+    const { fm, internal, logger, read } = make(memory(100, 0));
+    internal.startupComplete = false;
+    internal.fleetConfig = null;
+    vi.spyOn(fm.lifecycle, "isPaused").mockReturnValue(false);
+    const operation = vi.fn(async () => { throw new Error("forbidden CLI callback"); });
+    // Only public startInstance and the real gate run. Every lifecycle, IPC,
+    // instruction and process entry is stubbed, including a callback fence if
+    // a mutant admits the operation during critical pressure.
+    vi.spyOn(internal, "cancelStartupRetry").mockImplementation(() => undefined);
+    vi.spyOn(fm, "resolveInstanceModel").mockReturnValue({ model: "default", source: "unresolved", display: "default" });
+    vi.spyOn(fm, "connectIpcToInstance").mockResolvedValue(undefined);
+    vi.spyOn(internal, "requestDiscordUsagePresenceRefresh").mockImplementation(() => undefined);
+    vi.spyOn(fm.lifecycle, "start").mockImplementation(async () => {
+      await fm.spawnGate.run({ instanceName: "cold", workingDirectory: "/fixture/cold", reason: "startup" }, operation);
+    });
+    const start = fm.startInstance("cold", { working_directory: "/fixture/cold" } as any, false, "classic");
+    const settled = vi.fn();
+    void start.then(() => settled(null), error => settled(error));
+    try {
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(fm.lifecycle.start).toHaveBeenCalledOnce();
+      expect(operation).not.toHaveBeenCalled();
+      expect((fm.memoryPressure as any).timer).not.toBeNull();
+      expect(read.mock.calls.length).toBeGreaterThan(1);
+      expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({ hostMemory: expect.objectContaining({ level: "critical" }) }), "Host memory critical — deferring new CLI spawns");
+      expect(internal.adapter).toBeNull();
+      expect(settled).not.toHaveBeenCalled();
+    } finally {
+      fm.spawnGate.shutdown();
+      await vi.advanceTimersByTimeAsync(0);
+      await start.catch(() => {});
+    }
+  });
+
+  it("does not restart a stopped sampler when a start observes fleet shutdown", async () => {
+    const { fm, internal, read } = make();
+    fm.memoryPressure.start(); fm.memoryPressure.stop();
+    const reads = read.mock.calls.length;
+    internal.shuttingDown = true;
+    fm.lifecycle.daemons.set("existing", {} as any);
+    vi.spyOn(fm.lifecycle, "isPaused").mockReturnValue(false);
+    vi.spyOn(internal, "cancelStartupRetry").mockImplementation(() => undefined);
+    await fm.startInstance("existing", { working_directory: "/fixture/existing" } as any, false, "classic");
+    expect((fm.memoryPressure as any).timer).toBeNull();
+    expect(read).toHaveBeenCalledTimes(reads);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("labels fleet startup reservations so nested physical callbacks can wait safely", async () => {
     const { fm, internal } = make();
     internal.fleetConfig.defaults.startup = { concurrency: 1, stagger_delay_ms: 0 };
