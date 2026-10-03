@@ -178,6 +178,33 @@ describe("what a refresh skips", () => {
     expect(index.list().map(f => f.path)).toContain(second);
   });
 
+  it("…also at the REAL poll interval: a same-tick rollout is found even when the next refresh comes after the directory has cooled", () => {
+    // coarse mtime T; scan at T+900 ms; a rollout is created in the same tick (mtime still T); the next
+    // refresh is a normal poll later, T+2900 ms — past the hot window and the TTL.
+    const dir = join(root, "2026", "03", "02");
+    mkdirSync(dir, { recursive: true });
+    const base = Date.now();
+    const stamp = new Date(base);
+    utimesSync(dir, stamp, stamp);
+    let now = base + 900;
+    const { ops, calls, reset } = counting();
+    const index = new RolloutIndex(root, { ttlMs: 1_000, fullRefreshMs: 3_600_000, ops, now: () => now });
+    rollout("2026/03/02", "first", 0);
+    utimesSync(dir, stamp, stamp);
+    expect(index.list().map(f => basename(f.path))).toEqual(["rollout-first.jsonl"]);
+    const second = rollout("2026/03/02", "second", 0);
+    utimesSync(dir, stamp, stamp);                          // the same coarse mtime the index cached
+    now = base + 2_900;
+    reset();
+    expect(index.list().map(f => f.path)).toContain(second);
+    expect(calls.readdir).toContain(dir);
+    // and once that extra read has been taken on a COLD directory, its mtime is trusted again
+    reset();
+    now = base + 5_000;
+    index.list();
+    expect(calls.readdir).toEqual([]);
+  });
+
   it("a full refresh re-reads and re-stats everything, so an old rollout that was resumed moves to the front", () => {
     const { old1 } = tree();
     let now = Date.now();

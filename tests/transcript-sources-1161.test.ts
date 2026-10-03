@@ -90,6 +90,27 @@ describe("Codex: instances following the same directory share one listing (D2)",
   });
 });
 
+describe("Codex: a rollout created in the same coarse tick as the directory's last change is picked up at the real poll cadence (D2)", () => {
+  it("polls 2 s apart still find it on the second poll — not a full refresh (60 s) later", async () => {
+    const day = join(root, "sessions", "2026", "10", "04");
+    mkdirSync(day, { recursive: true });
+    const base = Date.now();
+    const stamp = new Date(base);
+    let now = base;
+    const index = new RolloutIndex(join(root, "sessions"), { ttlMs: 1_000, fullRefreshMs: 3_600_000, now: () => now });
+    const pinDirs = () => { for (const d of [join(root, "sessions"), join(root, "sessions", "2026"), join(root, "sessions", "2026", "10"), day]) utimesSync(d, stamp, stamp); };
+    writeFileSync(join(day, "rollout-other.jsonl"), meta("/not/ours"));
+    pinDirs();
+    now = base + 900;
+    const source = new CodexRolloutSource(work, join(root, "sessions"), Date.now(), index);   // baseline scan inside the hot window
+    const mine = join(day, "rollout-mine.jsonl");
+    writeFileSync(mine, meta(work) + call("late"));            // created in the same tick as the directory's mtime
+    pinDirs();
+    now = base + 2_900;                                         // the next normal poll: the directory has cooled
+    expect((await source.poll()).toolUses.map(u => u.name)).toEqual(["late"]);
+  });
+});
+
 describe("Codex: a baseline never trusts a shared listing (D2)", () => {
   it("a rollout created (with history) inside the listing's TTL is still baselined to its EOF, not replayed", async () => {
     const day = join(root, "sessions", "2026", "10", "04");

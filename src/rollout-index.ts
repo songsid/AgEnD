@@ -40,10 +40,20 @@ export interface RolloutIndexOptions {
   now?: () => number;
 }
 
-interface DirEntry { mtimeMs: number; subdirs: string[]; rollouts: string[] }
+interface DirEntry {
+  mtimeMs: number;
+  subdirs: string[];
+  rollouts: string[];
+  /**
+   * The directory had been modified less than HOT_DIR_MS before this read. Its mtime may then be shared by a
+   * file created later in the same tick, so the next refresh reads it once more whatever the mtime says —
+   * however long ago that refresh comes (the pollers are 2 s apart: "is it hot NOW" would already be false).
+   */
+  hotWhenRead: boolean;
+}
 
 export const DEFAULT_ROLLOUT_TTL_MS = 1_000;
-/** A directory modified this recently is not trusted to be unchanged. */
+/** A directory read this soon after its last change is read once more before its mtime is trusted. */
 const HOT_DIR_MS = 2_000;
 
 export class RolloutIndex {
@@ -84,11 +94,12 @@ export class RolloutIndex {
       let mtimeMs: number;
       try { mtimeMs = this.ops.stat(dir).mtimeMs; } catch { return; }
       let entry = this.dirs.get(dir);
-      // A directory changed moments ago is read again whatever its mtime says: file times have
-      // coarse granularity, so a rollout created in the same tick as the last change would
-      // otherwise stay unseen until the next full refresh.
-      if (full || !entry || entry.mtimeMs !== mtimeMs || now - mtimeMs < HOT_DIR_MS) {
-        entry = this.readDir(dir, mtimeMs, depth);
+      // A directory whose last read was taken right after a change is read once more: file times have
+      // coarse granularity, so a rollout created in the same tick as that change shares its mtime and
+      // would otherwise stay unseen until the next full refresh. (Judged by when it was LAST READ, not by
+      // how hot it is now: the next refresh comes a poll interval later, when it has long since cooled.)
+      if (full || !entry || entry.mtimeMs !== mtimeMs || entry.hotWhenRead) {
+        entry = this.readDir(dir, mtimeMs, depth, now);
       }
       dirs.set(dir, entry);
       for (const rollout of entry.rollouts) {
@@ -109,8 +120,8 @@ export class RolloutIndex {
     if (full) this.fullAt = now;
   }
 
-  private readDir(dir: string, mtimeMs: number, depth: number): DirEntry {
-    const entry: DirEntry = { mtimeMs, subdirs: [], rollouts: [] };
+  private readDir(dir: string, mtimeMs: number, depth: number, now: number): DirEntry {
+    const entry: DirEntry = { mtimeMs, subdirs: [], rollouts: [], hotWhenRead: now - mtimeMs < HOT_DIR_MS };
     let names: string[];
     try { names = this.ops.readdir(dir); } catch { return entry; }
     for (const name of names) {
