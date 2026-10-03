@@ -38,6 +38,23 @@ describe("rotateLogIfNeededAsync: same result as the sync rotation", () => {
     }
   });
 
+  it("the oldest rotated file is dropped even when the one that would replace it is missing (same as sync)", async () => {
+    const other = join(dir, "other.log");
+    for (const file of [log, other]) { writeFileSync(file, "z".repeat(80)); writeFileSync(`${file}.3`, "oldest"); }
+    rotateLogIfNeeded(other, 50, 3);
+    await rotateLogIfNeededAsync(log, 50, 3);
+    expect(existsSync(`${other}.3`)).toBe(false);                 // the reference behaviour
+    expect(existsSync(`${log}.3`)).toBe(false);
+    expect(readFileSync(`${log}.1`, "utf8")).toBe("z".repeat(80));
+  });
+
+  it("with nothing appended during the copy the live file is not even re-read", async () => {
+    writeFileSync(log, "A".repeat(100));
+    const open = vi.spyOn(fsp, "open");
+    await rotateLogIfNeededAsync(log, 50, 3);
+    expect(open).not.toHaveBeenCalled();
+  });
+
   it("a ballooned log is dropped in place without a copy, rotated files removed", async () => {
     writeFileSync(log, "y".repeat(120));
     writeFileSync(`${log}.1`, "old");

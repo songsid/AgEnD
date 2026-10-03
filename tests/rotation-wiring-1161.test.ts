@@ -117,3 +117,36 @@ describe("wake waits for the rotation before it re-attaches pipe-pane", () => {
     expect(rotation.order).toEqual(["rotate:start", "rotate:done", "pipeOutput"]);
   });
 });
+
+describe("start() waits for the rotation before it attaches pipe-pane", () => {
+  it("rotate completes → THEN pipeOutput", async () => {
+    rotation.hang = false;
+    const d = daemon();
+    vi.spyOn(TmuxManager, "ensureSession").mockResolvedValue(undefined);
+    vi.spyOn(TmuxManager.prototype, "pipeOutput").mockImplementation(async () => { rotation.order.push("pipeOutput"); });
+    d.spawnClaudeWindow = async () => true;
+    d.runWarmupInstructionNotice = async () => {};
+    // everything after pipe-pane is out of scope here: stop at the transcript monitor
+    d.credentialProfileStore = () => { throw new Error("stop after pipeOutput"); };
+    await expect(d.start()).rejects.toThrow(/stop after pipeOutput/);
+    expect(rotation.order).toEqual(["rotate:start", "rotate:done", "pipeOutput"]);
+    await d.ipcServer?.close?.();
+  });
+
+  it("a rotation still running holds pipeOutput back", async () => {
+    const d = daemon();
+    vi.spyOn(TmuxManager, "ensureSession").mockResolvedValue(undefined);
+    const pipe = vi.spyOn(TmuxManager.prototype, "pipeOutput").mockImplementation(async () => { rotation.order.push("pipeOutput"); });
+    d.spawnClaudeWindow = async () => true;
+    d.runWarmupInstructionNotice = async () => {};
+    d.credentialProfileStore = () => { throw new Error("stop after pipeOutput"); };
+    const starting = d.start().catch((err: Error) => err);
+    await vi.advanceTimersByTimeAsync(200);
+    expect(rotation.order).toEqual(["rotate:start"]);
+    expect(pipe).not.toHaveBeenCalled();
+    rotation.pending.forEach(release => release());
+    expect(String(await starting)).toMatch(/stop after pipeOutput/);
+    expect(rotation.order).toEqual(["rotate:start", "rotate:done", "pipeOutput"]);
+    await d.ipcServer?.close?.();
+  });
+});
