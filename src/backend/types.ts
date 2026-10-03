@@ -443,8 +443,17 @@ export interface CliBackend {
   /** Read context window usage percentage (0-100). Returns null if unavailable. */
   getContextUsage(): number | null;
 
-  /** Read session ID for resume capability. Returns null if unavailable. */
+  /**
+   * Read session ID for resume capability. Returns null if unavailable. Synchronous, so it must be
+   * cheap: a backend that has to ask a CLI answers from what `refreshSessionId` last found.
+   */
   getSessionId(): string | null;
+  /**
+   * Optional: look the session id up the slow way (a CLI listing) without blocking the event loop,
+   * and make `getSessionId()` answer with the result. Single-flight; never rejects; resolves to what
+   * `getSessionId()` returns afterwards. Backends whose id is a file read or null do not implement it.
+   */
+  refreshSessionId?(): Promise<string | null>;
 
   /** Regex to detect when the CLI is ready to accept input. */
   getReadyPattern(): RegExp;

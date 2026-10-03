@@ -1940,7 +1940,7 @@ export class Daemon extends EventEmitter {
       if (savedId) {
         const oldTmux = new TmuxManager(this.tmuxSessionName, savedId);
         if (await oldTmux.isWindowAlive()) {
-          this.saveSessionId();
+          await this.checkpointSessionId();
           await oldTmux.killWindow();
           this.logger.info({ savedId }, "Killed old tmux window for fresh start");
         }
@@ -2777,7 +2777,12 @@ export class Daemon extends EventEmitter {
           await new Promise(r => setTimeout(r, delay));
 
           try {
-            this.saveSessionId();
+            await this.checkpointSessionId();
+            // stop() / pause() may have landed while this tick sat in the backoff delay or in the
+            // (bounded) session lookup. They only stop LATER ticks; this continuation is already
+            // past that check and must not clear the process/window or respawn an instance that
+            // was just stopped or paused (#1160 review).
+            if (this.runtimeMonitorsFrozen || this.healthCheckPaused) return;
             this.transcriptMonitor?.resetOffset();
             // Kill orphan MCP server from the crashed CLI session.
             // MCP server writes its PID to channel.mcp.pid on startup.
@@ -3678,8 +3683,9 @@ export class Daemon extends EventEmitter {
     // Quit CLI FIRST — this kills MCP server child processes cleanly.
     // IPC must stay open during quit so MCP servers receive the shutdown message.
     if (this.tmux) {
-      this.saveSessionId();
+      // Paused before the (bounded) checkpoint wait, so a health tick cannot run in that gap.
       this.healthCheckPaused = true;
+      await this.checkpointSessionId();
       let killed = false;
       const windowId = this.tmux.getWindowId();
       const kiroReady = windowId ? await this.drainBusyKiroForStop(windowId) : true;
@@ -3852,7 +3858,7 @@ export class Daemon extends EventEmitter {
     this.freezeRuntimeMonitors();
     const transition = (async () => {
       try {
-        this.saveSessionId();
+        await this.checkpointSessionId();
         await this.sendQuitSequence(pauseReason, "pause", { watchRelaunch: true });
 
         let exited = false;
@@ -4021,8 +4027,10 @@ export class Daemon extends EventEmitter {
     // fleet is SIGKILLed or the host reboots.
     // Idle observations are safe checkpoints; the 60s safety sweep also gives
     // us a bounded retry if session creation produced no visible state edge.
+    // The discovery behind it is a CLI listing: it runs in the background (single-flight, at most
+    // once per SESSION_CHECKPOINT_IDLE_THROTTLE_MS), never on this synchronous path (#1160).
     if (snapshot.state === "idle" && this.backend?.binaryName === "opencode") {
-      this.saveSessionId();
+      this.checkpointSessionIdInBackground();
     }
 
     // Only a transition back to idle completes pending work. Repeated idle
@@ -8237,7 +8245,7 @@ export class Daemon extends EventEmitter {
       });
       if (!claimed) return;
       try {
-        this.saveSessionId();
+        this.saveSessionId();      // the muse switch: a backend with no CLI lookup, nothing to wait for
         const ready = await this.trySpawn(true, this.wakeBudgetMs(30_000));
         this.transcriptMonitor?.resetOffset();
         if (ready) this.logger.info("Muse resumed direct after relay exhaustion (session preserved)");
@@ -8775,6 +8783,52 @@ export class Daemon extends EventEmitter {
       writeFileSync(join(this.instanceDir, "last-chat.json"),
         JSON.stringify({ chatId: this.lastChatId, threadId: this.lastThreadId, adapterId: this.lastAdapterId }));
     } catch { /* best effort */ }
+  }
+
+  /**
+   * How long a stop / pause / crash respawn / wake waits for a backend's session lookup before it
+   * goes on with what it has (the cache or the persisted id). A missed checkpoint is retried at the
+   * next idle observation — the same as when the lookup used to fail — and a clean stop must never
+   * wait on a CLI listing for its whole 15 s timeout.
+   */
+  static readonly SESSION_CHECKPOINT_BUDGET_MS = 5_000;
+  /** Idle observations ask a backend that needs a CLI lookup at most this often. */
+  static readonly SESSION_CHECKPOINT_IDLE_THROTTLE_MS = 30_000;
+  private lastIdleSessionRefreshAt = Number.NEGATIVE_INFINITY;
+
+  /**
+   * Persist the session id for a lifecycle transition. A backend that answers from a file (or not at
+   * all) is saved at once, exactly as before. One that must ask a CLI (`refreshSessionId`, OpenCode)
+   * is awaited — bounded — first, so the checkpoint is the CURRENT session, not a stale cache. The
+   * lookup is the backend's own single-flight one: an idle observation already running it is joined,
+   * not repeated. Never rejects.
+   */
+  private checkpointSessionId(): Promise<void> | void {
+    const refresh = this.backend?.refreshSessionId;
+    if (this.skipResume || !refresh) { this.saveSessionId(); return; }
+    return this.refreshThenSave(refresh.call(this.backend), Daemon.SESSION_CHECKPOINT_BUDGET_MS);
+  }
+
+  private async refreshThenSave(lookup: Promise<unknown>, budgetMs: number): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const budget = new Promise<void>(resolve => { timer = setTimeout(resolve, budgetMs); timer.unref?.(); });
+    try {
+      await Promise.race([lookup.then(() => undefined, () => undefined), budget]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+    this.saveSessionId();
+  }
+
+  /** The idle-observation checkpoint: persist what is known now, look again in the background at most every 30 s. */
+  private checkpointSessionIdInBackground(): void {
+    this.saveSessionId();
+    const refresh = this.backend?.refreshSessionId;
+    if (this.skipResume || !refresh) return;
+    const now = Date.now();
+    if (now - this.lastIdleSessionRefreshAt < Daemon.SESSION_CHECKPOINT_IDLE_THROTTLE_MS) return;
+    this.lastIdleSessionRefreshAt = now;
+    void refresh.call(this.backend).then(() => this.saveSessionId(), () => {});
   }
 
   private saveSessionId(): void {
