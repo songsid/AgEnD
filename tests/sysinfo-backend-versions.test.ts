@@ -3,26 +3,19 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const { probeCLIEnv, refreshModelCatalog, workers } = vi.hoisted(() => ({
-  probeCLIEnv: vi.fn(),
-  refreshModelCatalog: vi.fn(),
-  workers: [] as any[],
+vi.mock("node:worker_threads", async () => ({ Worker: (await import("./helpers/probe-worker.js")).FakeProbeWorker }));
+vi.mock("../src/logger.js", async () => ({
+  createLogger: (await import("./helpers/probe-worker.js")).fakeProbeLogger,
+  rotateLogIfNeeded: vi.fn(),
 }));
+import { FakeProbeWorker } from "./helpers/probe-worker.js";
+
+const probeCLIEnv = vi.fn();
+const refreshModelCatalog = vi.fn();
 vi.mock("../src/backend/factory.js", () => ({
-  createBackend: () => ({ probeCLIEnv, refreshModelCatalog }),
+  createBackend: () => { throw new Error("backend constructor on fleet thread"); },
 }));
-vi.mock("node:worker_threads", async () => {
-  const { EventEmitter } = await import("node:events");
-  return {
-    Worker: class extends EventEmitter {
-      terminate = vi.fn().mockResolvedValue(0);
-      constructor(readonly url: URL, readonly options: any) {
-        super();
-        workers.push(this);
-      }
-    },
-  };
-});
+let workers: FakeProbeWorker[];
 
 import { TopicCommands } from "../src/topic-commands.js";
 import { getLocale, setLocale } from "../src/locale.js";
@@ -48,7 +41,8 @@ beforeEach(() => {
   dataDir = mkdtempSync(join(tmpdir(), "agend-sysinfo-data-"));
   probeCLIEnv.mockReset();
   refreshModelCatalog.mockReset().mockResolvedValue(undefined);
-  workers.length = 0;
+  FakeProbeWorker.reset();
+  workers = FakeProbeWorker.workers;
 });
 
 afterEach(() => {
@@ -168,13 +162,18 @@ describe("/sysinfo backend CLI cache", () => {
     expect(probeCLIEnv).not.toHaveBeenCalled();
   });
 
-  it("starts all six missing probes in workers without invoking a backend on the fleet thread", async () => {
+  it("queues all six missing probes behind a two-worker limit", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const { commands } = await makeCommands();
 
     await commands.sendSysInfo(async () => {});
 
-    expect(workers.map(worker => worker.options.workerData.backend)).toEqual(BACKEND_IDS);
+    expect(workers.map(worker => worker.input.backend)).toEqual(BACKEND_IDS.slice(0, 2));
+    for (let index = 0; index < BACKEND_IDS.length; index++) {
+      workers[index]!.reply({ version: "1.2.3", models: [] });
+      await nextImmediate();
+    }
+    expect(workers.map(worker => worker.input.backend)).toEqual(BACKEND_IDS);
     expect(probeCLIEnv).not.toHaveBeenCalled();
   });
 
@@ -199,18 +198,15 @@ describe("/sysinfo backend CLI cache", () => {
 
   it.each([false, true])("joins an existing backend probe (vendor refresh=%s)", async refreshVendorCatalog => {
     seedAll(backend => backend === "codex" ? 2 * HOUR : 5 * 60 * 1000);
-    let releaseProbe!: (value: any) => void;
-    probeCLIEnv.mockImplementation(() => new Promise(resolve => { releaseProbe = resolve; }));
     const { commands, fleet } = await makeCommands();
     const flight = fleet.probeBackendBounded("codex", { refreshVendorCatalog });
     await nextImmediate();
-    expect(probeCLIEnv).toHaveBeenCalledOnce();
+    expect(workers).toHaveLength(1);
 
     await commands.sendSysInfo(async () => {});
 
-    expect(workers).toHaveLength(0);
-    expect(probeCLIEnv).toHaveBeenCalledOnce();
-    releaseProbe({ version: "codex-cli 0.159.0", models: [] });
+    expect(workers).toHaveLength(1);
+    workers[0]!.reply({ version: "codex-cli 0.159.0", models: [] });
     await flight;
     await finishFlights(fleet);
     expect(await commands.getSysInfoTextAsync()).toContain("- Codex: codex-cli 0.159.0");

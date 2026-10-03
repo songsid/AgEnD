@@ -13,9 +13,16 @@ import { join } from "node:path";
  * Now `/model` re-probes once the cache passes a staleness threshold, under a
  * deadline, and falls back to the cached list when the probe cannot answer.
  */
+vi.mock("node:worker_threads", async () => ({ Worker: (await import("./helpers/probe-worker.js")).FakeProbeWorker }));
+vi.mock("../src/logger.js", async () => ({
+  createLogger: (await import("./helpers/probe-worker.js")).fakeProbeLogger,
+  rotateLogIfNeeded: vi.fn(),
+}));
+import { FakeProbeWorker } from "./helpers/probe-worker.js";
+
 const probeCLIEnv = vi.fn();
 vi.mock("../src/backend/factory.js", () => ({
-  createBackend: () => ({ probeCLIEnv }),
+  createBackend: () => { throw new Error("backend constructor on fleet thread"); },
 }));
 
 let home: string;
@@ -28,6 +35,8 @@ beforeEach(() => {
   process.env.AGEND_HOME = home;
   dataDir = mkdtempSync(join(tmpdir(), "agend-modelstale-data-"));
   probeCLIEnv.mockReset();
+  FakeProbeWorker.reset();
+  FakeProbeWorker.answer = () => probeCLIEnv();
 });
 afterEach(() => {
   if (realHome === undefined) delete process.env.AGEND_HOME; else process.env.AGEND_HOME = realHome;
@@ -142,15 +151,14 @@ describe("/model refreshes a stale model list", () => {
     expect(ids(models)).toEqual(["gpt-6"]);
   });
 
-  it("a graceful restart re-probes, so restart is no longer weaker than a cold start", async () => {
+  it("the startup/reload hook re-probes without waiting for lifecycle work", async () => {
     seed([{ id: "gpt-5" }], 2 * HOUR);
     probeCLIEnv.mockResolvedValue({ models: [{ id: "gpt-6" }] });
     const fm = await makeFleet();
-    (fm as any).configPath = join(dataDir, "fleet.yaml");
 
-    await fm.restartInstances();                     // no instances: returns early after the probe
+    fm.probeCliEnvs(); // reload/startup hook, without driving real lifecycle
 
-    expect(probeCLIEnv, "restart must refresh the CLI env like a cold start does").toHaveBeenCalled();
+    expect(probeCLIEnv, "the background hook must refresh the CLI env").toHaveBeenCalled();
   });
 });
 
@@ -301,11 +309,9 @@ describe("usage hang bounds — #720 LONGEST_SINGLE_FETCH_MS, #724 probe deadlin
     expect(probeCLIEnv).toHaveBeenCalledTimes(2);
   });
 
-  it("#725: refresh probe (refreshVendorCatalog=true) bypasses single-flight and runs independently (T4)", async () => {
-    // T4 mutation guard: if refresh is incorrectly coalesced with an in-flight
-    // normal probe, probeCLIEnv would be called once instead of twice before
-    // pNormal resolves — the refresh caller silently gets the already-running
-    // result rather than its own triggered probe.
+  it("#725: explicit refresh is a separate flight serialized after an ordinary probe (T4)", async () => {
+    // Explicit vendor refresh must perform its own work, without writing the
+    // same cache concurrently with an earlier ordinary probe.
     seed([{ id: "cached" }], 2 * HOUR);
     let resolveNormal!: () => void;
     probeCLIEnv
@@ -318,18 +324,11 @@ describe("usage hang bounds — #720 LONGEST_SINGLE_FETCH_MS, #724 probe deadlin
     // Start a normal probe (in-flight, not yet resolved).
     const pNormal = fm.getModelOptions("w", false);
 
-    // The refresh must start its own independent probe immediately.
-    // (refresh=true is the second arg to getModelOptions — but it also triggers
-    //  refreshVendorCatalog which we can verify via probeCLIEnv call count.)
-    // Spy on probeBackendBounded to pass refreshVendorCatalog=true directly.
-    const refreshEnv = (fm as any).probeBackendBounded("claude-code", { refreshVendorCatalog: true });
-
-    // By this point, both the normal and the refresh probe must have started.
-    expect(probeCLIEnv, "refresh must start its own probe, not share the in-flight normal one")
-      .toHaveBeenCalledTimes(2);
-
+    const refreshEnv = fm.probeBackendBounded("claude-code", { refreshVendorCatalog: true });
+    expect(probeCLIEnv, "same-account cache writers cannot overlap").toHaveBeenCalledTimes(1);
     resolveNormal();
-    await Promise.all([pNormal, refreshEnv]);
+    const [, refreshed] = await Promise.all([pNormal, refreshEnv]);
+    expect(probeCLIEnv, "explicit refresh keeps its own work").toHaveBeenCalledTimes(2);
+    expect(refreshed.models.map((m: { id: string }) => m.id)).toEqual(["refreshed"]);
   });
 });
-

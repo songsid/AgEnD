@@ -12,12 +12,19 @@ import { join } from "node:path";
  * (observed live). `list_models` makes this path reachable on demand rather
  * than once at startup, which is what turns a rare blip into a real hazard.
  *
- * The backend factory is mocked so this is deterministic: no CLI binary needs
- * to exist, and the probe's return value is the thing under test.
+ * The Worker transport is mocked: no isolate or CLI binary is started; cache
+ * admission and merge run through the real bounded probe path.
  */
+vi.mock("node:worker_threads", async () => ({ Worker: (await import("./helpers/probe-worker.js")).FakeProbeWorker }));
+vi.mock("../src/logger.js", async () => ({
+  createLogger: (await import("./helpers/probe-worker.js")).fakeProbeLogger,
+  rotateLogIfNeeded: vi.fn(),
+}));
+import { FakeProbeWorker } from "./helpers/probe-worker.js";
+
 const probeCLIEnv = vi.fn();
 vi.mock("../src/backend/factory.js", () => ({
-  createBackend: () => ({ probeCLIEnv }),
+  createBackend: () => { throw new Error("backend constructor on fleet thread"); },
 }));
 
 /**
@@ -49,6 +56,8 @@ beforeEach(() => {
   process.env.AGEND_HOME = home;
   dataDir = mkdtempSync(join(tempRoot, "probeguard-data-"));
   probeCLIEnv.mockReset();
+  FakeProbeWorker.reset();
+  FakeProbeWorker.answer = () => probeCLIEnv();
 });
 afterEach(() => {
   if (realHome === undefined) delete process.env.AGEND_HOME; else process.env.AGEND_HOME = realHome;
@@ -75,7 +84,7 @@ describe("cli-env probe cache", () => {
     probeCLIEnv.mockResolvedValue({ models: [], currentModel: "fresh", version: "1.2.3" });
     const fm = await makeFleet();
 
-    const env = await fm.probeBackend("antigravity");
+    const env = await fm.probeBackendBounded("antigravity");
 
     // The models survive...
     expect(env.models.map((m: { id: string }) => m.id))
@@ -91,18 +100,33 @@ describe("cli-env probe cache", () => {
     probeCLIEnv.mockResolvedValue({ models: [{ id: "gemini-4.0-flash-high" }], currentModel: "fresh" });
     const fm = await makeFleet();
 
-    const env = await fm.probeBackend("antigravity");
+    const env = await fm.probeBackendBounded("antigravity");
 
     // The guard must not freeze the catalog — a real result always wins.
     expect(env.models.map((m: { id: string }) => m.id)).toEqual(["gemini-4.0-flash-high"]);
     expect(cached().models).toHaveLength(1);
   });
 
+  it("preserves the extended API catalog while accepting fresh version/default fields", async () => {
+    seed([{ id: "alias" }]);
+    const previous = cached();
+    previous.apiModels = [{ id: "account-model" }];
+    writeFileSync(join(home, "cli-env", "antigravity.json"), JSON.stringify(previous));
+    probeCLIEnv.mockResolvedValue({ models: [], apiModels: [], currentModel: "new-default", version: "2.0" });
+    const fm = await makeFleet();
+    const result = await fm.probeBackendBounded("antigravity");
+    expect(result.apiModels).toEqual([{ id: "account-model" }]);
+    expect(cached().apiModels).toEqual([{ id: "account-model" }]);
+    expect(cached().version).toBe("2.0");
+    expect(cached().currentModel).toBe("new-default");
+    expect(cached().probedAt).toBeGreaterThanOrEqual(previous.probedAt);
+  });
+
   it("writes an empty catalog when there was nothing cached to protect", async () => {
     probeCLIEnv.mockResolvedValue({ models: [] });
     const fm = await makeFleet();
 
-    const env = await fm.probeBackend("antigravity");
+    const env = await fm.probeBackendBounded("antigravity");
 
     expect(env.models).toEqual([]);
     expect(cached().models).toEqual([]);
