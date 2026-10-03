@@ -1295,6 +1295,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** Wire the one fleet-wide storm into notification and recovery surfaces. */
   private bindStormWindowEvents(): void {
     this.stormWindow.on("opened", (snapshot: StormSnapshot) => {
+      if (snapshot.kind === "window_loss") {
+        // The server is fine and nothing is held: only the instances that lost
+        // their window are affected, they respawn at the storm rate, and their
+        // per-instance incident notices fold into this one (#1127).
+        this.logger.error({ ...snapshot }, "several instances lost their tmux window at once — recovering at a reduced rate");
+        this.notifyFleetError(t("storm.window_loss", snapshot.affected.length, Math.round(this.stormWindow.windowLossWindowMs / 1000), this.stormWindowLossRecoveryConcurrency()));
+        return;
+      }
       for (const [name, daemon] of this.daemons) {
         if (!daemon.isPaused) this.stormWindow.addAffected(name);
       }
@@ -1332,6 +1340,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         unresolved.length > 0 ? unresolved.join(", ") : t("storm.none"),
       ));
     });
+  }
+
+  /** What the gate allows while any storm window is open (see SpawnGate.pump). */
+  private stormWindowLossRecoveryConcurrency(): number {
+    return Math.min(4, this.spawnConcurrency());
   }
 
   private formatStormDelay(ms: number): string {

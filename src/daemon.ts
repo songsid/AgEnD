@@ -1409,7 +1409,10 @@ export class Daemon extends EventEmitter {
    * an immediate restart would destroy in-flight work. Cleared when the server
    * turns up alive again (operator restarted, CLI reconnected) before we fire.
    */
-  private mcpRestartPending = false;
+  /** Consecutive health ticks a failed `list-windows` may defer crash recovery before it counts as "gone" (#1127). */
+  private static readonly WINDOW_QUERY_FAILURE_TICKS = 2;
+  private windowQueryFailureTicks = 0;
+    private mcpRestartPending = false;
   private mcpRestartStaleTimer: ReturnType<typeof setTimeout> | null = null;
   /** In-flight replacement grace; also the guard against three triggers stacking. */
   private mcpRestartGraceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -2509,6 +2512,8 @@ export class Daemon extends EventEmitter {
             return;
           }
           if (paneStatus?.alive) {
+            this.windowQueryFailureTicks = 0;
+            this.stormWindow?.noteWindowAlive(this.name);
             // Instance output.log is fed by tmux pipe-pane and was previously never
             // rotated (only fleet.log / daemon.log were). Cap growth every tick.
             if (!this.config.lightweight) {
@@ -2528,6 +2533,8 @@ export class Daemon extends EventEmitter {
             paneStatus = await this.tmux.getPaneStatus();
             if (paneStatus?.alive) {
               this.logger.debug(`[health] ${cliLabel} pane reported gone then alive on recheck — transient query failure, ignoring`);
+              this.windowQueryFailureTicks = 0;
+              this.stormWindow?.noteWindowAlive(this.name);
               scheduleNext();
               return;
             }
@@ -2558,6 +2565,7 @@ export class Daemon extends EventEmitter {
           // nullReason records *why* getPaneStatus returned null (for diagnosing
           // whether this was a real window loss or a transient query failure).
           let crashType: "server" | "window" = "window";
+          let inWindowLossBurst = false;
           let nullReason: string | undefined;
           if (!paneStatus) {
             const serverAlive = await TmuxManager.sessionExists(this.tmuxSessionName);
@@ -2587,6 +2595,7 @@ export class Daemon extends EventEmitter {
               nullReason = "no_window";
               try {
                 const windows = await TmuxManager.listWindows(this.tmuxSessionName);
+                this.windowQueryFailureTicks = 0;
                 const currentWindowId = this.tmux.getWindowId();
                 if (windows.some(w => w.id === currentWindowId)) {
                   // The exact window still exists, so `list-panes` was the query
@@ -2600,8 +2609,29 @@ export class Daemon extends EventEmitter {
                   return;
                 }
                 if (windows.some(w => w.name === this.name)) nullReason = "same_name_other_window";
-              } catch { nullReason = "query_error"; }
+              } catch {
+                // A failed window query proves nothing: it used to read as "the
+                // window is gone" and respawned a live CLI. Look again next tick,
+                // and give up waiting only after WINDOW_QUERY_FAILURE_TICKS in a
+                // row (tmux that cannot list windows for that long is unhealthy
+                // enough that recovery is the better bet).
+                if (++this.windowQueryFailureTicks <= Daemon.WINDOW_QUERY_FAILURE_TICKS) {
+                  this.logger.warn({ failures: this.windowQueryFailureTicks },
+                    `${cliLabel} window list unavailable — deferring crash recovery`);
+                  scheduleNext();
+                  return;
+                }
+                nullReason = "query_error";
+              }
+              this.windowQueryFailureTicks = 0;
               this.logger.warn({ exitCode, nullReason }, `${cliLabel} window not found (tmux server alive)`);
+              // Several instances losing their windows together is ONE event on
+              // the host or in tmux, not N crashes (#1127): the first ones to see
+              // it respawn as usual; the one that makes it a burst opens the storm
+              // window, which caps the recovery rate and folds the notices into
+              // one. Later arrivals just join it.
+              inWindowLossBurst = (this.stormWindow?.noteWindowLoss(this.name) ?? false)
+                || (this.stormWindow?.needsRecovery(this.name) ?? false);
             }
           } else {
             this.logger.warn({ exitCode }, `${cliLabel} process exited`);
@@ -2675,7 +2705,7 @@ export class Daemon extends EventEmitter {
           // independent CLI crash loops. StormWindow owns its escalation; do
           // not let the same three server generations permanently trip every
           // daemon's per-instance 3-in-5m breaker.
-          if (crashType === "server") {
+          if (crashType === "server" || inWindowLossBurst) {
             this.crashTimestamps = [];
             this.crashCount = 0;
           }
@@ -2782,7 +2812,16 @@ export class Daemon extends EventEmitter {
             this.emit("crash_respawn", this.name);
             // Emit the per-instance audit event while the storm is still active
             // so its chat notification is suppressed into the fleet summary.
-            if (crashType === "server") this.stormWindow?.markRecovered(this.name);
+            // Also the instances that lost their window a moment BEFORE the burst
+            // was recognised: they respawned as ordinary crashes but are part of
+            // the incident now, and the window cannot close without them.
+            if (crashType === "server" || inWindowLossBurst || this.stormWindow?.needsRecovery(this.name)) {
+              this.stormWindow?.markRecovered(this.name);
+            } else {
+              // Not (yet) part of a storm: keep the evidence, in case the next
+              // window loss makes this one a member whose recovery is already done.
+              this.stormWindow?.noteWindowRecovered(this.name);
+            }
           } catch (err) {
             if (this.stopOnUnsupportedCliRespawn(err)) {
               this.healthCheckTimer = null;
