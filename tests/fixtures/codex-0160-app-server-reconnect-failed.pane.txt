@@ -1,0 +1,36 @@
+
+  >_ OpenAI Codex (v0.160.0)
+     /home/user/project
+
+  Anything interesting on the docket?
+
+  Tip: Maximize usage with GPT-6.1 Sol. Try it on complex work for near-Astra performance at a lower cost.
+
+■ Automatic reconnect could not restore this session. Your draft is still editable. Copy it before quitting with Ctrl+C,
+then reconnect with the same command.
+
+■ Server connection could not be restored
+
+• Reconnect failed — check the endpoint, then relaunch (2m 24s)
+
+
+› Ask Codex to do anything
+
+  ctrl+c quit
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
