@@ -50,6 +50,7 @@ import type { AdapterHealthSnapshot, AlertData, ChannelAdapter, InboundMessage, 
 import { createAdapter } from "./channel/factory.js";
 import { TelegramAdapter } from "./channel/adapters/telegram.js";
 import { createBackend } from "./backend/factory.js";
+import { readEffortMetadata } from "./backend/effort-metadata.js";
 import { isModelCompatible, SYSINFO_BACKEND_IDS, UnsupportedCliError, type BackendCliVersionSnapshot } from "./backend/types.js";
 import { createLogger, rotateLogIfNeeded, type Logger } from "./logger.js";
 import { processAttachments } from "./channel/attachment-handler.js";
@@ -13111,21 +13112,16 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   /** How this instance's backend applies an effort change. */
   effortStrategyFor(instanceName: string): "runtime" | "restart" | "unsupported" {
     try {
-      const backend = createBackend(this.backendNameForInstance(instanceName), this.getInstanceDir(instanceName));
-      const strategy = backend.getEffortStrategy?.() ?? "unsupported";
-      // A backend claiming support but listing no levels is unusable either way.
-      return strategy !== "unsupported" && (backend.getEffortLevels?.() ?? []).length > 0
-        ? strategy
-        : "unsupported";
+      const { strategy, levels } = readEffortMetadata(this.backendNameForInstance(instanceName), this.getInstanceDir(instanceName));
+      return strategy !== "unsupported" && levels.length > 0 ? strategy : "unsupported";
     } catch { return "unsupported"; }
   }
 
   /** Effort levels this instance's backend actually accepts (empty = unsupported). */
   effortLevelsFor(instanceName: string): string[] {
     try {
-      const backend = createBackend(this.backendNameForInstance(instanceName), this.getInstanceDir(instanceName));
-      if ((backend.getEffortStrategy?.() ?? "unsupported") === "unsupported") return [];
-      return backend.getEffortLevels?.() ?? [];
+      const { strategy, levels } = readEffortMetadata(this.backendNameForInstance(instanceName), this.getInstanceDir(instanceName));
+      return strategy === "unsupported" ? [] : levels;
     } catch { return []; }
   }
 

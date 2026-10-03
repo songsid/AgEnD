@@ -1,3 +1,4 @@
+import { EFFORT_CAPABILITIES } from "./effort-metadata.js";
 import { dirname, join, resolve } from "node:path";
 import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -969,8 +970,8 @@ export class ClaudeCodeBackend implements CliBackend {
 
   // `claude --effort <level>` (low, medium, high, xhigh, max) and a `/effort`
   // slash command in the TUI — verified from `claude --help` on 2026-08-02.
-  getEffortStrategy(): "runtime" | "restart" | "unsupported" { return "runtime"; }
-  getEffortLevels(): string[] { return ["low", "medium", "high", "xhigh", "max"]; }
+  getEffortStrategy(): "runtime" | "restart" | "unsupported" { return EFFORT_CAPABILITIES["claude-code"].strategy; }
+  getEffortLevels(): string[] { return [...EFFORT_CAPABILITIES["claude-code"].levels]; }
 
   // claude-code has a clean one-shot in-session `/model <name>` → runtime switch.
   getModelSwitchStrategy(): "runtime" | "restart" { return "runtime"; }

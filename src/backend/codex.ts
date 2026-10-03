@@ -18,7 +18,6 @@ import {
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
-import { createHash } from "node:crypto";
 import { execFile, execFileSync } from "node:child_process";
 import { promisify } from "node:util";
 import { basename, dirname, join, resolve } from "node:path";
@@ -30,13 +29,14 @@ import {
   resolveCredentialProfile,
 } from "./credential-profile.js";
 import { getAgendHome } from "../paths.js";
+import { CODEX_MODELS_CACHE_MAX_BYTES, codexShortHomeFor, readCodexEffortLevels } from "./codex-metadata.js";
+import { EFFORT_CAPABILITIES } from "./effort-metadata.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
 import { type CodexResumePlan, codexSiblingState, findExactCwdCodexSession, planCodexResume, newestMissedCwdRollout } from "./codex-session-lookup.js";
 import { t } from "../locale.js";
 import { parse as parseToml } from "smol-toml";
 
 const CODEX_PROJECT_DOC_MAX_BYTES = 32_768;
-const CODEX_MODELS_CACHE_MAX_BYTES = 5 * 1024 * 1024;
 const SAFE_MODEL_ID_RE = /^[A-Za-z0-9._:/-]+$/;
 
 /**
@@ -829,11 +829,7 @@ export class CodexBackend implements CliBackend {
    */
   /** Exposed for fleet-manager to delete the short home on instance removal. */
   static shortHomeFor(instanceDir: string): string {
-    // Resolve to canonical form before hashing so trailing slashes or
-    // non-canonical paths don't produce a different (orphaned) home.
-    const canonical = resolve(instanceDir);
-    const hash = createHash("sha256").update(canonical).digest("hex").slice(0, 8);
-    return join(getAgendHome(), "cx", hash);
+    return codexShortHomeFor(instanceDir);
   }
 
   private static resolveShortHome(instanceDir: string): string {
@@ -2051,7 +2047,7 @@ export class CodexBackend implements CliBackend {
   // Codex has no `/effort`; reasoning effort is the `model_reasoning_effort`
   // config key (settable per launch with `-c`). The TUI reads it at startup, so
   // a change needs a respawn — restart, not runtime.
-  getEffortStrategy(): "runtime" | "restart" | "unsupported" { return "restart"; }
+  getEffortStrategy(): "runtime" | "restart" | "unsupported" { return EFFORT_CAPABILITIES.codex.strategy; }
 
   /**
    * Effort levels are PER MODEL in Codex, published in the same models_cache
@@ -2074,44 +2070,15 @@ export class CodexBackend implements CliBackend {
    * floor every catalog model supports today.
    */
   getEffortLevels(): string[] {
-    const FALLBACK = ["low", "medium", "high", "xhigh"];
-    const CANONICAL = new Set(["low", "medium", "high", "xhigh", "max"]);
-    try {
-      const model = this.configuredModel();
-      if (!model) return FALLBACK;
-      const isolatedCache = join(this.isolatedCodexHome, "models_cache.json");
-      const cachePath = existsSync(isolatedCache)
-        ? isolatedCache
-        : join(this.sharedCodexHome, "models_cache.json");
-      if (statSync(cachePath).size > CODEX_MODELS_CACHE_MAX_BYTES) return FALLBACK;
-      const parsed = JSON.parse(readFileSync(cachePath, "utf-8")) as { models?: unknown };
-      if (!Array.isArray(parsed.models)) return FALLBACK;
-      const entry = parsed.models.find((m): m is Record<string, unknown> =>
-        !!m && typeof m === "object" && (m as Record<string, unknown>).slug === model);
-      const levels = (entry?.supported_reasoning_levels as { effort?: unknown }[] | undefined)
-        ?.map(l => l?.effort)
-        .filter((e): e is string => typeof e === "string" && CANONICAL.has(e));
-      return levels?.length ? levels : FALLBACK;
-    } catch {
-      return FALLBACK;
-    }
+    return readCodexEffortLevels({
+      isolatedHome: this.isolatedCodexHome,
+      sharedHome: this.sharedCodexHome,
+      model: this.lastKnownModel,
+    });
   }
 
-  /** The model this instance launches with: instance config, else config.toml. */
   /** Model passed to the most recent buildCommand, when this backend launched the CLI. */
   private lastKnownModel: string | null = null;
-
-  private configuredModel(): string | null {
-    if (this.lastKnownModel) return this.lastKnownModel;
-    for (const home of [this.isolatedCodexHome, this.sharedCodexHome]) {
-      try {
-        const m = readFileSync(join(home, "config.toml"), "utf-8")
-          .match(/^model\s*=\s*"([^"]+)"/m);
-        if (m) return m[1];
-      } catch { /* try the next home */ }
-    }
-    return null;
-  }
 
   /**
    * Codex has no `codex models` command. Its TUI/app-server maintains an
