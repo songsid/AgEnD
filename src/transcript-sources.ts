@@ -30,6 +30,7 @@ import { closeSync, existsSync, openSync, readdirSync, readFileSync, readSync, r
 import { open, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { sharedRolloutIndex, type RolloutIndex } from "./rollout-index.js";
 import Database from "better-sqlite3";
 
 export interface ToolUseEvent { name: string; input: unknown }
@@ -93,12 +94,21 @@ export class CodexRolloutSource implements TranscriptSource {
   private initialOffsets = new Map<string, number>();
   /** Files whose session_meta was read and did NOT match our cwd. */
   private rejected = new Set<string>();
+  /**
+   * Files whose session_meta WAS read and matches our cwd. The first line of a rollout
+   * never changes, so this verdict is as final as a rejection: re-reading a 64 KiB head
+   * of the active file on every poll bought nothing (#1161).
+   */
+  private accepted = new Set<string>();
+  private readonly index: RolloutIndex;
 
   constructor(
     private workingDirectory: string,
     private sessionsDir = join(process.env.CODEX_HOME?.trim() || join(homedir(), ".codex"), "sessions"),
     _now = Date.now(),
+    index?: RolloutIndex,
   ) {
+    this.index = index ?? sharedRolloutIndex(sessionsDir);
     this.snapshotExistingFiles();
   }
 
@@ -106,11 +116,12 @@ export class CodexRolloutSource implements TranscriptSource {
     this.currentFile = null;
     this.byteOffset = 0;
     this.rejected.clear();
+    this.accepted.clear();
     this.snapshotExistingFiles();
   }
 
   async checkpoint(): Promise<TranscriptCheckpoint | null> {
-    const active = this.candidateFiles().find(file => this.fileBelongsToUs(file.path));
+    const active = this.candidateFiles(true).find(file => this.fileBelongsToUs(file.path));
     if (!active) return null;
     try {
       const current = await stat(active.path);
@@ -123,7 +134,7 @@ export class CodexRolloutSource implements TranscriptSource {
   }
 
   private snapshotExistingFiles(): void {
-    this.initialOffsets = new Map(this.candidateFiles().map(file => [file.path, file.size]));
+    this.initialOffsets = new Map(this.candidateFiles(true).map(file => [file.path, file.size]));
   }
 
   /**
@@ -131,32 +142,19 @@ export class CodexRolloutSource implements TranscriptSource {
    *
    * A resumed Codex session keeps writing to the date shard where it was first
    * created. Limiting discovery to today's/yesterday's directories therefore
-   * makes a long-lived instance silently disappear from tool progress. There
-   * are normally only tens of rollout files, and rejected cwd matches are
-   * cached, so walking all shards is both correct and cheap.
+   * makes a long-lived instance silently disappear from tool progress, so every
+   * shard is considered. That tree only ever grows and every Codex instance reads
+   * it, so the listing comes from one shared, incrementally refreshed index
+   * (rollout-index.ts) instead of a private walk per instance per poll (#1161).
+   * Baselines and checkpoints ask for a fresh listing; the 2 s poll takes the shared one.
    */
-  private candidateFiles(): Array<{ path: string; mtimeMs: number; size: number }> {
-    const out: Array<{ path: string; mtimeMs: number; size: number }> = [];
-    const walk = (dir: string, depth: number): void => {
-      let entries: string[];
-      try { entries = readdirSync(dir); } catch { return; }
-      for (const e of entries) {
-        const p = join(dir, e);
-        try {
-          const st = statSync(p);
-          if (st.isDirectory() && depth < 4) walk(p, depth + 1);
-          else if (e.startsWith("rollout-") && e.endsWith(".jsonl")) {
-            out.push({ path: p, mtimeMs: st.mtimeMs, size: st.size });
-          }
-        } catch { /* raced with deletion */ }
-      }
-    };
-    walk(this.sessionsDir, 0);
-    return out.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  private candidateFiles(fresh = false): readonly { path: string; mtimeMs: number; size: number }[] {
+    return this.index.list(fresh);
   }
 
   private fileBelongsToUs(path: string): boolean {
     if (this.rejected.has(path)) return false;
+    if (this.accepted.has(path)) return true;
     try {
       // session_meta is the first line. It can carry long instructions, so
       // give it headroom — but never read the whole rollout.
@@ -172,7 +170,10 @@ export class CodexRolloutSource implements TranscriptSource {
       const firstLine = head.split("\n")[0];
       const meta = JSON.parse(firstLine);
       const cwd = meta?.payload?.cwd;
-      if (meta?.type === "session_meta" && cwd === this.workingDirectory) return true;
+      if (meta?.type === "session_meta" && cwd === this.workingDirectory) {
+        this.accepted.add(path);
+        return true;
+      }
       this.rejected.add(path);
       return false;
     } catch {
@@ -525,26 +526,47 @@ export class KiroSessionSource implements TranscriptSource {
     }
   }
 
+  /**
+   * What each session's metadata said, keyed by file and valid for the mtime/size it was
+   * read at (#1161): the fallback used to re-read and re-parse EVERY session's JSON on every
+   * 2 s poll, for every instance; now an unchanged file costs one stat.
+   * `null` = the file does not concern us (another cwd, or a subagent child).
+   */
+  private metaCache = new Map<string, { mtimeMs: number; size: number; meta: { updated: number; created: number } | null }>();
+
   private resolveActiveSession(): { jsonlPath: string; createdAtMs: number } | null {
     let entries: string[];
     try { entries = readdirSync(this.sessionsDir); } catch { return null; }
     let best: { jsonlPath: string; updated: number; createdAtMs: number } | null = null;
+    const seen = new Set<string>();
     for (const e of entries) {
       if (!e.endsWith(".json") || e.endsWith(".jsonl")) continue;
       const metaPath = join(this.sessionsDir, e);
+      seen.add(metaPath);
       try {
-        const meta = JSON.parse(readFileSync(metaPath, "utf-8"));
-        if (meta.cwd !== this.workingDirectory) continue;
-        // Subagent sessions are children of a turn already being reported.
-        if (meta.session_created_reason === "subagent") continue;
-        const updated = Date.parse(meta.updated_at ?? "") || 0;
-        const created = Date.parse(meta.created_at ?? "") || 0;
-        if (!best || updated > best.updated) {
+        const st = statSync(metaPath);
+        let cached = this.metaCache.get(metaPath);
+        if (!cached || cached.mtimeMs !== st.mtimeMs || cached.size !== st.size) {
+          const meta = JSON.parse(readFileSync(metaPath, "utf-8"));
+          // Subagent sessions are children of a turn already being reported.
+          const ours = meta.cwd === this.workingDirectory && meta.session_created_reason !== "subagent";
+          cached = {
+            mtimeMs: st.mtimeMs,
+            size: st.size,
+            meta: ours
+              ? { updated: Date.parse(meta.updated_at ?? "") || 0, created: Date.parse(meta.created_at ?? "") || 0 }
+              : null,
+          };
+          this.metaCache.set(metaPath, cached);
+        }
+        if (!cached.meta) continue;
+        if (!best || cached.meta.updated > best.updated) {
           const jsonlPath = join(this.sessionsDir, e.replace(/\.json$/, ".jsonl"));
-          best = { jsonlPath, updated, createdAtMs: created };
+          best = { jsonlPath, updated: cached.meta.updated, createdAtMs: cached.meta.created };
         }
       } catch { /* partially written metadata — next poll */ }
     }
+    for (const known of this.metaCache.keys()) if (!seen.has(known)) this.metaCache.delete(known);
     return best && existsSync(best.jsonlPath)
       ? { jsonlPath: best.jsonlPath, createdAtMs: best.createdAtMs }
       : null;

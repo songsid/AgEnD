@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import Database from "better-sqlite3";
 import { CodexRolloutSource, KiroSessionSource, OpenCodeDbSource } from "../src/transcript-sources.js";
+import { resetSharedRolloutIndexesForTests } from "../src/rollout-index.js";
 
 // Use unique temp directories per test run to avoid collisions when multiple
 // vitest processes run in parallel (issue #669)
@@ -21,6 +22,7 @@ const sqlite = (process as { getBuiltinModule?: (id: string) => unknown })
 
 beforeEach(() => {
   mkdirSync(TEST_ROOT, { recursive: true });
+  resetSharedRolloutIndexesForTests(0);          // these tests edit their sessions tree between polls: no shared listing to go stale
 });
 afterEach(() => {
   rmSync(TEST_ROOT, { recursive: true, force: true });
