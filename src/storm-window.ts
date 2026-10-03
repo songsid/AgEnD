@@ -66,7 +66,10 @@ export class StormWindow extends EventEmitter {
   private phase: StormPhase = "closed";
   private kind: StormKind = "server";
   private windowLosses = new Map<string, number>();
-  /** Members of windowLosses whose respawn already finished (see noteWindowRecovered). */
+  /**
+   * Instances whose last respawn finished outside a storm. A fresh loss withdraws
+   * the entry (noteWindowLoss), so it only ever speaks for the loss it followed.
+   */
   private windowLossRecovered = new Set<string>();
   private generation = 0;
   private crashLevel = 0;
@@ -178,7 +181,7 @@ export class StormWindow extends EventEmitter {
     if (this.stopped) return false;
     const now = this.now();
     for (const [other, at] of this.windowLosses) {
-      if (now - at > this.windowLossWindowMs) { this.windowLosses.delete(other); this.windowLossRecovered.delete(other); }
+      if (now - at > this.windowLossWindowMs) this.windowLosses.delete(other);
     }
     this.windowLosses.set(name, now);
     this.windowLossRecovered.delete(name);
@@ -217,7 +220,7 @@ export class StormWindow extends EventEmitter {
   noteWindowRecovered(name: string): void {
     if (this.isActive()) {
       this.markRecovered(name);
-    } else if (this.windowLosses.has(name)) {
+    } else {
       this.windowLossRecovered.add(name);
     }
   }
@@ -315,7 +318,6 @@ export class StormWindow extends EventEmitter {
     this.releaseAllDelivery();
     this.emit("closed", snapshot, reason);
     this.windowLosses.clear();
-    this.windowLossRecovered.clear();
     this.kind = "server";
     this.affected.clear();
     this.recovered.clear();

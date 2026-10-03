@@ -364,8 +364,11 @@ describe("review of #1156: recovery boundaries", () => {
     await vi.advanceTimersByTimeAsync(10_000);
     expect([...state.up].sort()).toEqual([0, 1, 2]);
     expect(storm.isActive()).toBe(false);
+    const atOpen: string[][] = [];
+    storm.on("opened", (snapshot: any) => atOpen.push(snapshot.recovered));
     daemons[3].startHealthCheck();
     await vi.advanceTimersByTimeAsync(20_000);
+    expect(atOpen).toEqual([["inst-0", "inst-1", "inst-2"]]);   // known to be recovered the moment it opens, not a health tick later
     expect([...state.up].sort()).toEqual([0, 1, 2, 3]);
     expect(new Set(state.started).size).toBe(4);
     expect(storm.snapshot().affected.filter(n => storm.isDeliveryHeld(n))).toEqual([]);
@@ -416,6 +419,28 @@ describe("review of #1156: recovery boundaries", () => {
     storm.recordServerDead("a", ["a", "b"]);            // now a server storm: a live pane proves nothing
     storm.noteWindowAlive("b");
     expect(storm.needsRecovery("b")).toBe(true);
+    storm.shutdown();
+  });
+
+  it("a member whose pane is alive on a health tick is released (it came back some other way)", async () => {
+    const { daemons, storm, state } = fleet(4);
+    for (let i = 0; i < 4; i++) storm.noteWindowLoss(`inst-${i}`);          // burst open; nobody respawned by the fleet
+    expect(storm.needsRecovery("inst-0")).toBe(true);
+    state.up.add(0);                                                         // e.g. an operator restarted it
+    daemons[0].startHealthCheck();
+    await vi.advanceTimersByTimeAsync(1_500);
+    expect(storm.needsRecovery("inst-0")).toBe(false);
+    expect(storm.needsRecovery("inst-1")).toBe(true);
+    storm.shutdown();
+  });
+
+  it("…also when the live pane is only seen on the delayed recheck", async () => {
+    const { daemons, storm } = fleet(4);
+    for (let i = 0; i < 4; i++) storm.noteWindowLoss(`inst-${i}`);
+    daemons[0].tmux.getPaneStatus.mockResolvedValueOnce(null).mockResolvedValue({ alive: true });
+    daemons[0].startHealthCheck();
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(storm.needsRecovery("inst-0")).toBe(false);
     storm.shutdown();
   });
 
