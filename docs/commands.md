@@ -11,7 +11,7 @@ Registered via `setMyCommands` with `scope: chat` (forum group only).
 | `/sysinfo` | System diagnostics, including each backend CLI's version | All |
 | `/ctx` | Show agent context usage | All |
 | `/usage` | Show AI subscription usage | All |
-| `/compact` | Compact agent context | All |
+| `/compact [instructions]` | Compact agent context; the optional text steers the summary (Claude Code only — other backends compact without it and say so) | All |
 | `/cancel` | Interrupt agent generation (handled, not in menu) | All |
 | `/save` | Save agent session (handled, not in menu) | All |
 | `/steer <message>` | Interject into the agent's *current* turn instead of queueing for idle. Not admin-gated — anyone who can talk to the agent can steer it. Only `claude-code`, `codex`, and `grok` accept a busy-pane interjection; other backends reply "not supported". | All |
@@ -40,7 +40,7 @@ Registered via `setMyCommands` with `scope: default`.
 |---------|-------------|------------|
 | 🔒 `/start` | Start an agent in this chat | Admin |
 | 🔒 `/stop` | Stop the agent | Admin |
-| 🔒 `/compact` | Compact agent context | Admin |
+| 🔒 `/compact [instructions]` | Compact agent context; the optional text steers the summary (Claude Code only — other backends compact without it and say so) | Admin |
 | 🔒 `/model` | Switch model | Admin |
 | 🔒 `/effort` | Set reasoning effort | Admin |
 | 🔒 `/pause` | Pause the agent | Admin |
@@ -85,7 +85,7 @@ Registered globally via `client.application.commands.set()`.
 | 🔒 `/update` | Update AgEnD to latest version | Admin |
 | 🔒 `/doctor` | Run health diagnostics | Admin |
 | 🔒 `/login [backend] [cancel]` | **(beta)** Remote CLI sign-in, installing the CLI first when it is missing (sign-in: `claude-code`/`codex`/`kiro-cli`/`grok`/`antigravity`; install only: `opencode`, `muse`) | Admin |
-| 🔒 `/compact` | Compact agent context | Admin |
+| 🔒 `/compact [instructions]` | Compact agent context; the optional text steers the summary (Claude Code only — other backends compact without it and say so) | Admin |
 | 🔒 `/collab` | Toggle collaboration mode | Admin |
 | 🔒 `/model` | Change backend model (select menu) | Admin |
 | 🔒 `/effort` | Adjust AI reasoning effort (select menu) | Admin |
