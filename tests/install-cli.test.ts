@@ -179,14 +179,6 @@ describe("the install /login runs for a missing CLI (#1131: one entry point)", (
     expect(String(sendText.mock.calls.at(-1)![1])).toContain("opencode");
   });
 
-  it("reinstall runs the installer over an installed CLI", async () => {
-    const { fm, chat } = setup();
-    installedBinaries.add("claude");
-    expect(await fm.startLoginSession("claude", chat, { reinstall: true })).toBe(t("install.started", "claude-code"));
-    expect(fakeSessions).toHaveLength(1);
-    expect(await fm.startLoginSession("notreal", chat, { reinstall: true })).toContain("notreal");
-  });
-
   it("guards: already installed, unknown backend, busy slots", async () => {
     const { fm, chat } = setup();
     installedBinaries.add("claude");
@@ -250,17 +242,16 @@ describe("slash helpers", () => {
 
     await (fm as any).handleLoginSlash({ userId: "a", channelId: "c", options: { cancel: true }, respond }, "discord", adapter);
     expect(cancel).toHaveBeenCalled();
+    // `code` and `reinstall` are no longer options (#1137): ignored if a stale client sends them.
     await (fm as any).handleLoginSlash({ userId: "a", channelId: "c", options: { code: "AB-12" }, respond }, "discord", adapter);
-    expect(input).toHaveBeenCalledWith("AB-12");
+    expect(input).not.toHaveBeenCalled();
     await (fm as any).handleLoginSlash({ userId: "a", channelId: "c", options: { backend: "codex" }, respond }, "discord", adapter);
     expect(start).toHaveBeenCalledWith("codex", expect.objectContaining({ chatId: "c" }));
     await (fm as any).handleLoginSlash({ userId: "a", channelId: "c", respond }, "discord", adapter);
     expect(chooser).toHaveBeenCalled();
     await (fm as any).handleLoginSlash({ userId: "a", channelId: "c", options: { backend: "grok", reinstall: true }, respond }, "discord", adapter);
-    expect(start).toHaveBeenLastCalledWith("grok", expect.objectContaining({ chatId: "c" }), { reinstall: true });
-    await (fm as any).handleLoginSlash({ userId: "a", channelId: "c", options: { reinstall: true }, respond }, "discord", adapter);
-    expect(String(respond.mock.calls.at(-1)![0])).toContain("Usage");
-    expect(respond).toHaveBeenCalledTimes(6);
+    expect(start).toHaveBeenLastCalledWith("grok", expect.objectContaining({ chatId: "c" }));
+    expect(respond).toHaveBeenCalledTimes(5);
   });
 
 });
@@ -271,7 +262,9 @@ describe("discord registration includes the new commands", () => {
     const src = readFileSync(join(__dirname, "../src/channel/adapters/discord.ts"), "utf8");
     expect(src).toContain('name: "login", description: withFleetLabel("🔒 " + t("slash.login"), this.fleetLabel)');
     expect(src).not.toContain('name: "install-cli"');
-    expect(src).toContain('{ name: "reinstall", description: t("slash.option.login_reinstall"), type: ApplicationCommandOptionType.Boolean, required: false }');
+    // Only backend and cancel (#1137).
+    expect(src).not.toContain('slash.option.login_reinstall');
+    expect(src).not.toContain('slash.option.login_code');
     expect(src).toContain('{ name: "opencode", value: "opencode" }');
   });
 

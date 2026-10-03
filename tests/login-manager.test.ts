@@ -65,9 +65,9 @@ describe("LoginSession", () => {
   it("posts the auth hint exactly once and finishes on the success pattern", async () => {
     const panes = [
       "starting device flow…",
-      "Go to https://auth.example/device and enter code: WXYZ-7890",
-      "Go to https://auth.example/device and enter code: WXYZ-7890",
-      "Login successful!",
+      "Open https://accounts.x.ai/oauth2/device?user_code=WXYZ-7890 and enter code: WXYZ-7890",
+      "Open https://accounts.x.ai/oauth2/device?user_code=WXYZ-7890 and enter code: WXYZ-7890",
+      " Signed in as dev@example.com",
     ];
     let call = 0;
     const tmux = fakeTmux({ capturePaneJoined: vi.fn(async () => panes[Math.min(call++, panes.length - 1)]) });
@@ -75,7 +75,7 @@ describe("LoginSession", () => {
     const s = session(LOGIN_FLOWS["grok"], tmux, ev);
     await s.start();
     await vi.waitFor(() => expect(ev.done).toHaveLength(1));
-    expect(ev.hints).toEqual([{ url: "https://auth.example/device", code: "WXYZ-7890" }]);
+    expect(ev.hints).toEqual([{ url: "https://accounts.x.ai/oauth2/device?user_code=WXYZ-7890", code: "WXYZ-7890" }]);
     expect(ev.done[0]).toEqual({ ok: true, detail: "success" });
     expect(tmux.killed()).toBe(true);
     expect(s.state).toBe("done");

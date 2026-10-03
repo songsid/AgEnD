@@ -36,7 +36,7 @@ Pick the command whose label names the fleet you want to change.
 ### Finishing a /login away from the machine (public link)
 
 By default a `/login` terminal link only works on this machine (SSH forwarding, tailscale, a proxy you run).
-For a phone that cannot reach it, a `kiro-cli` login can open a temporary **public https link** through a
+For a phone that cannot reach it, a `kiro-cli` or `claude-code` login can open a temporary **public https link** through a
 Cloudflare Quick Tunnel. It is off unless you turn it on:
 
 ```yaml
@@ -47,7 +47,7 @@ web_terminal:
     # protocol: http2       # http2 (default) | quic | auto — see below
 ```
 
-Requires the `cloudflared` binary on `PATH` (AgEnD never downloads it). When enabled, the `/login kiro` confirmation
+Requires the `cloudflared` binary on `PATH` (AgEnD never downloads it). When enabled, the `/login kiro` (or `/login claude`) confirmation
 shows three buttons — **Open public link**, **Local link only**, **Cancel** — and pressing the first one is the
 consent, once per login; a link is never kept or reused.
 

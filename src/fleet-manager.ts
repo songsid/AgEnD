@@ -10550,22 +10550,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   async startLoginSession(backendArg: string, chat: {
     adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string; userId?: string;
-  }, opts: { skipAuthCheck?: boolean; tokenPresent?: boolean; tunnel?: boolean; reinstall?: boolean } = {}): Promise<string | null> {
+  }, opts: { skipAuthCheck?: boolean; tokenPresent?: boolean; tunnel?: boolean } = {}): Promise<string | null> {
     // `/login` is the one entry point (#1131): a CLI that is not installed yet
-    // is installed first, and the install's success signs in (startInstallSession);
-    // `reinstall` runs the installer even over an installed CLI.
+    // is installed first, and the install's success signs in (startInstallSession).
     // A confirmation click (skipAuthCheck) continues a sign-in already decided:
     // straight to it, never back through the install routing — a binary that
     // went missing meanwhile must not start an installer from a "go" button.
     if (opts.skipAuthCheck) return this.launchSignIn(backendArg, chat, opts);
     const wanted = LOGIN_BACKEND_ALIASES[backendArg.toLowerCase()] ?? backendArg.toLowerCase();
-    const installer = BACKEND_INSTALLATION_INFO[wanted];
-    if (opts.reinstall) {
-      if (!installer) return t("install.unsupported", backendArg);
-      this.recordLoginFlow(wanted, "reinstall", chat.userId);
-      return this.startInstallSession(wanted, chat, { reinstall: true });
-    }
-    if (installer && !this.isCliInstalled(wanted)) {
+    if (BACKEND_INSTALLATION_INFO[wanted] && !this.isCliInstalled(wanted)) {
       const flow = LOGIN_FLOWS[wanted];
       this.recordLoginFlow(wanted, flow && flow.remoteLogin !== "unsupported" ? "install_then_login" : "install_only", chat.userId);
       return this.startInstallSession(wanted, chat);
@@ -10575,7 +10568,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** Which way a `/login` went (#1131) — so the event log shows what users actually need. */
-  private recordLoginFlow(backend: string, flow: "login" | "install_then_login" | "install_only" | "reinstall", requester?: string): void {
+  private recordLoginFlow(backend: string, flow: "login" | "install_then_login" | "install_only", requester?: string): void {
     try {
       this.eventLog?.insert("login", "login_entry", { backend, flow, requester: requester ?? null });
     } catch (err) {
@@ -11012,11 +11005,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** Start a CLI install session. Caller enforces admin. */
   async startInstallSession(backendArg: string, chat: {
     adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string; userId?: string;
-  }, opts: { reinstall?: boolean } = {}): Promise<string> {
+  }): Promise<string> {
     const backend = LOGIN_BACKEND_ALIASES[backendArg.toLowerCase()] ?? backendArg.toLowerCase();
     const info = BACKEND_INSTALLATION_INFO[backend];
     if (!info) return t("install.unsupported", backendArg);
-    if (!opts.reinstall && checkBinaryInstalled(info.binary)) return t("install.already", backend, info.binary);
+    if (checkBinaryInstalled(info.binary)) return t("install.already", backend, info.binary);
     // Reserve the fleet-wide window before the first await (shared with web/relay
     // login). Owned by this method until the session is published.
     const claim = this.loginWindow.tryClaim("install", backend);
@@ -11202,15 +11195,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     const chat = { adapter, adapterId, chatId: data.channelId, userId: data.userId };
     if (data.options?.cancel === true) { await data.respond(await this.cancelLoginSession()); return; }
-    const code = String(data.options?.code ?? "").trim();
-    if (code) { await data.respond(await this.loginSubmitInput(code)); return; }
     const backend = String(data.options?.backend ?? "").trim();
-    if (data.options?.reinstall === true) {
-      await data.respond(backend
-        ? await this.startLoginSession(backend, chat, { reinstall: true }) ?? t("login.confirm_posted")
-        : t("login.usage"));
-      return;
-    }
     if (backend) {
       const text = await this.startLoginSession(backend, chat);
       await data.respond(text ?? t("login.confirm_posted"));

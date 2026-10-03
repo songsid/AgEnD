@@ -276,7 +276,7 @@ describe("authorization gate", () => {
     expect(buttons).toHaveLength(1);
     expect(sessions).toHaveLength(0);
     expect(lock.isHeld).toBe(false);
-    expect(await controller.start("grok", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.web_started", "grok"));
+    expect(await controller.start("grok", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.started", "grok"));
   });
 });
 

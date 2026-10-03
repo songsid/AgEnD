@@ -12,7 +12,14 @@
  *             remote or headless machine? Use `codex login --device-auth`".
  *             The flag is hidden from `--help` but still accepted.
  *   - grok:   `grok login` — plain login already IS device-code on grok 1.0.5
- *             (identical output to `--device-auth`), success "Login successful!"
+ *             (identical output to `--device-auth`), success "Login successful!".
+ *             grok 1.0.46 (live-verified headless, #1137): "open this URL in
+ *             your browser: https://accounts.x.ai/oauth2/device?user_code=…",
+ *             "Confirm this code in your browser:" + the code on its own line,
+ *             then only "Waiting for authorization..." — nothing to type, so it
+ *             is a device-auth flow (URL + code to chat, no terminal). Its
+ *             success line is now "Signed in as …" ("Login successful!" is gone
+ *             from the binary).
  *   - kiro:   `kiro-cli login` (plain, per user request): shows the four-way
  *             selector incl. "Your Organization"; Identity Center is device-code
  *             regardless of `--use-device-flow` (live-verified 2.21.1). The
@@ -199,9 +206,12 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
     command: "grok login",
     authCheck: { argv: ["grok", "models"] },
     loginScreenPattern: /Run `grok login`/,
+    // Device code only (#1137): the URL and code go to chat, never a terminal.
+    deviceAuth: true,
+    // Its pane shows one URL, the device page: the generic URL match finds it.
     // Binary template is "enter code: $CODE"; the standalone form is a fallback.
     codePattern: /\bcode[:\s]+([A-Z0-9][A-Z0-9-]{3,})|^\s*([A-Z0-9]{4,10}-[A-Z0-9]{4,10})\s*$/im,
-    successPattern: /Login successful!/,
+    successPattern: /Login successful!|\bSigned in (?:as |\(user_id:)/,
     timeoutMs: LOGIN_TIMEOUT_MS,
   },
   "kiro-cli": {
@@ -249,6 +259,9 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
   },
   "claude-code": {
     noShellEscape: true,   // login TUI reviewed: menu/prompts/device code only, no shell
+    // The sign-in pastes a code back into this terminal, so finishing it from a
+    // phone needs the terminal reachable: the public link may front it (#1137).
+    tunnelOk: true,
     backend: "claude-code",
     command: "claude auth login",
     authCheck: { argv: ["claude", "auth", "status"], validPattern: /"loggedIn":\s*true/ },

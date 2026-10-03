@@ -106,12 +106,10 @@ describe("one /login picker for installing and signing in", () => {
     await fm.startLoginSession("codex", chat(adapter), { skipAuthCheck: true }); // a confirmation click: not a new /login
     await fm.startLoginSession("grok", chat(adapter));
     await fm.startLoginSession("opencode", chat(adapter));
-    await fm.startLoginSession("codex", chat(adapter), { reinstall: true });
     expect(insert.mock.calls.map(c => [c[1], c[2].backend, c[2].flow])).toEqual([
       ["login_entry", "codex", "login"],
       ["login_entry", "grok", "install_then_login"],
       ["login_entry", "opencode", "install_only"],
-      ["login_entry", "codex", "reinstall"],
     ]);
     expect(insert.mock.calls[0]![2].requester).toBe("admin");
   });

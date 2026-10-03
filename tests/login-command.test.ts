@@ -36,13 +36,14 @@ describe("/login command", () => {
     expect(ctx.startLoginSession).not.toHaveBeenCalled();
   });
 
-  it("routes backend, code, and cancel arguments", async () => {
+  it("routes backend and cancel; `code` is no longer an argument (#1137)", async () => {
     const { commands, ctx, sendText } = makeCommands();
     await commands.handleGeneralCommand(msg("/login codex"));
     expect(ctx.startLoginSession).toHaveBeenCalledWith("codex", expect.objectContaining({ chatId: "chat" }));
 
     await commands.handleGeneralCommand(msg("/login code ABCD-1234"));
-    expect(ctx.loginSubmitInput).toHaveBeenCalledWith("ABCD-1234");
+    expect(ctx.loginSubmitInput).not.toHaveBeenCalled();
+    expect(sendText.mock.calls.at(-1)![1]).toContain("Usage");
 
     await commands.handleGeneralCommand(msg("/login cancel"));
     expect(ctx.cancelLoginSession).toHaveBeenCalledTimes(1);
@@ -57,22 +58,20 @@ describe("/login command", () => {
   });
 });
 
-describe("/login reinstall, and /install-cli as a typed alias for 2.1.10 (#1131)", () => {
-  it("/login reinstall <backend> reinstalls; without a backend it is a usage error", async () => {
+describe("/install-cli as a typed alias for 2.1.10 (#1131), and no /login reinstall (#1137)", () => {
+  it("/login reinstall is not an argument: a usage error", async () => {
     const { commands, ctx, sendText } = makeCommands();
     await commands.handleGeneralCommand(msg("/login reinstall codex"));
-    expect(ctx.startLoginSession).toHaveBeenCalledWith("codex", expect.objectContaining({ chatId: "chat" }), { reinstall: true });
-    await commands.handleGeneralCommand(msg("/login reinstall"));
+    expect(ctx.startLoginSession).not.toHaveBeenCalled();
     expect(sendText.mock.calls.at(-1)![1]).toContain("Usage");
-    expect(ctx.startLoginSession).toHaveBeenCalledTimes(1);
   });
 
-  it("/install-cli <backend> (either spelling) says where it went, then reinstalls through /login", async () => {
+  it("/install-cli <backend> (either spelling) says where it went, then runs /login <backend>", async () => {
     const { commands, ctx, sendText } = makeCommands();
     expect(await commands.handleGeneralCommand(msg("/install-cli grok"))).toBe(true);
     expect(await commands.handleGeneralCommand(msg("/install_cli codex"))).toBe(true);
     expect(sendText.mock.calls.filter(c => String(c[1]).includes("now part of `/login`"))).toHaveLength(2);
-    expect(ctx.startLoginSession.mock.calls.map((c: unknown[]) => [c[0], c[2]])).toEqual([["grok", { reinstall: true }], ["codex", { reinstall: true }]]);
+    expect(ctx.startLoginSession.mock.calls.map((c: unknown[]) => [c[0], c[2]])).toEqual([["grok", undefined], ["codex", undefined]]);
   });
 
   it("bare /install-cli opens the /login picker, /install-cli cancel cancels", async () => {
