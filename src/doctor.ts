@@ -9,6 +9,7 @@ import { getTmuxSessionName, getTmuxSocketName } from "./paths.js";
 import { BACKENDS } from "./setup-wizard.js";
 import type { ServiceInfo } from "./service-installer.js";
 import { t } from "./locale.js";
+import { collectResourceReport, resourceChecks, type ResourceReport } from "./resource-report.js";
 import {
   AGEND_NETWORK_FAMILY_ATTEMPT_TIMEOUT_MS,
   getNetworkFamilyState,
@@ -18,7 +19,7 @@ import {
 export type DoctorCheckStatus = "ok" | "warn" | "error";
 
 export interface DoctorCheck {
-  section: "Prerequisites" | "Service" | "Fleet" | "Channel gateways" | "MCP IPC";
+  section: "Prerequisites" | "Service" | "Fleet" | "Channel gateways" | "MCP IPC" | "Resources";
   status: DoctorCheckStatus;
   label: string;
   detail: string;
@@ -37,6 +38,7 @@ interface DoctorDeps {
   processAlive: (pid: number) => boolean;
   connectSocket: (path: string) => Promise<boolean>;
   networkFamily: () => NetworkFamilyState;
+  collectResources: (dataDir: string) => Promise<ResourceReport>;
   fetchFleetHealth: (port: number) => Promise<{
     adapters?: { details?: Record<string, { status?: string; isReady?: boolean; reconnectCount?: number; heartbeatAgeMs?: number | null; shards?: Array<{ heartbeatAgeMs?: number | null }> }> };
   }>;
@@ -56,6 +58,7 @@ const defaultDeps: DoctorDeps = {
   },
   connectSocket: connectUnixSocket,
   networkFamily: getNetworkFamilyState,
+  collectResources: collectResourceReport,
   fetchFleetHealth: async port => {
     const response = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(3000) });
     return await response.json() as any;
@@ -317,6 +320,14 @@ export async function collectDoctorReport(
       : t("doctor.ipc_failed", connected, runningNames.length, ipcProblems.join(", ")),
   );
 
+  try {
+    for (const check of resourceChecks(await deps.collectResources(dataDir))) {
+      add("Resources", check.status, check.label, check.detail);
+    }
+  } catch {
+    add("Resources", "warn", t("resources.title"), t("resources.report_unknown"));
+  }
+
   return {
     checks,
     errors: checks.filter(check => check.status === "error").length,
@@ -331,6 +342,7 @@ export function formatDoctorReport(report: DoctorReport): string {
     Fleet: t("doctor.section.fleet"),
     "Channel gateways": t("doctor.section.gateways"),
     "MCP IPC": t("doctor.section.ipc"),
+    Resources: t("resources.title"),
   };
   const lines = ["", `  \x1b[1m${t("doctor.title")}\x1b[0m`];
   let section: DoctorCheck["section"] | undefined;

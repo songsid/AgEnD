@@ -456,11 +456,11 @@ fleet
 
 fleet
   .command("status")
-  .description("Show fleet status (alias for `agend ls`)")
+  .description("Show fleet status, workspace disk usage, unregistered instance directories, and host memory/swap")
   .option("--json", "Output as JSON")
   .action(async (opts: { json?: boolean }) => {
     // Delegate to the `ls` command implementation
-    await lsAction(opts);
+    await lsAction({ ...opts, resources: true });
   });
 
 fleet
@@ -2433,7 +2433,7 @@ async function listInstanceNames(config: import("./types.js").FleetConfig): Prom
   return names;
 }
 
-async function lsAction(opts: { json?: boolean; namesOnly?: boolean }): Promise<void> {
+async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?: boolean }): Promise<void> {
     const yaml = (await import("js-yaml")).default;
     const config = yaml.load(readFileSync(FLEET_CONFIG_PATH, "utf-8")) as import("./types.js").FleetConfig;
     const names = Object.keys(config.instances);
@@ -2445,6 +2445,17 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean }): Promise<
       for (const n of await listInstanceNames(config)) console.log(n);
       return;
     }
+
+    // Keep the existing JSON row-array contract and the fast completion path.
+    const printResources = async () => {
+      if (!opts.resources || opts.json) return;
+      try {
+        const { collectResourceReport, formatResourceReport } = await import("./resource-report.js");
+        console.log(formatResourceReport(await collectResourceReport(DATA_DIR)));
+      } catch {
+        console.log(t("resources.report_unknown"));
+      }
+    };
 
     // Load classic channels from classicBot.yaml (keyed by channelId)
     const classicPath = join(DATA_DIR, "classicBot.yaml");
@@ -2478,6 +2489,7 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean }): Promise<
 
     if (allNames.length === 0) {
       console.log("No instances configured.");
+      await printResources();
       return;
     }
 
@@ -2650,6 +2662,7 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean }): Promise<
     const totalGB = totalmem() / (1024 ** 3);
     const usedGB = (totalmem() - freemem()) / (1024 ** 3);
     console.log(`\nInstances: ${runningCount} running, ${pausedCount} paused | Fleet Mem: ${(totalMemMb / 1024).toFixed(1)} GB | System Memory: ${usedGB.toFixed(1)} / ${totalGB.toFixed(1)} GB`);
+    await printResources();
     // #1003: a working completion nobody knew to install. Tell the person at
     // the terminal once per `ls` while nothing is installed — file checks only,
     // no shell spawned, so ls stays fast.
@@ -2664,7 +2677,8 @@ program
   .description("List all instances with status, backend, team, and last activity")
   .option("--json", "Output as JSON")
   .option("--names-only", "Print instance names one per line (for shell completion)")
-  .action(async (opts: { json?: boolean; namesOnly?: boolean }) => {
+  .option("--resources", "Also report workspace disk usage, unregistered instance directories, and host memory/swap (text only)")
+  .action(async (opts: { json?: boolean; namesOnly?: boolean; resources?: boolean }) => {
     await lsAction(opts);
   });
 
