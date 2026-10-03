@@ -76,7 +76,7 @@ interface ResourceDeps {
 export function probeDiskUsage(path: string, timeoutMs: number, binary = "du"): Promise<number | null> {
   return new Promise(resolveResult => {
     execFile(binary, ["-sk", "-x", path], {
-      encoding: "utf8", timeout: Math.max(1, timeoutMs), killSignal: "SIGKILL", maxBuffer: 64 * 1024,
+      encoding: "utf8", timeout: Math.max(1, Math.floor(timeoutMs)), killSignal: "SIGKILL", maxBuffer: 64 * 1024,
     }, (err, stdout) => {
       // du can print a partial total and still fail (permissions / concurrent removal).
       if (err) { resolveResult(null); return; }

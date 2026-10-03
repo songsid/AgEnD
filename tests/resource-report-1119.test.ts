@@ -50,6 +50,31 @@ describe("host memory snapshot", () => {
 });
 
 describe("read-only resource inventory", () => {
+  it("normalizes fractional deadlines at the real subprocess boundary", async () => {
+    const dir = root();
+    await expect(probeDiskUsage(dir, 123.5)).resolves.toBeGreaterThanOrEqual(0);
+  });
+
+  it("measures the last row when the shared budget has fractional remaining time", async () => {
+    const dir = root(); config(dir);
+    for (const name of ["a", "b", "c"]) instance(dir, name);
+    const times = [0, 0, 0, 4000.5];
+    const deadlines: number[] = [];
+    const report = await collectResourceReport(dir, { memory, now: () => times.shift() ?? 4000.5,
+      diskUsage: async (path, timeout) => { deadlines.push(timeout); return probeDiskUsage(path, timeout); } });
+    expect(deadlines).toEqual([2000, 2000, 999.5]);
+    expect(report.orphans).toHaveLength(3);
+    expect(report.orphans!.every(row => row.bytes !== null)).toBe(true);
+  });
+
+  it("measures small directories with the real monotonic clock and a fractional budget", async () => {
+    const dir = root(); config(dir);
+    for (const name of ["a", "b", "c"]) instance(dir, name);
+    const report = await collectResourceReport(dir, { memory, budgetMs: 1500.5 });
+    expect(report.orphans).toHaveLength(3);
+    expect(report.orphans!.every(row => row.bytes !== null)).toBe(true);
+  });
+
   it("resolves inherited/custom/default workspaces, includes retained workspaces, and measures aliases once", async () => {
     const dir = root();
     const shared = join(dir, "shared repo"); mkdirSync(shared);

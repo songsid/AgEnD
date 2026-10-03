@@ -11,7 +11,7 @@ describe("bounded disk subprocess", () => {
       expect(options).toEqual(expect.objectContaining({ timeout: 123, killSignal: "SIGKILL", maxBuffer: 65536, encoding: "utf8" }));
       expect(options.shell).toBeUndefined(); callback(null, "128\t" + path + "\n");
     });
-    expect(await probeDiskUsage(path, 123)).toBe(128 * 1024);
+    expect(await probeDiskUsage(path, 123.5)).toBe(128 * 1024);
   });
   it("rejects a partial total on any process error, including timeout", async () => {
     mocks.execFile.mockImplementation((_file, _args, _options, callback) => callback(new Error("timeout"), "128\tpartial\n"));
