@@ -1,5 +1,6 @@
 import { join } from "node:path";
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
+import { promisify } from "node:util";
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
 
@@ -12,6 +13,17 @@ export class OpenCodeBackend implements CliBackend {
   private launchedSessionId: string | null = null;
   /** Epoch ms of the last spawn — sessions created before it belong to someone else. */
   private launchedAt: number | null = null;
+  /**
+   * Bumped by every buildCommand. A discovery is only ever valid for the launch it started
+   * under: the hijack guard below (created after OUR launch, or the id we resumed with) is
+   * defined against launchedAt/launchedSessionId, so a listing that comes back after a newer
+   * launch must not be judged against — or cached for — the newer one.
+   */
+  private launchGeneration = 0;
+  /** What discovery found, and for which launch. */
+  private discovered: { generation: number; id: string } | null = null;
+  /** The discovery running now: concurrent callers share it instead of forking another CLI. */
+  private discovering: { generation: number; promise: Promise<string | null> } | null = null;
 
   constructor(private instanceDir: string) {
     this.binaryPath = resolveBinary("opencode");
@@ -23,6 +35,7 @@ export class OpenCodeBackend implements CliBackend {
     this.workingDirectory = config.workingDirectory;
     this.launchedSessionId = null;
     this.launchedAt = Date.now();
+    this.launchGeneration++;
 
     // Resume only a session explicitly persisted for this instance. OpenCode's
     // --continue is global and can hijack an unrelated session from another cwd.
@@ -117,16 +130,48 @@ export class OpenCodeBackend implements CliBackend {
     return null;
   }
 
+  /**
+   * Synchronous and cache-only (#1160): what the last finished discovery found for THIS launch, else
+   * the id persisted by a previous save (which also covers the daemon-start path where a stale
+   * window from the previous run is saved before any spawn in this process has captured
+   * workingDirectory). It never forks the CLI — it used to, for up to 15 s, on the fleet thread,
+   * from every idle observation. `refreshSessionId()` is what updates the cache.
+   */
   getSessionId(): string | null {
-    const discovered = this.discoverSessionId();
-    if (discovered) return discovered;
-    // Fallback: the id persisted by a previous save (also covers the daemon-start
-    // path where a stale window from the previous run is saved before any spawn
-    // in this process has captured workingDirectory).
+    if (this.discovered && this.discovered.generation === this.launchGeneration) return this.discovered.id;
     try {
       const f = join(this.instanceDir, "session-id");
       return readFileSync(f, "utf-8").trim() || null;
     } catch { return null; }
+  }
+
+  /**
+   * Find this instance's OpenCode session via the CLI's own listing and cache it for `getSessionId()`.
+   * Single-flight: a call made while a discovery is running gets that discovery's promise, so an
+   * idle observation and a stop/pause racing it cost ONE CLI run. Never rejects.
+   *
+   * Resolves to what `getSessionId()` answers afterwards. Before any spawn in this process
+   * (no workingDirectory/launchedAt to judge a row against) there is nothing to discover and that
+   * is the persisted id.
+   */
+  refreshSessionId(): Promise<string | null> {
+    if (!this.workingDirectory || this.launchedAt === null) return Promise.resolve(this.getSessionId());
+    const generation = this.launchGeneration;
+    if (this.discovering && this.discovering.generation === generation) return this.discovering.promise;
+    const launch = { workingDirectory: this.workingDirectory, launchedAt: this.launchedAt, launchedSessionId: this.launchedSessionId };
+    const entry: { generation: number; promise: Promise<string | null> } = {
+      generation,
+      promise: this.discoverSessionId(launch).then(found => {
+        // A newer launch started while the CLI was listing: the rows were judged against the OLD
+        // launch's directory/time/resumed id and mean nothing for the new one. Drop them.
+        if (found && this.launchGeneration === generation) this.discovered = { generation, id: found };
+        return this.getSessionId();
+      }, () => this.getSessionId()).finally(() => {
+        if (this.discovering === entry) this.discovering = null;
+      }),
+    };
+    this.discovering = entry;
+    return entry.promise;
   }
 
   /**
@@ -136,9 +181,8 @@ export class OpenCodeBackend implements CliBackend {
    * session, newest first, subagent children excluded). This replaced a
    * direct read of opencode.db: same information, but semver-protected CLI
    * output instead of a private sqlite schema, and no node:sqlite
-   * requirement. ~1.2s per call is fine — discovery only runs from
-   * saveSessionId sites (shutdown, pause, crash respawn, idle checkpoint),
-   * never on a hot path.
+   * requirement. ~1 s per call, which is why it runs asynchronously and
+   * single-flight (refreshSessionId) and is never on the synchronous path.
    *
    * A row is only accepted when it matches the spawn this backend performed:
    * same directory AND (created after our launch, or the exact id we resumed
@@ -148,22 +192,21 @@ export class OpenCodeBackend implements CliBackend {
    * listing is global; `--continue`'s apparent per-cwd behavior is an
    * undocumented server-scoping side effect we deliberately do not rely on.
    */
-  private discoverSessionId(): string | null {
-    if (!this.workingDirectory || this.launchedAt === null) return null;
-    const sessions = this.listSessions();
+  private async discoverSessionId(launch: { workingDirectory: string; launchedAt: number; launchedSessionId: string | null }): Promise<string | null> {
+    const sessions = await this.listSessions(launch.workingDirectory);
     if (!sessions) return null;
     const candidates = sessions
-      .filter(s => s.directory === this.workingDirectory && !s.parentID)
+      .filter(s => s.directory === launch.workingDirectory && !s.parentID)
       .sort((a, b) => (b.updated ?? 0) - (a.updated ?? 0));
     for (const session of candidates) {
-      if (session.id === this.launchedSessionId) return session.id;
-      if ((session.created ?? 0) >= this.launchedAt) return session.id;
+      if (session.id === launch.launchedSessionId) return session.id;
+      if ((session.created ?? 0) >= launch.launchedAt) return session.id;
     }
     return null;
   }
 
   /**
-   * `opencode session list --format json`, bounded and best-effort. Split out
+   * `opencode session list --format json`, bounded and best-effort, off the event loop. Split out
    * as the process-spawning seam so tests stub it with fixture rows instead
    * of a real CLI.
    *
@@ -174,15 +217,14 @@ export class OpenCodeBackend implements CliBackend {
    * exact-directory filter in discoverSessionId still applies on top, because
    * a project can span several directories (worktrees, monorepo).
    */
-  private listSessions(): Array<{ id: string; directory: string; created?: number; updated?: number; parentID?: string }> | null {
-    if (!this.workingDirectory) return null;
+  private async listSessions(workingDirectory: string): Promise<Array<{ id: string; directory: string; created?: number; updated?: number; parentID?: string }> | null> {
     try {
-      const out = execFileSync(
+      const { stdout } = await promisify(execFile)(
         this.binaryPath,
         ["session", "list", "--format", "json", "-n", "50"],
-        { encoding: "utf-8", timeout: 15_000, stdio: ["ignore", "pipe", "ignore"], cwd: this.workingDirectory },
+        { encoding: "utf-8", timeout: 15_000, cwd: workingDirectory },
       );
-      const parsed = JSON.parse(out);
+      const parsed = JSON.parse(stdout);
       return Array.isArray(parsed) ? parsed : null;
     } catch {
       // CLI missing/slow/failed, or the working directory is gone — resume is
