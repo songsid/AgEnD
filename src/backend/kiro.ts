@@ -530,6 +530,13 @@ export const KIRO_RESUME_STARTUP_BUDGET_MS = 60_000;
 
 export class KiroBackend implements CliBackend {
   readonly binaryName = "kiro-cli";
+  private replyGuardOptedIn = false;
+
+  /** Only legacy/TUI launch plans have verified turn-end signals (#1144). */
+  get replyCompletionGuard(): boolean {
+    return this.replyGuardOptedIn;
+  }
+
   private binaryPath: string;
   private compatibility: KiroCliCompatibility;
   private compatibilityCacheKey?: string;
@@ -630,6 +637,9 @@ export class KiroBackend implements CliBackend {
   }
 
   buildCommand(config: CliBackendConfig): string {
+    // Fail closed before a launch, including refused/failed command builds.
+    // V3 has a different engine and no verified completion signal yet (#1144).
+    this.replyGuardOptedIn = false;
     const ui = config.kiroUi ?? "legacy";
     // Every launch re-reads the binary generation: a crash-respawn reuses this
     // backend, and kiro-cli may have replaced itself in place since the last
@@ -694,7 +704,9 @@ export class KiroBackend implements CliBackend {
     // third-party server now costs only its own tools; whether AgEnD's fleet
     // server connected is the daemon's check (fleet MCP startup watch), which
     // knows which server is which.
-    return this.withCredentialProfile(config, cmd);
+    const command = this.withCredentialProfile(config, cmd);
+    this.replyGuardOptedIn = plan.ui === "legacy" || plan.ui === "tui";
+    return command;
   }
 
   /**
@@ -845,7 +857,11 @@ export class KiroBackend implements CliBackend {
     // The live spinner is the last non-blank row in every captured working
     // frame; require that position so completed-turn history cannot veto ready.
     // Use horizontal whitespace explicitly — `\s` would cross row boundaries.
-    return /(?:^|\n)[ \t]*[\u2800-\u28ff][ \t]+(?:Thinking|Working)(?:\.{3}|…)[ \t]*(?:\n[ \t]*)*$/i;
+    // TUI/v2 also leaves its context-ready indicator visible while working.
+    // Live 2.27.1 capture: the bottom composer becomes "› Kiro is working ·
+    // 1s · Type to steer · Ctrl+S to queue". Only that live bottom row vetoes
+    // idle; historical copies above a fresh prompt must not pin it busy.
+    return /(?:^|\n)[ \t]*[\u2800-\u28ff][ \t]+(?:Thinking|Working)(?:\.{3}|…)[ \t]*(?:\n[ \t]*)*$|(?:^|\n)[ \t]*›[ \t]+Kiro is working[ \t]+·[^\n]*(?:\n[ \t]*)*$/i;
   }
 
   /**

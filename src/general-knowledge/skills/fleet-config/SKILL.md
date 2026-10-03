@@ -48,8 +48,9 @@ Leave unset (or `legacy`) unless testing a newer profile. Ignored by other backe
 
 `reply_completion_guard` detects a human-channel turn that ended without a
 delivered reply and asks the agent to send one bounded recovery reply. It is
-enabled by default and currently takes effect only for Claude Code in MCP mode;
-other backends keep the setting but do not claim the protection is active.
+enabled by default for Claude Code in MCP mode and Kiro legacy/TUI in MCP mode.
+Kiro v3 is excluded because its turn-end signal is unverified. Codex and other
+backends keep the setting but do not claim the protection is active.
 
 Prefer a narrow per-instance override when one worker repeatedly finishes work
 without posting its conclusion:
