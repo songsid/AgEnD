@@ -33,9 +33,12 @@ import {
   lookupTargetVersion,
   reportUpdateRestart,
   shouldSkipUpdate,
+  runningFleetPredatesInstall,
+  processStartMs,
 } from "./update-check.js";
 import { clearUpdateMarker, markUpdateInProgress, setUpdateProgressStage } from "./update-marker.js";
-import { acquireFleetLock, releaseProcessFleetLock, setProcessFleetLock } from "./fleet-lock.js";
+import { acquireFleetLock, isFleetStartCommandLine, readProcessCommandLine, releaseProcessFleetLock, setProcessFleetLock } from "./fleet-lock.js";
+import { limitFleetCoreDumps } from "./coredump-filter.js";
 import { SYSTEMD_RESTART_TIMEOUT_MS } from "./service-installer.js";
 import {
   selectSystemdRestartTarget,
@@ -71,6 +74,9 @@ function claimFleetSingleton(): boolean {
   try {
     setProcessFleetLock(acquireFleetLock(DATA_DIR));
     process.once("exit", () => { releaseProcessFleetLock(); });
+    // Before anything is spawned, so a tmux server the fleet starts inherits it
+    // (each CLI launch also sets it in its pane: coredumpFilterLaunchPrefix).
+    limitFleetCoreDumps({ info: m => console.log(m), error: m => console.error(m) });
     return true;
   } catch (err) {
     console.error((err as Error).message);
@@ -1338,7 +1344,48 @@ program
     const pkg = `@songsid/agend@${tag}`;
     const targetVersion = lookupTargetVersion(tag);
 
+    // The restart stage, shared by a real update and by the stale-fleet case.
+    const restartFleetForUpdate = (command: string, args: string[], version: string): void => {
+      console.log("  Restarting fleet...");
+      setUpdateProgressStage(DATA_DIR, "stopping", { version });
+      // `agend restart` may synchronously wait for a Type=notify service to finish
+      // a multi-minute stop/start and send READY=1. Keep this parent wrapper alive
+      // longer than the restart command's own bounded wait.
+      const restartResult = spawnSync(command, [...args, "restart"], {
+        encoding: "utf-8",
+        timeout: SYSTEMD_RESTART_TIMEOUT_MS + 60_000,
+        stdio: "inherit",
+      });
+      if (!reportUpdateRestart(restartResult.status)) {
+        // No new fleet is coming up to clear the marker — do it here, or the next
+        // 15 minutes of genuine crashes would go unreported.
+        if (!setUpdateProgressStage(DATA_DIR, "failed", { error: "fleet restart failed" })) {
+          clearUpdateMarker(DATA_DIR);
+        }
+        process.exitCode = 1;
+      }
+    };
+
     if (shouldSkipUpdate(pkgVersion, targetVersion, opts.force)) {
+      // Installed already — but is the running fleet? An update whose restart
+      // failed leaves the old process running against the new files (#1113
+      // hotfix); "already up to date" must not leave it there.
+      let fleetPid: number | null = null;
+      try { fleetPid = Number.parseInt(readFileSync(join(DATA_DIR, "fleet.pid"), "utf-8").trim(), 10) || null; } catch { /* not running */ }
+      let installedAtMs = Number.NaN;
+      // When this code landed on disk: npm writes the package's files at install.
+      try { installedAtMs = statSync(fileURLToPath(import.meta.url)).mtimeMs; } catch { /* unknown */ }
+      if (runningFleetPredatesInstall({
+        pid: fleetPid,
+        installedAtMs,
+        processStartMs: pid => processStartMs(pid),
+        isFleetProcess: pid => isFleetStartCommandLine(readProcessCommandLine(pid)),
+      })) {
+        console.log(`\n  ✓ v${pkgVersion} is installed, but the running fleet started before it was — restarting it onto v${pkgVersion}.\n`);
+        markUpdateInProgress(DATA_DIR);
+        restartFleetForUpdate(process.execPath, [process.argv[1]], pkgVersion);
+        return;
+      }
       console.log(`\n  ✓ Already up to date (v${pkgVersion})\n`);
       setUpdateProgressStage(DATA_DIR, "complete", { version: pkgVersion });
       return;
@@ -1478,24 +1525,7 @@ program
     // that may be missing or buggy on the version being upgraded from. `agend
     // restart` (new binary) does the 4-environment service detection (system
     // systemd → user systemd → launchd → detached pid).
-    console.log("  Restarting fleet...");
-    setUpdateProgressStage(DATA_DIR, "stopping", { version: newVersion.replace(/^v/, "") });
-    // `agend restart` may synchronously wait for a Type=notify service to finish
-    // a multi-minute stop/start and send READY=1. Keep this parent wrapper alive
-    // longer than the restart command's own bounded wait.
-    const restartResult = spawnSync(agendPath, ["restart"], {
-      encoding: "utf-8",
-      timeout: SYSTEMD_RESTART_TIMEOUT_MS + 60_000,
-      stdio: "inherit",
-    });
-    if (!reportUpdateRestart(restartResult.status)) {
-      // No new fleet is coming up to clear the marker — do it here, or the next
-      // 15 minutes of genuine crashes would go unreported.
-      if (!setUpdateProgressStage(DATA_DIR, "failed", { error: "fleet restart failed" })) {
-        clearUpdateMarker(DATA_DIR);
-      }
-      process.exitCode = 1;
-    }
+    restartFleetForUpdate(agendPath, [], newVersion.replace(/^v/, ""));
   });
 
 program
@@ -1788,33 +1818,23 @@ program
       // Re-judged after the reload, against what systemd now applies: an
       // operator's own mask (anywhere — main file, unit or type drop-in, or a
       // trailing empty assignment that restores the inherited one) is warned
-      // about, never gated. Otherwise the LOADED value must be 0.
+      // about. Nothing about CoredumpFilter gates the restart.
       let filterCustom = hardening.CoredumpFilter === "custom";
       if (unitPath && hardening.CoredumpFilter) {
         try { filterCustom = unitCoredumpFilterState(readFileSync(unitPath, "utf8"), dropInsFor(unitPath, loadedDropIns())) === "custom"; } catch { /* keep the pre-reload answer */ }
       }
       if (hardening.CoredumpFilter && !filterCustom) {
-        // Gated like KillMode (#1113): a restart whose unit systemd has not
-        // loaded with CoredumpFilter=0 is the restart that can leave GB core
-        // dumps behind. Only where systemd knows the directive (246+): an
-        // older systemd ignores it, and refusing every restart there would
-        // cost far more than the dump size.
-        let systemdVersion = 0;
-        try {
-          const banner = execSync("systemctl --version", { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 5000 });
-          systemdVersion = Number(/^systemd\s+(\d+)/m.exec(banner)?.[1] ?? 0);
-        } catch { /* unknown → treated as supporting it */ }
-        const supported = systemdVersion === 0 || systemdVersion >= 246;
+        // Informational only — NOT a gate (#1113 hotfix). systemd 249 silently
+        // ignores CoredumpFilter= in a unit file (a transient `systemd-run -p`
+        // honours it, a reloaded unit file does not), so a loaded-value gate
+        // refused every restart there and stranded `agend update` on the old
+        // fleet. The fleet now sets /proc/self/coredump_filter to 0 itself at
+        // startup and in every CLI launch command; the unit line
+        // stays for systemd versions that do apply it.
         let filter = "";
         try { filter = execSync(`systemctl${scopeFlag} show -p CoredumpFilter --value ${systemdTarget.unit}`, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 5000 }).trim(); } catch { /* unknown */ }
         if (!/^(?:0x)?0+$/i.test(filter)) {
-          if (supported) {
-            console.error(`  ✗ systemd has ${filter ? `CoredumpFilter=${filter}` : "an unknown CoredumpFilter"} loaded for ${systemdTarget.unit}${reloaded ? "" : ` (\`${reloadCmd}\` failed)`}, so a crash could still write a multi-GB core dump (#1113).`);
-            console.error(`    Not restarting. Make sure ${unitPath ?? "the unit"} has CoredumpFilter=0 under [Service], run \`${reloadCmd}\`, then \`agend restart\`.`);
-            process.exitCode = 1;
-            return;
-          }
-          console.log(`  ⚠ systemd ${systemdVersion} predates CoredumpFilter (246); crashes may still write full-size core dumps (#1113). Restarting anyway.`);
+          console.log(`  ℹ systemd has ${filter ? `CoredumpFilter=${filter}` : "no CoredumpFilter"} loaded for ${systemdTarget.unit} (some systemd versions ignore it in unit files); the fleet sets coredump_filter=0 itself at startup (#1113).`);
         }
       }
       if (filterCustom) console.log(`  ⚠ ${unitPath} sets its own CoredumpFilter; left as is. CoredumpFilter=0 keeps crash dumps to a few KB (#1113).`);
@@ -1848,15 +1868,22 @@ program
     // 4. Detached process tracked by fleet.pid (no service manager)
     if (existsSync(pidPath)) {
       const oldPid = parseInt(readFileSync(pidPath, "utf-8").trim(), 10);
-      let alive = false;
-      if (oldPid) { try { process.kill(oldPid, 0); alive = true; } catch { /* dead or not ours */ } }
-      if (alive) {
+      // Only signal a process confirmed to BE this fleet (#1125 review): a
+      // stale fleet.pid may name a recycled pid — an unrelated process. Not
+      // confirmed (gone, or something else) is treated as a stale pid file.
+      const isOurFleet = () => {
+        try { process.kill(oldPid, 0); } catch { return false; }
+        return isFleetStartCommandLine(readProcessCommandLine(oldPid));
+      };
+      if (oldPid && isOurFleet()) {
         try { process.kill(oldPid, "SIGTERM"); } catch { /* already gone */ }
         for (let i = 0; i < 20; i++) {
           try { process.kill(oldPid, 0); } catch { break; }
           spawnSync("sleep", ["0.5"]);
         }
-        try { process.kill(oldPid, "SIGKILL"); } catch { /* already gone */ }
+        // Re-confirmed right before the SIGKILL: the pid may have been reused
+        // during the wait.
+        if (isOurFleet()) { try { process.kill(oldPid, "SIGKILL"); } catch { /* already gone */ } }
         try { unlinkSync(pidPath); } catch { /* best effort */ }
         const child = spawn("sh", ["-c", "agend fleet start"], { detached: true, stdio: "ignore" });
         child.unref();

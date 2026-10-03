@@ -103,6 +103,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `cloudflared` on `PATH`. See "Finishing a /login away from the machine" in `docs/configuration.md`.
 
 ### Fixed
+- **`agend update` / `/update` to 2.1.10-beta.2 failed with "fleet restart failed" on systemd hosts,
+  and left the old fleet running (#1113 hotfix).** systemd 249 silently ignores `CoredumpFilter=`
+  in a unit file, so beta.2's check that systemd had loaded `CoredumpFilter=0` refused every
+  `agend restart`. The check is gone (a loaded value other than 0 is only reported). On Linux the
+  fleet now sets its own `/proc/self/coredump_filter` to 0 at startup, and every CLI launch sets it
+  in the pane's shell first — so crash dumps stay a few KB on any systemd, including in a tmux
+  server the fleet did not start. `AGEND_KEEP_COREDUMP_FILTER=1` turns this off (processes keep the
+  mask they inherit, which is not necessarily a full dump). `agend update` also restarts a fleet
+  that started before the installed version instead of reporting "already up to date" — only a
+  process confirmed by its command line to be the fleet; a stale `fleet.pid` naming any other
+  process is never restarted or signalled — so a fleet left behind by a failed restart catches up.
 - **A fleet started with a throwaway `HOME` no longer joins the real fleet's tmux server (#1126).**
   Only the user's real `~/.agend` (from the password database, not `$HOME`) uses tmux's default
   socket (if that database cannot be read, no home is the default). Before, a fleet run with `HOME` and `AGEND_HOME` both pointed at a scratch directory

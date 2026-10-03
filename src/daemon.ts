@@ -7,6 +7,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import type { InstanceConfig, RotationSnapshot, RotationSnapshotEvent } from "./types.js";
 import { rotateLogIfNeeded, type Logger } from "./logger.js";
+import { coredumpFilterLaunchPrefix } from "./coredump-filter.js";
 import { mcpServerState } from "./mcp-liveness.js";
 import { clearPausedMarker, writePausedMarker, type PauseReason } from "./pause-marker.js";
 import { TmuxManager, resolveTmuxLogicalSize } from "./tmux-manager.js";
@@ -8362,7 +8363,10 @@ export class Daemon extends EventEmitter {
         clearMuseUsageSnapshot(this.instanceDir);
       }
     }
-    const cmd = `${envPrefix} ` + this.backend!.buildCommand(launchConfig);
+    // The CLI's own shell sets a zero coredump_filter first (#1113): this pane
+    // may belong to a tmux server the fleet did not start, which would hand
+    // the CLI its own (full) filter instead of the fleet's.
+    const cmd = coredumpFilterLaunchPrefix() + `${envPrefix} ` + this.backend!.buildCommand(launchConfig);
     // Every launched command re-arms the passive-transient check, including a
     // retry inside the same spawn: its load is a new one.
     this.launchAttempt++;
