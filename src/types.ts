@@ -79,8 +79,14 @@ export interface ChannelConfig {
 
 export type DeliveryWorkerMode = "off" | "wake_only" | "on";
 export const DELIVERY_WORKER_MODES: readonly DeliveryWorkerMode[] = ["off", "wake_only", "on"];
+export const DEFAULT_DELIVERY_WORKER_MODE: DeliveryWorkerMode = "wake_only";
 
-/** The delivery_worker mode for `name`: instance override, then fleet default, then "off". */
+/**
+ * The delivery_worker mode for `name`: instance override, then fleet default,
+ * then `wake_only` (#1129). The built-in default used to be `off`, which
+ * never woke a target paused across a fleet restart for queued work: the
+ * delegated task waited until someone ran /wake. An explicit `off` is kept.
+ */
 export function resolveDeliveryWorkerMode(
   config: { defaults?: { delivery_worker?: unknown }; instances?: Record<string, { delivery_worker?: unknown }> } | null | undefined,
   name: string,
@@ -88,7 +94,7 @@ export function resolveDeliveryWorkerMode(
   for (const value of [config?.instances?.[name]?.delivery_worker, config?.defaults?.delivery_worker]) {
     if (typeof value === "string" && (DELIVERY_WORKER_MODES as readonly string[]).includes(value)) return value as DeliveryWorkerMode;
   }
-  return "off";
+  return DEFAULT_DELIVERY_WORKER_MODE;
 }
 
 export interface InstanceConfig {
@@ -110,10 +116,10 @@ export interface InstanceConfig {
   warm_overflow?: number;
   /**
    * Phase 2 delivery owner for this target (docs/design/phase2-submit-contract.md):
-   * `off` (default) keeps the current outbox pump, `wake_only` adds the wake
-   * coordinator (2b), `on` hands claim/submit to the per-target worker (2c).
-   * Read from `defaults.delivery_worker` with a per-instance override. In 2a
-   * only the setting exists — every mode behaves as `off`.
+   * `off` keeps the outbox pump alone, `wake_only` (default since #1129) adds
+   * the wake coordinator (2b), `on` hands claim/submit to the per-target
+   * worker (2c). Read from `defaults.delivery_worker` with a per-instance
+   * override.
    */
   delivery_worker?: DeliveryWorkerMode;
   /** Agent display name (e.g. "Kuro", "Luna") — chosen by the agent itself */

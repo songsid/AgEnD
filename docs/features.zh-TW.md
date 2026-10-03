@@ -566,7 +566,7 @@ Instance 關閉使用併發數 5 加速 `agend fleet stop` 和 `agend stop`。sy
 
 自 2.1.9 起，重啟一個暫停中的 instance 會把它喚醒，而且被喚醒的 instance 會保持清醒直到排隊的工作做完（來自其他 instance 的工作也算活動）。同一個 instance 的啟動、停止、喚醒、重啟一次只會跑一個。
 
-在 2.1.9 以前，傳給一個跨 fleet 重啟仍保持暫停的 instance 的跨 instance 訊息，會一直排隊到有人手動喚醒它。選用設定 `delivery_worker` 解決這個問題：`off`（預設）維持原本的投遞路徑；`wake_only` 會在有排隊工作時喚醒暫停中的目標（走跟 `/wake` 相同的路徑、失敗會退避重試、連續三次失敗通知雙方 topic、不會喚醒因登入失敗而暫停的 instance）；`on`（canary）另外讓一個專屬 worker 負責該目標的投遞，等 CLI 可以接受輸入後一次交付一則。設為 `wake_only` 或 `on` 時，`defaults.warm_overflow`（預設 2）是為了喚醒排隊目標，`warm_cap` 最多可以超出的數量。
+傳給暫停中 instance 的跨 instance 訊息（`send_to_instance`、`delegate_task` 等）會把它喚醒，包括跨 fleet 重啟仍保持暫停的 instance。這是預設行為（`delivery_worker: wake_only`，#1129 起）；設為 `off` 時，傳給跨 fleet 重啟仍暫停的 instance 的訊息，會一直排隊到有人手動喚醒它（fleet 啟動後才暫停的 instance，訊息投遞時仍會被喚醒）。`wake_only`（預設）會在有排隊工作時喚醒暫停中的目標（走跟 `/wake` 相同的路徑、失敗會退避重試、連續三次失敗通知雙方 topic、不會喚醒因登入失敗而暫停的 instance）；`on`（canary）另外讓一個專屬 worker 負責該目標的投遞，等 CLI 可以接受輸入後一次交付一則。設為 `wake_only` 或 `on` 時，`defaults.warm_overflow`（預設 2）是為了喚醒排隊目標，`warm_cap` 最多可以超出的數量；上限加超出額度都滿、又沒有閒置 instance 可暫停時，對暫停中 instance 的 `/wake` 或訊息會被拒絕，而不是超出上限。
 
 ## Beta 更新頻道
 

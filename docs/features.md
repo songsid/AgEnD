@@ -786,19 +786,19 @@ defaults:
 
 Since 2.1.9, restarting a paused instance wakes it, and a woken instance stays awake until its queued work is done: work from other instances counts as activity. Start, stop, wake and restart of one instance run one at a time.
 
-Before 2.1.9, a cross-instance message to an instance that had been paused across a fleet restart stayed queued until someone woke it by hand. The opt-in `delivery_worker` setting fixes that:
+A cross-instance message (`send_to_instance`, `delegate_task`, …) to a paused instance wakes it, including an instance that has stayed paused across a fleet restart. That is the default (`wake_only`, since #1129). Under `off`, a message to an instance paused across a fleet restart stays queued until someone wakes it by hand (one paused since the fleet started is still woken when its message is delivered).
 
 | Value | What it does |
 |-------|--------------|
-| `off` (default) | Every delivery path stays as it was. |
-| `wake_only` | A wake coordinator wakes a paused target when queued work is waiting, through the same single wake `/wake` uses. It retries with backoff, tells both topics after three failures in a row, and never wakes an instance paused for a login failure. |
+| `wake_only` (default) | A wake coordinator wakes a paused target when queued work is waiting, through the same single wake `/wake` uses. It retries with backoff, tells both topics after three failures in a row, and never wakes an instance paused for a login failure. |
 | `on` (canary) | As `wake_only`, and one worker owns the target's delivery lane: it waits until the CLI accepts input, then hands over one message at a time. |
+| `off` | No wake for queued work: an instance paused across a fleet restart keeps its messages queued until a manual `/wake` (the behaviour before #1129). |
 
-With `wake_only` or `on`, `defaults.warm_overflow` (default 2) is how far `warm_cap` may be exceeded to wake a target for queued work.
+With `wake_only` or `on`, `defaults.warm_overflow` (default 2) is how far `warm_cap` may be exceeded to wake a target for queued work. When `warm_cap` plus overflow is full and no idle instance can be paused, a `/wake` or a message to a paused instance is refused instead of exceeding the cap.
 
 ```yaml
 defaults:
-  delivery_worker: wake_only
+  delivery_worker: off   # opt out of waking for queued work
 instances:
   my-agent:
     delivery_worker: on   # per-instance override

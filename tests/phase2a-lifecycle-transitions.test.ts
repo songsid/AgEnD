@@ -355,15 +355,20 @@ describe("work lease (design §1.6)", () => {
   });
 });
 
-describe("delivery_worker flag skeleton (2a: setting only)", async () => {
+describe("delivery_worker setting", async () => {
   const { resolveDeliveryWorkerMode } = await import("../src/types.js");
   const { validateFleetConfig } = await import("../src/config-validator.js");
 
-  it("defaults to off; instance override beats the fleet default; junk is ignored", () => {
-    expect(resolveDeliveryWorkerMode({}, "w")).toBe("off");
+  it("defaults to wake_only (#1129); an explicit off is kept; instance override beats the fleet default; junk is ignored", () => {
+    expect(resolveDeliveryWorkerMode({}, "w")).toBe("wake_only");
+    expect(resolveDeliveryWorkerMode(null, "w")).toBe("wake_only");
+    expect(resolveDeliveryWorkerMode({ defaults: {}, instances: { w: {} } }, "w")).toBe("wake_only");
+    expect(resolveDeliveryWorkerMode({ defaults: { delivery_worker: "off" } }, "w")).toBe("off");
+    expect(resolveDeliveryWorkerMode({ instances: { w: { delivery_worker: "off" } } }, "w")).toBe("off");
+    expect(resolveDeliveryWorkerMode({ defaults: { delivery_worker: "wake_only" }, instances: { w: { delivery_worker: "off" } } }, "w")).toBe("off");
     expect(resolveDeliveryWorkerMode({ defaults: { delivery_worker: "wake_only" } }, "w")).toBe("wake_only");
     expect(resolveDeliveryWorkerMode({ defaults: { delivery_worker: "wake_only" }, instances: { w: { delivery_worker: "on" } } }, "w")).toBe("on");
-    expect(resolveDeliveryWorkerMode({ defaults: { delivery_worker: "yes" } }, "w")).toBe("off");
+    expect(resolveDeliveryWorkerMode({ defaults: { delivery_worker: "yes" } }, "w")).toBe("wake_only");
   });
 
   it("the validator rejects an unknown mode at both levels", () => {
