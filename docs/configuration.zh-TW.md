@@ -67,6 +67,14 @@ health_port: 19280
 
 ### 人不在機器旁完成 /login（公開連結）
 
+**簡單來說——要讓 `/login kiro` 有公開連結：**
+
+1. 從 [Cloudflare 的下載頁](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)安裝 `cloudflared`，放進 **fleet 的** `PATH` 裡的某個目錄（不需要 sudo——它是單一執行檔，例如放在 `~/.local/bin/cloudflared` 並設為可執行）。以 systemd 執行時，fleet 的 `PATH` 是安裝服務當時記錄下來的那一個。
+2. 在 fleet.yaml 的 `web_terminal.tunnel` 底下加上 `allow_public: true`（見下方），然後執行 `agend reload`。
+3. 執行 `/login kiro`（或 `/login` 後選 kiro-cli），按下 **開啟公開連結**。連結和存取 token 會以兩則私訊由 bot 傳給你。
+
+細節，以及這會公開什麼：
+
 預設 `/login` 的終端連結只能在這台機器上用（SSH 轉發、tailscale、你自己的反向代理）。手機連不到時，`kiro-cli` 登入可以透過
 Cloudflare Quick Tunnel 開一個臨時的**公開 https 連結**。預設關閉：
 

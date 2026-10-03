@@ -35,6 +35,17 @@ Pick the command whose label names the fleet you want to change.
 
 ### Finishing a /login away from the machine (public link)
 
+**In short — to get a public link for `/login kiro`:**
+
+1. Install `cloudflared` from [Cloudflare's downloads](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)
+   into a directory on **the fleet's** `PATH` (no sudo needed — a single binary, e.g. `~/.local/bin/cloudflared`,
+   made executable). Under systemd the fleet's `PATH` is the one recorded when the service was installed.
+2. Add `allow_public: true` under `web_terminal.tunnel` in fleet.yaml (below) and run `agend reload`.
+3. Run `/login kiro` (or `/login` and pick kiro-cli), then press **Open public link**. The link and the access
+   token arrive as two private messages from the bot.
+
+The details, and what this exposes:
+
 By default a `/login` terminal link only works on this machine (SSH forwarding, tailscale, a proxy you run).
 For a phone that cannot reach it, a `kiro-cli` login can open a temporary **public https link** through a
 Cloudflare Quick Tunnel. It is off unless you turn it on:
