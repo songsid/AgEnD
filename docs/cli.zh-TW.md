@@ -94,4 +94,6 @@ agend export [path]             # 匯出配置以用於遷移
 agend import <file>             # 從匯出檔案匯入配置
 ```
 
+同一次遷移也會替舊的 unit 補上 #1113 的設定：`CoredumpFilter=0` 讓 crash dump 只有幾 KB（WSL 會把所有 crash 交給 WSL 的 crash collector，它不理會 `LimitCORE`；kiro-cli 和 fleet 本身都曾留下約 1GB 和 450MB 的 dump）；`LimitCORE=0` 適用於直接寫 core 檔的系統；`TimeoutStartSec=15min` 取代原本不設上限的啟動逾時；`StartLimitIntervalSec=30min` 搭配 `StartLimitBurst=4`，讓 fleet 在 30 分鐘內失敗 4 次後，systemd 就不再自動重啟。`agend restart` 會先執行 `systemctl reset-failed`，所以不受這個限制影響；直接用 `systemctl --user restart` 則會受限。重新載入後，`agend restart` 會確認 systemd 已載入 `CoredumpFilter=0`，否則拒絕重啟；systemd 246 以前不認得這個設定，只會提出警告。你自己設定的值不會被更動。
+
 在 Linux 上，systemd unit 使用 `KillMode=mixed`：停止或更新服務時會先停 fleet，再由 fleet 依序結束各個 CLI（#908）。`agend restart`（`agend update` 也會執行它）會替舊的 unit 補上這一行並重新載入 systemd；如果做不到，會拒絕重啟並說明怎麼手動處理。你自己設定的 `KillMode` 不會被更動。

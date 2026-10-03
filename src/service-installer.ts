@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync, readdirSync, renameSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync, readdirSync, renameSync, statSync, chmodSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync, execSync, spawnSync } from "node:child_process";
@@ -248,6 +248,25 @@ export function installService(vars: ServiceVars): string {
 }
 
 /**
+ * Replace a unit file atomically without widening its permissions: the temp
+ * file gets the original's mode before the rename. A unit can carry
+ * Environment= credentials, and a fresh temp file under umask 022 would turn a
+ * 0600 unit into 0644 (#1122 review).
+ */
+function replaceUnitFile(unitPath: string, text: string): void {
+  const mode = statSync(unitPath).mode & 0o7777;
+  const tmp = `${unitPath}.agend-${process.pid}.tmp`;
+  writeFileSync(tmp, text, { mode: 0o600 });
+  try {
+    chmodSync(tmp, mode);
+    renameSync(tmp, unitPath);
+  } catch (err) {
+    try { unlinkSync(tmp); } catch { /* already gone */ }
+    throw err;
+  }
+}
+
+/**
  * #908: bring an installed AgEnD unit up to `KillMode=mixed` before it is
  * restarted. Units written before this have none, so systemd used its default
  * (control-group) and SIGTERMed the tmux server and every CLI at the same
@@ -268,10 +287,205 @@ export function ensureSystemdKillModeMixed(unitPath: string): "added" | "present
   let at = end;
   while (at > service + 1 && lines[at - 1].trim() === "") at--;
   lines.splice(at, 0, "KillMode=mixed");
-  const tmp = `${unitPath}.agend-${process.pid}.tmp`;
-  writeFileSync(tmp, lines.join("\n"));
-  renameSync(tmp, unitPath);
+  replaceUnitFile(unitPath, lines.join("\n"));
   return "added";
+}
+
+type UnitSectionName = "Unit" | "Service";
+
+interface UnitDirectivePolicy {
+  section: UnitSectionName;
+  key: string;
+  value: string;
+  /**
+   * Values AgEnD itself once wrote, which are upgraded rather than treated as
+   * the operator's choice. Anything else that is present is left alone.
+   */
+  legacy?: readonly string[];
+  /** Values that already mean `value` (e.g. `0x0` for `0`). */
+  equivalent?: (value: string) => boolean;
+  /**
+   * The directive accumulates (systemd ORs CoredumpFilter assignments, an
+   * empty one resets them) and may come from drop-ins applied after the main
+   * file: classify it from all of them, not from its first line.
+   */
+  allAssignments?: boolean;
+}
+
+/** `[Service]` assignments of `key`, in order, from one unit file's text. */
+function serviceAssignments(text: string, key: string): string[] {
+  const out: string[] = [];
+  let inService = false;
+  const pattern = new RegExp(`^\\s*${key}\\s*=\\s*(.*?)\\s*$`);
+  for (const line of text.split("\n")) {
+    const section = /^\s*\[(.+)\]\s*$/.exec(line);
+    if (section) { inService = section[1] === "Service"; continue; }
+    if (!inService) continue;
+    const m = pattern.exec(line);
+    if (m) out.push(m[1]);
+  }
+  return out;
+}
+
+/** Unit search path for the scope a unit file lives in, highest precedence first. */
+function unitLoadPath(unitPath: string): string[] {
+  const user = unitPath.includes(`${join(".config", "systemd", "user")}`) || unitPath.startsWith("/etc/systemd/user/")
+    || unitPath.startsWith("/usr/lib/systemd/user/");
+  const dirs = user
+    ? [join(homedir(), ".config", "systemd", "user"), "/etc/systemd/user", "/run/systemd/user", "/usr/lib/systemd/user"]
+    : ["/etc/systemd/system", "/run/systemd/system", "/usr/lib/systemd/system", "/lib/systemd/system"];
+  const own = dirname(unitPath);
+  return dirs.includes(own) ? dirs : [own, ...dirs];
+}
+
+/**
+ * The drop-in files systemd applies to a unit file, as systemd 249's
+ * dropin.c builds them: every unit-specific `<name>.service.d/` across the
+ * load path first, then the type-wide `service.d/` across the load path ("the
+ * most generic, overridable by more specific drop-ins"); among files with the
+ * same name the first directory in that order wins; the survivors are applied
+ * in file-name order (#1122 review).
+ *
+ * `reported` are paths systemd itself listed (DropInPaths): they join the
+ * same ranking — by their directory if it is one of the above, otherwise
+ * after the known directories of their kind — so a file systemd loaded from a
+ * directory AgEnD does not scan still counts, and one the ranking shadows does
+ * not come back. Files that no longer exist are dropped.
+ */
+export function effectiveUnitDropIns(unitPath: string, reported: readonly string[] = []): string[] {
+  const name = unitPath.split("/").pop()!;
+  const loadPath = unitLoadPath(unitPath);
+  const dirs = [...loadPath.map(d => join(d, `${name}.d`)), ...loadPath.map(d => join(d, "service.d"))];
+  const rank = (path: string): number => {
+    const dir = dirname(path);
+    const known = dirs.indexOf(dir);
+    if (known >= 0) return known;
+    // Unknown directory: after the known ones of its own kind.
+    return dir.endsWith(`/${name}.d`) ? loadPath.length - 0.5 : dirs.length + 0.5;
+  };
+  const files: string[] = [];
+  for (const dir of dirs) {
+    let names: string[];
+    try { names = readdirSync(dir).filter(n => n.endsWith(".conf")); } catch { continue; }
+    for (const n of names) files.push(join(dir, n));
+  }
+  for (const path of reported) if (path.endsWith(".conf") && existsSync(path)) files.push(path);
+  const winner = new Map<string, string>();
+  for (const path of [...new Set(files)].sort((a, b) => rank(a) - rank(b))) {
+    const base = path.split("/").pop()!;
+    if (!winner.has(base)) winner.set(base, path);
+  }
+  return [...winner.keys()].sort().map(base => winner.get(base)!);
+}
+
+/** Drop-ins found on disk only (no systemd report). */
+export function unitDropInCandidates(unitPath: string): string[] {
+  return effectiveUnitDropIns(unitPath);
+}
+
+export type CoredumpFilterState = "none" | "zero" | "custom";
+
+/**
+ * What CoredumpFilter the unit ends up with, from the main file's [Service]
+ * sections and then each drop-in, in order. Explicit masks OR together. An
+ * EMPTY assignment drops every mask before it and restores the inherited value
+ * (the manager's own filter, normally 0x33): "zero" only if an explicit 0 comes
+ * after it. "none" = never set; "custom" = the result is not AgEnD's 0 — the
+ * operator's call, warned about but never gated.
+ */
+export function unitCoredumpFilterState(mainText: string, dropInPaths: readonly string[]): CoredumpFilterState {
+  const texts = [mainText];
+  for (const path of dropInPaths) {
+    try { texts.push(readFileSync(path, "utf-8")); } catch { /* unreadable: systemd skips it too */ }
+  }
+  const assignments = texts.flatMap(t => serviceAssignments(t, "CoredumpFilter"));
+  if (assignments.length === 0) return "none";
+  let inherited = false;
+  let nonzero = false;
+  for (const value of assignments) {
+    if (value === "") { inherited = true; nonzero = false; continue; }
+    inherited = false;
+    if (!/^(?:0x)?0+$/i.test(value)) nonzero = true;
+  }
+  return inherited || nonzero ? "custom" : "zero";
+}
+
+const UNIT_HARDENING: readonly UnitDirectivePolicy[] = [
+  { section: "Unit", key: "StartLimitIntervalSec", value: "30min" },
+  { section: "Unit", key: "StartLimitBurst", value: "4" },
+  { section: "Service", key: "TimeoutStartSec", value: "15min", legacy: ["0"] },
+  { section: "Service", key: "KillMode", value: "mixed" },
+  // Classified from every assignment, drop-ins included: see unitCoredumpFilterState.
+  { section: "Service", key: "CoredumpFilter", value: "0", equivalent: v => /^(?:0x)?0+$/i.test(v), allAssignments: true },
+  { section: "Service", key: "LimitCORE", value: "0" },
+];
+
+export type UnitDirectiveOutcome = "added" | "upgraded" | "present" | "custom";
+
+export type UnitHardeningResult =
+  | { kind: "unreadable" }
+  | { kind: "ok"; directives: Record<string, UnitDirectiveOutcome> };
+
+function sectionBounds(lines: string[], name: UnitSectionName): { start: number; end: number } | null {
+  const start = lines.findIndex(l => l.trim() === `[${name}]`);
+  if (start < 0) return null;
+  let end = lines.findIndex((l, i) => i > start && /^\s*\[.+\]\s*$/.test(l));
+  if (end < 0) end = lines.length;
+  return { start, end };
+}
+
+/**
+ * Bring an installed AgEnD unit up to the directives AgEnD now ships, before
+ * it is restarted (#908 KillMode, #1113 crash dumps / start limits / start
+ * timeout). A directive that is absent is added at the end of its section; one
+ * that still carries a value AgEnD itself used to write is upgraded; anything
+ * else present is the operator's choice and is left as it is. A [Unit] section
+ * is required only for the [Unit] directives — a unit without one keeps the
+ * [Service] fixes. Written atomically, and only if something changed.
+ */
+export function ensureSystemdUnitHardening(
+  unitPath: string,
+  opts: { dropInPaths?: readonly string[] } = {},
+): UnitHardeningResult {
+  let text: string;
+  try { text = readFileSync(unitPath, "utf-8"); } catch { return { kind: "unreadable" }; }
+  const lines = text.split("\n");
+  if (!sectionBounds(lines, "Service")) return { kind: "unreadable" };
+  const directives: Record<string, UnitDirectiveOutcome> = {};
+  let changed = false;
+  for (const policy of UNIT_HARDENING) {
+    const bounds = sectionBounds(lines, policy.section);
+    if (!bounds) continue;
+    if (policy.allAssignments) {
+      const state = unitCoredumpFilterState(lines.join("\n"), opts.dropInPaths ?? unitDropInCandidates(unitPath));
+      if (state === "custom") { directives[policy.key] = "custom"; continue; }
+      if (state === "zero") { directives[policy.key] = "present"; continue; }
+    }
+    const pattern = new RegExp(`^\\s*${policy.key}\\s*=\\s*(.*?)\\s*$`);
+    const at = lines.slice(bounds.start + 1, bounds.end).findIndex(l => pattern.test(l));
+    if (at >= 0) {
+      const index = bounds.start + 1 + at;
+      const current = pattern.exec(lines[index])![1];
+      if (current === policy.value || policy.equivalent?.(current)) {
+        directives[policy.key] = "present";
+      } else if (policy.legacy?.includes(current)) {
+        lines[index] = `${policy.key}=${policy.value}`;
+        directives[policy.key] = "upgraded";
+        changed = true;
+      } else {
+        directives[policy.key] = "custom";
+      }
+      continue;
+    }
+    // After the section's last directive, before the blank line that ends it.
+    let insert = bounds.end;
+    while (insert > bounds.start + 1 && lines[insert - 1].trim() === "") insert--;
+    lines.splice(insert, 0, `${policy.key}=${policy.value}`);
+    directives[policy.key] = "added";
+    changed = true;
+  }
+  if (changed) replaceUnitFile(unitPath, lines.join("\n"));
+  return { kind: "ok", directives };
 }
 
 const SERVICE_LABEL = "com.agend.fleet";

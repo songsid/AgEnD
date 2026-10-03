@@ -1683,7 +1683,9 @@ program
       getSystemServicePath,
       getSystemdServiceState,
       restartSystemdService,
-      ensureSystemdKillModeMixed,
+      ensureSystemdUnitHardening,
+      effectiveUnitDropIns,
+      unitCoredumpFilterState,
     } = await import("./service-installer.js");
     const { spawn, spawnSync } = await import("node:child_process");
     const plat = detectPlatform();
@@ -1727,9 +1729,31 @@ program
       // aborts kiro-cli into a core dump.
       const unitPath = systemdTarget.user ? getServicePath() : getSystemServicePath();
       const reloadCmd = systemdTarget.user ? "systemctl --user daemon-reload" : "systemctl daemon-reload";
-      let outcome: ReturnType<typeof ensureSystemdKillModeMixed> | "unwritable" = "present";
+      // #1113 rides the same migration: crash-dump, start-limit and
+      // start-timeout directives are filled in alongside KillMode. Only
+      // KillMode gates the restart — the others change no stop behaviour.
+      // The drop-ins systemd applies to this unit, by its own account
+      // (DropInPaths), plus any on disk it has not loaded yet. Guessing the
+      // directories alone misses type-wide service.d and other load paths.
+      const scopeFlag = systemdTarget.user ? " --user" : "";
+      const loadedDropIns = (): string[] | null => {
+        try {
+          return execSync(`systemctl${scopeFlag} show -p DropInPaths --value ${systemdTarget.unit}`, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 5000 })
+            .trim().split(/\s+/).filter(Boolean);
+        } catch { return null; }
+      };
+      const dropInsFor = (path: string, loaded: string[] | null) => effectiveUnitDropIns(path, loaded ?? []);
+      let hardening: Record<string, string> = {};
+      let outcome: "added" | "upgraded" | "present" | "custom" | "unreadable" | "unwritable" = "present";
       if (unitPath) {
-        try { outcome = ensureSystemdKillModeMixed(unitPath); } catch { outcome = "unwritable"; }
+        try {
+          const result = ensureSystemdUnitHardening(unitPath, { dropInPaths: dropInsFor(unitPath, loadedDropIns()) });
+          if (result.kind === "unreadable") outcome = "unreadable";
+          else {
+            hardening = result.directives;
+            outcome = result.directives.KillMode === "upgraded" ? "added" : result.directives.KillMode ?? "present";
+          }
+        } catch { outcome = "unwritable"; }
       }
       if (outcome === "unreadable" || outcome === "unwritable") {
         console.error(`  ✗ Could not ${outcome === "unreadable" ? "read" : "update"} ${unitPath}, so this restart would still let systemd SIGTERM every CLI at once (kiro-cli core dumps, #908).`);
@@ -1757,9 +1781,49 @@ program
       if (outcome === "added") {
         console.log(`  ✓ ${unitPath}: added KillMode=mixed (the fleet stops its CLIs; systemd no longer signals them all at once)`);
       }
-      if (systemdTarget.user) {
-        try { execSync("systemctl --user reset-failed com.agend.fleet", { stdio: "pipe", timeout: 5000 }); } catch { /* best effort */ }
+      const updated = Object.entries(hardening)
+        .filter(([key, state]) => key !== "KillMode" && (state === "added" || state === "upgraded"))
+        .map(([key]) => key);
+      if (updated.length > 0) console.log(`  ✓ ${unitPath}: updated ${updated.join(", ")} (#1113: small crash dumps, bounded start, start limit)`);
+      // Re-judged after the reload, against what systemd now applies: an
+      // operator's own mask (anywhere — main file, unit or type drop-in, or a
+      // trailing empty assignment that restores the inherited one) is warned
+      // about, never gated. Otherwise the LOADED value must be 0.
+      let filterCustom = hardening.CoredumpFilter === "custom";
+      if (unitPath && hardening.CoredumpFilter) {
+        try { filterCustom = unitCoredumpFilterState(readFileSync(unitPath, "utf8"), dropInsFor(unitPath, loadedDropIns())) === "custom"; } catch { /* keep the pre-reload answer */ }
       }
+      if (hardening.CoredumpFilter && !filterCustom) {
+        // Gated like KillMode (#1113): a restart whose unit systemd has not
+        // loaded with CoredumpFilter=0 is the restart that can leave GB core
+        // dumps behind. Only where systemd knows the directive (246+): an
+        // older systemd ignores it, and refusing every restart there would
+        // cost far more than the dump size.
+        let systemdVersion = 0;
+        try {
+          const banner = execSync("systemctl --version", { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 5000 });
+          systemdVersion = Number(/^systemd\s+(\d+)/m.exec(banner)?.[1] ?? 0);
+        } catch { /* unknown → treated as supporting it */ }
+        const supported = systemdVersion === 0 || systemdVersion >= 246;
+        let filter = "";
+        try { filter = execSync(`systemctl${scopeFlag} show -p CoredumpFilter --value ${systemdTarget.unit}`, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 5000 }).trim(); } catch { /* unknown */ }
+        if (!/^(?:0x)?0+$/i.test(filter)) {
+          if (supported) {
+            console.error(`  ✗ systemd has ${filter ? `CoredumpFilter=${filter}` : "an unknown CoredumpFilter"} loaded for ${systemdTarget.unit}${reloaded ? "" : ` (\`${reloadCmd}\` failed)`}, so a crash could still write a multi-GB core dump (#1113).`);
+            console.error(`    Not restarting. Make sure ${unitPath ?? "the unit"} has CoredumpFilter=0 under [Service], run \`${reloadCmd}\`, then \`agend restart\`.`);
+            process.exitCode = 1;
+            return;
+          }
+          console.log(`  ⚠ systemd ${systemdVersion} predates CoredumpFilter (246); crashes may still write full-size core dumps (#1113). Restarting anyway.`);
+        }
+      }
+      if (filterCustom) console.log(`  ⚠ ${unitPath} sets its own CoredumpFilter; left as is. CoredumpFilter=0 keeps crash dumps to a few KB (#1113).`);
+      // Clears the failed state AND the start-limit counter (#1113:
+      // StartLimitBurst=4 in 30min) for whichever unit this restart targets,
+      // so an operator's restart is never refused by the limit.
+      try {
+        execSync(`systemctl${systemdTarget.user ? " --user" : ""} reset-failed ${systemdTarget.unit}`, { stdio: "pipe", timeout: 5000 });
+      } catch { /* best effort */ }
       if (restartSystemdService(systemdTarget.unit, systemdTarget.user)) {
         console.log(systemdTarget.user ? "Service restarted (user)." : "Service restarted (system).");
         return;

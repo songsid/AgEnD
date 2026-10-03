@@ -1,6 +1,13 @@
 [Unit]
 Description=AgEnD — AI Engineering Daemon
 After=network.target
+# Stop retrying after 4 failed starts in 30 minutes (#1113). A fleet start takes
+# minutes, so the default 5-in-10s limit could never trip: under host memory
+# exhaustion the watchdog killed and systemd restarted the fleet indefinitely,
+# each restart respawning every CLI into the same pressure. `agend restart`
+# clears the counter (reset-failed) before it restarts.
+StartLimitIntervalSec=30min
+StartLimitBurst=4
 
 [Service]
 Type=notify
@@ -11,7 +18,9 @@ Type=notify
 # The capability is instead contained in src/sd-notify.ts, which removes
 # NOTIFY_SOCKET from the environment so no other child process inherits it.
 NotifyAccess=all
-TimeoutStartSec=0
+# READY=1 is sent once every instance has started (minutes on a large fleet).
+# Bounded so a start that hangs before READY is noticed (#1113).
+TimeoutStartSec=15min
 WatchdogSec=60
 ExecStart=<%= execPath %> fleet start
 Environment=PATH=<%= path %>
@@ -30,6 +39,13 @@ TimeoutStopSec=60
 # it. With mixed, the fleet stops each CLI itself; only what is still left after
 # TimeoutStopSec is SIGKILLed.
 KillMode=mixed
+# No multi-GB core dumps (#1113). On WSL core_pattern pipes every crash to
+# /wsl-capture-crash, and a piped core_pattern ignores RLIMIT_CORE, so
+# LimitCORE=0 alone does not stop them. A zero coredump_filter writes no memory
+# mappings (a ~32 KB dump instead of 1 GB), and it is inherited by the tmux
+# server and every CLI the fleet starts. LimitCORE=0 covers a file core_pattern.
+CoredumpFilter=0
+LimitCORE=0
 StandardOutput=append:<%= logPath %>
 StandardError=append:<%= logPath %>
 

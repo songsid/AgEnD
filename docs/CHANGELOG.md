@@ -19,6 +19,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   instance directory through group access, give it access explicitly — the group no longer has it.** (#1118)
 
 ### Upgrade Notes
+- **[Behaviour change] Crash dumps stay small, and systemd stops restarting a fleet that keeps
+  failing (#1113).** On WSL every crash is piped to the WSL crash collector, which ignores
+  `LimitCORE`, so kiro-cli and the fleet itself left core dumps of about 1 GB and 450 MB in
+  `%TEMP%\wsl-crashes`. The systemd unit now sets `CoredumpFilter=0`, so a dump is a few KB;
+  the setting is inherited by the tmux server and every CLI the fleet starts. `LimitCORE=0`
+  covers systems that write core files directly. `TimeoutStartSec` goes from unlimited to
+  15 minutes. `StartLimitIntervalSec=30min` and `StartLimitBurst=4` stop systemd from
+  restarting a fleet that has failed four times in 30 minutes; before, a start took minutes,
+  so the old 5-in-10-seconds limit never tripped, and under host memory exhaustion the
+  watchdog killed and systemd restarted the fleet indefinitely. **A plain
+  `systemctl --user restart com.agend.fleet` counts toward that limit; `agend restart` runs
+  `reset-failed` first and is not affected.** `agend restart` (which `agend update` runs)
+  adds these to an older unit, reloads systemd and checks that `CoredumpFilter=0` was
+  loaded, refusing to restart otherwise — except on systemd older than 246, which does not
+  know the setting and only gets a warning. Values you set yourself are left alone.
 - **[Behaviour change] kiro instances are pinned to their engine on every launch, and
   refused rather than moved when that is impossible (#1109).** kiro-cli 3.0 (October
   2026) deprecates the classic UI and may default to its V3 engine; kiro also offers a
