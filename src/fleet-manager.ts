@@ -96,6 +96,7 @@ import { runBeforeDeadline } from "./deadline.js";
 import { LoginWindowLock, type LoginWindowClaim } from "./login-window-lock.js";
 import { handleSettingsRequest, type RawConfigPatch } from "./settings-api.js";
 import { setLocale, detectLocale, getLocale, t } from "./locale.js";
+import { describeSignalSource, recordInternalRequest, withOrigin } from "./fleet-control-audit.js";
 import { handleAgentRequest, ToolNotPermittedError, type AgentEndpointContext } from "./agent-endpoint.js";
 import { ClassicChannelManager, getClassicBackendChoices, isSelectableClassicBackend, readClassicLastActivityAt } from "./classic-channel-manager.js";
 import { assertExplicitInstanceRemoval, type ExplicitInstanceRemoval } from "./instance-removal.js";
@@ -1816,7 +1817,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const { spawn } = await import("node:child_process");
     const currentVersion = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "package.json"), "utf-8")).version ?? "";
     const command = currentVersion.includes("beta") ? "agend update --beta" : "agend update";
-    const child = spawn("sh", ["-c", `sleep 2 && ${command}`], { detached: true, stdio: "ignore" });
+    const origin = `slash /update by ${adapterId}:${data.userId}`;
+    recordInternalRequest(this.dataDir, "update", origin);
+    const child = spawn("sh", ["-c", `sleep 2 && ${command}`], {
+      detached: true, stdio: "ignore", env: withOrigin(origin),
+    });
     child.once("error", err => this.failUpdateProgress(err.message));
     child.unref();
   }
@@ -1827,6 +1832,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
 
+    recordInternalRequest(this.dataDir, "restart", `slash /restart ${String(data.options?.mode ?? "graceful")} by ${adapterId}:${data.userId}`);
     if (data.options?.mode !== "full") {
       await data.respond(t("restart.graceful"));
       process.kill(process.pid, "SIGUSR2");
@@ -4318,7 +4324,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }, 60 * 60 * 1000);
 
     const onRestart = () => {
-      this.logger.info("Received SIGUSR2, initiating graceful restart...");
+      this.logger.info(`Received SIGUSR2, initiating graceful restart... ${describeSignalSource(this.dataDir, "SIGUSR2")}`);
       this.restartInstances()
         .catch(err => this.logger.error({ err }, "Graceful restart failed"))
         .finally(() => process.once("SIGUSR2", onRestart));
@@ -4327,7 +4333,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // SIGUSR1: full process reload (graceful stop → exit → CLI restarts)
     const onFullRestart = () => {
-      this.logger.info("Received SIGUSR1, initiating full restart (process reload)...");
+      this.logger.info(`Received SIGUSR1, initiating full restart (process reload)... ${describeSignalSource(this.dataDir, "SIGUSR1")}`);
       this.gracefulShutdownForReload()
         .then(() => {
           this.logger.info("Full restart: shutdown complete, exiting for reload");

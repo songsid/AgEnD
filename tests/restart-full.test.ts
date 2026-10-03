@@ -268,7 +268,7 @@ describe("full-restart helper hand-off", () => {
     expect(spawnProcess).toHaveBeenCalledWith(
       process.execPath,
       ["/opt/agend/dist/cli.js", "restart"],
-      { detached: true, stdio: "ignore" },
+      { detached: true, stdio: "ignore", env: expect.objectContaining({ AGEND_RESTART_ORIGIN: "full-restart-helper" }) },
     );
     expect(child.unref).toHaveBeenCalledOnce();
 

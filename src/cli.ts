@@ -37,6 +37,7 @@ import {
   processStartMs,
 } from "./update-check.js";
 import { clearUpdateMarker, markUpdateInProgress, setUpdateProgressStage } from "./update-marker.js";
+import { describeSignalSource, gateFleetControl, recordInstanceControl, withOrigin } from "./fleet-control-audit.js";
 import { acquireFleetLock, isFleetStartCommandLine, readProcessCommandLine, releaseProcessFleetLock, setProcessFleetLock } from "./fleet-lock.js";
 import { limitFleetCoreDumps } from "./coredump-filter.js";
 import { SYSTEMD_RESTART_TIMEOUT_MS } from "./service-installer.js";
@@ -183,7 +184,11 @@ fleet
       process.exit(0);
     };
     process.on("SIGINT", shutdown);
-    process.on("SIGTERM", shutdown);
+    process.on("SIGTERM", () => {
+      // The restart that interrupted a fleet used to leave no trace of who asked.
+      console.log(describeSignalSource(DATA_DIR, "SIGTERM"));
+      void shutdown();
+    });
 
     process.on("uncaughtException", (err) => {
       // An uncaught exception leaves unknown state — still the one case worth
@@ -246,7 +251,10 @@ fleet
   .command("stop")
   .description("Stop fleet or specific instance")
   .argument("[instance]", "Specific instance to stop")
-  .action(async (instance?: string) => {
+  .option("-y, --yes", "Confirm when run from a fleet agent session (this affects every instance)")
+  .action(async (instance?: string, opts?: { yes?: boolean }) => {
+    if (instance) recordInstanceControl(DATA_DIR, "instance-stop", instance);
+    else if (!gateFleetControl(DATA_DIR, "fleet-stop", { yes: opts?.yes })) process.exit(1);
     if (instance) {
       // Stop a single instance via the RUNNING fleet's HTTP API. Do NOT spawn a
       // detached FleetManager and call stopInstance(): its in-memory daemons map
@@ -311,11 +319,14 @@ fleet
   .description("Graceful restart: wait for instances to idle, then restart")
   .argument("[instance]", "Specific instance to restart (immediate, no idle wait)")
   .option("--reload", "Full process restart to load new code")
-  .action(async (instance?: string, opts?: { reload?: boolean }) => {
+  .option("-y, --yes", "Confirm when run from a fleet agent session (this affects every instance)")
+  .action(async (instance?: string, opts?: { reload?: boolean; yes?: boolean }) => {
     if (instance && opts?.reload) {
       console.error("--reload restarts the entire fleet process. Cannot combine with instance name.");
       process.exit(1);
     }
+    if (instance) recordInstanceControl(DATA_DIR, "instance-restart", instance);
+    else if (!gateFleetControl(DATA_DIR, opts?.reload ? "fleet-restart-reload" : "fleet-restart", { yes: opts?.yes })) process.exit(1);
 
     if (instance) {
       // Single instance restart via fleet's HTTP API
@@ -1338,7 +1349,9 @@ program
   .option("--version <ver>", "Specific version to install")
   .option("--beta", "Install beta version")
   .option("--force", "Force reinstall and restart even when already up to date")
-  .action(async (opts: { version?: string; beta?: boolean; force?: boolean }) => {
+  .option("-y, --yes", "Confirm when run from a fleet agent session (this affects every instance)")
+  .action(async (opts: { version?: string; beta?: boolean; force?: boolean; yes?: boolean }) => {
+    if (!gateFleetControl(DATA_DIR, "update", { yes: opts.yes })) process.exit(1);
     const { spawnSync } = await import("node:child_process");
     const tag = getUpdateSelector(opts);
     const pkg = `@songsid/agend@${tag}`;
@@ -1355,6 +1368,9 @@ program
         encoding: "utf-8",
         timeout: SYSTEMD_RESTART_TIMEOUT_MS + 60_000,
         stdio: "inherit",
+        // This update was already confirmed (or interactive); its own restart is
+        // part of it, not a second command for the agent-session guard.
+        env: withOrigin("agend-update"),
       });
       if (!reportUpdateRestart(restartResult.status)) {
         // No new fleet is coming up to clear the marker — do it here, or the next
@@ -1644,7 +1660,9 @@ program
 program
   .command("stop")
   .description("Stop the AgEnD service or detached fleet")
-  .action(async () => {
+  .option("-y, --yes", "Confirm when run from a fleet agent session (this affects every instance)")
+  .action(async (opts: { yes?: boolean }) => {
+    if (!gateFleetControl(DATA_DIR, "stop", { yes: opts.yes })) process.exit(1);
     const { getServicePath, stopService } = await import("./service-installer.js");
     if (!getServicePath()) {
       // No service — try killing by PID
@@ -1701,7 +1719,9 @@ program
 program
   .command("restart")
   .description("Restart the AgEnD service (auto-detects systemd/launchd/detached)")
-  .action(async () => {
+  .option("-y, --yes", "Confirm when run from a fleet agent session (this affects every instance)")
+  .action(async (opts: { yes?: boolean }) => {
+    if (!gateFleetControl(DATA_DIR, "restart", { yes: opts.yes })) process.exit(1);
     // Try each runtime environment in order and stop at the first that succeeds.
     // Don't gate on fleet.pid: a fleet under systemd/launchd writes its pid in the
     // service's own HOME, which may differ from what this command resolves (sudo,
