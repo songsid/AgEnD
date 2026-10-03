@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { Daemon } from "../src/daemon.js";
 import { OpenCodeBackend } from "../src/backend/opencode.js";
 import { TmuxManager } from "../src/tmux-manager.js";
+import { SpawnGate } from "../src/spawn-gate.js";
+import { StormWindow } from "../src/storm-window.js";
 
 /**
  * #1160 (C): the session-id checkpoint never forks a CLI on the event loop. Idle observations look in
@@ -316,6 +318,45 @@ describe("a crash tick that is already past the health check when stop() / pause
     d.healthCheckPaused = true;
     await vi.advanceTimersByTimeAsync(6_000);
     expect(d.spawnClaudeWindow).not.toHaveBeenCalled();
+    d.stopHealthCheck?.();
+  });
+
+  it("with the REAL spawn gate (cap 1, another reservation held): stop() before the lookup settles → the CLI is never started when the reservation frees", async () => {
+    const storm = new StormWindow();
+    const gate = new SpawnGate({ storm, concurrency: () => 1, staggerMs: () => 0, random: () => 0, lowMemoryBytes: 0 });
+    let frees!: () => void;
+    const holder = gate.run({ instanceName: "other", reason: "startup" } as never, () => new Promise<void>(resolve => { frees = resolve; }));
+    vi.spyOn(TmuxManager, "sessionExists").mockResolvedValue(true);
+    vi.spyOn(TmuxManager, "getServerPid").mockResolvedValue(4242);
+    vi.spyOn(TmuxManager, "listWindows").mockResolvedValue([] as never);
+    const id = { current: "ses_cached" as string | null };
+    const { backend } = backendWith("opencode", "none", id);
+    let releaseLookup!: () => void;
+    backend.refreshSessionId = vi.fn(() => new Promise<string | null>(resolve => { releaseLookup = () => resolve(id.current); }));
+    const d: any = new Daemon("test-oc", {
+      working_directory: dir, backend: "opencode",
+      restart_policy: { max_retries: 5, backoff: "linear", reset_after: 0, health_check_interval_ms: 1_000 },
+      context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
+      hang_detector: { enabled: false, timeout_minutes: 10, idle_debounce_ms: 10 },
+      log_level: "silent",
+    } as any, instanceDir, false, backend as never, undefined, logger, undefined, gate, storm);
+    d.tmux = { getPaneStatus: vi.fn(async () => null), getWindowId: () => "@1", capturePaneWithHistory: vi.fn(async () => ""), killWindow: vi.fn(async () => {}) };
+    d.lastSpawnAt = 1;
+    d.setProcessStatus("running");
+    d.checkMcpServerAlive = () => {};
+    d.writeRotationSnapshot = vi.fn(); d.injectSnapshotMessage = async () => {};
+    d.transcriptMonitor = { resetOffset: vi.fn(), stop: () => {} };
+    d.spawnClaudeWindow = async () => { await d.trySpawn(false); return true; };    // the real trySpawn → the real gate
+    const started: string[] = [];
+    d.trySpawnInsideGate = async () => { started.push("cli-started"); return true; };
+    d.startHealthCheck();
+    await vi.advanceTimersByTimeAsync(6_000);                       // the tick is parked in the lookup
+    d.healthCheckPaused = true;                                     // stop() returned
+    releaseLookup();
+    await vi.advanceTimersByTimeAsync(2_000);
+    frees(); await holder;                                          // the other reservation frees only now
+    await vi.advanceTimersByTimeAsync(6_000);
+    expect(started).toEqual([]);                                    // a stopped instance is not started again
     d.stopHealthCheck?.();
   });
 
