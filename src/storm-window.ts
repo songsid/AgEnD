@@ -213,16 +213,12 @@ export class StormWindow extends EventEmitter {
   }
 
   /**
-   * A respawn after a confirmed window loss finished. Inside an open window that
-   * is a normal recovery; before one opens, remember it, so an instance that
-   * recovered before the burst was recognised is not counted as still down.
+   * A respawn finished outside a storm. Remember it, so that an instance that
+   * recovered before a burst was recognised is not counted as still down when
+   * the next loss opens one (inside an open window the caller marks recovery).
    */
   noteWindowRecovered(name: string): void {
-    if (this.isActive()) {
-      this.markRecovered(name);
-    } else {
-      this.windowLossRecovered.add(name);
-    }
+    this.windowLossRecovered.add(name);
   }
 
   /**
