@@ -10960,7 +10960,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const info = BACKEND_INSTALLATION_INFO[backend];
     if (!info) return t("install.unsupported", backendArg);
     if (checkBinaryInstalled(info.binary)) return t("install.already", backend, info.binary);
-    // Reserve the fleet-wide window before the first await (shared with web/relay
+    // Reserve the fleet-wide window before the first await (shared with web
     // login). Owned by this method until the session is published.
     const claim = this.loginWindow.tryClaim("install", backend);
     if (!claim) return this.loginWindow.busyMessage();
@@ -10975,10 +10975,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.loginWindow.release(claim);
       return t("install.failed", backend, (err as Error).message);
     }
-    // A synthetic login flow: success is decided by the installer's exit code
-    // (LoginSession treats a clean exit as success), never by pane text — and
-    // installer output that happens to contain a URL must not be forwarded as
-    // an auth hint, hence the no-op events below.
+    // A synthetic flow: success is decided by the installer's exit code
+    // (LoginSession treats a clean exit as success), never by pane text. The
+    // session only judges that verdict; it does not read the output for URLs or prompts.
     const flow: LoginFlow = {
       backend,
       command: info.install,
