@@ -18,10 +18,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const LIVE = [{ id: "gpt-6-astra", label: "GPT-6 Astra" }, { id: "gpt-5.6-sol", label: "GPT-5.6 Sol" }];
 const CACHED = [{ id: "gpt-5.6-sol", label: "GPT-5.6 Sol" }];
 
+vi.mock("node:worker_threads", async () => ({ Worker: (await import("./helpers/probe-worker.js")).FakeProbeWorker }));
+vi.mock("../src/logger.js", async () => ({
+  createLogger: (await import("./helpers/probe-worker.js")).fakeProbeLogger,
+  rotateLogIfNeeded: vi.fn(),
+}));
+import { FakeProbeWorker } from "./helpers/probe-worker.js";
+
 const probeCLIEnv = vi.fn();
 const refreshModelCatalog = vi.fn();
 vi.mock("../src/backend/factory.js", () => ({
-  createBackend: () => ({ probeCLIEnv, refreshModelCatalog }),
+  createBackend: () => { throw new Error("backend constructor on fleet thread"); },
 }));
 
 const { FleetManager } = await import("../src/fleet-manager.js");
@@ -64,6 +71,11 @@ async function openAndRefresh(ctx: ReturnType<typeof setup>) {
 beforeEach(() => {
   dataDir = mkdtempSync(join(agendHome, "model-refresh-data-"));
   rmSync(join(agendHome, "cli-env"), { recursive: true, force: true });
+  FakeProbeWorker.reset();
+  FakeProbeWorker.answer = async input => {
+    if (input.mode === "env" && input.refreshVendorCatalog) await refreshModelCatalog();
+    return probeCLIEnv();
+  };
   probeCLIEnv.mockReset().mockResolvedValue({ models: LIVE });
   refreshModelCatalog.mockReset().mockResolvedValue(undefined);
 });
@@ -118,7 +130,7 @@ describe("the /model picker's refresh item", () => {
     // re-probe keep the behaviour they had.
     const ctx = setup();
 
-    await (ctx.fm as any).probeBackend("codex");
+    await (ctx.fm as any).probeBackendBounded("codex");
 
     expect(probeCLIEnv).toHaveBeenCalledTimes(1);
     expect(refreshModelCatalog).not.toHaveBeenCalled();

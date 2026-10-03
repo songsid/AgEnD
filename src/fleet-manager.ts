@@ -5,6 +5,8 @@ import { freemem, totalmem, cpus, homedir } from "node:os";
 import { access } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { Worker } from "node:worker_threads";
+import { ProbeWorkerPool, type ProbeWorker } from "./probe-worker-pool.js";
+import type { BackendProbeInput, BackendProbeResult } from "./backend/cli-env-probe.js";
 import { join, dirname, basename, delimiter, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
@@ -7885,6 +7887,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private pendingCliEnvProbes = new Map<string, Promise<import("./backend/types.js").CliEnv | null>>();
   /** Forced vendor catalog refreshes are separate flights, but sysinfo joins either flight. */
   private pendingVendorCliEnvProbes = new Map<string, Promise<import("./backend/types.js").CliEnv | null>>();
+  private pendingInstanceModelProbes = new Map<string, Promise<import("./backend/types.js").ModelOption[]>>();
+  private readonly cliEnvProbePool = new ProbeWorkerPool();
+  private cliEnvProbeEpoch = 0;
 
   /**
    * The status emojis for an instance (#1005): its own `status_emojis`, then
@@ -12002,7 +12007,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   refreshBackendCliVersions(): void {
     for (const backend of SYSINFO_BACKEND_IDS) {
       if (!this.cliEnvNeedsRefresh(this.readCliEnv(backend))) continue;
-      void this.probeBackendBounded(backend, { nonBlocking: true }).catch(err => {
+      void this.probeBackendBounded(backend).catch(err => {
         this.logger.debug({ err, backend }, "Background CLI version refresh failed");
       });
     }
@@ -12020,7 +12025,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    */
   private async probeBackendBounded(
     backend: string,
-    opts: { refreshVendorCatalog?: boolean; nonBlocking?: boolean } = {},
+    opts: { refreshVendorCatalog?: boolean } = {},
   ): Promise<import("./backend/types.js").CliEnv | null> {
     // #725: single-flight per backend. Explicit vendor refreshes remain a
     // separate flight from an ordinary probe, while sysinfo can join either.
@@ -12029,20 +12034,19 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (opts.refreshVendorCatalog && vendorFlight) return vendorFlight;
     if (!opts.refreshVendorCatalog && (vendorFlight || regularFlight)) return vendorFlight ?? regularFlight!;
 
-    const worker = opts.nonBlocking ? this.startCliEnvProbeWorker(backend, opts) : undefined;
-    const work = worker?.promise ?? this.probeBackend(backend, opts);
-    work.catch(() => { /* surfaced through the race, or already too late to matter */ });
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const deadline = new Promise<null>(resolve => {
-      timer = setTimeout(() => {
-        worker?.terminate();
-        this.logger.warn({ backend, deadlineMs: CLI_ENV_PROBE_DEADLINE_MS },
-          "CLI env live probe exceeded its deadline — serving the cached model list");
-        resolve(null);
-      }, CLI_ENV_PROBE_DEADLINE_MS);
-    });
-    const bounded = Promise.race([work, deadline]).finally(() => {
-      clearTimeout(timer);
+    if (this.shuttingDown) return null;
+    const instanceDir = join(getAgendHome(), "cli-env");
+    const epoch = this.cliEnvProbeEpoch;
+    const input: BackendProbeInput = {
+      mode: "env", backend, instanceDir,
+      config: { workingDirectory: "", instanceDir, instanceName: `probe-${backend}`, mcpServers: {} },
+      refreshVendorCatalog: opts.refreshVendorCatalog === true,
+    };
+    const bounded = this.runBackendProbeWorker(`global:${backend}`, input).then(probed => {
+      if (!probed || Array.isArray(probed) || this.shuttingDown || epoch !== this.cliEnvProbeEpoch) return null;
+      try { return this.persistCliEnvProbeResult(backend, probed); }
+      catch (err) { this.logger.warn({ backend, err }, "CLI env cache write failed"); return null; }
+    }).finally(() => {
       const flights = opts.refreshVendorCatalog ? this.pendingVendorCliEnvProbes : this.pendingCliEnvProbes;
       if (flights.get(backend) === bounded) flights.delete(backend);
     });
@@ -12050,21 +12054,28 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     return bounded;
   }
 
-  private startCliEnvProbeWorker(backend: string, opts: { refreshVendorCatalog?: boolean }): {
-    promise: Promise<import("./backend/types.js").CliEnv | null>;
-    terminate: () => void;
-  } {
-    const workerData = {
-      backend,
-      instanceDir: join(getAgendHome(), "cli-env"),
-      config: {
-        workingDirectory: "",
-        instanceDir: join(getAgendHome(), "cli-env"),
-        instanceName: `probe-${backend}`,
-        mcpServers: {},
-      },
-      refreshVendorCatalog: opts.refreshVendorCatalog === true,
-    };
+  private stopCliEnvProbes(): void {
+    this.cliEnvProbeEpoch++;
+    this.cliEnvProbePool.close();
+    this.pendingCliEnvProbes.clear();
+    this.pendingVendorCliEnvProbes.clear();
+    this.pendingInstanceModelProbes.clear();
+  }
+
+  private runBackendProbeWorker(key: string, input: BackendProbeInput): Promise<BackendProbeResult | null> {
+    if (this.shuttingDown) return Promise.resolve(null);
+    this.cliEnvProbePool.reopen();
+    return this.cliEnvProbePool.run(key, () => this.startCliEnvProbeWorker(input), {
+      deadlineMs: CLI_ENV_PROBE_DEADLINE_MS,
+      onTimeout: () => this.logger.warn({ backend: input.backend, deadlineMs: CLI_ENV_PROBE_DEADLINE_MS },
+        "CLI env live probe exceeded its deadline — serving the cached model list"),
+      onError: err => this.logger.warn({ backend: input.backend, err }, "CLI env worker failed to start or stop"),
+    });
+  }
+
+  private startCliEnvProbeWorker(input: BackendProbeInput): ProbeWorker<BackendProbeResult> {
+    const { backend } = input;
+    const workerData = input;
     // `tsx src/cli.ts` needs its TS module resolver inside the separate isolate.
     // Published builds load the compiled worker and require no tsx dependency.
     const worker = import.meta.url.endsWith(".ts")
@@ -12074,30 +12085,28 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       )
       : new Worker(new URL("./backend/cli-env-probe-worker.js", import.meta.url), { execArgv: [], workerData });
     let settled = false;
-    let resolveProbe!: (value: import("./backend/types.js").CliEnv | null) => void;
-    const promise = new Promise<import("./backend/types.js").CliEnv | null>(resolve => { resolveProbe = resolve; });
-    const finish = (value: import("./backend/types.js").CliEnv | null) => {
+    let resolveProbe!: (value: BackendProbeResult | null) => void;
+    let markStopped!: () => void;
+    const stopped = new Promise<void>(resolve => { markStopped = resolve; });
+    const promise = new Promise<BackendProbeResult | null>(resolve => { resolveProbe = resolve; });
+    const finish = (value: BackendProbeResult | null) => {
       if (settled) return;
       settled = true;
       resolveProbe(value);
-      void worker.terminate().catch(err => {
+      // Admission stays occupied until terminate resolves or an exit is seen.
+      // A rejected termination does not prove the isolate has stopped.
+      try {
+        void worker.terminate().then(markStopped).catch(err => {
+          this.logger.debug({ backend, err }, "CLI env worker termination failed");
+        });
+      } catch (err) {
         this.logger.debug({ backend, err }, "CLI env worker termination failed");
-      });
-    };
-    worker.once("message", (message: { ok?: boolean; result?: Omit<import("./backend/types.js").CliEnv, "backend" | "probedAt"> | null; error?: string }) => {
-      if (settled) return;
-      if (!message.ok) {
-        this.logger.warn({ backend, error: message.error }, "CLI env worker failed");
-        finish(null);
-      } else if (!message.result) {
-        finish(null);
-      } else {
-        try { finish(this.persistCliEnvProbeResult(backend, message.result)); }
-        catch (err) {
-          this.logger.warn({ backend, err }, "CLI env cache write failed");
-          finish(null);
-        }
       }
+    };
+    worker.once("message", (message: { ok?: boolean; result?: BackendProbeResult | null; error?: string }) => {
+      if (settled) return;
+      if (!message.ok) this.logger.warn({ backend, error: message.error }, "CLI env worker failed");
+      finish(message.ok ? message.result ?? null : null);
     });
     worker.once("error", err => {
       if (settled) return;
@@ -12105,11 +12114,12 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       finish(null);
     });
     worker.once("exit", code => {
+      markStopped();
       if (settled) return;
       this.logger.warn({ backend, code }, "CLI env worker exited without a result");
       finish(null);
     });
-    return { promise, terminate: () => { finish(null); } };
+    return { promise, stopped, terminate: () => { finish(null); } };
   }
 
   /**
@@ -12169,33 +12179,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     return option.id === currentModel ? `✓ ${label}` : label;
   }
 
-  /**
-   * Probe one backend's CLI env and cache it. Best-effort; never throws.
-   *
-   * `refreshVendorCatalog` is the "🔄 Refresh models" path only (#886): first
-   * ask the CLI to refetch its own catalog, for backends whose probe merely
-   * reads a file the CLI maintains. Every other caller leaves it off, so the
-   * startup and /model probes behave exactly as before. A failed vendor
-   * refresh fails the probe (null), which the menu reports instead of passing
-   * the old list off as fresh.
-   */
-  private async probeBackend(
-    backend: string,
-    opts: { refreshVendorCatalog?: boolean } = {},
-  ): Promise<import("./backend/types.js").CliEnv | null> {
-    try {
-      const be = createBackend(backend, join(getAgendHome(), "cli-env"));
-      if (!be.probeCLIEnv) return null;
-      if (opts.refreshVendorCatalog && be.refreshModelCatalog) await be.refreshModelCatalog();
-      const probed = await be.probeCLIEnv({ workingDirectory: "", instanceDir: join(getAgendHome(), "cli-env"), instanceName: `probe-${backend}`, mcpServers: {} });
-      return this.persistCliEnvProbeResult(backend, probed);
-    } catch (err) {
-      this.logger.warn({ err, backend }, "CLI env probe failed");
-      return null;
-    }
-  }
-
-  /** Preserve the existing cache merge rules for both in-process and worker probes. */
+  /** Preserve the existing cache merge rules for worker probes. */
   private persistCliEnvProbeResult(
     backend: string,
     probed: Omit<import("./backend/types.js").CliEnv, "backend" | "probedAt">,
@@ -12354,16 +12338,28 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     try {
       const inst = this.fleetConfig?.instances?.[instanceName];
       const instanceDir = this.getInstanceDir(instanceName);
-      const be = createBackend(backend, instanceDir);
-      if (!be.listModels) return [];
-      return await be.listModels({
+      const config = structuredClone({
         workingDirectory: inst?.working_directory ?? "",
         instanceDir,
         instanceName,
         mcpServers: {},
         model: inst?.model,
         backendOptions: inst?.backend_options?.[backend] ?? this.fleetConfig?.defaults?.backend_options?.[backend],
-      }) ?? [];
+      });
+      // Include the config snapshot, so a changed provider/profile cannot join
+      // a still-running probe for the previous instance configuration.
+      const key = JSON.stringify({ backend, instanceDir, config });
+      const pending = this.pendingInstanceModelProbes.get(key);
+      if (pending) return pending;
+      const epoch = this.cliEnvProbeEpoch;
+      const bounded = this.runBackendProbeWorker(`instance:${backend}:${instanceDir}`, {
+        mode: "models", backend, instanceDir, config,
+      }).then(result => Array.isArray(result) && !this.shuttingDown && epoch === this.cliEnvProbeEpoch ? result : [])
+        .finally(() => {
+          if (this.pendingInstanceModelProbes.get(key) === bounded) this.pendingInstanceModelProbes.delete(key);
+        });
+      this.pendingInstanceModelProbes.set(key, bounded);
+      return bounded;
     } catch {
       // listModels is documented never to throw, but a backend constructor can
       // (missing binary). A catalog is an aid; degrade to the account list.
@@ -13345,6 +13341,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     this.stormWindow.shutdown();
     this.spawnGate.shutdown();
     this.memoryPressure?.stop();
+    this.stopCliEnvProbes();
     for (const pending of this.startupRetries.values()) clearTimeout(pending.timer);
     this.startupRetries.clear();
     for (const pending of this.startupRetryNotices.values()) clearTimeout(pending.timer);

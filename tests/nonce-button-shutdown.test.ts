@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+vi.mock("../src/sd-notify.js", () => ({ sdNotify: vi.fn(), sdNotifyBlocking: vi.fn() }));
 import { FleetManager } from "../src/fleet-manager.js";
 
 /**
@@ -129,6 +130,9 @@ describe("doStopAll is wired to the sweep", () => {
       ipcStoppingInstances: new Set<string>(),
       stormWindow: { shutdown: noop },
       spawnGate: { shutdown: noop },
+      // This fixture bypasses constructor fields; real worker cleanup has its
+      // own FleetManager regression in fleet-probe-workers.test.ts.
+      stopCliEnvProbes: noop,
       startupRetries: new Map(),
       startupRetryNotices: new Map(),
       cancelButtons: new Map(),

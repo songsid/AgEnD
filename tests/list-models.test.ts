@@ -2,6 +2,13 @@ import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+vi.mock("node:worker_threads", async () => ({ Worker: (await import("./helpers/probe-worker.js")).FakeProbeWorker }));
+vi.mock("../src/logger.js", async () => ({
+  createLogger: (await import("./helpers/probe-worker.js")).fakeProbeLogger,
+  rotateLogIfNeeded: vi.fn(),
+}));
+import { FakeProbeWorker } from "./helpers/probe-worker.js";
+
 import { FleetManager } from "../src/fleet-manager.js";
 import { outboundHandlers } from "../src/outbound-handlers.js";
 
@@ -12,7 +19,7 @@ import { outboundHandlers } from "../src/outbound-handlers.js";
  * account list would name models its CLI rejects.
  *
  * These drive the real FleetManager against a real cli-env cache file; the only
- * thing stubbed is the live probe, which would otherwise spawn CLIs.
+ * live transport is stubbed; no backend is constructed in this process.
  */
 let home: string;
 let dataDir: string;
@@ -21,6 +28,8 @@ const realHome = process.env.AGEND_HOME;
 const realCodexHome = process.env.CODEX_HOME;
 
 beforeEach(() => {
+  FakeProbeWorker.reset();
+  FakeProbeWorker.answer = () => null;
   home = mkdtempSync(join(tmpdir(), "agend-listmodels-"));
   process.env.AGEND_HOME = home;
   dataDir = mkdtempSync(join(tmpdir(), "agend-listmodels-data-"));
@@ -53,8 +62,6 @@ function seedCliEnv(backend: string, models: Array<{ id: string; label?: string 
 function makeFleet(instances: Record<string, unknown> = {}, defaults: Record<string, unknown> = {}) {
   const fm = new FleetManager(dataDir);
   (fm as any).fleetConfig = { defaults: { backend: "claude-code", ...defaults }, channel: {}, instances };
-  // Never spawn a real CLI from a test.
-  (fm as any).probeBackend = vi.fn().mockResolvedValue(null);
   return fm;
 }
 
@@ -87,7 +94,7 @@ describe("listModelCatalog — global scope", () => {
       backend: "kiro-cli", probedAt: Date.now(),
       models: [{ id: "auto" }, { id: "claude-opus-6" }], currentModel: "claude-opus-6",
     });
-    (fm as any).probeBackend = probe;
+    FakeProbeWorker.answer = () => probe();
 
     const r = await fm.listModelCatalog({ backend: "kiro-cli" });
 
@@ -102,14 +109,14 @@ describe("listModelCatalog — global scope", () => {
 
     const r = await fm.listModelCatalog({ backend: "kiro-cli" });
 
-    expect((fm as any).probeBackend, "a fresh cache must not hit the vendor").not.toHaveBeenCalled();
+    expect(FakeProbeWorker.workers, "a fresh cache must not hit the vendor").toHaveLength(0);
     expect(r.source).toBe("cache");
     expect(r.models.map(m => m.id)).toEqual(["auto"]);
   });
 
   it("falls back to the stale list when a refresh finds nothing, like /model", async () => {
     seedCliEnv("kiro-cli", [{ id: "auto" }], { currentModel: "auto", ageMs: 2 * 60 * 60 * 1000 });
-    const fm = makeFleet(); // probeBackend stubbed to fail
+    const fm = makeFleet(); // fake worker answers null
 
     const r = await fm.listModelCatalog({ backend: "kiro-cli" });
 
@@ -123,7 +130,7 @@ describe("listModelCatalog — global scope", () => {
 
     const r = await fm.listModelCatalog({ backend: "grok" });
 
-    // probeBackend is stubbed to fail, so this proves the stale file was not used.
+    // the fake worker answers null, so this proves the stale file was not used.
     expect(r.source).toBe("fallback");
     expect(r.models).toEqual([]);
   });
@@ -141,8 +148,7 @@ describe("listModelCatalog — global scope", () => {
 
 describe("listModelCatalog — instance scope", () => {
   it("reads the catalog through the instance when the backend can list per-instance", async () => {
-    // claude-code exposes a static alias set, so instance scope resolves with no
-    // probe at all — and the answer is genuinely instance-accurate.
+    FakeProbeWorker.answer = () => [{ id: "opus", label: "Opus" }];
     const fm = makeFleet({ alpha: { working_directory: "/tmp", backend: "claude-code", model: "opus" } });
 
     const r = await fm.listModelCatalog({ instanceName: "alpha" });
