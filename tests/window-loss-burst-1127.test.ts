@@ -221,6 +221,7 @@ function fleet(count: number, opts: { threshold?: number; staggerMs?: number } =
       state.up.add(i);                                                    // …and its window exists again
       return true;
     };
+    daemon.checkMcpServerAlive = () => {};
     daemon.saveSessionId = () => {};
     daemon.writeRotationSnapshot = () => {};
     daemon.injectSnapshotMessage = async () => {};
@@ -350,6 +351,118 @@ describe("a window that is not confirmed gone is not respawned", () => {
     await vi.advanceTimersByTimeAsync(60_000);
     // three failures in all, never three in a row: the death is never confirmed
     expect(logger.warn).not.toHaveBeenCalledWith(expect.anything(), expect.stringContaining("window not found"));
+    expect(state.started).toEqual([]);
+  });
+});
+
+describe("review of #1156: recovery boundaries", () => {
+  // The three regressions Prism wrote against the first revision (their harness, adapted to this file's).
+  it("a fourth loss does not hold delivery for three instances that had already recovered", async () => {
+    const { daemons, storm, state } = fleet(4);
+    const closed = vi.fn(); storm.on("closed", closed);
+    for (const daemon of daemons.slice(0, 3)) daemon.startHealthCheck();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect([...state.up].sort()).toEqual([0, 1, 2]);
+    expect(storm.isActive()).toBe(false);
+    daemons[3].startHealthCheck();
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect([...state.up].sort()).toEqual([0, 1, 2, 3]);
+    expect(new Set(state.started).size).toBe(4);
+    expect(storm.snapshot().affected.filter(n => storm.isDeliveryHeld(n))).toEqual([]);
+    expect(storm.isActive()).toBe(false);
+    expect(closed).toHaveBeenCalledTimes(1);
+    expect(closed.mock.calls[0]![1]).toBe("recovered");
+    storm.shutdown();
+  });
+
+  it("evidence of an earlier respawn is what releases them at once: no health tick needed", () => {
+    const storm = new StormWindow({ windowLossThreshold: 3 });
+    storm.noteWindowLoss("a"); storm.noteWindowRecovered("a");
+    storm.noteWindowLoss("b");                          // b has not recovered yet
+    expect(storm.noteWindowLoss("c")).toBe(true);
+    expect(storm.needsRecovery("a")).toBe(false);
+    expect(storm.needsRecovery("b")).toBe(true);
+    expect(storm.needsRecovery("c")).toBe(true);
+    storm.shutdown();
+  });
+
+  it("a second loss of an instance withdraws its earlier recovery evidence", () => {
+    const storm = new StormWindow({ windowLossThreshold: 2 });
+    storm.noteWindowLoss("a"); storm.noteWindowRecovered("a");
+    storm.noteWindowLoss("a");                          // it lost its window again
+    expect(storm.noteWindowLoss("b")).toBe(true);
+    expect(storm.needsRecovery("a")).toBe(true);
+    storm.shutdown();
+  });
+
+  it("recovery evidence does not outlive the window it was gathered in", () => {
+    const storm = new StormWindow({ windowLossThreshold: 2, windowLossWindowMs: 1_000 });
+    let now = 0;
+    (storm as any).now = () => now;
+    storm.noteWindowLoss("a"); storm.noteWindowRecovered("a");
+    now = 5_000;                                        // a's loss has aged out
+    storm.noteWindowLoss("b");
+    expect(storm.noteWindowLoss("c")).toBe(true);
+    expect(storm.snapshot().affected.sort()).toEqual(["b", "c"]);
+    storm.shutdown();
+  });
+
+  it("a live pane releases a member of an open window-loss burst, and only of that kind", () => {
+    const storm = new StormWindow({ windowLossThreshold: 2 });
+    storm.noteWindowLoss("a"); storm.noteWindowLoss("b");
+    storm.noteWindowAlive("a");
+    expect(storm.needsRecovery("a")).toBe(false);
+    expect(storm.needsRecovery("b")).toBe(true);
+    storm.recordServerDead("a", ["a", "b"]);            // now a server storm: a live pane proves nothing
+    storm.noteWindowAlive("b");
+    expect(storm.needsRecovery("b")).toBe(true);
+    storm.shutdown();
+  });
+
+  it.each(["server-dead", "pid-changed"])("a window-loss burst that becomes a %s storm enrolls every running instance", trigger => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-1127-fm-")); dirs.push(dir);
+    const fm: any = new FleetManager(dir);
+    fm.notifyFleetError = () => true;
+    for (let i = 0; i < 16; i++) fm.daemons.set(`inst-${i}`, { isPaused: false });
+    fm.daemons.set("paused", { isPaused: true });
+    fm.stormWindow.observeServerAlive(4242);
+    for (let i = 0; i < 4; i++) fm.stormWindow.noteWindowLoss(`inst-${i}`);
+    expect(fm.stormWindow.snapshot().affected).toHaveLength(4);
+    if (trigger === "server-dead") fm.stormWindow.recordServerDead("inst-0", ["inst-0"]);
+    else fm.stormWindow.observeServerAlive(4243);
+    expect(fm.stormWindow.snapshot()).toMatchObject({ kind: "server", phase: "backing_off" });
+    expect(fm.stormWindow.snapshot().affected.sort()).toEqual(Array.from({ length: 16 }, (_, i) => `inst-${i}`).sort());
+    expect(fm.stormWindow.needsRecovery("inst-15")).toBe(true);
+    expect(fm.stormWindow.needsRecovery("paused")).toBe(false);
+    fm.stormWindow.shutdown();
+  });
+
+  it("a repeated server storm still only extends (no second 'opened')", () => {
+    const storm = new StormWindow();
+    const opened = vi.fn(); const extended = vi.fn();
+    storm.on("opened", opened); storm.on("extended", extended);
+    storm.recordServerDead("a", ["a"]);
+    storm.observeServerAlive(1); storm.observeServerAlive(2);
+    expect(opened).toHaveBeenCalledTimes(1);
+    expect(extended.mock.calls.length).toBeGreaterThan(0);
+    storm.shutdown();
+  });
+
+  it("a live pane on the delayed recheck restarts the count of failed list-windows", async () => {
+    const { daemons, state, logger } = fleet(1);
+    // two failed ticks, a tick with live evidence at the recheck, then a failed tick: only the first of a new sequence
+    daemons[0].tmux.getPaneStatus
+      .mockResolvedValueOnce(null).mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null).mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null).mockResolvedValueOnce({ alive: true })
+      .mockResolvedValue(null);
+    (TmuxManager.listWindows as any).mockRejectedValue(new Error("tmux busy"));
+    daemons[0].startHealthCheck();
+    await vi.advanceTimersByTimeAsync(10_100);
+    expect(daemons[0].tmux.getPaneStatus).toHaveBeenCalledTimes(8);
+    expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining("alive on recheck"));
+    expect(logger.warn).not.toHaveBeenCalledWith(expect.anything(), expect.stringContaining("window not found"));
+    expect(daemons[0].windowQueryFailureTicks).toBe(1);
     expect(state.started).toEqual([]);
   });
 });

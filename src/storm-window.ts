@@ -66,6 +66,8 @@ export class StormWindow extends EventEmitter {
   private phase: StormPhase = "closed";
   private kind: StormKind = "server";
   private windowLosses = new Map<string, number>();
+  /** Members of windowLosses whose respawn already finished (see noteWindowRecovered). */
+  private windowLossRecovered = new Set<string>();
   private generation = 0;
   private crashLevel = 0;
   private crashCount = 0;
@@ -176,9 +178,10 @@ export class StormWindow extends EventEmitter {
     if (this.stopped) return false;
     const now = this.now();
     for (const [other, at] of this.windowLosses) {
-      if (now - at > this.windowLossWindowMs) this.windowLosses.delete(other);
+      if (now - at > this.windowLossWindowMs) { this.windowLosses.delete(other); this.windowLossRecovered.delete(other); }
     }
     this.windowLosses.set(name, now);
+    this.windowLossRecovered.delete(name);
     if (this.isActive()) {
       this.addAffected(name);
       return false;
@@ -195,13 +198,36 @@ export class StormWindow extends EventEmitter {
     this.backoffMs = 0;
     this.retryAt = null;
     this.affected = new Set(names);
-    this.recovered.clear();
+    // Members that were respawned before the burst was recognised have already
+    // recovered; do not hold their delivery again (#1156 review).
+    this.recovered = new Set(names.filter(name => this.windowLossRecovered.has(name)));
     this.suppressed.clear();
     if (this.stableTimer) { this.clearTimer!(this.stableTimer); this.stableTimer = null; }
     if (this.recoveryTimer) this.clearTimer!(this.recoveryTimer);
     this.recoveryTimer = this.setTimer!(() => this.closeWindow("timeout"), this.recoveryTimeoutMs);
     (this.recoveryTimer as any)?.unref?.();
     this.emit("opened", this.snapshot());
+  }
+
+  /**
+   * A respawn after a confirmed window loss finished. Inside an open window that
+   * is a normal recovery; before one opens, remember it, so an instance that
+   * recovered before the burst was recognised is not counted as still down.
+   */
+  noteWindowRecovered(name: string): void {
+    if (this.isActive()) {
+      this.markRecovered(name);
+    } else if (this.windowLosses.has(name)) {
+      this.windowLossRecovered.add(name);
+    }
+  }
+
+  /**
+   * A live pane inside an open window-loss burst is recovery evidence on its own
+   * (a server storm is different: a pane alive then says nothing about the CLI).
+   */
+  noteWindowAlive(name: string): void {
+    if (this.kind === "window_loss" && this.needsRecovery(name)) this.markRecovered(name);
   }
 
   shouldSuppress(kind: string): boolean {
@@ -238,6 +264,7 @@ export class StormWindow extends EventEmitter {
   private recordDistinctCrash(): void {
     const now = this.now();
     const wasClosed = this.phase === "closed";
+    const wasWindowLoss = !wasClosed && this.kind === "window_loss";
     this.kind = "server";
     this.generation++;
     this.crashCount++;
@@ -253,7 +280,10 @@ export class StormWindow extends EventEmitter {
     // A storm is not stable merely because the current backoff itself lasts ten
     // minutes. The reset clock begins only after recovery closes the window.
     if (this.stableTimer) { this.clearTimer!(this.stableTimer); this.stableTimer = null; }
-    this.emit(wasClosed ? "opened" : "extended", this.snapshot());
+    // A window-loss burst turning into a server storm is a NEW storm for the
+    // fleet: it must enroll every running instance, not just the four that lost
+    // a window (#1156 review).
+    this.emit(wasClosed || wasWindowLoss ? "opened" : "extended", this.snapshot());
   }
 
   private beginRecovery(): void {
@@ -285,6 +315,7 @@ export class StormWindow extends EventEmitter {
     this.releaseAllDelivery();
     this.emit("closed", snapshot, reason);
     this.windowLosses.clear();
+    this.windowLossRecovered.clear();
     this.kind = "server";
     this.affected.clear();
     this.recovered.clear();

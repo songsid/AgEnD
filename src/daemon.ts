@@ -2513,6 +2513,7 @@ export class Daemon extends EventEmitter {
           }
           if (paneStatus?.alive) {
             this.windowQueryFailureTicks = 0;
+            this.stormWindow?.noteWindowAlive(this.name);
             // Instance output.log is fed by tmux pipe-pane and was previously never
             // rotated (only fleet.log / daemon.log were). Cap growth every tick.
             if (!this.config.lightweight) {
@@ -2532,6 +2533,8 @@ export class Daemon extends EventEmitter {
             paneStatus = await this.tmux.getPaneStatus();
             if (paneStatus?.alive) {
               this.logger.debug(`[health] ${cliLabel} pane reported gone then alive on recheck — transient query failure, ignoring`);
+              this.windowQueryFailureTicks = 0;
+              this.stormWindow?.noteWindowAlive(this.name);
               scheduleNext();
               return;
             }
@@ -2814,6 +2817,10 @@ export class Daemon extends EventEmitter {
             // the incident now, and the window cannot close without them.
             if (crashType === "server" || inWindowLossBurst || this.stormWindow?.needsRecovery(this.name)) {
               this.stormWindow?.markRecovered(this.name);
+            } else {
+              // Not (yet) part of a storm: keep the evidence, in case the next
+              // window loss makes this one a member whose recovery is already done.
+              this.stormWindow?.noteWindowRecovered(this.name);
             }
           } catch (err) {
             if (this.stopOnUnsupportedCliRespawn(err)) {
