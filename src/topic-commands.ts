@@ -944,7 +944,8 @@ export class TopicCommands {
       userId: msg.userId,
     };
     if (!arg) {
-      await this.ctx.promptLoginBackends(chat);
+      const failure = await this.ctx.promptLoginBackends(chat);
+      if (failure) await adapter.sendText(msg.chatId, failure, { threadId: msg.threadId });
       return;
     }
     if (arg === "cancel") {
@@ -982,12 +983,13 @@ export class TopicCommands {
     // Bare call → offer the backends, matching bare `/login`. A multi-word arg
     // is still a usage error: it means they typed something, just not a backend.
     if (!arg && this.ctx.promptInstallBackends) {
-      await this.ctx.promptInstallBackends({
+      const failure = await this.ctx.promptInstallBackends({
         adapter,
         adapterId: msg.adapterId ?? adapter.id,
         chatId: msg.chatId,
         threadId: msg.threadId,
       });
+      if (failure) await adapter.sendText(msg.chatId, failure, { threadId: msg.threadId });
       return;
     }
     if (!arg || /\s/.test(arg)) {

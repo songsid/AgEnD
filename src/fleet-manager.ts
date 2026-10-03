@@ -462,6 +462,18 @@ interface AdapterCallbackData {
   threadId?: string;
   messageId: string;
   userId?: string;
+  /**
+   * Acknowledge the click, optionally with a notice only the clicker sees
+   * (#1133): a Discord ephemeral follow-up, a Telegram callback answer. The
+   * adapter honours the first call only.
+   */
+  ack?: (notice?: string) => void;
+}
+
+/** The prefix of a button's callback data, for logs (never the nonce). */
+function callbackPrefix(callbackData: string): string {
+  const colon = callbackData.indexOf(":");
+  return colon === -1 ? "(none)" : callbackData.slice(0, colon + 1);
 }
 
 interface ClassicStartSlashData {
@@ -4538,27 +4550,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }, this.logger, "adapter.reaction"));
 
     this.adapter.on("callback_query", safeHandler(async (data: AdapterCallbackData) => {
-      if (!isCurrentAdapter()) return;
-      if (await this.handleTipDismiss(data, adapterId, this.adapter ?? undefined)) return;
-      if (await this.handleTipUnlock(data, adapterId, this.adapter ?? undefined)) return;
-      if (await this.handleLoginBackendSelect(data, adapterId, this.adapter ?? undefined)) return;
-      if (await this.handleInstallBackendSelect(data, adapterId, this.adapter ?? undefined)) return;
-      if (await this.handleClassicApproval(data, adapterId, this.adapter ?? undefined)) return;
-      if (await this.handleLoginMenuSelect(data, adapterId, this.adapter ?? undefined)) return;
-      if (await this.handleLoginConfirm(data, adapterId, this.adapter ?? undefined)) return;
-      if (await this.handleLoginTokenResend(data, adapterId, this.adapter ?? undefined)) return;
-      if (await this.handleInstallLoginConfirm(data, adapterId, this.adapter ?? undefined)) return;
-      if (await this.handleClearConfirmation(data, adapterId, this.adapter ?? undefined)) return;
-      if (await this.handleExitRestartPrompt(data, adapterId, this.adapter ?? undefined)) return;
-      if (await this.handleInteractivePromptAssist(data, adapterId, this.adapter ?? undefined)) return;
-      if (await this.handleClassicBackendSelection(data)) return;
-      if (await this.handleModelSelection(data)) return;
-      if (await this.handleEffortSelection(data)) return;
-      if (await this.handleHangPrompt(data, adapterId, this.adapter ?? undefined)) return;
-      if (data.callbackData.startsWith("cancel:")) {
-        this.handleCancelClick(data.callbackData.slice("cancel:".length), this.adapter, data);
-        return;
-      }
+      await this.receiveAdapterCallback(data, adapterId, this.adapter ?? undefined, isCurrentAdapter);
     }, this.logger, "adapter.callback_query"));
 
     this.bindTopicClosedHandler(adapter, adapterId, "adapter.topic_closed");
@@ -4873,27 +4865,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }, this.logger, `adapter[${adapterId}].reaction`));
 
     adapter.on("callback_query", safeHandler(async (data: AdapterCallbackData) => {
-      if (!isCurrentAdapter()) return;
-      if (await this.handleTipDismiss(data, adapterId, adapter)) return;
-      if (await this.handleTipUnlock(data, adapterId, adapter)) return;
-      if (await this.handleLoginBackendSelect(data, adapterId, adapter)) return;
-      if (await this.handleInstallBackendSelect(data, adapterId, adapter)) return;
-      if (await this.handleClassicApproval(data, adapterId, adapter)) return;
-      if (await this.handleLoginMenuSelect(data, adapterId, adapter)) return;
-      if (await this.handleLoginConfirm(data, adapterId, adapter)) return;
-      if (await this.handleLoginTokenResend(data, adapterId, adapter)) return;
-      if (await this.handleInstallLoginConfirm(data, adapterId, adapter)) return;
-      if (await this.handleClearConfirmation(data, adapterId, adapter)) return;
-      if (await this.handleExitRestartPrompt(data, adapterId, adapter)) return;
-      if (await this.handleInteractivePromptAssist(data, adapterId, adapter)) return;
-      if (await this.handleClassicBackendSelection(data)) return;
-      if (await this.handleModelSelection(data)) return;
-      if (await this.handleEffortSelection(data)) return;
-      if (await this.handleHangPrompt(data, adapterId, adapter)) return;
-      if (data.callbackData.startsWith("cancel:")) {
-        this.handleCancelClick(data.callbackData.slice("cancel:".length), adapter, data);
-        return;
-      }
+      await this.receiveAdapterCallback(data, adapterId, adapter, isCurrentAdapter);
     }, this.logger, `adapter[${adapterId}].callback_query`));
 
     this.bindTopicClosedHandler(adapter, adapterId, `adapter[${adapterId}].topic_closed`);
@@ -8576,7 +8548,23 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * fails, so a nonce in the map always refers to a message that exists (or
    * is about to). Returns the nonce, or null when the alert could not be sent.
    */
-  private async postNonceButtonPrompt(opts: {
+  /** postNonceButtonPromptOrThrow, logging a failure and returning null instead. */
+  private async postNonceButtonPrompt(opts: Parameters<FleetManager["postNonceButtonPromptOrThrow"]>[0]): Promise<string | null> {
+    try {
+      return await this.postNonceButtonPromptOrThrow(opts);
+    } catch (err) {
+      this.logger.warn({ err, instanceName: opts.instanceName, prefix: opts.prefix },
+        "Failed to send button prompt");
+      return null;
+    }
+  }
+
+  /**
+   * Post a nonce-armed button prompt; throws (with the nonce disarmed) when it
+   * cannot be posted, so a caller that told the user "buttons posted" can
+   * tell them the truth instead (#1133).
+   */
+  private async postNonceButtonPromptOrThrow(opts: {
     prefix: string;
     alertType: AlertData["type"];
     instanceName: string;
@@ -8589,7 +8577,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     expiredText: string;
     extra?: Pick<NonceButtonEntry, "generalName" | "promptKind" | "authChannelId" | "allowAnyUser" | "tipId" | "classicGroupId" | "classicUserId" | "classicScope">;
     timeoutMs?: number;
-  }): Promise<string | null> {
+  }): Promise<string> {
     // 16 bytes = the 128-bit capability the design claims. Telegram's 64-byte
     // callback_data cap still holds, with two prefixes tied at the longest:
     // "interactive-assist:" (19) + 32 hex + ":confirm" (8) = 59, and
@@ -8650,9 +8638,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     } catch (err) {
       this.pendingNonceButtons.delete(nonce);
       if (entry.timer) clearTimeout(entry.timer);
-      this.logger.warn({ err, instanceName: opts.instanceName, prefix: opts.prefix },
-        "Failed to send button prompt");
-      return null;
+      throw err;
     }
   }
 
@@ -8692,16 +8678,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (pending && pending.prefix !== prefix) pending = undefined;
     if (!match || !pending) {
       const adapter = receivingAdapter ?? this.adapter;
+      // The clicker always hears why nothing happens (#1133); collapsing the
+      // dead buttons is a courtesy that can fail (>48h on Telegram, message gone).
+      data.ack?.(t("buttons.stale_notice"));
+      const collapseFailed = (err: unknown) => this.logger.info({ err: (err as Error)?.message, prefix },
+        "Could not collapse an expired prompt's buttons");
       if (staleHandling?.keepText && adapter?.removeMessageButtons) {
-        adapter.removeMessageButtons(data.chatId, data.messageId, data.threadId)
-          .catch(() => { /* >48h on Telegram, or message gone — notice below still lands */ });
+        adapter.removeMessageButtons(data.chatId, data.messageId, data.threadId).catch(collapseFailed);
       } else {
         adapter?.editMessageRemoveButtons?.(
           data.chatId,
           data.messageId,
           t("buttons.stale"),
           data.threadId,
-        ).catch(() => { /* message may be gone — nothing to collapse */ });
+        ).catch(collapseFailed);
       }
       if (staleHandling?.notice) {
         adapter?.sendText(data.chatId, staleHandling.notice, { threadId: data.threadId })
@@ -8734,9 +8724,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         userId: data.userId,
         mismatchedFields: mismatchedFields.join(","),
       }, "Rejected unauthorized or mismatched button callback");
+      data.ack?.(t(isAuthorized ? "buttons.wrong_place" : "buttons.admin_only"));
       return "consumed";
     }
 
+    data.ack?.();
     // Claim before any await: double clicks and duplicate callback delivery
     // can never act twice for state-changing actions.
     this.pendingNonceButtons.delete(match[1]);
@@ -8745,17 +8737,69 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** Collapse a consumed prompt's buttons into a final status line. */
+  /**
+   * One button click from an adapter (#1133). Every click is acknowledged
+   * once the fleet has decided — Telegram keeps a spinner until it is, and a
+   * refused click acknowledges with a notice of its own (consumeNonceCallback) —
+   * and a click nothing acts on is logged rather than vanishing.
+   */
+  private async receiveAdapterCallback(
+    data: AdapterCallbackData,
+    adapterId: string,
+    adapter: ChannelAdapter | undefined,
+    isCurrentAdapter: () => boolean,
+  ): Promise<void> {
+    try {
+      if (!isCurrentAdapter()) {
+        this.logger.info({ adapterId, prefix: callbackPrefix(data.callbackData) },
+          "Button click from a replaced adapter ignored");
+        return;
+      }
+      if (!await this.dispatchAdapterCallback(data, adapterId, adapter)) {
+        this.logger.info({ adapterId, prefix: callbackPrefix(data.callbackData) },
+          "Button click not handled by the fleet (adapter-level prompt or unknown button)");
+      }
+    } finally {
+      data.ack?.();
+    }
+  }
+
+  /** Routes a click to the handler that owns its prefix; false when none does. */
+  private async dispatchAdapterCallback(
+    data: AdapterCallbackData,
+    adapterId: string,
+    adapter: ChannelAdapter | undefined,
+  ): Promise<boolean> {
+    if (await this.handleTipDismiss(data, adapterId, adapter)) return true;
+    if (await this.handleTipUnlock(data, adapterId, adapter)) return true;
+    if (await this.handleLoginBackendSelect(data, adapterId, adapter)) return true;
+    if (await this.handleInstallBackendSelect(data, adapterId, adapter)) return true;
+    if (await this.handleClassicApproval(data, adapterId, adapter)) return true;
+    if (await this.handleLoginMenuSelect(data, adapterId, adapter)) return true;
+    if (await this.handleLoginConfirm(data, adapterId, adapter)) return true;
+    if (await this.handleLoginTokenResend(data, adapterId, adapter)) return true;
+    if (await this.handleInstallLoginConfirm(data, adapterId, adapter)) return true;
+    if (await this.handleClearConfirmation(data, adapterId, adapter)) return true;
+    if (await this.handleExitRestartPrompt(data, adapterId, adapter)) return true;
+    if (await this.handleInteractivePromptAssist(data, adapterId, adapter)) return true;
+    if (await this.handleClassicBackendSelection(data)) return true;
+    if (await this.handleModelSelection(data)) return true;
+    if (await this.handleEffortSelection(data)) return true;
+    if (await this.handleHangPrompt(data, adapterId, adapter)) return true;
+    if (data.callbackData.startsWith("cancel:")) {
+      this.handleCancelClick(data.callbackData.slice("cancel:".length), adapter ?? null, data);
+      return true;
+    }
+    return false;
+  }
+
   private async retireNonceButtons(
     pending: NonceButtonEntry,
     messageId: string,
     text: string,
   ): Promise<void> {
-    if (!pending.adapter.editMessageRemoveButtons) {
-      this.logger.warn({ instanceName: pending.instanceName, adapterId: pending.adapterId },
-        "Adapter cannot remove prompt buttons");
-      return;
-    }
     try {
+      if (!pending.adapter.editMessageRemoveButtons) throw new Error("adapter cannot remove prompt buttons");
       await pending.adapter.editMessageRemoveButtons(
         pending.chatId,
         messageId,
@@ -8764,8 +8808,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       );
     } catch (err) {
       // The action was already atomically consumed. An edit failure must not
-      // undo that or make the button actionable again.
-      this.logger.warn({ err, instanceName: pending.instanceName }, "Failed to retire prompt buttons");
+      // undo that or make the button actionable again — but the edit is the
+      // only place some outcomes are told (cancel, later, a resend's result),
+      // so the text goes out as a message instead (#1133).
+      this.logger.warn({ err, instanceName: pending.instanceName }, "Failed to retire prompt buttons; posting the outcome instead");
+      await pending.adapter.sendText(pending.chatId, text, { threadId: pending.threadId })
+        .catch(sendErr => this.logger.warn({ err: sendErr, instanceName: pending.instanceName }, "Could not post a prompt's outcome"));
     }
   }
 
@@ -10231,8 +10279,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         isClaimCurrent: claim => this.loginWindow.isCurrent(claim),
         windowBusyMessage: () => this.loginWindow.busyMessage(),
         tunnelDataDir: () => this.dataDir,
+        // Throws when the prompt cannot be posted: the controller tells the
+        // user so instead of leaving "Starting…" as the last word (#1133).
         postButtons: async ({ prefix, instanceName, chat, message, choices, expiredText }) => {
-          await this.postNonceButtonPrompt({
+          await this.postNonceButtonPromptOrThrow({
             prefix, alertType: "login", instanceName,
             adapter: chat.adapter, adapterId: chat.adapterId, chatId: chat.chatId, threadId: chat.threadId,
             message, choices, expiredText,
@@ -10243,10 +10293,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.loginController;
   }
 
-  /** Post the backend chooser for a bare `/login`. Caller enforces admin. */
+  /**
+   * Post the backend chooser for a bare `/login`. Caller enforces admin.
+   * Returns why the chooser could not be posted, for the caller to tell the
+   * user (#1133); undefined when it was posted or there was nothing to choose.
+   */
   async promptLoginBackends(chat: {
     adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string;
-  }): Promise<void> {
+  }): Promise<string | undefined> {
     const configured = new Set<string>();
     for (const name of this.configuredBackendInstanceNames()) {
       configured.add(this.backendNameOf(name));
@@ -10282,7 +10336,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
       return;
     }
-    await this.postNonceButtonPrompt({
+    return this.postChooser({
       prefix: LOGIN_CALLBACK_PREFIX,
       alertType: "login",
       instanceName: "login",
@@ -10294,6 +10348,24 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       choices,
       expiredText: t("buttons.stale"),
     });
+  }
+
+  /** A clicked prompt's follow-up line; a failure to post it is logged, not swallowed (#1133). */
+  private async postPromptOutcome(entry: NonceButtonEntry, text: string): Promise<void> {
+    await entry.adapter.sendText(entry.chatId, text, { threadId: entry.threadId })
+      .catch(err => this.logger.warn({ err, instanceName: entry.instanceName, prefix: entry.prefix },
+        "Could not post a prompt's follow-up"));
+  }
+
+  /** A chooser prompt: undefined when posted, else the user-facing reason it was not. */
+  private async postChooser(opts: Parameters<FleetManager["postNonceButtonPromptOrThrow"]>[0]): Promise<string | undefined> {
+    try {
+      await this.postNonceButtonPromptOrThrow(opts);
+      return undefined;
+    } catch (err) {
+      this.logger.warn({ err, prefix: opts.prefix }, "Could not post a backend chooser");
+      return t("buttons.post_failed", (err as Error)?.message ?? String(err));
+    }
   }
 
   /**
@@ -10432,11 +10504,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   async promptInstallBackends(chat: {
     adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string;
-  }): Promise<void> {
+  }): Promise<string | undefined> {
     const choices = Object.keys(BACKEND_INSTALLATION_INFO)
       .filter(backend => backend !== "gemini-cli")
       .map(backend => ({ action: backend, label: backend }));
-    await this.postNonceButtonPrompt({
+    return this.postChooser({
       prefix: INSTALL_CALLBACK_PREFIX,
       alertType: "install",
       instanceName: "install",
@@ -10474,7 +10546,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       chatId: entry.chatId,
       threadId: entry.threadId,
     });
-    if (text) await entry.adapter.sendText(entry.chatId, text, { threadId: entry.threadId }).catch(() => {});
+    if (text) await this.postPromptOutcome(entry, text);
     return true;
   }
 
@@ -10517,7 +10589,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const status = await checkAuthStatus(flow.authCheck);
       if (!this.loginWindow.isCurrent(claim)) return t("login.web_shutting_down");   // fleet shut down while we probed
       if (status === "valid") {
-        await this.postNonceButtonPrompt({
+        const failure = await this.postChooser({
           prefix: LOGIN_CONFIRM_CALLBACK_PREFIX,
           alertType: "login",
           instanceName: backend,
@@ -10532,7 +10604,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           ],
           expiredText: t("buttons.stale"),
         });
-        return null;
+        return failure ?? null;
       }
     }
     markTransferred();                                   // launchLoginSession owns the claim from here
@@ -10557,7 +10629,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     const session = new LoginSession(flow, tmux, {
       onMenu: async (options) => {
-        await this.postNonceButtonPrompt({
+        const failure = await this.postChooser({
           prefix: LOGIN_MENU_CALLBACK_PREFIX,
           alertType: "login",
           instanceName: backend,
@@ -10569,6 +10641,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           choices: options.map((label, index) => ({ action: String(index), label })),
           expiredText: t("buttons.stale"),
         });
+        if (failure) {
+          await chat.adapter.sendText(chat.chatId, failure, { threadId: chat.threadId })
+            .catch(err => this.logger.warn({ err, backend }, "Could not report a login menu that failed to post"));
+        }
       },
       onAuthHint: async (url, code) => {
         await this.sendLoginSecret(chat, backend, url, code);
@@ -10794,7 +10870,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       threadId: entry.threadId,
       userId: data.userId,
     });
-    if (text) await entry.adapter.sendText(entry.chatId, text, { threadId: entry.threadId }).catch(() => {});
+    if (text) await this.postPromptOutcome(entry, text);
     return true;
   }
 
@@ -10832,7 +10908,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // The consent is the button itself: only the explicit "Open public link" actions carry it.
       tunnel: action === "go-tunnel" || action === "go-relogin-tunnel",
     });
-    if (text) await entry.adapter.sendText(entry.chatId, text, { threadId: entry.threadId }).catch(() => {});
+    if (text) await this.postPromptOutcome(entry, text);
     return true;
   }
 
@@ -11095,7 +11171,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       threadId: entry.threadId,
       userId: data.userId,
     });
-    if (text) await entry.adapter.sendText(entry.chatId, text, { threadId: entry.threadId }).catch(() => {});
+    if (text) await this.postPromptOutcome(entry, text);
     return true;
   }
 
@@ -11119,8 +11195,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await data.respond(text ?? t("login.confirm_posted"));
       return;
     }
-    await this.promptLoginBackends(chat);
-    await data.respond(t("login.chooser_posted"));
+    const failure = await this.promptLoginBackends(chat);
+    await data.respond(failure ?? t("login.chooser_posted"));
   }
 
   /** Discord native `/install-cli` slash — shared by every dispatch block. */
@@ -11139,8 +11215,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // Bare call: offer the backends instead of printing a usage line the user
       // then has to retype. A Discord slash that DID pick the native `backend`
       // choice never lands here, so the two paths cannot both fire.
-      await this.promptInstallBackends({ adapter, adapterId, chatId: data.channelId });
-      await data.respond(t("install.chooser_posted"));
+      const failure = await this.promptInstallBackends({ adapter, adapterId, chatId: data.channelId });
+      await data.respond(failure ?? t("install.chooser_posted"));
       return;
     }
     await data.respond(await this.startInstallSession(backend, { adapter, adapterId, chatId: data.channelId }));

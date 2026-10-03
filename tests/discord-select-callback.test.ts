@@ -62,6 +62,7 @@ describe("Discord ClassicBot backend selection", () => {
       threadId: "new-classic-channel",
       messageId: "menu-message",
       userId: "owner",
+      ack: expect.any(Function),
     });
   });
 

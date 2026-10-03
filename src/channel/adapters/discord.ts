@@ -81,6 +81,49 @@ export interface DiscordAdapterOptions {
   reconnectBaseDelayMs?: number;
 }
 
+/** Discord's limits: 5 buttons to an action row, 5 rows to a message. */
+const BUTTONS_PER_ROW = 5;
+const MAX_BUTTON_ROWS = 5;
+
+/**
+ * Buttons laid out in rows of five (#1133). One row used to hold them all, and
+ * Discord rejects a row of more than five: the `/install-cli` chooser (seven
+ * backends) could never be posted. More than 25 cannot be shown at all — an
+ * error, never a silent truncation.
+ */
+export function buttonRows(choices: ReadonlyArray<{ id: string; label: string }>): ActionRowBuilder<ButtonBuilder>[] {
+  if (choices.length > BUTTONS_PER_ROW * MAX_BUTTON_ROWS) {
+    throw new Error(`Discord shows at most ${BUTTONS_PER_ROW * MAX_BUTTON_ROWS} buttons on one message (${choices.length} requested)`);
+  }
+  const rows: ActionRowBuilder<ButtonBuilder>[] = [];
+  for (let i = 0; i < choices.length; i += BUTTONS_PER_ROW) {
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+      choices.slice(i, i + BUTTONS_PER_ROW).map(choice => new ButtonBuilder()
+        .setCustomId(choice.id)
+        .setLabel(choice.label.slice(0, 80))
+        .setStyle(ButtonStyle.Secondary)),
+    ));
+  }
+  return rows;
+}
+
+/**
+ * The click's acknowledgement (#1133). The click itself was acknowledged on
+ * arrival (deferUpdate, inside Discord's 3 s window); a notice — why nothing
+ * happened — goes to the clicker alone as an ephemeral follow-up.
+ */
+function privateNotice(interaction: { followUp(options: { content: string; flags: number }): Promise<unknown> }, adapterId: string): (notice?: string) => void {
+  let done = false;
+  return (notice?: string) => {
+    if (done) return;
+    done = true;
+    if (!notice) return;
+    // Never throws into the caller: the fleet's decision is already made.
+    Promise.resolve().then(() => interaction.followUp({ content: notice, flags: MessageFlags.Ephemeral }))
+      .catch(err => console.warn(`[discord:${adapterId}] could not send a private button notice (${(err as Error).message})`));
+  };
+}
+
 /**
  * A nonce-armed prompt button (`postNonceButtonPrompt`): `<prefix>:<32 hex>:<action>`.
  * Fleet-manager validates these against the prompt that created them.
@@ -516,7 +559,12 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     // interaction expires (>3s). Catch to prevent crashing the entire daemon.
     client.on("interactionCreate", async (interaction: Interaction) => {
       try {
-        if (!this.isCurrentClient(client, generation)) return;
+        if (!this.isCurrentClient(client, generation)) {
+          // A replaced client is destroyed, so this should never fire; if it
+          // does, the click is not lost without a trace (#1133).
+          console.info(`[discord:${this.id}] ignored an interaction on a replaced gateway client`);
+          return;
+        }
         // Buttons: acknowledge IMMEDIATELY, before any guild/channel filtering.
         // A button has a 3s ack window; any early return (unknown guild/channel)
         // or a downstream no-op (e.g. the cancel button was already cleared) would
@@ -541,6 +589,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
             threadId: interaction.channelId,
             messageId: interaction.message.id,
             userId: interaction.user.id,
+            ack: privateNotice(interaction, this.id),
           });
           return;
         }
@@ -565,6 +614,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
             threadId: interaction.channelId,
             messageId: interaction.message.id,
             userId: interaction.user.id,
+            ack: privateNotice(interaction, this.id),
           });
           return;
         }
@@ -1218,12 +1268,13 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
   async editMessageRemoveButtons(chatId: string, messageId: string, text: string, threadId?: string): Promise<void> {
     // Prefer the exact channel (handles forum-topic threads, which a GuildText
     // scan misses); fall back to scanning top-level text channels.
+    let exactError: unknown;
     try {
       const channel = await this._fetchTextChannel(threadId ?? chatId);
       const msg = await channel.messages.fetch(messageId);
       await msg.edit({ content: truncatePreview(text, DISCORD_MAX_LENGTH), components: [] });
       return;
-    } catch { /* not in that channel — fall through to scan */ }
+    } catch (err) { exactError = err; /* not in that channel — fall through to scan */ }
     try {
       const guild = await (await this.readyClient()).guilds.fetch(this.guildId);
       const channels = guild.channels.cache.filter((c) => c.type === ChannelType.GuildText);
@@ -1237,7 +1288,11 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
           continue;
         }
       }
-    } catch { /* message gone — nothing to clear */ }
+    } catch { /* no guild to scan — the edit failed */ }
+    // Nothing was edited: say so (#1133). The text may be the only place an
+    // outcome is shown (a cancel, a resend's result), and a caller that
+    // believes it landed has no reason to post it another way.
+    throw exactError instanceof Error ? exactError : new Error("the message could not be edited");
   }
 
   async deleteMessage(chatId: string, messageId: string, threadId?: string): Promise<void> {
@@ -1519,17 +1574,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       const channelId = opts?.threadId ?? chatId;
       const channel = await this._fetchTextChannel(channelId);
 
-      const row = new ActionRowBuilder<ButtonBuilder>();
-      for (const choice of alert.choices) {
-        row.addComponents(
-          new ButtonBuilder()
-            .setCustomId(choice.id)
-            .setLabel(choice.label.slice(0, 80))
-            .setStyle(ButtonStyle.Secondary),
-        );
-      }
-
-      const msg = await channel.send({ content: alert.message, components: [row] });
+      const msg = await channel.send({ content: alert.message, components: buttonRows(alert.choices) });
       // The address this adapter's own callbacks report for these buttons
       // (guild + channel as thread), not the caller's spelling of it (#1131).
       // A native slash command addresses its channel as the chat; the button
@@ -1558,18 +1603,9 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
   async editAlert(chatId: string, messageId: string, alert: AlertData, opts?: SendOpts): Promise<void> {
     const channel = await this._fetchTextChannel(opts?.threadId ?? chatId);
     const msg = await channel.messages.fetch(messageId);
-    const row = new ActionRowBuilder<ButtonBuilder>();
-    for (const choice of alert.choices ?? []) {
-      row.addComponents(
-        new ButtonBuilder()
-          .setCustomId(choice.id)
-          .setLabel(choice.label.slice(0, 80))
-          .setStyle(ButtonStyle.Secondary),
-      );
-    }
     await msg.edit({
       content: truncatePreview(alert.message, DISCORD_MAX_LENGTH),
-      components: row.components.length > 0 ? [row] : [],
+      components: buttonRows(alert.choices ?? []),
     });
   }
 
