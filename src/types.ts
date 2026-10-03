@@ -337,7 +337,11 @@ export interface WebConfig {
 
 /** `login:` section — remote /login behaviour. */
 export interface LoginConfig {
-  /** web (default): token-gated browser terminal. relay: the pre-2.1.5 chat relay, kept for rollback in 2.1.5 only. */
+  /**
+   * /login always runs in the token-gated browser terminal. `relay` (the pre-2.1.6 chat relay) was
+   * removed in #1139: it is still accepted so an upgrade cannot stop a fleet from starting, is ignored,
+   * and logs one warning.
+   */
   mode?: "web" | "relay";
 }
 

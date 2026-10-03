@@ -130,8 +130,6 @@ export interface FleetContext {
     /** The requesting human — required by web mode (admin re-check, private token delivery). */
     userId?: string;
   }, opts?: { skipAuthCheck?: boolean; tokenPresent?: boolean }): Promise<string | null>;
-  /** Paste admin-supplied text (auth code / start URL) into the login window. */
-  loginSubmitInput?(text: string): Promise<string>;
   /** Abort the active login session. */
   cancelLoginSession?(): Promise<string>;
   /** Human-readable effective model for an instance (resolves inherited defaults). */

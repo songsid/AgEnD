@@ -88,13 +88,13 @@ export const DURABLE_DELIVERY_LANE_ALERT_MS = 35 * 60_000;
 import { handleWebRequest, broadcastSseEvent } from "./web-api.js";
 import { handleViewRequest, isViewPath } from "./view-api.js";
 import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, usageProviderIdForBackend } from "./usage/usage-api.js";
-import { LOGIN_FLOWS, LOGIN_BACKEND_ALIASES, checkAuthStatus, type LoginFlow, type AuthCheckResult } from "./login-flows.js";
+import { LOGIN_FLOWS, LOGIN_BACKEND_ALIASES, type LoginFlow, type AuthCheckResult } from "./login-flows.js";
 import { LoginSession } from "./login-manager.js";
 import { tightenInstanceDirs } from "./private-dir.js";
 import { decideSlash, type SlashFacts, type SlashScope, type SlashSpeaker } from "./slash-authz.js";
-import { LoginController, LOGIN_TOKEN_RESEND_PREFIX, POST_LOGIN_RECOVERY_DEADLINE_MS, announcePostLoginRecovery, type PostLoginRecovery } from "./login-controller.js";
+import { LoginController, LOGIN_TOKEN_RESEND_PREFIX, POST_LOGIN_RECOVERY_DEADLINE_MS, type PostLoginRecovery } from "./login-controller.js";
 import { runBeforeDeadline } from "./deadline.js";
-import { LoginWindowLock, type LoginWindowClaim } from "./login-window-lock.js";
+import { LoginWindowLock } from "./login-window-lock.js";
 import { handleSettingsRequest, type RawConfigPatch } from "./settings-api.js";
 import { setLocale, detectLocale, getLocale, t } from "./locale.js";
 import { describeSignalSource, recordInternalRequest, withOrigin } from "./fleet-control-audit.js";
@@ -533,11 +533,13 @@ const CLEAR_CONFIRM_CALLBACK_PREFIX = "clear-confirm:";
 const TIP_DISMISS_CALLBACK_PREFIX = "tip-dismiss:";
 const TIP_UNLOCK_CALLBACK_PREFIX = "tip-unlock:";
 export const LOGIN_CALLBACK_PREFIX = "login:";
-/** Prompt kinds `/install-cli` used, before it became part of `/login` (#1131). */
-const RETIRED_PROMPT_PREFIXES = ["install-select:", "install-login:"] as const;
+/**
+ * Prompt kinds that no longer exist: `/install-cli` (#1131) and the relay-mode login's
+ * provider picker (#1139). Their buttons may still be on screen after an upgrade.
+ */
+const RETIRED_PROMPT_PREFIXES = ["install-select:", "install-login:", "login-menu:"] as const;
 const NEVER_MATCHES = /(?!)/;
 const CLASSIC_APPROVE_CALLBACK_PREFIX = "classic-approve:";
-const LOGIN_MENU_CALLBACK_PREFIX = "login-menu:";
 const LOGIN_CONFIRM_CALLBACK_PREFIX = "login-confirm:";
 const CLEAR_CONFIRM_TIMEOUT_MS = 15_000;
 /** Default lifetime for long-lived nonce prompts (clear overrides this to 15s). */
@@ -1644,7 +1646,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.rawFleetConfig = raw;
     this.fleetConfig = loaded;
     this.savedFleetConfigSnapshot = structuredClone(this.fleetConfig);
+    this.warnAboutRemovedLoginMode(loaded);
     return this.fleetConfig;
+  }
+
+  private relayLoginModeWarned = false;
+
+  /** `login.mode: relay` was removed (#1139). Still accepted so an upgrade cannot stop a fleet from starting. */
+  private warnAboutRemovedLoginMode(config: FleetConfig): void {
+    if (config.login?.mode !== "relay" || this.relayLoginModeWarned) return;
+    this.relayLoginModeWarned = true;
+    this.logger.warn("fleet.yaml sets login.mode: relay — the chat-relay login was removed; /login always uses the web terminal. Remove the setting.");
   }
 
   /**
@@ -8959,7 +8971,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /**
    * A button from a prompt kind that no longer exists (#1131: `/install-cli`'s
-   * picker and its "sign in now?" prompt). Still on screen after an upgrade;
+   * picker and its "sign in now?" prompt; #1139: the relay login's provider picker). Still on screen after an upgrade;
    * a click gets the expired-prompt treatment — a private notice, the buttons
    * collapsed — instead of nothing.
    */
@@ -8980,7 +8992,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (await this.handleTipUnlock(data, adapterId, adapter)) return true;
     if (await this.handleLoginBackendSelect(data, adapterId, adapter)) return true;
     if (await this.handleClassicApproval(data, adapterId, adapter)) return true;
-    if (await this.handleLoginMenuSelect(data, adapterId, adapter)) return true;
     if (this.handleRetiredPromptButton(data, adapterId, adapter)) return true;
     if (await this.handleLoginConfirm(data, adapterId, adapter)) return true;
     if (await this.handleLoginTokenResend(data, adapterId, adapter)) return true;
@@ -10455,21 +10466,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   // shared ~/.codex; the other CLIs use one real home), so a single sign-in
   // repairs every instance of that backend, and instance delivery, pane-state
   // detection, tool progress, and mcp_proxy_reply never observe login output.
-  private activeLogin: {
-    session: LoginSession;
-    backend: string;
-    chat: { adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string };
-  } | null = null;
-
-  /**
-   * Web-terminal login (v2.1.5 default, `login.mode: web`). The relay code
-   * below (activeLogin/LoginSession) is `login.mode: relay`, kept for one
-   * release as the rollback lever and removed in 2.1.6.
-   */
+  /** Web-terminal login: the only sign-in path (the chat-relay mode was removed, #1139). */
   private loginController: LoginController | null = null;
   /**
    * One login/install window fleet-wide. Claimed synchronously before the
-   * first await by web login, relay login and install alike (sol B1).
+   * first await by web login and install alike (sol B1).
    */
   private readonly loginWindow = new LoginWindowLock();
   private get webLogin(): LoginController {
@@ -10739,160 +10740,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
-  /** The sign-in itself (web, or the legacy relay) for a CLI that is installed. */
+  /** The sign-in itself, in the web terminal, for a CLI that is installed. */
   private async launchSignIn(backendArg: string, chat: {
     adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string; userId?: string;
   }, opts: { skipAuthCheck?: boolean; tokenPresent?: boolean; tunnel?: boolean } = {}): Promise<string | null> {
-    if (this.webLogin.mode() === "web") return this.webLogin.start(backendArg, chat, opts);
-    // ── legacy relay mode (login.mode: relay) — removed in 2.1.6 ──
-    const backend = LOGIN_BACKEND_ALIASES[backendArg.toLowerCase()] ?? backendArg.toLowerCase();
-    const flow = LOGIN_FLOWS[backend];
-    if (!flow) return t("login.unsupported", backendArg);
-    // Declined in every mode — never a silent relay fallback (e.g. Antigravity).
-    if (flow.remoteLogin === "unsupported") return t("login.remote_unsupported_agent_cli", backend, flow.command);
-    // Reserve the window before the pre-check await. The claim is owned by this
-    // region until it is transferred to launchLoginSession; any other exit
-    // (buttons only, throw, shutdown) releases it.
-    const claim = this.loginWindow.tryClaim("relay", backend);
-    if (!claim) return this.loginWindow.busyMessage();
-    let transferred = false;
-    try {
-      return await this.startRelayClaimed(flow, backend, chat, opts, claim, () => { transferred = true; });
-    } finally {
-      if (!transferred) this.loginWindow.release(claim);
-    }
+    return this.webLogin.start(backendArg, chat, opts);
   }
 
-  private async startRelayClaimed(flow: LoginFlow, backend: string, chat: {
-    adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string; userId?: string;
-  }, opts: { skipAuthCheck?: boolean; tokenPresent?: boolean }, claim: LoginWindowClaim, markTransferred: () => void): Promise<string | null> {
-    // Token-free pre-check (5s cap): re-login while auth still works is
-    // usually a mistake, so it needs a confirmed click. An invalid OR
-    // uncertain result (timeout, missing binary) proceeds straight to login —
-    // an unreliable probe must never block the re-login the admin asked for.
-    if (!opts.skipAuthCheck && flow.authCheck) {
-      const status = await checkAuthStatus(flow.authCheck);
-      if (!this.loginWindow.isCurrent(claim)) return t("login.web_shutting_down");   // fleet shut down while we probed
-      if (status === "valid") {
-        const failure = await this.postChooser({
-          prefix: LOGIN_CONFIRM_CALLBACK_PREFIX,
-          alertType: "login",
-          instanceName: backend,
-          adapter: chat.adapter,
-          adapterId: chat.adapterId,
-          chatId: chat.chatId,
-          threadId: chat.threadId,
-          message: t("login.still_valid", backend),
-          choices: [
-            { action: "go", label: t("login.relogin_go") },
-            { action: "cancel", label: t("login.relogin_cancel") },
-          ],
-          expiredText: t("buttons.stale"),
-        });
-        return failure ?? null;
-      }
-    }
-    markTransferred();                                   // launchLoginSession owns the claim from here
-    return this.launchLoginSession(flow, backend, chat, claim);
-  }
-
-  /** Create the login window and session (pre-check already settled). */
-  private async launchLoginSession(flow: LoginFlow, backend: string, chat: {
-    adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string;
-  }, claim: LoginWindowClaim): Promise<string> {
-    // Owns `claim`: released on any failure before the session is published,
-    // and by onDone afterwards. A shutdown during ensureSession stops us.
-    let tmux: TmuxManager;
-    try {
-      const sessionName = getTmuxSession();
-      await TmuxManager.ensureSession(sessionName);
-      if (!this.loginWindow.isCurrent(claim)) { this.loginWindow.release(claim); return t("login.web_shutting_down"); }
-      tmux = new TmuxManager(sessionName, "");
-    } catch (err) {
-      this.loginWindow.release(claim);
-      return t("login.failed", backend, (err as Error).message);
-    }
-    const session = new LoginSession(flow, tmux, {
-      onMenu: async (options) => {
-        const failure = await this.postChooser({
-          prefix: LOGIN_MENU_CALLBACK_PREFIX,
-          alertType: "login",
-          instanceName: backend,
-          adapter: chat.adapter,
-          adapterId: chat.adapterId,
-          chatId: chat.chatId,
-          threadId: chat.threadId,
-          message: t("login.choose_provider"),
-          choices: options.map((label, index) => ({ action: String(index), label })),
-          expiredText: t("buttons.stale"),
-        });
-        if (failure) {
-          await chat.adapter.sendText(chat.chatId, failure, { threadId: chat.threadId })
-            .catch(err => this.logger.warn({ err, backend }, "Could not report a login menu that failed to post"));
-        }
-      },
-      onAuthHint: async (url, code) => {
-        await this.sendLoginSecret(chat, backend, url, code);
-      },
-      onNeedInput: async (promptExcerpt) => {
-        await chat.adapter.sendText(chat.chatId, t("login.need_input", backend, promptExcerpt),
-          { threadId: chat.threadId }).catch(() => {});
-      },
-      onDone: async ({ ok, detail, cleanupFailed }) => {
-        this.activeLogin = null;
-        this.loginWindow.release(claim);
-        if (cleanupFailed) {
-          await chat.adapter.sendText(chat.chatId, t("login.web_cleanup_failed", backend), { threadId: chat.threadId }).catch(() => {});
-        }
-        const send = (text: string) =>
-          chat.adapter.sendText(chat.chatId, text, { threadId: chat.threadId }).catch(() => {});
-        let text: string;
-        if (ok) {
-          // Same order as the web-login path: the login result goes out first,
-          // then the recovery reports its own outcome. Waiting for recovery to
-          // build this message is what made a successful login look hung.
-          await send(t("login.completed", backend));
-          await announcePostLoginRecovery(backend, () => this.recoverBackendInstances(backend), send);
-          return;
-        } else if (detail === "cancelled") {
-          // The cancel command's own reply already announced this — a second
-          // message here was a duplicate.
-          return;
-        } else {
-          text = t("login.failed", backend, detail);
-        }
-        await chat.adapter.sendText(chat.chatId, text, { threadId: chat.threadId }).catch(() => {});
-      },
-    }, this.logger);
-
-    // Claim the slot before the first await so two admins racing /login cannot
-    // both create windows; release on startup failure.
-    this.activeLogin = { session, backend, chat };
-    try {
-      await session.start();
-    } catch (err) {
-      this.activeLogin = null;
-      this.loginWindow.release(claim);
-      const text = t("login.failed", backend, (err as Error).message);
-      return (err as { cleanupFailed?: boolean }).cleanupFailed ? `${text}\n${t("login.web_cleanup_failed", backend)}` : text;
-    }
-    if (session.state === "done") {
-      // Cancelled (user or shutdown) while starting: start() joined the
-      // teardown, so nothing is left. onDone already released the claim.
-      this.activeLogin = null;
-      this.loginWindow.release(claim);
-      return this.loginWindow.isClosed ? t("login.web_shutting_down") : t("login.cancelled", backend);
-    }
-    if (!this.loginWindow.isCurrent(claim)) {
-      await session.cancel("cancelled").catch(() => { /* already finished */ });
-      this.activeLogin = null;
-      this.loginWindow.release(claim);
-      return t("login.web_shutting_down");
-    }
-    return t("login.started", backend);
-  }
-
-  /** Fleet shutdown: end any web/relay login or install window and wait for its confirmed teardown. */
+  /** Fleet shutdown: end any web login or install window and wait for its confirmed teardown. */
   private async shutdownLoginWindows(): Promise<void> {
     // Close the lock FIRST: in-flight starts parked in a pre-check or
     // ensureSession observe !isCurrent when they resume and stop; no new
@@ -10925,17 +10780,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // a stopping fleet must not announce "login failed — fleet shutdown".
     await Promise.all([
       bounded(this.loginController?.shutdown(), "web-login"),
-      bounded(this.activeLogin?.session.cancel("cancelled"), "relay-login"),
       bounded(this.activeInstall?.session.cancel("cancelled"), "install"),
     ]);
-  }
-
-  /** `/login code <text>` — paste admin-supplied text into the login window. */
-  async loginSubmitInput(text: string): Promise<string> {
-    if (this.loginController?.isActive()) return t("login.web_code_not_needed");
-    if (!this.activeLogin) return t("login.no_session");
-    const ok = await this.activeLogin.session.submitInput(text);
-    return ok ? t("login.input_sent") : t("login.input_failed");
   }
 
   /** `/login cancel` — abort the active session and remove its window. */
@@ -10950,42 +10796,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return t("login.cancelled", backend);
     }
     if (this.loginController?.isActive()) return this.loginController.cancel();
-    if (!this.activeLogin) return t("login.no_session");
-    const backend = this.activeLogin.backend;
-    await this.activeLogin.session.cancel();
-    return t("login.cancelled", backend);
-  }
-
-  /**
-   * The URL (+ code) is a live credential: whoever completes it binds THEIR
-   * account to this fleet's CLI. Telegram gets an HTML spoiler (same treatment
-   * as the dashboard token); other adapters get plain text with the warning.
-   */
-  private async sendLoginSecret(
-    chat: { adapter: ChannelAdapter; chatId: string; threadId?: string },
-    backend: string,
-    url: string,
-    code: string | null,
-  ): Promise<void> {
-    const codeLine = code ? `\n${t("login.auth_code", code)}` : "";
-    try {
-      if (chat.adapter.type === "telegram") {
-        const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        await chat.adapter.sendText(
-          chat.chatId,
-          `${esc(t("login.auth_hint", backend))}\n<tg-spoiler>${esc(url)}${esc(codeLine)}</tg-spoiler>`,
-          { threadId: chat.threadId, format: "html" },
-        );
-      } else {
-        await chat.adapter.sendText(
-          chat.chatId,
-          `${t("login.auth_hint", backend)}\n${url}${codeLine}`,
-          { threadId: chat.threadId },
-        );
-      }
-    } catch (err) {
-      this.logger.warn({ err: (err as Error).message, backend }, "Failed to deliver login URL");
-    }
+    return t("login.no_session");
   }
 
   /**
@@ -11124,30 +10935,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const { entry } = claimed;
     const text = await this.webLogin.resendToken(data.userId);
     await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, text);
-    return true;
-  }
-
-  /** Kiro provider button → drive the CLI's arrow-key selector. */
-  private async handleLoginMenuSelect(
-    data: AdapterCallbackData,
-    callbackAdapterId: string,
-    receivingAdapter?: ChannelAdapter,
-  ): Promise<boolean> {
-    const claimed = this.consumeNonceCallback(
-      LOGIN_MENU_CALLBACK_PREFIX,
-      /^login-menu:([0-9a-f]+):(\d)$/,
-      data,
-      callbackAdapterId,
-      receivingAdapter,
-    );
-    if (claimed === null) return false;
-    if (claimed === "consumed") return true;
-    const { entry, action } = claimed;
-    const index = Number(action);
-    const label = this.activeLogin?.session.flow.menu?.options[index] ?? action;
-    const ok = await this.activeLogin?.session.selectMenuOption(index) ?? false;
-    await this.retireNonceButtons(entry, entry.messageId ?? data.messageId,
-      ok ? t("login.provider_selected", label) : t("login.no_session"));
     return true;
   }
 

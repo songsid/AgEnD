@@ -984,7 +984,7 @@ export class TopicCommands {
   }
 
   /**
-   * `/login [backend] | code <text> | cancel` — remote CLI re-login.
+   * `/login [backend] | cancel` — remote CLI re-login.
    * Fleet-admin only: the flow emits live authorization URLs/codes, and anyone
    * completing one binds their own account to this fleet's CLI.
    */
@@ -995,8 +995,7 @@ export class TopicCommands {
       await adapter.sendText(msg.chatId, t("permission.denied"), { threadId: msg.threadId });
       return;
     }
-    if (!this.ctx.startLoginSession || !this.ctx.promptLoginBackends
-      || !this.ctx.loginSubmitInput || !this.ctx.cancelLoginSession) {
+    if (!this.ctx.startLoginSession || !this.ctx.promptLoginBackends || !this.ctx.cancelLoginSession) {
       await adapter.sendText(msg.chatId, t("login.no_session"), { threadId: msg.threadId });
       return;
     }

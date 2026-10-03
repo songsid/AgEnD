@@ -1,5 +1,5 @@
 /**
- * Remote `/login` in web-terminal mode (v2.1.5, design docs/design/login-relay-v2).
+ * Remote `/login` in the web terminal (v2.1.5, design docs/design/login-relay-v2).
  *
  * The fleet starts ONE command (`<backend> login`, optionally preceded by a
  * deterministic pre-command such as `kiro-cli logout`) in a dedicated tmux
@@ -11,7 +11,7 @@
  * Authorization surface owned here (sol reviews this as a new surface):
  *   - admin-only, re-checked inside start() — callers are not trusted
  *   - one login/install window fleet-wide, claimed SYNCHRONOUSLY before the
- *     first await (LoginWindowLock, shared with relay login and install)
+ *     first await (LoginWindowLock, shared with install)
  *   - only flows reviewed as having no shell escape (`noShellEscape: true`)
  *     may open a terminal; per-requester rate limit 3 starts / 5 min
  *   - every start goes through a risk confirmation button (design §3.2); the
@@ -176,7 +176,7 @@ export interface LoginControllerDeps {
     prefix: string; instanceName: string; chat: LoginChat; message: string;
     choices: Array<{ action: string; label: string }>; expiredText: string;
   }): Promise<void>;
-  /** Fleet-wide window reservation (shared with relay login and install). */
+  /** Fleet-wide window reservation (shared with install). */
   claimWindow(backend: string): LoginWindowClaim | null;
   releaseWindow(claim: LoginWindowClaim): void;
   /** False once the fleet is shutting down or the claim was superseded — continuations must stop. */
@@ -267,11 +267,6 @@ export class LoginController {
   /** A session, or a public-link start still getting its cloudflared (cancellable either way). */
   isActive(): boolean { return this.active !== null || this.pendingTunnelStart !== null; }
   get activeBackend(): string | null { return this.active?.backend ?? null; }
-
-  /** Configured mode; web is the default, relay is the 2.1.5-only rollback. */
-  mode(): "web" | "relay" {
-    return this.deps.fleetConfig()?.login?.mode === "relay" ? "relay" : "web";
-  }
 
   /**
    * Start a web-terminal login. Returns a status line, or null when the
