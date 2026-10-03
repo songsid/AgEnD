@@ -233,10 +233,49 @@ describe("only the live retry row counts (a quotation of one in a finished trans
     expect(errors).toEqual([]);
   });
 
-  it("the same quoted row as the last thing before the composer IS indistinguishable from the live one", () => {
-    // Stated limit: nothing on screen tells a quotation printed right above the
-    // composer from the live row, and it only ever errs towards `working`.
+  it("a whole TUI quoted in the transcript — row, separator, composer, footer — is history while the real composer is idle below it", () => {
+    const quoted = `${live(REAL_RETRY_ROW)}\nThis was an old capture, not a running request.`;
+    const pane = finished(quoted);
+    expect(pane.match(/esc to interrupt/g)).toHaveLength(1);    // the quote's own footer
+    expect(busy.test(pane)).toBe(false);
+    expect(state(pane)).toBe("idle");
+    expect(state(pane, 620_000)).toBe("idle");
+    expect(matched(pane)).toEqual([]);
+    const { errors, scan } = monitor();
+    scan(pane);
+    expect(errors).toEqual([]);
+  });
+
+  it("indenting the quotation (and the completed-turn row) does not turn it into a renderer hint", () => {
+    const pane = finished(`${REAL_RETRY_ROW}\n    That was a quotation. The request has completed.`)
+      .replace(/^✻ Cogitated/m, "    ✻ Cogitated");
+    expect(pane).toContain("    ✻ Cogitated");
+    expect(busy.test(pane)).toBe(false);
+    expect(state(pane)).toBe("idle");
+    expect(state(pane, 620_000)).toBe("idle");
+    expect(matched(pane)).toEqual([]);
+  });
+
+  it("the retry row straight above an IDLE composer (no `esc to interrupt` in the footer) is not live", () => {
+    const pane = finished(REAL_RETRY_ROW).replace(/^✻ Cogitated.*\n/m, "");
+    expect(pane).not.toContain("Cogitated");
+    expect(pane).not.toContain("esc to interrupt");
+    expect(busy.test(pane)).toBe(false);
+    expect(state(pane)).toBe("idle");
+    expect(state(pane, 620_000)).toBe("idle");
+    expect(matched(pane)).toEqual([]);
+  });
+
+  it("the same row above a composer whose footer says `esc to interrupt` is a running turn, and busy", () => {
+    // The one thing a quotation cannot be told from: a turn that really is running.
     expect(busy.test(live(REAL_RETRY_ROW))).toBe(true);
+  });
+
+  it("hint rows are matched by shape: free text indented ten columns is not one", () => {
+    const row = REAL_RETRY_ROW;
+    for (const between of ["          That was a quotation.", "                                  ✻ Cogitated for 3m 8s · done 10:11 PM"]) {
+      expect(busy.test(`❯ hello\n${row}\n${between}\n${COMPOSER}`), between).toBe(false);
+    }
   });
 });
 

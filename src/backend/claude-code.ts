@@ -368,14 +368,30 @@ const CLAUDE_RETRY_SUFFIX = `[ \\t]·[ \\t]Retrying in ${CLAUDE_RETRY_WAIT}[ \\t
 /** The spinner glyphs Claude Code cycles through (six measured frames). */
 const CLAUDE_SPINNER_GLYPH = "[✻✽✢·✶*]";
 /**
- * What may sit between the live status row and the composer: blank rows, the
- * indented hint rows tmux and Claude draw there (`tmux detected · …`, `◐ medium
- * · /effort`) and `⎿` sub-rows (tips). A retry row followed by anything else — a
- * completed-turn line, prose, the rest of a transcript — is history or a
- * quotation, not the activity of the CLI: the idle composer below it proves the
- * turn is over. Evaluated as a lookahead so the match stays the row itself.
+ * What makes a retry row LIVE rather than history or a quotation: it is the status
+ * row of the composer at the BOTTOM of the pane, and that composer's footer shows
+ * the running-turn hint. Asserted as a lookahead (the match stays the row):
+ *
+ *  - between the row and the composer's top separator only blank rows, `⎿` tip
+ *    rows, and Claude's own right-aligned hint rows — `tmux detected · …`, `tmux
+ *    focus-events off · …`, `◐ medium · /effort` — which are matched by shape,
+ *    not by "indented text";
+ *  - then separator, `❯` row(s), separator;
+ *  - then a footer with no further separator that contains `esc to interrupt`
+ *    (shown while a turn runs: bypass, auto-mode and the other footers alike; an
+ *    idle footer reads `· ← for agents` without it) and runs to the end of the
+ *    pane.
+ *
+ * A retry row in a finished transcript is followed by more history and ends in
+ * the current idle composer; one inside a quoted TUI is followed by the real
+ * composer's own separators, which the footer cannot contain; either way the
+ * lookahead fails. Only a quotation sitting directly above a composer whose
+ * footer says `esc to interrupt` — a turn that really is running — is read as
+ * live, and then the pane IS busy.
  */
-const CLAUDE_LIVE_TAIL = "\\n(?:[ \\t]*\\n|[ \\t]{4,}\\S[^\\n]*\\n|[ \\t]*⎿[^\\n]*\\n)*─{10,}[ \\t]*\\n[ \\t]*❯";
+const CLAUDE_LIVE_TAIL = "\\n(?:[ \\t]*\\n|[ \\t]*⎿[^\\n]*\\n|[ \\t]{10,}(?:tmux (?:detected|focus-events)[^\\n]*|\\S \\w+ · /effort)[ \\t]*\\n)*"
+  + "─{10,}[ \\t]*\\n[ \\t]*❯[^\\n]*\\n(?:(?!─{10,})[^\\n]*\\n)*─{10,}[ \\t]*\\n"
+  + "(?:(?!─{10,})[^\\n]*\\n)*?[^\\n]*esc to interrupt[^\\n]*(?:\\n(?!─{10,})[^\\n]*)*(?![\\s\\S])";
 /** A LIVE retry row whose message starts with one of these HTTP statuses. */
 const claudeRetryRow = (statuses: string): RegExp =>
   new RegExp(`^[ \\t]*${CLAUDE_SPINNER_GLYPH}[ \\t]+(${statuses})\\b[^\\n]*?[ \\t]·[ \\t]Retrying in ${CLAUDE_RETRY_WAIT}[ \\t]·[ \\t]attempt (\\d+)/(\\d+)[ \\t]*$(?=${CLAUDE_LIVE_TAIL})`, "im");
