@@ -4600,7 +4600,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           await data.respond(t("classic.no_agent_start"));
           return;
         }
-        const replyMsgId = await data.respond("👀");
+        const status = this.resolveStatusEmojisFor(name, adapterId, adapter);
+        const replyMsgId = await data.respond(textForm(status.platform, status.received));
         const username = data.username ?? data.userId;
         ClassicChannelManager.logMessage(name, username, `/chat ${text}`, new Date());
         await this.forwardToClassicInstance(name, text, {
@@ -4912,7 +4913,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           await data.respond(t("classic.no_agent_start"));
           return;
         }
-        const replyMsgId = await data.respond("👀");
+        const status = this.resolveStatusEmojisFor(name, adapterId, adapter);
+        const replyMsgId = await data.respond(textForm(status.platform, status.received));
         const username = data.username ?? data.userId;
         ClassicChannelManager.logMessage(name, username, `/chat ${text}`, new Date());
         await this.forwardToClassicInstance(name, text, {
@@ -8026,10 +8028,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** The progress bubble's leading emoji, in the form the channel renders. */
-  private progressPrefixFor(instanceName: string): string | undefined {
+  private progressPrefixFor(instanceName: string, elapsedMs = 0, minElapsedMs = this.progressMinElapsedMs()): string {
     const r = this.resolveStatusEmojisFor(instanceName);
     const builtin = builtinStatusEmojis(r.platform).progress_prefix;
-    return r.progress_prefix === builtin ? undefined : textForm(r.platform, r.progress_prefix);
+    // Keep the built-in short/elapsed phases, but resolve their status values
+    // too. A custom progress prefix takes precedence in both phases.
+    // Telegram's built-in queued reaction is 👀; its elapsed *text* has always
+    // used ⏳ (text is not limited to Telegram's reaction vocabulary).
+    const queued = r.platform === "telegram" && r.queued === builtinStatusEmojis(r.platform).queued
+      ? builtinStatusEmojis(undefined).queued : r.queued;
+    const value = r.progress_prefix !== builtin ? r.progress_prefix
+      : elapsedMs < minElapsedMs ? r.processing : queued;
+    return textForm(r.platform, value);
   }
 
   /**
@@ -9734,7 +9744,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
 
     const publication = this.beginCancelButtonPublication(instanceName, correlationId);
-    const initialProgressText = FleetManager.progressText(0, null, 1, this.progressPrefixFor(instanceName));
+    const initialProgressText = FleetManager.progressText(0, null, 1, this.progressPrefixFor(instanceName, 0, 1));
 
     try {
       const sent = await adapter.notifyAlert(chatId, {
@@ -9955,12 +9965,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * wiped by the next elapsed tick (#528 trap 2).
    */
   private composeBubbleText(entry: CancelButtonEntry): string {
+    const elapsedMs = Date.now() - (entry.startedAt ?? Date.now());
     return FleetManager.bubbleText(
-      Date.now() - (entry.startedAt ?? Date.now()),
+      elapsedMs,
       this.instanceActivity.get(entry.instanceName),
       this.progressMinElapsedMs(),
       entry.toolProgress,
-      this.progressPrefixFor(entry.instanceName),
+      this.progressPrefixFor(entry.instanceName, elapsedMs),
     );
   }
 
