@@ -172,14 +172,16 @@ describe("SpawnGate memory resilience", () => {
     const entered = deferred();
     const operation = vi.fn(async () => 42);
     const outer = gate.run({ ...task("a"), stage: "lifecycle" }, async () => { await entered.promise; return gate.run(task("a"), operation); });
-    const rejected = track(expect(outer).rejects.toThrow("shut down"));
+    const settled = vi.fn();
+    void outer.then(value => settled(null, value), error => settled(error));
     state = memory(100);
     entered.resolve();
     await vi.advanceTimersByTimeAsync(0);
     gate.shutdown();
     state = memory();
     await vi.advanceTimersByTimeAsync(120_000);
-    await rejected;
+    expect(settled).toHaveBeenCalledOnce();
+    expect(settled).toHaveBeenCalledWith(expect.objectContaining({ message: "Spawn gate shut down before task started" }));
     expect(operation).not.toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
   });
