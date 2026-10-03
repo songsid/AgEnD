@@ -72,6 +72,8 @@ async function harness(path: "primary" | "additional", config: StatusEmojiConfig
   const selected = path === "primary" ? primary : secondary;
   state.classicChannels = {
     getInstanceByChannel: (room: string, adapterId: string) => room === "room" && adapterId === id ? "classic" : undefined,
+    // The slash door (#1148) asks which channels are ClassicBot channels of THIS bot.
+    isClassicChannel: (room: string, adapterId: string) => room === "room" && adapterId === id,
     getChannelIdByInstance: () => "room", getAdapterIdByInstance: () => id,
     getContextLines: () => 5, getAll: () => [{ instanceName: "classic" }],
   };
@@ -90,7 +92,8 @@ async function harness(path: "primary" | "additional", config: StatusEmojiConfig
   const respond = vi.fn(async (_text: string) => "slash-reply");
   async function chat(text = "hello", room = "room") {
     selected.emit("slash_command", {
-      command: "chat", channelId: room, channelName: "test", userId: "human", username: "han", text, respond,
+      // A real interaction in a guild always carries its guild id; a DM has none and the slash door refuses it.
+      command: "chat", channelId: room, channelName: "test", guildId: "guild", userId: "human", username: "han", text, respond,
     });
     // safeHandler deliberately returns void. Drain its async chain without
     // invoking fleet timers, tmux, detached handlers, or a network client.
