@@ -165,12 +165,48 @@ describe("lifecycle transitions: wait for the lookup, bounded", () => {
     expect(persisted()).toBe("ses_cached");
   });
 
-  it("after a resume failure (skipResume) nothing is persisted — the existing rule", async () => {
+  it("after a resume failure (skipResume) nothing is persisted and nothing is looked up — the existing rule", async () => {
     const { backend } = backendWith("opencode", "resolves");
     const d = daemon(backend);
     d.skipResume = true;
     await d.checkpointSessionId();
     expect(persisted()).toBeNull();
+    expect(backend.refreshSessionId).not.toHaveBeenCalled();
+  });
+
+  it("pause() waits for the lookup before it quits the CLI", async () => {
+    const id = { current: "ses_cached" as string | null };
+    const { backend } = backendWith("opencode", "none", id);
+    const order: string[] = [];
+    backend.refreshSessionId = vi.fn(async () => { order.push("lookup:start"); await new Promise(r => setTimeout(r, 1_500)); order.push("lookup:done"); id.current = "ses_current"; return id.current; });
+    const d = daemon(backend);
+    d.instanceState = "idle";
+    d.tmux = { getWindowId: () => "@1", getPaneStatus: vi.fn(async () => ({ alive: false })), killWindow: vi.fn(async () => {}) };
+    d.sendQuitSequence = vi.fn(async () => { order.push("quit"); return true; });
+    d.freezeRuntimeMonitors = () => {};
+    const pausing = d.pause("operator");
+    await vi.advanceTimersByTimeAsync(10_000);
+    await pausing.catch(() => {});
+    expect(order.slice(0, 3)).toEqual(["lookup:start", "lookup:done", "quit"]);
+    expect(persisted()).toBe("ses_current");
+  });
+
+  it("start() waits for the lookup before it kills the previous run's window", async () => {
+    const id = { current: "ses_cached" as string | null };
+    const { backend } = backendWith("opencode", "none", id);
+    const order: string[] = [];
+    backend.refreshSessionId = vi.fn(async () => { order.push("lookup:start"); await new Promise(r => setTimeout(r, 1_500)); order.push("lookup:done"); id.current = "ses_current"; return id.current; });
+    const d = daemon(backend);
+    writeFileSync(join(instanceDir, "window-id"), "@77");
+    vi.spyOn(TmuxManager, "ensureSession").mockResolvedValue(undefined);
+    vi.spyOn(TmuxManager.prototype, "isWindowAlive").mockResolvedValue(true);
+    vi.spyOn(TmuxManager.prototype, "killWindow").mockImplementation(async () => { order.push("kill"); });
+    d.spawnClaudeWindow = async () => { throw new Error("stop after the old window is gone"); };
+    const starting = d.start().catch((err: Error) => err);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await starting;
+    expect(order.slice(0, 3)).toEqual(["lookup:start", "lookup:done", "kill"]);
+    await d.ipcServer?.close?.();
   });
 
   it("stop() pauses the health check BEFORE it waits, so no tick can run in the wait", async () => {

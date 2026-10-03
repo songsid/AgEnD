@@ -201,6 +201,7 @@ describe("OpenCodeBackend", () => {
       const backend = new OpenCodeBackend(TEST_DIR);
       const cmd = backend.buildCommand(makeConfig());
       expect(cmd).toContain("--session ses_resumed");
+      rmSync(join(TEST_DIR, "session-id"));                      // so only the DISCOVERY can answer (the persisted id would hide a broken guard)
       expect(await discover(backend, [
         { id: "ses_resumed", directory: WORK_DIR, created: Date.now() - 60_000, updated: Date.now() + 1000 },
       ])).toBe("ses_resumed");

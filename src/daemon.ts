@@ -8240,7 +8240,7 @@ export class Daemon extends EventEmitter {
       });
       if (!claimed) return;
       try {
-        await this.checkpointSessionId();
+        this.saveSessionId();      // the muse switch: a backend with no CLI lookup, nothing to wait for
         const ready = await this.trySpawn(true, this.wakeBudgetMs(30_000));
         this.transcriptMonitor?.resetOffset();
         if (ready) this.logger.info("Muse resumed direct after relay exhaustion (session preserved)");
