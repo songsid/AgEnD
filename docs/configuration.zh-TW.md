@@ -67,7 +67,7 @@ health_port: 19280
 
 ### 人不在機器旁完成 /login（公開連結）
 
-預設 `/login` 的終端連結只能在這台機器上用（SSH 轉發、tailscale、你自己的反向代理）。手機連不到時，`kiro-cli` 登入可以透過
+預設 `/login` 的終端連結只能在這台機器上用（SSH 轉發、tailscale、你自己的反向代理）。手機連不到時，`kiro-cli` 或 `claude-code` 登入可以透過
 Cloudflare Quick Tunnel 開一個臨時的**公開 https 連結**。預設關閉：
 
 ```yaml
@@ -78,7 +78,7 @@ web_terminal:
     # protocol: http2       # http2（預設）| quic | auto
 ```
 
-需要 `PATH` 上有 `cloudflared`（AgEnD 不會幫你下載）。啟用後，`/login kiro` 的確認會有三個按鈕：**開啟公開連結**、**只用本機連結**、**取消**；
+需要 `PATH` 上有 `cloudflared`（AgEnD 不會幫你下載）。啟用後，`/login kiro`（或 `/login claude`）的確認會有三個按鈕：**開啟公開連結**、**只用本機連結**、**取消**；
 按第一個就是同意，每次登入一次，連結不會保留或重用。
 
 - tunnel 只代理**那一次登入的終端**（它自己的 listener），不是 dashboard。光有終端頁面不能做任何事：還需要一次性**存取 token**。

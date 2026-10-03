@@ -379,7 +379,7 @@ export class TopicCommands {
       const adapter = this.getReplyAdapter(msg);
       if (adapter) await adapter.sendText(msg.chatId, t("login.install_cli_moved"), { threadId: msg.threadId }).catch(() => {});
       const rest = (legacyInstall[1] ?? "").trim();
-      const mapped = rest === "" ? "/login" : rest === "cancel" ? "/login cancel" : `/login reinstall ${rest}`;
+      const mapped = rest === "" ? "/login" : `/login ${rest}`;
       await this.handleLoginCommand({ ...msg, text: mapped });
       return true;
     }
@@ -957,19 +957,6 @@ export class TopicCommands {
     }
     if (arg === "cancel") {
       await adapter.sendText(msg.chatId, await this.ctx.cancelLoginSession(), { threadId: msg.threadId });
-      return;
-    }
-    if (arg.startsWith("code ")) {
-      const input = arg.slice(5).trim();
-      const reply = input ? await this.ctx.loginSubmitInput(input) : t("login.usage");
-      await adapter.sendText(msg.chatId, reply, { threadId: msg.threadId });
-      return;
-    }
-    const reinstall = arg.match(/^reinstall(?:\s+(\S+))?$/);
-    if (reinstall || arg.startsWith("reinstall ")) {
-      const backend = reinstall?.[1];
-      const reply = backend ? await this.ctx.startLoginSession(backend, chat, { reinstall: true }) : t("login.usage");
-      if (reply) await adapter.sendText(msg.chatId, reply, { threadId: msg.threadId });
       return;
     }
     if (/\s/.test(arg)) {

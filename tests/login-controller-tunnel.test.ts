@@ -179,8 +179,14 @@ describe("a public link is offered only when the config AND the flow allow it", 
     expect(buttons[0]!.choices.map(c => c.action)).toEqual(["go-relogin-tunnel", "go-relogin", "cancel"]);
   });
 
-  it("is never offered for a flow without tunnelOk, or for device auth", async () => {
-    for (const backend of ["claude-code", "codex"]) {
+  it("is offered for claude-code too: its sign-in pastes a code back into the terminal (#1137)", async () => {
+    const { controller, buttons } = make({ config: ON });
+    await controller.start("claude-code", chat(adapterOf("discord")));
+    expect(buttons[0]!.choices.map(c => c.action)).toContain("go-tunnel");
+  });
+
+  it("is never offered for a device-auth flow (no terminal to reach)", async () => {
+    for (const backend of ["codex", "grok"]) {
       const { controller, buttons } = make({ config: ON });
       await controller.start(backend, chat(adapterOf("discord")));
       expect(buttons[0]!.choices.map(c => c.action), backend).not.toContain("go-tunnel");
@@ -205,7 +211,7 @@ describe("a public link is offered only when the config AND the flow allow it", 
 describe("pressing the button is re-checked: a stale or forged consent gets a refusal, not a tunnel", () => {
   it.each([
     ["allow_public false", {}, "kiro-cli"],
-    ["flow without tunnelOk", ON, "claude-code"],
+    ["device-auth flow (no tunnelOk)", ON, "grok"],
   ])("%s", async (_name, config, backend) => {
     const { controller, sessions, tunnel, lock } = make({ config });
     expect(await controller.start(backend, chat(adapterOf("discord")), CONFIRMED_TUNNEL)).toBe(t("login.tunnel_not_allowed", backend));

@@ -155,9 +155,32 @@ describe("checkAuthStatus", () => {
 });
 
 describe("tunnelOk", () => {
-  it("is set only on flows reviewed for a public link — today kiro-cli alone", () => {
+  it("is set only on flows that need their terminal to finish: kiro-cli and claude-code (#1137)", () => {
     const tunnelable = Object.entries(LOGIN_FLOWS).filter(([, f]) => f.tunnelOk === true).map(([name]) => name);
-    expect(tunnelable).toEqual(["kiro-cli"]);
+    expect(tunnelable.sort()).toEqual(["claude-code", "kiro-cli"]);
+  });
+
+  it("device-code flows (codex, grok) never use a terminal, so never a public link (#1137)", () => {
+    for (const name of ["codex", "grok"]) {
+      expect(LOGIN_FLOWS[name]!.deviceAuth, name).toBe(true);
+      expect(LOGIN_FLOWS[name]!.tunnelOk, name).toBeUndefined();
+    }
+  });
+
+  it("grok 1.0.46's real login output yields its device URL and code, and its success line matches", () => {
+    const pane = [
+      "To sign in, open this URL in your browser:",
+      "  https://accounts.x.ai/oauth2/device?user_code=ABCD-WXYZ",
+      "  (Could not open browser automatically — open the URL above manually.)",
+      "Confirm this code in your browser:",
+      "  ABCD-WXYZ",
+      "Only continue with a code you requested. Don't share it with anyone.",
+      "Waiting for authorization...",
+    ].join("\n");
+    expect(extractLoginHint(pane, LOGIN_FLOWS["grok"]!)).toEqual({ url: "https://accounts.x.ai/oauth2/device?user_code=ABCD-WXYZ", code: "ABCD-WXYZ" });
+    expect(LOGIN_FLOWS["grok"]!.successPattern.test(" Signed in as dev@example.com")).toBe(true);
+    expect(LOGIN_FLOWS["grok"]!.successPattern.test("Login successful!")).toBe(true);   // grok 1.0.5
+    expect(LOGIN_FLOWS["grok"]!.successPattern.test("Waiting for authorization...")).toBe(false);
   });
 
   it("never applies to a flow the browser terminal itself is not cleared for", () => {

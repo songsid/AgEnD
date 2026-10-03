@@ -24,12 +24,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   and there is nothing to mistype (`/install`, `/login-cli`). `/login`'s picker lists every backend
   the fleet can install or sign in to, each labelled with what a click does: an installed CLI signs
   in; a missing one is installed (its official script, verified on PATH) and signing in follows by
-  itself. `/login <backend>` does the same, `/login reinstall <backend>` (Discord: the `reinstall`
-  option) reinstalls an installed CLI, and `/login cancel` also stops an install. `opencode` and
+  itself. `/login <backend>` does the same, and `/login cancel` also stops an install — those are
+  the only forms (`/login code` and a short-lived `reinstall` are gone, #1137). `opencode` and
   `muse` install but have no sign-in flow; `/login gemini-cli` still installs Gemini CLI, which the
   picker does not offer. The Discord slash command and the Telegram menu entry `/install_cli` are
   removed. Typing `/install-cli` (or `/install_cli`) still works in 2.1.10 — it says where the
-  command went and runs the matching `/login` — and will be removed in 2.1.11.
+  command went and runs `/login <backend>` — and will be removed in 2.1.11.
+- **[Behaviour change] grok signs in with a code in the chat; claude-code can use the public link (#1137).**
+  `grok login` is a device-code sign-in (grok 1.0.46 shows a URL and a code, then only waits), so
+  `/login grok` now posts the URL and code in the chat, like codex, instead of opening a browser
+  terminal. Its sign-in is also recognised again on grok 1.0.46, which reports "Signed in as …".
+  claude-code's sign-in pastes a code back into its terminal, so finishing it from a phone needs
+  that terminal: the public link (`web_terminal.tunnel.allow_public`) is now offered for
+  claude-code as well as kiro-cli.
 - **[Behaviour change] A paused instance now wakes by itself when another instance sends it work
   (#1129).** `delivery_worker` defaults to `wake_only` instead of `off`. Under `off`, a task delegated
   to an instance that had been paused across a fleet restart waited until someone ran `/wake`, with
