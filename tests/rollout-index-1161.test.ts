@@ -139,6 +139,19 @@ describe("what a refresh skips", () => {
     expect(calls.stat).toContain(live);                     // …the one that is moving is looked at every time
   });
 
+  it("a `fresh` listing re-stats the quiet rollouts too (their size may have moved)", () => {
+    const { old1 } = tree();
+    const { ops, calls, reset } = counting();
+    const now = Date.now();
+    const index = new RolloutIndex(root, { ttlMs: 0, quietMs: 10 * 60_000, fullRefreshMs: 3_600_000, ops, now: () => now });
+    index.list(); reset();
+    index.list();
+    expect(calls.stat).not.toContain(old1);                  // a quick refresh trusts it
+    reset();
+    index.list(true);
+    expect(calls.stat).toContain(old1);                      // a fresh one does not
+  });
+
   it("a new rollout bumps its directory's mtime and is found without a full refresh", () => {
     tree();
     const { ops, calls, reset } = counting();
@@ -152,15 +165,15 @@ describe("what a refresh skips", () => {
   });
 
   it("a rollout created in the same tick as the directory's last change is still found (a recently changed directory is always re-read)", () => {
-    const { ops } = counting();
     let now = Date.now();
-    const index = new RolloutIndex(root, { ttlMs: 0, fullRefreshMs: 3_600_000, ops, now: () => now });
+    const index = new RolloutIndex(root, { ttlMs: 0, fullRefreshMs: 3_600_000, now: () => now });
     rollout("2026/03/01", "first", 0);
+    const dir = join(root, "2026", "03", "01");
+    const stamp = new Date(Date.now() - 100);
+    utimesSync(dir, stamp, stamp);                          // the mtime the index will cache…
     index.list();
     const second = rollout("2026/03/01", "second", 0);
-    const dir = join(root, "2026", "03", "01");
-    const pinned = statSync(dir).mtime;
-    utimesSync(dir, pinned, pinned);                         // same mtime as when it was last read
+    utimesSync(dir, stamp, stamp);                          // …is exactly the mtime the directory has after the new file
     now += 10;
     expect(index.list().map(f => f.path)).toContain(second);
   });

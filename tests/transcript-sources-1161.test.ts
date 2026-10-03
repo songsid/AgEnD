@@ -153,6 +153,23 @@ describe("Kiro JSON fallback: a session's metadata is parsed once per change, no
     expect(active(source)).toBeUndefined();
   });
 
+  it("a file that only changed in mtime is read again — and so is one that only changed in size", () => {
+    const base = new Date(Date.now() - 60_000);
+    const mine = writeSession("mine", work, "2026-10-04T10:00:00Z"); pin(mine, base);
+    const source = new KiroSessionSource(work, sessionsDir(), Date.now(), missingDb());
+    expect(active(source)).toBe(join(sessionsDir(), "mine.jsonl"));
+    const size = statSync(mine).size;
+    const foreign = JSON.stringify({ session_id: "mine", cwd: "/z", created_at: "2026-10-04T10:00:00Z", updated_at: "2026-10-04T10:00:00Z" });
+    // same size, newer mtime
+    writeFileSync(mine, foreign.padEnd(size)); pin(mine, new Date(base.getTime() + 5_000));
+    expect(active(source)).toBeUndefined();
+    // back to ours with a different size, mtime pinned to the one the cache has now
+    const cachedMtime = statSync(mine).mtime;
+    writeFileSync(mine, JSON.stringify({ session_id: "mine", cwd: work, created_at: "2026-10-04T10:00:00Z", updated_at: "2026-10-04T10:00:00Z", more: "x" }));
+    utimesSync(mine, cachedMtime, cachedMtime);
+    expect(active(source)).toBe(join(sessionsDir(), "mine.jsonl"));
+  });
+
   it("the newest session for the cwd still wins, subagents and other cwds still skipped", () => {
     pin(writeSession("old", work, "2026-10-04T09:00:00Z"), new Date(Date.now() - 90_000));
     pin(writeSession("new", work, "2026-10-04T11:00:00Z"), new Date(Date.now() - 80_000));
