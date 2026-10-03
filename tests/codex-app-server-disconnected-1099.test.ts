@@ -203,6 +203,37 @@ describe("through the real daemon", () => {
     expect(failed[0].message).toContain("could not reconnect");
   });
 
+  it("a whole old failed TUI quoted in an answer, with the real idle composer below, raises nothing", () => {
+    const patterns = backend.getErrorPatterns();
+    const turnIdle = fixture("codex-0160-turn-idle.pane.txt");
+    const pane = turnIdle.replace("• ok", `${FAILED.trimEnd()}\nThis was an old capture; the request has completed.`);
+    expect(pane).not.toBe(turnIdle);
+    expect(codexAppServerDisconnected(pane)).toBe(false);
+    expect(backend.isDeliveryInputReadyPane(pane)).toBe(true);
+    const d = daemon();
+    const errors: unknown[] = [];
+    d.on("pty_error", (e: unknown) => errors.push(e));
+    d.instanceState = "idle";
+    d.evaluateErrorPatterns(pane, patterns, backend.getReadyPattern(), 10 * 60_000, backend.getBusyPattern());
+    expect(errors).toEqual([]);
+  });
+
+  it("the terminal row, an earlier composer, then a finished turn and the real last composer, raises nothing", () => {
+    const patterns = backend.getErrorPatterns();
+    const turnIdle = fixture("codex-0160-turn-idle.pane.txt");
+    const pane = turnIdle.replace("• ok",
+      "• Reconnect failed — check the endpoint, then relaunch (2m 24s)\n› Ask Codex to do anything\n  ctrl+c quit\n\n  Worked for 1s • 16:03");
+    expect(pane).not.toBe(turnIdle);
+    expect(codexAppServerDisconnected(pane)).toBe(false);
+    expect(backend.isDeliveryInputReadyPane(pane)).toBe(true);
+    const d = daemon();
+    const errors: unknown[] = [];
+    d.on("pty_error", (e: unknown) => errors.push(e));
+    d.instanceState = "idle";
+    d.evaluateErrorPatterns(pane, patterns, backend.getReadyPattern(), 10 * 60_000, backend.getBusyPattern());
+    expect(errors).toEqual([]);
+  });
+
   it("a quotation of the terminal row does not raise it", () => {
     const patterns = backend.getErrorPatterns();
     const quoting = fixture("codex-0160-turn-idle.pane.txt").replace("• ok", "• Codex then prints:\n  • Reconnect failed — check the endpoint, then relaunch (2m 24s)\n  which means a relaunch.");

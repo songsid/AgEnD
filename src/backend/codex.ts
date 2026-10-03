@@ -1705,12 +1705,12 @@ export class CodexBackend implements CliBackend {
         // reconnecting and says so, with a counter that never stops. Nothing
         // recovers from here without a relaunch, and every message sent in the
         // meantime waits for an idle that cannot come. Only the LIVE row counts:
-        // directly above the composer with no later transcript item (the same
-        // test as codexAppServerDisconnected, as a lookahead), so text that
+        // directly above the LAST composer with no later transcript item or composer
+        // (the same test as codexAppServerDisconnected, as a lookahead), so text that
         // merely quotes it does not raise this.
         pattern: new RegExp(
           String.raw`^[ \t]*•[ \t]+Reconnect failed[ \t]+—[ \t]+check the endpoint, then relaunch[ \t]+\(\d+[hms](?:[ \t]+\d+[hms])*\)[ \t]*$`
-          + String.raw`(?=\n(?:[ \t]*\n)*[›>][^\n]*(?:\n(?![•■⚠])[^\n]*)*(?![\s\S]))`,
+          + String.raw`(?=\n(?:[ \t]*\n)*[›>][^\n]*(?:\n(?![•■⚠›>])[^\n]*)*(?![\s\S]))`,
           "mu",
         ),
         type: "network",
