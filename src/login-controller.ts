@@ -27,10 +27,14 @@
  *   - fleet shutdown cancels the active session and waits for the confirmed
  *     tmux kill (no orphaned login CLI)
  *
- * Public link (web_terminal.tunnel.allow_public, default OFF — with it off none of this
- * exists): for a flow marked `tunnelOk` the confirmation grows an "Open public link" button
- * beside "Local link only". Pressing it is the consent, once per login — nothing is ever
- * exposed on a standing basis. Then:
+ * Public link (#1137: offered by default; `web_terminal.tunnel.allow_public: false` is the
+ * operator's kill switch, and with it none of this exists): for a flow marked `tunnelOk` the
+ * confirmation offers "I understand (temporary public link)" beside "I understand (local
+ * network)". Pressing it is the consent, once per login — nothing is ever exposed on a standing
+ * basis. Then:
+ *   - before any session exists, a cloudflared is found: the user's own on PATH, else AgEnD's
+ *     pinned, SHA256-verified copy in <AGEND_HOME>/bin, downloaded when missing
+ *     (tunnel/cloudflared-install.ts). Any failure there ends the request with nothing opened
  *   - a Cloudflare Quick Tunnel is put in front of THIS session's listener only, through the
  *     fleet-wide ManagedTunnel (lease, confirmed stop); the listener is told the tunnel's
  *     exact host before the readiness probe arrives under it, and marks cookies Secure on it
@@ -57,6 +61,7 @@ import { WebTerminalHttpServer, type WebTerminalHttpOptions } from "./web-termin
 import { allowedHostNames } from "./web-host-guard.js";
 import { ManagedTunnel, newTunnelSid, type ManagedStartResult } from "./tunnel/manager.js";
 import { CloudflaredProvider } from "./tunnel/cloudflared.js";
+import { ensureCloudflared, type EnsureCloudflaredResult } from "./tunnel/cloudflared-install.js";
 import type { TunnelHandle, TunnelStartContext, TunnelStopResult } from "./tunnel/types.js";
 
 export const LOGIN_TOKEN_RESEND_PREFIX = "login-token:";
@@ -189,6 +194,13 @@ export interface LoginControllerDeps {
   tunnelDataDir?: () => string;
   /** Test seam: replaces ManagedTunnel + CloudflaredProvider. */
   createTunnel?: (cfg: FleetConfig | null) => LoginTunnelPort;
+  /**
+   * A cloudflared to run for a public link (#1137): the user's own on PATH, else
+   * AgEnD's pinned, SHA256-verified copy, downloaded when needed. Defaults to
+   * `ensureCloudflared` in `tunnelDataDir()`; a test that injects `createTunnel`
+   * and not this gets no cloudflared step.
+   */
+  ensureCloudflared?: (onDownloading: (info: { version: string; asset: string }) => Promise<void>, signal: AbortSignal) => Promise<EnsureCloudflaredResult>;
 }
 
 interface ActiveLogin {
@@ -200,6 +212,8 @@ interface ActiveLogin {
   requesterUserId: string;
   url: string;
   tokenDelivered: boolean;
+  /** The cloudflared this login's public link runs (absent: the provider looks on PATH). */
+  cloudflaredPath?: string;
   /** The caller already reported this session's end (startup/delivery failure, shutdown): onDone stays quiet. */
   silent: boolean;
   /** Present only for a public-link login. */
@@ -245,10 +259,13 @@ export class LoginController {
   private readonly startTimes = new Map<string, number[]>();
   /** One tunnel owner for the process: the lease it writes is fleet-wide, so this must not be per-login. */
   private managedTunnel: ManagedTunnel | null = null;
+  /** A public-link start between its claim and its session: getting cloudflared (#1141 review). */
+  private pendingTunnelStart: { backend: string; abort: AbortController } | null = null;
 
   constructor(private readonly deps: LoginControllerDeps) {}
 
-  isActive(): boolean { return this.active !== null; }
+  /** A session, or a public-link start still getting its cloudflared (cancellable either way). */
+  isActive(): boolean { return this.active !== null || this.pendingTunnelStart !== null; }
   get activeBackend(): string | null { return this.active?.backend ?? null; }
 
   /** Configured mode; web is the default, relay is the 2.1.5-only rollback. */
@@ -370,6 +387,31 @@ export class LoginController {
       this.audit("tunnel_refused", { backend, requester: userId });
       return t("login.tunnel_not_allowed", backend);
     }
+    // Before any session or listener exists: a public link that cannot get its
+    // cloudflared fails closed here, with nothing opened (#1137).
+    let cloudflaredPath: string | undefined;
+    if (wantTunnel) {
+      // The window is claimed but no session exists yet: this owner is what
+      // `/login cancel` and a shutdown reach while cloudflared downloads.
+      const pending = { backend, abort: new AbortController() };
+      this.pendingTunnelStart = pending;
+      let got: Awaited<ReturnType<LoginController["obtainCloudflared"]>>;
+      try {
+        got = await this.obtainCloudflared(chat, backend, pending.abort.signal);
+      } finally {
+        if (this.pendingTunnelStart === pending) this.pendingTunnelStart = null;
+      }
+      if (this.stale(generation, claim)) return t("login.web_shutting_down");
+      if (pending.abort.signal.aborted) {
+        this.audit("tunnel_cancelled", { backend, requester: userId });
+        return null;   // the cancel already answered
+      }
+      if (!got.ok) {
+        this.audit("tunnel_failed", { backend, requester: userId, errorKind: got.kind });
+        return t("login.tunnel_failed", t(`login.tunnel_reason.${got.kind}`));
+      }
+      cloudflaredPath = got.path;
+    }
     const command = this.buildCommand(flow, opts.tokenPresent === true);
     const ttlMs = this.ttlMs(cfg);
     const spec: WebTerminalSpec = {
@@ -391,7 +433,7 @@ export class LoginController {
     const logger = this.deps.logger;
     const entry: ActiveLogin = {
       claim, session: null as unknown as WebTerminalSession, http: null, backend, chat,
-      requesterUserId: userId, url: "", tokenDelivered: false, silent: false, tunnel: null,
+      requesterUserId: userId, url: "", tokenDelivered: false, silent: false, tunnel: null, cloudflaredPath,
     };
     const events: WebTerminalEvents = {
       // A public-link login never relays the provider's own sign-in URL/code to the channel: they are as
@@ -478,6 +520,12 @@ export class LoginController {
 
   /** `/login cancel` in web mode. */
   async cancel(): Promise<string> {
+    if (!this.active && this.pendingTunnelStart) {
+      // Still getting cloudflared: stop the download; the start sees the abort and opens nothing.
+      const { backend, abort } = this.pendingTunnelStart;
+      abort.abort();
+      return t("login.cancelled", backend);
+    }
     if (!this.active) return t("login.no_session");
     const backend = this.active.backend;
     await this.active.session.cancel("cancelled");
@@ -493,6 +541,7 @@ export class LoginController {
   async shutdown(): Promise<void> {
     this.stopping = true;
     this.shutdownGeneration++;
+    this.pendingTunnelStart?.abort.abort();
     const entry = this.active;
     if (!entry) return;
     entry.silent = true;
@@ -566,16 +615,39 @@ export class LoginController {
   private tunnelAllowed(cfg: FleetConfig | null, flow: LoginFlow): boolean {
     if (flow.tunnelOk !== true || flow.noShellEscape !== true || flow.deviceAuth) return false;
     if (cfg?.web_terminal?.enabled === false) return false;
-    if (cfg?.web_terminal?.tunnel?.allow_public !== true) return false;
+    // Offered unless the operator switched it off (#1137): pressing the button,
+    // every login, is the consent. `allow_public: false` is the host's kill switch.
+    if (cfg?.web_terminal?.tunnel?.allow_public === false) return false;
     return this.deps.createTunnel !== undefined || this.deps.tunnelDataDir !== undefined;
   }
 
-  private tunnelPort(cfg: FleetConfig | null): LoginTunnelPort {
+  /**
+   * The cloudflared for a public link, reported in chat while it downloads. Never throws: a
+   * failure is one of the allowlisted kinds, worded by the locale (no provider text reaches chat).
+   */
+  private async obtainCloudflared(chat: LoginChat, backend: string, signal: AbortSignal): Promise<{ ok: true; path?: string } | { ok: false; kind: string }> {
+    const ensure = this.deps.ensureCloudflared
+      ?? (this.deps.createTunnel ? null : (onDownloading: (info: { version: string; asset: string }) => Promise<void>, abortSignal: AbortSignal) =>
+        ensureCloudflared({ dataDir: this.deps.tunnelDataDir!(), onDownloading, signal: abortSignal }));
+    if (!ensure) return { ok: true };
+    try {
+      const got = await ensure(async ({ version }) => {
+        await chat.adapter.sendText(chat.chatId, t("login.tunnel_downloading", version), { threadId: chat.threadId })
+          .catch(err => this.deps.logger.warn(safeErr(err), "could not post the cloudflared download notice"));
+      }, signal);
+      return { ok: true, path: got.path };
+    } catch (err) {
+      this.deps.logger.warn({ backend, kind: (err as { kind?: string }).kind, detail: (err as Error).message }, "cloudflared for a public link is unavailable");
+      return { ok: false, kind: tunnelErrorKind((err as { kind?: unknown }).kind) };
+    }
+  }
+
+  private tunnelPort(cfg: FleetConfig | null, binaryPath?: string): LoginTunnelPort {
     if (this.deps.createTunnel) return this.deps.createTunnel(cfg);
     const dataDir = this.deps.tunnelDataDir!();
     this.managedTunnel ??= new ManagedTunnel({ dataDir, log: m => this.deps.logger.info({}, m) });
     const managed = this.managedTunnel;
-    const provider = new CloudflaredProvider({ protocol: cfg?.web_terminal?.tunnel?.protocol });
+    const provider = new CloudflaredProvider({ protocol: cfg?.web_terminal?.tunnel?.protocol, binaryName: binaryPath });
     return { start: ctx => managed.start(provider, ctx), stop: reason => managed.stop(reason) };
   }
 
@@ -587,7 +659,7 @@ export class LoginController {
     entry: ActiveLogin, http: WebTerminalHttpServer, port: number, cfg: FleetConfig | null, ttlMs: number,
   ): Promise<string | null> {
     const abort = new AbortController();
-    const tunnel = { port: this.tunnelPort(cfg), abort, starting: null as Promise<ManagedStartResult> | null, handle: null as TunnelHandle | null, closing: null as Promise<void> | null };
+    const tunnel = { port: this.tunnelPort(cfg, entry.cloudflaredPath), abort, starting: null as Promise<ManagedStartResult> | null, handle: null as TunnelHandle | null, closing: null as Promise<void> | null };
     entry.tunnel = tunnel;
     this.audit("tunnel_requested", { backend: entry.backend, requester: entry.requesterUserId });
     tunnel.starting = tunnel.port.start({
@@ -821,6 +893,8 @@ export class LoginController {
 const TUNNEL_ERROR_KINDS: ReadonlySet<string> = new Set([
   "binary-missing", "binary-not-executable", "not-logged-in", "spawn-failed", "no-url",
   "bad-url", "readiness-failed", "timeout", "cancelled", "lease-held",
+  // AgEnD's own cloudflared (#1137)
+  "unsupported-platform", "download-failed", "checksum-mismatch", "install-failed",
 ]);
 function tunnelErrorKind(kind: unknown): string {
   return typeof kind === "string" && TUNNEL_ERROR_KINDS.has(kind) ? kind : "other";

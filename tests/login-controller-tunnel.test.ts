@@ -113,7 +113,7 @@ function adapterOf(type: "discord" | "telegram", o: { noDirect?: boolean; failDi
   return a as unknown as LoginChat["adapter"] & { sendText: ReturnType<typeof vi.fn>; sendDirect?: ReturnType<typeof vi.fn> };
 }
 
-function make(over: { config?: Record<string, unknown>; tunnel?: ReturnType<typeof fakeTunnel>; noTunnelDep?: boolean; checkAuth?: LoginControllerDeps["checkAuth"] } = {}) {
+function make(over: { config?: Record<string, unknown>; tunnel?: ReturnType<typeof fakeTunnel>; noTunnelDep?: boolean; checkAuth?: LoginControllerDeps["checkAuth"]; ensureCloudflared?: LoginControllerDeps["ensureCloudflared"] } = {}) {
   const sessions: FakeSession[] = [];
   const https: FakeHttp[] = [];
   const buttons: Array<Parameters<LoginControllerDeps["postButtons"]>[0]> = [];
@@ -136,6 +136,7 @@ function make(over: { config?: Record<string, unknown>; tunnel?: ReturnType<type
     createSession: (spec, ev) => { const s = new FakeSession(spec, ev); sessions.push(s); return s as never; },
     createHttp: (s, _l, o) => { const h = new FakeHttp(s as unknown as FakeSession, o); https.push(h); return h as never; },
     ...(over.noTunnelDep ? {} : { createTunnel: () => tunnel.port }),
+    ...(over.ensureCloudflared ? { ensureCloudflared: over.ensureCloudflared } : {}),
   };
   return { controller: new LoginController(deps), sessions, https, buttons, events, lock, logger, tunnel };
 }
@@ -147,11 +148,14 @@ beforeEach(() => { setLocale("en"); FakeSession.cancelThrows = false; });
 afterEach(() => { setLocale("en"); FakeSession.cancelThrows = false; });
 
 describe("a public link is offered only when the config AND the flow allow it", () => {
-  it("is not offered by default: the confirmation is exactly what it was", async () => {
+  it("is offered by default (#1137): three buttons, the warning and the download line in the consent", async () => {
     const { controller, buttons } = make();
     expect(await controller.start("kiro-cli", chat(adapterOf("discord")))).toBeNull();
-    expect(buttons[0]!.choices.map(c => c.action)).toEqual(["go", "cancel"]);
-    expect(buttons[0]!.message).not.toContain(t("login.tunnel_confirm_extra"));
+    expect(buttons[0]!.choices.map(c => c.action)).toEqual(["go-tunnel", "go", "cancel"]);
+    expect(buttons[0]!.choices.map(c => c.label)).toEqual(["I understand (temporary public link)", "I understand (local network)", "Cancel"]);
+    expect(buttons[0]!.message).toContain(t("login.tunnel_confirm_extra"));
+    expect(t("login.tunnel_confirm_extra")).toContain("anyone who has the link and its access token");
+    expect(t("login.tunnel_confirm_extra")).toContain("pinned version, SHA256-checked");
   });
 
   it("is not offered when allow_public is false, or when the web terminal is disabled", async () => {
@@ -210,7 +214,7 @@ describe("a public link is offered only when the config AND the flow allow it", 
 
 describe("pressing the button is re-checked: a stale or forged consent gets a refusal, not a tunnel", () => {
   it.each([
-    ["allow_public false", {}, "kiro-cli"],
+    ["allow_public false", { web_terminal: { tunnel: { allow_public: false } } }, "kiro-cli"],
     ["device-auth flow (no tunnelOk)", ON, "grok"],
   ])("%s", async (_name, config, backend) => {
     const { controller, sessions, tunnel, lock } = make({ config });
@@ -671,5 +675,90 @@ describe("the real ManagedTunnel behind the controller: a lease that cannot be w
     }));
     dir = made.dataDir;
     await expectUnconfirmedAnnouncedNotClosed(made);
+  });
+});
+
+describe("the cloudflared for a public link is found before anything opens (#1137)", () => {
+  it("a download is announced in the chat, then the link opens", async () => {
+    const ensure = vi.fn(async (onDownloading: (info: { version: string; asset: string }) => Promise<void>) => {
+      await onDownloading({ version: "2026.9.3", asset: "cloudflared-linux-amd64" });
+      return { path: "/home/u/.agend/bin/cloudflared", source: "downloaded" as const };
+    });
+    const { controller, tunnel, sessions } = make({ ensureCloudflared: ensure });
+    const adapter = adapterOf("discord");
+    await controller.start("kiro-cli", chat(adapter), CONFIRMED_TUNNEL);
+    expect(ensure).toHaveBeenCalledOnce();
+    expect(all(adapter.sendText as never)).toContain(t("login.tunnel_downloading", "2026.9.3").slice(0, 30));
+    expect(sessions).toHaveLength(1);
+    expect(tunnel.calls.ctx).toHaveLength(1);
+    await controller.cancel();
+  });
+
+  it.each(["checksum-mismatch", "download-failed", "unsupported-platform", "install-failed"])("%s: nothing is opened, the window is free, and the reason is said", async (kind) => {
+    const ensure = vi.fn(async () => { throw Object.assign(new Error("detail that must not reach chat"), { kind }); });
+    const { controller, tunnel, sessions, lock, events } = make({ ensureCloudflared: ensure });
+    const report = await controller.start("kiro-cli", chat(adapterOf("discord")), CONFIRMED_TUNNEL);
+    expect(report).toBe(t("login.tunnel_failed", t(`login.tunnel_reason.${kind}`)));
+    expect(report).not.toContain("detail that must not reach chat");
+    expect(sessions).toHaveLength(0);
+    expect(tunnel.calls.ctx).toHaveLength(0);
+    expect(lock.isHeld).toBe(false);
+    expect(events).toContainEqual(["login_web_tunnel_failed", expect.objectContaining({ errorKind: kind })]);
+  });
+
+  it("the local link never fetches cloudflared; nor does a host that switched public links off", async () => {
+    const ensure = vi.fn(async () => ({ path: "/x", source: "path" as const }));
+    const local = make({ ensureCloudflared: ensure });
+    await local.controller.start("kiro-cli", chat(adapterOf("discord")), CONFIRMED);
+    await local.controller.cancel();
+    const off = make({ ensureCloudflared: ensure, config: { web_terminal: { tunnel: { allow_public: false } } } });
+    expect(await off.controller.start("kiro-cli", chat(adapterOf("discord")), CONFIRMED_TUNNEL)).toBe(t("login.tunnel_not_allowed", "kiro-cli"));
+    expect(ensure).not.toHaveBeenCalled();
+  });
+});
+
+describe("review round 1 (#1141): a public-link start that is still getting cloudflared", () => {
+  /** An installer that waits until it is cancelled. */
+  const gated = () => {
+    const seen: { signal: AbortSignal | null } = { signal: null };
+    const ensure = vi.fn((_onDownloading: unknown, signal: AbortSignal) => new Promise<never>((_, reject) => {
+      seen.signal = signal;
+      signal.addEventListener("abort", () => reject(Object.assign(new Error("cancelled"), { kind: "cancelled" })));
+    }));
+    return { ensure, seen };
+  };
+
+  it("/login cancel stops it: nothing is opened afterwards, and the window is free", async () => {
+    const { ensure, seen } = gated();
+    const { controller, sessions, https, tunnel, lock } = make({ ensureCloudflared: ensure as never });
+    const starting = controller.start("kiro-cli", chat(adapterOf("discord")), CONFIRMED_TUNNEL);
+    await vi.waitFor(() => expect(seen.signal).not.toBeNull());
+    expect(controller.isActive()).toBe(true);
+    expect(await controller.cancel()).toBe(t("login.cancelled", "kiro-cli"));
+    expect(await starting).toBeNull();
+    expect(seen.signal!.aborted).toBe(true);
+    expect(sessions).toHaveLength(0);
+    expect(https).toHaveLength(0);
+    expect(tunnel.calls.ctx).toHaveLength(0);
+    expect(lock.isHeld).toBe(false);
+    expect(controller.isActive()).toBe(false);
+  });
+
+  it("a fleet shutdown stops it the same way", async () => {
+    const { ensure, seen } = gated();
+    const { controller, sessions, lock } = make({ ensureCloudflared: ensure as never });
+    const starting = controller.start("kiro-cli", chat(adapterOf("discord")), CONFIRMED_TUNNEL);
+    await vi.waitFor(() => expect(seen.signal).not.toBeNull());
+    await controller.shutdown();
+    expect(await starting).toBe(t("login.web_shutting_down"));
+    expect(sessions).toHaveLength(0);
+    expect(lock.isHeld).toBe(false);
+  });
+
+  it.each([["an unknown kind", "weird"], ["no kind at all", undefined]])("%s is worded as 'other' in chat and in the audit", async (_n, kind) => {
+    const ensure = vi.fn(async () => { throw Object.assign(new Error("x"), kind === undefined ? {} : { kind }); });
+    const { controller, events } = make({ ensureCloudflared: ensure as never });
+    expect(await controller.start("kiro-cli", chat(adapterOf("discord")), CONFIRMED_TUNNEL)).toBe(t("login.tunnel_failed", t("login.tunnel_reason.other")));
+    expect(events).toContainEqual(["login_web_tunnel_failed", expect.objectContaining({ errorKind: "other" })]);
   });
 });

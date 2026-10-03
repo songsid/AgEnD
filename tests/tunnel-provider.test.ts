@@ -821,7 +821,7 @@ describe("preflight looks, and does nothing else", () => {
     const result = await provider.preflight(new AbortController().signal);
 
     expect(result).toMatchObject({ ok: false, errorKind: "binary-missing" });
-    expect((result as { detail: string }).detail).toContain("never downloads it for you");
+    expect((result as { detail: string }).detail).toContain("not on PATH");
   });
 
   it("reports a binary that is there but not executable", async () => {

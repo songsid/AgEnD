@@ -19,6 +19,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   instance directory through group access, give it access explicitly — the group no longer has it.** (#1118)
 
 ### Upgrade Notes
+- **[Behaviour change] One tap for a public `/login` link — AgEnD gets cloudflared itself (#1137).**
+  The kiro-cli and claude-code login confirmation now offers **I understand (temporary public link)**,
+  **I understand (local network)** and **Cancel** without any configuration: `web_terminal.tunnel.allow_public`
+  no longer has to be set, and `allow_public: false` is now the host's switch to turn public links off
+  (no button, nothing downloaded). Pressing the public button is still the consent, every login, and the
+  consent now warns that anyone with the link and its token can use that login terminal until it ends.
+  If no `cloudflared` is on `PATH`, AgEnD downloads Cloudflare's official build into
+  `~/.agend/bin` (no sudo, never system-wide): a pinned version, checked against a pinned SHA256 and
+  re-checked before every use; a mismatch is deleted and nothing runs. Linux (x86-64, arm64, arm, x86) and
+  macOS are covered. If cloudflared cannot be obtained, nothing is opened and the local link is still
+  there. Everything else about the public link is unchanged: two private messages for the link and the
+  token, fail-closed, a time limit, never logged. Discord and Telegram alike.
 - **[Behaviour change] `/install-cli` is gone: `/login` installs a missing CLI, then signs in (#1131).**
   One command for "make this CLI work", so a guild with several AgEnD bots shows one entry per bot
   and there is nothing to mistype (`/install`, `/login-cli`). `/login`'s picker lists every backend
