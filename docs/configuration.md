@@ -338,6 +338,25 @@ Located at `~/.agend/classicBot.yaml`. Manages ClassicBot channels (auto-created
 - **DC auto-collab**: Discord `/start` auto-enables collab mode (bot messages visible without @mention)
 - **Fleet /collab**: per-instance in-memory toggle (non-persistent, resets on fleet restart). Allows bot/webhook messages to reach a fleet topic instance.
 
+### Telegram ClassicBot commands
+
+In a Telegram group, address the bot explicitly: `/start@YourBot codex` (or
+`/start@YourBot` to choose a backend). Use the bot's Telegram username, not its
+AgEnD instance name. Group commands without `@YourBot` are intentionally ignored;
+private chats accept `/start` without a suffix.
+
+Each bot connection has its own ClassicBot registration and message dedup scope,
+including the first command before registration. When multiple AgEnD bots see
+the same group message, a sibling rejecting `/start@YourBot` cannot consume
+YourBot's command. Retransmission to the same bot is still ignored. Group/user
+allowlists and the admin requirement for starting in a group still apply.
+
+This only applies to updates AgEnD receives. Telegram's privacy mode affects
+which group messages reach a bot; see the [Telegram Bots FAQ](https://core.telegram.org/bots/faq#what-messages-will-my-bot-get).
+If an explicitly targeted command fails, first check whether its update arrived
+at the intended adapter, then check polling errors/webhooks and routing. Another
+bot being online alone does not establish which layer lost the command.
+
 ## Credential profiles (multiple subscriptions of one backend)
 
 A CLI backend keeps its login in one place, so every instance in a fleet shares
