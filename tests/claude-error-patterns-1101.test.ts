@@ -271,6 +271,21 @@ describe("only the live retry row counts (a quotation of one in a finished trans
     expect(busy.test(live(REAL_RETRY_ROW))).toBe(true);
   });
 
+  it("a quoted TUI above later history is not made live by an unrelated composer further down", () => {
+    // The quote's own footer is followed by more transcript and then another composer
+    // that happens to show `esc to interrupt`: the row belongs to neither.
+    const pane = `${live(REAL_RETRY_ROW)}\nSome later history.\n${COMPOSER}`;
+    expect(busy.test(pane)).toBe(false);
+    expect(matched(pane)).toEqual([]);
+  });
+
+  it("two rules around text are not a composer", () => {
+    const footer = "  ⏵⏵ bypass permissions on (shift+tab to cycle) · esc to interrupt · ← for agents";
+    const pane = `❯ hello\n${REAL_RETRY_ROW}\n${RULE}\nnot a composer, just a section\n${RULE}\n${footer}`;
+    expect(busy.test(pane)).toBe(false);
+    expect(matched(pane)).toEqual([]);
+  });
+
   it("hint rows are matched by shape: free text indented ten columns is not one", () => {
     const row = REAL_RETRY_ROW;
     for (const between of ["          That was a quotation.", "                                  ✻ Cogitated for 3m 8s · done 10:11 PM"]) {
