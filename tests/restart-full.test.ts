@@ -23,6 +23,7 @@ import {
   updateProgressOperation,
 } from "../src/update-marker.js";
 import type { ChannelAdapter } from "../src/channel/types.js";
+import { describeSignalSource } from "../src/fleet-control-audit.js";
 
 const dirs: string[] = [];
 
@@ -53,6 +54,7 @@ function inbound(text: string, userId = "admin") {
 
 describe("/restart full command surface", () => {
   it("preserves bare /restart and accepts the Telegram bot-suffixed full variant", async () => {
+    const auditDir = tempDir();
     const kill = vi.spyOn(process, "kill").mockImplementation(() => true);
     const sendText = vi.fn().mockResolvedValue({
       messageId: "progress-1",
@@ -67,10 +69,13 @@ describe("/restart full command surface", () => {
       fleetConfig: { channel: { access: { allowed_users: ["admin"] } } },
       isFleetAdmin: (userId: string) => userId === "admin",
       requestFullRestart,
+      dataDir: auditDir,
     } as any);
 
     expect(await commands.handleGeneralCommand(inbound("/restart"))).toBe(true);
     expect(kill).toHaveBeenCalledWith(process.pid, "SIGUSR2");
+    // #1120: the signal the fleet is about to receive can be traced to the person who asked
+    expect(describeSignalSource(auditDir, "SIGUSR2")).toMatch(/requested by restart.*command \/restart graceful by .*:/);
     expect(requestFullRestart).not.toHaveBeenCalled();
 
     kill.mockClear();
@@ -137,7 +142,8 @@ describe("/restart full command surface", () => {
   });
 
   it("binds a Discord full restart to the public response in its real channel", async () => {
-    const fleet = new FleetManager(tempDir());
+    const auditDir = tempDir();
+    const fleet = new FleetManager(auditDir);
     fleet.fleetConfig = {
       defaults: {},
       channels: [{
@@ -165,6 +171,7 @@ describe("/restart full command surface", () => {
 
     expect(respond).toHaveBeenCalledWith(expect.stringContaining("Full process reload requested"));
     expect(request).toHaveBeenCalledWith(adapter, "guild", "channel", "public-progress");
+    expect(describeSignalSource(auditDir, "SIGUSR1")).toContain("slash /restart full by discord-main:admin");   // #1120
   });
 
   it("uses the invoking adapter's admin allowlist for Discord full restart", async () => {

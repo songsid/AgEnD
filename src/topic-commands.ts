@@ -941,6 +941,7 @@ export class TopicCommands {
       return;
     }
 
+    recordInternalRequest(this.ctx.dataDir, "restart", `command /restart ${mode ?? "graceful"} by ${msg.adapterId}:${msg.userId}`);
     if (mode !== "full") {
       await adapter.sendText(chatId, t("restart.graceful"), { threadId });
       process.kill(process.pid, "SIGUSR2");
