@@ -102,6 +102,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   are unaffected.
 
 ### Added
+- **`/login` and `/install-cli` say which fleet they belong to.** Every AgEnD bot in a Discord guild
+  registers its own `/login`, so the slash menu listed identical commands and a picker could come
+  from another fleet than the one you meant. Their descriptions now end with the fleet's label, and
+  each backend picker shows `🖥 Fleet: <label>`. The label is `fleet_label` in fleet.yaml, by default
+  the host name (plus the AgEnD home's name when it is not `~/.agend`).
 - **Finish a `kiro-cli` `/login` from your phone: optional public link
   (`web_terminal.tunnel.allow_public`, default off).** When enabled, the login confirmation offers
   **Open public link** beside **Local link only**; the press is the consent, per login. A Cloudflare Quick

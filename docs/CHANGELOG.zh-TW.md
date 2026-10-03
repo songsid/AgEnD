@@ -26,6 +26,7 @@
 - **[行為變更] dashboard 現在會拒絕 `Host` 不認得的請求。** health/dashboard server 雖然只綁 127.0.0.1，但這擋不住 DNS rebinding：網頁可以把自己的網域解析到 127.0.0.1，再用 script 讀取不需要 cookie 的路由，包含 `/view` 的即時終端畫面（`/api/pane/*`）。這種網頁唯一改不了的是瀏覽器送出的 `Host`，所以所有路由（含 `/health`、`/agent`）現在只有在 `Host` 是 `localhost`、`127.0.0.1`、`[::1]`、fleet 的 `hostname:`，或新增的 `web.allowed_hosts` 列出的名稱時才回應，其餘一律 403（不比對 port）。**如果你是透過反向代理或 port forward、且它呈現的是別的名稱，請把該名稱加進 `web.allowed_hosts`**；每個被拒的名稱第一次出現時，`fleet.log` 會記一行並附上這個提示。CLI、`agend web`、`/dashboard` 與內部呼叫都用 loopback 名稱，不受影響。
 
 ### 新增 (Added)
+- **`/login` 與 `/install-cli` 會標明屬於哪個 fleet。** 同一個 Discord guild 裡每個 AgEnD bot 都會註冊自己的 `/login`，所以 slash 選單列出一模一樣的指令，選單也可能來自你不想操作的那個 fleet。現在指令說明的結尾會帶著 fleet 標籤，每個 backend 選單也會顯示 `🖥 Fleet：<標籤>`。標籤取自 fleet.yaml 的 `fleet_label`，預設為主機名稱（AgEnD home 不是 `~/.agend` 時再加上該目錄名稱）。
 - **用手機完成 `kiro-cli` 的 `/login`：選用的公開連結（`web_terminal.tunnel.allow_public`，預設關閉）。** 啟用後，登入確認會在
   **只用本機連結** 旁多一個 **開啟公開連結**；按下就是這次登入的同意。Cloudflare Quick Tunnel 只代理那一次登入的終端；公開連結與存取 token
   以兩則私訊傳給發起人（絕不進頻道）；私訊送不到、tunnel 起不來或中途斷線、取消、逾時、關閉 fleet，都會在下一次登入之前先關掉 tunnel，

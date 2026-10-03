@@ -9,6 +9,7 @@ import { join, dirname, basename, delimiter, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { getAgendHome, ensureWorkspaceGit } from "./paths.js";
+import { fleetLabel } from "./fleet-label.js";
 import {
   beginFullRestartProgress as persistFullRestartProgress,
   beginUpdateProgress as persistUpdateProgress,
@@ -4531,6 +4532,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       botToken,
       accessManager,
       inboxDir,
+      fleetLabel: fleetLabel(this.fleetConfig),
     });
     const adapter = this.adapter;
     const world = new AdapterWorld(adapterId, adapter, accessManager, channelConfig);
@@ -4846,6 +4848,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       accessManager,
       inboxDir,
       registerCommands,
+      fleetLabel: fleetLabel(this.fleetConfig),
     });
     const world = new AdapterWorld(adapterId, adapter, accessManager, channelConfig);
     this.worlds.set(adapterId, world);
@@ -10344,7 +10347,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       adapterId: chat.adapterId,
       chatId: chat.chatId,
       threadId: chat.threadId,
-      message: t("login.choose_backend"),
+      message: `${t("login.choose_backend")}\n${t("fleet.label_line", fleetLabel(this.fleetConfig))}`,
       choices,
       expiredText: t("buttons.stale"),
     });
@@ -10516,7 +10519,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       adapterId: chat.adapterId,
       chatId: chat.chatId,
       threadId: chat.threadId,
-      message: t("install.choose_backend"),
+      message: `${t("install.choose_backend")}\n${t("fleet.label_line", fleetLabel(this.fleetConfig))}`,
       choices,
       expiredText: t("buttons.stale"),
     });

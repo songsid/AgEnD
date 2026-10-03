@@ -258,6 +258,10 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     }
   });
 
+  if (config.fleet_label !== undefined && (typeof config.fleet_label !== "string" || !config.fleet_label.trim())) {
+    err("fleet_label", "must be a non-empty string");
+  }
+
   // ── Web UI ────────────────────────────────────────────────
   if (config.web !== undefined && !isObj(config.web)) {
     err("web", "must be a mapping");

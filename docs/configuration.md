@@ -19,11 +19,19 @@ Located at `~/.agend/fleet.yaml`. The primary configuration file for the fleet.
 | `templates` | object | no | — | Reusable fleet deployment templates |
 | `profiles` | object | no | — | Reusable backend/model presets |
 | `health_port` | number | no | `19280` | HTTP health endpoint port |
+| `fleet_label` | string | no | host name | How this fleet names itself in `/login` and `/install-cli`: appended to the Discord slash command descriptions and shown under each backend picker (`🖥 Fleet: …`). Every AgEnD bot in a guild registers its own `/login`, and each one controls only the fleet that runs it — the label tells them apart. Default: the machine's host name, plus the AgEnD home's directory name when it is not `~/.agend` |
 | `web` | object | no | — | Web UI feature toggles — `web.usage_panel: false` hides the AI subscription usage panel on /view and disables `/api/ai-usage` (default `true`); `web.allowed_hosts: [name, …]` adds `Host` names the dashboard answers to when reached through a reverse proxy or port forward (default: `localhost`, `127.0.0.1`, `[::1]` and `hostname`; any other `Host` gets 403 — this is what stops DNS rebinding; the `/login` browser terminal's listener uses the same list) |
 | `web_terminal` | object | no | — | The browser terminal behind `/login` and `/install-cli`: `enabled` (default `true`), `bind` (default `127.0.0.1`), `ttl_minutes` (1–20, default 10), and `tunnel` — an opt-in public link for `/login`, see [Finishing a /login away from the machine](#finishing-a-login-away-from-the-machine-public-link) |
 
 ---
 
+
+### Several fleets in one Discord guild
+
+Each AgEnD bot registers its own `/login` and `/install-cli`, and each one controls only the fleet
+that runs that bot. Discord lists them side by side, so the description of each ends with its fleet's
+label (`fleet_label`, default the host name), and every backend picker says `🖥 Fleet: <label>`.
+Pick the command whose label names the fleet you want to change.
 
 ### Finishing a /login away from the machine (public link)
 
