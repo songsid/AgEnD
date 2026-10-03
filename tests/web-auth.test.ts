@@ -76,7 +76,7 @@ describe("persistent dashboard token", () => {
     const blocker = createServer();
     const port = await listen(blocker);
     const fm = new FleetManager(tempDir());
-    const notifyFleetError = vi.spyOn(fm, "notifyFleetError").mockImplementation(() => {});
+    const notifyFleetError = vi.spyOn(fm, "notifyFleetError").mockReturnValue(true);
 
     (fm as any).initializeWebAuthTokens();
     (fm as any).startHealthServer(port);

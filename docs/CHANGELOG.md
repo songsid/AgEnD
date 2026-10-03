@@ -102,6 +102,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   are unaffected.
 
 ### Added
+- **`/login` and `/install-cli` say which fleet they belong to.** Every AgEnD bot in a Discord guild
+  registers its own `/login`, so the slash menu listed identical commands and a picker could come
+  from another fleet than the one you meant. Their descriptions now end with the fleet's label, and
+  each backend picker shows `🖥 Fleet: <label>`. The label is `fleet_label` in fleet.yaml, by default
+  the host name (plus the AgEnD home's name when it is not `~/.agend`).
 - **Finish a `kiro-cli` `/login` from your phone: optional public link
   (`web_terminal.tunnel.allow_public`, default off).** When enabled, the login confirmation offers
   **Open public link** beside **Local link only**; the press is the consent, per login. A Cloudflare Quick
@@ -112,6 +117,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `cloudflared` on `PATH`. See "Finishing a /login away from the machine" in `docs/configuration.md`.
 
 ### Fixed
+- **A rejected Discord slash command registration is reported (#1131).** It was swallowed without a
+  log line, and Discord keeps the previous command list when it rejects one, so a new command such as
+  `/install-cli` could silently never appear. The fleet now logs every registration (the command
+  count, or Discord's error code and message) and tells General once when Discord rejects it.
 - **Button prompts never fail silently (#1133).** On Discord, `/install-cli`'s backend chooser (seven
   backends) could not be posted at all: Discord allows five buttons to a row, and all of them were
   in one. Buttons are now laid out in rows of five. A chooser or confirmation that cannot be posted

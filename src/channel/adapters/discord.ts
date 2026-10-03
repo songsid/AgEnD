@@ -73,6 +73,8 @@ export interface DiscordAdapterOptions {
   categoryName?: string;
   generalChannelId?: string;
   registerCommands?: boolean;
+  /** This fleet's label, appended to the `/login` and `/install-cli` descriptions. */
+  fleetLabel?: string;
   /** Test seams; production callers leave these unset. */
   clientFactory?: () => Client;
   now?: () => number;
@@ -130,6 +132,17 @@ function privateNotice(interaction: { followUp(options: { content: string; flags
  */
 const NONCE_BUTTON_ID = /^[a-z][a-z-]*:[0-9a-f]{32}:[a-z0-9-]+$/;
 
+/**
+ * A slash command description that names its fleet: every AgEnD bot in a
+ * guild registers `/login`, and the menu shows them side by side. Discord
+ * caps descriptions at 100 characters.
+ */
+export function withFleetLabel(description: string, label: string | undefined): string {
+  if (!label) return description;
+  const suffix = ` · ${label}`;
+  return description.length + suffix.length <= 100 ? description + suffix : `${description.slice(0, 100 - suffix.length - 1)}…${suffix}`;
+}
+
 export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
   readonly type = "discord";
   readonly topology = "channels" as const;
@@ -165,6 +178,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
   private categoryName: string;
   private generalChannelId?: string;
   private registerCommands: boolean;
+  private fleetLabel: string | undefined;
   private queue: MessageQueue;
   private lastChatId: string | null = null;
   private attachmentUrls = new Map<string, string>();
@@ -180,6 +194,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     this.categoryName = opts.categoryName ?? "AgEnD Agents";
     this.generalChannelId = opts.generalChannelId;
     this.registerCommands = opts.registerCommands !== false;
+    this.fleetLabel = opts.fleetLabel;
 
     mkdirSync(this.inboxDir, { recursive: true });
 
@@ -975,7 +990,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       // Register classic bot slash commands (skipped for a secondary bot sharing
       // a guild with the primary — only the primary owns the guild's commands).
       if (this.registerCommands) try {
-        await client.application?.commands.set([
+        const registered = await client.application?.commands.set([
           {
             name: "start", description: t("slash.start"),
             options: [{
@@ -1044,7 +1059,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
             }],
           },
           {
-            name: "login", description: "🔒 " + t("slash.login"),
+            name: "login", description: withFleetLabel("🔒 " + t("slash.login"), this.fleetLabel),
             options: [
               {
                 name: "backend", description: t("slash.option.login_backend"),
@@ -1063,7 +1078,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
             ],
           },
           {
-            name: "install-cli", description: "🔒 " + t("slash.install_cli"),
+            name: "install-cli", description: withFleetLabel("🔒 " + t("slash.install_cli"), this.fleetLabel),
             options: [
               {
                 name: "backend", description: t("slash.option.install_backend"),
@@ -1111,8 +1126,18 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
           },
           { name: "cancel", description: t("slash.cancel") },
         ]);
+        this.emitFromClient(client, generation, "slash_registration", { ok: true, count: registered?.size });
       } catch (err) {
-        // Non-fatal — slash commands may fail on network issues
+        // Non-fatal, and no retry here (the next ready registers again) — but
+        // never silent (#1131): Discord keeps the previous command list when a
+        // registration is rejected, so a new command just never appears.
+        const e = err as { code?: unknown; status?: unknown; message?: unknown };
+        this.emitFromClient(client, generation, "slash_registration", {
+          ok: false,
+          code: e?.code,
+          status: e?.status,
+          message: String(e?.message ?? err),
+        });
       }
       if (!this.isCurrentClient(client, generation)) return;
       this.emit("started", client.user?.username ?? "discord-bot", client.user?.id);

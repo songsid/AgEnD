@@ -134,6 +134,7 @@ export function loadFleetConfig(configPath: string): FleetConfig {
     health_port?: number;
     web?: FleetConfig["web"];
     hostname?: string;
+    fleet_label?: string;
     login?: FleetConfig["login"];
     web_terminal?: FleetConfig["web_terminal"];
   } | null;
@@ -196,6 +197,7 @@ export function loadFleetConfig(configPath: string): FleetConfig {
     health_port: parsed.health_port,
     web: parsed.web,
     hostname: parsed.hostname,
+    fleet_label: parsed.fleet_label,
     login: validateLoginConfig(parsed.login),
     web_terminal: validateWebTerminalConfig(parsed.web_terminal),
   };

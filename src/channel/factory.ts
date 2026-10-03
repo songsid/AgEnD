@@ -14,6 +14,8 @@ export interface AdapterOpts {
    * secondary bot sharing a guild with the primary, so it doesn't duplicate the
    * guild's slash commands — only the primary registers them. */
   registerCommands?: boolean;
+  /** This fleet's label (fleet-label.ts), shown in commands and pickers that several fleets' bots share. */
+  fleetLabel?: string;
 }
 
 /** Factory function that external adapter packages must default-export. */

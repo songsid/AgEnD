@@ -223,8 +223,8 @@ describe("discord registration includes the new commands", () => {
   it("registers /login and /install-cli with backend choices", async () => {
     const { readFileSync } = await import("node:fs");
     const src = readFileSync(join(__dirname, "../src/channel/adapters/discord.ts"), "utf8");
-    expect(src).toContain('name: "login", description: "🔒 " + t("slash.login")');
-    expect(src).toContain('name: "install-cli", description: "🔒 " + t("slash.install_cli")');
+    expect(src).toContain('name: "login", description: withFleetLabel("🔒 " + t("slash.login"), this.fleetLabel)');
+    expect(src).toContain('name: "install-cli", description: withFleetLabel("🔒 " + t("slash.install_cli"), this.fleetLabel)');
     expect(src).toContain('{ name: "opencode", value: "opencode" }');
   });
 

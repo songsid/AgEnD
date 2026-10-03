@@ -383,6 +383,12 @@ export interface FleetConfig {
   web?: WebConfig;
   /** Host name used when building URLs handed to users (/dashboard, web terminal). Default "localhost". */
   hostname?: string;
+  /**
+   * How this fleet names itself in `/login` and `/install-cli` (slash command
+   * descriptions, backend pickers) — tells apart several fleets' bots in one
+   * guild. Default: the machine's host name.
+   */
+  fleet_label?: string;
   login?: LoginConfig;
   web_terminal?: WebTerminalConfig;
 }

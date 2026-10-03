@@ -48,7 +48,7 @@ describe("fleet delivery during a tmux storm", () => {
 
   it("routes the fleet summary through the no-General fallback", async () => {
     const fm = manager();
-    const notify = vi.spyOn(fm, "notifyFleetError").mockImplementation(() => {});
+    const notify = vi.spyOn(fm, "notifyFleetError").mockReturnValue(true);
     fm.stormWindow.recordServerDead("worker", ["worker"]);
     await vi.advanceTimersByTimeAsync(1_000);
     expect(notify).toHaveBeenCalledWith(expect.stringContaining("tmux"));
