@@ -341,6 +341,13 @@ describe("/update /doctor /dashboard /collab: the invoking adapter's fleet admin
     expect(await slash(r, "second", { command: "doctor", userId: "admin", guildId: "G2", channelId: "C-second" })).toEqual([t("not_authorized")]);
   });
 
+  it("with no access manager to ask, a non-admin is refused rather than let through", async () => {
+    const r = await rig({ primary: OPEN });
+    (r.fm as unknown as { worlds: Map<string, unknown> }).worlds.delete("discord");
+    (r.fm as unknown as { accessManager: unknown }).accessManager = null;
+    expect(await slash(r, "discord", { command: "sysinfo", channelId: "RANDOM", userId: "member" })).toEqual([t("not_authorized")]);
+  });
+
   it("a second adapter with no admins of its own is off, even when the primary has some", async () => {
     const r = await rig({ primary: OPEN, second: { mode: "open", allowed_users: [] } });
     expect(await slash(r, "second", { command: "update", userId: "admin", guildId: "G2", channelId: "C-second" })).toEqual([t("update.disabled")]);
@@ -374,6 +381,14 @@ describe("the typed versions of /update /doctor /dashboard follow the same rule"
     expect(await typed(r, "discord", "/dashboard", "member")).toEqual([t("dashboard.disabled")]);
     expect(await typed(r, "discord", "/doctor", "member")).toEqual([t("not_authorized")]);
     expect(spawned).toHaveLength(0);
+  });
+
+  it("typed /update is served to the invoking adapter's own admin and to nobody else", async () => {
+    const r = await rig({ primary: OPEN, second: { mode: "open", allowed_users: ["ops"] } });
+    expect(await typed(r, "second", "/update", "ops")).toEqual([t("update.progress.preparing", 0)]);
+    expect(spawned).toHaveLength(1);                                        // the stubbed spawn
+    expect(await typed(r, "second", "/update", "admin")).toEqual([t("not_authorized")]);   // admin of "discord", not of "second"
+    expect(spawned).toHaveLength(1);
   });
 
   it("a non-admin is refused; the invoking adapter's admin is served", async () => {
