@@ -112,6 +112,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `cloudflared` on `PATH`. See "Finishing a /login away from the machine" in `docs/configuration.md`.
 
 ### Fixed
+- **Button prompts never fail silently (#1133).** On Discord, `/install-cli`'s backend chooser (seven
+  backends) could not be posted at all: Discord allows five buttons to a row, and all of them were
+  in one. Buttons are now laid out in rows of five. A chooser or confirmation that cannot be posted
+  now says so instead of reporting "chooser posted" or stopping at "Starting…". A click that cannot
+  act — the prompt expired, it is not your prompt, or you are not a fleet admin — now tells you why,
+  privately (an ephemeral message on Discord, the button's answer on Telegram). Telegram answers a
+  click once the fleet has decided, so a failed answer no longer loses the click. When an outcome
+  cannot be written into the prompt it is posted as a message, and a click nothing handles is
+  logged.
 - **Discord: the `/login` and `/install-cli` backend buttons respond to clicks (#1131).** A picker posted by
   the native slash command was bound to the channel, while Discord reports every button click by
   guild and channel, so each click was rejected as a mismatch and nothing happened. Buttons now carry

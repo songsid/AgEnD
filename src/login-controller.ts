@@ -317,7 +317,14 @@ export class LoginController {
       // the explicit go-ahead (design §3.2). The button re-enters with the
       // answer; the window is released (by the caller's finally) meanwhile.
       let tokenPresent = false;
-      if (flow.authCheck) tokenPresent = (await (this.deps.checkAuth ?? checkAuthStatus)(flow.authCheck)) === "valid";
+      // A probe that throws is an unknown answer, never a dead end (#1133).
+      if (flow.authCheck) {
+        try {
+          tokenPresent = (await (this.deps.checkAuth ?? checkAuthStatus)(flow.authCheck)) === "valid";
+        } catch (err) {
+          this.deps.logger.warn({ ...safeErr(err), backend }, "Auth pre-check failed; treating the token as absent");
+        }
+      }
       if (this.stale(generation, claim)) return t("login.web_shutting_down");
       this.deps.releaseWindow(claim);                       // nothing runs until the button is pressed
       const logoutFirst = tokenPresent && flow.preCommand?.when === "token-present";

@@ -115,14 +115,14 @@ export interface FleetContext {
     adapterId: string;
     chatId: string;
     threadId?: string;
-  }): Promise<void>;
-  /** `/login` backend chooser buttons. Caller enforces fleet-admin. */
+  }): Promise<string | undefined>;
+  /** `/login` backend chooser buttons. Caller enforces fleet-admin. Returns why it could not be posted. */
   promptLoginBackends?(chat: {
     adapter: import("./channel/types.js").ChannelAdapter;
     adapterId: string;
     chatId: string;
     threadId?: string;
-  }): Promise<void>;
+  }): Promise<string | undefined>;
   /**
    * Start a remote login session for one backend; returns a status line, or
    * null when a still-valid-auth confirmation prompt was posted instead.

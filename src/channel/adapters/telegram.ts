@@ -257,6 +257,9 @@ export function validateTelegramApiRoot(apiRoot: string): void {
   }
 }
 
+/** How long a button click may wait for the fleet's answer before the spinner is cleared anyway. */
+const CALLBACK_ANSWER_FALLBACK_MS = 5_000;
+
 export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   readonly type = "telegram";
   readonly topology = "topics" as const;
@@ -519,7 +522,20 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     // Handle callback queries from approval inline keyboards and directory browser
     this.bot.on("callback_query:data", async (ctx: Context) => {
       if (!ctx.callbackQuery?.data) return;
-      await ctx.answerCallbackQuery();
+      // Answered once the fleet has decided (#1133), so a refused click can
+      // say why in the answer itself; the fallback clears the spinner when no
+      // listener does. Answering used to come first, and a failed answer (a
+      // stale query after a reconnect) dropped the click unseen.
+      let answered = false;
+      const answer = (notice?: string) => {
+        if (answered) return;
+        answered = true;
+        clearTimeout(fallback);
+        ctx.answerCallbackQuery(notice ? { text: notice } : undefined)
+          .catch(err => console.warn(`[telegram:${this.id}] could not answer a button click (${(err as Error).message})`));
+      };
+      const fallback = setTimeout(() => answer(), CALLBACK_ANSWER_FALLBACK_MS);
+      fallback.unref?.();
       this.emit("callback_query", {
         callbackData: ctx.callbackQuery.data,
         chatId: String(ctx.callbackQuery.message?.chat.id ?? ""),
@@ -528,6 +544,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
           : undefined,
         messageId: String(ctx.callbackQuery.message?.message_id ?? ""),
         userId: String(ctx.callbackQuery.from.id),
+        ack: answer,
       });
     });
 
