@@ -23,6 +23,12 @@ export function detectLocale(fleetConfig?: { defaults?: { locale?: string } }): 
 }
 
 const enMessages = {
+    "memory.pressure": "⚠️ Host memory pressure: {0}, {1} swap free. {2} Existing agents keep running; check other memory-heavy host processes.",
+    "memory.available": "{0} RAM available",
+    "memory.free": "{0} RAM free (available RAM could not be measured)",
+    "memory.holding": "New agent starts will wait for memory to recover.",
+    "memory.slowing": "New agent starts are limited to one at a time, at least 5 seconds apart.",
+    "memory.unknown": "unknown",
     "cancel.button": "🛑 Cancel",
     "cancel.sent": "🛑 Sent cancel to {0}.",
     "cancel.not_running": "❌ {0} not running.",
@@ -740,6 +746,12 @@ const enMessages = {
 } as const;
 
 const zhTWMessages: { [K in keyof typeof enMessages]: string } = {
+    "memory.pressure": "⚠️ 主機記憶體吃緊：{0}，swap 剩餘 {1}。{2} 已在執行的 agent 會繼續工作；請檢查主機上其他大量使用記憶體的程式。",
+    "memory.available": "可用記憶體 {0}",
+    "memory.free": "空閒記憶體 {0}（無法量到可用記憶體）",
+    "memory.holding": "新的 agent 啟動會等待記憶體恢復。",
+    "memory.slowing": "新的 agent 改為一次啟動一個，至少間隔 5 秒。",
+    "memory.unknown": "未知",
     "cancel.button": "🛑 取消",
     "cancel.sent": "🛑 已送出取消給 {0}。",
     "cancel.not_running": "❌ {0} 未在執行。",
