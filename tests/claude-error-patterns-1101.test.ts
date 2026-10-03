@@ -9,6 +9,7 @@
  *        ● API Error: Request rejected (429) · <message>       (gave up)
  *   401  ✻ 401 invalid x-api-key · Retrying in 16s · attempt 6/10
  *        ⎿ Invalid API key · Fix external API key              (gave up; NBSP after ⎿)
+ *   500  ✻ 500 Internal server error · Retrying in 8s · attempt 5/10
  *   529  ✻ API error · Retrying in 1s · attempt 2/10            (attempts 1-2 carry no status)
  *        ● API Error: Repeated 529 Overloaded errors. The API is at capacity …   (gave up)
  *
@@ -31,6 +32,7 @@ const FINAL_529 = fixture("claude-2.1.287-error-529.pane.txt");
 const EXHAUSTED_401 = fixture("claude-2.1.288-error-401-exhausted.pane.txt");
 const EXHAUSTED_429 = fixture("claude-2.1.288-error-429-exhausted.pane.txt");
 const RETRY_GENERIC = fixture("claude-2.1.288-error-529-retry-generic.pane.txt");
+const RETRY_500 = fixture("claude-2.1.288-error-500-retrying.pane.txt");
 
 const backend = new ClaudeCodeBackend("/tmp/agend-claude-1101");
 const patterns = backend.getErrorPatterns();
@@ -53,6 +55,7 @@ describe("the real fixtures are the screens they claim to be", () => {
     expect(EXHAUSTED_401).toMatch(/⎿\s+Invalid API key · Fix external API key/);
     expect(EXHAUSTED_429).toContain("● API Error: Request rejected (429) · Number of request tokens has exceeded your per-minute rate limit");
     expect(RETRY_GENERIC).toContain("✻ API error · Retrying in 1s · attempt 2/10");
+    expect(RETRY_500).toMatch(/✻ 500 Internal server error · Retrying in \d+s · attempt \d+\/10/);
   });
 });
 
@@ -68,6 +71,13 @@ describe("classification of the real screens", () => {
   it("an exhausted 529 is `API overloaded`, notify", () => {
     expect(matched(FINAL_529)).toEqual(["rate_limit/notify"]);
     expect(patterns.find(ep => ep.pattern.test(FINAL_529))!.message).toBe("API overloaded");
+  });
+
+  it("a 5xx being retried is the same notice, with its own status", () => {
+    expect(matched(RETRY_500)).toEqual(["rate_limit/notify"]);
+    const ep = patterns.find(candidate => candidate.pattern.test(RETRY_500))!;
+    expect(ep.formatMessage!(RETRY_500.match(new RegExp(ep.pattern.source, ep.pattern.flags))!))
+      .toMatch(/^Claude API returned 500 — Claude Code is retrying automatically \(attempt \d+\/10\)$/);
   });
 
   it("a 401 being retried, and a 401 that ended, are config_error notices (not auth_error, which pauses)", () => {
@@ -90,7 +100,7 @@ describe("classification of the real screens", () => {
 
   it("every other real claude screen on file stays quiet", () => {
     const quiet = readdirSync(FIXTURES).filter(name => /^claude-2\.1\.28\d-/.test(name)
-      && !/error-(?:401|429|529)/.test(name) && !name.includes("dialog") && !name.includes("settings"));
+      && !/-error-/.test(name) && !name.includes("dialog") && !name.includes("settings"));
     expect(quiet.length).toBeGreaterThan(15);
     for (const name of quiet) {
       const hits = matched(fixture(name));
@@ -112,7 +122,7 @@ describe("classification of the real screens", () => {
 
 describe("a retry is a turn in progress, not a stop", () => {
   const retryPanes: Array<[string, string]> = [
-    ["401 retrying", RETRY_401], ["429 retrying", RETRY_429], ["generic first attempts", RETRY_GENERIC],
+    ["401 retrying", RETRY_401], ["429 retrying", RETRY_429], ["500 retrying", RETRY_500], ["generic first attempts", RETRY_GENERIC],
   ];
 
   it("every real retry row reads as busy", () => {
