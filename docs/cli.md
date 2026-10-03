@@ -28,6 +28,12 @@ agend reload                    # Hot-reload config (sends SIGHUP to fleet proce
 
 `agend reload` re-reads `fleet.yaml` and reconciles instances: new instances are started, removed instances are stopped, and changed configs are applied — without restarting the fleet process.
 
+### Who stopped the fleet
+
+`agend stop`, `agend restart`, `agend update`, `agend fleet stop` and `agend fleet restart` (without an instance name) affect every instance, so each one writes a line to `restart-audit.log` in the AgEnD home **before** it acts: the time, the command, the chain of parent processes with their command lines, the working directory, whether stdin was a terminal, and `AGEND_INSTANCE_NAME` when it ran inside a fleet agent's session. Instance-level `fleet stop <name>` / `fleet restart <name>` are recorded too. When the fleet receives the resulting signal it names that request in its own log, so an unexpected restart can be traced even though `fleet.log` is rewritten by the restart.
+
+Started from a fleet agent's session (`AGEND_INSTANCE_NAME` is set, and is inherited by everything the agent runs — including a `$(...)` or backtick inside a quoted argument), those commands are refused unless you add `--yes`; the refusal is recorded as well. From a test runner (`VITEST` / `NODE_ENV=test`) they are refused outright; `AGEND_ALLOW_TEST_FLEET_CONTROL=1` lifts that for a test that really targets a scratch fleet. `/update` and `/restart` sent by a fleet admin are recorded with who sent them.
+
 ## Fleet management
 
 ```bash
