@@ -1,0 +1,5 @@
+> SENTINEL_KIRO_LEGACY_NO_OUTBOUND_20261004
+
+ ▸ Time: 1s
+
+[sentinel-no-outbound-repro] 1% > How can I help?

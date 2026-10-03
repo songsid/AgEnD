@@ -267,7 +267,7 @@
       se_src_instance: "agent", se_src_platform: "connection", se_src_builtin: "default", se_pick: "Pick…", se_useDefault: "Use the default", se_fallback: "the default is used instead",
       se_unicode: "Emoji", se_telegramOnly: "Telegram allows only these reactions", se_serverEmojis: "Server emojis", se_noServerEmojis: "No custom emojis on this server.", se_primaryServer: "primary", se_externalEmojiHint: "Another server's emoji needs the bot's Use External Emojis permission in the channel it reacts in.", se_unavailable: "unavailable",
       se_hint: "Empty keeps the default. The preview is resolved by AgEnD exactly as the bot will react.",
-      detection: "Detection", startup: "Startup", backendSection: "Backend", advancedSection: "Advanced & Access", hangEnabled: "Hang detector enabled", hangTimeout: "Stuck timeout", agentMode: "Agent mode", toolSet: "Tool set", toolProgress: "Tool progress", replyCompletionGuard: "Require a delivered reply", replyGuardSupported: "Active for Claude Code in MCP mode.", replyGuardUnsupported: "Stored but inactive: {0} in {1} mode does not support reply-drop recovery.", logLevel: "Log level", concurrency: "Startup concurrency", staggerDelay: "Stagger delay", lightweight: "Lightweight mode", modelFailover: "Fallback model", displayName: "Display name", pause: "Pause", wake: "Wake", accessMode: "Access mode", affected: "Affected instances",
+      detection: "Detection", startup: "Startup", backendSection: "Backend", advancedSection: "Advanced & Access", hangEnabled: "Hang detector enabled", hangTimeout: "Stuck timeout", agentMode: "Agent mode", toolSet: "Tool set", toolProgress: "Tool progress", replyCompletionGuard: "Require a delivered reply", replyGuardSupported: "Available for Claude Code and Kiro legacy/TUI in MCP mode.", replyGuardUnsupported: "Stored but inactive: {0} in {1} mode does not support reply-drop recovery.", logLevel: "Log level", concurrency: "Startup concurrency", staggerDelay: "Stagger delay", lightweight: "Lightweight mode", modelFailover: "Fallback model", displayName: "Display name", pause: "Pause", wake: "Wake", accessMode: "Access mode", affected: "Affected instances",
       language: "Language (bot replies)", defaultBackend: "Default backend", defaultModel: "Default model", allowedUsers: "Allowed users (primary bot)",
       classicAdmins: "ClassicBot admins", allowedGuilds: "Allowed guilds", type: "Type", adapterId: "Adapter id",
       tokenEnv: "Bot token env var", groupId: "Group / guild id", nameField: "Name",
@@ -326,7 +326,7 @@
       backend: "後端", model: "模型", workingDir: "工作目錄", channelBinding: "頻道綁定",
       description: "描述", systemPrompt: "System prompt", tags: "標籤", generalTopicField: "General topic（fleet 分派器）",
       runtimeResources: "執行環境與資源", autoPause: "閒置後自動暫停", minutes: "分鐘", inheritDefault: "沿用全域預設值",
-      detection: "偵測", startup: "啟動", backendSection: "後端", advancedSection: "進階與存取", hangEnabled: "啟用卡住偵測", hangTimeout: "卡住逾時", agentMode: "Agent 模式", toolSet: "工具集", toolProgress: "工具進度", replyCompletionGuard: "要求送出回覆", replyGuardSupported: "Claude Code 的 MCP 模式可用。", replyGuardUnsupported: "設定會保留，但不會生效：{0} 的 {1} 模式不支援回覆遺失補救。", logLevel: "Log 等級", concurrency: "啟動併發數", staggerDelay: "錯開延遲", lightweight: "輕量模式", modelFailover: "備援模型", displayName: "顯示名稱", pause: "暫停", wake: "喚醒", accessMode: "存取模式", affected: "受影響 instances",
+      detection: "偵測", startup: "啟動", backendSection: "後端", advancedSection: "進階與存取", hangEnabled: "啟用卡住偵測", hangTimeout: "卡住逾時", agentMode: "Agent 模式", toolSet: "工具集", toolProgress: "工具進度", replyCompletionGuard: "要求送出回覆", replyGuardSupported: "Claude Code 與 Kiro legacy/TUI 的 MCP 模式可用。", replyGuardUnsupported: "設定會保留，但不會生效：{0} 的 {1} 模式不支援回覆遺失補救。", logLevel: "Log 等級", concurrency: "啟動併發數", staggerDelay: "錯開延遲", lightweight: "輕量模式", modelFailover: "備援模型", displayName: "顯示名稱", pause: "暫停", wake: "喚醒", accessMode: "存取模式", affected: "受影響 instances",
       language: "語言（bot 回覆）", defaultBackend: "預設後端", defaultModel: "預設模型", allowedUsers: "允許使用者（主 bot）",
       classicAdmins: "ClassicBot 管理員", allowedGuilds: "允許的伺服器", type: "類型", adapterId: "Adapter id",
       tokenEnv: "Bot token 環境變數", groupId: "群組 / guild id", nameField: "名稱",
@@ -1046,11 +1046,11 @@
     toggle.onchange = () => { input.disabled = toggle.checked; };
     return { input, toggle, row: el("div", {}, input, el("label", { class: "inherit-row" }, toggle, el("span", {}, t("inheritDefault")), impact(impactField))) };
   }
-  const replyGuardSupported = (backend, mode) => backend === "claude-code" && mode === "mcp";
-  const replyGuardHint = (backend, mode) => el(
+  const replyGuardSupported = (backend, mode, kiroUi = "legacy") => mode === "mcp" && (backend === "claude-code" || (backend === "kiro-cli" && ["legacy", "tui"].includes(kiroUi)));
+  const replyGuardHint = (backend, mode, kiroUi) => el(
     "div",
     { class: "hint" },
-    replyGuardSupported(backend, mode) ? t("replyGuardSupported") : tf("replyGuardUnsupported", backend, mode),
+    replyGuardSupported(backend, mode, kiroUi) ? t("replyGuardSupported") : tf("replyGuardUnsupported", backend, mode),
   );
   function setValidation(input, feedback, error, warning) {
     input.classList.toggle("invalid", !!error);
@@ -1169,9 +1169,10 @@
     const fReplyGuard = el("input", { type: "checkbox" });
     fReplyGuard.checked = inst.reply_completion_guard ?? defaults.reply_completion_guard ?? true;
     const replyGuard = overrideControl(inst, "reply_completion_guard", fReplyGuard, defaults.reply_completion_guard ?? true);
-    const replyHint = replyGuardHint(fBackend.value, agentMode.input.value);
+    const kiroUi = inst.kiro_ui ?? defaults.kiro_ui ?? "legacy";
+    const replyHint = replyGuardHint(fBackend.value, agentMode.input.value, kiroUi);
     const refreshReplyHint = () => {
-      const supported = replyGuardSupported(fBackend.value, agentMode.input.value);
+      const supported = replyGuardSupported(fBackend.value, agentMode.input.value, kiroUi);
       replyHint.textContent = supported ? t("replyGuardSupported") : tf("replyGuardUnsupported", fBackend.value, agentMode.input.value);
     };
     fBackend.addEventListener("change", refreshReplyHint);
@@ -1657,9 +1658,9 @@
     fReplyGuard.checked = c.reply_completion_guard ?? inheritedReplyGuard;
     const replyGuard = overrideControl(c, "reply_completion_guard", fReplyGuard, inheritedReplyGuard, "classic.reply_completion_guard");
     const classicMode = fleetDefaults.agent_mode ?? "mcp";
-    const replyHint = replyGuardHint(fBackend.value, classicMode);
+    const replyHint = replyGuardHint(fBackend.value, classicMode, fleetDefaults.kiro_ui);
     fBackend.addEventListener("change", () => {
-      const supported = replyGuardSupported(fBackend.value, classicMode);
+      const supported = replyGuardSupported(fBackend.value, classicMode, fleetDefaults.kiro_ui);
       replyHint.textContent = supported ? t("replyGuardSupported") : tf("replyGuardUnsupported", fBackend.value, classicMode);
     });
     const fCollab = el("input", { type: "checkbox" }); fCollab.checked = !!c.collab;
@@ -1861,12 +1862,12 @@
     const staggerFeedback = el("div", { class: "feedback" });
     const accessFeedback = el("div", { class: "feedback" });
     const saveBtn = el("button", { class: "primary" }, t("save"));
-    const defaultReplyHint = replyGuardHint(fBackend.value, fAgentMode.value);
-    const classicReplyHint = replyGuardHint(fClassicBackend.value, fAgentMode.value);
+    const defaultReplyHint = replyGuardHint(fBackend.value, fAgentMode.value, d.kiro_ui);
+    const classicReplyHint = replyGuardHint(fClassicBackend.value, fAgentMode.value, d.kiro_ui);
     const refreshDefaultReplyHints = () => {
-      const fleetSupported = replyGuardSupported(fBackend.value, fAgentMode.value);
+      const fleetSupported = replyGuardSupported(fBackend.value, fAgentMode.value, d.kiro_ui);
       defaultReplyHint.textContent = fleetSupported ? t("replyGuardSupported") : tf("replyGuardUnsupported", fBackend.value, fAgentMode.value);
-      const classicSupported = replyGuardSupported(fClassicBackend.value, fAgentMode.value);
+      const classicSupported = replyGuardSupported(fClassicBackend.value, fAgentMode.value, d.kiro_ui);
       classicReplyHint.textContent = classicSupported ? t("replyGuardSupported") : tf("replyGuardUnsupported", fClassicBackend.value, fAgentMode.value);
     };
     fBackend.addEventListener("change", refreshDefaultReplyHints);

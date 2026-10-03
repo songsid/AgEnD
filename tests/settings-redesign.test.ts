@@ -45,7 +45,24 @@ describe("Settings P0 redesign shell", () => {
     expect(html).toContain('fReplyGuard.checked = d.reply_completion_guard ?? true');
     expect(html).toContain('reply_completion_guard: replyGuard.toggle.checked ? null : replyGuard.input.checked');
     expect(html).toContain('reply_completion_guard: fClassicReplyGuard.toggle.checked ? null : fClassicReplyGuard.input.checked');
-    expect(html).toContain('backend === "claude-code" && mode === "mcp"');
+    const expression = html.match(/const replyGuardSupported = (.*);/);
+    expect(expression).not.toBeNull();
+    const supported = vm.runInNewContext(expression![1]) as (backend: string, mode: string, ui?: string) => boolean;
+    expect(supported("claude-code", "mcp")).toBe(true);
+    expect(supported("claude-code", "cli")).toBe(false);
+    for (const ui of [undefined, "legacy", "tui"]) expect(supported("kiro-cli", "mcp", ui)).toBe(true);
+    for (const ui of ["v3", "unknown"]) expect(supported("kiro-cli", "mcp", ui)).toBe(false);
+    expect(supported("kiro-cli", "cli", "legacy")).toBe(false);
+    expect(supported("codex", "mcp")).toBe(false);
+    expect(html).toContain('inst.kiro_ui ?? defaults.kiro_ui ?? "legacy"');
+    expect(html).toContain('replyGuardHint(fBackend.value, agentMode.input.value, kiroUi)');
+    expect(html).toContain('replyGuardSupported(fBackend.value, agentMode.input.value, kiroUi)');
+    expect(html).toContain('replyGuardHint(fBackend.value, classicMode, fleetDefaults.kiro_ui)');
+    expect(html).toContain('replyGuardSupported(fBackend.value, classicMode, fleetDefaults.kiro_ui)');
+    for (const backend of ["fBackend", "fClassicBackend"]) {
+      expect(html).toContain(`replyGuardHint(${backend}.value, fAgentMode.value, d.kiro_ui)`);
+      expect(html).toContain(`replyGuardSupported(${backend}.value, fAgentMode.value, d.kiro_ui)`);
+    }
     expect(html).toContain('Stored but inactive: {0} in {1} mode does not support reply-drop recovery.');
   });
 
