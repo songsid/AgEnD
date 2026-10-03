@@ -513,6 +513,46 @@ function codexUnknownSelectionVisible(pane: string): boolean {
 }
 
 /**
+ * #1099: the Codex TUI lost its app-server. The composer is still painted (empty,
+ * or holding the user's draft) but nothing is listening behind it, so a paste
+ * only piles up in the input row. Captured from the real binary
+ * (0.159.2 / 0.160.0), stage by stage as the app-server stays dead:
+ *
+ *   ■ Connection lost. Attempting to reconnect…           (0.159.2 only)
+ *   • Reconnecting to app-server… (8s)                    (0.159.2)
+ *   • Reconnecting to server… (1m 12s)                    (0.160.0; the counter keeps running)
+ *   ■ Automatic reconnect could not restore this session. Your draft is still editable. …
+ *   ■ Server connection could not be restored
+ *   • Reconnect failed — check the endpoint, then relaunch (2m 24s)    (it never recovers)
+ *
+ * The footer is `ctrl+c quit` with no Context item, which is also why the #978
+ * escape hatch ("empty live composer, nothing busy") read this pane as idle.
+ *
+ * The status row is the live one only when it is the last transcript item above
+ * the composer: after it come blank rows, then the composer, then footer rows —
+ * and no further `•`/`■` transcript item. A quotation of the text in an answer
+ * is followed by more of that answer or by Codex's own `Worked for …` line.
+ */
+const CODEX_DISCONNECT_ROW = new RegExp(
+  String.raw`^[ \t]*•[ \t]+(?:Reconnecting to (?:app-)?server(?:…|\.\.\.)|Reconnect failed[ \t]+—[ \t]+check the endpoint, then relaunch)[ \t]+\(\d+[hms](?:[ \t]+\d+[hms])*\)[ \t]*$`,
+  "u",
+);
+export function codexAppServerDisconnected(pane: string): boolean {
+  const rows = pane.replace(/\r/g, "").split("\n");
+  while (rows.length && rows[rows.length - 1].trim() === "") rows.pop();
+  let composer = -1;
+  for (let i = rows.length - 1; i >= Math.max(0, rows.length - 12); i--) {
+    if (/^[›>]/.test(rows[i])) { composer = i; break; }
+  }
+  if (composer < 0) return false;
+  // Nothing after the composer but its draft's continuation rows and the footer.
+  if (rows.slice(composer + 1).some(row => /^[•■⚠]/.test(row))) return false;
+  let status = composer - 1;
+  while (status >= 0 && rows[status].trim() === "") status--;
+  return status >= 0 && CODEX_DISCONNECT_ROW.test(rows[status]);
+}
+
+/**
  * #984: Codex (0.156+) parks a resumed session behind this screen while
  * another process holds the session's thread-writer lock. Both keys are unsafe
  * to automate: `r` spins while the other writer lives, and `f` (0.157) forks
@@ -870,6 +910,8 @@ export class CodexBackend implements CliBackend {
 
   /** Observed on real Codex 0.156.0: the live input row precedes its footer. */
   isDeliveryInputReadyPane(pane: string): boolean {
+    // A composer with no app-server behind it accepts text and never submits it (#1099).
+    if (codexAppServerDisconnected(pane)) return false;
     const rows = pane.replace(/\r/g, "").split("\n");
     while (rows.length && !rows[rows.length - 1].trim()) rows.pop();
     const footer = rows.pop() ?? "";
@@ -928,6 +970,7 @@ export class CodexBackend implements CliBackend {
    * no-Context status line must satisfy the same exact prompt/footer shape.
    */
   isPeriodicRedrawIdlePane(pane: string): boolean {
+    if (codexAppServerDisconnected(pane)) return false;
     // Astra's 0.154 theme animates U+22C6 star points across otherwise-stable
     // idle chrome.  Remove only that observed decorative glyph; broader
     // punctuation stripping could turn real tool output into a false prompt.
@@ -1596,6 +1639,9 @@ export class CodexBackend implements CliBackend {
    */
   isStableUnknownLayoutIdlePane(pane: string): boolean {
     if (this.getBusyPattern().test(pane)) return false;
+    // The composer is live-looking and the footer is unknown — exactly this
+    // proof's blind spot — but there is no server behind it (#1099).
+    if (codexAppServerDisconnected(pane)) return false;
     // Broader than getBusyPattern(): Codex relabels the live status row with
     // the reasoning title (`• Planning the edit (esc to interrupt)`), and the
     // fallback must never read that as idle, whatever the title says.
@@ -1654,6 +1700,23 @@ export class CodexBackend implements CliBackend {
       // 0.156 and as ASCII before (0.153.4): both must match, or no usage limit
       // ever pauses the instance (#1098).
       { pattern: /you['’]ve hit your usage limit/i, type: "quota", action: "pause", message: "Codex usage limit reached — upgrade plan required" },
+      {
+        // The terminal stage of a lost app-server (#1099): Codex has given up
+        // reconnecting and says so, with a counter that never stops. Nothing
+        // recovers from here without a relaunch, and every message sent in the
+        // meantime waits for an idle that cannot come. Only the LIVE row counts:
+        // directly above the LAST composer with no later transcript item or composer
+        // (the same test as codexAppServerDisconnected, as a lookahead), so text that
+        // merely quotes it does not raise this.
+        pattern: new RegExp(
+          String.raw`^[ \t]*•[ \t]+Reconnect failed[ \t]+—[ \t]+check the endpoint, then relaunch[ \t]+\(\d+[hms](?:[ \t]+\d+[hms])*\)[ \t]*$`
+          + String.raw`(?=\n(?:[ \t]*\n)*[›>][^\n]*(?:\n(?![•■⚠›>])[^\n]*)*(?![\s\S]))`,
+          "mu",
+        ),
+        type: "network",
+        action: "notify",
+        message: "Codex lost its app-server connection and could not reconnect — restart the instance (messages cannot be delivered until then)",
+      },
       {
         // Codex reports an unknown model either as a TUI metadata fallback or
         // as a ChatGPT-account API rejection. Use whitespace-aware phrases so
