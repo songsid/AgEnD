@@ -478,21 +478,37 @@ function codexRateSwitchVisible(pane: string): boolean {
  * hold-only rate-switch entry, which never presses a key.
  *
  * Bottom-anchored: the hint row must be the last row, the three options directly
- * above it, the subtitle and title directly above those. A quote of the picker
- * in the transcript is followed by the composer and never matches.
+ * above it (their wrapped description rows may sit between them), the subtitle
+ * and title directly above those. A quote of the picker in the transcript is
+ * followed by the composer and never matches.
  */
 function codexRateSwitchPickerVisible(pane: string): boolean {
-  const rows = pane.replace(/\r/g, "").split("\n");
-  const nonBlank: string[] = [];
-  for (let i = rows.length - 1; i >= 0 && nonBlank.length < 7; i--) if (rows[i].trim() !== "") nonBlank.push(rows[i]);
-  if (nonBlank.length < 6) return false;
-  const [footer, third, second, first, subtitle, title] = nonBlank as [string, string, string, string, string, string];
-  return /^\s*enter select\s*[·•]\s*esc back\s*$/i.test(footer)
-    && /^\s*[›>]?\s*3\.\s+Keep current model \(never show again\)(?:\s{2,}\S.*)?$/.test(third)
-    && /^\s*[›>]?\s*2\.\s+Keep current model\s*$/.test(second)
-    && /^\s*[›>]?\s*1\.\s+Switch to \S.*$/.test(first)
-    && /^\s*Switch to \S.{0,120} for lower credit usage\?\s*$/.test(subtitle)
-    && /^\s*Approaching rate limits\s*$/.test(title);
+  const rows = pane.replace(/\r/g, "").split("\n").filter(row => row.trim() !== "");
+  // Narrow panes wrap the option descriptions (#1100, the 80x24 AgEnD legacy
+  // size: `Fast and affordable model for easier` / `tasks.`). The wrapped rest
+  // sits under the description column, indented far past the option markers and
+  // carrying none of its own. Only that is tolerated, and only around the
+  // options; everything else keeps the exact shape. A row of free text indented
+  // that far is a continuation too, which is why the options themselves,
+  // the title, the subtitle and the footer are still matched row by row.
+  const wrapped = (row: string) => /^[ \t]{6,}\S/.test(row) && !/^\s*[›❯>]?\s*\d+\./.test(row);
+  const MAX_WRAPPED = 3;
+  let i = rows.length - 1;
+  const take = (shape: RegExp, allowWrapped: boolean): boolean => {
+    if (allowWrapped) {
+      let skipped = 0;
+      while (i >= 0 && wrapped(rows[i]) && skipped < MAX_WRAPPED) { i--; skipped++; }
+    }
+    if (i < 0 || !shape.test(rows[i])) return false;
+    i--;
+    return true;
+  };
+  return take(/^\s*enter select\s*[·•]\s*esc back\s*$/i, false)
+    && take(/^\s*[›>]?\s*3\.\s+Keep current model \(never show again\)(?:\s{2,}\S.*)?$/, true)
+    && take(/^\s*[›>]?\s*2\.\s+Keep current model\s*$/, true)
+    && take(/^\s*[›>]?\s*1\.\s+Switch to \S.*$/, true)
+    && take(/^\s*Switch to \S.{0,120} for lower credit usage\?\s*$/, false)
+    && take(/^\s*Approaching rate limits\s*$/, false);
 }
 
 /** Unknown pickers own stdin too; never type or press Enter into one. */
@@ -1867,8 +1883,10 @@ export class CodexBackend implements CliBackend {
    */
   private rateSwitchPickerDialog(): RuntimeDialog {
     return {
-      // Narrower than the hold entry's pattern on purpose: ordinary prose about
-      // the picker must not even reach the structural check.
+      // Documentation only: Daemon.dialogMatches uses isActive INSTEAD of this
+      // pattern, so it filters nothing here — the structural check below is the
+      // whole decision, and ordinary prose about the picker fails it. The words
+      // are the picker's own, kept so a reader can find the screen from the log.
       pattern: /Keep current model \(never show again\)/,
       keys: ["Escape"],
       description: "Codex rate-limit model-switch picker — Escape keeps the current model",
