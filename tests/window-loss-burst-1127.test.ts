@@ -336,6 +336,22 @@ describe("a window that is not confirmed gone is not respawned", () => {
     await vi.advanceTimersByTimeAsync(20_000);
     expect(state.started).toEqual([]);
   });
+
+  it("…failures only count when consecutive: a good answer in between starts the count again", async () => {
+    const { daemons, state, logger } = fleet(1);
+    const here = [{ id: "@0", name: "inst-0" }];
+    const busy = new Error("tmux busy");
+    (TmuxManager.listWindows as any)
+      .mockRejectedValueOnce(busy).mockResolvedValueOnce(here)
+      .mockRejectedValueOnce(busy).mockResolvedValueOnce(here)
+      .mockRejectedValueOnce(busy)
+      .mockResolvedValue(here);
+    startAll(daemons);
+    await vi.advanceTimersByTimeAsync(60_000);
+    // three failures in all, never three in a row: the death is never confirmed
+    expect(logger.warn).not.toHaveBeenCalledWith(expect.anything(), expect.stringContaining("window not found"));
+    expect(state.started).toEqual([]);
+  });
 });
 
 describe("the fleet says it once", () => {
