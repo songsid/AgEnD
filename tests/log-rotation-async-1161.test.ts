@@ -109,6 +109,56 @@ describe("rotateLogIfNeededAsync: the writer keeps appending while the copy runs
     expect(statSync(log).size).toBe(0);
   });
 
+  /** Make every FileHandle.read of the live log obey `limit` (a short read is legal) and record the lengths asked for. */
+  function limitedReads(limit: number | ((len: number) => number)) {
+    const asked: number[] = [];
+    const realOpen = fsp.open.bind(fsp);
+    vi.spyOn(fsp, "open").mockImplementation((async (...args: Parameters<typeof fsp.open>) => {
+      const handle = await realOpen(...args);
+      const read = handle.read.bind(handle) as (...a: unknown[]) => Promise<{ bytesRead: number }>;
+      (handle as unknown as { read: unknown }).read = (buf: Buffer, off: number, len: number, pos: number) => {
+        asked.push(len);
+        return read(buf, off, typeof limit === "function" ? limit(len) : Math.min(len, limit), pos);
+      };
+      return handle;
+    }) as never);
+    return asked;
+  }
+  function appendDuringCopy(text: string) {
+    const realCopy = fsp.copyFile.bind(fsp);
+    vi.spyOn(fsp, "copyFile").mockImplementation(async (src, dst, mode) => { await realCopy(src, dst, mode); appendFileSync(log, text); });
+  }
+
+  it("a short read is not 'done': a delta read 7 bytes at a time still arrives whole, then the live file is cleared", async () => {
+    writeFileSync(log, "A".repeat(100));
+    const late = "0123456789".repeat(5);                          // 50 bytes
+    appendDuringCopy(late);
+    limitedReads(7);
+    await rotateLogIfNeededAsync(log, 50, 3);
+    expect(readFileSync(`${log}.1`, "utf8")).toBe(`${"A".repeat(100)}${late}`);
+    expect(statSync(log).size).toBe(0);
+  });
+
+  it("no progress (a read that returns nothing) aborts the rotation: the live log keeps everything", async () => {
+    writeFileSync(log, "A".repeat(100));
+    appendDuringCopy("LATE-BYTES");
+    limitedReads(() => 0);                                         // asks for N, gets zero
+    await expect(rotateLogIfNeededAsync(log, 50, 3)).resolves.toBeUndefined();
+    expect(readFileSync(log, "utf8")).toBe(`${"A".repeat(100)}LATE-BYTES`);   // not truncated, nothing lost
+  });
+
+  it("the delta is read in bounded chunks, however much the writer added during the copy", async () => {
+    writeFileSync(log, "A".repeat(100 * 1024));
+    const late = "L".repeat(256 * 1024);                          // far past the chunk, still under the ballooned threshold
+    appendDuringCopy(late);
+    const asked = limitedReads(Number.MAX_SAFE_INTEGER);
+    await rotateLogIfNeededAsync(log, 50 * 1024, 3);
+    expect(Math.max(...asked)).toBeLessThanOrEqual(64 * 1024);
+    expect(asked.length).toBeGreaterThanOrEqual(4);                // 256 KiB / 64 KiB
+    expect(readFileSync(`${log}.1`, "utf8")).toBe(`${"A".repeat(100 * 1024)}${late}`);
+    expect(statSync(log).size).toBe(0);
+  });
+
   it("the live file is only truncated AFTER the copy is complete", async () => {
     writeFileSync(log, "A".repeat(100));
     const order: string[] = [];

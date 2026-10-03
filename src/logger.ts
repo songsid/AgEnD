@@ -71,8 +71,10 @@ export function rotateLogIfNeeded(logPath: string, maxSize = MAX_LOG_SIZE, maxFi
 /** Rotations running right now, by path: a second request for the same file joins the first. */
 const rotationsInFlight = new Map<string, Promise<void>>();
 
-/** Bytes appended to the live log while its copy was being made, picked up before the truncate. */
+/** Passes at picking up what the writer appended while the copy ran, before the truncate. */
 const MAX_DELTA_PASSES = 3;
+/** The most the delta is read in one piece: its size is the writer's, not ours to allocate. */
+const DELTA_CHUNK_BYTES = 64 * 1024;
 
 /**
  * The same copytruncate rotation as `rotateLogIfNeeded`, without blocking the event
@@ -120,17 +122,23 @@ async function rotateAsync(logPath: string, size: number, maxSize: number, maxFi
   const rotated = `${logPath}.1`;
   await fsp.copyFile(logPath, rotated);
   // The writer kept appending while we copied: carry what it added, then truncate.
+  // In fixed-size chunks (the delta is whatever the writer managed during the copy, not
+  // something to allocate in one piece), and a short read is not "done": keep reading
+  // until the range is in. No progress (a zero read, the file shrank under us) → give up
+  // this rotation WITHOUT truncating: the live log keeps everything it has.
   let copied = (await fsp.stat(rotated)).size;
+  const chunk = Buffer.allocUnsafe(DELTA_CHUNK_BYTES);
   for (let pass = 0; pass < MAX_DELTA_PASSES; pass++) {
     const live = (await fsp.stat(logPath)).size;
     if (live <= copied) break;
     const handle = await fsp.open(logPath, "r");
     try {
-      const tail = Buffer.alloc(live - copied);
-      const { bytesRead } = await handle.read(tail, 0, tail.length, copied);
-      await fsp.appendFile(rotated, tail.subarray(0, bytesRead));
-      copied += bytesRead;
-      if (bytesRead < tail.length) break;
+      while (copied < live) {
+        const { bytesRead } = await handle.read(chunk, 0, Math.min(chunk.length, live - copied), copied);
+        if (bytesRead === 0) return;
+        await fsp.appendFile(rotated, chunk.subarray(0, bytesRead));
+        copied += bytesRead;
+      }
     } finally {
       await handle.close();
     }
