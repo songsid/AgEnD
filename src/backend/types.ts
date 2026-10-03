@@ -96,6 +96,10 @@ export interface ErrorPattern {
    * immediately) whose backend ready-pattern only matches the startup banner,
    * so waiting would block ALL future error detection forever. */
   skipRecoveryWait?: boolean;
+  /** The CLI is still working the request this notice is about (e.g. Claude Code
+   * retrying an API call): it has NOT interrupted itself, so the lifecycle keeps
+   * the turn's Cancel button instead of retiring it. */
+  inProgress?: boolean;
   /** This error is a property of the BACKEND (its service is unreachable), not
    * of one instance: every instance on that CLI fails at once. The lifecycle
    * then records a fleet-level backend outage, notifies ONCE fleet-wide instead

@@ -355,18 +355,30 @@ export function claudeLoginScreenActive(pane: string): boolean {
 
 /**
  * The tail of Claude Code's API-retry status row, from the 2.1.288 renderer:
- * ` · Retrying in ${wait}${resets} · attempt ${n}/${max}`. `wait` is a duration
- * (`14s`, `1m 5s`) and `resets` an optional ` (4pm)`; neither contains a middle
- * dot. Real rows: `✻ 401 invalid x-api-key · Retrying in 16s · attempt 6/10`,
- * `✻ API error · Retrying in 1s · attempt 2/10` (the first two attempts show a
- * generic message, the status appears from the third).
+ * ` · Retrying in ${wait}${resets} · attempt ${n}/${max}`. `wait` is Claude's own
+ * duration format (`14s`, `1m 5s`, `4h 59m 3s`, or one unit from five minutes on:
+ * `5m`) and `resets` an optional ` (11pm)`. Real rows: `✻ 401 invalid x-api-key
+ * · Retrying in 16s · attempt 6/10`, `✻ API error · Retrying in 1s · attempt 2/10`
+ * (the first two attempts show a generic message, the status from the third).
+ * The wait is validated, not just "some text": a documentation line that merely
+ * reads `· Retrying in not a duration · attempt 6/10` is not a retry.
  */
-const CLAUDE_RETRY_SUFFIX = "[ \\t]·[ \\t]Retrying in [^\\n·]+[ \\t]·[ \\t]attempt \\d+/\\d+";
+const CLAUDE_RETRY_WAIT = "\\d+(?:\\.\\d+)?[dhms](?: \\d+[dhms])*(?: \\([^)\\n]*\\))?";
+const CLAUDE_RETRY_SUFFIX = `[ \\t]·[ \\t]Retrying in ${CLAUDE_RETRY_WAIT}[ \\t]·[ \\t]attempt \\d+/\\d+`;
 /** The spinner glyphs Claude Code cycles through (six measured frames). */
 const CLAUDE_SPINNER_GLYPH = "[✻✽✢·✶*]";
-/** A retry row whose message starts with one of these HTTP statuses. */
+/**
+ * What may sit between the live status row and the composer: blank rows, the
+ * indented hint rows tmux and Claude draw there (`tmux detected · …`, `◐ medium
+ * · /effort`) and `⎿` sub-rows (tips). A retry row followed by anything else — a
+ * completed-turn line, prose, the rest of a transcript — is history or a
+ * quotation, not the activity of the CLI: the idle composer below it proves the
+ * turn is over. Evaluated as a lookahead so the match stays the row itself.
+ */
+const CLAUDE_LIVE_TAIL = "\\n(?:[ \\t]*\\n|[ \\t]{4,}\\S[^\\n]*\\n|[ \\t]*⎿[^\\n]*\\n)*─{10,}[ \\t]*\\n[ \\t]*❯";
+/** A LIVE retry row whose message starts with one of these HTTP statuses. */
 const claudeRetryRow = (statuses: string): RegExp =>
-  new RegExp(`^[ \\t]*${CLAUDE_SPINNER_GLYPH}[ \\t]+(${statuses})\\b[^\\n]*?[ \\t]·[ \\t]Retrying in [^\\n·]+[ \\t]·[ \\t]attempt (\\d+)/(\\d+)[ \\t]*$`, "im");
+  new RegExp(`^[ \\t]*${CLAUDE_SPINNER_GLYPH}[ \\t]+(${statuses})\\b[^\\n]*?[ \\t]·[ \\t]Retrying in ${CLAUDE_RETRY_WAIT}[ \\t]·[ \\t]attempt (\\d+)/(\\d+)[ \\t]*$(?=${CLAUDE_LIVE_TAIL})`, "im");
 
 /**
  * Claude Code's destructive shell-command confirmation menu.  Claude renders
@@ -676,7 +688,7 @@ export class ClaudeCodeBackend implements CliBackend {
    * an in-progress spinner — which is exactly the hang this is meant to surface.
    */
   getBusyPattern(): RegExp {
-    return new RegExp(`^[ \\t]*[✻✽✢·✶*][ \\t]+(?:\\p{L}+(?:-\\p{L}+)*…(?:[ \\t]+\\([^\\n]*)?|[^\\n]*?${CLAUDE_RETRY_SUFFIX})[ \\t]*$`, "mu");
+    return new RegExp(`^[ \\t]*[✻✽✢·✶*][ \\t]+(?:\\p{L}+(?:-\\p{L}+)*…(?:[ \\t]+\\([^\\n]*)?|[^\\n]*?${CLAUDE_RETRY_SUFFIX}[ \\t]*$(?=${CLAUDE_LIVE_TAIL}))[ \\t]*$`, "mu");
   }
 
   getContextUsage(): number | null {
@@ -702,10 +714,13 @@ export class ClaudeCodeBackend implements CliBackend {
 
   getErrorPatterns(): ErrorPattern[] {
     return [
-      // Both forms are the turn's FINAL line once Claude Code has given up on a
-      // 429. The second is what 2.1.288 prints after its 10 retries (#1101):
-      // `● API Error: Request rejected (429) · <the API's message>`.
-      { pattern: /API Error: (?:Rate limit|Request rejected \(429\))/i, type: "rate_limit", action: "failover", message: "API rate limit reached" },
+      { pattern: /API Error: Rate limit/i, type: "rate_limit", action: "failover", message: "API rate limit reached" },
+      // What 2.1.288 prints once it has given up on a 429 after its 10 retries
+      // (#1101): `● API Error: Request rejected (429) · <the API's message>`.
+      // Anchored to the final row — bullet, then the text — because the words
+      // alone also appear inside an upstream message (a retry row quoting it)
+      // and in any explanation of the error, and this one fails over.
+      { pattern: /^[ \t]*●[ \t]+API Error: Request rejected \(429\)(?:[ \t]+·|[ \t]*$)/im, type: "rate_limit", action: "failover", message: "API rate limit reached" },
       // pause (not just notify): an auth-expired CLI keeps accepting queued work
       // it can never answer. The pause is lifted by /login's post-success
       // restart, and the lifecycle double-checks with the token-free probe first.
@@ -724,9 +739,11 @@ export class ClaudeCodeBackend implements CliBackend {
         action: "notify",
         message: "Selected Claude model unavailable — Claude Code may be using a fallback; use /model to choose another",
       },
-      // 2.1.288 words the exhausted 529 as `API Error: Repeated 529 Overloaded
-      // errors. The API is at capacity — this is usually temporary.` (#1101).
-      { pattern: /API Error: (?:Repeated 529 )?Overloaded/i, type: "rate_limit", action: "notify", message: "API overloaded" },
+      { pattern: /API Error: Overloaded/i, type: "rate_limit", action: "notify", message: "API overloaded" },
+      // 2.1.288 words the exhausted 529 as `● API Error: Repeated 529 Overloaded
+      // errors. The API is at capacity — this is usually temporary.` (#1101),
+      // anchored to the final row for the same reason as the 429 above.
+      { pattern: /^[ \t]*●[ \t]+API Error: Repeated 529 Overloaded errors\./im, type: "rate_limit", action: "notify", message: "API overloaded" },
       // Claude Code is RETRYING, not stopped: `✻ 429 … · Retrying in 14s ·
       // attempt 6/10`. The status only appears from the third attempt, so a
       // blip that the first two retries clear never reaches this. Notify, never
@@ -743,6 +760,8 @@ export class ClaudeCodeBackend implements CliBackend {
         // pattern — including the exhausted turn's own final line below — and
         // that line (the failover trigger) would never be seen as new.
         skipRecoveryWait: true,
+        // The turn is still running: its Cancel button stays.
+        inProgress: true,
       },
       // A credentials failure that is still being retried. Not an auth_error: an
       // auth_error pauses the instance (the invariant above, for a CLI that can
@@ -754,6 +773,7 @@ export class ClaudeCodeBackend implements CliBackend {
         message: "Claude API rejected the credentials — Claude Code is retrying",
         formatMessage: match => `Claude API returned ${match[1]} — Claude Code is retrying (attempt ${match[2]}/${match[3]}); check the credentials`,
         skipRecoveryWait: true,
+        inProgress: true,
       },
       // What the same 401 ends as when the key is the configured one (an env
       // key or apiKeyHelper, not a login): `⎿ Invalid API key · Fix external

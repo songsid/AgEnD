@@ -1062,6 +1062,7 @@ export class InstanceLifecycle {
       message: string;
       fleetWide?: boolean;
       verifyQuota?: boolean;
+      inProgress?: boolean;
       pattern?: RegExp;
     }) => {
       this.ctx.eventLog?.insert(name, "pty_error", { type: data.type, action: data.action });
@@ -1176,7 +1177,9 @@ export class InstanceLifecycle {
       // now useless — retire it. We only reach here when the error wasn't
       // cooldown-suppressed (the daemon skips the emit during cooldown), so this
       // won't fire on repeat errors within the 5-min window. No-op if no button.
-      this.ctx.clearCancelButton(name);
+      // Not for a notice about work that is still running (a Claude API retry):
+      // that turn can still be cancelled, and its button must outlive the notice.
+      if (!data.inProgress) this.ctx.clearCancelButton(name);
 
       if (data.action === "failover") {
         this.ctx.checkModelFailover(name, 100); // Force failover trigger
