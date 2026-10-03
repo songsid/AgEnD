@@ -354,6 +354,49 @@ export function claudeLoginScreenActive(pane: string): boolean {
 }
 
 /**
+ * The tail of Claude Code's API-retry status row, from the 2.1.288 renderer:
+ * ` · Retrying in ${wait}${resets} · attempt ${n}/${max}`. `wait` is Claude's own
+ * duration format (`14s`, `1m 5s`, `4h 59m 3s`, or one unit from five minutes on:
+ * `5m`) and `resets` an optional ` (11pm)`. Real rows: `✻ 401 invalid x-api-key
+ * · Retrying in 16s · attempt 6/10`, `✻ API error · Retrying in 1s · attempt 2/10`
+ * (the first two attempts show a generic message, the status from the third).
+ * The wait is validated, not just "some text": a documentation line that merely
+ * reads `· Retrying in not a duration · attempt 6/10` is not a retry.
+ */
+const CLAUDE_RETRY_WAIT = "\\d+(?:\\.\\d+)?[dhms](?: \\d+[dhms])*(?: \\([^)\\n]*\\))?";
+const CLAUDE_RETRY_SUFFIX = `[ \\t]·[ \\t]Retrying in ${CLAUDE_RETRY_WAIT}[ \\t]·[ \\t]attempt \\d+/\\d+`;
+/** The spinner glyphs Claude Code cycles through (six measured frames). */
+const CLAUDE_SPINNER_GLYPH = "[✻✽✢·✶*]";
+/**
+ * What makes a retry row LIVE rather than history or a quotation: it is the status
+ * row of the composer at the BOTTOM of the pane, and that composer's footer shows
+ * the running-turn hint. Asserted as a lookahead (the match stays the row):
+ *
+ *  - between the row and the composer's top separator only blank rows, `⎿` tip
+ *    rows, and Claude's own right-aligned hint rows — `tmux detected · …`, `tmux
+ *    focus-events off · …`, `◐ medium · /effort` — which are matched by shape,
+ *    not by "indented text";
+ *  - then separator, `❯` row(s), separator;
+ *  - then a footer with no further separator that contains `esc to interrupt`
+ *    (shown while a turn runs: bypass, auto-mode and the other footers alike; an
+ *    idle footer reads `· ← for agents` without it) and runs to the end of the
+ *    pane.
+ *
+ * A retry row in a finished transcript is followed by more history and ends in
+ * the current idle composer; one inside a quoted TUI is followed by the real
+ * composer's own separators, which the footer cannot contain; either way the
+ * lookahead fails. Only a quotation sitting directly above a composer whose
+ * footer says `esc to interrupt` — a turn that really is running — is read as
+ * live, and then the pane IS busy.
+ */
+const CLAUDE_LIVE_TAIL = "\\n(?:[ \\t]*\\n|[ \\t]*⎿[^\\n]*\\n|[ \\t]{10,}(?:tmux (?:detected|focus-events)[^\\n]*|\\S \\w+ · /effort)[ \\t]*\\n)*"
+  + "─{10,}[ \\t]*\\n[ \\t]*❯[^\\n]*\\n(?:(?!─{10,})[^\\n]*\\n)*─{10,}[ \\t]*\\n"
+  + "(?:(?!─{10,})[^\\n]*\\n)*?[^\\n]*esc to interrupt[^\\n]*(?:\\n(?!─{10,})[^\\n]*)*(?![\\s\\S])";
+/** A LIVE retry row whose message starts with one of these HTTP statuses. */
+const claudeRetryRow = (statuses: string): RegExp =>
+  new RegExp(`^[ \\t]*${CLAUDE_SPINNER_GLYPH}[ \\t]+(${statuses})\\b[^\\n]*?[ \\t]·[ \\t]Retrying in ${CLAUDE_RETRY_WAIT}[ \\t]·[ \\t]attempt (\\d+)/(\\d+)[ \\t]*$(?=${CLAUDE_LIVE_TAIL})`, "im");
+
+/**
  * Claude Code's destructive shell-command confirmation menu.  Claude renders
  * the dangerous-operation warning and the question on separate rows; the
  * question row is the stable identity.  The active-region predicate below
@@ -648,13 +691,20 @@ export class ClaudeCodeBackend implements CliBackend {
    * prose such as `* bullet point…`, `- Something…`, and a completed
    * `✻ Worked for 6m 49s` remain rejected.
    *
+   * The retry row is the other in-progress shape (#1101): while the API call is
+   * being retried the spinner is replaced by `✻ <message> · Retrying in 14s ·
+   * attempt 6/10` and its countdown re-renders every second, but a countdown
+   * that stops redrawing (a long wait) left a settled capture reading idle, and
+   * the error monitor's recovery gate saw "ready" on the first tick after the
+   * row appeared. The suffix is Claude's own template, so it is matched whole.
+   *
    * Note when this actually decides anything: while the CLI really is generating,
    * the elapsed counter ticks, the pane changes, and motion already reports
    * `working`. The veto only bites on a *frozen* pane whose last frame still shows
    * an in-progress spinner — which is exactly the hang this is meant to surface.
    */
   getBusyPattern(): RegExp {
-    return /^[ \t]*[✻✽✢·✶*][ \t]+\p{L}+(?:-\p{L}+)*…(?:[ \t]+\([^\n]*)?[ \t]*$/mu;
+    return new RegExp(`^[ \\t]*[✻✽✢·✶*][ \\t]+(?:\\p{L}+(?:-\\p{L}+)*…(?:[ \\t]+\\([^\\n]*)?|[^\\n]*?${CLAUDE_RETRY_SUFFIX}[ \\t]*$(?=${CLAUDE_LIVE_TAIL}))[ \\t]*$`, "mu");
   }
 
   getContextUsage(): number | null {
@@ -681,6 +731,12 @@ export class ClaudeCodeBackend implements CliBackend {
   getErrorPatterns(): ErrorPattern[] {
     return [
       { pattern: /API Error: Rate limit/i, type: "rate_limit", action: "failover", message: "API rate limit reached" },
+      // What 2.1.288 prints once it has given up on a 429 after its 10 retries
+      // (#1101): `● API Error: Request rejected (429) · <the API's message>`.
+      // Anchored to the final row — bullet, then the text — because the words
+      // alone also appear inside an upstream message (a retry row quoting it)
+      // and in any explanation of the error, and this one fails over.
+      { pattern: /^[ \t]*●[ \t]+API Error: Request rejected \(429\)(?:[ \t]+·|[ \t]*$)/im, type: "rate_limit", action: "failover", message: "API rate limit reached" },
       // pause (not just notify): an auth-expired CLI keeps accepting queued work
       // it can never answer. The pause is lifted by /login's post-success
       // restart, and the lifecycle double-checks with the token-free probe first.
@@ -700,6 +756,55 @@ export class ClaudeCodeBackend implements CliBackend {
         message: "Selected Claude model unavailable — Claude Code may be using a fallback; use /model to choose another",
       },
       { pattern: /API Error: Overloaded/i, type: "rate_limit", action: "notify", message: "API overloaded" },
+      // 2.1.288 words the exhausted 529 as `● API Error: Repeated 529 Overloaded
+      // errors. The API is at capacity — this is usually temporary.` (#1101),
+      // anchored to the final row for the same reason as the 429 above.
+      { pattern: /^[ \t]*●[ \t]+API Error: Repeated 529 Overloaded errors\./im, type: "rate_limit", action: "notify", message: "API overloaded" },
+      // Claude Code is RETRYING, not stopped: `✻ 429 … · Retrying in 14s ·
+      // attempt 6/10`. The status only appears from the third attempt, so a
+      // blip that the first two retries clear never reaches this. Notify, never
+      // fail over: the CLI is still working the same request, and a model switch
+      // mid-retry would abandon it (#1101).
+      {
+        pattern: claudeRetryRow("429|5\\d\\d"),
+        type: "rate_limit",
+        action: "notify",
+        message: "Claude API is rate limited or overloaded — Claude Code is retrying",
+        formatMessage: match => `Claude API returned ${match[1]} — Claude Code is retrying automatically (attempt ${match[2]}/${match[3]})`,
+        // Retrying is not an incident to recover from. With the recovery gate
+        // armed, the first tick after the row disappears would re-baseline every
+        // pattern — including the exhausted turn's own final line below — and
+        // that line (the failover trigger) would never be seen as new.
+        skipRecoveryWait: true,
+        // The turn is still running: its Cancel button stays.
+        inProgress: true,
+      },
+      // A credentials failure that is still being retried. Not an auth_error: an
+      // auth_error pauses the instance (the invariant above, for a CLI that can
+      // no longer answer), and this one may still recover — a notice only.
+      {
+        pattern: claudeRetryRow("401|403"),
+        type: "config_error",
+        action: "notify",
+        message: "Claude API rejected the credentials — Claude Code is retrying",
+        formatMessage: match => `Claude API returned ${match[1]} — Claude Code is retrying (attempt ${match[2]}/${match[3]}); check the credentials`,
+        skipRecoveryWait: true,
+        inProgress: true,
+      },
+      // What the same 401 ends as when the key is the configured one (an env
+      // key or apiKeyHelper, not a login): `⎿ Invalid API key · Fix external
+      // API key`, the gap after ⎿ being a no-break space. The probe cannot judge
+      // a configured key (`claude auth status` reports it as logged in), so this
+      // is not an auth_error — it would be dropped as "valid" — but a
+      // configuration fault only the operator can fix. The OAuth wording
+      // (`Invalid API key · Please run /login`) is covered by the /login pattern
+      // above.
+      {
+        pattern: /^[ \t]*(?:⎿[ \t\u00a0]+)?Invalid (?:API key|auth token)[ \t]·[ \t]Fix external (?:API key|auth token)[ \t]*$/im,
+        type: "config_error",
+        action: "notify",
+        message: "Claude rejected the configured API key or auth token (401) — fix ANTHROPIC_API_KEY / apiKeyHelper, every turn fails until then",
+      },
       // Claude Code pauses its own turn (rather than merely warning) when the
       // current usage window is exhausted. Keep this as a complete line match:
       // the warning is also visible in pane scrollback, and prose discussing
