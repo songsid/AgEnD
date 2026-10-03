@@ -250,6 +250,10 @@ describe("a slash command is refused before it does anything", () => {
     const r = await rig({ primary: OPEN });
     expect(await slash(r, "discord", { command: "ctx", userId: "member" })).toEqual(["ctx-text"]);
     expect(await slash(r, "discord", { command: "compact", userId: "member" })).toEqual(["compact-sent"]);
+    // #1145: the optional instructions option reaches /compact, absent or present.
+    expect(r.compact).toHaveBeenLastCalledWith(expect.any(String), "");
+    expect(await slash(r, "discord", { command: "compact", userId: "member", options: { instructions: "keep the file names" } })).toEqual(["compact-sent"]);
+    expect(r.compact).toHaveBeenLastCalledWith(expect.any(String), "keep the file names");
     expect(await slash(r, "discord", { command: "steer", userId: "member", options: { message: "go" } })).toEqual(["steer-sent"]);
     expect(r.steer).toHaveBeenCalledTimes(1);
   });

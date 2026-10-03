@@ -1044,7 +1044,14 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
               ],
             }],
           },
-          { name: "compact", description: "🔒 " + t("slash.compact") },
+          {
+            name: "compact", description: "🔒 " + t("slash.compact"),
+            options: [{
+              // Optional, and honoured only by backends that take it (#1145).
+              name: "instructions", description: t("slash.option.compact_instructions"),
+              type: ApplicationCommandOptionType.String, required: false, maxLength: 1000,
+            }],
+          },
           {
             name: "steer", description: t("slash.steer"),
             options: [{

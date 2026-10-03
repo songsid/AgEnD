@@ -127,6 +127,46 @@ export function compactCommandForBackend(backend: string): string {
 }
 
 /**
+ * Backends whose `/compact` verifiably takes custom summarization instructions
+ * (#1145). Checked against the real CLIs, not assumed:
+ *  - claude-code 2.1.288: `/compact <text>` appends the text to the summary
+ *    request under `Additional Instructions:` (confirmed in the request body).
+ *  - codex 0.160.0: `/compact <text>` is NOT a compaction — the whole line is
+ *    submitted as an ordinary chat message. Passing the text would turn a
+ *    compact into a prompt, so it must never be appended.
+ *  - grok 1.0.46: the binary answers "/compact takes no arguments."
+ *  - opencode 1.18: `/compact` calls session.summarize with no text.
+ *  - kiro-cli: takes none (audit); antigravity has no summarizing compact.
+ *  - muse 1.4.2: accepts the line (empty session: "nothing to summarize") but
+ *    no use of the text is verifiable — unsupported until shown otherwise.
+ */
+export function backendSupportsCompactInstructions(backend: string): boolean {
+  return backend === "claude-code";
+}
+
+/** Longest custom-instructions text AgEnD pastes (one line; refused, never truncated, beyond it). */
+export const COMPACT_INSTRUCTIONS_MAX = 1000;
+
+/**
+ * One line, no control characters: the text is pasted into a TUI whose Enter
+ * submits it, so a newline would end the command and run the rest as a message.
+ * Blank means "none" (Claude Code ignores whitespace-only text the same way).
+ */
+export function normalizeCompactInstructions(raw: unknown): string {
+  return String(raw ?? "")
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** The optional argument of a typed `/compact [@bot] [instructions]`, or null when the text is not /compact. */
+export function parseCompactCommand(text: string): { instructions: string } | null {
+  const match = text.trim().match(/^\/compact(?:@\S+)?(?:\s+([\s\S]*))?$/);
+  return match ? { instructions: match[1] ?? "" } : null;
+}
+
+/**
  * Full conversation-reset command for a backend NAME. Keep this routing-only
  * lookup in sync with CliBackend.getClearCommand(); the fleet process does not
  * own the backend object that lives inside each daemon.
@@ -536,10 +576,11 @@ export class TopicCommands {
       return true;
     }
 
-    if (text === "/compact" || text.startsWith("/compact@")) {
+    const compact = parseCompactCommand(text);
+    if (compact) {
       const adapter = this.getReplyAdapter(msg);
       if (!adapter) return false;
-      const result = await this.sendCompact(instanceName);
+      const result = await this.sendCompact(instanceName, compact.instructions);
       await adapter.sendText(msg.chatId, result, { threadId: msg.threadId });
       return true;
     }
@@ -743,7 +784,7 @@ export class TopicCommands {
   }
 
   /** Send the backend-appropriate compact command to an instance's tmux pane */
-  async sendCompact(instanceName: string): Promise<string> {
+  async sendCompact(instanceName: string, instructions?: string): Promise<string> {
     const ipc = this.ctx.instanceIpcClients.get(instanceName);
     if (ipc?.connected) {
       const classicBackend = this.ctx.classicChannels?.getChannelIdByInstance(instanceName)
@@ -752,9 +793,24 @@ export class TopicCommands {
       const backend = this.ctx.fleetConfig?.instances[instanceName]?.backend
         ?? classicBackend
         ?? this.ctx.fleetConfig?.defaults?.backend ?? "claude-code";
-      const cmd = compactCommandForBackend(backend);
-      ipc.send({ type: "raw_paste", content: cmd });
-      return t("compact.sent", cmd);
+      const base = compactCommandForBackend(backend);
+      const custom = normalizeCompactInstructions(instructions);
+      if (custom.length > COMPACT_INSTRUCTIONS_MAX) {
+        // Refuse rather than cut: a truncated instruction is a different instruction.
+        return t("compact.instructions_too_long", String(COMPACT_INSTRUCTIONS_MAX));
+      }
+      if (!custom) {
+        ipc.send({ type: "raw_paste", content: base });
+        return t("compact.sent", base);
+      }
+      if (backendSupportsCompactInstructions(backend)) {
+        ipc.send({ type: "raw_paste", content: `${base} ${custom}` });
+        return t("compact.sent_with_instructions", base);
+      }
+      // Compact as asked, without the text, and say so — never send it (codex
+      // would take it for a chat message) and never drop it unannounced.
+      ipc.send({ type: "raw_paste", content: base });
+      return `${t("compact.sent", base)}\n${t("compact.instructions_ignored", backend)}`;
     }
     return t("compact.not_connected");
   }
@@ -1434,7 +1490,7 @@ export class TopicCommands {
           { command: "sysinfo", description: t("slash.sysinfo") },
           { command: "dashboard", description: "🔒 " + t("slash.dashboard") },
           { command: "ctx", description: t("slash.ctx") },
-          { command: "compact", description: t("slash.compact") },
+          { command: "compact", description: `${t("slash.compact")} ${t("slash.compact_arg")}` },
           { command: "steer", description: t("slash.steer") },
           { command: "btw", description: t("slash.btw") },
           { command: "clear", description: "🔒 " + t("slash.clear") },
@@ -1481,7 +1537,7 @@ export class TopicCommands {
         const classicCommands = [
           { command: "start", description: "🔒 " + t("slash.start") },
           { command: "stop", description: "🔒 " + t("slash.stop") },
-          { command: "compact", description: "🔒 " + t("slash.compact") },
+          { command: "compact", description: `🔒 ${t("slash.compact")} ${t("slash.compact_arg")}` },
           { command: "steer", description: t("slash.steer") },
           { command: "btw", description: t("slash.btw") },
           { command: "clear", description: "🔒 " + t("slash.clear") },

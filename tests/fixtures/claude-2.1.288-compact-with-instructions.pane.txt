@@ -1,0 +1,36 @@
+
+ ▐▛███▛█   Claude Code v2.1.288
+▝▜██████▀  Opus 5.5 · API Usage Billing
+ ▝▝   ▝▝   /home/user/project
+
+
+❯ first message about files
+
+● <summary>mock summary 2</summary>
+
+✻ Cogitated for 0s · done 2:27 AM
+
+❯ second message about tests
+
+● <summary>mock summary 4</summary>
+
+✻ Cooked for 0s · done 2:27 AM
+
+❯ /compact Focus on the open decisions and keep every file name
+  ⎿  Compacted (ctrl+o to see full summary)
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents
