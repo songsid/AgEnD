@@ -343,15 +343,16 @@ export interface LoginConfig {
 
 /**
  * `web_terminal.tunnel:` — the escape hatch for finishing a /login from somewhere that cannot
- * reach this machine (a phone away from the desk). Off unless `allow_public` is true, and even
- * then each login asks first and only flows marked `tunnelOk` may use it.
+ * reach this machine (a phone away from the desk). Offered by default (#1137): each login asks
+ * first, and only flows marked `tunnelOk` may use it.
  */
 export interface WebTerminalTunnelConfig {
   /** The only provider today: a Cloudflare Quick Tunnel. */
   provider?: "cloudflared";
   /**
    * Whether /login may offer to open a temporary public HTTPS link to its terminal.
-   * Default false — nothing is ever exposed beyond this machine unless you set it.
+   * Unset or true: offered, and each login's button press is the consent (#1137).
+   * false: the operator's kill switch — never offered, cloudflared never downloaded.
    */
   allow_public?: boolean;
   /** How cloudflared reaches Cloudflare. Default http2 (QUIC is blocked on many networks); auto lets cloudflared choose. */

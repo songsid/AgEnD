@@ -56,7 +56,7 @@ health_port: 19280
 | `workflow` | string \| false | `"builtin"` | Fleet 協作工作流程模板。`"builtin"` = 標準工作流程，`"file:./path.md"` = 自訂，`false` = 停用 |
 | `health_port` | number | `19280` | HTTP 健康檢查/API 伺服器埠 |
 | `fleet_label` | string | 主機名稱 | 這個 fleet 在 `/login` 裡的名稱：附加在 Discord slash 指令說明後面，並顯示在每個 backend 選單下方（`🖥 Fleet：…`）。同一個 guild 裡每個 AgEnD bot 都會註冊自己的 `/login`，而且只控制執行它的那個 fleet——這個標籤用來分辨它們。預設：本機主機名稱；AgEnD home 不是 `~/.agend` 時再加上該目錄名稱 |
-| `web_terminal` | object | — | `/login`（登入與安裝）背後的瀏覽器終端：`enabled`（預設 `true`）、`bind`（預設 `127.0.0.1`）、`ttl_minutes`（1–20，預設 10），以及 `tunnel` —— `/login` 的選用公開連結，見下方「人不在機器旁完成 /login」 |
+| `web_terminal` | object | — | `/login`（登入與安裝）背後的瀏覽器終端：`enabled`（預設 `true`）、`bind`（預設 `127.0.0.1`）、`ttl_minutes`（1–20，預設 10），以及 `tunnel` —— `/login` 的公開連結，每次登入都會提供，除非設 `allow_public: false`；見下方「人不在機器旁完成 /login」 |
 
 ---
 
@@ -68,27 +68,29 @@ health_port: 19280
 ### 人不在機器旁完成 /login（公開連結）
 
 預設 `/login` 的終端連結只能在這台機器上用（SSH 轉發、tailscale、你自己的反向代理）。手機連不到時，`kiro-cli` 或 `claude-code` 登入可以透過
-Cloudflare Quick Tunnel 開一個臨時的**公開 https 連結**。預設關閉：
+Cloudflare Quick Tunnel 開一個臨時的**公開 https 連結**。不需要任何設定：`/login kiro`（或 `/login claude`）的確認會有三個按鈕——
+**我了解（外網臨時連結）**、**我了解（內網）**、**取消**；按第一個就是同意，每次登入一次，連結不會保留或重用。Discord 與 Telegram 都一樣。
+
+**cloudflared。** fleet 的 `PATH` 上若已有 `cloudflared` 就直接使用。否則第一次選擇公開連結時，AgEnD 會把 Cloudflare 的官方版本下載到它自己的資料夾（`~/.agend/bin/cloudflared`，不需要 sudo，不安裝到系統），並在聊天室說明。版本在 AgEnD 裡固定，下載後會比對一同固定的 SHA256；不符的檔案會被刪除，什麼都不會執行。已安裝的版本每次使用前都會再檢查一次。AgEnD 只會安裝到、也只信任完全屬於你的資料夾：若 `~/.agend`（或其中的 `bin`）可被其他使用者寫入，或 `bin` 是 symlink，它會拒絕並說明原因。支援 Linux（x86-64、arm64、arm、x86）與 macOS（Intel、Apple silicon）；其他系統請自行安裝 cloudflared。如果取得不到（離線、被阻擋；會使用 `HTTPS_PROXY`），這次登入會說明原因且不開啟任何東西——請改選**我了解（內網）**。
+
+要在這台主機關閉公開連結（不顯示按鈕，也絕不下載）：
 
 ```yaml
 web_terminal:
   tunnel:
-    allow_public: true      # 預設 false —— 沒設就絕不提供
+    allow_public: false     # 預設：未設定 —— 會提供，且每次登入都會先詢問
     # provider: cloudflared # 目前唯一的 provider
     # protocol: http2       # http2（預設）| quic | auto
 ```
-
-需要 `PATH` 上有 `cloudflared`（AgEnD 不會幫你下載）。啟用後，`/login kiro`（或 `/login claude`）的確認會有三個按鈕：**開啟公開連結**、**只用本機連結**、**取消**；
-按第一個就是同意，每次登入一次，連結不會保留或重用。
 
 - tunnel 只代理**那一次登入的終端**（它自己的 listener），不是 dashboard。光有終端頁面不能做任何事：還需要一次性**存取 token**。
 - 公開連結與 token 會**分成兩則私訊**傳給你（Discord/Telegram DM），絕不貼在頻道；頻道只有一行狀態。任何一則私訊送不到（例如你從未與 bot
   開過私聊），就直接關閉這次登入，沒有「改貼在頻道」的後路。
 - **失敗即關閉**：tunnel 起不來、中途死掉，或登入以任何方式結束（完成、取消、逾時、fleet 關閉），都會在下一次登入之前先停掉 tunnel。無法確認已停止的
   tunnel 會在聊天裡連同 pid 公告，並在處理之前封鎖後續 tunnel。
-- **流量會經過 Cloudflare。** Quick Tunnel 在 Cloudflare 邊緣終止 TLS，所以 Cloudflare 看得到頁面、存取 token，以及終端裡輸入或顯示的一切。同意文字有寫明；若這對某次登入不可接受，請選**只用本機連結**。
+- **流量會經過 Cloudflare。** Quick Tunnel 在 Cloudflare 邊緣終止 TLS，所以 Cloudflare 看得到頁面、存取 token，以及終端裡輸入或顯示的一切。同意文字有寫明；若這對某次登入不可接受，請選**我了解（內網）**。
 - tunnel 的公開名稱不會寫進 log 或稽核紀錄。把連結當成 token 的另一半：請勿轉傳或加書籤。
-- 只有審核過的 flow 才能用，目前只有 `kiro-cli`（`src/login-flows.ts` 的 `tunnelOk`）。
+- 只有需要終端才能完成的登入可以用——`kiro-cli` 與 `claude-code`（`src/login-flows.ts` 的 `tunnelOk`）。裝置代碼登入（codex、grok）會把網址和代碼貼在聊天室，不需要它。
 
 `protocol`：cloudflared 預設走 QUIC（UDP 7844），很多公司網路與 VM 會擋，之後要花很久才 failover 或根本連不上。所以 AgEnD 預設傳
 `--protocol http2`（連到 Cloudflare 邊緣的 TCP 7844 —— 與 QUIC 的 UDP 同一個埠號，擋 UDP 的網路通常仍放行 TCP，但嚴格的防火牆也可能關掉它），除非你設 `quic` 或 `auto`（交給 cloudflared 決定）。`agend setup --tunnel` 同樣使用這個預設。就緒檢查也會先用

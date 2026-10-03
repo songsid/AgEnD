@@ -138,7 +138,7 @@ function jsonLineUrl(line: string): string | null {
 /** Bounded: a child that never prints a URL must not grow our memory. */
 const MAX_BUFFERED_OUTPUT = 64 * 1024;
 
-function resolveBinary(name: string, env: NodeJS.ProcessEnv): string | null {
+export function resolveBinary(name: string, env: NodeJS.ProcessEnv): string | null {
   if (name.includes("/")) return isAbsolute(name) ? name : null;
   for (const dir of (env.PATH ?? "").split(delimiter)) {
     if (!dir) continue;
@@ -202,7 +202,7 @@ export class CloudflaredProvider implements TunnelProvider {
       return {
         ok: false,
         errorKind: "binary-missing",
-        detail: `${this.binaryName} is not on PATH. Install it from Cloudflare's documentation; AgEnD never downloads it for you.`,
+        detail: `${this.binaryName} is not on PATH (and AgEnD's own copy was not provided).`,
       };
     }
     try {

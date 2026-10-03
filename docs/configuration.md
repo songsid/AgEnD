@@ -21,7 +21,7 @@ Located at `~/.agend/fleet.yaml`. The primary configuration file for the fleet.
 | `health_port` | number | no | `19280` | HTTP health endpoint port |
 | `fleet_label` | string | no | host name | How this fleet names itself in `/login`: appended to the Discord slash command description and shown under each backend picker (`🖥 Fleet: …`). Every AgEnD bot in a guild registers its own `/login`, and each one controls only the fleet that runs it — the label tells them apart. Default: the machine's host name, plus the AgEnD home's directory name when it is not `~/.agend` |
 | `web` | object | no | — | Web UI feature toggles — `web.usage_panel: false` hides the AI subscription usage panel on /view and disables `/api/ai-usage` (default `true`); `web.allowed_hosts: [name, …]` adds `Host` names the dashboard answers to when reached through a reverse proxy or port forward (default: `localhost`, `127.0.0.1`, `[::1]` and `hostname`; any other `Host` gets 403 — this is what stops DNS rebinding; the `/login` browser terminal's listener uses the same list) |
-| `web_terminal` | object | no | — | The browser terminal behind `/login` (sign-in and install): `enabled` (default `true`), `bind` (default `127.0.0.1`), `ttl_minutes` (1–20, default 10), and `tunnel` — an opt-in public link for `/login`, see [Finishing a /login away from the machine](#finishing-a-login-away-from-the-machine-public-link) |
+| `web_terminal` | object | no | — | The browser terminal behind `/login` (sign-in and install): `enabled` (default `true`), `bind` (default `127.0.0.1`), `ttl_minutes` (1–20, default 10), and `tunnel` — a public link for `/login`, offered at each login unless `allow_public: false`, see [Finishing a /login away from the machine](#finishing-a-login-away-from-the-machine-public-link) |
 
 ---
 
@@ -37,19 +37,28 @@ Pick the command whose label names the fleet you want to change.
 
 By default a `/login` terminal link only works on this machine (SSH forwarding, tailscale, a proxy you run).
 For a phone that cannot reach it, a `kiro-cli` or `claude-code` login can open a temporary **public https link** through a
-Cloudflare Quick Tunnel. It is off unless you turn it on:
+Cloudflare Quick Tunnel. Nothing needs setting up: the `/login kiro` (or `/login claude`) confirmation shows three buttons —
+**I understand (temporary public link)**, **I understand (local network)**, **Cancel** — and pressing the first one is the
+consent, once per login; a link is never kept or reused. This works the same on Discord and Telegram.
+
+**cloudflared.** A `cloudflared` on the fleet's `PATH` is used if there is one. Otherwise, the first time the public link is
+chosen, AgEnD downloads Cloudflare's official build into its own folder (`~/.agend/bin/cloudflared`, no sudo, nothing
+installed system-wide) and says so in the chat. The version is pinned in AgEnD and the download is checked against a
+SHA256 pinned with it; a file that does not match is deleted and nothing runs. The installed copy is checked again before
+every use. AgEnD only installs into, and only trusts, a folder that is yours alone: if `~/.agend` (or its `bin`) is
+writable by another user, or `bin` is a symlink, it refuses and says so. Linux (x86-64, arm64, arm, x86) and macOS
+(Intel, Apple silicon) are covered; elsewhere, install cloudflared yourself. If it cannot be obtained (offline, blocked, `HTTPS_PROXY` is honoured), the login says why and opens nothing —
+choose **I understand (local network)** instead.
+
+To switch public links off for this host (no button, nothing ever downloaded):
 
 ```yaml
 web_terminal:
   tunnel:
-    allow_public: true      # default false — nothing is ever offered without it
+    allow_public: false     # default: unset — offered, and every login asks first
     # provider: cloudflared # the only provider
     # protocol: http2       # http2 (default) | quic | auto — see below
 ```
-
-Requires the `cloudflared` binary on `PATH` (AgEnD never downloads it). When enabled, the `/login kiro` (or `/login claude`) confirmation
-shows three buttons — **Open public link**, **Local link only**, **Cancel** — and pressing the first one is the
-consent, once per login; a link is never kept or reused.
 
 What it does and does not do:
 
@@ -63,10 +72,11 @@ What it does and does not do:
   announced in the chat with its pid and blocks further tunnels until it is dealt with.
 - **Cloudflare carries the traffic.** A Quick Tunnel terminates TLS at Cloudflare's edge, so Cloudflare can see the
   page, the access token and everything typed or shown in that terminal. The consent text says so; if that is not
-  acceptable for a login, use **Local link only**.
+  acceptable for a login, use **I understand (local network)**.
 - The tunnel's public name is never written to the log or the audit trail. Treat the link like the token's other half:
   do not forward or bookmark it.
-- Only flows reviewed for it may use it — today `kiro-cli` only (`tunnelOk` in `src/login-flows.ts`).
+- Only flows that need their terminal to finish may use it — `kiro-cli` and `claude-code` (`tunnelOk` in
+  `src/login-flows.ts`). Device-code logins (codex, grok) post their URL and code in the chat and never need it.
 
 `protocol`: cloudflared defaults to QUIC (UDP 7844), which many corporate networks and VMs block; cloudflared then
 spends a long time failing over or never connects. AgEnD therefore passes `--protocol http2` (TCP to Cloudflare's edge on port 7844 — the same port number as QUIC's UDP,
