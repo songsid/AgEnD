@@ -1,5 +1,6 @@
-import { execFile } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFile, execFileSync, spawn, type ChildProcess } from "node:child_process";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -224,6 +225,26 @@ describe("through the real CLI (scratch AGEND_HOME, nothing to stop)", () => {
     expect(audit()[0]).toMatchObject({ outcome: "refused", detail: "test-runner" });
   });
 
+  it("instance-level restart / stop are recorded and go through — to a local mock fleet, not the real one", async () => {
+    const hits: string[] = [];
+    const server: Server = createServer((req, res) => { hits.push(`${req.method} ${req.url}`); res.writeHead(200, { "Content-Type": "application/json" }).end("{}"); });
+    await new Promise<void>(resolve => server.listen(0, "127.0.0.1", () => resolve()));
+    try {
+      const port = (server.address() as { port: number }).port;
+      writeFileSync(join(dir, "fleet.yaml"), `health_port: ${port}\ninstances: {}\n`);
+      await runCli(["fleet", "restart", "worker"], { ...outOfTestRunner, AGEND_INSTANCE_NAME: "agend-leader" });
+      await runCli(["fleet", "stop", "worker"], { ...outOfTestRunner, AGEND_INSTANCE_NAME: "agend-leader" });
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>(resolve => server.close(() => resolve()));
+    }
+    expect(hits).toEqual(["POST /restart/worker", "POST /stop/worker"]);
+    expect(audit().map(entry => [entry.action, entry.target, entry.outcome, entry.caller.instance])).toEqual([
+      ["instance-restart", "worker", "allowed", "agend-leader"],
+      ["instance-stop", "worker", "allowed", "agend-leader"],
+    ]);
+  });
+
   it("an interactive user is not asked anything", async () => {
     const result = await runCli(["fleet", "stop"], { ...outOfTestRunner, AGEND_INSTANCE_NAME: undefined });
     expect(result.stderr).toContain("Fleet is not running");
@@ -287,5 +308,46 @@ describe("the service-level commands, behind inert stubs", () => {
     const result = await run(["stop"], null);
     expect(result.stderr).not.toContain("Refusing");
     expect(calls()).toBe("");
+  });
+
+  it("`agend update --yes` from an agent session: its own restart step is not refused as a second command", async () => {
+    // Already up to date, but the running "fleet" started before the install — the one path that goes
+    // straight to the restart step. The "fleet" is a decoy process; the CLI is a scratch copy of the
+    // source whose mtime is in the future (= installed after the decoy started).
+    const copy = join(inert, "copy");
+    mkdirSync(copy);
+    cpSync(join(process.cwd(), "src"), join(copy, "src"), { recursive: true });
+    cpSync(join(process.cwd(), "package.json"), join(copy, "package.json"));
+    symlinkSync(join(process.cwd(), "node_modules"), join(copy, "node_modules"));
+    const future = new Date(Date.now() + 3_600_000);
+    utimesSync(join(copy, "src", "cli.ts"), future, future);
+    const version = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")).version as string;
+    writeFileSync(join(inert, "bin", "npm"), `#!/bin/sh\n[ "$1" = view ] && { echo ${version}; exit 0; }\necho "npm $@" >> "${join(inert, "calls")}"\nexit 1\n`);
+    mkdirSync(join(inert, "home", ".agend"), { recursive: true });
+    symlinkSync(execFileSync("which", ["ps"], { encoding: "utf8" }).trim(), join(inert, "bin", "ps"));   // process start time
+    const decoy: ChildProcess = spawn("bash", ["-c", 'exec -a "agend fleet start" sleep 120'], { stdio: "ignore" });
+    try {
+      writeFileSync(join(inert, "home", ".agend", "fleet.pid"), `${decoy.pid}\n`);
+      const result = await new Promise<{ code: number; stdout: string; stderr: string }>((resolve, reject) => {
+        // NODE_OPTIONS so the restart child the update spawns (a plain `node cli.ts restart`) can run the .ts too
+        execFile(process.execPath, [join(copy, "src", "cli.ts"), "update", "--yes"], {
+          env: { NODE_OPTIONS: "--import tsx", HOME: join(inert, "home"), AGEND_HOME: join(inert, "home", ".agend"), PATH: join(inert, "bin"), NOTIFY_SOCKET: "", AGEND_INSTANCE_NAME: "agend-leader" },
+          timeout: 60_000,
+        }, (error, stdout, stderr) => {
+          if (!error) resolve({ code: 0, stdout, stderr });
+          else if (typeof error.code === "number") resolve({ code: error.code, stdout, stderr });
+          else reject(error);
+        });
+      });
+      expect(result.stdout).toContain("restarting it onto");               // it reached the restart step
+      expect(result.stderr).not.toContain("Refusing");
+      const trail = readFileSync(join(inert, "home", ".agend", AUDIT_FILE), "utf8").trim().split("\n").map(line => JSON.parse(line) as AuditEntry);
+      expect(trail.map(entry => [entry.action, entry.outcome, entry.detail])).toEqual([
+        ["update", "allowed", "yes"],
+        ["restart", "allowed", "origin"],                                  // the child restart, authorised by the update
+      ]);
+    } finally {
+      decoy.kill("SIGKILL");
+    }
   });
 });
