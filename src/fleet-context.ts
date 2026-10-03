@@ -72,6 +72,8 @@ export interface FleetContext {
   cancelInstance(instanceName: string): boolean;
   /** Explicit YAML allowlist entries are fleet administrators. Runtime-paired/open users are not. */
   isFleetAdmin(userId: string, adapterId?: string): boolean;
+  /** Whether the adapter has any fleet admin at all (an empty allowlist turns the admin commands off). */
+  hasFleetAdmins(adapterId?: string): boolean;
   changeInstancePauseState(name: string, action: "pause" | "wake"): Promise<"paused" | "awake" | "not_idle">;
   startInstance(name: string, config: InstanceConfig, topicMode: boolean): Promise<void>;
   stopInstance(name: string): Promise<void>;

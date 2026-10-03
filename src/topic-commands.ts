@@ -433,9 +433,9 @@ export class TopicCommands {
     if (!adapter) return;
     const chatId = msg.chatId;
     const threadId = msg.threadId;
-    const allowed = this.ctx.fleetConfig?.channel?.access?.allowed_users ?? [];
-    if (allowed.length === 0) { await adapter.sendText(chatId, t("dashboard.disabled"), { threadId }); return; }
-    if (!allowed.some(u => String(u) === String(msg.userId))) { await adapter.sendText(chatId, t("not_authorized"), { threadId }); return; }
+    // The caller's own adapter decides, and an empty list means the command is off for everyone.
+    if (!this.ctx.hasFleetAdmins(msg.adapterId)) { await adapter.sendText(chatId, t("dashboard.disabled"), { threadId }); return; }
+    if (!this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) { await adapter.sendText(chatId, t("not_authorized"), { threadId }); return; }
 
     await adapter.sendText(chatId, this.getDashboardText(true), { threadId, format: "html" });
   }
@@ -1243,13 +1243,12 @@ export class TopicCommands {
     const chatId = msg.chatId;
     const threadId = msg.threadId;
 
-    // Access control — only allowed users can trigger update; empty = disabled
-    const allowed = this.ctx.fleetConfig?.channel?.access?.allowed_users ?? [];
-    if (allowed.length === 0) {
+    // Access control — only fleet admins of THIS adapter can trigger an update; empty = disabled
+    if (!this.ctx.hasFleetAdmins(msg.adapterId)) {
       await adapter.sendText(chatId, t("update.disabled"), { threadId });
       return;
     }
-    if (!allowed.some(u => String(u) === String(msg.userId))) {
+    if (!this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) {
       await adapter.sendText(chatId, t("not_authorized"), { threadId });
       return;
     }
@@ -1271,8 +1270,8 @@ export class TopicCommands {
     const chatId = msg.chatId;
     const threadId = msg.threadId;
 
-    const allowed = this.ctx.fleetConfig?.channel?.access?.allowed_users ?? [];
-    if (allowed.length > 0 && !allowed.some(u => String(u) === String(msg.userId))) {
+    // Same rule as /update: this adapter's fleet admins only, and an empty list is "nobody", not "everybody".
+    if (!this.ctx.hasFleetAdmins(msg.adapterId) || !this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) {
       await adapter.sendText(chatId, t("not_authorized"), { threadId });
       return;
     }

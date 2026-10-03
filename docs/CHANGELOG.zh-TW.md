@@ -7,6 +7,17 @@
 ## [未發佈] (Unreleased)
 
 ### 安全 (Security)
+- **Discord slash 指令現在要先過授權關卡（#1148）。** AgEnD 的 slash 指令是全域註冊的，所以 bot 所在的每個 guild、每個 DM 看到的選單都一樣，
+  描述裡的 🔒 只是標籤。過去 slash 指令會略過保護「同樣文字訊息」的 allowlist，也不看來自哪個 guild 或 DM（只有 `/start` 會看）：
+  只要和 bot 同在任一伺服器，就能對 fleet instance 下 `/steer`、`/compact`、`/cancel`，或讀 `/sysinfo`。現在在任何指令執行前：
+  **DM 一律拒絕**；來自**其他 guild** 的指令只對已註冊的 ClassicBot 頻道與 `/start`（仍檢查 `allowed_guilds`）有效；在 fleet 頻道裡，呼叫者必須是
+  **文字訊息路徑也會理會的人**——該頻道 instance 所屬 adapter 的存取政策（明列的 fleet admin 一律可以）。ClassicBot 頻道維持對所有人開放。
+- **`/update`、`/doctor`、`/dashboard` 與 fleet 頻道裡的 `/collab` 現在要求「指令所經 adapter」的 fleet admin，且空的 `allowed_users` 代表沒有人。**
+  它們過去讀的是*主要*頻道的清單（`channels[0]`，不是實際使用的 adapter），而且 `/update`、`/doctor`、`/collab` 把空清單當成「所有人」——
+  所以沒設清單的 fleet 上，任何能輸入 slash 指令的人都能在主機上執行 `agend update`；但文字版 `/update` 卻把空清單當成「停用」。現在 slash 與文字一致。
+  **若你依賴這些指令，請把自己列進該 adapter 的 `access.allowed_users`。**
+
+### 安全 (Security)
 - **instance 目錄改為 0700（既有的在啟動時一次性修正）。** `<data dir>/instances/<name>` 裡有 `agent.token` 與 IPC socket，
   卻是用行程 umask 建立的 —— 通常是 0775，也就是群組可寫、本機所有使用者都能穿越（裡面的檔案本來就是 0600，開著的是目錄這道門）。
   新建的 instance 目錄一律 0700；啟動時 fleet 會把 `instances` 目錄與其下每個 instance 目錄一次性收成 0700，只記一行 log，
