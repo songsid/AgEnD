@@ -19,6 +19,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   instance directory through group access, give it access explicitly — the group no longer has it.** (#1118)
 
 ### Upgrade Notes
+- **[Behaviour change] A paused instance now wakes by itself when another instance sends it work
+  (#1129).** `delivery_worker` defaults to `wake_only` instead of `off`. Under `off`, a task delegated
+  to an instance that had been paused across a fleet restart waited until someone ran `/wake`, with
+  no sign it was stuck. Now the wake coordinator wakes it the way `/wake` does: backoff on failure,
+  a notice after three failures in a row, and never for an instance paused because its login failed.
+  With `warm_cap` set, waking for queued work may exceed the cap by `warm_overflow` (default 2), and
+  a `/wake` or message to a paused instance is refused, instead of going over the cap, when the cap
+  and overflow are full and no idle instance can be paused. An explicit `delivery_worker: off`
+  keeps the old behaviour.
 - **[Behaviour change] Crash dumps stay small, and systemd stops restarting a fleet that keeps
   failing (#1113).** On WSL every crash is piped to the WSL crash collector, which ignores
   `LimitCORE`, so kiro-cli and the fleet itself left core dumps of about 1 GB and 450 MB in

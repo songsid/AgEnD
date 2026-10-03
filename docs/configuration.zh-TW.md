@@ -170,8 +170,8 @@ Cloudflare 的公共解析器（1.1.1.1 / 1.0.0.1）解析 tunnel 名稱，再�
 
 | 欄位 | 型別 | 預設 | 說明 |
 |------|------|------|------|
-| `delivery_worker` | `"off"` \| `"wake_only"` \| `"on"` | `"off"` | Phase 2 投遞負責者。`off` 維持原本所有投遞路徑；`wake_only` 會在有跨 instance 工作排隊時喚醒暫停中的目標；`on`（canary）另外把該目標的投遞 lane 交給專屬 worker。可用 `instances.<name>.delivery_worker` 逐 instance 覆寫 |
-| `warm_overflow` | number | `2` | `delivery_worker` 為 `wake_only` 或 `on` 時，為了喚醒有排隊工作的目標，`warm_cap` 最多可以超出的數量。`warm_cap` 為 `0` 時沒有作用 |
+| `delivery_worker` | `"off"` \| `"wake_only"` \| `"on"` | `"wake_only"` | Phase 2 投遞負責者（#1129 起預設為 `wake_only`）。`wake_only` 會在有跨 instance 工作排隊時喚醒暫停中的目標；`off` 不會：給跨 fleet 重啟仍暫停的 instance 的工作，要等手動 `/wake`；`on`（canary）另外把該目標的投遞 lane 交給專屬 worker。可用 `instances.<name>.delivery_worker` 逐 instance 覆寫 |
+| `warm_overflow` | number | `2` | `delivery_worker` 為 `wake_only`（預設）或 `on` 時，為了喚醒有排隊工作的目標，`warm_cap` 最多可以超出的數量。`warm_cap` 為 `0` 時沒有作用 |
 
 ---
 

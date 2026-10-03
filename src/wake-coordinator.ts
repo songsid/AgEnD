@@ -10,8 +10,8 @@
  * only claims targets that are awake. Nothing here writes a pane or claims a
  * row.
  *
- * Active only for targets whose `delivery_worker` is `wake_only` or `on`;
- * `off` (the default) leaves every path as it was.
+ * Active for targets whose `delivery_worker` is `wake_only` (the default
+ * since #1129) or `on`; an explicit `off` leaves every path as it was.
  */
 import { t } from "./locale.js";
 import type { DeliveryWorkerMode } from "./types.js";

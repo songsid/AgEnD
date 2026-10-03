@@ -2478,7 +2478,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return allowed.some(entry => String(entry) === String(userId));
   }
 
-  /** Phase 2: delivery_worker for a target (instance override → fleet default → off). */
+  /** Phase 2: delivery_worker for a target (instance override → fleet default → wake_only). */
   deliveryWorkerMode(target: string): ReturnType<typeof resolveDeliveryWorkerMode> {
     return resolveDeliveryWorkerMode(this.fleetConfig, target);
   }

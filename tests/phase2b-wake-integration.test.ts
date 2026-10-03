@@ -85,7 +85,8 @@ afterEach(() => {
 });
 
 let opSeq = 0;
-function fleet(mode: "off" | "wake_only", defaults: Record<string, unknown> = {}) {
+/** `unset`: fleet.yaml has no delivery_worker at all (the built-in default applies). */
+function fleet(mode: "off" | "wake_only" | "unset", defaults: Record<string, unknown> = {}) {
   const dataDir = join(tmpdir(), `agend-2b-${process.pid}-${Date.now()}-${dirs.length}`);
   mkdirSync(dataDir, { recursive: true });
   dirs.push(dataDir);
@@ -93,7 +94,7 @@ function fleet(mode: "off" | "wake_only", defaults: Record<string, unknown> = {}
   fleets.push(fm);
   const config = (name: string) => ({ working_directory: join(dataDir, `work-${name}`), backend: "claude-code" }) as any;
   fm.fleetConfig = {
-    defaults: { delivery_worker: mode, ...defaults },
+    defaults: { ...(mode === "unset" ? {} : { delivery_worker: mode }), ...defaults },
     instances: { worker: config("worker"), sender: config("sender"), other: config("other") },
   } as any;
   vi.spyOn(fm as any, "connectIpcToInstance").mockResolvedValue(undefined);
@@ -134,7 +135,19 @@ describe("Bug1: a marker-only paused target is woken and its queued work deliver
     expect(delivered[0]!.opts.noInlineWake).toBe(true);
   });
 
-  it("off: unchanged — the row stays queued at attempt 0 and nothing is woken (the old deadlock, kept for off)", async () => {
+  it("delivery_worker not set at all (#1129): the default wakes it, then the pump claims (attempt 1)", async () => {
+    const { fm, outbox, admit, delivered, dir } = fleet("unset");
+    expect((fm.fleetConfig as any).defaults).not.toHaveProperty("delivery_worker");
+    writePausedMarker(dir, 1_000, "idle");
+    const row = admit();
+    await vi.waitFor(() => expect(delivered.map(d => d.target)).toEqual(["worker"]));
+    expect(fake.created).toHaveLength(1);
+    expect(fm.lifecycle.daemons.has("worker")).toBe(true);
+    expect(hasPausedMarker(dir)).toBe(false);
+    expect(outbox.get(row.deliveryId).attemptNo).toBe(1);
+  });
+
+  it("an explicit off: unchanged — the row stays queued at attempt 0 and nothing is woken (the old deadlock, kept for off)", async () => {
     const { fm, outbox, admit, delivered, dir } = fleet("off");
     writePausedMarker(dir, 1_000, "idle");
     const row = admit();
