@@ -635,7 +635,8 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
         }
 
         if (interaction.guildId !== this.guildId) {
-          // Allow slash commands through — guild whitelist is checked by fleet-manager.
+          // Slash commands are let through to fleet-manager, which decides (src/slash-authz.ts): another
+          // guild's command is only honoured for a registered ClassicBot channel or `/start`, and a DM never.
           if (!interaction.isChatInputCommand() && !this.openChannels.has(interaction.channelId ?? "")) return;
         }
 

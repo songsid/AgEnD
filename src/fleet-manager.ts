@@ -89,6 +89,7 @@ import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, han
 import { LOGIN_FLOWS, LOGIN_BACKEND_ALIASES, checkAuthStatus, type LoginFlow, type AuthCheckResult } from "./login-flows.js";
 import { LoginSession } from "./login-manager.js";
 import { tightenInstanceDirs } from "./private-dir.js";
+import { decideSlash, type SlashFacts, type SlashScope, type SlashSpeaker } from "./slash-authz.js";
 import { LoginController, LOGIN_TOKEN_RESEND_PREFIX, POST_LOGIN_RECOVERY_DEADLINE_MS, announcePostLoginRecovery, type PostLoginRecovery } from "./login-controller.js";
 import { runBeforeDeadline } from "./deadline.js";
 import { LoginWindowLock, type LoginWindowClaim } from "./login-window-lock.js";
@@ -1743,9 +1744,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private async handleUpdateSlash(data: ClassicStartSlashData, adapterId: string): Promise<void> {
-    const allowed = this.fleetConfig?.channel?.access?.allowed_users ?? [];
-    if (allowed.length > 0 && !allowed.some(u => String(u) === String(data.userId))) {
-      await data.respond(t("not_authorized"));
+    const gate = this.fleetAdminGate(data.userId, adapterId);
+    if (gate !== "ok") {
+      await data.respond(t(gate === "disabled" ? "update.disabled" : "not_authorized"));
       return;
     }
     const messageId = await data.respond(t("update.progress.preparing", 0));
@@ -2492,6 +2493,68 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   isFleetAdmin(userId: string, adapterId?: string): boolean {
     const allowed = this.getChannelConfig(adapterId)?.access?.allowed_users ?? [];
     return allowed.some(entry => String(entry) === String(userId));
+  }
+
+  /** Whether this adapter has any fleet admin at all (an empty allowlist means the admin commands are off). */
+  hasFleetAdmins(adapterId?: string): boolean {
+    return (this.getChannelConfig(adapterId)?.access?.allowed_users ?? []).length > 0;
+  }
+
+  /**
+   * The one question the privileged commands (/update, /doctor, /dashboard, /collab) ask: may THIS caller,
+   * through THIS adapter, run it. `disabled` is "nobody can" — an empty list — and is told apart from
+   * `denied` only so the reply can say so. An empty list never means "everyone": these commands used to read
+   * the primary channel's list and treat empty as open, so on a fleet that had not set one anyone who could
+   * type a slash command could `/update` the host.
+   */
+  fleetAdminGate(userId: string, adapterId?: string): "ok" | "disabled" | "denied" {
+    if (!this.hasFleetAdmins(adapterId)) return "disabled";
+    return this.isFleetAdmin(userId, adapterId) ? "ok" : "denied";
+  }
+
+  /**
+   * The door every Discord slash command goes through (src/slash-authz.ts has the rule and the reasoning).
+   * Answers the caller itself when it refuses, so a refused command costs one reply and does nothing else.
+   */
+  private async authorizeSlash(data: ClassicStartSlashData, adapterId: string): Promise<boolean> {
+    const channelId = data.channelId;
+    const classic = !!this.classicChannels?.isClassicChannel(channelId, adapterId);
+    const fleetTarget = classic ? undefined : this.routing.resolve(channelId);
+    const scope: SlashScope = classic ? "classic" : fleetTarget ? "fleet" : "none";
+
+    let speaker: SlashSpeaker = "denied";
+    if (scope !== "classic") {
+      // The same world the typed-message path would consult: the adapter that owns the channel's instance,
+      // else the one the command arrived on.
+      const ownerId = fleetTarget ? this.getInstanceAdapterId(fleetTarget.name) : undefined;
+      const ownerWorld = ownerId ? this.worlds.get(ownerId) : undefined;
+      if (ownerId && !ownerWorld) {
+        speaker = "owner-not-running";
+      } else {
+        const am = ownerWorld?.accessManager ?? this.worlds.get(adapterId)?.accessManager ?? this.accessManager;
+        // An explicit fleet admin always speaks, even if the access state file disagrees with the config.
+        speaker = this.isFleetAdmin(data.userId, adapterId) || (am?.isAllowed(data.userId) ?? false) ? "allowed" : "denied";
+      }
+    }
+
+    const facts: SlashFacts = {
+      command: data.command,
+      guildId: data.guildId,
+      primaryGuildId: String(this.getChannelConfig(adapterId)?.group_id ?? ""),
+      scope,
+      speaker,
+    };
+    const decision = decideSlash(facts);
+    if (decision.allow) return true;
+
+    this.logger.info(
+      { command: data.command, reason: decision.reason, adapterId, guildId: data.guildId ?? null, channelId, scope },
+      "Slash command refused",
+    );
+    await data.respond(t(decision.reason === "dm" ? "slash.dm_unsupported"
+      : decision.reason === "wrong-guild" ? "slash.wrong_server"
+      : "not_authorized")).catch(() => { /* the interaction may already be gone */ });
+    return false;
   }
 
   /** Phase 2: delivery_worker for a target (instance override → fleet default → wake_only). */
@@ -4585,6 +4648,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Handle classic bot slash commands (/start, /stop, /chat, /compact, /save, /load)
     this.adapter.on("slash_command", safeHandler(async (data: ClassicStartSlashData) => {
       if (!isCurrentAdapter()) return;
+      if (!(await this.authorizeSlash(data, adapterId))) return;
       if (data.command === "start") {
         await this.handleClassicStartSlash(data, adapterId);
       } else if (data.command === "stop") {
@@ -4684,8 +4748,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // always a fleet-topic instance.
         const collabTarget = this.routing.resolve(data.channelId);
         if (collabTarget) {
-          const allowed = this.fleetConfig?.channel?.access?.allowed_users ?? [];
-          if (allowed.length > 0 && !allowed.some(u => String(u) === String(data.userId))) {
+          if (this.fleetAdminGate(data.userId, adapterId) !== "ok") {
             await data.respond(t("not_authorized"));
             return;
           }
@@ -4708,8 +4771,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       } else if (data.command === "update") {
         await this.handleUpdateSlash(data, adapterId);
       } else if (data.command === "doctor") {
-        const allowed = this.fleetConfig?.channel?.access?.allowed_users ?? [];
-        if (allowed.length > 0 && !allowed.some(u => String(u) === String(data.userId))) {
+        if (this.fleetAdminGate(data.userId, adapterId) !== "ok") {
           await data.respond(t("not_authorized"));
           return;
         }
@@ -4743,9 +4805,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       } else if (data.command === "dashboard") {
         // Reply is ephemeral (adapter defers non-chat commands ephemerally), so
         // the web-token-bearing URLs are only visible to the caller.
-        const allowed = this.fleetConfig?.channel?.access?.allowed_users ?? [];
-        if (allowed.length === 0) { await data.respond(t("dashboard.disabled")); return; }
-        if (!allowed.some(u => String(u) === String(data.userId))) { await data.respond(t("not_authorized")); return; }
+        const gate = this.fleetAdminGate(data.userId, adapterId);
+        if (gate !== "ok") { await data.respond(t(gate === "disabled" ? "dashboard.disabled" : "not_authorized")); return; }
         await data.respond(this.topicCommands.getDashboardText());
       } else if (data.command === "restart") {
         await this.handleRestartSlash(data, adapterId);
@@ -4898,6 +4959,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Slash commands: classic bot + admin commands
     adapter.on("slash_command", safeHandler(async (data: ClassicStartSlashData) => {
       if (!isCurrentAdapter()) return;
+      if (!(await this.authorizeSlash(data, adapterId))) return;
       if (data.command === "start") {
         await this.handleClassicStartSlash(data, adapterId);
       } else if (data.command === "stop") {
@@ -4964,8 +5026,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // always a fleet-topic instance.
         const collabTarget2 = this.routing.resolve(data.channelId);
         if (collabTarget2) {
-          const allowed = this.fleetConfig?.channel?.access?.allowed_users ?? [];
-          if (allowed.length > 0 && !allowed.some(u => String(u) === String(data.userId))) {
+          if (this.fleetAdminGate(data.userId, adapterId) !== "ok") {
             await data.respond(t("not_authorized"));
             return;
           }
@@ -4988,8 +5049,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       } else if (data.command === "update") {
         await this.handleUpdateSlash(data, adapterId);
       } else if (data.command === "doctor") {
-        const allowed = this.fleetConfig?.channel?.access?.allowed_users ?? [];
-        if (allowed.length > 0 && !allowed.some(u => String(u) === String(data.userId))) {
+        if (this.fleetAdminGate(data.userId, adapterId) !== "ok") {
           await data.respond(t("not_authorized"));
           return;
         }
@@ -5023,9 +5083,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       } else if (data.command === "dashboard") {
         // Reply is ephemeral (adapter defers non-chat commands ephemerally), so
         // the web-token-bearing URLs are only visible to the caller.
-        const allowed = this.fleetConfig?.channel?.access?.allowed_users ?? [];
-        if (allowed.length === 0) { await data.respond(t("dashboard.disabled")); return; }
-        if (!allowed.some(u => String(u) === String(data.userId))) { await data.respond(t("not_authorized")); return; }
+        const gate = this.fleetAdminGate(data.userId, adapterId);
+        if (gate !== "ok") { await data.respond(t(gate === "disabled" ? "dashboard.disabled" : "not_authorized")); return; }
         await data.respond(this.topicCommands.getDashboardText());
       } else if (data.command === "restart") {
         await this.handleRestartSlash(data, adapterId);
