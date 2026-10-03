@@ -214,6 +214,14 @@ describe("only the live retry row counts (a quotation of one in a finished trans
     expect(matched(pane)).toEqual([]);
   });
 
+  it("even directly above the composer, a row whose wait is not a duration is not a retry", () => {
+    for (const wait of ["not a duration", "soon", "5", "1x", "s", "5 minutes", ""]) {
+      const row = `✻ 429 rate limited · Retrying in ${wait} · attempt 6/10`;
+      expect(busy.test(live(row)), row).toBe(false);
+      expect(matched(live(row)), row).toEqual([]);
+    }
+  });
+
   it("a real retry row quoted in a transcript that has since finished is history", () => {
     const pane = finished(`${REAL_RETRY_ROW}\nThat was a quotation. The request has completed.`);
     expect(busy.test(pane)).toBe(false);
