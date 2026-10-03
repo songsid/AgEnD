@@ -22,6 +22,7 @@ import {
 import { formatUpdateProgress } from "./update-progress.js";
 import { sdNotify, sdNotifyBlocking } from "./sd-notify.js";
 import { readFleetMemory, type FleetMemory } from "./process-memory.js";
+import { MemoryPressure, type MemoryPressureSnapshot } from "./memory-pressure.js";
 import { ReplyDeduper } from "./reply-dedup.js";
 import { isMap, isScalar, parseDocument } from "yaml";
 
@@ -602,6 +603,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   readonly lifecycle: InstanceLifecycle;
   readonly stormWindow: StormWindow;
   readonly spawnGate: SpawnGate;
+  readonly memoryPressure: MemoryPressure;
   /** Fleet-level backend reachability memory (fed by pty_error / startup panes). */
   readonly backendOutage = new BackendOutageTracker();
   /** Stable for this FleetManager OS-process lifetime; Daemon objects have their own boot IDs. */
@@ -854,6 +856,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private watchdogTimer: ReturnType<typeof setInterval> | null = null;
   private startedAt = 0;
   private stormOpenNotifyTimer: ReturnType<typeof setTimeout> | null = null;
+  private memoryLogAt: number | null = null;
+  private memoryDebugAt: number | null = null;
+  private memoryLogLevel: MemoryPressureSnapshot["level"] | null = null;
+  private memoryNoticeAt: number | null = null;
+  private memoryNoticeLevel: MemoryPressureSnapshot["level"] | null = null;
 
   // Mirror topic: buffer cross-instance messages, flush every 3s
   private mirrorBuffer: string[] = [];
@@ -894,8 +901,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       FleetManager.sighupHandlerInstalled = true;
     }
     this.stormWindow = new StormWindow();
+    this.memoryPressure = new MemoryPressure({ onSample: snapshot => this.reportMemoryPressure(snapshot) });
     this.spawnGate = new SpawnGate({
       storm: this.stormWindow,
+      memoryPressure: this.memoryPressure,
       concurrency: () => this.spawnConcurrency(),
       staggerMs: () => this.fleetConfig?.defaults?.startup?.stagger_delay_ms ?? 500,
     });
@@ -1290,6 +1299,42 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const explicit = this.fleetConfig?.defaults?.startup?.concurrency;
     if (explicit != null) return Math.max(1, Math.min(20, explicit));
     return deriveSpawnConcurrency(Math.round(freemem() / (1024 * 1024)), cpus().length);
+  }
+
+  /** Separate cooldown: changing measurements must not create new text-throttle keys. */
+  private reportMemoryPressure(snapshot: MemoryPressureSnapshot): void {
+    if (this.shuttingDown) return;
+    const now = Date.now();
+    if (this.memoryDebugAt === null || now - this.memoryDebugAt >= 30_000) {
+      this.memoryDebugAt = now;
+      this.logger.debug({ hostMemory: snapshot }, "Host memory sample");
+    }
+    const changed = snapshot.level !== this.memoryLogLevel;
+    if (snapshot.level === "normal") {
+      if (this.memoryLogLevel === "critical" || this.memoryLogLevel === "elevated") {
+        this.logger.info({ hostMemory: snapshot }, "Host memory recovered");
+      }
+      this.memoryLogLevel = snapshot.level;
+      return;
+    }
+    if (changed || this.memoryLogAt === null || now - this.memoryLogAt >= 10 * 60_000) {
+      this.memoryLogAt = now;
+      this.logger.warn({ hostMemory: snapshot }, snapshot.level === "critical"
+        ? "Host memory critical — deferring new CLI spawns"
+        : snapshot.level === "elevated" ? "Host memory pressure — slowing new CLI spawns"
+          : "Host memory sample unavailable — slowing new CLI spawns");
+    }
+    this.memoryLogLevel = snapshot.level;
+    if (!snapshot.memory || snapshot.level === "unknown" || (!this.adapter && this.adapters.size === 0)) return;
+    const escalation = snapshot.level === "critical" && this.memoryNoticeLevel !== "critical";
+    if (!escalation && this.memoryNoticeAt !== null && now - this.memoryNoticeAt < 10 * 60_000) return;
+    const size = (bytes: number | null) => bytes === null ? t("memory.unknown") : `${Math.round(bytes / 1024 / 1024)} MiB`;
+    const text = t("memory.pressure", t(snapshot.memory.availableKind === "available" ? "memory.available" : "memory.free", size(snapshot.memory.availableBytes)), size(snapshot.memory.swapFreeBytes),
+      t(snapshot.level === "critical" ? "memory.holding" : "memory.slowing"));
+    if (this.notifyFleetError(text, { throttle: false })) {
+      this.memoryNoticeAt = now;
+      this.memoryNoticeLevel = snapshot.level;
+    }
   }
 
   /** Wire the one fleet-wide storm into notification and recovery surfaces. */
@@ -2822,6 +2867,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     /** Phase 2a: the caller's transition, for a start made from inside a restart or wake. */
     transition?: TransitionHandle,
   ): Promise<void> {
+    // CLI single-instance cold starts bypass startAll. Start diagnostics before
+    // any lifecycle/wake work; a shutdown must not revive the stopped sampler.
+    if (!this.shuttingDown) this.memoryPressure?.start();
     // Any start supersedes a pending automatic retry (it would otherwise fire
     // into a running instance — harmless, but noisy — or race this start).
     this.cancelStartupRetry(name);
@@ -2942,6 +2990,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       instanceName: name,
       workingDirectory: config.working_directory,
       reason: "startup",
+      stage: "lifecycle",
     }, async () => {
       if (await this.startInstanceUnattended(name, config, topicMode, "instance")) onReady?.(name);
     })));
@@ -3072,6 +3121,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         instanceName: name,
         workingDirectory: this.fleetConfig?.instances[name]?.working_directory || this.getInstanceDir(name),
         reason: "recovery",
+        stage: "lifecycle",
       }, () => this.startConfiguredInstance(name, topicMode));
       if (this.daemons.has(name)) {
         this.logger.info({ name, attempt: attempt + 1 }, "Automatic startup retry succeeded");
@@ -3381,6 +3431,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       instanceName: name,
       workingDirectory,
       reason: "restart",
+      stage: "lifecycle",
     }, () => this.doRestartSingleInstance(name, opts, transition)))
       .finally(() => {
         this.restartsInFlight.delete(name);
@@ -3771,6 +3822,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       setUpdateProgressStage(this.dataDir, "starting", { version: pendingUpdateProgress.progress.version });
     }
     this.initializeWebAuthTokens();
+    // Must run before the first General/CLI spawn: pressure can hold startup.
+    // Logs remain available even before the adapters and health listener exist.
+    this.memoryPressure.start();
     const topicMode = fleet.channel?.mode === "topic" || !!fleet.channels?.some(ch => ch.mode === "topic");
 
     // Set tmux socket isolation for custom AGEND_HOME
@@ -4553,6 +4607,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
      *  reported separately because they differ by ~60x and only one of them can
      *  show a fleet-manager leak. */
     memory: FleetMemory;
+    hostMemory: MemoryPressureSnapshot;
     problems: string[];
   } {
     const names = Object.keys(this.fleetConfig?.instances ?? {});
@@ -4579,6 +4634,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
 
     const problems: string[] = [];
+    const hostMemory = this.memoryPressure.snapshot();
+    if (hostMemory.level === "critical" || hostMemory.level === "elevated") {
+      problems.push(`host memory pressure is ${hostMemory.level}`);
+    }
     if (this.adapterState.size > 0 && connected === 0) problems.push("no channel adapter is connected");
     if (counts.crashed > 0) problems.push(`${counts.crashed} instance(s) crashed`);
     for (const [id, state] of Object.entries(states)) {
@@ -4599,6 +4658,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       adapters: { total: this.adapterState.size, connected, states, details },
       startupComplete: this.startupComplete,
       memory: readFleetMemory(),
+      hostMemory,
       problems,
     };
   }
@@ -13494,6 +13554,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // make `agend stop` wait forever for its own queue.
     this.stormWindow.shutdown();
     this.spawnGate.shutdown();
+    this.memoryPressure?.stop();
     for (const pending of this.startupRetries.values()) clearTimeout(pending.timer);
     this.startupRetries.clear();
     for (const pending of this.startupRetryNotices.values()) clearTimeout(pending.timer);
