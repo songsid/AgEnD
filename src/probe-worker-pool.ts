@@ -98,6 +98,12 @@ export class ProbeWorkerPool {
       const index = this.queued.findIndex(job => !this.activeKeys.has(job.key));
       if (index < 0) return;
       const job = this.queued.splice(index, 1)[0]!;
+      // An earlier constructor can consume the remaining time before failing.
+      // Recheck every admission even if its deadline timer has not run yet.
+      if (performance.now() >= job.deadlineAt) {
+        this.expire(job);
+        continue;
+      }
       this.active.add(job);
       this.activeKeys.add(job.key);
       try {

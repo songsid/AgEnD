@@ -132,6 +132,58 @@ describe("bounded probe worker admission", () => {
     b.result.resolve("recovered"); b.stop.resolve(); expect(await pb).toBe("recovered");
   });
 
+  it.each([150, 151])("rechecks queued deadlines after a constructor fails at t=%i before timers run", async failedAt => {
+    const pool = new ProbeWorkerPool(1);
+    const a = handle(), c = handle(), onError = vi.fn(), onTimeout = vi.fn();
+    const error = new Error("slow worker constructor failed");
+    let now = 0;
+    const clock = vi.spyOn(performance, "now").mockImplementation(() => now);
+    const startB = vi.fn(() => { now = failedAt; throw error; });
+    try {
+      void pool.run("a", a.start, { deadlineMs: 1000 });
+      now = 50;
+      const pb = pool.run("b", startB, { ...options, onError });
+      const pc = pool.run("c", c.start, { ...options, onTimeout });
+      expect(startB).not.toHaveBeenCalled();
+      expect(c.start).not.toHaveBeenCalled();
+
+      // Only move the monotonic clock: the deadline timers have not fired.
+      a.result.resolve("done"); a.stop.resolve(); await flush();
+      expect(startB).toHaveBeenCalledOnce();
+      expect(onError).toHaveBeenCalledWith(error);
+      expect(await pb).toBeNull();
+      expect(c.start).not.toHaveBeenCalled();
+      expect(onTimeout).toHaveBeenCalledOnce();
+      expect(await pc).toBeNull();
+      expect(c.worker.terminate).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(200);
+      expect(onTimeout).toHaveBeenCalledOnce();
+    } finally {
+      pool.close(); c.stop.resolve(); clock.mockRestore();
+    }
+  });
+
+  it("still admits the next queued job when a failed constructor leaves deadline time", async () => {
+    const pool = new ProbeWorkerPool(1);
+    const a = handle(), c = handle(), onTimeout = vi.fn();
+    let now = 0;
+    const clock = vi.spyOn(performance, "now").mockImplementation(() => now);
+    try {
+      void pool.run("a", a.start, { deadlineMs: 1000 });
+      now = 50;
+      const pb = pool.run("b", () => { now = 149; throw new Error("constructor failed"); }, options);
+      const pc = pool.run("c", c.start, { ...options, onTimeout });
+      a.result.resolve("done"); a.stop.resolve(); await flush();
+      expect(await pb).toBeNull();
+      expect(c.start).toHaveBeenCalledOnce();
+      expect(onTimeout).not.toHaveBeenCalled();
+      c.result.resolve("within deadline"); c.stop.resolve();
+      expect(await pc).toBe("within deadline");
+    } finally {
+      pool.close(); c.stop.resolve(); clock.mockRestore();
+    }
+  });
+
   it("a rejected result cancels, but does not admit another isolate before stopping", async () => {
     const pool = new ProbeWorkerPool(1);
     const a = handle(), b = handle(), onError = vi.fn();
