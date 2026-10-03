@@ -5728,7 +5728,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Key the dedup per-adapter there so a sibling bot's copy isn't dropped.
     if (msg.messageId) {
       const classicCid = threadId || msg.chatId;
-      const isClassicMsg = this.classicChannels?.hasChannel(classicCid) ?? false;
+      // First /start has no registration yet. A sibling can receive the same
+      // targeted command first, then reject its @suffix below; it must not
+      // consume the intended bot's key. Use the same Classic candidate scope
+      // as routing (including foreign forum topics normalized above, #1085).
+      const isTelegramClassicCandidate = msg.source === "telegram" && !threadId
+        && msg.chatId !== String(this.getChannelConfig(msg.adapterId)?.group_id ?? "");
+      const isClassicMsg = !!this.classicChannels
+        && (this.classicChannels.hasChannel(classicCid) || isTelegramClassicCandidate);
       const dedupKey = isClassicMsg
         ? `${msg.source}:${msg.chatId}:${msg.messageId}:${msg.adapterId ?? ""}`
         : `${msg.source}:${msg.chatId}:${msg.messageId}`;
