@@ -52,6 +52,12 @@ describe("judgeFleetControl", () => {
     expect(judgeFleetControl({ VITEST: "true", [ALLOW_TEST_ENV]: "1" }, false)).toEqual({ ok: true, via: "interactive" });
   });
 
+  it.each(["0", "false", "", "  ", "yes", "true"])("the test opt-in is exactly \"1\", not %j", value => {
+    expect(judgeFleetControl({ VITEST: "true", [ALLOW_TEST_ENV]: value }, true)).toEqual({ ok: false, reason: "test-runner" });
+    expect(judgeFleetControl({ VITEST: "true", [ALLOW_TEST_ENV]: value, [ORIGIN_ENV]: "slash /update by 1:2" }, false))
+      .toEqual({ ok: false, reason: "test-runner" });
+  });
+
   it("the fleet's own spawn sites pass: they were authorised where they started", () => {
     expect(judgeFleetControl({ [ORIGIN_ENV]: "slash /update by 1:2", AGEND_INSTANCE_NAME: "x" }, false))
       .toEqual({ ok: true, via: "origin" });
@@ -122,6 +128,20 @@ describe("gateFleetControl", () => {
     expect(audit()[0]).toMatchObject({ outcome: "refused", detail: "test-runner" });
   });
 
+  it("the origin marker authorises this command only: it is gone from the environment afterwards", () => {
+    const env: NodeJS.ProcessEnv = { [ORIGIN_ENV]: "slash /update by 1:2", AGEND_INSTANCE_NAME: "agend-leader" };
+    expect(gateFleetControl(dir, "update", {}, env)).toBe(true);
+    expect(env[ORIGIN_ENV]).toBeUndefined();                       // what the command spawns next does not inherit it
+    expect(judgeFleetControl(env, false)).toEqual({ ok: false, reason: "agent-session" });
+    expect(audit()[0]!.caller.origin).toBe("slash /update by 1:2");   // …but the requester was recorded first
+  });
+
+  it("a refused call does not leave the marker behind either", () => {
+    const env: NodeJS.ProcessEnv = { [ORIGIN_ENV]: "x", VITEST: "true" };
+    expect(gateFleetControl(dir, "update", {}, env, () => {})).toBe(false);
+    expect(env[ORIGIN_ENV]).toBeUndefined();
+  });
+
   it("an unwritable data directory never stops a restart", () => {
     expect(gateFleetControl(join(dir, "missing", "deeper"), "fleet-stop", {}, {})).toBe(true);
   });
@@ -144,6 +164,21 @@ describe("the trail", () => {
   it("an agent-session request is named with its session", () => {
     gateFleetControl(dir, "fleet-stop", { yes: true }, { AGEND_INSTANCE_NAME: "agend-leader" });
     expect(describeSignalSource(dir, "SIGTERM")).toContain("from agent session agend-leader");
+  });
+
+  it("an instance-level stop/restart is never named as the cause of a fleet signal", () => {
+    gateFleetControl(dir, "fleet-restart-reload", { yes: true }, { AGEND_INSTANCE_NAME: "operator-session" });
+    recordInstanceControl(dir, "instance-stop", "worker", { AGEND_INSTANCE_NAME: "agend-leader" });
+    recordInstanceControl(dir, "instance-restart", "worker", { AGEND_INSTANCE_NAME: "agend-leader" });
+    const said = describeSignalSource(dir, "SIGUSR1");
+    expect(said).toContain("fleet-restart-reload");
+    expect(said).not.toContain("instance-");
+  });
+
+  it("…and with only instance-level requests recorded, an outside signal is not blamed on one", () => {
+    recordInstanceControl(dir, "instance-restart", "worker", {});
+    expect(describeSignalSource(dir, "SIGTERM")).toContain("no fleet-control request recorded");
+    expect(readRecentAudit(dir, 60_000)).toBeNull();
   });
 
   it("without a recent request it says so, so a service manager or kill is the next suspect", () => {
@@ -265,19 +300,20 @@ describe("the service-level commands, behind inert stubs", () => {
     mkdirSync(join(inert, "bin")); mkdirSync(join(inert, "home"));
     for (const command of ["systemctl", "npm", "sudo", "launchctl", "agend", "loginctl", "journalctl"]) {
       const path = join(inert, "bin", command);
-      writeFileSync(path, `#!/bin/sh\necho "${command} $@" >> "${join(inert, "calls")}"\nexit 1\n`);
+      writeFileSync(path, `#!/bin/sh\necho "${command} $@ ORIGIN=$AGEND_RESTART_ORIGIN" >> "${join(inert, "calls")}"\nexit 1\n`);
       chmodSync(path, 0o755);
     }
   });
   afterEach(() => { rmSync(inert, { recursive: true, force: true }); });
 
   const calls = (): string => existsSync(join(inert, "calls")) ? readFileSync(join(inert, "calls"), "utf8") : "";
-  const run = (args: string[], instance: string | null) => new Promise<{ code: number; stderr: string }>((resolve, reject) => {
+  const run = (args: string[], instance: string | null, extraEnv: Record<string, string> = {}) => new Promise<{ code: number; stderr: string }>((resolve, reject) => {
     execFile(process.execPath, ["--import", "tsx", join(process.cwd(), "src", "cli.ts"), ...args], {
       // env replaced, not extended: no VITEST, no real PATH, a scratch HOME
       env: {
         HOME: join(inert, "home"), AGEND_HOME: join(inert, "home", ".agend"), PATH: join(inert, "bin"), NOTIFY_SOCKET: "",
         ...(instance ? { AGEND_INSTANCE_NAME: instance } : {}),
+        ...extraEnv,
       },
       timeout: 30_000,
     }, (error, _stdout, stderr) => {
@@ -292,6 +328,13 @@ describe("the service-level commands, behind inert stubs", () => {
     expect(result.code).toBe(1);
     expect(result.stderr).toContain(`Refusing \`agend ${command}\``);
     expect(calls()).toBe("");
+  });
+
+  it("an internal origin lets the command through but is not handed to what it starts", async () => {
+    await run(["update"], "agend-leader", { AGEND_RESTART_ORIGIN: "slash /update by discord:admin" });
+    expect(calls()).toContain("npm install");                       // it went ahead without --yes
+    expect(calls()).toMatch(/npm install .*ORIGIN=\n/);              // …and npm, like any replacement fleet, saw no marker
+    expect(calls()).not.toContain("slash /update");
   });
 
   it("control: with --yes `restart` does reach the (stubbed) service manager", async () => {

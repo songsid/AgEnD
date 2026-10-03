@@ -27,7 +27,7 @@ export function withOrigin(origin: string, env: NodeJS.ProcessEnv = process.env)
   return { ...env, [ORIGIN_ENV]: origin };
 }
 
-/** Escape hatch for a test that really means to run the CLI against a scratch fleet. */
+/** Escape hatch for a test that really means to run the CLI against a scratch fleet (exactly "1"). */
 export const ALLOW_TEST_ENV = "AGEND_ALLOW_TEST_FLEET_CONTROL";
 
 export type FleetControlAction =
@@ -61,7 +61,7 @@ export function judgeFleetControl(env: NodeJS.ProcessEnv, yes: boolean): Verdict
   // First, and even for the fleet's own spawn sites: a handler a test drives for real
   // must not reach the live fleet just because it set its origin (fleet decision bd0c88aa).
   const underTestRunner = !!env.VITEST || env.NODE_ENV === "test";
-  if (underTestRunner && !env[ALLOW_TEST_ENV]) return { ok: false, reason: "test-runner" };
+  if (underTestRunner && env[ALLOW_TEST_ENV] !== "1") return { ok: false, reason: "test-runner" };
   const origin = (env[ORIGIN_ENV] ?? "").trim();
   if (origin) return { ok: true, via: "origin" };
   if ((env.AGEND_INSTANCE_NAME ?? "").trim() && !yes) return { ok: false, reason: "agent-session" };
@@ -131,6 +131,9 @@ export function readRecentAudit(dataDir: string, withinMs: number, now = Date.no
       try {
         const entry = JSON.parse(lines[i]!) as AuditEntry;
         if (entry.outcome !== "allowed") continue;
+        // A routine instance stop/restart sends no signal to the fleet process: naming it
+        // would blame the wrong request for a SIGUSR1/SIGTERM it did not cause.
+        if (entry.action === "instance-stop" || entry.action === "instance-restart") continue;
         const age = now - Date.parse(entry.ts);
         if (age >= 0 && age <= withinMs) return entry;
       } catch { /* a torn line */ }
@@ -197,6 +200,10 @@ export function gateFleetControl(
     ...(verdict.ok ? { detail: verdict.via } : { detail: verdict.reason }),
     caller,
   });
+  // The origin marker authorises THIS command only. Left in the environment it would be
+  // inherited by the replacement fleet the command starts, and by every agent that fleet
+  // runs: a permanent exemption from the confirmation (#1158 review).
+  delete env[ORIGIN_ENV];
   if (verdict.ok) return true;
   report(refusalMessage(action, verdict.reason, caller.instance));
   return false;
