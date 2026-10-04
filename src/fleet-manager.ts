@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync, readdirSync, renameSync, copyFileSync, chmodSync, statSync, accessSync, constants as fsConstants, type Dirent } from "node:fs";
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { freemem, totalmem, cpus, homedir } from "node:os";
 import { access } from "node:fs/promises";
@@ -770,6 +770,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private startupRetryNotices = new Map<"scheduled" | "gave_up", { names: string[]; delayMs: number; timer: NodeJS.Timeout }>();
   /** Unsupported-CLI refusals waiting to go out, grouped by reason (#1109). */
   private unsupportedCliNotices = new Map<string, { names: string[]; timer: NodeJS.Timeout }>();
+  private kiroIncompatNotices = new Map<string, { names: string[]; timer: NodeJS.Timeout }>();
   /** Backoff between automatic startup retries; the last step repeats while the backend is down. */
   static readonly STARTUP_RETRY_BACKOFF_MS = [60_000, 5 * 60_000, 15 * 60_000];
   /** Hard cap on automatic startup retries (3 backoff steps + up to 3 more during a backend outage). */
@@ -3475,7 +3476,54 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!(err instanceof UnsupportedCliError)) return false;
     this.logger.error({ name, reason: err.message }, `Not starting ${what}: the installed CLI cannot run it as configured`);
     this.queueUnsupportedCliNotice(name, err.message);
+    this.queueKiroIncompatNotice(name, err.message);
     return true;
+  }
+
+  /**
+   * LifecycleContext: a kiro instance the installed kiro-cli cannot run as
+   * configured (#1109) — at start, or at a respawn after kiro-cli replaced
+   * itself. The operator already gets the plain notice; this tells every
+   * General, as an agent, so it can explain the kiro engine move when asked.
+   * One notice per refusal reason, like the operator's.
+   */
+  queueKiroIncompatNotice(name: string, reason: string): void {
+    // The effective backend, ClassicBot channels included: they are not in fleetConfig.instances.
+    if (this.backendNameForInstance(name) !== "kiro-cli") return;
+    const pending = this.kiroIncompatNotices.get(reason);
+    if (pending) {
+      if (!pending.names.includes(name)) pending.names.push(name);
+      return;
+    }
+    const timer = setTimeout(() => {
+      const entry = this.kiroIncompatNotices.get(reason);
+      this.kiroIncompatNotices.delete(reason);
+      if (entry) this.sendKiroIncompatToGenerals(entry.names, reason);
+    }, FleetManager.STARTUP_RETRY_NOTICE_AGGREGATE_MS);
+    timer.unref?.();
+    this.kiroIncompatNotices.set(reason, { names: [name], timer });
+  }
+
+  /**
+   * Held in the delivery outbox until each General takes it: the same kiro-cli
+   * may have stopped the General too, and it should still hear once it is back.
+   * Admitted once per day per refusal (reason + names) and General.
+   */
+  private sendKiroIncompatToGenerals(names: string[], reason: string, now: Date = new Date()): void {
+    const generals = Object.entries(this.fleetConfig?.instances ?? {})
+      .filter(([, config]) => config.general_topic === true).map(([general]) => general);
+    if (generals.length === 0) return;
+    try {
+      this.ensureDeliveryOutbox();
+      const sorted = [...names].sort();
+      const digest = createHash("sha256").update(`${reason}\u0000${sorted.join(",")}`).digest("hex").slice(0, 16);
+      const content = t("fleet.kiro_incompat_general", sorted.join(", "), reason);
+      for (const general of generals) {
+        this.deliveryOutbox!.admitSystemNotice(general, `kiro-incompat:${now.toISOString().slice(0, 10)}:${digest}:${general}`, content, now);
+      }
+    } catch (err) {
+      this.logger.warn({ err, names }, "Could not queue the kiro incompatibility notice for General");
+    }
   }
 
   /**

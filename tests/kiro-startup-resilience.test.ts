@@ -320,13 +320,15 @@ describe("crash-respawn during an outage hands off instead of stranding `crashed
 
   it("an unsupported CLI on crash-respawn (#1109) stops supervision with the reason, instead of failing every tick", () => {
     const h = makeSpawnHarness(kiro());
-    const ended: Array<{ reason: string }> = [];
-    h.daemon.on("supervision_ended", (e: { reason: string }) => ended.push(e));
+    const ended: Array<{ reason: string; cause?: string }> = [];
+    h.daemon.on("supervision_ended", (e: { reason: string; cause?: string }) => ended.push(e));
     expect(h.daemon.stopOnUnsupportedCliRespawn(new Error("CLI failed to start after retry"))).toBe(false);
     expect(h.daemon.healthCheckPaused).toBe(false);
     expect(h.daemon.stopOnUnsupportedCliRespawn(new UnsupportedCliError("kiro-cli 3.0.0 no longer offers the legacy UI"))).toBe(true);
     expect(h.daemon.healthCheckPaused).toBe(true);
     expect(ended.map(e => e.reason)).toEqual(["kiro-cli 3.0.0 no longer offers the legacy UI"]);
+    // Marked, so the fleet can tell General this is a kiro incompatibility (kiro migration P1).
+    expect(ended.map(e => e.cause)).toEqual(["cli_unsupported"]);
   });
 
   it("emits startup_backend_unreachable and pauses health monitoring when the fleet is listening", () => {

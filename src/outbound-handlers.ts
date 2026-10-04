@@ -18,6 +18,7 @@ import { truncatePreview } from "./channel/markdown-chunk.js";
 import { backendSupportsSteer } from "./steer-capability.js";
 import { readStatuslineModel } from "./topic-commands.js";
 import { credentialProfileLogin, credentialSwitchStartsFresh, instanceCredentialProfile } from "./backend/credential-profile.js";
+import { kiroEngineCandidates, kiroEngineStatus } from "./kiro-engine-status.js";
 import {
   formatCrossInstanceInboundMessage,
   MAX_ASSEMBLED_CROSS_INSTANCE_MESSAGE_BYTES,
@@ -46,6 +47,7 @@ import {
   GetFleetStatusArgs,
   GetInstanceLogsArgs,
   GetEffortArgs,
+  KiroEngineStatusArgs,
   GetUsageArgs,
   ListModelsArgs,
   GetFleetConfigArgs,
@@ -941,6 +943,17 @@ const getFleetStatus: Handler = (ctx, rawArgs, respond) => {
   const paused = names.filter(n => ctx.lifecycle.isPaused(n)).length;
   const stopped = names.length - running - paused;
   respond({ total: names.length, running, paused, stopped });
+};
+
+const kiroEngineStatusHandler: Handler = (ctx, rawArgs, respond) => {
+  const v = validateArgs(KiroEngineStatusArgs, rawArgs, "kiro_engine_status");
+  if (!v.ok) { respond(null, v.error); return; }
+  const status = kiroEngineStatus(kiroEngineCandidates(ctx.fleetConfig, ctx.classicChannels), { name: v.data.name });
+  if (v.data.name && status.instances.length === 0) {
+    respond(null, `'${v.data.name}' is not a kiro-cli instance in this fleet`);
+    return;
+  }
+  respond(status);
 };
 
 const getEffort: Handler = (ctx, rawArgs, respond, meta) => {
@@ -1867,6 +1880,7 @@ export const outboundHandlers = new Map<string, Handler>([
   ["stop_instance", stopInstance],
   ["get_fleet_status", getFleetStatus],
   ["get_effort", getEffort],
+  ["kiro_engine_status", kiroEngineStatusHandler],
   ["get_usage", getUsage],
   ["list_models", listModels],
   ["get_instance_logs", getInstanceLogs],

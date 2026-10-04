@@ -102,6 +102,8 @@ const DEFS: Array<[string, ZodType, string]> = [
     "Get fleet summary: count of running, paused, and stopped instances."],
   ["get_effort", schemas.GetEffortArgs,
     "Get the reasoning-effort setting for an instance: the level in force, the levels its CLI backend accepts, and whether changing it takes effect immediately or needs a restart. Defaults to yourself."],
+  ["kiro_engine_status", schemas.KiroEngineStatusArgs,
+    "Show what each kiro instance runs on and whether the installed kiro-cli can still run it: its kiro_ui, the engine flags the next launch would use (or why kiro-cli refuses it), its recorded launches (kiro-cli and AgEnD versions per change), and its V3 session. Read-only. Use it to explain a kiro incompatibility or the kiro engine move to the user."],
   ["get_usage", schemas.GetUsageArgs,
     "Get AI subscription usage for the CLI backends logged in on this machine (Claude/Codex/Grok/Kiro). Returns per-provider metrics — use it to notice you are close to a limit and warn the user."],
   ["list_models", schemas.ListModelsArgs,

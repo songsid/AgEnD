@@ -100,6 +100,20 @@ function payloadContent(payload: unknown): string | null {
 
 /** #926 reminders and overdue notices; never themselves the subject of a failure notice. */
 export const REPLY_OBLIGATION_NOTICE_KIND = "reply_obligation_notice";
+/** A fleet-level notice to an agent (e.g. General), from AgEnD itself. */
+export const SYSTEM_NOTICE_KIND = "system_notice";
+/**
+ * How long a system notice waits for its target. Longer than ordinary
+ * deliveries on purpose: it exists for a target that is down — a General the
+ * same broken CLI stopped — and must still be there when that is fixed.
+ * Ordinary deliveries keep DURABLE_DELIVERY_MAX_AGE_MS.
+ */
+export const SYSTEM_NOTICE_MAX_AGE_MS = 14 * 24 * 60 * 60_000;
+
+/** The age limit for a row of this kind, given the limit ordinary rows get. */
+function maxAgeForKind(kind: string, ordinaryMaxAgeMs: number): number {
+  return kind === SYSTEM_NOTICE_KIND ? Math.max(ordinaryMaxAgeMs, SYSTEM_NOTICE_MAX_AGE_MS) : ordinaryMaxAgeMs;
+}
 
 /** Kinds that carry a peer request or its answer. Broadcasts are one-to-many and deferred (#926 §6). */
 const REPLY_OBLIGATION_KINDS = ["fleet_inbound", "steer"] as const;
@@ -669,6 +683,38 @@ export class DeliveryOutbox extends EventEmitter {
     ).changes === 1;
   }
 
+  /**
+   * A notice from AgEnD itself to one instance, held until it is delivered —
+   * so it still arrives when the target is down right now (a General that the
+   * same broken CLI stopped). `sourceKey` makes it idempotent: the same key is
+   * admitted once. Returns whether it was newly admitted.
+   */
+  admitSystemNotice(target: string, sourceKey: string, content: string, now: Date = new Date()): boolean {
+    const noticeId = randomUUID();
+    const nowIso = now.toISOString();
+    const payload = {
+      type: "fleet_inbound",
+      content,
+      meta: {
+        user: "AgEnD", user_id: "agend-system", message_id: `system-notice-${noticeId}`,
+        chat_id: "", thread_id: "", source: "agend-system",
+      },
+    };
+    const inserted = this.db.prepare(`
+      INSERT OR IGNORE INTO deliveries (
+        delivery_id,operation_id,source_key,source_instance,source_daemon_boot_id,
+        target_instance,target_session,target_daemon_boot_id,kind,correlation_id,payload_json,message_id,content_sha256,state,
+        attempt_no,created_seq,manager_boot_id,created_at,updated_at,accepted_at
+      ) VALUES (?,?,?,'agend-system',?,?,NULL,NULL,?,?,?,?,?,'queued',0,
+        (SELECT COALESCE(MAX(created_seq),0)+1 FROM deliveries),NULL,?,?,?)
+    `).run(
+      noticeId, `notice:${sourceKey}`, sourceKey, this.managerBootId, target, SYSTEM_NOTICE_KIND, `notice:${sourceKey}`,
+      JSON.stringify(payload), payload.meta.message_id, deliveryContentDigest(content), nowIso, nowIso, nowIso,
+    ).changes === 1;
+    if (inserted) this.emit("admitted");
+    return inserted;
+  }
+
   /** The owner's open obligations, oldest first (#926). */
   openReplyObligations(ownerInstance: string): ReplyObligation[] {
     const rows = this.db.prepare(`
@@ -1018,7 +1064,7 @@ export class DeliveryOutbox extends EventEmitter {
       // Readiness and idle deferrals occur before begin and do not consume the
       // submission-attempt budget. The age limit remains the visible bound for
       // work that never reaches a pane-side-effect attempt.
-      const exhausted = ageMs >= DURABLE_DELIVERY_MAX_AGE_MS;
+      const exhausted = ageMs >= maxAgeForKind(row.kind, DURABLE_DELIVERY_MAX_AGE_MS);
       const outcome = exhausted ? "failed" : "retry_wait";
       const update = this.db.prepare(`
         UPDATE deliveries SET state=?,updated_at=?,finished_at=?,last_error=?,next_attempt_at=?
@@ -1073,6 +1119,8 @@ export class DeliveryOutbox extends EventEmitter {
       let changed = 0;
       let uncertain = 0;
       for (const row of stale) {
+        // A kind with a longer life is only stale once that has passed too.
+        if (Date.parse(row.created_at) > nowMs - maxAgeForKind(row.kind, maxAgeMs)) continue;
         const specific = reasonFor?.(row.target_instance);
         const reason = specific
           ? `delivery TTL expired: ${specific}`.slice(0, 300)
@@ -1110,11 +1158,15 @@ export class DeliveryOutbox extends EventEmitter {
 
   /** Next queued/retry expiry for bounded maintenance scheduling. */
   nextExpiryAt(): string | null {
-    const row = this.db.prepare(`
+    const oldest = (systemNotices: boolean) => (this.db.prepare(`
       SELECT MIN(created_at) AS created_at FROM deliveries
-      WHERE state IN ('queued','retry_wait') OR (state='submission_started' AND reconciliation_pending=1)
-    `).get() as { created_at: string | null };
-    return row.created_at ? new Date(Date.parse(row.created_at) + DURABLE_DELIVERY_MAX_AGE_MS).toISOString() : null;
+      WHERE (state IN ('queued','retry_wait') AND (kind=?) = ?) OR (? = 0 AND state='submission_started' AND reconciliation_pending=1)
+    `).get(SYSTEM_NOTICE_KIND, systemNotices ? 1 : 0, systemNotices ? 1 : 0) as { created_at: string | null }).created_at;
+    const expiries = [
+      [oldest(false), DURABLE_DELIVERY_MAX_AGE_MS],
+      [oldest(true), maxAgeForKind(SYSTEM_NOTICE_KIND, DURABLE_DELIVERY_MAX_AGE_MS)],
+    ].filter((e): e is [string, number] => e[0] !== null).map(([at, age]) => Date.parse(at) + age);
+    return expiries.length ? new Date(Math.min(...expiries)).toISOString() : null;
   }
 
   markResponseDelivered(sourceInstance: string, operationId: string): number {
@@ -1343,7 +1395,7 @@ export class DeliveryOutbox extends EventEmitter {
   /** Must be called inside the same SQLite transaction as the terminal transition. */
   private insertFailureNotice(parent: OutboxRow, outcome: "failed" | "uncertain", reason: string, now: string): void {
     if (parent.kind === "delivery_outcome_notice" || parent.kind === "post_restart_outcome_notice"
-      || parent.kind === REPLY_OBLIGATION_NOTICE_KIND) return;
+      || parent.kind === REPLY_OBLIGATION_NOTICE_KIND || parent.kind === SYSTEM_NOTICE_KIND) return;
     const noticeId = randomUUID();
     const operationId = `notice:${parent.operation_id}:${parent.delivery_id}`;
     // Keep raw phase/proof in last_error and attempt evidence; render a safe summary here.

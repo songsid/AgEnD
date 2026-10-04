@@ -2879,7 +2879,7 @@ export class Daemon extends EventEmitter {
     if (!(err instanceof UnsupportedCliError)) return false;
     this.healthCheckPaused = true;
     this.logger.error({ reason: err.message }, "Not respawning: the installed CLI cannot run this instance as configured");
-    this.emitSupervisionEnded(err.message, "Install a CLI version that supports this instance's configuration, then start it again.");
+    this.emitSupervisionEnded(err.message, "Install a CLI version that supports this instance's configuration, then start it again.", undefined, "cli_unsupported");
     return true;
   }
 
@@ -2896,12 +2896,13 @@ export class Daemon extends EventEmitter {
    * `crash_loop` already had this treatment; this is the same bridge for the other
    * four, carrying a human-readable cause and the operator's next step.
    */
-  private emitSupervisionEnded(reason: string, remedy: string, exitCode?: number): void {
+  private emitSupervisionEnded(reason: string, remedy: string, exitCode?: number, cause?: "cli_unsupported"): void {
     this.emit("supervision_ended", {
       name: this.name,
       reason,
       remedy,
       ...(exitCode !== undefined ? { exitCode } : {}),
+      ...(cause ? { cause } : {}),
     });
   }
 

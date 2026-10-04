@@ -40,7 +40,7 @@ const WORKER: readonly string[] = [
   "send_to_instance", "report_result", "request_information", "broadcast", "delegate_task", "delivery_status",
   // Knowing where it is and who is next to it. All read-only.
   "list_instances", "describe_instance", "list_teams", "list_models",
-  "get_fleet_status", "get_fleet_config", "get_usage", "get_effort", "get_instance_logs",
+  "get_fleet_status", "get_fleet_config", "get_usage", "get_effort", "get_instance_logs", "kiro_engine_status",
   "list_decisions", "list_schedules", "list_deployments", "validate_config",
   // Its own things.
   "task", "post_decision", "set_display_name", "set_description", "list_emojis", "set_persona_emoji", "preview_emojis",
@@ -83,6 +83,8 @@ export const TOOL_PROFILES: Readonly<Record<ToolSetName, readonly string[]>> = {
   general: [
     "reply", "react", "edit_message", "download_attachment",
     "list_teams", "list_instances", "describe_instance", "get_fleet_status", "get_usage", "get_effort", "list_models",
+    // Read-only: what each kiro instance runs on, for explaining a kiro incompatibility.
+    "kiro_engine_status",
     "send_to_instance", "delegate_task", "request_information", "report_result", "broadcast", "delivery_status",
     "create_instance", "start_instance", "restart_instance", "wake_instance",
     "task", "list_decisions", "post_decision",
@@ -95,7 +97,7 @@ export const TOOL_PROFILES: Readonly<Record<ToolSetName, readonly string[]>> = {
     "reply", "react", "edit_message",
     "send_to_instance", "broadcast", "list_instances", "describe_instance", "delivery_status",
     "list_decisions", "post_decision", "task", "set_display_name", "set_description", "list_emojis", "set_persona_emoji", "preview_emojis",
-    "validate_config", "get_fleet_status", "get_usage", "get_effort", "get_instance_logs", "get_fleet_config",
+    "validate_config", "get_fleet_status", "get_usage", "get_effort", "get_instance_logs", "get_fleet_config", "kiro_engine_status",
     // Self-scheduling, same scope as worker (#895).
     "create_schedule", "list_schedules", "update_schedule", "delete_schedule",
   ],

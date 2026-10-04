@@ -528,6 +528,20 @@ export function resetKiroCompatibilityCacheForTests(): void {
   warnedVersionGateCacheKeys.clear();
 }
 
+/** The kiro-cli compatibility AgEnD last probed for a launch: read by kiro_engine_status, which never probes itself. */
+export interface KiroCompatibilitySnapshot {
+  binaryPath: string;
+  compatibility: KiroCliCompatibility;
+  at: string;
+}
+let lastKiroCompatibility: KiroCompatibilitySnapshot | null = null;
+export function lastKiroCompatibilitySnapshot(): KiroCompatibilitySnapshot | null {
+  return lastKiroCompatibility;
+}
+function publishKiroCompatibility(binaryPath: string, compatibility: KiroCliCompatibility): void {
+  lastKiroCompatibility = { binaryPath, compatibility, at: new Date().toISOString() };
+}
+
 /** Startup budget for a `--resume` launch (60% first output, 40% ready). */
 export const KIRO_RESUME_STARTUP_BUDGET_MS = 60_000;
 
@@ -568,6 +582,7 @@ export class KiroBackend implements CliBackend {
       const cached = cachedKiroCliCompatibility(this.binaryPath);
       this.compatibility = cached.compatibility;
       this.compatibilityCacheKey = cached.cacheKey;
+      publishKiroCompatibility(this.binaryPath, this.compatibility);
     }
   }
 
@@ -653,6 +668,8 @@ export class KiroBackend implements CliBackend {
       this.compatibility = current.compatibility;
       this.compatibilityCacheKey = current.cacheKey;
     }
+    // What this launch is judged by, for kiro_engine_status to read without probing.
+    publishKiroCompatibility(this.binaryPath, this.compatibility);
     if (this.compatibility.source === "unknown") {
       // Neither --version nor chat --help answered: a missing or wedged binary,
       // or a loaded host timing out. Launching blind could start kiro on its

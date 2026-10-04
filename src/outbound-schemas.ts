@@ -211,6 +211,10 @@ export const GetEffortArgs = z.object({
   name: NonEmptyString.optional().describe("Instance to inspect. Defaults to the calling instance."),
 });
 
+export const KiroEngineStatusArgs = z.object({
+  name: NonEmptyString.optional().describe("One kiro instance. Omit for every kiro instance in the fleet."),
+});
+
 export const GetUsageArgs = z.object({
   force: z.boolean().optional().describe("Bypass the 5-minute cache and fetch fresh data (rate-limited by vendors — use sparingly)"),
 });

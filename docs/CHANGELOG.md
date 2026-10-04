@@ -177,6 +177,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   are unaffected.
 
 ### Added
+- **General hears when kiro-cli can no longer run a kiro instance.** When the installed kiro-cli refuses a kiro
+  instance as configured (#1109) — at start, or at a respawn after kiro-cli replaced itself — every General now
+  also gets `[system:kiro-incompat]` as an agent: which instances stopped, kiro's reason, that their
+  conversations are intact, and to load the new `kiro-engine-migration` skill. ClassicBot kiro instances count
+  too. It is held in the delivery outbox for up to 14 days until each General takes it (the same kiro-cli may
+  have stopped General too; ordinary deliveries keep their 24 hours), and sent once per day per refusal. The
+  operator's plain notice is unchanged.
+- **`kiro_engine_status` tool** (read-only; worker, standard and general profiles): each kiro instance's
+  (ClassicBot ones included) `kiro_ui` and credential profile, the engine flags its next launch would use or
+  kiro's reason for refusing it, its prepared launches (kiro-cli and AgEnD version per change, from the engine
+  ledger) and its V3 session. It runs no process: it reads the kiro-cli compatibility the last kiro launch
+  probed, and says when that was.
+- **`kiro-engine-migration` skill for General:** what a kiro incompatibility means, that a stopped instance's
+  conversation is intact, what to tell the user, and what never to do (restart it to "try again", change
+  `kiro_ui`, run kiro-cli, touch `~/.kiro`). The migration itself is not available yet, and the skill says so.
 - **A kiro engine ledger, the baseline for the coming V1 → V3 move.** Every kiro launch is recorded in
   `<data dir>/kiro-engine-ledger.json` (owner-only): the instance's working directory and credential profile,
   the kiro-cli version, the AgEnD version, the UI and the engine flags AgEnD pinned — the last launch plus one
