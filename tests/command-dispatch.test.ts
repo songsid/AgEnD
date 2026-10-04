@@ -105,6 +105,8 @@ interface Rig {
   fm: FleetManager;
   reached: string[];
   replies: string[];
+  /** Which collab switch was thrown: the fleet instance's, or the ClassicBot channel's. */
+  collab: { fleet: string[]; classic: string[] };
   emit(adapterId: string, command: string, who: Who, scope: CommandScope, guildId?: string | null): Promise<void>;
 }
 
@@ -116,7 +118,7 @@ afterEach(() => {
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 
-async function rig(opts: { primaryMode?: "open" | "locked"; ownerGone?: boolean } = {}): Promise<Rig> {
+async function rig(opts: { primaryMode?: "open" | "locked"; ownerGone?: boolean; overlap?: boolean } = {}): Promise<Rig> {
   const dir = join(tmpdir(), `agend-command-dispatch-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   mkdirSync(dir, { recursive: true });
   dirs.push(dir);
@@ -143,16 +145,20 @@ async function rig(opts: { primaryMode?: "open" | "locked"; ownerGone?: boolean 
   const tc = (fm as unknown as { topicCommands: Record<string, unknown> }).topicCommands;
   const reached: string[] = [];
   const replies: string[] = [];
+  const collab = { fleet: [] as string[], classic: [] as string[] };
+  // `overlap`: the fleet instance's channel is ALSO registered as a ClassicBot channel — two configurations that each
+  // validate on their own, so both are live at once.
+  const isClassicRoom = (room: string) => room === classicRoom || (opts.overlap === true && room === "T1");
 
   fm.classicChannels = {
-    isClassicChannel: (room: string) => room === classicRoom,
-    hasChannel: (room: string) => room === classicRoom,
-    getInstanceByChannel: (room: string) => (room === classicRoom ? "classic-1" : undefined),
+    isClassicChannel: (room: string) => isClassicRoom(room),
+    hasChannel: (room: string) => isClassicRoom(room),
+    getInstanceByChannel: (room: string) => (isClassicRoom(room) ? "classic-1" : undefined),
     getChannelIdByInstance: () => undefined,
     getAdapterIdByInstance: () => "discord",
     isAdmin: (user: string) => user === "cadmin",
     isGuildAllowed: () => true,
-    toggleCollab: () => { reached.push("collab"); return true; },
+    toggleCollab: () => { reached.push("collab"); collab.classic.push("classic-1"); return true; },
     getBackendByInstance: () => "claude-code",
     getContextLines: () => 5,
     getAll: () => [],
@@ -172,7 +178,7 @@ async function rig(opts: { primaryMode?: "open" | "locked"; ownerGone?: boolean 
   anyFm.handleTipsSlash = marks("tips");
   anyFm.runBackendDoctor = async () => { reached.push("doctor"); return "ok:doctor"; };
   anyFm.cancelInstance = () => { reached.push("cancel"); return true; };
-  anyFm.toggleFleetCollab = () => { reached.push("collab"); return true; };
+  anyFm.toggleFleetCollab = (name: string) => { reached.push("collab"); collab.fleet.push(name); return true; };
   anyFm.forwardToClassicInstance = async () => { reached.push("chat"); };
   anyFm.pasteRawToClassicInstance = () => { reached.push("load"); };
   anyFm.resolveStatusEmojisFor = () => ({ platform: "discord", received: "👀" });
@@ -206,7 +212,7 @@ async function rig(opts: { primaryMode?: "open" | "locked"; ownerGone?: boolean 
     // /usage renders through a mocked formatter, so its reply is the only trace that it ran.
     if (replies.includes("ok:usage")) reached.push("usage");
   }
-  return { fm, reached, replies, emit };
+  return { fm, reached, replies, collab, emit };
 }
 
 const cells = (): Array<[string, CommandScope, Who, Cell]> => {
@@ -493,5 +499,36 @@ describe("the table can only narrow: wherever the door refuses, no command is re
     await r.emit("discord", "ctx", "member", "fleet");
     expect(r.reached).toEqual([]);
     expect(r.replies).toEqual([t("not_authorized")]);
+  });
+});
+
+describe("/collab acts in the scope that was authorized (a channel in both the ClassicBot registry and the routing table)", () => {
+  it.each(["discord", "second"])("%s: a ClassicBot admin switches the ClassicBot channel's collab, never the fleet instance's", async adapterId => {
+    const r = await rig({ overlap: true });
+    await r.emit(adapterId, "collab", "classicAdmin", "fleet");          // T1: the fleet instance's channel, also registered as ClassicBot
+    expect(r.collab.classic).toEqual(["classic-1"]);
+    expect(r.collab.fleet, "the fleet instance's switch is not theirs to throw").toEqual([]);
+  });
+
+  it("a fleet admin in that same channel is judged — and acts — as the ClassicBot channel too", async () => {
+    const r = await rig({ overlap: true });
+    await r.emit("discord", "collab", "fleetAdmin", "fleet");
+    expect(r.collab).toEqual({ fleet: [], classic: ["classic-1"] });
+  });
+
+  it("control — an ordinary fleet channel: the fleet admin throws the fleet switch, a ClassicBot admin throws nothing", async () => {
+    const r = await rig();
+    await r.emit("discord", "collab", "fleetAdmin", "fleet");
+    expect(r.collab).toEqual({ fleet: ["worker"], classic: [] });
+    await r.emit("discord", "collab", "classicAdmin", "fleet");
+    expect(r.collab).toEqual({ fleet: ["worker"], classic: [] });
+    expect(r.replies).toEqual([t("not_authorized")]);
+  });
+
+  it("control — an ordinary ClassicBot channel still throws the ClassicBot switch for either kind of admin", async () => {
+    const r = await rig();
+    await r.emit("discord", "collab", "classicAdmin", "classic");
+    await r.emit("discord", "collab", "fleetAdmin", "classic");
+    expect(r.collab).toEqual({ fleet: [], classic: ["classic-1", "classic-1"] });      // once per admin
   });
 });

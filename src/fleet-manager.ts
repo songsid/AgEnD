@@ -2706,9 +2706,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // Single source of truth (statusline.json + robust tmux pane fallback).
       await data.respond(await this.topicCommands.getCtxText(name));
     } else if (data.command === "collab") {
-      // Classic no longer lives in the routing engine, so a routing hit here is
-      // always a fleet-topic instance.
-      const collabTarget2 = this.routing.resolve(data.channelId);
+      // The scope the door and the table authorized is the scope this acts in. A channel can be in both the
+      // ClassicBot registry and the routing table (two configurations that each validate); the door and
+      // `isModelAdmin` read the registry first, so a ClassicBot admin was judged for the ClassicBot channel
+      // here and must not be handed the fleet instance's collab switch by a second, routing-first lookup.
+      const collabTarget2 = scope === "classic" ? undefined : this.routing.resolve(data.channelId);
       if (collabTarget2) {
         const isCollab = this.toggleFleetCollab(collabTarget2.name);
         await data.respond(isCollab ? t("collab.on") : t("collab.off"));
