@@ -231,6 +231,37 @@ describe("the runtime dialogs: structural, Allow once", () => {
     expect(opencodeAlwaysConfirmActive(prose)).toBe(false);
   });
 
+  // Each rule on its own: the others are held satisfied, so a loosened rule cannot hide behind a neighbour.
+  const IDLE_TAIL = [
+    "  ┃  Ask anything… \"Fix a TODO in the codebase\"",
+    "  ┃  Build · Mock Model Mock",
+    "  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀",
+    "                                tab agents  ctrl+p commands",
+  ].join("\n");
+  const OPTIONS_ROW = "  ┃   Allow once   Allow always   Reject  ctrl+f fullscreen  ⇆ select  enter confirm";
+
+  it("the option row alone, among the last lines, with the idle prompt right below it: history, not a dialog", () => {
+    const pane = ["  ┃  △ Permission required", "  ┃    ← Access external directory /tmp", OPTIONS_ROW, IDLE_TAIL].join("\n");
+    expect(opencodePermissionPromptActive(pane)).toBe(false);                   // the idle prompt is what says so
+    expect(opencodePermissionPromptActive(pane.replace(IDLE_TAIL, "  ┃\n  ┃"))).toBe(true);   // the same without it: live
+  });
+
+  it("the option row without the header is not the prompt (a tool printing those words)", () => {
+    const pane = ["  ⚙ some tool output", "  ┃  choose:", OPTIONS_ROW, "  ┃"].join("\n");
+    expect(opencodePermissionPromptActive(pane)).toBe(false);
+  });
+
+  it("the header with the options only named in a sentence, at the bottom, is not the prompt", () => {
+    const pane = ["  ┃  △ Permission required", "  ┃  the choices were: Allow once, Allow always, Reject", "  ┃  and then enter confirm"].join("\n");
+    expect(opencodePermissionPromptActive(pane)).toBe(false);
+  });
+
+  it("the Always page with the idle prompt right below it is history too", () => {
+    const pane = ["  ┃  △ Always allow", "  ┃  - /tmp/*", "  ┃   Confirm   Cancel   ⇆ select  enter confirm", IDLE_TAIL].join("\n");
+    expect(opencodeAlwaysConfirmActive(pane)).toBe(false);
+    expect(opencodeAlwaysConfirmActive(pane.replace(IDLE_TAIL, "  ┃\n  ┃"))).toBe(true);
+  });
+
   it("the old viewport-wide /confirm/i dialog is gone", () => {
     const dialogs = new OpenCodeBackend(dir).getRuntimeDialogs();
     expect(dialogs).toHaveLength(2);
