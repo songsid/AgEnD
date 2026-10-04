@@ -105,7 +105,7 @@ interface Rig {
   fm: FleetManager;
   reached: string[];
   replies: string[];
-  emit(adapterId: string, command: string, who: Who, scope: CommandScope): Promise<void>;
+  emit(adapterId: string, command: string, who: Who, scope: CommandScope, guildId?: string | null): Promise<void>;
 }
 
 const dirs: string[] = [];
@@ -116,13 +116,13 @@ afterEach(() => {
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 
-async function rig(): Promise<Rig> {
+async function rig(opts: { primaryMode?: "open" | "locked"; ownerGone?: boolean } = {}): Promise<Rig> {
   const dir = join(tmpdir(), `agend-command-dispatch-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   mkdirSync(dir, { recursive: true });
   dirs.push(dir);
   vi.stubEnv("TEST_BOT_TOKEN", "x");
   const fm = new FleetManager(dir);
-  const open = { mode: "open", allowed_users: ["admin"] };    // everyone may talk; only "admin" is a fleet admin
+  const open = { mode: opts.primaryMode ?? "open", allowed_users: ["admin"] };    // "open": everyone may talk; only "admin" is a fleet admin
   const primary = { id: "discord", type: "discord", bot_token_env: "TEST_BOT_TOKEN", group_id: "G1", access: open };
   const second = { id: "second", type: "discord", bot_token_env: "TEST_BOT_TOKEN", group_id: "G2", access: { mode: "open", allowed_users: ["ops"] } };
   const channels = [primary, second];
@@ -131,8 +131,8 @@ async function rig(): Promise<Rig> {
     channels,
     channel: primary,
     instances: {
-      worker: { topic_id: "T1", backend: "claude-code", working_directory: dir },
-      general: { topic_id: "T0", backend: "claude-code", working_directory: dir, general_topic: true },
+      worker: { topic_id: "T1", backend: "claude-code", working_directory: dir, ...(opts.ownerGone ? { channel_id: "ghost" } : {}) },
+      general: { topic_id: "T0", backend: "claude-code", working_directory: dir, general_topic: true, ...(opts.ownerGone ? { channel_id: "ghost" } : {}) },
     },
   } as never;
   fm.fleetConfig = fleet;
@@ -191,12 +191,12 @@ async function rig(): Promise<Rig> {
   await (fm as unknown as { startAdditionalAdapter(c: unknown): Promise<void> }).startAdditionalAdapter(second);
   const adapters = new Map(created.map(a => [a.id, a as unknown as { emit(e: string, d: unknown): void }]));
 
-  async function emit(adapterId: string, command: string, who: Who, scope: CommandScope): Promise<void> {
+  async function emit(adapterId: string, command: string, who: Who, scope: CommandScope, guildId?: string | null): Promise<void> {
     replies.length = 0;
     reached.length = 0;
     adapters.get(adapterId)!.emit("slash_command", {
       command, channelId: CHANNEL[scope], channelName: "chan",
-      guildId: adapterId === "second" ? "G2" : "G1", userId: WHO[who], username: who,
+      guildId: guildId === null ? undefined : (guildId ?? (adapterId === "second" ? "G2" : "G1")), userId: WHO[who], username: who,
       options: { message: "go", filename: "f.json", instructions: "", instance: "worker" }, text: "go",
       respond: async (text: string) => { replies.push(text); return "m1"; },
       respondChoices: async (text: string) => { replies.push(text); return "m2"; },
@@ -431,5 +431,67 @@ describe("the two handlers whose own admin check changed kind (#1148)", () => {
     expect(h.runPauseWake).not.toHaveBeenCalled();
     await h.fm.handlePauseWakeSlash(h.data("T1", "fleetAdmin"), "discord");
     expect(h.runPauseWake).toHaveBeenCalledWith("worker", "pause");
+  });
+});
+
+/**
+ * The hard contract of the table: it sits BEHIND the door and can only narrow. So wherever the door refuses —
+ * a DM, another guild, a speaker the access policy would not hear, an owner adapter that is not running — no
+ * command is reached, however generous the table's row is and however senior the caller (a fleet admin included).
+ * Asserted for every command in every scope, so a future table row cannot become a way round the door.
+ */
+describe("the table can only narrow: wherever the door refuses, no command is reached", () => {
+  const scopesWithChannels: CommandScope[] = ["fleet", "general", "classic", "none"];
+
+  it.each(COMMANDS.map(c => c.name))("%s", async command => {
+    // A DM and another guild: refused for everyone, a fleet admin too. (ClassicBot channels keep honouring a
+    // registered channel from another guild — that is the door's own rule — so the foreign guild is tried in the
+    // scopes where it must be refused.)
+    const open = await rig();
+    for (const scope of scopesWithChannels) {
+      for (const who of ALL) {
+        await open.emit("discord", command, who, scope, null);
+        expect(open.reached, `${command}/${scope}/${who} in a DM`).toEqual([]);
+        expect(open.replies, `${command}/${scope}/${who} in a DM`).toEqual([t("slash.dm_unsupported")]);
+      }
+    }
+    for (const scope of ["fleet", "general", "none"] as CommandScope[]) {
+      if (command === "start") continue;                                // the door lets /start in from another guild (its own allowlist applies); the table then refuses it in a fleet channel
+      for (const who of ALL) {
+        await open.emit("discord", command, who, scope, "OTHER-GUILD");
+        expect(open.reached, `${command}/${scope}/${who} from another guild`).toEqual([]);
+        expect(open.replies, `${command}/${scope}/${who} from another guild`).toEqual([t("slash.wrong_server")]);
+      }
+    }
+
+    // A speaker the access policy would not hear (locked, and not an admin): refused outside ClassicBot channels,
+    // whatever the table says about the command — including every `anyone` row.
+    const locked = await rig({ primaryMode: "locked" });
+    for (const scope of ["fleet", "general", "none"] as CommandScope[]) {
+      if (command === "start" && scope === "none") continue;            // a ClassicBot door, by design
+      for (const who of ["member", "classicAdmin"] as Who[]) {
+        await locked.emit("discord", command, who, scope);
+        expect(locked.reached, `${command}/${scope}/${who} under a locked policy`).toEqual([]);
+        expect(locked.replies, `${command}/${scope}/${who} under a locked policy`).toEqual([t("not_authorized")]);
+      }
+    }
+
+    // A fleet channel whose owning adapter is not running: nobody, a fleet admin included.
+    const orphaned = await rig({ ownerGone: true });
+    for (const scope of ["fleet", "general"] as CommandScope[]) {
+      for (const who of ALL) {
+        await orphaned.emit("discord", command, who, scope);
+        expect(orphaned.reached, `${command}/${scope}/${who} with the owner not running`).toEqual([]);
+        expect(orphaned.replies).toEqual([t("not_authorized")]);
+      }
+    }
+  });
+
+  it("is the door's decision that stops them, not the table's: a command whose table row allows everyone is still refused", async () => {
+    const r = await rig({ primaryMode: "locked" });
+    expect(commandSpec("ctx")!.scopes.fleet).toEqual({ level: "anyone" });
+    await r.emit("discord", "ctx", "member", "fleet");
+    expect(r.reached).toEqual([]);
+    expect(r.replies).toEqual([t("not_authorized")]);
   });
 });
