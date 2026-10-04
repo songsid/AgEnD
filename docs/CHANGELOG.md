@@ -7,6 +7,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Security
+- **Discord slash commands now follow one command table (#1148).** Where a command applies and who may use it is
+  declared in one place (`src/command-table.ts`) instead of in two copied handlers; the 🔒 in a command's menu
+  description is generated from it, so the label can no longer disagree with the rule. It sits behind the
+  authorization door added earlier and can only narrow what the door allowed. The levels are *anyone*,
+  *channel admin* (in a fleet channel a fleet admin; in a ClassicBot channel a fleet admin **or** a ClassicBot
+  admin), *fleet admin* and *ClassicBot admin*. Behaviour changes:
+  - **`/stop`** in a ClassicBot channel needs a channel admin (it was open to everyone on Discord; Telegram already
+    required an admin).
+  - **`/compact`** needs a channel admin (it was labelled 🔒 but open to everyone).
+  - **`/save`** needs the admin of the channel's own kind (it asked for a ClassicBot admin even in fleet channels,
+    so a fleet admin was refused there and a ClassicBot admin could paste into a fleet instance).
+  - **`/pause`, `/wake` and `/collab`** in a ClassicBot channel now also accept a fleet admin (they accepted only a
+    ClassicBot admin).
+  - **`/stop` and `/dashboard` now show the 🔒** they always deserved; `/model`, `/effort`, `/clear` and the
+    admin-only commands are unchanged for everyone who could use them.
+  - A command that does not apply where it was typed (for example `/ctx` in a channel with no agent) is refused with
+    one line saying so, before anything runs; a command that is no longer registered gets an answer instead of
+    "the application did not respond".
+  Typed `/commands` (as opposed to slash commands) are covered by a follow-up change.
+
+### Security
 - **Discord slash commands now go through an authorization door (#1148).** AgEnD registers its slash commands
   globally, so every guild the bot is in — and every DM with it — shows the same menu, and the lock emoji in a
   description is only a label. Until now a slash command skipped the allowlist that guards the same words typed

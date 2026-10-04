@@ -7,6 +7,18 @@
 ## [未發佈] (Unreleased)
 
 ### 安全 (Security)
+- **Discord slash 指令現在遵循同一張指令表（#1148）。** 指令適用於哪些頻道、誰能使用，改由一個地方宣告（`src/command-table.ts`），不再散在兩份複製的 handler 裡；
+  選單描述上的 🔒 由這張表產生，標籤不會再和規則不一致。它位於先前加入的授權關卡「後面」，只會收窄關卡放行的範圍。授權級別為：*任何人*、
+  *頻道管理員*（fleet 頻道＝fleet admin；ClassicBot 頻道＝fleet admin **或** ClassicBot admin）、*fleet admin*、*ClassicBot admin*。行為變更：
+  - ClassicBot 頻道的 **`/stop`** 需要頻道管理員（原本 Discord 上任何人都能用；Telegram 本來就要管理員）。
+  - **`/compact`** 需要頻道管理員（原本標了 🔒 卻對所有人開放）。
+  - **`/save`** 需要「該頻道類型」的管理員（原本連 fleet 頻道也要求 ClassicBot admin，導致 fleet admin 被拒、ClassicBot admin 反而能貼進 fleet instance）。
+  - ClassicBot 頻道的 **`/pause`、`/wake`、`/collab`** 現在也接受 fleet admin（原本只收 ClassicBot admin）。
+  - **`/stop` 與 `/dashboard` 現在會顯示 🔒**；`/model`、`/effort`、`/clear` 與各 admin 指令，對原本能用的人沒有變化。
+  - 在不適用的地方輸入的指令（例如沒有 agent 的頻道輸入 `/ctx`）會在執行任何東西之前，用一行說明拒絕；已不存在的指令會得到回覆，而不是「應用程式沒有回應」。
+  文字輸入的 `/指令`（相對於 slash 指令）由後續變更處理。
+
+### 安全 (Security)
 - **Discord slash 指令現在要先過授權關卡（#1148）。** AgEnD 的 slash 指令是全域註冊的，所以 bot 所在的每個 guild、每個 DM 看到的選單都一樣，
   描述裡的 🔒 只是標籤。過去 slash 指令會略過保護「同樣文字訊息」的 allowlist，也不看來自哪個 guild 或 DM（只有 `/start` 會看）：
   只要和 bot 同在任一伺服器，就能對 fleet instance 下 `/steer`、`/compact`、`/cancel`，或讀 `/sysinfo`。現在在任何指令執行前：
