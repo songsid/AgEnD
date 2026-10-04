@@ -256,6 +256,16 @@ describe("every command × every kind of channel × every kind of caller", () =>
     expect(spawned, "nothing real ran").toHaveLength(0);
   });
 
+  it("tells the General dispatcher from an instance's own channel (the table has a row for each)", async () => {
+    const info = vi.fn();
+    (r.fm as unknown as { logger: unknown }).logger = { info, warn: vi.fn(), error: vi.fn(), debug: vi.fn(), trace: vi.fn(), fatal: vi.fn(), child() { return this; } };
+    await r.emit("discord", "compact", "member", "general");
+    await r.emit("discord", "compact", "member", "fleet");
+    await r.emit("discord", "compact", "member", "classic");
+    const scopes = info.mock.calls.filter(c => c[1] === "Slash command refused by the command table").map(c => (c[0] as { scope: string }).scope);
+    expect(scopes).toEqual(["general", "fleet", "classic"]);
+  });
+
   it("a command nobody registered is answered, not left to time out", async () => {
     await r.emit("discord", "removed-in-a-later-version", "fleetAdmin", "fleet");
     expect(r.replies).toEqual([t("slash.unknown_command")]);
