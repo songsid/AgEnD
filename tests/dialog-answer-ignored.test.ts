@@ -388,6 +388,22 @@ describe("a read that outlives its spawn or its monitors changes nothing", () =>
     expect(r.keys).toHaveLength(3);
   });
 
+  it("…and its late first read does not update the input-blocked state of the monitors it no longer belongs to", async () => {
+    let n = 0;
+    const r = rig({ blocksDelivery: true, inputBlocked: true }, { onKey: screen => { if (++n === 3) screen.gate = new Promise<void>(resolve => { screen.release = resolve; }); } });
+    const blocked: any[] = [];
+    r.d.on("input_blocked", (event: unknown) => blocked.push(event));
+    await r.poll(5_600); await r.poll(5_600); await r.poll(5_600);
+    await r.poll(5_600);                                   // the next poll waits on its first read
+    expect(r.d.isInputBlocked()).toBe(true);
+    blocked.length = 0;
+    r.d.freezeRuntimeMonitors();
+    r.screen.text = CLEAR; r.screen.gate = null; r.screen.release?.();   // what that late read sees
+    await r.poll(2_000);
+    expect(blocked).toEqual([]);
+    expect(r.d.isInputBlocked()).toBe(true);
+  });
+
   it("…and a stale poll cannot overwrite the parked state a newer spawn built for another dialog", async () => {
     let n = 0;
     const r = rig({ blocksDelivery: true, inputBlocked: true }, { onKey: screen => { if (++n === 3) screen.gate = new Promise<void>(resolve => { screen.release = resolve; }); } });
