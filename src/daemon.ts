@@ -1208,7 +1208,7 @@ export class Daemon extends EventEmitter {
    * still on screen right after the keys). Not the on-screen duration: a burst of FRESH prompts, each answered, has a
    * dialog on screen at every poll and ignores nothing.
    */
-  private dialogAnswers: { key: string; ignored: number; reported: boolean; signature: string } | null = null;
+  private dialogAnswers: { key: string; ignored: number; reported: boolean; screen: string } | null = null;
   /** Current stdin-owning runtime dialog, independent from execution state. */
   private inputBlockedDialogKey: string | null = null;
   /** Generation/signature fence for safety dialogs while their screen is still visible. */
@@ -3046,17 +3046,17 @@ export class Daemon extends EventEmitter {
             // while a delivery was finishing. A stale danger menu must never
             // receive a blind key sequence.
             const currentPane = await this.tmux!.capturePane();
+            // Every await below can outlive the spawn / monitors this poll started under: after each one, before
+            // any state is touched or any further key is sent, `stale()` (fixed at the poll's start) is asked again.
+            if (stale()) return;
             if (!Daemon.dialogMatches(dialog, currentPane)) {
               this.updateInputBlockedState(currentPane, dialogs);
               this.endDialogEpisode();                       // somebody (or the CLI) already cleared it: that screen is over
               return;
             }
-            // What this answer is given to, and when: judged against the screen AFTER the keys, and only while the
-            // spawn / monitors it was taken in are still the current ones.
-            const sample = { spawn: this.spawnGeneration, fence: this.launchFenceEpoch, signature: Daemon.paneSignature(currentPane) };
             // Another request since the last answer (the episode was counted on a different screen): its count, its
             // report and its parked clock belong to that one.
-            if (this.dialogAnswers?.key === Daemon.answerKey(dialog) && this.dialogAnswers.signature !== sample.signature) this.endDialogEpisode();
+            if (this.dialogAnswers?.key === Daemon.answerKey(dialog) && this.dialogAnswers.screen !== currentPane) this.endDialogEpisode();
             if (dialog.verifyAfterKeys && autoKey
               && this.autoResolvedDialogGeneration === this.spawnGeneration
               && this.autoResolvedDialogKey === autoKey) return;
@@ -3073,6 +3073,7 @@ export class Daemon extends EventEmitter {
               } else {
                 sent = await this.tmux!.pasteText(key, this.systemPasteOptions());
               }
+              if (stale()) return;
               if (!sent) {
                 if (dialog.verifyAfterKeys && autoKey) {
                   this.autoResolvedDialogGeneration = 0;
@@ -3082,9 +3083,11 @@ export class Daemon extends EventEmitter {
                 return;
               }
               await new Promise(r => setTimeout(r, 200));
+              if (stale()) return;
             }
             if (dialog.verifyAfterKeys) {
               const afterKeysPane = await this.tmux!.capturePane();
+              if (stale()) return;
               const dialogStillActive = dialog.inputBlocked
                 ? dialogs.some(candidate => candidate.inputBlocked && Daemon.dialogMatches(candidate, afterKeysPane))
                 : Daemon.dialogMatches(dialog, afterKeysPane);
@@ -3099,14 +3102,14 @@ export class Daemon extends EventEmitter {
                 resolved = true;
               }
             } else if (dialog.keys.length > 0) {
-              // Did the keys take? Read the pane again. The dialog still there with the SAME content is an answer that did
-              // nothing; the same KIND of dialog with different content (the next queued request) is a new request, so
-              // the answer was accepted. Two requests that look exactly alike cannot be told apart from the pane alone.
+              // Did the keys take? Read the pane again. The dialog still there with EXACTLY the same screen is an answer that
+              // did nothing; any difference (the next queued request, or only a ticker) is not proof it was ignored —
+              // when in doubt, nothing is reported. Two requests that look exactly alike cannot be told apart.
               await new Promise(r => setTimeout(r, DIALOG_ANSWER_SETTLE_MS));
+              if (stale()) return;
               const afterPane = await this.tmux!.capturePane();
-              // The read outlived the spawn or the monitors it was taken for: it must not touch a newer episode or report.
-              if (sample.spawn !== this.spawnGeneration || sample.fence !== this.launchFenceEpoch) return;
-              this.noteDialogAnswer(dialog, Daemon.dialogMatches(dialog, afterPane) && Daemon.paneSignature(afterPane) === sample.signature, sample.signature);
+              if (stale()) return;
+              this.noteDialogAnswer(dialog, Daemon.dialogMatches(dialog, afterPane) && afterPane === currentPane, currentPane);
             } else {
               this.breakAnswerStreak(dialog);
             }
@@ -6004,24 +6007,6 @@ export class Daemon extends EventEmitter {
     return { state: "clear" };
   }
 
-  /**
-   * What the screen says, without what merely ticks. Only RECOGNISED decoration is normalised — spinner frames, elapsed
-   * times ("12s"), clocks ("01:23"), token counters, and runs of 3+ spaces (right-aligned status text shifts as numbers
-   * change width). Everything else is kept exactly, digits and inner spacing included: /tmp/request-1 and
-   * /tmp/request-2 are different requests, and so are "alpha beta" and "alpha  beta".
-   */
-  private static paneSignature(pane: string): string {
-    return pane
-      .replace(/[\u2800-\u28ff]/g, "")
-      .replace(/(?<![\w/.-])\d+(?:\.\d+)?\s?(?:ms|s|m|h)(?![\w/.-])/g, "#t")
-      .replace(/(?<![\w/.-])\d{1,2}:\d{2}(?::\d{2})?(?![\w/.-])/g, "#c")
-      .replace(/\btokens?:?\s*\d[\d,.]*[kKmM]?\b/gi, "tokens #")
-      .replace(/\b\d[\d,.]*[kKmM]?\s+tokens?\b/gi, "# tokens")
-      .replace(/ {3,}/g, "   ")
-      .replace(/[ \t]+$/gm, "")
-      .trim();
-  }
-
   private static answerKey(dialog: RuntimeDialog): string {
     return `${Daemon.dialogKey(dialog)}\0${dialog.description}`;
   }
@@ -6051,9 +6036,9 @@ export class Daemon extends EventEmitter {
    * instance sitting there until a hang detector (and only with pending work) notices. The event carries the
    * dialog's static description and a count, never the pane: a pane can hold anything the agent printed.
    */
-  private noteDialogAnswer(dialog: RuntimeDialog, stillOnScreen: boolean, signature: string): void {
+  private noteDialogAnswer(dialog: RuntimeDialog, stillOnScreen: boolean, screen: string): void {
     const key = Daemon.answerKey(dialog);
-    if (!this.dialogAnswers || this.dialogAnswers.key !== key) this.dialogAnswers = { key, ignored: 0, reported: false, signature };   // the screen being counted: every answer in the episode saw this same one
+    if (!this.dialogAnswers || this.dialogAnswers.key !== key) this.dialogAnswers = { key, ignored: 0, reported: false, screen };   // the exact screen being counted: every answer in the episode saw this same one
     const episode = this.dialogAnswers;
     if (!stillOnScreen) {
       this.endDialogEpisode();
