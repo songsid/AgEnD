@@ -9,7 +9,7 @@ import { unlinkSync, existsSync, chmodSync, statSync } from "node:fs";
 import { dirname } from "node:path";
 
 // macOS sun_path limit is 104 bytes; Linux is 108
-const UNIX_SOCKET_PATH_MAX = process.platform === "darwin" ? 104 : 108;
+export const UNIX_SOCKET_PATH_MAX = process.platform === "darwin" ? 104 : 108;
 
 function encode(msg: unknown): string {
   return JSON.stringify(msg) + "\n";

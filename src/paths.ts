@@ -16,7 +16,7 @@ export function getAgendHome(): string {
  * Null when the password database cannot be read: falling back to homedir()
  * would trust `$HOME` again (#1128 review), so then no home is the default.
  */
-function realDefaultAgendHome(): string | null {
+export function realDefaultAgendHome(): string | null {
   try { return join(userInfo().homedir, ".agend"); } catch { return null; }
 }
 
@@ -47,10 +47,26 @@ function isolatedSuffix(home: string): string {
   return "agend-" + createHash("sha256").update(home).digest("hex").slice(0, 6);
 }
 
+/**
+ * The same two decisions for ANY home, without reading this process's environment.
+ *
+ * `getTmuxSocketName()` answers for the process it runs in. A runner that is about to start ANOTHER
+ * process — a scratch fleet — has to know the answer for that process's environment before it starts
+ * it, so the rule is a pure function of (home, the user's real home) and the two getters below are
+ * just it applied to this process. Behaviour of the getters is unchanged.
+ */
+export function tmuxSessionNameFor(home: string, realHome: string | null): string {
+  return realHome !== null && home === realHome ? "agend" : isolatedSuffix(home);
+}
+
+/** Null (= tmux's default socket, the LIVE server) only for the user's real home. */
+export function tmuxSocketNameFor(home: string, realHome: string | null): string | null {
+  return realHome !== null && home === realHome ? null : isolatedSuffix(home);
+}
+
 /** Tmux session name — unique per AGEND_HOME to avoid cross-instance interference. */
 export function getTmuxSessionName(): string {
-  const home = getAgendHome();
-  return isDefaultAgendHome(home) ? "agend" : isolatedSuffix(home);
+  return tmuxSessionNameFor(getAgendHome(), realDefaultAgendHome());
 }
 
 /**
@@ -59,8 +75,7 @@ export function getTmuxSessionName(): string {
  * its own, so it can never reach — and clean up — another fleet's server.
  */
 export function getTmuxSocketName(): string | null {
-  const home = getAgendHome();
-  return isDefaultAgendHome(home) ? null : isolatedSuffix(home);
+  return tmuxSocketNameFor(getAgendHome(), realDefaultAgendHome());
 }
 
 /** Ensure an auto-created workspace has a .git directory (best effort). */
