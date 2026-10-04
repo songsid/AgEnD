@@ -202,7 +202,7 @@ describe("what counts as 'the same dialog still there'", () => {
 
   it("a redraw of the same dialog (spinner frame, elapsed time, token counter, layout padding) is still the same dialog", async () => {
     let i = 0;
-    const ticking = () => `${PROMPT}  ${"⠋⠙⠹⠸⠼⠴"[i % 6]} waiting ${i + 1}s${" ".repeat(i % 2 ? 4 : 7)}tokens: ${1000 + i}   ${10 + i}:0${i % 10}  ${i + 2}.5k tokens${" ".repeat(i % 3)}\n`;
+    const ticking = () => `${PROMPT}  ${"⠋⠙⠹⠸⠼⠴"[i % 6]} waiting ${i + 1}s${" ".repeat(i % 2 ? 4 : 7)}tokens: ${1000 + i}   ${10 + i}:0${i % 10}  ${i + 2}.5k tokens${" ".repeat(i % 3)}\n  footer line\n`;
     const { screen, ignored, poll, stop } = rig({}, { onKey: screen => { i++; screen.text = ticking(); } });
     screen.text = ticking();
     await poll(16_800);
@@ -213,6 +213,15 @@ describe("what counts as 'the same dialog still there'", () => {
   it("a request whose only difference is a NUMBER (/tmp/request-1 → /tmp/request-2) is another request", async () => {
     let n = 0;
     const { ignored, keys, poll, stop } = rig({}, { onKey: screen => { n++; screen.text = PROMPT.replace("folder?", `folder? /tmp/request-${n}`); } });
+    await poll(100_000);
+    expect(keys.length).toBeGreaterThanOrEqual(15);
+    expect(ignored).toEqual([]);
+    stop();
+  });
+
+  it("…also when the number sits next to a unit-like letter (/tmp/backup-5m vs /tmp/backup-6m is not an elapsed time)", async () => {
+    let n = 0;
+    const { ignored, keys, poll, stop } = rig({}, { onKey: screen => { n++; screen.text = PROMPT.replace("folder?", `folder? /tmp/backup-${n}m`); } });
     await poll(100_000);
     expect(keys.length).toBeGreaterThanOrEqual(15);
     expect(ignored).toEqual([]);
@@ -365,6 +374,18 @@ describe("a read that outlives its spawn or its monitors changes nothing", () =>
     await r.poll(100);
     expect(r.ignored).toEqual([]);
     expect(r.parked).toEqual([]);
+  });
+
+  it("a poll that was still reading the pane when the monitors froze presses nothing afterwards", async () => {
+    let n = 0;
+    const r = rig({}, { onKey: screen => { if (++n === 3) screen.gate = new Promise<void>(resolve => { screen.release = resolve; }); } });
+    await r.poll(5_600); await r.poll(5_600); await r.poll(5_600);
+    await r.poll(5_600);                                   // the next poll has started and waits on its first read
+    expect(r.keys).toHaveLength(3);
+    r.d.freezeRuntimeMonitors();
+    r.screen.gate = null; r.screen.release?.();
+    await r.poll(2_000);
+    expect(r.keys).toHaveLength(3);
   });
 
   it("…and a stale poll cannot overwrite the parked state a newer spawn built for another dialog", async () => {
