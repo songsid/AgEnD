@@ -54,8 +54,10 @@ describe.each([["a classic script", loadAsScript], ["a CommonJS module", loadAsM
       [ctrl(), false, "login", "swallow"], [ctrl({ shiftKey: true, key: "C" }), false, "login", "swallow"],
       // pass: every other terminal keeps its ^C (an installer must be stoppable), and so does an unknown kind
       [ctrl(), false, "install", "pass"], [ctrl(), false, "", "pass"], [ctrl(), false, "something-new", "pass"],
-      // pass: Cmd+C with nothing selected sends nothing in xterm anyway; it is not a ^C and the login page need not eat it
-      [key({ metaKey: true }), false, "login", "pass"],
+      // login: Cmd+C (and Ctrl+Cmd+C) with nothing selected goes the way Ctrl+C does — the same on every platform (xterm sends no ^C for it)
+      [key({ metaKey: true }), false, "login", "swallow"], [ctrl({ metaKey: true }), false, "login", "swallow"],
+      // pass: everywhere else Cmd+C with nothing selected is left alone
+      [key({ metaKey: true }), false, "install", "pass"], [key({ metaKey: true }), false, "", "pass"], [ctrl({ metaKey: true }), false, "install", "pass"],
       // pass: nothing but Ctrl/Cmd+C is ever touched
       [key(), false, "login", "pass"], [key(), true, "login", "pass"],                                   // a plain "c"
       [ctrl({ key: "d", code: "KeyD" }), true, "login", "pass"], [ctrl({ key: "z", code: "KeyZ" }), false, "login", "pass"],
@@ -86,7 +88,7 @@ describe.each([["a classic script", loadAsScript], ["a CommonJS module", loadAsM
   });
 
   describe("submitCode", () => {
-    const run = (raw: unknown) => { const sent: string[] = []; return { result: api.submitCode(raw, s => sent.push(s)), sent }; };
+    const run = (raw: unknown) => { const sent: string[] = []; return { result: api.submitCode(raw, s => { sent.push(s); return true; }), sent }; };
 
     it("sends the code once, followed by Enter, and says to clear the box", () => {
       const { result, sent } = run("AbC123_-x#stateYZ");
@@ -118,7 +120,7 @@ describe.each([["a classic script", loadAsScript], ["a CommonJS module", loadAsM
     it("a second click, or a second Enter, has nothing to send once the box was cleared (the page empties it on `clear`)", () => {
       let box = "AbC#xyz";
       const sent: string[] = [];
-      for (let i = 0; i < 3; i++) { const r = api.submitCode(box, s => sent.push(s)); if (r.clear) box = ""; }
+      for (let i = 0; i < 3; i++) { const r = api.submitCode(box, s => { sent.push(s); return true; }); if (r.clear) box = ""; }
       expect(sent).toEqual(["AbC#xyz\r"]);
     });
 
@@ -133,8 +135,23 @@ describe.each([["a classic script", loadAsScript], ["a CommonJS module", loadAsM
       } finally { for (const spy of spies) spy.mockRestore(); }
     });
 
+    it.each([
+      ["a connection that is down (send says false)", () => false],
+      ["a send that says nothing", () => undefined],
+      ["a send that says something else", () => 1],
+      ["a socket that throws", () => { throw new Error("INVALID_STATE_ERR"); }],
+    ])("%s: not sent, the box keeps the code, nothing is replayed, and no exception escapes", (_name, send) => {
+      const calls: string[] = [];
+      let result: ReturnType<Api["submitCode"]> | undefined;
+      expect(() => { result = api.submitCode("AbC#xyz", s => { calls.push(s); return (send as (s: string) => unknown)(s) as boolean; }); }).not.toThrow();
+      expect(result).toEqual({ sent: false, clear: false, notice: "not-sent" });
+      expect(calls, "tried exactly once").toEqual(["AbC#xyz\r"]);
+      expect(api.NOTICES["not-sent"]).toMatch(/Not sent/);
+      expect(api.NOTICES["not-sent"]).toMatch(/still in the box/);
+    });
+
     it("has fixed wording for every notice it can return", () => {
-      expect(Object.keys(api.NOTICES).sort()).toEqual(["empty", "sent", "too-long"]);
+      expect(Object.keys(api.NOTICES).sort()).toEqual(["empty", "not-sent", "sent", "too-long"]);
     });
 
     it("the largest frame it can produce stays far under the server's 4096-byte limit", () => {
@@ -163,7 +180,8 @@ function page() {
     readyState = 1; binaryType = ""; sent: Array<Uint8Array | string> = [];
     onopen?: () => void; onmessage?: (ev: { data: unknown }) => void; onclose?: (ev: unknown) => void;
     constructor(public url: string) { sockets.push(this as unknown as never); }
-    send(data: Uint8Array | string) { this.sent.push(data); }
+    throwOnSend = false;
+    send(data: Uint8Array | string) { if (this.throwOnSend) throw new Error("InvalidStateError"); this.sent.push(data); }
     close() { this.readyState = 3; }
   }
   const terminals: Array<{ keyHandler?: (ev: unknown) => boolean; selection: boolean; onData?: (s: string) => void; written: unknown[] }> = [];
@@ -215,6 +233,7 @@ describe("terminal.js on the login page", () => {
     expect(term.keyHandler!(ctrl()), "selected → xterm does not handle it, the browser copies").toBe(false);
     term.selection = false;
     expect(term.keyHandler!(ctrl()), "not selected → swallowed").toBe(false);
+    expect(term.keyHandler!(key({ metaKey: true })), "Cmd+C not selected → swallowed too").toBe(false);
     expect(p.bytesSent()).toEqual([]);
   });
 
@@ -248,6 +267,46 @@ describe("terminal.js on the login page", () => {
     expect(p.bytesSent()).toEqual([]);
     expect(p.elements["code"]!.value).toBe(long);
     expect(p.elements["code-msg"]!.textContent).toMatch(/far longer/);
+  });
+
+  describe("while the connection is down the code is NOT lost and NOT reported as sent", () => {
+    it.each([[0, "connecting"], [2, "closing"], [3, "closed"]])("readyState %s (%s): nothing sent, the box keeps the code, the user is told to try again", (state) => {
+      const p = page();
+      p.open("login");
+      (p.socket as unknown as { readyState: number }).readyState = state as number;
+      p.elements["code"]!.value = "AbC123#stateXYZ";
+      p.emit("code-row", "submit");
+      expect(p.bytesSent()).toEqual([]);
+      expect(p.elements["code"]!.value).toBe("AbC123#stateXYZ");
+      expect(p.elements["code-msg"]!.textContent).toMatch(/^Not sent/);
+      expect(p.elements["code-msg"]!.textContent).not.toMatch(/^Sent/);
+      expect(p.elements["code-msg"]!.textContent).not.toContain("AbC123");
+    });
+
+    it("a socket that throws on send: nothing escapes the handler, the box keeps the code", () => {
+      const p = page();
+      p.open("login");
+      (p.socket as unknown as { throwOnSend: boolean }).throwOnSend = true;
+      p.elements["code"]!.value = "AbC123#stateXYZ";
+      expect(() => p.emit("code-row", "submit")).not.toThrow();
+      expect(p.elements["code"]!.value).toBe("AbC123#stateXYZ");
+      expect(p.elements["code-msg"]!.textContent).toMatch(/^Not sent/);
+    });
+
+    it("nothing is replayed on its own when the connection comes back; pressing Send again sends it once", () => {
+      const p = page();
+      p.open("login");
+      const socket = p.socket as unknown as { readyState: number };
+      socket.readyState = 3;
+      p.elements["code"]!.value = "AbC123#stateXYZ";
+      p.emit("code-row", "submit");
+      socket.readyState = 1;
+      expect(p.bytesSent(), "reconnecting alone sends nothing").toEqual([]);
+      p.emit("code-row", "submit");
+      expect(p.bytesSent()).toEqual(["AbC123#stateXYZ\r"]);
+      expect(p.elements["code"]!.value).toBe("");
+      expect(p.elements["code-msg"]!.textContent).toMatch(/^Sent\./);
+    });
   });
 
   it("an empty box is told so, and nothing is sent", () => {

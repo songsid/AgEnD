@@ -133,7 +133,11 @@
     finish(false, "Connection lost.");
   }
 
-  function send(bytes) { if (ws && ws.readyState === 1 && bytes.length) ws.send(bytes); }
+  /** True only when the bytes were handed to an open socket. */
+  function send(bytes) {
+    if (!(ws && ws.readyState === 1 && bytes.length)) return false;
+    try { ws.send(bytes); return true; } catch (e) { return false; }
+  }
 
   function tick() {
     var left = Math.max(0, expiresAt - Date.now());
@@ -156,7 +160,7 @@
   }
   codeRow.addEventListener("submit", function (ev) {
     ev.preventDefault();
-    var result = input.submitCode(codeInput.value, function (s) { send(new TextEncoder().encode(s)); });
+    var result = input.submitCode(codeInput.value, function (s) { return send(new TextEncoder().encode(s)); });
     if (result.clear) codeInput.value = "";
     codeMsg.textContent = input.NOTICES[result.notice] || "";
     if (term) term.focus();

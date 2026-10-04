@@ -25,12 +25,13 @@
    *   "swallow" send nothing: a login session is one command that a stray ^C kills (the Stop button cancels it)
    *   "pass"    let xterm handle it as it always did
    * Only Ctrl/Cmd+C is ever anything but "pass". With no selection a normal terminal keeps its ^C (`kind` other than
-   * "login": an installer that is running must still be stoppable).
+   * "login": an installer that is running must still be stoppable); on the login page Cmd+C goes the same way as Ctrl+C
+   * (xterm sends nothing for it, so swallowing it costs nothing, and the page behaves the same on every platform).
    */
   function classifyKey(ev, ctx) {
     if (!ev || !isCopyKey(ev) || ev.altKey || !(ev.ctrlKey || ev.metaKey)) return "pass";
     if (ctx && ctx.hasSelection) return "copy";
-    if (ev.ctrlKey && !ev.metaKey && ctx && ctx.kind === "login") return "swallow";
+    if (ctx && ctx.kind === "login") return "swallow";
     return "pass";
   }
 
@@ -41,14 +42,18 @@
   /**
    * One submission of the sign-in code box. A code has no whitespace, so every run of it is dropped (a copy that wrapped
    * across lines, a trailing newline); what is left is sent ONCE as the code followed by Enter, and the box is cleared so a
-   * second click, or a second Enter, has nothing to send. `send` receives a string and is called at most once.
-   * The result never contains the code and nothing here logs: the code is a credential.
+   * second click, or a second Enter, has nothing to send. `send` receives a string, is called at most once, and must
+   * return `true` only when the frame was really queued for the server: a connection that is down, a socket that throws,
+   * or any other answer means NOT sent — the box keeps the code, the user is told to try again, and nothing is replayed
+   * on its own. The result never contains the code and nothing here logs: the code is a credential.
    */
   function submitCode(raw, send) {
     var code = String(raw == null ? "" : raw).replace(/\s+/g, "");
     if (code === "") return { sent: false, clear: false, notice: "empty" };
     if (code.length > MAX_CODE_LENGTH) return { sent: false, clear: false, notice: "too-long" };
-    send(code + "\r");
+    var queued = false;
+    try { queued = send(code + "\r") === true; } catch (e) { queued = false; }
+    if (!queued) return { sent: false, clear: false, notice: "not-sent" };
     return { sent: true, clear: true, notice: "sent" };
   }
 
@@ -56,6 +61,7 @@
   var NOTICES = {
     empty: "Paste the code from the browser first.",
     "too-long": "That is far longer than a sign-in code — copy only the code.",
+    "not-sent": "Not sent — the connection is down. The code is still in the box; wait for it to reconnect, then press Send again.",
     sent: "Sent. The terminal does not show the code; wait for the result above."
   };
 
