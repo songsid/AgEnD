@@ -10,10 +10,16 @@
 - **Discord slash 指令現在遵循同一張指令表（#1148）。** 指令適用於哪些頻道、誰能使用，改由一個地方宣告（`src/command-table.ts`），不再散在兩份複製的 handler 裡；
   選單描述上的 🔒 由這張表產生，標籤不會再和規則不一致。它位於先前加入的授權關卡「後面」，只會收窄關卡放行的範圍。授權級別為：*任何人*、
   *頻道管理員*（fleet 頻道＝fleet admin；ClassicBot 頻道＝fleet admin **或** ClassicBot admin）、*fleet admin*、*ClassicBot admin*。行為變更：
-  - ClassicBot 頻道的 **`/stop`** 需要頻道管理員（原本 Discord 上任何人都能用；Telegram 本來就要管理員）。
-  - **`/compact`** 需要頻道管理員（原本標了 🔒 卻對所有人開放）。
+  - ClassicBot 頻道的 **`/stop`** 在 Discord 上現在需要 ClassicBot admin，與 Telegram 一向相同。原本 Discord 上任何人都能用；只是 fleet admin、
+    但不是 ClassicBot admin 的人，現在在 Discord 上不能再停止 ClassicBot 頻道（在 Telegram 上本來就不行）。
+  - Discord 的 **`/compact`** 需要頻道管理員（原本標了 🔒，但在 Discord 上沒有任何檢查）。Telegram 不受此變更影響：ClassicBot 聊天仍要 ClassicBot admin，
+    fleet topic 內則沒有檢查。
   - **`/save`** 需要「該頻道類型」的管理員（原本連 fleet 頻道也要求 ClassicBot admin，導致 fleet admin 被拒、ClassicBot admin 反而能貼進 fleet instance）。
-  - ClassicBot 頻道的 **`/pause`、`/wake`、`/collab`** 現在也接受 fleet admin（原本只收 ClassicBot admin）。
+  - ClassicBot 頻道的 **`/pause`、`/wake`、`/collab`** 在 Discord 上現在也接受 fleet admin（原本只收 ClassicBot admin）。Telegram 不變：ClassicBot 的
+    `/pause`、`/wake` 仍需 ClassicBot admin。
+  - **`/start`** 兩個平台都沒有變，表中也不再寫成「任何人」：Discord 只看 guild allowlist；Telegram 私聊看使用者 allowlist，群組則要群組 allowlist **加上**
+    ClassicBot admin。表中把它標為由 handler 自行判斷。
+  - 表中新增 Telegram 欄，記錄 Telegram handler 與 Discord 不同的格子，並有測試（`tests/command-gates-by-platform.test.ts`）以真實 Telegram handler 對照。
   - **`/stop` 與 `/dashboard` 現在會顯示 🔒**；`/model`、`/effort`、`/clear` 與各 admin 指令，對原本能用的人沒有變化。
   - 在不適用的地方輸入的指令（例如沒有 agent 的頻道輸入 `/ctx`）會在執行任何東西之前，用一行說明拒絕；已不存在的指令會得到回覆，而不是「應用程式沒有回應」。
   文字輸入的 `/指令`（相對於 slash 指令）由後續變更處理。

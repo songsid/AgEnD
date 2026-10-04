@@ -54,13 +54,14 @@ Commands available in regular channels/groups/private chats.
 | Command | Permission Check | Who Can Use |
 |---------|-----------------|-------------|
 | `/start` | `isGuildAllowed(guildId)` | All users in allowed guilds |
-| `/stop` | None (beyond active agent) | All users |
+| `/stop` | `isAdmin(userId)` | ClassicBot admins only (same as Telegram) |
 | `/chat <msg>` | None (beyond active agent) | All users |
 | `/ctx` | None | All users |
-| `/compact` | `isAdmin(userId)` | Admin users only |
-| `/save <file>` | `isAdmin(userId)` | Admin users only |
-| `/load <file>` | `isAdmin(userId)` | Admin users only |
-| `/collab` | `isAdmin(userId)` | Admin users only |
+| `/compact` | `isModelAdmin` | Fleet admin or ClassicBot admin |
+| `/save <file>` | `isModelAdmin` | Fleet admin or ClassicBot admin |
+| `/load <file>` | `isAdmin(userId)` | ClassicBot admins only |
+| `/collab` | `isModelAdmin` | Fleet admin or ClassicBot admin |
+| `/pause`, `/wake` | `isModelAdmin` | Fleet admin or ClassicBot admin (Telegram: ClassicBot admin only) |
 | `@mention` (collab) | None | All users (when collab enabled) |
 
 ### Telegram ClassicBot — Private Chat
@@ -69,6 +70,8 @@ Commands available in regular channels/groups/private chats.
 |---------|-----------------|-------------|
 | `/start` | `isUserAllowed(userId)` | Allowed users (empty = all) |
 | `/stop` | `isAdmin(userId)` | Admin only |
+| `/compact`, `/save`, `/pause`, `/wake` | `isAdmin(userId)` | ClassicBot admin only (a fleet admin alone is refused) |
+| `/model`, `/clear` | `isModelAdmin` | Fleet admin or ClassicBot admin |
 | Direct message | None (after /start) | All users |
 
 ### Telegram ClassicBot — Group Chat
@@ -112,7 +115,7 @@ Message arrives
 
 ## Known Issues & Notes
 
-1. **Discord `/start` `/stop` have no admin check** — any user in an allowed guild can start/stop agents. By design (guild whitelist = trust boundary).
+1. **Discord `/start` has no admin check** — any user in an allowed guild can start an agent. By design (guild whitelist = trust boundary). `/stop` is different: it needs a ClassicBot admin on both Discord and Telegram. The per-platform gates are listed in `src/command-table.ts` (the `telegram` column) and pinned by `tests/command-gates-by-platform.test.ts`.
 
 2. **TG `/start@other_bot` isolation** — commands with `@suffix` targeting a different bot are ignored entirely (v0.0.22-beta.3+).
 

@@ -21,18 +21,28 @@
  *                   channel a fleet admin OR a ClassicBot admin (what `isModelAdmin` always meant)
  *  - fleet-admin    an explicit entry in the INVOKING adapter's `allowed_users`; an empty list means nobody
  *  - classic-admin  a ClassicBot admin only (`admin_users`)
+ *  - handler        the door has admitted the caller and the table asks nothing more: the command's own handler
+ *                   decides, because the rule is not one level. Only `/start` is like this — an allowlist that is a
+ *                   different list on each platform (see `start` below). A command with this level is not locked.
+ *
+ * Platforms: the table is read per platform. `scopes` is what the Discord slash dispatcher enforces; `telegram`, where
+ * present, holds the cells where Telegram's own handlers gate differently (they are not table-driven yet, and each
+ * override is pinned against the real handlers by tests/command-gates-by-platform.test.ts). The audit that produced
+ * this table once folded both platforms into one level per command and lost Telegram's side of it; a cell that holds
+ * for Discord is not thereby true for Telegram, and "most restrictive wins" is not a way to merge them.
  *
  * Scopes: `fleet` is an instance's own channel, `general` the General dispatcher (also a fleet channel, but some
  * commands differ there), `classic` a ClassicBot channel, `none` a channel AgEnD has no agent in.
  */
 export type CommandScope = "fleet" | "general" | "classic" | "none";
-export type CommandLevel = "anyone" | "channel-admin" | "fleet-admin" | "classic-admin";
+export type CommandLevel = "anyone" | "channel-admin" | "fleet-admin" | "classic-admin" | "handler";
+export type Platform = "discord" | "telegram";
 
 /** A locale key, optionally with arguments (`cmd.admin_required` wants the command name). */
 export type Reply = readonly [key: string, ...args: string[]];
 
 export type ScopeRule =
-  | { readonly level: CommandLevel }
+  | { readonly level: CommandLevel; /** For `handler`: what the handler checks, per platform. */ readonly note?: string }
   /** The command does not apply in this kind of channel: say so, with this reply, and do nothing. */
   | { readonly refuse: Reply };
 
@@ -40,7 +50,10 @@ export interface CommandSpec {
   readonly name: string;
   /** Appears in the Discord slash menu. */
   readonly slash: boolean;
+  /** What the Discord slash dispatcher enforces. */
   readonly scopes: Readonly<Record<CommandScope, ScopeRule>>;
+  /** The cells where Telegram's handlers differ from `scopes`; any scope not listed is the same as `scopes`. */
+  readonly telegram?: Readonly<Partial<Record<CommandScope, ScopeRule>>>;
   /** Said when the caller is not at the required level. */
   readonly denied: Reply;
   /** Said instead of `denied` when a fleet-admin command is off because the adapter lists no admins at all. */
@@ -70,22 +83,42 @@ export const COMMANDS: readonly CommandSpec[] = [
   // ── ClassicBot lifecycle ──
   {
     name: "start", slash: true, denied: NOT_AUTHORIZED,
-    // Anyone may start one in a channel nobody has registered (the guild allowlist is its gate, checked by the handler).
-    scopes: { fleet: { refuse: ["classic.topic_bound"] }, general: { refuse: ["classic.topic_bound"] }, classic: { refuse: ["classic.already_active"] }, none: { level: "anyone" } },
+    // Not one level. Discord: the guild allowlist (`isGuildAllowed`) and nothing else — no admin. Telegram private chat:
+    // `isUserAllowed`. Telegram group: `isGroupAllowed` AND a ClassicBot admin. The handler enforces each (the table
+    // only says where it applies), so the single word "anyone" that stood here was wrong for Telegram groups.
+    scopes: {
+      fleet: { refuse: ["classic.topic_bound"] }, general: { refuse: ["classic.topic_bound"] }, classic: { refuse: ["classic.already_active"] },
+      none: { level: "handler", note: "Discord: guild allowlist. Telegram private: user allowlist. Telegram group: group allowlist + ClassicBot admin." },
+    },
   },
-  { name: "stop", slash: true, denied: ["classic.admin_only_stop"], scopes: classicOnly("channel-admin", NO_AGENT) },
+  // A ClassicBot admin on both platforms. Telegram always required one; Discord used to require nothing ("the guild
+  // allowlist is the trust boundary"), then briefly a channel admin, which let a fleet admin stop a channel Telegram
+  // would not have let them stop.
+  { name: "stop", slash: true, denied: ["classic.admin_only_stop"], scopes: classicOnly("classic-admin", NO_AGENT) },
   { name: "chat", slash: true, denied: NOT_AUTHORIZED, scopes: classicOnly("anyone", NO_AGENT_START) },
   { name: "load", slash: true, denied: ["admin.required"], scopes: classicOnly("classic-admin", NO_AGENT_START) },
 
   // ── Per-agent controls ──
-  { name: "pause", slash: true, denied: PERMISSION_DENIED, scopes: inAgentChannels("channel-admin", NO_AGENT) },
-  { name: "wake", slash: true, denied: PERMISSION_DENIED, scopes: inAgentChannels("channel-admin", NO_AGENT) },
-  { name: "compact", slash: true, denied: ["cmd.admin_required", "/compact"], scopes: inAgentChannels("channel-admin", NO_AGENT) },
+  // Telegram's ClassicBot handler asks `isAdmin` (a ClassicBot admin only; a fleet admin alone is refused), where Discord
+  // asks `isModelAdmin` (a fleet admin or a ClassicBot admin).
+  { name: "pause", slash: true, denied: PERMISSION_DENIED, scopes: inAgentChannels("channel-admin", NO_AGENT), telegram: { classic: { level: "classic-admin" } } },
+  { name: "wake", slash: true, denied: PERMISSION_DENIED, scopes: inAgentChannels("channel-admin", NO_AGENT), telegram: { classic: { level: "classic-admin" } } },
+  // Discord had no check at all (the 🔒 was only a label). Telegram: a ClassicBot admin in a ClassicBot chat, and NO
+  // check in a fleet topic.
+  {
+    name: "compact", slash: true, denied: ["cmd.admin_required", "/compact"], scopes: inAgentChannels("channel-admin", NO_AGENT),
+    telegram: { fleet: { level: "anyone" }, general: { level: "anyone" }, classic: { level: "classic-admin" } },
+  },
   { name: "clear", slash: true, denied: PERMISSION_DENIED, scopes: inAgentChannels("channel-admin", NO_AGENT) },
   { name: "model", slash: true, denied: PERMISSION_DENIED, scopes: inAgentChannels("channel-admin", NO_AGENT) },
   { name: "effort", slash: true, denied: PERMISSION_DENIED, scopes: inAgentChannels("channel-admin", NO_AGENT) },
-  { name: "collab", slash: true, denied: NOT_AUTHORIZED, scopes: inAgentChannels("channel-admin", NO_AGENT_START) },
-  { name: "save", slash: true, denied: ["admin.required"], scopes: inAgentChannels("channel-admin", NO_AGENT_START) },
+  // Telegram's typed /collab has no check in a fleet topic and no handler in a ClassicBot chat (the text goes to the agent).
+  { name: "collab", slash: true, denied: NOT_AUTHORIZED, scopes: inAgentChannels("channel-admin", NO_AGENT_START), telegram: { fleet: { level: "anyone" }, general: { level: "anyone" } } },
+  // Telegram: a ClassicBot admin in a ClassicBot chat, no check in a fleet topic (same as /compact).
+  {
+    name: "save", slash: true, denied: ["admin.required"], scopes: inAgentChannels("channel-admin", NO_AGENT_START),
+    telegram: { fleet: { level: "anyone" }, general: { level: "anyone" }, classic: { level: "classic-admin" } },
+  },
   // Anyone who can talk to the agent may talk to it mid-turn, ask a side question, interrupt it or read its context.
   { name: "steer", slash: true, denied: NOT_AUTHORIZED, scopes: inAgentChannels("anyone", NO_AGENT) },
   { name: "btw", slash: true, denied: NOT_AUTHORIZED, scopes: inAgentChannels("anyone", NO_AGENT) },
@@ -111,11 +144,16 @@ export function commandSpec(name: string): CommandSpec | undefined {
   return BY_NAME.get(name);
 }
 
+/** The rule for one scope on one platform: Telegram's override where it has one, else the Discord column. */
+export function ruleFor(spec: CommandSpec, scope: CommandScope, platform: Platform): ScopeRule {
+  return (platform === "telegram" ? spec.telegram?.[scope] : undefined) ?? spec.scopes[scope];
+}
+
 /** True when some scope the command applies in asks for more than `anyone` — what the lock emoji says. */
 export function isLocked(spec: CommandSpec): boolean {
   return SCOPES.some(scope => {
     const rule = spec.scopes[scope];
-    return "level" in rule && rule.level !== "anyone";
+    return "level" in rule && rule.level !== "anyone" && rule.level !== "handler";
   });
 }
 
@@ -136,11 +174,12 @@ export interface CommandChecks {
 
 export type CommandDecision = { allow: true } | { allow: false; reply: Reply };
 
-export function decideCommand(spec: CommandSpec, scope: CommandScope, checks: CommandChecks): CommandDecision {
-  const rule = spec.scopes[scope];
+export function decideCommand(spec: CommandSpec, scope: CommandScope, checks: CommandChecks, platform: Platform = "discord"): CommandDecision {
+  const rule = ruleFor(spec, scope, platform);
   if ("refuse" in rule) return { allow: false, reply: rule.refuse };
   switch (rule.level) {
     case "anyone":
+    case "handler":
       return { allow: true };
     case "channel-admin":
       return checks.channelAdmin() ? { allow: true } : { allow: false, reply: spec.denied };
