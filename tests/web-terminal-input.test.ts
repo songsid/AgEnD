@@ -239,6 +239,17 @@ describe("terminal.js on the login page", () => {
     expect(p.elements["code-msg"]!.textContent).toMatch(/Paste the code/);
   });
 
+  it("a paste that is far too long is refused WITHOUT being thrown away: nothing is sent, the box keeps it, the user is told", () => {
+    const p = page();
+    p.open("login");
+    const long = "y".repeat(2000);
+    p.elements["code"]!.value = long;
+    p.emit("code-row", "submit");
+    expect(p.bytesSent()).toEqual([]);
+    expect(p.elements["code"]!.value).toBe(long);
+    expect(p.elements["code-msg"]!.textContent).toMatch(/far longer/);
+  });
+
   it("an empty box is told so, and nothing is sent", () => {
     const p = page();
     p.open("login");
