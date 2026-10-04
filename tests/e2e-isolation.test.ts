@@ -82,7 +82,9 @@ describe("the plan for a good scratch run", () => {
   });
 
   it("leaves a plain scratch run's allowed commands alone", () => {
-    for (const command of [["agend", "fleet", "start"], ["agend", "fleet", "restart"], ["agend", "validate"], ["agend", "health"], ["node", "dist/cli.js", "fleet", "start"], ["tmux", "-V"]]) {
+    for (const command of [["agend", "fleet", "start"], ["agend", "fleet", "restart"], ["agend", "validate"], ["agend", "health"], ["node", "dist/cli.js", "fleet", "start"], ["tmux", "-V"],
+      // Only the `agend` CLI is read for subcommands: another program's word "update" or "restart" is not ours to refuse.
+      ["echo", "update"], ["curl", "restart"], ["tmux", "start"], ["git", "stop"]]) {
       expect(planScratchRun(request({ command }), machine()).ok, command.join(" ")).toBe(true);
     }
   });
@@ -115,6 +117,11 @@ describe("E01 — it refuses, before anything starts, and says every rule that f
     it("a directory inside the live home, even when it IS under the permitted root", () => {
       const seams = machine({ tmpRoot: "/home/alice" });
       expect(rules(planScratchRun(request({ scratchDir: `${LIVE_HOME}/e2e` }), seams))).toEqual(["scratch-not-live"]);
+    });
+
+    it("the live home is resolved too: a scratch directory inside the place a symlinked ~/.agend really lives", () => {
+      const seams = machine({ tmpRoot: "/srv", realpath: p => (p === LIVE_HOME ? "/srv/data/agend" : p) });
+      expect(rules(planScratchRun(request({ scratchDir: "/srv/data/agend/e2e" }), seams))).toEqual(["scratch-not-live"]);
     });
 
     it("a directory that contains the live home (a cleanup rooted there could reach it)", () => {
@@ -169,7 +176,13 @@ describe("E01 — it refuses, before anything starts, and says every rule that f
   });
 
   describe("the health port", () => {
-    it.each([LIVE_HEALTH_PORT, 0, 80, 1023, 65536, -1, 3.5, Number.NaN, Number.POSITIVE_INFINITY])("%s", port => {
+    it("the default live port is 19280, and is refused even when the caller names no live ports of its own", () => {
+      expect(LIVE_HEALTH_PORT).toBe(19280);
+      const { livePorts: _ignored, ...withoutLivePorts } = machine();
+      expect(rules(planScratchRun(request({ healthPort: 19280 }), withoutLivePorts))).toEqual(["health-port"]);
+    });
+
+    it.each([LIVE_HEALTH_PORT, 0, 80, 1023, 65536, -1, 3.5, 29341.5, 2000.25, Number.NaN, Number.POSITIVE_INFINITY])("%s", port => {
       expect(rules(planScratchRun(request({ healthPort: port }), machine()))).toEqual(["health-port"]);
     });
 
@@ -184,11 +197,11 @@ describe("E01 — it refuses, before anything starts, and says every rule that f
   });
 
   describe("the child environment", () => {
-    it.each(["AGEND_BOT_TOKEN", "AGEND_DISCORD_BOT_TOKEN", "e2e_tg_token", "E2E_", "E2E", "TELEGRAM_TOKEN", "E2E_lower", ""])("a token variable named %j is refused", name => {
+    it.each(["AGEND_BOT_TOKEN", "AGEND_DISCORD_BOT_TOKEN", "e2e_tg_token", "E2E_", "E2E", "TELEGRAM_TOKEN", "E2E_lower", "", "AGEND_E2E_TOKEN", "LIVE_E2E_TG", "E2E_TG-TOKEN", "E2E_TG TOKEN"])("a token variable named %j is refused", name => {
       expect(rules(planScratchRun(request({ tokenVars: [name] }), machine()))).toContain("token-var");
     });
 
-    it.each(["AGEND_HOME", "HOME", "TMUX_TMPDIR", "AGEND_PORT", "AGEND_TMUX_SESSION", "NOTIFY_SOCKET", "PATH", "AWS_SECRET_ACCESS_KEY", "E2E_TG_TOKEN"])("%s cannot be added as an extra", key => {
+    it.each(["AGEND_HOME", "HOME", "TMUX_TMPDIR", "AGEND_PORT", "AGEND_TMUX_SESSION", "NOTIFY_SOCKET", "PATH", "AWS_SECRET_ACCESS_KEY", "E2E_TG_TOKEN", "MOCK", "MOCKING", "MOCKBIRD_KEY", "mock_response", "MOCK_lower"])("%s cannot be added as an extra", key => {
       expect(rules(planScratchRun(request({ extraEnv: { [key]: "x" } }), machine()))).toContain("env-forbidden");
     });
   });
@@ -260,6 +273,18 @@ describe("planTeardown — the only cleanup a run may do", () => {
     ["the scratch directory itself", SCRATCH],
   ])("refuses %s", (_name, tmuxSocketPath) => {
     expect(refusedTeardown(broken({ tmuxSocketPath }))).toContain("teardown-target");
+  });
+
+  it("refuses a path that climbs with .. even when it ends in the run's own socket name", () => {
+    const plan = planOf();
+    expect(refusedTeardown(broken({ tmuxSocketPath: `${SCRATCH}/tm/../tm/tmux-1000/${plan.socketName}` }))).toContain("teardown-target");
+    expect(refusedTeardown(broken({ tmuxSocketPath: `${SCRATCH}/tm/tmux-1000/../../../../tmp/tmux-1000/${plan.socketName}` }))).toContain("teardown-target");
+  });
+
+  it("refuses the 'default' and empty socket names on their own, without the live home to compare against", () => {
+    const noLiveHome = machine({ realAgendHome: null });
+    expect(refusedTeardown(broken({ socketName: "default", tmuxSocketPath: `${SCRATCH}/tm/tmux-1000/default` }), noLiveHome)).toContain("teardown-target");
+    expect(refusedTeardown(broken({ socketName: "", tmuxSocketPath: `${SCRATCH}/tm/tmux-1000/` }), noLiveHome)).toContain("teardown-target");
   });
 
   it("refuses a socket that is inside the scratch directory but not the run's own", () => {
