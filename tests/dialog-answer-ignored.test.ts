@@ -21,7 +21,13 @@ const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), c
 beforeEach(() => { vi.useFakeTimers(); dir = mkdtempSync(join(tmpdir(), "agend-dialog-ignored-")); mkdirSync(join(dir, "inst")); logger.warn.mockClear(); });
 afterEach(() => { vi.useRealTimers(); rmSync(dir, { recursive: true, force: true }); setLocale("en"); });
 
-interface DialogSpec { keys?: string[]; blocksDelivery?: boolean; inputBlocked?: boolean; holdOnly?: boolean; verifyAfterKeys?: boolean; autoResolutionKey?: string }
+interface DialogSpec {
+  keys?: string[]; blocksDelivery?: boolean; inputBlocked?: boolean; holdOnly?: boolean; verifyAfterKeys?: boolean; autoResolutionKey?: string;
+  /** The backend can name the request: here, the line of the prompt that says what is being asked (the way OpenCode's block does). */
+  requestIdentity?: (pane: string) => string | null;
+}
+/** The line of PROMPT that holds the question: what a backend with an identity would return. */
+const QUESTION_LINE = (pane: string): string | null => pane.match(/.*Trust this folder\?.*/)?.[0] ?? null;
 
 /** `onKey` decides what the keys did to the screen; by default nothing (the dialog ignores them). */
 interface Screen {
@@ -194,11 +200,11 @@ describe("a dialog that ignores the daemon's answer", () => {
 });
 
 describe("what counts as 'the same dialog still there'", () => {
-  it("the next QUEUED request, painted at once with different content, means the answer was accepted", async () => {
+  it("the next QUEUED request, painted at once with different content, means the answer was accepted (the backend names the request)", async () => {
     let n = 0;
     // OpenCode keeps its permission requests in a list and shows the first: answering one shows the next with no
     // model round trip. Each Enter here is followed by the next request (another target) before the look.
-    const { ignored, parked, keys, poll, stop } = rig({ blocksDelivery: true, inputBlocked: true }, {
+    const { ignored, parked, keys, poll, stop } = rig({ blocksDelivery: true, inputBlocked: true, requestIdentity: QUESTION_LINE }, {
       onKey: screen => { n++; screen.text = PROMPT.replace("folder?", `folder? /srv/queued-${"abcdefghijklmnop"[n % 16]}${"xyz"[n % 3]}`); },
     });
     await poll(100_000);
@@ -208,11 +214,61 @@ describe("what counts as 'the same dialog still there'", () => {
     stop();
   });
 
+  it("…without a named identity a changed screen proves nothing: no ignored report, and the one-minute parked fallback keeps running", async () => {
+    let n = 0;
+    const { ignored, parked, poll, stop } = rig({ blocksDelivery: true, inputBlocked: true }, {
+      onKey: screen => { n++; screen.text = PROMPT.replace("folder?", `folder? /srv/queued-${n}`); },
+    });
+    await poll(100_000);
+    expect(ignored).toEqual([]);
+    expect(parked).toHaveLength(1);                        // the stated limit: a burst of queued requests here reads as parked
+    stop();
+  });
+
   it("identical requests one after the other look like an ignored answer — said so, not hidden (the pane cannot tell them apart)", async () => {
     const { ignored, poll, stop } = rig({ blocksDelivery: true, inputBlocked: true });
     await poll(16_800);
     expect(ignored).toHaveLength(1);
     stop();
+  });
+
+  it("a timer that ticks only between polls, on a pending request nobody can name: not ignored, but the parked fallback still fires once", async () => {
+    let i = 0;
+    const { screen, ignored, parked, keys, poll, stop } = rig({ blocksDelivery: true, inputBlocked: true });
+    for (let n = 0; n < 15; n++) { i++; screen.text = `${PROMPT}  timer ${i}s\n`; await poll(5_000); }
+    expect(keys.length).toBeGreaterThanOrEqual(14);
+    expect(ignored).toEqual([]);
+    expect(parked).toHaveLength(1);
+    stop();
+  });
+
+  it("…and when the backend names the request, a ticker OUTSIDE it is the same request: the ignored answer is reported (and the parked report is not repeated)", async () => {
+    let i = 0;
+    const { screen, ignored, parked, keys, poll, stop } = rig({ blocksDelivery: true, inputBlocked: true, requestIdentity: QUESTION_LINE }, {
+      onKey: screen => { i++; screen.text = `${PROMPT}  ${"⠋⠙⠹⠸⠼⠴"[i % 6]} waiting ${i}s\n`; },
+    });
+    await poll(75_000);
+    expect(keys.length).toBeGreaterThanOrEqual(14);
+    expect(ignored).toEqual([expect.objectContaining({ attempts: 3, holdsDeliveries: true })]);
+    expect(parked).toEqual([]);
+    stop();
+  });
+
+  it("a different request that the backend names ends the episode AND its parked clock; an unnamed difference ends only the count", async () => {
+    const named = rig({ blocksDelivery: true, inputBlocked: true, requestIdentity: QUESTION_LINE });
+    await named.poll(30_000);
+    named.d.dialogParkedSince = Date.now() - 50_000;       // on screen for 50 s
+    named.screen.text = PROMPT.replace("folder?", "folder? /srv/other");
+    await named.poll(5_600);
+    expect(Date.now() - named.d.dialogParkedSince).toBeLessThan(20_000);   // a new request: the clock started over
+    named.stop();
+    const unnamed = rig({ blocksDelivery: true, inputBlocked: true });
+    await unnamed.poll(30_000);
+    unnamed.d.dialogParkedSince = Date.now() - 50_000;
+    unnamed.screen.text = `${PROMPT}  timer 9s\n`;
+    await unnamed.poll(5_600);
+    expect(Date.now() - unnamed.d.dialogParkedSince).toBeGreaterThanOrEqual(50_000);   // not evidence of anything: the clock runs on
+    unnamed.stop();
   });
 
   it("ANY difference on the screen after the keys — even a ticking spinner or timer — is not proof the answer was ignored: nothing is reported (it errs towards silence)", async () => {

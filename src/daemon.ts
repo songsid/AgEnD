@@ -3054,9 +3054,13 @@ export class Daemon extends EventEmitter {
               this.endDialogEpisode();                       // somebody (or the CLI) already cleared it: that screen is over
               return;
             }
-            // Another request since the last answer (the episode was counted on a different screen): its count, its
-            // report and its parked clock belong to that one.
-            if (this.dialogAnswers?.key === Daemon.answerKey(dialog) && this.dialogAnswers.screen !== currentPane) this.endDialogEpisode();
+            // What is being answered: the request's identity when the backend can name it (verbatim, without whatever
+            // ticks around it), else the whole screen.
+            const before = Daemon.screenOf(dialog, currentPane);
+            // Another request since the last answer: the count and the report belong to that one. Its parked clock goes
+            // too only when the backend vouches for the identity — an unrecognised difference (a timer, a spinner) is
+            // not evidence that the old request was answered, and the one-minute fallback must keep running.
+            if (this.dialogAnswers?.key === Daemon.answerKey(dialog) && this.dialogAnswers.screen !== before) this.endDialogEpisode(dialog.requestIdentity !== undefined);
             if (dialog.verifyAfterKeys && autoKey
               && this.autoResolvedDialogGeneration === this.spawnGeneration
               && this.autoResolvedDialogKey === autoKey) return;
@@ -3102,13 +3106,16 @@ export class Daemon extends EventEmitter {
                 resolved = true;
               }
             } else if (dialog.keys.length > 0) {
-              // Did the keys take? Read the pane again. The dialog still there with EXACTLY the same screen is an answer that
-              // did nothing; any difference (the next queued request, or only a ticker) is not proof it was ignored —
-              // when in doubt, nothing is reported. Two requests that look exactly alike cannot be told apart.
+              // Did the keys take? Read the pane again. The same request still there is an answer that did nothing. A request
+              // the backend names as DIFFERENT (the next queued one), or no dialog at all, means it took. Without a
+              // backend-named identity any difference on the screen (a ticking timer) proves nothing either way: nothing
+              // is reported and the parked clock is left alone. Two requests that look exactly alike cannot be told apart.
               await new Promise(r => setTimeout(r, DIALOG_ANSWER_SETTLE_MS));
               const afterPane = await this.tmux!.capturePane();
               if (stale()) return;                           // (nothing was touched since the last check: only a read)
-              this.noteDialogAnswer(dialog, afterPane === currentPane, currentPane);   // exactly equal ⇒ the same dialog is still there
+              const stillThere = Daemon.dialogMatches(dialog, afterPane);
+              const same = stillThere && Daemon.screenOf(dialog, afterPane) === before;
+              this.noteDialogAnswer(dialog, same ? "ignored" : (!stillThere || dialog.requestIdentity) ? "took" : "unproven", before);
             } else {
               this.breakAnswerStreak(dialog);
             }
@@ -6006,14 +6013,22 @@ export class Daemon extends EventEmitter {
     return { state: "clear" };
   }
 
+  /** What identifies the request on screen: the backend's own identity when it has one, else the whole screen verbatim. */
+  private static screenOf(dialog: RuntimeDialog, pane: string): string {
+    return dialog.requestIdentity?.(pane) ?? pane;
+  }
+
   private static answerKey(dialog: RuntimeDialog): string {
     return `${Daemon.dialogKey(dialog)}\0${dialog.description}`;
   }
 
-  /** The screen being answered is gone: its count, its report and its parked clock end with it. */
-  private endDialogEpisode(): void {
+  /**
+   * The episode being counted is over: its count and its report. Its parked clock ends too (`clearParked`) only when the
+   * dialog is gone or a different request is positively identified — not on a difference nobody can explain.
+   */
+  private endDialogEpisode(clearParked = true): void {
     this.dialogAnswers = null;
-    this.trackDialogParked(null);
+    if (clearParked) this.trackDialogParked(null);
   }
 
   /**
@@ -6035,12 +6050,12 @@ export class Daemon extends EventEmitter {
    * instance sitting there until a hang detector (and only with pending work) notices. The event carries the
    * dialog's static description and a count, never the pane: a pane can hold anything the agent printed.
    */
-  private noteDialogAnswer(dialog: RuntimeDialog, stillOnScreen: boolean, screen: string): void {
+  private noteDialogAnswer(dialog: RuntimeDialog, outcome: "ignored" | "took" | "unproven", screen: string): void {
     const key = Daemon.answerKey(dialog);
     if (!this.dialogAnswers || this.dialogAnswers.key !== key) this.dialogAnswers = { key, ignored: 0, reported: false, screen };   // the exact screen being counted: every answer in the episode saw this same one
     const episode = this.dialogAnswers;
-    if (!stillOnScreen) {
-      this.endDialogEpisode();
+    if (outcome !== "ignored") {
+      this.endDialogEpisode(outcome === "took");
       return;
     }
     episode.ignored++;

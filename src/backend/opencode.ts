@@ -6,7 +6,9 @@ import { type CliBackend, type CliBackendConfig, type ErrorPattern, type Startup
 import {
   cachedOpencodeAutoSupport,
   opencodeAlwaysConfirmActive,
+  opencodeAlwaysRequest,
   opencodePermissionPromptActive,
+  opencodePermissionRequest,
   probeOpencodeAutoSupport,
 } from "./opencode-permission.js";
 
@@ -293,6 +295,7 @@ export class OpenCodeBackend implements CliBackend {
       {
         pattern: /Permission required/i,
         isActive: opencodePermissionPromptActive,
+        requestIdentity: opencodePermissionRequest,
         keys: ["Enter"],
         description: "OpenCode permission prompt — Allow once",
         blocksDelivery: true,
@@ -305,6 +308,7 @@ export class OpenCodeBackend implements CliBackend {
         // with "Allow once". Right+Enter is NOT a cancel: with Cancel already selected it wraps to Confirm.
         pattern: /Always allow/i,
         isActive: opencodeAlwaysConfirmActive,
+        requestIdentity: opencodeAlwaysRequest,
         keys: ["Escape"],
         description: "OpenCode 'Always allow' confirmation — Cancel (back to the prompt)",
         blocksDelivery: true,

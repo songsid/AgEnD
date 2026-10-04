@@ -8,6 +8,8 @@ import {
   helpAdvertisesAutoFlag,
   looksLikeOpencodeHelp,
   opencodeAlwaysConfirmActive,
+  opencodeAlwaysRequest,
+  opencodePermissionRequest,
   opencodePermissionPromptActive,
   probeOpencodeAutoSupport,
   resetOpencodeAutoSupportCacheForTests,
@@ -379,5 +381,37 @@ describe("the runtime dialogs: structural, Allow once", () => {
   it("a prompt scrolled out of the last lines is not live (the agent moved on)", () => {
     const moved = `${fixture(PROMPTS["external directory"])}\n${Array.from({ length: 10 }, (_, i) => `  ┃  agent output line ${i}`).join("\n")}`;
     expect(opencodePermissionPromptActive(moved)).toBe(false);
+  });
+});
+
+describe("which request the prompt is showing", () => {
+  const PROMPT = fixture(PROMPTS["external directory"]);
+
+  it("is the bordered block from the header to the option row, verbatim", () => {
+    const identity = opencodePermissionRequest(PROMPT)!;
+    expect(identity).toContain("△ Permission required");
+    expect(identity).toContain("Access external directory /tmp/ocprobe-ext");
+    expect(identity).toContain("Allow once   Allow always   Reject");
+    expect(identity).not.toContain("OpenCode 1.18.34");           // the status line under it is not part of the request
+  });
+
+  it("does not move with what ticks outside it (a status line, a spinner above), and moves with ANY change inside", () => {
+    const base = opencodePermissionRequest(PROMPT);
+    expect(opencodePermissionRequest(PROMPT.replace("• OpenCode 1.18.34", "⠋ 12s • OpenCode 1.18.34"))).toBe(base);
+    expect(opencodePermissionRequest(`  ⠙ thinking 3s\n${PROMPT}`)).toBe(base);
+    for (const [a, b] of [["/tmp/ocprobe-ext/*", "/tmp/ocprobe-ext-2/*"], ["Patterns", "Patterns "], ["ocprobe-ext", "ocprobe-ex1"]] as const) {
+      expect(opencodePermissionRequest(PROMPT.replaceAll(a, b)), `${a} → ${b}`).not.toBe(base);
+    }
+  });
+
+  it("is null when no prompt is live, and for the Always page it names the page's own block", () => {
+    expect(opencodePermissionRequest(READY)).toBeNull();
+    expect(opencodePermissionRequest(ALWAYS)).toBeNull();
+    expect(opencodeAlwaysRequest(PROMPT)).toBeNull();
+    expect(opencodeAlwaysRequest(ALWAYS)).toContain("Always allow");
+  });
+
+  it("both dialogs carry it", () => {
+    for (const dialog of new OpenCodeBackend(dir).getRuntimeDialogs()) expect(dialog.requestIdentity).toBeTypeOf("function");
   });
 });
