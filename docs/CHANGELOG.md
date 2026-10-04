@@ -177,6 +177,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   are unaffected.
 
 ### Added
+- **A kiro engine ledger, the baseline for the coming V1 → V3 move.** Every kiro launch is recorded in
+  `<data dir>/kiro-engine-ledger.json` (owner-only): the instance's working directory and credential profile,
+  the kiro-cli version, the AgEnD version, the UI and the engine flags AgEnD pinned — the last launch plus one
+  history row per change. It sits outside the instance directory so `replace_instance` does not erase it. It
+  never stops a launch: a ledger that cannot be written is skipped.
+- **A V3 kiro instance resumes only the V3 session it owns, by id.** kiro's `--resume` on V3 takes the
+  newest conversation in the directory from any engine and converts a classic one into a new V3 copy on every
+  launch. A V3 instance now starts fresh, and its next launch takes up the session that fresh launch made —
+  only when that is certain: created after the fresh start, owned by nobody (ownership is an exclusive claim
+  under `<data dir>/kiro-v3/`), and with no other V3 instance in the same directory waiting for its own. After
+  that it resumes that session by id while its claim is held; a skipped resume gives it up. A fresh start
+  is recorded before the launch, and one that cannot be recorded refuses the launch rather than risk resuming
+  the session it gave up later. Anything less certain starts fresh again,
+  so two V3 instances sharing a working directory each start fresh. A classic conversation reaches V3 only
+  through an explicit migration. `kiro_ui: v3` itself is still refused by validation until V3 runs unattended
+  (#849).
 - **`/login` says which fleet it belongs to.** Every AgEnD bot in a Discord guild registers its own
   `/login`, so the slash menu listed identical commands and a picker could come from another fleet
   than the one you meant. Its description now ends with the fleet's label, and the backend picker
