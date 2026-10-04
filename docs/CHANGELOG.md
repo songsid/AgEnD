@@ -199,7 +199,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 - **A CLI dialog that ignores AgEnD's answer is now reported within about 15 seconds, for every backend.** AgEnD
   answers a runtime dialog (a permission prompt, a trust prompt, a picker) by pressing its keys; when the SAME
-  dialog — same kind, same content (spinners, counters and spacing do not count) — is still on screen right after
+  dialog — same kind, same content (only spinners, elapsed times, clocks and token counters are ignored; a different
+  path or number is a different request) — is still on screen right after
   the keys, three answers in a row, the instance's topic and the fleet are
   told once ("not taking AgEnD's answer… answer it by hand", with a note when deliveries are held). Before, a
   dialog that held deliveries was reported only after a minute, and one that did not (kiro trust, muse/grok tool
