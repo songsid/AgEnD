@@ -332,6 +332,18 @@ describe("lifecycle", () => {
     await session.poll();
     expect(done[0]).toMatchObject({ ok: false, exitCode: 1, suggest: "relogin", detail: "still holds a token — re-login logs out first" });
   });
+  it("the claude login's refused-code exit reads as a refused code, not as 'Ended: exited with code 1'", async () => {
+    const { LOGIN_FLOWS } = await import("../src/login-flows.js");
+    const flow = LOGIN_FLOWS["claude-code"]!;
+    const { session, backend, done } = make({ observe: { successPattern: flow.successPattern, failures: flow.failures } });
+    await session.start();
+    backend.pane = "Paste code here if prompted > Login failed: Request failed with status code 400\nPane is dead (status 1)";
+    backend.status = { alive: false, exitCode: 1 };
+    await session.poll();
+    expect(done[0]).toMatchObject({ ok: false, exitCode: 1, suggest: "relogin" });
+    expect(done[0].detail).toMatch(/sign-in code was rejected/);
+    expect(done[0].detail).not.toMatch(/exited with code/);
+  });
   it("success pattern seen → ok even with a non-zero exit; and after 15s grace while still alive", async () => {
     const a = make({ observe: { successPattern: /Logged in successfully/ } }); await a.session.start();
     a.backend.pane = "Logged in successfully";

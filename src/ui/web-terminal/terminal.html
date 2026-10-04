@@ -26,6 +26,13 @@
   <noscript><p role="alert">JavaScript is required: the token is sent with a script, never as part of a page URL.</p></noscript>
 </section>
 <main id="term" hidden></main>
+<form id="code-row" hidden autocomplete="off">
+  <label for="code">Sign-in code</label>
+  <input id="code" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="1100" placeholder="paste the code here">
+  <button type="submit">Send</button>
+  <span id="code-msg" role="status"></span>
+  <p id="code-hint">The terminal does not show what you paste. Paste the code once, then press Enter or Send. Ctrl+C is off on this page — use Stop to cancel.</p>
+</form>
 <footer id="keys" hidden>
   <button data-seq="\u001b" type="button">Esc</button>
   <button data-seq="\t" type="button">Tab</button>
@@ -34,12 +41,13 @@
   <button data-seq="\u001b[D" type="button">&larr;</button>
   <button data-seq="\u001b[C" type="button">&rarr;</button>
   <button data-seq="\r" type="button">Enter</button>
-  <button data-seq="\u0003" type="button">Ctrl-C</button>
+  <button id="key-ctrlc" data-seq="\u0003" type="button">Ctrl-C</button>
 </footer>
 <div id="done" hidden></div>
 <script src="assets/xterm.js"></script>
 <script src="assets/addon-fit.js"></script>
 <script src="assets/addon-web-links.js"></script>
+<script src="assets/terminal-input.js"></script>
 <script src="assets/terminal.js"></script>
 </body>
 </html>

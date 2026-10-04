@@ -183,3 +183,33 @@ describe("tunnelOk", () => {
     }
   });
 });
+
+describe("claude-code: a sign-in code the server refuses (live-captured, claude 2.1.289)", () => {
+  const failures = LOGIN_FLOWS["claude-code"]!.failures!;
+  // What the pane held after a well-formed code was refused: the command printed this and exited 1.
+  const REFUSED = [
+    "Opening browser to sign in…",
+    "If the browser didn't open, visit: https://claude.com/cai/oauth/authorize?code=true&client_id=x",
+    "Paste code here if prompted > Login failed: Request failed with status code 400",
+    "Pane is dead (status 1, Sun Oct  4 22:42:01 2026)",
+  ].join("\n");
+  // What it held after a MALFORMED code: the prompt stays open for another try, so this is not a failure.
+  const INVALID = "Paste code here if prompted > Invalid code. Please make sure the full code was copied.";
+
+  it("maps the refusal to words that say what to do, and suggests starting over", () => {
+    const hit = failures.find(f => f.pattern.test(REFUSED));
+    expect(hit?.suggest).toBe("relogin");
+    expect(hit?.message).toMatch(/rejected/);
+    expect(hit?.message).toMatch(/pasted more than once/);
+    expect(hit?.message).toMatch(/\/login again/);
+  });
+
+  it("does not claim a failure for a code the CLI merely called invalid (it is still waiting)", () => {
+    expect(failures.some(f => f.pattern.test(INVALID))).toBe(false);
+  });
+
+  it("does not match a successful login, or the bare prompt", () => {
+    expect(failures.some(f => f.pattern.test("Login successful"))).toBe(false);
+    expect(failures.some(f => f.pattern.test("Paste code here if prompted > "))).toBe(false);
+  });
+});

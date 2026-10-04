@@ -243,6 +243,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `cloudflared` on `PATH`. See "Finishing a /login away from the machine" in `docs/configuration.md`.
 
 ### Fixed
+- **The `/login` browser terminal no longer kills the sign-in when you copy, and shows where the code goes.** Pressing
+  Ctrl+C to copy the link sent an interrupt that ended `claude auth login` (exit 130); the paste and Enter that followed hit a
+  dead session. Now Ctrl+C with text selected copies in every web terminal, and on the login page a Ctrl+C with nothing
+  selected (and the Ctrl-C button) is off — Stop still cancels; the installer terminal keeps its Ctrl+C. The CLI echoes
+  nothing of the code you paste, so it looked as if nothing had happened: the login page now has a code box that sends the
+  code and Enter once and says so (the code is never logged). A code the server refuses ends the command; the page now
+  says the code was rejected (expired, already used, pasted twice, or from another attempt) and to start `/login` again,
+  instead of "exited with code 1".
 - **A rejected Discord slash command registration is reported (#1131).** It was swallowed without a
   log line, and Discord keeps the previous command list when it rejects one, so a new or changed
   command could silently never appear. The fleet now logs every registration (the command
