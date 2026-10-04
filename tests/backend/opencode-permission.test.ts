@@ -69,6 +69,18 @@ describe("which OpenCode takes --auto: read from its own --help", () => {
     for (const cut of cuts) expect(looksLikeOpencodeHelp(cut), cut.slice(-60)).toBe(false);
   });
 
+  it.each(["help", "version", "model", "continue", "session", "prompt", "agent"])("a help missing its --%s row is not believed either (each required flag on its own)", flag => {
+    const rows = HELP["1.18.34"].split("\n");
+    const without = rows.filter(row => !new RegExp(`^\\s*(?:-[A-Za-z0-9],\\s*)?--${flag}(?:[ =<,]|$)`).test(row)).join("\n");
+    expect(without).not.toBe(HELP["1.18.34"]);
+    expect(looksLikeOpencodeHelp(without)).toBe(false);
+  });
+
+  it("the banner and the Options heading are each required on their own", () => {
+    expect(looksLikeOpencodeHelp(HELP["1.18.34"].replace(/^.*opencode \[project\].*$/m, ""))).toBe(false);
+    expect(looksLikeOpencodeHelp(HELP["1.18.34"].replace(/^Options:\s*$/m, ""))).toBe(false);
+  });
+
   it("the flag must be a help ROW, not a word in a description", () => {
     expect(helpAdvertisesAutoFlag("opencode [project]\n  -m, --model  use --auto-complete for models")).toBe(false);
     expect(helpAdvertisesAutoFlag("  -a, --auto   short alias first")).toBe(true);
