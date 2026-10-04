@@ -1435,6 +1435,13 @@ export class Daemon extends EventEmitter {
   private mcpDeathDeferredForPid: number | null = null;
   /** Prevent in-flight monitor callbacks from re-arming after a pause. */
   private runtimeMonitorsFrozen = false;
+  /**
+   * Bumped by every stop / pause / startup abort (they all freeze the monitors). A launch that has to
+   * await something before it touches the pane (a backend's `prepareLaunch`) remembers the value it
+   * started under and gives up if it moved: a stopped instance must not get a window, a config or a
+   * token from a launch that was already in the air. A wake that STARTS after the freeze is unaffected.
+   */
+  private launchFenceEpoch = 0;
   private errorWaitingForRecovery = false; // true = error detected, waiting for ready pattern
   private errorDetectedAt = 0;
   private errorRecoveryDeadlineAt = 0;
@@ -4905,6 +4912,7 @@ export class Daemon extends EventEmitter {
   /** Stop every runtime poller/watcher while preserving IPC and daemon state. */
   private freezeRuntimeMonitors(): void {
     this.runtimeMonitorsFrozen = true;
+    this.launchFenceEpoch++;
     if (this.healthCheckTimer) { clearTimeout(this.healthCheckTimer); this.healthCheckTimer = null; }
     if (this.errorMonitorTimer) { clearInterval(this.errorMonitorTimer); this.errorMonitorTimer = null; }
     // A pause or stop tears the CLI down anyway — the respawn brings a fresh MCP
@@ -8329,6 +8337,7 @@ export class Daemon extends EventEmitter {
   }
 
   private async trySpawnInsideGate(reuseWindow = false, startupTimeoutMs?: number): Promise<boolean> {
+    const launchFence = this.launchFenceEpoch;
     const backendConfig = this.buildBackendConfig();
 
     // Compare freshly-built instructions against the last value the agent was
@@ -8363,6 +8372,9 @@ export class Daemon extends EventEmitter {
     // A backend that has to ask its CLI something before the launch command exists (OpenCode: does
     // this binary take --auto?) does it here, off the event loop, bounded, and never fails the launch.
     try { await this.backend!.prepareLaunch?.(); } catch { /* unknown capability → the backend's conservative form */ }
+    // Thrown, not `false`: a false verdict reads as "the CLI failed to start" and sends the startup path
+    // into its resume-retry / set-the-session-aside handling, for an instance somebody just stopped.
+    if (launchFence !== this.launchFenceEpoch) throw new Error("Launch cancelled: the instance was stopped or paused while the launch was being prepared");
 
     this.backend!.writeConfig(backendConfig);
     this.backend!.preTrust?.(this.config.working_directory);
