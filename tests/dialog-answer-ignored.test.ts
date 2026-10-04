@@ -695,6 +695,32 @@ describe("after the report: slower, never stopped", () => {
     unnamed.stop();
   });
 
+  it("a wall clock that jumps BACK (NTP step, VM resume) does not stall the queue: the backoff has expired, not not-started", async () => {
+    let queued = 6;
+    const { screen, keys, ignored, poll, stop } = rig({ blocksDelivery: true, inputBlocked: true, requestIdentity: QUESTION_LINE }, {
+      onKey: screen => { queued--; if (queued === 0) screen.text = CLEAR; },
+    });
+    await poll(16_800);
+    expect(keys).toHaveLength(3);
+    expect(ignored).toHaveLength(1);
+    vi.setSystemTime(Date.now() - 3_600_000);              // an hour back
+    await poll(180_000);
+    expect(keys).toHaveLength(6);                          // the queue drained anyway
+    expect(screen.text).toBe(CLEAR);
+    stop();
+  });
+
+  it("…and a clock that jumps FORWARD only ends the backoff early (one answer, then the schedule goes on)", async () => {
+    const { keys, poll, stop } = rig();
+    await poll(16_800);
+    vi.setSystemTime(Date.now() + 3_600_000);
+    await poll(5_600);
+    expect(keys).toHaveLength(4);
+    await poll(10_000);
+    expect(keys).toHaveLength(4);                          // and it is backing off again
+    stop();
+  });
+
   it("the backoff is the poll's own business: a stale poll (frozen monitors) is not held back or held up by it", async () => {
     const r = rig();
     await r.poll(16_800);

@@ -176,4 +176,18 @@ describe("a pending permission prompt whose screen keeps changing around it (the
     expect(parked).toEqual([]);
     stop();
   });
+
+  it("…and the same queue still drains when the wall clock jumps back an hour right after the report", async () => {
+    let queuedLeft = 6;
+    const { keys, ignored, stop } = rig(() => (queuedLeft > 0 ? PROMPT : READY));
+    const spy = setInterval(() => { queuedLeft = Math.max(0, 6 - keys.length); }, 1);
+    await ticks(16_800);
+    expect(keys).toHaveLength(3);
+    expect(ignored).toHaveLength(1);
+    vi.setSystemTime(Date.now() - 3_600_000);
+    await ticks(180_000);
+    clearInterval(spy);
+    expect(keys).toHaveLength(6);
+    stop();
+  });
 });

@@ -3041,9 +3041,12 @@ export class Daemon extends EventEmitter {
           // request, an unexplained difference, the dialog gone — is not held back here; the answer path below ends or
           // keeps the episode by its own rules.
           const episode = this.dialogAnswers;
+          // A wall clock that moved BACKWARDS since the last answer (NTP step, VM resume) gives a negative elapsed time:
+          // the backoff has expired, not "not started" — held to it, the answers would stop until the clock caught up.
+          const sinceLastAnswer = episode ? Date.now() - episode.lastAnswerAt : 0;
           if (episode?.reported && episode.key === Daemon.answerKey(dialog)
             && episode.screen === Daemon.screenOf(dialog, pane)
-            && Date.now() - episode.lastAnswerAt < DIALOG_ANSWER_BACKOFF_MS) {
+            && sinceLastAnswer >= 0 && sinceLastAnswer < DIALOG_ANSWER_BACKOFF_MS) {
             answersBackedOff = true;
             continue;
           }
