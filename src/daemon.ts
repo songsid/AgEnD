@@ -3106,10 +3106,9 @@ export class Daemon extends EventEmitter {
               // did nothing; any difference (the next queued request, or only a ticker) is not proof it was ignored —
               // when in doubt, nothing is reported. Two requests that look exactly alike cannot be told apart.
               await new Promise(r => setTimeout(r, DIALOG_ANSWER_SETTLE_MS));
-              if (stale()) return;
               const afterPane = await this.tmux!.capturePane();
-              if (stale()) return;
-              this.noteDialogAnswer(dialog, Daemon.dialogMatches(dialog, afterPane) && afterPane === currentPane, currentPane);
+              if (stale()) return;                           // (nothing was touched since the last check: only a read)
+              this.noteDialogAnswer(dialog, afterPane === currentPane, currentPane);   // exactly equal ⇒ the same dialog is still there
             } else {
               this.breakAnswerStreak(dialog);
             }

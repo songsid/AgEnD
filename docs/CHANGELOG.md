@@ -199,17 +199,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 - **A CLI dialog that ignores AgEnD's answer is now reported within about 15 seconds, for every backend.** AgEnD
   answers a runtime dialog (a permission prompt, a trust prompt, a picker) by pressing its keys; when the SAME
-  dialog — same kind, same content (only spinners, elapsed times, clocks and token counters are ignored; a different
-  path or number is a different request) — is still on screen right after
-  the keys, three answers in a row, the instance's topic and the fleet are
+  dialog — the very same screen, character for character — is still up right after the keys, three answers in a
+  row, the instance's topic and the fleet are
   told once ("not taking AgEnD's answer… answer it by hand", with a note when deliveries are held). Before, a
   dialog that held deliveries was reported only after a minute, and one that did not (kiro trust, muse/grok tool
   approval, agy survey) was never reported and was simply re-answered every 5 s forever. The notice names the
   dialog by its fixed description and a count, never anything from the pane, and is sent once per episode (again
   only after the dialog went away and a new one ignores the answer). A prompt that was answered and replaced by a
   fresh one (a burst of tool prompts, or the next queued request of a different target) is not "stuck", and now also
-  restarts the one-minute parked clock instead of inheriting it. Limit: two requests that look exactly alike, one
-  right after the other, cannot be told apart from the screen and read as an ignored answer.
+  restarts the one-minute parked clock instead of inheriting it. Limits: two requests that look exactly alike, one
+  right after the other, cannot be told apart from the screen and read as an ignored answer; and a screen that
+  changes by itself (a ticking timer) is never proof, so such a dialog is not reported by this check (a dialog that
+  holds deliveries is still reported after a minute, as before).
 - **General hears when kiro-cli can no longer run a kiro instance.** When the installed kiro-cli refuses a kiro
   instance as configured (#1109) — at start, or at a respawn after kiro-cli replaced itself — every General now
   also gets `[system:kiro-incompat]` as an agent: which instances stopped, kiro's reason, that their
