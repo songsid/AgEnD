@@ -53,6 +53,8 @@
 - **[行為變更] dashboard 現在會拒絕 `Host` 不認得的請求。** health/dashboard server 雖然只綁 127.0.0.1，但這擋不住 DNS rebinding：網頁可以把自己的網域解析到 127.0.0.1，再用 script 讀取不需要 cookie 的路由，包含 `/view` 的即時終端畫面（`/api/pane/*`）。這種網頁唯一改不了的是瀏覽器送出的 `Host`，所以所有路由（含 `/health`、`/agent`）現在只有在 `Host` 是 `localhost`、`127.0.0.1`、`[::1]`、fleet 的 `hostname:`，或新增的 `web.allowed_hosts` 列出的名稱時才回應，其餘一律 403（不比對 port）。**如果你是透過反向代理或 port forward、且它呈現的是別的名稱，請把該名稱加進 `web.allowed_hosts`**；每個被拒的名稱第一次出現時，`fleet.log` 會記一行並附上這個提示。CLI、`agend web`、`/dashboard` 與內部呼叫都用 loopback 名稱，不受影響。
 
 ### 新增 (Added)
+- **kiro engine 帳本：之後 V1 → V3 遷移的基線。** 每次啟動 kiro 都會記進 `<data dir>/kiro-engine-ledger.json`（僅擁有者可讀寫）：instance 的工作目錄與 credential profile、kiro-cli 版本、AgEnD 版本、UI 與 AgEnD 鎖定的 engine 參數 —— 保留最近一次啟動，外加每次變更一筆歷史。它放在 instance 目錄之外，所以 `replace_instance` 不會把它清掉。它絕不會擋下啟動：寫不進去就略過。
+- **V3 的 kiro instance 只會依 id 接回自己擁有的 V3 session。** kiro 在 V3 上的 `--resume` 會從任何 engine 挑該目錄最新的對話，碰到 classic 對話就每次啟動都轉出一份新的 V3 副本。現在 V3 instance 會先全新開始，下一次啟動才接手那次全新啟動建立的 session —— 而且只在確定時才接手：建立時間晚於全新開始、沒有人擁有（擁有權是 `<data dir>/kiro-v3/` 底下的獨占 claim）、同一目錄也沒有其他 V3 instance 在等著接手自己的 session。之後在仍持有 claim 時依 id 接回那個 session；略過 resume 會放棄它。全新開始會在啟動前先記錄下來，記錄不了就拒絕這次啟動，免得之後又接回已放棄的 session。任何不確定的情況都會再全新開始，所以共用工作目錄的兩個 V3 instance 會各自全新開始。classic 對話只會經由明確的遷移進入 V3。`kiro_ui: v3` 本身在 V3 能無人值守之前仍會被設定驗證拒絕（#849）。
 - **`/login` 會標明屬於哪個 fleet。** 同一個 Discord guild 裡每個 AgEnD bot 都會註冊自己的 `/login`，所以 slash 選單列出一模一樣的指令，選單也可能來自你不想操作的那個 fleet。現在指令說明的結尾會帶著 fleet 標籤，backend 選單也會顯示 `🖥 Fleet：<標籤>`。標籤取自 fleet.yaml 的 `fleet_label`，預設為主機名稱（AgEnD home 不是 `~/.agend` 時再加上該目錄名稱）。
 - **用手機完成 `kiro-cli` 的 `/login`：選用的公開連結（`web_terminal.tunnel.allow_public`，預設關閉）。** 啟用後，登入確認會在
   **只用本機連結** 旁多一個 **開啟公開連結**；按下就是這次登入的同意。Cloudflare Quick Tunnel 只代理那一次登入的終端；公開連結與存取 token

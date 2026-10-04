@@ -13,6 +13,8 @@ import { type CliBackend, type CliBackendConfig, type ErrorPattern, type Startup
 import { PIE_CLASS } from "../tui-glyphs.js";
 import { KIRO_EXPIRED_LOGIN_SCREEN } from "../login-flows.js";
 import { t } from "../locale.js";
+import { recordKiroLaunch } from "./kiro-engine-ledger.js";
+import { resolveKiroV3Resume } from "./kiro-v3-identity.js";
 
 // Kiro CLI feature gates. These are deliberately separate: the flags shipped
 // in different releases, so one broad "old Kiro" check would still crash some
@@ -662,6 +664,15 @@ export class KiroBackend implements CliBackend {
     let cmd = `${this.binaryPath} chat`;
     for (const flag of plan.flags) cmd += ` ${flag}`;
     this.noteVersionGate();
+    const credentialProfile = resolveCredentialProfile(config.backendOptions);
+    recordKiroLaunch({
+      instance: config.instanceName,
+      workingDirectory: config.workingDirectory,
+      credentialProfile,
+      kiroVersion: this.compatibility.version ?? null,
+      ui,
+      flags: plan.flags,
+    });
     // Record what is actually being launched for the delivery gate (see
     // dropsEnterWhileBusy): the legacy prompt row exists only under
     // --legacy-ui; a binary from before 1.27 paints its own classic screen.
@@ -680,7 +691,18 @@ export class KiroBackend implements CliBackend {
     // store, which is the same thing every brand-new instance does on its first
     // launch. Switching profiles also skips resume outright (crash-state
     // resumeDisabled), so this never fires against a store that just changed.
-    if (!config.skipResume) cmd += " --resume";
+    //
+    // V3 is the exception, and resumes only the session it owns, by id: its
+    // `--resume` takes the newest conversation in the directory from ANY
+    // engine and converts a classic one into a new V3 copy — on every launch.
+    // A skipped resume is recorded there too, so the session given up is not
+    // taken back on the next launch. See kiro-v3-identity.ts.
+    if (ui === "v3") {
+      const id = resolveKiroV3Resume(config.instanceName, config.workingDirectory, credentialProfile, { skipResume: config.skipResume });
+      if (id) cmd += ` --resume-id ${shellQuote(id)}`;
+    } else if (!config.skipResume) {
+      cmd += " --resume";
+    }
     if (config.model) {
       const model = validateModel(config.model);
       warnIfModelMismatch("kiro-cli", model);
