@@ -550,6 +550,14 @@ const DIALOG_PARKED_NOTIFY_MS = 60_000;
 const DIALOG_ANSWER_SETTLE_MS = 300;
 /** Consecutive answers one runtime dialog ignored (still on screen right after the keys) before it is reported for a human. */
 const DIALOG_ANSWER_IGNORED_MAX = 3;
+/**
+ * Once a dialog has been reported as ignoring the answer, how long the scanner waits between answers to the SAME request.
+ * Not a stop: requests that merely look alike (several queued permission requests for one directory) cannot be told
+ * apart from an ignored answer, and each still needs its answer — they get it, slowly — while a dialog that really
+ * ignores the keys is pressed far less. A different request, the dialog going away, or a new spawn restores the
+ * normal pace (and a fresh count).
+ */
+const DIALOG_ANSWER_BACKOFF_MS = 30_000;
 /** How many "dialog painted just before the write → wait → retry" rounds a delivery tolerates. */
 const LATE_DIALOG_WRITE_ROUNDS = 3;
 /** How many times a delivery redoes itself when a spawn starts between its settle wait and its pane write. */
@@ -1208,7 +1216,7 @@ export class Daemon extends EventEmitter {
    * still on screen right after the keys). Not the on-screen duration: a burst of FRESH prompts, each answered, has a
    * dialog on screen at every poll and ignores nothing.
    */
-  private dialogAnswers: { key: string; ignored: number; reported: boolean; screen: string } | null = null;
+  private dialogAnswers: { key: string; ignored: number; reported: boolean; screen: string; lastAnswerAt: number } | null = null;
   /** Current stdin-owning runtime dialog, independent from execution state. */
   private inputBlockedDialogKey: string | null = null;
   /** Generation/signature fence for safety dialogs while their screen is still visible. */
@@ -3022,11 +3030,26 @@ export class Daemon extends EventEmitter {
         // on). Runtime table only: startup patterns are loose on purpose and
         // must never send keys into an ordinary transcript.
         let blockingSeen: RuntimeDialog | null = null;
+        let answersBackedOff = false;
         for (const dialog of dialogs) {
           if (!Daemon.dialogMatches(dialog, pane)) continue;
           this.noteCodexReserveDialog(dialog, pane);
           if (dialog.blocksDelivery || dialog.holdOnly) blockingSeen = dialog;
           if (dialog.holdOnly) break; // recognised, deliberately not answered; trackDialogParked reports it
+          // Reported as ignoring the daemon: the SAME request (the identity the count was made on — verbatim, the
+          // backend's own when it names one) is answered only once per DIALOG_ANSWER_BACKOFF_MS. Anything else — another
+          // request, an unexplained difference, the dialog gone — is not held back here; the answer path below ends or
+          // keeps the episode by its own rules.
+          const episode = this.dialogAnswers;
+          // A wall clock that moved BACKWARDS since the last answer (NTP step, VM resume) gives a negative elapsed time:
+          // the backoff has expired, not "not started" — held to it, the answers would stop until the clock caught up.
+          const sinceLastAnswer = episode ? Date.now() - episode.lastAnswerAt : 0;
+          if (episode?.reported && episode.key === Daemon.answerKey(dialog)
+            && episode.screen === Daemon.screenOf(dialog, pane)
+            && sinceLastAnswer >= 0 && sinceLastAnswer < DIALOG_ANSWER_BACKOFF_MS) {
+            answersBackedOff = true;
+            continue;
+          }
           const autoKey = dialog.autoResolutionKey;
           if (dialog.verifyAfterKeys && autoKey
             && this.autoResolvedDialogGeneration === this.spawnGeneration
@@ -3130,9 +3153,10 @@ export class Daemon extends EventEmitter {
           this.trackDialogParked(blockingSeen);
           return; // Dialog handled (or deliberately deferred): skip error checks this cycle
         }
-        // Reached only when no dialog was answered this poll (none on screen, or only a fenced one): the screen that was
-        // being answered is gone, and the next dialog is a new one.
-        this.dialogAnswers = null;
+        // Reached only when no dialog was answered this poll (none on screen, a fenced one, or one waiting out its
+        // backoff): unless it is the one backing off, the screen that was being answered is gone, and the next dialog is
+        // a new one.
+        if (!answersBackedOff) this.dialogAnswers = null;
         this.trackDialogParked(blockingSeen);
         if (blockingSeen) return; // held dialog: skip error checks this cycle
 
@@ -6052,13 +6076,14 @@ export class Daemon extends EventEmitter {
    */
   private noteDialogAnswer(dialog: RuntimeDialog, outcome: "ignored" | "took" | "unproven", screen: string): void {
     const key = Daemon.answerKey(dialog);
-    if (!this.dialogAnswers || this.dialogAnswers.key !== key) this.dialogAnswers = { key, ignored: 0, reported: false, screen };   // the exact screen being counted: every answer in the episode saw this same one
+    if (!this.dialogAnswers || this.dialogAnswers.key !== key) this.dialogAnswers = { key, ignored: 0, reported: false, screen, lastAnswerAt: 0 };   // the exact screen being counted: every answer in the episode saw this same one
     const episode = this.dialogAnswers;
     if (outcome !== "ignored") {
       this.endDialogEpisode(outcome === "took");
       return;
     }
     episode.ignored++;
+    episode.lastAnswerAt = Date.now();
     if (episode.ignored < DIALOG_ANSWER_IGNORED_MAX || episode.reported) return;
     episode.reported = true;
     // The time-based "parked" report would say the same thing again a minute later.

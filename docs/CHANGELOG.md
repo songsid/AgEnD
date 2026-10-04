@@ -213,6 +213,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   changes by itself where the CLI cannot name the request (a ticking timer) is never proof either way: it is not
   reported by this check, and the one-minute "parked" report of a dialog that holds deliveries keeps running as
   before (only a dialog that is gone, or a request the CLI positively names as different, restarts that clock).
+  After the report AgEnD does not stop answering: it answers the SAME request only every 30 seconds instead of every 5
+  (queued requests that merely look alike each still get their answer, just slowly — a truly ignored dialog is pressed
+  far less), and a different request, the dialog going away, or a respawn restores the normal pace with a fresh count.
 - **General hears when kiro-cli can no longer run a kiro instance.** When the installed kiro-cli refuses a kiro
   instance as configured (#1109) — at start, or at a respawn after kiro-cli replaced itself — every General now
   also gets `[system:kiro-incompat]` as an agent: which instances stopped, kiro's reason, that their

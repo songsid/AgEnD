@@ -248,7 +248,8 @@ describe("what counts as 'the same dialog still there'", () => {
       onKey: screen => { i++; screen.text = `${PROMPT}  ${"⠋⠙⠹⠸⠼⠴"[i % 6]} waiting ${i}s\n`; },
     });
     await poll(75_000);
-    expect(keys.length).toBeGreaterThanOrEqual(14);
+    expect(keys.length).toBeGreaterThanOrEqual(4);         // three answers, then one per backoff (not one per poll)
+    expect(keys.length).toBeLessThanOrEqual(6);
     expect(ignored).toEqual([expect.objectContaining({ attempts: 3, holdsDeliveries: true })]);
     expect(parked).toEqual([]);
     stop();
@@ -383,6 +384,7 @@ describe("a poll that does not complete an answer breaks 'in a row'", () => {
     const r = rig();
     await r.poll(16_800);
     expect(r.ignored).toHaveLength(1);
+    vi.setSystemTime(Date.now() + 31_000);                 // its backoff is over: the next poll answers, and the re-read finds it gone
     r.screen.queue = [PROMPT, CLEAR];
     await r.poll(5_600);
     await r.poll(16_800);                                  // three more ignored answers
@@ -602,6 +604,130 @@ describe("a read that outlives its spawn or its monitors changes nothing", () =>
     expect(r.ignored).toEqual([]);
     await r.poll(30_000);
     expect(r.ignored).toEqual([]);
+  });
+});
+
+describe("after the report: slower, never stopped", () => {
+  it("a dialog that really ignores the keys is pressed far less (once per backoff), not every poll", async () => {
+    const { keys, ignored, poll, stop } = rig();
+    await poll(16_800);
+    expect(keys).toHaveLength(3);
+    expect(ignored).toHaveLength(1);
+    await poll(300_000);                                   // five minutes
+    expect(keys.length).toBeGreaterThanOrEqual(3 + 8);     // still answered, about every 30 s…
+    expect(keys.length).toBeLessThanOrEqual(3 + 11);       // …not every 5 s (that would be ~60 more)
+    expect(ignored).toHaveLength(1);
+    stop();
+  });
+
+  it("QUEUED requests that look exactly alike are each still answered — slowly — and nothing is left unanswered", async () => {
+    // Six identical requests in a queue: every Enter shows the next identical one, until the queue is empty.
+    let queued = 6;
+    const { screen, keys, ignored, poll, stop } = rig({ blocksDelivery: true, inputBlocked: true, requestIdentity: QUESTION_LINE }, {
+      onKey: screen => { queued--; if (queued === 0) screen.text = CLEAR; },
+    });
+    await poll(16_800);
+    expect(keys).toHaveLength(3);                          // three answers, seen as 'ignored' → reported once…
+    expect(ignored).toHaveLength(1);
+    await poll(5_000);
+    expect(keys).toHaveLength(3);                          // …then the pace slows: nothing within the backoff
+    await poll(200_000);
+    expect(keys).toHaveLength(6);                          // every queued request got its answer
+    expect(screen.text).toBe(CLEAR);
+    expect(ignored).toHaveLength(1);                       // and the user was told once, not per request
+    stop();
+  });
+
+  it("…the same with a backend that cannot name the request (whole-screen comparison)", async () => {
+    let queued = 6;
+    const { screen, keys, ignored, poll, stop } = rig({ blocksDelivery: true, inputBlocked: true }, {
+      onKey: screen => { queued--; if (queued === 0) screen.text = CLEAR; },
+    });
+    await poll(16_800);
+    expect(ignored).toHaveLength(1);
+    await poll(200_000);
+    expect(keys).toHaveLength(6);
+    expect(screen.text).toBe(CLEAR);
+    stop();
+  });
+
+  it("a different request resumes the normal pace at once, with its own count", async () => {
+    const { screen, keys, ignored, poll, stop } = rig({ requestIdentity: QUESTION_LINE });
+    await poll(16_800);
+    expect(keys).toHaveLength(3);
+    screen.text = PROMPT.replace("folder?", "folder? /srv/another");
+    await poll(5_600);
+    expect(keys).toHaveLength(4);                          // answered at the very next poll, no waiting out the backoff
+    await poll(11_200);
+    expect(keys).toHaveLength(6);                          // normal pace again until it too has ignored three
+    expect(ignored).toHaveLength(2);
+    stop();
+  });
+
+  it("a dialog gone from a poll, or a new spawn, restores the normal pace", async () => {
+    const gone = rig();
+    await gone.poll(16_800);
+    gone.screen.text = CLEAR; await gone.poll(5_000);
+    gone.screen.text = PROMPT; await gone.poll(5_600);
+    expect(gone.keys).toHaveLength(4);                     // the first answer of a new episode, no backoff
+    gone.stop();
+    const spawned = rig();
+    await spawned.poll(16_800);
+    spawned.d.beginSpawn(); spawned.d.endSpawn();
+    await spawned.poll(5_600);
+    expect(spawned.keys).toHaveLength(4);
+    spawned.stop();
+  });
+
+  it("when the backend names the request, a ticker OUTSIDE it keeps the backoff; without a name any difference restores the normal pace", async () => {
+    const named = rig({ requestIdentity: QUESTION_LINE });
+    await named.poll(16_800);
+    expect(named.keys).toHaveLength(3);
+    named.screen.text = `${PROMPT}  ⠋ waiting 7s\n`;           // a spinner and a timer ticking around the same request
+    await named.poll(10_000);
+    expect(named.keys).toHaveLength(3);                    // still the same request: still waiting out the backoff
+    named.stop();
+    const unnamed = rig();
+    await unnamed.poll(16_800);
+    unnamed.screen.text = `${PROMPT}  waiting 1s\n`;
+    await unnamed.poll(5_600);
+    expect(unnamed.keys).toHaveLength(4);                  // an unexplained difference: not held back, new count
+    unnamed.stop();
+  });
+
+  it("a wall clock that jumps BACK (NTP step, VM resume) does not stall the queue: the backoff has expired, not not-started", async () => {
+    let queued = 6;
+    const { screen, keys, ignored, poll, stop } = rig({ blocksDelivery: true, inputBlocked: true, requestIdentity: QUESTION_LINE }, {
+      onKey: screen => { queued--; if (queued === 0) screen.text = CLEAR; },
+    });
+    await poll(16_800);
+    expect(keys).toHaveLength(3);
+    expect(ignored).toHaveLength(1);
+    vi.setSystemTime(Date.now() - 3_600_000);              // an hour back
+    await poll(180_000);
+    expect(keys).toHaveLength(6);                          // the queue drained anyway
+    expect(screen.text).toBe(CLEAR);
+    stop();
+  });
+
+  it("…and a clock that jumps FORWARD only ends the backoff early (one answer, then the schedule goes on)", async () => {
+    const { keys, poll, stop } = rig();
+    await poll(16_800);
+    vi.setSystemTime(Date.now() + 3_600_000);
+    await poll(5_600);
+    expect(keys).toHaveLength(4);
+    await poll(10_000);
+    expect(keys).toHaveLength(4);                          // and it is backing off again
+    stop();
+  });
+
+  it("the backoff is the poll's own business: a stale poll (frozen monitors) is not held back or held up by it", async () => {
+    const r = rig();
+    await r.poll(16_800);
+    expect(r.keys).toHaveLength(3);
+    r.d.freezeRuntimeMonitors();
+    await r.poll(100_000);
+    expect(r.keys).toHaveLength(3);                        // nothing polls after the freeze, backoff or not
   });
 });
 
