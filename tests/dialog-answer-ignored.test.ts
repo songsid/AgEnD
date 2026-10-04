@@ -262,6 +262,18 @@ describe("a poll that does not complete an answer breaks 'in a row'", () => {
     r.stop();
   });
 
+  it("…and an episode that was already reported does not stay 'reported' across it", async () => {
+    const other = { pattern: /Other prompt/, description: "Other prompt", keys: [] };
+    const r = rig({}, { extraDialogs: [other] });
+    await r.poll(16_800);
+    expect(r.ignored).toHaveLength(1);
+    r.screen.text = "  Other prompt  [Enter]\n"; await r.poll(5_600);
+    r.screen.text = PROMPT;
+    await r.poll(16_800);
+    expect(r.ignored).toHaveLength(2);
+    r.stop();
+  });
+
   it("a poll deferred because the pane lock was busy", async () => {
     const r = rig();
     await twoIgnored(r);
