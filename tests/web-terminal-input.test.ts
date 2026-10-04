@@ -194,7 +194,7 @@ function page() {
     socket.onmessage?.({ data: JSON.stringify({ t: "hello", kind, backend: "claude-code", ttlRemainingMs: 600_000 }) });
     return terminals[0]!;
   };
-  const emit = (id: string, type: string, ev: unknown = { preventDefault() {} }) => elements[id]!.listeners[type]!.forEach(fn => fn(ev));
+  const emit = (id: string, type: string, ev: unknown = { preventDefault() {} }) => elements[id]!.listeners[type]!.forEach((fn: (e: unknown) => void) => fn(ev));
   const bytesSent = () => socket.sent.filter((d): d is Uint8Array => typeof d !== "string").map(d => new TextDecoder().decode(d));
   return { elements, socket, open, emit, bytesSent, consoleSpy, terminals };
 }
