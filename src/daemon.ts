@@ -3042,8 +3042,12 @@ export class Daemon extends EventEmitter {
             const currentPane = await this.tmux!.capturePane();
             if (!Daemon.dialogMatches(dialog, currentPane)) {
               this.updateInputBlockedState(currentPane, dialogs);
+              this.endDialogEpisode();                       // somebody (or the CLI) already cleared it: that screen is over
               return;
             }
+            // What this answer is given to, and when: judged against the screen AFTER the keys, and only while the
+            // spawn / monitors it was taken in are still the current ones.
+            const sample = { spawn: this.spawnGeneration, fence: this.launchFenceEpoch, signature: Daemon.paneSignature(currentPane) };
             if (dialog.verifyAfterKeys && autoKey
               && this.autoResolvedDialogGeneration === this.spawnGeneration
               && this.autoResolvedDialogKey === autoKey) return;
@@ -3065,6 +3069,7 @@ export class Daemon extends EventEmitter {
                   this.autoResolvedDialogGeneration = 0;
                   this.autoResolvedDialogKey = null;
                 }
+                this.breakAnswerStreak();
                 return;
               }
               await new Promise(r => setTimeout(r, 200));
@@ -3085,13 +3090,20 @@ export class Daemon extends EventEmitter {
                 resolved = true;
               }
             } else if (dialog.keys.length > 0) {
-              // Did the keys take? A fresh prompt cannot be painted this soon after an answer (it needs a model
-              // round trip), so the SAME dialog still here is an answer that did nothing.
+              // Did the keys take? Read the pane again. The dialog still there with the SAME content is an answer that did
+              // nothing; the same KIND of dialog with different content (the next queued request) is a new request, so
+              // the answer was accepted. Two requests that look exactly alike cannot be told apart from the pane alone.
               await new Promise(r => setTimeout(r, DIALOG_ANSWER_SETTLE_MS));
-              this.noteDialogAnswer(dialog, Daemon.dialogMatches(dialog, await this.tmux!.capturePane()));
+              const afterPane = await this.tmux!.capturePane();
+              // The read outlived the spawn or the monitors it was taken for: it must not touch a newer episode or report.
+              if (sample.spawn !== this.spawnGeneration || sample.fence !== this.launchFenceEpoch) return;
+              this.noteDialogAnswer(dialog, Daemon.dialogMatches(dialog, afterPane) && Daemon.paneSignature(afterPane) === sample.signature);
+            } else {
+              this.breakAnswerStreak();
             }
           });
           if (!dismissed) {
+            this.breakAnswerStreak();
             this.logger.info({ dialog: dialog.description }, "Dialog dismissal deferred — pane write in flight");
           } else if (dialog.verifyAfterKeys && !resolved) {
             this.logger.warn({ dialog: dialog.description }, "Safety dialog choice was sent but follow-up verification or notice submission failed");
@@ -5983,7 +5995,28 @@ export class Daemon extends EventEmitter {
   }
 
   /**
-   * One answer of the runtime scanner to a dialog, and whether the dialog was still on screen right after it.
+   * What the screen says, without what merely ticks: spinner glyphs, every number (elapsed seconds, counters, token
+   * counts) and the amount of white space are dropped, so a redraw of the SAME dialog compares equal and a different
+   * one (another path, another command, another menu) does not.
+   */
+  private static paneSignature(pane: string): string {
+    return pane.replace(/[\u2800-\u28ff]/g, "").replace(/\d+/g, "#").replace(/\s+/g, " ").trim();
+  }
+
+  /** The screen being answered is gone: its count, its report and its parked clock end with it. */
+  private endDialogEpisode(): void {
+    this.dialogAnswers = null;
+    this.trackDialogParked(null);
+  }
+
+  /** A poll that did not complete an answer-and-look (lock busy, keys not sent, nothing to press) breaks "in a row". */
+  private breakAnswerStreak(): void {
+    if (this.dialogAnswers) this.dialogAnswers.ignored = 0;
+  }
+
+  /**
+   * One answer of the runtime scanner to a dialog, and whether the SAME dialog (same kind, same content) was still
+   * on screen right after it.
    * An answer that took ends the episode (what shows next is a new dialog, so the parked clock restarts too);
    * DIALOG_ANSWER_IGNORED_MAX in a row that did not is reported ONCE per episode, for ANY backend's dialog —
    * not only the ones that hold deliveries — so a human is told in about a quarter of a minute instead of the
@@ -5995,8 +6028,7 @@ export class Daemon extends EventEmitter {
     if (!this.dialogAnswers || this.dialogAnswers.key !== key) this.dialogAnswers = { key, ignored: 0, reported: false };
     const episode = this.dialogAnswers;
     if (!stillOnScreen) {
-      this.dialogAnswers = null;
-      this.trackDialogParked(null);
+      this.endDialogEpisode();
       return;
     }
     episode.ignored++;

@@ -24,8 +24,11 @@ afterEach(() => { vi.useRealTimers(); rmSync(dir, { recursive: true, force: true
 interface DialogSpec { keys?: string[]; blocksDelivery?: boolean; inputBlocked?: boolean; holdOnly?: boolean; verifyAfterKeys?: boolean; autoResolutionKey?: string }
 
 /** `onKey` decides what the keys did to the screen; by default nothing (the dialog ignores them). */
-function rig(spec: DialogSpec = {}, opts: { onKey?: (screen: { text: string }) => void; sendResult?: boolean } = {}) {
-  const screen = { text: PROMPT };
+interface Screen { text: string; queue: string[]; gate: Promise<void> | null; release: (() => void) | null; failKeys: boolean }
+
+function rig(spec: DialogSpec = {}, opts: { onKey?: (screen: Screen) => void; sendResult?: boolean } = {}) {
+  /** `queue`: the next reads of the pane, ahead of `text`. `gate`: reads wait on it. `failKeys`: the keys cannot be sent. */
+  const screen: Screen = { text: PROMPT, queue: [], gate: null, release: null, failKeys: false };
   const keys: string[] = [];
   const dialog = { pattern: /Trust this folder\?/, description: "Trust prompt", keys: ["Enter"], ...spec };
   const backend: any = {
@@ -41,9 +44,9 @@ function rig(spec: DialogSpec = {}, opts: { onKey?: (screen: { text: string }) =
   } as any, join(dir, "inst"), false, backend, undefined, logger);
   d.tmux = {
     isWindowAlive: async () => true,
-    capturePane: async () => screen.text,
+    capturePane: async () => { if (screen.gate) await screen.gate; return screen.queue.length ? screen.queue.shift()! : screen.text; },
     capturePaneWithHistory: async () => screen.text,
-    sendSpecialKey: async (key: string) => { keys.push(key); opts.onKey?.(screen); return opts.sendResult ?? true; },
+    sendSpecialKey: async (key: string) => { if (screen.failKeys) return false; keys.push(key); opts.onKey?.(screen); return opts.sendResult ?? true; },
     pasteText: async () => true,
     getWindowId: () => "@1",
   };
@@ -172,6 +175,125 @@ describe("a dialog that ignores the daemon's answer", () => {
     expect(keys).toEqual(["Enter"]);
     expect(ignored).toEqual([]);
     stop();
+  });
+});
+
+describe("what counts as 'the same dialog still there'", () => {
+  it("the next QUEUED request, painted at once with different content, means the answer was accepted", async () => {
+    let n = 0;
+    // OpenCode keeps its permission requests in a list and shows the first: answering one shows the next with no
+    // model round trip. Each Enter here is followed by the next request (another target) before the look.
+    const { ignored, parked, keys, poll, stop } = rig({ blocksDelivery: true, inputBlocked: true }, {
+      onKey: screen => { n++; screen.text = PROMPT.replace("folder?", `folder? /srv/queued-${"abcdefghijklmnop"[n % 16]}${"xyz"[n % 3]}`); },
+    });
+    await poll(100_000);
+    expect(keys.length).toBeGreaterThanOrEqual(15);
+    expect(ignored).toEqual([]);
+    expect(parked).toEqual([]);
+    stop();
+  });
+
+  it("identical requests one after the other look like an ignored answer — said so, not hidden (the pane cannot tell them apart)", async () => {
+    const { ignored, poll, stop } = rig({ blocksDelivery: true, inputBlocked: true });
+    await poll(16_800);
+    expect(ignored).toHaveLength(1);
+    stop();
+  });
+
+  it("a redraw of the same dialog (spinner frame, counters, spacing) is still the same dialog", async () => {
+    let i = 0;
+    const ticking = () => `${PROMPT}   ${"⠋⠙⠹⠸⠼⠴"[i % 6]} waiting ${i + 1}s  tokens: ${1000 + i}\n`.replace(/ {2,}/g, i % 2 ? "    " : "  ");
+    const { screen, ignored, poll, stop } = rig({}, { onKey: screen => { i++; screen.text = ticking(); } });
+    screen.text = ticking();
+    await poll(16_800);
+    expect(ignored).toHaveLength(1);
+    stop();
+  });
+});
+
+describe("a poll that does not complete an answer breaks 'in a row'", () => {
+  const twoIgnored = async (r: ReturnType<typeof rig>) => { await r.poll(5_600); await r.poll(5_600); };
+
+  it("a poll whose re-read under the lock finds the dialog already gone ends the episode", async () => {
+    const r = rig();
+    await twoIgnored(r);
+    r.screen.queue = [PROMPT, CLEAR];                      // the monitor saw it, the re-read under the lock did not
+    await r.poll(5_600);
+    r.screen.queue = [];
+    await r.poll(5_600);                                   // one ignored answer: not the third
+    expect(r.ignored).toEqual([]);
+    await r.poll(11_200);
+    expect(r.ignored).toEqual([expect.objectContaining({ attempts: 3 })]);
+    r.stop();
+  });
+
+  it("an episode that was reported is over once it is seen gone there: the next one is reported again", async () => {
+    const r = rig();
+    await r.poll(16_800);
+    expect(r.ignored).toHaveLength(1);
+    r.screen.queue = [PROMPT, CLEAR];
+    await r.poll(5_600);
+    await r.poll(16_800);                                  // three more ignored answers
+    expect(r.ignored).toHaveLength(2);
+    r.stop();
+  });
+
+  it("keys that could not be sent", async () => {
+    const r = rig();
+    await twoIgnored(r);
+    r.screen.failKeys = true; await r.poll(5_600); r.screen.failKeys = false;
+    await r.poll(5_600);
+    expect(r.ignored).toEqual([]);
+    await r.poll(11_200);
+    expect(r.ignored).toEqual([expect.objectContaining({ attempts: 3 })]);
+    r.stop();
+  });
+
+  it("a poll deferred because the pane lock was busy", async () => {
+    const r = rig();
+    await twoIgnored(r);
+    let release!: () => void;
+    const holding = r.d.paneWriteLock.run(() => new Promise<void>(resolve => { release = resolve; }));
+    await r.poll(5_600);                                   // the scan finds the lock taken and defers
+    release(); await holding;
+    await r.poll(5_600);
+    expect(r.ignored).toEqual([]);
+    await r.poll(11_200);
+    expect(r.ignored).toEqual([expect.objectContaining({ attempts: 3 })]);
+    r.stop();
+  });
+});
+
+describe("a read that outlives its spawn or its monitors changes nothing", () => {
+  /** The third answer's look at the pane is held; `interrupt` happens while it is pending. */
+  async function heldThirdLook(interrupt: (d: any) => void) {
+    let n = 0;
+    const r = rig({}, { onKey: screen => { if (++n === 3) screen.gate = new Promise<void>(resolve => { screen.release = resolve; }); } });
+    await r.poll(5_600); await r.poll(5_600);
+    await r.poll(5_600);                                   // the third answer: its look is waiting on the gate
+    expect(r.keys).toHaveLength(3);
+    interrupt(r.d);
+    r.screen.gate = null; r.screen.release?.();
+    await r.poll(100);
+    return r;
+  }
+
+  it("a spawn that began meanwhile starts its own count: the old read is dropped, not counted into it", async () => {
+    const r = await heldThirdLook(d => { d.beginSpawn(); d.endSpawn(); });
+    expect(r.ignored).toEqual([]);
+    await r.poll(5_600);                                   // the new spawn's FIRST answer…
+    await r.poll(5_600);                                   // …and its second
+    expect(r.ignored).toEqual([]);
+    await r.poll(5_600);
+    expect(r.ignored).toEqual([expect.objectContaining({ attempts: 3 })]);
+    r.stop();
+  });
+
+  it("monitors frozen meanwhile (stop / pause): nothing is reported afterwards", async () => {
+    const r = await heldThirdLook(d => d.freezeRuntimeMonitors());
+    expect(r.ignored).toEqual([]);
+    await r.poll(30_000);
+    expect(r.ignored).toEqual([]);
   });
 });
 
