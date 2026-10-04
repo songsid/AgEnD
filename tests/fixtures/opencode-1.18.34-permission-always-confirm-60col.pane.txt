@@ -1,0 +1,42 @@
+
+  ┃
+  ┃  go
+  ┃
+
+     ⠧ Read /tmp/ocprobe-ext/x.txt
+
+     ▣  Build · Mock Model
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ┃
+  ┃  △ Always allow
+  ┃
+  ┃  This will allow the following patterns until
+  ┃  OpenCode is restarted
+  ┃
+  ┃  - /tmp/ocprobe-ext/*
+  ┃
+  ┃
+  ┃   Confirm   Cancel
+  ┃
+  ┃  ⇆ select  enter confirm
+  ┃
+

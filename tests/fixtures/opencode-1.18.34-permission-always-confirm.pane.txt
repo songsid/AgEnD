@@ -1,0 +1,42 @@
+
+  ┃                                                                                       Probe
+  ┃  please read the external file
+  ┃                                                                                       Context
+                                                                                          0 tokens
+     ⠋ Read /tmp/ocprobe-ext/hello.txt                                                    0% used
+                                                                                          $0.00 spent
+     ▣  Build · Mock Model
+                                                                                          LSP
+                                                                                          LSPs are disabled
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ┃
+  ┃  △ Always allow
+  ┃
+  ┃  This will allow the following patterns until OpenCode is restarted
+  ┃
+  ┃  - /tmp/ocprobe-ext/*
+  ┃
+  ┃                                                                                       /tmp/ocprobe/proj
+  ┃   Confirm   Cancel                                      ⇆ select  enter confirm
+  ┃                                                                                       • OpenCode 1.18.34
+

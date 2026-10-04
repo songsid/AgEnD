@@ -519,6 +519,13 @@ export interface CliBackend {
   /** Whether this backend re-reads instruction files on --resume (e.g. Claude Code's --append-system-prompt-file). */
   readonly instructionsReloadedOnResume?: boolean;
 
+  /**
+   * Optional: whatever the backend has to ASK its CLI before `buildCommand` (a `--help` probe, a version)
+   * — awaited by the daemon right before the launch command is built, so the answer is cached and
+   * `buildCommand` never forks. Must not throw; a failed probe means "unknown", not a failed launch.
+   */
+  prepareLaunch?(): Promise<void>;
+
   /** Pre-approve a working directory to skip trust dialogs on startup. */
   preTrust?(workingDirectory: string): void;
 

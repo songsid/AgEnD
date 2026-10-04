@@ -1,0 +1,42 @@
+
+  ┃                                                                                       Probe
+  ┃  go
+  ┃                                                                                       Context
+                                                                                          0 tokens
+     → Read /tmp/ocprobe-ext/hello.txt                                                    0% used
+                                                                                          $0.00 spent
+     All done.
+                                                                                          LSP
+     ▣  Build · Mock Model · 1.2s                                                         LSPs are disabled
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ┃
+  ┃
+  ┃
+  ┃  Build auto · Mock Model Mock                                                         /tmp/ocprobe/proj
+  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+   /tmp/ocprobe/proj                                       tab agents  ctrl+p commands    • OpenCode 1.18.34
+

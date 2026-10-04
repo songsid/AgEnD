@@ -1,0 +1,42 @@
+
+  ┃
+  ┃  go
+  ┃
+
+     ⠙ Read /tmp/ocprobe-ext/hello.txt
+
+     ▣  Build · Mock Model
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ┃
+  ┃  △ Permission required
+  ┃    ← Access external directory /tmp/ocprobe-ext
+  ┃
+  ┃  Patterns
+  ┃
+  ┃  - /tmp/ocprobe-ext/*
+  ┃
+  ┃
+  ┃   Allow once   Allow always   Reject
+  ┃
+  ┃  ctrl+f fullscreen  ⇆ select  enter confirm
+  ┃
+
