@@ -11,6 +11,15 @@ vi.mock("node:child_process", async importOriginal => {
   return { ...real, spawn: vi.fn((...args: unknown[]) => { spawned.push(args); return { once() {}, unref() {}, on() {} }; }) };
 });
 
+vi.mock("../src/usage/usage-api.js", async importOriginal => {
+  const real = await importOriginal<typeof import("../src/usage/usage-api.js")>();
+  return { ...real, getUsageSnapshot: vi.fn(async () => ({})) };
+});
+vi.mock("../src/usage/format-rich.js", async importOriginal => {
+  const real = await importOriginal<typeof import("../src/usage/format-rich.js")>();
+  return { ...real, renderUsageMarkdown: vi.fn(() => "ok:usage"), renderUsageHtml: vi.fn(() => "ok:usage") };
+});
+
 import { FleetManager } from "../src/fleet-manager.js";
 import { ClassicChannelManager } from "../src/classic-channel-manager.js";
 import { COMMANDS, commandSpec, decideCommand, isLocked, ruleFor, slashLock, type CommandScope } from "../src/command-table.js";
@@ -67,7 +76,17 @@ async function rig(): Promise<Rig> {
   const any = fm as unknown as Record<string, any>;
   const reached: string[] = [];
   const replies: string[] = [];
-  const sendText = async (chatId: string, text: string) => { replies.push(String(text)); return { messageId: "m", chatId }; };
+  // Some handlers end in a reply that names what they would have done. The reply is the trace, and where the next step
+  // would be real (an update, a doctor run) it is also where the handler is stopped.
+  const stop = new Error("stopped before the side effect");
+  const sendText = async (chatId: string, text: string) => {
+    replies.push(String(text));
+    if (text === t("restart.usage")) reached.push("restart");
+    if (text === "ok:usage") reached.push("usage");
+    if (text === t("update.progress.preparing", 0)) { reached.push("update"); throw stop; }
+    if (text === t("doctor.running")) { reached.push("doctor"); throw stop; }
+    return { messageId: "m", chatId };
+  };
   const tg = { id: "tg", type: "telegram", react: async () => {}, unreact: async () => {}, sendText, editMessage: async () => {}, sendWithKeyboard: async () => ({ messageId: "k", chatId: "x" }) };
   const tgCfg = { id: "tg", type: "telegram", mode: "topic", group_id: FLEET_CHAT, access: { mode: "locked", allowed_users: [FA, "999000"] }, bot_token_env: "X" };
   any.adapter = tg;
@@ -98,7 +117,12 @@ async function rig(): Promise<Rig> {
   any.promptClassicApproval = async () => { reached.push("approval"); };
   any.handleClassicStart = async () => { reached.push("start"); return "ok:start"; };
   any.beginClassicBackendSelection = async () => { reached.push("start"); };
-  any.handleClassicStop = async () => { reached.push("stop"); return "ok:stop"; };
+  // Registered: the stop is recorded and not performed. Not registered: what the real one says.
+  any.handleClassicStop = async (chatId: string, adapterId?: string) => {
+    if (!cm.getInstanceByChannel(chatId, adapterId)) return t("classic.no_agent");
+    reached.push("stop");
+    return "ok:stop";
+  };
   any.toggleFleetCollab = () => { reached.push("collab"); return true; };
   any.applyModel = async () => { reached.push("model"); return "ok"; };
   any.promptModelMenu = async () => { reached.push("model"); };
@@ -109,14 +133,30 @@ async function rig(): Promise<Rig> {
   tc.sendSave = async () => { reached.push("save"); return "ok:save"; };
   tc.runPauseWake = async (_name: string, action: string) => { reached.push(action); return `ok:${action}`; };
   tc.sendSteer = () => { reached.push("steer"); return "ok"; };
+  tc.sendBtw = () => { reached.push("btw"); return "ok"; };
+  tc.getCtxText = async () => { reached.push("ctx"); return "ok:ctx"; };
+  tc.getStatusText = async () => { reached.push("status"); return "ok:status"; };
+  tc.getDashboardText = () => { reached.push("dashboard"); return "ok:dashboard"; };
+  tc.sendSysInfo = async () => { reached.push("sysinfo"); };
+  tc.handleTipsCommand = async () => { reached.push("tips"); };     // entry only: its `on|off` arguments are gated inside
+  any.cancelInstance = () => { reached.push("cancel"); return true; };
+  any.promptLoginBackends = async () => { reached.push("login"); };
+  any.startLoginSession = async () => { reached.push("login"); return "ok"; };
+  any.cancelLoginSession = async () => { reached.push("login"); return "ok"; };
+  any.promptEffortMenu = async () => { reached.push("effort"); };
+  any.applyEffort = async () => { reached.push("effort"); return "ok"; };
 
   async function say(chatId: string, userId: string, text: string, threadId?: string): Promise<void> {
     reached.length = 0;
     replies.length = 0;
-    await any.handleInboundMessage({
-      source: "telegram", adapterId: "tg", chatId, threadId, messageId: `m${Math.random()}`, userId, username: `u${userId}`,
-      text, timestamp: new Date(), chatTitle: "t",
-    });
+    try {
+      await any.handleInboundMessage({
+        source: "telegram", adapterId: "tg", chatId, threadId, messageId: `m${Math.random()}`, userId, username: `u${userId}`,
+        text, timestamp: new Date(), chatTitle: "t",
+      });
+    } catch (err) {
+      if ((err as Error).message !== "stopped before the side effect") throw err;
+    }
   }
   return { fm, reached, replies, say };
 }
@@ -132,6 +172,8 @@ async function reach(r: Rig, command: string, label: string, where: { chatId: st
   return out;
 }
 
+const UNREGISTERED_GROUP = "-1007777777777";
+const UNREGISTERED_PRIVATE = "5570";
 const TG = {
   general: { chatId: FLEET_CHAT },
   fleet: { chatId: FLEET_CHAT, threadId: "30" },
@@ -139,36 +181,108 @@ const TG = {
   classicGroup: { chatId: CLASSIC_GROUP, at: true },
 } as const;
 
+/** `pass`: not a command here — the text goes to the agent (or, in a chat with no agent, is dropped), and no handler runs. */
+type TgCell = Person[] | "pass";
+const PASS_ = "pass" as const;
+const FA_ONLY: Person[] = ["fleetAdmin"];
+const CA_ONLY: Person[] = ["classicAdmin"];
+const FA_OR_CA: Person[] = ["fleetAdmin", "classicAdmin"];
+
 /**
- * Telegram, typed. [command text, what its handler records, who reaches it in a General topic / an instance's topic /
- * a ClassicBot chat]. `null` = the text is not a command there (it goes to the agent) and nothing is asserted.
+ * Telegram, typed, for EVERY command in the table: [text, what its handler records, who reaches it in a General topic /
+ * an instance's topic / a ClassicBot chat]. A chat with no agent is checked separately (nothing reaches anything).
+ * `pass` cells are asserted too: the same three callers, and what happens is that the agent is handed the text and no
+ * handler runs.
  */
-const TG_EXPECTED: Array<{ name: string; text: string; label: string; general: Person[] | null; fleet: Person[] | null; classic: Person[] | null }> = [
+type NoAgentCell = "pass" | "refuse";
+const TG_EXPECTED: Array<{ name: string; text: string; label: string; general: TgCell; fleet: TgCell; classic: TgCell; none: NoAgentCell }> = [
+  // lifecycle (classic /start: its own test below)
+  { name: "start", text: "/start", label: "start", general: PASS_, fleet: PASS_, classic: PASS_ /* replaced: see the /start tests */, none: "pass" },
+  { name: "stop", text: "/stop", label: "stop", general: PASS_, fleet: PASS_, classic: CA_ONLY, none: "refuse" },
+  { name: "chat", text: "/chat hi", label: "agent", general: PASS_, fleet: PASS_, classic: ALL, none: "pass" },
+  { name: "load", text: "/load f.json", label: "load", general: PASS_, fleet: PASS_, classic: PASS_, none: "pass" },
   // fleet topic: NO check; ClassicBot chat: a ClassicBot admin only (a fleet admin alone is refused)
-  { name: "compact", text: "/compact", label: "compact", general: ALL, fleet: ALL, classic: ["classicAdmin"] },
-  { name: "save", text: "/save f.json", label: "save", general: ALL, fleet: ALL, classic: ["classicAdmin"] },
-  // fleet topic: NO check; ClassicBot chat: not a command (the text goes to the agent)
-  { name: "collab", text: "/collab", label: "collab", general: ALL, fleet: ALL, classic: null },
+  { name: "compact", text: "/compact", label: "compact", general: ALL, fleet: ALL, classic: CA_ONLY, none: "refuse" },
+  { name: "save", text: "/save f.json", label: "save", general: ALL, fleet: ALL, classic: CA_ONLY, none: "refuse" },
+  // fleet topic: NO check; ClassicBot chat: not a command
+  { name: "collab", text: "/collab", label: "collab", general: ALL, fleet: ALL, classic: PASS_, none: "pass" },
   // fleet admin in a fleet topic; ClassicBot admin ONLY in a ClassicBot chat
-  { name: "pause", text: "/pause", label: "pause", general: null, fleet: ["fleetAdmin"], classic: ["classicAdmin"] },
-  { name: "wake", text: "/wake", label: "wake", general: null, fleet: ["fleetAdmin"], classic: ["classicAdmin"] },
+  { name: "pause", text: "/pause", label: "pause", general: "pause-needs-instance" as never, fleet: FA_ONLY, classic: CA_ONLY, none: "refuse" },
+  { name: "wake", text: "/wake", label: "wake", general: "pause-needs-instance" as never, fleet: FA_ONLY, classic: CA_ONLY, none: "refuse" },
   // a fleet admin, or in a ClassicBot chat also a ClassicBot admin (`isModelAdmin`)
-  { name: "model", text: "/model x", label: "model", general: ["fleetAdmin"], fleet: ["fleetAdmin"], classic: ["fleetAdmin", "classicAdmin"] },
-  { name: "clear", text: "/clear", label: "clear", general: ["fleetAdmin"], fleet: ["fleetAdmin"], classic: ["fleetAdmin", "classicAdmin"] },
-  // only exists in a ClassicBot chat
-  { name: "stop", text: "/stop", label: "stop", general: null, fleet: null, classic: ["classicAdmin"] },
+  { name: "model", text: "/model x", label: "model", general: FA_ONLY, fleet: FA_ONLY, classic: FA_OR_CA, none: "refuse" },
+  { name: "clear", text: "/clear", label: "clear", general: FA_ONLY, fleet: FA_ONLY, classic: FA_OR_CA, none: "refuse" },
+  // no ClassicBot handler
+  { name: "effort", text: "/effort high", label: "effort", general: FA_ONLY, fleet: FA_ONLY, classic: PASS_, none: "pass" },
+  { name: "steer", text: "/steer hi", label: "steer", general: ALL, fleet: ALL, classic: ALL, none: "refuse" },
+  { name: "btw", text: "/btw hi", label: "btw", general: ALL, fleet: ALL, classic: ALL, none: "refuse" },
+  { name: "cancel", text: "/cancel", label: "cancel", general: ALL, fleet: ALL, classic: ALL, none: "refuse" },
+  { name: "ctx", text: "/ctx", label: "ctx", general: ALL, fleet: ALL, classic: ALL, none: "refuse" },
+  // only the General topic has a handler
+  { name: "status", text: "/status", label: "status", general: FA_ONLY, fleet: PASS_, classic: PASS_, none: "pass" },
+  { name: "restart", text: "/restart x", label: "restart", general: FA_ONLY, fleet: PASS_, classic: PASS_, none: "pass" },   // "x" is no mode: an admin gets the usage line, nobody restarts
+  { name: "login", text: "/login", label: "login", general: FA_ONLY, fleet: PASS_, classic: PASS_, none: "pass" },
+  { name: "update", text: "/update", label: "update", general: FA_ONLY, fleet: PASS_, classic: PASS_, none: "pass" },
+  { name: "doctor", text: "/doctor", label: "doctor", general: FA_ONLY, fleet: PASS_, classic: PASS_, none: "pass" },
+  { name: "dashboard", text: "/dashboard", label: "dashboard", general: FA_ONLY, fleet: PASS_, classic: PASS_, none: "pass" },
+  { name: "sysinfo", text: "/sysinfo", label: "sysinfo", general: ALL, fleet: PASS_, classic: PASS_, none: "pass" },
+  { name: "usage", text: "/usage", label: "usage", general: ALL, fleet: PASS_, classic: PASS_, none: "pass" },
+  // General and an instance's topic; not a ClassicBot chat
+  { name: "tips", text: "/tips", label: "tips", general: ALL, fleet: ALL, classic: PASS_, none: "pass" },
 ];
+const textFor = (e: { name: string; text: string }, scope: "general" | "fleet" | "classic"): string =>
+  e.name === "pause" || e.name === "wake" ? (scope === "general" ? `${e.text} worker` : e.text) : e.text;
+const cellOf = (e: (typeof TG_EXPECTED)[number], scope: "general" | "fleet" | "classic"): TgCell =>
+  e[scope] === ("pause-needs-instance" as never) ? FA_ONLY : e[scope];
+
+/**
+ * What a command that is not a command here looks like. In a ClassicBot private chat the agent is handed the text, as
+ * with any message; in a ClassicBot group a message that does not @mention the bot is only logged — and in neither does a
+ * handler run, whoever sent it.
+ */
+async function passesThrough(r: Rig, text: string, where: { chatId: string; threadId?: string; at?: boolean }): Promise<boolean> {
+  const expected = where.at ? "" : "agent";
+  for (const person of PEOPLE) {
+    const sent = where.at ? text.replace(/^(\/\w+)/, `$1@${BOT}`) : text;
+    await r.say(where.chatId, ID[person], sent, where.threadId);
+    if (r.reached.join(",") !== expected) return false;
+  }
+  return true;
+}
 
 describe("Telegram's typed commands, through the real handlers", () => {
-  it.each(TG_EXPECTED)("/$name", async ({ text, label, general, fleet, classic }) => {
+  const kinds = [["general", "General topic", [TG.general]], ["fleet", "instance topic", [TG.fleet]], ["classic", "ClassicBot chat", [TG.classicPrivate, TG.classicGroup]]] as const;
+
+  it.each(TG_EXPECTED.filter(e => e.name !== "start"))("/$name", async entry => {
     const r = await rig();
-    if (general) expect(await reach(r, text, label, TG.general), "General topic").toEqual(general);
-    if (fleet) expect(await reach(r, text, label, TG.fleet), "instance topic").toEqual(fleet);
-    if (classic) {
-      expect(await reach(r, text, label, TG.classicPrivate), "ClassicBot private chat").toEqual(classic);
-      expect(await reach(r, text, label, TG.classicGroup), "ClassicBot group, /cmd@bot").toEqual(classic);
+    for (const [scope, what, wheres] of kinds) {
+      const cell = cellOf(entry, scope);
+      for (const where of wheres) {
+        // In a ClassicBot group the way to talk to the agent is an @mention, not a command.
+        const text = entry.name === "chat" && "at" in where ? `@${BOT} hi` : textFor(entry, scope);
+        if (cell === "pass") {
+          expect(await passesThrough(r, text, where), `${what}: not a command here, the agent gets the text and nothing else runs`).toBe(true);
+        } else {
+          expect(await reach(r, text, entry.label, { ...where, at: entry.name === "chat" ? false : "at" in where }), what).toEqual(cell);
+        }
+      }
     }
-    expect(spawned).toHaveLength(0);
+    expect(spawned, "nothing real ran").toHaveLength(0);
+  });
+
+  it("a chat with no agent (unregistered group or private chat): a command that exists answers 'no agent' or refuses, one that does not is dropped — nothing reaches a handler either way", async () => {
+    const r = await rig();
+    for (const entry of TG_EXPECTED.filter(e => e.name !== "start")) {
+      for (const where of [{ chatId: UNREGISTERED_GROUP, at: true }, { chatId: UNREGISTERED_PRIVATE, at: false }]) {
+        for (const person of PEOPLE) {
+          const text = where.at ? textFor(entry, "classic").replace(/^(\/\w+)/, `$1@${BOT}`) : textFor(entry, "classic");
+          await r.say(where.chatId, ID[person], text);
+          const what = `${entry.name} as ${person} in ${where.chatId}`;
+          expect(r.reached, what).toEqual([]);
+          expect(r.replies.length, what).toBe(entry.none === "refuse" ? 1 : 0);
+        }
+      }
+    }
   });
 
   it("/pause in General names the instance; the same people reach it", async () => {
@@ -178,7 +292,7 @@ describe("Telegram's typed commands, through the real handlers", () => {
   });
 });
 
-describe("the table's Telegram column says what those handlers do (cell by cell)", () => {
+describe("the table's Telegram column says what those handlers do, for every command (cell by cell)", () => {
   const checksFor = (person: Person, scope: CommandScope) => {
     const fleetAdmin = person === "fleetAdmin";
     const classicAdmin = person === "classicAdmin";
@@ -188,30 +302,39 @@ describe("the table's Telegram column says what those handlers do (cell by cell)
       classicAdmin: () => classicAdmin,
     };
   };
-  const tableWho = (name: string, scope: CommandScope, platform: "telegram" | "discord"): Person[] =>
-    PEOPLE.filter(person => decideCommand(commandSpec(name)!, scope, checksFor(person, scope), platform).allow);
+  /** Who the table lets through on Telegram, or "pass" for a cell that says there is no command there. */
+  const tableCell = (name: string, scope: CommandScope): TgCell => {
+    const spec = commandSpec(name)!;
+    const rule = ruleFor(spec, scope, "telegram");
+    if ("passthrough" in rule) return "pass";
+    return PEOPLE.filter(person => decideCommand(spec, scope, checksFor(person, scope), "telegram").allow);
+  };
 
-  it.each(TG_EXPECTED)("/$name", ({ name, general, fleet, classic }) => {
-    if (general) expect(tableWho(name, "general", "telegram"), "General").toEqual(general);
-    if (fleet) expect(tableWho(name, "fleet", "telegram"), "fleet").toEqual(fleet);
-    if (classic) expect(tableWho(name, "classic", "telegram"), "classic").toEqual(classic);
+  it("is written out for every command the table has, and for no other", () => {
+    expect(TG_EXPECTED.map(e => e.name).sort()).toEqual(COMMANDS.map(c => c.name).sort());
   });
 
-  it("the Discord column is untouched by the Telegram overrides, and a command without an override reads the same on both", () => {
+  it.each(TG_EXPECTED.filter(e => e.name !== "start"))("/$name", entry => {
+    expect(tableCell(entry.name, "general"), "General").toEqual(cellOf(entry, "general"));
+    expect(tableCell(entry.name, "fleet"), "fleet").toEqual(cellOf(entry, "fleet"));
+    expect(tableCell(entry.name, "classic"), "classic").toEqual(cellOf(entry, "classic"));
+    const none = ruleFor(commandSpec(entry.name)!, "none", "telegram");
+    expect("passthrough" in none ? "pass" : "refuse" in none ? "refuse" : "level", "a chat with no agent").toBe(entry.none);
+  });
+
+  it("a pass-through cell is not a refusal and not a permission: the decision says so and asks nobody", () => {
+    const asked: string[] = [];
+    const spy = { fleetAdmin: () => { asked.push("f"); return "ok" as const; }, channelAdmin: () => { asked.push("c"); return true; }, classicAdmin: () => { asked.push("a"); return true; } };
+    expect(decideCommand(commandSpec("status")!, "fleet", spy, "telegram")).toEqual({ allow: false, passthrough: true });
+    expect(decideCommand(commandSpec("collab")!, "classic", spy, "telegram")).toEqual({ allow: false, passthrough: true });
+    expect(asked).toEqual([]);
+  });
+
+  it("the Discord column has no pass-through anywhere (every command applies, or refuses with a reason)", () => {
     for (const spec of COMMANDS) {
       for (const scope of ["fleet", "general", "classic", "none"] as CommandScope[]) {
-        if (!spec.telegram?.[scope]) expect(ruleFor(spec, scope, "telegram"), `${spec.name}/${scope}`).toBe(spec.scopes[scope]);
+        expect("passthrough" in ruleFor(spec, scope, "discord"), `${spec.name}/${scope}`).toBe(false);
         expect(ruleFor(spec, scope, "discord"), `${spec.name}/${scope}`).toBe(spec.scopes[scope]);
-      }
-    }
-  });
-
-  it("an override can only describe a scope the Discord column also has a level for", () => {
-    // (a Telegram-only refusal would be a new rule, not a difference of gate)
-    for (const spec of COMMANDS) {
-      for (const [scope, rule] of Object.entries(spec.telegram ?? {})) {
-        expect("level" in rule!, `${spec.name}/${scope}`).toBe(true);
-        expect("level" in spec.scopes[scope as CommandScope], `${spec.name}/${scope}`).toBe(true);
       }
     }
   });
@@ -269,6 +392,8 @@ describe("/start: not one level, and neither platform's real gate moved", () => 
   it("the table says so: handler-decided, and not a locked command", () => {
     const spec = commandSpec("start")!;
     expect(spec.scopes.none).toMatchObject({ level: "handler" });
+    expect([spec.telegram.general, spec.telegram.fleet], "typed /start in a fleet topic is only text for the agent").toEqual([{ passthrough: true }, { passthrough: true }]);
+    expect([spec.telegram.classic, spec.telegram.none].map(rule => "level" in rule && rule.level)).toEqual(["handler", "handler"]);
     expect(isLocked(spec)).toBe(false);
     expect(slashLock("start")).toBe("");
     // The level asks the caller nothing: whatever the door let through reaches the handler, which does the checking above.
@@ -315,7 +440,7 @@ describe("/stop is a ClassicBot admin on both platforms", () => {
   it("Telegram: only a ClassicBot admin (above); Discord: the table says the same", () => {
     const spec = commandSpec("stop")!;
     expect(spec.scopes.classic).toEqual({ level: "classic-admin" });
-    expect(spec.telegram).toBeUndefined();
+    expect(spec.telegram.classic).toEqual({ level: "classic-admin" });
     expect(isLocked(spec)).toBe(true);
     expect(slashLock("stop")).toBe("🔒 ");
   });

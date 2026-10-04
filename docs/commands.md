@@ -100,7 +100,7 @@ Registered globally via `client.application.commands.set()`.
 ### Fleet Admin (`fleet.yaml` → `channel.access.allowed_users`)
 
 Fleet-level commands — requires fleet admin:
-- `/status`, `/restart`, `/update`, `/doctor`, `/collab`, `/pause`, `/wake`, `/model`, `/effort`, `/clear`, `/login`
+- `/status`, `/restart`, `/update`, `/doctor`, `/pause`, `/wake`, `/model`, `/effort`, `/clear`, `/login`
 
 ### ClassicBot Admin (`classicBot.yaml` → `defaults.admin_users`)
 
@@ -114,7 +114,7 @@ Permission varies by platform/mode:
 - `/compact` — TG Classic: ClassicBot admin. TG fleet topic: all users. DC: fleet admin in a fleet channel, fleet admin or ClassicBot admin in a ClassicBot channel.
 - `/pause`, `/wake` — TG Classic: ClassicBot admin only. DC Classic: fleet admin or ClassicBot admin. Fleet topics: fleet admin.
 - `/ctx` — all users (both platforms)
-- `/collab` — fleet topics: fleet admin. Classic: admin.
+- `/collab` — DC: fleet admin in a fleet channel; fleet admin or ClassicBot admin in a ClassicBot channel. TG: no check in a fleet topic (anyone the access policy admits); in a ClassicBot chat it is not a command (the text goes to the agent).
 - `/tips` — drawing a tip is all-users, posted wherever it was invoked; `/tips on`/`off`/`advanced on` require fleet admin. Not registered on TG Classic at all.
 
 ### All Users
