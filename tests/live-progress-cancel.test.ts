@@ -309,7 +309,8 @@ describe("/steer registration covers dispatch (#528 trap 5)", () => {
     const compactSites = src.match(/data\.command === "compact"/g)?.length ?? 0;
     const steerSites = src.match(/data\.command === "steer"/g)?.length ?? 0;
     expect(steerSites).toBe(compactSites);
-    expect(steerSites).toBeGreaterThanOrEqual(3);
+    // One dispatcher (dispatchSlash) serves every adapter; the guard is that steer is in it, beside compact.
+    expect(steerSites).toBe(1);
   });
 
   it("has locale strings for every steer-facing message, in both languages", () => {
@@ -339,7 +340,7 @@ describe("/btw registration covers every command surface", () => {
     const compactSites = src.match(/data\.command === "compact"/g)?.length ?? 0;
     const btwSites = src.match(/data\.command === "btw"/g)?.length ?? 0;
     expect(btwSites).toBe(compactSites);
-    expect(btwSites).toBeGreaterThanOrEqual(3);
+    expect(btwSites).toBe(1);
   });
 
   it("has locale strings for every btw-facing message in both languages", () => {
