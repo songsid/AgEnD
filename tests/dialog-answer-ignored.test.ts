@@ -26,14 +26,14 @@ interface DialogSpec { keys?: string[]; blocksDelivery?: boolean; inputBlocked?:
 /** `onKey` decides what the keys did to the screen; by default nothing (the dialog ignores them). */
 interface Screen { text: string; queue: string[]; gate: Promise<void> | null; release: (() => void) | null; failKeys: boolean }
 
-function rig(spec: DialogSpec = {}, opts: { onKey?: (screen: Screen) => void; sendResult?: boolean } = {}) {
+function rig(spec: DialogSpec = {}, opts: { onKey?: (screen: Screen) => void; sendResult?: boolean; extraDialogs?: object[] } = {}) {
   /** `queue`: the next reads of the pane, ahead of `text`. `gate`: reads wait on it. `failKeys`: the keys cannot be sent. */
   const screen: Screen = { text: PROMPT, queue: [], gate: null, release: null, failKeys: false };
   const keys: string[] = [];
   const dialog = { pattern: /Trust this folder\?/, description: "Trust prompt", keys: ["Enter"], ...spec };
   const backend: any = {
     binaryName: "fake-cli",
-    getRuntimeDialogs: () => [dialog],
+    getRuntimeDialogs: () => [dialog, ...(opts.extraDialogs ?? [])],
     getErrorPatterns: () => [],
     getReadyPattern: () => /Ask anything/,
   };
@@ -243,6 +243,19 @@ describe("a poll that does not complete an answer breaks 'in a row'", () => {
     await twoIgnored(r);
     r.screen.failKeys = true; await r.poll(5_600); r.screen.failKeys = false;
     await r.poll(5_600);
+    expect(r.ignored).toEqual([]);
+    await r.poll(11_200);
+    expect(r.ignored).toEqual([expect.objectContaining({ attempts: 3 })]);
+    r.stop();
+  });
+
+  it("a DIFFERENT dialog (here one with no keys to press) on screen in between: the episode being counted is gone", async () => {
+    const other = { pattern: /Other prompt/, description: "Other prompt", keys: [] };
+    const r = rig({}, { extraDialogs: [other] });
+    await twoIgnored(r);
+    r.screen.text = "  Other prompt  [Enter]\n"; await r.poll(5_600);
+    r.screen.text = PROMPT;
+    await r.poll(5_600);                                   // one ignored answer of a NEW episode
     expect(r.ignored).toEqual([]);
     await r.poll(11_200);
     expect(r.ignored).toEqual([expect.objectContaining({ attempts: 3 })]);

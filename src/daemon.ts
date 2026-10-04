@@ -3069,7 +3069,7 @@ export class Daemon extends EventEmitter {
                   this.autoResolvedDialogGeneration = 0;
                   this.autoResolvedDialogKey = null;
                 }
-                this.breakAnswerStreak();
+                this.breakAnswerStreak(dialog);
                 return;
               }
               await new Promise(r => setTimeout(r, 200));
@@ -3099,11 +3099,11 @@ export class Daemon extends EventEmitter {
               if (sample.spawn !== this.spawnGeneration || sample.fence !== this.launchFenceEpoch) return;
               this.noteDialogAnswer(dialog, Daemon.dialogMatches(dialog, afterPane) && Daemon.paneSignature(afterPane) === sample.signature);
             } else {
-              this.breakAnswerStreak();
+              this.breakAnswerStreak(dialog);
             }
           });
           if (!dismissed) {
-            this.breakAnswerStreak();
+            this.breakAnswerStreak(dialog);
             this.logger.info({ dialog: dialog.description }, "Dialog dismissal deferred — pane write in flight");
           } else if (dialog.verifyAfterKeys && !resolved) {
             this.logger.warn({ dialog: dialog.description }, "Safety dialog choice was sent but follow-up verification or notice submission failed");
@@ -6003,15 +6003,24 @@ export class Daemon extends EventEmitter {
     return pane.replace(/[\u2800-\u28ff]/g, "").replace(/\d+/g, "#").replace(/\s+/g, " ").trim();
   }
 
+  private static answerKey(dialog: RuntimeDialog): string {
+    return `${Daemon.dialogKey(dialog)}\0${dialog.description}`;
+  }
+
   /** The screen being answered is gone: its count, its report and its parked clock end with it. */
   private endDialogEpisode(): void {
     this.dialogAnswers = null;
     this.trackDialogParked(null);
   }
 
-  /** A poll that did not complete an answer-and-look (lock busy, keys not sent, nothing to press) breaks "in a row". */
-  private breakAnswerStreak(): void {
-    if (this.dialogAnswers) this.dialogAnswers.ignored = 0;
+  /**
+   * A poll that did not complete an answer-and-look (lock busy, keys not sent, nothing to press) breaks "in a row" for
+   * this dialog; if the dialog on screen is a DIFFERENT one, the episode being counted belongs to a screen that is gone.
+   */
+  private breakAnswerStreak(dialog: RuntimeDialog): void {
+    if (!this.dialogAnswers) return;
+    if (this.dialogAnswers.key === Daemon.answerKey(dialog)) this.dialogAnswers.ignored = 0;
+    else this.endDialogEpisode();
   }
 
   /**
@@ -6024,7 +6033,7 @@ export class Daemon extends EventEmitter {
    * dialog's static description and a count, never the pane: a pane can hold anything the agent printed.
    */
   private noteDialogAnswer(dialog: RuntimeDialog, stillOnScreen: boolean): void {
-    const key = `${Daemon.dialogKey(dialog)}\0${dialog.description}`;
+    const key = Daemon.answerKey(dialog);
     if (!this.dialogAnswers || this.dialogAnswers.key !== key) this.dialogAnswers = { key, ignored: 0, reported: false };
     const episode = this.dialogAnswers;
     if (!stillOnScreen) {
