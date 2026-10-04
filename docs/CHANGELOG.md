@@ -69,13 +69,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   does what your own config marks `ask`; every other backend AgEnD runs already had its skip-permissions switch,
   so an OpenCode instance that opened `/tmp/image.jpg` sat on the prompt until a human answered. AgEnD now
   launches OpenCode with `--auto` (it answers every ask "once"; **an explicit `deny` in your config still
-  denies**) when the binary's own `--help` lists it, and otherwise sets
-  `OPENCODE_PERMISSION='{"external_directory":"allow"}'` (older versions without `--auto`; the other prompts
-  — `.env`, your own `ask` rules — can still appear there). **A prompt that still appears is answered with
-  "Allow once"** (one Enter, nothing remembered); AgEnD used to press Right+Enter, i.e. "Allow always". While a
-  prompt is on screen the pane takes no delivery and is not treated as stuck, and agent text that merely
-  mentions "confirm" or quotes the prompt no longer receives an Enter. `skipPermissions: false` turns the launch
-  switch off.
+  denies**) when the binary's own `--help` lists it (OpenCode 1.17 and newer). An older OpenCode gets no launch
+  switch at all — its only form, the `OPENCODE_PERMISSION` env, would override your own `deny` rules — so its
+  prompts are answered at runtime instead. **A prompt that is on screen is answered with "Allow once"** (one
+  Enter, nothing remembered); AgEnD used to press Right+Enter, i.e. "Allow always". If it got as far as the
+  "Always allow" confirmation, Escape cancels back to the prompt. While a prompt is on screen the pane takes
+  no delivery and is not treated as stuck, and agent text, a composer draft or a transcript that merely quotes
+  the prompt no longer receives a key. `skipPermissions: false` turns the launch switch off (and the runtime
+  answer stays on). A stop that arrives while a launch is being prepared now cancels that launch.
 - **[Behaviour change] The legacy chat-relay `/login` mode is removed (#1139).** `login.mode: relay` was the
   pre-2.1.6 way to sign in (AgEnD drove the login CLI in a tmux window and relayed its menus, authorization URL
   and text prompts through chat); `/login` has run in the token-gated browser terminal by default since 2.1.5

@@ -12,25 +12,31 @@ import { promisify } from "node:util";
  * answered (#opencode-permissions). Two layers, from the source outwards:
  *
  *   1. at launch: `--auto` (OpenCode answers every ask "once" itself; an explicit `deny` still
- *      denies) when the binary's own `--help` lists it, else the version-independent
- *      `OPENCODE_PERMISSION` env (unknown env is ignored by an older OpenCode);
+ *      denies) when the binary's own `--help` lists it. An older OpenCode gets NOTHING: its only
+ *      launch-time form, the `OPENCODE_PERMISSION` env, is merged over the user's own config and
+ *      overrides their `deny` (and replaces an env they already set), so the prompt is left to 2.;
  *   2. if a prompt still appears: the runtime dialogs below answer it with **Allow once** (a single
  *      Enter — nothing is remembered) and hold delivery while it is on screen.
  *
  * Panes verified against real OpenCode 1.16.2 / 1.17.20 / 1.18.34 (tests/fixtures/opencode-*).
  */
 
-/** What an older OpenCode (no `--auto` on its TUI) is given instead: only the prompt that was reported. */
-export const OPENCODE_PERMISSION_ENV = `OPENCODE_PERMISSION='{"external_directory":"allow"}'`;
-
 /** `--help` rows look like `      --auto          auto-approve …` (yargs, with an optional short alias first). */
 export function helpAdvertisesAutoFlag(help: string): boolean {
   return /^\s*(?:-[A-Za-z0-9],\s*)?--auto(?:[ =<,]|$)/m.test(help);
 }
 
-/** The OpenCode CLI's own banner and command list: a truncated or foreign output proves nothing. */
+/**
+ * The OpenCode CLI's own help, complete enough to be believed about what it LACKS: the banner, the
+ * Options section, and the TUI flags every version has. A truncated or foreign output proves nothing
+ * (banner only, an empty Options section, `--help` alone), and "no --auto" must not be learned from it.
+ */
 export function looksLikeOpencodeHelp(help: string): boolean {
-  return /^\s*opencode \[project\]/m.test(help);
+  if (!/^\s*opencode \[project\]/m.test(help)) return false;
+  const options = help.split(/^Options:\s*$/m)[1];
+  if (options === undefined) return false;
+  return ["help", "version", "model", "continue", "session", "prompt", "agent"]
+    .every(flag => new RegExp(`^\\s*(?:-[A-Za-z0-9],\\s*)?--${flag}(?:[ =<,]|$)`, "m").test(options));
 }
 
 export type OpencodeAutoSupport = "yes" | "no" | "unknown";
@@ -100,33 +106,62 @@ export function resetOpencodeAutoSupportCacheForTests(): void {
 
 // ── the prompts, as the pane shows them ──────────────────────────────────────
 
-const READY = /Ask anything|ctrl\+p commands/;
-const PERMISSION_HEADER = /△\s*Permission required/;
-const PERMISSION_OPTIONS = /\bAllow once\s{2,}Allow always\s{2,}Reject\b/;
-const ALWAYS_HEADER = /△\s*Always allow/;
-const ALWAYS_OPTIONS = /\bConfirm\s{2,}Cancel\b/;
+/** Idle prompt, or the busy composer's footer: the composer is the CURRENT region, so no dialog is. */
+const COMPOSER = /Ask anything|ctrl\+p commands|\besc\s+(?:again\s+to\s+)?interrupt/i;
+/** The dialog's left bar. Every line of a real dialog, from its header to its option row, carries it. */
+const BAR = /^\s*[┃│|]/;
+const HINT_INLINE = /⇆ select {2,}enter confirm/;
+const HINT_LINE = /^(?:ctrl\+f fullscreen {2,})?⇆ select {2,}enter confirm$/;
 
-function lastLines(pane: string, count: number): string[] {
-  return pane.split("\n").filter(line => line.trim() !== "").slice(-count);
+function barBody(line: string): string {
+  return line.replace(/^\s*[┃│|]?\s*/, "").trimEnd();
 }
 
 /**
- * OpenCode's permission prompt is the CURRENT interactive region: its option row is among the last
- * few lines, its header just above, and the idle prompt (`ctrl+p commands`, "Ask anything") is
- * not on screen. A transcript that merely quotes the dialog — a pasted pane, this very bug being
- * discussed — has the idle prompt below it and never counts.
+ * A live OpenCode dialog is one bordered block at the BOTTOM of the pane, in this order:
+ *
+ *     ┃  △ <header>                                  ← the whole line, nothing after the title
+ *     ┃  …body…
+ *     ┃   <option row>  [ctrl+f fullscreen]  ⇆ select  enter confirm   ← or the hints on the next line
+ *     ┃                                  • OpenCode x.y.z                (at most a few status lines)
+ *
+ * Each piece is anchored to a whole line, not looked for as a substring, and the composer (idle
+ * prompt, or the busy footer) must NOT be on screen below it: a transcript that quotes the prompt,
+ * an agent explaining it, a draft in the composer, a pasted pane — all have the composer under
+ * them, or no dialog hints on the option row, or the pieces out of order.
  */
+function liveDialog(pane: string, header: RegExp, optionRow: RegExp): boolean {
+  const lines = pane.split("\n").filter(line => line.trim() !== "").slice(-40);
+  let row = -1;
+  for (let i = lines.length - 1; i >= 0 && i >= lines.length - 6; i--) {
+    if (optionRow.test(barBody(lines[i]!))) { row = i; break; }
+  }
+  if (row < 0) return false;
+  // Bar-only spacer lines (the 60-column layout wraps the hints under a blank one) carry nothing.
+  const below = lines.slice(row + 1).filter(line => barBody(line) !== "");
+  if (below.length > 4 || below.some(line => COMPOSER.test(line))) return false;
+  const hintsHere = HINT_INLINE.test(lines[row]!);
+  const hintsNext = below.length > 0 && HINT_LINE.test(barBody(below[0]!));
+  if (!hintsHere && !hintsNext) return false;
+  let top = -1;
+  for (let i = row - 1; i >= 0; i--) {
+    if (header.test(barBody(lines[i]!))) { top = i; break; }
+  }
+  if (top < 0) return false;
+  return lines.slice(top, row + 1).every(line => BAR.test(line));
+}
+
+const PERMISSION_HEADER = /^△ Permission required$/;
+const PERMISSION_OPTIONS = /^Allow once {2,}Allow always {2,}Reject(?: {2,}\S.*)?$/;
+const ALWAYS_HEADER = /^△ Always allow$/;
+const ALWAYS_OPTIONS = /^Confirm {2,}Cancel(?: {2,}\S.*)?$/;
+
+/** The permission prompt: `△ Permission required` … `Allow once   Allow always   Reject`. */
 export function opencodePermissionPromptActive(pane: string): boolean {
-  const bottom = lastLines(pane, 6);
-  if (!bottom.some(line => PERMISSION_OPTIONS.test(line))) return false;
-  if (bottom.some(line => READY.test(line))) return false;
-  return lastLines(pane, 40).some(line => PERMISSION_HEADER.test(line));
+  return liveDialog(pane, PERMISSION_HEADER, PERMISSION_OPTIONS);
 }
 
 /** The second page behind "Allow always": `△ Always allow` … `Confirm   Cancel`. */
 export function opencodeAlwaysConfirmActive(pane: string): boolean {
-  const bottom = lastLines(pane, 6);
-  if (!bottom.some(line => ALWAYS_OPTIONS.test(line))) return false;
-  if (bottom.some(line => READY.test(line))) return false;
-  return lastLines(pane, 40).some(line => ALWAYS_HEADER.test(line));
+  return liveDialog(pane, ALWAYS_HEADER, ALWAYS_OPTIONS);
 }

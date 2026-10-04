@@ -1,0 +1,42 @@
+
+  ┃                                                                                       Probe
+  ┃  go
+  ┃                                                                                       Context
+                                                                                          0 tokens
+     ⠸ Read /tmp/ocprobe-ext/x.txt                                                        0% used
+                                                                                          $0.00 spent
+     ▣  Build · Mock Model
+                                                                                          LSP
+                                                                                          LSPs are disabled
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ┃
+  ┃  △ Permission required
+  ┃    ← Access external directory /tmp/ocprobe-ext
+  ┃
+  ┃  Patterns
+  ┃
+  ┃  - /tmp/ocprobe-ext/*
+  ┃
+  ┃                                                                                       /tmp/ocprobe/proj
+  ┃   Allow once   Allow always   Reject  ctrl+f fullscreen  ⇆ select  enter confirm
+  ┃                                                                                       • OpenCode 1.16.2
+

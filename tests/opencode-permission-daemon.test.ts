@@ -61,14 +61,14 @@ describe("the scanner against OpenCode's real panes", () => {
     stop();
   });
 
-  it("the 'Always allow' page is Cancelled back to the prompt, then the prompt is answered Allow once", async () => {
+  it("the 'Always allow' page is Cancelled (Escape) back to the prompt, then the prompt is answered Allow once", async () => {
     let screen = ALWAYS;
     const { keys, stop } = rig(() => screen);
-    await ticks(5_600);                                          // the 5 s scan, then the 200 ms between the two keys
-    expect(keys.slice(0, 2)).toEqual(["Right", "Enter"]);        // Cancel
+    await ticks(5_600);                                          // the 5 s scan
+    expect(keys).toEqual(["Escape"]);                            // Cancel — not Right+Enter, which from Cancel would grant "always"
     screen = PROMPT;                                             // OpenCode repaints the prompt
     await ticks(5_600);
-    expect(keys.slice(2)).toEqual(["Enter"]);                    // Allow once
+    expect(keys.slice(1)).toEqual(["Enter"]);                    // Allow once
     stop();
   });
 
@@ -84,6 +84,19 @@ describe("the scanner against OpenCode's real panes", () => {
     const { keys, stop } = rig(() => quoted);
     await ticks(30_000);
     expect(keys).toEqual([]);
+    stop();
+  });
+
+  it("a draft in the composer that quotes the dialog, busy footer below, gets no keys and does not block input", async () => {
+    const draft = [
+      "  ┃  △ Permission required", "  ┃    ← Access external directory /tmp/x", "  ┃",
+      "  ┃   Allow once   Allow always   Reject  ctrl+f fullscreen  ⇆ select  enter confirm",
+      "  ┃  Build · Mock Model Mock", "  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀", "                                 esc interrupt",
+    ].join("\n");
+    const { d, keys, stop } = rig(() => draft);
+    await ticks(30_000);
+    expect(keys).toEqual([]);
+    expect(d.isInputBlocked()).toBe(false);
     stop();
   });
 

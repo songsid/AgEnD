@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { OpenCodeBackend } from "../../src/backend/opencode.js";
 import {
-  OPENCODE_PERMISSION_ENV,
   cachedOpencodeAutoSupport,
   helpAdvertisesAutoFlag,
   looksLikeOpencodeHelp,
@@ -15,8 +14,8 @@ import {
 } from "../../src/backend/opencode-permission.js";
 
 /**
- * Keeping OpenCode's permission prompts away: the launch switch (`--auto` when the binary lists it, else the
- * OPENCODE_PERMISSION env) and, behind it, structural runtime dialogs answering "Allow once". The panes and
+ * Keeping OpenCode's permission prompts away: the launch switch (`--auto` when the binary lists it, nothing
+ * otherwise) and, behind it, structural runtime dialogs answering "Allow once". The panes and
  * `--help` outputs are the real ones from OpenCode 1.14.51 / 1.16.2 / 1.17.20 / 1.18.34; nothing here starts OpenCode.
  */
 const fixture = (name: string) => readFileSync(join(__dirname, "..", "fixtures", name), "utf8");
@@ -30,6 +29,8 @@ const PROMPTS = {
   "external directory": "opencode-1.18.34-permission-external-directory.pane.txt",
   "external directory (60 columns, wrapped footer)": "opencode-1.18.34-permission-external-directory-60col.pane.txt",
   "external directory (1.17.20)": "opencode-1.17.20-permission-external-directory.pane.txt",
+  "external directory (1.16.2)": "opencode-1.16.2-permission-external-directory.pane.txt",
+  "external directory (1.14.51)": "opencode-1.14.51-permission-external-directory.pane.txt",
   "read .env": "opencode-1.18.34-permission-read-env.pane.txt",
   "edit (with a diff)": "opencode-1.18.34-permission-edit.pane.txt",
   "shell command": "opencode-1.18.34-permission-bash.pane.txt",
@@ -56,6 +57,18 @@ describe("which OpenCode takes --auto: read from its own --help", () => {
     }
   });
 
+  it("a TRUNCATED OpenCode help is not believed about what it lacks (banner only, empty Options, --help alone)", () => {
+    const banner = "opencode [project]           start opencode tui                                          [default]";
+    const cuts = [
+      banner,
+      `${banner}\n\nOptions:\n`,
+      `${banner}\n\nOptions:\n  -h, --help          show help      [boolean]\n`,
+      HELP["1.16.2"].slice(0, HELP["1.16.2"].indexOf("--agent")),             // cut inside the TUI options, before the end
+      HELP["1.18.34"].slice(0, HELP["1.18.34"].indexOf("--prompt")),
+    ];
+    for (const cut of cuts) expect(looksLikeOpencodeHelp(cut), cut.slice(-60)).toBe(false);
+  });
+
   it("the flag must be a help ROW, not a word in a description", () => {
     expect(helpAdvertisesAutoFlag("opencode [project]\n  -m, --model  use --auto-complete for models")).toBe(false);
     expect(helpAdvertisesAutoFlag("  -a, --auto   short alias first")).toBe(true);
@@ -75,6 +88,17 @@ describe("probing the binary (asynchronous, once per binary generation)", () => 
 
   it("a probe that returns nothing legible is 'unknown', never 'no'", async () => {
     expect(await probeOpencodeAutoSupport("/b/blank", async () => "")).toBe("unknown");
+  });
+
+  it("a truncated help is 'unknown' — and asked again after the minute, not remembered as 'no'", async () => {
+    vi.useFakeTimers();
+    const cut = HELP["1.18.34"].slice(0, HELP["1.18.34"].indexOf("--model"));
+    const run = vi.fn().mockResolvedValueOnce(cut).mockResolvedValue(HELP["1.18.34"]);
+    expect(await probeOpencodeAutoSupport("/b/cut", run)).toBe("unknown");
+    expect(cachedOpencodeAutoSupport("/b/cut")).toBe("unknown");
+    vi.advanceTimersByTime(61_000);
+    expect(await probeOpencodeAutoSupport("/b/cut", run)).toBe("yes");
+    expect(run).toHaveBeenCalledTimes(2);
   });
 
   it("is asked once per binary and remembered; concurrent callers share one run", async () => {
@@ -119,29 +143,28 @@ describe("OpenCodeBackend: the launch command", () => {
   const config = (extra: Record<string, unknown> = {}) => ({ workingDirectory: dir, instanceDir: dir, instanceName: "oc", mcpServers: {}, ...extra }) as never;
   const settled = () => new Promise(resolve => setImmediate(resolve));
 
-  it("a binary that lists --auto gets --auto and not the env", async () => {
+  it("a binary that lists --auto gets --auto", async () => {
     const b = backend("yes"); await settled();
     const cmd = b.buildCommand(config());
     expect(cmd).toMatch(/ --auto(?: |$)/);
     expect(cmd).not.toContain("OPENCODE_PERMISSION");
   });
 
-  it("one that does not list it gets the env form, and no unknown flag (an unknown flag makes OpenCode exit 1)", async () => {
+  it("one that does not list it gets NOTHING: no unknown flag (OpenCode exits 1) and no env that would override the user's deny", async () => {
     const b = backend("no"); await settled();
     const cmd = b.buildCommand(config());
-    expect(cmd.startsWith(`${OPENCODE_PERMISSION_ENV} `)).toBe(true);
     expect(cmd).not.toContain("--auto");
-    expect(OPENCODE_PERMISSION_ENV).toBe(`OPENCODE_PERMISSION='{"external_directory":"allow"}'`);
-    expect(JSON.parse(OPENCODE_PERMISSION_ENV.slice("OPENCODE_PERMISSION='".length, -1))).toEqual({ external_directory: "allow" });
+    expect(cmd).not.toContain("OPENCODE_PERMISSION");
+    expect(cmd.startsWith("OPENCODE")).toBe(false);
   });
 
-  it("an unprobed or unreadable binary gets the env form too — never a flag it may not know", () => {
+  it("an unprobed or unreadable binary gets nothing either — never a flag it may not know", () => {
     const cmd = backend().buildCommand(config());
-    expect(cmd).toContain("OPENCODE_PERMISSION");
     expect(cmd).not.toContain("--auto");
+    expect(cmd).not.toContain("OPENCODE_PERMISSION");
   });
 
-  it("skipPermissions: false turns both off", async () => {
+  it("skipPermissions: false turns --auto off", async () => {
     const b = backend("yes"); await settled();
     const cmd = b.buildCommand(config({ skipPermissions: false }));
     expect(cmd).not.toContain("--auto");
@@ -161,7 +184,7 @@ describe("OpenCodeBackend: the launch command", () => {
     chmodSync(script, 0o755);
     const b = new OpenCodeBackend(dir);
     (b as unknown as { binaryPath: string }).binaryPath = script;
-    expect(b.buildCommand(config())).toContain("OPENCODE_PERMISSION");           // before the probe: conservative
+    expect(b.buildCommand(config())).not.toContain("--auto");                     // before the probe: conservative
     await b.prepareLaunch();
     expect(cachedOpencodeAutoSupport(script)).toBe("yes");
     expect(b.buildCommand(config())).toContain(" --auto");
@@ -171,7 +194,7 @@ describe("OpenCodeBackend: the launch command", () => {
     const b = new OpenCodeBackend(dir);
     (b as unknown as { binaryPath: string }).binaryPath = join(dir, "does-not-exist");
     await expect(b.prepareLaunch()).resolves.toBeUndefined();
-    expect(b.buildCommand(config())).toContain("OPENCODE_PERMISSION");
+    expect(b.buildCommand(config())).not.toContain("--auto");
   });
 });
 
@@ -191,10 +214,13 @@ describe("the runtime dialogs: structural, Allow once", () => {
     expect(JSON.stringify(permission!.keys)).not.toContain("Right");
   });
 
-  it("the 'Always allow' page is Cancelled (Right, Enter) back to the prompt — never confirmed", () => {
+  it("the 'Always allow' page is Cancelled with Escape — OpenCode's own cancel, whichever button is highlighted — never confirmed", () => {
     expect(opencodeAlwaysConfirmActive(ALWAYS)).toBe(true);
     expect(opencodePermissionPromptActive(ALWAYS)).toBe(false);
-    expect(always!.keys).toEqual(["Right", "Enter"]);
+    expect(always!.keys).toEqual(["Escape"]);
+    // Right+Enter is Cancel only while Confirm is highlighted: from Cancel, Right wraps to Confirm and Enter grants "always".
+    expect(always!.keys).not.toContain("Right");
+    expect(always!.keys).not.toContain("Enter");
     expect(always!.pattern.test(ALWAYS)).toBe(true);
   });
 
@@ -260,6 +286,56 @@ describe("the runtime dialogs: structural, Allow once", () => {
     const pane = ["  ┃  △ Always allow", "  ┃  - /tmp/*", "  ┃   Confirm   Cancel   ⇆ select  enter confirm", IDLE_TAIL].join("\n");
     expect(opencodeAlwaysConfirmActive(pane)).toBe(false);
     expect(opencodeAlwaysConfirmActive(pane.replace(IDLE_TAIL, "  ┃\n  ┃"))).toBe(true);
+  });
+
+  describe("the pieces must be ONE dialog: whole header line, option row with its hints, in order, with no composer under it", () => {
+    const BAR = "  ┃";
+    const dialog = (header: string, row: string) => [`${BAR}`, `${BAR}  ${header}`, `${BAR}    ← Access external directory /tmp/x`, `${BAR}`, `${BAR}   ${row}`, `${BAR}                              • OpenCode 1.18.34`].join("\n");
+    const ROW = "Allow once   Allow always   Reject  ctrl+f fullscreen  ⇆ select  enter confirm";
+
+    it("the well-formed block is live (the baseline every negative below differs from by one thing)", () => {
+      expect(opencodePermissionPromptActive(dialog("△ Permission required", ROW))).toBe(true);
+      expect(opencodeAlwaysConfirmActive(dialog("△ Always allow", "Confirm   Cancel                                      ⇆ select  enter confirm"))).toBe(true);
+    });
+
+    it("a header that is part of a sentence is not the header", () => {
+      expect(opencodePermissionPromptActive(dialog("The documentation says △ Permission required is shown first", ROW))).toBe(false);
+      expect(opencodePermissionPromptActive(dialog("△ Permission required before it can proceed", ROW))).toBe(false);
+      expect(opencodeAlwaysConfirmActive(dialog("△ Always allow means what it says", "Confirm   Cancel   ⇆ select  enter confirm"))).toBe(false);
+    });
+
+    it("an option row that is part of a sentence is not the option row", () => {
+      expect(opencodePermissionPromptActive(dialog("△ Permission required", `The choices are ${ROW}`))).toBe(false);
+      expect(opencodeAlwaysConfirmActive(dialog("△ Always allow", "The buttons are Confirm   Cancel   ⇆ select  enter confirm"))).toBe(false);
+    });
+
+    it("an option row without the dialog's own hints is not one (a draft that only names the buttons)", () => {
+      expect(opencodePermissionPromptActive(dialog("△ Permission required", "Allow once   Allow always   Reject"))).toBe(false);
+      expect(opencodeAlwaysConfirmActive(dialog("△ Always allow", "Confirm   Cancel"))).toBe(false);
+    });
+
+    it("the options BEFORE the header are not a dialog", () => {
+      const reversed = [`${BAR}   ${ROW}`, `${BAR}  △ Permission required`, `${BAR}    ← Access external directory /tmp/x`, `${BAR}`, `${BAR}`].join("\n");
+      expect(opencodePermissionPromptActive(reversed)).toBe(false);
+    });
+
+    it("a header and a row that are not in one bordered block are not a dialog", () => {
+      const parts = ["  △ Permission required", "  the agent kept talking", `  ${ROW}`, "  ┃"].join("\n");
+      expect(opencodePermissionPromptActive(parts)).toBe(false);
+      const gap = [`${BAR}  △ Permission required`, "  plain text with no bar", `${BAR}   ${ROW}`].join("\n");
+      expect(opencodePermissionPromptActive(gap)).toBe(false);
+    });
+
+    it("a multi-line DRAFT in the composer that quotes the dialog is not one, idle or busy", () => {
+      const idle = `${dialog("△ Permission required", ROW)}\n${READY}`;
+      expect(opencodePermissionPromptActive(idle)).toBe(false);
+      const busy = [
+        `${BAR}  △ Permission required`, `${BAR}    ← Access external directory /tmp/x`, `${BAR}   ${ROW}`,
+        `${BAR}  Build · Mock Model Mock`, "  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀", "                         esc interrupt",
+      ].join("\n");
+      expect(opencodePermissionPromptActive(busy)).toBe(false);
+      expect(opencodePermissionPromptActive(busy.replace("esc interrupt", "esc again to interrupt"))).toBe(false);
+    });
   });
 
   it("the old viewport-wide /confirm/i dialog is gone", () => {

@@ -217,7 +217,7 @@ All fields from `instances.<name>` can be set here as shared defaults. Additiona
 | `lightweight` | boolean | `false` | Skip non-essential subsystems |
 | `systemPrompt` | string | — | Custom system prompt (supports `file:path` syntax) |
 | `workflow` | string \| false | `"builtin"` | Workflow template: `"builtin"`, `"file:path"`, inline, or `false` |
-| `skipPermissions` | boolean | — | Skip CLI permission checks |
+| `skipPermissions` | boolean | — | Skip CLI permission checks. OpenCode: launched with `--auto` when its `--help` lists it (explicit `deny` rules still apply); an older OpenCode gets no launch switch and its prompts are answered "Allow once" at runtime |
 | `pre_task_command` | string | — | Raw command pasted before each user message |
 | `startup_timeout_ms` | number | `25000` | CLI startup timeout (ms) |
 | `log_level` | string | `"info"` | `"debug"`, `"info"`, `"warn"`, `"error"` |

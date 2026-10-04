@@ -4,7 +4,6 @@ import { promisify } from "node:util";
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
 import {
-  OPENCODE_PERMISSION_ENV,
   cachedOpencodeAutoSupport,
   opencodeAlwaysConfirmActive,
   opencodePermissionPromptActive,
@@ -50,13 +49,12 @@ export class OpenCodeBackend implements CliBackend {
     let cmd = this.binaryPath;
     // Every other backend runs with its skip-permissions switch; OpenCode asks before it touches a
     // path outside the project, so without one an instance parks on "Access external directory".
-    // `--auto` answers every ask "once" itself and keeps an explicit `deny`; an OpenCode whose
-    // --help does not list it (or whose help could not be read) gets the env form instead, which a
-    // version that predates it simply ignores. See opencode-permission.ts.
-    if (config.skipPermissions !== false) {
-      if (cachedOpencodeAutoSupport(this.binaryPath) === "yes") cmd += " --auto";
-      else cmd = `${OPENCODE_PERMISSION_ENV} ${cmd}`;
-    }
+    // `--auto` answers every ask "once" itself and keeps an explicit `deny`, but only a binary whose
+    // --help lists it may be given it (an unknown flag makes OpenCode exit 1). Anything else — an
+    // older OpenCode, an unreadable help — gets NO switch: the only version-independent form, the
+    // OPENCODE_PERMISSION env, is merged over the user's own config and would override their
+    // `deny`, and the runtime dialog below answers the prompt "once" instead. See opencode-permission.ts.
+    if (config.skipPermissions !== false && cachedOpencodeAutoSupport(this.binaryPath) === "yes") cmd += " --auto";
     this.workingDirectory = config.workingDirectory;
     this.launchedSessionId = null;
     this.launchedAt = Date.now();
@@ -301,11 +299,13 @@ export class OpenCodeBackend implements CliBackend {
         inputBlocked: true,
       },
       {
-        // The page behind "Allow always" (a human, or an older AgEnD, got that far): Cancel goes back
-        // to the prompt above, which is then answered with "Allow once".
+        // The page behind "Allow always" (a human, or an older AgEnD, got that far): Escape is
+        // OpenCode's own Cancel there (verified on 1.16.2 / 1.17.20 / 1.18.34, whichever of
+        // Confirm / Cancel is highlighted) and goes back to the prompt above, which is then answered
+        // with "Allow once". Right+Enter is NOT a cancel: with Cancel already selected it wraps to Confirm.
         pattern: /Always allow/i,
         isActive: opencodeAlwaysConfirmActive,
-        keys: ["Right", "Enter"],
+        keys: ["Escape"],
         description: "OpenCode 'Always allow' confirmation — Cancel (back to the prompt)",
         blocksDelivery: true,
         inputBlocked: true,
