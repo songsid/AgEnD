@@ -124,7 +124,7 @@ describe("a pending permission prompt whose screen keeps changing around it (the
     const spy = setInterval(() => { frame = answered.length; }, 1);   // the screen changes after every key
     await ticks(75_000);
     clearInterval(spy);
-    expect(keys.length).toBeGreaterThanOrEqual(14);
+    expect(keys.length).toBeGreaterThanOrEqual(4);          // three answers, then one per 30 s backoff
     expect(ignored).toHaveLength(1);
     expect(parked).toEqual([]);
     stop();
@@ -134,7 +134,7 @@ describe("a pending permission prompt whose screen keeps changing around it (the
     let frame = 0;
     const { keys, ignored, parked, stop } = rig(() => withStatus(PROMPT, frame));
     for (let n = 0; n < 15; n++) { frame = n; await ticks(5_000); }
-    expect(keys.length).toBeGreaterThanOrEqual(14);
+    expect(keys.length).toBeGreaterThanOrEqual(4);          // three answers, then one per 30 s backoff
     expect(ignored).toHaveLength(1);
     expect(parked).toEqual([]);
     stop();
@@ -155,8 +155,25 @@ describe("a pending permission prompt whose screen keeps changing around it (the
   it("a prompt that really sits there unchanged is reported, once", async () => {
     const { keys, ignored, stop } = rig(() => PROMPT);
     await ticks(75_000);
-    expect(keys.length).toBeGreaterThanOrEqual(14);
+    expect(keys.length).toBeGreaterThanOrEqual(4);          // three answers, then one per 30 s backoff
     expect(ignored).toHaveLength(1);
+    stop();
+  });
+
+  it("SIX identical queued requests (the same directory, again and again): all six are answered — after the third, slowly — and the user is told once", async () => {
+    let queuedLeft = 6;
+    const { keys, ignored, parked, stop } = rig(() => (queuedLeft > 0 ? PROMPT : READY));
+    const spy = setInterval(() => { queuedLeft = Math.max(0, 6 - keys.length); }, 1);
+    await ticks(16_800);
+    expect(keys).toHaveLength(3);
+    expect(ignored).toHaveLength(1);
+    await ticks(5_000);
+    expect(keys).toHaveLength(3);                          // the backoff: not one per poll
+    await ticks(200_000);
+    clearInterval(spy);
+    expect(keys).toHaveLength(6);                          // the queue is drained: every request got its Enter
+    expect(ignored).toHaveLength(1);
+    expect(parked).toEqual([]);
     stop();
   });
 });
