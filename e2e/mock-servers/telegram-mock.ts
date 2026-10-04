@@ -49,7 +49,18 @@ export interface TelegramMock {
     threadId?: number;
     replyToMessageId?: number;
     replyToText?: string;
+    /** Attach a photo (Telegram sends several sizes; the last is the largest). */
+    photo?: Array<{ fileId: string; size?: number }>;
+    /** Attach a document. */
+    document?: { fileId: string; fileName?: string; mimeType?: string; size?: number };
   }): void;
+  /**
+   * Make a file id downloadable: `getFile` answers with `filePath`, and `/file/bot<token>/<filePath>` serves
+   * `body` with `contentType` (or fails with `status`). An unregistered id keeps the old behaviour: a fake jpeg.
+   */
+  registerFile(file: { fileId: string; filePath?: string; body?: Buffer | string; contentType?: string; status?: number }): void;
+  /** Paths requested from the file endpoint, in order. */
+  getFileDownloads(): string[];
   /** Inject a callback query (inline button press) */
   injectCallbackQuery(opts: {
     data: string;
@@ -80,6 +91,8 @@ export function createTelegramMock(opts: TelegramMockOptions = {}): TelegramMock
   let updateIdCounter = 1;
   let messageIdCounter = 1000;
   let topicIdCounter = 100;
+  const files = new Map<string, { filePath?: string; body: Buffer; contentType: string; status: number }>();
+  let fileDownloads: string[] = [];
 
   // Pending long-poll resolvers — grammy uses getUpdates with long polling
   let pollResolvers: Array<(updates: PendingUpdate[]) => void> = [];
@@ -224,14 +237,20 @@ export function createTelegramMock(opts: TelegramMockOptions = {}): TelegramMock
         jsonResponse(res, true);
         break;
 
-      case "getFile":
+      case "getFile": {
+        const registered = files.get(String(params.file_id));
+        if (registered && registered.filePath === undefined) {
+          jsonResponse(res, { file_id: params.file_id, file_unique_id: `unique_${params.file_id}`, file_size: registered.body.length });
+          break;
+        }
         jsonResponse(res, {
           file_id: params.file_id,
           file_unique_id: `unique_${params.file_id}`,
-          file_size: 1024,
-          file_path: `photos/file_${params.file_id}.jpg`,
+          file_size: registered?.body.length ?? 1024,
+          file_path: registered?.filePath ?? `photos/file_${params.file_id}.jpg`,
         });
         break;
+      }
 
       case "createForumTopic": {
         const topicId = ++topicIdCounter;
@@ -323,6 +342,8 @@ export function createTelegramMock(opts: TelegramMockOptions = {}): TelegramMock
     threadId?: number;
     replyToMessageId?: number;
     replyToText?: string;
+    photo?: Array<{ fileId: string; size?: number }>;
+    document?: { fileId: string; fileName?: string; mimeType?: string; size?: number };
   }): void {
     const update: PendingUpdate = {
       update_id: updateIdCounter++,
@@ -340,7 +361,18 @@ export function createTelegramMock(opts: TelegramMockOptions = {}): TelegramMock
           title: "Test Group",
         },
         date: Math.floor(Date.now() / 1000),
-        text: opts.text,
+        ...(opts.photo || opts.document ? { caption: opts.text } : { text: opts.text }),
+        ...(opts.photo ? {
+          photo: opts.photo.map((p, i) => ({ file_id: p.fileId, file_unique_id: `unique_${p.fileId}`, width: 100 * (i + 1), height: 100 * (i + 1), ...(p.size != null ? { file_size: p.size } : {}) })),
+        } : {}),
+        ...(opts.document ? {
+          document: {
+            file_id: opts.document.fileId, file_unique_id: `unique_${opts.document.fileId}`,
+            ...(opts.document.fileName ? { file_name: opts.document.fileName } : {}),
+            ...(opts.document.mimeType ? { mime_type: opts.document.mimeType } : {}),
+            ...(opts.document.size != null ? { file_size: opts.document.size } : {}),
+          },
+        } : {}),
         ...(opts.threadId != null ? { message_thread_id: opts.threadId } : {}),
         ...(opts.replyToMessageId != null ? {
           reply_to_message: {
@@ -387,6 +419,8 @@ export function createTelegramMock(opts: TelegramMockOptions = {}): TelegramMock
     pendingUpdates = [];
     pollResolvers.forEach(r => r([]));
     pollResolvers = [];
+    files.clear();
+    fileDownloads = [];
   }
 
   return {
@@ -407,6 +441,14 @@ export function createTelegramMock(opts: TelegramMockOptions = {}): TelegramMock
 
             // File download: /file/bot<token>/<path>
             if (path.startsWith("/file/bot")) {
+              const filePath = path.replace(/^\/file\/bot[^/]+\//, "");
+              fileDownloads.push(filePath);
+              const served = [...files.values()].find(f => f.filePath === filePath);
+              if (served) {
+                res.writeHead(served.status, { "Content-Type": served.contentType });
+                res.end(served.status === 200 ? served.body : "");
+                return;
+              }
               res.writeHead(200, { "Content-Type": "image/jpeg" });
               res.end(Buffer.from("fake-image-data"));
               return;
@@ -447,6 +489,15 @@ export function createTelegramMock(opts: TelegramMockOptions = {}): TelegramMock
     },
 
     injectMessage,
+    registerFile(file) {
+      files.set(file.fileId, {
+        filePath: file.filePath,
+        body: Buffer.isBuffer(file.body) ? file.body : Buffer.from(file.body ?? "fake-image-data"),
+        contentType: file.contentType ?? "application/octet-stream",
+        status: file.status ?? 200,
+      });
+    },
+    getFileDownloads: () => [...fileDownloads],
     injectCallbackQuery,
     getCalls: () => [...calls],
     getCallsFor: (method: string) => calls.filter(c => c.method === method),
