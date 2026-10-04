@@ -11,6 +11,12 @@
   var ttlEl = document.getElementById("ttl");
   var doneEl = document.getElementById("done");
   var closeBtn = document.getElementById("btn-close");
+  var codeRow = document.getElementById("code-row");
+  var codeInput = document.getElementById("code");
+  var codeMsg = document.getElementById("code-msg");
+  var ctrlCBtn = document.getElementById("key-ctrlc");
+  var input = window.AgendTerminalInput;
+  var kind = "";
   var ws = null, term = null, fit = null, ttlTimer = null, expiresAt = 0;
   var finished = false, reconnectAttempts = 0;
 
@@ -74,6 +80,10 @@
         term.loadAddon(fit);
         term.loadAddon(new WebLinksAddon.WebLinksAddon());
         term.open(termEl);
+        // Ctrl+C with text selected is a copy, not an interrupt; on the login page a stray ^C would kill the sign-in.
+        term.attachCustomKeyEventHandler(function (ev) {
+          return input.classifyKey(ev, { hasSelection: term.hasSelection(), kind: kind }) === "pass";
+        });
         term.onData(function (s) { send(new TextEncoder().encode(s)); });
         term.onBinary(function (s) { var b = new Uint8Array(s.length); for (var i = 0; i < s.length; i++) b[i] = s.charCodeAt(i) & 255; send(b); });
         term.onResize(function (size) { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: "resize", cols: size.cols, rows: size.rows })); });
@@ -90,6 +100,8 @@
         var msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
         if (msg.t === "hello") {
           document.getElementById("title").textContent = "AgEnD · " + msg.kind + " · " + msg.backend;
+          kind = msg.kind;
+          applyKind();
           expiresAt = Date.now() + msg.ttlRemainingMs;
           if (ttlTimer) clearInterval(ttlTimer);   // exactly one countdown, however many reconnects
           ttlEl.hidden = false; tick(); ttlTimer = setInterval(tick, 1000);
@@ -133,9 +145,22 @@
     finished = true;
     if (ttlTimer) clearInterval(ttlTimer);
     doneEl.hidden = false; doneEl.className = ok ? "ok" : "bad"; doneEl.textContent = text;
-    keys.hidden = true; closeBtn.hidden = true;
+    keys.hidden = true; closeBtn.hidden = true; codeRow.hidden = true;
     if (term) term.options.disableStdin = true;
   }
+
+  // The login page: a box for the sign-in code (the CLI prints no echo of it), and no raw Ctrl-C button.
+  function applyKind() {
+    codeRow.hidden = finished || !input.showCodeRow(kind);
+    ctrlCBtn.hidden = !input.showCtrlCButton(kind);
+  }
+  codeRow.addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var result = input.submitCode(codeInput.value, function (s) { send(new TextEncoder().encode(s)); });
+    if (result.clear) codeInput.value = "";
+    codeMsg.textContent = input.NOTICES[result.notice] || "";
+    if (term) term.focus();
+  });
 
   keys.addEventListener("click", function (ev) {
     var b = ev.target.closest("button[data-seq]");

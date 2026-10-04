@@ -253,6 +253,16 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
     loginScreenBeforeReady: true,
     successPattern: /Login successful|Logged in as/,
     timeoutMs: LOGIN_TIMEOUT_MS,
+    // Live-verified (claude 2.1.289): a code that LOOKS right but the server refuses ends the command with exit 1 and
+    // "Login failed: Request failed with status code 400" — which the terminal page shows as "Ended", like an
+    // interruption. (A malformed code only prints "Invalid code…" and the prompt stays open for another try.)
+    failures: [
+      {
+        pattern: /Login failed: Request failed with status code 400/,
+        message: "The sign-in code was rejected — it expired, was already used, was pasted more than once, or came from a different login attempt. Start /login again, open only the new link, and paste the code once",
+        suggest: "relogin",
+      },
+    ],
   },
   "antigravity": {
     // Remote login is UNSUPPORTED (user decision, v2.1.5): bare `agy` is the

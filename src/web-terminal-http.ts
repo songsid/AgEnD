@@ -50,6 +50,7 @@ const RESPONSE_TIMEOUT_MS = 15_000;
 
 const ASSETS: Record<string, { file: string; type: string }> = {
   "terminal.js": { file: "terminal.js", type: "text/javascript; charset=utf-8" },
+  "terminal-input.js": { file: "terminal-input.js", type: "text/javascript; charset=utf-8" },
   "terminal.css": { file: "terminal.css", type: "text/css; charset=utf-8" },
   "xterm.js": { file: join("vendor", "xterm.js"), type: "text/javascript; charset=utf-8" },
   "xterm.css": { file: join("vendor", "xterm.css"), type: "text/css; charset=utf-8" },

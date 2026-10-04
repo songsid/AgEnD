@@ -62,7 +62,7 @@ const upgrade = (port: number, host: string, origin = `http://${host}`) => raw(p
   + `Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n`);
 
 const PATHS: Array<[string, string]> = [
-  ["GET", `/t/${SID}/`], ["GET", `/t/${SID}`], ["GET", `/t/${SID}/assets/terminal.js`], ["GET", `/t/${SID}/ws`],
+  ["GET", `/t/${SID}/`], ["GET", `/t/${SID}`], ["GET", `/t/${SID}/assets/terminal.js`], ["GET", `/t/${SID}/assets/terminal-input.js`], ["GET", `/t/${SID}/ws`],
   ["POST", `/t/${SID}/open`], ["GET", "/"], ["GET", "/t/not-the-sid/"], ["GET", "/health"], ["GET", "/api/profiles"], ["POST", "/agent"],
 ];
 
@@ -136,6 +136,9 @@ describe("the names it does answer to", () => {
     expect(page.headers["content-security-policy"]).toContain("frame-ancestors 'none'");
     expect(page.headers["x-frame-options"]).toBe("DENY");
     expect((await send(port, "GET", `/t/${SID}/assets/terminal.js`, { host })).status).toBe(200);
+    const input = await send(port, "GET", `/t/${SID}/assets/terminal-input.js`, { host });
+    expect(input.status).toBe(200);
+    expect(input.headers["content-type"]).toBe("text/javascript; charset=utf-8");
     const open = await send(port, "POST", `/t/${SID}/open`, { host, origin: `http://${host}`, "content-type": "application/json" }, JSON.stringify({ token: "good" }));
     expect(open.status).toBe(204);
     expect(String(open.headers["set-cookie"])).toContain("HttpOnly");
