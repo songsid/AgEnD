@@ -131,25 +131,30 @@ function barBody(line: string): string {
  * an agent explaining it, a draft in the composer, a pasted pane — all have the composer under
  * them, or no dialog hints on the option row, or the pieces out of order.
  */
-function liveDialog(pane: string, header: RegExp, optionRow: RegExp): boolean {
+function liveDialogBlock(pane: string, header: RegExp, optionRow: RegExp): string[] | null {
   const lines = pane.split("\n").filter(line => line.trim() !== "").slice(-40);
   let row = -1;
   for (let i = lines.length - 1; i >= 0; i--) {
     if (optionRow.test(barBody(lines[i]!))) { row = i; break; }
   }
-  if (row < 0) return false;
+  if (row < 0) return null;
   // Bar-only spacer lines (the 60-column layout wraps the hints under a blank one) carry nothing.
   const below = lines.slice(row + 1).filter(line => barBody(line) !== "");
-  if (below.length > 4 || below.some(line => COMPOSER.test(line))) return false;
+  if (below.length > 4 || below.some(line => COMPOSER.test(line))) return null;
   const hintsHere = HINT_INLINE.test(lines[row]!);
   const hintsNext = below.length > 0 && HINT_LINE.test(barBody(below[0]!));
-  if (!hintsHere && !hintsNext) return false;
+  if (!hintsHere && !hintsNext) return null;
   let top = -1;
   for (let i = row - 1; i >= 0; i--) {
     if (header.test(barBody(lines[i]!))) { top = i; break; }
   }
-  if (top < 0) return false;
-  return lines.slice(top, row + 1).every(line => BAR.test(line));
+  if (top < 0) return null;
+  const block = lines.slice(top, row + 1);
+  return block.every(line => BAR.test(line)) ? block : null;
+}
+
+function liveDialog(pane: string, header: RegExp, optionRow: RegExp): boolean {
+  return liveDialogBlock(pane, header, optionRow) !== null;
 }
 
 const PERMISSION_HEADER = /^△ Permission required$/;
@@ -165,4 +170,18 @@ export function opencodePermissionPromptActive(pane: string): boolean {
 /** The second page behind "Allow always": `△ Always allow` … `Confirm   Cancel`. */
 export function opencodeAlwaysConfirmActive(pane: string): boolean {
   return liveDialog(pane, ALWAYS_HEADER, ALWAYS_OPTIONS);
+}
+
+/**
+ * WHICH request the permission prompt is showing: its bordered block from the header to the option row, verbatim
+ * (the kind of access, the path / command / patterns). Whatever ticks outside that block — the status line under
+ * it, a spinner above it — is not part of it. null when no prompt is live.
+ */
+export function opencodePermissionRequest(pane: string): string | null {
+  return liveDialogBlock(pane, PERMISSION_HEADER, PERMISSION_OPTIONS)?.join("\n") ?? null;
+}
+
+/** The same for the "Always allow" page (the patterns it would remember). */
+export function opencodeAlwaysRequest(pane: string): string | null {
+  return liveDialogBlock(pane, ALWAYS_HEADER, ALWAYS_OPTIONS)?.join("\n") ?? null;
 }

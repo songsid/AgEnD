@@ -215,6 +215,15 @@ export interface RuntimeDialog {
    */
   isActive?(pane: string): boolean;
   /**
+   * WHICH request the dialog is showing — the text that identifies it (what is being asked, about which path or
+   * command), verbatim, excluding anything that merely ticks (a spinner, a timer, a status line). Two screens with
+   * equal identity are the same request; different identities are different requests. Return null when the dialog is
+   * not live. Optional: without it the daemon can only compare whole screens, and treats any difference as "not
+   * proven either way" (it never concludes that a request was replaced, so it keeps the dialog's parked clock running).
+   * Must be a pure function of the pane and must not be logged or sent anywhere: it can hold command arguments.
+   */
+  requestIdentity?(pane: string): string | null;
+  /**
    * Recognise the dialog but NEVER answer it. Implies `blocksDelivery`. If it
    * persists, the daemon reports it for a human. Use for dialogs whose default
    * option is destructive when the exact shape is not the one we know how to

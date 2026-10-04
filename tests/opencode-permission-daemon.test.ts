@@ -36,7 +36,11 @@ function rig(current: () => string) {
     getWindowId: () => "@1",
   };
   d.startErrorMonitor();
-  return { d, keys, stop: () => clearInterval(d.errorMonitorTimer) };
+  const parked: unknown[] = [];
+  const ignored: unknown[] = [];
+  d.on("dialog_parked", (event: unknown) => parked.push(event));
+  d.on("dialog_answer_ignored", (event: unknown) => ignored.push(event));
+  return { d, keys, parked, ignored, stop: () => clearInterval(d.errorMonitorTimer) };
 }
 const ticks = (ms: number) => vi.advanceTimersByTimeAsync(ms);
 
@@ -105,6 +109,54 @@ describe("the scanner against OpenCode's real panes", () => {
     const { keys, stop } = rig(() => chatter);
     await ticks(30_000);
     expect(keys).toEqual([]);
+    stop();
+  });
+});
+
+describe("a pending permission prompt whose screen keeps changing around it (the real prompt, the real predicates)", () => {
+  /** Status line under the prompt: the spinner frame and elapsed time OpenCode would paint there. */
+  const withStatus = (pane: string, frame: number) => pane.replace("• OpenCode 1.18.34", `${"⠋⠙⠹⠸⠼⠴"[frame % 6]} ${10 + frame}s • OpenCode 1.18.34`);
+
+  it("the frame changes with every Enter, the SAME request stays pending: the ignored answer is reported, and no false 'parked'", async () => {
+    let frame = 0;
+    const { keys, ignored, parked, stop } = rig(() => withStatus(PROMPT, frame));
+    const answered = keys;
+    const spy = setInterval(() => { frame = answered.length; }, 1);   // the screen changes after every key
+    await ticks(75_000);
+    clearInterval(spy);
+    expect(keys.length).toBeGreaterThanOrEqual(14);
+    expect(ignored).toHaveLength(1);
+    expect(parked).toEqual([]);
+    stop();
+  });
+
+  it("the timer changes only BETWEEN polls, the request does not: the same", async () => {
+    let frame = 0;
+    const { keys, ignored, parked, stop } = rig(() => withStatus(PROMPT, frame));
+    for (let n = 0; n < 15; n++) { frame = n; await ticks(5_000); }
+    expect(keys.length).toBeGreaterThanOrEqual(14);
+    expect(ignored).toHaveLength(1);
+    expect(parked).toEqual([]);
+    stop();
+  });
+
+  it("each Enter shows the NEXT queued request (another target, painted at once): no ignored report, no parked, for 100 s", async () => {
+    let answered = 0;
+    const { keys, ignored, parked, stop } = rig(() => PROMPT.replaceAll("/tmp/ocprobe-ext", `/tmp/ocprobe-ext-${answered}`));
+    const spy = setInterval(() => { answered = keys.length; }, 1);
+    await ticks(100_000);
+    clearInterval(spy);
+    expect(keys.length).toBeGreaterThanOrEqual(15);
+    expect(ignored).toEqual([]);
+    expect(parked).toEqual([]);
+    stop();
+  });
+
+  it("a prompt that really sits there unchanged is reported, once", async () => {
+    const { keys, ignored, stop } = rig(() => PROMPT);
+    await ticks(75_000);
+    expect(keys.length).toBeGreaterThanOrEqual(14);
+    expect(ignored).toHaveLength(1);
     stop();
   });
 });

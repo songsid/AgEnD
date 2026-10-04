@@ -546,6 +546,10 @@ const STARTUP_DIALOG_POLL_MS = 500;
 const STARTUP_DIALOG_BUDGET_MS = 30_000;
 /** A blocking dialog still on screen this long after first being seen is reported for a human. */
 const DIALOG_PARKED_NOTIFY_MS = 60_000;
+/** After a runtime dialog's keys, how long the pane gets to repaint before it is read again to see whether they took. */
+const DIALOG_ANSWER_SETTLE_MS = 300;
+/** Consecutive answers one runtime dialog ignored (still on screen right after the keys) before it is reported for a human. */
+const DIALOG_ANSWER_IGNORED_MAX = 3;
 /** How many "dialog painted just before the write → wait → retry" rounds a delivery tolerates. */
 const LATE_DIALOG_WRITE_ROUNDS = 3;
 /** How many times a delivery redoes itself when a spawn starts between its settle wait and its pane write. */
@@ -1199,6 +1203,12 @@ export class Daemon extends EventEmitter {
   /** Identity of that dialog: its pattern, not its description (two tables may describe one screen differently). */
   private dialogParkedKey: string | null = null;
   private dialogParkedReported = false;
+  /**
+   * The runtime dialog the monitor is answering, and how many of its answers in a row did nothing (the dialog was
+   * still on screen right after the keys). Not the on-screen duration: a burst of FRESH prompts, each answered, has a
+   * dialog on screen at every poll and ignores nothing.
+   */
+  private dialogAnswers: { key: string; ignored: number; reported: boolean; screen: string } | null = null;
   /** Current stdin-owning runtime dialog, independent from execution state. */
   private inputBlockedDialogKey: string | null = null;
   /** Generation/signature fence for safety dialogs while their screen is still visible. */
@@ -2956,11 +2966,17 @@ export class Daemon extends EventEmitter {
 
     this.errorMonitorTimer = setInterval(async () => {
       if (!this.tmux || this.spawning) return;
+      // This poll belongs to the spawn and the monitors it started under. Every await below can outlive them (a stop,
+      // a pause, a respawn); a stale poll must not touch state a newer one owns, so it checks before committing.
+      const pollSpawn = this.spawnGeneration;
+      const pollFence = this.launchFenceEpoch;
+      const stale = (): boolean => pollSpawn !== this.spawnGeneration || pollFence !== this.launchFenceEpoch;
       try {
         const alive = await this.tmux.isWindowAlive();
         if (!alive) return;
 
         const pane = await this.tmux.capturePane();
+        if (stale()) return;
         const inputBlockedDialog = this.updateInputBlockedState(pane, dialogs);
 
         // A sign-in screen that appears AFTER the startup scan ended (first run:
@@ -3030,10 +3046,21 @@ export class Daemon extends EventEmitter {
             // while a delivery was finishing. A stale danger menu must never
             // receive a blind key sequence.
             const currentPane = await this.tmux!.capturePane();
+            // Every await below can outlive the spawn / monitors this poll started under: after each one, before
+            // any state is touched or any further key is sent, `stale()` (fixed at the poll's start) is asked again.
+            if (stale()) return;
             if (!Daemon.dialogMatches(dialog, currentPane)) {
               this.updateInputBlockedState(currentPane, dialogs);
+              this.endDialogEpisode();                       // somebody (or the CLI) already cleared it: that screen is over
               return;
             }
+            // What is being answered: the request's identity when the backend can name it (verbatim, without whatever
+            // ticks around it), else the whole screen.
+            const before = Daemon.screenOf(dialog, currentPane);
+            // Another request since the last answer: the count and the report belong to that one. Its parked clock goes
+            // too only when the backend vouches for the identity — an unrecognised difference (a timer, a spinner) is
+            // not evidence that the old request was answered, and the one-minute fallback must keep running.
+            if (this.dialogAnswers?.key === Daemon.answerKey(dialog) && this.dialogAnswers.screen !== before) this.endDialogEpisode(dialog.requestIdentity !== undefined);
             if (dialog.verifyAfterKeys && autoKey
               && this.autoResolvedDialogGeneration === this.spawnGeneration
               && this.autoResolvedDialogKey === autoKey) return;
@@ -3050,17 +3077,21 @@ export class Daemon extends EventEmitter {
               } else {
                 sent = await this.tmux!.pasteText(key, this.systemPasteOptions());
               }
+              if (stale()) return;
               if (!sent) {
                 if (dialog.verifyAfterKeys && autoKey) {
                   this.autoResolvedDialogGeneration = 0;
                   this.autoResolvedDialogKey = null;
                 }
+                this.breakAnswerStreak(dialog);
                 return;
               }
               await new Promise(r => setTimeout(r, 200));
+              if (stale()) return;
             }
             if (dialog.verifyAfterKeys) {
               const afterKeysPane = await this.tmux!.capturePane();
+              if (stale()) return;
               const dialogStillActive = dialog.inputBlocked
                 ? dialogs.some(candidate => candidate.inputBlocked && Daemon.dialogMatches(candidate, afterKeysPane))
                 : Daemon.dialogMatches(dialog, afterKeysPane);
@@ -3074,9 +3105,24 @@ export class Daemon extends EventEmitter {
               } else {
                 resolved = true;
               }
+            } else if (dialog.keys.length > 0) {
+              // Did the keys take? Read the pane again. The same request still there is an answer that did nothing. A request
+              // the backend names as DIFFERENT (the next queued one), or no dialog at all, means it took. Without a
+              // backend-named identity any difference on the screen (a ticking timer) proves nothing either way: nothing
+              // is reported and the parked clock is left alone. Two requests that look exactly alike cannot be told apart.
+              await new Promise(r => setTimeout(r, DIALOG_ANSWER_SETTLE_MS));
+              const afterPane = await this.tmux!.capturePane();
+              if (stale()) return;                           // (nothing was touched since the last check: only a read)
+              const stillThere = Daemon.dialogMatches(dialog, afterPane);
+              const same = stillThere && Daemon.screenOf(dialog, afterPane) === before;
+              this.noteDialogAnswer(dialog, same ? "ignored" : (!stillThere || dialog.requestIdentity) ? "took" : "unproven", before);
+            } else {
+              this.breakAnswerStreak(dialog);
             }
           });
+          if (stale()) return;                                // the answer-and-look outlived its spawn / monitors: it commits nothing
           if (!dismissed) {
+            this.breakAnswerStreak(dialog);
             this.logger.info({ dialog: dialog.description }, "Dialog dismissal deferred — pane write in flight");
           } else if (dialog.verifyAfterKeys && !resolved) {
             this.logger.warn({ dialog: dialog.description }, "Safety dialog choice was sent but follow-up verification or notice submission failed");
@@ -3084,6 +3130,9 @@ export class Daemon extends EventEmitter {
           this.trackDialogParked(blockingSeen);
           return; // Dialog handled (or deliberately deferred): skip error checks this cycle
         }
+        // Reached only when no dialog was answered this poll (none on screen, or only a fenced one): the screen that was
+        // being answered is gone, and the next dialog is a new one.
+        this.dialogAnswers = null;
         this.trackDialogParked(blockingSeen);
         if (blockingSeen) return; // held dialog: skip error checks this cycle
 
@@ -5964,6 +6013,62 @@ export class Daemon extends EventEmitter {
     return { state: "clear" };
   }
 
+  /** What identifies the request on screen: the backend's own identity when it has one, else the whole screen verbatim. */
+  private static screenOf(dialog: RuntimeDialog, pane: string): string {
+    return dialog.requestIdentity?.(pane) ?? pane;
+  }
+
+  private static answerKey(dialog: RuntimeDialog): string {
+    return `${Daemon.dialogKey(dialog)}\0${dialog.description}`;
+  }
+
+  /**
+   * The episode being counted is over: its count and its report. Its parked clock ends too (`clearParked`) only when the
+   * dialog is gone or a different request is positively identified — not on a difference nobody can explain.
+   */
+  private endDialogEpisode(clearParked = true): void {
+    this.dialogAnswers = null;
+    if (clearParked) this.trackDialogParked(null);
+  }
+
+  /**
+   * A poll that did not complete an answer-and-look (lock busy, keys not sent, nothing to press) breaks "in a row" for
+   * this dialog; if the dialog on screen is a DIFFERENT one, the episode being counted belongs to a screen that is gone.
+   */
+  private breakAnswerStreak(dialog: RuntimeDialog): void {
+    if (!this.dialogAnswers) return;
+    if (this.dialogAnswers.key === Daemon.answerKey(dialog)) this.dialogAnswers.ignored = 0;
+    else this.endDialogEpisode();
+  }
+
+  /**
+   * One answer of the runtime scanner to a dialog, and whether the SAME dialog (same kind, same content) was still
+   * on screen right after it.
+   * An answer that took ends the episode (what shows next is a new dialog, so the parked clock restarts too);
+   * DIALOG_ANSWER_IGNORED_MAX in a row that did not is reported ONCE per episode, for ANY backend's dialog —
+   * not only the ones that hold deliveries — so a human is told in about a quarter of a minute instead of the
+   * instance sitting there until a hang detector (and only with pending work) notices. The event carries the
+   * dialog's static description and a count, never the pane: a pane can hold anything the agent printed.
+   */
+  private noteDialogAnswer(dialog: RuntimeDialog, outcome: "ignored" | "took" | "unproven", screen: string): void {
+    const key = Daemon.answerKey(dialog);
+    if (!this.dialogAnswers || this.dialogAnswers.key !== key) this.dialogAnswers = { key, ignored: 0, reported: false, screen };   // the exact screen being counted: every answer in the episode saw this same one
+    const episode = this.dialogAnswers;
+    if (outcome !== "ignored") {
+      this.endDialogEpisode(outcome === "took");
+      return;
+    }
+    episode.ignored++;
+    if (episode.ignored < DIALOG_ANSWER_IGNORED_MAX || episode.reported) return;
+    episode.reported = true;
+    // The time-based "parked" report would say the same thing again a minute later.
+    if (this.dialogParkedKey === Daemon.dialogKey(dialog)) this.dialogParkedReported = true;
+    const holdsDeliveries = dialog.blocksDelivery === true || dialog.holdOnly === true;
+    this.logger.warn({ dialog: dialog.description, attempts: episode.ignored, holdsDeliveries },
+      "Runtime dialog is ignoring AgEnD's answer — reporting for a human");
+    this.emit("dialog_answer_ignored", { name: this.name, description: dialog.description, attempts: episode.ignored, holdsDeliveries });
+  }
+
   /**
    * Remember how long a blocking dialog has been on screen. Once it has
    * outlived DIALOG_PARKED_NOTIFY_MS — the auto-dismiss did not take, or the
@@ -7797,6 +7902,7 @@ export class Daemon extends EventEmitter {
    * into exactly the window this exists to close.
    */
   private beginSpawn(): void {
+    this.dialogAnswers = null;
     // A relaunch settles any outstanding quit watch: the CLI came back.
     this.clearQuitRelaunchWatch();
     // A restarted CLI has no trustworthy turn edge for the process it replaced.
