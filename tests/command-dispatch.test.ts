@@ -72,13 +72,14 @@ const agentChannels = (fleetLike: Who[], classic: Who[], none: Cell): Row => ({ 
 const classicOnly = (who: Who[], other: Cell): Row => ({ fleet: other, general: other, classic: who, none: other });
 
 const EXPECTED: Record<string, Row> = {
+  // `handler`-decided (the table asks nothing): Discord's guild allowlist, Telegram's user / group allowlist + ClassicBot admin in a group. See tests/command-gates-by-platform.test.ts.
   start: { fleet: refuse("classic.topic_bound"), general: refuse("classic.topic_bound"), classic: refuse("classic.already_active"), none: ALL },
-  stop: classicOnly(CHANNEL_ADMIN_IN_CLASSIC, NO_AGENT),                                  // was: anyone (Discord) — a hole; Telegram already needed an admin
+  stop: classicOnly(CLASSIC_ADMIN, NO_AGENT),                                             // was: anyone (Discord; "the guild allowlist is the boundary"). Telegram always needed a ClassicBot admin — and ONLY that, not a fleet admin
   chat: classicOnly(ALL, NO_AGENT_START),
   load: classicOnly(CLASSIC_ADMIN, NO_AGENT_START),                                       // unchanged: ClassicBot admins only
-  pause: agentChannels(FLEET_ADMIN, CHANNEL_ADMIN_IN_CLASSIC, NO_AGENT),                  // was in a ClassicBot channel: classic admin only (a fleet admin was refused)
+  pause: agentChannels(FLEET_ADMIN, CHANNEL_ADMIN_IN_CLASSIC, NO_AGENT),                  // Discord, in a ClassicBot channel: was classic admin only (a fleet admin was refused). Telegram still is.
   wake: agentChannels(FLEET_ADMIN, CHANNEL_ADMIN_IN_CLASSIC, NO_AGENT),
-  compact: agentChannels(FLEET_ADMIN, CHANNEL_ADMIN_IN_CLASSIC, NO_AGENT),                // was: anyone, while labelled 🔒
+  compact: agentChannels(FLEET_ADMIN, CHANNEL_ADMIN_IN_CLASSIC, NO_AGENT),                // Discord was: anyone, while labelled 🔒. Telegram: ClassicBot admin in a ClassicBot chat, nobody checked in a fleet topic
   clear: agentChannels(FLEET_ADMIN, CHANNEL_ADMIN_IN_CLASSIC, NO_AGENT),                  // unchanged for people who could use it
   model: agentChannels(FLEET_ADMIN, CHANNEL_ADMIN_IN_CLASSIC, NO_AGENT),
   effort: agentChannels(FLEET_ADMIN, CHANNEL_ADMIN_IN_CLASSIC, NO_AGENT),
@@ -303,6 +304,30 @@ describe("every command × every kind of channel × every kind of caller", () =>
 });
 
 describe("the pure rule", () => {
+  const nobody: CommandChecks = { fleetAdmin: () => "denied", channelAdmin: () => false, classicAdmin: () => false };
+
+  it("`handler` lets through whoever the door admitted and asks nobody; it is not a lock", () => {
+    const asked: string[] = [];
+    const spy: CommandChecks = {
+      fleetAdmin: () => { asked.push("f"); return "denied"; }, channelAdmin: () => { asked.push("c"); return false; }, classicAdmin: () => { asked.push("a"); return false; },
+    };
+    expect(decideCommand(commandSpec("start")!, "none", spy)).toEqual({ allow: true });
+    expect(decideCommand(commandSpec("start")!, "none", spy, "telegram")).toEqual({ allow: true });
+    expect(asked).toEqual([]);
+    expect(isLocked(commandSpec("start")!)).toBe(false);
+  });
+
+  it("a Telegram override applies only on Telegram; the Discord answer for the same cell is unchanged", () => {
+    const classicAdminOnly: CommandChecks = { ...nobody, classicAdmin: () => true };
+    const fleetAdminInClassic: CommandChecks = { ...nobody, channelAdmin: () => true };    // what `isModelAdmin` says of a fleet admin
+    expect(decideCommand(commandSpec("pause")!, "classic", fleetAdminInClassic, "discord")).toEqual({ allow: true });
+    expect(decideCommand(commandSpec("pause")!, "classic", fleetAdminInClassic, "telegram")).toEqual({ allow: false, reply: ["permission.denied"] });
+    expect(decideCommand(commandSpec("pause")!, "classic", classicAdminOnly, "telegram")).toEqual({ allow: true });
+    expect(decideCommand(commandSpec("compact")!, "fleet", nobody, "telegram")).toEqual({ allow: true });
+    expect(decideCommand(commandSpec("compact")!, "fleet", nobody, "discord")).toEqual({ allow: false, reply: ["cmd.admin_required", "/compact"] });
+    expect(decideCommand(commandSpec("compact")!, "fleet", nobody)).toEqual({ allow: false, reply: ["cmd.admin_required", "/compact"] });      // the default platform is Discord
+  });
+
   const checks = (over: Partial<Record<keyof CommandChecks, unknown>> = {}) => {
     const asked: string[] = [];
     const c: CommandChecks = {

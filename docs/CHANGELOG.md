@@ -13,13 +13,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   authorization door added earlier and can only narrow what the door allowed. The levels are *anyone*,
   *channel admin* (in a fleet channel a fleet admin; in a ClassicBot channel a fleet admin **or** a ClassicBot
   admin), *fleet admin* and *ClassicBot admin*. Behaviour changes:
-  - **`/stop`** in a ClassicBot channel needs a channel admin (it was open to everyone on Discord; Telegram already
-    required an admin).
-  - **`/compact`** needs a channel admin (it was labelled 🔒 but open to everyone).
+  - **`/stop`** in a ClassicBot channel needs a ClassicBot admin on Discord, as it always did on Telegram. On Discord it
+    was open to everyone; a fleet admin who is not also a ClassicBot admin can no longer stop a ClassicBot channel
+    there, and never could on Telegram.
+  - **`/compact`** on Discord needs a channel admin (it was labelled 🔒 but had no check on Discord). Telegram is not
+    changed by this: it still needs a ClassicBot admin in a ClassicBot chat, and has no check in a fleet topic.
   - **`/save`** needs the admin of the channel's own kind (it asked for a ClassicBot admin even in fleet channels,
     so a fleet admin was refused there and a ClassicBot admin could paste into a fleet instance).
-  - **`/pause`, `/wake` and `/collab`** in a ClassicBot channel now also accept a fleet admin (they accepted only a
-    ClassicBot admin).
+  - **`/pause`, `/wake` and `/collab`** in a ClassicBot channel now also accept a fleet admin on Discord (they accepted
+    only a ClassicBot admin). Telegram is not changed: its ClassicBot `/pause` and `/wake` still need a ClassicBot admin.
+  - **`/start`** is not changed on either platform, and the table now says so instead of "anyone": Discord checks the
+    guild allowlist and nothing else; Telegram checks the user allowlist in a private chat, and the group allowlist
+    **and** a ClassicBot admin in a group. The table marks it as decided by its handler.
+  - The table has a Telegram column for the cells where Telegram's handlers differ from Discord's, and a test
+    (`tests/command-gates-by-platform.test.ts`) drives the real Telegram handlers against it.
   - **`/stop` and `/dashboard` now show the 🔒** they always deserved; `/model`, `/effort`, `/clear` and the
     admin-only commands are unchanged for everyone who could use them.
   - A command that does not apply where it was typed (for example `/ctx` in a channel with no agent) is refused with
