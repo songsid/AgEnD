@@ -118,7 +118,8 @@ function barBody(line: string): string {
 }
 
 /**
- * A live OpenCode dialog is one bordered block at the BOTTOM of the pane, in this order:
+ * A live OpenCode dialog is one bordered block at the BOTTOM of the pane (the option row is the last
+ * thing on screen but a few status lines), in this order:
  *
  *     ┃  △ <header>                                  ← the whole line, nothing after the title
  *     ┃  …body…
@@ -133,7 +134,7 @@ function barBody(line: string): string {
 function liveDialog(pane: string, header: RegExp, optionRow: RegExp): boolean {
   const lines = pane.split("\n").filter(line => line.trim() !== "").slice(-40);
   let row = -1;
-  for (let i = lines.length - 1; i >= 0 && i >= lines.length - 6; i--) {
+  for (let i = lines.length - 1; i >= 0; i--) {
     if (optionRow.test(barBody(lines[i]!))) { row = i; break; }
   }
   if (row < 0) return false;

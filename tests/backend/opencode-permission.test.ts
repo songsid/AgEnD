@@ -38,6 +38,7 @@ const PROMPTS = {
   "back from Cancel on the Always page": "opencode-1.18.34-permission-after-always-cancel.pane.txt",
 };
 const ALWAYS = fixture("opencode-1.18.34-permission-always-confirm.pane.txt");
+const ALWAYS_60 = fixture("opencode-1.18.34-permission-always-confirm-60col.pane.txt");
 const READY = fixture("opencode-1.18.34-ready-after-tool.pane.txt");
 const READY_AUTO = fixture("opencode-1.18.34-ready-after-tool-auto.pane.txt");
 
@@ -236,6 +237,11 @@ describe("the runtime dialogs: structural, Allow once", () => {
     expect(always!.pattern.test(ALWAYS)).toBe(true);
   });
 
+  it("the 'Always allow' page at 60 columns (the hints wrapped under a blank line, without ctrl+f) is found too", () => {
+    expect(opencodeAlwaysConfirmActive(ALWAYS_60)).toBe(true);
+    expect(opencodePermissionPromptActive(ALWAYS_60)).toBe(false);
+  });
+
   it("holds delivery and owns stdin while it is up", () => {
     for (const dialog of [permission!, always!]) {
       expect(dialog.blocksDelivery).toBe(true);
@@ -314,6 +320,20 @@ describe("the runtime dialogs: structural, Allow once", () => {
       expect(opencodePermissionPromptActive(dialog("The documentation says △ Permission required is shown first", ROW))).toBe(false);
       expect(opencodePermissionPromptActive(dialog("△ Permission required before it can proceed", ROW))).toBe(false);
       expect(opencodeAlwaysConfirmActive(dialog("△ Always allow means what it says", "Confirm   Cancel   ⇆ select  enter confirm"))).toBe(false);
+    });
+
+    it("…including one that ENDS with the header's own words", () => {
+      expect(opencodePermissionPromptActive(dialog("The documentation says △ Permission required", ROW))).toBe(false);
+      expect(opencodeAlwaysConfirmActive(dialog("The docs call this △ Always allow", "Confirm   Cancel   ⇆ select  enter confirm"))).toBe(false);
+    });
+
+    it("hints that are only half of the dialog's (just 'enter confirm') are not its hints", () => {
+      expect(opencodePermissionPromptActive(dialog("△ Permission required", "Allow once   Allow always   Reject  (then enter confirm)"))).toBe(false);
+    });
+
+    it("more than a few lines of anything under the option row means the agent moved on", () => {
+      const moved = `${dialog("△ Permission required", ROW)}\n${Array.from({ length: 6 }, (_, i) => `${BAR}  agent output ${i}`).join("\n")}`;
+      expect(opencodePermissionPromptActive(moved)).toBe(false);
     });
 
     it("an option row that is part of a sentence is not the option row", () => {
