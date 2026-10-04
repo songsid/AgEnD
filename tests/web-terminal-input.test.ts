@@ -363,6 +363,15 @@ describe("terminal.js on any other terminal (the installer): nothing taken away"
     expect(p.elements["code-row"]!.hidden).toBe(true);
   });
 
+  it("typed input: an empty chunk sends no frame, and a socket that throws does not throw out of xterm's handler", () => {
+    const p = page();
+    const term = p.open("install");
+    term.onData!("");
+    expect(p.socket.sent).toEqual([]);
+    (p.socket as unknown as { throwOnSend: boolean }).throwOnSend = true;
+    expect(() => term.onData!("ls\r")).not.toThrow();
+  });
+
   it("typed input still goes out as bytes, untouched", () => {
     const p = page();
     const term = p.open("install");
