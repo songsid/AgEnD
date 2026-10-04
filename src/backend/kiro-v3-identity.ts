@@ -54,7 +54,8 @@ function isState(v: unknown): v is V3State {
   return typeof s.bucket === "string"
     && (s.credentialProfile === null || typeof s.credentialProfile === "string")
     && (s.id === null || (typeof s.id === "string" && SAFE_NAME.test(s.id)))
-    && typeof s.since === "number" && Number.isFinite(s.since)
+    // A real instant: Date accepts only ±8.64e15 ms, and an out-of-range mark is no evidence of anything.
+    && typeof s.since === "number" && Number.isFinite(new Date(s.since).getTime())
     && Array.isArray(s.known) && s.known.every(k => typeof k === "string");
 }
 
@@ -168,4 +169,27 @@ export function resolveKiroV3Resume(instance: string, workingDirectory: string, 
   // The claim is the ownership; if the state cannot record it, the next launch finds the claim again.
   writeState({ ...state, id: pick });
   return pick;
+}
+
+export type KiroV3Identity =
+  | { kind: "none" }
+  | { kind: "unreadable" }
+  | { kind: "owned"; id: string; claimHeld: boolean; credentialProfile: string | null }
+  | { kind: "fresh"; since: string; credentialProfile: string | null };
+
+/** What an instance's V3 identity says right now, read-only (for kiro_engine_status). */
+export function readKiroV3Identity(instance: string, agendHome: string = getAgendHome()): KiroV3Identity {
+  if (!SAFE_NAME.test(instance)) return { kind: "none" };
+  const root = join(agendHome, "kiro-v3");
+  let raw: string;
+  try { raw = readFileSync(join(root, "instances", `${instance}.json`), "utf8"); } catch (err) {
+    return (err as NodeJS.ErrnoException).code === "ENOENT" ? { kind: "none" } : { kind: "unreadable" };
+  }
+  let state: unknown;
+  try { state = JSON.parse(raw); } catch { return { kind: "unreadable" }; }
+  if (!isState(state)) return { kind: "unreadable" };
+  if (state.id === null) return { kind: "fresh", since: new Date(state.since).toISOString(), credentialProfile: state.credentialProfile };
+  let claimHeld = false;
+  try { claimHeld = readFileSync(join(root, "claims", state.id), "utf8") === `${instance}\n`; } catch { /* not held */ }
+  return { kind: "owned", id: state.id, claimHeld, credentialProfile: state.credentialProfile };
 }

@@ -42,6 +42,8 @@ const BEFORE: Record<string, string[]> = {
     // Persona emoji: its own status stamp, beside its own name and description.
     "list_emojis", "set_persona_emoji", "preview_emojis",
     "validate_config", "get_fleet_status", "get_usage", "get_effort", "get_instance_logs", "get_fleet_config",
+    // kiro engine move: read-only kiro engine facts.
+    "kiro_engine_status",
     // #895: self-scheduling, scoped by target in scheduleOpRefusal.
     "create_schedule", "list_schedules", "update_schedule", "delete_schedule",
   ],
@@ -57,6 +59,8 @@ const BEFORE: Record<string, string[]> = {
     "create_schedule", "list_schedules", "update_schedule", "delete_schedule",
     // v2.1.9: persona emoji — see the server's emojis and set its own stamp.
     "list_emojis", "preview_emojis", "set_persona_emoji",
+    // kiro engine move: read-only kiro engine facts, for explaining a kiro incompatibility.
+    "kiro_engine_status",
   ],
 };
 

@@ -200,6 +200,8 @@ export interface LifecycleContext {
   offerBackendLogin?(targetInstance: string, backend: string): Promise<void>;
   /** Notify a clean CLI exit and offer an admin-only restart action in General. */
   notifyNormalExit(name: string): Promise<void>;
+  /** Tell every General, as an agent, that kiro-cli can no longer run this instance as configured. */
+  queueKiroIncompatNotice?(name: string, reason: string): void;
   /** True for a dynamic ClassicBot channel instance (not a fleet topic). */
   isClassicInstance?(name: string): boolean;
   /** True while the fleet is stopping on purpose or an `agend update` is running. */
@@ -810,7 +812,7 @@ export class InstanceLifecycle {
       this.notifyIncident(name, "snapshot_failed", t("inst.restarted_no_context", name));
     }, this.ctx.logger, `daemon.snapshot_failed[${name}]`));
 
-    daemon.on("supervision_ended", safeHandler(async (data: { name: string; reason: string; remedy: string; exitCode?: number }) => {
+    daemon.on("supervision_ended", safeHandler(async (data: { name: string; reason: string; remedy: string; exitCode?: number; cause?: "cli_unsupported" }) => {
       // The instance is dead and nothing will restart it. Say so where the operator
       // is looking, and mark the topic — otherwise messages routed here just queue
       // or fail with a bare ❌ and the dashboard still looks normal.
@@ -831,6 +833,7 @@ export class InstanceLifecycle {
         "supervision_ended",
         `🛑 ${name} is no longer running and will not be restarted automatically — ${data.reason}.\n${data.remedy}`,
       );
+      if (data.cause === "cli_unsupported") this.ctx.queueKiroIncompatNotice?.(name, data.reason);
       this.ctx.setTopicIcon(name, "red");
     }, this.ctx.logger, `daemon.supervision_ended[${name}]`));
 
