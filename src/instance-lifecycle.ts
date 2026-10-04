@@ -1048,6 +1048,18 @@ export class InstanceLifecycle {
       this.ctx.notifyFleetError?.(t("fleet.dialog_parked", name, data.description));
     }, this.ctx.logger, `daemon.dialog_parked[${name}]`));
 
+    daemon.on("dialog_answer_ignored", safeHandler((data: { name: string; description: string; attempts: number; holdsDeliveries: boolean }) => {
+      // A runtime dialog the daemon DID answer, that did not go away. Same rule as dialog_parked: no assist
+      // buttons (a one-tap Enter is exactly what just failed, and may be the wrong choice), and nothing from the
+      // pane — only the dialog's static description and the count.
+      this.ctx.eventLog?.insert(name, "dialog_answer_ignored", { description: data.description, attempts: data.attempts, holdsDeliveries: data.holdsDeliveries });
+      this.ctx.logger.warn({ name, description: data.description, attempts: data.attempts }, "A CLI dialog is not taking the daemon's answer");
+      if (this.ctx.isPlannedRestart()) return;
+      const text = t(data.holdsDeliveries ? "inst.dialog_answer_ignored_held" : "inst.dialog_answer_ignored", name, data.description, String(data.attempts));
+      this.notifyIncident(name, "dialog_answer_ignored", text);
+      this.ctx.notifyFleetError?.(t("fleet.dialog_answer_ignored", name, data.description, String(data.attempts)));
+    }, this.ctx.logger, `daemon.dialog_answer_ignored[${name}]`));
+
     daemon.on("interactive_prompt", safeHandler(async (data: { name: string; kind: string; prompt: string }) => {
       this.ctx.eventLog?.insert(name, "interactive_prompt", { kind: data.kind });
       this.ctx.logger.warn({ name, kind: data.kind, prompt: data.prompt }, "Instance is waiting for interactive terminal input");

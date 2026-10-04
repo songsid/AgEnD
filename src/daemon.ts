@@ -546,6 +546,10 @@ const STARTUP_DIALOG_POLL_MS = 500;
 const STARTUP_DIALOG_BUDGET_MS = 30_000;
 /** A blocking dialog still on screen this long after first being seen is reported for a human. */
 const DIALOG_PARKED_NOTIFY_MS = 60_000;
+/** After a runtime dialog's keys, how long the pane gets to repaint before it is read again to see whether they took. */
+const DIALOG_ANSWER_SETTLE_MS = 300;
+/** Consecutive answers one runtime dialog ignored (still on screen right after the keys) before it is reported for a human. */
+const DIALOG_ANSWER_IGNORED_MAX = 3;
 /** How many "dialog painted just before the write → wait → retry" rounds a delivery tolerates. */
 const LATE_DIALOG_WRITE_ROUNDS = 3;
 /** How many times a delivery redoes itself when a spawn starts between its settle wait and its pane write. */
@@ -1199,6 +1203,12 @@ export class Daemon extends EventEmitter {
   /** Identity of that dialog: its pattern, not its description (two tables may describe one screen differently). */
   private dialogParkedKey: string | null = null;
   private dialogParkedReported = false;
+  /**
+   * The runtime dialog the monitor is answering, and how many of its answers in a row did nothing (the dialog was
+   * still on screen right after the keys). Not the on-screen duration: a burst of FRESH prompts, each answered, has a
+   * dialog on screen at every poll and ignores nothing.
+   */
+  private dialogAnswers: { key: string; ignored: number; reported: boolean } | null = null;
   /** Current stdin-owning runtime dialog, independent from execution state. */
   private inputBlockedDialogKey: string | null = null;
   /** Generation/signature fence for safety dialogs while their screen is still visible. */
@@ -3006,8 +3016,10 @@ export class Daemon extends EventEmitter {
         // on). Runtime table only: startup patterns are loose on purpose and
         // must never send keys into an ordinary transcript.
         let blockingSeen: RuntimeDialog | null = null;
+        let anyDialogSeen = false;
         for (const dialog of dialogs) {
           if (!Daemon.dialogMatches(dialog, pane)) continue;
+          anyDialogSeen = true;
           this.noteCodexReserveDialog(dialog, pane);
           if (dialog.blocksDelivery || dialog.holdOnly) blockingSeen = dialog;
           if (dialog.holdOnly) break; // recognised, deliberately not answered; trackDialogParked reports it
@@ -3074,6 +3086,11 @@ export class Daemon extends EventEmitter {
               } else {
                 resolved = true;
               }
+            } else if (dialog.keys.length > 0) {
+              // Did the keys take? A fresh prompt cannot be painted this soon after an answer (it needs a model
+              // round trip), so the SAME dialog still here is an answer that did nothing.
+              await new Promise(r => setTimeout(r, DIALOG_ANSWER_SETTLE_MS));
+              this.noteDialogAnswer(dialog, Daemon.dialogMatches(dialog, await this.tmux!.capturePane()));
             }
           });
           if (!dismissed) {
@@ -3084,6 +3101,7 @@ export class Daemon extends EventEmitter {
           this.trackDialogParked(blockingSeen);
           return; // Dialog handled (or deliberately deferred): skip error checks this cycle
         }
+        if (!anyDialogSeen) this.dialogAnswers = null;   // the screen is gone: the next dialog is a new one
         this.trackDialogParked(blockingSeen);
         if (blockingSeen) return; // held dialog: skip error checks this cycle
 
@@ -5965,6 +5983,34 @@ export class Daemon extends EventEmitter {
   }
 
   /**
+   * One answer of the runtime scanner to a dialog, and whether the dialog was still on screen right after it.
+   * An answer that took ends the episode (what shows next is a new dialog, so the parked clock restarts too);
+   * DIALOG_ANSWER_IGNORED_MAX in a row that did not is reported ONCE per episode, for ANY backend's dialog —
+   * not only the ones that hold deliveries — so a human is told in about a quarter of a minute instead of the
+   * instance sitting there until a hang detector (and only with pending work) notices. The event carries the
+   * dialog's static description and a count, never the pane: a pane can hold anything the agent printed.
+   */
+  private noteDialogAnswer(dialog: RuntimeDialog, stillOnScreen: boolean): void {
+    const key = `${Daemon.dialogKey(dialog)}\0${dialog.description}`;
+    if (!this.dialogAnswers || this.dialogAnswers.key !== key) this.dialogAnswers = { key, ignored: 0, reported: false };
+    const episode = this.dialogAnswers;
+    if (!stillOnScreen) {
+      this.dialogAnswers = null;
+      this.trackDialogParked(null);
+      return;
+    }
+    episode.ignored++;
+    if (episode.ignored < DIALOG_ANSWER_IGNORED_MAX || episode.reported) return;
+    episode.reported = true;
+    // The time-based "parked" report would say the same thing again a minute later.
+    if (this.dialogParkedKey === Daemon.dialogKey(dialog)) this.dialogParkedReported = true;
+    const holdsDeliveries = dialog.blocksDelivery === true || dialog.holdOnly === true;
+    this.logger.warn({ dialog: dialog.description, attempts: episode.ignored, holdsDeliveries },
+      "Runtime dialog is ignoring AgEnD's answer — reporting for a human");
+    this.emit("dialog_answer_ignored", { name: this.name, description: dialog.description, attempts: episode.ignored, holdsDeliveries });
+  }
+
+  /**
    * Remember how long a blocking dialog has been on screen. Once it has
    * outlived DIALOG_PARKED_NOTIFY_MS — the auto-dismiss did not take, or the
    * dialog is a hold-only variant — report it ONCE so a human answers it.
@@ -7797,6 +7843,7 @@ export class Daemon extends EventEmitter {
    * into exactly the window this exists to close.
    */
   private beginSpawn(): void {
+    this.dialogAnswers = null;
     // A relaunch settles any outstanding quit watch: the CLI came back.
     this.clearQuitRelaunchWatch();
     // A restarted CLI has no trustworthy turn edge for the process it replaced.
