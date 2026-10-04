@@ -21,8 +21,14 @@
  *
  * Everything the checks need from the machine (the user's real AgEnD home, realpath, the uid, the temp root)
  * is an injectable seam, so every refusal is exercised with fake values and no real directory.
+ *
+ * An `ok` is a decision about paths as they were when it was made, not a sandbox: a path can be swapped for a
+ * symlink between the plan and the start. The runner must own the scratch directory (create it itself, private to
+ * the user, never accept one it did not make) and call `planScratchRun` again immediately before it executes
+ * anything, and `planTeardown` immediately before it cleans up. A fact that cannot be established (a path that
+ * cannot be resolved, an unknown live home) is a refusal, never an assumption.
  */
-import { realpathSync } from "node:fs";
+import { lstatSync, realpathSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { realDefaultAgendHome, tmuxSessionNameFor, tmuxSocketNameFor } from "./paths.js";
@@ -42,7 +48,7 @@ const PASSTHROUGH = ["PATH", "LANG", "LC_ALL", "TERM"] as const;
 export type Rule =
   | "scratch-root" | "scratch-not-live" | "real-home-unknown" | "home-not-live" | "tmux-socket-default" | "tmux-session-live"
   | "socket-path-length" | "health-port" | "token-var" | "env-forbidden" | "command-forbidden" | "teardown-target"
-  | "config-token-var" | "config-backend" | "config-agent-mode" | "config-quiet" | "config-health-port" | "config-access" | "config-webhooks";
+  | "path-unresolved" | "layout-escapes" | "config-token-var" | "config-backend" | "config-agent-mode" | "config-quiet" | "config-health-port" | "config-access" | "config-webhooks";
 
 export interface Violation { rule: Rule; detail: string }
 
@@ -111,19 +117,41 @@ function defaultSeams(seams: Seams): Required<Seams> {
   };
 }
 
-/** `realpath`, but for a path that need not exist yet: resolve the nearest existing ancestor and re-attach the rest. */
+/**
+ * `realpath`, but for a path that need not exist yet: resolve the nearest existing ancestor and re-attach the rest.
+ * Only a path that is certainly MISSING is climbed past. A dangling symlink, an unreadable directory (EACCES), a
+ * symlink loop (ELOOP) or a file in the middle of the path (ENOTDIR) throws: a fact the check cannot establish
+ * is a refusal, never an assumption that the path is harmless.
+ */
 function realpathOfNearestAncestor(path: string): string {
   const rest: string[] = [];
   let current = path;
   for (;;) {
     try {
       return rest.length === 0 ? realpathSync.native(current) : join(realpathSync.native(current), ...rest.reverse());
-    } catch {
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+      try {
+        lstatSync(current);
+        throw Object.assign(new Error(`${current} is a dangling symlink`), { code: "ELOOP" });
+      } catch (lstatErr) {
+        if ((lstatErr as NodeJS.ErrnoException).code !== "ENOENT") throw lstatErr;
+      }
       const parent = dirname(current);
       if (parent === current) return path;            // nothing exists: nothing can be a symlink either
       rest.push(basename(current));
       current = parent;
     }
+  }
+}
+
+/** Resolve `path` with the seam; a path that cannot be resolved is a violation, and null. */
+function resolveOrRefuse(s: Required<Seams>, path: string, what: string, out: Violation[]): string | null {
+  try {
+    return s.realpath(path);
+  } catch (err) {
+    out.push({ rule: "path-unresolved", detail: `${what} ${path} cannot be resolved (${(err as NodeJS.ErrnoException).code ?? (err as Error).message}); an unproven path is refused` });
+    return null;
   }
 }
 
@@ -141,13 +169,15 @@ function checkScratchDir(scratchDir: string, s: Required<Seams>, out: Violation[
     out.push({ rule: "scratch-root", detail: `scratch directory must be an absolute, normalised path (got ${JSON.stringify(scratchDir)})` });
     return;
   }
-  const root = s.realpath(s.tmpRoot);
-  const real = s.realpath(scratchDir);
+  const root = resolveOrRefuse(s, s.tmpRoot, "the temp root", out);
+  const real = resolveOrRefuse(s, scratchDir, "the scratch directory", out);
+  if (root === null || real === null) return;
   if (!isStrictlyInside(real, root)) {
     out.push({ rule: "scratch-root", detail: `${real} is not a directory inside ${root}` });
   }
   if (s.realAgendHome !== null) {
-    const live = s.realpath(s.realAgendHome);
+    const live = resolveOrRefuse(s, s.realAgendHome, "the live AgEnD home", out);
+    if (live === null) return;
     // Inside the live home, equal to it, or a parent of it (a scratch run rooted above the live fleet could be told to clean up inside it).
     if (isInside(real, live) || isInside(live, real)) {
       out.push({ rule: "scratch-not-live", detail: `${real} overlaps the live AgEnD home ${live}` });
@@ -155,10 +185,35 @@ function checkScratchDir(scratchDir: string, s: Required<Seams>, out: Violation[
   }
 }
 
+/**
+ * Every path the child is handed (its AGEND_HOME, HOME, TMUX_TMPDIR and the tmux socket) must resolve to a place
+ * strictly inside the scratch directory and clear of the live home. A symlink at `<scratch>/ag` or `<scratch>/tm` that
+ * points elsewhere would otherwise carry the run's data, credentials or tmux server out of the isolation. The
+ * scratch directory itself is proven clear of the live home by `checkScratchDir`, so staying strictly inside it is
+ * also staying clear of the live home.
+ */
+function checkLayoutContained(layout: ScratchLayout, tmuxSocketPath: string, s: Required<Seams>, out: Violation[]): void {
+  const scratch = resolveOrRefuse(s, layout.scratchDir, "the scratch directory", out);
+  if (scratch === null) return;
+  const parts: Array<[string, string]> = [
+    ["AGEND_HOME", layout.agendHome], ["HOME", layout.userHome], ["TMUX_TMPDIR", layout.tmuxTmpdir],
+    ["the tmux socket directory", dirname(tmuxSocketPath)], ["the tmux socket", tmuxSocketPath],
+  ];
+  for (const [what, path] of parts) {
+    const real = resolveOrRefuse(s, path, what, out);
+    if (real === null) continue;
+    // Staying strictly inside a scratch directory that `checkScratchDir` has already proven clear of the live home
+    // is also staying clear of it.
+    if (!isStrictlyInside(real, scratch)) {
+      out.push({ rule: "layout-escapes", detail: `${what} ${path} resolves to ${real}, outside the scratch directory ${scratch}` });
+    }
+  }
+}
+
 function checkPort(port: number, s: Required<Seams>, out: Violation[]): void {
   if (!Number.isInteger(port) || port < 1024 || port > 65535) {
     out.push({ rule: "health-port", detail: `${String(port)} is not a usable unprivileged port` });
-  } else if (s.livePorts.includes(port)) {
+  } else if (port === LIVE_HEALTH_PORT || s.livePorts.includes(port)) {
     out.push({ rule: "health-port", detail: `${port} is the live fleet's port` });
   }
 }
@@ -175,8 +230,21 @@ const FORBIDDEN_AGEND_SUBCOMMANDS: ReadonlySet<string> = new Set(
 const FORBIDDEN_PROGRAMS: ReadonlySet<string> = new Set(
   ["systemctl", "launchctl", "service", "sudo", "su", "doas", "kill", "pkill", "killall", "npm", "npx", "pnpm", "yarn"],
 );
-const SCRIPT_RUNNERS: ReadonlySet<string> = new Set(["node", "tsx", "bun", "deno"]);
+/** Programs a scratch run may execute. Anything else (`sh -c`, `env`, `tmux`, `xargs`, `bash` …) is an indirection the check cannot see through. */
+const ALLOWED_PROGRAMS: ReadonlySet<string> = new Set(["agend", "node", "tsx"]);
+const SCRIPT_RUNNERS: ReadonlySet<string> = new Set(["node", "tsx"]);
+/** The only flags accepted where a subcommand would go: they print and exit. */
+const INFO_FLAGS: ReadonlySet<string> = new Set(["--version", "-v", "--help", "-h"]);
 
+/**
+ * The command grammar is a whitelist, not a blacklist of words:
+ *   agend <subcommand> [anything]
+ *   node|tsx <script> <subcommand> [anything]
+ * The subcommand must sit exactly where the grammar puts it. A runtime flag before the script (`node --import x
+ * cli.js restart`, `node -- cli.js stop`) or before the subcommand is refused outright, because it can change what
+ * runs or hide where the subcommand is. tmux is refused here too: the only tmux command a run may issue is the
+ * one `planTeardown` returns, against a socket it has proven.
+ */
 function checkCommand(command: readonly string[], out: Violation[]): void {
   if (command.length === 0) return;
   const program = basename(command[0]!);
@@ -184,12 +252,28 @@ function checkCommand(command: readonly string[], out: Violation[]): void {
     out.push({ rule: "command-forbidden", detail: `${program} acts on the machine, not on the scratch directory` });
     return;
   }
-  // `agend <sub>` or `node dist/cli.js <sub>`: find the first subcommand.
+  if (!ALLOWED_PROGRAMS.has(program)) {
+    out.push({ rule: "command-forbidden", detail: `${program} is not an allowed program (agend, node, tsx); shells and wrappers hide what they run, and tmux is only used through planTeardown` });
+    return;
+  }
   let args = command.slice(1);
-  if (SCRIPT_RUNNERS.has(program)) args = args.slice(1);          // the script path
-  else if (program !== "agend") return;
-  const sub = args.find(a => !a.startsWith("-"));
-  if (sub !== undefined && FORBIDDEN_AGEND_SUBCOMMANDS.has(sub)) {
+  if (SCRIPT_RUNNERS.has(program)) {
+    const script = args[0];
+    if (script === undefined || script.startsWith("-")) {
+      out.push({ rule: "command-forbidden", detail: `${program} must be followed directly by a script path, not ${JSON.stringify(script ?? "")}: runtime flags change what runs` });
+      return;
+    }
+    args = args.slice(1);
+  }
+  const sub = args[0];
+  if (sub === undefined) return;
+  if (sub.startsWith("-")) {
+    if (!INFO_FLAGS.has(sub) || args.length > 1) {
+      out.push({ rule: "command-forbidden", detail: `${JSON.stringify(sub)} comes where the agend subcommand belongs; only --version/--help (alone) may` });
+    }
+    return;
+  }
+  if (FORBIDDEN_AGEND_SUBCOMMANDS.has(sub)) {
     out.push({ rule: "command-forbidden", detail: `agend ${sub} goes through the per-user service, which a scratch AGEND_HOME does not isolate` });
   }
 }
@@ -209,8 +293,9 @@ export function planScratchRun(request: ScratchRequest, seams: Seams = {}): Plan
   if (s.realAgendHome === null) {
     violations.push({ rule: "real-home-unknown", detail: "the live AgEnD home cannot be determined, so nothing can be proven different from it" });
   } else {
-    const live = s.realpath(s.realAgendHome);
-    if (s.realpath(layout.agendHome) === live || layout.agendHome === s.realAgendHome) {
+    const live = resolveOrRefuse(s, s.realAgendHome, "the live AgEnD home", violations);
+    const home = resolveOrRefuse(s, layout.agendHome, "AGEND_HOME", violations);
+    if (live !== null && home !== null && (home === live || layout.agendHome === s.realAgendHome)) {
       violations.push({ rule: "home-not-live", detail: `AGEND_HOME ${layout.agendHome} is the live home` });
     }
   }
@@ -233,6 +318,7 @@ export function planScratchRun(request: ScratchRequest, seams: Seams = {}): Plan
     }
   }
 
+  checkLayoutContained(layout, tmuxSocketPath, s, violations);
   checkPort(request.healthPort, s, violations);
 
   const tokenVars = [...(request.tokenVars ?? [])];
@@ -290,13 +376,17 @@ export function planTeardown(plan: ScratchPlan, seams: Seams = {}): TeardownResu
   const { scratchDir } = plan.layout;
 
   checkScratchDir(scratchDir, s, violations);
-  const real = s.realpath(plan.tmuxSocketPath);
-  const scratchReal = s.realpath(scratchDir);
+  if (s.realAgendHome === null) {
+    violations.push({ rule: "real-home-unknown", detail: "the live AgEnD home cannot be determined, so a kill-server cannot be proven to miss the live fleet" });
+  }
+  const real = resolveOrRefuse(s, plan.tmuxSocketPath, "the tmux socket", violations);
+  const scratchReal = resolveOrRefuse(s, scratchDir, "the scratch directory", violations);
   if (!isAbsolute(plan.tmuxSocketPath) || plan.tmuxSocketPath !== resolve(plan.tmuxSocketPath)) {
     violations.push({ rule: "teardown-target", detail: "the tmux socket path is not an absolute, normalised path" });
-  } else if (!isStrictlyInside(real, scratchReal)) {
+  } else if (real !== null && scratchReal !== null && !isStrictlyInside(real, scratchReal)) {
     violations.push({ rule: "teardown-target", detail: `${real} is not inside the scratch directory ${scratchReal}` });
   }
+  checkLayoutContained(plan.layout, plan.tmuxSocketPath, s, violations);
   if (basename(plan.tmuxSocketPath) !== plan.socketName || plan.socketName.length === 0 || plan.socketName === "default") {
     violations.push({ rule: "teardown-target", detail: `socket ${JSON.stringify(basename(plan.tmuxSocketPath))} is not the scratch run's own (${plan.socketName})` });
   }
@@ -310,10 +400,10 @@ export function planTeardown(plan: ScratchPlan, seams: Seams = {}): TeardownResu
 /** The slice of a fleet.yaml a scratch run is checked against. */
 export interface ScratchFleetConfig {
   health_port?: unknown;
-  defaults?: { backend?: unknown; tips?: unknown; daily_summary?: { enabled?: unknown }; hang_detector?: { enabled?: unknown }; webhooks?: unknown };
+  defaults?: { backend?: unknown; agent_mode?: unknown; tips?: unknown; daily_summary?: { enabled?: unknown }; hang_detector?: { enabled?: unknown }; webhooks?: unknown };
   channels?: Array<{ bot_token_env?: unknown; access?: unknown }>;
   channel?: { bot_token_env?: unknown; access?: unknown };
-  instances?: Record<string, { backend?: unknown; agent_mode?: unknown }>;
+  instances?: Record<string, { backend?: unknown; agent_mode?: unknown; hang_detector?: { enabled?: unknown } }>;
 }
 
 /**
@@ -342,9 +432,18 @@ export function checkScratchFleetConfig(config: ScratchFleetConfig, plan: Scratc
     if (instance.backend !== undefined && instance.backend !== "mock") {
       out.push({ rule: "config-backend", detail: `instance ${name} backend ${JSON.stringify(instance.backend)} is not "mock"` });
     }
+    // An instance inherits `defaults.agent_mode` / `defaults.hang_detector`; the defaults are checked below, so here
+    // only what the instance sets itself can differ from them.
     if (instance.agent_mode === "cli") {
       out.push({ rule: "config-agent-mode", detail: `instance ${name} uses agent_mode: cli, whose port (AGEND_PORT, default 19280) is not derived from the scratch health port` });
     }
+    const hang = instance.hang_detector?.enabled;
+    if (hang !== undefined && hang !== false) {
+      out.push({ rule: "config-quiet", detail: `instance ${name} hang_detector.enabled is ${JSON.stringify(hang)}: it overrides the quiet default and posts to the real chat on its own` });
+    }
+  }
+  if (config.defaults?.agent_mode === "cli") {
+    out.push({ rule: "config-agent-mode", detail: "defaults.agent_mode: cli would put every instance on a port that is not derived from the scratch health port" });
   }
   const quiet: Array<[string, unknown]> = [
     ["defaults.tips", config.defaults?.tips],

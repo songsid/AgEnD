@@ -1,4 +1,7 @@
 import { createHash } from "node:crypto";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   INSTANCE_NAME_BUDGET, IsolationError, LIVE_HEALTH_PORT, assertScratchRun, checkScratchFleetConfig, layoutFor, planScratchRun, planTeardown,
@@ -81,10 +84,12 @@ describe("the plan for a good scratch run", () => {
     expect(planOf({ extraEnv: { MOCK_RESPONSE: "pong", MOCK_DELAY: "10" } }).childEnv).toMatchObject({ MOCK_RESPONSE: "pong", MOCK_DELAY: "10" });
   });
 
-  it("leaves a plain scratch run's allowed commands alone", () => {
-    for (const command of [["agend", "fleet", "start"], ["agend", "fleet", "restart"], ["agend", "validate"], ["agend", "health"], ["node", "dist/cli.js", "fleet", "start"], ["tmux", "-V"],
-      // Only the `agend` CLI is read for subcommands: another program's word "update" or "restart" is not ours to refuse.
-      ["echo", "update"], ["curl", "restart"], ["tmux", "start"], ["git", "stop"]]) {
+  it("leaves the commands of the grammar alone", () => {
+    for (const command of [
+      ["agend", "fleet", "start"], ["agend", "fleet", "restart"], ["agend", "validate"], ["agend", "health"], ["agend", "--version"], ["agend", "-h"],
+      ["node", "dist/cli.js", "fleet", "start"], ["node", "dist/cli.js"], ["tsx", "src/cli.ts", "validate"], ["/usr/bin/node", "dist/cli.js", "health"],
+      ["agend", "fleet", "start", "--config", "x.yaml"],
+    ]) {
       expect(planScratchRun(request({ command }), machine()).ok, command.join(" ")).toBe(true);
     }
   });
@@ -156,6 +161,70 @@ describe("E01 — it refuses, before anything starts, and says every rule that f
     });
   });
 
+  describe("every path the child is handed stays inside the scratch directory (a symlink cannot carry the run out)", () => {
+    const via = (links: Record<string, string>): Seams => machine({ realpath: p => links[p] ?? p });
+    it.each([
+      ["AGEND_HOME → inside the live home", { [`${SCRATCH}/ag`]: `${LIVE_HOME}/instances/live` }],
+      ["AGEND_HOME → a place elsewhere", { [`${SCRATCH}/ag`]: "/srv/live-fleet" }],
+      ["HOME → the user's home (which contains the live home)", { [`${SCRATCH}/hm`]: "/home/alice" }],
+      ["HOME → a place elsewhere", { [`${SCRATCH}/hm`]: "/root" }],
+      ["TMUX_TMPDIR → a directory outside", { [`${SCRATCH}/tm`]: "/tmp/live-tmux-root" }],
+      ["TMUX_TMPDIR → the scratch directory itself", { [`${SCRATCH}/tm`]: SCRATCH }],
+      ["the tmux socket directory → outside", { [`${SCRATCH}/tm/tmux-1000`]: "/tmp/tmux-1000" }],
+    ])("%s", (_name, links) => {
+      expect(rules(planScratchRun(request(), via(links)))).toContain("layout-escapes");
+    });
+
+    it("the tmux socket itself resolving out of scratch", () => {
+      const plan = planOf();
+      expect(rules(planScratchRun(request(), via({ [plan.tmuxSocketPath]: "/tmp/tmux-1000/default" })))).toContain("layout-escapes");
+    });
+
+    it("an honest layout passes, and so does one whose paths do not exist yet", () => {
+      expect(planScratchRun(request(), machine()).ok).toBe(true);
+    });
+
+    it("a path whose resolution fails is refused with the reason, not guessed at", () => {
+      const seams = machine({ realpath: p => { if (p === `${SCRATCH}/ag`) throw Object.assign(new Error("denied"), { code: "EACCES" }); return p; } });
+      const found = refused(planScratchRun(request(), seams));
+      expect(found.map(v => v.rule)).toContain("path-unresolved");
+      expect(found.find(v => v.rule === "path-unresolved")!.detail).toMatch(/EACCES/);
+    });
+
+    it("an unresolvable scratch directory, temp root or live home refuses outright", () => {
+      for (const bad of [SCRATCH, "/tmp", LIVE_HOME]) {
+        const seams = machine({ realpath: p => { if (p === bad) throw Object.assign(new Error("loop"), { code: "ELOOP" }); return p; } });
+        expect(rules(planScratchRun(request(), seams)), bad).toContain("path-unresolved");
+      }
+    });
+  });
+
+  describe("the real resolver (a throwaway directory under the temp root; nothing is started)", () => {
+    const withScratch = (body: (dir: string, seams: Seams) => void) => {
+      const dir = mkdtempSync(join(tmpdir(), "e2e-"));
+      try { body(realpathSync(dir), { realAgendHome: LIVE_HOME, tmpRoot: tmpdir() }); } finally { rmSync(dir, { recursive: true, force: true }); }
+    };
+    it("accepts a fresh scratch directory whose ag/hm/tm do not exist yet", () => {
+      withScratch((dir, seams) => expect(planScratchRun(request({ scratchDir: dir }), seams).ok).toBe(true));
+    });
+    it("refuses a symlink in the layout that points outside, a dangling one, and a loop", () => {
+      withScratch((dir, seams) => {
+        symlinkSync("/", join(dir, "ag"));
+        expect(rules(planScratchRun(request({ scratchDir: dir }), seams))).toContain("layout-escapes");
+      });
+      withScratch((dir, seams) => {
+        symlinkSync(join(dir, "does-not-exist"), join(dir, "tm"));
+        expect(rules(planScratchRun(request({ scratchDir: dir }), seams))).toContain("path-unresolved");
+      });
+      withScratch((dir, seams) => {
+        mkdirSync(join(dir, "x"));
+        symlinkSync(join(dir, "hm2"), join(dir, "hm"));
+        symlinkSync(join(dir, "hm"), join(dir, "hm2"));
+        expect(rules(planScratchRun(request({ scratchDir: dir }), seams))).toContain("path-unresolved");
+      });
+    });
+  });
+
   describe("socket path length", () => {
     it("a scratch directory so deep that an instance's IPC socket would not fit", () => {
       const scratchDir = `/tmp/${"x".repeat(60)}`;
@@ -186,6 +255,12 @@ describe("E01 — it refuses, before anything starts, and says every rule that f
       expect(rules(planScratchRun(request({ healthPort: port }), machine()))).toEqual(["health-port"]);
     });
 
+    it("the default live port stays reserved whatever list of live ports the caller supplies", () => {
+      for (const livePorts of [[], [29340], [29341]]) {
+        expect(rules(planScratchRun(request({ healthPort: 19280 }), machine({ livePorts }))), JSON.stringify(livePorts)).toEqual(["health-port"]);
+      }
+    });
+
     it("any port the caller says is live, not only the default", () => {
       expect(rules(planScratchRun(request({ healthPort: 29341 }), machine({ livePorts: [19280, 29341] })))).toEqual(["health-port"]);
     });
@@ -214,6 +289,14 @@ describe("E01 — it refuses, before anything starts, and says every rule that f
       [["node", "dist/cli.js", "update"]], [["tsx", "src/cli.ts", "restart"]], [["agend", "--verbose", "update"]],
       [["systemctl", "--user", "restart", "agend"]], [["launchctl", "kickstart", "x"]], [["sudo", "agend", "fleet", "start"]],
       [["kill", "-9", "1"]], [["pkill", "-f", "agend"]], [["killall", "tmux"]], [["npm", "install", "-g", "@songsid/agend"]], [["npx", "agend"]],
+      // Runtime flags and indirection that hide the subcommand: the grammar has no place for them, so they are refused whole.
+      [["node", "--no-warnings", "dist/cli.js", "restart"]], [["node", "--import", "./preload.mjs", "dist/cli.js", "update"]],
+      [["node", "--", "dist/cli.js", "stop"]], [["node", "-e", "require('child_process')"]], [["node"]], [["tsx", "--tsconfig", "x.json", "src/cli.ts", "update"]],
+      [["agend", "--home", "/x", "restart"]], [["agend", "--version", "update"]], [["agend", "-C", "x", "fleet", "start"]],
+      [["sh", "run.sh"]], [["bash", "run.sh"]], [["env", "FOO=1", "agend", "fleet", "start"]], [["sh", "-c", "agend restart"]], [["bash", "-c", "agend update"]], [["env", "agend", "restart"]], [["xargs", "agend"]], [["nohup", "agend", "stop"]],
+      [["bun", "dist/cli.js", "start"]], [["python3", "x.py"]], [["echo", "hi"]],
+      // tmux against an explicit socket ignores TMUX_TMPDIR: a run never issues tmux itself, only planTeardown's argv does.
+      [["tmux", "-S", "/tmp/tmux-1000/default", "kill-server"]], [["tmux", "kill-server"]], [["tmux", "-V"]], [["tmux", "-L", "agend", "kill-server"]],
     ])("%j", command => {
       expect(rules(planScratchRun(request({ command }), machine()))).toEqual(["command-forbidden"]);
     });
@@ -223,6 +306,10 @@ describe("E01 — it refuses, before anything starts, and says every rule that f
       expect(service!.detail).toMatch(/service/);
       const [program] = refused(planScratchRun(request({ command: ["systemctl", "restart", "x"] }), machine()));
       expect(program!.detail).toMatch(/machine/);
+      const [flag] = refused(planScratchRun(request({ command: ["node", "--no-warnings", "dist/cli.js", "restart"] }), machine()));
+      expect(flag!.detail).toMatch(/runtime flags/);
+      const [tmux] = refused(planScratchRun(request({ command: ["tmux", "kill-server"] }), machine()));
+      expect(tmux!.detail).toMatch(/planTeardown/);
     });
   });
 
@@ -303,6 +390,21 @@ describe("planTeardown — the only cleanup a run may do", () => {
     expect(refusedTeardown(broken({ socketName: "default", tmuxSocketPath: `${SCRATCH}/tm/tmux-1000/default` }))).toContain("teardown-target");
   });
 
+  it("refuses when the live home is unknown: a kill-server cannot be proven to miss the live fleet", () => {
+    expect(refusedTeardown(planOf(), machine({ realAgendHome: null }))).toContain("real-home-unknown");
+  });
+
+  it("refuses when a layout path was swapped for a symlink out of scratch after the plan was made", () => {
+    const plan = planOf();
+    expect(refusedTeardown(plan, machine({ realpath: p => (p === `${SCRATCH}/tm` ? "/tmp/live-tmux-root" : p) }))).toContain("layout-escapes");
+  });
+
+  it("refuses when resolving the socket fails", () => {
+    const plan = planOf();
+    const seams = machine({ realpath: p => { if (p === plan.tmuxSocketPath) throw Object.assign(new Error("denied"), { code: "EACCES" }); return p; } });
+    expect(refusedTeardown(plan, seams)).toContain("path-unresolved");
+  });
+
   it("refuses when the scratch directory itself is no longer a valid scratch directory", () => {
     const plan = planOf();
     expect(refusedTeardown(plan, machine({ tmpRoot: "/srv" }))).toContain("scratch-root");
@@ -360,6 +462,19 @@ describe("checkScratchFleetConfig — the config a scratch fleet is given", () =
     expect(rulesOf({ ...good(), defaults: { ...good().defaults, backend: undefined } })).toEqual(["config-backend"]);
     expect(rulesOf({ ...good(), instances: { general: { backend: "codex" } } })).toEqual(["config-backend"]);
     expect(rulesOf({ ...good(), instances: { general: { agent_mode: "cli" } } })).toEqual(["config-agent-mode"]);
+  });
+
+  it("refuses an agent_mode that an instance INHERITS from the defaults, not only one it sets itself", () => {
+    expect(rulesOf({ ...good(), defaults: { ...good().defaults, agent_mode: "cli" } })).toEqual(["config-agent-mode"]);
+    expect(rulesOf({ ...good(), defaults: { ...good().defaults, agent_mode: "cli" }, instances: { worker: {} } })).toEqual(["config-agent-mode"]);
+    expect(rulesOf({ ...good(), defaults: { ...good().defaults, agent_mode: "mcp" } })).toEqual([]);
+  });
+
+  it("refuses an instance that turns hang_detector back on over a quiet default", () => {
+    expect(rulesOf({ ...good(), instances: { worker: { hang_detector: { enabled: true } } } })).toEqual(["config-quiet"]);
+    expect(rulesOf({ ...good(), instances: { worker: { hang_detector: { enabled: "yes" } } } })).toEqual(["config-quiet"]);
+    expect(rulesOf({ ...good(), instances: { worker: { hang_detector: { enabled: false } } } })).toEqual([]);
+    expect(rulesOf({ ...good(), instances: { worker: { hang_detector: {} } } })).toEqual([]);
   });
 
   it.each(["tips", "daily_summary", "hang_detector"])("refuses a config that leaves %s on or unset — they post to the real chat on their own", key => {
