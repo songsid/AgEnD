@@ -256,14 +256,14 @@ describe("what counts as 'the same dialog still there'", () => {
 
   it("a different request that the backend names ends the episode AND its parked clock; an unnamed difference ends only the count", async () => {
     const named = rig({ blocksDelivery: true, inputBlocked: true, requestIdentity: QUESTION_LINE });
-    await named.poll(30_000);
+    await named.poll(31_000);                              // (past the last tick's own work, so nothing is in flight)
     named.d.dialogParkedSince = Date.now() - 50_000;       // on screen for 50 s
     named.screen.text = PROMPT.replace("folder?", "folder? /srv/other");
     await named.poll(5_600);
     expect(Date.now() - named.d.dialogParkedSince).toBeLessThan(20_000);   // a new request: the clock started over
     named.stop();
     const unnamed = rig({ blocksDelivery: true, inputBlocked: true });
-    await unnamed.poll(30_000);
+    await unnamed.poll(31_000);
     unnamed.d.dialogParkedSince = Date.now() - 50_000;
     unnamed.screen.text = `${PROMPT}  timer 9s\n`;
     await unnamed.poll(5_600);
