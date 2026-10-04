@@ -200,14 +200,55 @@ describe("what counts as 'the same dialog still there'", () => {
     stop();
   });
 
-  it("a redraw of the same dialog (spinner frame, counters, spacing) is still the same dialog", async () => {
+  it("a redraw of the same dialog (spinner frame, elapsed time, token counter, layout padding) is still the same dialog", async () => {
     let i = 0;
-    const ticking = () => `${PROMPT}   ${"⠋⠙⠹⠸⠼⠴"[i % 6]} waiting ${i + 1}s  tokens: ${1000 + i}\n`.replace(/ {2,}/g, i % 2 ? "    " : "  ");
+    const ticking = () => `${PROMPT}  ${"⠋⠙⠹⠸⠼⠴"[i % 6]} waiting ${i + 1}s${" ".repeat(i % 2 ? 4 : 7)}tokens: ${1000 + i}   ${10 + i}:0${i % 10}  ${i + 2}.5k tokens${" ".repeat(i % 3)}\n`;
     const { screen, ignored, poll, stop } = rig({}, { onKey: screen => { i++; screen.text = ticking(); } });
     screen.text = ticking();
     await poll(16_800);
     expect(ignored).toHaveLength(1);
     stop();
+  });
+
+  it("a request whose only difference is a NUMBER (/tmp/request-1 → /tmp/request-2) is another request", async () => {
+    let n = 0;
+    const { ignored, keys, poll, stop } = rig({}, { onKey: screen => { n++; screen.text = PROMPT.replace("folder?", `folder? /tmp/request-${n}`); } });
+    await poll(100_000);
+    expect(keys.length).toBeGreaterThanOrEqual(15);
+    expect(ignored).toEqual([]);
+    stop();
+  });
+
+  it("…and so is one that differs only by the spacing INSIDE the text ('alpha beta' / 'alpha  beta')", async () => {
+    let n = 0;
+    const { ignored, keys, poll, stop } = rig({}, { onKey: screen => { n++; screen.text = PROMPT.replace("folder?", `folder? alpha${n % 2 ? " " : "  "}beta`); } });
+    await poll(100_000);
+    expect(keys.length).toBeGreaterThanOrEqual(15);
+    expect(ignored).toEqual([]);
+    stop();
+  });
+
+  it("the episode remembers WHICH request it counted: another request in between starts a new count", async () => {
+    const r = rig();
+    r.screen.text = PROMPT.replace("folder?", "folder? alpha");
+    await r.poll(5_600); await r.poll(5_600);              // alpha ignored twice
+    r.screen.text = PROMPT.replace("folder?", "folder? beta");
+    await r.poll(5_600);                                   // beta's first answer — not the third
+    expect(r.ignored).toEqual([]);
+    await r.poll(11_200);                                  // beta's third
+    expect(r.ignored).toEqual([expect.objectContaining({ attempts: 3 })]);
+    r.stop();
+  });
+
+  it("…and a request that was already reported does not silence the next one", async () => {
+    const r = rig();
+    r.screen.text = PROMPT.replace("folder?", "folder? alpha");
+    await r.poll(16_800);
+    expect(r.ignored).toHaveLength(1);
+    r.screen.text = PROMPT.replace("folder?", "folder? beta");
+    await r.poll(16_800);                                  // beta ignores three answers too
+    expect(r.ignored).toHaveLength(2);
+    r.stop();
   });
 });
 
@@ -311,6 +352,30 @@ describe("a read that outlives its spawn or its monitors changes nothing", () =>
     expect(r.ignored).toEqual([]);
     await r.poll(5_600);
     expect(r.ignored).toEqual([expect.objectContaining({ attempts: 3 })]);
+    r.stop();
+  });
+
+  it("the whole poll is fenced, not just the callback: no stale 'parked' report after a stop", async () => {
+    let n = 0;
+    const r = rig({ blocksDelivery: true, inputBlocked: true }, { onKey: screen => { if (++n === 3) screen.gate = new Promise<void>(resolve => { screen.release = resolve; }); } });
+    await r.poll(5_600); await r.poll(5_600); await r.poll(5_600);       // the third look is held; the dialog has been on screen since the first poll
+    r.d.freezeRuntimeMonitors();                                           // stop / pause
+    await r.poll(70_000);                                                  // well past the one-minute parked threshold
+    r.screen.gate = null; r.screen.release?.();
+    await r.poll(100);
+    expect(r.ignored).toEqual([]);
+    expect(r.parked).toEqual([]);
+  });
+
+  it("…and a stale poll cannot overwrite the parked state a newer spawn built for another dialog", async () => {
+    let n = 0;
+    const r = rig({ blocksDelivery: true, inputBlocked: true }, { onKey: screen => { if (++n === 3) screen.gate = new Promise<void>(resolve => { screen.release = resolve; }); } });
+    await r.poll(5_600); await r.poll(5_600); await r.poll(5_600);
+    r.d.beginSpawn(); r.d.endSpawn();
+    r.d.dialogParkedKey = "another-dialog\u0000"; r.d.dialogParkedSince = Date.now(); r.d.dialogParkedReported = false;   // the new spawn's own state
+    r.screen.gate = null; r.screen.release?.();
+    await r.poll(100);
+    expect(r.d.dialogParkedKey).toBe("another-dialog\u0000");
     r.stop();
   });
 
