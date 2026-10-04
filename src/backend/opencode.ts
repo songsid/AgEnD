@@ -3,6 +3,13 @@ import { execFile, execFileSync } from "node:child_process";
 import { promisify } from "node:util";
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
+import {
+  OPENCODE_PERMISSION_ENV,
+  cachedOpencodeAutoSupport,
+  opencodeAlwaysConfirmActive,
+  opencodePermissionPromptActive,
+  probeOpencodeAutoSupport,
+} from "./opencode-permission.js";
 
 export class OpenCodeBackend implements CliBackend {
   readonly binaryName = "opencode";
@@ -29,9 +36,27 @@ export class OpenCodeBackend implements CliBackend {
     this.binaryPath = resolveBinary("opencode");
   }
 
+  /**
+   * Find out, off the event loop, whether this binary's TUI takes `--auto` (cached per binary
+   * generation). The daemon awaits it before it builds the launch command; `buildCommand` itself
+   * only reads the answer.
+   */
+  async prepareLaunch(): Promise<void> {
+    await probeOpencodeAutoSupport(this.binaryPath);
+  }
+
   buildCommand(config: CliBackendConfig): string {
     // Use per-instance config via OPENCODE_CONFIG env (set in writeConfig)
     let cmd = this.binaryPath;
+    // Every other backend runs with its skip-permissions switch; OpenCode asks before it touches a
+    // path outside the project, so without one an instance parks on "Access external directory".
+    // `--auto` answers every ask "once" itself and keeps an explicit `deny`; an OpenCode whose
+    // --help does not list it (or whose help could not be read) gets the env form instead, which a
+    // version that predates it simply ignores. See opencode-permission.ts.
+    if (config.skipPermissions !== false) {
+      if (cachedOpencodeAutoSupport(this.binaryPath) === "yes") cmd += " --auto";
+      else cmd = `${OPENCODE_PERMISSION_ENV} ${cmd}`;
+    }
     this.workingDirectory = config.workingDirectory;
     this.launchedSessionId = null;
     this.launchedAt = Date.now();
@@ -260,9 +285,31 @@ export class OpenCodeBackend implements CliBackend {
   }
 
   getRuntimeDialogs(): RuntimeDialog[] {
+    // Only reached when the launch switch (--auto / OPENCODE_PERMISSION) did not cover a prompt — a
+    // `.env` read on an older OpenCode, a user config's own `ask`. Answered with "Allow once": the
+    // option OpenCode selects by default, one Enter, nothing remembered. (This used to be
+    // Right+Enter = "Allow always", an implicit and wider grant.) Both are structural, not a
+    // viewport grep: a transcript that quotes the prompt has the idle prompt below it and is not
+    // answered, and while a real one is up the pane takes no delivery and is not "stuck".
     return [
-      { pattern: /Permission required/i, keys: ["Right", "Enter"], description: "OpenCode permission prompt — Allow always" },
-      { pattern: /confirm/i, keys: ["Enter"], description: "OpenCode confirm prompt" },
+      {
+        pattern: /Permission required/i,
+        isActive: opencodePermissionPromptActive,
+        keys: ["Enter"],
+        description: "OpenCode permission prompt — Allow once",
+        blocksDelivery: true,
+        inputBlocked: true,
+      },
+      {
+        // The page behind "Allow always" (a human, or an older AgEnD, got that far): Cancel goes back
+        // to the prompt above, which is then answered with "Allow once".
+        pattern: /Always allow/i,
+        isActive: opencodeAlwaysConfirmActive,
+        keys: ["Right", "Enter"],
+        description: "OpenCode 'Always allow' confirmation — Cancel (back to the prompt)",
+        blocksDelivery: true,
+        inputBlocked: true,
+      },
     ];
   }
 

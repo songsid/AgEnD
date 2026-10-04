@@ -8360,6 +8360,10 @@ export class Daemon extends EventEmitter {
       }
     }
 
+    // A backend that has to ask its CLI something before the launch command exists (OpenCode: does
+    // this binary take --auto?) does it here, off the event loop, bounded, and never fails the launch.
+    try { await this.backend!.prepareLaunch?.(); } catch { /* unknown capability → the backend's conservative form */ }
+
     this.backend!.writeConfig(backendConfig);
     this.backend!.preTrust?.(this.config.working_directory);
 
