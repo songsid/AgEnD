@@ -64,6 +64,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   instance directory through group access, give it access explicitly — the group no longer has it.** (#1118)
 
 ### Upgrade Notes
+- **[Behaviour change] OpenCode instances now start without permission prompts, like every other backend.**
+  OpenCode asks before it reads a path outside the project (`Access external directory /tmp`), reads a `.env`, or
+  does what your own config marks `ask`; every other backend AgEnD runs already had its skip-permissions switch,
+  so an OpenCode instance that opened `/tmp/image.jpg` sat on the prompt until a human answered. AgEnD now
+  launches OpenCode with `--auto` (it answers every ask "once"; **an explicit `deny` in your config still
+  denies**) when the binary's own `--help` lists it, and otherwise sets
+  `OPENCODE_PERMISSION='{"external_directory":"allow"}'` (older versions without `--auto`; the other prompts
+  — `.env`, your own `ask` rules — can still appear there). **A prompt that still appears is answered with
+  "Allow once"** (one Enter, nothing remembered); AgEnD used to press Right+Enter, i.e. "Allow always". While a
+  prompt is on screen the pane takes no delivery and is not treated as stuck, and agent text that merely
+  mentions "confirm" or quotes the prompt no longer receives an Enter. `skipPermissions: false` turns the launch
+  switch off.
 - **[Behaviour change] The legacy chat-relay `/login` mode is removed (#1139).** `login.mode: relay` was the
   pre-2.1.6 way to sign in (AgEnD drove the login CLI in a tmux window and relayed its menus, authorization URL
   and text prompts through chat); `/login` has run in the token-gated browser terminal by default since 2.1.5
