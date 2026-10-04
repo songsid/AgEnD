@@ -258,7 +258,8 @@ describe("discord registration includes the new commands", () => {
   it("registers one /login (with opencode among its backends) and no /install-cli", async () => {
     const { readFileSync } = await import("node:fs");
     const src = readFileSync(join(__dirname, "../src/channel/adapters/discord.ts"), "utf8");
-    expect(src).toContain('name: "login", description: withFleetLabel("🔒 " + t("slash.login"), this.fleetLabel)');
+    // The lock emoji is generated from the command table (src/command-table.ts), not typed here.
+    expect(src).toContain('name: "login", description: withFleetLabel(slashLock("login") + t("slash.login"), this.fleetLabel)');
     expect(src).not.toContain('name: "install-cli"');
     // Only backend and cancel (#1137).
     expect(src).not.toContain('slash.option.login_reinstall');

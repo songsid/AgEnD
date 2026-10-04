@@ -94,6 +94,7 @@ import { LOGIN_FLOWS, LOGIN_BACKEND_ALIASES, type LoginFlow, type AuthCheckResul
 import { LoginSession } from "./login-manager.js";
 import { tightenInstanceDirs } from "./private-dir.js";
 import { decideSlash, type SlashFacts, type SlashScope, type SlashSpeaker } from "./slash-authz.js";
+import { commandSpec, decideCommand, type CommandScope } from "./command-table.js";
 import { LoginController, LOGIN_TOKEN_RESEND_PREFIX, POST_LOGIN_RECOVERY_DEADLINE_MS, type PostLoginRecovery } from "./login-controller.js";
 import { runBeforeDeadline } from "./deadline.js";
 import { LoginWindowLock } from "./login-window-lock.js";
@@ -1788,7 +1789,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const action = data.command as "pause" | "wake";
     const classicName = this.classicChannels?.getInstanceByChannel(data.channelId, adapterId);
     if (classicName) {
-      if (!this.classicChannels?.isAdmin(data.userId)) {
+      if (!this.isModelAdmin(data.userId, data.channelId, adapterId)) {
         await data.respond(t("permission.denied"));
         return;
       }
@@ -2618,14 +2619,191 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /**
+   * Every Discord slash command, for every adapter, in one place (it used to be two copies that could drift).
+   *
+   * Two checks before any command's own code runs, and the order matters: the DOOR (src/slash-authz.ts — may
+   * this caller speak here at all) and then the COMMAND TABLE (src/command-table.ts — does this command apply
+   * in this kind of channel, and which kind of admin does it need). The table can only narrow what the door
+   * let through. A command nobody registered is answered, not left to time out.
+   */
+  private async dispatchSlash(data: ClassicStartSlashData, adapterId: string, adapter: ChannelAdapter): Promise<void> {
+    const scope = await this.authorizeSlash(data, adapterId);
+    if (!scope) return;
+
+    const spec = commandSpec(data.command);
+    if (!spec) {
+      this.logger.info({ command: data.command, adapterId }, "Slash command is not in the command table");
+      await data.respond(t("slash.unknown_command")).catch(() => { /* the interaction may already be gone */ });
+      return;
+    }
+    const decision = decideCommand(spec, scope, {
+      fleetAdmin: () => this.fleetAdminGate(data.userId, adapterId),
+      channelAdmin: () => this.isModelAdmin(data.userId, data.channelId, adapterId),
+      classicAdmin: () => !!this.classicChannels?.isAdmin(data.userId),
+    });
+    if (!decision.allow) {
+      this.logger.info({ command: data.command, adapterId, scope, reply: decision.reply[0] }, "Slash command refused by the command table");
+      const [key, ...args] = decision.reply;
+      await data.respond(t(key, ...args)).catch(() => { /* the interaction may already be gone */ });
+      return;
+    }
+
+    if (data.command === "start") {
+      await this.handleClassicStartSlash(data, adapterId);
+    } else if (data.command === "stop") {
+      const reply = await this.handleClassicStop(data.channelId, adapterId);
+      await data.respond(reply);
+    } else if (data.command === "pause" || data.command === "wake") {
+      await this.handlePauseWakeSlash(data, adapterId);
+    } else if (data.command === "chat") {
+      const text = data.text ?? "";
+      if (!text) { await data.respond(t("chat.usage")); return; }
+      const name = this.classicChannels?.getInstanceByChannel(data.channelId, adapterId);
+      if (!name) {
+        await data.respond(t("classic.no_agent_start"));
+        return;
+      }
+      const status = this.resolveStatusEmojisFor(name, adapterId, adapter);
+      const replyMsgId = await data.respond(textForm(status.platform, status.received));
+      const username = data.username ?? data.userId;
+      ClassicChannelManager.logMessage(name, username, `/chat ${text}`, new Date());
+      await this.forwardToClassicInstance(name, text, {
+        chatId: data.channelId,
+        threadId: data.channelId,
+        messageId: replyMsgId ?? "",
+        userId: data.userId,
+        username,
+        source: "discord",
+        timestamp: new Date(),
+      });
+    } else if (data.command === "save") {
+      await this.handleSlashSave(data, adapterId);
+    } else if (data.command === "load") {
+      // load is kiro-cli/classic only — no claude-code equivalent. (Classic admins only: the command table.)
+      const name = this.classicChannels?.getInstanceByChannel(data.channelId, adapterId);
+      if (!name) {
+        await data.respond(t("classic.no_agent_start"));
+        return;
+      }
+      const filename = data.options?.filename as string;
+      if (!SAVE_FILENAME_RE.test(filename ?? "")) { await data.respond(t("filename.invalid")); return; }
+      this.pasteRawToClassicInstance(name, `/chat load ${filename}`);
+      await data.respond(t("save.sent", `/chat load ${filename}`, name));
+    } else if (data.command === "model") {
+      await this.handleModelSlash(data, adapterId);
+    } else if (data.command === "clear") {
+      await this.handleClearSlash(data, adapterId);
+    } else if (data.command === "effort") {
+      await this.handleEffortSlash(data, adapterId);
+    } else if (data.command === "cancel") {
+      const name = this.resolveSlashTarget(data.channelId, adapterId);
+      if (!name) { await data.respond(t("classic.no_agent")); return; }
+      const ok = this.cancelInstance(name);
+      await data.respond(ok ? t("cancel.sent", name) : t("cancel.not_running", name));
+    } else if (data.command === "ctx") {
+      const name = this.resolveSlashTarget(data.channelId, adapterId);
+      if (!name) { await data.respond(t("classic.no_agent")); return; }
+      // Single source of truth (statusline.json + robust tmux pane fallback).
+      await data.respond(await this.topicCommands.getCtxText(name));
+    } else if (data.command === "collab") {
+      // The scope the door and the table authorized is the scope this acts in. A channel can be in both the
+      // ClassicBot registry and the routing table (two configurations that each validate); the door and
+      // `isModelAdmin` read the registry first, so a ClassicBot admin was judged for the ClassicBot channel
+      // here and must not be handed the fleet instance's collab switch by a second, routing-first lookup.
+      const collabTarget2 = scope === "classic" ? undefined : this.routing.resolve(data.channelId);
+      if (collabTarget2) {
+        const isCollab = this.toggleFleetCollab(collabTarget2.name);
+        await data.respond(isCollab ? t("collab.on") : t("collab.off"));
+        return;
+      }
+      if (!this.classicChannels?.isClassicChannel(data.channelId, adapterId)) {
+        await data.respond(t("classic.no_agent_start"));
+        return;
+      }
+      const newState = this.classicChannels.toggleCollab(data.channelId, adapterId);
+      await data.respond(newState
+        ? t("collab.on.classic")
+        : t("collab.off.classic"));
+    } else if (data.command === "update") {
+      await this.handleUpdateSlash(data, adapterId);
+    } else if (data.command === "doctor") {
+      await data.respond(await this.runBackendDoctor());
+    } else if (data.command === "usage") {
+      // Same permission level as /ctx (none). The reply is still ephemeral —
+      // the adapter defers non-chat commands that way — so it never spams the
+      // channel either way.
+      try {
+        const { getUsageSnapshot } = await import("./usage/usage-api.js");
+        const { renderUsageMarkdown } = await import("./usage/format-rich.js");
+        // slash_command is Discord-only; editReply renders Markdown natively.
+        await data.respond(renderUsageMarkdown(await getUsageSnapshot(false, this.getActiveUsageProviderIds())));
+      } catch (err) {
+        await data.respond(t("usage.failed", (err as Error).message));
+      }
+    } else if (data.command === "tips") {
+      await this.handleTipsSlash(data, adapterId);
+    } else if (data.command === "status") {
+      // Admin-gated (like the topic path): the merged table shows every
+      // instance's cost and IPC health.
+      if (!this.isFleetAdmin(data.userId, adapterId)) {
+        await data.respond(t("cmd.admin_required", "/status"));
+        return;
+      }
+      const text = await this.topicCommands.getStatusText();
+      await data.respond(text);
+    } else if (data.command === "sysinfo") {
+      // Slash commands are Discord-only; use plain lines (no markdown table)
+      await this.topicCommands.sendSysInfo(text => data.respond(text), { platform: "discord" });
+    } else if (data.command === "dashboard") {
+      // Reply is ephemeral (adapter defers non-chat commands ephemerally), so
+      // the web-token-bearing URLs are only visible to the caller.
+      await data.respond(this.topicCommands.getDashboardText());
+    } else if (data.command === "restart") {
+      await this.handleRestartSlash(data, adapterId);
+    } else if (data.command === "compact") {
+      const name = this.resolveSlashTarget(data.channelId, adapterId);
+      if (!name) { await data.respond(t("classic.no_agent")); return; }
+      const result = await this.topicCommands.sendCompact(name, String(data.options?.instructions ?? ""));
+      await data.respond(result);
+    } else if (data.command === "steer") {
+      const name = this.resolveSlashTarget(data.channelId, adapterId);
+      if (!name) { await data.respond(t("classic.no_agent")); return; }
+      const steerText = String(data.options?.message ?? "").trim();
+      if (!steerText) { await data.respond(t("steer.usage")); return; }
+      // chat_id/message_id stay empty: a slash interaction has no channel
+      // message to react to, and an empty chat_id keeps updateLastChat from
+      // rerouting the instance's replies to the slash context.
+      const result = this.topicCommands.sendSteer(name, steerText, {
+        chatId: "", messageId: "", username: data.username ?? "user",
+        userId: data.userId ?? "", threadId: undefined, adapterId, source: "discord",
+      });
+      await data.respond(result);
+    } else if (data.command === "btw") {
+      const name = this.resolveSlashTarget(data.channelId, adapterId);
+      if (!name) { await data.respond(t("classic.no_agent")); return; }
+      const btwText = String(data.options?.message ?? "").trim();
+      if (!btwText) { await data.respond(t("btw.usage")); return; }
+      const result = this.topicCommands.sendBtw(name, btwText, {
+        chatId: "", messageId: "", username: data.username ?? "user",
+        userId: data.userId ?? "", threadId: undefined, adapterId, source: "discord",
+      });
+      await data.respond(result);
+    } else if (data.command === "login") {
+      await this.handleLoginSlash(data, adapterId, adapter);
+    }
+  }
+
+  /**
    * The door every Discord slash command goes through (src/slash-authz.ts has the rule and the reasoning).
    * Answers the caller itself when it refuses, so a refused command costs one reply and does nothing else.
    */
-  private async authorizeSlash(data: ClassicStartSlashData, adapterId: string): Promise<boolean> {
+  private async authorizeSlash(data: ClassicStartSlashData, adapterId: string): Promise<CommandScope | null> {
     const channelId = data.channelId;
     const classic = !!this.classicChannels?.isClassicChannel(channelId, adapterId);
     const fleetTarget = classic ? undefined : this.routing.resolve(channelId);
     const scope: SlashScope = classic ? "classic" : fleetTarget ? "fleet" : "none";
+    // The table tells the General dispatcher from an instance's own channel; the door does not need to.
+    const commandScope: CommandScope = classic ? "classic" : fleetTarget ? (fleetTarget.kind === "general" ? "general" : "fleet") : "none";
 
     let speaker: SlashSpeaker = "denied";
     if (scope !== "classic") {
@@ -2650,7 +2828,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       speaker,
     };
     const decision = decideSlash(facts);
-    if (decision.allow) return true;
+    if (decision.allow) return commandScope;
 
     this.logger.info(
       { command: data.command, reason: decision.reason, adapterId, guildId: data.guildId ?? null, channelId, scope },
@@ -2659,7 +2837,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     await data.respond(t(decision.reason === "dm" ? "slash.dm_unsupported"
       : decision.reason === "wrong-guild" ? "slash.wrong_server"
       : "not_authorized")).catch(() => { /* the interaction may already be gone */ });
-    return false;
+    return null;
   }
 
   /** Phase 2: delivery_worker for a target (instance override → fleet default → wake_only). */
@@ -4751,199 +4929,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Handle classic bot slash commands (/start, /stop, /chat, /compact, /save, /load)
     this.adapter.on("slash_command", safeHandler(async (data: ClassicStartSlashData) => {
       if (!isCurrentAdapter()) return;
-      if (!(await this.authorizeSlash(data, adapterId))) return;
-      if (data.command === "start") {
-        await this.handleClassicStartSlash(data, adapterId);
-      } else if (data.command === "stop") {
-        const reply = await this.handleClassicStop(data.channelId, adapterId);
-        await data.respond(reply);
-      } else if (data.command === "pause" || data.command === "wake") {
-        await this.handlePauseWakeSlash(data, adapterId);
-      } else if (data.command === "chat") {
-        const text = data.text ?? "";
-        if (!text) { await data.respond(t("chat.usage")); return; }
-        const name = this.classicChannels?.getInstanceByChannel(data.channelId, adapterId);
-        if (!name) {
-          await data.respond(t("classic.no_agent_start"));
-          return;
-        }
-        const status = this.resolveStatusEmojisFor(name, adapterId, adapter);
-        const replyMsgId = await data.respond(textForm(status.platform, status.received));
-        const username = data.username ?? data.userId;
-        ClassicChannelManager.logMessage(name, username, `/chat ${text}`, new Date());
-        await this.forwardToClassicInstance(name, text, {
-          chatId: data.channelId,
-          threadId: data.channelId,
-          messageId: replyMsgId ?? "",
-          userId: data.userId,
-          username,
-          source: "discord",
-          timestamp: new Date(),
-        });
-      } else if (data.command === "save") {
-        await this.handleSlashSave(data, adapterId);
-      } else if (data.command === "load") {
-        // load is kiro-cli/classic only — no claude-code equivalent.
-        if (!this.classicChannels?.isAdmin(data.userId)) {
-          await data.respond(t("admin.required"));
-          return;
-        }
-        const name = this.classicChannels?.getInstanceByChannel(data.channelId, adapterId);
-        if (!name) {
-          await data.respond(t("classic.no_agent_start"));
-          return;
-        }
-        const filename = data.options?.filename as string;
-        if (!SAVE_FILENAME_RE.test(filename ?? "")) { await data.respond(t("filename.invalid")); return; }
-        this.pasteRawToClassicInstance(name, `/chat load ${filename}`);
-        await data.respond(t("save.sent", `/chat load ${filename}`, name));
-      } else if (data.command === "compact") {
-        const name = this.resolveSlashTarget(data.channelId, adapterId);
-        if (!name) { await data.respond(t("classic.no_agent")); return; }
-        const result = await this.topicCommands.sendCompact(name, String(data.options?.instructions ?? ""));
-        await data.respond(result);
-      } else if (data.command === "steer") {
-        const name = this.resolveSlashTarget(data.channelId, adapterId);
-        if (!name) { await data.respond(t("classic.no_agent")); return; }
-        const steerText = String(data.options?.message ?? "").trim();
-        if (!steerText) { await data.respond(t("steer.usage")); return; }
-        // chat_id/message_id stay empty: a slash interaction has no channel
-        // message to react to, and an empty chat_id keeps updateLastChat from
-        // rerouting the instance's replies to the slash context.
-        const result = this.topicCommands.sendSteer(name, steerText, {
-          chatId: "", messageId: "", username: data.username ?? "user",
-          userId: data.userId ?? "", threadId: undefined, adapterId, source: "discord",
-        });
-        await data.respond(result);
-      } else if (data.command === "btw") {
-        const name = this.resolveSlashTarget(data.channelId, adapterId);
-        if (!name) { await data.respond(t("classic.no_agent")); return; }
-        const btwText = String(data.options?.message ?? "").trim();
-        if (!btwText) { await data.respond(t("btw.usage")); return; }
-        const result = this.topicCommands.sendBtw(name, btwText, {
-          chatId: "", messageId: "", username: data.username ?? "user",
-          userId: data.userId ?? "", threadId: undefined, adapterId, source: "discord",
-        });
-        await data.respond(result);
-      } else if (data.command === "login") {
-        await this.handleLoginSlash(data, adapterId, this.adapter!);
-      } else if (data.command === "clear") {
-        await this.handleClearSlash(data, adapterId);
-      } else if (data.command === "model") {
-        await this.handleModelSlash(data, adapterId);
-      } else if (data.command === "effort") {
-        await this.handleEffortSlash(data, adapterId);
-      } else if (data.command === "cancel") {
-        const name = this.resolveSlashTarget(data.channelId, adapterId);
-        if (!name) { await data.respond(t("classic.no_agent")); return; }
-        const ok = this.cancelInstance(name);
-        await data.respond(ok ? t("cancel.sent", name) : t("cancel.not_running", name));
-      } else if (data.command === "ctx") {
-        const name = this.resolveSlashTarget(data.channelId, adapterId);
-        if (!name) {
-          await data.respond(t("classic.no_agent"));
-          return;
-        }
-        // Single source of truth (statusline.json + robust tmux pane fallback).
-        await data.respond(await this.topicCommands.getCtxText(name));
-      } else if (data.command === "collab") {
-        // Classic no longer lives in the routing engine, so a routing hit here is
-        // always a fleet-topic instance.
-        const collabTarget = this.routing.resolve(data.channelId);
-        if (collabTarget) {
-          if (this.fleetAdminGate(data.userId, adapterId) !== "ok") {
-            await data.respond(t("not_authorized"));
-            return;
-          }
-          const isCollab = this.toggleFleetCollab(collabTarget.name);
-          await data.respond(isCollab ? t("collab.on") : t("collab.off"));
-          return;
-        }
-        if (!this.classicChannels?.isAdmin(data.userId)) {
-          await data.respond(t("admin.required"));
-          return;
-        }
-        if (!this.classicChannels.isClassicChannel(data.channelId, adapterId)) {
-          await data.respond(t("classic.no_agent_start"));
-          return;
-        }
-        const newState = this.classicChannels.toggleCollab(data.channelId, adapterId);
-        await data.respond(newState
-          ? t("collab.on.classic")
-          : t("collab.off.classic"));
-      } else if (data.command === "update") {
-        await this.handleUpdateSlash(data, adapterId);
-      } else if (data.command === "doctor") {
-        if (this.fleetAdminGate(data.userId, adapterId) !== "ok") {
-          await data.respond(t("not_authorized"));
-          return;
-        }
-        await data.respond(await this.runBackendDoctor());
-      } else if (data.command === "usage") {
-        // Same permission level as /ctx (none). The reply is still ephemeral —
-        // the adapter defers non-chat commands that way — so it never spams the
-        // channel either way.
-        try {
-          const { getUsageSnapshot } = await import("./usage/usage-api.js");
-          const { renderUsageMarkdown } = await import("./usage/format-rich.js");
-          // slash_command is Discord-only; editReply renders Markdown natively.
-          await data.respond(renderUsageMarkdown(await getUsageSnapshot(false, this.getActiveUsageProviderIds())));
-        } catch (err) {
-          await data.respond(t("usage.failed", (err as Error).message));
-        }
-      } else if (data.command === "tips") {
-        await this.handleTipsSlash(data, adapterId);
-      } else if (data.command === "status") {
-        // Admin-gated (like the topic path): the merged table shows every
-        // instance's cost and IPC health.
-        if (!this.isFleetAdmin(data.userId, adapterId)) {
-          await data.respond(t("cmd.admin_required", "/status"));
-          return;
-        }
-        const text = await this.topicCommands.getStatusText();
-        await data.respond(text);
-      } else if (data.command === "sysinfo") {
-        // Slash commands are Discord-only; use plain lines (no markdown table)
-        await this.topicCommands.sendSysInfo(text => data.respond(text), { platform: "discord" });
-      } else if (data.command === "dashboard") {
-        // Reply is ephemeral (adapter defers non-chat commands ephemerally), so
-        // the web-token-bearing URLs are only visible to the caller.
-        const gate = this.fleetAdminGate(data.userId, adapterId);
-        if (gate !== "ok") { await data.respond(t(gate === "disabled" ? "dashboard.disabled" : "not_authorized")); return; }
-        await data.respond(this.topicCommands.getDashboardText());
-      } else if (data.command === "restart") {
-        await this.handleRestartSlash(data, adapterId);
-      } else if (data.command === "compact") {
-        const name = this.resolveSlashTarget(data.channelId, adapterId);
-        if (!name) { await data.respond(t("classic.no_agent")); return; }
-        const result = await this.topicCommands.sendCompact(name, String(data.options?.instructions ?? ""));
-        await data.respond(result);
-      } else if (data.command === "steer") {
-        const name = this.resolveSlashTarget(data.channelId, adapterId);
-        if (!name) { await data.respond(t("classic.no_agent")); return; }
-        const steerText = String(data.options?.message ?? "").trim();
-        if (!steerText) { await data.respond(t("steer.usage")); return; }
-        // chat_id/message_id stay empty: a slash interaction has no channel
-        // message to react to, and an empty chat_id keeps updateLastChat from
-        // rerouting the instance's replies to the slash context.
-        const result = this.topicCommands.sendSteer(name, steerText, {
-          chatId: "", messageId: "", username: data.username ?? "user",
-          userId: data.userId ?? "", threadId: undefined, adapterId, source: "discord",
-        });
-        await data.respond(result);
-      } else if (data.command === "btw") {
-        const name = this.resolveSlashTarget(data.channelId, adapterId);
-        if (!name) { await data.respond(t("classic.no_agent")); return; }
-        const btwText = String(data.options?.message ?? "").trim();
-        if (!btwText) { await data.respond(t("btw.usage")); return; }
-        const result = this.topicCommands.sendBtw(name, btwText, {
-          chatId: "", messageId: "", username: data.username ?? "user",
-          userId: data.userId ?? "", threadId: undefined, adapterId, source: "discord",
-        });
-        await data.respond(result);
-      } else if (data.command === "login") {
-        await this.handleLoginSlash(data, adapterId, this.adapter!);
-      }
+      await this.dispatchSlash(data, adapterId, adapter);
     }, this.logger, "adapter.slash_command"));
 
     await this.topicCommands.registerBotCommands().catch(e =>
@@ -5062,166 +5048,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Slash commands: classic bot + admin commands
     adapter.on("slash_command", safeHandler(async (data: ClassicStartSlashData) => {
       if (!isCurrentAdapter()) return;
-      if (!(await this.authorizeSlash(data, adapterId))) return;
-      if (data.command === "start") {
-        await this.handleClassicStartSlash(data, adapterId);
-      } else if (data.command === "stop") {
-        const reply = await this.handleClassicStop(data.channelId, adapterId);
-        await data.respond(reply);
-      } else if (data.command === "pause" || data.command === "wake") {
-        await this.handlePauseWakeSlash(data, adapterId);
-      } else if (data.command === "chat") {
-        const text = data.text ?? "";
-        if (!text) { await data.respond(t("chat.usage")); return; }
-        const name = this.classicChannels?.getInstanceByChannel(data.channelId, adapterId);
-        if (!name) {
-          await data.respond(t("classic.no_agent_start"));
-          return;
-        }
-        const status = this.resolveStatusEmojisFor(name, adapterId, adapter);
-        const replyMsgId = await data.respond(textForm(status.platform, status.received));
-        const username = data.username ?? data.userId;
-        ClassicChannelManager.logMessage(name, username, `/chat ${text}`, new Date());
-        await this.forwardToClassicInstance(name, text, {
-          chatId: data.channelId,
-          threadId: data.channelId,
-          messageId: replyMsgId ?? "",
-          userId: data.userId,
-          username,
-          source: channelConfig.type,
-          timestamp: new Date(),
-        });
-      } else if (data.command === "save") {
-        await this.handleSlashSave(data, adapterId);
-      } else if (data.command === "load") {
-        // load is kiro-cli/classic only — no claude-code equivalent.
-        if (!this.classicChannels?.isAdmin(data.userId)) {
-          await data.respond(t("admin.required"));
-          return;
-        }
-        const name = this.classicChannels?.getInstanceByChannel(data.channelId, adapterId);
-        if (!name) {
-          await data.respond(t("classic.no_agent_start"));
-          return;
-        }
-        const filename = data.options?.filename as string;
-        if (!SAVE_FILENAME_RE.test(filename ?? "")) { await data.respond(t("filename.invalid")); return; }
-        this.pasteRawToClassicInstance(name, `/chat load ${filename}`);
-        await data.respond(t("save.sent", `/chat load ${filename}`, name));
-      } else if (data.command === "model") {
-        await this.handleModelSlash(data, adapterId);
-      } else if (data.command === "clear") {
-        await this.handleClearSlash(data, adapterId);
-      } else if (data.command === "effort") {
-        await this.handleEffortSlash(data, adapterId);
-      } else if (data.command === "cancel") {
-        const name = this.resolveSlashTarget(data.channelId, adapterId);
-        if (!name) { await data.respond(t("classic.no_agent")); return; }
-        const ok = this.cancelInstance(name);
-        await data.respond(ok ? t("cancel.sent", name) : t("cancel.not_running", name));
-      } else if (data.command === "ctx") {
-        const name = this.resolveSlashTarget(data.channelId, adapterId);
-        if (!name) { await data.respond(t("classic.no_agent")); return; }
-        // Single source of truth (statusline.json + robust tmux pane fallback).
-        await data.respond(await this.topicCommands.getCtxText(name));
-      } else if (data.command === "collab") {
-        // Classic no longer lives in the routing engine, so a routing hit here is
-        // always a fleet-topic instance.
-        const collabTarget2 = this.routing.resolve(data.channelId);
-        if (collabTarget2) {
-          if (this.fleetAdminGate(data.userId, adapterId) !== "ok") {
-            await data.respond(t("not_authorized"));
-            return;
-          }
-          const isCollab = this.toggleFleetCollab(collabTarget2.name);
-          await data.respond(isCollab ? t("collab.on") : t("collab.off"));
-          return;
-        }
-        if (!this.classicChannels?.isAdmin(data.userId)) {
-          await data.respond(t("admin.required"));
-          return;
-        }
-        if (!this.classicChannels.isClassicChannel(data.channelId, adapterId)) {
-          await data.respond(t("classic.no_agent_start"));
-          return;
-        }
-        const newState = this.classicChannels.toggleCollab(data.channelId, adapterId);
-        await data.respond(newState
-          ? t("collab.on.classic")
-          : t("collab.off.classic"));
-      } else if (data.command === "update") {
-        await this.handleUpdateSlash(data, adapterId);
-      } else if (data.command === "doctor") {
-        if (this.fleetAdminGate(data.userId, adapterId) !== "ok") {
-          await data.respond(t("not_authorized"));
-          return;
-        }
-        await data.respond(await this.runBackendDoctor());
-      } else if (data.command === "usage") {
-        // Same permission level as /ctx (none). The reply is still ephemeral —
-        // the adapter defers non-chat commands that way — so it never spams the
-        // channel either way.
-        try {
-          const { getUsageSnapshot } = await import("./usage/usage-api.js");
-          const { renderUsageMarkdown } = await import("./usage/format-rich.js");
-          // slash_command is Discord-only; editReply renders Markdown natively.
-          await data.respond(renderUsageMarkdown(await getUsageSnapshot(false, this.getActiveUsageProviderIds())));
-        } catch (err) {
-          await data.respond(t("usage.failed", (err as Error).message));
-        }
-      } else if (data.command === "tips") {
-        await this.handleTipsSlash(data, adapterId);
-      } else if (data.command === "status") {
-        // Admin-gated (like the topic path): the merged table shows every
-        // instance's cost and IPC health.
-        if (!this.isFleetAdmin(data.userId, adapterId)) {
-          await data.respond(t("cmd.admin_required", "/status"));
-          return;
-        }
-        const text = await this.topicCommands.getStatusText();
-        await data.respond(text);
-      } else if (data.command === "sysinfo") {
-        // Slash commands are Discord-only; use plain lines (no markdown table)
-        await this.topicCommands.sendSysInfo(text => data.respond(text), { platform: "discord" });
-      } else if (data.command === "dashboard") {
-        // Reply is ephemeral (adapter defers non-chat commands ephemerally), so
-        // the web-token-bearing URLs are only visible to the caller.
-        const gate = this.fleetAdminGate(data.userId, adapterId);
-        if (gate !== "ok") { await data.respond(t(gate === "disabled" ? "dashboard.disabled" : "not_authorized")); return; }
-        await data.respond(this.topicCommands.getDashboardText());
-      } else if (data.command === "restart") {
-        await this.handleRestartSlash(data, adapterId);
-      } else if (data.command === "compact") {
-        const name = this.resolveSlashTarget(data.channelId, adapterId);
-        if (!name) { await data.respond(t("classic.no_agent")); return; }
-        const result = await this.topicCommands.sendCompact(name, String(data.options?.instructions ?? ""));
-        await data.respond(result);
-      } else if (data.command === "steer") {
-        const name = this.resolveSlashTarget(data.channelId, adapterId);
-        if (!name) { await data.respond(t("classic.no_agent")); return; }
-        const steerText = String(data.options?.message ?? "").trim();
-        if (!steerText) { await data.respond(t("steer.usage")); return; }
-        // chat_id/message_id stay empty: a slash interaction has no channel
-        // message to react to, and an empty chat_id keeps updateLastChat from
-        // rerouting the instance's replies to the slash context.
-        const result = this.topicCommands.sendSteer(name, steerText, {
-          chatId: "", messageId: "", username: data.username ?? "user",
-          userId: data.userId ?? "", threadId: undefined, adapterId, source: "discord",
-        });
-        await data.respond(result);
-      } else if (data.command === "btw") {
-        const name = this.resolveSlashTarget(data.channelId, adapterId);
-        if (!name) { await data.respond(t("classic.no_agent")); return; }
-        const btwText = String(data.options?.message ?? "").trim();
-        if (!btwText) { await data.respond(t("btw.usage")); return; }
-        const result = this.topicCommands.sendBtw(name, btwText, {
-          chatId: "", messageId: "", username: data.username ?? "user",
-          userId: data.userId ?? "", threadId: undefined, adapterId, source: "discord",
-        });
-        await data.respond(result);
-      } else if (data.command === "login") {
-        await this.handleLoginSlash(data, adapterId, adapter);
-      }
+      await this.dispatchSlash(data, adapterId, adapter);
     }, this.logger, `adapter[${adapterId}].slash_command`));
 
     adapter.on("started", safeHandler((username: string, userId?: string) => {
@@ -9768,10 +9595,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * unsupported backends get a clear error. Routes via classic paste or fleet IPC.
    */
   private async handleSlashSave(data: { channelId: string; userId: string; options?: Record<string, string | boolean>; respond: (text: string) => Promise<string | undefined> }, adapterId?: string): Promise<void> {
-    if (!this.classicChannels?.isAdmin(data.userId)) {
+    // The admin of the channel's own kind (a fleet admin in a fleet channel). It used to ask for a ClassicBot
+    // admin everywhere, so a fleet admin was refused in their own channel and a ClassicBot admin could paste
+    // into a fleet instance.
+    if (!this.isModelAdmin(data.userId, data.channelId, adapterId)) {
       await data.respond(t("admin.required"));
       return;
     }
+    if (!this.classicChannels) { await data.respond(t("classic.no_agent_start")); return; }
     // Classic resolves per-bot (same-channel multi-bot); otherwise a fleet topic.
     const classicName = this.classicChannels.getInstanceByChannel(data.channelId, adapterId);
     const target: RouteTarget | undefined = classicName

@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { slashLock } from "../../command-table.js";
 import { randomBytes } from "node:crypto";
 import { t } from "../../locale.js";
 import { mkdirSync } from "node:fs";
@@ -993,7 +994,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       if (this.registerCommands) try {
         const registered = await client.application?.commands.set([
           {
-            name: "start", description: t("slash.start"),
+            name: "start", description: slashLock("start") + t("slash.start"),
             options: [{
               name: "backend",
               description: t("slash.option.backend"),
@@ -1002,25 +1003,25 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
               choices: DISCORD_START_BACKEND_CHOICES,
             }],
           },
-          { name: "stop", description: t("slash.stop") },
+          { name: "stop", description: slashLock("stop") + t("slash.stop") },
           {
-            name: "pause", description: "🔒 " + t("slash.pause"),
+            name: "pause", description: slashLock("pause") + t("slash.pause"),
             options: [{ name: "instance", description: t("slash.option.instance"), type: ApplicationCommandOptionType.String, required: false }],
           },
           {
-            name: "wake", description: "🔒 " + t("slash.wake"),
+            name: "wake", description: slashLock("wake") + t("slash.wake"),
             options: [{ name: "instance", description: t("slash.option.instance"), type: ApplicationCommandOptionType.String, required: false }],
           },
           {
-            name: "chat", description: t("slash.chat"),
+            name: "chat", description: slashLock("chat") + t("slash.chat"),
             options: [{ name: "message", description: t("slash.option.message"), type: 3, required: true }],
           },
-          { name: "status", description: "🔒 " + t("slash.status") },
-          { name: "sysinfo", description: t("slash.sysinfo") },
-          { name: "dashboard", description: t("slash.dashboard") },
-          { name: "ctx", description: t("slash.ctx") },
+          { name: "status", description: slashLock("status") + t("slash.status") },
+          { name: "sysinfo", description: slashLock("sysinfo") + t("slash.sysinfo") },
+          { name: "dashboard", description: slashLock("dashboard") + t("slash.dashboard") },
+          { name: "ctx", description: slashLock("ctx") + t("slash.ctx") },
           {
-            name: "restart", description: "🔒 " + t("slash.restart"),
+            name: "restart", description: slashLock("restart") + t("slash.restart"),
             options: [{
               name: "mode",
               description: t("slash.option.restart_mode"),
@@ -1029,11 +1030,11 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
               choices: [{ name: "full", value: "full" }],
             }],
           },
-          { name: "update", description: "🔒 " + t("slash.update") },
-          { name: "doctor", description: "🔒 " + t("slash.doctor") },
-          { name: "usage", description: t("slash.usage") },
+          { name: "update", description: slashLock("update") + t("slash.update") },
+          { name: "doctor", description: slashLock("doctor") + t("slash.doctor") },
+          { name: "usage", description: slashLock("usage") + t("slash.usage") },
           {
-            name: "tips", description: t("slash.tips"),
+            name: "tips", description: slashLock("tips") + t("slash.tips"),
             options: [{
               name: "mode", description: t("slash.option.tips_mode"),
               type: ApplicationCommandOptionType.String, required: false,
@@ -1045,7 +1046,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
             }],
           },
           {
-            name: "compact", description: "🔒 " + t("slash.compact"),
+            name: "compact", description: slashLock("compact") + t("slash.compact"),
             options: [{
               // Optional, and honoured only by backends that take it (#1145).
               name: "instructions", description: t("slash.option.compact_instructions"),
@@ -1053,21 +1054,21 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
             }],
           },
           {
-            name: "steer", description: t("slash.steer"),
+            name: "steer", description: slashLock("steer") + t("slash.steer"),
             options: [{
               name: "message", description: t("slash.option.steer_message"),
               type: ApplicationCommandOptionType.String, required: true,
             }],
           },
           {
-            name: "btw", description: t("slash.btw"),
+            name: "btw", description: slashLock("btw") + t("slash.btw"),
             options: [{
               name: "message", description: t("slash.option.btw_message"),
               type: ApplicationCommandOptionType.String, required: true,
             }],
           },
           {
-            name: "login", description: withFleetLabel("🔒 " + t("slash.login"), this.fleetLabel),
+            name: "login", description: withFleetLabel(slashLock("login") + t("slash.login"), this.fleetLabel),
             options: [
               {
                 name: "backend", description: t("slash.option.login_backend"),
@@ -1085,12 +1086,12 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
               { name: "cancel", description: t("slash.option.login_cancel"), type: ApplicationCommandOptionType.Boolean, required: false },
             ],
           },
-          { name: "clear", description: "🔒 " + t("slash.clear") },
+          { name: "clear", description: slashLock("clear") + t("slash.clear") },
           {
-            name: "model", description: "🔒 " + t("slash.model"),
+            name: "model", description: slashLock("model") + t("slash.model"),
           },
           {
-            name: "effort", description: "🔒 " + t("slash.effort"),
+            name: "effort", description: slashLock("effort") + t("slash.effort"),
             options: [{
               name: "level", description: t("slash.option.effort_level"),
               type: ApplicationCommandOptionType.String, required: false,
@@ -1101,19 +1102,19 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
               ],
             }],
           },
-          { name: "collab", description: "🔒 " + t("slash.collab") },
+          { name: "collab", description: slashLock("collab") + t("slash.collab") },
           {
-            name: "save", description: "🔒 " + t("slash.save"),
+            name: "save", description: slashLock("save") + t("slash.save"),
             options: [
               { name: "filename", description: t("slash.option.save_filename"), type: 3, required: true },
               { name: "force", description: t("slash.option.save_force"), type: 5, required: false },
             ],
           },
           {
-            name: "load", description: "🔒 " + t("slash.load"),
+            name: "load", description: slashLock("load") + t("slash.load"),
             options: [{ name: "filename", description: t("slash.option.load_filename"), type: 3, required: true }],
           },
-          { name: "cancel", description: t("slash.cancel") },
+          { name: "cancel", description: slashLock("cancel") + t("slash.cancel") },
         ]);
         this.emitFromClient(client, generation, "slash_registration", { ok: true, count: registered?.size });
       } catch (err) {

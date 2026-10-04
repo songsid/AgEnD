@@ -198,10 +198,10 @@ describe("the surfaces and their words", () => {
     expect(block).toMatch(new RegExp(`maxLength: ${COMPACT_INSTRUCTIONS_MAX}`));
   });
 
-  it("every Discord slash site passes the option through", () => {
+  it("the Discord slash dispatcher passes the option through (one dispatcher now, shared by every adapter)", () => {
     const fm = src("fleet-manager.ts");
-    expect(fm.match(/sendCompact\(name, String\(data\.options\?\.instructions \?\? ""\)\)/g)?.length).toBe(3);
-    expect(fm.match(/data\.command === "compact"/g)?.length).toBe(3);
+    expect(fm.match(/sendCompact\(name, String\(data\.options\?\.instructions \?\? ""\)\)/g)?.length).toBe(1);
+    expect(fm.match(/data\.command === "compact"/g)?.length).toBe(1);
   });
 
   it("the ClassicBot Telegram path parses the same command", () => {

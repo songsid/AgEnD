@@ -249,10 +249,12 @@ describe("a slash command is refused before it does anything", () => {
   it("and the same member, once the policy admits them (open mode), is served — the door is the policy, not a wall", async () => {
     const r = await rig({ primary: OPEN });
     expect(await slash(r, "discord", { command: "ctx", userId: "member" })).toEqual(["ctx-text"]);
-    expect(await slash(r, "discord", { command: "compact", userId: "member" })).toEqual(["compact-sent"]);
+    // /compact needs a channel admin since the command table (#1148); a member is served the commands meant for them.
+    expect(await slash(r, "discord", { command: "compact", userId: "member" })).toEqual([t("cmd.admin_required", "/compact")]);
+    expect(await slash(r, "discord", { command: "compact", userId: "admin" })).toEqual(["compact-sent"]);
     // #1145: the optional instructions option reaches /compact, absent or present.
     expect(r.compact).toHaveBeenLastCalledWith(expect.any(String), "");
-    expect(await slash(r, "discord", { command: "compact", userId: "member", options: { instructions: "keep the file names" } })).toEqual(["compact-sent"]);
+    expect(await slash(r, "discord", { command: "compact", userId: "admin", options: { instructions: "keep the file names" } })).toEqual(["compact-sent"]);
     expect(r.compact).toHaveBeenLastCalledWith(expect.any(String), "keep the file names");
     expect(await slash(r, "discord", { command: "steer", userId: "member", options: { message: "go" } })).toEqual(["steer-sent"]);
     expect(r.steer).toHaveBeenCalledTimes(1);
