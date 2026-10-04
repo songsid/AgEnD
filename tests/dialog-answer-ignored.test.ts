@@ -283,6 +283,18 @@ describe("what counts as 'the same dialog still there'", () => {
     r.stop();
   });
 
+  it("…also when the two requests differ only by a number", async () => {
+    const r = rig();
+    r.screen.text = PROMPT.replace("folder?", "folder? /tmp/request-1");
+    await r.poll(5_600); await r.poll(5_600);
+    r.screen.text = PROMPT.replace("folder?", "folder? /tmp/request-2");
+    await r.poll(5_600);
+    expect(r.ignored).toEqual([]);
+    await r.poll(11_200);
+    expect(r.ignored).toEqual([expect.objectContaining({ attempts: 3 })]);
+    r.stop();
+  });
+
   it("…and a request that was already reported does not silence the next one", async () => {
     const r = rig();
     r.screen.text = PROMPT.replace("folder?", "folder? alpha");
