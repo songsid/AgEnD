@@ -3016,10 +3016,8 @@ export class Daemon extends EventEmitter {
         // on). Runtime table only: startup patterns are loose on purpose and
         // must never send keys into an ordinary transcript.
         let blockingSeen: RuntimeDialog | null = null;
-        let anyDialogSeen = false;
         for (const dialog of dialogs) {
           if (!Daemon.dialogMatches(dialog, pane)) continue;
-          anyDialogSeen = true;
           this.noteCodexReserveDialog(dialog, pane);
           if (dialog.blocksDelivery || dialog.holdOnly) blockingSeen = dialog;
           if (dialog.holdOnly) break; // recognised, deliberately not answered; trackDialogParked reports it
@@ -3101,7 +3099,9 @@ export class Daemon extends EventEmitter {
           this.trackDialogParked(blockingSeen);
           return; // Dialog handled (or deliberately deferred): skip error checks this cycle
         }
-        if (!anyDialogSeen) this.dialogAnswers = null;   // the screen is gone: the next dialog is a new one
+        // Reached only when no dialog was answered this poll (none on screen, or only a fenced one): the screen that was
+        // being answered is gone, and the next dialog is a new one.
+        this.dialogAnswers = null;
         this.trackDialogParked(blockingSeen);
         if (blockingSeen) return; // held dialog: skip error checks this cycle
 
