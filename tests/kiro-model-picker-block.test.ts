@@ -3,6 +3,12 @@ import { EventEmitter } from "node:events";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+const forbiddenProcess = vi.hoisted(() => vi.fn((): never => { throw new Error("No real CLI in picker sandbox"); }));
+vi.mock("node:child_process", async original => ({ ...await original<typeof import("node:child_process")>(),
+  exec: forbiddenProcess, execFile: forbiddenProcess, execSync: forbiddenProcess, execFileSync: forbiddenProcess,
+  spawn: forbiddenProcess, spawnSync: forbiddenProcess, fork: forbiddenProcess,
+}));
 import { Daemon } from "../src/daemon.js";
 import { KiroBackend } from "../src/backend/kiro.js";
 import { InstanceLifecycle } from "../src/instance-lifecycle.js";
@@ -27,8 +33,11 @@ const BLOCKED = `${ERROR}\n\n${PICKER}\n`;
 const NARROW_PICKER = readFileSync(new URL("./fixtures/kiro-model-picker-80.txt", import.meta.url), "utf8");
 const NARROW_BLOCKED = `${ERROR}\n\n${NARROW_PICKER}`;
 const dirs: string[] = [];
+// Only native pure predicates are needed; the constructor probes the host CLI.
+const backend = Object.assign(Object.create(KiroBackend.prototype), { activeUi: "legacy", activeTrustAll: true }) as KiroBackend;
 
 afterEach(() => {
+  expect(forbiddenProcess).not.toHaveBeenCalled();
   vi.useRealTimers();
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
@@ -43,7 +52,7 @@ function makeDaemon(pane = BLOCKED) {
     context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
     hang_detector: { enabled: false, timeout_minutes: 10, idle_debounce_ms: 10 },
     log_level: "silent",
-  } as any, instanceDir, false, new KiroBackend(instanceDir), undefined,
+  } as any, instanceDir, false, backend, undefined,
   { child: () => logger } as any) as any;
   const screen = { pane };
   const tmux = {
@@ -57,7 +66,7 @@ function makeDaemon(pane = BLOCKED) {
 }
 
 describe("Kiro model-unavailable picker", () => {
-  const dialog = new KiroBackend("/tmp/kiro-picker-test").getRuntimeDialogs()
+  const dialog = backend.getRuntimeDialogs()
     .find(candidate => candidate.description.includes("model unavailable"));
 
   it("requires the exact outage and the live, bottom-anchored credit picker", () => {
@@ -134,7 +143,7 @@ describe("Kiro model-unavailable picker", () => {
   });
 
   it("keeps auto-accept limited to a selected, current trust dialog", () => {
-    const trust = new KiroBackend("/tmp/kiro-picker-test").getRuntimeDialogs()
+    const trust = backend.getRuntimeDialogs()
       .find(candidate => candidate.description.includes("trust confirmation"));
     expect(trust?.isActive?.("Do you trust the files?\n❯ No, exit\n  Yes, I accept\n")).toBe(true);
     expect(trust?.isActive?.("Do you trust the files?\n❯ No, exit\n  Yes, I accept\n\n2% λ > ready")).toBe(false);

@@ -6,6 +6,29 @@ import { dirname, join } from "node:path";
 /** Observable execution state derived from the active CLI pane. */
 export type InstanceState = "idle" | "working" | "stuck";
 
+/** Interaction metadata is presentation only; execution/lifecycle gates remain three-valued. */
+export type InteractionKind = "permission" | "dangerous_command" | "login" | "dialog" | "suspected_terminal_input";
+export interface InteractionOwner {
+  bootId: string;
+  spawnGeneration: number;
+  launchAttempt: number;
+  launchFenceEpoch: number;
+}
+export interface InteractionSnapshot {
+  phase: "clear" | "candidate" | "waiting" | "unverified";
+  kind: InteractionKind | null;
+  /** Code-owned category, never a captured command, path, or credential. */
+  reason: InteractionKind | null;
+  episode: number | null;
+  owner: InteractionOwner;
+  since: number | null;
+  observedAt: number | null;
+  confirmedAt: number | null;
+  ageMs: number | null;
+  stale: boolean;
+  suspected: boolean;
+}
+
 /** Point-in-time state returned by the daemon's IPC state query. */
 export interface InstanceStateSnapshot {
   state: InstanceState;
@@ -15,6 +38,7 @@ export interface InstanceStateSnapshot {
   observedAt: number;
   /** Unix timestamp of the most recent state transition. */
   stateChangedAt: number;
+  interaction?: InteractionSnapshot;
 }
 
 export interface McpServerEntry {
@@ -243,6 +267,8 @@ export interface RuntimeDialog {
    * human choice.
    */
   inputBlocked?: boolean;
+  /** Optional static presentation category; only structural predicates qualify. */
+  interactionKind?: InteractionKind;
   /**
    * The daemon may re-read the pane under the write lock after sending these
    * keys.  This is intentionally opt-in: most dialogs are fire-and-forget,

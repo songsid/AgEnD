@@ -107,7 +107,8 @@ import { handleAgentRequest, ToolNotPermittedError, type AgentEndpointContext } 
 import { ClassicChannelManager, getClassicBackendChoices, isSelectableClassicBackend, readClassicLastActivityAt } from "./classic-channel-manager.js";
 import { assertExplicitInstanceRemoval, type ExplicitInstanceRemoval } from "./instance-removal.js";
 import { validateFleetConfig } from "./config-validator.js";
-import type { InstanceState, InstanceStateSnapshot } from "./backend/types.js";
+import { presentationState, interactionSummary } from "./interaction-observation.js";
+import type { InstanceState, InstanceStateSnapshot, InteractionSnapshot } from "./backend/types.js";
 import { readLastInboundAt } from "./daemon.js";
 import { clearPausedMarker, readPausedAt, readPauseReason, writePausedMarker } from "./pause-marker.js";
 import { DEFAULT_WARM_OVERFLOW, WakeCoordinator } from "./wake-coordinator.js";
@@ -2145,6 +2146,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // can still contain the old ready marker and must never surface as Idle.
     if (this.instanceProcessStatus.has(name)) return null;
     return this.instanceStateCache.get(name)?.state ?? null;
+  }
+
+  /** Pure read of the single daemon-owned observation; no probe/capture or second tracker. */
+  getInstanceInteraction(name: string): InteractionSnapshot | null {
+    if (this.lifecycle.isPaused(name) || this.instanceProcessStatus.has(name)) return null;
+    const daemon = this.lifecycle.daemons.get(name);
+    if (daemon?.getProcessStatus?.() !== "running") return null;
+    return daemon.getInteractionSnapshot?.() ?? null;
+  }
+
+  private instancePresentation(name: string) {
+    const execution_state = this.getInstanceExecutionState(name);
+    const interaction = this.getInstanceInteraction(name);
+    return { state: presentationState(execution_state, interaction), execution_state,
+      interaction, interaction_summary: interactionSummary(interaction) };
   }
 
   /**
@@ -15259,7 +15275,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
               lastActivity,
               currentTask,
               idle: this.getInstanceIdle(inst.name),
-              state: this.getInstanceExecutionState(inst.name),
+              ...this.instancePresentation(inst.name),
             };
           });
           res.setHeader("Access-Control-Allow-Origin", "*");
@@ -15520,6 +15536,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         backend,
         effort,
         effort_source,
+        ...this.instancePresentation(name),
       };
     });
     return {

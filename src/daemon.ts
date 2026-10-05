@@ -47,6 +47,8 @@ import { MuseUsageRelay, clearMuseUsageSnapshot } from "./muse-usage-relay.js";
 import { deliveryContentDigest, type DaemonDeliveryPort, type DeliveryAttemptEvidence, type DurableSubmissionMode } from "./delivery-outbox.js";
 import { queueResumePolicyForAttempt } from "./delivery-queue-evidence.js";
 import { scanTranscriptForDeliveryMarker } from "./delivery-reconciliation.js";
+import { InteractionObservation, INTERACTION_CONFIRM_MS, sameInteractionOwner, type InteractionEvidence } from "./interaction-observation.js";
+import type { InteractionOwner, InteractionSnapshot } from "./backend/types.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -1042,16 +1044,20 @@ export class InteractivePromptDetector {
 
   constructor(private readonly stableMs = 10_000) {}
 
+  /** Recognition is persistent; observe() separately deduplicates notifications. */
+  match(pane: string): InteractivePromptDetection | null {
+    const tailText = sanitizePaneTail(pane, 5).join("\n");
+    for (const candidate of INTERACTIVE_PROMPT_PATTERNS) {
+      const match = tailText.match(candidate.pattern);
+      if (match) return { kind: candidate.kind, prompt: match[0].trim().slice(0, 200) };
+    }
+    return null;
+  }
+
   observe(pane: string, now = Date.now(), outputAt = 0): InteractivePromptDetection | null {
     const tail = sanitizePaneTail(pane, 5);
     const tailText = tail.join("\n");
-    let matched: { kind: InteractivePromptKind; prompt: string } | null = null;
-    for (const candidate of INTERACTIVE_PROMPT_PATTERNS) {
-      const match = tailText.match(candidate.pattern);
-      if (!match) continue;
-      matched = { kind: candidate.kind, prompt: match[0].trim().slice(0, 200) };
-      break;
-    }
+    const matched = this.match(pane);
 
     if (!matched) {
       this.reset();
@@ -1247,6 +1253,7 @@ export class Daemon extends EventEmitter {
   private dialogParkedSince = 0;
   /** Identity of that dialog: its pattern, not its description (two tables may describe one screen differently). */
   private dialogParkedKey: string | null = null;
+  private dialogParkedInteractionEpisode: number | null = null;
   private dialogParkedReported = false;
   /**
    * The runtime dialog the monitor is answering, and how many of its answers in a row did nothing (the dialog was
@@ -1272,6 +1279,13 @@ export class Daemon extends EventEmitter {
   private capacityNudge: { pane: string; spawn: number; fence: number; epoch: number; dueAt: number } | null = null;
   /** Current stdin-owning runtime dialog, independent from execution state. */
   private inputBlockedDialogKey: string | null = null;
+  private readonly interactionObservation = new InteractionObservation();
+  private interactionConfirmationTimer: ReturnType<typeof setTimeout> | null = null;
+  private interactionOutputRevision = 0;
+  private interactionObservedOutputRevision = 0;
+  private interactionCaptureSerial = 0;
+  private interactionDialogKey: string | null = null;
+  private acceptedInstanceSnapshot: InstanceStateSnapshot | null = null;
   /** Generation/signature fence for safety dialogs while their screen is still visible. */
   private autoResolvedDialogKey: string | null = null;
   private autoResolvedDialogGeneration = 0;
@@ -3118,13 +3132,24 @@ export class Daemon extends EventEmitter {
       // a pause, a respawn); a stale poll must not touch state a newer one owns, so it checks before committing.
       const pollSpawn = this.spawnGeneration;
       const pollFence = this.launchFenceEpoch;
-      const stale = (): boolean => pollSpawn !== this.spawnGeneration || pollFence !== this.launchFenceEpoch;
+      const pollOwner = this.interactionOwner();
+      const captureOrder = ++this.interactionCaptureSerial;
+      const captureMono = performance.now();
+      const stale = (): boolean => pollSpawn !== this.spawnGeneration || pollFence !== this.launchFenceEpoch
+        || !sameInteractionOwner(pollOwner, this.interactionOwner()) || this.runtimeMonitorsFrozen || this.spawning;
       try {
         const alive = await this.tmux.isWindowAlive();
+        if (stale()) return;
         if (!alive) return;
 
+        const captureAt = Date.now();
         const pane = await this.tmux.capturePane();
         if (stale()) return;
+        if (this.instanceStateLastOutputAt > 0 && this.instanceStateLastOutputAt >= captureAt) {
+          this.unverifyInteraction(captureMono, captureOrder);
+        } else {
+          if (!this.observeInteractionPane(pane, captureAt, captureMono, dialogs, captureOrder)) return;
+        }
         this.takeNudgeBaselines(pane, patterns);
         this.tickCapacityNudge(pane);
         const inputBlockedDialog = this.updateInputBlockedState(pane, dialogs);
@@ -3210,11 +3235,19 @@ export class Daemon extends EventEmitter {
             // Re-read under the lock: the first capture may have gone stale
             // while a delivery was finishing. A stale danger menu must never
             // receive a blind key sequence.
+            const currentAt = Date.now();
+            const currentMono = performance.now();
+            const currentOrder = ++this.interactionCaptureSerial;
             const currentPane = await this.tmux!.capturePane();
             // Every await below can outlive the spawn / monitors this poll started under: after each one, before
             // any state is touched or any further key is sent, `stale()` (fixed at the poll's start) is asked again.
             if (stale()) return;
             if (!Daemon.dialogMatches(dialog, currentPane)) {
+              if (this.instanceStateLastOutputAt >= currentAt && this.instanceStateLastOutputAt > 0) {
+                this.unverifyInteraction(currentMono, currentOrder);
+                return;
+              }
+              if (!this.observeInteractionPane(currentPane, currentAt, currentMono, dialogs, currentOrder)) return;
               this.updateInputBlockedState(currentPane, dialogs);
               this.endDialogEpisode();                       // somebody (or the CLI) already cleared it: that screen is over
               return;
@@ -3255,6 +3288,9 @@ export class Daemon extends EventEmitter {
               if (stale()) return;
             }
             if (dialog.verifyAfterKeys) {
+              const afterKeysAt = Date.now();
+              const afterKeysMono = performance.now();
+              const afterKeysOrder = ++this.interactionCaptureSerial;
               const afterKeysPane = await this.tmux!.capturePane();
               if (stale()) return;
               const dialogStillActive = dialog.inputBlocked
@@ -3264,6 +3300,11 @@ export class Daemon extends EventEmitter {
                 this.logger.warn({ dialog: dialog.description }, "Runtime dialog remained after its safety choice");
                 return;
               }
+              if (this.instanceStateLastOutputAt >= afterKeysAt && this.instanceStateLastOutputAt > 0) {
+                this.unverifyInteraction(afterKeysMono, afterKeysOrder);
+                return;
+              }
+              if (!this.observeInteractionPane(afterKeysPane, afterKeysAt, afterKeysMono, dialogs, afterKeysOrder)) return;
               this.updateInputBlockedState(afterKeysPane, dialogs);
               if (dialog.postDismissNotice) {
                 resolved = await this.submitSystemPaste(dialog.postDismissNotice.text, dialog.postDismissNotice.label);
@@ -3304,6 +3345,7 @@ export class Daemon extends EventEmitter {
 
         this.evaluateErrorPatterns(pane, patterns, readyPattern, Date.now(), busyPattern);
       } catch {
+        if (!stale()) this.unverifyInteraction(captureMono, captureOrder);
         // capturePane can fail if window is transitioning — ignore
       }
     }, 5_000); // Check every 5 seconds (runtime dialogs need fast response)
@@ -3985,12 +4027,106 @@ export class Daemon extends EventEmitter {
   }
 
   getInstanceStateSnapshot(): InstanceStateSnapshot {
-    return this.instanceStateMachine?.snapshot() ?? {
+    const snapshot = this.instanceStateMachine?.snapshot() ?? {
       state: this.instanceState,
       unchangedForMs: 0,
       observedAt: Date.now(),
       stateChangedAt: Date.now(),
     };
+    // A machine observation rejected by the modal hold never became a control
+    // state. A query must not publish that unaccepted idle as permission to act.
+    if (this.inputBlockedDialogKey !== null) {
+      snapshot.state = this.instanceState;
+      snapshot.stateChangedAt = this.acceptedInstanceSnapshot?.stateChangedAt ?? snapshot.stateChangedAt;
+    }
+    return { ...snapshot, interaction: this.getInteractionSnapshot() };
+  }
+
+  private interactionOwner(): InteractionOwner {
+    return { bootId: this.bootId, spawnGeneration: this.spawnGeneration,
+      launchAttempt: this.launchAttempt, launchFenceEpoch: this.launchFenceEpoch };
+  }
+
+  /** Cached, pure observation read; it never captures, constructs a backend or writes stdin. */
+  getInteractionSnapshot(): InteractionSnapshot {
+    return this.interactionObservation.snapshot(this.interactionOwner());
+  }
+
+  private publishInteraction(): void {
+    const interaction = this.getInteractionSnapshot();
+    // Presentation telemetry must not interrupt the execution-state/hold path.
+    try {
+      this.emit("instance_interaction", { name: this.name, interaction });
+    } catch (err) {
+      this.logger.debug({ err }, "Interaction listener failed");
+    }
+    try {
+      this.ipcServer?.broadcast({ type: "instance_interaction", instanceName: this.name, interaction });
+    } catch (err) {
+      this.logger.debug({ err }, "Interaction broadcast failed");
+    }
+  }
+
+  private clearInteractionConfirmation(): void {
+    if (this.interactionConfirmationTimer) clearTimeout(this.interactionConfirmationTimer);
+    this.interactionConfirmationTimer = null;
+  }
+
+  private unverifyInteraction(monotonicAt = performance.now(), order = ++this.interactionCaptureSerial): void {
+    if (!this.interactionObservation.unverify(this.interactionOwner(), monotonicAt, order)) return;
+    this.clearInteractionConfirmation();
+    this.publishInteraction();
+  }
+
+  private interactionEvidence(pane: string, dialogs: RuntimeDialog[]): InteractionEvidence | null {
+    const login = LOGIN_FLOWS[this.config.backend ?? "claude-code"];
+    let evidence: InteractionEvidence | null = null;
+    if (login?.loginScreenActive?.(pane)) {
+      evidence = { kind: "login", identity: pane.trim() };
+    } else {
+      // Bare backend regexes are not proof of a live modal. The canonical
+      // isActive predicate replaces pattern.test(), preserving table order.
+      const dialog = dialogs.find(d => d.isActive && (d.inputBlocked || d.blocksDelivery || d.holdOnly)
+        && Daemon.dialogMatches(d, pane));
+      if (dialog) {
+        const identity = dialog.requestIdentity?.(pane) ?? pane.replace(/\r/g, "")
+          .split("\n").map(row => row.replace(/^([ \t]*)[❯›]([ \t]+)(?=\d\.|Yes\b|No\b|Resume\b)/, "$1$2").trimEnd())
+          .filter(row => row.trim() !== "").join("\n");
+        evidence = { kind: dialog.interactionKind ?? "dialog", dialogKey: Daemon.dialogKey(dialog), identity: `${dialog.pattern.source}\n${identity}` };
+      } else {
+        const weak = this.interactivePromptDetector.match(pane);
+        if (weak) evidence = { kind: "suspected_terminal_input", identity: sanitizePaneTail(pane, 5).join("\n"), suspected: true };
+      }
+    }
+    // No captured text leaves this function or the private observer identity.
+    return evidence ? { ...evidence, identity: createHash("sha256").update(evidence.identity).digest("hex") } : null;
+  }
+
+  private observeInteractionPane(pane: string, observedAt: number, monotonicAt: number, dialogs = this.backend?.getRuntimeDialogs?.() ?? [], order = ++this.interactionCaptureSerial, allowConfirmation = true): boolean {
+    const owner = this.interactionOwner();
+    const evidence = this.interactionEvidence(pane, dialogs);
+    if (!this.interactionObservation.observe(evidence, owner,
+      observedAt, monotonicAt, this.interactionOutputRevision !== this.interactionObservedOutputRevision, order)) return false;
+    this.interactionDialogKey = evidence?.dialogKey ?? null;
+    this.interactionObservedOutputRevision = this.interactionOutputRevision;
+    const interaction = this.getInteractionSnapshot();
+    this.publishInteraction();
+    if (interaction.phase !== "candidate" || interaction.suspected) {
+      this.clearInteractionConfirmation();
+      return true;
+    }
+    // One bounded extra read per ordinary observation. A confirmation that
+    // finds a changed request waits for the existing monitor's next capture;
+    // it cannot recursively create a permanent fast poll.
+    if (allowConfirmation && !this.interactionConfirmationTimer) {
+      this.interactionConfirmationTimer = setTimeout(() => {
+        this.interactionConfirmationTimer = null;
+        if (!sameInteractionOwner(owner, this.interactionOwner()) || this.runtimeMonitorsFrozen || this.spawning) return;
+        void this.captureAndEvaluateInstanceState("interaction_confirmation");
+      }, INTERACTION_CONFIRM_MS);
+      this.interactionConfirmationTimer.unref?.();
+    }
+    return true;
   }
 
   /**
@@ -4248,6 +4384,7 @@ export class Daemon extends EventEmitter {
       return;
     }
     this.instanceState = snapshot.state;
+    this.acceptedInstanceSnapshot = { ...snapshot };
 
     // OpenCode creates its session lazily on the first submitted message.
     // Waiting until stop/pause to persist that id loses resume state when the
@@ -4806,11 +4943,16 @@ export class Daemon extends EventEmitter {
     }
     this.statePollInFlight = true;
     const captureStartedAt = Date.now();
+    const interactionCaptureAt = performance.now();
+    const interactionCaptureOrder = ++this.interactionCaptureSerial;
+    const interactionOwner = this.interactionOwner();
     const captureEpoch = `${this.spawnGeneration}:${this.launchAttempt}`;
     const currentDeliveryCapture = () => captureEpoch === `${this.spawnGeneration}:${this.launchAttempt}`
       && !this.spawning && !this.runtimeMonitorsFrozen && this.instanceStateMonitorActive;
     try {
-      const pane = await this.tmux.capturePane();
+      const pane = reason === "interaction_confirmation"
+        ? await this.tmux.capturePane(1_000) : await this.tmux.capturePane();
+      if (!currentDeliveryCapture() || !sameInteractionOwner(interactionOwner, this.interactionOwner())) return;
       // An old capture must not retire a new launch's transient guard either.
       if (reason === "delivery_idle_gate" && !currentDeliveryCapture()) {
         this.resetFooterFallback();
@@ -4824,7 +4966,6 @@ export class Daemon extends EventEmitter {
         this.resetFooterFallback();
         return;
       }
-      this.updateInputBlockedState(pane);
       // A monitor/lifecycle capture can see a busy moment between fleet polls.
       // Even a stale capture of changed content disproves continuous stability;
       // invalidate it before the output-freshness check can return early.
@@ -4838,6 +4979,7 @@ export class Daemon extends EventEmitter {
         (expectedOutputAt > 0 && this.instanceStateLastOutputAt > expectedOutputAt)
         || (this.instanceStateLastOutputAt > 0 && this.instanceStateLastOutputAt >= captureStartedAt);
       if (outputMovedDuringCapture) {
+        this.unverifyInteraction(interactionCaptureAt, interactionCaptureOrder);
         if (reason === "delivery_idle_gate") this.resetFooterFallback();
         if (reason === "output_probe") {
           // A TUI that repaints without changing a cell (muse parks its cursor
@@ -4863,6 +5005,11 @@ export class Daemon extends EventEmitter {
         }
         return;
       }
+
+      if (!currentDeliveryCapture() || !sameInteractionOwner(interactionOwner, this.interactionOwner())) return;
+      if (!this.observeInteractionPane(pane, captureStartedAt, interactionCaptureAt, undefined, interactionCaptureOrder,
+        reason !== "interaction_confirmation")) return;
+      this.updateInputBlockedState(pane);
 
       // Advance the shared 10s timer only for a fresh capture of this launch.
       const deliveryFallback = deliveryCandidate === true
@@ -5028,6 +5175,7 @@ export class Daemon extends EventEmitter {
         this.scheduleInstanceStateStuckDeadline(snapshot.observedAt - snapshot.unchangedForMs || captureStartedAt);
       }
     } catch (err) {
+      if (currentDeliveryCapture() && sameInteractionOwner(interactionOwner, this.interactionOwner())) this.unverifyInteraction(interactionCaptureAt, interactionCaptureOrder);
       if (reason === "delivery_idle_gate") this.resetFooterFallback();
       this.logger.debug({ err: (err as Error).message, reason }, "Instance state capture failed");
     } finally {
@@ -5040,6 +5188,7 @@ export class Daemon extends EventEmitter {
     const windowId = this.tmux?.getWindowId();
     if (!windowId || event.windowId !== windowId || !this.instanceStateMachine) return;
     this.instanceStateLastOutputAt = event.at;
+    this.interactionOutputRevision++;
     const canProvePeriodicIdle = !!this.backend?.isPeriodicRedrawIdlePane;
     if (canProvePeriodicIdle || (this.backend?.hasPeriodicPaneRedraw?.() === true && this.instanceState === "idle")) {
       // Do not emit idle→working solely because agy repainted an identical
@@ -5114,6 +5263,7 @@ export class Daemon extends EventEmitter {
   }
 
   private stopInstanceStateMonitor(): void {
+    this.clearInteractionConfirmation();
     this.instanceStateMonitorActive = false;
     this.instanceStatePeriodicIdleConfirmations = 0;
     this.clearInstanceStateIdleTimer();
@@ -5173,6 +5323,8 @@ export class Daemon extends EventEmitter {
   private freezeRuntimeMonitors(): void {
     this.runtimeMonitorsFrozen = true;
     this.launchFenceEpoch++;
+    this.interactionObservation.reset(this.interactionOwner());
+    this.clearInteractionConfirmation();
     if (this.healthCheckTimer) { clearTimeout(this.healthCheckTimer); this.healthCheckTimer = null; }
     if (this.errorMonitorTimer) { clearInterval(this.errorMonitorTimer); this.errorMonitorTimer = null; }
     // A pause or stop tears the CLI down anyway — the respawn brings a fresh MCP
@@ -6416,10 +6568,17 @@ export class Daemon extends EventEmitter {
       if (this.dialogParkedSince !== 0) this.logger.info({ dialog: this.dialogParkedKey }, "Blocking dialog is gone from the pane");
       this.dialogParkedSince = 0;
       this.dialogParkedKey = null;
+      this.dialogParkedInteractionEpisode = null;
       this.dialogParkedReported = false;
       return;
     }
     const key = Daemon.dialogKey(dialog);
+    const interaction = this.getInteractionSnapshot();
+    const episode = this.interactionDialogKey === key ? interaction.episode : null;
+    if (episode !== null && this.dialogParkedInteractionEpisode !== null && episode !== this.dialogParkedInteractionEpisode) {
+      this.dialogParkedSince = 0;
+    }
+    if (episode !== null) this.dialogParkedInteractionEpisode = episode;
     if (this.dialogParkedSince === 0 || this.dialogParkedKey !== key) {
       this.dialogParkedSince = Date.now();
       this.dialogParkedKey = key;
@@ -6430,7 +6589,8 @@ export class Daemon extends EventEmitter {
       this.dialogParkedReported = true;
       this.logger.warn({ dialog: dialog.description, parkedForMs: Date.now() - this.dialogParkedSince },
         "CLI dialog is still on screen — not auto-answering, reporting for a human");
-      this.emit("dialog_parked", { name: this.name, description: dialog.description, holdOnly: dialog.holdOnly === true });
+      this.emit("dialog_parked", { name: this.name, description: dialog.description, holdOnly: dialog.holdOnly === true,
+        ...(episode !== null && interaction.kind ? { kind: interaction.kind, episode, backend: this.config.backend ?? "claude-code" } : {}) });
     }
   }
 
@@ -8420,6 +8580,8 @@ export class Daemon extends EventEmitter {
     this.turnReplyGuard.reset();
     if (this.spawnDepth === 0) {
       this.spawnGeneration++;
+      this.interactionObservation.reset(this.interactionOwner());
+      this.clearInteractionConfirmation();
       this.inputTransientGuardGeneration = (this.backend?.getInputUnavailableTransients?.().length ?? 0) > 0
         ? this.spawnGeneration
         : null;
@@ -9057,6 +9219,8 @@ export class Daemon extends EventEmitter {
     // Every launched command re-arms the passive-transient check, including a
     // retry inside the same spawn: its load is a new one.
     this.launchAttempt++;
+    this.interactionObservation.reset(this.interactionOwner());
+    this.clearInteractionConfirmation();
     // A launch that cannot paint a passive transient (Codex: a fresh start
     // never shows "Resuming session…") must not honour one quoted on screen.
     if (this.backend!.launchMayShowInputTransient?.() === false) this.retireInputTransients("launch shows none");

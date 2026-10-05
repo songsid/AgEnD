@@ -11,6 +11,8 @@ import { isModelCompatible } from "./backend/types.js";
 import { RoutingEngine } from "./routing-engine.js";
 import { safeHandler } from "./safe-async.js";
 import { t } from "./locale.js";
+import { interactionCategory } from "./interaction-observation.js";
+import type { InteractionKind } from "./backend/types.js";
 import {
   EMBEDDED_CREDENTIAL_REMOTE_REPAIR_FAILED,
   EMBEDDED_CREDENTIAL_REMOTE_WARNING,
@@ -1033,7 +1035,7 @@ export class InstanceLifecycle {
         this.ctx.logger.error({ err, name }, "MCP auto-restart failed"));
     }, this.ctx.logger, `daemon.mcp_restart_requested[${name}]`));
 
-    daemon.on("dialog_parked", safeHandler((data: { name: string; description: string; holdOnly: boolean }) => {
+    daemon.on("dialog_parked", safeHandler((data: { name: string; description: string; holdOnly: boolean; kind?: InteractionKind; episode?: number; backend?: string }) => {
       // A CLI dialog the daemon will NOT answer on its own. No assist buttons
       // here on purpose: the General "Confirm" assist sends Enter, and Enter is
       // exactly the destructive default for Claude's resume prompt. The text
@@ -1044,11 +1046,12 @@ export class InstanceLifecycle {
       this.ctx.eventLog?.insert(name, "dialog_parked", { description: data.description, holdOnly: data.holdOnly });
       this.ctx.logger.warn({ name, description: data.description, holdOnly: data.holdOnly }, "Instance is parked on a CLI dialog — not auto-answering");
       if (this.ctx.isPlannedRestart()) return;
-      const text = data.holdOnly
+      const category = data.kind ? interactionCategory(data.kind, data.backend) : null;
+      const text = category ? t("inst.interaction_parked", name, category) : data.holdOnly
         ? t("inst.dialog_parked_hold", name, data.description)
         : t("inst.dialog_parked_stuck", name, data.description);
       this.notifyIncident(name, "dialog_parked", text);
-      this.ctx.notifyFleetError?.(t("fleet.dialog_parked", name, data.description));
+      this.ctx.notifyFleetError?.(category ? t("fleet.interaction_parked", name, category) : t("fleet.dialog_parked", name, data.description));
     }, this.ctx.logger, `daemon.dialog_parked[${name}]`));
 
     daemon.on("dialog_answer_ignored", safeHandler((data: { name: string; description: string; attempts: number; holdsDeliveries: boolean }) => {
