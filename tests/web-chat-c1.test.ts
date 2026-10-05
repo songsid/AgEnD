@@ -478,3 +478,100 @@ describe("dashboard.html", () => {
     expect(html).toMatch(/inp\.value = drafts\[cur\] \|\| "";/);
   });
 });
+
+// ── the page's own script, run against a fake DOM: failed sends ───────────────────────────────────────────────
+
+describe("dashboard sendMsg (the real page script)", () => {
+  const PAGE = readFileSync(join(process.cwd(), "src", "ui", "dashboard.html"), "utf8").match(/<script>\n([\s\S]*?)<\/script>/)![1]!;
+  function page() {
+    const composer = () => ({ value: "", style: {} as Record<string, string>, scrollHeight: 20, focus() {} });
+    const nodes: Record<string, any> = { msgIn: composer(), messages: { innerHTML: "", scrollHeight: 0 }, uptime: { textContent: "" }, failedSend: { className: "", textContent: "", append() {} } };
+    const toasts: string[] = [];
+    const sse: Record<string, (e: { data: string }) => void> = {};
+    const c = vm.createContext({
+      localStorage: { getItem: () => null }, navigator: { language: "en" },
+      document: { getElementById: (n: string) => nodes[n] ?? null, createElement: () => ({ style: {}, remove() {} }), body: { appendChild() {} } },
+      setTimeout: () => 0, fetch: async () => ({ json: async () => ({}) }),
+      EventSource: class { addEventListener(k: string, f: (e: { data: string }) => void) { sse[k] = f; } },
+    });
+    vm.runInContext(SRC, c);
+    vm.runInContext(PAGE, c);
+    (c as any).captureToast = (m: string) => toasts.push(m);
+    vm.runInContext('toast=(m)=>captureToast(m);renderMsgs=()=>{};renderList=()=>{};cur="w";', c);
+    let release!: (v: unknown) => void;
+    (c as any).pending = new Promise(r => { release = r; });
+    vm.runInContext("api=()=>pending", c);
+    return { c, nodes, toasts, composer, release, sse, read: (s: string) => vm.runInContext(s, c) };
+  }
+
+  it("the plain failure: the text goes back into the same composer", async () => {
+    const p = page();
+    p.nodes.msgIn.value = "hello";
+    const send = p.read("sendMsg()");
+    expect(p.nodes.msgIn.value).toBe("");
+    p.release({ error: "offline" });
+    await send;
+    expect(p.nodes.msgIn.value).toBe("hello");
+    expect(p.read("failedSends.w")).toBeUndefined();
+    expect(p.toasts).toEqual(["offline"]);
+  });
+
+  it("a new draft typed meanwhile is kept; the failed text is kept beside it for that chat, not lost", async () => {
+    const p = page();
+    p.nodes.msgIn.value = "failed first";
+    const send = p.read("sendMsg()");
+    p.nodes.msgIn.value = "new draft";
+    p.release({ error: "offline" });
+    await send;
+    expect(p.nodes.msgIn.value).toBe("new draft");
+    expect(p.read("failedSends.w")).toBe("failed first");
+    expect(p.read("AgendChatRender.putBack(failedSends.w, 'new draft')")).toBe("failed first\nnew draft");
+  });
+
+  it("the chat was re-rendered meanwhile: the text goes into the composer that is on screen now, not the detached one", async () => {
+    const p = page();
+    p.nodes.msgIn.value = "failed first";
+    const send = p.read("sendMsg()");
+    const old = p.nodes.msgIn;
+    p.nodes.msgIn = p.composer();
+    p.release({ error: "offline" });
+    await send;
+    expect(p.nodes.msgIn.value).toBe("failed first");
+    expect(old.value).toBe("");
+  });
+
+  it("another chat was opened meanwhile: the text is not put into ITS composer, it is kept for the chat it was sent to", async () => {
+    const p = page();
+    p.nodes.msgIn.value = "for w";
+    const send = p.read("sendMsg()");
+    p.read('cur="x"');
+    p.nodes.msgIn = p.composer();
+    p.release({ error: "offline" });
+    await send;
+    expect(p.nodes.msgIn.value).toBe("");
+    expect(p.read("failedSends.w")).toBe("for w");
+    expect(p.read("failedSends.x")).toBeUndefined();
+  });
+
+  it("a successful send keeps nothing and says nothing", async () => {
+    const p = page();
+    p.nodes.msgIn.value = "ok";
+    const send = p.read("sendMsg()");
+    p.release({ sent: true });
+    await send;
+    expect(p.nodes.msgIn.value).toBe("");
+    expect(p.read("failedSends.w")).toBeUndefined();
+    expect(p.toasts).toEqual([]);
+  });
+
+  it("the page's SSE message handler keeps a new boot's message that reuses an old id, and still dedupes a repeat", () => {
+    const p = page();
+    const before = new WebChatHistory({ boot: "aaa" }).record({ instance: "w", sender: "s", text: "before restart", ts: "2026-10-05T01:00:00Z" });
+    const after = new WebChatHistory({ boot: "bbb" }).record({ instance: "w", sender: "s", text: "after restart", ts: "2026-10-05T02:00:00Z" });
+    expect(before.id).toBe(after.id);
+    p.sse.message!({ data: JSON.stringify(before) });
+    p.sse.message!({ data: JSON.stringify(after) });
+    p.sse.message!({ data: JSON.stringify(after) });
+    expect(p.read("msgs.w.map(m => m.text)")).toEqual(["before restart", "after restart"]);
+  });
+});
