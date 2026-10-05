@@ -239,12 +239,15 @@ describe("the dashboard (the real page script)", () => {
     expect(c(["a", "b", "c", "d", "e", "a", "b", "c", "d", "e"]), "five is not a cycle here").toEqual(["a", "b", "c", "d", "e", "a", "b", "c", "d", "e"]);
     expect(c(["a", "a", "a", "b", "a", "a"]), "a run, then something else").toEqual(["a×3/1", "b", "a×2/1"]);
     expect(c(["x", "a", "a", "a", "a"]), "a run is a run, not a cycle of two").toEqual(["x", "a×4/1"]);
+    expect(c(["a", "b", "b", "a", "b"]), "a counted run does not become the end of a two-step cycle").toEqual(["a", "b×2/1", "a", "b"]);
   });
 
   it("another instance's steps are kept, not shown here; a new boot starts the list over", () => {
     const p = page();
     send(p, "b", [{ seq: 1, ts: 0, kind: "tool", text: "$ a" }], "other");
     expect(p.read("steps.other.list.length")).toBe(1);
+    expect(p.read("cur")).toBe("w");
+    expect(p.nodes.stepsView.children, "nothing of another instance is drawn here").toEqual([]);
     send(p, "b", [{ seq: 1, ts: 0, kind: "tool", text: "$ a" }, { seq: 2, ts: 0, kind: "tool", text: "$ b" }]);
     send(p, "b", [{ seq: 2, ts: 0, kind: "tool", text: "$ b" }]);
     expect(rows(p).map((r: string[]) => r[2])).toEqual(["$ a", "$ b"]);
