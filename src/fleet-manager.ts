@@ -57,6 +57,7 @@ import { isModelCompatible, SYSINFO_BACKEND_IDS, UnsupportedCliError, type Backe
 import { createLogger, rotateLogIfNeeded, type Logger } from "./logger.js";
 import { processAttachments } from "./channel/attachment-handler.js";
 import { routeToolCall } from "./channel/tool-router.js";
+import { InstanceStepLog, type Step } from "./step-stream.js";
 import { Scheduler } from "./scheduler/index.js";
 import type { Schedule, SchedulerConfig } from "./scheduler/index.js";
 import { DEFAULT_SCHEDULER_CONFIG } from "./scheduler/index.js";
@@ -882,6 +883,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   // Web UI: SSE clients + auth token
   private sseClients = new Set<import("node:http").ServerResponse>();
+  /** Recent live steps per instance (#1218 spike), for a dashboard page that opens mid-turn. */
+  readonly instanceSteps = new InstanceStepLog();
   /**
    * Read from disk on every access rather than cached at startup: `agend
    * web-token rotate` runs in a separate process, and a cached copy would keep
@@ -5246,6 +5249,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           else this.refuseTypedIpc(name, msg, typed.message);
         } else if (msg.type === "instance_process_state") {
           this.cacheInstanceProcessStatus(name, msg.status);
+        } else if (msg.type === "instance_steps") {
+          this.receiveInstanceSteps(name, msg.boot, msg.steps);
         } else if (msg.type === "instance_activity") {
           this.cacheInstanceActivity(name, msg.activity as string | null);
         } else if (msg.type === "instance_progress") {
@@ -7711,8 +7716,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
+  /**
+   * A batch of live steps from an instance's daemon (#1218 spike): kept for late-opening pages, then sent to every
+   * open dashboard. The instance is the IPC connection's, never a field of the message. Junk is dropped, not repaired.
+   */
+  private receiveInstanceSteps(name: string, boot: unknown, steps: unknown): void {
+    if (typeof boot !== "string" || !Array.isArray(steps)) return;
+    const valid = steps.filter((s): s is Step =>
+      !!s && typeof s === "object" && Number.isInteger((s as Step).seq) && typeof (s as Step).text === "string"
+      && ["tool", "result", "text", "skipped"].includes((s as Step).kind)).slice(0, 100);
+    const fresh = this.instanceSteps.append(name, boot, valid);
+    if (fresh.length) this.emitSseEvent("steps", { instance: name, boot, steps: fresh });
+  }
+
   async removeInstance(name: string, authorization: ExplicitInstanceRemoval): Promise<void> {
     assertExplicitInstanceRemoval(authorization);
+    this.instanceSteps.forget(name);
     // Drop cached pane context — the map is keyed by instance name and nothing
     // else evicted deleted entries, so it grew for the life of the process.
     forgetInstanceContext(name);

@@ -13,6 +13,7 @@ import { clearPausedMarker, writePausedMarker, type PauseReason } from "./pause-
 import { TmuxManager, resolveTmuxLogicalSize } from "./tmux-manager.js";
 import { TranscriptMonitor } from "./transcript-monitor.js";
 import { createTranscriptSource } from "./transcript-sources.js";
+import { StepBatcher } from "./step-stream.js";
 import { credentialProfileStoreHome, resolveCredentialProfile } from "./backend/credential-profile.js";
 import { resolveToolSet } from "./tool-permissions.js";
 import { getAgendHome } from "./paths.js";
@@ -1175,6 +1176,13 @@ export class Daemon extends EventEmitter {
   private ipcServer: IpcServer | null = null;
   private messageBus: MessageBus;
   private transcriptMonitor: TranscriptMonitor | null = null;
+  /**
+   * The live step stream (#1218 spike): the transcript events below, batched to the fleet for the dashboard. It reads
+   * nothing itself — no pane capture, no extra poll — so idle/busy detection cannot notice it.
+   */
+  private readonly steps = new StepBatcher(steps => {
+    this.ipcServer?.broadcast({ type: "instance_steps", instanceName: this.name, boot: this.bootId, steps });
+  });
   private guardian: ContextGuardian | null = null;
   private adapter: ChannelAdapter | null = null;
   private pendingIpcRequests = new Map<string, (msg: Record<string, unknown>) => void>();
@@ -2179,9 +2187,11 @@ export class Daemon extends EventEmitter {
         this.recordRecentToolActivity(this.summarizeTool(name, input));
         this.publishActivity(this.summarizeTool(name, input));
         this.recordToolProgress(name, input);
+        this.steps.tool(name, this.summarizeTool(name, input));
       });
-      this.transcriptMonitor.on("tool_result", (name: string, _output: unknown) => {
+      this.transcriptMonitor.on("tool_result", (name: string, output: unknown) => {
         this.recordRecentEvent({ type: "tool_result", name });
+        this.steps.result(name, output);
         // The tool finished; whatever comes next has not started yet. Better to
         // show only elapsed time than to leave a stale "Bash: npm test" on screen.
         this.publishActivity(null);
@@ -2190,6 +2200,7 @@ export class Daemon extends EventEmitter {
         this.logger.debug({ text: text.slice(0, 200) }, "Claude response");
         ackIfPending();
         this.recordRecentEvent({ type: "assistant_text", preview: text.slice(0, 100) });
+        this.steps.text(text);
       });
       this.transcriptMonitor.startPolling();
 
@@ -5335,6 +5346,8 @@ export class Daemon extends EventEmitter {
     this.blockingProcessDetector.reset();
     this.stopInstanceStateMonitor();
     this.transcriptMonitor?.stop();
+    // Steps not yet sent belong to the CLI that is going away; the stream itself stays usable for the next one.
+    this.steps.clear();
     this.guardian?.stop();
   }
 

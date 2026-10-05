@@ -120,6 +120,8 @@ export interface WebApiContext {
   readonly webToken: string | null;
   readonly dataDir: string;
   readonly sseClients: Set<ServerResponse>;
+  /** Recent live steps per instance (#1218 spike); absent: no step view. */
+  readonly instanceSteps?: { list(instance: string): { boot: string | null; steps: unknown[] } };
   readonly fleetConfig: {
     channel?: { group_id?: number | string; mode?: string };
     defaults?: { backend?: string; effort?: string };
@@ -245,6 +247,14 @@ export function handleWebRequest(
   }
 
   // ── Backend detection ─────────────────────────────────
+
+  // The recent live steps of one instance (#1218 spike); new ones arrive over SSE as `steps`.
+  if (method === "GET" && path === "/ui/steps") {
+    const instance = url.searchParams.get("instance") ?? "";
+    if (!instance || instance.length > 128) { json(res, 400, { error: "instance required" }); return true; }
+    json(res, 200, ctx.instanceSteps?.list(instance) ?? { boot: null, steps: [] });
+    return true;
+  }
 
   if (method === "GET" && path === "/ui/backends") {
     const BACKENDS: Array<{ name: string; binary: string; deprecated?: boolean }> = [

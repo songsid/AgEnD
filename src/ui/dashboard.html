@@ -168,6 +168,14 @@
 
   /* ── Detail cards ────────────────────────────────────── */
   .detail-view { flex: 1; overflow-y: auto; padding: 24px; display: none; }
+  .steps-view { flex: 1; overflow-y: auto; padding: 12px 20px; font-family: 'IBM Plex Mono', monospace; font-size: 12px; }
+  .step { display: flex; gap: 8px; align-items: baseline; padding: 3px 0; border-bottom: 1px solid var(--glass-border); }
+  .step .t { color: var(--text-muted); flex: none; }
+  .step .i { flex: none; width: 16px; text-align: center; }
+  .step .x { flex: 1; white-space: pre-wrap; word-break: break-word; }
+  .step .n { flex: none; color: var(--warn, #d29922); font-weight: 600; }
+  .step-result .x, .step-skipped .x { color: var(--text-muted); }
+  .step-error .x { color: var(--error, #f85149); }
   .card {
     background: var(--surface); border: 1px solid var(--glass-border);
     border-radius: 16px; padding: 20px 24px; margin-bottom: 16px;
@@ -307,6 +315,9 @@ const trf = (key, ...values) => values.reduce((text, value, index) => text.repla
 let cur = null, curTab = "chat", mode = "none", instances = [];
 // mode: "none" | "fleet" | "instance"
 const msgs = {};
+// Live steps per instance (#1218 spike): { boot, list } — what the agent is doing, tool by tool.
+const steps = {};
+const STEPS_MAX = 300;
 
 async function api(m, p, b) {
   const o = { method: m, headers: { "Content-Type": "application/json" } };
@@ -334,6 +345,11 @@ sse.addEventListener("message", e => {
   msgs[m.instance].push(m);
   if (msgs[m.instance].length > 500) msgs[m.instance].shift();
   if (m.instance === cur && curTab === "chat") renderMsgs();
+});
+sse.addEventListener("steps", e => {
+  const d = JSON.parse(e.data);
+  ingestSteps(d.instance, d.boot, d.steps);
+  if (d.instance === cur && curTab === "steps") renderSteps();
 });
 sse.onerror = () => { document.getElementById("uptime").textContent = tr("disconnected"); };
 
@@ -388,7 +404,7 @@ function renderFleetMain(main) {
 }
 
 function renderInstanceMain(main) {
-  const tabs = ["chat","detail"];
+  const tabs = ["chat","steps","detail"];
   if (!tabs.includes(curTab)) curTab = "chat";
   main.innerHTML = `
     <div class="tabs">${tabs.map(t => `<div class="tab${curTab===t?" active":""}" data-t="${t}">${t[0].toUpperCase()+t.slice(1)}</div>`).join("")}</div>
@@ -397,11 +413,84 @@ function renderInstanceMain(main) {
       <div class="messages" id="messages"></div>
       <div class="input-bar"><input id="msgIn" placeholder="Send a message..." autocomplete="off"><button class="btn btn-accent" onclick="sendMsg()">Send</button></div>
     </div>
+    <div class="steps-view" id="stepsView" aria-live="polite" style="display:${curTab==="steps"?"block":"none"}"></div>
     <div class="detail-view" id="detailView" style="display:${curTab==="detail"?"block":"none"}"><div style="color:var(--text-muted);text-align:center;padding:24px">Loading...</div></div>`;
   main.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => { curTab = t.dataset.t; renderMain(); }));
   const i = instances.find(x => x.name === cur); renderActions(i);
   if (curTab === "chat") { renderMsgs(); const inp = document.getElementById("msgIn"); inp.addEventListener("keydown", e => { if (e.key==="Enter"&&!e.shiftKey&&!e.isComposing){e.preventDefault();sendMsg();} }); inp.focus(); }
+  else if (curTab === "steps") { renderSteps(); loadSteps(cur); }
   else if (curTab === "detail") loadDetail();
+}
+
+// ── Live steps (#1218 spike) ──
+// One way in: from the stream or a load. A new daemon boot starts the list over; within a boot, seq orders and dedups.
+function ingestSteps(instance, boot, incoming) {
+  let slot = steps[instance];
+  if (!slot || slot.boot !== boot) slot = steps[instance] = { boot, list: [] };
+  const last = slot.list.length ? slot.list[slot.list.length - 1].seq : 0;
+  for (const st of incoming || []) if (st.seq > last || st.kind === "skipped") slot.list.push(st);
+  if (slot.list.length > STEPS_MAX) slot.list.splice(0, slot.list.length - STEPS_MAX);
+}
+async function loadSteps(name) {
+  try {
+    const r = await api("GET", `/ui/steps?instance=${encodeURIComponent(name)}`);
+    if (!r || !Array.isArray(r.steps) || !r.boot) return;
+    ingestSteps(name, r.boot, r.steps);
+    if (name === cur && curTab === "steps") renderSteps();
+  } catch { /* the stream still brings new steps */ }
+}
+/**
+ * Repetition becomes a count, not more rows: the same step again (×N), and a repeating cycle of up to four steps —
+ * "git push → rejected → git push → rejected" — shown once with "↻ ×N". A loop is what this view is for spotting.
+ * Results with nothing to show (sources that report none) are left out first, so they do not break a cycle.
+ */
+function collapseSteps(list) {
+  const same = (a, b) => a.kind === b.kind && a.text === b.text;
+  const rows = [];
+  for (const st of list) {
+    if (st.kind === "result" && !st.text) continue;
+    rows.push({ kind: st.kind, text: st.text, name: st.name, error: st.error, ts: st.ts, rep: 1, span: 1 });
+    if (st.kind === "skipped") continue;
+    for (let k = 1; k <= 4; k++) {
+      if (rows.length < 2 * k) break;
+      const tail = rows.slice(-k), before = rows.slice(-2 * k, -k);
+      // Only fold onto a block that is itself a cycle of this length (or a plain run), never across a counted one.
+      if (tail.some(r => r.rep > 1) || !tail.every((r, i) => same(r, before[i]))) continue;
+      const head = before[k - 1];
+      if (head.rep > 1 && head.span !== k) continue;
+      rows.splice(-k, k);
+      head.rep++; head.span = k; head.ts = st.ts;
+      break;
+    }
+  }
+  return rows;
+}
+const STEP_ICON = { tool: "🔧", result: "↳", text: "💬", skipped: "⋯" };
+// Built from nodes: step text comes from the agent's tools and words — it is text, never markup.
+function renderSteps() {
+  const box = document.getElementById("stepsView"); if (!box) return;
+  const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+  box.textContent = "";
+  const list = (steps[cur] && steps[cur].list) || [];
+  if (!list.length) {
+    const empty = document.createElement("div"); empty.className = "msg-empty"; empty.textContent = "No steps yet — they appear here as the agent works.";
+    box.append(empty); return;
+  }
+  for (const row of collapseSteps(list)) {
+    const line = document.createElement("div"); line.className = `step step-${row.kind}${row.error ? " step-error" : ""}`;
+    const time = document.createElement("span"); time.className = "t";
+    time.textContent = new Date(row.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    const icon = document.createElement("span"); icon.className = "i"; icon.textContent = STEP_ICON[row.kind] || "·"; icon.setAttribute("aria-hidden", "true");
+    const text = document.createElement("span"); text.className = "x"; text.textContent = row.text;
+    line.append(time, icon, text);
+    if (row.rep > 1) {
+      const n = document.createElement("span"); n.className = "n";
+      n.textContent = row.span > 1 ? `↻ ×${row.rep} (last ${row.span} steps)` : `×${row.rep}`;
+      line.append(n);
+    }
+    box.append(line);
+  }
+  if (atBottom) box.scrollTop = box.scrollHeight;
 }
 
 function renderActions(i) {
