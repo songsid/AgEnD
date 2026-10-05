@@ -190,6 +190,7 @@ describe("the daemon's stuck deadline follows the latest sign of life (no hot lo
     vi.setSystemTime(t0 + 10 * MIN + 10_000);                // the deadline for the old output time comes due (the clock moves, no timer fires)
     screen.text = withTimer("10m 05s");
     screen.reads = 0;
+    d.clearInstanceStateStuckTimer();                       // the deadline timer has just fired (its callback clears itself first)
     await d.captureAndEvaluateInstanceState("stuck_deadline", d.instanceStateLastOutputAt);
     expect(d.instanceState).toBe("working");
     expect(states).not.toContain("stuck");
