@@ -824,9 +824,14 @@ Since 2.1.9 the systemd unit uses `KillMode=mixed`: systemd signals only the fle
 Install pre-release versions with:
 
 ```bash
-agend update --beta     # Install from @beta npm dist-tag
-agend update            # Install from @latest (default)
+agend update            # Stay on the installed channel: a beta install updates from @beta, a stable one from @latest
+agend update --beta     # Install from the @beta npm dist-tag
+agend update --stable   # Install from @latest, even from a beta install
 ```
+
+`/update` in chat does the same as `agend update`: a beta install stays on beta. An update that would go back
+to an older version (say a beta whose channel now points at an older release) is refused; `--stable`,
+`--version` or `--force` say that is what you want.
 
 The CI pipeline automatically publishes with `--tag beta` when the git tag contains `-beta` (e.g., `v1.24.0-beta.1`).
 

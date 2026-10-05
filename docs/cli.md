@@ -19,8 +19,9 @@ All other operations (create/delete/start instances, delegate tasks) are handled
 agend start                     # Start AgEnD service (requires install)
 agend stop                      # Stop AgEnD service
 agend restart                   # Restart AgEnD service
-agend update                    # Update AgEnD to latest version and restart
-agend update --beta             # Install from beta channel instead of latest
+agend update                    # Update on the installed channel (a beta stays on beta) and restart
+agend update --beta             # Install from the beta channel
+agend update --stable           # Install from the stable channel, even from a beta (may go back a version)
 agend update --version 2.1.9    # Install a specific version
 agend update --force            # Force reinstall and restart even when already up to date
 agend reload                    # Hot-reload config (sends SIGHUP to fleet process)

@@ -403,7 +403,8 @@ exit 0
     });
     const calls = readFileSync(log, "utf8").trim().split("\n").filter(Boolean);
     const out = `${r.stdout}\n${r.stderr}\n${calls.join("\n")}`;
-    expect(calls.some(c => c.startsWith("npm install -g @songsid/agend@beta")), out).toBe(true);
+    // The exact version `--beta` resolved to (#1182: a dist-tag can move between the check and the install).
+    expect(calls.some(c => c === "npm install -g @songsid/agend@99.0.0-beta.3"), out).toBe(true);
     const installedRestart = calls.findIndex(c => c === "agend restart");
     expect(installedRestart, out).toBeGreaterThan(calls.findIndex(c => c.startsWith("npm install")));
     expect(calls.findIndex(c => c.startsWith("systemctl --user restart com.agend.fleet")), out).toBeGreaterThan(installedRestart);

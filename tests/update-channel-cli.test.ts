@@ -1,0 +1,122 @@
+/**
+ * `agend update` keeps an install on its channel. The built CLI runs from a
+ * copy whose package.json says it is a beta; `npm`, `agend`, `systemctl` and
+ * `launchctl` on PATH are stubs that only log, and npm's global prefix points
+ * into the scratch directory — nothing real is installed, restarted or spawned.
+ */
+import { spawnSync } from "node:child_process";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+
+const cli = join(process.cwd(), "dist", "cli.js");
+const dirs: string[] = [];
+afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
+
+/** Run `agend update <args>` from an install of `installed`, with npm's tags pointing at `tags`. */
+function update(installed: string, tags: { beta: string; latest: string }, args: string[]) {
+  const home = mkdtempSync(join(tmpdir(), "agend-update-cli-"));
+  dirs.push(home);
+  const agendHome = join(home, ".agend");
+  mkdirSync(agendHome, { recursive: true });
+  const pkg = join(home, "pkg");
+  mkdirSync(pkg);
+  spawnSync("cp", ["-r", join(process.cwd(), "dist"), join(pkg, "dist")]);
+  spawnSync("cp", ["-r", join(process.cwd(), "templates"), join(pkg, "templates")]);
+  const manifest = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8"));
+  writeFileSync(join(pkg, "package.json"), JSON.stringify({ ...manifest, version: installed }));
+  symlinkSync(join(process.cwd(), "node_modules"), join(pkg, "node_modules"));
+  const bin = join(home, "bin");
+  mkdirSync(bin);
+  const log = join(home, "calls.log");
+  writeFileSync(log, "");
+  writeFileSync(join(bin, "npm"), `#!/bin/sh
+echo "npm $*" >> '${log}'
+case "$*" in
+  "view @songsid/agend@beta version") echo '${tags.beta}';;
+  "view @songsid/agend@latest version") echo '${tags.latest}';;
+  view*) echo "$2" | sed 's/.*@//';;
+  "config get prefix") echo '${home}';;
+esac
+exit 0
+`);
+  writeFileSync(join(bin, "agend"), `#!/bin/sh\necho "agend $*" >> '${log}'\ncase "$*" in --version) echo '${installed}';; esac\nexit 0\n`);
+  for (const tool of ["systemctl", "launchctl"]) writeFileSync(join(bin, tool), `#!/bin/sh\necho "${tool} $*" >> '${log}'\nexit 0\n`);
+  for (const f of ["npm", "agend", "systemctl", "launchctl"]) chmodSync(join(bin, f), 0o755);
+  const r = spawnSync(process.execPath, [join(pkg, "dist", "cli.js"), "update", ...args], {
+    env: {
+      ...process.env, AGEND_ALLOW_TEST_FLEET_CONTROL: "1", AGEND_INSTANCE_NAME: "",
+      HOME: home, AGEND_HOME: agendHome, PATH: `${bin}:/usr/bin:/bin`, npm_config_prefix: home,
+    },
+    encoding: "utf8", timeout: 60_000,
+  });
+  const calls = readFileSync(log, "utf8").trim().split("\n").filter(Boolean);
+  return { r, calls, out: `${r.stdout}\n${r.stderr}\n${calls.join("\n")}`, installs: calls.filter(c => c.startsWith("npm install")) };
+}
+
+describe("agend update stays on the installed channel (built CLI, stubbed npm)", () => {
+  it("the CLI under test is built", () => {
+    expect(existsSync(cli), "build first: these tests run dist/cli.js").toBe(true);
+  });
+
+  it("a beta install with no flag updates from @beta — never @latest", () => {
+    const { r, installs, out } = update("2.1.11-beta.2", { beta: "2.1.11-beta.3", latest: "2.1.10" }, []);
+    expect(installs, out).toEqual(["npm install -g @songsid/agend@2.1.11-beta.3"]);
+    expect(r.status, out).toBe(0);
+  });
+
+  it("a stable install with no flag updates from @latest", () => {
+    const { r, installs, out } = update("2.1.10", { beta: "2.1.11-beta.3", latest: "2.1.11" }, []);
+    expect(installs, out).toEqual(["npm install -g @songsid/agend@2.1.11"]);
+    expect(r.status, out).toBe(0);
+  });
+
+  it("an update that would go back a version is refused, and nothing is installed", () => {
+    const { r, installs, out } = update("2.1.11-beta.2", { beta: "2.1.11-beta.1", latest: "2.1.10" }, []);
+    expect(installs, out).toEqual([]);
+    expect(r.status, out).toBe(1);
+    expect(out).toContain("agend update --stable");
+  });
+
+  it("--beta does not override the guard either: going back still needs --stable, --version or --force", () => {
+    const { r, installs, out } = update("2.1.11", { beta: "2.1.11-beta.3", latest: "2.1.11" }, ["--beta"]);
+    expect(installs, out).toEqual([]);
+    expect(r.status, out).toBe(1);
+  });
+
+  it("--stable moves a beta install to the stable release, even an older one", () => {
+    const { r, installs, out } = update("2.1.11-beta.2", { beta: "2.1.11-beta.3", latest: "2.1.10" }, ["--stable"]);
+    expect(installs, out).toEqual(["npm install -g @songsid/agend@2.1.10"]);
+    expect(r.status, out).toBe(0);
+  });
+
+  it("--beta with --stable is a contradiction: refused before anything runs", () => {
+    const { r, calls, out } = update("2.1.11-beta.2", { beta: "2.1.11-beta.3", latest: "2.1.10" }, ["--beta", "--stable"]);
+    expect(calls, out).toEqual([]);
+    expect(r.status, out).toBe(1);
+  });
+
+  it("installs exactly the version it checked, not the moving tag (#1182 review)", () => {
+    // The tag was looked up as beta.3; what npm is told to install is beta.3, whatever @beta points at later.
+    const { installs, calls, out } = update("2.1.11-beta.2", { beta: "2.1.11-beta.3", latest: "2.1.10" }, []);
+    expect(installs, out).toEqual(["npm install -g @songsid/agend@2.1.11-beta.3"]);
+    expect(calls.some(c => /install -g @songsid\/agend@(beta|latest)$/.test(c)), out).toBe(false);
+  });
+
+  it("a registry answer that is not a version installs from the tag, as when the lookup fails", () => {
+    const { installs, out } = update("2.1.11-beta.2", { beta: "not-a-version", latest: "2.1.10" }, []);
+    expect(installs, out).toEqual(["npm install -g @songsid/agend@beta"]);
+  });
+
+  it("`update --version` reaches the update command, and `agend --version` still prints the version (#1182 review)", () => {
+    const pinned = update("2.1.11-beta.2", { beta: "2.1.11-beta.3", latest: "2.1.10" }, ["--version", "2.1.10"]);
+    expect(pinned.installs, pinned.out).toEqual(["npm install -g @songsid/agend@2.1.10"]);
+    expect(pinned.r.status, pinned.out).toBe(0);
+    const contradiction = update("2.1.11-beta.2", { beta: "2.1.11-beta.3", latest: "2.1.10" }, ["--beta", "--stable", "--version", "2.1.10"]);
+    expect(contradiction.calls, contradiction.out).toEqual([]);
+    expect(contradiction.r.status, contradiction.out).toBe(1);
+    const root = spawnSync(process.execPath, [cli, "--version"], { encoding: "utf8" });
+    expect(root.stdout.trim()).toBe(JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")).version);
+  });
+});

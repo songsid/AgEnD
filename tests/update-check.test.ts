@@ -1,16 +1,27 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  compareSemver,
   getUpdateSelector,
+  isPrereleaseVersion,
+  isExactVersion,
+  isUnrequestedDowngrade,
+  updateNoticeKey,
   lookupTargetVersion,
   reportUpdateRestart,
   shouldSkipUpdate,
 } from "../src/update-check.js";
 
 describe("update version precheck", () => {
-  it("selects latest, beta, or an explicit version independently", () => {
-    expect(getUpdateSelector({})).toBe("latest");
-    expect(getUpdateSelector({ beta: true })).toBe("beta");
-    expect(getUpdateSelector({ beta: true, version: "2.1.0" })).toBe("2.1.0");
+  it("selects an explicit version, then --beta, then --stable, else the installed version's channel", () => {
+    expect(getUpdateSelector({}, "2.1.10")).toBe("latest");
+    expect(getUpdateSelector({}, "2.1.10-beta.6")).toBe("beta");
+    expect(getUpdateSelector({}, "v2.1.11-rc.1")).toBe("beta");
+    expect(getUpdateSelector({ beta: true }, "2.1.10")).toBe("beta");
+    expect(getUpdateSelector({ stable: true }, "2.1.10-beta.6")).toBe("latest");
+    expect(getUpdateSelector({ beta: true, version: "2.1.0" }, "2.1.10-beta.6")).toBe("2.1.0");
+    expect(getUpdateSelector({ stable: true, version: "2.1.0" }, "2.1.10")).toBe("2.1.0");
+    // A source checkout's own package.json (1.22.0) is a plain release: latest, not a guess.
+    expect(getUpdateSelector({}, "1.22.0")).toBe("latest");
   });
 
   it("queries the matching npm dist-tag or explicit version", () => {
@@ -62,5 +73,65 @@ describe("update version precheck", () => {
     expect(reportUpdateRestart(0, output)).toBe(true);
     expect(output.log).toHaveBeenCalledWith("  ✓ Service restarted");
     expect(output.error).not.toHaveBeenCalled();
+  });
+});
+
+describe("which channel an install is on, and which way an update goes", () => {
+  it("a prerelease is x.y.z-<pre>, nothing looser: build metadata, a word that merely contains \"beta\", or garbage are not", () => {
+    for (const v of ["2.1.10-beta.6", "v2.1.10-beta.6", "2.1.11-rc.1", "1.22.0-less", "3.0.0-0", "2.1.10-beta.6+sha.1"]) expect(isPrereleaseVersion(v), v).toBe(true);
+    for (const v of ["2.1.10", "v2.1.10", "1.22.0", "2.1.10+beta", "betamax", "2.1.10beta", "2.1-beta.1", "", "0.0.0"]) expect(isPrereleaseVersion(v), v).toBe(false);
+  });
+
+  it("orders versions by semver: a prerelease below its release, numeric identifiers as numbers", () => {
+    expect(compareSemver("2.1.10-beta.6", "2.1.10")!).toBeLessThan(0);
+    expect(compareSemver("2.1.11-beta.2", "2.1.10")!).toBeGreaterThan(0);
+    expect(compareSemver("2.1.10-beta.10", "2.1.10-beta.9")!).toBeGreaterThan(0);
+    expect(compareSemver("2.1.10-beta.2", "2.1.10-beta")!).toBeGreaterThan(0);
+    expect(compareSemver("2.1.10-alpha.1", "2.1.10-beta.1")!).toBeLessThan(0);
+    expect(compareSemver("2.1.10-beta.1", "2.1.10-1")!).toBeGreaterThan(0);
+    expect(compareSemver("2.10.0", "2.9.9")!).toBeGreaterThan(0);
+    expect(compareSemver("v2.1.10", "2.1.10")).toBe(0);
+    expect(compareSemver("2.1.10", "nonsense")).toBeNull();
+  });
+
+  it("refuses only an unrequested move to an older version", () => {
+    // A beta install whose channel would land on an older stable: refused.
+    expect(isUnrequestedDowngrade("2.1.11-beta.2", "2.1.10", {})).toBe(true);
+    expect(isUnrequestedDowngrade("2.1.11-beta.2", "2.1.11-beta.1", { beta: true })).toBe(true);
+    // Asked for: --stable, --version, --force.
+    expect(isUnrequestedDowngrade("2.1.11-beta.2", "2.1.10", { stable: true })).toBe(false);
+    expect(isUnrequestedDowngrade("2.1.11-beta.2", "2.1.10", { version: "2.1.10" })).toBe(false);
+    expect(isUnrequestedDowngrade("2.1.11-beta.2", "2.1.10", { force: true })).toBe(false);
+    // Same-line upgrades, and a beta's own release, are upgrades.
+    expect(isUnrequestedDowngrade("2.1.11-beta.2", "2.1.11-beta.3", {})).toBe(false);
+    expect(isUnrequestedDowngrade("2.1.10-beta.6", "2.1.10", {})).toBe(false);
+    expect(isUnrequestedDowngrade("2.1.10", "2.1.11", {})).toBe(false);
+    expect(isUnrequestedDowngrade("2.1.10", "2.1.10", {})).toBe(false);
+    // Cannot be judged: not refused.
+    expect(isUnrequestedDowngrade("2.1.11-beta.2", null, {})).toBe(false);
+    expect(isUnrequestedDowngrade("1.22.0", "garbage", {})).toBe(false);
+  });
+
+  it("tells a beta install about a newer stable with --stable, and everything else with /update", () => {
+    expect(updateNoticeKey("2.1.11-beta.2", "2.1.12")).toBe("update.available_stable");
+    expect(updateNoticeKey("2.1.11-beta.2", "2.1.11-beta.3")).toBe("update.available_current");
+    expect(updateNoticeKey("2.1.10", "2.1.11")).toBe("update.available_current");
+  });
+
+  it("takes only strict SemVer 2.0.0 (#1182 review): leading zeros and empty identifiers are not versions", () => {
+    for (const v of ["01.2.3-beta.1", "2.1.11-beta.01", "2.1.11-beta.1+build..id", "2.1.11-beta.1+.", "2.1.10+build..id", "2.1.10-", "2.1.10-beta..1", "2.01.10"]) {
+      expect(isExactVersion(v), v).toBe(false);
+      expect(isPrereleaseVersion(v), v).toBe(false);
+    }
+    for (const v of ["0.0.0", "2.1.11-0", "2.1.11-01a", "2.1.10+001", " v2.1.10-beta.6 ", "2.1.11-x-y.0"]) expect(isExactVersion(v), v).toBe(true);
+    // A version that does not parse cannot be judged older: not refused.
+    expect(isUnrequestedDowngrade("2.1.11-beta.2", "2.1.10+build..id", {})).toBe(false);
+  });
+
+  it("compares numeric identifiers exactly, however large (#1182 review)", () => {
+    expect(compareSemver("2.1.11-beta.9007199254740993", "2.1.11-beta.9007199254740992")).toBe(1);
+    expect(compareSemver("9007199254740993.0.0", "9007199254740992.0.0")).toBe(1);
+    expect(compareSemver("2.1.11-beta.10", "2.1.11-beta.9")).toBe(1);
+    expect(isUnrequestedDowngrade("2.1.11-beta.9007199254740993", "2.1.11-beta.9007199254740992", {})).toBe(true);
   });
 });

@@ -24,6 +24,7 @@ import { isGeneralInstance } from "./general-instance.js";
 import { backendSupportsSteer } from "./steer-capability.js";
 import { SYSINFO_BACKEND_IDS, type BackendCliVersionSnapshot, type SysInfoBackendId } from "./backend/types.js";
 import { recordInternalRequest, withOrigin } from "./fleet-control-audit.js";
+import { UPDATE_COMMAND } from "./update-check.js";
 
 export { parseContextPercent, parseTokenContextRatio } from "./context-percent.js";
 export type { TokenContextRatio } from "./context-percent.js";
@@ -1313,8 +1314,8 @@ export class TopicCommands {
     const sent = await adapter.sendText(chatId, t("update.progress.preparing", 0), { threadId });
     this.ctx.beginUpdateProgress?.(adapter, chatId, threadId, sent.messageId);
 
-    const currentVersion: string = createRequire(import.meta.url)("../package.json").version ?? "";
-    const updateCmd = currentVersion.includes("beta") ? "agend update --beta" : "agend update";
+    // The CLI picks the channel from the installed version it replaces; see UPDATE_COMMAND.
+    const updateCmd = UPDATE_COMMAND;
     const { spawn } = await import("node:child_process");
     const origin = `command /update by ${msg.adapterId}:${msg.userId}`;
     recordInternalRequest(this.ctx.dataDir, "update", origin);

@@ -64,6 +64,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   instance directory through group access, give it access explicitly — the group no longer has it.** (#1118)
 
 ### Upgrade Notes
+- **[Behaviour change] `agend update` keeps an install on its channel; a beta is never moved to the stable line
+  without asking.** With no flag, `agend update` used to install `@latest` whatever was installed, so on a beta it
+  could go back to an older stable — and AgEnD's own notice told beta users to run exactly that. It now follows
+  the installed version: a prerelease (`x.y.z-beta.N`, or any `x.y.z-<pre>`) updates from `@beta`, a release from
+  `@latest`. `/update` in chat no longer decides this itself (it read the version next to its own code, which a
+  source checkout reports as `1.22.0`, and sent `--beta` only when that contained "beta"): it runs a plain
+  `agend update`, and the installed CLI decides. An update that would go back to an older version is refused
+  unless `--stable`, `--version` or `--force` asks for it. New: `agend update --stable` switches a beta install to
+  the stable release. A beta user told that a newer stable is out is now told to use `--stable`. The update
+  installs exactly the version it checked (`@songsid/agend@2.1.11-beta.3`, not the `@beta` tag, which can move in
+  between), and `agend update --version <v>` now works — it used to be read as `agend --version`, print the
+  version and install nothing.
 - **[Behaviour change] OpenCode instances now start without permission prompts, like every other backend.**
   OpenCode asks before it reads a path outside the project (`Access external directory /tmp`), reads a `.env`, or
   does what your own config marks `ask`; every other backend AgEnD runs already had its skip-permissions switch,

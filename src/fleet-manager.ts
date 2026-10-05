@@ -95,6 +95,7 @@ import { LoginSession } from "./login-manager.js";
 import { tightenInstanceDirs } from "./private-dir.js";
 import { decideSlash, type SlashFacts, type SlashScope, type SlashSpeaker } from "./slash-authz.js";
 import { commandSpec, decideCommand, type CommandScope } from "./command-table.js";
+import { UPDATE_COMMAND, isPrereleaseVersion, updateNoticeKey } from "./update-check.js";
 import { LoginController, LOGIN_TOKEN_RESEND_PREFIX, POST_LOGIN_RECOVERY_DEADLINE_MS, type PostLoginRecovery } from "./login-controller.js";
 import { runBeforeDeadline } from "./deadline.js";
 import { LoginWindowLock } from "./login-window-lock.js";
@@ -1858,8 +1859,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.beginUpdateProgress(adapter, chatId, data.channelId, messageId);
     }
     const { spawn } = await import("node:child_process");
-    const currentVersion = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "package.json"), "utf-8")).version ?? "";
-    const command = currentVersion.includes("beta") ? "agend update --beta" : "agend update";
+    // Plain `agend update`: the CLI picks the channel from the version it is about to replace (a beta install
+    // stays on beta). Deciding here, from the package.json next to THIS code, read a source checkout's 1.22.0 as
+    // "not a beta" and sent a beta install to @latest.
+    const command = UPDATE_COMMAND;
     const origin = `slash /update by ${adapterId}:${data.userId}`;
     recordInternalRequest(this.dataDir, "update", origin);
     const child = spawn("sh", ["-c", `sleep 2 && ${command}`], {
@@ -14978,7 +14981,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       const currentVersion = JSON.parse(readFileSync(pkgPath, "utf-8")).version ?? "0.0.0";
       const latest = await npmVersion("@songsid/agend");
       let target = latest;
-      if (currentVersion.includes("-beta")) {
+      // The same channel rule as `agend update` (any SemVer prerelease is on @beta): rc and alpha too.
+      if (isPrereleaseVersion(currentVersion)) {
         // Beta users track the @beta channel (never fall back to @latest, which is
         // older), but should also hear when a newer STABLE ships — pick whichever
         // of beta/latest is the newest.
@@ -14997,7 +15001,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       // or a newer beta (2.0.11-beta.50) still notifies via semverGt below.
       const core = (v: string) => v.replace(/^v/, "").split("-")[0];
       const betaSupersedesStable =
-        currentVersion.includes("-") && !target.includes("-") && core(target) === core(currentVersion);
+        isPrereleaseVersion(currentVersion) && !isPrereleaseVersion(target) && core(target) === core(currentVersion);
       // Only notify when target is genuinely newer (semver), so a beta user on
       // 2.0.8-beta.16 is never told that stable 2.0.7 is "available".
       if (target && !betaSupersedesStable && this.semverGt(target, currentVersion)) {
@@ -15005,7 +15009,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         if (generalId) {
           // No release URL — Discord's SuppressEmbeds proved unreliable and the
           // link preview looked bad. Version + /update instruction is enough.
-          this.notifyInstanceTopic(generalId, t("update.available_current", `v${target}`, `v${currentVersion}`));
+          this.notifyInstanceTopic(generalId, t(updateNoticeKey(currentVersion, target), `v${target}`, `v${currentVersion}`));
         }
       }
     } catch { /* silent — network issues */ }

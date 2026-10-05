@@ -151,7 +151,7 @@ A `/steer` or `/btw` on an unsupported backend gets an honest error instead of s
 | `agend start` | Start the fleet daemon |
 | `agend stop` | Stop the fleet daemon |
 | `agend ls` | List instances with status (Idle/Busy/Crashed/Stopped/Paused) |
-| `agend update [--beta]` | Update AgEnD to latest version |
+| `agend update [--beta\|--stable]` | Update AgEnD on the installed channel (a beta stays on beta); `--stable` switches to the stable release |
 | `agend doctor` | Run backend health diagnostics |
 | `agend doctor mcp` | Fleet-wide MCP health check (IPC, config paths, duplicates, binary PATH) |
 | `agend web` | Launch Web UI dashboard |

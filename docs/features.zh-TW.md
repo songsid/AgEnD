@@ -573,9 +573,12 @@ Instance 關閉使用併發數 5 加速 `agend fleet stop` 和 `agend stop`。sy
 安裝預發布版本：
 
 ```bash
+agend update            # 留在已安裝的頻道：beta 從 @beta 更新，穩定版從 @latest 更新
 agend update --beta     # 從 @beta npm dist-tag 安裝
-agend update            # 從 @latest 安裝（預設）
+agend update --stable   # 從 @latest 安裝，即使目前是 beta
 ```
+
+聊天裡的 `/update` 跟 `agend update` 相同：beta 會留在 beta。會回到較舊版本的更新（例如 beta 頻道目前指向較舊的版本）會被拒絕；要這麼做請加 `--stable`、`--version` 或 `--force`。
 
 CI pipeline 在 git tag 包含 `-beta` 時自動以 `--tag beta` 發布（例如 `v1.24.0-beta.1`）。
 
