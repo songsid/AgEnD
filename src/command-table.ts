@@ -190,15 +190,15 @@ export function slashLock(name: string): string {
   return spec && isLocked(spec) ? "🔒 " : "";
 }
 
+/** What a menu entry says after its description, as a locale key: the argument a command takes (#1145). */
+const TELEGRAM_ARG_HINTS: Readonly<Record<string, string>> = { compact: "slash.compact_arg" };
+
 /**
  * The two Telegram command menus (`setMyCommands`), in menu order. Which commands a menu lists is picked by hand —
  * some handled commands stay out of it on purpose (`/cancel`, `/save`) — but nothing about them is typed: the lock
  * comes from the command's Telegram cells in the scopes the menu is shown in, and tests pin that every listed command
  * has a Telegram handler there (a menu entry with none is a command that does nothing when chosen).
  */
-/** What a menu entry says after its description, as a locale key: the argument a command takes (#1145). */
-const TELEGRAM_ARG_HINTS: Readonly<Record<string, string>> = { compact: "slash.compact_arg" };
-
 export const TELEGRAM_MENUS = {
   /** The fleet's forum group (its `chat` and `chat_administrators` scopes): the General topic and the instance topics. */
   fleet: {
