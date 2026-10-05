@@ -15,15 +15,17 @@ import { setLocale } from "../src/locale.js";
  * a tmux server.
  */
 const CAPACITY = "⚠ Selected model is at capacity. Please try a different model.";
-const PANE = `  › earlier turn\n\n${CAPACITY}\n\n  ›  Ask Codex to do anything\n`;
+const KEY = "model_error:" + new CodexBackend("/tmp/codex-capacity-nudge-key").getErrorPatterns().find(p => p.pattern.test(CAPACITY))!.pattern.source;
+const IDLE = "• earlier answer\n\n› Ask Codex to do anything\n  Context 100% left";
+const PANE = `• earlier answer\n\n${CAPACITY}\n\n› Ask Codex to do anything\n  Context 100% left`;
 
 let dir: string;
 const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => logger } as any;
 beforeEach(() => { vi.useFakeTimers(); dir = mkdtempSync(join(tmpdir(), "agend-capacity-nudge-")); mkdirSync(join(dir, "inst")); });
 afterEach(() => { vi.useRealTimers(); rmSync(dir, { recursive: true, force: true }); setLocale("en"); });
 
-function rig() {
-  const screen = { text: PANE };
+function rig(opts: { baselineTaken?: boolean; start?: string } = {}) {
+  const screen = { text: opts.start ?? PANE };
   const sent: string[] = [];
   const d: any = new Daemon("cx", {
     working_directory: dir, backend: "codex", log_level: "silent",
@@ -49,6 +51,8 @@ function rig() {
     errors.push(event);
     if (event.action === "nudge_continue") d.armCapacityNudge(event.pattern, 60_000);   // what the lifecycle does
   });
+  // The first live composer of the spawn fixed what is history; here there was none yet (a clean session).
+  if (opts.baselineTaken !== false) d.nudgeBaselines = new Map([[KEY, 0]]);
   d.startErrorMonitor();
   const poll = (ms = 5_000) => vi.advanceTimersByTimeAsync(ms);
   return { d, screen, sent, errors, idle, poll, stop: () => clearInterval(d.errorMonitorTimer) };
@@ -81,7 +85,7 @@ describe("the daemon's continue nudge", () => {
     const { screen, sent, errors, poll, stop } = rig();
     await poll(70_000);
     expect(sent).toHaveLength(1);
-    screen.text = `${PANE}\n  › keep going\n${CAPACITY}\n\n  ›  Ask Codex to do anything\n`;   // it failed again
+    screen.text = `• earlier answer\n\n${CAPACITY}\n\n› keep going\n${CAPACITY}\n\n› Ask Codex to do anything\n  Context 100% left`;   // it failed again
     await poll(5_100);
     expect(errors).toHaveLength(2);                         // skipCooldown: seen at once, not after 5 minutes
     await poll(60_000);
@@ -105,7 +109,7 @@ describe("the daemon's continue nudge", () => {
     it("the capacity line scrolled away", async () => {
       const { d, screen, sent, poll, stop } = rig();
       await poll(5_100);
-      screen.text = "  › Ask Codex to do anything\n";
+      screen.text = IDLE;
       await poll(120_000);
       expect(sent).toEqual([]);
       expect(d.sendCapacityNudge).not.toHaveBeenCalled();
@@ -324,7 +328,7 @@ describe("the daemon's continue nudge", () => {
       const { d, errors, poll, stop } = rig();
       await poll(5_100);
       expect(errors).toHaveLength(1);
-      expect(d.armCapacityNudge(/Ask Codex to do anything/, 60_000)).toBe(false);
+      expect(d.armCapacityNudge(/earlier answer/, 60_000)).toBe(false);
       stop();
     });
 
@@ -361,6 +365,68 @@ describe("the daemon's continue nudge", () => {
       expect(sent).toEqual([]);
       stop();
     });
+  });
+});
+
+describe("scrollback from a resumed session is history, not a new capacity error (#949)", () => {
+  const HISTORY = PANE;                                    // an old capacity line, and a live composer under it
+
+  it("an old capacity line on the first live composer never arms a nudge", async () => {
+    const { d, sent, poll, stop } = rig({ baselineTaken: false, start: HISTORY });
+    await poll(5_100);
+    expect(d.nudgeBaselines.get(KEY)).toBe(1);
+    await poll(300_000);
+    expect(sent).toEqual([]);
+    expect(d.capacityNudge).toBeNull();
+    stop();
+  });
+
+  it("…also when the resume first paints an empty startup frame and the history only appears afterwards", async () => {
+    const { screen, sent, poll, stop } = rig({ baselineTaken: false, start: ">_ OpenAI Codex (v0.157.0)\n  Resuming session…" });
+    await poll(5_100);
+    screen.text = HISTORY;
+    await poll(300_000);
+    expect(sent).toEqual([]);
+    stop();
+  });
+
+  it("a genuinely NEW capacity error after that history is an episode", async () => {
+    const { screen, sent, errors, poll, stop } = rig({ baselineTaken: false, start: HISTORY });
+    await poll(5_100);
+    screen.text = `• earlier answer\n\n${CAPACITY}\n\n› go on\n${CAPACITY}\n\n› Ask Codex to do anything\n  Context 100% left`;
+    await poll(5_100);
+    expect(errors.length).toBeGreaterThanOrEqual(1);
+    await poll(60_000);
+    expect(sent).toEqual(["keep going"]);
+    stop();
+  });
+
+  it("…and so is one that arrives after the old line scrolled out of the capture", async () => {
+    const { screen, sent, poll, stop } = rig({ baselineTaken: false, start: HISTORY });
+    await poll(5_100);
+    screen.text = IDLE;                                    // the old line is gone
+    await poll(5_100);
+    screen.text = PANE;                                    // a new failure
+    await poll(65_000);
+    expect(sent).toEqual(["keep going"]);
+    stop();
+  });
+
+  it("nothing is armed before any live composer was seen", async () => {
+    const { d, errors, poll, stop } = rig({ baselineTaken: false, start: CAPACITY });   // a bare line, no composer: not live
+    await poll(5_100);
+    expect(errors).toHaveLength(1);
+    expect(d.nudgeBaselines).toBeNull();
+    expect(d.armCapacityNudge(errors[0].pattern, 60_000)).toBe(false);
+    stop();
+  });
+
+  it("a respawn forgets the baseline: the new spawn's first live composer fixes its own", async () => {
+    const r = rig();
+    await r.poll(5_100);
+    r.d.beginSpawn(); r.d.endSpawn();
+    expect(r.d.nudgeBaselines).toBeNull();
+    r.stop();
   });
 });
 

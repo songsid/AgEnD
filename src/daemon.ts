@@ -1221,11 +1221,17 @@ export class Daemon extends EventEmitter {
    * The last error occurrence handed to the lifecycle: what an action that needs the screen it was seen on (a
    * `nudge_continue` arming) reads back, with the spawn / monitors it was seen under.
    */
-  private lastErrorEpisode: { pattern: RegExp; pane: string; spawn: number; fence: number } | null = null;
+  private lastErrorEpisode: { key: string; pattern: RegExp; pane: string; spawn: number; fence: number } | null = null;
   /**
    * An armed "tell the agent to keep going" (Codex model at capacity). One per episode; the monitor owns it: every poll
    * cancels it when anything changed, and it fires at most once. The due time is on the monotonic clock.
    */
+  /**
+   * How many occurrences of each `nudge_continue` pattern were already on screen when this spawn first showed a live
+   * composer (null until then): resumed scrollback, i.e. HISTORY. An occurrence is a new episode only beyond that — a
+   * resumed session whose scrollback holds an old capacity line must not be told to "keep going" for it (#949).
+   */
+  private nudgeBaselines: Map<string, number> | null = null;
   private capacityNudge: { pane: string; spawn: number; fence: number; epoch: number; dueAt: number } | null = null;
   /** Current stdin-owning runtime dialog, independent from execution state. */
   private inputBlockedDialogKey: string | null = null;
@@ -2995,6 +3001,7 @@ export class Daemon extends EventEmitter {
 
         const pane = await this.tmux.capturePane();
         if (stale()) return;
+        this.takeNudgeBaselines(pane, patterns);
         this.tickCapacityNudge(pane);
         const inputBlockedDialog = this.updateInputBlockedState(pane, dialogs);
 
@@ -3377,7 +3384,7 @@ export class Daemon extends EventEmitter {
     // scan would otherwise keep reporting the same dead instance forever.
     if (ep.type === "auth_error") this.authFailureUnresolved = true;
     this.logger.warn({ errorType: ep.type, action: ep.action }, `PTY error detected: ${message}`);
-    this.lastErrorEpisode = { pattern: ep.pattern, pane, spawn: this.spawnGeneration, fence: this.launchFenceEpoch };
+    this.lastErrorEpisode = { key, pattern: ep.pattern, pane, spawn: this.spawnGeneration, fence: this.launchFenceEpoch };
     this.emit("pty_error", { name: this.name, ...ep, message });
   }
 
@@ -6059,7 +6066,10 @@ export class Daemon extends EventEmitter {
     if (!episode || episode.pattern !== pattern) return false;
     if (episode.spawn !== this.spawnGeneration || episode.fence !== this.launchFenceEpoch) return false;
     if (this.isPaused || this.getProcessStatus() === "stopped") return false;
-    if (Daemon.countOccurrences(pattern, episode.pane) === 0) return false;
+    // Only an occurrence that appeared during this spawn's live session: before the baseline exists, or not beyond it,
+    // it is scrollback from a resumed session.
+    const baseline = this.nudgeBaselines?.get(episode.key);
+    if (baseline === undefined || Daemon.countOccurrences(pattern, episode.pane) <= baseline) return false;
     this.capacityNudge = {
       pane: episode.pane, spawn: episode.spawn, fence: episode.fence,
       epoch: this.deliveryEpoch, dueAt: performance.now() + delayMs,
@@ -6073,6 +6083,20 @@ export class Daemon extends EventEmitter {
     if (!this.capacityNudge) return;
     this.capacityNudge = null;
     this.logger.info({ reason }, "Model-capacity nudge cancelled");
+  }
+
+  /** The first live composer of a spawn fixes what is history (see {@link nudgeBaselines}). */
+  private takeNudgeBaselines(pane: string, patterns: ErrorPattern[]): void {
+    if (!this.isCodexLivePaneSnapshot(pane)) return;
+    const baselines = this.nudgeBaselines ?? new Map<string, number>();
+    for (const ep of patterns) {
+      if (ep.action !== "nudge_continue") continue;
+      const key = Daemon.errorPatternKey(ep);
+      const count = Daemon.countOccurrences(ep.pattern, pane);
+      // History that has scrolled away must not hide the next real occurrence.
+      baselines.set(key, Math.min(baselines.get(key) ?? count, count));
+    }
+    this.nudgeBaselines = baselines;
   }
 
   private static countOccurrences(pattern: RegExp, pane: string): number {
@@ -8011,6 +8035,7 @@ export class Daemon extends EventEmitter {
     this.dialogAnswers = null;
     this.capacityNudge = null;
     this.lastErrorEpisode = null;
+    this.nudgeBaselines = null;
     // A relaunch settles any outstanding quit watch: the CLI came back.
     this.clearQuitRelaunchWatch();
     // A restarted CLI has no trustworthy turn edge for the process it replaced.
