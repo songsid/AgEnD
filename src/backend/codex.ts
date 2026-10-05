@@ -50,7 +50,16 @@ const CODEX_CONTEXT_STATUS_ITEMS = new Set(["context-remaining", "context-used",
 
 function isCodexContextFooter(row: string): boolean {
   const context = String.raw`Context\s+\d+%\s+(?:left|used)`;
-  const legacy = new RegExp(String.raw`^\s*${context}(?:\s+⚠\s+\d+\s+warnings?\b[^\r\n]*)?(?:\s+·\s+\S[^\r\n]*)?\s*$`, "i");
+  // Whatever Codex paints AFTER the context item — its native status fields (`Goal achieved (1h 6m)`, `Goal stalled`, a
+  // warnings count …, #1190) — is footer chrome, set apart by a column gap of two or more spaces; they are not listed
+  // one by one because Codex keeps adding them. A gap followed by a prompt / bullet / selection marker is NOT chrome:
+  // that is a draft or a transcript line that happens to start with the words (the row must also be the LAST one, under
+  // the composer, for any caller to ask).
+  const nativeFields = String.raw`[ \t]{2,}(?![›>•■❯])\S[^\r\n]*`;
+  const legacy = new RegExp(
+    String.raw`^\s*${context}(?:${nativeFields}|(?:\s+⚠\s+\d+\s+warnings?\b[^\r\n]*)?(?:\s+·\s+\S[^\r\n]*)?)\s*$`,
+    "i",
+  );
   if (legacy.test(row)) return true;
   // A narrow Codex 0.156 pane may truncate the context item after the
   // authoritative first `session-id` item. Keep structural readiness while
