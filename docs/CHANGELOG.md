@@ -283,6 +283,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `cloudflared` on `PATH`. See "Finishing a /login away from the machine" in `docs/configuration.md`.
 
 ### Fixed
+- **A Codex turn that runs long with nothing new on screen is no longer declared stuck (#1188).** The live status row's
+  own elapsed counter (`• Working (5m 51s • esc to interrupt)`) now counts as proof of life: a counter that moved since
+  the last look keeps the turn "working", however long the rest of the pane stayed the same. Before, the 10-minute
+  stuck check stamped "the pane changed" with the time of the last output event — minutes old — so a healthy long turn
+  was flagged (hang notice, then a restart attempt that "timed out" while the original process kept running). A pane
+  whose counter stands still for the stuck timeout is still declared stuck. Also: the daemon's "last change" time never
+  moves backwards, and the stuck deadline follows the latest sign of life instead of re-firing at once.
+- **The #978 idle escape hatch no longer treats a quoted "esc to interrupt" as a running turn (#991).** It now uses the
+  same precise live-status-row match as the rest of the daemon (any title, whole row, column zero): a real status row
+  still blocks it, an indented quote or a prose mention in a reply does not.
 - **macOS no longer mistakes low free RAM for memory pressure.** Native, bounded async
   `vm_stat`/`sysctl` probes estimate reclaimable RAM and read swap; first/stale starts
   wait at most two seconds, with a 30-second shared cache. Unavailable Mac measurements
