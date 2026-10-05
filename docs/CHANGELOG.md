@@ -300,8 +300,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   status between the context item and the warnings (`Context 32% left    Goal achieved (1h 6m)    ⚠ 1 warning · f2 to
   view`); the "Context first" footer grammar had no place for it, so the idle composer could not be proved, stranded-input
   recovery ran out and deliveries to that instance failed (`Idle footer not recognised` / `retries exhausted`). Anything
-  after the context item that is set apart by a column gap is now footer chrome, whatever Codex calls it (Goal achieved /
-  stalled / paused, a field it has not shipped yet) — no `session-id` status item needed. A draft or a transcript line
+  after the context item that is set apart by a column gap is now footer chrome, whatever Codex calls it or in whatever
+  language (`Goal achieved (1h 6m)`, `Goal usage: 90 seconds.`, `Goal complete; time used: 90 seconds.`, `Goal 사용량: 45초.`,
+  a field it has not shipped yet), and a Goal field is recognised even set off by a single space — no `session-id`
+  status item needed. A draft or a transcript line
   that merely starts with "Context 32% left" is still not a footer.
 - **macOS no longer mistakes low free RAM for memory pressure.** Native, bounded async
   `vm_stat`/`sysctl` probes estimate reclaimable RAM and read swap; first/stale starts
