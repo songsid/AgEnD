@@ -154,6 +154,20 @@ describe("readTailLines reviewer round (a)-(c) + P1", () => {
     expect(r.text).toBe([...lines.slice(-49), ""].join("\n"));
   });
 
+  for (const ending of ["\n", "\r\n", "\n\n"]) {
+    it(`P1: 2MB line terminated by ${JSON.stringify(ending)} → non-empty end-anchored partial`, async () => {
+      const content = "A".repeat(2 * 1024 * 1024) + ending;
+      const r = await readTailLines(tmpFile(content), 50);
+      expect(r.truncated).toBe(true);
+      expect(r.totalLines).toBeNull();
+      expect(r.partial).toBe(true);
+      expect(r.text.length).toBeGreaterThan(0);
+      // End-anchored: exactly the last 64 KiB of bytes, decoded.
+      const expected = Buffer.from(content).subarray(-TAIL_CHUNK_BYTES).toString("utf-8");
+      expect(r.text).toBe(expected);
+    });
+  }
+
   it("P1: tail megabytes without a line break → window tail, flagged partial, never empty", async () => {
     const head = Array.from({ length: 8000 }, (_, i) => `h${i}`).join("\n") + "\n";
     const tailRun = "Z".repeat(1_200_000);

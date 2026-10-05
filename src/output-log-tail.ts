@@ -69,15 +69,20 @@ export async function readTailLines(path: string, maxLines: number): Promise<Tai
     const reachedStart = position === 0;
     // Buffers are concatenated whole before decoding so a multibyte character
     // split across a chunk boundary still decodes correctly.
-    const text = Buffer.concat(chunks).toString("utf-8");
+    const raw = Buffer.concat(chunks);
+    const text = raw.toString("utf-8");
     const parts = text.split("\n");
     if (!reachedStart) parts.shift(); // head-cut partial line: drop, never half-show
-    // P1: the window may hold no line break at all (cursor-addressed TUI
-    // streams run megabytes without `\n`). Dropping the one "line" would
-    // answer empty for a live log — return the window's tail instead.
-    if (!reachedStart && parts.length === 0) {
+    // P1: the window may hold no complete content line at all — no line break
+    // (cursor-addressed TUI streams run megabytes without `\n`), or one giant
+    // line terminated at EOF (`2MB-line + \n`). Answering empty for a live log
+    // is worse than a partial line, so return the window's tail instead.
+    // CR-only endings are stripped before the blank check (`\r\n` files).
+    if (!reachedStart && parts.every(p => p.replace(/\r$/, "") === "")) {
       return {
-        text: [...text].slice(-TAIL_CHUNK_BYTES).join(""),
+        // Last 64 KiB of bytes, then decode: a character split at the cut
+        // becomes one U+FFFD, which is acceptable for a flagged fallback.
+        text: raw.subarray(Math.max(0, raw.length - TAIL_CHUNK_BYTES)).toString("utf-8"),
         totalLines: null,
         truncated: true,
         partial: true,
