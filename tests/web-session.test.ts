@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -331,6 +331,125 @@ describe("persistence", () => {
 
     expect(store.authenticate(sessionId, EPOCH)).not.toBeNull();
     expect(warnings.some(w => w.includes("could not be saved"))).toBe(true);
+  });
+});
+
+describe("when the file cannot be replaced", () => {
+  const fs = { renameSync, unlinkSync };
+  /** A store whose file operations fail on demand, over a real directory. */
+  function flaky(dir: string, warnings: string[]) {
+    const fail = { rename: false, unlink: false };
+    const store = new WebSessionStore({
+      dataDir: dir,
+      onWarn: m => warnings.push(m),
+      fileOps: {
+        renameSync: ((a: string, b: string) => { if (fail.rename) throw new Error("EACCES: rename"); return fs.renameSync(a, b); }) as typeof renameSync,
+        unlinkSync: ((p: string) => { if (fail.unlink && !String(p).includes(".tmp-")) throw new Error("EACCES: unlink"); return fs.unlinkSync(p); }) as typeof unlinkSync,
+      },
+    });
+    return { store, fail };
+  }
+
+  it("does not let a revoked session come back after a restart — the old file is removed, so everyone signs in again", () => {
+    const dir = tempDir();
+    const warnings: string[] = [];
+    const { store, fail } = flaky(dir, warnings);
+    const revoked = store.create(input);
+    const kept = store.create(input);
+    expect(new WebSessionStore({ dataDir: dir }).authenticate(revoked.sessionId, EPOCH)).not.toBeNull(); // it was saved
+
+    fail.rename = true;
+    expect(store.revokeByHandle(revoked.record.handle)).toBe(true);
+
+    // The regression: a restart used to read the old file and revive the revoked session.
+    const restarted = new WebSessionStore({ dataDir: dir });
+    expect(restarted.authenticate(revoked.sessionId, EPOCH)).toBeNull();
+    expect(restarted.authenticate(kept.sessionId, EPOCH)).toBeNull();   // fail closed: nobody is restored
+    expect(warnings.some(w => w.includes("cannot bring back a revoked session"))).toBe(true);
+  });
+
+  it("says so, and keeps trying, when even the removal is impossible — then a later save makes the revocation stick", () => {
+    const dir = tempDir();
+    const warnings: string[] = [];
+    const { store, fail } = flaky(dir, warnings);
+    const revoked = store.create(input);
+    const kept = store.create(input);
+
+    fail.rename = true; fail.unlink = true;
+    store.revokeByHandle(revoked.record.handle);
+    expect(warnings.some(w => w.includes("may restore sessions that were revoked"))).toBe(true);
+    // The window is real and stated: a restart right now would read the old file.
+    expect(new WebSessionStore({ dataDir: dir }).authenticate(revoked.sessionId, EPOCH)).not.toBeNull();
+
+    fail.rename = false; fail.unlink = false;
+    store.flush();                       // still owed to the disk: shutdown, or the next change, pays it
+    const restarted = new WebSessionStore({ dataDir: dir });
+    expect(restarted.authenticate(revoked.sessionId, EPOCH)).toBeNull();
+    expect(restarted.authenticate(kept.sessionId, EPOCH)).not.toBeNull();
+  });
+
+  it("knows what an earlier run left on disk: a session loaded at start can be revoked safely too", () => {
+    const dir = tempDir();
+    const first = new WebSessionStore({ dataDir: dir });
+    const loaded = first.create(input);
+
+    const { store, fail } = flaky(dir, []);          // a new process, which read the file at start
+    fail.rename = true;
+    store.revokeByHandle(loaded.record.handle);
+
+    expect(new WebSessionStore({ dataDir: dir }).authenticate(loaded.sessionId, EPOCH)).toBeNull();
+  });
+
+  it("retries on the next change, not only on flush", () => {
+    const dir = tempDir();
+    const { store, fail } = flaky(dir, []);
+    const revoked = store.create(input);
+    fail.rename = true; fail.unlink = true;
+    store.revokeByHandle(revoked.record.handle);
+    fail.rename = false; fail.unlink = false;
+    const later = store.create(input);   // any change writes the whole store again
+    const restarted = new WebSessionStore({ dataDir: dir });
+    expect(restarted.authenticate(revoked.sessionId, EPOCH)).toBeNull();
+    expect(restarted.authenticate(later.sessionId, EPOCH)).not.toBeNull();
+  });
+
+  it("covers revoke-all and eviction the same way", () => {
+    for (const drop of [(s: WebSessionStore) => s.revokeAll(), (s: WebSessionStore) => { for (let i = 0; i < MAX_WEB_SESSIONS; i++) s.create(input); }]) {
+      const dir = tempDir();
+      const { store, fail } = flaky(dir, []);
+      const first = store.create(input);
+      fail.rename = true;
+      drop(store);
+      expect(new WebSessionStore({ dataDir: dir }).authenticate(first.sessionId, EPOCH)).toBeNull();
+    }
+  });
+
+  it("does not throw away the other sessions when the file is merely behind", () => {
+    const dir = tempDir();
+    const warnings: string[] = [];
+    const { store, fail } = flaky(dir, warnings);
+    const a = store.create(input);
+    fail.rename = true;
+    store.create(input);   // a new sign-in that cannot be saved: nothing on disk was dropped from memory
+
+    expect(new WebSessionStore({ dataDir: dir }).authenticate(a.sessionId, EPOCH)).not.toBeNull();
+    expect(warnings.some(w => w.includes("will retry"))).toBe(true);
+    expect(warnings.some(w => w.includes("removed the old file"))).toBe(false);
+  });
+
+  it("writes what is still owed at shutdown, including lastSeen that the debounce was holding", () => {
+    const dir = tempDir();
+    const { clock, opts } = clocked();
+    const store = new WebSessionStore({ dataDir: dir, ...opts });
+    const { sessionId } = store.create(input);
+    clock.now += 1000;
+    store.authenticate(sessionId, EPOCH);              // debounced: not on disk yet
+    const before = JSON.parse(readFileSync(join(dir, "web-sessions.json"), "utf8")).sessions[0].lastSeen;
+
+    store.flush();
+
+    const after = JSON.parse(readFileSync(join(dir, "web-sessions.json"), "utf8")).sessions[0].lastSeen;
+    expect(after).toBeGreaterThan(before);
   });
 });
 

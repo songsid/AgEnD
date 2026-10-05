@@ -148,8 +148,8 @@ agend delivery scan-forged-envelopes --instance <name>  # Check a kiro instance'
 ## Web Dashboard
 
 ```bash
-agend web                       # Open Web UI dashboard in browser
-agend web --code                # Print a one-time sign-in code for the sign-in page
+agend web                       # Print a one-time sign-in code and open the sign-in page
+agend web --code                # Only print the sign-in page and code (no browser)
 agend view                      # Open the read-only View dashboard in browser
 agend web-token rotate          # Sign every browser out and rotate the CLI token
 agend setup                     # Guided setup page, before a fleet exists
@@ -254,9 +254,10 @@ records request URLs.
 - **Writes need more than the cookie.** The panels add a per-session
   `X-Agend-CSRF` header to every write, and the server also requires a matching
   `Origin`; a cookie alone cannot change anything.
-- `agend web` (no flag) still opens `/ui?token=…` for the host's own browser and
-  works as before; that link now creates a real session, and is deprecated in
-  favour of the code.
+- **No credential ever goes into a URL.** A `/ui?token=…` link (as older versions
+  printed, and as `agend web` used to open) is no longer a way in: it gets the
+  sign-in page. `agend web` now prints a code and opens `/signin`; scripts keep
+  using the `X-Agend-Token` header.
 
 Following a link from Telegram or Discord into a panel lands on the sign-in page
 first if the browser did not send the cookie on that cross-site hop

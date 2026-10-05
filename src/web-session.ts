@@ -134,9 +134,18 @@ export function labelFromUserAgent(userAgent: string | undefined): string {
   return sanitizeLabel(os ? `${browser} on ${os}` : browser);
 }
 
+/** The three file operations the store makes, so a test can make one of them fail. */
+export interface SessionFileOps {
+  writeFileSync: typeof writeFileSync;
+  renameSync: typeof renameSync;
+  unlinkSync: typeof unlinkSync;
+}
+
 export interface WebSessionStoreOptions {
   /** Where `web-sessions.json` lives. Omit for a memory-only store (tests). */
   readonly dataDir?: string;
+  /** Override individual file operations (tests only). */
+  readonly fileOps?: Partial<SessionFileOps>;
   readonly now?: () => number;
   readonly policy?: Partial<Record<SessionSurface, SessionPolicy>>;
   readonly maxSessions?: number;
@@ -167,6 +176,9 @@ export class WebSessionStore {
   private readonly warn: (message: string) => void;
   private dirty = false;
   private lastPersist = 0;
+  private readonly ops: SessionFileOps;
+  /** The sessions the file on disk holds right now, as far as this process knows. */
+  private persisted = new Set<string>();
 
   constructor(opts: WebSessionStoreOptions = {}) {
     this.now = opts.now ?? Date.now;
@@ -177,6 +189,7 @@ export class WebSessionStore {
     this.maxSessions = opts.maxSessions ?? MAX_WEB_SESSIONS;
     this.path = opts.dataDir ? join(opts.dataDir, "web-sessions.json") : null;
     this.warn = opts.onWarn ?? (() => {});
+    this.ops = { writeFileSync, renameSync, unlinkSync, ...opts.fileOps };
     this.load();
   }
 
@@ -320,23 +333,50 @@ export class WebSessionStore {
     if (this.dirty && now - this.lastPersist >= SESSION_PERSIST_DEBOUNCE_MS) this.persistNow();
   }
 
-  private persistNow(): void {
-    this.dirty = false;
+  /**
+   * Write the store. Returns whether the file now matches memory.
+   *
+   * The failure path matters more than the success path. Memory forgets a revoked
+   * session at once; if the file cannot be replaced it still holds that session, and a
+   * restart would read it back — a revoked session, alive again. So when a write fails:
+   * the store stays owing the disk a write (`dirty`, retried by the next change, the
+   * next debounce and shutdown), and if the old file holds anything memory has since
+   * dropped, the old file is removed. A restart then finds no sessions and everyone
+   * signs in again, which is the failure that is safe; it says so, loudly, when even
+   * that removal is impossible.
+   */
+  private persistNow(): boolean {
     this.lastPersist = this.now();
-    if (!this.path) return;
+    if (!this.path) { this.dirty = false; return true; }
     const dir = dirname(this.path);
     const temp = `${this.path}.tmp-${process.pid}-${randomBytes(6).toString("hex")}`;
     try {
       mkdirSync(dir, { recursive: true });
       const body = JSON.stringify({ version: 1, sessions: [...this.byHash.values()] });
-      writeFileSync(temp, body, { encoding: "utf8", mode: 0o600, flag: "wx" });
-      renameSync(temp, this.path);
+      this.ops.writeFileSync(temp, body, { encoding: "utf8", mode: 0o600, flag: "wx" });
+      this.ops.renameSync(temp, this.path);
       try { chmodSync(this.path, 0o600); } catch { /* best effort */ }
+      this.persisted = new Set(this.byHash.keys());
+      this.dirty = false;
+      return true;
     } catch (err) {
-      try { unlinkSync(temp); } catch { /* never created or already moved */ }
-      // A store that cannot be written still works in memory. The cost is that a
-      // restart signs people out, which fails closed; say so once per failure.
-      this.warn(`web sessions could not be saved: ${(err as Error).message}`);
+      try { this.ops.unlinkSync(temp); } catch { /* never created or already moved */ }
+      this.dirty = true;
+      const message = (err as Error).message;
+      const staleOnDisk = [...this.persisted].some(hash => !this.byHash.has(hash));
+      if (!staleOnDisk) {
+        // Nothing on disk that memory has dropped: the file is merely behind, and a restart only loses the newest sign-ins.
+        this.warn(`web sessions could not be saved (will retry): ${message}`);
+        return false;
+      }
+      try {
+        this.ops.unlinkSync(this.path);
+        this.persisted = new Set();
+        this.warn(`web sessions could not be saved (${message}); removed the old file so a restart cannot bring back a revoked session — everyone will have to sign in again`);
+      } catch {
+        this.warn(`web sessions could not be saved (${message}) and the old file could not be removed: a restart may restore sessions that were revoked since the last successful save. Fix the permissions on ${this.path}`);
+      }
+      return false;
     }
   }
 
@@ -358,5 +398,6 @@ export class WebSessionStore {
       this.byHash.set(entry.idHash, { ...entry });
     }
     while (this.byHash.size > this.maxSessions) this.evictLeastRecentlyUsed();
+    this.persisted = new Set(this.byHash.keys());
   }
 }
