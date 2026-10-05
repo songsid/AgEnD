@@ -319,6 +319,7 @@ describe("the daemon's continue nudge", () => {
       ["the process stopped", d => { d.processStatus = "stopped"; }],
       ["a message was queued for delivery", d => { d.pasteQueueDepth = 1; }],
       ["the agent started a turn", d => { d.instanceState = "working"; }],
+      ["a new spawn began (nothing else changed)", d => { d.spawnGeneration += 1; }],
     ];
     /** Run to just before the nudge is due, then let `arrange` set up a hold on one of its pane operations. */
     async function dueWith(arrange: (r: ReturnType<typeof rig>) => void, thenMs = 1_500) {
@@ -375,6 +376,33 @@ describe("the daemon's continue nudge", () => {
       expect(r.sent).toEqual(["keep going"]);
       expect(r.enters.count).toBe(1);
       expect(r.screen.reads).toBe(holdAt);                   // the primitive's capture was the only picture it took
+    });
+
+    it("the RETRY Enter (the first one was not seen to submit) is guarded too", async () => {
+      const r = rig();
+      let proofs = 0;
+      r.d.confirmSubmitted = async () => (++proofs === 1 ? "stranded" : "submitted");   // the first Enter did not take
+      await r.poll(5_100);
+      await r.poll(59_000);
+      await r.poll(1_800);                                   // paste (65.0), Enter (65.5), proof 'stranded', now in the pause before the retry
+      expect(r.enters.count).toBe(1);
+      r.d.freezeRuntimeMonitors();
+      await r.poll(5_000);
+      expect(r.enters.count).toBe(1);                       // no second Enter
+    });
+
+    it("…and so is the defensive retry of a CLI whose input row cannot be read", async () => {
+      const r = rig();
+      r.d.backend.isDeliveryInputReadyPane = undefined;
+      r.d.systemPasteOptions = () => ({ retryEnter: true });
+      r.d.confirmSubmitted = async () => "unverifiable";
+      await r.poll(5_100);
+      await r.poll(59_000);
+      await r.poll(1_800);                                   // paste, Enter, and the 1 s pause before the defensive retry
+      expect(r.enters.count).toBe(1);
+      r.d.freezeRuntimeMonitors();
+      await r.poll(5_000);
+      expect(r.enters.count).toBe(1);
     });
 
     it("an untouched nudge writes the paste and the Enter, once each", async () => {

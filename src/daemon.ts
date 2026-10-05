@@ -6136,7 +6136,7 @@ export class Daemon extends EventEmitter {
       && this.pasteQueueDepth === 0 && this.instanceState !== "working";
     // Exclusive with every delivery: nothing can paste a turn between the verdict below and the nudge.
     await this.paneWriteLock.run(async () => {
-      if (!this.tmux || !current()) return;
+      if (!this.tmux) return;
       // ONE capture decides: it must be exactly the screen the error was seen on AND an idle composer. (A second picture
       // vouching for the first — "same screen" here, "idle" there — would let a half-typed draft through.)
       const sent = await this.submitSystemPaste(t("inst.codex_capacity_nudge_text"), "capacity-continue", {
