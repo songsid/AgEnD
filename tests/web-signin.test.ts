@@ -494,3 +494,37 @@ describe("the pages themselves", () => {
     expect(js).toContain('searchParams.delete("token")');
   });
 });
+
+describe("signin.js, run against a fake page", () => {
+  /** Run the served script with a page at `href`; returns what it did to the address bar. */
+  async function load(href: string) {
+    const { readFileSync } = await import("node:fs");
+    const vm = await import("node:vm");
+    const url = new URL(href);
+    const replaced: string[] = [];
+    const el = () => ({ hidden: false, textContent: "", value: "", disabled: false, addEventListener() {}, focus() {}, select() {} });
+    const elements: Record<string, ReturnType<typeof el>> = {};
+    const context = vm.createContext({
+      document: { documentElement: {}, getElementById: (id: string) => (elements[id] ??= el()), querySelectorAll: () => [] },
+      location: { href: url.href, pathname: url.pathname, search: url.search, hash: url.hash, origin: url.origin, replace() {} },
+      history: { replaceState: (_s: unknown, _t: unknown, u: string) => { replaced.push(u); } },
+      navigator: { language: "en" },
+      sessionStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+      fetch: () => new Promise(() => {}),       // the session probe never answers: only the load-time work runs
+      URL, URLSearchParams, JSON, Date, Number, String,
+    });
+    vm.runInContext(readFileSync(join(process.cwd(), "src", "ui", "shared", "signin.js"), "utf8"), context);
+    return replaced;
+  }
+
+  it("takes an old link's ?token= out of the address bar and the history entry, keeping everything else", async () => {
+    const token = "f".repeat(48);
+    expect(await load(`http://127.0.0.1:1/ui?token=${token}`)).toEqual(["/ui"]);
+    expect(await load(`http://127.0.0.1:1/settings?tab=2&token=${token}#x`)).toEqual(["/settings?tab=2#x"]);
+  });
+
+  it("leaves an address without one alone", async () => {
+    expect(await load("http://127.0.0.1:1/signin?next=%2Fui")).toEqual([]);
+    expect(await load("http://127.0.0.1:1/ui")).toEqual([]);
+  });
+});
