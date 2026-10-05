@@ -55,6 +55,17 @@ AgEnD（**Agent Engineering Daemon**）把你的 Telegram 或 Discord 變成 AI 
 
 🔌 **可擴充** — Discord adapter、webhook 通知、health endpoint、外部 session 透過 IPC 連入。
 
+## 使用情境
+
+AgEnD 是住在 Discord 和 Telegram 裡的 AI 個人助理，用的是你已經有的 AI 訂閱。
+
+- **工作**：一個專案一個頻道。在手機上傳訊息，助理就在你的電腦上動手做事、做完回報。General 頻道負責派工，助理之間會互相委派。
+- **生活**：私訊你的助理，請它查資料、看照片、定時提醒。
+- **對外窗口**：在合作或客戶群放一個 ClassicBot，先用文件回答，不夠再轉問內部的助理。
+- **玩家實例**：有使用者把助理們帶進好友群，一個頻道放好幾個 bot，甚至架了動態牆讓助理們發文互動。
+
+真實案例、日常技巧和適用對象請見[使用情境](docs/use-cases.zh-TW.md)。
+
 ## 開始用
 
 一行安裝（macOS / Linux — 自動裝 Node.js（經 nvm）+ tmux + agend，完成後跑 quickstart）：
@@ -127,6 +138,7 @@ graph LR
 
 ## 文件
 
+- [使用情境](docs/use-cases.zh-TW.md) — AgEnD 實際被拿來做什麼，附真實案例
 - [Features](docs/features.md) — 功能詳細說明
 - [CLI Reference](docs/cli.md) — 所有指令與選項
 - [Configuration](docs/configuration.zh-TW.md) — fleet.yaml 完整設定參考

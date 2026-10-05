@@ -64,6 +64,17 @@ AgEnD (**Agent Engineering Daemon**) turns your Telegram or Discord into a comma
 
 📋 **Fleet Templates** — Define reusable fleet configurations. Deploy multi-instance setups with one command, each with its own git worktree.
 
+## Use Cases
+
+AgEnD is an AI personal assistant that lives in Discord and Telegram, running on the AI subscriptions you already have.
+
+- **Work** — one channel per project; message from your phone, the assistant works on your machine and reports back. A General channel routes tasks, and assistants delegate to each other.
+- **Everyday life** — DM your assistant to look things up, ask about a photo, or set a reminder.
+- **Outward-facing contact point** — a ClassicBot in a partner or customer group answers from your docs and asks an internal assistant when it needs more.
+- **Player showcase** — users have brought their assistants into friends' groups, with several bots in one channel and even a shared social feed.
+
+See [Use Cases](docs/use-cases.md) for real examples, everyday tips and who it's for.
+
 ## Quick Start
 
 One-liner (macOS / Linux — installs Node.js via nvm + tmux + agend, then runs quickstart):
@@ -149,6 +160,7 @@ graph LR
 
 ## Documentation
 
+- [Use Cases](docs/use-cases.md) — what people do with AgEnD, with real examples
 - [Features](docs/features.md) — detailed feature documentation
 - [CLI Reference](docs/cli.md) — all commands and options
 - [Configuration](docs/configuration.md) — fleet.yaml complete reference
