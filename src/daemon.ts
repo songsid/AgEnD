@@ -7235,7 +7235,8 @@ export class Daemon extends EventEmitter {
     if (!this.tmux) return false;
     let pane: string;
     try { pane = await this.tmux.capturePane(); } catch { return false; }
-    if (this.paneEvidence(pane, signature).payload <= (baseline?.payload ?? 0)) return false;
+    // "More often than before the paste" needs a before: a baseline that could not be read is not a count of zero.
+    if (!baseline || this.paneEvidence(pane, signature).payload <= baseline.payload) return false;
     const dialogClear = (await this.probeBlockingDialog()).state === "clear";
     // Asked last, after every await: the read evidence is only worth anything for the pane it was read from.
     return dialogClear && this.spawnGeneration === spawnGeneration && this.getWindowId() === windowId;

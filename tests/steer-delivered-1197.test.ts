@@ -29,6 +29,10 @@ interface Opts {
   enterOk?: boolean;
   dialogOnVerify?: boolean;
   windowAfterPaste?: string;
+  /** The pane changes once confirmSubmitted has taken its look (the acceptance helper reads a DIFFERENT capture). */
+  afterConfirm?: string;
+  /** The first N captures throw (the pre-paste baseline cannot be read). */
+  failFirstCaptures?: number;
 }
 
 async function steer(opts: Opts = {}) {
@@ -50,10 +54,12 @@ async function steer(opts: Opts = {}) {
     targetInstance: "worker", kind: "steer", payload: { type: "steer", content: "hello", meta: {} },
   }).delivery;
   const claimed = outbox.claimNext("manager-test", () => daemon.bootId, new Set())!;
-  const state = { pasted: false, captures: 0, daemon };
+  const state = { pasted: false, captures: 0, daemon, confirmed: false };
   const tmux = {
     capturePane: vi.fn(async () => {
       state.captures++;
+      if (opts.failFirstCaptures && state.captures <= opts.failFirstCaptures) throw new Error("capture failed");
+      if (opts.afterConfirm !== undefined && state.confirmed) return opts.afterConfirm;
       return opts.pane ? opts.pane(state) : (state.pasted ? `${BUSY}${MARKER_ROWS}` : BUSY);
     }),
     pasteBuffer: vi.fn(async () => { state.pasted = true; if (opts.windowAfterPaste) writeFileSync(join(instanceDir, "window-id"), opts.windowAfterPaste); return true; }),
@@ -71,6 +77,14 @@ async function steer(opts: Opts = {}) {
   const probe = vi.spyOn(daemon, "probeBlockingDialog").mockResolvedValueOnce(clear).mockResolvedValueOnce(clear)
     .mockResolvedValue(opts.dialogOnVerify ? dialog : clear);
   vi.spyOn(daemon, "hasPositiveDeliveryInput").mockResolvedValue(true);
+  if (opts.afterConfirm !== undefined) {
+    const realConfirm = daemon.confirmSubmitted.bind(daemon);
+    vi.spyOn(daemon, "confirmSubmitted").mockImplementation(async (...args: unknown[]) => {
+      const proof = await realConfirm(...args);
+      state.confirmed = true;
+      return proof;
+    });
+  }
   const confirmed = vi.fn(); daemon.on("message_confirmed", confirmed);
   const meta = {
     delivery_id: row.deliveryId, delivery_attempt: String(claimed.attemptNo), from_instance: "source", correlation_id: "c",
@@ -143,6 +157,28 @@ describe("a steer into a busy pane of a CLI whose input row is unreadable", () =
 
   it("is NOT delivered when the window changed after the paste", async () => {
     const r = await steer({ windowAfterPaste: "@someone-else" });
+    expect(r.delivery.state).toBe("uncertain");
+    expect(r.attempt.evidence).toBe("best-effort-submission:unverified");
+    r.outbox.close();
+  });
+
+  it("is NOT delivered when the pre-paste baseline could not be read — an unreadable 'before' is not a count of zero", async () => {
+    const r = await steer({ failFirstCaptures: 3 });            // capturePaneEvidence gives up after three failed reads and returns null
+    expect(r.delivery.state).toBe("uncertain");
+    expect(r.attempt.evidence).toBe("best-effort-submission:unverified");
+    expect(r.tmux.pasteBuffer).toHaveBeenCalledOnce();           // and it is not pasted again
+    r.outbox.close();
+  });
+
+  it("…while a baseline of zero (readable, no marker yet) is the success control", async () => {
+    const r = await steer({ failFirstCaptures: 2 });            // two failed reads, the third succeeds: a real baseline of 0
+    expect(r.delivery.state).toBe("delivered");
+    r.outbox.close();
+  });
+
+  it("the acceptance check reads its OWN fresh capture: the trusted marker on the confirmation's picture does not vouch for a later one", async () => {
+    // baseline 0 → confirmSubmitted sees the trusted id (unverifiable) → the helper's next capture holds only ANOTHER id
+    const r = await steer({ afterConfirm: `${BUSY}\n❯ [STEERING]\n(message_id: some-other-id)` });
     expect(r.delivery.state).toBe("uncertain");
     expect(r.attempt.evidence).toBe("best-effort-submission:unverified");
     r.outbox.close();
