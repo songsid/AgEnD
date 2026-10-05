@@ -368,7 +368,7 @@ describe("a signed-in browser", () => {
     const h2 = await startFleet();
     const c = await signIn(h2);
     const spare = h2.fm.issueDashboardLogin()!;
-    expect(h2.fm.revokeWebSessions()).toBe(1);
+    expect(h2.fm.revokeWebSessions()).toEqual({ count: 1, durable: true });
     expect((await raw(h2.port, "GET", "/ui", { cookie: c.cookie })).status).toBe(401);
     // The unused code went with them.
     expect((await login(h2, spare.display)).status).toBe(401);
@@ -493,6 +493,85 @@ describe("the pages themselves", () => {
     expect(js).toContain("(ui|view|settings)");
     expect(js).toContain('searchParams.delete("token")');
   });
+});
+
+describe("a revocation that could not be saved is reported as a failure, never as done", () => {
+  /** Make the store unable to replace OR remove its file — the case where a restart could revive a revoked session. */
+  function breakDisk(h: Harness): void {
+    const store = (h.fm as unknown as { webSessions: { ops: Record<string, unknown> } }).webSessions;
+    store.ops.renameSync = () => { throw Object.assign(new Error("EACCES"), { code: "EACCES" }); };
+    store.ops.unlinkSync = () => { throw Object.assign(new Error("EACCES"), { code: "EACCES" }); };
+  }
+
+  it("logout, revoke-one and revoke-all answer 500 with the reason (cookie still cleared); with a working disk they answer 200", async () => {
+    const h = await startFleet();
+    const a = await signIn(h), b = await signIn(h), c = await signIn(h);
+    const handleOf = async (s: { cookie: string }) => JSON.parse((await raw(h.port, "GET", "/auth/session", { cookie: s.cookie })).body).handle as string;
+    const bHandle = await handleOf(b);
+    breakDisk(h);
+
+    const one = await raw(h.port, "DELETE", `/auth/sessions/${bHandle}`, write(h, a));
+    expect(one.status).toBe(500);
+    expect(JSON.parse(one.body)).toMatchObject({ ok: false, durable: false });
+    expect(JSON.parse(one.body).error).toMatch(/restart may bring/);
+
+    const out = await raw(h.port, "POST", "/auth/logout", write(h, c));
+    expect(out.status).toBe(500);
+    expect(String(out.headers["set-cookie"])).toContain("Max-Age=0");
+
+    const all = await raw(h.port, "DELETE", "/auth/sessions", write(h, a));
+    expect(all.status).toBe(500);
+    expect(JSON.parse(all.body).error).toMatch(/could not be saved/);
+    await stop(h.fm);
+
+    // The control: a disk that works says ok.
+    const g = await startFleet();
+    const x = await signIn(g), y = await signIn(g);
+    expect((await raw(g.port, "DELETE", `/auth/sessions/${await (async () => JSON.parse((await raw(g.port, "GET", "/auth/session", { cookie: y.cookie })).body).handle)()}`, write(g, x))).status).toBe(200);
+    expect((await raw(g.port, "POST", "/auth/logout", write(g, x))).status).toBe(200);
+    await stop(g.fm);
+  }, 30_000);
+
+  it("/dashboard revoke in chat says the revocation was not saved, instead of reporting success", async () => {
+    const h = await startFleet();
+    await signIn(h);
+    breakDisk(h);
+    const sent: string[] = [];
+    const fm = h.fm as unknown as Record<string, any>;
+    fm.hasFleetAdmins = () => true;
+    fm.isFleetAdmin = () => true;
+    const tc = fm.topicCommands;
+    tc.getReplyAdapter = () => ({ sendText: async (_chat: string, text: string) => { sent.push(text); return { messageId: "m", chatId: "c" }; } });
+    await tc.handleDashboardCommand({ text: "/dashboard revoke", chatId: "c", userId: "admin", adapterId: "tg", source: "telegram" });
+    const { t } = await import("../src/locale.js");
+    expect(sent).toEqual([t("dashboard.revoked_not_durable", 1)]);
+    expect(sent[0]).toMatch(/could NOT be saved/);
+    expect(sent[0]).not.toBe(t("dashboard.revoked", 1));
+    await stop(h.fm);
+  }, 20_000);
+});
+
+describe("web-token rotate withdraws an unused sign-in code", () => {
+  it("a code issued before a rotation (even by another process: the token file is rewritten) no longer signs in; a new one does", async () => {
+    const h = await startFleet();
+    const old = h.fm.issueDashboardLogin()!.display;
+    rotateWebToken(h.dir);                    // what `agend web-token rotate` does from another process
+    const refused = await login(h, old);
+    expect(refused.status).toBe(401);
+    expect(refused.headers["set-cookie"]).toBeUndefined();
+    const fresh = h.fm.issueDashboardLogin()!.display;
+    expect((await login(h, fresh)).status).toBe(200);
+    await stop(h.fm);
+  }, 20_000);
+
+  it("the same applies to a code asked for with the header token", async () => {
+    const h = await startFleet();
+    const token = h.fm.getDashboardAccess().token!;
+    const issued = JSON.parse((await raw(h.port, "POST", "/auth/issue-code", { "x-agend-token": token })).body).code as string;
+    rotateWebToken(h.dir);
+    expect((await login(h, issued)).status).toBe(401);
+    await stop(h.fm);
+  }, 20_000);
 });
 
 describe("signin.js, run against a fake page", () => {

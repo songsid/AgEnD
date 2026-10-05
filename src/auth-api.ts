@@ -151,7 +151,7 @@ export function handleAuthRequest(
     const codes = ctx.webLoginCodes;
     void readJsonBody(req).then(body => {
       if (!body || typeof body.code !== "string") { json(res, 400, { error: "expected {\"code\": \"XXXX-XXXX\"}" }); return; }
-      const result = codes.redeem(body.code);
+      const result = codes.redeem(body.code, tokenEpoch(token));
       if (result.kind === "paused") {
         json(res, 429, { error: LOGIN_PAUSED_MESSAGE }, { "Retry-After": String(Math.ceil(result.retryAfterMs / 1000)) });
         return;
@@ -185,7 +185,7 @@ export function handleAuthRequest(
       json(res, 401, { error: "X-Agend-Token required" });
       return true;
     }
-    const issued = ctx.webLoginCodes.issue({ tier: "admin" });
+    const issued = ctx.webLoginCodes.issue({ tier: "admin", epoch: tokenEpoch(token) });
     ctx.logger.info({ source: "cli" }, "Web login code issued");
     json(res, 200, { code: issued.display, expiresAt: issued.expiresAt });
     return true;
@@ -217,7 +217,8 @@ export function handleAuthRequest(
     }
 
     if (path === "/auth/logout" && method === "POST") {
-      sessions.revokeById(sessionId);
+      const { durable } = sessions.revokeById(sessionId);
+      if (!durable) return notDurable(res, ctx, { handle: session.handle }, "Web sign-out not saved");
       ctx.logger.info({ handle: session.handle }, "Web sign-out");
       json(res, 200, { ok: true }, { "Set-Cookie": buildClearedSessionCookies() });
       return true;
@@ -229,7 +230,8 @@ export function handleAuthRequest(
     }
 
     if (path === "/auth/sessions" && method === "DELETE") {
-      const count = sessions.revokeAll();
+      const { count, durable } = sessions.revokeAll();
+      if (!durable) return notDurable(res, ctx, { count }, "Web sessions revoked in memory only");
       ctx.logger.info({ count }, "Web sessions revoked (all)");
       json(res, 200, { ok: true, revoked: count }, { "Set-Cookie": buildClearedSessionCookies() });
       return true;
@@ -238,7 +240,9 @@ export function handleAuthRequest(
     if (path.startsWith("/auth/sessions/") && method === "DELETE") {
       const handle = path.slice("/auth/sessions/".length);
       const wasCurrent = handle === session.handle;
-      if (!sessions.revokeByHandle(handle)) { json(res, 404, { error: "no such session" }); return true; }
+      const { found, durable } = sessions.revokeByHandle(handle);
+      if (!found) { json(res, 404, { error: "no such session" }); return true; }
+      if (!durable) return notDurable(res, ctx, { handle }, "Web session revoked in memory only", wasCurrent);
       ctx.logger.info({ handle }, "Web session revoked");
       json(res, 200, { ok: true, current: wasCurrent }, wasCurrent ? { "Set-Cookie": buildClearedSessionCookies() } : {});
       return true;
@@ -249,5 +253,19 @@ export function handleAuthRequest(
   }
 
   json(res, 404, { error: "not found" });
+  return true;
+}
+
+export const REVOCATION_NOT_DURABLE_MESSAGE =
+  "Signed out for now, but the change could not be saved: the session file could not be updated or removed, so a fleet restart may bring the session back. Fix the permissions on ~/.agend/web-sessions.json and sign out again, or rotate the token (agend web-token rotate).";
+
+/**
+ * A revocation that holds only in memory is reported as a failure (500), never as "ok": the browser is
+ * still told to drop its cookie (it is signed out here), but whoever asked must not believe a session is
+ * dead that the next start revives.
+ */
+function notDurable(res: ServerResponse, ctx: { logger: Logger }, detail: Record<string, unknown>, msg: string, clearCookie = true): true {
+  ctx.logger.warn({ ...detail, durable: false }, msg);
+  json(res, 500, { ok: false, durable: false, error: REVOCATION_NOT_DURABLE_MESSAGE }, clearCookie ? { "Set-Cookie": buildClearedSessionCookies() } : {});
   return true;
 }
