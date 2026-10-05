@@ -159,6 +159,7 @@ describe("WebChatHistory", () => {
     const h = new WebChatHistory({ perInstance: 3, perInstanceChars: 10 });
     for (const t of ["a", "b", "c", "d"]) h.record(msg("x", t));
     expect(h.list("x").map(m => m.text)).toEqual(["b", "c", "d"]);
+    expect(h.after(0).filter(m => m.instance === "x").map(m => m.text), "the oldest is really gone, not just hidden by list()").toEqual(["b", "c", "d"]);
     h.record(msg("y", "12345")); h.record(msg("y", "67890")); h.record(msg("y", "!"));
     expect(h.list("y").map(m => m.text)).toEqual(["67890", "!"]);
     const big = new WebChatHistory({ perInstanceChars: 3 });

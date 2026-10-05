@@ -74,10 +74,10 @@ export class WebChatHistory {
 
   /**
    * Every message newer than `lastId`, across instances, oldest first, at most `replayMax` (the newest ones).
-   * An id from before a fleet restart (larger than anything handed out since) gets nothing: the ids restarted.
+   * An id from before a fleet restart that is larger than anything handed out since matches nothing.
    */
   after(lastId: number): WebChatMessage[] {
-    if (!Number.isFinite(lastId) || lastId < 0 || lastId >= this.nextId) return [];
+    if (!Number.isFinite(lastId) || lastId < 0) return [];
     const out: WebChatMessage[] = [];
     for (const slot of this.byInstance.values()) {
       for (const m of slot.messages) if (m.id > lastId) out.push(m);
