@@ -77,6 +77,7 @@
 
 ### 修正 (Fixed)
 - **Telegram ClassicBot 的 `/start` 回覆改成請你 @bot 對話（#1196）。** 「Agent 已啟動」與「已有活動中的 Agent」原本以 `/chat` 開頭，那是 Discord 的用法；在 Telegram 上是 @ClassicBot 來對話，回覆現在照實說。Discord 的回覆不變，送到 agent 的內容也不變。
+- **送進忙碌中 Claude / Grok / Muse instance 的 steer 現在是 `delivered`，不再是 `uncertain`（#1197）。** 這些 CLI 沒有可讀的輸入列，而證明一般送出的「閒置→忙碌」邊緣在本來就忙碌的 pane 上不可能出現，所以每個 durable steer 都落在 `uncertain`——操作者看到 ⚠️、寄件者收到 `[system:delivery-outcome]`，但 steer 其實已送達（不是 IPC 逾時：`send_to_instance` 立刻回傳，沒有任何東西在等）。現在 steer 只要在那一次 Enter 之後，pane 上出現它自己可信的 `message_id`（次數多於貼上前）、沒有對話框、spawn 與視窗都沒變，就是 `delivered`，證據為 `steer-accepted-marker-on-pane; input-row-unreadable`：已進入進行中回合的輸入，不代表模型已讀（`delivery_status` 本來就顯示 `delivery_mode: steer`）。證據不足仍是 `uncertain`。另外：steer 的橫幅現在放在 delivery marker 之後而不是之前，重啟後可以從 CLI transcript 證明 steer。
 - **Codex 長時間執行、畫面沒有新內容的回合，不再被誤判為卡住（#1188）。** 即時狀態列自己的經過時間計數（`• Working (5m 51s • esc to interrupt)`）現在算作存活證明：只要計數自上次檢查後有前進，不論畫面其他部分多久沒變，該回合都維持「工作中」。以前 10 分鐘卡住判斷會把「畫面變了」蓋上最後一次輸出事件的時間——已經是幾分鐘前——於是健康的長回合被標成卡住（hang 通知，接著重啟嘗試，而原本的 process 其實還活著、重啟「逾時」）。計數整個 stuck 逾時都停住的畫面仍會被判為卡住。另外：daemon 的「最後變動」時間不會倒退，卡住 deadline 改依最近的存活跡象，不會立刻重複觸發。
 - **#978 閒置逃生閥不再把被引用的「esc to interrupt」當成正在執行（#991）。** 它現在和 daemon 其他地方用同一個精準的即時狀態列比對（任何標題、整行、行首）：真的狀態列仍會擋住，縮排引用或回覆文字中提到則不會。
 - **反覆當機後，重新啟動現在會遵循「不要續接」的復原指示（#835）。**
