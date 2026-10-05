@@ -7,7 +7,7 @@ description: 住在 Discord 和 Telegram 裡的 AI 個人助理，實際上被�
 
 在聊天室下一句話，你的助理就會在自己的電腦上動手做事，做完回報給你。助理可以不只一個：每個專案一個，彼此還能互相委派、回報。卡住會告警，掛掉會自己恢復。你只要看結論、做決策。
 
-而且它用的是你**已經有的 AI 訂閱**：Claude Code、Codex、Kiro、Muse、Antigravity（Gemini）、Grok、OpenCode。CLI 怎麼登入，AgEnD 就沿用；不必為了 AgEnD 改用另一套模型 API。
+而且它用的是你**已經有的 AI 訂閱**：Claude Code、Codex、Kiro、Muse、Antigravity、Grok、OpenCode。CLI 怎麼登入，AgEnD 就沿用；不必為了 AgEnD 改用另一套模型 API。
 
 > 本頁案例取自實際運作中的 fleet，已去識別化。
 

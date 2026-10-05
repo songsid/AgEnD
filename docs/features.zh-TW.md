@@ -258,9 +258,21 @@ defaults:
       events: ["*"]
 ```
 
-## Discord 轉接器 (Discord adapter (MVP))
+## Discord 轉接器 (Discord adapter)
 
 將您的 fleet 連接到 Discord 而非（或同時連接）Telegram。
+
+### 支援的功能
+
+- **Topic 模式**：每個 instance 對應「AgEnD Agents」分類（可用 `options.category_name` 改名）下的一個文字頻道，另有 General 頻道。
+- **ClassicBot**：在任何文字頻道打 `/start` 就變成 agent 頻道，`/stop` 移除。`/start` 後預設開啟 collab 模式，只有 @ 這個 bot 才會觸發 agent。
+- **同一個伺服器放多個 bot**：每個 bot 是 `channels[]` 裡獨立的一項；bot 只回應 @ 自己的訊息，不會替別的 bot 回答。
+- **斜線指令**：約 30 個，包括 `/chat`、`/steer`、`/btw`、`/cancel`、`/ctx`、`/compact`、`/model`、`/effort`、`/dashboard`、`/usage`；限管理員的指令有標示。
+- **按鈕與選單**：權限核准（Allow / Always / Deny）、backend 選單、取消，以及 hang / model / effort 選擇器。
+- **Reaction**：別人對 bot 訊息按的 reaction（包括其他 bot）會轉給 agent；送達狀態戳記可依 instance 或頻道設定；persona emoji 可以用伺服器自訂 emoji。
+- **附件**：圖片、檔案、音訊都會下載；轉傳的訊息會帶上圖片；回覆圖片時會附上被回覆的那張圖。
+- **長訊息**依 2000 字切分，不會把 code block 切斷；斜線指令的長回覆改用 embed。
+- **穩定性**：gateway watchdog 會重新連上停滯的連線，共用的送訊佇列遇到 rate limit 會自動退避。
 
 ### 設定步驟
 
@@ -427,7 +439,6 @@ AgEnD 不寫入任何 Codex state，也不搬移 session 檔；session 與 lock 
 
 - Claude Code → `CLAUDE.md`
 - Codex → `AGENTS.md`
-- Gemini CLI（已停用）→ `GEMINI.md`
 - Kiro CLI → `.kiro/steering/project.md`
 - OpenCode → 直接使用 MCP instructions
 

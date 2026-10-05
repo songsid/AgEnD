@@ -388,9 +388,21 @@ defaults:
       events: ["*"]
 ```
 
-## Discord adapter (MVP)
+## Discord adapter
 
 Connect your fleet to Discord instead of (or alongside) Telegram.
+
+### What it supports
+
+- **Topic mode**: one text channel per instance under an "AgEnD Agents" category (rename with `options.category_name`), plus a General channel.
+- **ClassicBot**: `/start` in any text channel turns it into an agent channel; `/stop` removes it. Collab mode (on by default after `/start`) triggers the agent only when the bot is @-mentioned.
+- **Several bots in one server**: each bot is its own `channels[]` entry; a bot answers only messages that mention it and never answers for another bot.
+- **Slash commands**: about 30, including `/chat`, `/steer`, `/btw`, `/cancel`, `/ctx`, `/compact`, `/model`, `/effort`, `/dashboard`, `/usage`; admin-only ones are marked.
+- **Buttons and menus**: permission approval (Allow / Always / Deny), backend picker, cancel, and hang / model / effort pickers.
+- **Reactions**: reactions on the bot's messages (including other bots') reach the agent; delivery-status stamps are configurable per instance or channel; persona emoji can use server emoji.
+- **Attachments**: images, files and audio are downloaded; forwarded messages keep their images; replying to an image includes it.
+- **Long messages** are split at 2000 characters without breaking code fences; long slash-command replies use embeds.
+- **Resilience**: a gateway watchdog reconnects a stale connection, and the shared send queue backs off on rate limits.
 
 ### Setup
 
@@ -557,7 +569,6 @@ When auto-creating the General topic instance, AgEnD writes the correct instruct
 
 - Claude Code → `CLAUDE.md`
 - Codex → `AGENTS.md`
-- Gemini CLI (deprecated) → `GEMINI.md`
 - Kiro CLI → `.kiro/steering/project.md`
 - OpenCode → uses MCP instructions directly
 
@@ -583,7 +594,6 @@ Fleet instructions are injected additively — they don't override the CLI's bui
 
 - Claude Code: `--append-system-prompt-file`
 - Kiro CLI: `.kiro/steering/` directory
-- Gemini CLI (deprecated): `GEMINI.md` in working directory
 - Codex: `AGENTS.md` in working directory
 - OpenCode: MCP instructions
 

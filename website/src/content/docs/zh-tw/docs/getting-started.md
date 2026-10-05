@@ -55,8 +55,6 @@ AgEnD 是驅動你本來就在用的 CLI。先裝一個並登入，再跑設定�
 agend backend doctor claude-code
 ```
 
-Gemini CLI 還能跑，但 2026-06-18 起已棄用，請改用 Antigravity CLI。
-
 ## 設定
 
 ```bash

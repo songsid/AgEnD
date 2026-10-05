@@ -6,7 +6,7 @@
 
 Send one message in chat and your assistant gets to work on your own machine, then reports back. You can have more than one: one per project, and they delegate to and report to each other. When one gets stuck you get an alert; when one crashes it recovers on its own. You read the results and make the calls.
 
-It runs on the **AI subscriptions you already have**: Claude Code, Codex, Kiro, Muse, Antigravity (Gemini), Grok, OpenCode. However each CLI logs in, AgEnD reuses that. You don't switch to a separate model API just to use AgEnD.
+It runs on the **AI subscriptions you already have**: Claude Code, Codex, Kiro, Muse, Antigravity, Grok, OpenCode. However each CLI logs in, AgEnD reuses that. You don't switch to a separate model API just to use AgEnD.
 
 > The examples on this page come from a fleet in daily use, with identifying details removed.
 

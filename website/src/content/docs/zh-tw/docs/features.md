@@ -162,7 +162,6 @@ teams:
 | Grok Build | 需要 Grok CLI 1.0.13 以上（`grok update`） |
 | Meta Muse Code | Escape 是取消；Ctrl+C 是離開 |
 | OpenCode | |
-| Gemini CLI | 2026-06-18 起已棄用 |
 
 OpenCode 和 Kiro CLI 不讀 MCP server 的 `instructions` 欄位，所以 fleet context 和 workflow template 不會被注入它們的 system prompt。這是上游的限制。
 
