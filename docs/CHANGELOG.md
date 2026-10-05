@@ -19,6 +19,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   came, the "keep going" nudge never armed, and the turn just ended in the generic missing-reply path. Any one status symbol (`■`, `⚠`,
   `⚠️`, …) may now open the line; a bullet, dash, quote marker or number still may not, and the sentence must still be the whole line
   from column 0, so prose that mentions model capacity triggers nothing. Detection only — what happens after a match is unchanged.
+- **An idle delivery to a Claude / Grok / Muse instance is no longer recorded `delivered` just because the pane printed something (#758).**
+  Those CLIs have no readable input row, so an ordinary submission was confirmed by any output after Enter — which a redraw that
+  wiped the paste produces too, and the outbox said `delivered` for a message that never arrived. The ✅ is unchanged, but the
+  row is now finished by the CLI's own transcript: the delivery's marker found → `delivered` (`transcript-marker`, or
+  `transcript-marker-queued` when the CLI holds it queued); the transcript read on the last look for a whole 60 s and the marker
+  still absent → `uncertain` (`unverifiable-no-transcript-marker`, so a ⚠️ and a `[system:delivery-outcome]`; nothing is re-pasted,
+  the message may still land); transcript unreadable, or a backend with none (Grok, Muse, Gemini, …) → today's `delivered`,
+  labelled `output-edge-only; submission-unverifiable`. Steer, native-queue, Codex, Kiro and raw pastes are untouched.
 
 ### Security
 - **Discord slash commands now follow one command table (#1148).** Where a command applies and who may use it is
