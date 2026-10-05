@@ -70,6 +70,13 @@
 - **[行為變更] dashboard 現在會拒絕 `Host` 不認得的請求。** health/dashboard server 雖然只綁 127.0.0.1，但這擋不住 DNS rebinding：網頁可以把自己的網域解析到 127.0.0.1，再用 script 讀取不需要 cookie 的路由，包含 `/view` 的即時終端畫面（`/api/pane/*`）。這種網頁唯一改不了的是瀏覽器送出的 `Host`，所以所有路由（含 `/health`、`/agent`）現在只有在 `Host` 是 `localhost`、`127.0.0.1`、`[::1]`、fleet 的 `hostname:`，或新增的 `web.allowed_hosts` 列出的名稱時才回應，其餘一律 403（不比對 port）。**如果你是透過反向代理或 port forward、且它呈現的是別的名稱，請把該名稱加進 `web.allowed_hosts`**；每個被拒的名稱第一次出現時，`fleet.log` 會記一行並附上這個提示。CLI、`agend web`、`/dashboard` 與內部呼叫都用 loopback 名稱，不受影響。
 
 ### 新增 (Added)
+- **ClassicBot 頻道可以跑在第二組訂閱上（#1220）。** `classicBot.yaml` 的頻道現在接受 `backend_options.<backend>.credential_profile`，
+  跟 `fleet.yaml` instance 一樣——例如讓 classic codex bot 用 `credential_profile: personal`。該頻道的 agent 會用那個 profile 啟動，
+  `get_usage` / `/usage` 把它算在那組訂閱的列（`Codex (personal)`），`kiro_engine_status` 也會顯示。以前這個設定會被靜默丟掉，
+  每個 classic 頻道都被算在共用登入上。空值或 `null` 表示共用登入（即使 fleet defaults 有設 profile 也一樣）；AgEnD 無法使用的 profile 名稱
+  會讓該頻道的 agent 不啟動，而不是改用其他登入跑。只有 `codex` 與 `kiro-cli` 支援 profile，其他 backend 會提出警告並忽略。
+  不論在 `classicBot.yaml` 或它繼承的 fleet defaults 改了 profile（下次輪詢或 reload 時），都會重啟該頻道的 agent——kiro 會開新對話
+  （另一組訂閱有另一套對話），跟 fleet instance 相同。
 - **CLI 對話框不理會 AgEnD 的自動回答時，現在約 15 秒內就會通報，所有 backend 都適用。** AgEnD 回答執行期對話框（權限提示、信任提示、選單）的方式是按它的鍵；若按完鍵後**同一個**對話框（逐字完全相同的請求——OpenCode 由 prompt 區塊辨識請求，所以周圍跳動的狀態列不影響；其他 CLI 比對整個畫面；任何無法解釋的差異都不算證據）仍在畫面上，連續三次，就對該 instance 的 topic 與 fleet 通報一次（「不接受 AgEnD 的自動回答……請手動回答」，若同時保留了投遞會註明）。以前會保留投遞的對話框要等一分鐘才通報，不保留投遞的（kiro trust、muse/grok 工具核准、agy 問卷）則完全不通報、只是每 5 秒重答一次直到永遠。通知只含對話框的固定描述和次數，絕不含 pane 內容，且每個「事件」只發一次（對話框消失後又有新的忽略才會再發）。被回答後又出現的新提示（連續的工具提示，或下一個內容不同的排隊請求）不算卡住，也會重置一分鐘的 parked 計時，而不是沿用舊的。限制：兩個長得完全一樣、前後相接的請求，光看畫面無法區分，會被當成「回答被忽略」；CLI 無法指認請求、畫面又自己在變（例如跳動的計時器）時，兩個方向都不構成證據：這項檢查不通報，而會保留投遞的對話框原有的一分鐘 parked 通報照常計時（只有對話框消失、或 CLI 明確指出是不同請求，才會重設該計時）。通報之後 AgEnD 不會停止回答：同一個請求只會每 30 秒回答一次（原本每 5 秒）——長得像的排隊請求仍會逐一被回答，只是變慢；真的被忽略的對話框則被按得少很多；不同的請求、對話框消失或 instance 重生就恢復正常速度並重新計數。
 - **kiro-cli 無法再執行某個 kiro instance 時，General 會收到通知。** 已安裝的 kiro-cli 拒絕照設定執行 kiro instance（#1109）時 —— 不論是啟動時，或 kiro-cli 自我更新後的 respawn —— 每個 General 現在都會以 agent 身分收到 `[system:kiro-incompat]`：哪些 instance 停了、kiro 的原因、它們的對話都還在，並請它載入新的 `kiro-engine-migration` skill。ClassicBot 的 kiro instance 也算在內。這則通知會在 delivery outbox 保存最多 14 天，直到每個 General 收下為止（同一個 kiro-cli 可能也讓 General 停了；一般訊息維持 24 小時），同一種拒絕每天只送一次。給操作者的純文字通知不變。
 - **`kiro_engine_status` 工具**（唯讀；worker、standard、general profile 皆可用）：每個 kiro instance（含 ClassicBot）的 `kiro_ui` 與 credential profile、下次啟動會用的 engine 參數或 kiro 拒絕的原因、AgEnD 為它準備過的啟動（每次變更的 kiro-cli 與 AgEnD 版本，取自 engine 帳本），以及它的 V3 session。它不會執行任何程序：只讀取上一次 kiro 啟動時探測到的 kiro-cli 相容資訊，並註明是何時探測的。

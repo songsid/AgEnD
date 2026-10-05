@@ -23,6 +23,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { getAgendHome } from "../paths.js";
 import { loadFleetConfig } from "../config.js";
+import { classicProfile, profileName, readClassicBindings, type ClassicBinding } from "../classic-bindings.js";
 import {
   credentialHomeSpec,
   credentialProfileStoreHome,
@@ -1324,10 +1325,10 @@ export function providersForConfig(
     // source only when an effective binding actually uses it; active-provider
     // filtering then removes sources that are stopped or otherwise unused.
     const rows: UsageProvider[] = [];
-    // Classic channels are stored separately from fleet.yaml and always use
-    // the shared Codex login today.  Keep the shared Codex row available so
-    // active-provider filtering can retain that binding; unlike filesystem
-    // scanning this row is harmless when no classic/shared instance is live.
+    // Keep the shared Codex row available so active-provider filtering can
+    // retain a shared binding the config cannot see (a classic channel added
+    // since this config was read); unlike filesystem scanning this row is
+    // harmless when no shared instance is live.
     if (provider.id === "codex" || hasEffectiveSharedBinding(config, backendName)) {
       rows.push({
         id: provider.id,
@@ -1363,7 +1364,7 @@ function hasEffectiveSharedBinding(config: UsageFleetConfig, backendName: string
     const backend = instance.backend ?? defaults?.backend;
     if (backend !== backendName) continue;
     sawEffectiveBinding = true;
-    if (!instanceCredentialProfile(instance, defaults, backendName)) return true;
+    if (!bindingProfile(instance, defaults, backendName)) return true;
   }
 
   // A defaults-only fleet has one effective shared binding when the default
@@ -1384,7 +1385,7 @@ function effectiveCredentialProfiles(config: UsageFleetConfig, backendName: stri
   for (const instance of Object.values(config.instances ?? {})) {
     const backend = instance.backend ?? defaults?.backend;
     if (backend !== backendName) continue;
-    const profile = instanceCredentialProfile(instance, defaults, backendName);
+    const profile = bindingProfile(instance, defaults, backendName);
     if (profile) found.add(profile);
   }
   if (Object.keys(config.instances ?? {}).length === 0 && defaults?.backend === backendName) {
@@ -1403,10 +1404,42 @@ function effectiveCredentialProfiles(config: UsageFleetConfig, backendName: stri
  */
 function readFleetConfigForUsage(): Parameters<typeof listConfiguredProfiles>[0] {
   try {
-    return loadFleetConfig(join(getAgendHome(), "fleet.yaml"));
+    return withClassicBindings(loadFleetConfig(join(getAgendHome(), "fleet.yaml")), readClassicBindings(getAgendHome()));
   } catch {
     return null;
   }
+}
+
+/**
+ * ClassicBot channels are bindings too (#1220): a channel on a credential
+ * profile needs that subscription's row, and one on the shared login keeps the
+ * shared row. They join the config this module reads as extra instances, under
+ * keys no fleet instance can have, carrying the login already resolved by the
+ * one classic contract (classic-bindings.ts) — an explicit "" over an inherited
+ * profile stays the shared login here as at launch. A channel whose setting is
+ * invalid cannot start, so it binds no subscription at all.
+ */
+export function withClassicBindings<T extends Parameters<typeof listConfiguredProfiles>[0]>(config: T, classic: ClassicBinding[]): T {
+  if (!config || classic.length === 0) return config;
+  const instances: Record<string, UsageInstance> = { ...(config.instances ?? {}) };
+  for (const channel of classic) {
+    const backend = channel.backend ?? config.defaults?.backend ?? "claude-code";
+    const profile = classicProfile(channel.backend_options, config.defaults?.backend_options, backend);
+    if (profile.state === "invalid") continue;
+    instances[`classic:${channel.key}`] = { backend, classicProfile: profileName(profile) };
+  }
+  return { ...config, instances };
+}
+
+type UsageInstance = { backend?: string; backend_options?: Record<string, Record<string, unknown>>; classicProfile?: string | null };
+
+/** A binding's profile: a classic channel's is already resolved; a fleet instance inherits as always. */
+function bindingProfile(
+  instance: UsageInstance,
+  defaults: { backend_options?: Record<string, Record<string, unknown>> } | undefined,
+  backendName: string,
+): string | null {
+  return instance.classicProfile !== undefined ? instance.classicProfile : instanceCredentialProfile(instance, defaults, backendName);
 }
 
 /** The backend a usage row reads its credentials from. */
