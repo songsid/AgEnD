@@ -283,6 +283,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `cloudflared` on `PATH`. See "Finishing a /login away from the machine" in `docs/configuration.md`.
 
 ### Fixed
+- **Telegram ClassicBot's `/start` reply says to @mention the bot (#1196).** "Agent started" and "already has an active
+  agent" led with `/chat`, the Discord way; on Telegram you talk to a ClassicBot by @mentioning it, and the reply now
+  says so. Discord's replies are unchanged, and so is what reaches the agent.
 - **A Codex turn that runs long with nothing new on screen is no longer declared stuck (#1188).** The live status row's
   own elapsed counter (`• Working (5m 51s • esc to interrupt)`) now counts as proof of life: a counter that moved since
   the last look keeps the turn "working", however long the rest of the pane stayed the same. Before, the 10-minute

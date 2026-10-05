@@ -12947,6 +12947,15 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     } catch { return undefined; }
   }
 
+  /**
+   * The ClassicBot /start replies say how to talk to the agent, and that differs by platform (#1196): on Telegram
+   * you @mention the bot; on Discord, @mention or `/chat`. The chat's platform is the adapter it came through.
+   */
+  private classicStartKey(key: "classic.started" | "classic.already_active", adapterId?: string): string {
+    const adapter = (adapterId ? this.worlds.get(adapterId)?.adapter : undefined) ?? this.adapter;
+    return adapter?.type === "telegram" ? `${key}.telegram` : key;
+  }
+
   /** Return a user-facing blocker without mutating ClassicBot state. */
   private validateClassicStart(channelId: string, userId: string, guildId?: string, adapterId?: string): string | undefined {
     if (!this.classicChannels) return t("classic.manager_unavailable");
@@ -12966,7 +12975,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       }
       return t("classic.not_authorized_guild");
     }
-    if (this.classicChannels.isClassicChannel(channelId, adapterId)) return t("classic.already_active");
+    if (this.classicChannels.isClassicChannel(channelId, adapterId)) return t(this.classicStartKey("classic.already_active", adapterId));
     if (this.routing.resolve(channelId)) return t("classic.topic_bound");
     return undefined;
   }
@@ -13187,7 +13196,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       classicChannels.toggleCollab(channelId, adapterId);
     }
     this.logger.info({ channelId, adapterId, instanceName, userId }, "Classic channel started");
-    return t("classic.started");
+    return t(this.classicStartKey("classic.started", adapterId));
   }
 
   /** Handle /stop slash command — unregister classic channel */
