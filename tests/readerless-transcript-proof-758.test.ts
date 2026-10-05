@@ -55,6 +55,8 @@ interface Opts {
   /** Rows already in the transcript before the paste (the checkpoint sits after them). */
   transcriptBefore?: (id: string) => string;
   noTranscript?: boolean;
+  /** Deliver via steerMessage (a steer into the ready pane) instead of the queued path. */
+  steer?: boolean;
 }
 
 async function deliver(opts: Opts = {}) {
@@ -104,13 +106,16 @@ async function deliver(opts: Opts = {}) {
   vi.spyOn(daemon, "hasPositiveDeliveryInput").mockResolvedValue(true);
   const confirmed = vi.fn();
   daemon.on("message_confirmed", confirmed);
+  const inboundMeta = {
+    delivery_id: row.deliveryId, delivery_attempt: String(claimed.attemptNo), from_instance: "source", correlation_id: "c",
+    user: "instance:source", user_id: "instance:source", message_id: "message-758", chat_id: "chat", thread_id: "", ts: new Date().toISOString(),
+  };
   if (opts.raw) {
     daemon.queueRawPaste("/compact", daemon.deliveryEpoch, false, { deliveryId: row.deliveryId, attemptNo: claimed.attemptNo, submissionMode: "raw_paste" });
+  } else if (opts.steer) {
+    daemon.steerMessage("hello", inboundMeta);
   } else {
-    daemon.pushChannelMessage("hello", {
-      delivery_id: row.deliveryId, delivery_attempt: String(claimed.attemptNo), from_instance: "source", correlation_id: "c",
-      user: "instance:source", user_id: "instance:source", message_id: "message-758", chat_id: "chat", thread_id: "", ts: new Date().toISOString(),
-    });
+    daemon.pushChannelMessage("hello", inboundMeta);
   }
   const state = () => outbox.get(row.deliveryId)?.state;
   const evidence = (): string | null => ((outbox as any).db.prepare("SELECT evidence FROM delivery_attempts WHERE delivery_id=?").get(row.deliveryId) as any)?.evidence ?? null;
@@ -125,14 +130,17 @@ async function deliver(opts: Opts = {}) {
   /** The durable begin has committed — the transcript checkpoint was taken a moment before it. */
   const begun = async () => { await pump(40, () => state() === "submission_started"); };
   const finished = () => !["delivering", "submission_started"].includes(state() ?? "");
-  return { daemon, outbox, tmux, confirmed, transcript, deliveryId: row.deliveryId, state, evidence, pump, finished, begun };
+  const notices = () => ((outbox as any).db.prepare("SELECT COUNT(*) AS n FROM failure_notices").get() as any).n as number;
+  /** A steer runs behind steerLock; pumping advances it the same way. */
+  const settleSteer = () => (daemon as any).steerLock as Promise<unknown>;
+  return { daemon, outbox, tmux, confirmed, transcript, deliveryId: row.deliveryId, state, evidence, pump, finished, begun, notices, settleSteer };
 }
 
 describe("a readerless backend's idle delivery is proven by its transcript, not by the pane printing something (#758)", () => {
   it("the paste was wiped and the pane only redrew: the ✅ stays, but the row is uncertain once the whole window passed without the marker", async () => {
     const h = await deliver();
     await h.begun();
-    await h.pump(30);
+    await h.pump(5);
     expect(h.confirmed).toHaveBeenCalledTimes(1);
     // Mid-window a late flush may still arrive: nothing is held against the delivery yet.
     expect(h.state()).toBe("submission_started");
@@ -154,9 +162,9 @@ describe("a readerless backend's idle delivery is proven by its transcript, not 
 
   it("a flush that lags the pane by seconds still lands as delivered, with no ⚠️", async () => {
     const h = await deliver();
-    await h.pump(20);
-    expect(h.state()).toBe("submission_started");
     await h.begun();
+    await h.pump(3);
+    expect(h.state()).toBe("submission_started");
     appendFileSync(h.transcript, userEntry(h.deliveryId));
     await h.pump(400, h.finished);
     expect(h.state()).toBe("delivered");
@@ -188,6 +196,16 @@ describe("a readerless backend's idle delivery is proven by its transcript, not 
     expect(h.state()).toBe("uncertain");
   });
 
+  it("a marker only before the checkpoint still does not vouch once later turns arrived after it", async () => {
+    const h = await deliver({ transcriptBefore: id => userEntry(id) });
+    await h.begun();
+    // A non-empty delta with no own marker: the scan must still start past the checkpoint, not at zero.
+    appendFileSync(h.transcript, userEntry("00000000-0000-4000-8000-000000000042", "an unrelated later turn"));
+    await h.pump(400, h.finished);
+    expect(h.state()).toBe("uncertain");
+    expect(h.evidence()).toBe("unverifiable-no-transcript-marker");
+  });
+
   it("a transcript that cannot be read (gone, or shorter than the checkpoint) is not held against the delivery", async () => {
     const h = await deliver();
     await h.begun();
@@ -200,7 +218,8 @@ describe("a readerless backend's idle delivery is proven by its transcript, not 
   it("a transcript that stops being readable after a first clean look is judged by its last look", async () => {
     const h = await deliver();
     await h.begun();
-    await h.pump(10);
+    for (let step = 0; step < 60 && lookHooks.done < 2; step++) await h.pump(1);
+    expect(lookHooks.done).toBeGreaterThanOrEqual(2);
     rmSync(h.transcript);
     await h.pump(400, h.finished);
     expect(h.state()).toBe("delivered");
@@ -262,6 +281,70 @@ describe("a readerless backend's idle delivery is proven by its transcript, not 
     expect(h.evidence()).toBe("output-edge-only; submission-unverifiable");
   });
 
+  it("a respawn during the final sleep still ends the wait with today's outcome, not uncertain", async () => {
+    const h = await deliver();
+    await h.begun();
+    // 11 looks (polls 0..10), then the final sleep. Land the epoch trip after the last look's fence check,
+    // while that sleep is still in flight: the row must not settle `uncertain` for a generation that is gone.
+    for (let step = 0; step < 60 && lookHooks.done < 11; step++) await h.pump(1);
+    expect(lookHooks.done).toBe(11);
+    expect(h.state()).toBe("submission_started");
+    h.daemon.spawnGeneration++;
+    await h.pump(400, h.finished);
+    expect(h.state()).toBe("delivered");
+    expect(h.evidence()).toBe("output-edge-only; submission-unverifiable");
+    expect(h.notices()).toBe(0);
+  });
+
+  it("a pause/freeze during the final sleep does the same", async () => {
+    const h = await deliver();
+    await h.begun();
+    for (let step = 0; step < 60 && lookHooks.done < 11; step++) await h.pump(1);
+    expect(lookHooks.done).toBe(11);
+    expect(h.state()).toBe("submission_started");
+    h.daemon.launchFenceEpoch++;
+    await h.pump(400, h.finished);
+    expect(h.state()).toBe("delivered");
+    expect(h.evidence()).toBe("output-edge-only; submission-unverifiable");
+    expect(h.notices()).toBe(0);
+  });
+
+  it("a persistence failure at settlement is logged and leaves the row for reconciliation — no rejection, no false completion, no re-paste", async () => {
+    const h = await deliver();
+    await h.begun();
+    const offset = statSync(h.transcript).size;
+    appendFileSync(h.transcript, userEntry(h.deliveryId));
+    const attemptNo = h.outbox.get(h.deliveryId)!.attemptNo;
+    const errors: unknown[] = [];
+    h.daemon.logger = { info() {}, warn() {}, error(e: unknown) { errors.push(e); }, debug() {}, child() { return this; } } as any;
+    const pastesBefore = h.tmux.pasteBuffer.mock.calls.length;
+    vi.spyOn(h.outbox, "complete").mockImplementation(() => { throw new Error("SQLITE_FULL: database or disk is full"); });
+    vi.useRealTimers();
+    // The detached `void` promise must resolve, never reject: a rejection escapes into an unhandledRejection fault.
+    await expect(h.daemon.proveDeliveryFromTranscript(
+      { deliveryId: h.deliveryId, attemptNo },
+      { backend: "claude-code", path: h.transcript, offset },
+    )).resolves.toBeUndefined();
+    expect(h.state()).toBe("submission_started");
+    expect(h.evidence()).toBeNull();
+    expect(errors).toHaveLength(1);
+    expect(h.notices()).toBe(0);
+    expect(h.tmux.pasteBuffer.mock.calls.length).toBe(pastesBefore);
+  });
+
+  it("the failure path is bounded: with no marker the wait settles uncertain after ~10 s, not a minute", async () => {
+    const h = await deliver();
+    await h.begun();
+    // 11 looks (polls 0..10 at 1 s), then the verdict — a lost paste holds the lane for ~10 s, not 60 s.
+    await h.pump(9);
+    expect(h.state()).toBe("submission_started");
+    await h.pump(20, h.finished);
+    expect(h.state()).toBe("uncertain");
+    expect(h.evidence()).toBe("unverifiable-no-transcript-marker");
+    expect(lookHooks.looks).toBeLessThanOrEqual(12);
+    expect(h.notices()).toBe(1);
+  });
+
   it("the pane lock is free while the row waits for its transcript, so the next delivery is not held up", async () => {
     const h = await deliver();
     await h.pump(5);
@@ -288,6 +371,30 @@ describe("what it does not touch", () => {
     await h.pump(10, h.finished);
     expect(h.state()).toBe("delivered");
     expect(h.evidence()).toBe("positive submission proof");
+  });
+
+  it("a steer into the ready readerless pane keeps its pre-#758 settlement: delivered, positive submission proof, no transcript wait", async () => {
+    const h = await deliver({ steer: true });
+    await h.begun();
+    await h.pump(10, h.finished);
+    await h.settleSteer();
+    expect(h.state()).toBe("delivered");
+    expect(h.evidence()).toBe("positive submission proof");
+    expect(h.notices()).toBe(0);
+    expect(h.tmux.pasteBuffer).toHaveBeenCalledTimes(1);
+    expect(h.tmux.sendSpecialKey).toHaveBeenCalledTimes(1);
+    expect(lookHooks.looks).toBe(0);
+  });
+
+  it("a steer with no transcript marker at all settles the same (the control the old rule would hold to uncertain)", async () => {
+    const h = await deliver({ steer: true });
+    await h.begun();
+    // No marker is ever filed: without the steer exclusion this would wait the whole window and settle `uncertain`.
+    await h.pump(400, h.finished);
+    await h.settleSteer();
+    expect(h.state()).toBe("delivered");
+    expect(h.evidence()).toBe("positive submission proof");
+    expect(h.notices()).toBe(0);
   });
 
   it("Codex (input row readable) keeps its own verdict: a vanished paste is uncertain at the post-submit proof, no transcript involved", async () => {

@@ -494,8 +494,11 @@ const POST_ENTER_PROOF_POLL_MS = 250;
 /**
  * A readerless CLI's delivery is proven by its own transcript, which lags the pane by a flush. Only a delta that was
  * read and carried no marker for this long is held against the delivery — a late flush must not raise a false ⚠️.
+ * Ten seconds: success markers arrive in about a second, so this is an order of magnitude past the observed worst
+ * case, and it bounds the failure path — the fleet lane and the shared pump budget stay held until the verdict
+ * (Phase 2c "lane held until verdict", Option A #1207), so a lost paste blocks its lane for ~10 s, not 60 s.
  */
-const TRANSCRIPT_PROOF_WINDOW_MS = 60_000;
+const TRANSCRIPT_PROOF_WINDOW_MS = 10_000;
 const TRANSCRIPT_PROOF_POLL_MS = 1_000;
 const OUTPUT_EDGE_ONLY_EVIDENCE = "output-edge-only; submission-unverifiable";
 /** Attempts to read the pre-paste pane before a delivery gives up on a baseline. */
@@ -1867,8 +1870,11 @@ export class Daemon extends EventEmitter {
    *    something, yet the CLI never took the message in. Never a re-paste: the message may still land;
    *  - transcript unreadable on the last look → today's outcome, labelled — there is nothing to hold against it.
    *
-   * It runs after the paste lock is released (the next delivery is not held up) and never finishes a row that stop
-   * has handed to reconciliation; a pause or respawn only ends the wait, falling back to today's outcome.
+   * It runs after the paste lock is released, but the fleet lane and the shared pump budget stay held until the
+   * verdict settles the row (Phase 2c "lane held until verdict", Option A #1207): a success settles in about a
+   * second, a delivery whose marker never arrives holds them for the bounded proof window (see
+   * TRANSCRIPT_PROOF_WINDOW_MS). It never finishes a row that stop has handed to reconciliation; a pause or respawn
+   * only ends the wait, falling back to today's outcome.
    */
   private async proveDeliveryFromTranscript(
     delivery: { deliveryId: string; attemptNo: number },
@@ -1892,7 +1898,10 @@ export class Daemon extends EventEmitter {
         if (spawn !== this.spawnGeneration || fence !== this.launchFenceEpoch) { last = "unavailable"; break; }
         await new Promise(r => setTimeout(r, TRANSCRIPT_PROOF_POLL_MS));
       }
-      // Only a delta that was read on the last look and still lacks the marker is held against the delivery.
+      // Only a delta that was read on the last look and still lacks the marker is held against the delivery. A
+      // pause/freeze or respawn during the final sleep must end the wait with today's labelled outcome, not
+      // `uncertain`: re-check the same fixed epochs after the last await, before settling (#1207 P2).
+      if (spawn !== this.spawnGeneration || fence !== this.launchFenceEpoch) last = "unavailable";
       if (last === "no-match" && evidence === OUTPUT_EDGE_ONLY_EVIDENCE) {
         outcome = "uncertain";
         evidence = "unverifiable-no-transcript-marker";
@@ -1900,8 +1909,16 @@ export class Daemon extends EventEmitter {
     } catch (err) {
       this.logger.debug({ err }, "Transcript proof of a delivery failed — keeping the output-edge outcome");
     }
-    if (this.deliveryWritesStopping) return;
-    this.finishDurableDelivery(delivery, outcome, evidence);
+    // The settlement itself can throw (e.g. the outbox store is unhealthy), and this runs on a detached `void`
+    // promise: an uncaught throw is an unhandled rejection, which the fleet restart path turns into a global fault.
+    // Settle observably and leave the row for reconciliation — never a false completion, never another paste (#1207 P2).
+    try {
+      if (this.deliveryWritesStopping) return;
+      this.finishDurableDelivery(delivery, outcome, evidence);
+    } catch (err) {
+      this.logger.error({ err, deliveryId: delivery.deliveryId, attemptNo: delivery.attemptNo, outcome, evidence },
+        "Durable delivery settlement failed — row left for reconciliation");
+    }
   }
 
   private deferDurableDelivery(meta: Record<string, string>, reason: string): void {
@@ -7412,7 +7429,9 @@ export class Daemon extends EventEmitter {
           if (status) this.emit("message_confirmed", status); // ✅
           // A backend whose input row cannot be read was confirmed by "the pane printed something after Enter" — which a
           // redraw that wiped the paste also satisfies (#758). The outbox must not call that a submission proof.
-          if (!rawPaste && !this.canProveSubmission()) verdict.proof = "output-edge";
+          // A steer keeps its pre-#758 settlement (steer-accepted / positive submission proof): routing it into the
+          // transcript-proof wait would hold a steer to `uncertain` whenever the CLI files no transcript marker (#1207 P2).
+          if (!rawPaste && !steer && !this.canProveSubmission()) verdict.proof = "output-edge";
         } else {
           const proof = this.backend?.isDeliveryInputReadyPane
             ? await this.lateCodexSubmissionProof(signature, pasteBaseline)

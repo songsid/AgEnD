@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { open, stat } from "node:fs/promises";
+import { open, stat, type FileHandle } from "node:fs/promises";
 import { join } from "node:path";
 import { getTmuxSession } from "./config.js";
 import type { Logger } from "./logger.js";
@@ -116,6 +116,22 @@ async function processHasExited(pid: number | null): Promise<boolean> {
   return false;
 }
 
+/**
+ * Read exactly `length` bytes from `offset`. A read may legally return fewer bytes than asked for, so one call is not
+ * "the delta": judging a prefix would call a marker that sits in the unread tail absent. Null — could not judge — when
+ * the file ends early or a read makes no progress.
+ */
+async function readFully(fh: FileHandle, offset: number, length: number): Promise<Buffer | null> {
+  const buffer = Buffer.alloc(length);
+  let done = 0;
+  while (done < length) {
+    const { bytesRead } = await fh.read(buffer, done, length - done, offset + done);
+    if (bytesRead <= 0) return null;
+    done += bytesRead;
+  }
+  return buffer;
+}
+
 async function readTranscriptDelta(candidate: DeliveryReconciliationCandidate): Promise<"matched" | "no-match" | "unavailable"> {
   const path = candidate.attempt.transcriptPath;
   const offset = candidate.attempt.transcriptOffset;
@@ -141,10 +157,10 @@ async function readTranscriptDelta(candidate: DeliveryReconciliationCandidate): 
     try {
       const length = size - offset;
       if (!length) return "no-match";
-      const buffer = Buffer.alloc(length);
-      const { bytesRead } = await fh.read(buffer, 0, length, offset);
+      const buffer = await readFully(fh, offset, length);
+      if (!buffer) return "unavailable";
       const found = transcriptDeltaHasDeliveryMarker(
-        buffer.toString("utf8", 0, bytesRead),
+        buffer.toString("utf8"),
         candidate.attempt.backend,
         candidate.deliveryId,
       );
@@ -245,10 +261,9 @@ export async function scanTranscriptForDeliveryMarker(
   try { fh = await open(path, "r"); }
   catch { return "unavailable"; }
   try {
-    const length = size - offset;
-    const buffer = Buffer.alloc(length);
-    const { bytesRead } = await fh.read(buffer, 0, length, offset);
-    return transcriptDeltaDeliveryMarker(buffer.toString("utf8", 0, bytesRead), backend, deliveryId) ?? "no-match";
+    const buffer = await readFully(fh, offset, size - offset);
+    if (!buffer) return "unavailable";
+    return transcriptDeltaDeliveryMarker(buffer.toString("utf8"), backend, deliveryId) ?? "no-match";
   } catch {
     return "unavailable";
   } finally {

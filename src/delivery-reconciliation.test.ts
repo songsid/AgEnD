@@ -6,11 +6,42 @@ import { DeliveryOutbox } from "./delivery-outbox.js";
 import { queueResumePolicyForAttempt } from "./delivery-queue-evidence.js";
 import { finishTargetReconciliation, scanTranscriptForDeliveryMarker, transcriptDeltaDeliveryMarker, transcriptDeltaHasDeliveryMarker } from "./delivery-reconciliation.js";
 
+/** Real files, but `read` may be made to return short — as the fs contract allows — or to stop making progress. */
+const io = vi.hoisted(() => ({ maxBytes: null as number | null, stallAfter: null as number | null }));
+vi.mock("node:fs/promises", async importOriginal => {
+  const real = await importOriginal<typeof import("node:fs/promises")>();
+  return {
+    ...real,
+    open: async (...args: Parameters<typeof real.open>) => {
+      const handle = await real.open(...args);
+      if (io.maxBytes === null) return handle;
+      let served = 0;
+      return new Proxy(handle, {
+        get(target, prop) {
+          if (prop === "read") {
+            return async (buffer: Buffer, offset: number, length: number, position: number) => {
+              if (io.stallAfter !== null && served >= io.stallAfter) return { bytesRead: 0, buffer };
+              const room = io.stallAfter === null ? Infinity : io.stallAfter - served;
+              const result = await target.read(buffer, offset, Math.min(length, io.maxBytes!, room), position);
+              served += result.bytesRead;
+              return result;
+            };
+          }
+          const value = (target as any)[prop];
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+    },
+  };
+});
+
 const id = "00000000-0000-4000-8000-000000000041";
 const marker = `[agend-delivery-id:${id}]`;
 const roots: string[] = [];
 
 afterEach(() => {
+  io.maxBytes = null;
+  io.stallAfter = null;
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -178,6 +209,29 @@ describe("durable transcript marker reconciliation", () => {
       expect(await scanTranscriptForDeliveryMarker(path, statSync(path).size, "claude-code", id)).toBe("no-match");
     });
 
+    it("a read that returns fewer bytes than asked for is read on: the marker in the unread tail is still found", async () => {
+      const path = transcript(entry("some earlier turn that comes first and is long enough to span several reads"));
+      const checkpoint = 0;
+      appendFileSync(path, entry(`${marker}\nwork`));
+      io.maxBytes = 7;
+      expect(await scanTranscriptForDeliveryMarker(path, checkpoint, "claude-code", id)).toBe("user");
+    });
+
+    it("…and a short-read delta without the marker is a complete `no-match`", async () => {
+      const path = transcript(entry("some earlier turn") + entry("another turn"));
+      io.maxBytes = 7;
+      expect(await scanTranscriptForDeliveryMarker(path, 0, "claude-code", id)).toBe("no-match");
+    });
+
+    it("a read that stops making progress before the end is `unavailable`, never `no-match` — the marker may be in the unread tail", async () => {
+      const path = transcript(entry("some earlier turn that comes first") + entry(`${marker}\nwork`));
+      io.maxBytes = 7;
+      io.stallAfter = 21;
+      expect(await scanTranscriptForDeliveryMarker(path, 0, "claude-code", id)).toBe("unavailable");
+      io.stallAfter = 0;
+      expect(await scanTranscriptForDeliveryMarker(path, 0, "claude-code", id)).toBe("unavailable");
+    });
+
     it("a half-written last line is not proof, and the next look finds it whole", async () => {
       const path = transcript("");
       const line = entry(`${marker}\nwork`);
@@ -259,6 +313,21 @@ describe("durable transcript marker reconciliation", () => {
       const { result, state } = await reconcile(deliveryId => `[agend-delivery-id:${deliveryId}]\n[from:worker] work`);
       expect(result).toMatchObject({ delivered: 1, retry: 0, uncertain: 0, safeToStart: true });
       expect(state).toBe("delivered");
+    });
+
+    it("short reads of the transcript do not hide the delivered message: still found, still not retried", async () => {
+      io.maxBytes = 7;
+      const { result, state } = await reconcile(deliveryId => `[agend-delivery-id:${deliveryId}]\n[from:worker] ${"work ".repeat(30)}`);
+      expect(result).toMatchObject({ delivered: 1, retry: 0, uncertain: 0 });
+      expect(state).toBe("delivered");
+    });
+
+    it("a read that stops making progress is `transcript unavailable`: uncertain, never a replay", async () => {
+      io.maxBytes = 7;
+      io.stallAfter = 21;
+      const { result, state } = await reconcile(deliveryId => `[agend-delivery-id:${deliveryId}]\n[from:worker] ${"work ".repeat(30)}`);
+      expect(result).toMatchObject({ delivered: 0, retry: 0, uncertain: 1 });
+      expect(state).toBe("uncertain");
     });
 
     it("control: a complete transcript that really lacks the marker is still retried — the replay path this test stands on", async () => {

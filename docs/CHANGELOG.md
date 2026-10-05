@@ -23,10 +23,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Those CLIs have no readable input row, so an ordinary submission was confirmed by any output after Enter — which a redraw that
   wiped the paste produces too, and the outbox said `delivered` for a message that never arrived. The ✅ is unchanged, but the
   row is now finished by the CLI's own transcript: the delivery's marker found → `delivered` (`transcript-marker`, or
-  `transcript-marker-queued` when the CLI holds it queued); the transcript read on the last look for a whole 60 s and the marker
+  `transcript-marker-queued` when the CLI holds it queued); the transcript read on the last look for a whole 10 s and the marker
   still absent → `uncertain` (`unverifiable-no-transcript-marker`, so a ⚠️ and a `[system:delivery-outcome]`; nothing is re-pasted,
   the message may still land); transcript unreadable, or a backend with none (Grok, Muse, Gemini, …) → today's `delivered`,
-  labelled `output-edge-only; submission-unverifiable`. Steer, native-queue, Codex, Kiro and raw pastes are untouched.
+  labelled `output-edge-only; submission-unverifiable`. The wait runs after the pane lock is released, but the fleet lane and
+  the shared pump budget stay held until the verdict (successes settle in about a second; a lost paste holds its lane for the
+  bounded ~10 s window). Steer, native-queue, Codex, Kiro and raw pastes are untouched.
 
 ### Security
 - **Discord slash commands now follow one command table (#1148).** Where a command applies and who may use it is
