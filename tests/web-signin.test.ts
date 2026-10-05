@@ -38,7 +38,7 @@ async function startFleet(): Promise<Harness> {
   const notices: string[] = [];
   const sink = (obj: unknown, msg?: string) => { logged.push(JSON.stringify(obj) + " " + (msg ?? "")); };
   fm.logger = { info: sink, warn: sink, error: sink, debug: sink, trace: () => {}, fatal: () => {}, child: () => fm.logger } as unknown as typeof fm.logger;
-  vi.spyOn(fm, "notifyFleetError").mockImplementation((text: string) => { notices.push(text); });
+  vi.spyOn(fm, "notifyFleetError").mockImplementation((text: string) => { notices.push(text); return true; });
   (fm as unknown as { initializeWebAuthTokens(): void }).initializeWebAuthTokens();
   (fm as unknown as { startHealthServer(port: number): void }).startHealthServer(0);
   await vi.waitFor(() => expect(fm.getDashboardAccess().ready).toBe(true));
