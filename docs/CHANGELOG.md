@@ -71,8 +71,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   context is still live, nothing is re-read, the model is not changed. Once per capacity error, and only into a screen
   that has not changed since: if the pane moved on, a person typed, the agent started working, a message is queued,
   the instance was stopped / paused / respawned or the user cancelled, the nudge is dropped. It is timed on the
-  monotonic clock (a wall-clock step changes nothing). A second capacity error right after the nudge is a new episode;
-  after 3 in 30 minutes the instance is paused, as before.
+  monotonic clock (a wall-clock step changes nothing). A second capacity error right after the nudge is a new episode.
+  Up to 3 nudges are sent per 30 minutes; the next capacity error after that pauses the instance, as before.
 - **[Behaviour change] `agend update` keeps an install on its channel; a beta is never moved to the stable line
   without asking.** With no flag, `agend update` used to install `@latest` whatever was installed, so on a beta it
   could go back to an older stable — and AgEnD's own notice told beta users to run exactly that. It now follows

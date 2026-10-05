@@ -6127,18 +6127,23 @@ export class Daemon extends EventEmitter {
   }
 
   private async sendCapacityNudge(nudge: NonNullable<Daemon["capacityNudge"]>): Promise<void> {
-    const stale = (): boolean => nudge.spawn !== this.spawnGeneration || nudge.fence !== this.launchFenceEpoch
-      || !this.isDeliveryEpochCurrent(nudge.epoch) || this.isPaused || this.healthCheckPaused
-      || this.startupAborted || this.getProcessStatus() === "stopped";
+    // Everything the nudge was armed under, asked again after EVERY await that precedes a write — inside the paste
+    // primitive too (its capture, its paste, its pause, its Enter, its retry): once any of it is false nothing more is
+    // written. A message queued behind the lock, or the agent starting a turn, is "work of its own" like at the poll.
+    const current = (): boolean => nudge.spawn === this.spawnGeneration && nudge.fence === this.launchFenceEpoch
+      && this.isDeliveryEpochCurrent(nudge.epoch) && !this.isPaused && !this.healthCheckPaused
+      && !this.startupAborted && this.getProcessStatus() !== "stopped"
+      && this.pasteQueueDepth === 0 && this.instanceState !== "working";
     // Exclusive with every delivery: nothing can paste a turn between the verdict below and the nudge.
     await this.paneWriteLock.run(async () => {
-      if (!this.tmux || this.pasteQueueDepth > 0) return;
-      const pane = await this.tmux.capturePane();
-      if (stale() || pane !== nudge.pane) { this.logger.info("Model-capacity nudge dropped: the screen changed"); return; }
-      if (!(await this.isPaneAuthoritativelyIdle())) { this.logger.info("Model-capacity nudge dropped: the CLI is not idle"); return; }
-      if (stale()) return;
-      const sent = await this.submitSystemPaste(t("inst.codex_capacity_nudge_text"), "capacity-continue");
-      this.logger.info({ sent }, "Model-capacity nudge sent");
+      if (!this.tmux || !current()) return;
+      // ONE capture decides: it must be exactly the screen the error was seen on AND an idle composer. (A second picture
+      // vouching for the first — "same screen" here, "idle" there — would let a half-typed draft through.)
+      const sent = await this.submitSystemPaste(t("inst.codex_capacity_nudge_text"), "capacity-continue", {
+        current,
+        accept: pane => pane === nudge.pane && this.paneAuthoritativelyIdle(pane),
+      });
+      this.logger.info({ sent }, "Model-capacity nudge attempted");
     });
   }
 
@@ -7425,16 +7430,30 @@ export class Daemon extends EventEmitter {
    * Best effort by design: these notices must never fail a delivery or throw.
    * The caller already holds paneWriteLock.
    */
-  private async submitSystemPaste(text: string, label: string): Promise<boolean> {
+  /**
+   * `guard` is for a paste that must not outlive the reason it was made (the continue nudge): `accept` judges the ONE
+   * capture taken here — the same picture is the baseline, the expected-screen check and the idle check — and `current`
+   * is asked again after every await that precedes a write, so a cancelled paste adds no further paste and no key
+   * (the retries included). Without a guard it is exactly the old unconditional path.
+   */
+  private async submitSystemPaste(text: string, label: string, guard?: { current: () => boolean; accept: (pane: string) => boolean }): Promise<boolean> {
     if (!this.tmux) return false;
     const signature = this.submissionSignature(text);
-    const baseline = await this.capturePaneEvidence(signature);
+    let baseline: PaneEvidence | null;
+    if (guard) {
+      let pane: string;
+      try { pane = await this.tmux.capturePane(); } catch { return false; }
+      if (!guard.current() || !guard.accept(pane)) return false;
+      baseline = this.paneEvidence(pane, signature);
+    } else {
+      baseline = await this.capturePaneEvidence(signature);
+    }
     if (!(await this.tmux.pasteBuffer(text))) {
       this.logger.warn({ label }, "System paste failed to reach the pane");
       return false;
     }
     await new Promise(r => setTimeout(r, NORMAL_ENTER_SETTLE_MS));
-    if (!(await this.sendDeliveryEnter(label))) return false;
+    if (!(await this.sendDeliveryEnter(label, guard?.current))) return false;
 
     let proof = await this.confirmSubmitted(signature, baseline);
     if (proof === "unverifiable") {
@@ -7452,7 +7471,7 @@ export class Daemon extends EventEmitter {
       // exists to remove — visible text is also what a strand looks like.
       if (this.systemPasteOptions().retryEnter) {
         await new Promise(r => setTimeout(r, 1_000));
-        await this.sendDeliveryEnter(`${label}-defensive-retry`);
+        await this.sendDeliveryEnter(`${label}-defensive-retry`, guard?.current);
       }
       return true; // best effort, exactly as before — nothing here is verified
     }
@@ -7461,7 +7480,7 @@ export class Daemon extends EventEmitter {
       // first one did land; when the text is still in the input row it is the
       // submit it never got. Re-pasting would append the text to itself.
       await new Promise(r => setTimeout(r, NORMAL_ENTER_SETTLE_MS));
-      if (!(await this.sendDeliveryEnter(`${label}-retry`))) return false;
+      if (!(await this.sendDeliveryEnter(`${label}-retry`, guard?.current))) return false;
       proof = await this.confirmSubmitted(signature, baseline);
     }
     if (proof !== "submitted") {
@@ -8402,14 +8421,20 @@ export class Daemon extends EventEmitter {
    * a live turn. Fail closed: an unreadable pane is never idle.
    */
   private async isPaneAuthoritativelyIdle(): Promise<boolean> {
-    const backend = this.backend;
-    if (!this.tmux || !backend) return false;
+    if (!this.tmux || !this.backend) return false;
     let pane: string;
     try {
       pane = await this.tmux.capturePane();
     } catch {
       return false;
     }
+    return this.paneAuthoritativelyIdle(pane);
+  }
+
+  /** The verdict of {@link isPaneAuthoritativelyIdle} on a capture the caller already holds. */
+  private paneAuthoritativelyIdle(pane: string): boolean {
+    const backend = this.backend;
+    if (!backend) return false;
     if (backend.getBusyPattern?.()?.test(pane)) return false;
     for (const dialog of this.deliveryBlockingDialogs()) {
       if (Daemon.dialogMatches(dialog, pane)) return false;

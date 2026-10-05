@@ -25,8 +25,9 @@ beforeEach(() => { vi.useFakeTimers(); dir = mkdtempSync(join(tmpdir(), "agend-c
 afterEach(() => { vi.useRealTimers(); rmSync(dir, { recursive: true, force: true }); setLocale("en"); });
 
 function rig(opts: { baselineTaken?: boolean; start?: string } = {}) {
-  const screen = { text: opts.start ?? PANE };
-  const sent: string[] = [];
+  const screen = { text: opts.start ?? PANE, reads: 0, holdRead: null as number | null, holdPaste: false, holdEnter: false, release: null as (() => void) | null };
+  const sent: string[] = [];                              // what reached the pane through paste
+  const enters = { count: 0 };
   const d: any = new Daemon("cx", {
     working_directory: dir, backend: "codex", log_level: "silent",
     restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
@@ -35,17 +36,32 @@ function rig(opts: { baselineTaken?: boolean; start?: string } = {}) {
   d.processStatus = "running";
   d.tmux = {
     isWindowAlive: async () => true,
-    capturePane: async () => screen.text,
+    capturePane: async () => {
+      if (screen.holdRead !== null && ++screen.reads === screen.holdRead) await new Promise<void>(resolve => { screen.release = resolve; });
+      return screen.text;
+    },
     capturePaneWithHistory: async () => screen.text,
-    sendSpecialKey: async () => true,
+    sendSpecialKey: async (key: string) => {
+      if (key === "Enter") { if (screen.holdEnter) await new Promise<void>(resolve => { screen.release = resolve; }); enters.count++; }
+      return true;
+    },
+    pasteBuffer: async (text: string) => {
+      if (screen.holdPaste) await new Promise<void>(resolve => { screen.release = resolve; });
+      sent.push(text);
+      return true;
+    },
+    getLastSendSpecialKeyError: () => null,
     pasteText: async () => true,
     getWindowId: () => "@1",
   };
   const idle = { value: true };
-  d.isPaneAuthoritativelyIdle = async () => idle.value;
+  const realIdle = d.paneAuthoritativelyIdle.bind(d);
+  d.paneAuthoritativelyIdle = (pane: string) => idle.value && realIdle(pane);
   const realSend = d.sendCapacityNudge.bind(d);
   d.sendCapacityNudge = vi.fn(realSend);                  // "was the injection even attempted" — what the poll-level checks decide
-  d.submitSystemPaste = vi.fn(async (text: string) => { sent.push(text); return true; });
+  d.confirmSubmitted = async () => "submitted";            // the pane write is what is under test, not Codex's echo
+  const realSubmit = d.submitSystemPaste.bind(d);
+  d.submitSystemPaste = vi.fn(realSubmit);
   const errors: any[] = [];
   d.on("pty_error", (event: any) => {
     errors.push(event);
@@ -55,7 +71,7 @@ function rig(opts: { baselineTaken?: boolean; start?: string } = {}) {
   if (opts.baselineTaken !== false) d.nudgeBaselines = new Map([[KEY, 0]]);
   d.startErrorMonitor();
   const poll = (ms = 5_000) => vi.advanceTimersByTimeAsync(ms);
-  return { d, screen, sent, errors, idle, poll, stop: () => clearInterval(d.errorMonitorTimer) };
+  return { d, screen, sent, enters, errors, idle, poll, stop: () => clearInterval(d.errorMonitorTimer) };
 }
 
 describe("the daemon's continue nudge", () => {
@@ -262,14 +278,6 @@ describe("the daemon's continue nudge", () => {
       r.stop();
     });
 
-    it("a stop that lands while it checks the CLI is idle (after the lock, after the screen check)", async () => {
-      const r = rig();
-      await r.poll(5_100);
-      r.d.isPaneAuthoritativelyIdle = async () => { r.d.freezeRuntimeMonitors(); return true; };
-      await r.poll(70_000);
-      expect(r.sent).toEqual([]);
-    });
-
     it("a CLI that is not idle when it gets the lock", async () => {
       const r = rig();
       await r.poll(5_100);
@@ -296,8 +304,84 @@ describe("the daemon's continue nudge", () => {
       const lock = await waitingForLock(r);
       await lock.release(); await r.poll(1_000);
       expect(r.d.submitSystemPaste).toHaveBeenCalledTimes(1);
-      expect(r.d.submitSystemPaste).toHaveBeenCalledWith("keep going", "capacity-continue");
+      expect(r.d.submitSystemPaste).toHaveBeenCalledWith("keep going", "capacity-continue", expect.objectContaining({ current: expect.any(Function), accept: expect.any(Function) }));
+      expect(r.sent).toEqual(["keep going"]);
+      expect(r.enters.count).toBe(1);
       r.stop();
+    });
+  });
+
+  describe("the paste primitive carries the nudge's own fences: a cancelled nudge adds no paste and no key", () => {
+    const interruptions: Array<[string, (d: any) => void]> = [
+      ["the user cancelled", d => d.clearPendingDeliveries()],
+      ["the monitors froze (stop / pause)", d => d.freezeRuntimeMonitors()],
+      ["the instance was paused", d => { d.pauseWakeState = "paused"; }],
+      ["the process stopped", d => { d.processStatus = "stopped"; }],
+      ["a message was queued for delivery", d => { d.pasteQueueDepth = 1; }],
+      ["the agent started a turn", d => { d.instanceState = "working"; }],
+    ];
+    /** Run to just before the nudge is due, then let `arrange` set up a hold on one of its pane operations. */
+    async function dueWith(arrange: (r: ReturnType<typeof rig>) => void, thenMs = 1_500) {
+      const r = rig();
+      await r.poll(5_100);                                   // the error is seen and the nudge armed (due at ~65 s)
+      await r.poll(59_000);
+      arrange(r);
+      await r.poll(thenMs);                                  // the poll that makes it due runs; the primitive starts
+      return r;
+    }
+
+    it.each(interruptions)("%s while its capture is pending: nothing is pasted, no key", async (_name, interrupt) => {
+      const r = await dueWith(x => { x.screen.holdRead = x.screen.reads + 2; });   // +1 = the poll's own read, +2 = the primitive's
+      expect(r.sent).toEqual([]);
+      interrupt(r.d);
+      r.screen.release?.();
+      await r.poll(5_000);
+      expect(r.sent).toEqual([]);
+      expect(r.enters.count).toBe(0);
+    });
+
+    it.each(interruptions)("%s while its paste is pending: no key follows", async (_name, interrupt) => {
+      const r = await dueWith(x => { x.screen.holdPaste = true; });
+      interrupt(r.d);
+      r.screen.holdPaste = false;
+      r.screen.release?.();
+      await r.poll(10_000);
+      expect(r.enters.count).toBe(0);                       // (the paste itself had already begun — no Enter ever submits it)
+    });
+
+    it.each(interruptions)("%s during the pause between the paste and the Enter: no key", async (_name, interrupt) => {
+      const r = await dueWith(() => {}, 1_200);
+      expect(r.sent).toEqual(["keep going"]);               // pasted…
+      expect(r.enters.count).toBe(0);                       // …Enter not yet (settling)
+      interrupt(r.d);
+      await r.poll(10_000);
+      expect(r.enters.count).toBe(0);
+    });
+
+    it("a draft that appeared before the primitive's capture is refused — even one that still looks like an idle composer", async () => {
+      const r = await dueWith(x => { x.screen.holdRead = x.screen.reads + 2; });
+      r.screen.text = PANE.replace("› Ask Codex to do anything", "› please also check the logs");   // a person typed
+      r.screen.release?.();
+      await r.poll(10_000);
+      expect(r.sent).toEqual([]);
+      expect(r.enters.count).toBe(0);
+    });
+
+    it("ONE capture decides: it is the baseline, the expected-screen check and the idle check (no second picture before the paste)", async () => {
+      let holdAt = 0;
+      const r = await dueWith(x => { holdAt = x.screen.reads + 2; x.screen.holdRead = holdAt; });
+      r.screen.release?.();
+      await r.poll(700);                                     // the paste and the Enter (after its 500 ms settle) complete; no poll is due yet
+      expect(r.sent).toEqual(["keep going"]);
+      expect(r.enters.count).toBe(1);
+      expect(r.screen.reads).toBe(holdAt);                   // the primitive's capture was the only picture it took
+    });
+
+    it("an untouched nudge writes the paste and the Enter, once each", async () => {
+      const r = await dueWith(() => {});
+      await r.poll(10_000);
+      expect(r.sent).toEqual(["keep going"]);
+      expect(r.enters.count).toBe(1);
     });
   });
 
