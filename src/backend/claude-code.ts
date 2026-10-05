@@ -456,6 +456,39 @@ export function claudeDangerousCommandPromptState(pane: string): ClaudeDangerous
   return { active: true, cursor: firstCursor ? "yes" : "no" };
 }
 
+/** Native 2.1.287 four-choice Bash permission, observed but never approved. */
+export function claudeBashPermissionActive(pane: string): boolean {
+  const rows = pane.replace(/\r/g, "").split("\n").filter(row => row.trim() !== "");
+  let question = -1;
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (/^[ \t]*Do you want to proceed\?[ \t]*$/.test(rows[i])) { question = i; break; }
+  }
+  if (question < 0 || rows.length !== question + 6) return false;
+  const before = rows.slice(Math.max(0, question - 20), question);
+  if (!before.some(row => /^[ \t]*Bash command[ \t]*$/.test(row))) return false;
+  if (!/^[ \t]*[❯›]?[ \t]*1\.[ \t]+Yes[ \t]*$/.test(rows[question + 1])) return false;
+  if (!/^[ \t]*[❯›]?[ \t]*2\.[ \t]+Yes, and always allow access to .+ from this project[ \t]*$/.test(rows[question + 2])) return false;
+  if (!/^[ \t]*[❯›]?[ \t]*3\.[ \t]+Yes, and switch to auto mode · auto mode handles these prompts for you[ \t]*$/.test(rows[question + 3])) return false;
+  if (!/^[ \t]*[❯›]?[ \t]*4\.[ \t]+No[ \t]*$/.test(rows[question + 4])) return false;
+  return /^[ \t]*Esc to cancel · Tab to amend[ \t]*$/.test(rows[question + 5]);
+}
+
+/** Private request text: excludes history, cursor motion, and native auto-deny countdown. */
+function claudeCommandRequestIdentity(pane: string): string {
+  const rows = pane.replace(/\r/g, "").split("\n");
+  let question = -1;
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (/^[ \t]*Do you want to proceed\?[ \t]*$/.test(rows[i])) { question = i; break; }
+  }
+  let start = question;
+  for (let i = question - 1; i >= 0; i--) {
+    if (/^[ \t]*Bash command[ \t]*$/.test(rows[i])) { start = i; break; }
+  }
+  return rows.slice(Math.max(0, start), question + 1)
+    .filter(row => !/Claude Code will automatically deny this request in \d+:\d\d/.test(row))
+    .map(row => row.trim()).filter(Boolean).join("\n");
+}
+
 const dangerPromptOnYes = (pane: string): boolean => {
   const state = claudeDangerousCommandPromptState(pane);
   return state.active && state.cursor === "yes";
@@ -911,6 +944,8 @@ export class ClaudeCodeBackend implements CliBackend {
       {
         pattern: CLAUDE_DANGEROUS_COMMAND_PROMPT,
         isActive: dangerPromptOnYes,
+        requestIdentity: claudeCommandRequestIdentity,
+        interactionKind: "dangerous_command",
         keys: ["Down", "Enter"],
         description: "Claude dangerous-command prompt — select No",
         blocksDelivery: true,
@@ -922,6 +957,8 @@ export class ClaudeCodeBackend implements CliBackend {
       {
         pattern: CLAUDE_DANGEROUS_COMMAND_PROMPT,
         isActive: dangerPromptOnNo,
+        requestIdentity: claudeCommandRequestIdentity,
+        interactionKind: "dangerous_command",
         keys: ["Enter"],
         description: "Claude dangerous-command prompt — confirm No",
         blocksDelivery: true,
@@ -933,12 +970,25 @@ export class ClaudeCodeBackend implements CliBackend {
       {
         pattern: CLAUDE_DANGEROUS_COMMAND_PROMPT,
         isActive: dangerPromptUnknown,
+        requestIdentity: claudeCommandRequestIdentity,
+        interactionKind: "dangerous_command",
         keys: [],
         holdOnly: true,
         blocksDelivery: true,
         inputBlocked: true,
         description: "Claude dangerous-command prompt (unknown cursor) — holding for a human, never auto-selecting",
         autoResolutionKey: "claude-dangerous-command",
+      },
+      {
+        pattern: CLAUDE_DANGEROUS_COMMAND_PROMPT,
+        isActive: claudeBashPermissionActive,
+        requestIdentity: claudeCommandRequestIdentity,
+        interactionKind: "permission",
+        keys: [],
+        holdOnly: true,
+        blocksDelivery: true,
+        inputBlocked: true,
+        description: "Claude Bash permission — waiting for a human choice, never auto-approving",
       },
       // Trust and Bypass Permissions are STARTUP dialogs, but on a first run
       // they come after theme → login → security — long after the 30s startup

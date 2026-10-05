@@ -14,6 +14,8 @@ import type { z } from "zod";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import { DEFAULT_MAX_CROSS_INSTANCE_MESSAGE_BYTES, DEFAULT_LIST_INSTANCES_OUTPUT_BUDGET, MAX_INSTANCE_LOG_LINES } from "./config.js";
 import { t } from "./locale.js";
+import type { InteractionSnapshot } from "./backend/types.js";
+import { presentationState, interactionSummary } from "./interaction-observation.js";
 import { truncatePreview } from "./channel/markdown-chunk.js";
 import { backendSupportsSteer } from "./steer-capability.js";
 import { readStatuslineModel } from "./topic-commands.js";
@@ -128,6 +130,7 @@ export interface OutboundContext {
   sendCancelButton?(instanceName: string, correlationId?: string): Promise<void>;
   clearCancelButton?(instanceName: string): void;
   clearCancelButtonByCorrelation?(correlationId: string): void;
+  getInstanceInteraction?(name: string): InteractionSnapshot | null;
   getInstanceExecutionState?(name: string): "idle" | "working" | "stuck" | "paused" | null;
   /** Subscription provider IDs used by running or paused fleet/Classic instances. */
   getActiveUsageProviderIds?(): ReadonlySet<string>;
@@ -596,6 +599,14 @@ function resolveModelWithStatuslineFallback(
   return model;
 }
 
+/** Presentation only: never feeds the fleet execution-state cache or control gates. */
+function instancePresentation(ctx: OutboundContext, name: string) {
+  const execution_state = ctx.getInstanceExecutionState?.(name) ?? null;
+  const interaction = ctx.getInstanceInteraction?.(name) ?? null;
+  return { instance_state: presentationState(execution_state, interaction), execution_state,
+    interaction, interaction_summary: interactionSummary(interaction) };
+}
+
 const listInstances: Handler = (ctx, rawArgs, respond, meta) => {
   const v = validateArgs(ListInstancesArgs, rawArgs, "list_instances");
   if (!v.ok) { respond(null, v.error); return; }
@@ -607,7 +618,10 @@ const listInstances: Handler = (ctx, rawArgs, respond, meta) => {
     name: string;
     type: "instance";
     status: "running" | "paused" | "stopped";
-    instance_state: "idle" | "working" | "stuck" | "paused" | null;
+    instance_state: "idle" | "working" | "stuck" | "paused" | "awaiting_input" | null;
+    execution_state: "idle" | "working" | "stuck" | "paused" | null;
+    interaction: InteractionSnapshot | null;
+    interaction_summary: string | null;
     working_directory: string;
     topic_id: string | number | null;
     display_name: string | null;
@@ -629,7 +643,7 @@ const listInstances: Handler = (ctx, rawArgs, respond, meta) => {
         name,
         type: "instance" as const,
         status,
-        instance_state: ctx.getInstanceExecutionState?.(name) ?? null,
+        ...instancePresentation(ctx, name),
         working_directory: config.working_directory,
         topic_id: config.topic_id ?? null,
         display_name: config.display_name ?? null,
@@ -655,7 +669,7 @@ const listInstances: Handler = (ctx, rawArgs, respond, meta) => {
         name: ch.instanceName,
         type: "instance" as const,
         status: ctx.lifecycle.daemons.has(ch.instanceName) ? "running" as const : "stopped" as const,
-        instance_state: ctx.getInstanceExecutionState?.(ch.instanceName) ?? null,
+        ...instancePresentation(ctx, ch.instanceName),
         working_directory: "",
         topic_id: ch.channelId as any,
         display_name: ch.displayName ?? `classic: ${ch.name}`,
@@ -707,8 +721,8 @@ const listInstances: Handler = (ctx, rawArgs, respond, meta) => {
     return;
   }
 
-  // Tier 2: Compact output (no description, no working_directory, no topic_id, no instance_state)
-  type CompactInstance = {
+  // Tier 2: Compact output (no description, no working_directory, no topic_id; active interaction remains visible)
+  type CompactInstance = Partial<ReturnType<typeof instancePresentation>> & {
     name: string;
     status: "running" | "paused" | "stopped";
     backend: string;
@@ -723,6 +737,8 @@ const listInstances: Handler = (ctx, rawArgs, respond, meta) => {
     model: i.model,
     kind: i.kind,
     tags: i.tags,
+    ...(i.interaction?.kind ? { instance_state: i.instance_state, execution_state: i.execution_state,
+      interaction: i.interaction, interaction_summary: i.interaction_summary } : {}),
   }));
   const compactOutput = {
     instances: compactInstances,
@@ -771,7 +787,7 @@ const describeInstance: Handler = (ctx, rawArgs, respond) => {
       tags: config.tags ?? [],
       working_directory: config.working_directory,
       status: ctx.lifecycle.isPaused(targetName) ? "paused" : ctx.lifecycle.daemons.has(targetName) ? "running" : "stopped",
-      instance_state: ctx.getInstanceExecutionState?.(targetName) ?? null,
+      ...instancePresentation(ctx, targetName),
       last_paused_at: ctx.lifecycle.getLastPausedAt(targetName)
         ? new Date(ctx.lifecycle.getLastPausedAt(targetName)!).toISOString()
         : null,
@@ -798,7 +814,7 @@ const describeInstance: Handler = (ctx, rawArgs, respond) => {
         tags: ["classic"],
         working_directory: "",
         status: ctx.lifecycle.daemons.has(targetName) ? "running" : "stopped",
-        instance_state: ctx.getInstanceExecutionState?.(targetName) ?? null,
+        ...instancePresentation(ctx, targetName),
         last_paused_at: null,
         topic_id: channelId,
         backend: ctx.classicChannels.getBackendByInstance?.(

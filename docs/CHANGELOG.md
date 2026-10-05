@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Fixed
+- **Waiting for input is visible (#812).** `describe_instance`, `list_instances`, and status APIs expose a confirmed `awaiting_input` presentation alongside the unchanged execution state and a static interaction category. A second fresh capture confirms a prompt; observations older than 15 seconds are explicitly unverified without releasing safety holds. Claude's captured four-option Bash permission menu is held for a human with no keys sent. Generic terminal hints remain suspected, and editor coverage is not claimed. The 500ms confirmation and 15s freshness values are sandbox-tested policies, not live CLI guarantees.
 - **Cancel stops reply recovery too (#1199).** The cancel button and `/cancel` now mark the current human turn before interrupting the CLI, so an intentional stop no longer triggers the missing-reply warning or asks the agent to produce another conclusion. Replies already being delivered still settle normally; new messages retain their own reply guard. A cancelled recovery's late failure and a cancelled paste's late success cannot restart that turn.
 - **A restart no longer re-sends a Claude Code message that was already delivered (#1205).** After a restart the daemon looks for
   each in-flight delivery's marker in the CLI's transcript, and only a marker at the very start of a user entry counted. Claude Code
