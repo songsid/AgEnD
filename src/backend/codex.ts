@@ -48,19 +48,22 @@ const SAFE_MODEL_ID_RE = /^[A-Za-z0-9._:/-]+$/;
 const CODEX_CONTEXT_ITEM = String.raw`Context[ \t]+(?:\d+%[ \t]+(?:left|used)|\d+…|…)`;
 const CODEX_CONTEXT_STATUS_ITEMS = new Set(["context-remaining", "context-used", "context-usage"]);
 
+/**
+ * Whatever Codex paints AFTER the footer's own items — its native status fields (`Goal achieved (1h 6m)`, `Goal stalled`,
+ * a warnings count …, #1190) — is footer chrome, set apart by a column gap of two or more spaces; they are not listed one
+ * by one because Codex keeps adding them. A gap followed by a prompt / bullet / selection / error marker is NOT chrome:
+ * that is a draft or a transcript line that happens to start with the same words (and the row must also be the LAST one,
+ * under the composer, for any caller to ask). The Goal status (the /goal feature, worded differently per state and prompt
+ * language: `Goal achieved (1h 6m)`, `Goal usage: 90 seconds.`, `Goal complete; time used: 90 seconds.`, `Goal 사용량:
+ * 45초.`) is recognised by its leading word alone, so it also survives being set off by a single space.
+ * ONE grammar for the legacy Context-first footer and for the configured status_line footer.
+ */
+const CODEX_NATIVE_FOOTER_FIELDS = String.raw`(?:[ \t]{2,}(?![›>•■❯])|[ \t]+(?=Goal\b))\S[^\r\n]*`;
+
 function isCodexContextFooter(row: string): boolean {
   const context = String.raw`Context\s+\d+%\s+(?:left|used)`;
-  // Whatever Codex paints AFTER the context item — its native status fields (`Goal achieved (1h 6m)`, `Goal stalled`, a
-  // warnings count …, #1190) — is footer chrome, set apart by a column gap of two or more spaces; they are not listed
-  // one by one because Codex keeps adding them. A gap followed by a prompt / bullet / selection marker is NOT chrome:
-  // that is a draft or a transcript line that happens to start with the words (the row must also be the LAST one, under
-  // the composer, for any caller to ask).
-  // The Goal status (the /goal feature, whose wording and language vary: `Goal achieved (1h 6m)`, `Goal usage: 90 seconds.`,
-  // `Goal complete; time used: 90 seconds.`, `Goal 사용량: 45초.` …) is recognised by its leading word alone, so it also
-  // survives being set off by a single space.
-  const nativeFields = String.raw`(?:[ \t]{2,}(?![›>•■❯])|[ \t]+(?=Goal\b))\S[^\r\n]*`;
   const legacy = new RegExp(
-    String.raw`^\s*${context}(?:${nativeFields}|(?:\s+⚠\s+\d+\s+warnings?\b[^\r\n]*)?(?:\s+·\s+\S[^\r\n]*)?)\s*$`,
+    String.raw`^\s*${context}(?:${CODEX_NATIVE_FOOTER_FIELDS}|(?:\s+⚠\s+\d+\s+warnings?\b[^\r\n]*)?(?:\s+·\s+\S[^\r\n]*)?)\s*$`,
     "i",
   );
   if (legacy.test(row)) return true;
@@ -1644,7 +1647,10 @@ export class CodexBackend implements CliBackend {
     const line = hasRunState
       ? `(?:${segment}${separator})*Ready(?:${separator}${segment})*`
       : `${segment}(?:${separator}${segment})*`;
-    this.configuredStatusLinePattern = new RegExp(`^[ \t⋆]*${line}[ \t⋆]*$`, "iu");
+    // The configured items, then (optionally) the CLI's own native fields — the same rule as the Context-first footer, so a
+    // `model · Context 46% left    Goal achieved (1h 6m)` row is the footer too, and the readiness regex built from this
+    // source (footerSource) says the same.
+    this.configuredStatusLinePattern = new RegExp(`^[ \t⋆]*${line}(?:${CODEX_NATIVE_FOOTER_FIELDS})?[ \t⋆]*$`, "iu");
     return this.configuredStatusLinePattern;
   }
 

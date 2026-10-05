@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import { CodexBackend } from "../src/backend/codex.js";
 
 /**
@@ -80,4 +83,78 @@ describe("what still is NOT a footer", () => {
   it("a footer under a numbered selection (a picker, not the composer) is still refused", () => {
     expect(b.isDeliveryInputReadyPane(pane("  Context 32% left    Goal achieved (1h 6m)", "› 1. Switch to the other model"))).toBe(false);
   });
+});
+
+/**
+ * The same rule for a CONFIGURED status_line footer: the configured items, then Codex's own native fields. Its readiness
+ * regex is built from the same source, so the two cannot disagree.
+ */
+const dirs: string[] = [];
+afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
+function configured(items: string[]): CodexBackend {
+  const dir = mkdtempSync(join(tmpdir(), "agend-codex-1190-"));
+  dirs.push(dir);
+  writeFileSync(join(dir, "config.toml"), `[tui]\nstatus_line = ${JSON.stringify(items)}\n`);
+  const backend = new CodexBackend(join(dir, "instance"));
+  (backend as any).isolatedCodexHome = dir;
+  return backend;
+}
+
+const GOALS: Array<[string, string]> = [
+  ["Goal achieved (1h 6m)", "Goal achieved (1h 6m)"],
+  ["Goal usage", "Goal usage: 90 seconds."],
+  ["Goal complete with a semicolon", "Goal complete; time used: 90 seconds."],
+  ["Goal in Korean", "Goal 사용량: 45초."],
+  ["Goal stalled", "Goal stalled"],
+  ["Goal and a warning", "Goal achieved (1h 6m)    ⚠ 1 warning · f2 to view"],
+];
+const CONFIGS: Array<[string, string[], string]> = [
+  ["the reporter's context-only config", ["context-remaining"], "Context 32% left"],
+  ["a model first, then Context", ["model-with-reasoning", "context-remaining"], "gpt-5.6-sol medium · Context 46% left"],
+  ["Context first, then a model", ["context-remaining", "model-with-reasoning"], "Context 46% left · gpt-5.6-sol medium"],
+  ["no Context item at all", ["model-with-reasoning"], "gpt-5.6-sol medium"],
+];
+
+describe("a configured status_line footer followed by Codex's native Goal status is the footer (#1190)", () => {
+  for (const [config, items, base] of CONFIGS) {
+    describe(config, () => {
+      it.each(GOALS)("%s: the idle composer is proved and the readiness regex agrees", (_name, goal) => {
+        const b2 = configured(items);
+        const footer = `  ${base}    ${goal}`;
+        expect(b2.isDeliveryInputReadyPane(pane(footer))).toBe(true);
+        expect(b2.getReadyPattern().test(pane(footer))).toBe(true);
+        expect(b2.isDeliveryInputReadyPane(pane(footer, "› half a draft"))).toBe(config === "no Context item at all" ? false : true);
+      });
+
+      it("a Goal field set off by a single space", () => {
+        const b2 = configured(items);
+        expect(b2.isDeliveryInputReadyPane(pane(`  ${base} Goal achieved (1h 6m)`))).toBe(true);
+      });
+
+      it("the old shape (no Goal field) is unchanged", () => {
+        const b2 = configured(items);
+        expect(b2.isDeliveryInputReadyPane(pane(`  ${base}`))).toBe(true);
+        expect(b2.getReadyPattern().test(pane(`  ${base}`))).toBe(true);
+      });
+
+      const NEGATIVE: Array<[string, (base: string) => string]> = [
+        ["prose after one space", base => `  ${base} so I will stop here`],
+        ["a gap followed by a prompt marker", base => `  ${base}    › Ask Codex to do anything`],
+        ["a gap followed by a bullet", base => `  ${base}    • Working (3s • esc to interrupt)`],
+        ["a gap followed by an error marker", base => `  ${base}    ■ stream disconnected`],
+        ["a composer draft that quotes the footer", base => `› ${base}    Goal achieved (1h 6m)`],
+        ["words before the configured items", base => `  note: ${base}    Goal achieved (1h 6m)`],
+        ["an unrecognisable item in place of the configured ones", () => "  !!!    Goal achieved (1h 6m)"],
+      ];
+      // (A Context-first row is ALSO read by the legacy grammar, whose ` · ` suffix has always accepted whatever follows;
+      // that pre-existing leniency is the legacy branch's, not this path's.)
+      const contextFirstWithMore = items[0] === "context-remaining" && items.length > 1;
+      (contextFirstWithMore ? describe.skip : describe)("negatives", () => {
+        it.each(NEGATIVE)("still not a footer: %s", (_name, make) => {
+          const b2 = configured(items);
+          expect(b2.isDeliveryInputReadyPane(pane(make(base)))).toBe(false);
+        });
+      });
+    });
+  }
 });
