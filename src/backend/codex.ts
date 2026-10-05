@@ -55,7 +55,10 @@ function isCodexContextFooter(row: string): boolean {
   // one by one because Codex keeps adding them. A gap followed by a prompt / bullet / selection marker is NOT chrome:
   // that is a draft or a transcript line that happens to start with the words (the row must also be the LAST one, under
   // the composer, for any caller to ask).
-  const nativeFields = String.raw`[ \t]{2,}(?![›>•■❯])\S[^\r\n]*`;
+  // The Goal status (the /goal feature, whose wording and language vary: `Goal achieved (1h 6m)`, `Goal usage: 90 seconds.`,
+  // `Goal complete; time used: 90 seconds.`, `Goal 사용량: 45초.` …) is recognised by its leading word alone, so it also
+  // survives being set off by a single space.
+  const nativeFields = String.raw`(?:[ \t]{2,}(?![›>•■❯])|[ \t]+(?=Goal\b))\S[^\r\n]*`;
   const legacy = new RegExp(
     String.raw`^\s*${context}(?:${nativeFields}|(?:\s+⚠\s+\d+\s+warnings?\b[^\r\n]*)?(?:\s+·\s+\S[^\r\n]*)?)\s*$`,
     "i",

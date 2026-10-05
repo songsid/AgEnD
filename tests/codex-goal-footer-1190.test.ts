@@ -21,6 +21,12 @@ const FOOTERS: Array<[string, string]> = [
   ["Context-first with Goal achieved only", "  Context 32% left    Goal achieved (1h 6m)"],
   ["Context-first with Goal stalled", "  Context 32% left    Goal stalled"],
   ["Context-first with another Goal state", "  Context 32% left    Goal paused (2m)"],
+  ["Goal usage wording", "  Context 32% left    Goal usage: 90 seconds."],
+  ["Goal complete wording with a semicolon", "  Context 32% left    Goal complete; time used: 90 seconds."],
+  ["Goal wording in Korean (follows the prompt language)", "  Context 32% left    Goal 사용량: 45초."],
+  ["Goal wording with a warning after it", "  Context 32% left    Goal usage: 90 seconds.    ⚠ 1 warning · f2 to view"],
+  ["Goal set off by a single space", "  Context 32% left Goal achieved (1h 6m)"],
+  ["UUID-prefixed with the Korean wording", `  ${UUID} · Context 49% left    Goal 사용량: 45초.`],
   ["Context used with Goal", "  Context 68% used    Goal achieved (1h 6m)"],
   ["a native field Codex has not shipped yet", "  Context 32% left    Cache warm (12k)    ⚠ 2 warnings · f2 to view"],
   ["UUID-prefixed with Goal (the reporter's workaround)", `  ${UUID} · Context 49% left    Goal achieved (1h 6m)    ⚠ 2 warnings · f2 to view`],
@@ -47,7 +53,8 @@ describe("a Context footer with Codex's native Goal status is a footer", () => {
 describe("what still is NOT a footer", () => {
   const NOT: Array<[string, string]> = [
     ["prose that starts with the words", "Context 32% left, so I will stop here"],
-    ["prose with a single space before more words", "Context 32% left Goal achieved"],
+    ["prose with a single space before words that are not the Goal field", "Context 32% left so Goal achieved"],
+    ["a single space and a lower-case word that merely starts with goal", "Context 32% left goalkeeper stats"],
     ["a composer draft that quotes a footer", "› Context 32% left    Goal achieved (1h 6m)"],
     ["a bullet in the transcript", "• Context 32% left    Goal achieved (1h 6m)"],
     ["a gap followed by a prompt marker", "  Context 32% left    › Ask Codex to do anything"],
