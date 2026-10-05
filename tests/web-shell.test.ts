@@ -164,7 +164,9 @@ describe("the panels adopt the shell", () => {
     // A failing stream fires onerror again on every retry; the deadline must not be pushed back each time.
     expect(html).toMatch(/if \(!errorTimer\) errorTimer = setTimeout\(startPolling, 5000\)/);
     expect(html).toMatch(/sse\.addEventListener\("status", e => \{ sseAlive\(\);/);
-    // A message already shown by a poll is not shown again when the stream returns.
-    expect(html).toContain("id <= lastMsgId");
+    // The stream's cursor is the poll's cursor; a message is ingested through the boot+id merge (behaviour:
+    // tests/web-chat-c1.test.ts "dashboard polling").
+    expect(html).toContain("if (e.lastEventId) lastCursor = e.lastEventId;");
+    expect(html).toContain("/ui/poll?after=${encodeURIComponent(lastCursor)}");
   });
 });
