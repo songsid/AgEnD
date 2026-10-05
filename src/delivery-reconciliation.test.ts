@@ -102,6 +102,49 @@ describe("durable transcript marker reconciliation", () => {
     expect(transcriptDeltaHasDeliveryMarker(entries, "codex", id)).toBe(false);
   });
 
+  describe("Claude Code's paste wrapper (#1205)", () => {
+    const claudeUser = (text: string) => JSON.stringify({ type: "user", message: { role: "user", content: text } });
+    const wrapped = (body: string, wrapper = '\n\n<pasted_content id="45bc">\n') => claudeUser(`${wrapper}${body}`);
+
+    it("accepts the CLI's own `<pasted_content>` wrapper in front of the marker, as every real Claude entry has it", () => {
+      expect(transcriptDeltaHasDeliveryMarker(wrapped(`${marker}\n[from:worker] work`), "claude-code", id)).toBe(true);
+      expect(transcriptDeltaHasDeliveryMarker(wrapped(`${marker}\n[from:worker] work`, '<pasted_content id="0a1b">\r\n'), "claude-code", id)).toBe(true);
+    });
+
+    it("accepts only that exact wrapper: other text, another tag or a different id shape in front still disqualify", () => {
+      for (const front of ['\n\nsome words\n', '<pasted_content>\n', '<pasted_content id="ZZ">\n', '<other id="45bc">\n', '<pasted_content id="45bc">\nquoted: ', '<pasted_content id="45bc">',
+        'a quoted line\n\n<pasted_content id="45bc">\n', '[from:worker] see below\n<pasted_content id="45bc">\n']) {
+        expect(transcriptDeltaHasDeliveryMarker(wrapped(`${marker}\nwork`, front), "claude-code", id)).toBe(false);
+      }
+    });
+
+    it("the marker must still lead the body inside the wrapper: a quote or a later mention does not count", () => {
+      expect(transcriptDeltaHasDeliveryMarker(wrapped(`[from:worker] ${marker}`), "claude-code", id)).toBe(false);
+      expect(transcriptDeltaHasDeliveryMarker(wrapped(`[from:worker] quoting\n${marker}\nwork`), "claude-code", id)).toBe(false);
+      // …nor another delivery's marker leading the body.
+      expect(transcriptDeltaHasDeliveryMarker(wrapped("[agend-delivery-id:00000000-0000-4000-8000-000000000042]\nwork"), "claude-code", id)).toBe(false);
+    });
+
+    it("the wrapper is Claude Code's alone: Codex entries are not given the allowance", () => {
+      const entry = JSON.stringify({
+        type: "response_item",
+        payload: { type: "message", role: "user", content: [{ type: "input_text", text: `\n\n<pasted_content id="45bc">\n${marker}\nwork` }] },
+      });
+      expect(transcriptDeltaHasDeliveryMarker(entry, "codex", id)).toBe(false);
+    });
+
+    it("applies to the first user text item, wrapped, like the unwrapped form", () => {
+      const entry = JSON.stringify({
+        type: "user",
+        message: { role: "user", content: [
+          { type: "text", text: "preceding content" },
+          { type: "text", text: `\n\n<pasted_content id="45bc">\n${marker}\nwork` },
+        ] },
+      });
+      expect(transcriptDeltaHasDeliveryMarker(entry, "claude-code", id)).toBe(false);
+    });
+  });
+
   it("fails closed for unknown transcript backends and malformed lines", () => {
     expect(transcriptDeltaHasDeliveryMarker(`not-json ${marker}`, "muse", id)).toBe(false);
     expect(transcriptDeltaHasDeliveryMarker("{ truncated", "claude-code", id)).toBe(false);
@@ -125,6 +168,56 @@ describe("durable transcript marker reconciliation", () => {
     expect(result).toMatchObject({ delivered: 1, retry: 0, uncertain: 0, safeToStart: true });
     expect(h.outbox.get(h.row.deliveryId)?.state).toBe("delivered");
     h.outbox.close();
+  });
+
+  describe("a restart does not replay a Claude Code delivery that its transcript shows (#1205)", () => {
+    /** The old CLI is gone and its pid dead: the one situation in which a complete transcript WITHOUT the marker authorises a replay. */
+    const reconcile = async (body: (deliveryId: string) => string) => {
+      const root = mkdtempSync(join(tmpdir(), "agend-reconciliation-wrapped-"));
+      roots.push(root);
+      const transcriptPath = join(root, "session.jsonl");
+      writeFileSync(transcriptPath, "");
+      const h = makeAttempt({ enterStarted: true, backend: "claude-code", submissionMode: "idle_submit", transcriptPath, transcriptOffset: 0 });
+      // Exactly the shape Claude Code 2.1.284–2.1.289 wrote for every delivery in the live outbox.
+      writeFileSync(transcriptPath, `${JSON.stringify({
+        type: "user",
+        message: { role: "user", content: `\n\n<pasted_content id="45bc">\n${body(h.row.deliveryId)}` },
+      })}\n`);
+      const kill = vi.spyOn(process, "kill").mockImplementation(() => {
+        const err = new Error("no such process") as NodeJS.ErrnoException;
+        err.code = "ESRCH";
+        throw err;
+      });
+      try {
+        const result = await finishTargetReconciliation(h.outbox, {
+          targetInstance: "worker",
+          sessionName: "test-session",
+          savedWindowId: "@old-worker",
+          attempts: [{ candidate: h.candidate, paneWindowId: "@old-worker", panePid: 424242, pane: "", paneCaptureError: null }],
+        }, true);
+        return { result, state: h.outbox.get(h.row.deliveryId)?.state };
+      } finally {
+        kill.mockRestore();
+        h.outbox.close();
+      }
+    };
+
+    it("the delivered message is found in its transcript as the CLI really writes it — delivered, not retried", async () => {
+      const { result, state } = await reconcile(deliveryId => `[agend-delivery-id:${deliveryId}]\n[from:worker] work`);
+      expect(result).toMatchObject({ delivered: 1, retry: 0, uncertain: 0, safeToStart: true });
+      expect(state).toBe("delivered");
+    });
+
+    it("control: a complete transcript that really lacks the marker is still retried — the replay path this test stands on", async () => {
+      const { result, state } = await reconcile(() => "[agend-delivery-id:00000000-0000-4000-8000-000000000042]\n[from:worker] other");
+      expect(result).toMatchObject({ delivered: 0, retry: 1, uncertain: 0 });
+      expect(state).toBe("retry_wait");
+    });
+
+    it("a marker that is only quoted inside the wrapped body is not the delivery: still retried", async () => {
+      const { result } = await reconcile(deliveryId => `[from:worker] quoting [agend-delivery-id:${deliveryId}] in prose`);
+      expect(result).toMatchObject({ delivered: 0, retry: 1 });
+    });
   });
 
   it("retries composer-only marker evidence only when the write-ahead fence proves Enter never started", async () => {
