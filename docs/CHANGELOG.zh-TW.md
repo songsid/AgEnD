@@ -76,6 +76,9 @@
   見 `docs/configuration.zh-TW.md`「人不在機器旁完成 /login」。
 
 ### 修正 (Fixed)
+- **Web 聊天：Markdown、多行輸入、重新整理不再清空。** 儀表板聊天的訊息現在會渲染 Markdown（粗體、斜體、`code`、程式碼區塊、清單、引用、連結——只接受 http/https/mailto、在新分頁開啟），
+  而訊息內容無法產生任何自己的標記（先跳脫整段文字再套格式）。輸入框可多行（Enter 送出、Shift+Enter 換行），送出失敗會把文字還給你。重新整理不再清空聊天：fleet 會保留每個 instance 最近的訊息
+  （`GET /ui/history`，存在記憶體、有上限），SSE 斷線重連時會補送漏掉的訊息。Agent 的長回覆在 web 聊天中不再於 2,000 字截斷（現在 16,000）。
 - **`/login` 瀏覽器終端機不會再因為複製而中斷登入，並提示 code 要貼在哪。** 以前按 Ctrl+C 想複製連結，會送出中斷、結束 `claude auth login`（exit 130），之後的貼上與 Enter 都打在已結束的 session 上。
   現在所有 web 終端機在「有選取文字」時 Ctrl+C 是複製；登入頁在沒有選取時 Ctrl+C（與 Ctrl-C 按鈕）直接停用——取消仍用 Stop；安裝終端機保留 Ctrl+C。CLI 不會回顯你貼上的 code，看起來像沒反應：
   登入頁現在有一個 code 輸入框，一次送出 code 與 Enter 並告訴你已送出（code 不會被記錄）。伺服器拒絕的 code 會結束指令；頁面現在會說「code 被拒（過期、已用過、重複貼上或來自另一次嘗試）」並請你重新 `/login`，而不是只顯示「exited with code 1」。

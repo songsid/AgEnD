@@ -88,6 +88,7 @@ import { DeliveryOutbox, type ClaimedOutboxDelivery, type OutboxDelivery, type D
 // a state transition or that generation is replaced.
 export const DURABLE_DELIVERY_LANE_ALERT_MS = 35 * 60_000;
 import { handleWebRequest, broadcastSseEvent } from "./web-api.js";
+import { WebChatHistory, WEB_CHAT_TEXT_MAX } from "./web-chat-history.js";
 import { handleViewRequest, isViewPath } from "./view-api.js";
 import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, usageProviderIdForBackend } from "./usage/usage-api.js";
 import { LOGIN_FLOWS, LOGIN_BACKEND_ALIASES, type LoginFlow, type AuthCheckResult } from "./login-flows.js";
@@ -881,6 +882,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   // Web UI: SSE clients + auth token
   private sseClients = new Set<import("node:http").ServerResponse>();
+  /** The web chat's recent messages: what `/ui/history` serves and what a reconnecting SSE stream is sent. */
+  readonly webChatHistory = new WebChatHistory();
   /**
    * Read from disk on every access rather than cached at startup: `agend
    * web-token rotate` runs in a separate process, and a cached copy would keep
@@ -6096,7 +6099,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           this.eventLog?.logActivity("message", msg.username, (text ?? "").slice(0, 200), generalInstance);
           this.emitSseEvent("message", {
             instance: generalInstance, sender: msg.username,
-            text: (text ?? "").slice(0, 2000), ts: new Date().toISOString(),
+            text: (text ?? "").slice(0, WEB_CHAT_TEXT_MAX), ts: new Date().toISOString(),
           });
           this.trackInboundMsg(generalInstance, msg);
           void this.sendCancelButton(generalInstance);
@@ -6212,7 +6215,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.eventLog?.logActivity("message", msg.username, (text ?? "").slice(0, 200), instanceName);
     this.emitSseEvent("message", {
       instance: instanceName, sender: msg.username,
-      text: (text ?? "").slice(0, 2000), ts: new Date().toISOString(),
+      text: (text ?? "").slice(0, WEB_CHAT_TEXT_MAX), ts: new Date().toISOString(),
     });
     this.trackInboundMsg(instanceName, msg);
     void this.sendCancelButton(instanceName);
@@ -6465,7 +6468,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.logger.info(`${instanceName} → ${replyTo}: ${(args.text as string ?? "").slice(0, 100)}`);
     this.emitSseEvent("message", {
       instance: instanceName, sender: senderSessionName ?? instanceName,
-      text: (args.text as string ?? "").slice(0, 2000),
+      text: (args.text as string ?? "").slice(0, WEB_CHAT_TEXT_MAX),
       ts: new Date().toISOString(),
     });
     // Log bot reply to classic instance chat-log
@@ -11064,9 +11067,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Push an SSE event to all connected Web UI clients. */
   emitSseEvent(event: string, data: unknown): void {
-    broadcastSseEvent(this.sseClients, event, data, (err) =>
-      this.logger.debug({ err }, "SSE client write failed; evicting"),
-    );
+    const onError = (err: unknown) => this.logger.debug({ err }, "SSE client write failed; evicting");
+    if (event === "message" && data && typeof data === "object") {
+      // A chat message: record it, and send it WITH its id so a reconnecting stream can ask for what it missed.
+      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown };
+      const recorded = this.webChatHistory.record({
+        instance: String(m.instance ?? ""), sender: String(m.sender ?? ""), text: String(m.text ?? ""), ts: String(m.ts ?? new Date().toISOString()),
+      });
+      broadcastSseEvent(this.sseClients, event, recorded, onError, recorded.id);
+      return;
+    }
+    broadcastSseEvent(this.sseClients, event, data, onError);
   }
 
   listClaimedTasks(assignee: string): Array<{ id: string; title: string }> {
