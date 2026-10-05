@@ -12,7 +12,7 @@ import { CreateInstanceArgs, validateArgs } from "./outbound-schemas.js";
 import { readStatuslineModel, resolveInstanceContext } from "./topic-commands.js";
 import { z } from "zod";
 import { isWebRequestAuthorized, WEB_TOKEN_INVALID_MESSAGE } from "./web-auth.js";
-import { parseLastEventId, type WebChatHistory } from "./web-chat-history.js";
+import { newWebMessageId, parseLastEventId, type WebChatHistory } from "./web-chat-history.js";
 import { attachmentDelivery, displayName, INLINE_MIME, isFileId, publicAttachment, sniffUpload, UPLOAD_LIMITS, type UploadEntry, type WebFileLedger } from "./web-upload.js";
 import { getAgendHome } from "./paths.js";
 import type { WebSessionStore } from "./web-session.js";
@@ -166,6 +166,8 @@ export interface WebApiContext {
   readonly sseHeartbeatMs?: number;
   startInstance(name: string, config: unknown, topicMode: boolean): Promise<void>;
   stopInstance(name: string): Promise<void>;
+  /** Interrupt the current reply and drop what was queued for it; false when the instance is not running. */
+  cancelInstance?(name: string): boolean;
   restartSingleInstance(name: string, opts?: { explicit?: boolean }): Promise<void>;
   removeInstance(name: string, authorization: ExplicitInstanceRemoval): Promise<void>;
   lastInboundUser: Map<string, string>;
@@ -411,6 +413,24 @@ export function handleWebRequest(
   }
 
   // ── Instance operations ────────────────────────────────
+
+  // Stop the agent's current reply — what Telegram's cancel button and /cancel do: Esc into the CLI, and the
+  // messages still waiting for it are dropped. Not /ui/stop, which stops the instance's process.
+  const cancelMatch = path.match(/^\/ui\/cancel\/([^/]+)$/);
+  if (method === "POST" && cancelMatch) {
+    let name: string;
+    try { name = decodeURIComponent(cancelMatch[1]!); } catch { json(res, 400, { error: "Bad instance name" }); return true; }
+    // Own keys only: "constructor" is in every object and names no instance.
+    const known = (ctx.fleetConfig ? Object.hasOwn(ctx.fleetConfig.instances, name) : false) || ctx.daemons.has(name);
+    if (!ctx.cancelInstance || !known) {
+      json(res, 404, { error: `Instance not found: ${name}` });
+      return true;
+    }
+    if (!ctx.cancelInstance(name)) { json(res, 409, { error: `${name} is not running` }); return true; }
+    ctx.eventLog?.logActivity("cancel", "web-user", "stop the current reply", name);
+    json(res, 200, { cancelled: name });
+    return true;
+  }
 
   const stopMatch = path.match(/^\/ui\/stop\/(.+)$/);
   if (method === "POST" && stopMatch) {
@@ -804,6 +824,8 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       const delivery = attachmentDelivery(typed, files);
       const message = typed;
       const ts = new Date().toISOString();
+      // The id the agent is given, and the one its delivery reports come back under: the page's ticks.
+      const messageId = newWebMessageId();
       // Use real Telegram context so daemon's lastChatId/lastThreadId are set,
       // enabling reply tool even when first message comes from Web UI.
       // Pure Web UI mode (no channel config) leaves these empty — TODO: needs
@@ -817,7 +839,7 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
           targetSession: instance,
           meta: {
             chat_id: groupId ? String(groupId) : "",
-            message_id: `web-${Date.now()}`,
+            message_id: messageId,
             user: "web-user", user_id: "web-user",
             ts,
             thread_id: topicId != null ? String(topicId) : "",
@@ -832,7 +854,7 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       }
       ctx.lastInboundUser.set(instance, "web-user");
       ctx.eventLog?.logActivity("message", "web-user", (message || `[${files.length} file(s)]`).slice(0, 200), instance);
-      ctx.emitSseEvent("message", { instance, sender: "web-user", text: message, ts, attachments: files.map(publicAttachment) });
+      ctx.emitSseEvent("message", { instance, sender: "web-user", text: message, ts, attachments: files.map(publicAttachment), messageId });
       // Sync to Telegram/Discord
       const syncAdapter = ctx.getAdapterForInstance?.(instance) ?? ctx.adapter;
       const syncGroupId = ctx.getGroupIdForInstance?.(instance) ?? String(ctx.fleetConfig?.channel?.group_id ?? "");
@@ -846,7 +868,7 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
           { threadId: topicId != null ? String(topicId) : undefined },
         ).catch(() => ctx.logger.debug({}, "Web→Channel sync failed"));
       }
-      json(res, 200, { sent: true });
+      json(res, 200, { sent: true, messageId });
     } catch {
       json(res, 400, { error: "Invalid JSON" });
     }

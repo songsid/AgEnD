@@ -168,6 +168,17 @@
     resize: none; min-height: 20px; max-height: 240px; line-height: 1.5; overflow-y: auto;
   }
   .input-bar textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+  .work-bar { display: none; }
+  .work-bar.on { display: flex; gap: 8px; align-items: center; margin: 0 20px 8px; font-size: 12px; color: var(--text-muted); }
+  .work-bar .lbl { flex: 1; }
+  .work-bar .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--success); animation: agendPulse 1.2s ease-in-out infinite; }
+  .work-bar.stuck .pulse { background: var(--warn); animation: none; }
+  @keyframes agendPulse { 0%, 100% { opacity: .3; } 50% { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .work-bar .pulse { animation: none; } }
+  .tick { margin-left: 6px; font-size: 11px; }
+  .tick-delivered { color: var(--success); }
+  .tick-failed { color: var(--error); font-weight: 700; }
+  .tick-cancelled { color: var(--text-muted); }
   .failed-send { margin: 0 20px 8px; padding: 8px 12px; border-radius: 10px; font-size: 12px; background: rgba(218,54,51,0.12); border: 1px solid rgba(218,54,51,0.35); display: flex; gap: 8px; align-items: center; }
   .failed-send .txt { flex: 1; white-space: pre-wrap; word-break: break-word; max-height: 4.5em; overflow: hidden; }
   .pending-files { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 20px 6px; }
@@ -313,7 +324,9 @@
 const UI_LANG = localStorage.getItem("agend_lang") || (navigator.language?.toLowerCase().startsWith("zh") ? "zh-TW" : "en");
 const UI_TEXT = {
   en: {
-    disconnected: "disconnected", file_empty: "empty file", file_too_large: "over 10 MB", file_too_many: "at most 5 files per message", file_too_much: "the files together would be over 25 MB", removeFile: "Remove", notSent: "Not sent:", putBack: "Put back", discard: "Discard", selectTarget: "Select Fleet or an instance to begin", deleteConfirm: 'Type "delete {0}" to confirm:',
+    disconnected: "disconnected", tick_queued: "Waiting behind another message", tick_processing: "Handed to the agent", tick_delivered: "The agent has it", tick_failed: "Not delivered", tick_cancelled: "Dropped by Stop",
+    working: "{0} is working…", stuck: "{0} looks stuck", stopReply: "Stop", stopReplyTitle: "Stop the current reply (like Esc) and drop the messages still waiting", stopSent: "Stopped",
+    file_empty: "empty file", file_too_large: "over 10 MB", file_too_many: "at most 5 files per message", file_too_much: "the files together would be over 25 MB", removeFile: "Remove", notSent: "Not sent:", putBack: "Put back", discard: "Discard", selectTarget: "Select Fleet or an instance to begin", deleteConfirm: 'Type "delete {0}" to confirm:',
     instanceDeleted: "Instance deleted", noMessages: "No messages yet", sendFirst: "Send a message to start the conversation",
     loadFailed: "Failed to load", configLoadFailed: "Failed to load config", topicRequired: "Topic Name is required when Directory is empty",
     titleRequired: "Title required", scheduleFieldsRequired: "Cron, message, and target required", teamFieldsRequired: "Name and at least one member required",
@@ -322,7 +335,9 @@ const UI_TEXT = {
     teamCreated: "Team created", teamDeleted: "Team deleted", configSaved: "Config saved", configRestart: " (restart Fleet to apply channel changes)",
   },
   "zh-TW": {
-    disconnected: "已斷線", file_empty: "空檔案", file_too_large: "超過 10 MB", file_too_many: "每則訊息最多 5 個檔案", file_too_much: "檔案合計會超過 25 MB", removeFile: "移除", notSent: "未送出：", putBack: "放回輸入框", discard: "捨棄", selectTarget: "請選擇 Fleet 或 instance", deleteConfirm: '請輸入「delete {0}」以確認：',
+    disconnected: "已斷線", tick_queued: "排在前一則訊息之後", tick_processing: "已交給 agent", tick_delivered: "agent 已收到", tick_failed: "未送達", tick_cancelled: "已被中止取消",
+    working: "{0} 處理中…", stuck: "{0} 似乎卡住了", stopReply: "中止", stopReplyTitle: "中止目前的回覆（同 Esc），並取消還在排隊的訊息", stopSent: "已中止",
+    file_empty: "空檔案", file_too_large: "超過 10 MB", file_too_many: "每則訊息最多 5 個檔案", file_too_much: "檔案合計會超過 25 MB", removeFile: "移除", notSent: "未送出：", putBack: "放回輸入框", discard: "捨棄", selectTarget: "請選擇 Fleet 或 instance", deleteConfirm: '請輸入「delete {0}」以確認：',
     instanceDeleted: "Instance 已刪除", noMessages: "尚無訊息", sendFirst: "傳送訊息以開始對話",
     loadFailed: "載入失敗", configLoadFailed: "載入設定失敗", topicRequired: "Directory 留空時必須填寫 Topic Name",
     titleRequired: "必須填寫標題", scheduleFieldsRequired: "必須填寫 Cron、訊息與目標 instance", teamFieldsRequired: "必須填寫名稱並選擇至少一名成員",
@@ -341,6 +356,8 @@ const msgs = {};
 const drafts = {}, failedSends = {};
 // Files chosen for a chat and not sent yet, and whether a send is in flight — per chat, like drafts.
 const pendingFiles = {}, sending = {};
+// Each instance's execution state (working / idle / stuck / null): from every status, and its edges live.
+const activity = {};
 
 async function api(m, p, b) {
   const o = { method: m, headers: { "Content-Type": "application/json" } };
@@ -361,9 +378,11 @@ function toast(msg, ok=true) {
 let lastCursor = "", silentTimer = null, errorTimer = null, pollTimer = null;
 function applyStatus(d) {
   instances = d.instances;
+  for (const i of instances) activity[i.name] = i.state ?? null;
   document.getElementById("uptime").textContent = fmtUp(d.uptime);
   renderList();
   if (cur) { const i = instances.find(x => x.name === cur); const a = document.getElementById("actions"); if (i && a) renderActions(i); }
+  renderWorkBar();
 }
 // One way in for a chat message, from the stream, a poll or a replay: one entry per boot+id.
 function ingestMessage(m) {
@@ -378,6 +397,8 @@ async function pollOnce() {
     applyStatus(d.status);
     for (const m of d.messages) ingestMessage(m);
     if (typeof d.cursor === "string") lastCursor = d.cursor;
+    // Ticks move on messages already shown, which a cursor does not cover: the open chat is re-read.
+    if (cur && curTab === "chat") loadHistory(cur);
   } catch { /* the next tick tries again */ }
 }
 function startPolling() { if (pollTimer) return; pollOnce(); pollTimer = setInterval(pollOnce, 5000); }
@@ -391,6 +412,20 @@ sse.addEventListener("message", e => {
   sseAlive();
   if (e.lastEventId) lastCursor = e.lastEventId;   // the stream's cursor is the poll's cursor too
   ingestMessage(JSON.parse(e.data));
+});
+// A web user's message got further (or a Stop dropped it): its ticks.
+sse.addEventListener("delivery", e => {
+  sseAlive();
+  const d = JSON.parse(e.data);
+  const before = msgs[d.instance];
+  msgs[d.instance] = AgendChatRender.applyDelivery(before, d.messageId, d.delivery);
+  if (msgs[d.instance] !== before && d.instance === cur && curTab === "chat") renderMsgs();
+});
+sse.addEventListener("activity", e => {
+  sseAlive();
+  const d = JSON.parse(e.data);
+  activity[d.instance] = d.state ?? null;
+  if (d.instance === cur) renderWorkBar();
 });
 // What was said before this page loaded (a reload no longer starts from an empty chat).
 async function loadHistory(name) {
@@ -465,6 +500,7 @@ function renderInstanceMain(main) {
     <div class="actions" id="actions"></div>
     <div class="chat-view" id="chatView" style="display:${curTab==="chat"?"flex":"none"}">
       <div class="messages" id="messages"></div>
+      <div id="workBar" class="work-bar" aria-live="polite"></div>
       <div id="failedSend"></div>
       <div id="pendingFiles" class="pending-files"></div>
       <div class="input-bar"><button class="btn" id="attachBtn" type="button" title="Attach files (images, PDF, text — or paste / drop them)">📎</button><input type="file" id="fileIn" multiple hidden accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/*,.md,.csv,.json,.log,.yaml,.yml"><textarea id="msgIn" rows="1" placeholder="Send a message..." autocomplete="off"></textarea><button class="btn btn-accent" onclick="sendMsg()">Send</button></div>
@@ -493,6 +529,7 @@ function renderInstanceMain(main) {
     view.addEventListener("drop", e => { if (e.dataTransfer && e.dataTransfer.files.length) { e.preventDefault(); addFiles(e.dataTransfer.files); } view.classList.remove("dragging"); });
     renderPendingFiles();
     renderFailedSend();
+    renderWorkBar();
     inp.focus();
   }
   else if (curTab === "detail") loadDetail();
@@ -531,9 +568,40 @@ function renderMsgs() {
     const u = x.sender==="web-user"||(!x.sender.startsWith("agend")&&x.sender!==cur&&x.sender!=="general");
     const t = x.ts ? new Date(x.ts).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}) : "";
     // renderMarkdown escapes the whole text before it adds any tag of its own (src/ui/chat-render.js).
-    return `<div class="msg ${u?"inbound":"outbound"}"><div class="sender ${u?"user":"agent"}">${esc(x.sender)}<span class="time">${t}</span></div><div class="md">${AgendChatRender.renderMarkdown(x.text)}</div>${AgendChatRender.attachmentsHtml(x.attachments)}</div>`;
+    const ticks = u && x.delivery ? AgendChatRender.deliveryHtml(x.delivery, TICK_LABELS()) : "";
+    return `<div class="msg ${u?"inbound":"outbound"}"><div class="sender ${u?"user":"agent"}">${esc(x.sender)}<span class="time">${t}${ticks}</span></div><div class="md">${AgendChatRender.renderMarkdown(x.text)}</div>${AgendChatRender.attachmentsHtml(x.attachments)}</div>`;
   }).join("");
   el.scrollTop = el.scrollHeight;
+}
+const TICK_LABELS = () => ({ queued: tr("tick_queued"), processing: tr("tick_processing"), delivered: tr("tick_delivered"), failed: tr("tick_failed"), cancelled: tr("tick_cancelled") });
+// "<name> is working…" and a Stop for the reply under way — built from nodes: the name is text, never markup.
+function renderWorkBar() {
+  const bar = document.getElementById("workBar"); if (!bar) return;
+  const state = AgendChatRender.isBusy(activity[cur]) ? activity[cur] : "";
+  // Every status frame comes through here: rebuild only on a change, or the Stop button a keyboard user
+  // is on would be replaced (and its focus lost) every ten seconds.
+  const shown = `${cur}\u0000${state}`;
+  if (bar.dataset.shown === shown) return;
+  bar.dataset.shown = shown;
+  bar.textContent = "";
+  if (!cur || !state) { bar.className = "work-bar"; return; }
+  bar.className = `work-bar on${state === "stuck" ? " stuck" : ""}`;
+  const dot = document.createElement("span"); dot.className = "pulse"; dot.setAttribute("aria-hidden", "true");
+  const label = document.createElement("span"); label.className = "lbl"; label.textContent = trf(state === "stuck" ? "stuck" : "working", cur);
+  const stop = document.createElement("button"); stop.type = "button"; stop.className = "btn btn-warn"; stop.id = "stopReply";
+  stop.textContent = tr("stopReply"); stop.title = tr("stopReplyTitle");
+  stop.onclick = () => cancelReply(cur, stop);
+  bar.append(dot, label, stop);
+}
+async function cancelReply(target, button) {
+  if (!target) return;
+  if (button) button.disabled = true;
+  let r;
+  try { r = await api("POST", `/ui/cancel/${encodeURIComponent(target)}`); }
+  catch (err) { r = { error: err && err.message ? err.message : tr("disconnected") }; }
+  if (button) button.disabled = false;
+  if (r && !r.error) toast(`${target}: ${tr("stopSent")}`);
+  else toast(r && r.error ? r.error : tr("disconnected"), false);
 }
 function growComposer(inp) { inp.style.height = "auto"; inp.style.height = Math.min(inp.scrollHeight, 240) + "px"; }
 async function sendMsg() {

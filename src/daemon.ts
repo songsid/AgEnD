@@ -662,10 +662,13 @@ type DeliveryVerdict = {
 type DeliveryStatus = { chatId: string; messageId: string; threadId?: string };
 
 /** Build a status holder from channel metadata, keeping chat and thread apart. */
-function channelStatus(meta: Record<string, string>): DeliveryStatus | undefined {
+export function channelStatus(meta: Record<string, string>): DeliveryStatus | undefined {
   const chatId = meta.chat_id;
   const messageId = meta.message_id;
-  if (!chatId || !messageId) return undefined;
+  // A web chat message has no platform chat when the fleet has no channel, and still gets its reports:
+  // they are the dashboard's ticks (the fleet routes them by the message id, never to a platform).
+  if (!messageId || (!chatId && meta.source !== "web")) return undefined;
+  if (!chatId) return { chatId: "", messageId };
   const threadId = meta.thread_id || undefined;
   return threadId ? { chatId, messageId, threadId } : { chatId, messageId };
 }
@@ -5493,7 +5496,7 @@ export class Daemon extends EventEmitter {
     if (this.pasteQueueDepth > 3) {
       this.logger.warn({ depth: this.pasteQueueDepth }, "Message delivery queue backing up");
     }
-    if (wasQueued && chatId && messageId) {
+    if (wasQueued) {
       const queuedStatus = channelStatus(meta);
       if (queuedStatus) this.emit("message_queued", queuedStatus);
     }
