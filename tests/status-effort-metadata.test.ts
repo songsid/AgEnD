@@ -298,7 +298,7 @@ describe("FleetManager status composers", () => {
         expect(first).toContain('"effort":"high"');
       }
       assertPure();
-    } finally { for (const { req } of clients) req.emit("close"); }
+    } finally { for (const { res } of clients) res.emit("close"); }   // the response closing ends a stream (#1018 review: not the request's)
     expect(fm["sseClients"].size).toBe(0); expect(vi.getTimerCount()).toBe(0);
   });
 });
