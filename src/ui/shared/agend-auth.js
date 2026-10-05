@@ -7,6 +7,18 @@
 (() => {
   "use strict";
   if (window.AgendAuth) return;
+
+  // An old link carries `?token=` (e.g. /view?token=…, which is open to read and so is served, not
+  // answered with the sign-in page). It is not a credential any more, but it is still the fleet's
+  // token: take it out of the address bar and this history entry at once.
+  try {
+    const here = new URL(location.href);
+    if (here.searchParams.has("token")) {
+      here.searchParams.delete("token");
+      history.replaceState(null, "", here.pathname + here.search + here.hash);
+    }
+  } catch { /* nothing to clean */ }
+
   const nativeFetch = window.fetch.bind(window);
   let csrfPending = null;
 

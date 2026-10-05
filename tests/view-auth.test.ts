@@ -38,7 +38,7 @@ async function startFleet(web?: Record<string, unknown>): Promise<Harness> {
   const fm = new FleetManager(dir);
   const quiet = () => {};
   fm.logger = { info: quiet, warn: quiet, error: quiet, debug: quiet, trace: quiet, fatal: quiet, child: () => fm.logger } as unknown as typeof fm.logger;
-  vi.spyOn(fm, "notifyFleetError").mockImplementation(() => {});
+  vi.spyOn(fm, "notifyFleetError").mockImplementation(() => true);
   (fm as unknown as { fleetConfig: unknown }).fleetConfig = { instances: { alpha: { working_directory: "/tmp" } }, defaults: {}, ...(web ? { web } : {}) };
   (fm as unknown as { initializeWebAuthTokens(): void }).initializeWebAuthTokens();
   (fm as unknown as { startHealthServer(port: number): void }).startHealthServer(0);
@@ -296,5 +296,34 @@ describe("nothing credential-shaped is left behind", () => {
     const src = readFileSync(join(process.cwd(), "src", "topic-commands.ts"), "utf8");
     expect(src).not.toContain("View (edit)");
     expect(src).not.toContain("?token=");
+  });
+});
+
+
+describe("agend-auth.js (loaded by /ui, /view and /settings), run against a fake page", () => {
+  async function load(href: string) {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const vm = await import("node:vm");
+    const url = new URL(href);
+    const replaced: string[] = [];
+    const win: Record<string, unknown> = { fetch: () => new Promise(() => {}) };
+    const context = vm.createContext({
+      window: win, location: { href: url.href }, history: { replaceState: (_s: unknown, _t: unknown, u: string) => { replaced.push(u); } },
+      URL, document: { addEventListener() {}, body: null, createElement: () => ({ style: {}, append() {} }) },
+    });
+    vm.runInContext(readFileSync(join(process.cwd(), "src", "ui", "shared", "agend-auth.js"), "utf8"), context);
+    return replaced;
+  }
+
+  it("takes a leftover ?token= out of the address bar of any panel, keeping everything else", async () => {
+    const token = "f".repeat(48);
+    expect(await load(`http://127.0.0.1:1/view?token=${token}`)).toEqual(["/view"]);
+    expect(await load(`http://127.0.0.1:1/view?i=w&token=${token}#p`)).toEqual(["/view?i=w#p"]);
+  });
+
+  it("leaves an address without one alone", async () => {
+    expect(await load("http://127.0.0.1:1/view")).toEqual([]);
+    expect(await load("http://127.0.0.1:1/ui?x=1")).toEqual([]);
   });
 });
