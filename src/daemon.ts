@@ -1217,6 +1217,16 @@ export class Daemon extends EventEmitter {
    * dialog on screen at every poll and ignores nothing.
    */
   private dialogAnswers: { key: string; ignored: number; reported: boolean; screen: string; lastAnswerAt: number } | null = null;
+  /**
+   * The last error occurrence handed to the lifecycle: what an action that needs the screen it was seen on (a
+   * `nudge_continue` arming) reads back, with the spawn / monitors it was seen under.
+   */
+  private lastErrorEpisode: { pattern: RegExp; pane: string; spawn: number; fence: number } | null = null;
+  /**
+   * An armed "tell the agent to keep going" (Codex model at capacity). One per episode; the monitor owns it: every poll
+   * cancels it when anything changed, and it fires at most once. The due time is on the monotonic clock.
+   */
+  private capacityNudge: { pane: string; spawn: number; fence: number; epoch: number; dueAt: number } | null = null;
   /** Current stdin-owning runtime dialog, independent from execution state. */
   private inputBlockedDialogKey: string | null = null;
   /** Generation/signature fence for safety dialogs while their screen is still visible. */
@@ -2985,6 +2995,7 @@ export class Daemon extends EventEmitter {
 
         const pane = await this.tmux.capturePane();
         if (stale()) return;
+        this.tickCapacityNudge(pane);
         const inputBlockedDialog = this.updateInputBlockedState(pane, dialogs);
 
         // A sign-in screen that appears AFTER the startup scan ended (first run:
@@ -3366,6 +3377,7 @@ export class Daemon extends EventEmitter {
     // scan would otherwise keep reporting the same dead instance forever.
     if (ep.type === "auth_error") this.authFailureUnresolved = true;
     this.logger.warn({ errorType: ep.type, action: ep.action }, `PTY error detected: ${message}`);
+    this.lastErrorEpisode = { pattern: ep.pattern, pane, spawn: this.spawnGeneration, fence: this.launchFenceEpoch };
     this.emit("pty_error", { name: this.name, ...ep, message });
   }
 
@@ -6037,6 +6049,75 @@ export class Daemon extends EventEmitter {
     return { state: "clear" };
   }
 
+  /**
+   * Arm the "keep going" nudge for the error occurrence just reported (`pattern` must be the one the lifecycle was
+   * handed). The nudge is sent once, `delayMs` from now on the MONOTONIC clock (a wall-clock step changes nothing),
+   * and only if nothing has changed by then — see {@link tickCapacityNudge}. Returns false when there is nothing to arm.
+   */
+  armCapacityNudge(pattern: RegExp, delayMs: number): boolean {
+    const episode = this.lastErrorEpisode;
+    if (!episode || episode.pattern !== pattern) return false;
+    if (episode.spawn !== this.spawnGeneration || episode.fence !== this.launchFenceEpoch) return false;
+    if (this.isPaused || this.getProcessStatus() === "stopped") return false;
+    if (Daemon.countOccurrences(pattern, episode.pane) === 0) return false;
+    this.capacityNudge = {
+      pane: episode.pane, spawn: episode.spawn, fence: episode.fence,
+      epoch: this.deliveryEpoch, dueAt: performance.now() + delayMs,
+    };
+    this.logger.info({ delayMs }, "Model-capacity nudge armed");
+    return true;
+  }
+
+  /** Drop an armed nudge (the user stopped / paused the instance, or the lifecycle gave up on it). */
+  cancelCapacityNudge(reason: string): void {
+    if (!this.capacityNudge) return;
+    this.capacityNudge = null;
+    this.logger.info({ reason }, "Model-capacity nudge cancelled");
+  }
+
+  private static countOccurrences(pattern: RegExp, pane: string): number {
+    const flags = pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g";
+    return (pane.match(new RegExp(pattern.source, flags)) || []).length;
+  }
+
+  /**
+   * One monitor poll's look at an armed nudge. It is CANCELLED — never postponed — when anything about the instance
+   * moved: a stop / pause / respawn (spawn generation or monitor epoch), a user cancel (delivery epoch), the pane no
+   * longer being exactly the one the error was seen on (it moved on by itself, a person typed, another dialog), the
+   * agent working, or a message waiting for delivery. Only when it is due and still untouched is it fired — once — and
+   * the injection re-verifies everything under the pane-write lock.
+   */
+  private tickCapacityNudge(pane: string): void {
+    const nudge = this.capacityNudge;
+    if (!nudge) return;
+    const gone = nudge.spawn !== this.spawnGeneration || nudge.fence !== this.launchFenceEpoch ? "the instance was stopped, paused or respawned"
+      : !this.isDeliveryEpochCurrent(nudge.epoch) ? "the user cancelled"
+      : this.isPaused || this.healthCheckPaused || this.getProcessStatus() === "stopped" ? "the instance is not running"
+      : pane !== nudge.pane ? "the screen changed"
+      : this.instanceState === "working" || this.pasteQueueDepth > 0 ? "the instance has work of its own"
+      : null;
+    if (gone) { this.cancelCapacityNudge(gone); return; }
+    if (performance.now() < nudge.dueAt) return;
+    this.capacityNudge = null;                                    // fired: once per episode
+    void this.sendCapacityNudge(nudge).catch(err => this.logger.warn({ err: (err as Error).message }, "Model-capacity nudge failed"));
+  }
+
+  private async sendCapacityNudge(nudge: NonNullable<Daemon["capacityNudge"]>): Promise<void> {
+    const stale = (): boolean => nudge.spawn !== this.spawnGeneration || nudge.fence !== this.launchFenceEpoch
+      || !this.isDeliveryEpochCurrent(nudge.epoch) || this.isPaused || this.healthCheckPaused
+      || this.startupAborted || this.getProcessStatus() === "stopped";
+    // Exclusive with every delivery: nothing can paste a turn between the verdict below and the nudge.
+    await this.paneWriteLock.run(async () => {
+      if (stale() || !this.tmux || this.pasteQueueDepth > 0) return;
+      const pane = await this.tmux.capturePane();
+      if (stale() || pane !== nudge.pane) { this.logger.info("Model-capacity nudge dropped: the screen changed"); return; }
+      if (!(await this.isPaneAuthoritativelyIdle())) { this.logger.info("Model-capacity nudge dropped: the CLI is not idle"); return; }
+      if (stale()) return;
+      const sent = await this.submitSystemPaste(t("inst.codex_capacity_nudge_text"), "capacity-continue");
+      this.logger.info({ sent }, "Model-capacity nudge sent");
+    });
+  }
+
   /** What identifies the request on screen: the backend's own identity when it has one, else the whole screen verbatim. */
   private static screenOf(dialog: RuntimeDialog, pane: string): string {
     return dialog.requestIdentity?.(pane) ?? pane;
@@ -7928,6 +8009,8 @@ export class Daemon extends EventEmitter {
    */
   private beginSpawn(): void {
     this.dialogAnswers = null;
+    this.capacityNudge = null;
+    this.lastErrorEpisode = null;
     // A relaunch settles any outstanding quit watch: the CLI came back.
     this.clearQuitRelaunchWatch();
     // A restarted CLI has no trustworthy turn edge for the process it replaced.

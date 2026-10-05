@@ -92,16 +92,16 @@ beforeEach(() => { vi.useFakeTimers(); });
 afterEach(() => { vi.useRealTimers(); });
 
 describe("codex model-capacity backoff (#905)", () => {
-  it("capacity error pattern uses backoff_restart action (mutation guard for codex.ts)", () => {
-    // Mutation guard: if the error pattern in codex.ts uses action:"pause"
-    // instead of "backoff_restart", the whole backoff mechanism is bypassed.
+  it("capacity error pattern uses nudge_continue (mutation guard for codex.ts)", () => {
+    // Mutation guard: if the error pattern in codex.ts uses action:"pause" (or the
+    // old restart ladder) instead of "nudge_continue", the continue nudge is bypassed.
     const backend = new CodexBackend("/tmp/codex-905-test");
     const patterns = backend.getErrorPatterns();
     const capacityPattern = patterns.find(
       (p: { pattern: RegExp }) => p.pattern.test("⚠ Selected model is at capacity. Please try a different model.")
     );
     expect(capacityPattern, "capacity error pattern not found").toBeDefined();
-    expect(capacityPattern!.action).toBe("backoff_restart");
+    expect(capacityPattern!.action).toBe("nudge_continue");
     expect(capacityPattern!.type).toBe("model_error");
     expect(capacityPattern!.skipRecoveryWait).toBe(true);
   });
@@ -157,7 +157,7 @@ describe("codex model-capacity backoff (#905)", () => {
       await lifecycle.start("codex-inst", config, false);
       const oldDaemon = (lifecycle as any).daemons.get("codex-inst") as Daemon;
       const capacity = new CodexBackend(instanceDir).getErrorPatterns().find(
-        pattern => pattern.type === "model_error" && pattern.action === "backoff_restart",
+        pattern => pattern.type === "model_error" && pattern.action === "nudge_continue",
       );
       expect(capacity).toBeDefined();
       vi.spyOn(oldDaemon, "getErrorPatternOccurrenceCount").mockReturnValue(1);

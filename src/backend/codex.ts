@@ -1743,16 +1743,20 @@ export class CodexBackend implements CliBackend {
       },
       {
         // A capacity rejection is a completed failed turn: Codex returns to its
-        // prompt without an answer. Keep this anchored to the exact decorated
-        // TUI line so ordinary prose about model capacity cannot pause an
-        // otherwise healthy instance. The CLI is already back at the prompt, so
-        // skipRecoveryWait avoids an extra wait before the backoff timer fires.
-        // action "backoff_restart": exponential backoff + resume, up to 3 times;
-        // the lifecycle falls back to "pause" after the limit (see #905).
+        // prompt without an answer, with its context intact. Keep this anchored to
+        // the exact decorated TUI line so ordinary prose about model capacity
+        // cannot trigger anything on an otherwise healthy instance. The CLI is
+        // already back at the prompt, so skipRecoveryWait avoids an extra wait.
+        // action "nudge_continue": tell the user, then about a minute later tell
+        // the agent to keep going (the lifecycle bounds this to 3 per 30 minutes,
+        // then pauses; see #905). No restart — nothing would re-send the turn — and
+        // no model switch. skipCooldown: each NEW capacity line is a new episode,
+        // including a second one right after the nudge.
         pattern: /^⚠ Selected model is at capacity\. Please try a different model\.\r?$/m,
         type: "model_error",
-        action: "backoff_restart",
+        action: "nudge_continue",
         message: t("inst.codex_model_capacity"),
+        skipCooldown: true,
         skipRecoveryWait: true,
       },
       // Workspace (team) accounts report exhaustion differently from personal

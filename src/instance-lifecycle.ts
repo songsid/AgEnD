@@ -284,6 +284,9 @@ export interface IncidentEventSource {
   getErrorPatternOccurrenceCount?(type: "model_error", pattern: RegExp): number;
   /** Present on real daemons; hang buttons attach only when it returns one. */
   getHangDetector?(): { on(event: string, handler: (...args: any[]) => void): unknown } | null;
+  /** `nudge_continue`: arm / drop the daemon's "tell the agent to keep going" for the error just reported. */
+  armCapacityNudge?(pattern: RegExp, delayMs: number): boolean;
+  cancelCapacityNudge?(reason: string): void;
   /** Real daemons buffer `pty_error` raised by the startup scan until the lifecycle can handle it. */
   holdStartupIncidents?(): void;
   releaseStartupIncidents?(): void;
@@ -1181,8 +1184,8 @@ export class InstanceLifecycle {
         this.noteBackendOutage(name, data.message, notificationTarget);
       } else if (data.type === "auth_error") {
         if (notificationTarget) this.notifyAuthErrorOnce(name, data.message, notificationTarget);
-      } else if (notificationTarget && data.action !== "backoff_restart") {
-        // backoff_restart notifications are handled in the action branch below
+      } else if (notificationTarget && data.action !== "backoff_restart" && data.action !== "nudge_continue") {
+        // backoff_restart / nudge_continue notifications are handled in the action branch below
         // with per-attempt context (attempt N/max, delay).
         this.notifyIncident(notificationTarget, "pty_error", t("inst.notification", emoji, name, incidentMessage, data.action));
       }
@@ -1205,6 +1208,8 @@ export class InstanceLifecycle {
         // default (valid) model.
         this.ctx.restartSingleInstance(name, { freshStart: true }).catch(err =>
           this.ctx.logger.error({ err, name }, "pty_error restart failed"));
+      } else if (data.action === "nudge_continue") {
+        this.scheduleContinueNudge(name, daemon, data.pattern);
       } else if (data.action === "backoff_restart") {
         // Transient model capacity error (#905). The CLI already returned to its
         // prompt (skipRecoveryWait: true in the error pattern), so no additional
@@ -1307,6 +1312,43 @@ export class InstanceLifecycle {
         }
       }
     }, this.ctx.logger, `daemon.pty_error[${name}]`));
+  }
+
+  /** How long after a capacity error the agent is told to keep going. */
+  private static readonly CAPACITY_NUDGE_DELAY_MS = 60_000;
+
+  /**
+   * A transient capacity error whose context is intact (#905): tell the user, and have the daemon tell the agent to keep
+   * going after a minute — at most CAPACITY_BACKOFF_MAX times per 30 minutes, then pause like the old ladder did.
+   * The daemon owns the nudge itself (its fences, its pane lock); this owns only whether one is allowed.
+   */
+  private scheduleContinueNudge(name: string, daemon: IncidentEventSource, pattern: unknown): void {
+    const now = Date.now();
+    const prev = this.capacityBackoffAttempts.get(name);
+    // A wall clock that stepped back must not make an old window look current forever.
+    const elapsed = prev ? now - prev.lastAt : -1;
+    const attempts = prev && elapsed >= 0 && elapsed < InstanceLifecycle.CAPACITY_BACKOFF_WINDOW_MS ? prev.count : 0;
+    const notificationTarget = this.ptyErrorNotificationTarget(name);
+    if (attempts >= InstanceLifecycle.CAPACITY_BACKOFF_MAX) {
+      this.ctx.logger.warn({ name, attempts }, "Model still at capacity after max nudges — pausing");
+      daemon.cancelCapacityNudge?.("retries exhausted");
+      if (notificationTarget) this.notifyIncident(notificationTarget, "pty_error", t("inst.codex_capacity_backoff_exhausted", name, String(attempts)));
+      void this.pause(name, "error")
+        .catch(err => this.ctx.logger.warn({ err, name }, "capacity-exhausted pause failed"))
+        .finally(() => { if (!this.isPaused(name)) this.daemons.get(name)?.requestPauseWhenIdle({ reason: "error" }); });
+      return;
+    }
+    if (!(pattern instanceof RegExp) || !daemon.armCapacityNudge?.(pattern, InstanceLifecycle.CAPACITY_NUDGE_DELAY_MS)) {
+      // Nothing to arm (the screen already moved on): the user still hears about the capacity error, no attempt is used.
+      if (notificationTarget) this.notifyIncident(notificationTarget, "pty_error", t("inst.codex_model_capacity"));
+      return;
+    }
+    this.capacityBackoffAttempts.set(name, { count: attempts + 1, lastAt: now });
+    this.ctx.logger.info({ name, attempt: attempts + 1 }, "Model at capacity — will tell it to keep going");
+    if (notificationTarget) {
+      this.notifyIncident(notificationTarget, "pty_error", t("inst.codex_capacity_nudge_scheduled", name,
+        String(attempts + 1), String(InstanceLifecycle.CAPACITY_BACKOFF_MAX), String(Math.round(InstanceLifecycle.CAPACITY_NUDGE_DELAY_MS / 1000))));
+    }
   }
 
   epochOf(name: string): number {
