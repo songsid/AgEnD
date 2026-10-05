@@ -286,6 +286,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Telegram ClassicBot's `/start` reply says to @mention the bot (#1196).** "Agent started" and "already has an active
   agent" led with `/chat`, the Discord way; on Telegram you talk to a ClassicBot by @mentioning it, and the reply now
   says so. Discord's replies are unchanged, and so is what reaches the agent.
+- **A steer into a busy Claude / Grok / Muse instance is `delivered`, not `uncertain` (#1197).** Those CLIs have no readable input
+  row, and the idle→busy edge that proves an ordinary submission cannot exist in a pane that is already busy, so every durable
+  steer used to end `uncertain` — a ⚠️ for the operator and a `[system:delivery-outcome]` for the sender, for a steer that had
+  landed (it was not an IPC timeout: `send_to_instance` returns at once and nothing waits). Now a steer whose own trusted
+  `message_id` is on the pane after its successful Enter — more often than before the paste, no dialog, same spawn and window — is
+  `delivered`, with the evidence `steer-accepted-marker-on-pane; input-row-unreadable`: accepted into the live turn's input,
+  not proof the model has read it (`delivery_status` already shows `delivery_mode: steer`). Anything less stays `uncertain`.
+  Also: the steer banner now follows the delivery marker instead of preceding it, so a steer can be proved from the CLI
+  transcript after a restart.
 - **A Codex turn that runs long with nothing new on screen is no longer declared stuck (#1188).** The live status row's
   own elapsed counter (`• Working (5m 51s • esc to interrupt)`) now counts as proof of life: a counter that moved since
   the last look keeps the turn "working", however long the rest of the pane stayed the same. Before, the 10-minute
