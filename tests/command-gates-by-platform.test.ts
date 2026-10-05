@@ -377,9 +377,12 @@ describe("/start: not one level, and neither platform's real gate moved", () => 
     const any = r.fm as unknown as Record<string, any>;
     any.startClassicInstance = async () => { r.reached.push("started"); };
     any.reregisterClassicChannels = () => {};
+    // A Discord bot of its own: the reply names the Discord way to talk (#1196), and the guild is a Discord guild.
+    const dc = { id: "dc", type: "discord", sendText: async () => ({ messageId: "m", chatId: "c" }) };
+    any.worlds.set("dc", { id: "dc", adapter: dc, channelConfig: { id: "dc", type: "discord", bot_token_env: "X" } });
     // The real admission (the stub above stands in for it only on the Telegram paths).
     const start = (channel: string, user: string, guild: string) =>
-      FleetManager.prototype.handleClassicStart.call(r.fm, channel, `n-${channel}`, user, guild, "tg", "claude-code");
+      FleetManager.prototype.handleClassicStart.call(r.fm, channel, `n-${channel}`, user, guild, "dc", "claude-code");
     const results: string[] = [];
     for (const [i, id] of [PU, FA, CA].entries()) results.push(await start(`chan-${i}`, id, "G-ok"));
     expect(results).toEqual([t("classic.started"), t("classic.started"), t("classic.started")]);
