@@ -9,6 +9,7 @@
 import type { FleetConfig } from "./types.js";
 import { lastKiroCompatibilitySnapshot, planKiroLaunch, type KiroCompatibilitySnapshot } from "./backend/kiro.js";
 import { instanceCredentialProfile } from "./backend/credential-profile.js";
+import { classicProfile, profileName } from "./classic-bindings.js";
 import { readKiroLedger, type KiroLaunchRecord } from "./backend/kiro-engine-ledger.js";
 import { readKiroV3Identity, type KiroV3Identity } from "./backend/kiro-v3-identity.js";
 import { getAgendHome } from "./paths.js";
@@ -26,7 +27,7 @@ export interface KiroEngineCandidate {
 }
 
 interface ClassicRegistry {
-  getAll(): { instanceName: string; backend?: string }[];
+  getAll(): { instanceName: string; backend?: string; backendOptions?: BackendOptions }[];
   getBackendByInstance?(name: string, fleetDefault?: string): string;
 }
 
@@ -49,7 +50,8 @@ export function kiroEngineCandidates(fleet: FleetConfig | null | undefined, clas
     if (fleetNames.has(channel.instanceName) || out.some(c => c.name === channel.instanceName)) continue;
     const backend = channel.backend || classic?.getBackendByInstance?.(channel.instanceName, defaults?.backend) || defaults?.backend || "claude-code";
     if (backend !== "kiro-cli") continue;
-    out.push({ name: channel.instanceName, kiroUi: defaults?.kiro_ui ?? "legacy", credentialProfile: instanceCredentialProfile(undefined, defaults, "kiro-cli"), classic: true });
+    // A channel's own backend_options (#1220) come first, as startClassicInstance merges them.
+    out.push({ name: channel.instanceName, kiroUi: defaults?.kiro_ui ?? "legacy", credentialProfile: profileName(classicProfile(channel.backendOptions, defaults?.backend_options, "kiro-cli")), classic: true });
   }
   return out;
 }

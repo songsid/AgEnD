@@ -249,6 +249,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   are unaffected.
 
 ### Added
+- **A ClassicBot channel can run on a second subscription (#1220).** A channel in `classicBot.yaml` now takes
+  `backend_options.<backend>.credential_profile`, as a `fleet.yaml` instance does — e.g. a classic codex bot on
+  `credential_profile: personal`. Its agent is launched on that profile, `get_usage` / `/usage` count it under that
+  subscription's row (`Codex (personal)`), and `kiro_engine_status` reports it. Before, the key was silently dropped
+  and every classic channel was counted on the shared login. An empty or `null` value is the shared login, also over a
+  profile inherited from the fleet defaults. A profile name AgEnD cannot use stops that channel's agent from starting
+  rather than running it on another login. Only `codex` and `kiro-cli` have profiles; on another backend the profile
+  is reported and ignored. Changing it — in `classicBot.yaml` or in the fleet defaults it inherits, on the next poll or
+  a reload — restarts that channel's agent: fresh for kiro, whose other subscription holds other conversations, as for
+  a fleet instance.
 - **A CLI dialog that ignores AgEnD's answer is now reported within about 15 seconds, for every backend.** AgEnD
   answers a runtime dialog (a permission prompt, a trust prompt, a picker) by pressing its keys; when the SAME
   dialog — the very same request, character for character (OpenCode names the request from its prompt block, so a

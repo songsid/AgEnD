@@ -187,7 +187,8 @@ type ReconcileObserver = (
   status: ApplyTargetStatus,
   error?: string,
 ) => void;
-import { instanceCredentialProfile } from "./backend/credential-profile.js";
+import { credentialSwitchStartsFresh, instanceCredentialProfile } from "./backend/credential-profile.js";
+import { mergeBackendOptions, profileKey, profileName, profileOf, type ClassicProfile } from "./classic-bindings.js";
 import {
   classifyInstanceChange,
   CLASSIC_HOT_CONFIG_KEYS,
@@ -2193,6 +2194,34 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return providers;
   }
 
+  /** #1220: the login a running classic instance was launched on, from its own config; null when not running. */
+  private classicLaunchedProfile(name: string): ClassicProfile | null {
+    const launched = this.daemons.get(name)?.getConfigSnapshot?.();
+    return launched ? profileOf(launched.backend_options, launched.backend ?? "claude-code") : null;
+  }
+
+  /**
+   * #1220: whether a running classic instance's login differs from what its
+   * configuration now says — compared with what it was launched on, not with an
+   * earlier reading of the config (a reload consumes that), and with an invalid
+   * setting as a value of its own rather than the shared login it would fall to.
+   * A switch on the same backend that loses the conversation (kiro) starts fresh.
+   */
+  private classicProfileChange(name: string, backendChanged: boolean): { changed: boolean; startsFresh: boolean; from?: string; to?: string } {
+    const launched = this.classicLaunchedProfile(name);
+    if (!launched || !this.classicChannels) return { changed: false, startsFresh: false };
+    const next = this.classicChannels.getCredentialProfileByInstance(name, this.fleetConfig?.defaults);
+    if (profileKey(launched) === profileKey(next)) return { changed: false, startsFresh: false };
+    const backend = this.classicChannels.getBackendByInstance(name, this.fleetConfig?.defaults?.backend);
+    return {
+      changed: true,
+      // A backend change keeps its own (existing) restart semantics.
+      startsFresh: !backendChanged && credentialSwitchStartsFresh(backend),
+      from: profileKey(launched),
+      to: profileKey(next),
+    };
+  }
+
   /** `[instance, effective backend, credential profile]` for everything that is
    * running or paused — the one place both usage views agree on who is live. */
   private activeBackendBindings(): Array<[string, string, string | null]> {
@@ -2212,8 +2241,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         channel.instanceName,
         this.fleetConfig?.defaults?.backend,
       );
-      // Classic channels carry no backend_options, so they run the shared login.
-      add(channel.instanceName, backend, null);
+      // The login it was launched on; before a launch, the one it would get (#1220).
+      add(channel.instanceName, backend, profileName(this.classicLaunchedProfile(channel.instanceName)
+        ?? this.classicChannels!.getCredentialProfileByInstance(channel.instanceName, this.fleetConfig?.defaults)));
     }
     return bindings;
   }
@@ -3075,12 +3105,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const backendChanged = oldBackends.get(ch.instanceName) !== newBackend;
         const modelChanged = oldModels.get(ch.instanceName) !== newModel;
         const autoPauseChanged = oldAutoPause.get(ch.instanceName) !== newAutoPause;
-        if (this.daemons.has(ch.instanceName) && (backendChanged || modelChanged || autoPauseChanged)) {
+        // #1220: a running CLI keeps the login it was launched with, so a new
+        // credential_profile only takes effect through a restart.
+        const { changed: profileChanged, startsFresh: profileSwitchStartsFresh, from: profileFrom, to: profileTo } =
+          this.classicProfileChange(ch.instanceName, backendChanged);
+        if (this.daemons.has(ch.instanceName) && (backendChanged || modelChanged || autoPauseChanged || profileChanged)) {
           this.logger.info(
-            { instanceName: ch.instanceName, backendFrom: oldBackends.get(ch.instanceName), backendTo: newBackend, modelFrom: oldModels.get(ch.instanceName), modelTo: newModel },
-            "Backend/model changed — restarting",
+            { instanceName: ch.instanceName, backendFrom: oldBackends.get(ch.instanceName), backendTo: newBackend, modelFrom: oldModels.get(ch.instanceName), modelTo: newModel,
+              ...(profileChanged ? { profileFrom, profileTo } : {}) },
+            "Backend/model/profile changed — restarting",
           );
           await this.stopInstance(ch.instanceName).catch(() => {});
+          if (profileSwitchStartsFresh) this.writeFreshStartMarker(ch.instanceName);
           // Small delay to let tmux window clean up
           await new Promise(r => setTimeout(r, 2000));
           // The manager already holds the new backend/model/auto-pause; the
@@ -13179,6 +13215,17 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       ...(autoPauseAfter !== undefined ? { auto_pause_after: autoPauseAfter } : {}),
       ...(preTaskCommand ? { pre_task_command: preTaskCommand } : {}),
     };
+    // #1220: a channel's own backend_options (credential_profile) override the
+    // fleet defaults' per backend, as a fleet.yaml instance's do.
+    config.backend_options = mergeBackendOptions(config.backend_options, classicIdentity?.backendOptions);
+    // ClassicBot has no validator in front of its launch, and a backend that
+    // cannot read a profile name falls back to the shared login. Refuse here,
+    // so a bad name never runs the agent on the wrong subscription.
+    const profile = profileOf(config.backend_options, config.backend ?? "claude-code");
+    if (profile.state === "invalid") {
+      throw new Error(`Classic instance '${instanceName}' has an invalid credential_profile (${profile.reason}) — `
+        + "fix it in classicBot.yaml; it will not start on another login");
+    }
     const topicMode = this.fleetConfig?.channel?.mode === "topic";
     await this.startInstance(instanceName, config, topicMode, "classic", false, transition);
   }
@@ -13684,10 +13731,13 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         const backend = this.classicChannels.getBackend(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.backend);
         const model = this.classicChannels.getModel(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.model);
         const autoPauseAfter = this.classicChannels.getAutoPauseAfter(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.auto_pause_after);
-        if (old.backend !== backend || old.model !== model || old.autoPauseAfter !== autoPauseAfter) {
-          this.logger.info({ instanceName: ch.instanceName }, "Classic cold config changed — restarting");
+        const profile = this.classicProfileChange(ch.instanceName, old.backend !== backend);
+        if (old.backend !== backend || old.model !== model || old.autoPauseAfter !== autoPauseAfter || profile.changed) {
+          this.logger.info({ instanceName: ch.instanceName, ...(profile.changed ? { profileFrom: profile.from, profileTo: profile.to } : {}) },
+            "Classic cold config changed — restarting");
           observe?.(ch.instanceName, "restart", "running");
           await this.stopInstance(ch.instanceName).catch(() => {});
+          if (profile.startsFresh) this.writeFreshStartMarker(ch.instanceName);
           await this.startClassicInstanceUnattended(ch, "classic instance after fleet reload");
           observe?.(ch.instanceName, "restart", "done");
           continue;

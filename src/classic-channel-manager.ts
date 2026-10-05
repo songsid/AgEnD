@@ -5,6 +5,7 @@ import { getAgendHome } from "./paths.js";
 import { sanitizeInstanceName } from "./topic-commands.js";
 import type { Logger } from "./logger.js";
 import { KNOWN_BACKENDS } from "./config-validator.js";
+import { classicProfile, normalizeBackendOptions, type BackendOptions, type ClassicProfile } from "./classic-bindings.js";
 import type { Choice } from "./channel/types.js";
 import type { InstanceConfig } from "./types.js";
 
@@ -58,6 +59,11 @@ export interface ClassicChannel {
   contextLines?: number;
   toolProgress?: InstanceConfig["tool_progress"];
   replyCompletionGuard?: boolean;
+  /**
+   * Per-backend options, as in fleet.yaml (#1220). Only `credential_profile`
+   * is read today: it puts this channel's agent on a second subscription.
+   */
+  backendOptions?: BackendOptions;
   createdAt: string;
   createdBy: string;
 }
@@ -93,6 +99,7 @@ interface ClassicBotYaml {
     context_lines?: number;
     tool_progress?: InstanceConfig["tool_progress"];
     reply_completion_guard?: boolean;
+    backend_options?: unknown;
     collab?: boolean;
     pre_task_command?: string;
     createdBy?: string;
@@ -305,6 +312,7 @@ export class ClassicChannelManager {
               contextLines: val.context_lines,
               toolProgress: val.tool_progress,
               replyCompletionGuard: val.reply_completion_guard,
+              backendOptions: this.readBackendOptions(val.backend_options, key),
               createdAt: val.createdAt ?? "",
               createdBy: val.createdBy ?? "",
             },
@@ -417,6 +425,7 @@ export class ClassicChannelManager {
       if (ch.contextLines) entry.context_lines = ch.contextLines;
       if (ch.toolProgress !== undefined) entry.tool_progress = ch.toolProgress;
       if (ch.replyCompletionGuard !== undefined) entry.reply_completion_guard = ch.replyCompletionGuard;
+      if (ch.backendOptions && Object.keys(ch.backendOptions).length > 0) entry.backend_options = ch.backendOptions;
       if (ch.collab) entry.collab = ch.collab;
       if (ch.preTaskCommand) entry.pre_task_command = ch.preTaskCommand;
       obj.channels![this.compositeKey(ch.channelId, ch.adapterId)] = entry as any;
@@ -679,6 +688,38 @@ export class ClassicChannelManager {
   getBackend(channelId: string, adapterId?: string, fleetDefault?: string): string {
     const ch = this.find(channelId, adapterId);
     return ch?.backend || this.defaults.backend || fleetDefault || "claude-code";
+  }
+
+  /** A channel's own backend_options (#1220), or undefined. */
+  getBackendOptionsByInstance(instanceName: string): BackendOptions | undefined {
+    for (const ch of this.channels.values()) {
+      if (ch.instanceName === instanceName) return ch.backendOptions;
+    }
+    return undefined;
+  }
+
+  /**
+   * The login a channel's agent runs on: its own backend_options over the fleet
+   * defaults', read strictly (classic-bindings.ts) — the same options and the
+   * same rule startClassicInstance launches with, so binding, status and reload
+   * cannot disagree with the launch. An invalid setting is "invalid", never
+   * quietly the shared login or the default.
+   */
+  getCredentialProfileByInstance(
+    instanceName: string,
+    fleetDefaults: { backend?: string; backend_options?: BackendOptions } | undefined,
+  ): ClassicProfile {
+    const backend = this.getBackendByInstance(instanceName, fleetDefaults?.backend);
+    return classicProfile(this.getBackendOptionsByInstance(instanceName), fleetDefaults?.backend_options, backend);
+  }
+
+  /** Read a channel's backend_options, reporting what will not take effect (as the fleet.yaml validator does). */
+  private readBackendOptions(raw: unknown, key: string): BackendOptions | undefined {
+    const { options, problems } = normalizeBackendOptions(raw);
+    for (const problem of problems) {
+      this.logger.warn({ where: `classicBot.yaml channels.${key}.backend_options${problem.path ? `.${problem.path}` : ""}` }, problem.message);
+    }
+    return options;
   }
 
   /** Get model for a channel — channel override → defaults → fleet default */
