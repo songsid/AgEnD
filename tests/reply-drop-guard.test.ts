@@ -10,6 +10,12 @@ import { Daemon, PendingWorkTracker } from "../src/daemon.js";
 import { TurnReplyGuard } from "../src/turn-reply-guard.js";
 import type { Logger } from "../src/logger.js";
 
+// Backend capability checks need no installed CLI or host PATH lookup.
+vi.mock("../src/backend/types.js", async importOriginal => ({
+  ...await importOriginal<typeof import("../src/backend/types.js")>(),
+  resolveBinary: (name: string) => name,
+}));
+
 const logger = pino({ level: "silent" }) as Logger;
 const dirs: string[] = [];
 type AnyDaemon = any;

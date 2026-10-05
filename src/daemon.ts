@@ -3461,6 +3461,9 @@ export class Daemon extends EventEmitter {
    * transaction; the interrupt key still cancels the CLI generation.
    */
   clearPendingDeliveries(fleetEpoch?: number): void {
+    // FleetManager calls this synchronously before sendEscape. Cancel only the
+    // current human turn; leave already-forwarded tool requests to settle.
+    this.turnReplyGuard.cancelByUser();
     this.deliveryEpoch = fleetEpoch === undefined
       ? this.deliveryEpoch + 1
       : Math.max(this.deliveryEpoch, fleetEpoch);
@@ -4232,7 +4235,10 @@ export class Daemon extends EventEmitter {
    * message can arrive mid-turn and sit queued, and marking at arrival would let
    * the PREVIOUS turn's idle edge consume (and reset) the new turn's state.
    */
-  private markTurnStarted(meta: Record<string, string>, deliveredText: string): void {
+  private markTurnStarted(meta: Record<string, string>, deliveredText: string, deliveryEpoch = this.deliveryEpoch): void {
+    // Cancel may have interrupted an in-flight paste before its promise settled.
+    // Its late success must not re-arm the turn that the user just cancelled.
+    if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
     // Channel turns only. A cross-instance inbound (from_instance, empty
     // chat_id) does not update lastChatId, so its proxy reply would land in
     // whatever USER topic spoke to this instance last — the wrong audience for
@@ -4270,6 +4276,13 @@ export class Daemon extends EventEmitter {
           generation: turn.generation,
         });
       }
+      this.turnReplyGuard.complete(turn.generation);
+      return;
+    }
+
+    // An intentional stop is not a dropped reply. Successful in-flight replies
+    // still settle above, but cancellation cannot start another model turn.
+    if (turn.cancelledByUser) {
       this.turnReplyGuard.complete(turn.generation);
       return;
     }
@@ -4359,6 +4372,11 @@ export class Daemon extends EventEmitter {
   }
 
   private startReplyRecovery(turn: TurnReplySnapshot, reason: "no_valid_call" | "malformed_call"): void {
+    const current = this.turnReplyGuard.snapshot();
+    if (current?.generation === turn.generation && current.cancelledByUser) {
+      this.turnReplyGuard.complete(turn.generation);
+      return;
+    }
     if (!this.turnReplyGuard.beginRecovery(turn.generation)) return;
     this.emit("reply_drop_detected", {
       name: this.name,
@@ -4402,8 +4420,8 @@ export class Daemon extends EventEmitter {
     this.pasteQueueDepth++;
     this.pasteLock = this.pasteLock.then(async () => {
       try {
-        const current = this.turnReplyGuard.snapshot();
-        if (!current || current.generation !== turn.generation || current.phase !== "recovering") return;
+        const current = this.currentReplyRecovery(turn.generation, deliveryEpoch);
+        if (!current) return;
         if (current.completionDelivered) {
           this.turnReplyGuard.complete(turn.generation);
           this.emit("reply_drop_recovered", {
@@ -4416,6 +4434,7 @@ export class Daemon extends EventEmitter {
         const delivered = await this.deliverMessage(REPLY_RECOVERY_PROMPT, undefined, {
           deliveryEpoch,
         });
+        if (!this.currentReplyRecovery(turn.generation, deliveryEpoch)) return;
         if (!delivered) {
           this.turnReplyGuard.complete(turn.generation);
           this.reportUnrecoveredReplyDrop(turn, "recovery_prompt_delivery_failed");
@@ -4425,15 +4444,28 @@ export class Daemon extends EventEmitter {
       }
     }).catch(err => {
       this.logger.error({ err: (err as Error).message }, "Reply-drop recovery prompt failed");
+      if (!this.currentReplyRecovery(turn.generation, deliveryEpoch)) return;
       this.turnReplyGuard.complete(turn.generation);
       this.reportUnrecoveredReplyDrop(turn, "recovery_prompt_delivery_failed");
     });
+  }
+
+  /** Recheck after queue waits and IO; cancellation must not become a failure notice. */
+  private currentReplyRecovery(generation: number, deliveryEpoch: number): TurnReplySnapshot | null {
+    const current = this.turnReplyGuard.snapshot();
+    if (!current || current.generation !== generation || current.phase !== "recovering") return null;
+    if (current.cancelledByUser || !this.isDeliveryEpochCurrent(deliveryEpoch)) {
+      this.turnReplyGuard.complete(generation);
+      return null;
+    }
+    return current;
   }
 
   private queueMalformedReplyRecovery(turn: TurnReplySnapshot, text: string): void {
     // Serialize the delivery decision ahead of any new pane input. If direct
     // delivery is positively acknowledged, there is no recovery turn. If its
     // outcome is unknown, do not ask the model to duplicate it.
+    const deliveryEpoch = this.deliveryEpoch;
     const delivery = this.deliverDaemonReply(
       text,
       "malformedreply",
@@ -4449,15 +4481,23 @@ export class Daemon extends EventEmitter {
           correlationId: turn.target.correlationId,
           recovered: delivered,
         });
+        const current = this.turnReplyGuard.snapshot();
         this.turnReplyGuard.complete(turn.generation);
-        if (!delivered) this.reportReplyDropWithoutRetry(turn, "reply_failed_or_unknown");
+        if (!delivered && current?.generation === turn.generation && !current.cancelledByUser
+          && this.isDeliveryEpochCurrent(deliveryEpoch)) {
+          this.reportReplyDropWithoutRetry(turn, "reply_failed_or_unknown");
+        }
       } finally {
         this.pasteQueueDepth--;
       }
     }).catch(err => {
       this.logger.error({ err: (err as Error).message }, "Malformed tool-call recovery attempt failed");
+      const current = this.turnReplyGuard.snapshot();
       this.turnReplyGuard.complete(turn.generation);
-      this.reportReplyDropWithoutRetry(turn, "reply_failed_or_unknown");
+      if (current?.generation === turn.generation && !current.cancelledByUser
+        && this.isDeliveryEpochCurrent(deliveryEpoch)) {
+        this.reportReplyDropWithoutRetry(turn, "reply_failed_or_unknown");
+      }
     });
   }
 
@@ -5410,7 +5450,7 @@ export class Daemon extends EventEmitter {
           durableAttempt: durableAttempt || undefined,
         })) {
           this.finishDurableSubmission(durableAttempt, verdict);
-          this.markTurnStarted(meta, formatted);
+          this.markTurnStarted(meta, formatted, deliveryEpoch);
         } else if (durableAttempt && verdict.paneWriteStarted) {
           this.finishDurableDelivery(durableAttempt, "uncertain", `${verdict.phase ?? "post-submit"}:${verdict.proof ?? "unproven"}`);
         } else if (durableAttempt && verdict.durableBeginCommitted) {
@@ -5457,7 +5497,7 @@ export class Daemon extends EventEmitter {
       await this.wake();
       if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
       if (await this.deliverMessage(formatted, status, { steer: true, deliveryEpoch, submissionId: meta.message_id })) {
-        this.markTurnStarted(meta, formatted);
+        this.markTurnStarted(meta, formatted, deliveryEpoch);
       }
     }).catch(err => {
       this.logger.warn({ err: (err as Error).message }, "btw delivery error");
@@ -5579,7 +5619,7 @@ export class Daemon extends EventEmitter {
           durableAttempt: durableAttempt || undefined,
         })) {
           this.finishDurableSubmission(durable, verdict);
-          this.markTurnStarted(meta, formatted);
+          this.markTurnStarted(meta, formatted, deliveryEpoch);
         } else if (durableAttempt && verdict.paneWriteStarted) {
           this.finishDurableDelivery(durable, "uncertain", `${verdict.phase ?? "post-submit"}:${verdict.proof ?? "unproven"}`);
         } else if (durableAttempt && verdict.durableBeginCommitted) {

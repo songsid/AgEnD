@@ -22,6 +22,7 @@ export interface ReplyAttemptToken {
 export interface TurnReplySnapshot {
   generation: number;
   phase: TurnReplyPhase;
+  cancelledByUser: boolean;
   target: TurnReplyTarget;
   replyAttempted: boolean;
   replyDelivered: boolean;
@@ -32,6 +33,7 @@ export interface TurnReplySnapshot {
 interface ActiveTurn {
   generation: number;
   phase: TurnReplyPhase;
+  cancelledByUser: boolean;
   target: TurnReplyTarget;
   latestObligation: number;
   replyAttemptedAt: number;
@@ -52,10 +54,11 @@ export class TurnReplyGuard {
   private generation = 0;
 
   arm(target: TurnReplyTarget): number {
-    if (!this.active) {
+    if (!this.active || this.active.cancelledByUser) {
       this.active = {
         generation: ++this.generation,
         phase: "awaiting",
+        cancelledByUser: false,
         target,
         latestObligation: 1,
         replyAttemptedAt: 0,
@@ -68,6 +71,13 @@ export class TurnReplyGuard {
 
     this.active.latestObligation++;
     this.active.target = target;
+    return this.active.generation;
+  }
+
+  /** Keep outstanding adapter acknowledgments valid until this turn finishes. */
+  cancelByUser(): number | null {
+    if (!this.active) return null;
+    this.active.cancelledByUser = true;
     return this.active.generation;
   }
 
@@ -97,6 +107,7 @@ export class TurnReplyGuard {
     return {
       generation: active.generation,
       phase: active.phase,
+      cancelledByUser: active.cancelledByUser,
       target: { ...active.target },
       replyAttempted: active.replyAttemptedAt >= active.latestObligation,
       replyDelivered: active.replyDeliveredAt >= active.latestObligation,
@@ -106,7 +117,8 @@ export class TurnReplyGuard {
   }
 
   beginRecovery(generation: number): boolean {
-    if (!this.active || this.active.generation !== generation || this.active.phase !== "awaiting") return false;
+    if (!this.active || this.active.generation !== generation || this.active.phase !== "awaiting"
+      || this.active.cancelledByUser) return false;
     this.active.phase = "recovering";
     return true;
   }
