@@ -89,7 +89,7 @@ import { DeliveryOutbox, type ClaimedOutboxDelivery, type OutboxDelivery, type D
 // a state transition or that generation is replaced.
 export const DURABLE_DELIVERY_LANE_ALERT_MS = 35 * 60_000;
 import { handleWebRequest, broadcastSseEvent, SSE_HEARTBEAT_MS } from "./web-api.js";
-import { WebChatHistory, WEB_CHAT_TEXT_MAX, type WebChatAttachment } from "./web-chat-history.js";
+import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, type WebChatAttachment } from "./web-chat-history.js";
 import { publicAttachment, WebFileLedger } from "./web-upload.js";
 import { handleViewRequest, isViewPath } from "./view-api.js";
 import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, usageProviderIdForBackend } from "./usage/usage-api.js";
@@ -2314,6 +2314,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // asks "is anyone still reporting", which only the receiver can date.
       receivedAt: now,
     });
+    // The dashboard's "working" line and its Stop button follow the edges, not the heartbeat.
+    if (previous?.state !== state) this.emitSseEvent("activity", { instance: name, state: this.getInstanceExecutionState(name) });
     for (const check of this.instanceIdleWaiters.get(name) ?? []) check();
     // warm_cap: a fresh transition into idle may free this instance for eviction,
     // or (more usefully) reveal that the fleet is now over cap. Only fire on the
@@ -2368,7 +2370,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.instanceProcessStatus.set(name, status);
     // Never display the last ready prompt as current execution state after its
     // owning CLI process has exited.
-    this.instanceStateCache.delete(name);
+    if (this.instanceStateCache.delete(name)) this.emitSseEvent("activity", { instance: name, state: null });
     for (const check of this.instanceIdleWaiters.get(name) ?? []) check();
   }
 
@@ -8518,6 +8520,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   reactMessageStatus(
     instanceName: string, chatId: string, messageId: string, status: DeliveryStatus, threadId?: string,
   ): void {
+    // A message the web user sent is no message on any platform: there is nothing to react on, and an id
+    // like web-… would only fail there. Its ticks are the dashboard's (web track C3).
+    if (isWebMessageId(messageId)) { this.reportWebDelivery(instanceName, messageId, status); return; }
     // React via the adapter BOUND to this instance — NOT the first discord world.
     // Otherwise, in a same-channel/same-guild multi-bot setup, the inbound 👀
     // (bound bot) and the delivery/confirm reactions (some other bot) come from
@@ -8537,6 +8542,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       ? (adapter as unknown as { id: string }).id : "?";
     const key = `${adapterId}:${chatId}:${threadId ?? ""}:${messageId}`;
     this.queueDeliveryStatusReaction(adapter, key, chatId, messageId, statusEmoji, threadId, status);
+  }
+
+  /** One delivery report for a web user's message: recorded with it, and sent to the pages when it moved. */
+  private reportWebDelivery(instanceName: string, messageId: string, status: DeliveryStatus): void {
+    if (status !== "queued" && status !== "processing" && status !== "delivered" && status !== "failed") return;
+    const m = this.webChatHistory.setDelivery(instanceName, messageId, status);
+    if (m) this.emitSseEvent("delivery", { instance: instanceName, messageId, delivery: m.delivery });
   }
 
   /**
@@ -10695,6 +10707,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     daemon.sendEscape().catch(e => this.logger.warn({ err: e, instanceName }, "sendEscape failed"));
     this.lastInboundMsg.delete(instanceName);
     this.clearCancelButton(instanceName);
+    // The queued web messages were just dropped with the rest: their ticks say so, on every page.
+    for (const m of this.webChatHistory.cancelPending(instanceName)) {
+      this.emitSseEvent("delivery", { instance: instanceName, messageId: m.messageId, delivery: m.delivery });
+    }
     return true;
   }
 
@@ -11431,10 +11447,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const onError = (err: unknown) => this.logger.debug({ err }, "SSE client write failed; evicting");
     if (event === "message" && data && typeof data === "object") {
       // A chat message: record it, and send it WITH its id so a reconnecting stream can ask for what it missed.
-      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown };
+      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown };
       const recorded = this.webChatHistory.record({
         instance: String(m.instance ?? ""), sender: String(m.sender ?? ""), text: String(m.text ?? ""), ts: String(m.ts ?? new Date().toISOString()),
         attachments: Array.isArray(m.attachments) ? m.attachments as WebChatAttachment[] : undefined,
+        messageId: typeof m.messageId === "string" ? m.messageId : undefined,
       });
       broadcastSseEvent(this.sseClients, event, recorded, onError, this.webChatHistory.cursorOf(recorded));
       return;
@@ -15890,6 +15907,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         name,
         display_name: display_name || undefined,
         status: this.getInstanceStatus(name),
+        // working / idle / stuck, or null when unknown — the activity events carry the changes.
+        state: this.getInstanceExecutionState(name),
         context_pct,
         cost,
         model,
