@@ -320,9 +320,11 @@ describe("/steer registration covers dispatch (#528 trap 5)", () => {
     }
   });
 
-  it("registers /steer in the Telegram command menus (fleet + classic)", () => {
-    const src = read("topic-commands.ts");
-    expect(src.match(/command: "steer"/g)?.length ?? 0).toBe(2);
+  it("registers /steer in the Telegram command menus (fleet + classic)", async () => {
+    // The menus are generated from the command table since #1191/#1177: check what is registered, not its spelling.
+    const { telegramMenu } = await import("../src/command-table.js");
+    expect(telegramMenu("fleet").map(e => e.name)).toContain("steer");
+    expect(telegramMenu("classic").map(e => e.name)).toContain("steer");
   });
 });
 
@@ -350,8 +352,9 @@ describe("/btw registration covers every command surface", () => {
     }
   });
 
-  it("registers /btw in the Telegram fleet and Classic menus", () => {
-    const src = read("topic-commands.ts");
-    expect(src.match(/command: "btw"/g)?.length ?? 0).toBe(2);
+  it("registers /btw in the Telegram fleet and Classic menus", async () => {
+    const { telegramMenu } = await import("../src/command-table.js");
+    expect(telegramMenu("fleet").map(e => e.name)).toContain("btw");
+    expect(telegramMenu("classic").map(e => e.name)).toContain("btw");
   });
 });

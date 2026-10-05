@@ -14,6 +14,8 @@ import { truncateDisplay, MODEL_DISPLAY_WIDTH_MAX } from "./ls-rows.js";
 import { detectPlatform } from "./service-installer.js";
 import { getTmuxSocketName, getTmuxSessionName } from "./paths.js";
 import { t, getLocale } from "./locale.js";
+import { telegramMenu, type TelegramMenu } from "./command-table.js";
+import type { ChannelConfig } from "./types.js";
 import {
   clampContextPercent,
   parseContextPercent,
@@ -28,6 +30,9 @@ import { UPDATE_COMMAND } from "./update-check.js";
 
 export { parseContextPercent, parseTokenContextRatio } from "./context-percent.js";
 export type { TokenContextRatio } from "./context-percent.js";
+
+/** Longest one setMyCommands call may take. */
+const TELEGRAM_COMMANDS_TIMEOUT_MS = 10_000;
 
 type ExecutionFleetContext = FleetContext & {
   getInstanceExecutionState?(instanceName: string): "idle" | "working" | "stuck" | null;
@@ -1472,120 +1477,107 @@ export class TopicCommands {
     }
   }
 
-  /** Register bot commands in Telegram command menu */
-  async registerBotCommands(): Promise<void> {
-    // Register bot commands for all Telegram adapters (channels[] support)
-    const channels = this.ctx.fleetConfig?.channels ?? (this.ctx.fleetConfig?.channel ? [this.ctx.fleetConfig.channel] : []);
-    const telegramChannels = channels.filter(ch => ch.type === "telegram");
-    if (telegramChannels.length === 0) return;
+  /**
+   * Register the Telegram command menus (what "/" suggests) for one Telegram connection, or — with no argument — for
+   * every Telegram connection in the config. Called by the fleet whenever a Telegram adapter starts or is rebuilt
+   * (primary or not), so a connection added or rebound in Settings has its menu without a fleet restart.
+   *
+   * Two menus, with different needs:
+   *  - the fleet menu, on the fleet's forum group (`chat` and `chat_administrators` of `group_id`) — needs `group_id`;
+   *  - the ClassicBot menu, on `default` and `all_group_chats` — needs only the token. A Telegram connection that runs
+   *    ClassicBot alone has no forum group and no `group_id`, and used to get no menu at all (#1191).
+   * Telegram picks the most specific scope: the forum group's own scopes outrank `all_group_chats`, which outranks
+   * `default`, so the ClassicBot list is registered on both of those — a stale group-level list (left by another
+   * tool) would otherwise hide it in groups.
+   */
+  async registerBotCommands(channel?: ChannelConfig): Promise<void> {
+    const channels = channel ? [channel]
+      : this.ctx.fleetConfig?.channels ?? (this.ctx.fleetConfig?.channel ? [this.ctx.fleetConfig.channel] : []);
+    for (const ch of channels) {
+      if (ch.type === "telegram") await this.registerTelegramMenus(ch);
+    }
+  }
 
-    for (const ch of telegramChannels) {
-      const botToken = process.env[ch.bot_token_env];
-      if (!botToken || !ch.group_id) {
-        this.ctx.logger.warn({
-          adapterId: ch.id ?? ch.type,
-          hasBotToken: !!botToken,
-          hasGroupId: !!ch.group_id,
-        }, "Skipping Telegram bot-command registration — token or group_id is missing");
-        continue;
-      }
+  private async registerTelegramMenus(ch: ChannelConfig): Promise<void> {
+    const adapterId = ch.id ?? ch.type;
+    const botToken = process.env[ch.bot_token_env];
+    if (!botToken) {
+      this.ctx.logger.warn({ adapterId }, "Skipping Telegram bot-command registration — the bot token is not set");
+      return;
+    }
+    // Locks come from the command table's Telegram column (#1177), descriptions from the locale.
+    const menu = (which: TelegramMenu) => telegramMenu(which).map(({ name, lock, argHint }) => ({
+      command: name,
+      description: lock + t(`slash.${name}`) + (argHint ? ` ${t(argHint)}` : ""),
+    }));
+    const fleetCommands = menu("fleet");
+    const classicCommands = menu("classic");
 
+    const setCommands = async (
+      commands: Array<{ command: string; description: string }>,
+      scope: Record<string, string | number>,
+    ): Promise<void> => {
+      const response = await fetch(
+        `https://api.telegram.org/bot${botToken}/setMyCommands`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ commands, scope }),
+          // Registration runs beside the adapter's login, never in front of it; it must also end on its own.
+          signal: AbortSignal.timeout(TELEGRAM_COMMANDS_TIMEOUT_MS),
+        },
+      );
+      type TelegramApiResponse = { ok?: boolean; result?: boolean; description?: string };
+      let result: TelegramApiResponse | null = null;
       try {
-        const fleetCommands = [
-          { command: "status", description: "🔒 " + t("slash.status") },
-          { command: "sysinfo", description: t("slash.sysinfo") },
-          { command: "dashboard", description: "🔒 " + t("slash.dashboard") },
-          { command: "ctx", description: t("slash.ctx") },
-          { command: "compact", description: `${t("slash.compact")} ${t("slash.compact_arg")}` },
-          { command: "steer", description: t("slash.steer") },
-          { command: "btw", description: t("slash.btw") },
-          { command: "clear", description: "🔒 " + t("slash.clear") },
-          { command: "model", description: "🔒 " + t("slash.model") },
-          { command: "effort", description: "🔒 " + t("slash.effort") },
-          { command: "pause", description: "🔒 " + t("slash.pause") },
-          { command: "wake", description: "🔒 " + t("slash.wake") },
-          { command: "restart", description: "🔒 " + t("slash.restart") },
-          { command: "collab", description: "🔒 " + t("slash.collab") },
-          { command: "update", description: "🔒 " + t("slash.update") },
-          { command: "doctor", description: "🔒 " + t("slash.doctor") },
-          { command: "login", description: "🔒 " + t("slash.login") },
-          { command: "usage", description: t("slash.usage") },
-          { command: "tips", description: t("slash.tips") },
-        ];
+        result = await response.json() as TelegramApiResponse;
+      } catch { /* handled by the validation below */ }
+      // fetch() resolves on Telegram 4xx/5xx. Without checking both layers we
+      // logged a successful registration while Telegram kept the old (often
+      // four-command) menu indefinitely.
+      if (!response.ok || result?.ok !== true || result.result !== true) {
+        throw new Error(
+          `Telegram setMyCommands failed (${response.status}): ${result?.description ?? "invalid Bot API response"}`,
+        );
+      }
+    };
 
-        const setCommands = async (
-          commands: Array<{ command: string; description: string }>,
-          scope: Record<string, string | number>,
-        ): Promise<void> => {
-          const response = await fetch(
-            `https://api.telegram.org/bot${botToken}/setMyCommands`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ commands, scope }),
-            },
-          );
-          type TelegramApiResponse = { ok?: boolean; result?: boolean; description?: string };
-          let result: TelegramApiResponse | null = null;
-          try {
-            result = await response.json() as TelegramApiResponse;
-          } catch { /* handled by the validation below */ }
-          // fetch() resolves on Telegram 4xx/5xx. Without checking both layers we
-          // logged a successful registration while Telegram kept the old (often
-          // four-command) menu indefinitely.
-          if (!response.ok || result?.ok !== true || result.result !== true) {
-            throw new Error(
-              `Telegram setMyCommands failed (${response.status}): ${result?.description ?? "invalid Bot API response"}`,
-            );
-          }
-        };
-
-        const classicCommands = [
-          { command: "start", description: "🔒 " + t("slash.start") },
-          { command: "stop", description: "🔒 " + t("slash.stop") },
-          { command: "compact", description: `🔒 ${t("slash.compact")} ${t("slash.compact_arg")}` },
-          { command: "steer", description: t("slash.steer") },
-          { command: "btw", description: t("slash.btw") },
-          { command: "clear", description: "🔒 " + t("slash.clear") },
-          { command: "model", description: "🔒 " + t("slash.model") },
-          { command: "effort", description: "🔒 " + t("slash.effort") },
-          { command: "pause", description: "🔒 " + t("slash.pause") },
-          { command: "wake", description: "🔒 " + t("slash.wake") },
-          { command: "ctx", description: t("slash.ctx") },
-        ];
-
-        // A chat_administrators scope has higher precedence than the chat scope.
-        // Keep both synchronized so a stale admin-only list from BotFather or an
-        // older deployment cannot hide newly added commands from fleet admins.
-        // Try every scope even if one fails: a bad fleet chat id must not prevent
-        // the default Classic menu from being refreshed (or vice versa).
-        const registrations: Array<{
-          commands: Array<{ command: string; description: string }>;
-          scope: Record<string, string | number>;
-        }> = [
-          { commands: fleetCommands, scope: { type: "chat", chat_id: ch.group_id } },
-          { commands: fleetCommands, scope: { type: "chat_administrators", chat_id: ch.group_id } },
-          { commands: classicCommands, scope: { type: "default" } },
-        ];
-        const failures: Error[] = [];
-        for (const registration of registrations) {
-          try {
-            await setCommands(registration.commands, registration.scope);
-          } catch (err) {
-            failures.push(err instanceof Error ? err : new Error(String(err)));
-          }
-        }
-        if (failures.length > 0) {
-          throw new AggregateError(failures, failures.map(error => error.message).join("; "));
-        }
-
-        this.ctx.logger.info({
-          adapterId: ch.id ?? ch.type,
-          fleetCommandCount: fleetCommands.length,
-        }, "Registered Telegram bot commands for fleet chat/admin and Classic default scopes");
+    // A chat_administrators scope has higher precedence than the chat scope.
+    // Keep both synchronized so a stale admin-only list from BotFather or an
+    // older deployment cannot hide newly added commands from fleet admins.
+    // Try every scope even if one fails: a bad fleet chat id must not prevent
+    // the default Classic menu from being refreshed (or vice versa).
+    const registrations: Array<{
+      commands: Array<{ command: string; description: string }>;
+      scope: Record<string, string | number>;
+    }> = [
+      ...(ch.group_id ? [
+        { commands: fleetCommands, scope: { type: "chat", chat_id: ch.group_id } },
+        { commands: fleetCommands, scope: { type: "chat_administrators", chat_id: ch.group_id } },
+      ] : []),
+      { commands: classicCommands, scope: { type: "all_group_chats" } },
+      { commands: classicCommands, scope: { type: "default" } },
+    ];
+    const failures: Error[] = [];
+    for (const registration of registrations) {
+      try {
+        await setCommands(registration.commands, registration.scope);
       } catch (err) {
-        this.ctx.logger.warn({ err, adapterId: ch.id ?? ch.type }, "Failed to register bot commands (non-fatal)");
+        failures.push(err instanceof Error ? err : new Error(String(err)));
       }
     }
+    if (failures.length > 0) {
+      this.ctx.logger.warn({ err: new AggregateError(failures, failures.map(error => error.message).join("; ")), adapterId },
+        "Failed to register bot commands (non-fatal)");
+      return;
+    }
+    this.ctx.logger.info({
+      adapterId,
+      fleetCommandCount: ch.group_id ? fleetCommands.length : 0,
+      classicCommandCount: classicCommands.length,
+      scopes: registrations.map(r => r.scope.type),
+    }, ch.group_id
+      ? "Registered Telegram bot commands for fleet chat/admin and Classic group/default scopes"
+      : "Registered Telegram bot commands for Classic group/default scopes (no group_id: no fleet menu)");
   }
 }

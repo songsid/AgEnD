@@ -190,6 +190,56 @@ export function slashLock(name: string): string {
   return spec && isLocked(spec) ? "🔒 " : "";
 }
 
+/** What a menu entry says after its description, as a locale key: the argument a command takes (#1145). */
+const TELEGRAM_ARG_HINTS: Readonly<Record<string, string>> = { compact: "slash.compact_arg" };
+
+/**
+ * The two Telegram command menus (`setMyCommands`), in menu order. Which commands a menu lists is picked by hand —
+ * some handled commands stay out of it on purpose (`/cancel`, `/save`) — but nothing about them is typed: the lock
+ * comes from the command's Telegram cells in the scopes the menu is shown in, and tests pin that every listed command
+ * has a Telegram handler there (a menu entry with none is a command that does nothing when chosen).
+ */
+export const TELEGRAM_MENUS = {
+  /** The fleet's forum group (its `chat` and `chat_administrators` scopes): the General topic and the instance topics. */
+  fleet: {
+    scopes: ["general", "fleet"],
+    names: ["status", "sysinfo", "dashboard", "ctx", "compact", "steer", "btw", "clear", "model", "effort",
+      "pause", "wake", "restart", "collab", "update", "doctor", "login", "usage", "tips"],
+  },
+  /**
+   * Every other chat (`default` and `all_group_chats`): ClassicBot private chats and groups, the ones with an agent and
+   * the ones where `/start` would create it. No `/effort`: Telegram ClassicBot has no handler for it.
+   */
+  classic: {
+    scopes: ["classic", "none"],
+    names: ["start", "stop", "compact", "steer", "btw", "clear", "model", "pause", "wake", "ctx"],
+  },
+} as const satisfies Record<string, { scopes: readonly CommandScope[]; names: readonly string[] }>;
+
+export type TelegramMenu = keyof typeof TELEGRAM_MENUS;
+
+/** True when the command asks more than `anyone` on Telegram in some of these scopes — what its menu lock says. */
+export function isLockedOnTelegram(spec: CommandSpec, scopes: readonly CommandScope[]): boolean {
+  return scopes.some(scope => {
+    const rule = spec.telegram[scope];
+    return "level" in rule && rule.level !== "anyone" && rule.level !== "handler";
+  });
+}
+
+/**
+ * One Telegram menu: each command with its lock prefix ("🔒 " or ""), generated from the table, and the locale key of
+ * its argument hint when it takes one.
+ */
+export function telegramMenu(menu: TelegramMenu): Array<{ name: string; lock: string; argHint?: string }> {
+  const { scopes, names } = TELEGRAM_MENUS[menu];
+  return names.map(name => {
+    const spec = BY_NAME.get(name);
+    if (!spec) throw new Error(`Telegram ${menu} menu lists /${name}, which the command table does not know`);
+    const argHint = TELEGRAM_ARG_HINTS[name];
+    return { name, lock: isLockedOnTelegram(spec, scopes) ? "🔒 " : "", ...(argHint ? { argHint } : {}) };
+  });
+}
+
 export type FleetAdminState = "ok" | "disabled" | "denied";
 
 /** What the caller knows about the person; each is asked only if the command's level needs it. */
