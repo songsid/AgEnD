@@ -12,6 +12,12 @@ import { Daemon, PaneStateMachine } from "../src/daemon.js";
 import { setLocale, t, type Locale } from "../src/locale.js";
 import type { Logger } from "../src/logger.js";
 
+// These fixture tests must not probe an installed CLI while constructing it.
+vi.mock("../src/backend/types.js", async importOriginal => ({
+  ...await importOriginal<typeof import("../src/backend/types.js")>(),
+  resolveBinary: (name: string) => name,
+}));
+
 const logger = pino({ level: "silent" }) as Logger;
 const dirs: string[] = [];
 const fixture = (name: string) => readFileSync(join(import.meta.dirname, "fixtures", "kiro-reply-guard", `${name}.pane.txt`), "utf8");
@@ -291,7 +297,9 @@ describe.each(["legacy", "tui"] as const)("Kiro %s real-pane human completion", 
     release();
     await h.daemon.pasteLock;
     expect(recoveryWrites(h)).toHaveLength(0);
-    expect(h.daemon.deliverMessage.mock.calls[1][2]).toMatchObject({ deliveryEpoch: 0 });
+    expect(h.daemon.deliverMessage).toHaveBeenCalledTimes(1); // only the original ingress; no cancelled recovery
+    expect(h.unrecovered).not.toHaveBeenCalled();
+    expect(h.daemon.turnReplyGuard.snapshot()).toBeNull();
   });
 
   it("a stopped generation drops its queued recovery", async () => {
