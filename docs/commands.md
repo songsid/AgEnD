@@ -4,7 +4,7 @@ All slash commands available in Telegram and Discord, organized by platform and 
 
 ## Telegram — Fleet Topic Mode (Forum Group)
 
-Registered via `setMyCommands` with `scope: chat` (forum group only).
+Registered via `setMyCommands` with `scope: chat` and `scope: chat_administrators` of the fleet's forum group (`group_id`), whenever that Telegram connection starts or is rebuilt. The 🔒 in the menu is generated from the command table (`src/command-table.ts`), not typed.
 
 | Command | Description | Permission |
 |---------|-------------|------------|
@@ -24,7 +24,7 @@ Registered via `setMyCommands` with `scope: chat` (forum group only).
 | 🔒 `/update` | Update AgEnD to latest | Admin |
 | 🔒 `/doctor` | Run health diagnostics | Admin |
 | 🔒 `/login [backend\|cancel]` | **(beta)** Remote CLI sign-in — and install — without SSH. Away from the machine, a `kiro-cli` or `claude-code` sign-in can open a one-tap temporary public link (AgEnD fetches a pinned, checksum-verified cloudflared if needed) — see [configuration](configuration.md#finishing-a-login-away-from-the-machine-public-link). One entry point: a CLI that is not installed yet is installed first (the backend's official install script in a temporary tmux window, verified on PATH), then signed in. `/install-cli` is a typed alias for 2.1.10 only (removed in 2.1.11). Sign-in covers `codex`, `grok`, `kiro`, `claude`, `antigravity`; `opencode` and `muse` install only (no sign-in flow). No arg shows a backend picker of every installed or installable backend, each labelled with what a click does; device-code backends (codex, grok) post a URL and code in the chat; the others (claude, kiro) open a browser terminal where you finish the sign-in (and can paste the code back). Opens a temporary tmux window (instance panes untouched), warns if auth is already valid, 10-minute timeout, `/login cancel` anytime. Credentials are per-backend shared — one login fixes every instance on that backend, and running instances restart afterward to pick up the new credential. Also on Discord (`/login backend:… cancel:…`); not on TG Classic. | Admin |
-| 🔒 `/collab` | Toggle bot/webhook message reception | Admin |
+| `/collab` | Toggle bot/webhook message reception | All |
 | 🔒 `/dashboard` | Show View/Settings/WebUI URLs | Admin |
 | 🔒 `/model` | Change backend model (inline keyboard). On `claude-code`, a two-tier menu: 6 quick-select aliases, plus a "📋 更多模型…" (more models) button that fetches the live model catalog from the API (24h cache, falls back to the alias list on failure). | Admin |
 | 🔒 `/effort` | Adjust AI reasoning effort (low/medium/high/xhigh/max) | Admin |
@@ -34,15 +34,14 @@ Registered via `setMyCommands` with `scope: chat` (forum group only).
 
 ## Telegram — ClassicBot (Private Chats + Groups)
 
-Registered via `setMyCommands` with `scope: default`.
+Registered via `setMyCommands` with `scope: all_group_chats` and `scope: default` on every Telegram connection — including one that runs ClassicBot only and has no `group_id` (before 2.1.11 such a connection got no menu at all, #1191). Locks generated from the command table, as above.
 
 | Command | Description | Permission |
 |---------|-------------|------------|
-| 🔒 `/start` | Start an agent in this chat | Admin |
+| `/start` | Start an agent in this chat | Private chat: the user allowlist. Group: the group allowlist and a ClassicBot admin |
 | 🔒 `/stop` | Stop the agent | Admin |
 | 🔒 `/compact [instructions]` | Compact agent context; the optional text steers the summary (Claude Code only — other backends compact without it and say so) | Admin |
 | 🔒 `/model` | Switch model | Admin |
-| 🔒 `/effort` | Set reasoning effort | Admin |
 | 🔒 `/pause` | Pause the agent | Admin |
 | 🔒 `/wake` | Wake the agent | Admin |
 | 🔒 `/clear` | Full conversation reset (destructive, Confirm/Cancel required) | Admin |

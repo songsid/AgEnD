@@ -4988,8 +4988,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await this.dispatchSlash(data, adapterId, adapter);
     }, this.logger, "adapter.slash_command"));
 
-    await this.topicCommands.registerBotCommands().catch(e =>
-      this.logger.warn({ err: e }, "registerBotCommands failed (non-fatal)"));
+    // This adapter's own Telegram menus — each Telegram adapter registers its own when it starts (#1191).
+    await this.registerTelegramCommandsFor(channelConfig);
 
     // Background-probe each backend's CLI env (version/models) → cli-env cache.
     // Non-blocking: /model & status views read the cache; never delays startup.
@@ -5047,6 +5047,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** Start an additional (non-primary) adapter */
+  /** Register a Telegram connection's command menus; any other kind of channel has none to register. Never fatal. */
+  private async registerTelegramCommandsFor(channelConfig: ChannelConfig): Promise<void> {
+    if (channelConfig.type !== "telegram") return;
+    await this.topicCommands.registerBotCommands(channelConfig).catch(e =>
+      this.logger.warn({ err: e, adapterId: channelConfig.id ?? channelConfig.type }, "registerBotCommands failed (non-fatal)"));
+  }
+
   private async startAdditionalAdapter(
     channelConfig: ChannelConfig,
     registerCommands = true,
@@ -5129,6 +5136,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger.error({ err, adapterId }, "Additional adapter fatal error");
       this.restartAdapter(adapter, adapterId).catch(() => {});
     });
+
+    // A secondary Telegram connection (a ClassicBot next to a Discord fleet, say) has menus of its own to register —
+    // at fleet start, on retry, and when Settings rebinds it or rotates its token: all of them start it here (#1191).
+    await this.registerTelegramCommandsFor(channelConfig);
 
     // Register lifecycle listeners before login; a fast ready/error must not be lost.
     await adapter.start();

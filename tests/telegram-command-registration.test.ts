@@ -45,9 +45,9 @@ describe("Telegram command-menu registration", () => {
 
     await commands.registerBotCommands();
 
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
     const payloads = fetchMock.mock.calls.map(([, init]) => JSON.parse(String(init?.body)));
-    const fleetPayloads = payloads.filter(p => p.scope.type !== "default");
+    const fleetPayloads = payloads.filter(p => p.scope.type === "chat" || p.scope.type === "chat_administrators");
     expect(fleetPayloads.map(p => p.scope.type)).toEqual(["chat", "chat_administrators"]);
     for (const payload of fleetPayloads) {
       expect(payload.commands.map((c: { command: string }) => c.command)).toEqual([
@@ -61,10 +61,13 @@ describe("Telegram command-menu registration", () => {
       expect(payload.commands.find((c: { command: string }) => c.command === "restart")?.description)
         .toContain("full");
     }
-    expect(payloads.find(p => p.scope.type === "default").commands.map((c: { command: string }) => c.command))
-      .toEqual(["start", "stop", "compact", "steer", "btw", "clear", "model", "effort", "pause", "wake", "ctx"]);
+    // The ClassicBot list on default and all_group_chats (#1191); no /effort, which Telegram ClassicBot does not handle.
+    for (const scope of ["default", "all_group_chats"]) {
+      expect(payloads.find(p => p.scope.type === scope).commands.map((c: { command: string }) => c.command), scope)
+        .toEqual(["start", "stop", "compact", "steer", "btw", "clear", "model", "pause", "wake", "ctx"]);
+    }
     expect(info).toHaveBeenCalledWith(
-      expect.objectContaining({ adapterId: "telegram-main", fleetCommandCount: 19 }),
+      expect.objectContaining({ adapterId: "telegram-main", fleetCommandCount: 19, classicCommandCount: 10 }),
       expect.stringContaining("Registered Telegram bot commands"),
     );
     expect(warn).not.toHaveBeenCalled();
@@ -97,7 +100,7 @@ describe("Telegram command-menu registration", () => {
 
     // Each scope is independent: a rejected fleet-chat scope must not prevent
     // AgEnD from attempting to refresh the administrator and Classic menus.
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
     expect(info).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalledWith(
       expect.objectContaining({
