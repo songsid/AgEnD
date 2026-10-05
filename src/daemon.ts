@@ -1816,6 +1816,14 @@ export class Daemon extends EventEmitter {
       this.finishDurableDelivery(delivery, "uncertain", `${verdict.phase ?? "submission"}:unverified`);
       return;
     }
+    // A steer into a busy pane of a CLI whose input row cannot be read: the paste and the one Enter went through and the
+    // delivery's own unique marker is on the pane. That is "accepted into the live turn's input" — not "the model has read
+    // it", and delivery_status carries delivery_mode=steer — and it is all this class of backend can ever show for a steer
+    // (#1197). Labelled, so it is never mistaken for a proof that the input row was cleared.
+    if (verdict.proof === "steer-marker-on-pane") {
+      this.finishDurableDelivery(delivery, "delivered", "steer-accepted-marker-on-pane; input-row-unreadable");
+      return;
+    }
     this.finishDurableDelivery(delivery, "delivered", "positive submission proof");
   }
 
@@ -5248,6 +5256,17 @@ export class Daemon extends EventEmitter {
   }
 
   /**
+   * A steered message reads like a queued one plus a banner. The delivery marker (`[agend-delivery-id:…]`, when the message
+   * is a durable delivery) must LEAD the persisted user message — restart reconciliation recognises a delivery only by a
+   * marker at the start of the body (#1197) — so the banner goes right after it, not in front of it.
+   */
+  private static steerEnvelope(inbound: string): string {
+    const banner = "[STEERING — mid-task course correction. Fold this into the CURRENT work if one is active.]\n";
+    const marker = inbound.match(/^\[agend-delivery-id:[^\]\r\n]+\]\r?\n/);
+    return marker ? marker[0] + banner + inbound.slice(marker[0].length) : banner + inbound;
+  }
+
+  /**
    * The one place an inbound message grows its metadata wrapper ([user:]/
    * [from:] prefix, pending reactions, handoff metadata, reply instructions).
    * Both the normal queued path (pushChannelMessage) and /steer go through
@@ -5363,8 +5382,7 @@ export class Daemon extends EventEmitter {
     this.pendingWork.recordInbound();
     this.recordRecentUserMessage(content, meta);
 
-    const formatted = "[STEERING — mid-task course correction. Fold this into the CURRENT work if one is active.]\n"
-      + this.formatInboundMessage(content, meta);
+    const formatted = Daemon.steerEnvelope(this.formatInboundMessage(content, meta));
     const status = channelStatus(meta);
     const durableAttempt = this.durableDeliveryAttempt(meta, content);
     if (durableAttempt === false) {
@@ -6810,6 +6828,8 @@ export class Daemon extends EventEmitter {
     const signature = this.submissionSignature(formatted, submissionId);
     const rawPaste = durableAttempt?.submissionMode === "raw_paste";
     let windowId = initialWindowId;
+    // The spawn this write belongs to: acceptance evidence is only read while it is still the current one (#1197).
+    const spawnAtWrite = this.spawnGeneration;
     // Bug A: paste with backoff. Transient failures are usually a stale window id
     // after a crash/respawn — recover by name and retry (max 3 attempts, 2s apart).
     const maxAttempts = 3;
@@ -6957,6 +6977,17 @@ export class Daemon extends EventEmitter {
             verdict.phase = "native-queue-proof";
             verdict.proof = proof;
             return false;
+          }
+          // A steer into a busy pane of a CLI with no input-row reader (claude-code, grok, muse): it can never be shown to
+          // have left the input row, and the idle→busy edge that proves an ordinary submission cannot exist in a pane that
+          // is already busy. What it CAN show, and what is enough to call the steer accepted, is its own trusted unique
+          // marker on the pane after the one Enter — with the dialog, spawn and window unchanged (#1197).
+          if (steer && signature.unique && !this.backend?.getBottomReadyPattern?.()
+            && await this.steerMarkerAccepted(signature, pasteBaseline, spawnAtWrite, windowId)) {
+            verdict.phase = "steer-accepted";
+            verdict.proof = "steer-marker-on-pane";
+            if (status) this.emit("message_confirmed", status); // ✅ accepted into the live turn
+            return true;
           }
           // Re-pasting on a backend without structured Codex pane evidence
           // would risk duplication; retain its legacy best-effort behavior.
@@ -7189,6 +7220,27 @@ export class Daemon extends EventEmitter {
    * — fall back to "the pane printed something" whenever a paste left no trace,
    * which is the same false confirmation one layer down.
    */
+  /**
+   * The acceptance evidence for a steer whose input row cannot be read: a FRESH capture shows this delivery's trusted unique
+   * marker more often than the pre-paste baseline did, no blocking dialog owns the pane, and it is still the spawn and the
+   * window the paste went into. (The marker is the `message_id:` value AgEnD put in the handoff metadata — never text
+   * scanned out of a body — so an older or quoted line cannot match it.)
+   */
+  private async steerMarkerAccepted(
+    signature: SubmissionSignature,
+    baseline: PaneEvidence | null,
+    spawnGeneration: number,
+    windowId: string | undefined,
+  ): Promise<boolean> {
+    if (!this.tmux) return false;
+    let pane: string;
+    try { pane = await this.tmux.capturePane(); } catch { return false; }
+    if (this.paneEvidence(pane, signature).payload <= (baseline?.payload ?? 0)) return false;
+    const dialogClear = (await this.probeBlockingDialog()).state === "clear";
+    // Asked last, after every await: the read evidence is only worth anything for the pane it was read from.
+    return dialogClear && this.spawnGeneration === spawnGeneration && this.getWindowId() === windowId;
+  }
+
   private canProveSubmission(): boolean {
     return !!this.backend?.getBottomReadyPattern?.();
   }
