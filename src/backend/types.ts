@@ -493,6 +493,15 @@ export interface CliBackend {
   getBusyPattern?(): RegExp | null;
 
   /**
+   * A monotonic counter the CLI itself paints while it is generating — the elapsed seconds of its live status row —
+   * or null when the pane shows none. The state machine reads a counter that MOVED between two captures as proof the
+   * turn is alive, independent of whatever else on the screen did or did not repaint; one that did not move, for as
+   * long as the stuck timeout, is a frozen pane. Must be read off the CLI's own status row only (never a quoted
+   * example in the transcript) and must not be a clock the daemon could mistake for progress.
+   */
+  getLiveProgressTick?(pane: string): number | null;
+
+  /**
    * What the CLI is doing right now, read off a pane capture, for the live
    * progress line. Return null when nothing is running or it cannot be told.
    *

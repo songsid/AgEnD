@@ -686,6 +686,25 @@ const CODEX_FALLBACK_MODELS: ModelOption[] = [
 /** A live Codex status row, whatever its title (#964); see getBusyPattern. */
 const CODEX_LIVE_STATUS_ROW = /(?:^|\n)•[ \t]+\S[^\r\n]*?\((?:(?:\d+[hms][ \t]+)+[•·][ \t]+)?esc to interrupt\)(?:[ \t]+·[ \t][^\r\n]*)?[ \t]*(?=\r?\n|$)/i;
 
+/**
+ * The elapsed seconds on the LAST live Codex status row (`(5m 51s • esc to interrupt)`), or null when the pane has no
+ * live status row or the row shows no elapsed time. Reads only what CODEX_LIVE_STATUS_ROW accepts, so an indented
+ * quote of that text in a reply contributes nothing (#1188).
+ */
+function codexLiveStatusElapsedSeconds(pane: string): number | null {
+  const global = new RegExp(CODEX_LIVE_STATUS_ROW.source, "gi");
+  let last: string | null = null;
+  for (const match of pane.matchAll(global)) last = match[0];
+  if (last === null) return null;
+  const elapsed = last.match(/\(((?:\d+[hms][ \t]+)+)[•·][ \t]+esc to interrupt\)/i);
+  if (!elapsed) return null;
+  let seconds = 0;
+  for (const part of elapsed[1]!.matchAll(/(\d+)([hms])/gi)) {
+    seconds += Number(part[1]) * ({ h: 3600, m: 60, s: 1 } as Record<string, number>)[part[2]!.toLowerCase()]!;
+  }
+  return seconds;
+}
+
 const CODEX_RUN_STATE_STATUS_ITEMS = new Set(["run-state", "status"]);
 // Deliberately small allow-list of built-in Codex status_line values. These
 // patterns identify positive rendered chrome; unknown/custom items fail closed.
@@ -967,6 +986,11 @@ export class CodexBackend implements CliBackend {
    */
   getBusyPattern(): RegExp {
     return CODEX_LIVE_STATUS_ROW;
+  }
+
+  /** The live status row's own elapsed-seconds counter: a long turn's proof of life (#1188). */
+  getLiveProgressTick(pane: string): number | null {
+    return codexLiveStatusElapsedSeconds(pane);
   }
 
   /**
@@ -1654,10 +1678,9 @@ export class CodexBackend implements CliBackend {
     // The composer is live-looking and the footer is unknown — exactly this
     // proof's blind spot — but there is no server behind it (#1099).
     if (codexAppServerDisconnected(pane)) return false;
-    // Broader than getBusyPattern(): Codex relabels the live status row with
-    // the reasoning title (`• Planning the edit (esc to interrupt)`), and the
-    // fallback must never read that as idle, whatever the title says.
-    if (/(?:^|\n)[ \t]*•[^\n]*\besc to interrupt\b/i.test(pane)) return false;
+    // (No second, wider "esc to interrupt" match here: getBusyPattern() above already reads a live status row of ANY
+    // title — #964 — and anchors it to the whole row at column zero, so a reply that quotes the phrase, indented or
+    // in prose, cannot pin the escape hatch shut (#991).)
     // A retained queued message (`↳ …` under "Messages to be submitted after
     // next tool call") means work is pending, whatever the composer shows.
     if (/↳|Messages to be submitted/i.test(pane)) return false;
