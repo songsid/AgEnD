@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "node:events";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Daemon } from "../src/daemon.js";
@@ -86,6 +86,21 @@ describe("the daemon's continue nudge", () => {
     expect(sent).toEqual(["keep going"]);
     await poll(300_000);
     expect(sent).toEqual(["keep going"]);                   // once per episode — not once per poll
+    stop();
+  });
+
+  it("a real codex 0.160.0 pane — the line opens with ■, not ⚠ — is detected and nudged too (#1208: it never was)", async () => {
+    // The error row exactly as the real 0.160.0 pane carries it, in the idle screen shape the other tests use (the mock
+    // provider's footer in the capture has no "Context N% left" row, which idleness here is judged by).
+    const row = readFileSync(join(__dirname, "fixtures", "codex-0160-model-capacity.pane.txt"), "utf8")
+      .split("\n").find(line => line.includes("Selected model is at capacity"))!;
+    expect(row.startsWith("\u25A0 ")).toBe(true);
+    const { errors, sent, poll, stop } = rig({ start: PANE.replace(CAPACITY, row) });
+    await poll(5_100);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ type: "model_error", action: "nudge_continue" });
+    await poll(60_000);
+    expect(sent).toEqual(["keep going"]);
     stop();
   });
 

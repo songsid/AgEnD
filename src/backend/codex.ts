@@ -1786,14 +1786,20 @@ export class CodexBackend implements CliBackend {
         // A capacity rejection is a completed failed turn: Codex returns to its
         // prompt without an answer, with its context intact. Keep this anchored to
         // the exact decorated TUI line so ordinary prose about model capacity
-        // cannot trigger anything on an otherwise healthy instance. The CLI is
+        // cannot trigger anything on an otherwise healthy instance. The status
+        // glyph is decoration that changes between Codex versions and error classes
+        // (`■` U+25A0 on 0.159.2 and 0.160.0, `⚠` U+26A0 before), so any one
+        // "Other Symbol" glyph (optionally with its emoji selector) opens the line —
+        // never a bullet, dash, quote marker or number, which prose and the model's
+        // own transcript items use (`•`, `-`, `>`). The sentence must fill the line,
+        // from column 0. The CLI is
         // already back at the prompt, so skipRecoveryWait avoids an extra wait.
         // action "nudge_continue": tell the user, then about a minute later tell
         // the agent to keep going (the lifecycle bounds this to 3 per 30 minutes,
         // then pauses; see #905). No restart — nothing would re-send the turn — and
         // no model switch. skipCooldown: each NEW capacity line is a new episode,
         // including a second one right after the nudge.
-        pattern: /^⚠ Selected model is at capacity\. Please try a different model\.\r?$/m,
+        pattern: /^\p{So}\uFE0F? Selected model is at capacity\. Please try a different model\.\r?$/mu,
         type: "model_error",
         action: "nudge_continue",
         message: t("inst.codex_model_capacity"),

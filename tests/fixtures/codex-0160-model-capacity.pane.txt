@@ -1,0 +1,18 @@
+  >_ OpenAI Codex (v0.160.0)
+     ~/work
+  permissions: YOLO mode
+
+  Nice terminal. Does it come in widescreen?
+
+  Tip: Maximize usage with GPT-6.1 Sol. Try it on complex work for near-Astra performance at a lower cost.
+
+
+› hello
+
+
+■ Selected model is at capacity. Please try a different model.
+
+
+› Ask Codex to do anything
+
+  mock-model default · ~/work · ← for agents                                           ⚠ 1 warning · f2 to view

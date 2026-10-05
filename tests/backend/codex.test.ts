@@ -323,6 +323,70 @@ describe("CodexBackend", () => {
       expect(matchingError(pane)).toBeUndefined();
     });
 
+    describe("the status glyph in front of the capacity line is not part of the match (#1208)", () => {
+      const LINE = "Selected model is at capacity. Please try a different model.";
+      /** The capacity entry's own pattern: other entries may match the same pane first (a pane can hold several errors). */
+      const isCapacity = (pane: string) => new CodexBackend(TEST_DIR).getErrorPatterns()
+        .find(entry => entry.action === "nudge_continue")!.pattern.test(pane);
+      const fixture = (name: string) => readFileSync(join(__dirname, "..", "fixtures", name), "utf8");
+
+      it.each([
+        ["codex 0.160.0 (captured live): ■ U+25A0", "codex-0160-model-capacity.pane.txt"],
+        ["codex 0.159.2 (captured live): ■ U+25A0", "codex-0159-model-capacity.pane.txt"],
+        ["codex 0.160.0 after a resume, between other errors", "codex-0160-resumed.pane.txt"],
+      ])("%s is detected from the whole pane", (_label, name) => {
+        expect(isCapacity(fixture(name))).toBe(true);
+      });
+
+      it("…and on a pane holding nothing else, it is the entry the monitor acts on: nudge_continue", () => {
+        for (const name of ["codex-0160-model-capacity.pane.txt", "codex-0159-model-capacity.pane.txt"]) {
+          expect(matchingError(fixture(name))).toMatchObject({ type: "model_error", action: "nudge_continue", skipRecoveryWait: true, skipCooldown: true });
+        }
+      });
+
+      it("the live panes really carry U+25A0 (e2 96 a0), not a look-alike", () => {
+        for (const name of ["codex-0160-model-capacity.pane.txt", "codex-0159-model-capacity.pane.txt"]) {
+          expect(fixture(name)).toContain(`\u25A0 ${LINE}`);
+        }
+      });
+
+      it.each([
+        ["■ U+25A0 (0.159.2 / 0.160.0)", "\u25A0"],
+        ["⚠ U+26A0 (the form this was written against)", "\u26A0"],
+        ["⚠️ with its emoji selector", "\u26A0\uFE0F"],
+        ["✖ U+2716", "\u2716"],
+      ])("opens with %s", (_label, glyph) => {
+        expect(isCapacity(`${glyph} ${LINE}`)).toBe(true);
+        expect(isCapacity(`\n\n› hello\n\n${glyph} ${LINE}\r\n\n› Ask Codex to do anything\n`)).toBe(true);
+      });
+
+      it.each([
+        ["a transcript bullet", "\u2022"],
+        ["a markdown dash", "-"],
+        ["a quote marker", ">"],
+        ["a list star", "*"],
+        ["a number", "1."],
+        ["a heading", "#"],
+        ["a letter", "A"],
+        ["no glyph at all", ""],
+      ])("does not open with %s — prose and the model's own transcript use these", (_label, lead) => {
+        expect(isCapacity(`${lead}${lead ? " " : ""}${LINE}`)).toBe(false);
+      });
+
+      it.each([
+        [" \u25A0 " + LINE],
+        ["The pane said \u25A0 " + LINE],
+        ["`\u25A0 " + LINE + "`"],
+        ["\u25A0 " + LINE + " More details follow."],
+        ["\u25A0\u25A0 " + LINE],
+        ["\u25A0  " + LINE],
+        ["\u25A0 Selected model is at capacity"],
+        ["\u25A0 Selected model is at capacity, so please try a different model."],
+      ])("a line that is not exactly the status row is not capacity: %j", (pane) => {
+        expect(isCapacity(pane)).toBe(false);
+      });
+    });
+
     it("localizes the Codex capacity recovery instructions in zh-TW", () => {
       setLocale("zh-TW");
       const match = matchingError("⚠ Selected model is at capacity. Please try a different model.");
