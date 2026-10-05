@@ -18,7 +18,6 @@ import {
   WEB_SESSION_EXPIRED_MESSAGE,
   WEB_SESSION_REQUIRED_MESSAGE,
   WEB_TOKEN_INVALID_MESSAGE,
-  WEB_URL_TOKEN_WRITE_MESSAGE,
   type WebGateRequest,
 } from "../src/web-auth.js";
 import { csrfTokenFor, tokenEpoch, WebSessionStore } from "../src/web-session.js";
@@ -62,58 +61,36 @@ function browserWrite(browser: { cookie: string; csrf: string }, host = "fleet.l
   return { cookie: browser.cookie, origin: `http://${host}`, host, [WEB_CSRF_HEADER]: browser.csrf };
 }
 
-describe("web gate — token redemption", () => {
-  it("redeems a URL token on GET for an HttpOnly SameSite=Strict cookie and drops it from the URL", () => {
-    const decision = gate("GET", `/settings?theme=dark&token=${TOKEN}`);
-
-    expect(decision.kind).toBe("exchange");
-    if (decision.kind !== "exchange") return;
-    expect(decision.location).toBe("/settings?theme=dark");
-    expect(decision.location).not.toContain(TOKEN);
-    expect(decision.setCookie).toContain("HttpOnly");
-    expect(decision.setCookie).toContain("SameSite=Strict");
-    expect(decision.setCookie).toContain("Path=/");
-  });
-
-  it("keeps the redirect target relative so a forged Host cannot redirect elsewhere", () => {
-    const decision = gate("GET", `/ui?token=${TOKEN}`, { host: "attacker.example" });
-
-    expect(decision.kind).toBe("exchange");
-    if (decision.kind !== "exchange") return;
-    expect(decision.location).toBe("/ui");
-    expect(decision.location.startsWith("/")).toBe(true);
-    expect(decision.location).not.toContain("//");
-  });
-
-  it("marks the cookie Secure only when the request reached us over TLS", () => {
-    const plain = gate("GET", `/ui?token=${TOKEN}`);
-    const tunneled = gate("GET", `/ui?token=${TOKEN}`, { "x-forwarded-proto": "https" });
-
-    expect(plain.kind === "exchange" && plain.setCookie.includes("Secure")).toBe(false);
-    expect(tunneled.kind === "exchange" && tunneled.setCookie.includes("Secure")).toBe(true);
-  });
-
-  it("refuses a URL token as a write credential", () => {
-    const decision = gate("POST", `/api/settings/reload?token=${TOKEN}`);
-
-    expect(decision).toEqual({ kind: "reject", status: 401, message: WEB_URL_TOKEN_WRITE_MESSAGE, reason: "invalid" });
-  });
-
-  it("hands out an opaque session id that has nothing to do with the token", () => {
+describe("web gate — a token in the URL is not a credential", () => {
+  it("a GET with the right ?token= gets no session and no cookie: it is answered like no credential (the sign-in page)", () => {
     const sessions = new WebSessionStore();
-    const decision = gate("GET", `/ui?token=${TOKEN}`, {}, TOKEN, sessions);
-    expect(decision.kind).toBe("exchange");
-    if (decision.kind !== "exchange") return;
+    for (const path of [`/ui?token=${TOKEN}`, `/settings?theme=dark&token=${TOKEN}`, `/status?token=${TOKEN}`]) {
+      expect(gate("GET", path, {}, TOKEN, sessions), path).toEqual({
+        kind: "reject", status: 401, message: WEB_SESSION_REQUIRED_MESSAGE, reason: "no-credential",
+      });
+    }
+    expect(sessions.size, "nothing was minted").toBe(0);
+  });
 
-    const id = /agend_session=([^;]+)/.exec(decision.setCookie)![1]!;
-    expect(id).toMatch(/^[0-9a-f]{64}$/);
-    expect(id).not.toBe(TOKEN);
-    expect(decision.setCookie).not.toContain(TOKEN);
-    // Not the old derivation either: a cookie anyone holding the token could compute.
-    expect(id).not.toBe(createHash("sha256").update(`agend-web-session-v1:${TOKEN}`).digest("hex"));
-    expect(sessions.size).toBe(1);
-    // ...and the id cannot be replayed through the paths that take the raw token.
-    expect(gate("POST", "/status", { "x-agend-token": id })).toMatchObject({ kind: "reject" });
+  it("nor is it a write credential", () => {
+    expect(gate("POST", `/api/settings/reload?token=${TOKEN}`)).toMatchObject({ kind: "reject", status: 401 });
+    expect(gate("POST", `/stop/x?token=${TOKEN}`, { origin: "http://fleet.local", host: "fleet.local" })).toMatchObject({ kind: "reject", status: 401 });
+  });
+
+  it("does not change what a real credential gets: the header token and a session still work, with or without one in the URL", () => {
+    const sessions = new WebSessionStore();
+    const browser = signedIn(sessions);
+    expect(gate("GET", `/status?token=nonsense`, { "x-agend-token": TOKEN })).toEqual({ kind: "allow", via: "header-token" });
+    expect(gate("GET", `/status?token=${TOKEN}`, { cookie: browser.cookie }, TOKEN, sessions)).toMatchObject({ kind: "allow", via: "session" });
+  });
+
+  it("no decision can carry a cookie or a redirect any more", () => {
+    for (const path of [`/ui?token=${TOKEN}`, "/ui", `/status?token=wrong`]) {
+      const decision = gate("GET", path) as unknown as Record<string, unknown>;
+      expect(decision.kind, path).not.toBe("exchange");
+      expect(decision).not.toHaveProperty("setCookie");
+      expect(decision).not.toHaveProperty("location");
+    }
   });
 
   it("no longer accepts the old deterministic cookie", () => {
@@ -146,9 +123,11 @@ describe("web gate — token redemption", () => {
     expect(gate("GET", "/status")).toEqual({
       kind: "reject", status: 401, message: WEB_SESSION_REQUIRED_MESSAGE, reason: "no-credential",
     });
-    expect(gate("GET", "/status?token=wrong")).toEqual({
+    expect(gate("GET", "/status", { "x-agend-token": "wrong" })).toEqual({
       kind: "reject", status: 401, message: WEB_TOKEN_INVALID_MESSAGE, reason: "invalid",
     });
+    // A wrong token in the URL is not "a credential presented and got wrong" any more: it is no credential.
+    expect(gate("GET", "/status?token=wrong")).toMatchObject({ reason: "no-credential" });
   });
 });
 
@@ -280,59 +259,68 @@ async function stopFleet(fm: FleetManager): Promise<void> {
   (fm as unknown as { healthServer: Server | null }).healthServer = null;
 }
 
-function sessionCookieFrom(res: RawResponse): string {
-  const setCookie = res.headers["set-cookie"];
-  const first = Array.isArray(setCookie) ? setCookie[0] : setCookie;
-  expect(first).toBeTruthy();
-  return first!.split(";")[0]!;
+/** Sign in the way a browser does now: a one-time code from the fleet, typed on /signin, posted to /auth/login. */
+function signInCookie(fm: FleetManager, port: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify({ code: fm.issueDashboardLogin()!.display });
+    const host = `127.0.0.1:${port}`;
+    const r = request({ host: "127.0.0.1", port, method: "POST", path: "/auth/login",
+      headers: { host, origin: `http://${host}`, "content-type": "application/json" } }, res => {
+      res.resume();
+      res.on("end", () => {
+        if (res.statusCode !== 200) return reject(new Error(`sign-in failed: ${res.statusCode}`));
+        resolve(String(res.headers["set-cookie"]).split(";")[0]!);
+      });
+    });
+    r.on("error", reject);
+    r.end(body);
+  });
 }
 
+
 describe("health server gate (live)", () => {
-  it("exchanges a dashboard link for a cookie, then serves the panel without any token in the URL", async () => {
+  it("a dashboard link with ?token= is not a way in: no cookie, no data; a session from a sign-in code is", async () => {
     const dir = tempDir();
     const { fm, port } = await startFleet(dir);
     const token = fm.getDashboardAccess().token!;
 
-    const exchange = await raw(port, "GET", `/status?token=${token}`);
-    expect(exchange.status).toBe(302);
-    expect(exchange.headers.location).toBe("/status");
-    expect(exchange.headers["cache-control"]).toBe("no-store");
+    const link = await raw(port, "GET", `/status?token=${token}`);
+    expect(link.status).toBe(401);
+    expect(link.headers["set-cookie"]).toBeUndefined();
+    expect(link.body).not.toContain("instances");
 
-    const cookie = sessionCookieFrom(exchange);
+    const cookie = await signInCookie(fm, port);
     expect(cookie).not.toContain(token);
-
     const authorized = await raw(port, "GET", "/status", { cookie });
     expect(authorized.status).toBe(200);
     expect(JSON.parse(authorized.body)).toHaveProperty("instances");
-
-    const anonymous = await raw(port, "GET", "/status");
-    expect(anonymous.status).toBe(401);
+    expect((await raw(port, "GET", "/status")).status).toBe(401);
 
     await stopFleet(fm);
   });
 
-  it("serves the Settings panel and the dashboard from the cookie alone", async () => {
+  it("serves the Settings panel and the dashboard from the cookie alone; a ?token= link gets the sign-in page", async () => {
     const dir = tempDir();
     const { fm, port } = await startFleet(dir);
     const token = fm.getDashboardAccess().token!;
+    const cookie = await signInCookie(fm, port);
 
     for (const path of ["/settings", "/ui"]) {
-      const exchange = await raw(port, "GET", `${path}?token=${token}`);
-      expect(exchange.status).toBe(302);
-      expect(exchange.headers.location).toBe(path);
+      const viaLink = await raw(port, "GET", `${path}?token=${token}`, { accept: "text/html" });
+      expect(viaLink.status, path).toBe(401);
+      expect(viaLink.headers["set-cookie"]).toBeUndefined();
+      expect(viaLink.body).not.toContain(token);
 
-      const page = await raw(port, "GET", path, { cookie: sessionCookieFrom(exchange) });
+      const page = await raw(port, "GET", path, { cookie });
       expect(page.status).toBe(200);
       expect(page.headers["content-type"]).toContain("text/html");
-      // The page must not hand the token back to the browser it was just
-      // removed from.
       expect(page.body).not.toContain(token);
     }
 
     // web-api re-checks auth behind the gate; the cookie has to satisfy it too.
-    const cookie = sessionCookieFrom(await raw(port, "GET", `/ui?token=${token}`));
     expect((await raw(port, "GET", "/ui/backends", { cookie })).status).toBe(200);
     expect((await raw(port, "GET", "/ui/backends")).status).toBe(401);
+    expect((await raw(port, "GET", `/ui/backends?token=${token}`)).status).toBe(401);
 
     await stopFleet(fm);
   }, 20_000);
@@ -340,8 +328,7 @@ describe("health server gate (live)", () => {
   it("blocks a cross-site write that carries a valid session cookie", async () => {
     const dir = tempDir();
     const { fm, port } = await startFleet(dir);
-    const token = fm.getDashboardAccess().token!;
-    const cookie = sessionCookieFrom(await raw(port, "GET", `/status?token=${token}`));
+    const cookie = await signInCookie(fm, port);
 
     const crossSite = await raw(port, "POST", "/status", { cookie, origin: "https://evil.example" });
     expect(crossSite.status).toBe(403);
@@ -361,8 +348,7 @@ describe("health server gate (live)", () => {
   it("sends Referrer-Policy: no-referrer on authorized and rejected responses alike", async () => {
     const dir = tempDir();
     const { fm, port } = await startFleet(dir);
-    const token = fm.getDashboardAccess().token!;
-    const cookie = sessionCookieFrom(await raw(port, "GET", `/status?token=${token}`));
+    const cookie = await signInCookie(fm, port);
 
     expect((await raw(port, "GET", "/status", { cookie })).headers["referrer-policy"]).toBe("no-referrer");
     expect((await raw(port, "GET", "/status")).headers["referrer-policy"]).toBe("no-referrer");
@@ -387,19 +373,16 @@ describe("health server gate (live)", () => {
   it("stops accepting a live session the moment the token is rotated", async () => {
     const dir = tempDir();
     const { fm, port } = await startFleet(dir);
-    const oldToken = fm.getDashboardAccess().token!;
-    const oldCookie = sessionCookieFrom(await raw(port, "GET", `/status?token=${oldToken}`));
+    const oldCookie = await signInCookie(fm, port);
     expect((await raw(port, "GET", "/status", { cookie: oldCookie })).status).toBe(200);
 
     const newToken = rotateWebToken(dir);
 
     expect((await raw(port, "GET", "/status", { cookie: oldCookie })).status).toBe(401);
-    expect((await raw(port, "GET", `/status?token=${oldToken}`)).status).toBe(401);
     expect(fm.getDashboardAccess().token).toBe(newToken);
 
-    const fresh = await raw(port, "GET", `/status?token=${newToken}`);
-    expect(fresh.status).toBe(302);
-    expect((await raw(port, "GET", "/status", { cookie: sessionCookieFrom(fresh) })).status).toBe(200);
+    // Signing in again after the rotation works.
+    expect((await raw(port, "GET", "/status", { cookie: await signInCookie(fm, port) })).status).toBe(200);
 
     await stopFleet(fm);
   });

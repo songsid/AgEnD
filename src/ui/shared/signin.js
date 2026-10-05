@@ -28,6 +28,17 @@
   const lang = /^zh/i.test(navigator.language || "") ? "zh-TW" : "en";
   const t = (k) => T[lang][k] || T.en[k] || k;
   document.documentElement.lang = lang === "zh-TW" ? "zh-Hant" : "en";
+
+  // An old dashboard link carries `?token=`. It is not a credential any more (the server ignored it and
+  // answered with this page), but it is still the fleet's token: take it out of the address bar and
+  // the history entry at once, so it is not copied, bookmarked or shared from here.
+  try {
+    const here = new URL(location.href);
+    if (here.searchParams.has("token")) {
+      here.searchParams.delete("token");
+      history.replaceState(null, "", here.pathname + here.search + here.hash);
+    }
+  } catch { /* nothing to clean */ }
   document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.getAttribute("data-i18n")); });
 
   // Where to go afterwards: only the three panels, never an arbitrary URL.

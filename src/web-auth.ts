@@ -17,10 +17,6 @@ export const WEB_SESSION_REQUIRED_MESSAGE =
 /** A cookie was sent and the server no longer honours it: expired, signed out, revoked or rotated away. */
 export const WEB_SESSION_EXPIRED_MESSAGE = "Session expired or signed out — sign in again";
 export const WEB_CROSS_SITE_MESSAGE = "Cross-site request rejected";
-/** A URL token is redeemed for a session cookie on a GET; it is never a
- * credential for a write, where it would also survive in history and logs. */
-export const WEB_URL_TOKEN_WRITE_MESSAGE =
-  "URL tokens are only redeemed on GET — send X-Agend-Token for API writes";
 
 const WEB_TOKEN_PATTERN = /^[0-9a-f]{48}$/i;
 
@@ -138,7 +134,6 @@ export interface WebGateRequest {
 export type WebGateDecision =
   | { readonly kind: "allow"; readonly via: "session"; readonly session: SessionRecord }
   | { readonly kind: "allow"; readonly via: "header-token" }
-  | { readonly kind: "exchange"; readonly setCookie: string; readonly location: string }
   | {
       readonly kind: "reject";
       readonly status: 401 | 403;
@@ -253,15 +248,6 @@ function passesCookieWriteChecks(req: WebGateRequest, sessionId: string): boolea
   return !!presented && constantTimeEquals(presented, csrfTokenFor(sessionId));
 }
 
-/** Same-origin relative target with the token stripped and every other query
- * parameter kept. Relative on purpose: an absolute Location built from
- * attacker-supplied Host would be an open redirect. */
-function locationWithoutToken(url: URL): string {
-  const stripped = new URL(url.href);
-  stripped.searchParams.delete("token");
-  return `${stripped.pathname}${stripped.search}`;
-}
-
 export type SessionAuthResult =
   | { readonly kind: "ok"; readonly session: SessionRecord; readonly sessionId: string }
   | { readonly kind: "reject"; readonly status: 401 | 403; readonly message: string };
@@ -293,8 +279,6 @@ export function authorizeSession(
 }
 
 interface AuthorizeOptions {
-  /** Whether a valid `?token=` on a GET may be exchanged for a new session. */
-  readonly mint: boolean;
   /** Whether a valid cookie counts as activity (slides the idle expiry). */
   readonly touch: boolean;
 }
@@ -332,32 +316,16 @@ function authorize(
     }
   }
 
-  const queryToken = url.searchParams.get("token");
-  if (queryToken && constantTimeEquals(queryToken, token)) {
-    if (method !== "GET" && method !== "HEAD") {
-      return { kind: "reject", status: 401, message: WEB_URL_TOKEN_WRITE_MESSAGE, reason: "invalid" };
-    }
-    if (!opts.mint) return { kind: "allow", via: "header-token" };
-    if (!sessions) return { kind: "reject", status: 401, message: WEB_TOKEN_INVALID_MESSAGE, reason: "closed" };
-    const secure = isSecureRequest(req);
-    const { sessionId, record } = sessions.create({
-      tier: "admin",
-      surface: "local",
-      label: labelFromUserAgent(headerValue(req, "user-agent") ?? undefined),
-      tokenEpoch: tokenEpoch(token),
-    });
-    return {
-      kind: "exchange",
-      setCookie: buildSessionCookie(sessionId, secure, (record.absoluteExpiry - record.created) / 1000),
-      location: locationWithoutToken(url),
-    };
-  }
+  // A `?token=` in the URL is not a credential (it used to be redeemed for a cookie on a GET). A URL
+  // ends up in browser history, chat scrollback, screenshots and request logs; the dashboard now
+  // gives a one-time sign-in code instead, and the CLI and scripts send the X-Agend-Token header.
+  // A link that still carries one is answered like no credential at all: the sign-in page.
 
-  // A wrong token in the URL or header is somebody presenting a credential and getting it wrong.
+  // A wrong header token is somebody presenting a credential and getting it wrong.
   // A cookie that no longer works is the ordinary end of a session, not that: it is the same
   // "you need to sign in" as no cookie at all, and a browser navigation should be answered
   // with the sign-in page either way.
-  if (queryToken ?? headerValue(req, "x-agend-token")) {
+  if (headerValue(req, "x-agend-token")) {
     return { kind: "reject", status: 401, message: WEB_TOKEN_INVALID_MESSAGE, reason: "invalid" };
   }
   return {
@@ -371,11 +339,8 @@ function authorize(
 /**
  * The single authorization decision for every gated web route.
  *
- * Accepts, in order: an `X-Agend-Token` header (CLI and scripts), a session
- * cookie, and — only to be redeemed for a *new session* on a GET — a `?token=`
- * in the URL (deprecated; see the design's D8). After the redemption the token is
- * gone from the address bar, from browser history, and from anything that logs
- * request URLs.
+ * Accepts, in order: an `X-Agend-Token` header (CLI and scripts) and a session
+ * cookie (made by signing in with a one-time code). Never a credential in the URL.
  */
 export function decideWebGate(
   req: WebGateRequest,
@@ -383,12 +348,11 @@ export function decideWebGate(
   token: string | null,
   sessions: WebSessionStore | null | undefined,
 ): WebGateDecision {
-  return authorize(req, url, token, sessions, { mint: true, touch: true });
+  return authorize(req, url, token, sessions, { touch: true });
 }
 
 /**
- * Defence in depth for handlers that run behind the gate: authorization only,
- * no session minting (the gate already did that).
+ * Defence in depth for handlers that run behind the gate: the same decision, as a boolean.
  *
  * `touch: false` is for a long-lived stream re-checking itself on a timer, which
  * must be able to notice a revocation without counting as activity.
@@ -400,5 +364,5 @@ export function isWebRequestAuthorized(
   sessions?: WebSessionStore | null,
   opts: { touch?: boolean } = {},
 ): boolean {
-  return authorize(req, url, token, sessions, { mint: false, touch: opts.touch !== false }).kind === "allow";
+  return authorize(req, url, token, sessions, { touch: opts.touch !== false }).kind === "allow";
 }

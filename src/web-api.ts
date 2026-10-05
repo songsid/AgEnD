@@ -123,6 +123,9 @@ function parseOrReject<T>(
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+/** How often a stream is refreshed, and how often it re-checks that its session still stands. */
+export const SSE_HEARTBEAT_MS = 10_000;
+
 /** Minimal interface — only what web-api needs from FleetManager. */
 export interface WebApiContext {
   readonly webToken: string | null;
@@ -150,6 +153,8 @@ export interface WebApiContext {
   emitSseEvent(event: string, data: unknown): void;
   /** The web chat's recent messages (history + SSE replay); absent in contexts that have no chat. */
   readonly webChatHistory?: WebChatHistory;
+  /** Absent means SSE_HEARTBEAT_MS; a test shortens it. */
+  readonly sseHeartbeatMs?: number;
   startInstance(name: string, config: unknown, topicMode: boolean): Promise<void>;
   stopInstance(name: string): Promise<void>;
   restartSingleInstance(name: string, opts?: { explicit?: boolean }): Promise<void>;
@@ -212,9 +217,8 @@ export function handleWebRequest(
   const method = req.method ?? "GET";
 
   // Auth check for all /ui routes. Defence in depth behind the fleet-manager
-  // gate, which has already redeemed any `?token=` for a session cookie — so
-  // this accepts the cookie and the header too, and an unset token closes the
-  // panel instead of comparing null against a missing credential.
+  // gate: the same session cookie or header token, and an unset token closes
+  // the panel instead of comparing null against a missing credential.
   if (path.startsWith("/ui")) {
     if (!isWebRequestAuthorized(req, url, ctx.webToken, ctx.webSessions)) {
       json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE });
@@ -303,7 +307,10 @@ export function handleWebRequest(
       // without counting as activity, or an open tab would keep an idle session
       // alive forever; a revoked, expired or rotated-away session ends here.
       if (!isWebRequestAuthorized(req, url, ctx.webToken, ctx.webSessions, { touch: false })) {
-        try { res.end(); } catch { /* already closed */ }
+        // Close the connection too, not just the response: an ended response leaves the socket idle in
+        // keep-alive, still held open by whoever's session just ended.
+        const socket = req.socket;
+        try { res.end(() => socket?.destroy()); } catch { /* already closed */ }
         cleanup();
         return;
       }
@@ -312,7 +319,7 @@ export function handleWebRequest(
       } catch {
         cleanup();
       }
-    }, 10_000);
+    }, ctx.sseHeartbeatMs ?? SSE_HEARTBEAT_MS);
     let cleanedUp = false;
     const cleanup = (): void => {
       if (cleanedUp) return;
@@ -320,10 +327,13 @@ export function handleWebRequest(
       ctx.sseClients.delete(res);
       clearInterval(interval);
     };
-    // `close` covers normal disconnects; `error` covers network resets that
-    // never deliver a clean FIN. Without both, dead clients accumulate in
+    // The *response's* `close` is the one that means the stream is over: it fires when the connection
+    // goes away or the response is finished. The request's `close` means "the request has been read"
+    // — on newer Node that can be as soon as it is consumed, which would drop a live stream from
+    // sseClients and stop its session re-check while the response is still open. `error` covers
+    // network resets that never deliver a clean FIN. Without these, dead clients accumulate in
     // sseClients and the heartbeat interval keeps firing forever.
-    req.on("close", cleanup);
+    res.on("close", cleanup);
     req.on("error", cleanup);
     res.on("error", cleanup);
     return true;

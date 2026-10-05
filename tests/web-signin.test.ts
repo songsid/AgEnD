@@ -138,9 +138,16 @@ describe("the sign-in page and its scripts", () => {
     expect(stale.body).toContain("/assets/signin.js");
     const staleApi = await raw(h.port, "GET", "/ui/backends", { accept: "application/json", cookie: s.cookie });
     expect(JSON.parse(staleApi.body).error).toContain("sign in again");
-    // Only "nothing presented" gets the page: a wrong token is an error, not an invitation.
-    const wrong = await raw(h.port, "GET", "/ui?token=wrong", { accept: "text/html" });
+    // Only "nothing presented" gets the page: a wrong header token is an error, not an invitation.
+    const wrong = await raw(h.port, "GET", "/ui", { accept: "text/html", "x-agend-token": "wrong" });
     expect(wrong.headers["content-type"]).toContain("application/json");
+    // A `?token=` in the URL is not a credential at all — right or wrong it is "nothing presented": the sign-in page.
+    for (const t of ["wrong", h.fm.getDashboardAccess().token!]) {
+      const link = await raw(h.port, "GET", `/ui?token=${t}`, { accept: "text/html" });
+      expect(link.status).toBe(401);
+      expect(link.body).toContain("/assets/signin.js");
+      expect(link.headers["set-cookie"]).toBeUndefined();
+    }
     await stop(h.fm);
   }, 20_000);
 });
@@ -411,17 +418,16 @@ describe("a signed-in browser", () => {
 });
 
 describe("the old ways in", () => {
-  it("redeems ?token= on a GET for a real session that can be listed and revoked", async () => {
+  it("a ?token= link is no longer redeemed for a session (S2: no credential in a URL)", async () => {
     const h = await startFleet();
     const token = h.fm.getDashboardAccess().token!;
-    const exchange = await raw(h.port, "GET", `/ui?token=${token}`);
-    expect(exchange.status).toBe(302);
-    expect(exchange.headers.location).toBe("/ui");
-    const cookie = cookieOf(exchange);
-    expect(cookie).toMatch(/^agend_session=[0-9a-f]{64}$/);
-    expect(cookie).not.toContain(token);
-
-    const list = JSON.parse((await raw(h.port, "GET", "/auth/sessions", { cookie })).body).sessions;
+    const link = await raw(h.port, "GET", `/ui?token=${token}`);
+    expect(link.status).toBe(401);
+    expect(link.headers["set-cookie"]).toBeUndefined();
+    expect(link.headers.location).toBeUndefined();
+    // Nothing was minted: a session made by signing in is the only one listed.
+    const s = await signIn(h);
+    const list = JSON.parse((await raw(h.port, "GET", "/auth/sessions", { cookie: s.cookie })).body).sessions;
     expect(list).toHaveLength(1);
     await stop(h.fm);
   }, 20_000);

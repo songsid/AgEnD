@@ -296,7 +296,7 @@
 
 <script src="/ui/js/chat-render.js"></script>
 <script>
-// No token in the URL: the gate redeemed it for an HttpOnly session cookie,
+// No token in the URL: signing in with a one-time code set an HttpOnly session cookie,
 // which the browser attaches to these same-origin requests on its own.
 const UI_LANG = localStorage.getItem("agend_lang") || (navigator.language?.toLowerCase().startsWith("zh") ? "zh-TW" : "en");
 const UI_TEXT = {

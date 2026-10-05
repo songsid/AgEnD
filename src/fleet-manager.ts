@@ -87,7 +87,7 @@ import { DeliveryOutbox, type ClaimedOutboxDelivery, type OutboxDelivery, type D
 // active manager/target generation pair owns the lane until the daemon reports
 // a state transition or that generation is replaced.
 export const DURABLE_DELIVERY_LANE_ALERT_MS = 35 * 60_000;
-import { handleWebRequest, broadcastSseEvent } from "./web-api.js";
+import { handleWebRequest, broadcastSseEvent, SSE_HEARTBEAT_MS } from "./web-api.js";
 import { WebChatHistory, WEB_CHAT_TEXT_MAX } from "./web-chat-history.js";
 import { handleViewRequest, isViewPath } from "./view-api.js";
 import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, usageProviderIdForBackend } from "./usage/usage-api.js";
@@ -898,6 +898,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * request: they are persisted, and a restart must find them again.
    */
   private webSessions: WebSessionStore | null = null;
+  /** Heartbeat of the dashboard's SSE stream; public so a test can shorten it. */
+  sseHeartbeatMs = SSE_HEARTBEAT_MS;
   /** The dashboard's login codes. Memory only: a code that outlives the process is a code nobody can prove was not copied. */
   private webLoginCodes: WebLoginCodes | null = null;
   /**
@@ -13399,6 +13401,11 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       this.healthServer = null;
     }
 
+    // The store writes lastSeen at most once a minute; what that debounce is still holding — and any
+    // write that failed and is still owed — is paid now, so a restart neither shortens the idle window
+    // nor revives a session that was revoked while the disk was refusing writes.
+    this.webSessions?.flush();
+
     this.eventLog?.close();
 
     const pidPath = join(this.dataDir, "fleet.pid");
@@ -15188,7 +15195,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         // like the other /view data routes (usage-api.ts rejects non-GET).
       } else {
         // All other endpoints require a session cookie or an X-Agend-Token
-        // header; a `?token=` in the URL is only redeemed for a cookie on a GET.
+        // header; a `?token=` in the URL is not a credential.
         // /ui/* will also re-check in web-api.ts, which is harmless.
         const parsedUrl = new URL(req.url ?? "/", `http://localhost:${port}`);
         const decision = decideWebGate(req, parsedUrl, this.webToken, this.webSessions);
@@ -15205,17 +15212,6 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
           }
           res.writeHead(decision.status);
           res.end(JSON.stringify({ error: decision.message }));
-          return;
-        }
-        if (decision.kind === "exchange") {
-          res.setHeader("Set-Cookie", decision.setCookie);
-          res.setHeader("Location", decision.location);
-          // A cached redirect would replay a Set-Cookie for a rotated token.
-          res.setHeader("Cache-Control", "no-store");
-          res.writeHead(302);
-          // Browsers follow the Location; a script that does not gets told why
-          // its URL token stopped being echoed back as data.
-          res.end(JSON.stringify({ redirect: decision.location }));
           return;
         }
       }

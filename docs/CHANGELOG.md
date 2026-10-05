@@ -78,9 +78,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   also needs a per-session `X-Agend-CSRF` header and a matching `Origin`.
   `/dashboard revoke` signs every browser out; `agend web --code` prints a code on
   the host; `agend web-token rotate` still kills every session at once. The
-  header token (`X-Agend-Token`) is unchanged for the CLI and scripts, and
-  `agend web` still opens a `?token=` link for the host's own browser (deprecated;
-  it now creates a real session). New sign-ins are announced in the General topic
+  header token (`X-Agend-Token`) is unchanged for the CLI and scripts. **A
+  `?token=` in a URL is no longer a credential anywhere on `/ui` and `/settings`:**
+  an old dashboard link gets the sign-in page, and `agend web` now prints a code
+  and opens `/signin` instead of a token link. New sign-ins are announced in the General topic
   (`web.notify_login: false` to silence). `/view` is unchanged in this release.
 - **[Behaviour change] A Codex "model is at capacity" error is now answered with "keep going", not a restart (#905).**
   The old retry restarted the instance after 30 / 60 / 120 s, but a restarted Codex resumes at an empty prompt and
