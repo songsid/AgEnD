@@ -30,6 +30,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   labelled `output-edge-only; submission-unverifiable`. The wait runs after the pane lock is released, but the fleet lane and
   the shared pump budget stay held until the verdict (successes settle in about a second; a lost paste holds its lane for the
   bounded ~10 s window). Steer, native-queue, Codex, Kiro and raw pastes are untouched.
+- **Instance logs no longer read the whole file into memory (#1206).** `get_instance_logs` read `output.log` synchronously in
+  full before tailing it, so a multi-MB pipe-pane log blocked the event loop and could blow the 30 s IPC budget. It now reads
+  backwards from the end in bounded chunks (at most 1 MB scanned, async), so I/O stays flat no matter how large the log grows.
+  Logs that fit the bound keep an exact line count; larger ones return the tail with the count marked unknown and a note saying
+  so. A tail with no line break in the scanned window returns its last segment flagged partial instead of an empty answer.
+  A failed pipe-pane attach at startup now warns instead of vanishing silently.
 
 ### Security
 - **Discord slash commands now follow one command table (#1148).** Where a command applies and who may use it is

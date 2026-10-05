@@ -415,22 +415,23 @@ describe("list_instances progressive disclosure", () => {
 
 describe("get_instance_logs cap", () => {
   it("caps lines at MAX_INSTANCE_LOG_LINES", async () => {
+    const { mkdtempSync, mkdirSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
     const { outboundHandlers } = await import("../src/outbound-handlers.js");
     const handler = outboundHandlers.get("get_instance_logs")!;
 
-    // Mock fs
-    const mockContent = Array(500).fill("log line").join("\n");
-    vi.doMock("node:fs", async (importOriginal) => ({
-      ...(await importOriginal<typeof import("node:fs")>()),
-      readFileSync: vi.fn(() => mockContent),
-    }));
-
-    const ctx = {
-      dataDir: "/mock/agend",
-    };
+    // Real scratch log (#1206: the handler no longer whole-file readFileSyncs,
+    // so a readFileSync mock would silently stop intercepting anything).
+    const dataDir = mkdtempSync(join(tmpdir(), "agend-logs-cap-"));
+    mkdirSync(join(dataDir, "instances", "test-instance"), { recursive: true });
+    writeFileSync(
+      join(dataDir, "instances", "test-instance", "output.log"),
+      Array(500).fill("log line").join("\n"),
+    );
 
     let result: any;
-    await handler(ctx as any, { name: "test-instance", lines: 500 }, (r) => { result = r; }, {
+    await handler({ dataDir } as any, { name: "test-instance", lines: 500 }, (r) => { result = r; }, {
       instanceName: "caller",
       requestId: 1,
       fleetRequestId: undefined,
@@ -438,11 +439,11 @@ describe("get_instance_logs cap", () => {
     });
 
     // Should be capped
-    if (result.lines) {
-      const returnedLines = result.lines.split("\n").length;
-      expect(returnedLines).toBeLessThanOrEqual(MAX_INSTANCE_LOG_LINES);
-      expect(result._note).toContain("Capped");
-    }
+    expect(result.lines).toBeDefined();
+    const returnedLines = result.lines.split("\n").length;
+    expect(returnedLines).toBeLessThanOrEqual(MAX_INSTANCE_LOG_LINES);
+    expect(result._note).toContain("Capped");
+    expect(result.total_lines).toBe(500);
   });
 });
 

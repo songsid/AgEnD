@@ -1046,16 +1046,20 @@ const getInstanceLogs: Handler = async (ctx, rawArgs, respond) => {
   const lines = Math.min(requestedLines, MAX_INSTANCE_LOG_LINES);
   const capped = requestedLines > MAX_INSTANCE_LOG_LINES;
   try {
-    const { readFileSync } = await import("node:fs");
+    // #1206: bounded async tail — never a whole-file sync read, so a
+    // multi-MB pipe-pane log cannot block the event loop into an IPC timeout.
+    const { readTailLines } = await import("./output-log-tail.js");
     const { join: joinPath } = await import("node:path");
     const instanceDir = joinPath(ctx.dataDir, "instances", v.data.name);
-    const file = joinPath(instanceDir, "output.log");
-    const content = readFileSync(file, "utf-8");
-    const allLines = content.split("\n");
+    const tail = await readTailLines(joinPath(instanceDir, "output.log"), lines);
+    const notes: string[] = [];
+    if (capped) notes.push(`Capped at ${MAX_INSTANCE_LOG_LINES} lines. Use 'agend attach ${v.data.name}' for full history.`);
+    if (tail.truncated) notes.push("Showing a bounded tail of a large log; total line count unavailable.");
+    if (tail.partial) notes.push("The tail holds a partial line: no line break in the scanned window.");
     respond({
-      lines: allLines.slice(-lines).join("\n"),
-      total_lines: allLines.length,
-      ...(capped ? { _note: `Capped at ${MAX_INSTANCE_LOG_LINES} lines. Use 'agend attach ${v.data.name}' for full history.` } : {}),
+      lines: tail.text,
+      total_lines: tail.totalLines,
+      ...(notes.length > 0 ? { _note: notes.join(" ") } : {}),
     });
   } catch (err) {
     respond(null, `Cannot read logs for '${v.data.name}': ${(err as Error).message}`);

@@ -1990,6 +1990,20 @@ export class Daemon extends EventEmitter {
     }
   }
 
+  /**
+   * #1206: rotate + attach the pipe-pane log feed. An attach failure warns
+   * (like the wake path) instead of vanishing silently and leaving the
+   * instance with no log feed. Extracted so the failure path is unit-testable
+   * without driving the real lifecycle.
+   */
+  private async attachPipePaneLog(): Promise<void> {
+    const outputLog = join(this.instanceDir, "output.log");
+    await rotateLogIfNeededAsync(outputLog);
+    await this.tmux!.pipeOutput(outputLog).catch(err => {
+      this.logger.warn({ err }, "Failed to attach pipe-pane — instance output log will be missing");
+    });
+  }
+
   async start(): Promise<void> {
     ensureInstanceDir(this.instanceDir);
     writeFileSync(join(this.instanceDir, "daemon.pid"), String(process.pid));
@@ -2146,9 +2160,7 @@ export class Daemon extends EventEmitter {
       // previous stuck splash (hundreds of MB of ANSI frames) is truncated before
       // we attach — pipe-pane uses `cat >>` on the same inode, so copytruncate
       // keeps the writer attached after size resets.
-      const outputLog = join(this.instanceDir, "output.log");
-      await rotateLogIfNeededAsync(outputLog);
-      await this.tmux.pipeOutput(outputLog).catch(() => {});
+      await this.attachPipePaneLog();
 
       // 4. Transcript monitor. claude-code is handled inside the monitor
       // (statusline transcript); codex/kiro/opencode read their CLI's own
