@@ -331,6 +331,8 @@ export class PaneStateMachine {
   private readonly busyPattern: RegExp | null;
   private lastPaneHash: string | null = null;
   private lastPaneChangeAt: number;
+  private lastProgressTick: number | null = null;
+  private readonly progressTick: ((pane: string) => number | null) | null;
   private lastObservedAt: number;
   private stateChangedAt: number;
   private currentState: InstanceState = "idle";
@@ -340,7 +342,9 @@ export class PaneStateMachine {
     private readonly stuckTimeoutMs = DEFAULT_STUCK_TIMEOUT_MS,
     now = Date.now(),
     busyPattern?: RegExp | null,
+    progressTick?: ((pane: string) => number | null) | null,
   ) {
+    this.progressTick = progressTick ?? null;
     // Stateful g/y regexes mutate lastIndex and can alternate true/false across
     // polls. State detection must be deterministic for identical pane content.
     this.readyPattern = new RegExp(readyPattern.source, readyPattern.flags.replace(/[gy]/g, ""));
@@ -391,7 +395,17 @@ export class PaneStateMachine {
     const paneChanged = this.lastPaneHash !== paneHash;
     if (paneChanged) {
       this.lastPaneHash = paneHash;
-      this.lastPaneChangeAt = changeAt;
+      // Never backwards: a capture taken for an old output event (the stuck-deadline probe passes the time of the LAST
+      // output, minutes ago) must not erase the progress a later capture already proved (#1188).
+      this.lastPaneChangeAt = Math.max(this.lastPaneChangeAt, changeAt);
+    }
+    // The CLI's own turn clock (Codex: the elapsed seconds of its live status row). A counter that moved since the last
+    // look is proof of life whatever the rest of the screen did; one that stands still is not — a frozen pane stays
+    // detectable.
+    if (this.progressTick) {
+      const tick = this.progressTick(pane);
+      if (tick !== null && tick !== this.lastProgressTick) this.lastPaneChangeAt = Math.max(this.lastPaneChangeAt, now);
+      this.lastProgressTick = tick;
     }
     this.lastObservedAt = now;
 
@@ -420,7 +434,7 @@ export class PaneStateMachine {
 
   /** Record pane motion from tmux control mode without capturing pane content. */
   recordOutput(now = Date.now()): InstanceStateSnapshot {
-    this.lastPaneChangeAt = now;
+    this.lastPaneChangeAt = Math.max(this.lastPaneChangeAt, now);
     this.lastObservedAt = now;
     if (this.currentState !== "working") {
       this.currentState = "working";
@@ -4858,7 +4872,10 @@ export class Daemon extends EventEmitter {
         // If control mode missed the pane change, the safety capture becomes
         // the new progress timestamp and re-arms both deadlines.
         if (!expectedOutputAt) this.instanceStateLastOutputAt = captureStartedAt;
-        this.scheduleInstanceStateStuckDeadline(this.instanceStateLastOutputAt || captureStartedAt);
+        // The deadline follows the state machine's latest sign of life (output events, content changes and the CLI's own
+        // turn clock all feed it). Keyed on the output clock alone it would be "now" again the moment a long quiet turn
+        // proved alive, and re-fire in a loop.
+        this.scheduleInstanceStateStuckDeadline(snapshot.observedAt - snapshot.unchangedForMs || captureStartedAt);
       }
     } catch (err) {
       if (reason === "delivery_idle_gate") this.resetFooterFallback();
@@ -4925,6 +4942,7 @@ export class Daemon extends EventEmitter {
       this.instanceStateStuckTimeoutMs,
       Date.now(),
       this.instanceStateBusyPattern,
+      this.backend.getLiveProgressTick ? (pane: string) => this.backend!.getLiveProgressTick!(pane) : null,
     );
     this.instanceStateLastOutputAt = 0;
     this.instanceStatePeriodicIdleConfirmations = 0;
