@@ -41,6 +41,8 @@ function rig() {
   };
   const idle = { value: true };
   d.isPaneAuthoritativelyIdle = async () => idle.value;
+  const realSend = d.sendCapacityNudge.bind(d);
+  d.sendCapacityNudge = vi.fn(realSend);                  // "was the injection even attempted" — what the poll-level checks decide
   d.submitSystemPaste = vi.fn(async (text: string) => { sent.push(text); return true; });
   const errors: any[] = [];
   d.on("pty_error", (event: any) => {
@@ -87,24 +89,26 @@ describe("the daemon's continue nudge", () => {
     stop();
   });
 
-  describe("is cancelled — not postponed — when anything moved", () => {
+  describe("is cancelled — not postponed — when anything moved (decided by the poll: the injection is not even attempted)", () => {
     it("the screen changed within the minute (even if it later looks the same again)", async () => {
-      const { screen, sent, poll, stop } = rig();
+      const { d, screen, sent, poll, stop } = rig();
       await poll(5_100);
       screen.text = `${PANE}  typing…\n`;
       await poll(10_000);
       screen.text = PANE;
       await poll(120_000);
       expect(sent).toEqual([]);
+      expect(d.sendCapacityNudge).not.toHaveBeenCalled();
       stop();
     });
 
     it("the capacity line scrolled away", async () => {
-      const { screen, sent, poll, stop } = rig();
+      const { d, screen, sent, poll, stop } = rig();
       await poll(5_100);
       screen.text = "  › Ask Codex to do anything\n";
       await poll(120_000);
       expect(sent).toEqual([]);
+      expect(d.sendCapacityNudge).not.toHaveBeenCalled();
       stop();
     });
 
@@ -114,6 +118,7 @@ describe("the daemon's continue nudge", () => {
       d.instanceState = "working";
       await poll(120_000);
       expect(sent).toEqual([]);
+      expect(d.sendCapacityNudge).not.toHaveBeenCalled();
       stop();
     });
 
@@ -123,6 +128,7 @@ describe("the daemon's continue nudge", () => {
       d.pasteQueueDepth = 1;
       await poll(120_000);
       expect(sent).toEqual([]);
+      expect(d.sendCapacityNudge).not.toHaveBeenCalled();
       stop();
     });
 
@@ -132,36 +138,75 @@ describe("the daemon's continue nudge", () => {
       d.clearPendingDeliveries();
       await poll(120_000);
       expect(sent).toEqual([]);
+      expect(d.sendCapacityNudge).not.toHaveBeenCalled();
       stop();
     });
 
-    it("the instance is paused / not running", async () => {
-      const paused = rig();
-      await paused.poll(5_100);
-      paused.d.pauseWakeState = "paused";
-      await paused.poll(120_000);
-      expect(paused.sent).toEqual([]);
-      paused.stop();
-      const down = rig();
-      await down.poll(5_100);
-      down.d.processStatus = "stopped";
-      await down.poll(120_000);
-      expect(down.sent).toEqual([]);
-      down.stop();
+    it("the instance is paused", async () => {
+      const r = rig();
+      await r.poll(5_100);
+      r.d.pauseWakeState = "paused";
+      await r.poll(120_000);
+      expect(r.sent).toEqual([]);
+      expect(r.d.sendCapacityNudge).not.toHaveBeenCalled();
+      r.stop();
     });
 
-    it("a stop / pause (the monitors froze) and a respawn", async () => {
-      const frozen = rig();
-      await frozen.poll(5_100);
-      frozen.d.freezeRuntimeMonitors();
-      await frozen.poll(120_000);
-      expect(frozen.sent).toEqual([]);
-      const respawned = rig();
-      await respawned.poll(5_100);
-      respawned.d.beginSpawn(); respawned.d.endSpawn();
-      await respawned.poll(120_000);
-      expect(respawned.sent).toEqual([]);
-      respawned.stop();
+    it("the process is not running", async () => {
+      const r = rig();
+      await r.poll(5_100);
+      r.d.processStatus = "stopped";
+      await r.poll(120_000);
+      expect(r.sent).toEqual([]);
+      expect(r.d.sendCapacityNudge).not.toHaveBeenCalled();
+      r.stop();
+    });
+
+    it("a stop / pause (the monitors froze): dropped, and the poll does not run again anyway", async () => {
+      const r = rig();
+      await r.poll(5_100);
+      r.d.freezeRuntimeMonitors();
+      await r.poll(120_000);
+      expect(r.sent).toEqual([]);
+      expect(r.d.sendCapacityNudge).not.toHaveBeenCalled();
+    });
+
+    it("a poll that was already running when the monitors froze drops it at the fence", async () => {
+      const r = rig();
+      await r.poll(5_100);
+      r.d.freezeRuntimeMonitors();
+      r.d.tickCapacityNudge(PANE);                           // the in-flight poll's look
+      expect(r.d.capacityNudge).toBeNull();
+      expect(r.d.sendCapacityNudge).not.toHaveBeenCalled();
+    });
+
+    it("a respawn: the armed nudge is dropped with the old spawn, and nothing is sent", async () => {
+      const r = rig();
+      await r.poll(5_100);
+      expect(r.d.capacityNudge).not.toBeNull();
+      r.d.beginSpawn(); r.d.endSpawn();
+      expect(r.d.capacityNudge).toBeNull();
+      await r.poll(120_000);
+      expect(r.sent).toEqual([]);
+      r.stop();
+    });
+
+    it("a spawn generation change alone (nothing reset it) is caught by the poll's fence", async () => {
+      const r = rig();
+      await r.poll(5_100);
+      r.d.spawnGeneration += 1;
+      r.d.tickCapacityNudge(PANE);
+      expect(r.d.capacityNudge).toBeNull();
+      expect(r.d.sendCapacityNudge).not.toHaveBeenCalled();
+    });
+
+    it("a monitor-epoch change alone is caught too", async () => {
+      const r = rig();
+      await r.poll(5_100);
+      r.d.launchFenceEpoch += 1;
+      r.d.tickCapacityNudge(PANE);
+      expect(r.d.capacityNudge).toBeNull();
+      expect(r.d.sendCapacityNudge).not.toHaveBeenCalled();
     });
   });
 
@@ -190,6 +235,34 @@ describe("the daemon's continue nudge", () => {
       const lock = await waitingForLock(r);
       r.d.freezeRuntimeMonitors();
       await lock.release(); await r.poll(1_000);
+      expect(r.sent).toEqual([]);
+    });
+
+    it("the user cancelled while it waited for the lock", async () => {
+      const r = rig();
+      await r.poll(5_100);
+      const lock = await waitingForLock(r);
+      r.d.clearPendingDeliveries();
+      await lock.release(); await r.poll(1_000);
+      expect(r.sent).toEqual([]);
+      r.stop();
+    });
+
+    it("the instance was paused while it waited for the lock", async () => {
+      const r = rig();
+      await r.poll(5_100);
+      const lock = await waitingForLock(r);
+      r.d.pauseWakeState = "paused";
+      await lock.release(); await r.poll(1_000);
+      expect(r.sent).toEqual([]);
+      r.stop();
+    });
+
+    it("a stop that lands while it checks the CLI is idle (after the lock, after the screen check)", async () => {
+      const r = rig();
+      await r.poll(5_100);
+      r.d.isPaneAuthoritativelyIdle = async () => { r.d.freezeRuntimeMonitors(); return true; };
+      await r.poll(70_000);
       expect(r.sent).toEqual([]);
     });
 
@@ -247,14 +320,37 @@ describe("the daemon's continue nudge", () => {
   });
 
   describe("arming", () => {
-    it("is refused for an occurrence of another pattern, or one seen under another spawn", async () => {
+    it("is refused for another pattern even when that text is on the screen", async () => {
       const { d, errors, poll, stop } = rig();
       await poll(5_100);
       expect(errors).toHaveLength(1);
-      expect(d.armCapacityNudge(/something else/, 60_000)).toBe(false);
-      d.beginSpawn(); d.endSpawn();
-      expect(d.armCapacityNudge(errors[0].pattern, 60_000)).toBe(false);
+      expect(d.armCapacityNudge(/Ask Codex to do anything/, 60_000)).toBe(false);
       stop();
+    });
+
+    it("is refused for an occurrence seen under another spawn or monitors", async () => {
+      const { d, errors, poll, stop } = rig();
+      await poll(5_100);
+      d.capacityNudge = null;
+      d.lastErrorEpisode = { ...d.lastErrorEpisode, spawn: d.spawnGeneration - 1 };
+      expect(d.armCapacityNudge(errors[0].pattern, 60_000)).toBe(false);
+      d.lastErrorEpisode = { ...d.lastErrorEpisode, spawn: d.spawnGeneration, fence: d.launchFenceEpoch - 1 };
+      expect(d.armCapacityNudge(errors[0].pattern, 60_000)).toBe(false);
+      d.lastErrorEpisode = { ...d.lastErrorEpisode, fence: d.launchFenceEpoch };
+      expect(d.armCapacityNudge(errors[0].pattern, 60_000)).toBe(true);
+      stop();
+    });
+
+    it("is refused when the instance is paused or stopped", async () => {
+      const r = rig();
+      await r.poll(5_100);
+      r.d.capacityNudge = null;
+      r.d.pauseWakeState = "paused";
+      expect(r.d.armCapacityNudge(r.errors[0].pattern, 60_000)).toBe(false);
+      r.d.pauseWakeState = "active";
+      r.d.processStatus = "stopped";
+      expect(r.d.armCapacityNudge(r.errors[0].pattern, 60_000)).toBe(false);
+      r.stop();
     });
 
     it("can be cancelled by the lifecycle", async () => {

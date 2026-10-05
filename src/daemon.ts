@@ -6108,7 +6108,7 @@ export class Daemon extends EventEmitter {
       || this.startupAborted || this.getProcessStatus() === "stopped";
     // Exclusive with every delivery: nothing can paste a turn between the verdict below and the nudge.
     await this.paneWriteLock.run(async () => {
-      if (stale() || !this.tmux || this.pasteQueueDepth > 0) return;
+      if (!this.tmux || this.pasteQueueDepth > 0) return;
       const pane = await this.tmux.capturePane();
       if (stale() || pane !== nudge.pane) { this.logger.info("Model-capacity nudge dropped: the screen changed"); return; }
       if (!(await this.isPaneAuthoritativelyIdle())) { this.logger.info("Model-capacity nudge dropped: the CLI is not idle"); return; }
