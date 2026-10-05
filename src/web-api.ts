@@ -13,6 +13,8 @@ import { readStatuslineModel, resolveInstanceContext } from "./topic-commands.js
 import { z } from "zod";
 import { isPassiveWebRead, isWebRequestAuthorized, WEB_TOKEN_INVALID_MESSAGE } from "./web-auth.js";
 import { parseLastEventId, type WebChatHistory } from "./web-chat-history.js";
+import { attachmentDelivery, displayName, INLINE_MIME, isFileId, publicAttachment, sniffUpload, UPLOAD_LIMITS, type UploadEntry, type WebFileLedger } from "./web-upload.js";
+import { getAgendHome } from "./paths.js";
 import type { WebSessionStore } from "./web-session.js";
 import { authorizeExplicitInstanceRemoval } from "./instance-removal.js";
 import type { ExplicitInstanceRemoval } from "./instance-removal.js";
@@ -68,8 +70,13 @@ const ConfigUpdateSchema = z.object({
 
 const SendMessageSchema = z.object({
   instance: z.string().min(1).max(128),
-  message: z.string().min(1).max(MAX_TEXT),
-}).strict();
+  message: z.string().max(MAX_TEXT),
+  /** Ids from POST /ui/upload, for this instance, not yet sent. */
+  attachments: z.array(z.string().regex(/^[0-9a-f]{32}$/)).max(UPLOAD_LIMITS.maxFiles).optional(),
+}).strict().refine(v => v.message.trim().length > 0 || (v.attachments?.length ?? 0) > 0, { message: "a message or at least one file", path: ["message"] });
+
+/** An instance name that is safe as one path segment (no separator, no NUL, not a dot name). */
+const safeInstanceSegment = (name: string): boolean => /^[^\\/\x00]+$/.test(name) && name !== "." && name !== "..";
 
 /**
  * Push a single SSE frame to every client. If a client throws (closed socket
@@ -153,6 +160,8 @@ export interface WebApiContext {
   emitSseEvent(event: string, data: unknown): void;
   /** The web chat's recent messages (history + SSE replay); absent in contexts that have no chat. */
   readonly webChatHistory?: WebChatHistory;
+  /** Uploads and the files the dashboard may fetch back (web track C2); absent: no file routes. */
+  readonly webFiles?: WebFileLedger;
   /** Absent means SSE_HEARTBEAT_MS; a test shortens it. */
   readonly sseHeartbeatMs?: number;
   startInstance(name: string, config: unknown, topicMode: boolean): Promise<void>;
@@ -376,6 +385,31 @@ export function handleWebRequest(
 
   if (method === "POST" && path === "/ui/send") {
     handleSendMessage(req, res, ctx);
+    return true;
+  }
+
+  // ── Files (C2): upload one file for an instance; fetch a file by the id the fleet issued for it ──
+
+  if (method === "POST" && path === "/ui/upload") {
+    handleUpload(req, res, url, ctx);
+    return true;
+  }
+
+  const fileMatch = path.match(/^\/ui\/file\/([^/]+)$/);
+  if (method === "GET" && fileMatch) {
+    const id = fileMatch[1]!;
+    const got = isFileId(id) ? ctx.webFiles?.read(id) : null;
+    if (!got) { json(res, 404, { error: "No such file" }); return true; }
+    const { file, bytes } = got;
+    const inline = INLINE_MIME.has(file.mime);
+    // Only the four image types are shown in the page; anything else is a download, never rendered.
+    res.setHeader("Content-Type", inline ? file.mime : (file.mime.startsWith("text/") ? "text/plain; charset=utf-8" : "application/octet-stream"));
+    res.setHeader("Content-Disposition", `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(file.name)}`);
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("Content-Security-Policy", "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox");
+    res.writeHead(200);
+    res.end(bytes);
     return true;
   }
 
@@ -757,12 +791,21 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
         json(res, 400, { error: `${issue.path.join(".") || "body"}: ${issue.message}` });
         return;
       }
-      const { instance, message } = parsed.data;
+      const { instance, message: typed, attachments = [] } = parsed.data;
       const ipc = ctx.instanceIpcClients.get(instance);
       if (!ipc) {
         json(res, 404, { error: `Instance not found: ${instance}` });
         return;
       }
+      let files: UploadEntry[] = [];
+      if (attachments.length > 0) {
+        const taken = ctx.webFiles?.takeForMessage(instance, attachments);
+        if (!taken || !taken.ok) { json(res, 400, { error: taken && !taken.ok ? taken.error : "files are not available here" }); return; }
+        files = taken.entries;
+      }
+      // The same tags and meta a Telegram photo/document produces, so the agent needs nothing new.
+      const delivery = attachmentDelivery(typed, files);
+      const message = typed;
       const ts = new Date().toISOString();
       // Use real Telegram context so daemon's lastChatId/lastThreadId are set,
       // enabling reply tool even when first message comes from Web UI.
@@ -773,7 +816,7 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       try {
         await ctx.deliverToInstance(instance, {
           type: "fleet_inbound",
-          content: message,
+          content: delivery.text,
           targetSession: instance,
           meta: {
             chat_id: groupId ? String(groupId) : "",
@@ -782,6 +825,7 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
             ts,
             thread_id: topicId != null ? String(topicId) : "",
             source: "web",
+            ...delivery.meta,
           },
         });
       } catch (err) {
@@ -790,14 +834,15 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
         return;
       }
       ctx.lastInboundUser.set(instance, "web-user");
-      ctx.eventLog?.logActivity("message", "web-user", message.slice(0, 200), instance);
-      ctx.emitSseEvent("message", { instance, sender: "web-user", text: message, ts });
+      ctx.eventLog?.logActivity("message", "web-user", (message || `[${files.length} file(s)]`).slice(0, 200), instance);
+      ctx.emitSseEvent("message", { instance, sender: "web-user", text: message, ts, attachments: files.map(publicAttachment) });
       // Sync to Telegram/Discord
       const syncAdapter = ctx.getAdapterForInstance?.(instance) ?? ctx.adapter;
       const syncGroupId = ctx.getGroupIdForInstance?.(instance) ?? String(ctx.fleetConfig?.channel?.group_id ?? "");
       if (syncAdapter && syncGroupId) {
         const topicId = ctx.fleetConfig?.instances[instance]?.topic_id;
-        const preview = message.length > 500 ? message.slice(0, 500) + " [...]" : message;
+        const preview = (message.length > 500 ? message.slice(0, 500) + " [...]" : message)
+          + (files.length ? `${message ? " " : ""}[📎 ${files.length} file${files.length === 1 ? "" : "s"}: ${files.map(f => f.name).join(", ")}]` : "");
         syncAdapter.sendText(
           syncGroupId,
           `🌐 web-user: ${preview}`,
@@ -807,6 +852,55 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       json(res, 200, { sent: true });
     } catch {
       json(res, 400, { error: "Invalid JSON" });
+    }
+  });
+}
+
+/**
+ * One file for one instance's chat. The body is the file itself (Content-Type is ignored: the type is
+ * read from the bytes), `X-Agend-Filename` its name for the label only. Stored in the instance's
+ * workspace inbox under a name chosen here; answered with the id the message will name.
+ */
+function handleUpload(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext): void {
+  const instance = url.searchParams.get("instance") ?? "";
+  if (!ctx.webFiles) { json(res, 404, { error: "uploads are not available" }); return; }
+  if (!instance || instance.length > 128 || !safeInstanceSegment(instance) || !ctx.instanceIpcClients.has(instance)) {
+    json(res, 404, { error: `Instance not found: ${instance}` });
+    return;
+  }
+  const declared = Number(req.headers["content-length"] ?? NaN);
+  if (Number.isFinite(declared) && declared > UPLOAD_LIMITS.maxFileBytes) {
+    json(res, 413, { error: `a file can be at most ${UPLOAD_LIMITS.maxFileBytes / 1024 / 1024} MB` });
+    req.resume();
+    return;
+  }
+  const chunks: Buffer[] = [];
+  let size = 0;
+  let refused = false;
+  req.on("data", (c: Buffer) => {
+    if (refused) return;
+    size += c.length;
+    if (size > UPLOAD_LIMITS.maxFileBytes) {
+      refused = true;
+      json(res, 413, { error: `a file can be at most ${UPLOAD_LIMITS.maxFileBytes / 1024 / 1024} MB` });
+      req.destroy();
+      return;
+    }
+    chunks.push(c);
+  });
+  req.on("error", () => { /* the client went away */ });
+  req.on("end", () => {
+    if (refused) return;
+    const bytes = Buffer.concat(chunks);
+    const name = displayName(typeof req.headers["x-agend-filename"] === "string" ? req.headers["x-agend-filename"] : "", "file");
+    const type = sniffUpload(bytes, name);
+    if (!type) { json(res, 415, { error: "unsupported file type — images (PNG, JPEG, GIF, WebP), PDF and text files only" }); return; }
+    try {
+      const entry = ctx.webFiles!.storeUpload({ instance, inboxDir: join(getAgendHome(), "workspaces", instance, "inbox"), bytes, name, type });
+      json(res, 200, publicAttachment(entry));
+    } catch (err) {
+      ctx.logger.error({ err: (err as Error).message, instance }, "Web upload could not be stored");
+      json(res, 500, { error: "the file could not be stored" });
     }
   });
 }

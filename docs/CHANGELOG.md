@@ -17,6 +17,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   reconnects is sent what it missed. Long agent replies are no longer cut at 2,000 characters in the web chat (16,000 now).
 
 ### Security
+- **Web chat: send files and images, and see the ones the agent sends back.** The composer has a 📎 button, and
+  files can also be pasted or dropped onto the chat (up to 5 per message, 10 MB each, 25 MB together; PNG, JPEG,
+  GIF, WebP, PDF and text files). The agent gets them exactly as from Telegram — the file in the instance's
+  workspace inbox, a `[📷 Image: …]` / `[📎 File: … → …]` line and `image_path` / `attachment_path` — and files the
+  agent attaches to a reply are shown in the web chat (images inline, others as downloads). The type is read from
+  the file's bytes, not from its name or the browser's word for it; the stored name is chosen by the fleet; and a
+  file can be fetched back only by an id the fleet issued for it (`/ui/file/<id>`), never by a path. Anything that
+  is not one of the four image types is served as a download, never rendered.
 - **The three web panels share one navigation and one session menu, and `/` opens the dashboard.** `/ui`, `/view`
   and `/settings` carry the same *Dashboard · View · Settings* links and a Session button: which browser you are
   signed in as, when the session ends, every other signed-in device (with a Sign-out for each) and Sign out
