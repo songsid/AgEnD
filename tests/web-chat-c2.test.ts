@@ -209,6 +209,12 @@ describe("POST /ui/upload", () => {
     expect(() => readdirSync(join(dir, "workspaces"))).toThrow();
   });
 
+  it("an instance name that is not one path segment is refused even if something registered it", async () => {
+    const { c } = ctx({ instanceIpcClients: new Map([["../escape", { send() {} }], ["a/b", { send() {} }], ["..", { send() {} }]]) });
+    for (const bad of ["../escape", "a/b", ".."]) expect((await upload(c, bad, PNG, "x.png")).status, bad).toBe(404);
+    expect(() => readdirSync(join(dir, "workspaces"))).toThrow();
+  });
+
   it("refuses a type it cannot read from the bytes (415)", async () => {
     const { c } = ctx();
     const r = await upload(c, "w", Buffer.from("MZ\x90\x00", "latin1"), "setup.png");
@@ -295,12 +301,43 @@ describe("GET /ui/file/<id>", () => {
     expect(String(res.headers["content-disposition"])).toMatch(/^attachment; filename\*=UTF-8''x\.html$/);
   });
 
+  it("whatever type a file was registered with, only the four image types are ever served as themselves", async () => {
+    const { c } = ctx();
+    const page = join(dir, "page.html"); writeFileSync(page, "<script>alert(1)</script>");
+    const f = (c as unknown as { webFiles: WebFileLedger }).webFiles.registerServed({ path: page, mime: "text/html", instance: "w" })!;
+    const res = await get(c, f.id);
+    expect(res.headers["content-type"]).toBe("text/plain; charset=utf-8");
+    expect(String(res.headers["content-disposition"])).toMatch(/^attachment;/);
+    const svg = join(dir, "x.svg"); writeFileSync(svg, "<svg/>");
+    const g = (c as unknown as { webFiles: WebFileLedger }).webFiles.registerServed({ path: svg, mime: "image/svg+xml", instance: "w" })!;
+    expect((await get(c, g.id)).headers["content-type"]).toBe("application/octet-stream");
+  });
+
   it("unknown or malformed ids are 404; the route needs the /ui credential", async () => {
     const { c } = ctx();
     expect((await get(c, "f".repeat(32))).status).toBe(404);
     expect((await get(c, "..%2f..%2fetc%2fpasswd")).status).toBe(404);
     const img = (await upload(c, "w", PNG, "a.png")).body;
     expect((await get(c, img.id, { "x-agend-token": "nope".padEnd(48, "x") })).status).toBe(401);
+  });
+});
+
+describe("deleting an instance stops serving its files", () => {
+  it("removeInstance forgets the instance's files once the removal succeeded", async () => {
+    vi.stubEnv("AGEND_HOME", dir);
+    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { authorizeExplicitInstanceRemoval } = await import("../src/instance-removal.js");
+    const fm = new FleetManager(dir);
+    const any = fm as unknown as Record<string, any>;
+    const f = join(dir, "r.txt"); writeFileSync(f, "x");
+    const served = fm.webFiles.registerServed({ path: f, instance: "w" })!;
+    any.lifecycle = { remove: async () => { throw new Error("refused"); } };
+    await expect(fm.removeInstance("w", authorizeExplicitInstanceRemoval("dashboard-confirmed"))).rejects.toThrow();
+    expect(fm.webFiles.read(served.id), "a failed removal keeps them").not.toBeNull();
+    any.lifecycle = { remove: async () => {} };
+    any.statuslineWatcher = { unwatch() {} };
+    await fm.removeInstance("w", authorizeExplicitInstanceRemoval("dashboard-confirmed"));
+    expect(fm.webFiles.read(served.id)).toBeNull();
   });
 });
 
