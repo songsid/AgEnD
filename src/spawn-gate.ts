@@ -1,4 +1,4 @@
-import { MemoryPressure } from "./memory-pressure.js";
+import { MemoryPressure, type MemoryPressureSnapshot } from "./memory-pressure.js";
 import type { StormWindow } from "./storm-window.js";
 
 export interface SpawnTask {
@@ -36,17 +36,31 @@ export class SpawnGate {
   private lastStartedAt = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private capacityWait = false;
+  private memoryWait = false;
   private stopped = false;
   private pumping = false;
   private pressureRetryMs = 5_000;
   private pressureHeld = false;
   private readonly random: () => number;
   private readonly memoryPressure: MemoryPressure;
+  private readonly stopMemoryUpdates: () => void;
+  private readonly onMemoryUpdate = (snapshot: MemoryPressureSnapshot) => {
+    if (!this.memoryPressure.allowsUnknown(snapshot)) return;
+    this.pressureHeld = false;
+    this.pressureRetryMs = 5_000;
+    if (this.timer && this.memoryWait) {
+      clearTimeout(this.timer);
+      this.timer = null;
+      this.capacityWait = this.memoryWait = false;
+    }
+    this.pump();
+  };
   private readonly onStormReady = () => this.pump();
 
   constructor(private readonly options: SpawnGateOptions) {
     this.random = options.random ?? Math.random;
     this.memoryPressure = options.memoryPressure ?? new MemoryPressure({ criticalBytes: options.lowMemoryBytes });
+    this.stopMemoryUpdates = this.memoryPressure.onUpdate(this.onMemoryUpdate);
     options.storm.on("recovery_due", this.onStormReady);
     options.storm.on("closed", this.onStormReady);
   }
@@ -66,6 +80,7 @@ export class SpawnGate {
 
   shutdown(): void {
     this.stopped = true;
+    this.stopMemoryUpdates();
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
     this.options.storm.off("recovery_due", this.onStormReady);
@@ -75,9 +90,10 @@ export class SpawnGate {
     for (const item of this.nestedQueue.splice(0)) item.reject(err);
   }
 
-  private wait(ms: number, capacityWait = false): void {
+  private wait(ms: number, capacityWait = false, memoryWait = false): void {
     this.capacityWait = capacityWait;
-    this.timer = setTimeout(() => { this.timer = null; this.capacityWait = false; this.pump(); }, ms);
+    this.memoryWait = memoryWait;
+    this.timer = setTimeout(() => { this.timer = null; this.capacityWait = this.memoryWait = false; this.pump(); }, ms);
     this.timer.unref?.();
   }
 
@@ -89,11 +105,12 @@ export class SpawnGate {
         const index = this.queue.findIndex(item => !this.activeDirectories.has(item.task.workingDirectory));
         if (this.nestedQueue.length === 0 && index < 0) return;
         // Explicit zero preserves the existing deterministic test/embedding opt-out.
-        let pressure = this.options.lowMemoryBytes === 0 ? "normal" : this.memoryPressure.sample().level;
+        const sample = this.options.lowMemoryBytes === 0 ? null : this.memoryPressure.sample();
+        let pressure = sample === null || this.memoryPressure.allowsUnknown(sample) ? "normal" : sample.level;
         if (this.stopped) return;
         if (pressure === "critical") {
           this.pressureHeld = true;
-          this.wait(this.pressureRetryMs);
+          this.wait(this.pressureRetryMs, false, true);
           this.pressureRetryMs = Math.min(60_000, this.pressureRetryMs * 2);
           return;
         }
@@ -106,20 +123,20 @@ export class SpawnGate {
         const nested = this.nestedQueue.length > 0;
         const physical = (nested ? this.nestedQueue[0] : this.queue[index]).task.stage !== "lifecycle";
         if (pressure !== "normal" && physical && this.physicalActive > 0) {
-          this.wait(5_000, true);
+          this.wait(5_000, true, true);
           return;
         }
         if (!nested && this.active >= limit) {
           // Recovery must be able to raise the limit without waiting for a
           // long-running outer lifecycle callback to release its slot.
-          if (pressure !== "normal") this.wait(5_000, true);
+          if (pressure !== "normal") this.wait(5_000, true, true);
           return;
         }
         const stagger = Math.max(0, Math.min(30_000, this.options.staggerMs()), pressure === "normal" ? 0 : 5_000);
         const jitter = this.options.storm.isActive() ? Math.floor(this.random() * 500) : 0;
         // A healthy nested acquisition already owns its outer admission slot.
         const delay = nested && pressure === "normal" ? 0 : Math.max(0, this.lastStartedAt + stagger + jitter - Date.now());
-        if (delay > 0) { this.wait(delay); return; }
+        if (delay > 0) { this.wait(delay, false, pressure !== "normal"); return; }
         const [item] = nested ? this.nestedQueue.splice(0, 1) : this.queue.splice(index, 1);
         if (this.pressureHeld) {
           this.memoryPressure.startRecoveryWindow();

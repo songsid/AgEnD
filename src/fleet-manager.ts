@@ -1323,6 +1323,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger.debug({ hostMemory: snapshot }, "Host memory sample");
     }
     const changed = snapshot.level !== this.memoryLogLevel;
+    if (this.memoryPressure.allowsUnknown(snapshot)) {
+      this.memoryLogLevel = snapshot.level;
+      return;
+    }
     if (snapshot.level === "normal") {
       if (this.memoryLogLevel === "critical" || this.memoryLogLevel === "elevated") {
         this.logger.info({ hostMemory: snapshot }, "Host memory recovered");

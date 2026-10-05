@@ -1,4 +1,5 @@
 import { readHostMemory, type HostMemory } from "./host-memory.js";
+import { platform } from "node:os";
 
 export type MemoryPressureLevel = "normal" | "elevated" | "critical" | "unknown";
 export interface MemoryPressureSnapshot {
@@ -12,6 +13,7 @@ export interface MemoryPressureSnapshot {
 }
 
 interface Options {
+  platform?: NodeJS.Platform;
   read?: () => HostMemory;
   now?: () => number;
   onSample?: (snapshot: MemoryPressureSnapshot) => void;
@@ -24,17 +26,20 @@ export const MEMORY_RECOVERY_MS = 30_000;
 
 /** One fleet sampler/policy, shared by spawn admission and health. No subprocesses. */
 export class MemoryPressure {
+  readonly platform: NodeJS.Platform;
   private readonly read: () => HostMemory;
   private readonly now: () => number;
   private timer: ReturnType<typeof setInterval> | null = null;
-  private history: Array<{ at: number; memory: HostMemory }> = [];
+  private history: Array<{ at: number; memory: HostMemory & { availableBytes: number } }> = [];
+  private listeners = new Set<(snapshot: MemoryPressureSnapshot) => void>();
   private recoveryUntil = 0;
   private current: MemoryPressureSnapshot = {
     level: "unknown", memory: null, sampledAt: null, recovering: false, samples: 0, trend: null,
   };
 
   constructor(private readonly options: Options = {}) {
-    this.read = options.read ?? readHostMemory;
+    this.platform = options.platform ?? platform();
+    this.read = options.read ?? (() => readHostMemory({ platform: this.platform }));
     this.now = options.now ?? Date.now;
   }
 
@@ -52,6 +57,7 @@ export class MemoryPressure {
 
   /** Sampling may detect recovery before a long admission backoff expires. */
   startRecoveryWindow(): MemoryPressureSnapshot {
+    if (this.allowsUnknown()) return this.snapshot();
     this.recoveryUntil = this.now() + MEMORY_RECOVERY_MS;
     this.current = { ...this.current, recovering: true,
       level: this.current.level === "normal" ? "elevated" : this.current.level };
@@ -63,14 +69,25 @@ export class MemoryPressure {
     return { ...this.current, memory: this.current.memory && { ...this.current.memory }, trend: this.current.trend && { ...this.current.trend } };
   }
 
+  /** Only macOS opts out of memory restrictions when no reliable sample exists. */
+  allowsUnknown(snapshot: MemoryPressureSnapshot = this.current): boolean {
+    return this.platform === "darwin" && snapshot.level === "unknown";
+  }
+
+  onUpdate(listener: (snapshot: MemoryPressureSnapshot) => void): () => void {
+    this.listeners.add(listener);
+    return () => { this.listeners.delete(listener); };
+  }
+
   sample(): MemoryPressureSnapshot {
     const at = this.now();
-    let memory: HostMemory | null = null;
+    let memory: (HostMemory & { availableBytes: number }) | null = null;
     try {
       const value = this.read();
       if (Number.isFinite(value.totalBytes) && value.totalBytes > 0
-        && Number.isFinite(value.availableBytes) && value.availableBytes >= 0 && value.availableBytes <= value.totalBytes) {
-        memory = { ...value };
+        && value.availableBytes !== null && Number.isFinite(value.availableBytes) && value.availableBytes >= 0 && value.availableBytes <= value.totalBytes
+        && (this.platform !== "darwin" || value.availableKind === "available")) {
+        memory = { ...value, availableBytes: value.availableBytes };
         if (value.swapTotalBytes === null || value.swapFreeBytes === null
           || !Number.isFinite(value.swapTotalBytes) || !Number.isFinite(value.swapFreeBytes)
           || value.swapTotalBytes < 0 || value.swapFreeBytes < 0 || value.swapFreeBytes > value.swapTotalBytes) {
@@ -125,6 +142,9 @@ export class MemoryPressure {
     this.current = { level, memory, sampledAt: at, recovering: at < this.recoveryUntil, samples: this.history.length, trend };
     if (this.timer) {
       try { this.options.onSample?.(this.snapshot()); } catch { /* Diagnostics must not break admission or polling. */ }
+    }
+    for (const listener of this.listeners) {
+      try { listener(this.snapshot()); } catch { /* Observers cannot break sampling. */ }
     }
     return this.snapshot();
   }

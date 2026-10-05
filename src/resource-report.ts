@@ -185,7 +185,8 @@ export function resourceChecks(report: ResourceReport): Array<{ status: "ok" | "
   const memory = report.memory;
   const checks: ReturnType<typeof resourceChecks> = [{
     status: "ok", label: t("resources.memory"),
-    detail: t(memory.availableKind === "available" ? "resources.memory_available" : "resources.memory_free", size(memory.availableBytes), size(memory.totalBytes)),
+    detail: memory.availableKind === "unknown" ? t("resources.memory_unknown", size(memory.totalBytes))
+      : t(memory.availableKind === "available" ? "resources.memory_available" : "resources.memory_free", size(memory.availableBytes), size(memory.totalBytes)),
   }, {
     status: "ok", label: t("resources.swap"),
     detail: memory.swapTotalBytes === null ? t("resources.swap_unknown") : t("resources.swap_free", size(memory.swapFreeBytes), size(memory.swapTotalBytes)),

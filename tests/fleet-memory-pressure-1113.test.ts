@@ -48,6 +48,17 @@ describe("fleet host memory wiring", () => {
     return { fm, internal, read, logger, sendText, attach, set: (value: HostMemory) => { current = value; } };
   }
 
+  it("logs macOS unknown at debug only without consuming pressure cooldowns", () => {
+    const { fm, internal, attach, sendText, logger, set } = make({ ...memory(), availableBytes: null, availableKind: "unknown" });
+    Object.defineProperty(fm.memoryPressure, "platform", { value: "darwin" });
+    attach(); fm.memoryPressure.start();
+    expect(logger.debug).toHaveBeenCalledOnce();
+    expect(logger.warn).not.toHaveBeenCalled(); expect(sendText).not.toHaveBeenCalled();
+    expect(internal.memoryNoticeAt).toBeNull(); expect(internal.memoryLogAt).toBeNull();
+    set(memory(700)); fm.memoryPressure.sample();
+    expect(logger.warn).toHaveBeenCalledOnce(); expect(sendText).toHaveBeenCalledOnce();
+  });
+
   it("never starts polling in the constructor and health is a cache-only host/process split", () => {
     const { fm, read, set } = make();
     expect(vi.getTimerCount()).toBe(0);

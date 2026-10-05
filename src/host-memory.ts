@@ -3,8 +3,8 @@ import { freemem, totalmem, platform } from "node:os";
 
 export interface HostMemory {
   totalBytes: number;
-  availableBytes: number;
-  availableKind: "available" | "free";
+  availableBytes: number | null;
+  availableKind: "available" | "free" | "unknown";
   swapTotalBytes: number | null;
   swapFreeBytes: number | null;
 }
@@ -19,6 +19,11 @@ interface HostMemoryDeps {
 /** Host memory, not the fleet's RSS/cgroup charge. Missing swap data is not zero swap. */
 export function readHostMemory(overrides: Partial<HostMemoryDeps> = {}): HostMemory {
   const deps = { platform: platform(), meminfo: () => readFileSync("/proc/meminfo", "utf8"), totalmem, freemem, ...overrides };
+  // macOS keeps reclaimable pages in use. Its free count is not availability.
+  // Synchronous readers cannot run the native probe; absence stays unknown.
+  if (deps.platform === "darwin") {
+    return { totalBytes: deps.totalmem(), availableBytes: null, availableKind: "unknown", swapTotalBytes: null, swapFreeBytes: null };
+  }
   if (deps.platform === "linux") {
     try {
       const fields = new Map<string, number>();
@@ -43,4 +48,3 @@ export function readHostMemory(overrides: Partial<HostMemoryDeps> = {}): HostMem
   }
   return { totalBytes: deps.totalmem(), availableBytes: deps.freemem(), availableKind: "free", swapTotalBytes: null, swapFreeBytes: null };
 }
-
