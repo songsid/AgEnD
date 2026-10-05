@@ -160,35 +160,30 @@ describe("revocation", () => {
     const a = store.create(input);
     const b = store.create(input);
 
-    expect(store.revokeByHandle(a.record.handle)).toBe(true);
+    expect(store.revokeByHandle(a.record.handle)).toEqual({ found: true, durable: true });
     expect(store.authenticate(a.sessionId, EPOCH)).toBeNull();
     expect(store.authenticate(b.sessionId, EPOCH)).not.toBeNull();
-    expect(store.revokeByHandle(a.record.handle)).toBe(false);
+    expect(store.revokeByHandle(a.record.handle).found).toBe(false);
   });
 
   it("does not accept the id or its hash as a handle", () => {
     const store = new WebSessionStore();
     const a = store.create(input);
 
-    expect(store.revokeByHandle(a.sessionId)).toBe(false);
-    expect(store.revokeByHandle(a.record.idHash)).toBe(false);
-    expect(store.revokeByHandle(a.record.idHash.slice(0, 16))).toBe(false);
+    expect(store.revokeByHandle(a.sessionId).found).toBe(false);
+    expect(store.revokeByHandle(a.record.idHash).found).toBe(false);
+    expect(store.revokeByHandle(a.record.idHash.slice(0, 16)).found).toBe(false);
     expect(store.authenticate(a.sessionId, EPOCH)).not.toBeNull();
   });
 
-  it("revokes everything, or everything that came in one way", () => {
+  it("revokes everything", () => {
     const store = new WebSessionStore();
-    const local = store.create(input);
-    const gw1 = store.create({ ...input, surface: "gateway" });
-    const gw2 = store.create({ ...input, surface: "gateway" });
+    const a = store.create(input);
+    const b = store.create({ ...input, surface: "gateway" });
 
-    expect(store.revokeSurface("gateway")).toBe(2);
-    expect(store.authenticate(gw1.sessionId, EPOCH)).toBeNull();
-    expect(store.authenticate(gw2.sessionId, EPOCH)).toBeNull();
-    expect(store.authenticate(local.sessionId, EPOCH)).not.toBeNull();
-
-    expect(store.revokeAll()).toBe(1);
-    expect(store.authenticate(local.sessionId, EPOCH)).toBeNull();
+    expect(store.revokeAll()).toEqual({ count: 2, durable: true });
+    expect(store.authenticate(a.sessionId, EPOCH)).toBeNull();
+    expect(store.authenticate(b.sessionId, EPOCH)).toBeNull();
   });
 
   it("keeps at most MAX sessions, dropping the least recently used", () => {
@@ -359,7 +354,7 @@ describe("when the file cannot be replaced", () => {
     expect(new WebSessionStore({ dataDir: dir }).authenticate(revoked.sessionId, EPOCH)).not.toBeNull(); // it was saved
 
     fail.rename = true;
-    expect(store.revokeByHandle(revoked.record.handle)).toBe(true);
+    expect(store.revokeByHandle(revoked.record.handle).found).toBe(true);
 
     // The regression: a restart used to read the old file and revive the revoked session.
     const restarted = new WebSessionStore({ dataDir: dir });
@@ -411,6 +406,35 @@ describe("when the file cannot be replaced", () => {
     const restarted = new WebSessionStore({ dataDir: dir });
     expect(restarted.authenticate(revoked.sessionId, EPOCH)).toBeNull();
     expect(restarted.authenticate(later.sessionId, EPOCH)).not.toBeNull();
+  });
+
+  it("every revocation says whether it is durable: false only when a stale file is still on disk", () => {
+    const dir = tempDir();
+    const { store, fail } = flaky(dir, []);
+    const a1 = store.create(input), a2 = store.create(input), a3 = store.create(input), a4 = store.create(input);
+    expect(store.revokeById(a1.sessionId)).toEqual({ removed: true, durable: true });                 // saved
+    fail.rename = true;
+    expect(store.revokeByHandle(a2.record.handle)).toEqual({ found: true, durable: true });          // old file removed instead
+    // Write the file again (it holds a3 and a4), then make it impossible either to replace or to remove.
+    fail.rename = false;
+    store.flush();
+    fail.rename = true; fail.unlink = true;
+    expect(store.revokeByHandle(a3.record.handle)).toEqual({ found: true, durable: false });
+    expect(store.revokeById(a4.sessionId)).toEqual({ removed: true, durable: false });
+    expect(store.revokeAll().durable).toBe(false);
+    // ...and nothing to revoke is not a failure.
+    expect(store.revokeByHandle("nonexistent0000")).toEqual({ found: false, durable: true });
+    expect(store.revokeById("f".repeat(64))).toEqual({ removed: false, durable: true });
+  });
+
+  it("a write that fails while the file holds nothing revoked is durable (the file is only behind)", () => {
+    const dir = tempDir();
+    const { store, fail } = flaky(dir, []);
+    store.create(input);                                 // saved
+    fail.rename = true; fail.unlink = true;
+    const unsaved = store.create(input);                 // never reached the disk
+    // Revoking it while nothing can be written: the file never held it, so a restart cannot revive it.
+    expect(store.revokeById(unsaved.sessionId)).toEqual({ removed: true, durable: true });
   });
 
   it("covers revoke-all and eviction the same way", () => {

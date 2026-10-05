@@ -61,7 +61,13 @@
     csrf,
     async signOut() {
       const value = await csrf();
-      await nativeFetch("/auth/logout", { method: "POST", credentials: "same-origin", headers: value ? { "X-Agend-CSRF": value } : {} });
+      const r = await nativeFetch("/auth/logout", { method: "POST", credentials: "same-origin", headers: value ? { "X-Agend-CSRF": value } : {} });
+      // A sign-out the server could not make durable is not quietly reported as done: say so before leaving.
+      if (r.status === 500) {
+        let message = "Signed out for now, but the change could not be saved — a fleet restart may sign this browser back in.";
+        try { const body = await r.json(); if (body && typeof body.error === "string") message = body.error; } catch { /* keep the default */ }
+        window.alert(message);
+      }
       location.href = "/signin";
     },
   };

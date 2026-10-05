@@ -61,6 +61,8 @@ interface Outstanding {
   readonly code: string;
   readonly expiresAt: number;
   readonly tier: SessionTier;
+  /** The web token's epoch when the code was issued: a code dies with the token it was issued under. */
+  readonly epoch: string;
   failures: number;
 }
 
@@ -85,12 +87,16 @@ export class WebLoginCodes {
     this.onEvent = opts.onEvent ?? (() => {});
   }
 
-  /** Issue a code, replacing any outstanding one. Only ever called from a channel the operator controls. */
-  issue(opts: { tier?: SessionTier } = {}): IssuedLoginCode {
+  /**
+   * Issue a code, replacing any outstanding one. Only ever called from a channel the operator controls.
+   * `epoch` is the current web token's (`tokenEpoch`): rotating the token — from this process or from
+   * `agend web-token rotate` in another — withdraws an unused code, because redemption re-checks it.
+   */
+  issue(opts: { tier?: SessionTier; epoch: string }): IssuedLoginCode {
     const code = this.generate();
     const tier = opts.tier ?? "admin";
     const expiresAt = this.now() + LOGIN_CODE_TTL_MS;
-    this.outstanding = { code, expiresAt, tier, failures: 0 };
+    this.outstanding = { code, expiresAt, tier, epoch: opts.epoch, failures: 0 };
     this.onEvent("issued");
     return { display: formatOneTimeCode(code), expiresAt, tier };
   }
@@ -105,7 +111,8 @@ export class WebLoginCodes {
     this.outstanding = null;
   }
 
-  redeem(input: string): LoginRedeemResult {
+  /** `currentEpoch` is the web token's epoch NOW: a code issued under another token is gone. */
+  redeem(input: string, currentEpoch: string): LoginRedeemResult {
     const now = this.now();
     if (now < this.pausedUntil) return { kind: "paused", retryAfterMs: this.pausedUntil - now };
 
@@ -113,7 +120,12 @@ export class WebLoginCodes {
     // Nothing typed is not a guess; it costs nothing (same as the setup page).
     if (!provided) return { kind: "invalid" };
 
-    const active = this.activeCode();
+    let active = this.activeCode();
+    if (active && active.epoch !== currentEpoch) {
+      // The token was rotated after this code was issued: the rotation withdrew it.
+      this.outstanding = null;
+      active = null;
+    }
     if (!active) {
       constantTimeMatches(provided, NO_CODE_PLACEHOLDER);
       return { kind: "invalid" };

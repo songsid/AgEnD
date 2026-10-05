@@ -130,7 +130,7 @@ import {
 } from "./tool-permissions.js";
 import { decideWebGate, loadOrCreateWebToken, readWebToken } from "./web-auth.js";
 import { handleAuthRequest, isAuthPath, serveSigninPage, type AuthApiContext } from "./auth-api.js";
-import { WebSessionStore } from "./web-session.js";
+import { tokenEpoch, WebSessionStore } from "./web-session.js";
 import { WebLoginCodes, LOGIN_CODE_TTL_MS } from "./web-login.js";
 import { allowedHostNames, applyWebSecurityHeaders, hostnameOf, isHostAllowed, WEB_HOST_REJECTED_MESSAGE } from "./web-host-guard.js";
 import { fleetLevelDifferences, fleetLevelSignature } from "./fleet-level-config.js";
@@ -3902,19 +3902,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * can read (`/dashboard`). Null while the panel is closed (no web.token).
    */
   issueDashboardLogin(): { display: string; expiresAt: number; ttlMinutes: number } | null {
-    if (!this.webToken) return null;
+    const token = this.webToken;
+    if (!token) return null;
     this.initializeWebSessions();
-    const issued = this.webLoginCodes!.issue({ tier: "admin" });
+    const issued = this.webLoginCodes!.issue({ tier: "admin", epoch: tokenEpoch(token) });
     return { display: issued.display, expiresAt: issued.expiresAt, ttlMinutes: Math.round(LOGIN_CODE_TTL_MS / 60_000) };
   }
 
   /** `/dashboard revoke`: sign out every browser and withdraw any unused code. */
-  revokeWebSessions(): number {
+  revokeWebSessions(): { count: number; durable: boolean } {
     this.initializeWebSessions();
     this.webLoginCodes!.revoke();
-    const count = this.webSessions!.revokeAll();
-    this.logger.info({ count }, "Web sessions revoked (all)");
-    return count;
+    const result = this.webSessions!.revokeAll();
+    if (result.durable) this.logger.info({ count: result.count }, "Web sessions revoked (all)");
+    else this.logger.warn({ count: result.count }, "Web sessions revoked in memory only — the session file could not be updated or removed");
+    return result;
   }
 
   /** Called by the sign-in endpoint: a login the operator did not make should be visible to them. */

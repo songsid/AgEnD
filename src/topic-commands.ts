@@ -491,8 +491,9 @@ export class TopicCommands {
 
     const arg = (msg.text ?? "").trim().replace(/^\/dashboard(?:@\S+)?/i, "").trim().toLowerCase();
     if (arg === "revoke") {
-      const count = this.ctx.revokeWebSessions?.() ?? 0;
-      await adapter.sendText(chatId, t("dashboard.revoked", count), { threadId });
+      const result = this.ctx.revokeWebSessions?.() ?? { count: 0, durable: true };
+      // Not durable: they are signed out now, but a restart may bring them back — say so, never "done".
+      await adapter.sendText(chatId, result.durable ? t("dashboard.revoked", result.count) : t("dashboard.revoked_not_durable", result.count), { threadId });
       return;
     }
 

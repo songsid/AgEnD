@@ -271,41 +271,34 @@ export class WebSessionStore {
       }));
   }
 
-  revokeByHandle(handle: string): boolean {
-    if (!HANDLE_PATTERN.test(handle)) return false;
+  /*
+   * Every revocation says whether it is DURABLE: whether a restart could bring the revoked session back.
+   * Memory forgets it at once; the file may not. A caller that reports "signed out" must not report it
+   * when it is not durable — the operator would believe a session is dead that the next start revives.
+   */
+
+  revokeByHandle(handle: string): { found: boolean; durable: boolean } {
+    if (!HANDLE_PATTERN.test(handle)) return { found: false, durable: true };
     for (const [hash, record] of this.byHash) {
       if (record.handle === handle) {
         this.byHash.delete(hash);
-        this.persistNow();
-        return true;
+        return { found: true, durable: this.persistNow() };
       }
     }
-    return false;
+    return { found: false, durable: true };
   }
 
-  revokeById(sessionId: string): boolean {
-    if (!SESSION_ID_PATTERN.test(sessionId)) return false;
+  revokeById(sessionId: string): { removed: boolean; durable: boolean } {
+    if (!SESSION_ID_PATTERN.test(sessionId)) return { removed: false, durable: true };
     const removed = this.byHash.delete(sessionIdHash(sessionId));
-    if (removed) this.persistNow();
-    return removed;
+    return { removed, durable: removed ? this.persistNow() : true };
   }
 
-  /** Every session. Returns how many there were. */
-  revokeAll(): number {
+  /** Every session: how many there were, and whether the revocation is durable. */
+  revokeAll(): { count: number; durable: boolean } {
     const count = this.byHash.size;
     this.byHash.clear();
-    this.persistNow();
-    return count;
-  }
-
-  /** Every session that arrived by one route in — the gateway's, when its tunnel closes. */
-  revokeSurface(surface: SessionSurface): number {
-    let count = 0;
-    for (const [hash, record] of this.byHash) {
-      if (record.surface === surface) { this.byHash.delete(hash); count += 1; }
-    }
-    if (count) this.persistNow();
-    return count;
+    return { count, durable: this.persistNow() };
   }
 
   /** Write anything pending. Called on shutdown. */
@@ -334,7 +327,9 @@ export class WebSessionStore {
   }
 
   /**
-   * Write the store. Returns whether the file now matches memory.
+   * Write the store. Returns whether it is DURABLE: whether a restart is now unable to bring back a
+   * session memory has dropped — true when the file was replaced, when the old file held nothing memory
+   * dropped (it is merely behind), or when it was removed; false only when a stale file is still there.
    *
    * The failure path matters more than the success path. Memory forgets a revoked
    * session at once; if the file cannot be replaced it still holds that session, and a
@@ -367,16 +362,17 @@ export class WebSessionStore {
       if (!staleOnDisk) {
         // Nothing on disk that memory has dropped: the file is merely behind, and a restart only loses the newest sign-ins.
         this.warn(`web sessions could not be saved (will retry): ${message}`);
-        return false;
+        return true;
       }
       try {
         this.ops.unlinkSync(this.path);
         this.persisted = new Set();
         this.warn(`web sessions could not be saved (${message}); removed the old file so a restart cannot bring back a revoked session — everyone will have to sign in again`);
+        return true;
       } catch {
         this.warn(`web sessions could not be saved (${message}) and the old file could not be removed: a restart may restore sessions that were revoked since the last successful save. Fix the permissions on ${this.path}`);
+        return false;
       }
-      return false;
     }
   }
 
