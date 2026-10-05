@@ -1447,8 +1447,8 @@ export class InstanceLifecycle {
     const instanceDir = this.ctx.getInstanceDir(name);
     ensureInstanceDir(instanceDir);
 
-    // Defense-in-depth: clear crash state before daemon start
-    try { await unlink(join(instanceDir, "crash-state.json")); } catch {}
+    // Daemon.start consumes the recovery marker after reading it. A start
+    // that fails before reaching the daemon must leave that intent intact.
 
     const { Daemon } = await import("./daemon.js");
     const { createBackend } = await import("./backend/factory.js");

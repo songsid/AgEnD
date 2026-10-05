@@ -3163,7 +3163,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // it before lifecycle.start() can turn a crash-loop daemon's dead pane into
     // a falsely running instance when lifecycle.start() returns early.
     this.instanceProcessStatus.delete(name);
-    try { unlinkSync(join(this.getInstanceDir(name), "crash-state.json")); } catch { /* consumed or absent */ }
+    // Recovery intent belongs to Daemon.start. lifecycle.start can return
+    // before reaching it, so an await here is not proof the marker was read.
     // Auto-connect IPC — daemon.start() ensures socket is ready before resolving
     await this.connectIpcToInstance(name);
     this.requestDiscordUsagePresenceRefresh();
