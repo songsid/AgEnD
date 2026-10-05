@@ -179,6 +179,22 @@ function userTextsFromEntry(entry: unknown, backend: string): string[] {
   return [];
 }
 
+/**
+ * Claude Code persists a pasted message wrapped in `\n\n<pasted_content id="<hex>">\n` — every paste, small or large
+ * (seen on all 640 delivery entries of 2.1.284–2.1.289, none of which begins with the marker itself). The wrapper is the
+ * CLI's own, in a fixed shape, so it is the one thing allowed in front of the marker; anything else in front still
+ * disqualifies the entry.
+ */
+const CLAUDE_PASTE_WRAPPER = /^\s*<pasted_content id="[0-9a-f]+">\r?\n/;
+
+/** A unique marker counts only at the start of a persisted body (after the CLI's own paste wrapper, if it adds one). */
+function leadsWithMarker(text: string, backend: string, marker: string): boolean {
+  if (text.startsWith(marker)) return true;
+  if (backend !== "claude-code") return false;
+  const wrapper = CLAUDE_PASTE_WRAPPER.exec(text);
+  return !!wrapper && text.startsWith(marker, wrapper[0].length);
+}
+
 /** A unique marker counts only at the start of a persisted user-message body. */
 export function transcriptDeltaHasDeliveryMarker(rawDelta: string, backend: string, deliveryId: string): boolean {
   const marker = ENTER_MARKER(deliveryId);
@@ -187,7 +203,7 @@ export function transcriptDeltaHasDeliveryMarker(rawDelta: string, backend: stri
     try {
       const entry = JSON.parse(line) as unknown;
       const firstUserText = userTextsFromEntry(entry, backend)[0];
-      if (firstUserText?.startsWith(marker)) return true;
+      if (firstUserText !== undefined && leadsWithMarker(firstUserText, backend, marker)) return true;
     } catch { /* incomplete/malformed JSONL is not proof */ }
   }
   return false;

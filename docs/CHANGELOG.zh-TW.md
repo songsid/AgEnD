@@ -8,6 +8,7 @@
 
 ### 修復 (Fixed)
 - **取消也會停止補回覆（#1199）。** 取消按鈕與 `/cancel` 現在會在中斷 CLI 前標記目前的人類對話回合，使用者主動停止後不再跳出漏回覆警告，也不會要求 agent 再補一個結論。已在送出的回覆仍正常結算，新訊息仍有自己的回覆防線；取消後才回報失敗的補救或成功的舊 paste 都不會重新啟動該回合。
+- **重啟後不再重送已經送達的 Claude Code 訊息（#1205）。** 重啟後 daemon 會到 CLI 的 transcript 找每個進行中投遞的 marker，而且只有出現在 user 條目最開頭的 marker 才算。Claude Code 會把每則貼上的訊息存成 `<pasted_content id="…">` 加上原文，所以 marker 從來不在開頭、也從來找不到：已送達的訊息被當成「transcript 完整、沒有 marker」，舊 CLI 又已不在，於是被重試——同一則訊息送了兩次。現在在 marker 前面只接受 CLI 自己的這個 wrapper（確切格式、僅限 Claude Code），marker 在 wrapper 之後仍必須領頭；任何其他前綴、引用、或其他 backend 的條目仍不算。
 
 ### 安全 (Security)
 - **Discord slash 指令現在遵循同一張指令表（#1148）。** 指令適用於哪些頻道、誰能使用，改由一個地方宣告（`src/command-table.ts`），不再散在兩份複製的 handler 裡；

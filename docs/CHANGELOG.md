@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 - **Cancel stops reply recovery too (#1199).** The cancel button and `/cancel` now mark the current human turn before interrupting the CLI, so an intentional stop no longer triggers the missing-reply warning or asks the agent to produce another conclusion. Replies already being delivered still settle normally; new messages retain their own reply guard. A cancelled recovery's late failure and a cancelled paste's late success cannot restart that turn.
+- **A restart no longer re-sends a Claude Code message that was already delivered (#1205).** After a restart the daemon looks for
+  each in-flight delivery's marker in the CLI's transcript, and only a marker at the very start of a user entry counted. Claude Code
+  stores every pasted message as `<pasted_content id="…">` + the text, so the marker was never at the start and was never found:
+  a delivered message looked like "complete transcript, no marker" and, with the old CLI gone, was retried — the same message
+  delivered twice. The CLI's own wrapper, in exactly that shape and for Claude Code only, is now accepted in front of the marker,
+  which must still lead the body inside it; any other prefix, a quote, or another backend's entry still does not count.
 
 ### Security
 - **Discord slash commands now follow one command table (#1148).** Where a command applies and who may use it is
