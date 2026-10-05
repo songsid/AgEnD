@@ -14,6 +14,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   a delivered message looked like "complete transcript, no marker" and, with the old CLI gone, was retried — the same message
   delivered twice. The CLI's own wrapper, in exactly that shape and for Claude Code only, is now accepted in front of the marker,
   which must still lead the body inside it; any other prefix, a quote, or another backend's entry still does not count.
+- **Codex's "Selected model is at capacity" is detected on 0.159.2 and 0.160.0 again (#1208).** Those versions print the rejection as
+  `■ Selected model is at capacity. Please try a different model.`, but the detector was written against `⚠`, so the capacity notice never
+  came, the "keep going" nudge never armed, and the turn just ended in the generic missing-reply path. Any one status symbol (`■`, `⚠`,
+  `⚠️`, …) may now open the line; a bullet, dash, quote marker or number still may not, and the sentence must still be the whole line
+  from column 0, so prose that mentions model capacity triggers nothing. Detection only — what happens after a match is unchanged.
 
 ### Security
 - **Discord slash commands now follow one command table (#1148).** Where a command applies and who may use it is
