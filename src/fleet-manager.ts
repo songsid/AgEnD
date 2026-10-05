@@ -4989,7 +4989,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }, this.logger, "adapter.slash_command"));
 
     // This adapter's own Telegram menus — each Telegram adapter registers its own when it starts (#1191).
-    await this.registerTelegramCommandsFor(channelConfig);
+    this.registerTelegramCommandsFor(channelConfig);
 
     // Background-probe each backend's CLI env (version/models) → cli-env cache.
     // Non-blocking: /model & status views read the cache; never delays startup.
@@ -5046,14 +5046,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }, 5 * 60 * 1000);
   }
 
-  /** Start an additional (non-primary) adapter */
-  /** Register a Telegram connection's command menus; any other kind of channel has none to register. Never fatal. */
-  private async registerTelegramCommandsFor(channelConfig: ChannelConfig): Promise<void> {
+  /**
+   * Register a Telegram connection's command menus; any other kind of channel has none to register. Started, not
+   * awaited: a slow api.telegram.org must never hold up the adapter's login (each call has its own timeout). Never fatal.
+   */
+  private registerTelegramCommandsFor(channelConfig: ChannelConfig): void {
     if (channelConfig.type !== "telegram") return;
-    await this.topicCommands.registerBotCommands(channelConfig).catch(e =>
+    void this.topicCommands.registerBotCommands(channelConfig).catch(e =>
       this.logger.warn({ err: e, adapterId: channelConfig.id ?? channelConfig.type }, "registerBotCommands failed (non-fatal)"));
   }
 
+  /** Start an additional (non-primary) adapter */
   private async startAdditionalAdapter(
     channelConfig: ChannelConfig,
     registerCommands = true,
@@ -5139,7 +5142,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // A secondary Telegram connection (a ClassicBot next to a Discord fleet, say) has menus of its own to register —
     // at fleet start, on retry, and when Settings rebinds it or rotates its token: all of them start it here (#1191).
-    await this.registerTelegramCommandsFor(channelConfig);
+    this.registerTelegramCommandsFor(channelConfig);
 
     // Register lifecycle listeners before login; a fast ready/error must not be lost.
     await adapter.start();

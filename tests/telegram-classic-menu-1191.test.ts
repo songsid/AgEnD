@@ -94,6 +94,14 @@ describe("the menus come from the command table (#1177)", () => {
     expect(isLockedOnTelegram(at("status"), ["fleet"])).toBe(false);           // passthrough
   });
 
+  it("/compact keeps its argument hint in both menus (#1145) — and nothing else has one", () => {
+    for (const menu of ["fleet", "classic"] as const) {
+      const entries = telegramMenu(menu);
+      expect(entries.find(e => e.name === "compact")!.argHint, menu).toBe("slash.compact_arg");
+      expect(entries.filter(e => e.argHint).map(e => e.name), menu).toEqual(["compact"]);
+    }
+  });
+
   it("a name the table does not know is an error, not a silent unlocked entry", () => {
     const menus = TELEGRAM_MENUS as unknown as { fleet: { names: string[] } };
     const original = menus.fleet.names;
@@ -141,6 +149,44 @@ describe("TopicCommands.registerBotCommands (#1191)", () => {
     expect(names(sent()[1]!.commands)).toEqual(FLEET_MENU.map(([n]) => n));
     expect(names(sent()[3]!.commands)).toEqual(CLASSIC_MENU.map(([n]) => n));
     expect(sent()[0]!.commands.find((c: { command: string }) => c.command === "collab").description).not.toContain("🔒");
+    // The argument hint #1145 added, in both menus, in the active locale.
+    const compact = (i: number) => sent()[i]!.commands.find((c: { command: string }) => c.command === "compact").description;
+    expect(compact(0)).toBe("Compact agent context window [optional summary focus — Claude Code only]");
+    expect(compact(3)).toBe("🔒 Compact agent context window [optional summary focus — Claude Code only]");
+  });
+
+  it("the argument hint follows the locale", async () => {
+    setLocale("zh-TW");
+    const { sent } = stubTelegram();
+    const { tc } = commands([tg()]);
+    await tc.registerBotCommands();
+    expect(sent()[1]!.commands.find((c: { command: string }) => c.command === "compact").description)
+      .toBe("🔒 壓縮 Agent 的 Context [選填：摘要重點，僅 Claude Code]");
+  });
+
+  it("every call can end on its own: each carries a timeout signal", async () => {
+    const { fetchMock } = stubTelegram();
+    const { tc } = commands([tg({ group_id: "-100" })]);
+    await tc.registerBotCommands();
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    for (const [, init] of fetchMock.mock.calls) expect((init as RequestInit).signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("one scope failing does not stop the others: each is sent, and only the failure is reported", async () => {
+    const bodies: any[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body)); bodies.push(body);
+      return body.scope.type === "chat"
+        ? { ok: false, status: 400, json: async () => ({ ok: false, description: "Bad Request: chat not found" }) } as unknown as Response
+        : telegramOk();
+    }));
+    const { tc, info, warn } = commands([tg({ group_id: "-100" })]);
+    await tc.registerBotCommands();
+    expect(bodies.map(b => b.scope.type)).toEqual(["chat", "chat_administrators", "all_group_chats", "default"]);
+    expect(info).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledTimes(1);
+    const err = warn.mock.calls[0]![0].err as AggregateError;
+    expect(err.errors.map((e: Error) => e.message)).toEqual(["Telegram setMyCommands failed (400): Bad Request: chat not found"]);
   });
 
   it("one connection when named; every Telegram one when not; never a Discord one; nothing without a token", async () => {
@@ -218,6 +264,24 @@ describe("FleetManager: who registers the Telegram menus (#1191)", () => {
     const { state, registered } = fleet([primary, { ...discordPrimary, id: "dc2" }]);
     await state.startSharedAdapter(state.fleetConfig);
     expect(registered.map(c => c?.id)).toEqual(["tg-main"]);
+  });
+
+  it("registration never holds up the adapter's login: a Telegram API that does not answer leaves start() to run", async () => {
+    const { state } = fleet([discordPrimary, tg()]);
+    let release!: () => void;
+    state.topicCommands.registerBotCommands = vi.fn(() => new Promise<void>(r => { release = r; }));
+    await state.startAdditionalAdapter(state.fleetConfig.channels[1]);
+    expect(state.topicCommands.registerBotCommands).toHaveBeenCalledTimes(1);
+    expect((adapters.get("tg-classic") as any).start).toHaveBeenCalledTimes(1);
+    release();
+  });
+
+  it("a registration that fails is logged, never thrown into the adapter's start", async () => {
+    const { state } = fleet([discordPrimary, tg()]);
+    state.topicCommands.registerBotCommands = vi.fn(async () => { throw new Error("boom"); });
+    await expect(state.startAdditionalAdapter(state.fleetConfig.channels[1])).resolves.toBeUndefined();
+    await vi.waitFor(() => expect(state.logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ adapterId: "tg-classic" }), "registerBotCommands failed (non-fatal)"));
   });
 
   it("a secondary that failed to start registers when its retry starts it", async () => {

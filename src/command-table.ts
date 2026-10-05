@@ -196,6 +196,9 @@ export function slashLock(name: string): string {
  * comes from the command's Telegram cells in the scopes the menu is shown in, and tests pin that every listed command
  * has a Telegram handler there (a menu entry with none is a command that does nothing when chosen).
  */
+/** What a menu entry says after its description, as a locale key: the argument a command takes (#1145). */
+const TELEGRAM_ARG_HINTS: Readonly<Record<string, string>> = { compact: "slash.compact_arg" };
+
 export const TELEGRAM_MENUS = {
   /** The fleet's forum group (its `chat` and `chat_administrators` scopes): the General topic and the instance topics. */
   fleet: {
@@ -223,13 +226,17 @@ export function isLockedOnTelegram(spec: CommandSpec, scopes: readonly CommandSc
   });
 }
 
-/** One Telegram menu: each command with its lock prefix ("🔒 " or ""), generated from the table. */
-export function telegramMenu(menu: TelegramMenu): Array<{ name: string; lock: string }> {
+/**
+ * One Telegram menu: each command with its lock prefix ("🔒 " or ""), generated from the table, and the locale key of
+ * its argument hint when it takes one.
+ */
+export function telegramMenu(menu: TelegramMenu): Array<{ name: string; lock: string; argHint?: string }> {
   const { scopes, names } = TELEGRAM_MENUS[menu];
   return names.map(name => {
     const spec = BY_NAME.get(name);
     if (!spec) throw new Error(`Telegram ${menu} menu lists /${name}, which the command table does not know`);
-    return { name, lock: isLockedOnTelegram(spec, scopes) ? "🔒 " : "" };
+    const argHint = TELEGRAM_ARG_HINTS[name];
+    return { name, lock: isLockedOnTelegram(spec, scopes) ? "🔒 " : "", ...(argHint ? { argHint } : {}) };
   });
 }
 

@@ -31,6 +31,9 @@ import { UPDATE_COMMAND } from "./update-check.js";
 export { parseContextPercent, parseTokenContextRatio } from "./context-percent.js";
 export type { TokenContextRatio } from "./context-percent.js";
 
+/** Longest one setMyCommands call may take. */
+const TELEGRAM_COMMANDS_TIMEOUT_MS = 10_000;
+
 type ExecutionFleetContext = FleetContext & {
   getInstanceExecutionState?(instanceName: string): "idle" | "working" | "stuck" | null;
 };
@@ -1503,7 +1506,10 @@ export class TopicCommands {
       return;
     }
     // Locks come from the command table's Telegram column (#1177), descriptions from the locale.
-    const menu = (which: TelegramMenu) => telegramMenu(which).map(({ name, lock }) => ({ command: name, description: lock + t(`slash.${name}`) }));
+    const menu = (which: TelegramMenu) => telegramMenu(which).map(({ name, lock, argHint }) => ({
+      command: name,
+      description: lock + t(`slash.${name}`) + (argHint ? ` ${t(argHint)}` : ""),
+    }));
     const fleetCommands = menu("fleet");
     const classicCommands = menu("classic");
 
@@ -1517,6 +1523,8 @@ export class TopicCommands {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ commands, scope }),
+          // Registration runs beside the adapter's login, never in front of it; it must also end on its own.
+          signal: AbortSignal.timeout(TELEGRAM_COMMANDS_TIMEOUT_MS),
         },
       );
       type TelegramApiResponse = { ok?: boolean; result?: boolean; description?: string };
