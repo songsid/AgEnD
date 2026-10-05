@@ -30,6 +30,8 @@ import { hasPausedMarker } from "./pause-marker.js";
 import { COMPLETION_SHELLS, completionScript, type CompletionShell } from "./completion.js";
 import {
   getUpdateSelector,
+  isExactVersion,
+  isUnrequestedDowngrade,
   lookupTargetVersion,
   reportUpdateRestart,
   shouldSkipUpdate,
@@ -99,7 +101,10 @@ const pkgVersion = (() => {
 program
   .name("agend")
   .description("AgEnD — AI Engineering Daemon")
-  .version(pkgVersion);
+  .version(pkgVersion)
+  // The root's own options only before a subcommand: otherwise `agend update --version 2.1.9` is read as
+  // `agend --version`, prints this version and installs nothing.
+  .enablePositionalOptions();
 
 function signalFleetReload(): void {
   const pidPath = join(DATA_DIR, "fleet.pid");
@@ -1347,15 +1352,25 @@ program
   .command("update")
   .description("Update AgEnD to the selected release and restart the fleet service")
   .option("--version <ver>", "Specific version to install")
-  .option("--beta", "Install beta version")
+  .option("--beta", "Install from the beta channel (the default when a beta is installed)")
+  .option("--stable", "Install from the stable channel, even from a beta install (may go back a version)")
   .option("--force", "Force reinstall and restart even when already up to date")
   .option("-y, --yes", "Confirm when run from a fleet agent session (this affects every instance)")
-  .action(async (opts: { version?: string; beta?: boolean; force?: boolean; yes?: boolean }) => {
+  .action(async (opts: { version?: string; beta?: boolean; stable?: boolean; force?: boolean; yes?: boolean }) => {
+    if (opts.beta && opts.stable) {
+      console.error("  --beta and --stable choose different channels; pass one.");
+      process.exit(1);
+    }
     if (!gateFleetControl(DATA_DIR, "update", { yes: opts.yes })) process.exit(1);
     const { spawnSync } = await import("node:child_process");
-    const tag = getUpdateSelector(opts);
-    const pkg = `@songsid/agend@${tag}`;
-    const targetVersion = lookupTargetVersion(tag);
+    // The channel follows the version being replaced — this CLI's own package — so a beta install stays on beta.
+    const tag = getUpdateSelector(opts, pkgVersion);
+    const looked = lookupTargetVersion(tag);
+    // Only a strict SemVer answer counts as the version this update is about; anything else is "unknown".
+    const targetVersion = looked !== null && isExactVersion(looked) ? looked.trim().replace(/^v/i, "") : null;
+    // Install exactly the version checked below: a dist-tag is a moving alias, and could point somewhere older
+    // by the time npm resolves it. Unknown target: the tag, as before.
+    const pkg = `@songsid/agend@${targetVersion ?? tag}`;
 
     // The restart stage, shared by a real update and by the stale-fleet case.
     const restartFleetForUpdate = (command: string, args: string[], version: string): void => {
@@ -1404,6 +1419,15 @@ program
       }
       console.log(`\n  ✓ Already up to date (v${pkgVersion})\n`);
       setUpdateProgressStage(DATA_DIR, "complete", { version: pkgVersion });
+      return;
+    }
+
+    if (isUnrequestedDowngrade(pkgVersion, targetVersion, opts)) {
+      const message = `AgEnD v${pkgVersion} is newer than ${tag} (v${targetVersion}); not going back to it. To switch to the stable release anyway: agend update --stable`;
+      console.error(`\n  ✗ ${message}\n`);
+      // A chat-started /update is waiting on this: say why it stops here.
+      setUpdateProgressStage(DATA_DIR, "failed", { error: message });
+      process.exitCode = 1;
       return;
     }
 

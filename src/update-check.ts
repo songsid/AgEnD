@@ -1,14 +1,113 @@
 import { execFileSync } from "node:child_process";
 
+/**
+ * What a chat `/update` (Discord slash or Telegram) runs: no channel flag, ever.
+ * The installed CLI decides from its own version (getUpdateSelector), so the
+ * caller's view of "which version am I" cannot send a beta install to @latest.
+ */
+export const UPDATE_COMMAND = "agend update";
+
 export interface UpdateVersionOptions {
   version?: string;
   beta?: boolean;
+  /** Back to the stable line (`@latest`), even from a beta install — may go back a version. */
+  stable?: boolean;
   force?: boolean;
 }
 
-/** Resolve the npm selector used by `agend update`. */
-export function getUpdateSelector(opts: UpdateVersionOptions): string {
-  return opts.version ?? (opts.beta ? "beta" : "latest");
+/**
+ * SemVer 2.0.0, strictly (https://semver.org/): numeric identifiers without
+ * leading zeros, alphanumeric prerelease identifiers containing a non-digit,
+ * no empty identifiers. A leading `v` and surrounding space are tolerated, as
+ * npm prints them.
+ */
+const NUM = "(?:0|[1-9]\\d*)";
+const PRE_ID = `(?:${NUM}|\\d*[A-Za-z-][0-9A-Za-z-]*)`;
+const BUILD_ID = "[0-9A-Za-z-]+";
+const SEMVER = new RegExp(`^v?(${NUM})\\.(${NUM})\\.(${NUM})(?:-(${PRE_ID}(?:\\.${PRE_ID})*))?(?:\\+${BUILD_ID}(?:\\.${BUILD_ID})*)?$`);
+
+interface ParsedSemver { core: [string, string, string]; pre: string[] }
+
+function parseSemver(version: string): ParsedSemver | null {
+  const m = SEMVER.exec(version.trim());
+  if (!m) return null;
+  return { core: [m[1], m[2], m[3]], pre: m[4] ? m[4].split(".") : [] };
+}
+
+/** A version npm will accept as an exact version (strict SemVer). */
+export function isExactVersion(version: string): boolean {
+  return parseSemver(version) !== null;
+}
+
+/** A semver prerelease (`x.y.z-<pre>`): a beta (or rc, alpha…) install. Anything that does not parse is not one. */
+export function isPrereleaseVersion(version: string): boolean {
+  return (parseSemver(version)?.pre.length ?? 0) > 0;
+}
+
+/** Two numeric identifiers, exactly at any size: no leading zeros, so the longer is the larger. */
+function compareNumeric(a: string, b: string): number {
+  if (a.length !== b.length) return a.length < b.length ? -1 : 1;
+  return a === b ? 0 : a < b ? -1 : 1;
+}
+
+/**
+ * Semver order: -1 when a < b, 0 when equal, 1 when a > b; null when either
+ * does not parse. A prerelease ranks below its own release (2.1.10-beta.6 <
+ * 2.1.10); numeric identifiers compare as exact integers (no float rounding),
+ * below alphanumeric ones, which compare in ASCII order.
+ */
+export function compareSemver(a: string, b: string): number | null {
+  const pa = parseSemver(a), pb = parseSemver(b);
+  if (!pa || !pb) return null;
+  for (let i = 0; i < 3; i++) {
+    const order = compareNumeric(pa.core[i], pb.core[i]);
+    if (order !== 0) return order;
+  }
+  if (pa.pre.length === 0 || pb.pre.length === 0) return Math.sign(pb.pre.length - pa.pre.length);
+  for (let i = 0; i < Math.min(pa.pre.length, pb.pre.length); i++) {
+    const x = pa.pre[i], y = pb.pre[i];
+    if (x === y) continue;
+    const nx = /^\d+$/.test(x), ny = /^\d+$/.test(y);
+    if (nx && ny) return compareNumeric(x, y);
+    if (nx !== ny) return nx ? -1 : 1;
+    return x < y ? -1 : 1;
+  }
+  return Math.sign(pa.pre.length - pb.pre.length);
+}
+
+/**
+ * The npm selector `agend update` installs from. An explicit choice wins
+ * (`--version`, then `--beta`, then `--stable`); with none, the line the
+ * installed version is on — a prerelease install stays on `@beta`, so a beta
+ * user is never moved to `@latest` without asking. `installedVersion` is the
+ * version of the package being replaced (the CLI's own package.json), never
+ * the version of whatever code happened to call it.
+ */
+export function getUpdateSelector(opts: UpdateVersionOptions, installedVersion: string): string {
+  if (opts.version) return opts.version;
+  if (opts.beta) return "beta";
+  if (opts.stable) return "latest";
+  return isPrereleaseVersion(installedVersion) ? "beta" : "latest";
+}
+
+/**
+ * Which "update available" line to post. A beta install's `/update` stays on
+ * the beta channel, so a newer STABLE release needs `--stable` — say so rather
+ * than "Run: /update", which would not move it there.
+ */
+export function updateNoticeKey(currentVersion: string, targetVersion: string): "update.available_stable" | "update.available_current" {
+  return isPrereleaseVersion(currentVersion) && !isPrereleaseVersion(targetVersion) ? "update.available_stable" : "update.available_current";
+}
+
+/**
+ * The install would go back to an older version, and nobody asked for that.
+ * `--force`, `--version` and `--stable` are asking; an unknown target or a
+ * version that does not parse cannot be judged, and is not refused.
+ */
+export function isUnrequestedDowngrade(installedVersion: string, targetVersion: string | null, opts: UpdateVersionOptions): boolean {
+  if (opts.force || opts.version || opts.stable || targetVersion === null) return false;
+  const order = compareSemver(targetVersion, installedVersion);
+  return order !== null && order < 0;
 }
 
 /**
