@@ -14,6 +14,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   a delivered message looked like "complete transcript, no marker" and, with the old CLI gone, was retried — the same message
   delivered twice. The CLI's own wrapper, in exactly that shape and for Claude Code only, is now accepted in front of the marker,
   which must still lead the body inside it; any other prefix, a quote, or another backend's entry still does not count.
+- **An idle delivery to a Claude / Grok / Muse instance is no longer recorded `delivered` just because the pane printed something (#758).**
+  Those CLIs have no readable input row, so an ordinary submission was confirmed by any output after Enter — which a redraw that
+  wiped the paste produces too, and the outbox said `delivered` for a message that never arrived. The ✅ is unchanged, but the
+  row is now finished by the CLI's own transcript: the delivery's marker found → `delivered` (`transcript-marker`, or
+  `transcript-marker-queued` when the CLI holds it queued); the transcript read on the last look for a whole 60 s and the marker
+  still absent → `uncertain` (`unverifiable-no-transcript-marker`, so a ⚠️ and a `[system:delivery-outcome]`; nothing is re-pasted,
+  the message may still land); transcript unreadable, or a backend with none (Grok, Muse, Gemini, …) → today's `delivered`,
+  labelled `output-edge-only; submission-unverifiable`. Steer, native-queue, Codex, Kiro and raw pastes are untouched.
 
 ### Security
 - **Discord slash commands now follow one command table (#1148).** Where a command applies and who may use it is
