@@ -1,3 +1,4 @@
+import { DarwinMemoryProbe } from "./darwin-memory.js";
 import { readFileSync } from "node:fs";
 import { freemem, totalmem, platform } from "node:os";
 
@@ -47,4 +48,12 @@ export function readHostMemory(overrides: Partial<HostMemoryDeps> = {}): HostMem
     } catch { /* non-procfs Linux, or an unreadable snapshot: portable fallback */ }
   }
   return { totalBytes: deps.totalmem(), availableBytes: deps.freemem(), availableKind: "free", swapTotalBytes: null, swapFreeBytes: null };
+}
+
+// Diagnostics use the same bounded native reader. Construction is side-effect free.
+let diagnosticDarwinProbe: DarwinMemoryProbe | null = null;
+export function readHostMemoryAsync(): Promise<HostMemory> {
+  if (platform() !== "darwin") return Promise.resolve(readHostMemory());
+  diagnosticDarwinProbe ??= new DarwinMemoryProbe();
+  return diagnosticDarwinProbe.read();
 }

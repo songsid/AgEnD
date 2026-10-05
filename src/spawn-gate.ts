@@ -39,6 +39,7 @@ export class SpawnGate {
   private memoryWait = false;
   private stopped = false;
   private pumping = false;
+  private awaitingMemory = false;
   private pressureRetryMs = 5_000;
   private pressureHeld = false;
   private readonly random: () => number;
@@ -98,14 +99,22 @@ export class SpawnGate {
   }
 
   private pump(): void {
-    if (this.stopped || this.pumping || this.timer || this.options.storm.isSpawnBlocked()) return;
+    if (this.stopped || this.pumping || this.awaitingMemory || this.timer || this.options.storm.isSpawnBlocked()) return;
     this.pumping = true;
     try {
       while (!this.stopped) {
         const index = this.queue.findIndex(item => !this.activeDirectories.has(item.task.workingDirectory));
         if (this.nestedQueue.length === 0 && index < 0) return;
         // Explicit zero preserves the existing deterministic test/embedding opt-out.
-        const sample = this.options.lowMemoryBytes === 0 ? null : this.memoryPressure.sample();
+        const sample = this.options.lowMemoryBytes === 0 ? null : this.memoryPressure.sampleForAdmission();
+        if (sample instanceof Promise) {
+          this.awaitingMemory = true;
+          void sample.finally(() => {
+            this.awaitingMemory = false;
+            if (!this.stopped) this.pump();
+          });
+          return;
+        }
         let pressure = sample === null || this.memoryPressure.allowsUnknown(sample) ? "normal" : sample.level;
         if (this.stopped) return;
         if (pressure === "critical") {

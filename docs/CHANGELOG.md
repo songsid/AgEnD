@@ -283,6 +283,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `cloudflared` on `PATH`. See "Finishing a /login away from the machine" in `docs/configuration.md`.
 
 ### Fixed
+- **macOS no longer mistakes low free RAM for memory pressure.** Native, bounded async
+  `vm_stat`/`sysctl` probes estimate reclaimable RAM and read swap; first/stale starts
+  wait at most two seconds, with a 30-second shared cache. Unavailable Mac measurements
+  now show unknown and neither warn nor slow starts; Linux behaviour is unchanged.
+  The estimate can undercount reclaimable RAM, and failed Mac probes temporarily leave
+  memory-pressure protection unavailable. Fixture-tested on Linux; live macOS user validation
+  is pending. The native-probe commit can be reverted while keeping the unknown policy.
 - **The `/login` browser terminal no longer kills the sign-in when you copy, and shows where the code goes.** Pressing
   Ctrl+C to copy the link sent an interrupt that ended `claude auth login` (exit 130); the paste and Enter that followed hit a
   dead session. Now Ctrl+C with text selected copies in every web terminal, and on the login page a Ctrl+C with nothing
