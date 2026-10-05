@@ -100,7 +100,7 @@ instances:
 | 欄位 | 型別 | 預設 | 作用 |
 |---|---|---|---|
 | `working_directory` | string | 自動建立 | 專案的絕對路徑 |
-| `backend` | string | `claude-code` | `claude-code`、`codex`、`opencode`、`kiro-cli`、`antigravity`、`grok`、`muse`、`gemini-cli`（已棄用） |
+| `backend` | string | `claude-code` | `claude-code`、`codex`、`opencode`、`kiro-cli`、`antigravity`、`grok`、`muse` |
 | `model` | string | — | 覆寫模型；格式依後端而定 |
 | `model_failover` | string[] | — | 遇到 rate limit 時依序退回的模型 |
 | `effort` | string | — | `low`/`medium`/`high`/`xhigh`/`max`，會夾到後端支援的範圍 |

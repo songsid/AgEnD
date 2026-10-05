@@ -100,7 +100,7 @@ instances:
 | Field | Type | Default | What it does |
 |---|---|---|---|
 | `working_directory` | string | auto-created | Absolute path to the project |
-| `backend` | string | `claude-code` | `claude-code`, `codex`, `opencode`, `kiro-cli`, `antigravity`, `grok`, `muse`, `gemini-cli` (deprecated) |
+| `backend` | string | `claude-code` | `claude-code`, `codex`, `opencode`, `kiro-cli`, `antigravity`, `grok`, `muse` |
 | `model` | string | — | Model override; format follows the backend |
 | `model_failover` | string[] | — | Models to fall back to, in order, on a rate limit |
 | `effort` | string | — | `low`/`medium`/`high`/`xhigh`/`max`, clamped to what the backend accepts |

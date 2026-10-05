@@ -162,7 +162,6 @@ A shared **task board** tracks multi-step work across instances, so one agent ca
 | Grok Build | Needs Grok CLI 1.0.13 or later (`grok update`) |
 | Meta Muse Code | Escape cancels; Ctrl+C quits |
 | OpenCode | |
-| Gemini CLI | Deprecated since 2026-06-18 |
 
 OpenCode and Kiro CLI do not read the MCP server's `instructions` field, so fleet context and workflow templates are not injected into their system prompts. This is an upstream limitation.
 

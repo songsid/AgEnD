@@ -55,8 +55,6 @@ Check the one you picked before going further:
 agend backend doctor claude-code
 ```
 
-Gemini CLI still works but has been deprecated since 2026-06-18. Use Antigravity CLI instead.
-
 ## Set up
 
 ```bash

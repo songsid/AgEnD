@@ -216,7 +216,7 @@ teams:
 | `description` | string | — | 角色描述。透過 MCP server instructions 注入為 `## Role` |
 | `topic_id` | number\|string | 自動 | 頻道 topic/thread ID。建立時自動分配 |
 | `general_topic` | boolean | `false` | 標記為 General Topic（接收未路由的訊息） |
-| `backend` | string | `"claude-code"` | CLI backend：`claude-code`、`codex`、`opencode`、`kiro-cli`、`antigravity`、`grok`、`muse`、`gemini-cli`（⚠️ 已停用） |
+| `backend` | string | `"claude-code"` | CLI backend：`claude-code`、`codex`、`opencode`、`kiro-cli`、`antigravity`、`grok`、`muse` |
 | `kiro_ui` | `"legacy"` \| `"tui"` | `"legacy"` | 僅供 Kiro 使用的啟動模式。`legacy` 跑在 kiro 的 v1 engine，`tui` 跑在 v2 engine；每次啟動都會明確指定，kiro-cli 的預設值或已存的設定都無法把 instance 換到別的 engine（#1109）。在 Kiro v3 介面能無人值守執行之前，`"v3"` 會被設定驗證拒絕（#849）。 |
 | `auto_pause_after` | number | `0`（停用） | 閒置多少分鐘後自動暫停。0 = 不暫停。 |
 | `model` | string | — | 模型。Claude：`sonnet`、`opus`、`haiku`、`opusplan`。Codex：`gpt-4o`。Kiro：`auto`、`claude-sonnet-4.5`、`claude-haiku-4.5` |
@@ -275,8 +275,8 @@ MCP server 將這些組合成一個 `instructions` 字串，CLI 透過 MCP proto
 5. **自訂 prompt** — fleet.yaml 的 `systemPrompt` 內容（支援 `file:` prefix）
 
 這個方式的好處：
-- CLI 的內建 system prompt **不會被修改**（Claude Code 保留 tool 指引、Gemini 保留 skills 等）
-- 專案的 instruction 檔案（CLAUDE.md、AGENTS.md、GEMINI.md）**不受影響**
+- CLI 的內建 system prompt **不會被修改**（例如 Claude Code 保留 tool 指引）
+- 專案的 instruction 檔案（CLAUDE.md、AGENTS.md）**不受影響**
 - 所有 backend（Claude Code、Codex、OpenCode、Kiro CLI、Antigravity CLI、Grok Build、Meta Muse Code）使用相同的注入路徑
 
 ### 已知限制：OpenCode MCP instructions
@@ -330,7 +330,7 @@ ClassicBot 模式使用獨立設定檔 `~/.agend/classicBot.yaml`。首次在 Di
 
 ```yaml
 # ClassicBot 設定
-# 可用 backends: claude-code, codex, opencode, kiro-cli, antigravity, grok, muse（gemini-cli 已停用）
+# 可用 backends: claude-code, codex, opencode, kiro-cli, antigravity, grok, muse
 defaults:
   backend: claude-code          # 所有 classic channel 的預設 backend
 
