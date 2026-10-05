@@ -19,13 +19,15 @@ interface Render {
   escapeHtml(text: unknown): string;
   mergeMessages(existing: unknown[] | undefined, incoming: unknown[], cap?: number): Array<{ id: number }>;
   composerKey(ev: unknown): "send" | "newline" | "none";
+  settleFailedSend(target: string, current: string | null, composerPresent: boolean, composerValue: string): "restore" | "keep";
+  putBack(failed: string, draft: string): string;
 }
 const SRC = readFileSync(join(process.cwd(), "src", "ui", "chat-render.js"), "utf8");
 function asScript(): Render { const c = vm.createContext({}); vm.runInContext(SRC, c); return (c as { AgendChatRender: Render }).AgendChatRender; }
 function asModule(): Render { const module = { exports: {} as Render }; vm.runInContext(SRC, vm.createContext({ module })); return module.exports; }
 
 describe.each([["a classic script", asScript], ["a CommonJS module", asModule]])("chat-render.js as %s", (_n, load) => {
-  const { renderMarkdown: md, mergeMessages, composerKey } = load();
+  const { renderMarkdown: md, mergeMessages, composerKey, settleFailedSend, putBack } = load();
 
   describe("no message can produce markup of its own", () => {
     it.each([
@@ -95,6 +97,19 @@ describe.each([["a classic script", asScript], ["a CommonJS module", asModule]])
       expect(md("```\nopen <b>")).toBe("<pre><code>open &lt;b&gt;</code></pre>");
     });
 
+    it("a `code` span inside a link label keeps its text (a placeholder inside a placeholder is expanded)", () => {
+      expect(md("[`src/foo.ts`](https://agend.example/foo)")).toBe(
+        '<p><a href="https://agend.example/foo" target="_blank" rel="noopener noreferrer"><code>src/foo.ts</code></a></p>');
+      expect(md("see [**`x`** and `y`](https://a.example)")).toContain("<strong><code>x</code></strong> and <code>y</code></a>");
+      expect(md("[a](https://a.example)")).not.toContain("\u0000");
+    });
+
+    it("a placeholder is never expanded inside an href: a URL that holds one is not linked", () => {
+      const html = md("[x](https://a.example/`<b>`)");
+      expect(html).not.toMatch(/href="[^"]*<code>/);
+      expect(html).not.toMatch(/href="[^"]*\u0000/);
+    });
+
     it("every link opens in a new tab without a reference to this page", () => {
       for (const a of md("[a](https://a.example) https://b.example").match(/<a [^>]*>/g)!) {
         expect(a).toContain('target="_blank"');
@@ -114,12 +129,46 @@ describe.each([["a classic script", asScript], ["a CommonJS module", asModule]])
       expect(mergeMessages([m(3), m(1)], [m(2), m(3), m(1)]).map(x => x.id)).toEqual([1, 2, 3]);
     });
 
+    it("ids restart with every fleet process: the same id from another boot is another message, and both stay", () => {
+      const before = { boot: "aaa", id: 1, instance: "w", sender: "s", text: "before restart", ts: "2026-10-05T01:00:00Z" };
+      const after = { boot: "bbb", id: 1, instance: "w", sender: "s", text: "after restart", ts: "2026-10-05T02:00:00Z" };
+      const merged = mergeMessages([before], [after]) as unknown as Array<{ text: string }>;
+      expect(merged.map(m => m.text)).toEqual(["before restart", "after restart"]);
+      // ...and the same message twice (history + stream) is still one entry.
+      expect(mergeMessages(merged, [after, before])).toHaveLength(2);
+    });
+
+    it("orders by id within a boot and by time across boots", () => {
+      const msgs = [
+        { boot: "b", id: 2, ts: "2026-10-05T02:00:02Z" }, { boot: "a", id: 9, ts: "2026-10-05T01:00:09Z" },
+        { boot: "b", id: 1, ts: "2026-10-05T02:00:01Z" }, { boot: "a", id: 3, ts: "2026-10-05T01:00:03Z" },
+      ];
+      expect(mergeMessages([], msgs).map(m => `${(m as unknown as { boot: string }).boot}${m.id}`)).toEqual(["a3", "a9", "b1", "b2"]);
+    });
+
     it("keeps the newest `cap`", () => {
       expect(mergeMessages([], [m(1), m(2), m(3), m(4)], 2).map(x => x.id)).toEqual([3, 4]);
     });
 
     it("ignores anything without a numeric id, and an undefined list", () => {
       expect(mergeMessages(undefined, [m(1), { id: "2" }, null, {}]).map(x => x.id)).toEqual([1]);
+    });
+  });
+
+  describe("a failed send", () => {
+    it.each([
+      ["w", "w", true, "", "restore"],           // its own composer, on screen, empty
+      ["w", "w", true, "new draft", "keep"],     // never over what is being typed
+      ["w", "x", true, "", "keep"],              // never into another chat's composer
+      ["w", null, false, "", "keep"],            // the chat view is gone
+      ["w", "w", false, "", "keep"],             // re-rendered: the composer it came from is not there
+    ])("target %s, on screen %s, composer present %s, value %j → %s", (target, current, present, value, expected) => {
+      expect(settleFailedSend(target as string, current as string | null, present as boolean, value as string)).toBe(expected);
+    });
+
+    it("put back goes in front of a draft and never replaces it", () => {
+      expect(putBack("lost", "")).toBe("lost");
+      expect(putBack("lost", "typing")).toBe("lost\ntyping");
     });
   });
 
@@ -185,13 +234,32 @@ describe("WebChatHistory", () => {
     expect(all.after(3)).toEqual([]);
   });
 
-  it("after(): an id the fleet never handed out (from before a restart) gets nothing", () => {
+  it("after(): bad ids get nothing", () => {
     const h = new WebChatHistory();
     h.record(msg("a"));
-    expect(h.after(4)).toEqual([]);
     expect(h.after(1)).toEqual([]);
     expect(h.after(-1)).toEqual([]);
     expect(h.after(Number.NaN)).toEqual([]);
+  });
+
+  it("every message carries its boot; the cursor is <boot>-<id>", () => {
+    const h = new WebChatHistory({ boot: "abc123" });
+    const m = h.record(msg("a"));
+    expect(m.boot).toBe("abc123");
+    expect(h.cursorOf(m)).toBe("abc123-1");
+    expect(new WebChatHistory().boot).toMatch(/^[0-9a-f]{12}$/);
+    expect(new WebChatHistory().boot).not.toBe(new WebChatHistory().boot);
+  });
+
+  it("replayFor(): the same boot replays after its id; another boot (a restart) gets this boot's whole backlog", () => {
+    const h = new WebChatHistory({ boot: "new" });
+    for (const t of ["x", "y", "z"]) h.record(msg("w", t));
+    expect(h.replayFor({ boot: "new", id: 1 }).map(m => m.text)).toEqual(["y", "z"]);
+    expect(h.replayFor({ boot: "new", id: 3 })).toEqual([]);
+    // The old process had handed out id 50; the new one only 3. Nothing of the new one was seen.
+    expect(h.replayFor({ boot: "old", id: 50 }).map(m => m.text)).toEqual(["x", "y", "z"]);
+    expect(h.replayFor({ boot: "old", id: 1 }).map(m => m.text)).toEqual(["x", "y", "z"]);
+    expect(h.replayFor(null)).toEqual([]);
   });
 
   it("forget() drops an instance", () => {
@@ -204,9 +272,10 @@ describe("WebChatHistory", () => {
 
 describe("parseLastEventId", () => {
   it.each([
-    ["7", 7], [" 12 ", 12], ["0", 0], [["5"], 5],
-    [undefined, null], ["", null], ["-1", null], ["1.5", null], ["abc", null], ["1e3", null], ["9".repeat(16), null],
-  ])("%j → %s", (input, expected) => { expect(parseLastEventId(input as string)).toBe(expected); });
+    ["ab12-7", { boot: "ab12", id: 7 }], [" ab12-12 ", { boot: "ab12", id: 12 }], ["f-0", { boot: "f", id: 0 }], [["ab-5"], { boot: "ab", id: 5 }],
+    [undefined, null], ["", null], ["7", null], ["ab-", null], ["-1", null], ["AB-1", null], ["ab-1.5", null], ["ab--1", null],
+    ["ab-1e3", null], [`ab-${"9".repeat(16)}`, null], [`${"a".repeat(33)}-1`, null], ["a b-1", null],
+  ])("%j → %j", (input, expected) => { expect(parseLastEventId(input as string)).toEqual(expected); });
 });
 
 // ── the routes ──────────────────────────────────────────────────────────────────────────────────────────────────
@@ -241,13 +310,14 @@ function call(url: string, ctx: WebApiContext, headers?: Record<string, string>)
 
 describe("GET /ui/history", () => {
   it("returns an instance's recent messages and the newest id", () => {
-    const h = new WebChatHistory();
+    const h = new WebChatHistory({ boot: "b1" });
     h.record(msg("w", "one")); h.record(msg("other", "x")); h.record(msg("w", "two"));
     const { res } = call("/ui/history?instance=w", ctxWith(h));
     expect(res.status).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.messages.map((m: { text: string }) => m.text)).toEqual(["one", "two"]);
-    expect(body.messages.map((m: { id: number }) => m.id)).toEqual([1, 3]);
+    expect(body.messages.map((m: { id: number; boot: string }) => `${m.boot}-${m.id}`)).toEqual(["b1-1", "b1-3"]);
+    expect(body.boot).toBe("b1");
     expect(body.lastId).toBe(3);
   });
 
@@ -271,20 +341,20 @@ describe("GET /ui/history", () => {
   });
 
   it("a context without a chat answers with an empty list, not an error", () => {
-    expect(JSON.parse(call("/ui/history?instance=w", ctxWith()).res.body)).toEqual({ messages: [], lastId: 0 });
+    expect(JSON.parse(call("/ui/history?instance=w", ctxWith()).res.body)).toEqual({ messages: [], boot: null, lastId: 0 });
   });
 });
 
 describe("GET /ui/events with Last-Event-ID", () => {
   const replayed = (writes: string[]) => writes.filter(w => w.includes("event: message"));
 
-  it("a reconnecting stream is first sent what it missed, each frame with its id", () => {
-    const h = new WebChatHistory();
+  it("a reconnecting stream is first sent what it missed, each frame with its cursor", () => {
+    const h = new WebChatHistory({ boot: "b1" });
     for (const t of ["a", "b", "c"]) h.record(msg("w", t));
-    const { req, res } = call("/ui/events", ctxWith(h), { "last-event-id": "1" });
+    const { req, res } = call("/ui/events", ctxWith(h), { "last-event-id": "b1-1" });
     const frames = replayed(res.writes);
     expect(frames).toHaveLength(2);
-    expect(frames[0]).toMatch(/^id: 2\nevent: message\ndata: /);
+    expect(frames[0]).toMatch(/^id: b1-2\nevent: message\ndata: /);
     expect(JSON.parse(frames[1]!.split("data: ")[1]!).text).toBe("c");
     expect(res.writes[0]).toMatch(/^event: status/);                 // status first, then the replay
     req.emit("close");
@@ -298,8 +368,16 @@ describe("GET /ui/events with Last-Event-ID", () => {
     req.emit("close");
   });
 
-  it.each(["abc", "-1", "99"])("a Last-Event-ID of %j replays nothing", id => {
-    const h = new WebChatHistory();
+  it("a Last-Event-ID from before a restart gets everything this boot has said (none of it was seen)", () => {
+    const h = new WebChatHistory({ boot: "b2" });
+    for (const t of ["a", "b"]) h.record(msg("w", t));
+    const { req, res } = call("/ui/events", ctxWith(h), { "last-event-id": "b1-99" });
+    expect(replayed(res.writes).map(f => JSON.parse(f.split("data: ")[1]!).text)).toEqual(["a", "b"]);
+    req.emit("close");
+  });
+
+  it.each(["abc", "-1", "99", "b1-"])("a Last-Event-ID of %j replays nothing", id => {
+    const h = new WebChatHistory({ boot: "b1" });
     h.record(msg("w"));
     const { req, res } = call("/ui/events", ctxWith(h), { "last-event-id": id });
     expect(replayed(res.writes)).toEqual([]);
@@ -309,14 +387,14 @@ describe("GET /ui/events with Last-Event-ID", () => {
 
 describe("SSE frames", () => {
   it("sseFrame puts the id first, and omits it when there is none", () => {
-    expect(sseFrame("message", { a: 1 }, 7)).toBe('id: 7\nevent: message\ndata: {"a":1}\n\n');
+    expect(sseFrame("message", { a: 1 }, "b1-7")).toBe('id: b1-7\nevent: message\ndata: {"a":1}\n\n');
     expect(sseFrame("status", { a: 1 })).toBe('event: status\ndata: {"a":1}\n\n');
   });
 
   it("broadcastSseEvent writes the id when given", () => {
     const res = fakeRes();
-    broadcastSseEvent(new Set([res as unknown as ServerResponse]), "message", { x: 1 }, undefined, 3);
-    expect(res.writes).toEqual(['id: 3\nevent: message\ndata: {"x":1}\n\n']);
+    broadcastSseEvent(new Set([res as unknown as ServerResponse]), "message", { x: 1 }, undefined, "b1-3");
+    expect(res.writes).toEqual(['id: b1-3\nevent: message\ndata: {"x":1}\n\n']);
   });
 });
 
@@ -334,10 +412,33 @@ describe("FleetManager.emitSseEvent", () => {
       (fm as unknown as { sseClients: Set<unknown> }).sseClients.add(res);
       fm.emitSseEvent("message", { instance: "w", sender: "agent", text: "x".repeat(17_000), ts: "t" });
       fm.emitSseEvent("status", { ok: 1 });
-      expect(res.writes[0]).toMatch(/^id: 1\nevent: message\n/);
+      expect(res.writes[0]).toBe(`${res.writes[0]!.split("\n")[0]}\n${res.writes[0]!.split("\n").slice(1).join("\n")}`);
+      expect(res.writes[0]).toMatch(new RegExp(`^id: ${fm.webChatHistory.boot}-1\nevent: message\n`));
       expect(JSON.parse(res.writes[0]!.split("data: ")[1]!).text).toHaveLength(16_000);
       expect(res.writes[1]).toBe('event: status\ndata: {"ok":1}\n\n');
       expect(fm.webChatHistory.list("w").map(m => m.id)).toEqual([1]);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it("deleting an instance forgets its chat — only once the removal succeeded", async () => {
+    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { authorizeExplicitInstanceRemoval } = await import("../src/instance-removal.js");
+    const { mkdtempSync, rmSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const dir = mkdtempSync(join(tmpdir(), "c1-rm-"));
+    try {
+      const fm = new FleetManager(dir);
+      const any = fm as unknown as Record<string, any>;
+      fm.webChatHistory.record({ instance: "w", sender: "u", text: "secret plan", ts: "t" });
+      fm.webChatHistory.record({ instance: "keep", sender: "u", text: "other", ts: "t" });
+      any.lifecycle = { remove: async () => { throw new Error("lifecycle refused"); } };
+      await expect(fm.removeInstance("w", authorizeExplicitInstanceRemoval("dashboard-confirmed"))).rejects.toThrow("lifecycle refused");
+      expect(fm.webChatHistory.list("w").map(m => m.text), "a failed removal keeps the history").toEqual(["secret plan"]);
+      any.lifecycle = { remove: async () => {} };
+      any.statuslineWatcher = { unwatch() {} };
+      await fm.removeInstance("w", authorizeExplicitInstanceRemoval("dashboard-confirmed"));
+      expect(fm.webChatHistory.list("w")).toEqual([]);
+      expect(fm.webChatHistory.after(0).map(m => m.instance), "and is not replayed either").toEqual(["keep"]);
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 
@@ -369,7 +470,11 @@ describe("dashboard.html", () => {
     expect(html).toContain("AgendChatRender.mergeMessages(");
   });
 
-  it("gives the text back when a send fails", () => {
-    expect(html).toMatch(/if \(!r \|\| r\.error\) \{ if \(!inp\.value\) \{ inp\.value = txt;/);
+  it("a failed send goes through settleFailedSend for the chat it was sent from, and kept text is offered back", () => {
+    expect(html).toContain("const target = cur;");
+    expect(html).toContain('AgendChatRender.settleFailedSend(target, cur, !!now, now ? now.value : "")');
+    expect(html).toContain("failedSends[target] = failedSends[target] ?");
+    expect(html).toContain("AgendChatRender.putBack(kept, inp.value)");
+    expect(html).toMatch(/inp\.value = drafts\[cur\] \|\| "";/);
   });
 });

@@ -81,7 +81,7 @@ export function broadcastSseEvent(
   event: string,
   data: unknown,
   onError?: (err: unknown) => void,
-  id?: number,
+  id?: string,
 ): void {
   const payload = sseFrame(event, data, id);
   const dead: ServerResponse[] = [];
@@ -100,7 +100,7 @@ export function broadcastSseEvent(
 }
 
 /** One SSE frame; `id` (a chat message's) lets a reconnecting EventSource say what it last saw. */
-export function sseFrame(event: string, data: unknown, id?: number): string {
+export function sseFrame(event: string, data: unknown, id?: string): string {
   return `${id !== undefined ? `id: ${id}\n` : ""}event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
@@ -291,7 +291,8 @@ export function handleWebRequest(
     // An EventSource that reconnects says what it last saw: send what it missed, before anything new.
     const lastSeen = parseLastEventId(req.headers["last-event-id"]);
     if (lastSeen !== null && ctx.webChatHistory) {
-      for (const m of ctx.webChatHistory.after(lastSeen)) res.write(sseFrame("message", m, m.id));
+      const history = ctx.webChatHistory;
+      for (const m of history.replayFor(lastSeen)) res.write(sseFrame("message", m, history.cursorOf(m)));
     }
     ctx.sseClients.add(res);
     const interval = setInterval(() => {
@@ -327,7 +328,7 @@ export function handleWebRequest(
       json(res, 400, { error: "instance (1-128 chars) and limit (1-500) required" });
       return true;
     }
-    json(res, 200, { messages: ctx.webChatHistory?.list(instance, limit) ?? [], lastId: ctx.webChatHistory?.lastId ?? 0 });
+    json(res, 200, { messages: ctx.webChatHistory?.list(instance, limit) ?? [], boot: ctx.webChatHistory?.boot ?? null, lastId: ctx.webChatHistory?.lastId ?? 0 });
     return true;
   }
 

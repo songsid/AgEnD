@@ -167,6 +167,8 @@
     resize: none; min-height: 20px; max-height: 240px; line-height: 1.5; overflow-y: auto;
   }
   .input-bar textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+  .failed-send { margin: 0 20px 8px; padding: 8px 12px; border-radius: 10px; font-size: 12px; background: rgba(218,54,51,0.12); border: 1px solid rgba(218,54,51,0.35); display: flex; gap: 8px; align-items: center; }
+  .failed-send .txt { flex: 1; white-space: pre-wrap; word-break: break-word; max-height: 4.5em; overflow: hidden; }
   .input-hint { font-size: 11px; color: var(--text-muted); padding: 0 20px 8px; }
   /* Rendered Markdown inside a message */
   .msg .md { white-space: normal; }
@@ -298,7 +300,7 @@
 const UI_LANG = localStorage.getItem("agend_lang") || (navigator.language?.toLowerCase().startsWith("zh") ? "zh-TW" : "en");
 const UI_TEXT = {
   en: {
-    disconnected: "disconnected", selectTarget: "Select Fleet or an instance to begin", deleteConfirm: 'Type "delete {0}" to confirm:',
+    disconnected: "disconnected", notSent: "Not sent:", putBack: "Put back", discard: "Discard", selectTarget: "Select Fleet or an instance to begin", deleteConfirm: 'Type "delete {0}" to confirm:',
     instanceDeleted: "Instance deleted", noMessages: "No messages yet", sendFirst: "Send a message to start the conversation",
     loadFailed: "Failed to load", configLoadFailed: "Failed to load config", topicRequired: "Topic Name is required when Directory is empty",
     titleRequired: "Title required", scheduleFieldsRequired: "Cron, message, and target required", teamFieldsRequired: "Name and at least one member required",
@@ -307,7 +309,7 @@ const UI_TEXT = {
     teamCreated: "Team created", teamDeleted: "Team deleted", configSaved: "Config saved", configRestart: " (restart Fleet to apply channel changes)",
   },
   "zh-TW": {
-    disconnected: "已斷線", selectTarget: "請選擇 Fleet 或 instance", deleteConfirm: '請輸入「delete {0}」以確認：',
+    disconnected: "已斷線", notSent: "未送出：", putBack: "放回輸入框", discard: "捨棄", selectTarget: "請選擇 Fleet 或 instance", deleteConfirm: '請輸入「delete {0}」以確認：',
     instanceDeleted: "Instance 已刪除", noMessages: "尚無訊息", sendFirst: "傳送訊息以開始對話",
     loadFailed: "載入失敗", configLoadFailed: "載入設定失敗", topicRequired: "Directory 留空時必須填寫 Topic Name",
     titleRequired: "必須填寫標題", scheduleFieldsRequired: "必須填寫 Cron、訊息與目標 instance", teamFieldsRequired: "必須填寫名稱並選擇至少一名成員",
@@ -321,6 +323,9 @@ const trf = (key, ...values) => values.reduce((text, value, index) => text.repla
 let cur = null, curTab = "chat", mode = "none", instances = [];
 // mode: "none" | "fleet" | "instance"
 const msgs = {};
+// Per target, independent of the DOM (the chat view is re-rendered often): what is being typed, and
+// messages whose send failed and that could not go back into their own composer.
+const drafts = {}, failedSends = {};
 
 async function api(m, p, b) {
   const o = { method: m, headers: { "Content-Type": "application/json" } };
@@ -417,6 +422,7 @@ function renderInstanceMain(main) {
     <div class="actions" id="actions"></div>
     <div class="chat-view" id="chatView" style="display:${curTab==="chat"?"flex":"none"}">
       <div class="messages" id="messages"></div>
+      <div id="failedSend"></div>
       <div class="input-bar"><textarea id="msgIn" rows="1" placeholder="Send a message..." autocomplete="off"></textarea><button class="btn btn-accent" onclick="sendMsg()">Send</button></div>
       <div class="input-hint">Enter to send · Shift+Enter for a new line</div>
     </div>
@@ -426,8 +432,10 @@ function renderInstanceMain(main) {
   if (curTab === "chat") {
     renderMsgs();
     const inp = document.getElementById("msgIn");
+    inp.value = drafts[cur] || ""; growComposer(inp);
     inp.addEventListener("keydown", e => { if (AgendChatRender.composerKey(e) === "send") { e.preventDefault(); sendMsg(); } });
-    inp.addEventListener("input", () => growComposer(inp));
+    inp.addEventListener("input", () => { drafts[cur] = inp.value; growComposer(inp); });
+    renderFailedSend();
     inp.focus();
   }
   else if (curTab === "detail") loadDetail();
@@ -473,12 +481,40 @@ function renderMsgs() {
 function growComposer(inp) { inp.style.height = "auto"; inp.style.height = Math.min(inp.scrollHeight, 240) + "px"; }
 async function sendMsg() {
   const inp = document.getElementById("msgIn"), txt = inp.value.trim();
-  if (!txt||!cur) return;
-  inp.value = ""; growComposer(inp);
+  const target = cur;                                  // the chat this message belongs to, whatever is on screen later
+  if (!txt||!target) return;
+  inp.value = ""; drafts[target] = ""; growComposer(inp);
   let r;
-  try { r = await api("POST", "/ui/send", { instance: cur, message: txt }); } catch { r = { error: tr("disconnected") }; }
-  // Not delivered: give the text back rather than lose it.
-  if (!r || r.error) { if (!inp.value) { inp.value = txt; growComposer(inp); } toast(r && r.error ? r.error : tr("disconnected"), false); }
+  try { r = await api("POST", "/ui/send", { instance: target, message: txt }); } catch { r = { error: tr("disconnected") }; }
+  if (r && !r.error) return;
+  // Not delivered: never lose the text. Back into its own composer if that is on screen and empty;
+  // otherwise kept for its chat (not someone else's composer, not over a new draft) and offered back.
+  const now = document.getElementById("msgIn");
+  if (AgendChatRender.settleFailedSend(target, cur, !!now, now ? now.value : "") === "restore") {
+    now.value = txt; drafts[target] = txt; growComposer(now);
+  } else {
+    failedSends[target] = failedSends[target] ? failedSends[target] + "\n" + txt : txt;
+    if (target === cur) renderFailedSend();
+  }
+  toast(r && r.error ? r.error : tr("disconnected"), false);
+}
+function renderFailedSend() {
+  const box = document.getElementById("failedSend"); if (!box) return;
+  const kept = failedSends[cur];
+  if (!kept) { box.className = ""; box.textContent = ""; return; }
+  box.className = "failed-send";
+  box.textContent = "";
+  const label = document.createElement("span"); label.textContent = tr("notSent");
+  const text = document.createElement("span"); text.className = "txt"; text.textContent = kept;
+  const back = document.createElement("button"); back.className = "btn btn-accent"; back.textContent = tr("putBack");
+  back.onclick = () => {
+    const inp = document.getElementById("msgIn"); if (!inp) return;
+    inp.value = AgendChatRender.putBack(kept, inp.value); drafts[cur] = inp.value; growComposer(inp);
+    delete failedSends[cur]; renderFailedSend(); inp.focus();
+  };
+  const drop = document.createElement("button"); drop.className = "btn"; drop.textContent = tr("discard");
+  drop.onclick = () => { delete failedSends[cur]; renderFailedSend(); };
+  box.append(label, text, back, drop);
 }
 
 async function loadDetail() {

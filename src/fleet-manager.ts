@@ -7718,6 +7718,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.lastActivity.delete(name);
     this.lastInboundUser.delete(name);
     this.rateLimitWarnedAt.delete(name);
+    // Its web chat goes with it (only after the removal succeeded): a later instance of the same name
+    // must not be shown the old one's conversation, and deleted names must not pile up.
+    this.webChatHistory.forget(name);
 
     // Clean up statusline watcher + instance directory
     this.statuslineWatcher.unwatch(name);
@@ -11074,7 +11077,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const recorded = this.webChatHistory.record({
         instance: String(m.instance ?? ""), sender: String(m.sender ?? ""), text: String(m.text ?? ""), ts: String(m.ts ?? new Date().toISOString()),
       });
-      broadcastSseEvent(this.sseClients, event, recorded, onError, recorded.id);
+      broadcastSseEvent(this.sseClients, event, recorded, onError, this.webChatHistory.cursorOf(recorded));
       return;
     }
     broadcastSseEvent(this.sseClients, event, data, onError);

@@ -29,6 +29,8 @@
     if (!/^(https?:\/\/|mailto:)[^\s]+$/i.test(u)) return null;
     // A quote or an angle bracket is never part of a URL we link: such text stays text (it could only be an attempt).
     if (/&(?:quot|#39|lt|gt);/.test(u)) return null;
+    // A placeholder in a URL would be expanded into markup inside the attribute: never trust one there.
+    if (u.indexOf("\u0000") !== -1) return null;
     return u;
   }
 
@@ -39,7 +41,13 @@
   // Placeholders survive the later passes untouched (they contain no Markdown characters).
   function stash(store, html) { store.push(html); return "\u0000" + (store.length - 1) + "\u0000"; }
   function unstash(store, s) {
-    return s.replace(/\u0000(\d+)\u0000/g, function (_m, i) { return store[Number(i)]; });
+    // A stashed fragment can hold another placeholder (a `code` span inside a link label): expand until
+    // none is left. Every fragment is the renderer's own output, so this cannot introduce message markup;
+    // bounded so a malformed store cannot loop.
+    for (var pass = 0; pass < 4 && s.indexOf("\u0000") !== -1; pass++) {
+      s = s.replace(/\u0000(\d+)\u0000/g, function (_m, i) { var f = store[Number(i)]; return f === undefined ? "" : f; });
+    }
+    return s;
   }
 
   /** Inline Markdown over ALREADY-ESCAPED text. */
@@ -50,13 +58,18 @@
     // [label](url)
     s = s.replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, function (m, label, url) {
       var href = safeHref(url);
-      return href ? stash(store, link(href, label)) : m;
+      return href ? stash(store, link(href, emphasis(label))) : m;
     });
     // bare URLs
     s = s.replace(/(^|[\s(])((?:https?:\/\/)[^\s<]+[^\s<.,;:!?)\]'"&])/g, function (m, pre, url) {
       var href = safeHref(url);
       return href ? pre + stash(store, link(href, url)) : m;
     });
+    return emphasis(s);
+  }
+
+  /** Bold, strike-through and italics, over escaped text (a link's label gets them too). */
+  function emphasis(s) {
     s = s.replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
     s = s.replace(/~~([^~\n]+)~~/g, "<del>$1</del>");
     s = s.replace(/(^|[^*\w])\*([^*\s][^*\n]*?)\*(?![*\w])/g, "$1<em>$2</em>");
@@ -116,17 +129,24 @@
    * stream — and must show once.
    */
   function mergeMessages(existing, incoming, cap) {
-    var byId = {};
+    var seen = {};
     var out = [];
+    // Ids restart with every fleet process; the boot generation makes them an identity again.
+    function key(m) { return String(m.boot || "") + ":" + m.id; }
     function add(m) {
       if (!m || typeof m.id !== "number") return;
-      if (byId[m.id]) return;
-      byId[m.id] = true;
+      if (seen[key(m)]) return;
+      seen[key(m)] = true;
       out.push(m);
     }
     (existing || []).forEach(add);
     (incoming || []).forEach(add);
-    out.sort(function (a, b) { return a.id - b.id; });
+    // Within one boot the id is the order; across boots (a restart) the time is.
+    out.sort(function (a, b) {
+      if ((a.boot || "") === (b.boot || "")) return a.id - b.id;
+      var ta = String(a.ts || ""), tb = String(b.ts || "");
+      return ta < tb ? -1 : ta > tb ? 1 : 0;
+    });
     var limit = typeof cap === "number" && cap > 0 ? cap : 500;
     return out.length > limit ? out.slice(out.length - limit) : out;
   }
@@ -138,5 +158,22 @@
     return "send";
   }
 
-  return { renderMarkdown: renderMarkdown, escapeHtml: escapeHtml, mergeMessages: mergeMessages, composerKey: composerKey };
+  /**
+   * A send that failed: where does its text go? Back into the composer only if that composer is the same
+   * target's, still on screen and empty; otherwise it is kept aside for that target (never put into another
+   * target's composer, never over a draft someone is typing) and offered back when that chat is open.
+   */
+  function settleFailedSend(target, current, composerPresent, composerValue) {
+    return target === current && composerPresent && !composerValue ? "restore" : "keep";
+  }
+
+  /** "Put back" for a kept message: in front of whatever is being typed now, never replacing it. */
+  function putBack(failedText, draft) {
+    return draft ? failedText + "\n" + draft : failedText;
+  }
+
+  return {
+    renderMarkdown: renderMarkdown, escapeHtml: escapeHtml, mergeMessages: mergeMessages, composerKey: composerKey,
+    settleFailedSend: settleFailedSend, putBack: putBack,
+  };
 });
