@@ -46,6 +46,7 @@ import { t } from "./locale.js";
 import { MuseUsageRelay, clearMuseUsageSnapshot } from "./muse-usage-relay.js";
 import { deliveryContentDigest, type DaemonDeliveryPort, type DeliveryAttemptEvidence, type DurableSubmissionMode } from "./delivery-outbox.js";
 import { queueResumePolicyForAttempt } from "./delivery-queue-evidence.js";
+import { scanTranscriptForDeliveryMarker } from "./delivery-reconciliation.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -490,6 +491,18 @@ const POST_ENTER_PROOF_WINDOW_MS = 3_000;
 /** A final bounded observation before an ambiguous Codex submit can be classified. */
 const CODEX_LATE_PROOF_MS = 5_000;
 const POST_ENTER_PROOF_POLL_MS = 250;
+/**
+ * A readerless CLI's delivery is proven by its own transcript, which lags the pane by a flush. Only a delta that was
+ * read and carried no marker for this long is held against the delivery — a late flush must not raise a false ⚠️.
+ * Ten seconds is a chosen grace window: success markers arrive in about a second, and the bound keeps the failure
+ * path small — the fleet lane and the shared pump budget stay held until the verdict (Phase 2c "lane held until
+ * verdict", Option A #1207), so a lost paste blocks its lane for ~10 s. No flush-visibility claim is made here: a
+ * flush landing after the window still settles `uncertain`, and only a final-file scan (see the PR evidence) shows
+ * every recorded delivery did reach its transcript.
+ */
+const TRANSCRIPT_PROOF_WINDOW_MS = 10_000;
+const TRANSCRIPT_PROOF_POLL_MS = 1_000;
+const OUTPUT_EDGE_ONLY_EVIDENCE = "output-edge-only; submission-unverifiable";
 /** Attempts to read the pre-paste pane before a delivery gives up on a baseline. */
 const BASELINE_CAPTURE_ATTEMPTS = 3;
 const BASELINE_CAPTURE_RETRY_MS = 150;
@@ -673,6 +686,8 @@ type DeliveryVerdict = {
   durableBeginRejected?: boolean;
   /** #829: the caller's lifecycle fence went stale before anything was written. */
   fenced?: boolean;
+  /** Where this attempt's transcript stood before the paste (#758), for a delivery only the output edge vouches for. */
+  transcriptCheckpoint?: { backend: string; path: string; offset: number };
 };
 
 /**
@@ -1834,7 +1849,78 @@ export class Daemon extends EventEmitter {
       this.finishDurableDelivery(delivery, "delivered", "steer-accepted-marker-on-pane; input-row-unreadable");
       return;
     }
+    // A backend whose input row cannot be read: all that vouched for this delivery is that the pane printed something
+    // after Enter, which a redraw that wiped the paste satisfies too (#758). Its transcript can say more.
+    if (verdict.proof === "output-edge") {
+      const checkpoint = verdict.transcriptCheckpoint;
+      if (delivery && checkpoint && ["claude-code", "codex"].includes(checkpoint.backend)) {
+        void this.proveDeliveryFromTranscript(delivery, checkpoint);
+        return;
+      }
+      // No transcript to ask: nothing to hold against it and nothing to prove it with. Today's outcome, honestly labelled.
+      this.finishDurableDelivery(delivery, "delivered", OUTPUT_EDGE_ONLY_EVIDENCE);
+      return;
+    }
     this.finishDurableDelivery(delivery, "delivered", "positive submission proof");
+  }
+
+  /**
+   * Finish a delivery that only the output edge vouched for, by the delivery's own marker in the CLI's transcript (#758).
+   *
+   *  - marker found       → delivered (`transcript-marker`; `transcript-marker-queued` when the CLI has it queued, not yet read);
+   *  - delta read, no marker for the whole window → uncertain (`unverifiable-no-transcript-marker`) — the pane printed
+   *    something, yet the CLI never took the message in. Never a re-paste: the message may still land;
+   *  - transcript unreadable on the last look → today's outcome, labelled — there is nothing to hold against it.
+   *
+   * It runs after the paste lock is released, but the fleet lane and the shared pump budget stay held until the
+   * verdict settles the row (Phase 2c "lane held until verdict", Option A #1207): a success settles in about a
+   * second, a delivery whose marker never arrives holds them for the bounded proof window (see
+   * TRANSCRIPT_PROOF_WINDOW_MS). It never finishes a row that stop has handed to reconciliation; a pause or respawn
+   * only ends the wait, falling back to today's outcome.
+   */
+  private async proveDeliveryFromTranscript(
+    delivery: { deliveryId: string; attemptNo: number },
+    checkpoint: { backend: string; path: string; offset: number },
+  ): Promise<void> {
+    const spawn = this.spawnGeneration;
+    const fence = this.launchFenceEpoch;
+    let last: "no-match" | "unavailable" = "unavailable";
+    let outcome: "delivered" | "uncertain" = "delivered";
+    let evidence = OUTPUT_EDGE_ONLY_EVIDENCE;
+    try {
+      for (let polls = 0; polls <= TRANSCRIPT_PROOF_WINDOW_MS / TRANSCRIPT_PROOF_POLL_MS; polls++) {
+        if (this.deliveryWritesStopping) return; // reconciliation owns the row now
+        const found = await scanTranscriptForDeliveryMarker(checkpoint.path, checkpoint.offset, checkpoint.backend, delivery.deliveryId);
+        if (found === "user" || found === "queued") {
+          outcome = "delivered";
+          evidence = found === "user" ? "transcript-marker" : "transcript-marker-queued";
+          break;
+        }
+        last = found;
+        if (spawn !== this.spawnGeneration || fence !== this.launchFenceEpoch) { last = "unavailable"; break; }
+        await new Promise(r => setTimeout(r, TRANSCRIPT_PROOF_POLL_MS));
+      }
+      // Only a delta that was read on the last look and still lacks the marker is held against the delivery. A
+      // pause/freeze or respawn during the final sleep must end the wait with today's labelled outcome, not
+      // `uncertain`: re-check the same fixed epochs after the last await, before settling (#1207 P2).
+      if (spawn !== this.spawnGeneration || fence !== this.launchFenceEpoch) last = "unavailable";
+      if (last === "no-match" && evidence === OUTPUT_EDGE_ONLY_EVIDENCE) {
+        outcome = "uncertain";
+        evidence = "unverifiable-no-transcript-marker";
+      }
+    } catch (err) {
+      this.logger.debug({ err }, "Transcript proof of a delivery failed — keeping the output-edge outcome");
+    }
+    // The settlement itself can throw (e.g. the outbox store is unhealthy), and this runs on a detached `void`
+    // promise: an uncaught throw is an unhandled rejection, which the fleet restart path turns into a global fault.
+    // Settle observably and leave the row for reconciliation — never a false completion, never another paste (#1207 P2).
+    try {
+      if (this.deliveryWritesStopping) return;
+      this.finishDurableDelivery(delivery, outcome, evidence);
+    } catch (err) {
+      this.logger.error({ err, deliveryId: delivery.deliveryId, attemptNo: delivery.attemptNo, outcome, evidence },
+        "Durable delivery settlement failed — row left for reconciliation");
+    }
   }
 
   private deferDurableDelivery(meta: Record<string, string>, reason: string): void {
@@ -7040,6 +7126,13 @@ export class Daemon extends EventEmitter {
           return false;
         }
         verdict.durableBeginCommitted = true;
+        if (attemptEvidence.transcriptPath && attemptEvidence.transcriptOffset !== null) {
+          verdict.transcriptCheckpoint = {
+            backend: attemptEvidence.backend,
+            path: attemptEvidence.transcriptPath,
+            offset: attemptEvidence.transcriptOffset,
+          };
+        }
       }
       if (rawPaste) verdict.paneWriteStarted = true;
       // For raw commands the paste itself may alter the live composer. Treat a
@@ -7336,6 +7429,11 @@ export class Daemon extends EventEmitter {
         );
         if (becameBusy) {
           if (status) this.emit("message_confirmed", status); // ✅
+          // A backend whose input row cannot be read was confirmed by "the pane printed something after Enter" — which a
+          // redraw that wiped the paste also satisfies (#758). The outbox must not call that a submission proof.
+          // A steer keeps its pre-#758 settlement (steer-accepted / positive submission proof): routing it into the
+          // transcript-proof wait would hold a steer to `uncertain` whenever the CLI files no transcript marker (#1207 P2).
+          if (!rawPaste && !steer && !this.canProveSubmission()) verdict.proof = "output-edge";
         } else {
           const proof = this.backend?.isDeliveryInputReadyPane
             ? await this.lateCodexSubmissionProof(signature, pasteBaseline)

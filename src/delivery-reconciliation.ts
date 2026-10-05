@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { open, stat } from "node:fs/promises";
+import { open, stat, type FileHandle } from "node:fs/promises";
 import { join } from "node:path";
 import { getTmuxSession } from "./config.js";
 import type { Logger } from "./logger.js";
@@ -116,6 +116,22 @@ async function processHasExited(pid: number | null): Promise<boolean> {
   return false;
 }
 
+/**
+ * Read exactly `length` bytes from `offset`. A read may legally return fewer bytes than asked for, so one call is not
+ * "the delta": judging a prefix would call a marker that sits in the unread tail absent. Null — could not judge — when
+ * the file ends early or a read makes no progress.
+ */
+async function readFully(fh: FileHandle, offset: number, length: number): Promise<Buffer | null> {
+  const buffer = Buffer.alloc(length);
+  let done = 0;
+  while (done < length) {
+    const { bytesRead } = await fh.read(buffer, done, length - done, offset + done);
+    if (bytesRead <= 0) return null;
+    done += bytesRead;
+  }
+  return buffer;
+}
+
 async function readTranscriptDelta(candidate: DeliveryReconciliationCandidate): Promise<"matched" | "no-match" | "unavailable"> {
   const path = candidate.attempt.transcriptPath;
   const offset = candidate.attempt.transcriptOffset;
@@ -141,10 +157,10 @@ async function readTranscriptDelta(candidate: DeliveryReconciliationCandidate): 
     try {
       const length = size - offset;
       if (!length) return "no-match";
-      const buffer = Buffer.alloc(length);
-      const { bytesRead } = await fh.read(buffer, 0, length, offset);
+      const buffer = await readFully(fh, offset, length);
+      if (!buffer) return "unavailable";
       const found = transcriptDeltaHasDeliveryMarker(
-        buffer.toString("utf8", 0, bytesRead),
+        buffer.toString("utf8"),
         candidate.attempt.backend,
         candidate.deliveryId,
       );
@@ -195,18 +211,64 @@ function leadsWithMarker(text: string, backend: string, marker: string): boolean
   return !!wrapper && text.startsWith(marker, wrapper[0].length);
 }
 
-/** A unique marker counts only at the start of a persisted user-message body. */
-export function transcriptDeltaHasDeliveryMarker(rawDelta: string, backend: string, deliveryId: string): boolean {
+/**
+ * Where a delivery's marker turned up in a transcript delta: `user` — the CLI consumed it as a user message (the
+ * strongest signal); `queued` — Claude Code's queue-operation enqueue, i.e. the CLI accepted it into its input queue
+ * without having consumed it yet.
+ */
+export type TranscriptMarkerKind = "user" | "queued";
+
+export function transcriptDeltaDeliveryMarker(rawDelta: string, backend: string, deliveryId: string): TranscriptMarkerKind | null {
   const marker = ENTER_MARKER(deliveryId);
+  let queued = false;
   for (const line of rawDelta.split(/\r?\n/)) {
     if (!line.trim()) continue;
     try {
       const entry = JSON.parse(line) as unknown;
       const firstUserText = userTextsFromEntry(entry, backend)[0];
-      if (firstUserText !== undefined && leadsWithMarker(firstUserText, backend, marker)) return true;
+      if (firstUserText !== undefined && leadsWithMarker(firstUserText, backend, marker)) return "user";
+      const value = entry as Record<string, unknown> | null;
+      if (backend === "claude-code" && value?.type === "queue-operation" && value.operation === "enqueue"
+        && typeof value.content === "string" && leadsWithMarker(value.content, backend, marker)) queued = true;
     } catch { /* incomplete/malformed JSONL is not proof */ }
   }
-  return false;
+  return queued ? "queued" : null;
+}
+
+/** A unique marker counts only at the start of a persisted user-message body. */
+export function transcriptDeltaHasDeliveryMarker(rawDelta: string, backend: string, deliveryId: string): boolean {
+  return transcriptDeltaDeliveryMarker(rawDelta, backend, deliveryId) === "user";
+}
+
+/**
+ * One look at the transcript past a checkpoint — no waiting for the file to settle, for a caller that polls.
+ * `unavailable` is "could not judge" (no file, rotated or truncated below the checkpoint, unreadable, oversized),
+ * never "absent": only `no-match` means the delta was read and the delivery is not in it.
+ */
+export async function scanTranscriptForDeliveryMarker(
+  path: string,
+  offset: number,
+  backend: string,
+  deliveryId: string,
+): Promise<TranscriptMarkerKind | "no-match" | "unavailable"> {
+  if (!["claude-code", "codex"].includes(backend)) return "unavailable";
+  let size: number;
+  try { size = (await stat(path)).size; }
+  catch { return "unavailable"; }
+  if (size < offset || size - offset > TRANSCRIPT_MAX_DELTA_BYTES) return "unavailable";
+  if (size === offset) return "no-match";
+  let fh;
+  try { fh = await open(path, "r"); }
+  catch { return "unavailable"; }
+  try {
+    const buffer = await readFully(fh, offset, size - offset);
+    if (!buffer) return "unavailable";
+    return transcriptDeltaDeliveryMarker(buffer.toString("utf8"), backend, deliveryId) ?? "no-match";
+  } catch {
+    return "unavailable";
+  } finally {
+    await fh.close().catch(() => {});
+  }
 }
 
 /**
