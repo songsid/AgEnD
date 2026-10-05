@@ -81,6 +81,7 @@
 - **反覆當機後，重新啟動現在會遵循「不要續接」的復原指示（#835）。**
   daemon 先讀取復原指示再清除；尚未讀取就失敗或被取代的啟動會保留它。
   正常啟動仍照原本方式續接對話。
+- **帶有原生 `Goal achieved (…)` 狀態的 Codex footer 又能被辨識了（#1190）。** Codex 0.159.2 會在 context 項目和警告之間畫出 Goal 狀態（`Context 32% left    Goal achieved (1h 6m)    ⚠ 1 warning · f2 to view`）；「Context 開頭」的 footer 文法沒有它的位置，於是閒置 composer 證明不了、stranded-input 復原用盡，送給該 instance 的訊息失敗（`Idle footer not recognised` / `retries exhausted`）。現在 context 項目之後、以欄位間距隔開的內容一律視為 footer 的一部分，不論 Codex 叫它什麼、用什麼語言（`Goal achieved (1h 6m)`、`Goal usage: 90 seconds.`、`Goal complete; time used: 90 seconds.`、`Goal 사용량: 45초.`，或尚未出現的新欄位）；Goal 欄位即使只隔一個空格也能辨識——不必再加 `session-id` 狀態項目。你自己設定的 `tui.status_line` 也套用同一條規則（`model · Context 46% left    Goal …`），其 readiness pattern 由同一份文法產生。草稿或對話內容中剛好以「Context 32% left」開頭的行仍不算 footer。
 - **macOS 不會再把低 free RAM 誤判成記憶體壓力。** 改用有界非同步的 `vm_stat`／`sysctl` 估計可回收 RAM 與讀取 swap；首次或快取過期的啟動最多等兩秒，共用 30 秒快取。
   Mac 量不到時顯示 unknown，不警告也不降低啟動速度；Linux 行為不變。估計可能低估可回收 RAM；Mac 探測失敗期間暫無記憶體壓力保護。
   已在 Linux 用真實輸出 fixture 與 stub 測試，待 macOS 使用者 live 驗。需要 rollback 時可只退原生 probe 的第二個 commit，保留 unknown 放行政策。
