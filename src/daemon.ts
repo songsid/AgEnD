@@ -2148,7 +2148,11 @@ export class Daemon extends EventEmitter {
       // keeps the writer attached after size resets.
       const outputLog = join(this.instanceDir, "output.log");
       await rotateLogIfNeededAsync(outputLog);
-      await this.tmux.pipeOutput(outputLog).catch(() => {});
+      // #1206: an attach failure here used to be swallowed, leaving the
+      // instance with no log feed and no signal. Warn like the wake path.
+      await this.tmux.pipeOutput(outputLog).catch(err => {
+        this.logger.warn({ err }, "Failed to attach pipe-pane — instance output log will be missing");
+      });
 
       // 4. Transcript monitor. claude-code is handled inside the monitor
       // (statusline transcript); codex/kiro/opencode read their CLI's own
