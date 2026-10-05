@@ -87,6 +87,11 @@
   daemon 先讀取復原指示再清除；尚未讀取就失敗或被取代的啟動會保留它。
   正常啟動仍照原本方式續接對話。
 - **帶有原生 `Goal achieved (…)` 狀態的 Codex footer 又能被辨識了（#1190）。** Codex 0.159.2 會在 context 項目和警告之間畫出 Goal 狀態（`Context 32% left    Goal achieved (1h 6m)    ⚠ 1 warning · f2 to view`）；「Context 開頭」的 footer 文法沒有它的位置，於是閒置 composer 證明不了、stranded-input 復原用盡，送給該 instance 的訊息失敗（`Idle footer not recognised` / `retries exhausted`）。現在 context 項目之後、以欄位間距隔開的內容一律視為 footer 的一部分，不論 Codex 叫它什麼、用什麼語言（`Goal achieved (1h 6m)`、`Goal usage: 90 seconds.`、`Goal complete; time used: 90 seconds.`、`Goal 사용량: 45초.`，或尚未出現的新欄位）；Goal 欄位即使只隔一個空格也能辨識——不必再加 `session-id` 狀態項目。你自己設定的 `tui.status_line` 也套用同一條規則（`model · Context 46% left    Goal …`），其 readiness pattern 由同一份文法產生。草稿或對話內容中剛好以「Context 32% left」開頭的行仍不算 footer。
+- **muse：取消之後的下一則訊息不再黏到被取消的那則後面（#829）。** 取消 muse 的回合時，muse 會把被中斷的 prompt 放回輸入框，
+  而下一則投遞原本會直接貼在它後面，兩則被當成同一則送出，被取消的工作又跑一次。現在 AgEnD 在貼上前會先讀 muse 的輸入框，
+  用 muse 自己的刪除鍵一次清一列、每次清完都確認畫面。只清「確實是 AgEnD 最近貼給同一個 CLI process 的內容」——逐字相同、
+  換行只出現在 muse 自己折行的位置；只是長得像 AgEnD 訊息不算，看不到內容的 `[Pasted Content N chars]` 一律不清。其他內容一律不動並停止清除；清不乾淨或讀不到畫面也一樣——
+  這次投遞失敗、可重試，絕不貼在原有文字後面。清除途中遇到停止、取消或重啟，就不再送任何東西。其他 backend 不會多送任何按鍵。
 - **macOS 不會再把低 free RAM 誤判成記憶體壓力。** 改用有界非同步的 `vm_stat`／`sysctl` 估計可回收 RAM 與讀取 swap；首次或快取過期的啟動最多等兩秒，共用 30 秒快取。
   Mac 量不到時顯示 unknown，不警告也不降低啟動速度；Linux 行為不變。估計可能低估可回收 RAM；Mac 探測失敗期間暫無記憶體壓力保護。
   已在 Linux 用真實輸出 fixture 與 stub 測試，待 macOS 使用者 live 驗。需要 rollback 時可只退原生 probe 的第二個 commit，保留 unknown 放行政策。

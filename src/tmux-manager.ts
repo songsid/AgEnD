@@ -3,6 +3,8 @@ import { promisify } from "node:util";
 import type { TerminalConfig } from "./types.js";
 
 const exec = promisify(execFile);
+/** Keys sendKeySequence may send: cursor moves and deletions inside an input line. */
+const EDITING_KEYS: ReadonlySet<string> = new Set(["C-a", "C-e", "C-u", "C-k", "BSpace", "DC", "Home", "End", "Left", "Right"]);
 
 /** A load-buffer write can transiently fail under fleet-wide fd/pipe pressure. */
 const LOAD_BUFFER_MAX_ATTEMPTS = 3;
@@ -432,6 +434,20 @@ export class TmuxManager {
   async sendKeys(text: string): Promise<boolean> {
     try {
       await exec("tmux", TmuxManager.tmuxArgs(["send-keys", "-l", "-t", `${this.sessionName}:${this.windowId}`, text]));
+      return true;
+    } catch { return false; }
+  }
+
+  /**
+   * Several editing keys in ONE send-keys call, so they reach the CLI in order
+   * with nothing interleaved (#829: emptying an input box). Only the keys in
+   * EDITING_KEYS: no text, and nothing that submits, cancels or quits (Enter,
+   * Escape, C-c) — those go through sendSpecialKey, one deliberate key at a time.
+   */
+  async sendKeySequence(keys: readonly string[]): Promise<boolean> {
+    if (keys.length === 0 || !keys.every(key => EDITING_KEYS.has(key))) return false;
+    try {
+      await exec("tmux", TmuxManager.tmuxArgs(["send-keys", "-t", `${this.sessionName}:${this.windowId}`, ...keys]));
       return true;
     } catch { return false; }
   }

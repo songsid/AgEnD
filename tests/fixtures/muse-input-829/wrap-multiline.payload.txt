@@ -1,0 +1,4 @@
+[from:leader] line one
+second line is long enough that it has to wrap onto another row in the box ok
+
+after blank
