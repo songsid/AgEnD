@@ -243,7 +243,9 @@ describe("a readerless backend's idle delivery is proven by its transcript, not 
   it("a stop while it waits leaves the row to restart reconciliation instead of finishing it", async () => {
     const h = await deliver();
     await h.begun();
-    await h.pump(10);
+    // Trip on the 2nd no-match, early in the window — under the ~10 s window a late fence proves nothing.
+    for (let step = 0; step < 60 && lookHooks.done < 2; step++) await h.pump(1);
+    expect(h.state()).toBe("submission_started");
     h.daemon.fenceDeliveryWritesForStop();
     appendFileSync(h.transcript, userEntry(h.deliveryId));
     await h.pump(80);
@@ -253,7 +255,7 @@ describe("a readerless backend's idle delivery is proven by its transcript, not 
   it("…and it stops looking at the transcript", async () => {
     const h = await deliver();
     await h.begun();
-    await h.pump(10);
+    for (let step = 0; step < 60 && lookHooks.done < 2; step++) await h.pump(1);
     h.daemon.fenceDeliveryWritesForStop();
     await h.pump(2);
     const settled = lookHooks.looks;
@@ -274,11 +276,36 @@ describe("a readerless backend's idle delivery is proven by its transcript, not 
   it("a respawn while it waits ends the wait with today's outcome, labelled, rather than leaving the row open", async () => {
     const h = await deliver();
     await h.begun();
-    await h.pump(10);
+    // Trip on the 2nd no-match: the wait must exit at the next look, not poll to the end of the window.
+    for (let step = 0; step < 60 && lookHooks.done < 2; step++) await h.pump(1);
+    expect(h.state()).toBe("submission_started");
     h.daemon.spawnGeneration++;
-    await h.pump(400, h.finished);
+    await h.pump(5, h.finished);
     expect(h.state()).toBe("delivered");
     expect(h.evidence()).toBe("output-edge-only; submission-unverifiable");
+    expect(h.notices()).toBe(0);
+    // …and it stops looking: no further transcript reads after the early exit.
+    const settled = lookHooks.looks;
+    await h.pump(40);
+    expect(lookHooks.looks).toBe(settled);
+  });
+
+  it("a marker that arrives only after the respawn exit is not claimed as this delivery's proof", async () => {
+    const h = await deliver();
+    await h.begun();
+    for (let step = 0; step < 60 && lookHooks.done < 2; step++) await h.pump(1);
+    expect(h.state()).toBe("submission_started");
+    h.daemon.spawnGeneration++;
+    await h.pump(3, h.finished);
+    // The wait exited on the tripped epoch before any marker existed…
+    expect(h.state()).toBe("delivered");
+    expect(h.evidence()).toBe("output-edge-only; submission-unverifiable");
+    // …so a marker filed afterwards belongs to the next generation, not this verdict.
+    appendFileSync(h.transcript, userEntry(h.deliveryId));
+    await h.pump(40, h.finished);
+    expect(h.state()).toBe("delivered");
+    expect(h.evidence()).toBe("output-edge-only; submission-unverifiable");
+    expect(h.notices()).toBe(0);
   });
 
   it("a respawn during the final sleep still ends the wait with today's outcome, not uncertain", async () => {
@@ -345,7 +372,7 @@ describe("a readerless backend's idle delivery is proven by its transcript, not 
     expect(h.notices()).toBe(1);
   });
 
-  it("the pane lock is free while the row waits for its transcript, so the next delivery is not held up", async () => {
+  it("the pane lock is free while the row waits for its transcript", async () => {
     const h = await deliver();
     await h.pump(5);
     expect(h.state()).toBe("submission_started");

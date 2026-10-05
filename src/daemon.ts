@@ -494,9 +494,11 @@ const POST_ENTER_PROOF_POLL_MS = 250;
 /**
  * A readerless CLI's delivery is proven by its own transcript, which lags the pane by a flush. Only a delta that was
  * read and carried no marker for this long is held against the delivery — a late flush must not raise a false ⚠️.
- * Ten seconds: success markers arrive in about a second, so this is an order of magnitude past the observed worst
- * case, and it bounds the failure path — the fleet lane and the shared pump budget stay held until the verdict
- * (Phase 2c "lane held until verdict", Option A #1207), so a lost paste blocks its lane for ~10 s, not 60 s.
+ * Ten seconds is a chosen grace window: success markers arrive in about a second, and the bound keeps the failure
+ * path small — the fleet lane and the shared pump budget stay held until the verdict (Phase 2c "lane held until
+ * verdict", Option A #1207), so a lost paste blocks its lane for ~10 s. No flush-visibility claim is made here: a
+ * flush landing after the window still settles `uncertain`, and only a final-file scan (see the PR evidence) shows
+ * every recorded delivery did reach its transcript.
  */
 const TRANSCRIPT_PROOF_WINDOW_MS = 10_000;
 const TRANSCRIPT_PROOF_POLL_MS = 1_000;
