@@ -319,6 +319,28 @@ describe("native prompt observation through real Daemon / PaneStateMachine", () 
     const n = h.d.tmux.capturePane.mock.calls.length; await vi.advanceTimersByTimeAsync(14_999);
     expect(h.d.tmux.capturePane).toHaveBeenCalledTimes(n);
   });
+  it("a changing request during confirmation cannot create a permanent 500ms poll", async () => {
+    const h = harness(); let reads = 0;
+    h.d.tmux.capturePane.mockImplementation(async () => PERMISSION.replaceAll("agend-safe-probe", `request-${++reads}`));
+    await h.capture(); await vi.advanceTimersByTimeAsync(500);
+    expect(h.d.getInteractionSnapshot().phase).toBe("candidate");
+    expect(h.d.interactionConfirmationTimer).toBeNull();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(h.d.tmux.capturePane).toHaveBeenCalledTimes(2);
+  });
+  it.each(["listener", "broadcast"])("a failing interaction %s cannot interrupt ordinary execution-state updates", async failure => {
+    const h = harness("WORKING", []);
+    h.d.instanceState = "idle";
+    if (failure === "listener") h.d.on("instance_interaction", () => { throw new Error("observer listener failed"); });
+    else h.d.ipcServer.broadcast.mockImplementation((message: any) => {
+      if (message.type === "instance_interaction") throw new Error("observer broadcast failed");
+    });
+    await expect(h.capture()).resolves.toBeUndefined();
+    expect(h.d.getInstanceState()).toBe("working");
+    h.screen.pane = READY; await vi.advanceTimersByTimeAsync(h.d.instanceStateIdleDebounceMs); await h.capture();
+    expect(h.d.getInstanceState()).toBe("idle");
+    expect(h.d.getInstanceStateSnapshot().state).toBe("idle");
+  });
   it("suspected terminal input does not suppress the real stuck/hang path", async () => {
     const h = harness("Password:", []); await h.capture();
     await vi.advanceTimersByTimeAsync(600_001); await h.capture();

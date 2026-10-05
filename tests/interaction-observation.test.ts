@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { InteractionObservation, presentationState, interactionSummary, INTERACTION_STALE_MS } from "../src/interaction-observation.js";
+import { InteractionObservation, presentationState, interactionSummary, interactionCategory, INTERACTION_STALE_MS } from "../src/interaction-observation.js";
 import { setLocale, t } from "../src/locale.js";
 import type { InteractionOwner } from "../src/backend/types.js";
 
@@ -110,5 +110,13 @@ describe("the single interaction observation", () => {
     }
     expect(t("inst.interaction_parked", "w", "permission")).not.toContain("inst.interaction_parked");
     expect(t("fleet.interaction_parked", "w", "permission")).not.toContain("fleet.interaction_parked");
+  });
+  it.each(["en", "zh-TW"] as const)("%s incident labels retain static backend names without arbitrary values", locale => {
+    setLocale(locale);
+    const category = t("interactive.kind.dialog");
+    expect(interactionCategory("dialog", "kiro-cli")).toBe(`Kiro · ${category}`);
+    for (const backend of ["__proto__", "constructor", "https://secret.invalid/token", undefined]) {
+      expect(interactionCategory("dialog", backend)).toBe(category);
+    }
   });
 });

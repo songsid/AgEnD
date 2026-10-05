@@ -4054,8 +4054,17 @@ export class Daemon extends EventEmitter {
 
   private publishInteraction(): void {
     const interaction = this.getInteractionSnapshot();
-    this.emit("instance_interaction", { name: this.name, interaction });
-    this.ipcServer?.broadcast({ type: "instance_interaction", instanceName: this.name, interaction });
+    // Presentation telemetry must not interrupt the execution-state/hold path.
+    try {
+      this.emit("instance_interaction", { name: this.name, interaction });
+    } catch (err) {
+      this.logger.debug({ err }, "Interaction listener failed");
+    }
+    try {
+      this.ipcServer?.broadcast({ type: "instance_interaction", instanceName: this.name, interaction });
+    } catch (err) {
+      this.logger.debug({ err }, "Interaction broadcast failed");
+    }
   }
 
   private clearInteractionConfirmation(): void {
@@ -4093,7 +4102,7 @@ export class Daemon extends EventEmitter {
     return evidence ? { ...evidence, identity: createHash("sha256").update(evidence.identity).digest("hex") } : null;
   }
 
-  private observeInteractionPane(pane: string, observedAt: number, monotonicAt: number, dialogs = this.backend?.getRuntimeDialogs?.() ?? [], order = ++this.interactionCaptureSerial): boolean {
+  private observeInteractionPane(pane: string, observedAt: number, monotonicAt: number, dialogs = this.backend?.getRuntimeDialogs?.() ?? [], order = ++this.interactionCaptureSerial, allowConfirmation = true): boolean {
     const owner = this.interactionOwner();
     const evidence = this.interactionEvidence(pane, dialogs);
     if (!this.interactionObservation.observe(evidence, owner,
@@ -4106,9 +4115,10 @@ export class Daemon extends EventEmitter {
       this.clearInteractionConfirmation();
       return true;
     }
-    // One bounded confirmation read per candidate, coalesced by the existing
-    // capture single-flight. No permanent fast poll and no keyboard actions.
-    if (!this.interactionConfirmationTimer) {
+    // One bounded extra read per ordinary observation. A confirmation that
+    // finds a changed request waits for the existing monitor's next capture;
+    // it cannot recursively create a permanent fast poll.
+    if (allowConfirmation && !this.interactionConfirmationTimer) {
       this.interactionConfirmationTimer = setTimeout(() => {
         this.interactionConfirmationTimer = null;
         if (!sameInteractionOwner(owner, this.interactionOwner()) || this.runtimeMonitorsFrozen || this.spawning) return;
@@ -4997,7 +5007,8 @@ export class Daemon extends EventEmitter {
       }
 
       if (!currentDeliveryCapture() || !sameInteractionOwner(interactionOwner, this.interactionOwner())) return;
-      if (!this.observeInteractionPane(pane, captureStartedAt, interactionCaptureAt, undefined, interactionCaptureOrder)) return;
+      if (!this.observeInteractionPane(pane, captureStartedAt, interactionCaptureAt, undefined, interactionCaptureOrder,
+        reason !== "interaction_confirmation")) return;
       this.updateInputBlockedState(pane);
 
       // Advance the shared 10s timer only for a fresh capture of this launch.
@@ -6579,7 +6590,7 @@ export class Daemon extends EventEmitter {
       this.logger.warn({ dialog: dialog.description, parkedForMs: Date.now() - this.dialogParkedSince },
         "CLI dialog is still on screen — not auto-answering, reporting for a human");
       this.emit("dialog_parked", { name: this.name, description: dialog.description, holdOnly: dialog.holdOnly === true,
-        ...(episode !== null && interaction.kind ? { kind: interaction.kind, episode } : {}) });
+        ...(episode !== null && interaction.kind ? { kind: interaction.kind, episode, backend: this.config.backend ?? "claude-code" } : {}) });
     }
   }
 

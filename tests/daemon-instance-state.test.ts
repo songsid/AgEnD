@@ -1083,7 +1083,7 @@ describe("Daemon event-driven pane monitor", () => {
       { child: () => logger } as any);
     (daemon as any).tmux = tmux;
     const send = vi.fn();
-    (daemon as any).ipcServer = { send };
+    (daemon as any).ipcServer = { send, broadcast: vi.fn() };
 
     try {
       (daemon as any).startInstanceStateMonitor();
@@ -1092,6 +1092,9 @@ describe("Daemon event-driven pane monitor", () => {
 
       // No control-mode output arrives for this redraw, which is the startup
       // race behind #520. A cache-only query would still answer "working".
+      // Let the configured quiet window elapse; both captures must not share
+      // the exact frozen timestamp of the startup working observation.
+      await vi.advanceTimersByTimeAsync(10);
       pane = "READY";
       await (daemon as any).respondToInstanceStateQuery(
         { requestId: "reply-grace-1", refresh: true },

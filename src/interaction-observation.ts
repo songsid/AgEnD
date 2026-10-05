@@ -119,6 +119,17 @@ export function presentationState(
     && !interaction.stale && !interaction.suspected ? "awaiting_input" : execution;
 }
 
+const BACKEND_LABELS: Record<string, string> = {
+  "claude-code": "Claude Code", codex: "Codex", "kiro-cli": "Kiro",
+  grok: "Grok", muse: "Muse", antigravity: "Antigravity", opencode: "OpenCode",
+};
+
+/** Incident labels are code-owned; never interpolate a pane or arbitrary backend value. */
+export function interactionCategory(kind: InteractionKind, backend?: string): string {
+  const category = t(`interactive.kind.${kind}`);
+  return backend && Object.hasOwn(BACKEND_LABELS, backend) ? `${BACKEND_LABELS[backend]} · ${category}` : category;
+}
+
 /** Human text contains only a code-owned category and an observation age. */
 export function interactionSummary(interaction: InteractionSnapshot | null): string | null {
   if (!interaction?.kind) return null;
