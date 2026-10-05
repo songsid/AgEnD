@@ -22,7 +22,7 @@ import { ContextGuardian } from "./context-guardian.js";
 import { IpcServer } from "./channel/ipc-bridge.js";
 import { daemonBudgetMs } from "./channel/ipc-timeouts.js";
 import { MessageBus } from "./channel/message-bus.js";
-import type { CliBackend, CliBackendConfig, ErrorPattern, InputUnavailableTransient, InstanceState, InstanceStateSnapshot, RuntimeDialog, StartupDialog } from "./backend/types.js";
+import type { CliBackend, CliBackendConfig, ErrorPattern, InputDraft, InputUnavailableTransient, InstanceState, InstanceStateSnapshot, RuntimeDialog, StartupDialog } from "./backend/types.js";
 import { shellQuote, UnsupportedCliError } from "./backend/types.js";
 import type { ChannelAdapter, InboundMessage } from "./channel/types.js";
 import { getTmuxSession } from "./config.js";
@@ -648,6 +648,12 @@ const INPUT_TRANSIENT_WAIT_MS = 10 * 60_000;
 const INPUT_TRANSIENT_POLL_MS = 250;
 /** Max "stranded text → submit → wait for prompt → re-check" rounds per delivery; each may send one recovery Enter. */
 const STRANDED_INPUT_MAX_ROUNDS = 3;
+/** #829: most clearing rounds for a restored draft (one row each), and how long one round may take to show. */
+const INPUT_RESIDUE_MAX_ROUNDS = 60;
+const INPUT_RESIDUE_ROUND_WAIT_MS = 1_000;
+const INPUT_RESIDUE_POLL_MS = 100;
+/** #829: how many of the latest pastes can prove a draft is AgEnD's own. */
+const RECENT_PASTES_KEPT = 8;
 
 /** One delivery's answer to "did this reach a verdict?". Created per call, never shared. */
 type DurableDeliveryAttempt = {
@@ -665,6 +671,8 @@ type DeliveryVerdict = {
   durableAttempt?: boolean;
   durableBeginCommitted?: boolean;
   durableBeginRejected?: boolean;
+  /** #829: the caller's lifecycle fence went stale before anything was written. */
+  fenced?: boolean;
 };
 
 /**
@@ -1391,6 +1399,8 @@ export class Daemon extends EventEmitter {
    *  comes from. See PaneWriteLock for why interleaving is destructive. */
   private readonly paneWriteLock = new PaneWriteLock();
   private deliveryWritesStopping = false;
+  /** #829: the latest pastes, by spawn generation (see ownedInputDraft). */
+  private recentPastes: Array<{ generation: number; text: string }> = [];
   private pendingInstructionsUpdate: string | undefined;
   private pendingInstructionsNotice = false;
   // Whether the warmup steering-reload notice should be injected after spawn.
@@ -5721,6 +5731,7 @@ export class Daemon extends EventEmitter {
     // this spawn generation. A spawn that starts afterwards is detected inside
     // the critical section, where this delivery backs out and redoes itself.
     const settleGeneration = this.spawnGeneration;
+    const settleFence = this.launchFenceEpoch;
     if (cancelled()) return false;
     if (this.refuseFatalStartupDelivery(verdict, status)) return false;
 
@@ -5838,7 +5849,24 @@ export class Daemon extends EventEmitter {
           if (probe.state !== "clear") return "dialog";
         }
         if (!(await this.hasPositiveDeliveryInput())) return "dialog";
-        return this.writeMessageToPane(
+        // #829: a CLI that restores a cancelled prompt into its input box would
+        // have this message pasted onto it and both submitted as one. Clear it
+        // first, or do not write at all. From here every await is fenced: a
+        // cancel, stop, freeze or spawn ends this attempt unwritten.
+        // The CLI process is its spawn generation; a recovered window id is the
+        // same process, a pause/stop/respawn is not (launchFenceEpoch moves even
+        // when a failed pause resumes the monitors).
+        const writeCurrent = () => !cancelled()
+          && !this.deliveryWritesStopping
+          && !this.runtimeMonitorsFrozen
+          && !this.spawning
+          && settleGeneration === this.spawnGeneration
+          && settleFence === this.launchFenceEpoch;
+        const stale = () => (this.spawning || settleGeneration !== this.spawnGeneration ? "spawn-started" as const : false);
+        const residue = await this.clearRestoredInputDraft(handingOffToNativeQueue, writeCurrent);
+        if (residue === "stale") return stale();
+        if (residue !== "clear") return this.failDelivery(verdict, status, "input-residue", residue);
+        const written = await this.writeMessageToPane(
           formatted,
           windowId,
           handingOffToNativeQueue,
@@ -5847,7 +5875,10 @@ export class Daemon extends EventEmitter {
           verdict,
           opts?.durableAttempt,
           opts?.steer === true,
+          writeCurrent,
         );
+        // Fenced before its first write: not attempted — redo after a spawn, else drop without a ❌.
+        return written === false && verdict.fenced ? stale() : written;
       });
       if (outcome === "spawn-started") {
         // The pane changed under this delivery: its queued paste must not land
@@ -6571,6 +6602,105 @@ export class Daemon extends EventEmitter {
    * else submitted it); "failed" = the Enter could not be sent (the delivery
    * must fail rather than paste on top of the stranded text).
    */
+  /** #829: remember what this pane generation was given, so a draft can be proven to be ours. */
+  /**
+   * #829: remember what was pasted, under the spawn generation it was written
+   * to — fixed by the caller BEFORE its paste await, so a write that lands
+   * while the CLI is replaced is never credited to the replacement.
+   */
+  private rememberPaste(text: string, generation: number): void {
+    this.recentPastes.push({ generation, text });
+    if (this.recentPastes.length > RECENT_PASTES_KEPT) this.recentPastes.splice(0, this.recentPastes.length - RECENT_PASTES_KEPT);
+  }
+
+  /**
+   * #829: whether the input box shows one of this generation's own pastes —
+   * exactly as the backend draws it, wrapping included (inputDraftShows). A
+   * marker that looks like AgEnD's, a collapsed paste whose content cannot be
+   * seen, or text that differs only in spacing proves nothing.
+   */
+  private ownsInputDraft(draft: InputDraft): boolean {
+    const shows = this.backend?.inputDraftShows;
+    if (!shows) return false;
+    return this.recentPastes.some(p => p.generation === this.spawnGeneration && shows.call(this.backend, draft, p.text));
+  }
+
+  /**
+   * #829: empty the CLI's input box of a draft the CLI put back there itself
+   * (muse restores a cancelled prompt) before a delivery is pasted. Only for a
+   * backend that can read its box and names the keys that clear it; every other
+   * backend is untouched.
+   *
+   * Only a draft that is provably one of this pane's own pastes is cleared, one
+   * line per round, and every round must leave the first or last rows of what
+   * was there — anything else in the box is somebody's typing and stops the
+   * clearing. `current` is the caller's fixed fence (cancel, stop, freeze,
+   * pause, spawn): it is asked after every await, and a stale answer means
+   * nothing more is sent. A capture that fails, a box that does not empty or a
+   * draft that is not ours stops the delivery; it is never pasted onto.
+   */
+  private async clearRestoredInputDraft(
+    handingOffToNativeQueue: boolean,
+    current: () => boolean,
+  ): Promise<"clear" | "stale" | "foreign-draft" | "not-cleared" | "unreadable"> {
+    const backend = this.backend;
+    const tmux = this.tmux;
+    const keys = backend?.getClearInputKeys?.();
+    if (!backend?.inputDraft || !keys?.length || handingOffToNativeQueue || !tmux) return "clear";
+    // undefined: the capture itself failed. null: read, but not a layout the backend knows.
+    const read = async (): Promise<InputDraft | null | undefined> => {
+      let pane: string;
+      try { pane = await tmux.capturePane(); } catch { return undefined; }
+      return backend.inputDraft!(pane);
+    };
+    const first = await read();
+    if (!current()) return "stale";
+    if (first === undefined) {
+      this.logger.warn("Could not read the input box before this delivery — not writing it");
+      return "unreadable";
+    }
+    // A screen the backend does not recognise keeps today's behaviour; the
+    // readiness checks before this one decide whether it is writable at all.
+    if (first === null || first.rows.length === 0) return "clear";
+    if (!this.ownsInputDraft(first)) {
+      this.logger.warn({ rows: first.rows.length }, "The input box holds text AgEnD did not put there — not clearing it, and not writing this delivery onto it");
+      return "foreign-draft";
+    }
+    const original = first.rows;
+    // A round removes whole lines from one end: what is left is the original's
+    // first or last rows, unchanged.
+    const remainderOk = (rows: readonly string[]): boolean => rows.length <= original.length
+      && (rows.every((r, k) => r === original[k]) || rows.every((r, k) => r === original[original.length - rows.length + k]));
+    const same = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((r, k) => r === b[k]);
+    const rounds = Math.min(INPUT_RESIDUE_MAX_ROUNDS, original.length + 3);
+    this.logger.info({ rows: original.length }, "Clearing a restored draft from the input box before this delivery");
+    // `current` is asked after every await; between one of those answers and
+    // the next key there is no await.
+    let rows = original;
+    for (let round = 0; round < rounds; round++) {
+      const before = rows;
+      const sent = await tmux.sendKeySequence(keys);
+      if (!current()) return "stale";
+      if (!sent) return "not-cleared";
+      const deadline = Date.now() + INPUT_RESIDUE_ROUND_WAIT_MS;
+      let next: InputDraft | null | undefined;
+      do {
+        await new Promise(r => setTimeout(r, INPUT_RESIDUE_POLL_MS));
+        next = await read();
+        if (!current()) return "stale";
+      } while (next && next.rows.length > 0 && same(next.rows, before) && Date.now() < deadline);
+      if (!next) return "not-cleared";
+      if (next.rows.length === 0) return "clear";
+      if (!remainderOk(next.rows)) {
+        this.logger.warn({ rows: next.rows.length }, "The input box changed to text AgEnD did not put there — stopped clearing, not writing this delivery");
+        return "foreign-draft";
+      }
+      rows = next.rows;
+    }
+    this.logger.error({ rows: rows.length }, "The input box did not empty — not writing this delivery onto it");
+    return "not-cleared";
+  }
+
   private async submitStrandedInputIfAny(windowId: string): Promise<"idle" | "submitted" | "busy" | "failed"> {
     if (!this.tmux || !this.backend) return "idle";
     const prompt = this.backend.getBottomReadyPattern?.();
@@ -6864,6 +6994,9 @@ export class Daemon extends EventEmitter {
     verdict: DeliveryVerdict = { reached: false },
     durableAttempt?: DurableDeliveryAttempt,
     steer = false,
+    // #829: the caller's fence, asked once more after the last await before the
+    // first side effect. Stale means unwritten: false, with no failure verdict.
+    stillCurrent?: () => boolean,
   ): Promise<boolean | KiroPendingDelivery> {
     const signature = this.submissionSignature(formatted, submissionId);
     const rawPaste = durableAttempt?.submissionMode === "raw_paste";
@@ -6879,6 +7012,9 @@ export class Daemon extends EventEmitter {
       // Read the pane BEFORE writing to it, so the submission check can require
       // evidence this paste ADDED rather than evidence that was already there.
       const pasteBaseline = await this.capturePaneEvidence(signature);
+      // Every attempt, retries included: a stop or respawn during a recovery wait ends it unwritten.
+      // After a durable begin, the caller's abort path owns the row; only an attempt with no begin may be redone.
+      if (stillCurrent && !stillCurrent()) { verdict.fenced = !verdict.durableBeginCommitted; return false; }
       // Readiness, idle-gate, dialog, spawn and pane-lock waits have all ended.
       // Commit the submission fence at the last possible point before the
       // first side effect; a crash during those waits remains safely replayable.
@@ -6896,6 +7032,7 @@ export class Daemon extends EventEmitter {
           pastedContentSha256: durableAttempt.contentSha256 ?? null,
           pastedBytesSha256: deliveryContentDigest(formatted),
         };
+        if (stillCurrent && !stillCurrent()) { verdict.fenced = true; return false; }
         if (!this.beginDurableDelivery(durableAttempt, attemptEvidence)) {
           verdict.durableBeginRejected = true;
           verdict.phase = "submission-begin";
@@ -6909,7 +7046,9 @@ export class Daemon extends EventEmitter {
       // failed/throwing write as uncertain rather than retrying bytes into the
       // same pane; the write-ahead Enter marker later separates safe pre-Enter
       // recovery from a possibly executed command.
+      const pasteGeneration = this.spawnGeneration;
       const pasted = await this.tmux!.pasteBuffer(formatted);
+      if (pasted) this.rememberPaste(formatted, pasteGeneration);
       if (!pasted) {
         if (rawPaste) {
           verdict.phase = "raw-paste-write";
@@ -7565,10 +7704,12 @@ export class Daemon extends EventEmitter {
     } else {
       baseline = await this.capturePaneEvidence(signature);
     }
+    const pasteGeneration = this.spawnGeneration;
     if (!(await this.tmux.pasteBuffer(text))) {
       this.logger.warn({ label }, "System paste failed to reach the pane");
       return false;
     }
+    this.rememberPaste(text, pasteGeneration);
     await new Promise(r => setTimeout(r, NORMAL_ENTER_SETTLE_MS));
     if (!(await this.sendDeliveryEnter(label, guard?.current))) return false;
 

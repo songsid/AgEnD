@@ -294,6 +294,12 @@ export type StartupDialog = RuntimeDialog & {
   fatal?: { type: ErrorType; action: ErrorActionType; message: string };
 };
 
+/** A CLI's live input box as drawn (#829): its rows, and the pane width they were wrapped to. */
+export interface InputDraft {
+  rows: readonly string[];
+  width: number;
+}
+
 export interface CliBackend {
   /** The CLI binary name (e.g. "claude", "gemini", "codex") */
   readonly binaryName: string;
@@ -603,6 +609,30 @@ export interface CliBackend {
    * /cancel. Values are tmux send-keys names.
    */
   getCancelKey(): string;
+
+  /**
+   * The CLI's live input box as drawn: its rows (none when it is empty) and the
+   * pane width they were wrapped to, or null when the screen is not a layout
+   * this backend can read. Only for a CLI that puts text back into the box by
+   * itself — muse restores the interrupted prompt there after a cancel (#829),
+   * and the next delivery would be pasted onto it. Must describe the LIVE box
+   * only, never a transcript echo above it.
+   */
+  inputDraft?(pane: string): InputDraft | null;
+
+  /**
+   * True only when `draft` is exactly how this CLI draws `text` in its box:
+   * every character, with line breaks only where its own wrapping puts them.
+   * Anything it cannot prove (a collapsed paste, an unknown width) is false.
+   */
+  inputDraftShows?(draft: InputDraft, text: string): boolean;
+
+  /**
+   * tmux key names that remove one line of the input box per round, whatever
+   * the cursor position, and are harmless on an empty box. Sent as one
+   * send-keys sequence; the daemon re-reads inputDraft between rounds.
+   */
+  getClearInputKeys?(): readonly string[];
 
   /** Clean up config files on shutdown. */
   cleanup?(config: CliBackendConfig): void;

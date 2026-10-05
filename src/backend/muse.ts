@@ -3,7 +3,7 @@ import { join, resolve } from "node:path";
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync, chmodSync, lstatSync, readlinkSync, symlinkSync, renameSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { createHash, randomBytes } from "node:crypto";
-import { type CliBackend, type CliBackendConfig, type ErrorPattern, type ModelOption, type RuntimeDialog, type StartupDialog, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
+import { type CliBackend, type CliBackendConfig, type ErrorPattern, type InputDraft, type ModelOption, type RuntimeDialog, type StartupDialog, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
 
 /** Session ids are UUIDs (e.g. "01a0c784-fb91-…"); guard before shell interpolation. */
@@ -20,6 +20,128 @@ const SESSION_HEAD_BYTES = 65_536;
 /** Read the workspace a session was started in, without reading the whole log. */
 export function museSessionCwd(head: string): string | null {
   return head.match(/"cwd":"((?:[^"\\]|\\.)*)"/)?.[1]?.replace(/\\(.)/g, "$1") ?? null;
+}
+
+const MUSE_SEPARATOR = /^─{10,}\s*$/;
+/**
+ * The status bar's own grammar, not merely "some indented text": the model id
+ * first, then at least one more ` · `-joined field
+ * (`  muse-spark-1.3-contributor · high · ~/cwd · Launch overrides`). A chooser
+ * drawn under the box (`  1 Allow`) or any other indented row cannot pass for it.
+ */
+const MUSE_STATUS_BAR = /^\s{1,4}[^\s·]+(?:\s+·\s+[^·\s][^·]*)+$/;
+/**
+ * Menu chrome muse draws for its dialogs and pickers. The picker chrome is muse
+ * 1.4.0's list component, captured live on its login menu (2026-09-28):
+ *   Log in with browser · Enter to choose     (the selected row)
+ *   Set an API key
+ *   ↓↑ to select · Esc to quit                (the hint row)
+ */
+const MUSE_DIALOG_CHROME = /Allow this (?:tool|command)|Approve this (?:tool|command)|^\s*[>❯]?\s*1\s+(?:Allow|Approve|Trust)\b|Use Up\/Down|Esc (?:quits|to cancel)|↓↑ to select|·\s*Enter to choose\b/i;
+/** The status bar is one row; a long cwd in a narrow pane wraps it onto a few more. */
+const MUSE_MAX_STATUS_ROWS = 4;
+/** The working line's timer: `◇ Thinking (2s · esc to interrupt)`. */
+const MUSE_BUSY = /\(\s*(?:\d+(?:\.\d+)?[hms]\s*)+·\s*esc to interrupt\s*\)/;
+const MUSE_MAX_INPUT_ROWS = 200;
+
+/**
+ * True when every row after the bottom separator is muse's status bar: its
+ * first row in the bar's grammar, the rest a wrapped continuation of it. A
+ * picker, a dialog, a busy line or a second separator there means the box above
+ * is not the live input (#829 review: a chooser under an old box).
+ */
+function museStatusFooter(rows: readonly string[], bottomSeparator: number, busy: RegExp): boolean {
+  const status = rows.slice(bottomSeparator + 1);
+  if (status.length === 0 || !MUSE_STATUS_BAR.test(status[0])) return false;
+  if (!status.every(row => /^\s+\S/.test(row) && !MUSE_SEPARATOR.test(row.trim()) && !busy.test(row) && !MUSE_DIALOG_CHROME.test(row))) return false;
+  // A wrapped cwd continues as path text; a numbered option list or a
+  // selection cursor under the bar is a picker, not the bar.
+  return !status.slice(1).some(row => /^\s*[>❯›]?\s*\d+[.)]?\s+\S/.test(row) || /^\s*[>›]/.test(row));
+}
+
+/**
+ * The rows of muse's live input box, or null when the bottom of the pane is not
+ * muse's layout (#829). The box is the LAST thing above the status bar:
+ *
+ *   ─────────────────────────────            separator
+ *   ❯ [user:… ] first row of the text        `❯ ` then the text
+ *     second row                             continuation rows, two-space indent
+ *   ─────────────────────────────            separator
+ *     model · effort · cwd · …               status bar (a long cwd may wrap)
+ *
+ * Captured live on muse 1.4.2 (tests/fixtures/muse-input-829/). A `❯` row above
+ * an echoed turn in the transcript is never read: the box must end at the
+ * separator directly above the status bar.
+ */
+export function museInputBox(pane: string, busy: RegExp = MUSE_BUSY): InputDraft | null {
+  const rows = pane.replace(/\r/g, "").split("\n");
+  while (rows.length && !rows[rows.length - 1].trim()) rows.pop();
+  let bottom = -1;
+  for (let i = rows.length - 2; i >= Math.max(0, rows.length - 1 - MUSE_MAX_STATUS_ROWS); i--) {
+    if (MUSE_SEPARATOR.test(rows[i])) { bottom = i; break; }
+  }
+  if (bottom < 2 || !museStatusFooter(rows, bottom, busy)) return null;
+  for (let top = bottom - 1, n = 0; top >= 1 && n < MUSE_MAX_INPUT_ROWS; top--, n++) {
+    const row = rows[top];
+    if (MUSE_SEPARATOR.test(row)) return null;
+    if (/^❯(?:\s|$)/.test(row)) {
+      if (!MUSE_SEPARATOR.test(rows[top - 1])) return null;
+      const box = rows.slice(top, bottom);
+      if (!box.slice(1).every(r => r === "" || /^ {2}/.test(r))) return null;
+      // Only the ASCII spaces muse pads rows with are dropped; any other
+      // character on screen, Unicode spaces included, is part of the draft.
+      const text = [box[0].replace(/^❯ ?/, "").replace(/ +$/, ""), ...box.slice(1).map(r => r.slice(2).replace(/ +$/, ""))];
+      // The separators span the pane: that is the width the box was wrapped to.
+      const width = rows[bottom].trimEnd().length;
+      return { rows: text.every(r => r === "") ? [] : text, width };
+    }
+  }
+  return null;
+}
+
+/**
+ * True only when `rows` are exactly how muse 1.4.2 draws `text` in a box
+ * `width` columns wide (#829 review). Captured live at 80 columns
+ * (tests/fixtures/muse-input-829/wrap-*):
+ *  - a hard newline starts a new row; an empty line is an empty row;
+ *  - a line too long for the row wraps at a space — every space at the break
+ *    is dropped — when the next word does not fit in `width - 4` columns;
+ *  - a word longer than that is cut at exactly `width - 3` columns;
+ *  - trailing ASCII spaces are not drawn (any other trailing character is).
+ * Whitespace is never compared loosely: `/tmp/foo bar` is not `/tmp/foobar`.
+ * A wrap is only judged for printable ASCII, whose width is its length;
+ * anything else must fit on one row as is. A collapsed `[Pasted Content N
+ * chars]` hides its content, so it never matches.
+ */
+export function museDraftShows(rows: readonly string[], width: number, text: string): boolean {
+  const full = width - 3;
+  let i = 0;
+  for (const line of text.replace(/\r/g, "").split("\n").map(l => l.replace(/ +$/, ""))) {
+    let rest = line;
+    for (;;) {
+      const row = rows[i];
+      if (row === undefined) return false;
+      i++;
+      if (rest === "") {
+        if (row !== "") return false;
+        break;
+      }
+      if (row === "" || !rest.startsWith(row)) return false;
+      rest = rest.slice(row.length);
+      if (rest === "") break;
+      // The line continues on the next row: muse must have wrapped it here.
+      if (!/^[\x20-\x7e]*$/.test(row + rest)) return false;
+      const gap = /^ */.exec(rest)![0].length;
+      if (gap > 0) {
+        const word = rest.slice(gap).split(" ")[0];
+        if (word === "" || row.length + gap + word.length <= full - 1) return false;
+        rest = rest.slice(gap);
+      } else if (row.length !== full) {
+        return false;
+      }
+    }
+  }
+  return i === rows.length;
 }
 
 /**
@@ -300,7 +422,7 @@ export class MuseBackend implements CliBackend {
    * glyph-anchored pattern would pin a finished instance in `working` forever.
    */
   getBusyPattern(): RegExp {
-    return /\(\s*(?:\d+(?:\.\d+)?[hms]\s*)+·\s*esc to interrupt\s*\)/;
+    return MUSE_BUSY;
   }
 
   /**
@@ -342,36 +464,18 @@ export class MuseBackend implements CliBackend {
   isPeriodicRedrawIdlePane(pane: string): boolean {
     const rows = pane.replace(/\r/g, "").split("\n");
     while (rows.length && !rows[rows.length - 1].trim()) rows.pop();
-    const separator = /^─{10,}\s*$/;
+    const separator = MUSE_SEPARATOR;
     const busyPattern = this.getBusyPattern();
-    // The status bar's own grammar, not merely "some indented text": the model
-    // id first, then at least one more ` · `-joined field
-    // (`  muse-spark-1.3-contributor · high · ~/cwd · Launch overrides`). A
-    // chooser drawn under the box (`  1 Allow`) or any other indented row
-    // cannot pass for it.
-    const statusBar = /^\s{1,4}[^\s·]+(?:\s+·\s+[^·\s][^·]*)+$/;
-    // Menu chrome muse draws for its dialogs and pickers. The approval prompt
-    // is auto-answered rather than input-blocking, so the idle proof itself
-    // must refuse a frame that shows one. The picker chrome is muse 1.4.0's
-    // list component, captured live on its login menu (2026-09-28):
-    //   Log in with browser · Enter to choose     (the selected row)
-    //   Set an API key
-    //   ↓↑ to select · Esc to quit                (the hint row)
-    const dialogChrome = /Allow this (?:tool|command)|Approve this (?:tool|command)|^\s*[>❯]?\s*1\s+(?:Allow|Approve|Trust)\b|Use Up\/Down|Esc (?:quits|to cancel)|↓↑ to select|·\s*Enter to choose\b/i;
-    // The status bar is one row; a long cwd in a narrow pane wraps it onto a
-    // few more. Everything after the bottom separator must be that bar.
-    const MAX_STATUS_ROWS = 4;
+    // The approval prompt is auto-answered rather than input-blocking, so the
+    // idle proof itself must refuse a frame that shows dialog chrome.
+    const dialogChrome = MUSE_DIALOG_CHROME;
+    // Everything after the bottom separator must be the status bar.
     let bottomSeparator = -1;
-    for (let i = rows.length - 2; i >= Math.max(0, rows.length - 1 - MAX_STATUS_ROWS); i--) {
+    for (let i = rows.length - 2; i >= Math.max(0, rows.length - 1 - MUSE_MAX_STATUS_ROWS); i--) {
       if (separator.test(rows[i])) { bottomSeparator = i; break; }
     }
     if (bottomSeparator < 2) return false;
-    const status = rows.slice(bottomSeparator + 1);
-    if (!statusBar.test(status[0])) return false;
-    if (!status.every(row => /^\s+\S/.test(row) && !separator.test(row.trim()) && !busyPattern.test(row) && !dialogChrome.test(row))) return false;
-    // A wrapped cwd continues as path text; a numbered option list or a
-    // selection cursor under the bar is a picker, not the bar.
-    if (status.slice(1).some(row => /^\s*[>❯›]?\s*\d+[.)]?\s+\S/.test(row) || /^\s*[>›]/.test(row))) return false;
+    if (!museStatusFooter(rows, bottomSeparator, busyPattern)) return false;
     // Directly above it, the EMPTY live prompt. A `❯` with text is a draft
     // (or, higher up, a transcript echo) and never proves idle.
     if (!/^❯\s*$/.test(rows[bottomSeparator - 1])) return false;
@@ -517,12 +621,34 @@ export class MuseBackend implements CliBackend {
 
   /**
    * Escape, not Ctrl+C. Verified both ways on a live session: Escape mid-run
-   * put "interrupting run" in the status bar and returned the prompt with the
-   * partial answer kept, while Ctrl+C armed the quit confirmation ("Press
-   * Ctrl-C again to quit"). Cancelling with C-c would leave every instance one
-   * stray keypress from exiting.
+   * stops the run, removes the interrupted turn from the transcript and puts
+   * that prompt's text back into the input box (muse 1.4.2, 2026-10-05: in the
+   * same frame the busy line goes away), while Ctrl+C armed the quit
+   * confirmation ("Press Ctrl-C again to quit"). Cancelling with C-c would
+   * leave every instance one stray keypress from exiting. The restored text is
+   * cleared before the next delivery (#829): see inputDraft.
    */
   getCancelKey(): string { return "Escape"; }
+
+  /** The live input box (#829): no rows when empty, null when the bottom of the screen is not muse's layout. */
+  inputDraft(pane: string): InputDraft | null {
+    return museInputBox(pane, this.getBusyPattern());
+  }
+
+  inputDraftShows(draft: InputDraft, text: string): boolean {
+    return museDraftShows(draft.rows, draft.width, text);
+  }
+
+  /**
+   * One line per round, from either end (live, muse 1.4.2 keymap: ctrl+u is
+   * delete-start, ctrl+k delete-end): the cursor's line is emptied — all of
+   * its rows when it wraps — then joined to the line before it (Backspace) or
+   * pulls up the line after it (Delete). Verified on a live four-line draft
+   * with the cursor at its end and at its start, on wrapped lines, and on a
+   * collapsed `[Pasted Content N chars]` row; extra rounds on an empty box
+   * change nothing. Never C-c: that arms muse's quit.
+   */
+  getClearInputKeys(): readonly string[] { return ["C-u", "C-k", "BSpace", "DC"]; }
 
   // `/effort` is in the TUI command list, so a level change needs no restart.
   getEffortStrategy(): "runtime" | "restart" | "unsupported" { return EFFORT_CAPABILITIES["muse"].strategy; }

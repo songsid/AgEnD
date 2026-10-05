@@ -321,6 +321,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   status item needed. The same rule applies to a `tui.status_line` you configured (`model · Context 46% left    Goal …`),
   and its readiness pattern is built from the same grammar. A draft or a transcript line
   that merely starts with "Context 32% left" is still not a footer.
+- **muse: a message after a cancel is no longer glued to the cancelled one (#829).** Cancelling a muse turn puts the
+  interrupted prompt back into muse's input box, and the next delivery was pasted after it, so both were sent as one
+  message and the cancelled work ran again. Before pasting, AgEnD now reads muse's input box and empties it with
+  muse's own delete keys, one line at a time, checking the screen after each. It clears only a draft that is exactly
+  one of AgEnD's own recent pastes to that same CLI process, drawn the way muse wraps it; looking like an AgEnD message
+  is not enough, and a collapsed `[Pasted Content N chars]` (whose content cannot be seen) is never cleared. Anything
+  else is left alone and stops the clearing, and so does a box that will not empty or a screen that cannot be read:
+  the delivery fails and can be retried, and nothing is pasted onto the text. A stop, cancel or respawn while it clears ends the attempt with nothing sent. Other backends send no
+  extra keys.
 - **macOS no longer mistakes low free RAM for memory pressure.** Native, bounded async
   `vm_stat`/`sysctl` probes estimate reclaimable RAM and read swap; first/stale starts
   wait at most two seconds, with a 30-second shared cache. Unavailable Mac measurements
