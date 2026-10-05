@@ -1428,6 +1428,12 @@ export class Daemon extends EventEmitter {
    *  comes from. See PaneWriteLock for why interleaving is destructive. */
   private readonly paneWriteLock = new PaneWriteLock();
   private deliveryWritesStopping = false;
+  /**
+   * #1209 SPIKE (branch-only): one-shot marker for the turn currently being worked, mirroring
+   * crash-state.json semantics — written when a channel turn arms, deleted when the turn completes
+   * or the user cancels. Whatever survives a restart is, by construction, an *interrupted* turn.
+   */
+  private static readonly IN_FLIGHT_TURN_FILE = "in-flight-turn.json";
   /** #829: the latest pastes, by spawn generation (see ownedInputDraft). */
   private recentPastes: Array<{ generation: number; text: string }> = [];
   private pendingInstructionsUpdate: string | undefined;
@@ -2140,6 +2146,10 @@ export class Daemon extends EventEmitter {
     // Skipping the no-op reload saves 10-30s of agent time on every restart
     // where instructions are unchanged.
     void this.runWarmupInstructionNotice();
+
+    // #1209 SPIKE (branch-only): the new conditional edge — resume the interrupted turn, if the gates allow.
+    // Detached like the warmup notice; never throws into boot (all paths are consumed/logged inside).
+    void this.maybeResumeInterruptedTurn().catch(() => {});
 
     if (!this.config.lightweight) {
       // 3. Pipe-pane for prompt detection. Rotate first so a ballooned log from a
@@ -3602,6 +3612,8 @@ export class Daemon extends EventEmitter {
     // FleetManager calls this synchronously before sendEscape. Cancel only the
     // current human turn; leave already-forwarded tool requests to settle.
     this.turnReplyGuard.cancelByUser();
+    // #1209 SPIKE: a cancelled turn must never resume (#1199) — drop its marker.
+    this.clearInFlightTurnMarker();
     this.deliveryEpoch = fleetEpoch === undefined
       ? this.deliveryEpoch + 1
       : Math.max(this.deliveryEpoch, fleetEpoch);
@@ -4488,6 +4500,116 @@ export class Daemon extends EventEmitter {
       correlationId: meta.correlation_id || undefined,
       inboundMarker,
     });
+    // #1209 SPIKE: persist the in-flight turn (best effort). A marker that survives a restart
+    // is an interrupted turn by construction — completion and cancel paths delete it below.
+    try {
+      writeFileSync(join(this.instanceDir, Daemon.IN_FLIGHT_TURN_FILE), JSON.stringify({
+        deliveryId: meta.delivery_id || undefined,
+        correlationId: meta.correlation_id || undefined,
+        messageId: meta.message_id || undefined,
+        chatId: meta.chat_id,
+        threadId: meta.thread_id || undefined,
+        adapterId: meta.adapter_id || undefined,
+        backend: this.backend?.binaryName ?? this.config.backend ?? "unknown",
+        armedAt: Date.now(),
+      }));
+    } catch { /* best effort — no marker just means no resume candidate */ }
+  }
+
+  /** #1209 SPIKE: the turn finished (or was cancelled) — it must never resume after a later restart. */
+  private clearInFlightTurnMarker(): void {
+    try { unlinkSync(join(this.instanceDir, Daemon.IN_FLIGHT_TURN_FILE)); } catch { /* already gone */ }
+  }
+
+  /** #1209 SPIKE: a turn that was being worked when the process died (parsed marker). */
+  private readInFlightTurnMarker(): Record<string, unknown> | null {
+    try {
+      if (!existsSync(join(this.instanceDir, Daemon.IN_FLIGHT_TURN_FILE))) return null;
+      const parsed: unknown = JSON.parse(readFileSync(join(this.instanceDir, Daemon.IN_FLIGHT_TURN_FILE), "utf-8"));
+      if (!parsed || typeof parsed !== "object") return null;
+      return parsed as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * #1209 SPIKE seam: did CLI-native resume already re-engage the interrupted task?
+   * Default proxy: ask the pane — busy/working right after spawn means the CLI picked the work back up,
+   * ready means it is sitting idle. Anything unobservable reports "unknown", and the caller treats that
+   * as "skip" (refusing to double-drive wins over resuming). Per-backend session formats make a universal
+   * signal hard — that is this spike's main open risk, see the #1209 findings.
+   */
+  private async didCliReengageAfterResume(): Promise<"reengaged" | "idle" | "unknown"> {
+    try {
+      if (!this.tmux || !this.controlClient) return "unknown";
+      const wid = this.tmux.getWindowId();
+      if (!wid) return "unknown";
+      const readiness = await this.paneReadinessForDelivery(wid);
+      if (readiness === "busy" || readiness === "dialog") return "reengaged";
+      if (readiness === "ready") return "idle";
+      return "unknown";
+    } catch {
+      return "unknown";
+    }
+  }
+
+  /**
+   * #1209 SPIKE (branch-only): conditional continuation for the turn that was in flight when the process
+   * died. Consumes the one-shot marker FIRST (episode-once: at most one continuation per interrupted turn,
+   * never a loop — even if the inject below throws), then applies the hard gates in order: crash-loop
+   * (#835: `skipResume`/crash-state stays a clean start) suppresses; unobservable CLI state suppresses
+   * (no double-drive on a guess); a CLI that already re-engaged owns the turn; otherwise one bounded
+   * continuation tied to the original request goes through the normal durable inbound path. Cancellation
+   * (#1199) needs no check here: cancel deletes the marker, so a surviving marker is never a cancelled turn.
+   * Returns a short outcome for logs/tests.
+   */
+  private async maybeResumeInterruptedTurn(): Promise<string> {
+    const marker = this.readInFlightTurnMarker();
+    if (!marker) return "none";
+    // Consume before gating: episode-once whatever happens below.
+    this.clearInFlightTurnMarker();
+    if (this.skipResume || this.isCrashLoop) {
+      this.logger.warn("Interrupted turn NOT resumed — crash loop stays a clean start");
+      return "suppressed-crash-loop";
+    }
+    let engagement: "reengaged" | "idle" | "unknown";
+    try {
+      engagement = await this.didCliReengageAfterResume();
+    } catch (err) {
+      this.logger.warn({ err }, "Interrupted turn NOT resumed — CLI state check failed, refusing to double-drive");
+      return "suppressed-unobservable";
+    }
+    if (engagement !== "idle") {
+      this.logger.info(
+        { engagement },
+        engagement === "reengaged"
+          ? "Interrupted turn NOT resumed — CLI-native resume already re-engaged it"
+          : "Interrupted turn NOT resumed — CLI state unobservable, refusing to double-drive",
+      );
+      return engagement === "reengaged" ? "skipped-cli-reengaged" : "suppressed-unobservable";
+    }
+    const ref = marker["correlationId"] ?? marker["messageId"] ?? marker["deliveryId"] ?? "unknown";
+    const text = "[RESUME — the previous process died mid-turn. Continue exactly this interrupted work, nothing else. "
+      + `Original request: ${String(ref)}.]`;
+    try {
+      this.pushChannelMessage(text, {
+        user: "instance:resume",
+        user_id: "instance:resume",
+        from_instance: "",
+        chat_id: String(marker["chatId"] ?? ""),
+        thread_id: String(marker["threadId"] ?? ""),
+        adapter_id: String(marker["adapterId"] ?? ""),
+        message_id: `resume-${Date.now()}`,
+        correlation_id: String(marker["correlationId"] ?? ""),
+        resumedContinuationOf: String(marker["deliveryId"] ?? marker["messageId"] ?? ""),
+      });
+    } catch (err) {
+      this.logger.warn({ err }, "Interrupted-turn continuation failed to queue");
+      return "inject-failed";
+    }
+    this.logger.info("Injected one bounded continuation for the interrupted turn");
+    return "injected";
   }
 
   /**
@@ -4510,6 +4632,8 @@ export class Daemon extends EventEmitter {
         });
       }
       this.turnReplyGuard.complete(turn.generation);
+      // #1209 SPIKE: turn finished — nothing interrupted to resume.
+      this.clearInFlightTurnMarker();
       return;
     }
 
@@ -4517,6 +4641,8 @@ export class Daemon extends EventEmitter {
     // still settle above, but cancellation cannot start another model turn.
     if (turn.cancelledByUser) {
       this.turnReplyGuard.complete(turn.generation);
+      // #1209 SPIKE: belt and suspenders with clearPendingDeliveries — cancelled turns never resume.
+      this.clearInFlightTurnMarker();
       return;
     }
 
