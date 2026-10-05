@@ -168,6 +168,12 @@
     resize: none; min-height: 20px; max-height: 240px; line-height: 1.5; overflow-y: auto;
   }
   .input-bar textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+  .prompts { margin: 0 20px; }
+  .prompt { margin-bottom: 8px; padding: 10px 12px; border-radius: 10px; font-size: 13px; background: rgba(210,153,34,0.12); border: 1px solid rgba(210,153,34,0.4); }
+  .prompt.done { background: transparent; border-style: dashed; color: var(--text-muted); }
+  .prompt .txt { white-space: pre-wrap; word-break: break-word; }
+  .prompt .acts { display: flex; gap: 8px; margin-top: 8px; align-items: center; flex-wrap: wrap; }
+  .prompt .wait { font-size: 12px; color: var(--text-muted); }
   .work-bar { display: none; }
   .work-bar.on { display: flex; gap: 8px; align-items: center; margin: 0 20px 8px; font-size: 12px; color: var(--text-muted); }
   .work-bar .lbl { flex: 1; }
@@ -325,6 +331,7 @@ const UI_LANG = localStorage.getItem("agend_lang") || (navigator.language?.toLow
 const UI_TEXT = {
   en: {
     disconnected: "disconnected", tick_queued: "Waiting behind another message", tick_processing: "Handed to the agent", tick_delivered: "The agent has it", tick_failed: "Not delivered", tick_cancelled: "Dropped by Stop",
+    promptAnswering: "Answering…", promptGone: "This prompt is no longer open", promptFor: "{0}: {1}",
     working: "{0} is working…", stuck: "{0} looks stuck", stopReply: "Stop", stopReplyTitle: "Stop the current reply (like Esc) and drop the messages still waiting", stopSent: "Stopped",
     file_empty: "empty file", file_too_large: "over 10 MB", file_too_many: "at most 5 files per message", file_too_much: "the files together would be over 25 MB", removeFile: "Remove", notSent: "Not sent:", putBack: "Put back", discard: "Discard", selectTarget: "Select Fleet or an instance to begin", deleteConfirm: 'Type "delete {0}" to confirm:',
     instanceDeleted: "Instance deleted", noMessages: "No messages yet", sendFirst: "Send a message to start the conversation",
@@ -336,6 +343,7 @@ const UI_TEXT = {
   },
   "zh-TW": {
     disconnected: "已斷線", tick_queued: "排在前一則訊息之後", tick_processing: "已交給 agent", tick_delivered: "agent 已收到", tick_failed: "未送達", tick_cancelled: "已被中止取消",
+    promptAnswering: "回覆中…", promptGone: "這個提示已經結束", promptFor: "{0}：{1}",
     working: "{0} 處理中…", stuck: "{0} 似乎卡住了", stopReply: "中止", stopReplyTitle: "中止目前的回覆（同 Esc），並取消還在排隊的訊息", stopSent: "已中止",
     file_empty: "空檔案", file_too_large: "超過 10 MB", file_too_many: "每則訊息最多 5 個檔案", file_too_much: "檔案合計會超過 25 MB", removeFile: "移除", notSent: "未送出：", putBack: "放回輸入框", discard: "捨棄", selectTarget: "請選擇 Fleet 或 instance", deleteConfirm: '請輸入「delete {0}」以確認：',
     instanceDeleted: "Instance 已刪除", noMessages: "尚無訊息", sendFirst: "傳送訊息以開始對話",
@@ -360,6 +368,9 @@ const pendingFiles = {}, sending = {};
 const inFlightFiles = {};
 // Each instance's execution state (working / idle / stuck / null): from every status, and its edges live.
 const activity = {};
+// Fleet prompts open for an instance (hang / clean exit / interactive prompt), by nonce: the same buttons the
+// platform shows, answerable here. A resolved one keeps its outcome line for a minute, without buttons.
+const prompts = {};
 
 async function api(m, p, b) {
   const o = { method: m, headers: { "Content-Type": "application/json" } };
@@ -404,6 +415,7 @@ async function pollOnce() {
     // Ticks move on messages already shown, which a cursor does not cover: the poll carries them. (Re-reading the
     // chat's history instead would count as the person's activity and keep an idle session alive.)
     applyDeliveries(d.deliveries);
+    applyPrompts(d.prompts);
   } catch { /* the next tick tries again */ }
 }
 function startPolling() { if (pollTimer) return; pollOnce(); pollTimer = setInterval(pollOnce, 5000); }
@@ -433,6 +445,20 @@ function applyDeliveries(list) {
 sse.addEventListener("delivery", e => { sseAlive(); applyDeliveries([JSON.parse(e.data)]); });
 // Where every message is now, sent on each (re)connect: a report that fell into a dropped stream is not lost.
 sse.addEventListener("deliveries", e => { sseAlive(); applyDeliveries(JSON.parse(e.data)); });
+sse.addEventListener("prompt", e => {
+  sseAlive();
+  const p = JSON.parse(e.data);
+  const fresh = !prompts[p.nonce];
+  prompts[p.nonce] = { ...p, resolved: false };
+  if (p.instance === cur) renderPrompts();
+  else if (fresh) toast(trf("promptFor", p.instance, p.text), false);
+});
+// The open prompts, sent on each (re)connect.
+sse.addEventListener("prompts", e => { sseAlive(); applyPrompts(JSON.parse(e.data)); });
+sse.addEventListener("prompt_resolved", e => {
+  sseAlive();
+  resolvePrompt(JSON.parse(e.data));
+});
 sse.addEventListener("activity", e => {
   sseAlive();
   const d = JSON.parse(e.data);
@@ -512,6 +538,7 @@ function renderInstanceMain(main) {
     <div class="actions" id="actions"></div>
     <div class="chat-view" id="chatView" style="display:${curTab==="chat"?"flex":"none"}">
       <div class="messages" id="messages"></div>
+      <div id="prompts" class="prompts" aria-live="polite"></div>
       <div id="workBar" class="work-bar" aria-live="polite"></div>
       <div id="failedSend"></div>
       <div id="pendingFiles" class="pending-files"></div>
@@ -542,6 +569,7 @@ function renderInstanceMain(main) {
     renderPendingFiles();
     renderFailedSend();
     renderWorkBar();
+    renderPrompts();
     inp.focus();
   }
   else if (curTab === "detail") loadDetail();
@@ -584,6 +612,67 @@ function renderMsgs() {
     return `<div class="msg ${u?"inbound":"outbound"}"><div class="sender ${u?"user":"agent"}">${esc(x.sender)}<span class="time">${t}${ticks}</span></div><div class="md">${AgendChatRender.renderMarkdown(x.text)}</div>${AgendChatRender.attachmentsHtml(x.attachments)}</div>`;
   }).join("");
   el.scrollTop = el.scrollHeight;
+}
+// What the fleet has open for prompts right now. Prompt events are stream-only, so every stream (re)connect
+// and every poll carries the whole list: a prompt posted, answered or expired while this page was not
+// listening is caught up — and no timer ever re-reads anything, which would count as the person's activity.
+function applyPrompts(list) {
+  if (!Array.isArray(list)) return;
+  const open = new Set(list.map(p => p.nonce));
+  for (const p of list) {
+    const had = prompts[p.nonce];
+    // An answer already on its way keeps its "answering…" state: a snapshot must not hand its buttons back.
+    if (!had || had.resolved === false) prompts[p.nonce] = { ...p, resolved: false, busy: !!(had && had.busy) };
+  }
+  // Open here but not there: answered or expired while this page was not listening.
+  for (const n of Object.keys(prompts)) if (!prompts[n].resolved && !open.has(n)) prompts[n].resolved = true;
+  renderPrompts();
+}
+function resolvePrompt(d) {
+  const p = prompts[d.nonce]; if (!p) return;
+  p.resolved = true; p.busy = false;
+  if (d.outcome) p.outcome = d.outcome;
+  setTimeout(() => { if (prompts[d.nonce] === p) { delete prompts[d.nonce]; if (p.instance === cur) renderPrompts(); } }, 60000);
+  if (p.instance === cur) renderPrompts();
+}
+// Built from nodes: the prompt's text and its labels are text, never markup.
+function renderPrompts() {
+  const box = document.getElementById("prompts"); if (!box) return;
+  box.textContent = "";
+  for (const p of Object.values(prompts)) {
+    if (p.instance !== cur) continue;
+    const card = document.createElement("div"); card.className = `prompt${p.resolved ? " done" : ""}`;
+    card.setAttribute("role", "group"); card.setAttribute("aria-label", p.text);
+    const text = document.createElement("div"); text.className = "txt";
+    text.textContent = p.resolved ? (p.outcome || tr("promptGone")) : p.text;
+    card.append(text);
+    if (!p.resolved) {
+      const row = document.createElement("div"); row.className = "acts";
+      for (const a of p.actions) {
+        const b = document.createElement("button"); b.type = "button"; b.className = "btn"; b.textContent = a.label;
+        b.disabled = !!p.busy;
+        b.onclick = () => answerPrompt(p, a.id);
+        row.append(b);
+      }
+      if (p.busy) { const w = document.createElement("span"); w.className = "wait"; w.textContent = tr("promptAnswering"); row.append(w); }
+      card.append(row);
+    }
+    box.append(card);
+  }
+}
+async function answerPrompt(p, action) {
+  if (p.busy || p.resolved) return;
+  p.busy = true; renderPrompts();
+  let r;
+  try { r = await api("POST", "/ui/prompt", { instance: p.instance, nonce: p.nonce, action }); }
+  catch (err) { r = { error: err && err.message ? err.message : tr("disconnected") }; }
+  // Answered: the outcome arrives as prompt_resolved. Refused or gone: say why; a prompt that is no longer
+  // open (answered on Telegram first, or expired) loses its buttons.
+  if (r && r.answered) return;
+  p.busy = false;
+  if (r && r.gone) p.resolved = true;
+  renderPrompts();
+  toast(r && r.error ? r.error : tr("disconnected"), false);
 }
 const TICK_LABELS = () => ({ queued: tr("tick_queued"), processing: tr("tick_processing"), delivered: tr("tick_delivered"), failed: tr("tick_failed"), cancelled: tr("tick_cancelled") });
 // "<name> is working…" and a Stop for the reply under way — built from nodes: the name is text, never markup.
