@@ -960,7 +960,7 @@ describe("Daemon error monitor recovery", () => {
   it("keeps the seeded capacity baseline through an empty restart frame before stale resume history (#949)", () => {
     const backend = createBackend("codex", tmpDir);
     const patterns = backend.getErrorPatterns!();
-    const capacity = patterns.find(pattern => pattern.type === "model_error" && pattern.action === "backoff_restart");
+    const capacity = patterns.find(pattern => pattern.type === "model_error" && pattern.action === "nudge_continue");
     expect(capacity).toBeDefined();
     const stale = "⚠ Selected model is at capacity. Please try a different model.";
     const first = new Daemon("test-capacity-baseline", makeConfig(), tmpDir, false, backend, undefined, rootLogger);
@@ -994,7 +994,7 @@ describe("Daemon error monitor recovery", () => {
 
   it("rebases an absent stale line on the first live resume prompt so later capacity is new (#949)", () => {
     const backend = createBackend("codex", tmpDir);
-    const capacity = backend.getErrorPatterns!().find(pattern => pattern.type === "model_error" && pattern.action === "backoff_restart");
+    const capacity = backend.getErrorPatterns!().find(pattern => pattern.type === "model_error" && pattern.action === "nudge_continue");
     expect(capacity).toBeDefined();
     const replacementBackend = createBackend("codex", tmpDir);
     const replacement = new Daemon("test-capacity-baseline-zero", makeConfig(), tmpDir, false, replacementBackend, undefined, rootLogger);
@@ -1019,7 +1019,7 @@ describe("Daemon error monitor recovery", () => {
 
   it("does not absorb a new capacity line already present on the first live resume scan (#949)", () => {
     const backend = createBackend("codex", tmpDir);
-    const capacity = backend.getErrorPatterns!().find(pattern => pattern.type === "model_error" && pattern.action === "backoff_restart");
+    const capacity = backend.getErrorPatterns!().find(pattern => pattern.type === "model_error" && pattern.action === "nudge_continue");
     expect(capacity).toBeDefined();
     const replacementBackend = createBackend("codex", tmpDir);
     const replacement = new Daemon("test-capacity-baseline-race", makeConfig(), tmpDir, false, replacementBackend, undefined, rootLogger);

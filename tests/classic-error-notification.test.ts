@@ -90,25 +90,29 @@ describe("PTY error notification targets", () => {
     );
   });
 
-  it("localizes a Codex capacity incident and schedules a backoff restart (not immediate pause)", async () => {
+  it("localizes a Codex capacity incident and arms a continue nudge (no restart, no immediate pause)", async () => {
     setLocale("zh-TW");
     const { attach, notifyInstanceTopic, ctx } = makeLifecycle([]);
     (ctx as any).fleetConfig.instances.worker.backend = "codex";
     const daemon = attach("worker");
+    const armCapacityNudge = vi.fn(() => true);
+    (daemon as any).armCapacityNudge = armCapacityNudge;
     const capacity = new CodexBackend("/tmp/codex-capacity-notify-test")
       .getErrorPatterns()
       .find(({ pattern }) => pattern.test("⚠ Selected model is at capacity. Please try a different model."));
 
     expect(capacity).toBeDefined();
-    expect(capacity!.action).toBe("backoff_restart");
+    expect(capacity!.action).toBe("nudge_continue");
     daemon.emit("pty_error", { name: "worker", ...capacity });
 
-    // backoff_restart schedules a restart after delay, not an immediate pause.
+    // nudge_continue tells the user and arms the daemon's nudge; it neither restarts nor pauses.
     await vi.waitFor(() => expect(notifyInstanceTopic).toHaveBeenCalledWith(
       "worker",
-      expect.stringMatching(/擁擠|capacity/i),  // zh-TW: 擁擠, en: capacity
+      expect.stringMatching(/擁擠.*叫它繼續/),
     ));
+    expect(armCapacityNudge).toHaveBeenCalledWith(capacity!.pattern, 60_000);
     expect(daemon.requestPauseWhenIdle).not.toHaveBeenCalled();
+    expect((ctx as any).restartSingleInstance).not.toHaveBeenCalled();
     expect((ctx as any).clearCancelButton).toHaveBeenCalledWith("worker");
   });
 

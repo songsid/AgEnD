@@ -1217,6 +1217,22 @@ export class Daemon extends EventEmitter {
    * dialog on screen at every poll and ignores nothing.
    */
   private dialogAnswers: { key: string; ignored: number; reported: boolean; screen: string; lastAnswerAt: number } | null = null;
+  /**
+   * The last error occurrence handed to the lifecycle: what an action that needs the screen it was seen on (a
+   * `nudge_continue` arming) reads back, with the spawn / monitors it was seen under.
+   */
+  private lastErrorEpisode: { key: string; pattern: RegExp; pane: string; spawn: number; fence: number } | null = null;
+  /**
+   * An armed "tell the agent to keep going" (Codex model at capacity). One per episode; the monitor owns it: every poll
+   * cancels it when anything changed, and it fires at most once. The due time is on the monotonic clock.
+   */
+  /**
+   * How many occurrences of each `nudge_continue` pattern were already on screen when this spawn first showed a live
+   * composer (null until then): resumed scrollback, i.e. HISTORY. An occurrence is a new episode only beyond that — a
+   * resumed session whose scrollback holds an old capacity line must not be told to "keep going" for it (#949).
+   */
+  private nudgeBaselines: Map<string, number> | null = null;
+  private capacityNudge: { pane: string; spawn: number; fence: number; epoch: number; dueAt: number } | null = null;
   /** Current stdin-owning runtime dialog, independent from execution state. */
   private inputBlockedDialogKey: string | null = null;
   /** Generation/signature fence for safety dialogs while their screen is still visible. */
@@ -2985,6 +3001,8 @@ export class Daemon extends EventEmitter {
 
         const pane = await this.tmux.capturePane();
         if (stale()) return;
+        this.takeNudgeBaselines(pane, patterns);
+        this.tickCapacityNudge(pane);
         const inputBlockedDialog = this.updateInputBlockedState(pane, dialogs);
 
         // A sign-in screen that appears AFTER the startup scan ended (first run:
@@ -3366,6 +3384,7 @@ export class Daemon extends EventEmitter {
     // scan would otherwise keep reporting the same dead instance forever.
     if (ep.type === "auth_error") this.authFailureUnresolved = true;
     this.logger.warn({ errorType: ep.type, action: ep.action }, `PTY error detected: ${message}`);
+    this.lastErrorEpisode = { key, pattern: ep.pattern, pane, spawn: this.spawnGeneration, fence: this.launchFenceEpoch };
     this.emit("pty_error", { name: this.name, ...ep, message });
   }
 
@@ -6037,6 +6056,97 @@ export class Daemon extends EventEmitter {
     return { state: "clear" };
   }
 
+  /**
+   * Arm the "keep going" nudge for the error occurrence just reported (`pattern` must be the one the lifecycle was
+   * handed). The nudge is sent once, `delayMs` from now on the MONOTONIC clock (a wall-clock step changes nothing),
+   * and only if nothing has changed by then — see {@link tickCapacityNudge}. Returns false when there is nothing to arm.
+   */
+  armCapacityNudge(pattern: RegExp, delayMs: number): boolean {
+    const episode = this.lastErrorEpisode;
+    if (!episode || episode.pattern !== pattern) return false;
+    if (episode.spawn !== this.spawnGeneration || episode.fence !== this.launchFenceEpoch) return false;
+    if (this.isPaused || this.getProcessStatus() === "stopped") return false;
+    // Only an occurrence that appeared during this spawn's live session: before the baseline exists, or not beyond it,
+    // it is scrollback from a resumed session.
+    const baseline = this.nudgeBaselines?.get(episode.key);
+    if (baseline === undefined || Daemon.countOccurrences(pattern, episode.pane) <= baseline) return false;
+    this.capacityNudge = {
+      pane: episode.pane, spawn: episode.spawn, fence: episode.fence,
+      epoch: this.deliveryEpoch, dueAt: performance.now() + delayMs,
+    };
+    this.logger.info({ delayMs }, "Model-capacity nudge armed");
+    return true;
+  }
+
+  /** Drop an armed nudge (the user stopped / paused the instance, or the lifecycle gave up on it). */
+  cancelCapacityNudge(reason: string): void {
+    if (!this.capacityNudge) return;
+    this.capacityNudge = null;
+    this.logger.info({ reason }, "Model-capacity nudge cancelled");
+  }
+
+  /** The first live composer of a spawn fixes what is history (see {@link nudgeBaselines}). */
+  private takeNudgeBaselines(pane: string, patterns: ErrorPattern[]): void {
+    if (!this.isCodexLivePaneSnapshot(pane)) return;
+    const baselines = this.nudgeBaselines ?? new Map<string, number>();
+    for (const ep of patterns) {
+      if (ep.action !== "nudge_continue") continue;
+      const key = Daemon.errorPatternKey(ep);
+      const count = Daemon.countOccurrences(ep.pattern, pane);
+      // History that has scrolled away must not hide the next real occurrence.
+      baselines.set(key, Math.min(baselines.get(key) ?? count, count));
+    }
+    this.nudgeBaselines = baselines;
+  }
+
+  private static countOccurrences(pattern: RegExp, pane: string): number {
+    const flags = pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g";
+    return (pane.match(new RegExp(pattern.source, flags)) || []).length;
+  }
+
+  /**
+   * One monitor poll's look at an armed nudge. It is CANCELLED — never postponed — when anything about the instance
+   * moved: a stop / pause / respawn (spawn generation or monitor epoch), a user cancel (delivery epoch), the pane no
+   * longer being exactly the one the error was seen on (it moved on by itself, a person typed, another dialog), the
+   * agent working, or a message waiting for delivery. Only when it is due and still untouched is it fired — once — and
+   * the injection re-verifies everything under the pane-write lock.
+   */
+  private tickCapacityNudge(pane: string): void {
+    const nudge = this.capacityNudge;
+    if (!nudge) return;
+    const gone = nudge.spawn !== this.spawnGeneration || nudge.fence !== this.launchFenceEpoch ? "the instance was stopped, paused or respawned"
+      : !this.isDeliveryEpochCurrent(nudge.epoch) ? "the user cancelled"
+      : this.isPaused || this.healthCheckPaused || this.getProcessStatus() === "stopped" ? "the instance is not running"
+      : pane !== nudge.pane ? "the screen changed"
+      : this.instanceState === "working" || this.pasteQueueDepth > 0 ? "the instance has work of its own"
+      : null;
+    if (gone) { this.cancelCapacityNudge(gone); return; }
+    if (performance.now() < nudge.dueAt) return;
+    this.capacityNudge = null;                                    // fired: once per episode
+    void this.sendCapacityNudge(nudge).catch(err => this.logger.warn({ err: (err as Error).message }, "Model-capacity nudge failed"));
+  }
+
+  private async sendCapacityNudge(nudge: NonNullable<Daemon["capacityNudge"]>): Promise<void> {
+    // Everything the nudge was armed under, asked again after EVERY await that precedes a write — inside the paste
+    // primitive too (its capture, its paste, its pause, its Enter, its retry): once any of it is false nothing more is
+    // written. A message queued behind the lock, or the agent starting a turn, is "work of its own" like at the poll.
+    const current = (): boolean => nudge.spawn === this.spawnGeneration && nudge.fence === this.launchFenceEpoch
+      && this.isDeliveryEpochCurrent(nudge.epoch) && !this.isPaused && !this.healthCheckPaused
+      && !this.startupAborted && this.getProcessStatus() !== "stopped"
+      && this.pasteQueueDepth === 0 && this.instanceState !== "working";
+    // Exclusive with every delivery: nothing can paste a turn between the verdict below and the nudge.
+    await this.paneWriteLock.run(async () => {
+      if (!this.tmux) return;
+      // ONE capture decides: it must be exactly the screen the error was seen on AND an idle composer. (A second picture
+      // vouching for the first — "same screen" here, "idle" there — would let a half-typed draft through.)
+      const sent = await this.submitSystemPaste(t("inst.codex_capacity_nudge_text"), "capacity-continue", {
+        current,
+        accept: pane => pane === nudge.pane && this.paneAuthoritativelyIdle(pane),
+      });
+      this.logger.info({ sent }, "Model-capacity nudge attempted");
+    });
+  }
+
   /** What identifies the request on screen: the backend's own identity when it has one, else the whole screen verbatim. */
   private static screenOf(dialog: RuntimeDialog, pane: string): string {
     return dialog.requestIdentity?.(pane) ?? pane;
@@ -7320,16 +7430,30 @@ export class Daemon extends EventEmitter {
    * Best effort by design: these notices must never fail a delivery or throw.
    * The caller already holds paneWriteLock.
    */
-  private async submitSystemPaste(text: string, label: string): Promise<boolean> {
+  /**
+   * `guard` is for a paste that must not outlive the reason it was made (the continue nudge): `accept` judges the ONE
+   * capture taken here — the same picture is the baseline, the expected-screen check and the idle check — and `current`
+   * is asked again after every await that precedes a write, so a cancelled paste adds no further paste and no key
+   * (the retries included). Without a guard it is exactly the old unconditional path.
+   */
+  private async submitSystemPaste(text: string, label: string, guard?: { current: () => boolean; accept: (pane: string) => boolean }): Promise<boolean> {
     if (!this.tmux) return false;
     const signature = this.submissionSignature(text);
-    const baseline = await this.capturePaneEvidence(signature);
+    let baseline: PaneEvidence | null;
+    if (guard) {
+      let pane: string;
+      try { pane = await this.tmux.capturePane(); } catch { return false; }
+      if (!guard.current() || !guard.accept(pane)) return false;
+      baseline = this.paneEvidence(pane, signature);
+    } else {
+      baseline = await this.capturePaneEvidence(signature);
+    }
     if (!(await this.tmux.pasteBuffer(text))) {
       this.logger.warn({ label }, "System paste failed to reach the pane");
       return false;
     }
     await new Promise(r => setTimeout(r, NORMAL_ENTER_SETTLE_MS));
-    if (!(await this.sendDeliveryEnter(label))) return false;
+    if (!(await this.sendDeliveryEnter(label, guard?.current))) return false;
 
     let proof = await this.confirmSubmitted(signature, baseline);
     if (proof === "unverifiable") {
@@ -7347,7 +7471,7 @@ export class Daemon extends EventEmitter {
       // exists to remove — visible text is also what a strand looks like.
       if (this.systemPasteOptions().retryEnter) {
         await new Promise(r => setTimeout(r, 1_000));
-        await this.sendDeliveryEnter(`${label}-defensive-retry`);
+        await this.sendDeliveryEnter(`${label}-defensive-retry`, guard?.current);
       }
       return true; // best effort, exactly as before — nothing here is verified
     }
@@ -7356,7 +7480,7 @@ export class Daemon extends EventEmitter {
       // first one did land; when the text is still in the input row it is the
       // submit it never got. Re-pasting would append the text to itself.
       await new Promise(r => setTimeout(r, NORMAL_ENTER_SETTLE_MS));
-      if (!(await this.sendDeliveryEnter(`${label}-retry`))) return false;
+      if (!(await this.sendDeliveryEnter(`${label}-retry`, guard?.current))) return false;
       proof = await this.confirmSubmitted(signature, baseline);
     }
     if (proof !== "submitted") {
@@ -7928,6 +8052,9 @@ export class Daemon extends EventEmitter {
    */
   private beginSpawn(): void {
     this.dialogAnswers = null;
+    this.capacityNudge = null;
+    this.lastErrorEpisode = null;
+    this.nudgeBaselines = null;
     // A relaunch settles any outstanding quit watch: the CLI came back.
     this.clearQuitRelaunchWatch();
     // A restarted CLI has no trustworthy turn edge for the process it replaced.
@@ -8294,14 +8421,20 @@ export class Daemon extends EventEmitter {
    * a live turn. Fail closed: an unreadable pane is never idle.
    */
   private async isPaneAuthoritativelyIdle(): Promise<boolean> {
-    const backend = this.backend;
-    if (!this.tmux || !backend) return false;
+    if (!this.tmux || !this.backend) return false;
     let pane: string;
     try {
       pane = await this.tmux.capturePane();
     } catch {
       return false;
     }
+    return this.paneAuthoritativelyIdle(pane);
+  }
+
+  /** The verdict of {@link isPaneAuthoritativelyIdle} on a capture the caller already holds. */
+  private paneAuthoritativelyIdle(pane: string): boolean {
+    const backend = this.backend;
+    if (!backend) return false;
     if (backend.getBusyPattern?.()?.test(pane)) return false;
     for (const dialog of this.deliveryBlockingDialogs()) {
       if (Daemon.dialogMatches(dialog, pane)) return false;

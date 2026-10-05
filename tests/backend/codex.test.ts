@@ -301,13 +301,14 @@ describe("CodexBackend", () => {
       });
     });
 
-    it("uses backoff_restart action on the exact Codex capacity rejection (not pause)", () => {
+    it("uses nudge_continue on the exact Codex capacity rejection (not pause, not a restart)", () => {
       const match = matchingError("⚠ Selected model is at capacity. Please try a different model.");
 
       expect(match).toMatchObject({
         type: "model_error",
-        action: "backoff_restart",
+        action: "nudge_continue",
         skipRecoveryWait: true,
+        skipCooldown: true,        // a second capacity line right after the nudge is a new episode
       });
       expect(match?.message).toContain("Retry the message manually later");
       expect(match?.message).toContain("/model");

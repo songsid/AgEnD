@@ -70,7 +70,11 @@ export interface CliBackendConfig {
 }
 
 /** Action to take when an error pattern is detected in PTY output. */
-export type ErrorActionType = "notify" | "failover" | "restart" | "pause" | "backoff_restart";
+/**
+ * `nudge_continue`: a transient failure of a turn the CLI otherwise survived intact (Codex "model is at capacity"): the
+ * context is still live, so after a pause the daemon tells the agent to keep going — it does not restart or switch model.
+ */
+export type ErrorActionType = "notify" | "failover" | "restart" | "pause" | "backoff_restart" | "nudge_continue";
 
 /** Categorizes detected errors for logging and response. */
 export type ErrorType = "rate_limit" | "auth_error" | "crash" | "network" | "quota" | "timeout" | "model_error" | "config_error" | "outdated_cli";

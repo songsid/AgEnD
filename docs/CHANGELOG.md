@@ -64,6 +64,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   instance directory through group access, give it access explicitly — the group no longer has it.** (#1118)
 
 ### Upgrade Notes
+- **[Behaviour change] A Codex "model is at capacity" error is now answered with "keep going", not a restart (#905).**
+  The old retry restarted the instance after 30 / 60 / 120 s, but a restarted Codex resumes at an empty prompt and
+  nothing re-sent the failed turn, so the "retrying" notice promised something that never happened and the work sat
+  there. Now the user is told (as before), and about a minute later AgEnD tells the agent "keep going" (繼續) — its
+  context is still live, nothing is re-read, the model is not changed. Once per capacity error, and only into a screen
+  that has not changed since: if the pane moved on, a person typed, the agent started working, a message is queued,
+  the instance was stopped / paused / respawned or the user cancelled, the nudge is dropped. It is timed on the
+  monotonic clock (a wall-clock step changes nothing). A second capacity error right after the nudge is a new episode.
+  Up to 3 nudges are sent per 30 minutes; the next capacity error after that pauses the instance, as before.
 - **[Behaviour change] `agend update` keeps an install on its channel; a beta is never moved to the stable line
   without asking.** With no flag, `agend update` used to install `@latest` whatever was installed, so on a beta it
   could go back to an older stable — and AgEnD's own notice told beta users to run exactly that. It now follows
