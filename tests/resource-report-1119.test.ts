@@ -35,9 +35,9 @@ describe("host memory snapshot", () => {
     expect(readHostMemory({ platform: "linux", meminfo: () => base }).swapTotalBytes).toBeNull();
     expect(readHostMemory({ platform: "linux", meminfo: () => base + "SwapTotal: 1 kB\nSwapFree: 2 kB\n" }).swapFreeBytes).toBeNull();
   });
-  it("uses a labeled free-memory fallback on non-Linux without reading procfs", () => {
+  it("uses a labeled free-memory fallback on other platforms without reading procfs", () => {
     const meminfo = vi.fn(() => { throw new Error("must not read"); });
-    expect(readHostMemory({ platform: "darwin", meminfo, totalmem: () => 8 * MiB, freemem: () => MiB })).toEqual({
+    expect(readHostMemory({ platform: "win32", meminfo, totalmem: () => 8 * MiB, freemem: () => MiB })).toEqual({
       totalBytes: 8 * MiB, availableBytes: MiB, availableKind: "free", swapTotalBytes: null, swapFreeBytes: null,
     });
     expect(meminfo).not.toHaveBeenCalled();
@@ -227,8 +227,17 @@ describe("read-only resource inventory", () => {
     expect(text).not.toContain("\u001b[31m"); expect(text).toContain("\\u001b[31m\\u000aname");
   });
 
+  it.each(["en", "zh-TW"] as const)("renders unavailable macOS memory as unknown in %s, never free or zero", async locale => {
+    setLocale(locale);
+    const dir = root(); config(dir);
+    const report = await collectResourceReport(dir, { ...probe, memory: () => readHostMemory({ platform: "darwin", totalmem: () => 8 * MiB, freemem: () => 0 }) });
+    const text = formatResourceReport(report);
+    expect(text).toContain(t("resources.memory_unknown", "8.0 MiB"));
+    expect(text).not.toContain(t("resources.memory_free", "0 B", "8.0 MiB"));
+  });
+
   it("has every resource label in both locales without an English fallback in zh-TW", () => {
-    const keys = ["title", "memory", "memory_available", "memory_free", "swap", "swap_free", "swap_unknown", "workspace", "size_unknown", "orphans", "orphans_count", "orphans_unknown", "registry_unknown", "registry_changed", "scan_unknown", "note", "report_unknown"];
+    const keys = ["title", "memory", "memory_available", "memory_free", "memory_unknown", "swap", "swap_free", "swap_unknown", "workspace", "size_unknown", "orphans", "orphans_count", "orphans_unknown", "registry_unknown", "registry_changed", "scan_unknown", "note", "report_unknown"];
     for (const locale of ["en", "zh-TW"] as const) {
       setLocale(locale);
       for (const key of keys) {

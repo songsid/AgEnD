@@ -76,6 +76,9 @@
   見 `docs/configuration.zh-TW.md`「人不在機器旁完成 /login」。
 
 ### 修正 (Fixed)
+- **macOS 不會再把低 free RAM 誤判成記憶體壓力。** 改用有界非同步的 `vm_stat`／`sysctl` 估計可回收 RAM 與讀取 swap；首次或快取過期的啟動最多等兩秒，共用 30 秒快取。
+  Mac 量不到時顯示 unknown，不警告也不降低啟動速度；Linux 行為不變。估計可能低估可回收 RAM；Mac 探測失敗期間暫無記憶體壓力保護。
+  已在 Linux 用真實輸出 fixture 與 stub 測試，待 macOS 使用者 live 驗。需要 rollback 時可只退原生 probe 的第二個 commit，保留 unknown 放行政策。
 - **`/login` 瀏覽器終端機不會再因為複製而中斷登入，並提示 code 要貼在哪。** 以前按 Ctrl+C 想複製連結，會送出中斷、結束 `claude auth login`（exit 130），之後的貼上與 Enter 都打在已結束的 session 上。
   現在所有 web 終端機在「有選取文字」時 Ctrl+C 是複製；登入頁在沒有選取時 Ctrl+C（與 Ctrl-C 按鈕）直接停用——取消仍用 Stop；安裝終端機保留 Ctrl+C。CLI 不會回顯你貼上的 code，看起來像沒反應：
   登入頁現在有一個 code 輸入框，一次送出 code 與 Enter 並告訴你已送出（code 不會被記錄）。伺服器拒絕的 code 會結束指令；頁面現在會說「code 被拒（過期、已用過、重複貼上或來自另一次嘗試）」並請你重新 `/login`，而不是只顯示「exited with code 1」。

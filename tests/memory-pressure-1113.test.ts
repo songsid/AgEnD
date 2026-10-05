@@ -22,6 +22,20 @@ describe("host memory pressure", () => {
     expect(read("SwapFree: 0 kB\n").swapTotalBytes).toBeNull();
   });
 
+  it("never substitutes macOS free pages for missing availability", () => {
+    const freemem = vi.fn(() => MiB);
+    const meminfo = vi.fn(() => { throw new Error("Linux only"); });
+    const value = readHostMemory({ platform: "darwin", totalmem: () => 16_000 * MiB, freemem, meminfo });
+    expect(value).toEqual({ totalBytes: 16_000 * MiB, availableBytes: null, availableKind: "unknown", swapTotalBytes: null, swapFreeBytes: null });
+    expect(freemem).not.toHaveBeenCalled(); expect(meminfo).not.toHaveBeenCalled();
+    const pressure = new MemoryPressure({ platform: "darwin", read: () => value });
+    expect(pressure.sample().level).toBe("unknown");
+    expect(pressure.allowsUnknown()).toBe(true);
+    expect(pressure.startRecoveryWindow().recovering).toBe(false);
+    expect(new MemoryPressure({ platform: "linux", read: () => value }).allowsUnknown()).toBe(false);
+    expect(new MemoryPressure({ platform: "darwin", read: () => ({ ...memory(1), availableKind: "free" }) }).sample().level).toBe("unknown");
+  });
+
   it("falls back without inventing swap, and does not hold on MemFree alone", () => {
     const fallback = readHostMemory({ platform: "linux", meminfo: () => { throw new Error("unavailable"); },
       totalmem: () => 16_000 * MiB, freemem: () => 1 * MiB });

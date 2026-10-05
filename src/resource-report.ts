@@ -7,7 +7,7 @@ import { classicInstanceName } from "./classic-channel-manager.js";
 import { sanitizeInstanceName } from "./topic-commands.js";
 import { t } from "./locale.js";
 
-import { readHostMemory, type HostMemory } from "./host-memory.js";
+import { readHostMemoryAsync, type HostMemory } from "./host-memory.js";
 export { readHostMemory, type HostMemory } from "./host-memory.js";
 
 export interface DirectoryUsage {
@@ -25,7 +25,7 @@ export interface ResourceReport {
 }
 
 interface ResourceDeps {
-  memory: () => HostMemory;
+  memory: () => HostMemory | Promise<HostMemory>;
   diskUsage: (path: string, timeoutMs: number) => Promise<number | null>;
   now: () => number;
   budgetMs: number;
@@ -65,9 +65,9 @@ function readRegistry(path: string, optional: boolean): { raw: Record<string, an
 
 /** A bounded, read-only snapshot. Shared directories are measured once, never summed twice. */
 export async function collectResourceReport(dataDir: string, overrides: Partial<ResourceDeps> = {}): Promise<ResourceReport> {
-  const deps: ResourceDeps = { memory: readHostMemory, diskUsage: probeDiskUsage, now: () => performance.now(), budgetMs: 5_000, ...overrides };
+  const deps: ResourceDeps = { memory: readHostMemoryAsync, diskUsage: probeDiskUsage, now: () => performance.now(), budgetMs: 5_000, ...overrides };
   const deadline = deps.now() + deps.budgetMs;
-  const report: ResourceReport = { memory: deps.memory(), workspaces: [], orphans: null, notes: [] };
+  const report: ResourceReport = { memory: await deps.memory(), workspaces: [], orphans: null, notes: [] };
   const known = new Set<string>();
   const candidates = new Map<string, Set<string>>();
   const addWorkspace = (path: string, name?: string) => {
@@ -185,7 +185,8 @@ export function resourceChecks(report: ResourceReport): Array<{ status: "ok" | "
   const memory = report.memory;
   const checks: ReturnType<typeof resourceChecks> = [{
     status: "ok", label: t("resources.memory"),
-    detail: t(memory.availableKind === "available" ? "resources.memory_available" : "resources.memory_free", size(memory.availableBytes), size(memory.totalBytes)),
+    detail: memory.availableKind === "unknown" ? t("resources.memory_unknown", size(memory.totalBytes))
+      : t(memory.availableKind === "available" ? "resources.memory_available" : "resources.memory_free", size(memory.availableBytes), size(memory.totalBytes)),
   }, {
     status: "ok", label: t("resources.swap"),
     detail: memory.swapTotalBytes === null ? t("resources.swap_unknown") : t("resources.swap_free", size(memory.swapFreeBytes), size(memory.swapTotalBytes)),
