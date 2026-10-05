@@ -228,7 +228,7 @@ export const ListModelsArgs = z.object({
 
 export const GetInstanceLogsArgs = z.object({
   name: NonEmptyString.describe("The instance name to get logs for"),
-  lines: z.number().optional().describe("Number of lines to return (default: 50)"),
+  lines: z.number().int().positive().optional().describe("Number of lines to return (default: 50)"),
 });
 
 export const GetFleetConfigArgs = z.object({

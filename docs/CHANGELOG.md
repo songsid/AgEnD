@@ -34,7 +34,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   full before tailing it, so a multi-MB pipe-pane log blocked the event loop and could blow the 30 s IPC budget. It now reads
   backwards from the end in bounded chunks (at most 1 MB scanned, async), so I/O stays flat no matter how large the log grows.
   Logs that fit the bound keep an exact line count; larger ones return the tail with the count marked unknown and a note saying
-  so. A failed pipe-pane attach at startup now warns instead of vanishing silently.
+  so. A tail with no line break in the scanned window returns its last segment flagged partial instead of an empty answer.
+  A failed pipe-pane attach at startup now warns instead of vanishing silently.
 
 ### Security
 - **Discord slash commands now follow one command table (#1148).** Where a command applies and who may use it is

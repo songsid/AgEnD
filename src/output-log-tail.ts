@@ -21,12 +21,20 @@ export const TAIL_CHUNK_BYTES = 64 * 1024;
 export const TAIL_BYTE_CAP = 1024 * 1024;
 
 export interface TailResult {
-  /** The last `maxLines` lines (a cut first line is dropped, never half-shown). */
+  /**
+   * The last `maxLines` complete lines — except when the scanned window holds
+   * no line break at all (a TUI cursor-addressed stream can run megabytes
+   * without `\n`): then this is the window's tail segment instead, flagged by
+   * `partial`, because an empty answer for a live log is worse than a
+   * partial line.
+   */
   text: string;
   /** Exact line count, or null when the file exceeds the byte cap. */
   totalLines: number | null;
   /** True when the head of the file was not scanned. */
   truncated: boolean;
+  /** True when `text` is a partial-line fallback, not complete lines. */
+  partial: boolean;
 }
 
 export async function readTailLines(path: string, maxLines: number): Promise<TailResult> {
@@ -36,14 +44,15 @@ export async function readTailLines(path: string, maxLines: number): Promise<Tai
   const fh = await open(path, "r");
   try {
     const { size } = await fh.stat();
-    if (size === 0) return { text: "", totalLines: 0, truncated: false };
+    if (size === 0) return { text: "", totalLines: 0, truncated: false, partial: false };
     const chunks: Buffer[] = [];
     let position = size;
     let scanned = 0;
     let newlineCount = 0;
     // A file that fits the cap is always scanned whole, so small logs keep an
-    // exact total. Only a file larger than the cap stops early once it holds
-    // maxLines+1 newlines (the +1 proves the first kept line is whole).
+    // exact total. Only a file larger than the cap stops early, once it holds
+    // more than maxLines newlines (so maxLines whole lines survive the
+    // head-cut drop).
     const stopEarly = size > TAIL_BYTE_CAP;
     while (position > 0 && scanned < TAIL_BYTE_CAP && (!stopEarly || newlineCount <= maxLines)) {
       const want = Math.min(TAIL_CHUNK_BYTES, position, TAIL_BYTE_CAP - scanned);
@@ -63,6 +72,17 @@ export async function readTailLines(path: string, maxLines: number): Promise<Tai
     const text = Buffer.concat(chunks).toString("utf-8");
     const parts = text.split("\n");
     if (!reachedStart) parts.shift(); // head-cut partial line: drop, never half-show
+    // P1: the window may hold no line break at all (cursor-addressed TUI
+    // streams run megabytes without `\n`). Dropping the one "line" would
+    // answer empty for a live log — return the window's tail instead.
+    if (!reachedStart && parts.length === 0) {
+      return {
+        text: [...text].slice(-TAIL_CHUNK_BYTES).join(""),
+        totalLines: null,
+        truncated: true,
+        partial: true,
+      };
+    }
     const kept = parts.slice(-maxLines);
     return {
       text: kept.join("\n"),
@@ -70,6 +90,7 @@ export async function readTailLines(path: string, maxLines: number): Promise<Tai
       // whole-file split().length semantics exactly.
       totalLines: reachedStart ? parts.length : null,
       truncated: !reachedStart,
+      partial: false,
     };
   } finally {
     await fh.close().catch(() => {});

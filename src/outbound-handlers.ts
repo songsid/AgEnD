@@ -1055,6 +1055,7 @@ const getInstanceLogs: Handler = async (ctx, rawArgs, respond) => {
     const notes: string[] = [];
     if (capped) notes.push(`Capped at ${MAX_INSTANCE_LOG_LINES} lines. Use 'agend attach ${v.data.name}' for full history.`);
     if (tail.truncated) notes.push("Showing a bounded tail of a large log; total line count unavailable.");
+    if (tail.partial) notes.push("The tail holds a partial line: no line break in the scanned window.");
     respond({
       lines: tail.text,
       total_lines: tail.totalLines,

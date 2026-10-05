@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readTailLines, TAIL_BYTE_CAP } from "../src/output-log-tail.js";
+import { readTailLines, TAIL_BYTE_CAP, TAIL_CHUNK_BYTES } from "../src/output-log-tail.js";
 
 const tmpFile = (content: string | Buffer): string => {
   const dir = mkdtempSync(join(tmpdir(), "agend-logtail-"));
@@ -14,7 +14,7 @@ const tmpFile = (content: string | Buffer): string => {
 
 describe("readTailLines", () => {
   it("empty file → empty text, zero lines", async () => {
-    await expect(readTailLines(tmpFile(""), 50)).resolves.toEqual({ text: "", totalLines: 0, truncated: false });
+    await expect(readTailLines(tmpFile(""), 50)).resolves.toEqual({ text: "", totalLines: 0, truncated: false, partial: false });
   });
 
   it("short file → exact full content and exact count (old semantics)", async () => {
@@ -97,5 +97,112 @@ describe("get_instance_logs handler (#1206)", () => {
     const { result, failure } = await callHandler(dataDir, { name: "ghost", lines: 50 });
     expect(result).toBeNull();
     expect(String(failure)).toContain("Cannot read logs for 'ghost'");
+  });
+
+  it("lines:0 is an argument error, not a read failure", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "agend-logs-"));
+    const { result, failure } = await callHandler(dataDir, { name: "ghost", lines: 0 });
+    expect(result).toBeNull();
+    expect(String(failure)).toMatch(/lines/i);
+    expect(String(failure)).not.toContain("Cannot read logs");
+  });
+});
+
+describe("readTailLines reviewer round (a)-(c) + P1", () => {
+  it("(a) long lines past the cap → bounded scan, whole lines only, truncated", async () => {
+    // 60 × 30 KiB lines ≈ 1.8 MiB: the last 1 MiB holds ~34 newlines, so a
+    // cap-ignoring mutant would return exactly 50 lines and a half-line
+    // keeper would return a short first line.
+    const LINE = 30 * 1024;
+    const lines = Array.from({ length: 60 }, (_, i) => `L${i}` + "z".repeat(LINE - `L${i}`.length));
+    const r = await readTailLines(tmpFile(lines.join("\n")), 50);
+    expect(r.truncated).toBe(true);
+    expect(r.totalLines).toBeNull();
+    expect(r.partial).toBe(false);
+    const out = r.text.split("\n");
+    expect(out.length).toBeGreaterThan(0);
+    expect(out.length).toBeLessThan(50); // the cap stopped the scan, not the line count
+    for (const line of out) expect(line).toHaveLength(LINE); // no half line
+    expect(out[out.length - 1]).toBe(lines[lines.length - 1]); // exact file tail
+    expect(Buffer.byteLength(r.text)).toBeLessThanOrEqual(TAIL_BYTE_CAP);
+  });
+
+  it("(b) exactly CAP bytes → exact total; one byte more → unknown", async () => {
+    const unit = "x".repeat(99) + "\n"; // 100 B
+    const filler = unit.repeat(10485); // 1,048,500 B
+    const exact = filler + "y".repeat(75) + "\n"; // +76 B = 1,048,576 B
+    expect(Buffer.byteLength(exact)).toBe(TAIL_BYTE_CAP);
+    const rExact = await readTailLines(tmpFile(exact), 5);
+    expect(rExact.truncated).toBe(false);
+    expect(rExact.totalLines).toBe(exact.split("\n").length);
+    const rOver = await readTailLines(tmpFile(exact + "!"), 5);
+    expect(rOver.truncated).toBe(true);
+    expect(rOver.totalLines).toBeNull();
+    expect(rOver.text.endsWith("!")).toBe(true);
+  });
+
+  it("(c) multi-chunk file inside the cap → exact total and exact tail", async () => {
+    const lines = Array.from({ length: 3000 }, (_, i) => `m${i}` + "x".repeat(96)); // ~300 KiB
+    const content = lines.join("\n") + "\n";
+    expect(Buffer.byteLength(content)).toBeGreaterThan(64 * 1024);
+    expect(Buffer.byteLength(content)).toBeLessThan(TAIL_BYTE_CAP);
+    const r = await readTailLines(tmpFile(content), 50);
+    expect(r.truncated).toBe(false);
+    expect(r.totalLines).toBe(content.split("\n").length);
+    // Trailing newline: split leaves a final "", so the last 50 elements are
+    // lines 2951..2999 plus "" — identical to the old whole-file slice.
+    expect(r.text).toBe([...lines.slice(-49), ""].join("\n"));
+  });
+
+  it("P1: tail megabytes without a line break → window tail, flagged partial, never empty", async () => {
+    const head = Array.from({ length: 8000 }, (_, i) => `h${i}`).join("\n") + "\n";
+    const tailRun = "Z".repeat(1_200_000);
+    const content = head + tailRun;
+    expect(Buffer.byteLength(content)).toBeGreaterThan(TAIL_BYTE_CAP);
+    const r = await readTailLines(tmpFile(content), 50);
+    expect(r.truncated).toBe(true);
+    expect(r.totalLines).toBeNull();
+    expect(r.partial).toBe(true);
+    expect(r.text.length).toBeGreaterThan(0);
+    expect(r.text.length).toBeLessThanOrEqual(TAIL_CHUNK_BYTES);
+    expect(r.text).toBe("Z".repeat(r.text.length)); // file-tail bytes, nothing else
+  });
+});
+
+describe("attachPipePaneLog (d)", () => {
+  const makeDaemon = async () => {
+    const { Daemon } = await import("../src/daemon.js");
+    const { default: pino } = await import("pino");
+    const instanceDir = mkdtempSync(join(tmpdir(), "agend-attach-"));
+    const daemon = new Daemon("attach-test", {
+      working_directory: tmpdir(),
+      restart_policy: { max_retries: 1, backoff: "linear", reset_after: 0 },
+      context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
+      log_level: "error",
+    }, instanceDir, true, undefined, undefined, pino({ level: "silent" }) as never) as unknown as {
+      attachPipePaneLog: () => Promise<void>;
+      logger: { warn: (...args: unknown[]) => void };
+      tmux: unknown;
+    };
+    return daemon;
+  };
+
+  it("pipeOutput rejection warns with the attach message instead of vanishing", async () => {
+    const { vi } = await import("vitest");
+    const daemon = await makeDaemon();
+    daemon.tmux = { pipeOutput: vi.fn().mockRejectedValue(new Error("attach boom")) };
+    const warn = vi.spyOn(daemon.logger, "warn");
+    await daemon.attachPipePaneLog();
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]?.[1])).toContain("Failed to attach pipe-pane");
+  });
+
+  it("successful attach does not warn", async () => {
+    const { vi } = await import("vitest");
+    const daemon = await makeDaemon();
+    daemon.tmux = { pipeOutput: vi.fn().mockResolvedValue(undefined) };
+    const warn = vi.spyOn(daemon.logger, "warn");
+    await daemon.attachPipePaneLog();
+    expect(warn).not.toHaveBeenCalled();
   });
 });
