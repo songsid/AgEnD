@@ -293,6 +293,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **The #978 idle escape hatch no longer treats a quoted "esc to interrupt" as a running turn (#991).** It now uses the
   same precise live-status-row match as the rest of the daemon (any title, whole row, column zero): a real status row
   still blocks it, an indented quote or a prose mention in a reply does not.
+- **Crash-loop recovery now honours the request to start without resuming (#835).**
+  The daemon reads recovery intent before clearing it; failed or superseded starts
+  that never reach the reader preserve it. Normal starts keep resuming as before.
 - **macOS no longer mistakes low free RAM for memory pressure.** Native, bounded async
   `vm_stat`/`sysctl` probes estimate reclaimable RAM and read swap; first/stale starts
   wait at most two seconds, with a 30-second shared cache. Unavailable Mac measurements

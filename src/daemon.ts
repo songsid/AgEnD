@@ -1877,18 +1877,24 @@ export class Daemon extends EventEmitter {
     writeFileSync(join(this.instanceDir, "daemon.pid"), String(process.pid));
     this.logger.info(`Starting ${this.name}`);
 
-    // P1: Read crash state from previous run — skip resume if last run was a crash loop
+    // Recovery intent is one-shot, but only the reader may consume it. Keep
+    // an unreadable marker for a later start; clear successfully read bytes
+    // even when the JSON is corrupt so it cannot remain forever.
     const crashStatePath = join(this.instanceDir, "crash-state.json");
     try {
       if (existsSync(crashStatePath)) {
-        const state = JSON.parse(readFileSync(crashStatePath, "utf-8"));
-        if (state.resumeDisabled) {
-          this.skipResume = true;
-          this.logger.warn("Previous crash loop detected — starting without resume");
+        const content = readFileSync(crashStatePath, "utf-8");
+        try {
+          const state = JSON.parse(content);
+          if (state?.resumeDisabled === true) {
+            this.skipResume = true;
+            this.logger.warn("Previous crash loop detected — starting without resume");
+          }
+        } finally {
+          try { unlinkSync(crashStatePath); } catch { /* best effort */ }
         }
-        unlinkSync(crashStatePath);
       }
-    } catch { /* corrupt file — ignore */ }
+    } catch { /* unreadable or corrupt file — ignore */ }
 
     // Restore last reply target so a fleet-topic instance can reply correctly
     // BEFORE its first post-restart inbound arrives (otherwise lastChatId is empty
