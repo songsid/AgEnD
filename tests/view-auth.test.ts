@@ -74,6 +74,12 @@ describe("/view reads are open by default", () => {
       expect(res.status, path).not.toBe(401);
       expect(res.status, path).not.toBe(403);
     }
+    // HEAD is a read too: it must not be treated as a write needing a credential.
+    for (const path of ["/view", "/api/profiles"]) {
+      const head = await raw(h.port, "HEAD", path);
+      expect(head.status, `HEAD ${path}`).not.toBe(401);
+      expect(head.status, `HEAD ${path}`).not.toBe(403);
+    }
     await stop(h.fm);
   }, 30_000);
 });
