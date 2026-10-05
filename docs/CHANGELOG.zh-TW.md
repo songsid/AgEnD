@@ -7,6 +7,7 @@
 ## [未發佈] (Unreleased)
 
 ### 安全 (Security)
+- **Web 聊天：可以傳檔案與圖片，也看得到 agent 回傳的檔案。** 輸入框有 📎 按鈕，也可以把檔案貼上或拖進聊天區（每則訊息最多 5 個、每個 10 MB、合計 25 MB；PNG、JPEG、GIF、WebP、PDF 與文字檔）。Agent 收到的方式和 Telegram 完全相同——檔案放在該 instance 工作區的 inbox、一行 `[📷 Image: …]` / `[📎 File: … → …]`，以及 `image_path` / `attachment_path`；agent 在回覆裡附的檔案也會顯示在 web 聊天中（圖片直接顯示，其他是下載連結）。檔案型別由內容判斷，不看檔名或瀏覽器的說法；存檔名由 fleet 決定；而且只能用 fleet 發出的 id 取回檔案（`/ui/file/<id>`），絕不能用路徑。四種圖片以外的檔案一律以下載方式提供，不會在頁面上渲染。
 - **三個網頁面板共用同一條導覽列與 Session 選單，`/` 直接開 dashboard。** `/ui`、`/view`、`/settings` 都有相同的「Dashboard · View · Settings」連結與 Session 按鈕：顯示目前以哪個瀏覽器登入、session 何時結束、其他已登入的裝置（各自可登出）以及「全部登出」。只是一支小 script 與樣式表（`/assets/shell.js`、`/assets/shell.css`），不是重寫面板。
 - **Dashboard 不再依賴 Server-Sent Events。** 即時串流 15 秒沒有任何訊息或一直失敗時，頁面改為每 5 秒用 `GET /ui/poll` 取得相同的狀態與聊天訊息，串流恢復後再切回去。輪詢與串流使用同一個 `<boot>-<id>` 游標，所以兩者交替時不會重複也不會漏訊息，fleet 重啟後也一樣。（Cloudflare Quick Tunnel 不支援 SSE，會緩衝串流的 proxy 看起來就像從不送資料的伺服器。）
 - **Dashboard 不再從 Google 載入字型，每個面板都帶 `Content-Security-Policy`**，把 script、樣式、圖片、字型與連線都限制在本站（`connect-src 'self'`），即使頁面上真的跑了不該跑的 script，也無法把讀到的內容送到別的伺服器。（`'unsafe-inline'` 暫時保留：面板是單檔內嵌 script，dashboard 也用了 `onclick=` 屬性。）
