@@ -88,7 +88,7 @@ import { DeliveryOutbox, type ClaimedOutboxDelivery, type OutboxDelivery, type D
 // a state transition or that generation is replaced.
 export const DURABLE_DELIVERY_LANE_ALERT_MS = 35 * 60_000;
 import { handleWebRequest, broadcastSseEvent, SSE_HEARTBEAT_MS } from "./web-api.js";
-import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, type WebChatAttachment } from "./web-chat-history.js";
+import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, type WebChatAttachment } from "./web-chat-history.js";
 import { publicAttachment, WebFileLedger } from "./web-upload.js";
 import { handleViewRequest, isViewPath } from "./view-api.js";
 import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, usageProviderIdForBackend } from "./usage/usage-api.js";
@@ -469,7 +469,15 @@ interface NonceButtonEntry {
   classicScope?: "guild" | "group";
   /** classic-approve only: the user who asked, when the trigger had one. */
   classicUserId?: string;
+  /** The entry's own key in pendingNonceButtons (set when posted). */
+  nonce?: string;
+  /**
+   * Set when the prompt is also offered in the web dashboard (web track C4): what the page shows. The same
+   * nonce, the same single claim and the same expiry as the platform's buttons — whoever clicks first wins.
+   */
+  web?: { text: string; actions: Array<{ id: string; label: string }>; expiresAt: number };
 }
+
 
 interface AdapterCallbackData {
   callbackData: string;
@@ -540,6 +548,25 @@ const INTERACTIVE_ASSIST_CALLBACK_PREFIX = "interactive-assist:";
 const EXIT_RESTART_CALLBACK_PREFIX = "exit-restart:";
 const HANG_CALLBACK_PREFIX = "hang:";
 const CLEAR_CONFIRM_CALLBACK_PREFIX = "clear-confirm:";
+/**
+ * The prompts the web dashboard also offers: the ones about an instance's own health, which a dashboard
+ * user — holding the full-fleet web credential — may answer exactly as a fleet admin on the platform may.
+ * Personal or channel-bound prompts stay where they were asked: a /clear confirmation, login, a Classic
+ * group's approval, tips, and the per-user /model and /effort menus (which are not nonce entries at all).
+ */
+const WEB_MIRRORED_PROMPT_PREFIXES: ReadonlySet<string> = new Set([
+  HANG_CALLBACK_PREFIX, EXIT_RESTART_CALLBACK_PREFIX, INTERACTIVE_ASSIST_CALLBACK_PREFIX,
+]);
+/**
+ * Where a reply goes on a fleet with no chat platform (web track C4): it is "sent" by being shown in the
+ * web chat, which afterReplyRouted does for every reply. Only what routeToolCall's reply path calls exists
+ * here; the path checks (assertSendable, the file count) are the reply tool's own, run before these.
+ */
+const WEB_ONLY_REPLY_SINK = {
+  type: "web",
+  sendText: async () => ({ chatId: "web", messageId: newWebMessageId() }),
+  sendFile: async () => ({ chatId: "web", messageId: newWebMessageId() }),
+} as unknown as ChannelAdapter;
 const TIP_DISMISS_CALLBACK_PREFIX = "tip-dismiss:";
 const TIP_UNLOCK_CALLBACK_PREFIX = "tip-unlock:";
 export const LOGIN_CALLBACK_PREFIX = "login:";
@@ -797,6 +824,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private pendingModelSelects = new Map<string, { instanceName: string; model: string; userId: string; channelId: string; timer: ReturnType<typeof setTimeout>; respond: (t: string) => Promise<string | undefined>; adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string; respondChoices?: (text: string, choices: { id: string; label: string }[]) => Promise<string | undefined>; }>();
   /** nonce → pending button prompt (hang restart, interactive assist, clean-exit restart). */
   private pendingNonceButtons = new Map<string, NonceButtonEntry>();
+  /**
+   * Clicks that came from the web dashboard (clickWebPrompt). Only that method adds to it, so nothing an
+   * adapter emits — whatever fields its payload carries — can claim a dashboard click's authority.
+   */
+  private readonly webPromptClicks = new WeakSet<AdapterCallbackData>();
+  /** The web clicks consumeNonceCallback actually claimed (the others were refused or lost a race). */
+  private readonly webPromptClaims = new WeakSet<AdapterCallbackData>();
 
   // Model failover state
   private failoverActive = new Map<string, string>(); // instance → current failover model
@@ -6398,7 +6432,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
 
-    if (this.worlds.size === 0) {
+    // A fleet with no chat platform at all is driven from the web dashboard alone: a reply has nowhere
+    // else to go, and "retry shortly" would have the agent retry forever. It goes to the web chat.
+    const webOnlyReply = tool === "reply" && this.worlds.size === 0 && this.isWebOnlyFleet();
+    if (this.worlds.size === 0 && !webOnlyReply) {
       respond(null, "Channel adapters are not ready — retry shortly");
       return;
     }
@@ -6428,7 +6465,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     const outAdapter = contextWorld?.adapter
       ?? this.getAdapterForInstance(senderInstanceName ?? instanceName)
-      ?? this.adapter;
+      ?? this.adapter
+      ?? (webOnlyReply ? WEB_ONLY_REPLY_SINK : null);
     if (!outAdapter) { respond(null, "No adapter available"); return; }
 
     // For classic instances: force chat_id to channelId and clear thread_id
@@ -6482,6 +6520,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           } catch (err) {
             this.logger.warn({ err, instanceName }, "Reply delivered but post-delivery bookkeeping failed");
           }
+        } else if (!error && result != null && outAdapter === WEB_ONLY_REPLY_SINK) {
+          // A daemon status line skips the bookkeeping, but on a web-only fleet the web chat is the only
+          // place anyone could read it.
+          this.emitSseEvent("message", {
+            instance: instanceName, sender: senderSessionName ?? instanceName,
+            text: String(args.text ?? "").slice(0, WEB_CHAT_TEXT_MAX), ts: new Date().toISOString(),
+          });
         }
       };
       if (routeToolCall(outAdapter, tool, args, threadId, respondAndRecord)) {
@@ -6514,6 +6559,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** Side effects of a routed reply: cancel-button lifecycle, logs, SSE, chat log. */
+  /** No chat platform is configured at all: the web dashboard is the fleet's only surface. */
+  private isWebOnlyFleet(): boolean {
+    const config = this.fleetConfig;
+    return config != null && !config.channel && !(config.channels?.length);
+  }
+
   private afterReplyRouted(instanceName: string, args: Record<string, unknown>, senderSessionName?: string): void {
     // A reply is NOT proof the turn is over (#410) — but it is not proof of
     // more work either. Split the difference: an instance that is clearly
@@ -8770,6 +8821,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // install-backend-menu.test.ts and classic-approve-buttons.test.ts.
     const nonce = randomBytes(16).toString("hex");
     const entry: NonceButtonEntry = {
+      nonce,
       prefix: opts.prefix,
       instanceName: opts.instanceName,
       adapterId: opts.adapterId,
@@ -8783,6 +8835,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const pending = this.pendingNonceButtons.get(nonce);
       if (pending !== entry) return;
       this.pendingNonceButtons.delete(nonce);
+      this.webPromptGone(entry, entry.expiredText);
       if (entry.messageId && entry.adapter.editMessageRemoveButtons) {
         entry.adapter.editMessageRemoveButtons(
           entry.chatId,
@@ -8815,6 +8868,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         entry.threadId = sent.threadId;
       }
       entry.messageId = sent.messageId;
+      // Offered on the dashboard only once it is live on the platform (a failed post is disarmed above),
+      // and only if nothing claimed or expired it meanwhile.
+      if (WEB_MIRRORED_PROMPT_PREFIXES.has(opts.prefix) && this.pendingNonceButtons.get(nonce) === entry) {
+        entry.web = {
+          text: opts.message,
+          actions: opts.choices.map(c => ({ id: c.action, label: c.label })),
+          expiresAt: Date.now() + (opts.timeoutMs ?? NONCE_BUTTON_TIMEOUT_MS),
+        };
+        this.emitSseEvent("prompt", { instance: entry.instanceName, nonce, ...entry.web });
+      }
       return nonce;
     } catch (err) {
       this.pendingNonceButtons.delete(nonce);
@@ -8884,7 +8947,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Bind the capability to the exact message/world that created it. Telegram
     // keyboards are visible to everyone, so mutating actions require fleet admin;
     // a Tip acknowledgement only records that the shared content was read.
-    const isAuthorized = data.userId
+    // A dashboard click carries the full-fleet web session (checked by the web gate before it got here),
+    // and is good only for a prompt that was offered on the dashboard.
+    const fromWeb = this.webPromptClicks.has(data);
+    const isAuthorized = fromWeb
+      ? pending.web !== undefined
+      : data.userId
       ? pending.allowAnyUser
         ? true
         : pending.authChannelId
@@ -8914,6 +8982,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // can never act twice for state-changing actions.
     this.pendingNonceButtons.delete(match[1]);
     if (pending.timer) clearTimeout(pending.timer);
+    if (fromWeb) this.webPromptClaims.add(data);
+    // The dashboard's copy goes now; the outcome line follows from retireNonceButtons.
+    this.webPromptGone(pending);
     return { entry: pending, action: match[2] };
   }
 
@@ -8985,11 +9056,61 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return false;
   }
 
+  /**
+   * A prompt the dashboard was offered is no longer open (answered on either surface, expired, or its
+   * instance stopped): every page drops its buttons, and shows `outcome` when there is one.
+   */
+  private webPromptGone(entry: NonceButtonEntry, outcome?: string): void {
+    if (!entry.web || !entry.nonce) return;
+    this.emitSseEvent("prompt_resolved", { instance: entry.instanceName, nonce: entry.nonce, ...(outcome ? { outcome } : {}) });
+  }
+
+  /** The prompts open on the dashboard right now (a page that loads after one was posted asks for them). */
+  listWebPrompts(): Array<{ instance: string; nonce: string; text: string; actions: Array<{ id: string; label: string }>; expiresAt: number }> {
+    const open: ReturnType<FleetManager["listWebPrompts"]> = [];
+    for (const [nonce, e] of this.pendingNonceButtons) {
+      if (e.web) open.push({ instance: e.instanceName, nonce, ...e.web });
+    }
+    return open;
+  }
+
+  /**
+   * A click on a prompt in the web dashboard (web track C4). It is the platform click, made by the
+   * dashboard: the same handler, the same single claim (whoever answers first — here or on Telegram —
+   * wins), and the platform's buttons collapse to the outcome exactly as for a click there.
+   *
+   * The caller has passed the /ui gate (session, same origin, CSRF). Here: the prompt must be one offered
+   * on the dashboard, about the instance the page named, and the action one of its own buttons.
+   */
+  async clickWebPrompt(instance: string, nonce: string, action: string): Promise<{ status: 200 | 400 | 403 | 409; error?: string; outcome?: string }> {
+    if (!/^[0-9a-f]{32}$/.test(nonce) || !/^[a-z][a-z-]{0,23}$/.test(action)) return { status: 400, error: "Malformed prompt answer" };
+    const entry = this.pendingNonceButtons.get(nonce);
+    // Unknown is the same answer as answered or expired: the page drops the buttons either way.
+    if (!entry || !entry.web) return { status: 409, error: "This prompt is no longer open" };
+    if (entry.instanceName !== instance) return { status: 403, error: "This prompt belongs to another instance" };
+    if (!entry.web.actions.some(a => a.id === action)) return { status: 400, error: "Not one of this prompt's answers" };
+    let notice: string | undefined;
+    const data: AdapterCallbackData = {
+      callbackData: `${entry.prefix}${nonce}:${action}`,
+      // The exact place the prompt lives, so the platform-side binding checks hold as for a click there.
+      chatId: entry.chatId,
+      threadId: entry.threadId,
+      messageId: entry.messageId ?? "",
+      userId: "web-user",
+      ack: n => { if (notice === undefined && n) notice = n; },
+    };
+    this.webPromptClicks.add(data);
+    await this.dispatchAdapterCallback(data, entry.adapterId, entry.adapter);
+    if (this.webPromptClaims.has(data)) return { status: 200 };
+    return { status: 409, error: notice ?? "This prompt is no longer open" };
+  }
+
   private async retireNonceButtons(
     pending: NonceButtonEntry,
     messageId: string,
     text: string,
   ): Promise<void> {
+    this.webPromptGone(pending, text);
     try {
       if (!pending.adapter.editMessageRemoveButtons) throw new Error("adapter cannot remove prompt buttons");
       await pending.adapter.editMessageRemoveButtons(
@@ -9407,7 +9528,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private async retirePendingNoncePrompts(budgetMs = NONCE_RETIRE_BUDGET_MS): Promise<void> {
     const entries = [...this.pendingNonceButtons.values()];
     this.pendingNonceButtons.clear();
-    for (const entry of entries) if (entry.timer) clearTimeout(entry.timer);
+    for (const entry of entries) { if (entry.timer) clearTimeout(entry.timer); this.webPromptGone(entry, entry.expiredText); }
 
     const collapses = entries
       .filter(entry => entry.messageId && entry.adapter.editMessageRemoveButtons)
@@ -9433,6 +9554,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (entry.instanceName !== instanceName) continue;
       this.pendingNonceButtons.delete(nonce);
       if (entry.timer) clearTimeout(entry.timer);
+      this.webPromptGone(entry, entry.expiredText);
       if (entry.messageId && entry.adapter.editMessageRemoveButtons) {
         entry.adapter.editMessageRemoveButtons(entry.chatId, entry.messageId, entry.expiredText, entry.threadId)
           .catch(err => this.logger.debug({ err, instanceName, prefix: entry.prefix },

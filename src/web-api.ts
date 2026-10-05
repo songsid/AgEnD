@@ -166,6 +166,10 @@ export interface WebApiContext {
   readonly sseHeartbeatMs?: number;
   startInstance(name: string, config: unknown, topicMode: boolean): Promise<void>;
   stopInstance(name: string): Promise<void>;
+  /** The fleet prompts open on the dashboard (web track C4); absent: none are offered. */
+  listWebPrompts?(): unknown[];
+  /** Answer one of them, exactly as a click on its platform button would. */
+  clickWebPrompt?(instance: string, nonce: string, action: string): Promise<{ status: number; error?: string }>;
   /** Interrupt the current reply and drop what was queued for it; false when the instance is not running. */
   cancelInstance?(name: string): boolean;
   restartSingleInstance(name: string, opts?: { explicit?: boolean }): Promise<void>;
@@ -409,6 +413,36 @@ export function handleWebRequest(
     res.setHeader("Content-Security-Policy", "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox");
     res.writeHead(200);
     res.end(bytes);
+    return true;
+  }
+
+  // ── Fleet prompts (C4): the hang / exit / interactive-prompt buttons, answerable here too ──
+
+  if (method === "GET" && path === "/ui/prompts") {
+    json(res, 200, { prompts: ctx.listWebPrompts?.() ?? [] });
+    return true;
+  }
+
+  // The nonce is the capability, so it travels in the body: never in a URL a log or a history could keep.
+  if (method === "POST" && path === "/ui/prompt") {
+    if (!ctx.clickWebPrompt) { json(res, 404, { error: "No prompts here" }); return true; }
+    const click = ctx.clickWebPrompt.bind(ctx);
+    (async () => {
+      let body: Record<string, unknown>;
+      try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
+      if (!body || typeof body !== "object") { json(res, 400, { error: "instance, nonce and action required" }); return; }
+      const { instance, nonce, action } = body;
+      if (typeof instance !== "string" || typeof nonce !== "string" || typeof action !== "string") {
+        json(res, 400, { error: "instance, nonce and action required" });
+        return;
+      }
+      const r = await click(instance, nonce, action);
+      // 409: answered elsewhere first, expired, or never open — the page drops the buttons on `gone`.
+      json(res, r.status, r.status === 200 ? { answered: true } : { error: r.error ?? "Refused", ...(r.status === 409 ? { gone: true } : {}) });
+    })().catch(err => {
+      ctx.logger.error({ err: (err as Error).message }, "Web prompt answer failed");
+      try { json(res, 500, { error: "Prompt answer failed" }); } catch { /* already answered */ }
+    });
     return true;
   }
 
@@ -828,8 +862,8 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       const messageId = newWebMessageId();
       // Use real Telegram context so daemon's lastChatId/lastThreadId are set,
       // enabling reply tool even when first message comes from Web UI.
-      // Pure Web UI mode (no channel config) leaves these empty — TODO: needs
-      // a separate reply path for that case.
+      // Pure Web UI mode (no channel config) leaves these empty; the agent's reply then comes back to the
+      // web chat alone (FleetManager's web-only reply sink).
       const groupId = ctx.fleetConfig?.channel?.group_id;
       const topicId = ctx.fleetConfig?.instances[instance]?.topic_id;
       try {

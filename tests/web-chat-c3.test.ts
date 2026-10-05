@@ -465,6 +465,7 @@ describe("the dashboard (the real page script)", () => {
     p.read('fetch = async (u) => { recordFetch(u); return { ok: true, json: async () => ({ status: { uptime: 1, instances: [] }, messages: [], cursor: "b-1" }) }; }');
     p.read('api = async (m, path) => { recordFetch(path); return { messages: [] }; }');
     await p.read("pollOnce()");
-    expect(fetched).toEqual(["/ui/poll?after=", "/ui/history?instance=w&limit=200"]);
+    // ...and the open prompts (C4), which are stream-only events too.
+    expect(fetched).toEqual(["/ui/poll?after=", "/ui/history?instance=w&limit=200", "/ui/prompts"]);
   });
 });
