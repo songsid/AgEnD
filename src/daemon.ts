@@ -4872,10 +4872,10 @@ export class Daemon extends EventEmitter {
         // If control mode missed the pane change, the safety capture becomes
         // the new progress timestamp and re-arms both deadlines.
         if (!expectedOutputAt) this.instanceStateLastOutputAt = captureStartedAt;
-        // The deadline follows the latest sign of life — the output clock OR what the state machine saw move. Keyed on the
-        // output clock alone it would be "now" again the moment a long quiet turn proved alive, and re-fire in a loop.
-        const lastProgressAt = Math.max(this.instanceStateLastOutputAt || 0, snapshot.observedAt - snapshot.unchangedForMs);
-        this.scheduleInstanceStateStuckDeadline(lastProgressAt || captureStartedAt);
+        // The deadline follows the state machine's latest sign of life (output events, content changes and the CLI's own
+        // turn clock all feed it). Keyed on the output clock alone it would be "now" again the moment a long quiet turn
+        // proved alive, and re-fire in a loop.
+        this.scheduleInstanceStateStuckDeadline(snapshot.observedAt - snapshot.unchangedForMs || captureStartedAt);
       }
     } catch (err) {
       if (reason === "delivery_idle_gate") this.resetFooterFallback();
