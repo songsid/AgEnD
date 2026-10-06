@@ -191,8 +191,9 @@ describe("FleetManager: delivery reports for web messages", () => {
     any.fleetConfig = { instances: { w: { working_directory: dir } } };
     any.instanceProcessStatus.delete("w");
     report("working");
-    const status = fm.getUiStatus() as { instances: Array<{ name: string; state: unknown }> };
-    expect(status.instances.find(i => i.name === "w")!.state).toBe("working");
+    const status = fm.getUiStatus() as { instances: Array<{ name: string; state: unknown; execution_state: unknown }> };
+    // `state` is #1212's presentation state; `execution_state` is the raw one the activity events carry.
+    expect(status.instances.find(i => i.name === "w")).toMatchObject({ state: "working", execution_state: "working" });
   });
 });
 
@@ -415,6 +416,17 @@ describe("the dashboard (the real page script)", () => {
     p.sse.status!({ data: JSON.stringify({ uptime: 1, instances: [{ name: "w", state: "working" }, { name: "other", state: null }] }) });
     expect(bar(p).className).toBe("work-bar on");
     expect(p.read("activity.other")).toBeNull();
+  });
+
+  it("a status that presents awaiting_input (#1212) still shows the agent working: the bar follows the execution state", () => {
+    const p = page();
+    p.sse.activity!({ data: JSON.stringify({ instance: "w", state: "working" }) });
+    p.sse.status!({ data: JSON.stringify({ uptime: 1, instances: [{ name: "w", state: "awaiting_input", execution_state: "working" }] }) });
+    expect(bar(p).className).toBe("work-bar on");
+    expect(p.read("activity.w")).toBe("working");
+    // An older status without execution_state still works from `state`.
+    p.sse.status!({ data: JSON.stringify({ uptime: 1, instances: [{ name: "w", state: "idle" }] }) });
+    expect(bar(p).className).toBe("work-bar");
   });
 
   it("the name is text, never markup", () => {

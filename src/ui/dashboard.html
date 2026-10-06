@@ -380,7 +380,9 @@ function toast(msg, ok=true) {
 let lastCursor = "", silentTimer = null, errorTimer = null, pollTimer = null;
 function applyStatus(d) {
   instances = d.instances;
-  for (const i of instances) activity[i.name] = i.state ?? null;
+  // The raw execution state, the same thing the "activity" events carry; `state` may be the presentation
+  // "awaiting_input" (#1212), which must not hide the working line and Stop between two events.
+  for (const i of instances) activity[i.name] = (i.execution_state !== undefined ? i.execution_state : i.state) ?? null;
   document.getElementById("uptime").textContent = fmtUp(d.uptime);
   renderList();
   if (cur) { const i = instances.find(x => x.name === cur); const a = document.getElementById("actions"); if (i && a) renderActions(i); }

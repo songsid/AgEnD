@@ -15907,8 +15907,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         name,
         display_name: display_name || undefined,
         status: this.getInstanceStatus(name),
-        // working / idle / stuck, or null when unknown — the activity events carry the changes.
-        state: this.getInstanceExecutionState(name),
+        // `state` (presentation: may be awaiting_input) and `execution_state` (working / idle / stuck, or null —
+        // what the dashboard's activity events carry) come from instancePresentation (#1212).
         context_pct,
         cost,
         model,
