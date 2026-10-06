@@ -1,8 +1,8 @@
 import { EventEmitter } from "node:events";
-import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync, mkdirSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import vm from "node:vm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { handleWebRequest, type WebApiContext } from "../src/web-api.js";
@@ -96,6 +96,42 @@ describe("WebFileLedger", () => {
     const late = ledger.storeUpload({ instance: "w", inboxDir: inbox, bytes: PNG, name: "late.png", type: png });
     now += UPLOAD_TTL_MS;
     expect(ledger.takeForMessage("w", [late.id]).ok, "expired").toBe(false);
+  });
+
+  it("an upload no message took is deleted when it expires — file and id; a sent one stays with the agent", () => {
+    let now = 1_000;
+    const ledger = new WebFileLedger({ now: () => now });
+    const inbox = join(dir, "inbox");
+    const abandoned = ledger.storeUpload({ instance: "w", inboxDir: inbox, bytes: PNG, name: "a.png", type: png });
+    const sent = ledger.storeUpload({ instance: "w", inboxDir: inbox, bytes: PNG, name: "s.png", type: png });
+    const fresh = () => ledger.storeUpload({ instance: "w", inboxDir: inbox, bytes: PNG, name: "f.png", type: png });
+    expect(ledger.takeForMessage("w", [sent.id]).ok).toBe(true);
+    now += UPLOAD_TTL_MS - 1;
+    ledger.prune();
+    expect(existsSync(abandoned.path), "not expired yet").toBe(true);
+    now += 1;
+    const later = fresh();                                            // any later upload sweeps
+    expect(existsSync(abandoned.path), "expired unsent: deleted").toBe(false);
+    expect(ledger.read(abandoned.id), "and its id is gone").toBeNull();
+    expect(existsSync(sent.path), "sent: the agent's file is kept").toBe(true);
+    expect(ledger.read(sent.id)?.bytes).toEqual(PNG);
+    expect(existsSync(later.path)).toBe(true);
+    expect(readdirSync(inbox).sort()).toEqual([basename(later.path), basename(sent.path)].sort());
+  });
+
+  it("the sweep runs on its own once the upload window passes — no later upload needed", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    try {
+      const ledger = new WebFileLedger();
+      const e = ledger.storeUpload({ instance: "w", inboxDir: join(dir, "inbox"), bytes: PNG, name: "a.png", type: png });
+      vi.advanceTimersByTime(UPLOAD_TTL_MS);
+      expect(existsSync(e.path), "the window has only just closed").toBe(true);
+      vi.advanceTimersByTime(1_000);
+      expect(existsSync(e.path)).toBe(false);
+      expect(ledger.read(e.id)).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("refuses more than 5 files, or more than 25 MB together, without marking any of them sent", () => {

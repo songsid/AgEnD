@@ -12,7 +12,7 @@
  * label, and a file can be fetched back only by an id this process issued for it — never by a path.
  */
 import { randomBytes } from "node:crypto";
-import { constants as fsConstants, closeSync, fstatSync, mkdirSync, openSync, readSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { constants as fsConstants, closeSync, fstatSync, mkdirSync, openSync, readSync, realpathSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 
 export const UPLOAD_LIMITS = {
@@ -145,6 +145,9 @@ export class WebFileLedger {
     this.prune();
     this.uploads.set(id, entry);
     this.registerServed({ id, path, name: entry.name, mime: entry.mime, instance: entry.instance, kind: entry.kind });
+    // If no message takes it in time, the file goes when its id does, without waiting for the next upload.
+    const sweep = setTimeout(() => this.prune(), UPLOAD_TTL_MS + 1_000);
+    sweep.unref?.();
     return entry;
   }
 
@@ -232,9 +235,20 @@ export class WebFileLedger {
     for (const [id, f] of this.served) if (f.instance === instance) this.served.delete(id);
   }
 
-  private prune(): void {
+  /**
+   * Drop what is done with. A sent upload leaves the list (the agent has it; the file stays in the inbox, as one
+   * from Telegram does). One that expired before any message took it was never seen by anyone but this ledger:
+   * its file is deleted with its id, so abandoned uploads do not pile up in the workspace.
+   */
+  prune(): void {
     const now = this.now();
-    for (const [id, e] of this.uploads) if (now >= e.expiresAt || !e.pending) this.uploads.delete(id);
+    for (const [id, e] of this.uploads) {
+      if (!e.pending) { this.uploads.delete(id); continue; }
+      if (now < e.expiresAt) continue;
+      try { unlinkSync(e.path); } catch { /* already gone */ }
+      this.uploads.delete(id);
+      this.served.delete(id);
+    }
   }
 }
 
