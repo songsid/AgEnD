@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <title>AgEnD Dashboard</title>
+<script src="/assets/agend-auth.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -295,7 +296,7 @@
 
 <script src="/ui/js/chat-render.js"></script>
 <script>
-// No token in the URL: the gate redeemed it for an HttpOnly session cookie,
+// No token in the URL: signing in with a one-time code set an HttpOnly session cookie,
 // which the browser attaches to these same-origin requests on its own.
 const UI_LANG = localStorage.getItem("agend_lang") || (navigator.language?.toLowerCase().startsWith("zh") ? "zh-TW" : "en");
 const UI_TEXT = {

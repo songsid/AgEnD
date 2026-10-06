@@ -92,6 +92,14 @@ export interface FleetContext {
   getInstanceExecutionState?(name: string): "idle" | "working" | "stuck" | "paused" | null;
   /** Live dashboard auth/readiness; URLs must not be issued before the server listens. */
   getDashboardAccess?(): { ready: boolean; token: string | null };
+  /** A fresh single-use dashboard login code (`/dashboard`); null while the panel is closed. */
+  issueDashboardLogin?(): { display: string; expiresAt: number; ttlMinutes: number } | null;
+  /**
+   * Sign every web session out and withdraw any unused login code (`/dashboard revoke`): how many sessions
+   * ended, and whether that is durable (false: the session file could not be updated or removed, so a
+   * restart may bring them back — the caller must say so, not report success).
+   */
+  revokeWebSessions?(): { count: number; durable: boolean };
   /** Persist and edit one `/update` message across the fleet process restart. */
   beginUpdateProgress?(adapter: import("./channel/types.js").ChannelAdapter, chatId: string, threadId: string | undefined, messageId: string): void;
   failUpdateProgress?(message: string): void;

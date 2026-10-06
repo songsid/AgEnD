@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { IncomingMessage, ServerResponse } from "node:http";
 import { Readable } from "node:stream";
 import { handleWebRequest, type WebApiContext } from "../src/web-api.js";
-import { WEB_SESSION_COOKIE, WEB_TOKEN_INVALID_MESSAGE, webSessionCookieValue } from "../src/web-auth.js";
+import { WEB_SESSION_COOKIE, WEB_TOKEN_INVALID_MESSAGE } from "../src/web-auth.js";
+import { tokenEpoch, WebSessionStore } from "../src/web-session.js";
 
 // Minimal mock ServerResponse that captures status + body.
 class CaptureRes extends ServerResponse {
@@ -168,12 +169,20 @@ describe("web-api authentication", () => {
   });
 
   it("accepts the session cookie the gate issued, with no token anywhere in the URL", async () => {
-    const ctx = makeCtx({ webToken: TEST_TOKEN });
+    const webSessions = new WebSessionStore();
+    const { sessionId } = webSessions.create({ tier: "admin", surface: "local", label: "test", tokenEpoch: tokenEpoch(TEST_TOKEN) });
+    const ctx = makeCtx({ webToken: TEST_TOKEN, webSessions });
     const res = await callAndWait("GET", "/ui/backends", undefined, ctx, {
-      cookie: `${WEB_SESSION_COOKIE}=${webSessionCookieValue(TEST_TOKEN)}`,
+      cookie: `${WEB_SESSION_COOKIE}=${sessionId}`,
     });
 
     expect(res.status).toBe(200);
+
+    // A context without a session store does not treat a cookie as a credential.
+    const bare = await callAndWait("GET", "/ui/backends", undefined, makeCtx({ webToken: TEST_TOKEN }), {
+      cookie: `${WEB_SESSION_COOKIE}=${sessionId}`,
+    });
+    expect(bare.status).toBe(401);
   });
 });
 

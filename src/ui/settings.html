@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AgEnD Settings</title>
+<script src="/assets/agend-auth.js"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   :root {
@@ -245,7 +246,7 @@
 <script>
 (() => {
   "use strict";
-  // No token in the URL: the gate redeemed it for an HttpOnly session cookie,
+  // No token in the URL: signing in with a one-time code set an HttpOnly session cookie,
   // which the browser attaches to these same-origin requests on its own.
   const $ = (id) => document.getElementById(id);
   const el = (tag, attrs = {}, ...kids) => { const e = document.createElement(tag); for (const k in attrs) { if (k === "class") e.className = attrs[k]; else if (k === "html") e.innerHTML = attrs[k]; else if (k.startsWith("on")) e.addEventListener(k.slice(2), attrs[k]); else e.setAttribute(k, attrs[k]); } for (const c of kids) if (c != null) e.append(c); return e; };
@@ -510,7 +511,7 @@
     }
     return guildEmojiLists.get(channelId);
   }
-  // no-referrer: the settings URL can carry the web token.
+  // no-referrer: nothing on this page should tell a third-party image host where it was loaded from.
   const emojiImg = (url, alt) => el("img", { src: url, alt, referrerpolicy: "no-referrer", loading: "lazy" });
   const emojiGlyph = (entry) => el("span", { class: "se-glyph" }, entry.image_url ? emojiImg(entry.image_url, entry.display) : entry.value);
   /** Keys in catalog order, blanks dropped — so an unchanged map compares equal. */

@@ -23,7 +23,7 @@ describe("CLI instance start authentication (#1016)", () => {
         return;
       }
       const url = new URL(req.url!, `http://${req.headers.host}`);
-      const decision = decideWebGate(req, url, token);
+      const decision = decideWebGate(req, url, token, null);   // the CLI uses the header token; no browser session store
       const status = decision.kind === "allow" ? 200 : decision.kind === "reject" ? decision.status : 400;
       requests.push({ method: req.method!, url: req.url!, token: req.headers["x-agend-token"], status });
       res.writeHead(status, { "Content-Type": "application/json" });
