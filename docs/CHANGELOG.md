@@ -16,6 +16,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   chat: the fleet keeps each instance's recent messages (`GET /ui/history`, in memory, bounded), and a stream that drops and
   reconnects is sent what it missed. Long agent replies are no longer cut at 2,000 characters in the web chat (16,000 now).
 
+### Upgrade Notes
+- **[Behaviour change] The web panels sign in with a one-time code, and a
+  dashboard link no longer carries a credential.** `/dashboard` used to paste the
+  fleet-wide `web.token` into `/view?token=`, `/settings?token=` and `/ui?token=`
+  — into chat history, browser history and screenshots, where it stayed valid
+  until `agend web-token rotate`. It now gives the sign-in page and an 8-character
+  code that works once and expires in 5 minutes; typing it there starts a
+  **server-side session** (an opaque random id the server can expire, list and
+  revoke — not the old cookie that was `sha256(web.token)`, identical on every
+  device and valid until rotation). **Everyone signs in once after upgrading:**
+  the old cookie is no longer accepted. Sessions end 12 hours after sign-in or
+  after 2 hours idle, survive a fleet restart, and every write from a page now
+  also needs a per-session `X-Agend-CSRF` header and a matching `Origin`.
+  `/dashboard revoke` signs every browser out; `agend web --code` prints a code on
+  the host; `agend web-token rotate` still kills every session at once. The
+  header token (`X-Agend-Token`) is unchanged for the CLI and scripts. **A
+  `?token=` in a URL is no longer a credential anywhere on `/ui` and `/settings`:**
+  an old dashboard link gets the sign-in page, and `agend web` now prints a code
+  and opens `/signin` instead of a token link. New sign-ins are announced in the General topic
+  (`web.notify_login: false` to silence). `/view` is unchanged in this release.
+
 ## [Unreleased]
 
 ### Added
@@ -138,25 +159,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   instance directory through group access, give it access explicitly — the group no longer has it.** (#1118)
 
 ### Upgrade Notes
-- **[Behaviour change] The web panels sign in with a one-time code, and a
-  dashboard link no longer carries a credential.** `/dashboard` used to paste the
-  fleet-wide `web.token` into `/view?token=`, `/settings?token=` and `/ui?token=`
-  — into chat history, browser history and screenshots, where it stayed valid
-  until `agend web-token rotate`. It now gives the sign-in page and an 8-character
-  code that works once and expires in 5 minutes; typing it there starts a
-  **server-side session** (an opaque random id the server can expire, list and
-  revoke — not the old cookie that was `sha256(web.token)`, identical on every
-  device and valid until rotation). **Everyone signs in once after upgrading:**
-  the old cookie is no longer accepted. Sessions end 12 hours after sign-in or
-  after 2 hours idle, survive a fleet restart, and every write from a page now
-  also needs a per-session `X-Agend-CSRF` header and a matching `Origin`.
-  `/dashboard revoke` signs every browser out; `agend web --code` prints a code on
-  the host; `agend web-token rotate` still kills every session at once. The
-  header token (`X-Agend-Token`) is unchanged for the CLI and scripts. **A
-  `?token=` in a URL is no longer a credential anywhere on `/ui` and `/settings`:**
-  an old dashboard link gets the sign-in page, and `agend web` now prints a code
-  and opens `/signin` instead of a token link. New sign-ins are announced in the General topic
-  (`web.notify_login: false` to silence). `/view` is unchanged in this release.
 - **[Behaviour change] A Codex "model is at capacity" error is now answered with "keep going", not a restart (#905).**
   The old retry restarted the instance after 30 / 60 / 120 s, but a restarted Codex resumes at an empty prompt and
   nothing re-sent the failed turn, so the "retrying" notice promised something that never happened and the work sat
