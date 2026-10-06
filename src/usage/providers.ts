@@ -72,6 +72,11 @@ export interface ProviderUsage {
   hint?: string;
   hintI18n?: UsageI18nRef;
   metrics: UsageMetric[];
+  /**
+   * The soonest reset still ahead among the visible metrics' windows (#1232), as an ISO time; null when none of them
+   * says when it resets. Set by getUsageSnapshot on every call (never cached), absent on a provider that is not ok.
+   */
+  nextResetAt?: string | null;
 }
 
 export interface UsageI18nRef {

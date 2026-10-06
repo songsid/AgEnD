@@ -7,6 +7,7 @@
 ## [未發佈] (Unreleased)
 
 ### 新增 (Added)
+- **一眼看到每個 backend 下次額度重置的時間（#1232）。** `/usage` 會在每個有回報重置時間的 backend 下方顯示「⏳ 下次重置：5h12m」——取它所有還沒到期的 window 中最早的一個（已經過去的 window 會跳過，閒置的 per-model window 不算）。View 的用量面板最上方用一行列出全部（「⏳ 下次重置 · Claude 5h12m 後重置 · Codex 2d3h 後重置」），`get_usage` 也在每個 provider 上回傳 `nextResetAt`，agent 讀得到。沒有提供重置時間的 backend——例如不在週期計費中的 Grok——就不顯示，不用猜的。
 - **Agent 可以在 Discord 與 Telegram 傳貼圖（#1226）。** 三個工具，兩個平台用法相同：`list_stickers`（每張 `{ id, name, emoji_or_tags, format }`，不附圖片網址）、`preview_stickers`（最多 8 張，下載給 agent 讀圖；沒有靜態圖的動畫貼圖標 `preview_unavailable`），以及 `reply` 新增的 `stickers` 欄位（最多 3 張；有貼圖時 `text` 可省略）。底層依平台各自處理：Discord 只列 instance 自己頻道所在伺服器的貼圖（別的伺服器的傳不出去），並跟文字放在同一則訊息送出；Telegram 列出貼圖包——在呼叫時指定，或用連線設定的 `options.sticker_sets`——先送文字，再依序送每張貼圖。所有貼圖都在送出任何東西之前檢查，傳不出去的會回錯誤，不會變成一則悄悄少了貼圖的回覆。agent CLI 也有：`agend-agent stickers`、`sticker-preview`，以及 `reply … --sticker <id>`。
 
 ### 變更 (Changed)
