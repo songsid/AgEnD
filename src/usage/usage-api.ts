@@ -229,12 +229,15 @@ export async function getUsageSnapshot(force = false, providerIds?: Iterable<str
 
 /**
  * The soonest reset still ahead among a provider's visible metrics (#1232) — min(resetsAt) over its windows, skipping
- * ones already past and ones hidden as per-model noise (an idle model's window is not the account's reset). null
- * when none of them says when it resets (e.g. Grok outside a weekly period).
+ * ones already past, ones hidden as per-model noise (an idle model's window is not the account's reset) and
+ * allowances that expire rather than refill (`resetKind: "expiry"`). null when none of them says when it resets
+ * (e.g. Grok outside a weekly period, or Kiro with bonus credits only).
  */
 export function nearestResetAt(provider: ProviderUsage, now = Date.now()): string | null {
   let best: number | null = null;
   for (const m of provider.metrics.filter(isVisibleUsageMetric)) {
+    // An allowance that expires (Kiro bonus credits) does not reset: its end is not the provider's next reset.
+    if (m.resetKind === "expiry") continue;
     const at = m.resetsAt ? new Date(m.resetsAt).getTime() : NaN;
     if (Number.isFinite(at) && at > now && (best === null || at < best)) best = at;
   }

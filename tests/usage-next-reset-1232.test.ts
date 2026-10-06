@@ -4,8 +4,11 @@
  * Expectations written out by hand; the clock is fixed.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
+import Database from "better-sqlite3";
+import { fetchKiroUsage } from "../src/usage/providers.js";
 import { setLocale } from "../src/locale.js";
 import type { ProviderUsage, UsageMetric } from "../src/usage/providers.js";
 import { formatUsageSummary, getUsageSnapshot, nearestResetAt, setUsageFetcherForTests, withNextResets } from "../src/usage/usage-api.js";
@@ -16,7 +19,12 @@ const at = (ms: number) => new Date(NOW + ms).toISOString();
 const H = 3_600_000, M = 60_000, D = 24 * H;
 
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(NOW); });
-afterEach(() => { vi.useRealTimers(); setLocale("en"); setUsageFetcherForTests(null); });
+const dirs: string[] = [];
+afterEach(() => {
+  vi.useRealTimers(); vi.unstubAllGlobals(); setLocale("en"); setUsageFetcherForTests(null);
+  delete process.env.KIRO_CLI_HOME;
+  for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+});
 
 const pct = (label: string, used: number, resetsAt: string | null, extra: Partial<UsageMetric> = {}): UsageMetric =>
   ({ label, type: "percent", used, resetsAt, ...extra });
@@ -64,7 +72,59 @@ describe("nearestResetAt: min(resetsAt) over a provider's windows", () => {
   });
 });
 
+describe("an allowance that expires is not a reset (#1232 review: Kiro bonus credits)", () => {
+  // Through the real Kiro mapping: a scratch kiro-cli login, and GetUsageLimits answered by a stub.
+  async function kiro(breakdown: Record<string, unknown>) {
+    const dir = mkdtempSync(join(tmpdir(), "agend-1232-kiro-")); dirs.push(dir);
+    const db = new Database(join(dir, "data.sqlite3"));
+    db.exec("CREATE TABLE auth_kv (key TEXT PRIMARY KEY, value TEXT)");
+    db.prepare("INSERT INTO auth_kv (key, value) VALUES (?, ?)").run("kirocli:social:token", JSON.stringify({
+      access_token: "test-only", region: "us-east-1", expires_at: new Date(NOW + H).toISOString(),
+    }));
+    db.close();
+    process.env.KIRO_CLI_HOME = dir;
+    const urls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      urls.push(String(url));
+      return new Response(JSON.stringify({ usageBreakdownList: [breakdown] }), { status: 200, headers: { "content-type": "application/json" } });
+    }));
+    const r = await fetchKiroUsage();
+    expect(urls).toEqual(["https://codewhisperer.us-east-1.amazonaws.com/"]);
+    return { id: "kiro", name: "Kiro", ...r } as ProviderUsage;
+  }
+  const sec = (ms: number) => Math.floor((NOW + ms) / 1000);
+  const bonus = (expiresIn: number) => ({ status: "ACTIVE", currentUsage: 1, usageLimit: 10, expiresAt: sec(expiresIn) });
+
+  it("a bonus that expires before the monthly reset: the next reset is still the monthly one", async () => {
+    const p = await kiro({ displayName: "Credit", displayNamePlural: "Credits", currentUsage: 10, usageLimit: 100, nextDateReset: sec(26 * D), bonuses: [bonus(1 * D)] });
+    expect(p.metrics.map(m => [m.label, m.resetsAt, m.resetKind])).toEqual([
+      ["Credits (monthly)", new Date(sec(26 * D) * 1000).toISOString(), undefined],
+      ["Bonus credits", new Date(sec(1 * D) * 1000).toISOString(), "expiry"],
+    ]);
+    expect(nearestResetAt(p, NOW)).toBe(new Date(sec(26 * D) * 1000).toISOString());
+  });
+
+  it("bonus credits only: no next reset at all", async () => {
+    const p = await kiro({ displayName: "Credit", displayNamePlural: "Credits", bonuses: [bonus(3 * D)] });
+    expect(p.metrics.map(m => m.label)).toEqual(["Bonus credits"]);
+    expect(nearestResetAt(p, NOW)).toBeNull();
+    expect(formatUsageSummary(withNextResets({ fetchedAt: at(0), providers: [p] }, NOW))).not.toContain("⏳");
+  });
+});
+
 describe("get_usage / getUsageSnapshot carry nextResetAt", () => {
+  it("worked out on every call, also from the cache — and the cached payload is never changed", async () => {
+    const soon = provider("claude", [pct("Session (5h)", 40, at(2 * M)), pct("Weekly", 22, at(3 * D))]);
+    let fetches = 0;
+    setUsageFetcherForTests(async () => { fetches++; return { fetchedAt: at(0), providers: [soon] }; });
+    expect((await getUsageSnapshot(true)).providers[0]!.nextResetAt).toBe(at(2 * M));
+    vi.setSystemTime(NOW + 3 * M);                       // the session window has reset; the cache (5 min) still holds
+    const later = await getUsageSnapshot(false);
+    expect(fetches, "a cache hit").toBe(1);
+    expect(later.providers[0]!.nextResetAt).toBe(at(3 * D));
+    expect(soon).not.toHaveProperty("nextResetAt");
+  });
+
   it("on every ok provider of the snapshot", async () => {
     setUsageFetcherForTests(async () => ({ fetchedAt: at(0), providers: [claude, codex, grokNoPeriod] }));
     const snap = await getUsageSnapshot(true);

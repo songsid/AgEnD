@@ -57,6 +57,11 @@ export interface UsageMetric {
   note?: string;
   noteI18n?: UsageI18nRef;
   resetsAt?: string | null;
+  /**
+   * "expiry": `resetsAt` is when this allowance runs out for good (Kiro bonus credits), not when it refills. Such a
+   * time is never a provider's next reset (#1232 review). Absent: a genuine reset.
+   */
+  resetKind?: "expiry";
   windowMs?: number | null;
 }
 
@@ -1204,7 +1209,9 @@ export async function fetchKiroUsage(storeHome?: string): Promise<Omit<ProviderU
           labelI18n: i18n("usage.metric.bonus_credits"),
           type: "percent",
           used: Math.min(100, (bUsed / bLimit) * 100),
+          // When the first code expires — the credits go, nothing refills.
           resetsAt: expiries.length ? kiroEpochIso(Math.min(...expiries)) : null,
+          resetKind: "expiry",
           note: `${+bUsed.toFixed(1)} / ${+bLimit.toFixed(0)} ${unit} · ${bonuses.length} codes`,
           noteI18n: i18n("usage.note.bonus_codes", +bUsed.toFixed(1), +bLimit.toFixed(0), unit, bonuses.length),
         });
