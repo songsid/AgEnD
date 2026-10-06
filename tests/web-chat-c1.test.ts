@@ -487,12 +487,17 @@ describe("dashboard sendMsg (the real page script)", () => {
     const composer = () => ({ value: "", style: {} as Record<string, string>, scrollHeight: 20, focus() {} });
     const nodes: Record<string, any> = { msgIn: composer(), messages: { innerHTML: "", scrollHeight: 0 }, uptime: { textContent: "" }, failedSend: { className: "", textContent: "", append() {} } };
     const toasts: string[] = [];
-    const sse: Record<string, (e: { data: string }) => void> = {};
+    const sse: Record<string, (e: { data: string; lastEventId?: string }) => void> = {};
+    const timers: Array<() => void> = [];
+    const fetched: string[] = [];
+    let pollReply: (url: string) => unknown = () => ({});
     const c = vm.createContext({
       localStorage: { getItem: () => null }, navigator: { language: "en" },
       document: { getElementById: (n: string) => nodes[n] ?? null, createElement: () => ({ style: {}, remove() {} }), body: { appendChild() {} } },
-      setTimeout: () => 0, fetch: async () => ({ json: async () => ({}) }),
-      EventSource: class { addEventListener(k: string, f: (e: { data: string }) => void) { sse[k] = f; } },
+      setTimeout: (f: () => void) => { timers.push(f); return timers.length; }, clearTimeout() {},
+      setInterval: (f: () => void) => { timers.push(f); return timers.length; }, clearInterval() {},
+      fetch: async (url: string) => { fetched.push(url); const body = pollReply(url); return { ok: true, json: async () => body }; },
+      EventSource: class { addEventListener(k: string, f: (e: { data: string; lastEventId?: string }) => void) { sse[k] = f; } },
     });
     vm.runInContext(SRC, c);
     vm.runInContext(PAGE, c);
@@ -501,7 +506,7 @@ describe("dashboard sendMsg (the real page script)", () => {
     let release!: (v: unknown) => void;
     (c as any).pending = new Promise(r => { release = r; });
     vm.runInContext("api=()=>pending", c);
-    return { c, nodes, toasts, composer, release, sse, read: (s: string) => vm.runInContext(s, c) };
+    return { c, nodes, toasts, composer, release, sse, timers, fetched, setPollReply: (f: (url: string) => unknown) => { pollReply = f; }, read: (s: string) => vm.runInContext(s, c) };
   }
 
   it("the plain failure: the text goes back into the same composer", async () => {
@@ -573,5 +578,56 @@ describe("dashboard sendMsg (the real page script)", () => {
     p.sse.message!({ data: JSON.stringify(after) });
     p.sse.message!({ data: JSON.stringify(after) });
     expect(p.read("msgs.w.map(m => m.text)")).toEqual(["before restart", "after restart"]);
+  });
+
+  it("first fallback with ZERO stream messages: a message that arrived while the stream was silent is not skipped (#1251 review)", async () => {
+    // The real page script, and the real /ui/history and /ui/poll handlers over one real history. The stream only
+    // ever sent a status frame — no message event, so the page has no cursor of its own.
+    const p = page();
+    const h = new WebChatHistory({ boot: "b1" });
+    const ctx = { ...ctxWith(h), getUiStatus: () => ({ instances: [], uptime: 1 }) } as unknown as WebApiContext;
+    const viaHandler = (url: string) => JSON.parse(call(url, ctx).res.body);
+    h.record(msg("w", "one"));
+    p.sse.status!({ data: JSON.stringify({ instances: [], uptime: 1 }) });
+    // The chat is opened: its history is loaded (through the real handler) — "one".
+    (p.c as any).historyVia = viaHandler;
+    p.read("api = async (_m, path) => historyVia(path)");
+    await p.read('loadHistory("w")');
+    expect(p.read("msgs.w.map(m => m.text)")).toEqual(["one"]);
+    expect(p.read("lastCursor")).toBe("");
+    // The stream goes quiet; meanwhile "two" is said. Then the first poll.
+    h.record(msg("w", "two"));
+    p.setPollReply(viaHandler);
+    await p.read("pollOnce()");
+    expect(p.fetched.at(-1)).toBe("/ui/poll?after=");
+    expect(p.read("msgs.w.map(m => m.text)"), "two is shown, one is not doubled").toEqual(["one", "two"]);
+    expect(p.read("lastCursor")).toBe("b1-2");
+    // From the cursor on, polling goes on as usual.
+    h.record(msg("w", "three"));
+    await p.read("pollOnce()");
+    expect(p.fetched.at(-1)).toBe("/ui/poll?after=b1-2");
+    expect(p.read("msgs.w.map(m => m.text)")).toEqual(["one", "two", "three"]);
+    expect(p.sse.message, "no stream message was ever delivered").toBeDefined();
+  });
+
+  it("dashboard polling: uses the stream's cursor, and a message seen on both paths shows once", async () => {
+    const p = page();
+    const h = new WebChatHistory({ boot: "b1" });
+    const one = h.record({ instance: "w", sender: "agent", text: "one", ts: "t1" });
+    const two = h.record({ instance: "w", sender: "agent", text: "two", ts: "t2" });
+    // The stream delivers "one" with its cursor, then goes quiet.
+    p.sse.message!({ data: JSON.stringify(one), lastEventId: h.cursorOf(one) });
+    expect(p.read("lastCursor")).toBe("b1-1");
+    // The poll asks from exactly there, and gets "one" again (a replay) plus "two".
+    p.setPollReply(() => ({ status: { instances: [], uptime: 1 }, messages: [one, two], cursor: "b1-2" }));
+    p.read("pollOnce()");
+    await new Promise(r => setTimeout(r, 0));
+    await new Promise(r => setTimeout(r, 0));
+    expect(p.fetched.at(-1)).toBe("/ui/poll?after=b1-1");
+    expect(p.read("msgs.w.map(m => m.text)")).toEqual(["one", "two"]);
+    expect(p.read("lastCursor")).toBe("b1-2");
+    // The stream comes back with "two" (already shown by the poll): still once.
+    p.sse.message!({ data: JSON.stringify(two), lastEventId: h.cursorOf(two) });
+    expect(p.read("msgs.w.map(m => m.text)")).toEqual(["one", "two"]);
   });
 });

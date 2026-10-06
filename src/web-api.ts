@@ -11,7 +11,7 @@ import type { LifecycleCreateArgs } from "./instance-lifecycle.js";
 import { CreateInstanceArgs, validateArgs } from "./outbound-schemas.js";
 import { readStatuslineModel, resolveInstanceContext } from "./topic-commands.js";
 import { z } from "zod";
-import { isWebRequestAuthorized, WEB_TOKEN_INVALID_MESSAGE } from "./web-auth.js";
+import { isPassiveWebRead, isWebRequestAuthorized, WEB_TOKEN_INVALID_MESSAGE } from "./web-auth.js";
 import { parseLastEventId, type WebChatHistory } from "./web-chat-history.js";
 import type { WebSessionStore } from "./web-session.js";
 import { authorizeExplicitInstanceRemoval } from "./instance-removal.js";
@@ -220,7 +220,7 @@ export function handleWebRequest(
   // gate: the same session cookie or header token, and an unset token closes
   // the panel instead of comparing null against a missing credential.
   if (path.startsWith("/ui")) {
-    if (!isWebRequestAuthorized(req, url, ctx.webToken, ctx.webSessions)) {
+    if (!isWebRequestAuthorized(req, url, ctx.webToken, ctx.webSessions, { touch: !isPassiveWebRead(method, path) })) {
       json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE });
       return true;
     }
@@ -287,6 +287,25 @@ export function handleWebRequest(
   }
 
   // ── SSE ────────────────────────────────────────────────
+
+  // The same data as the stream, over plain requests, for a path that cannot carry SSE (Cloudflare Quick
+  // Tunnels do not; a buffering proxy looks like a mute server). `after` is the same `<boot>-<id>` cursor
+  // as the stream's Last-Event-ID, so polling and the stream can take turns without a message twice or
+  // a gap — and a cursor from before a fleet restart gets the new process's backlog. No cursor yet (the page
+  // has not seen a single stream message): everything still retained, like a restart's backlog, so a message
+  // that arrived while the stream was silent is not skipped by the cursor this answer hands out (#1251
+  // review). The page keeps one entry per boot+id, so what it already loaded from /ui/history is not doubled.
+  if (method === "GET" && path === "/ui/poll") {
+    const history = ctx.webChatHistory;
+    const after = url.searchParams.get("after");
+    const fresh = after === null || after === "";              // a cursor that is not ours in shape still gets nothing
+    json(res, 200, {
+      status: ctx.getUiStatus(),
+      messages: history ? (fresh ? history.after(0) : history.replayFor(parseLastEventId(after))) : [],
+      cursor: history ? `${history.boot}-${history.lastId}` : null,
+    });
+    return true;
+  }
 
   if (method === "GET" && path === "/ui/events") {
     res.writeHead(200, {

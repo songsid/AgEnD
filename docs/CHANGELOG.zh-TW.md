@@ -12,6 +12,11 @@
   而訊息內容無法產生任何自己的標記（先跳脫整段文字再套格式）。輸入框可多行（Enter 送出、Shift+Enter 換行），送出失敗會把文字還給你。重新整理不再清空聊天：fleet 會保留每個 instance 最近的訊息
   （`GET /ui/history`，存在記憶體、有上限），SSE 斷線重連時會補送漏掉的訊息。Agent 的長回覆在 web 聊天中不再於 2,000 字截斷（現在 16,000）。
 
+### 安全 (Security)
+- **三個網頁面板共用同一條導覽列與 Session 選單，`/` 直接開 dashboard。** `/ui`、`/view`、`/settings` 都有相同的「Dashboard · View · Settings」連結與 Session 按鈕：顯示目前以哪個瀏覽器登入、session 何時結束、其他已登入的裝置（各自可登出）以及「全部登出」。只是一支小 script 與樣式表（`/assets/shell.js`、`/assets/shell.css`），不是重寫面板。
+- **Dashboard 不再依賴 Server-Sent Events。** 即時串流 15 秒沒有任何訊息或一直失敗時，頁面改為每 5 秒用 `GET /ui/poll` 取得相同的狀態與聊天訊息，串流恢復後再切回去。輪詢與串流使用同一個 `<boot>-<id>` 游標，所以兩者交替時不會重複也不會漏訊息，fleet 重啟後也一樣。（Cloudflare Quick Tunnel 不支援 SSE，會緩衝串流的 proxy 看起來就像從不送資料的伺服器。）
+- **Dashboard 不再從 Google 載入字型，每個面板都帶 `Content-Security-Policy`**，把 script、樣式、圖片、字型與連線都限制在本站（`connect-src 'self'`），即使頁面上真的跑了不該跑的 script，也無法把讀到的內容送到別的伺服器。（`'unsafe-inline'` 暫時保留：面板是單檔內嵌 script，dashboard 也用了 `onclick=` 屬性。）
+
 ### 升級注意事項 (Upgrade Notes)
 - **[行為變更] 網頁面板改用一次性登入碼登入，dashboard 連結不再帶憑證。** `/dashboard` 以前會把整個 fleet 共用的 `web.token` 貼進 `/view?token=`、`/settings?token=`、`/ui?token=`：它會留在聊天紀錄、瀏覽器歷史與截圖裡，直到執行 `agend web-token rotate` 才失效。現在改給登入頁位址與一組 8 字元登入碼，只能用一次、5 分鐘過期；在登入頁輸入後會建立**伺服器端 session**（不透明的隨機 id，伺服器可以讓它過期、列出、撤銷；不再是 `sha256(web.token)` 那種每台裝置都相同、要到 rotate 才失效的 cookie）。**升級後每個人都要重新登入一次**，舊 cookie 不再被接受。Session 自登入起最多 12 小時、閒置 2 小時即結束，fleet 重啟後仍在，頁面上每個寫入動作也都需要每個 session 專屬的 `X-Agend-CSRF` 標頭與相符的 `Origin`。`/dashboard revoke` 讓所有瀏覽器登出；`agend web --code` 在主機上印出登入碼；`agend web-token rotate` 仍會一次殺掉所有 session。標頭 token（`X-Agend-Token`）維持不變，給 CLI 與腳本使用。**URL 裡的 `?token=` 在 `/ui` 與 `/settings` 上不再是憑證**：舊的 `?token=` 連結或書籤會開到登入頁——在那裡用 `agend web` 或 `/dashboard` 給的一次性登入碼登入一次即可。`agend web` 改為印出登入碼並開啟 `/signin`，不再開 token 連結。新的登入會通知 General topic（`web.notify_login: false` 可關閉）。
 - **[行為變更] `/view` 不再接受網址或文字框裡的 web token。** 以前儲存個人檔案、頭像與側欄順序，可以用整個 fleet 共用的 `web.token` 以 `?token=` 送出：`/dashboard` 的「View (edit)」連結會把它放進網址列，而 `view.html` 還會把它附加到**每一個** API 請求並存進 `localStorage`。現在寫入需要已登入的 session（與其他面板相同的 CSRF 檢查），或腳本使用 `X-Agend-Token`；`?token=` 不再被當成寫入憑證，token 輸入框已移除，Edit 會把未登入的訪客帶到登入頁再回來。**預設仍可公開讀取 `/view`**（包含即時終端畫面）；新增的 `web.view_access: session` 可要求讀取也要登入。沒有任何程式接受過的唯讀 `view.token` 檔不再寫入，舊檔會在啟動時刪除。

@@ -195,6 +195,9 @@ export class WebSessionStore {
 
   get size(): number { return this.byHash.size; }
 
+  /** How long a session on this surface may sit unused before it ends. For showing people, not for deciding. */
+  idleWindowMs(surface: SessionSurface): number { return this.policy[surface].idleMs; }
+
   /**
    * Make a session. The id is returned once and never stored; the caller puts it
    * in a cookie and forgets it.

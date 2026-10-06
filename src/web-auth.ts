@@ -337,6 +337,15 @@ function authorize(
 }
 
 /**
+ * Requests a page makes on its own timer, with nobody at it: the dashboard's poll fallback (#1251 review). They are
+ * authorized in full — session, expiry, revocation, token epoch — but never count as activity, or a tab left open
+ * would keep its session alive past the idle limit forever. The stream's own heartbeat re-check is the same idea.
+ */
+export function isPassiveWebRead(method: string | undefined, path: string): boolean {
+  return (method ?? "GET") === "GET" && path === "/ui/poll";
+}
+
+/**
  * The single authorization decision for every gated web route.
  *
  * Accepts, in order: an `X-Agend-Token` header (CLI and scripts) and a session
@@ -348,7 +357,7 @@ export function decideWebGate(
   token: string | null,
   sessions: WebSessionStore | null | undefined,
 ): WebGateDecision {
-  return authorize(req, url, token, sessions, { touch: true });
+  return authorize(req, url, token, sessions, { touch: !isPassiveWebRead(req.method, url.pathname) });
 }
 
 /**
