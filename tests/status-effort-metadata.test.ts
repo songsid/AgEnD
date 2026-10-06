@@ -291,7 +291,9 @@ describe("FleetManager status composers", () => {
       }
       vi.advanceTimersByTime(30_000);
       for (const { res } of clients) {
-        expect(res.write).toHaveBeenCalledTimes(4);
+        // On connect: a status and the ticks (`deliveries`, #1253 review); then a status every 10s.
+        expect(res.write).toHaveBeenCalledTimes(5);
+        expect(String(res.write.mock.calls[1]![0])).toMatch(/^event: deliveries\n/);
         const first = String(res.write.mock.calls[0]![0]);
         expect(first).toContain('"effort":"max"');
         expect(first).toContain('"effort":"high"');
