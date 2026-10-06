@@ -41,6 +41,8 @@ const BEFORE: Record<string, string[]> = {
     "list_decisions", "post_decision", "task", "set_display_name", "set_description",
     // Persona emoji: its own status stamp, beside its own name and description.
     "list_emojis", "set_persona_emoji", "preview_emojis",
+    // #1226: stickers, see-and-send like the emojis (sending is reply's own field).
+    "list_stickers", "preview_stickers",
     "validate_config", "get_fleet_status", "get_usage", "get_effort", "get_instance_logs", "get_fleet_config",
     // kiro engine move: read-only kiro engine facts.
     "kiro_engine_status",
@@ -48,7 +50,9 @@ const BEFORE: Record<string, string[]> = {
     "create_schedule", "list_schedules", "update_schedule", "delete_schedule",
   ],
   // v2.1.9: persona emoji see-only (no set_persona_emoji).
-  minimal: ["reply", "send_to_instance", "delivery_status", "list_decisions", "download_attachment", "list_emojis", "preview_emojis"],
+  minimal: ["reply", "send_to_instance", "delivery_status", "list_decisions", "download_attachment", "list_emojis", "preview_emojis",
+    // #1226: listing and previewing stickers change nothing, like the emojis.
+    "list_stickers", "preview_stickers"],
   general: [
     "reply", "react", "edit_message", "download_attachment",
     "list_teams", "list_instances", "describe_instance", "get_fleet_status", "get_usage", "get_effort", "list_models",
@@ -59,6 +63,8 @@ const BEFORE: Record<string, string[]> = {
     "create_schedule", "list_schedules", "update_schedule", "delete_schedule",
     // v2.1.9: persona emoji — see the server's emojis and set its own stamp.
     "list_emojis", "preview_emojis", "set_persona_emoji",
+    // #1226: stickers.
+    "list_stickers", "preview_stickers",
     // kiro engine move: read-only kiro engine facts, for explaining a kiro incompatibility.
     "kiro_engine_status",
   ],

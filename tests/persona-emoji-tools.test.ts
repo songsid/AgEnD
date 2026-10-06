@@ -256,8 +256,14 @@ describe("list_emojis shows what the instance may pick", () => {
     expect(r.statuses).toContainEqual({ status: "failed", value: "🐙", source: "instance" });
     expect(r.statuses).toContainEqual({ status: "delivered", value: "✅", source: "builtin" });
     expect((r.standard as any).suggestions).toContain("🦊");
+    // #1226: no image URLs unless asked for (preview_emojis is how an agent looks at one).
     expect(r.server_emojis).toEqual([
       // the unavailable one is left out
+      { server: "Main", primary: true, emojis: [{ value: "<:fox:111111111111111111>" }] },
+      { server: "Classic HQ", primary: false, emojis: [{ value: "<a:owl:222222222222222222>" }] },
+    ]);
+    const withUrls = await fm.listEmojisFor("worker", false, { with_image_urls: true });
+    expect(withUrls.server_emojis).toEqual([
       { server: "Main", primary: true, emojis: [{ value: "<:fox:111111111111111111>", image_url: "https://cdn.discordapp.com/emojis/111111111111111111.png" }] },
       { server: "Classic HQ", primary: false, emojis: [{ value: "<a:owl:222222222222222222>", image_url: "https://cdn.discordapp.com/emojis/222222222222222222.gif" }] },
     ]);

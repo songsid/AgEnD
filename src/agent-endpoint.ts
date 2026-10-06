@@ -97,7 +97,9 @@ export interface AgentEndpointContext extends OutboundContext {
   handleTaskCrudHttp(instance: string, args: Record<string, unknown>): Promise<unknown>;
   handleSetDisplayNameHttp(instance: string, name: string): Promise<unknown>;
   handleSetDescriptionHttp(instance: string, description: string): Promise<unknown>;
-  handleListEmojisHttp(instance: string, refresh: boolean): Promise<unknown>;
+  handleListEmojisHttp(instance: string, refresh: boolean, args?: Record<string, unknown>): Promise<unknown>;
+  handleListStickersHttp(instance: string, args: Record<string, unknown>): Promise<unknown>;
+  handlePreviewStickersHttp(instance: string, args: Record<string, unknown>): Promise<unknown>;
   handleSetPersonaEmojiHttp(instance: string, args: Record<string, unknown>): Promise<unknown>;
   handlePreviewEmojisHttp(instance: string, args: Record<string, unknown>): Promise<unknown>;
 }
@@ -298,13 +300,19 @@ export async function dispatchAgentOperation(
     return ctx.handleSetDescriptionHttp(instance, args.description as string ?? "");
   }
   if (op === "emojis") {
-    return ctx.handleListEmojisHttp(instance, args.refresh === true || args.refresh === "true");
+    return ctx.handleListEmojisHttp(instance, args.refresh === true || args.refresh === "true", args);
   }
   if (op === "persona-emoji") {
     return ctx.handleSetPersonaEmojiHttp(instance, args);
   }
   if (op === "emoji-preview") {
     return ctx.handlePreviewEmojisHttp(instance, args);
+  }
+  if (op === "stickers") {
+    return ctx.handleListStickersHttp(instance, args);
+  }
+  if (op === "sticker-preview") {
+    return ctx.handlePreviewStickersHttp(instance, args);
   }
 
   // Map CLI op to internal tool name

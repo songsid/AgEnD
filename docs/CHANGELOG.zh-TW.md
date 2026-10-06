@@ -6,6 +6,12 @@
 
 ## [未發佈] (Unreleased)
 
+### 新增 (Added)
+- **Agent 可以在 Discord 與 Telegram 傳貼圖（#1226）。** 三個工具，兩個平台用法相同：`list_stickers`（每張 `{ id, name, emoji_or_tags, format }`，不附圖片網址）、`preview_stickers`（最多 8 張，下載給 agent 讀圖；沒有靜態圖的動畫貼圖標 `preview_unavailable`），以及 `reply` 新增的 `stickers` 欄位（最多 3 張；有貼圖時 `text` 可省略）。底層依平台各自處理：Discord 只列 instance 自己頻道所在伺服器的貼圖（別的伺服器的傳不出去），並跟文字放在同一則訊息送出；Telegram 列出貼圖包——在呼叫時指定，或用連線設定的 `options.sticker_sets`——先送文字，再依序送每張貼圖。所有貼圖都在送出任何東西之前檢查，傳不出去的會回錯誤，不會變成一則悄悄少了貼圖的回覆。agent CLI 也有：`agend-agent stickers`、`sticker-preview`，以及 `reply … --sticker <id>`。
+
+### 變更 (Changed)
+- **`list_emojis` 變輕了（#1226）。** 伺服器 emoji 預設不再附圖片網址（要的話設 `with_image_urls`；想看圖用 `preview_emojis`），並可用 `name`、`limit`、`primary_only` 縮小清單——在 emoji 很多的伺服器上，一次呼叫原本要花約 1 萬字的 context，而 agent 只需要一個 emoji。emoji 與貼圖工具的呼叫改用共用的 30 秒時限，不再是固定 10 秒，一次下載多張圖的預覽不會被中途切掉。
+
 ### 修復 (Fixed)
 - **等候輸入不再隱形（#812）。** `describe_instance`、`list_instances` 與狀態 API 會顯示確認過的 `awaiting_input`、原本的執行狀態及固定互動類別；第二次新 capture 才確認，超過 15 秒明確標成目前無法確認，不解除安全 hold。原生四選項 Claude Bash 權限視窗只保留給人處理，不送任何按鍵。弱終端提示仍只算疑似，不宣稱涵蓋 editor；500ms／15s 是 sandbox 驗過的策略值，尚非實機時序保證。
 - **取消也會停止補回覆（#1199）。** 取消按鈕與 `/cancel` 現在會在中斷 CLI 前標記目前的人類對話回合，使用者主動停止後不再跳出漏回覆警告，也不會要求 agent 再補一個結論。已在送出的回覆仍正常結算，新訊息仍有自己的回覆防線；取消後才回報失敗的補救或成功的舊 paste 都不會重新啟動該回合。

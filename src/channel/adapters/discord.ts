@@ -41,7 +41,12 @@ import type {
   AlertData,
   AdapterHealthSnapshot,
   TopicPresence,
+  StickerInfo,
+  StickerList,
+  StickerPreview,
+  StickerTarget,
 } from "../types.js";
+import { downloadStickerImage } from "../sticker-download.js";
 import type { AccessManager } from "../access-manager.js";
 import { MessageQueue } from "../message-queue.js";
 import { splitTextFenceAware, truncatePreview, fenceBlock } from "../markdown-chunk.js";
@@ -1348,6 +1353,75 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       .filter((e): e is { id: string; name: string; animated?: boolean; available?: boolean } =>
         !!e && typeof e.id === "string" && typeof e.name === "string")
       .map(e => ({ id: e.id, name: e.name, animated: e.animated === true, available: e.available !== false }));
+  }
+
+  /**
+   * The server a channel belongs to (#1226): stickers are per server, and a bot can send only the stickers of the
+   * server it posts in. In the channels topology `chatId` can be the server id itself; that is the answer then.
+   */
+  private async guildOfChannel(channelId: string | undefined): Promise<string> {
+    if (!channelId) return this.guildId;
+    const client = await this.readyClient() as any;
+    try {
+      const channel = await client.channels.fetch(channelId);
+      const guildId = channel?.guildId ?? channel?.guild?.id;
+      if (typeof guildId === "string" && guildId) return guildId;
+    } catch { /* not a channel id — maybe the server's own id */ }
+    if (client.guilds?.cache?.has?.(channelId)) return channelId;
+    throw new Error("cannot tell which server this channel is in");
+  }
+
+  /**
+   * The stickers of the server `target`'s channel is in (#1226) — the only ones this bot can send there. Discord's
+   * standard sticker packs are not listed (they are hundreds, and not what an agent picks from).
+   */
+  async listStickers(target: StickerTarget): Promise<StickerList> {
+    const guildId = await this.guildOfChannel(target.threadId ?? target.chatId);
+    const client = await this.readyClient() as any;
+    const raw = await client.rest.get(`/guilds/${guildId}/stickers`) as unknown;
+    const name = client.guilds?.cache?.get?.(guildId)?.name;
+    const formats: Record<number, StickerInfo["format"]> = { 1: "png", 2: "apng", 3: "lottie", 4: "gif" };
+    const stickers = (Array.isArray(raw) ? raw : [])
+      .filter((x): x is { id: string; name: string; tags?: unknown; format_type?: unknown; available?: unknown } =>
+        !!x && typeof x.id === "string" && /^\d{15,25}$/.test(x.id) && typeof x.name === "string")
+      .map(x => ({
+        id: x.id,
+        name: x.name,
+        emoji_or_tags: typeof x.tags === "string" ? x.tags : "",
+        format: formats[Number(x.format_type)] ?? "png",
+        available: x.available !== false,
+      }));
+    return { scope: `server ${typeof name === "string" && name ? name : guildId}`, stickers };
+  }
+
+  /** A still picture of a listed sticker, from Discord's media CDN; null for a Lottie sticker (no still image). */
+  async fetchStickerPreview(sticker: StickerInfo): Promise<StickerPreview | null> {
+    if (!/^\d{15,25}$/.test(sticker.id)) throw new Error("not a Discord sticker id");
+    if (sticker.format === "lottie") return null;
+    const url = sticker.format === "gif"
+      ? `https://media.discordapp.net/stickers/${sticker.id}.gif`
+      : `https://media.discordapp.net/stickers/${sticker.id}.png?size=160`;
+    return downloadStickerImage(url);
+  }
+
+  /**
+   * Stickers on one message (#1226): with the text's last chunk when there is text (Discord sends both together),
+   * alone otherwise. Earlier chunks of a long text go first, as plain messages.
+   */
+  async sendStickers(chatId: string, stickers: string[], opts?: SendOpts & { text?: string }): Promise<SentMessage> {
+    const channel = await this._fetchTextChannel(opts?.threadId ?? chatId);
+    const chunks = opts?.text ? splitTextFenceAware(opts.text, DISCORD_MAX_LENGTH) : [];
+    let first: { id: string } | undefined;
+    // Every chunk is sent: `first ??= await send()` would skip the send once `first` is set (#1229 review).
+    for (const chunk of chunks.slice(0, -1)) {
+      const sent = await channel.send(chunk);
+      first ??= sent;
+    }
+    const last = await channel.send(chunks.length
+      ? { content: chunks[chunks.length - 1]!, stickers }
+      : { stickers });
+    first ??= last;
+    return { messageId: first.id, chatId, threadId: opts?.threadId };
   }
 
   /**

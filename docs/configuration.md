@@ -123,6 +123,7 @@ Each entry configures a platform adapter (Telegram or Discord).
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `topic_probe` | `"on-demand"` \| `"periodic"` | `"on-demand"` | `on-demand`: a topic is only checked after a real delivery reports it missing (no scheduled send+delete, no notifications). `periodic`: also probe every bound topic on the 5-minute scan, which posts and deletes a blank message in each topic. |
+| `sticker_sets` | string[] | — | The sticker sets `list_stickers` shows when an agent names none (each the `<name>` in `t.me/addstickers/<name>`; up to 10 are used). Telegram only: Discord lists the channel's server's stickers. |
 
 #### channel.options.status_emojis (Discord and Telegram)
 

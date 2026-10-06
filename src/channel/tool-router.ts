@@ -70,11 +70,18 @@ export function routeToolCall(
       }
       const replyThreadId = args.thread_id as string ?? threadId;
       const format = args.format === "markdown" ? "html" as const : undefined;
-      adapter.sendText(chatId, args.text as string ?? "", {
-        threadId: replyThreadId,
-        replyTo: args.reply_to as string,
-        format,
-      }).then(async (sent) => {
+      // Stickers (#1226) go with the text, as the platform does it — and were checked by the fleet before this
+      // call; an adapter that cannot send them says so rather than dropping them.
+      const stickers = Array.isArray(args.stickers) ? (args.stickers as unknown[]).filter((x): x is string => typeof x === "string") : [];
+      if (stickers.length && !adapter.sendStickers) {
+        respond(null, "reply: this channel cannot send stickers");
+        return true;
+      }
+      const sendOpts = { threadId: replyThreadId, replyTo: args.reply_to as string, format };
+      const sending = stickers.length
+        ? adapter.sendStickers!(chatId, stickers, { ...sendOpts, text: (args.text as string | undefined) ?? "" })
+        : adapter.sendText(chatId, args.text as string ?? "", sendOpts);
+      sending.then(async (sent) => {
         // Text and attachments are separate platform messages, so `messageId`
         // — the text's — is not the one carrying the image. A caller that GETs
         // it to confirm delivery or to read the CDN url finds `attachments: []`

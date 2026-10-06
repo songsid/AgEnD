@@ -30,6 +30,8 @@ interface PerQueueState {
   backoffUntil: number;
   running: boolean;
   connectRetries: number;
+  /** An item has been taken off `items` and is being sent right now. */
+  inFlight?: boolean;
 }
 
 function nestedError(err: unknown): unknown {
@@ -157,6 +159,22 @@ export class MessageQueue {
     }
   }
 
+  /**
+   * Resolves once nothing for this chat is waiting or being sent — for a caller that must post after text it handed
+   * to the queue (stickers after a long reply, #1226). Rejects after `timeoutMs` rather than letting that caller go
+   * ahead of text still queued (a 429 backoff can hold a queue for a while).
+   */
+  async whenIdle(chatId: string, threadId: string | undefined, timeoutMs = 30_000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const state = this.queues.get(this.queueKey(chatId, threadId));
+      if (!state || (state.items.length === 0 && !state.inFlight)) return;
+      if (this.stopped) throw new Error("the message queue was stopped");
+      if (Date.now() >= deadline) throw new Error("earlier text for this chat is still queued");
+      await this.sleep(50);
+    }
+  }
+
   start(): void {
     this.stopped = false;
     // Start workers for any queues that already have items
@@ -217,13 +235,16 @@ export class MessageQueue {
         continue;
       }
       try {
+        state.inFlight = true;
         await work();
         // Reset backoff on success
         state.backoffMs = INITIAL_BACKOFF_MS;
         state.backoffUntil = 0;
         state.connectRetries = 0;
+        state.inFlight = false;
         await this.sleep(WORKER_BETWEEN_MS);
       } catch (err) {
+        state.inFlight = false;
         const deliveryErr = err instanceof QueueDeliveryError ? err : null;
         const cause = deliveryErr?.cause ?? err;
         if (isDefinite429Rejection(cause)) {
