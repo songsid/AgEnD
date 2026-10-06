@@ -135,8 +135,15 @@
     function key(m) { return String(m.boot || "") + ":" + m.id; }
     function add(m) {
       if (!m || typeof m.id !== "number") return;
-      if (seen[key(m)]) return;
-      seen[key(m)] = true;
+      var k = key(m);
+      if (seen[k] !== undefined) {
+        // The same message again (history after the stream): the copy that got further shows its ticks.
+        var had = out[seen[k]];
+        var next = nextDeliveryState(had.delivery, m.delivery);
+        if (next !== had.delivery) out[seen[k]] = Object.assign({}, had, { delivery: next });
+        return;
+      }
+      seen[k] = out.length;
       out.push(m);
     }
     (existing || []).forEach(add);
@@ -150,6 +157,43 @@
     var limit = typeof cap === "number" && cap > 0 ? cap : 500;
     return out.length > limit ? out.slice(out.length - limit) : out;
   }
+
+  /**
+   * The delivery ticks of a web user's message (web track C3) — the same order the fleet keeps
+   * (web-chat-history.ts nextDeliveryState): a report that arrives late or twice never moves a tick back;
+   * delivered and failed are final, cancelled gives way to what the agent actually got.
+   */
+  var DELIVERY_RANK = { queued: 1, processing: 2, cancelled: 3, delivered: 4, failed: 4 };
+  function nextDeliveryState(prev, next) {
+    if (!Object.prototype.hasOwnProperty.call(DELIVERY_RANK, next)) return prev;
+    if (prev === undefined || !Object.prototype.hasOwnProperty.call(DELIVERY_RANK, prev)) return next;
+    return DELIVERY_RANK[next] > DELIVERY_RANK[prev] ? next : prev;
+  }
+
+  /** The list after a delivery report for `messageId`: the same list when nothing moved, else a copy. */
+  function applyDelivery(list, messageId, delivery) {
+    var msgs = list || [];
+    for (var i = msgs.length - 1; i >= 0; i--) {
+      if (!msgs[i] || msgs[i].messageId !== messageId) continue;
+      var next = nextDeliveryState(msgs[i].delivery, delivery);
+      if (next === msgs[i].delivery) return msgs;
+      var out = msgs.slice();
+      out[i] = Object.assign({}, msgs[i], { delivery: next });
+      return out;
+    }
+    return msgs;
+  }
+
+  var TICK_GLYPH = { queued: "◷", processing: "✓", delivered: "✓✓", failed: "!", cancelled: "⊘" };
+  /** The ticks for one state, labelled for a screen reader as well as a pointer; "" when there is none. */
+  function deliveryHtml(state, labels) {
+    if (!Object.prototype.hasOwnProperty.call(TICK_GLYPH, state)) return "";
+    var label = escapeHtml((labels && labels[state]) || state);
+    return '<span class="tick tick-' + state + '" role="img" aria-label="' + label + '" title="' + label + '">' + TICK_GLYPH[state] + "</span>";
+  }
+
+  /** Whether the chat shows "working" and its Stop button for an instance in this execution state. */
+  function isBusy(state) { return state === "working" || state === "stuck"; }
 
   /** What a key in the composer does: Enter sends, Shift+Enter is a new line, nothing happens mid-IME-composition. */
   function composerKey(ev) {
@@ -226,5 +270,6 @@
     renderMarkdown: renderMarkdown, escapeHtml: escapeHtml, mergeMessages: mergeMessages, composerKey: composerKey,
     settleFailedSend: settleFailedSend, putBack: putBack,
     FILE_LIMITS: FILE_LIMITS, formatSize: formatSize, checkFiles: checkFiles, attachmentsHtml: attachmentsHtml,
+    nextDeliveryState: nextDeliveryState, applyDelivery: applyDelivery, deliveryHtml: deliveryHtml, isBusy: isBusy,
   };
 });

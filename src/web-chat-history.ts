@@ -18,13 +18,39 @@ import { randomBytes } from "node:crypto";
 /** A file shown with a message: an id the dashboard can fetch, never a path. */
 export interface WebChatAttachment { id: string; kind: "photo" | "document"; name: string; size: number; mime: string }
 
+/**
+ * How far a message the web user sent has got (web track C3) — the ticks under it. The same lifecycle a
+ * Telegram message shows as reactions: waiting behind another message, handed to the agent, taken up by it,
+ * or not delivered; and `cancelled` when a Stop dropped it while it was still waiting.
+ */
+export type WebDeliveryState = "queued" | "processing" | "delivered" | "failed" | "cancelled";
+
+/**
+ * Ranks for the order a message moves through. Events can arrive late or twice (a queued after the spawn
+ * settles, a retry): a tick never moves back. `delivered` and `failed` are final; `cancelled` is not, since
+ * a Stop races a delivery already under way — what the agent actually got wins.
+ */
+const DELIVERY_RANK: Record<WebDeliveryState, number> = { queued: 1, processing: 2, cancelled: 3, delivered: 4, failed: 4 };
+
+/** The state after `next` arrives at a message in `prev`; `prev` itself when `next` would move it back. */
+export function nextDeliveryState(prev: WebDeliveryState | undefined, next: WebDeliveryState): WebDeliveryState | undefined {
+  // Own keys only: "__proto__" or "constructor" is in every object, and is no state.
+  if (!Object.hasOwn(DELIVERY_RANK, next)) return prev;
+  if (prev === undefined || !Object.hasOwn(DELIVERY_RANK, prev)) return next;
+  return DELIVERY_RANK[next] > DELIVERY_RANK[prev] ? next : prev;
+}
+
 export interface WebChatMessage {
   /** Files shown with the message (absent when none). */
   attachments?: WebChatAttachment[];
   /** The fleet process generation the id belongs to. */
   boot: string;
+  /** Where a web user's message has got (absent: nothing reported yet, or not the web user's). */
+  delivery?: WebDeliveryState;
   id: number;
   instance: string;
+  /** The `message_id` the agent was given for a web user's message — what delivery reports name it by. */
+  messageId?: string;
   sender: string;
   text: string;
   ts: string;
@@ -42,6 +68,19 @@ export interface WebChatHistoryOptions {
 }
 
 export const WEB_CHAT_TEXT_MAX = 16_000;
+
+/**
+ * The `message_id` a message from the web chat is delivered under. Unique (two sends in one millisecond used
+ * to share `web-<ms>`), and never a platform id: Telegram and Discord ids are digits only.
+ */
+export function newWebMessageId(): string {
+  return `web-${Date.now().toString(36)}-${randomBytes(4).toString("hex")}`;
+}
+
+/** Whether a delivery report is about a message from the web chat rather than one on a platform. */
+export function isWebMessageId(messageId: string): boolean {
+  return messageId.startsWith("web-");
+}
 
 export class WebChatHistory {
   private nextId = 1;
@@ -63,7 +102,7 @@ export class WebChatHistory {
   get lastId(): number { return this.nextId - 1; }
 
   /** Record one message; returns it with its id. Text beyond WEB_CHAT_TEXT_MAX is cut. */
-  record(msg: { instance: string; sender: string; text: string; ts: string; attachments?: WebChatAttachment[] }): WebChatMessage {
+  record(msg: { instance: string; sender: string; text: string; ts: string; attachments?: WebChatAttachment[]; messageId?: string }): WebChatMessage {
     const entry: WebChatMessage = {
       boot: this.boot,
       id: this.nextId++,
@@ -72,6 +111,7 @@ export class WebChatHistory {
       text: String(msg.text ?? "").slice(0, WEB_CHAT_TEXT_MAX),
       ts: String(msg.ts),
       ...(msg.attachments && msg.attachments.length ? { attachments: msg.attachments.slice(0, 20).map(a => ({ id: a.id, kind: a.kind, name: a.name, size: a.size, mime: a.mime })) } : {}),
+      ...(typeof msg.messageId === "string" && msg.messageId ? { messageId: msg.messageId.slice(0, 64) } : {}),
     };
     let slot = this.byInstance.get(entry.instance);
     if (!slot) { slot = { messages: [], chars: 0 }; this.byInstance.set(entry.instance, slot); }
@@ -103,6 +143,53 @@ export class WebChatHistory {
     }
     out.sort((a, b) => a.id - b.id);
     return out.length > this.replayMax ? out.slice(-this.replayMax) : out;
+  }
+
+  /**
+   * A delivery report for one of this instance's messages. Returns the message when its state changed (so the
+   * caller tells the pages), null when there is no such message or the report would move it back.
+   */
+  setDelivery(instance: string, messageId: string, state: WebDeliveryState): WebChatMessage | null {
+    const messages = this.byInstance.get(instance)?.messages ?? [];
+    let m: WebChatMessage | undefined;
+    for (let i = messages.length - 1; i >= 0 && !m; i--) if (messages[i]!.messageId === messageId) m = messages[i];
+    if (!m) return null;
+    const next = nextDeliveryState(m.delivery, state);
+    if (next === m.delivery) return null;
+    m.delivery = next;
+    return m;
+  }
+
+  /**
+   * A Stop on this instance: the web user's messages still waiting (nothing reported, or queued) were dropped
+   * from the queue. The queue is first in, first out, so nothing older than a message that got further can
+   * still be waiting: the walk goes back from the newest and stops there. Returns the messages it changed.
+   */
+  /**
+   * Where every retained web message got — the ticks — in one list. A delivery report has no cursor of its own and
+   * changes a message already sent, so a page that missed one (a dropped stream, a poll) catches up from this:
+   * the stream sends it on every (re)connect and each poll carries it (#1253 review). Ticks only move forward on
+   * the page, so receiving it twice changes nothing.
+   */
+  deliveries(): Array<{ instance: string; messageId: string; delivery: WebDeliveryState }> {
+    const out: Array<{ instance: string; messageId: string; delivery: WebDeliveryState }> = [];
+    for (const [instance, slot] of this.byInstance) {
+      for (const m of slot.messages) if (m.messageId !== undefined && m.delivery !== undefined) out.push({ instance, messageId: m.messageId, delivery: m.delivery });
+    }
+    return out;
+  }
+
+  cancelPending(instance: string): WebChatMessage[] {
+    const changed: WebChatMessage[] = [];
+    const messages = this.byInstance.get(instance)?.messages ?? [];
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i]!;
+      if (m.messageId === undefined) continue;
+      if (m.delivery !== undefined && m.delivery !== "queued") break;
+      m.delivery = "cancelled";
+      changed.push(m);
+    }
+    return changed.reverse();
   }
 
   /** Forget an instance (deleted). */
