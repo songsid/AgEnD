@@ -33,8 +33,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the host; `agend web-token rotate` still kills every session at once. The
   header token (`X-Agend-Token`) is unchanged for the CLI and scripts. **A
   `?token=` in a URL is no longer a credential anywhere on `/ui` and `/settings`:**
-  an old dashboard link gets the sign-in page, and `agend web` now prints a code
-  and opens `/signin` instead of a token link. New sign-ins are announced in the General topic
+  an old `?token=` link or bookmark opens the sign-in page — sign in there once
+  with a one-time code from `agend web` or `/dashboard`. `agend web` now prints a
+  code and opens `/signin` instead of a token link. New sign-ins are announced in the General topic
   (`web.notify_login: false` to silence). `/view` is unchanged in this release.
 
 ## [Unreleased]
