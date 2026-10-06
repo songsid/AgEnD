@@ -223,6 +223,10 @@ export function validateFleetConfig(config: unknown): ValidationResult {
 
   const channelIds = new Set<string>();
   const channelTypes = new Map<string, string>();
+  // #1231: one bot token is one bot. Two connections on it both receive every
+  // Discord interaction and race to acknowledge it (the loser's is refused);
+  // two Telegram pollers on it fight over getUpdates.
+  const tokenOwners = new Map<string, string>();
   const multi = channelList.length > 1;
   channelList.forEach((ch, i) => {
     const at = Array.isArray(config.channels) && i < config.channels.length ? `channels[${i}]` : "channel";
@@ -252,6 +256,16 @@ export function validateFleetConfig(config: unknown): ValidationResult {
         warn(`${at}.options.sticker_sets`, "only Telegram has sticker sets — Discord lists the channel's server's stickers");
       } else if (!Array.isArray(sets) || sets.some(x => typeof x !== "string" || !/^[A-Za-z0-9_]{1,64}$/.test(x))) {
         err(`${at}.options.sticker_sets`, "must be a list of sticker set names (the <name> in t.me/addstickers/<name>)");
+      }
+    }
+    if (typeof ch.bot_token_env === "string" && ch.bot_token_env) {
+      const value = process.env[ch.bot_token_env];
+      const key = value ? `value:${value}` : `env:${ch.bot_token_env}`;
+      const first = tokenOwners.get(key);
+      if (first) {
+        warn(`${at}.bot_token_env`, `the same bot token as ${first} — both connections would receive and race to handle the same events; give each connection its own bot`);
+      } else {
+        tokenOwners.set(key, at);
       }
     }
     if (cid && typeof ch.type === "string") channelTypes.set(cid, ch.type);

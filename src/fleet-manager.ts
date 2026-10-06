@@ -45,6 +45,7 @@ import { loadFleetConfig, loadRawFleetConfig, DEFAULT_COST_GUARD, DEFAULT_DAILY_
 import { EventLog } from "./event-log.js";
 import { AdapterWorld } from "./adapter-world.js";
 import { CostGuard, formatCents } from "./cost-guard.js";
+import { startEventLoopWatch, type EventLoopWatch } from "./event-loop-watch.js";
 import { TmuxManager } from "./tmux-manager.js";
 import { AccessManager } from "./channel/access-manager.js";
 import { IpcClient } from "./channel/ipc-bridge.js";
@@ -887,6 +888,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** Days of event/activity history to keep. */
   private static readonly EVENT_LOG_RETENTION_DAYS = 30;
   private watchdogTimer: ReturnType<typeof setInterval> | null = null;
+  private eventLoopWatch: EventLoopWatch | null = null;
   private startedAt = 0;
   private stormOpenNotifyTimer: ReturnType<typeof setTimeout> | null = null;
   private memoryLogAt: number | null = null;
@@ -4521,6 +4523,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // instance would get a restart loop. Those conditions surface through /health
     // (which now returns 503) and through the General-topic notifications instead.
     this.watchdogTimer = setInterval(() => sdNotify("WATCHDOG=1"), 30_000);
+    // #1231: a stalled loop is what turns a slash command into "did not respond";
+    // put each long stall in the log instead of leaving it to be guessed at.
+    this.eventLoopWatch?.stop();
+    this.eventLoopWatch = startEventLoopWatch({ logger: this.logger });
 
     // EventLog.prune() existed but was never called, so `events` and `activity`
     // grew without bound for the life of the install. Prune once at startup and
@@ -13527,6 +13533,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     }
     sdNotifyBlocking("STOPPING=1");
     if (this.watchdogTimer) { clearInterval(this.watchdogTimer); this.watchdogTimer = null; }
+    this.eventLoopWatch?.stop();
+    this.eventLoopWatch = null;
     // A login/install window is a dedicated tmux server with its own TTL
     // timer and HTTP listener living in THIS process: without an explicit
     // shutdown it would outlive us as an owner-less login CLI (sol B3).
