@@ -4,8 +4,8 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSy
 import { homedir } from "node:os";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type RuntimeDialog, type StartupDialog, CLI_PROBE_LONGEST_LEAF_MS, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
 
-/** Mirror Claude Code's ~/.claude/projects key for a working directory. */
-function claudeProjectKey(cwd: string): string {
+/** Mirror Claude Code's ~/.claude/projects key for a working directory. Exported for the detection-signal seam. */
+export function claudeProjectKey(cwd: string): string {
   let canonical = resolve(cwd);
   try { canonical = realpathSync(canonical); } catch { /* Claude also falls back to the unresolved absolute path */ }
 

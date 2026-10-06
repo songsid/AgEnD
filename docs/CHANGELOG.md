@@ -249,6 +249,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   are unaffected.
 
 ### Added
+- **Unified detection-signal seam for cross-restart turn questions (#1209, #1217a, #1210, #1215).** A new read-only
+  observation layer (`src/backend/session-signals.ts`): per-backend `TurnFingerprint` readers that discover the
+  workspace's session in the CLI's own store — claude-code (newest project transcript plus its newest timestamped
+  tail entry; the tail itself is usually timestamp-less bookkeeping), codex (exact-cwd thread from `state_5.sqlite`
+  opened read-only plus the rollout tail) and muse (cwd-matched session plus `recorded_at`) — with a
+  backend-agnostic `compareFingerprints` checkpoint diff answering `reengaged` / `quiet` / `unknown`. Only a TURN
+  counts: turn-kind filtering keeps bookkeeping writes (cost-state tails, token-count frames,
+  workspace-branch observations, bare mtime touches) from reading as re-engagement. Daemon-caused writes are
+  excluded on both the mtime and the tail path (plus a 2 s tail skew for entry-ts vs flush-mtime reorder), a
+  changed session id counts as reengaged, and a 10 s flush grace withholds `quiet` as `unknown` right after the
+  daemon's own write (a CLI that re-engaged but has not flushed yet briefly looks quiet). `readinessFromStore`
+  always returns `unknown`: the pane stays the idle/busy authority and existing detection is untouched.
+  kiro-classic schema coverage is deferred. Reads are synchronous — resolve fingerprints off the fleet event loop,
+  never inside a tool handler. Residual, by design and bounded: an engagement that flushes after a compare is
+  caught by the next checkpoint compare, never fabricated by this one.
 - **A ClassicBot channel can run on a second subscription (#1220).** A channel in `classicBot.yaml` now takes
   `backend_options.<backend>.credential_profile`, as a `fleet.yaml` instance does — e.g. a classic codex bot on
   `credential_profile: personal`. Its agent is launched on that profile, `get_usage` / `/usage` count it under that
