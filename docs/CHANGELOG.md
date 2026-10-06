@@ -16,6 +16,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   chat: the fleet keeps each instance's recent messages (`GET /ui/history`, in memory, bounded), and a stream that drops and
   reconnects is sent what it missed. Long agent replies are no longer cut at 2,000 characters in the web chat (16,000 now).
 
+### Security
+- **The three web panels share one navigation and one session menu, and `/` opens the dashboard.** `/ui`, `/view`
+  and `/settings` carry the same *Dashboard · View · Settings* links and a Session button: which browser you are
+  signed in as, when the session ends, every other signed-in device (with a Sign-out for each) and Sign out
+  everywhere. It is one small script and stylesheet (`/assets/shell.js`, `/assets/shell.css`), not a rewrite of
+  the panels.
+- **The dashboard no longer depends on Server-Sent Events.** If the live stream says nothing for 15 seconds, or
+  keeps failing, the page fetches the same status and chat messages every 5 seconds (`GET /ui/poll`) and goes back
+  to the stream when it speaks again. Polling uses the very same `<boot>-<id>` cursor as the stream, so the two can
+  take turns without a message twice or a gap, also across a fleet restart. (Cloudflare Quick Tunnels do not carry
+  SSE, and a buffering proxy looks exactly like a server that never sends.)
+- **The dashboard no longer loads its fonts from Google, and every panel carries a Content-Security-Policy**
+  keeping scripts, styles, images, fonts and connections to this origin (`connect-src 'self'`), so script that
+  somehow ran on a page could not send what it read to another server. (`'unsafe-inline'` stays for now: the
+  panels are single files of inline script and the dashboard uses `onclick=` attributes.)
+
 ### Upgrade Notes
 - **[Behaviour change] The web panels sign in with a one-time code, and a
   dashboard link no longer carries a credential.** `/dashboard` used to paste the
@@ -115,20 +131,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   A failed pipe-pane attach at startup now warns instead of vanishing silently.
 
 ### Security
-- **The three web panels share one navigation and one session menu, and `/` opens the dashboard.** `/ui`, `/view`
-  and `/settings` carry the same *Dashboard · View · Settings* links and a Session button: which browser you are
-  signed in as, when the session ends, every other signed-in device (with a Sign-out for each) and Sign out
-  everywhere. It is one small script and stylesheet (`/assets/shell.js`, `/assets/shell.css`), not a rewrite of
-  the panels.
-- **The dashboard no longer depends on Server-Sent Events.** If the live stream says nothing for 15 seconds, or
-  keeps failing, the page fetches the same status and chat messages every 5 seconds (`GET /ui/poll`) and goes back
-  to the stream when it speaks again. Polling uses the very same `<boot>-<id>` cursor as the stream, so the two can
-  take turns without a message twice or a gap, also across a fleet restart. (Cloudflare Quick Tunnels do not carry
-  SSE, and a buffering proxy looks exactly like a server that never sends.)
-- **The dashboard no longer loads its fonts from Google, and every panel carries a Content-Security-Policy**
-  keeping scripts, styles, images, fonts and connections to this origin (`connect-src 'self'`), so script that
-  somehow ran on a page could not send what it read to another server. (`'unsafe-inline'` stays for now: the
-  panels are single files of inline script and the dashboard uses `onclick=` attributes.)
 - **Discord slash commands now follow one command table (#1148).** Where a command applies and who may use it is
   declared in one place (`src/command-table.ts`) instead of in two copied handlers; the 🔒 in a command's menu
   description is generated from it, so the label can no longer disagree with the rule. It sits behind the
