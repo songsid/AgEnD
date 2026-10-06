@@ -280,6 +280,31 @@ describe("POST /ui/upload", () => {
     expect(got.res.body.toString()).toBe("hello");
   });
 
+  it("a ClassicBot room (in classicBot.yaml, not fleet.yaml) takes uploads; unregistered or stopped mid-body it does not (#1252 review r2)", async () => {
+    const classic = new Set(["room"]);
+    const { c } = ctx({
+      fleetConfig: { instances: {} },                                 // the room is not a fleet instance…
+      instanceIpcClients: new Map([["room", { send() {} }]]),
+      isClassicInstance: (n: string) => classic.has(n),              // …it is a Classic one
+    });
+    const ok = await upload(c, "room", PNG, "a.png");
+    expect(ok.status).toBe(200);
+    expect(readdirSync(join(dir, "workspaces", "room", "inbox"))).toHaveLength(1);
+    const ipc = (c as unknown as { instanceIpcClients: Map<string, unknown> }).instanceIpcClients;
+    for (const remove of [() => { classic.delete("room"); c.webFiles!.forget("room"); }, () => { ipc.delete("room"); }]) {
+      classic.add("room"); ipc.set("room", { send() {} });
+      const req = Object.assign(new EventEmitter(), { method: "POST", url: "/ui/upload?instance=room", headers: { "x-agend-token": TOKEN, "x-agend-filename": "b.png" }, destroy() {}, resume() {} });
+      const res = Object.assign(new EventEmitter(), { status: 0, headers: {} as Record<string, unknown>, body: "",
+        setHeader() {}, writeHead(st: number) { res.status = st; return res; }, end(b?: unknown) { res.body = String(b ?? ""); return res; } });
+      handleWebRequest(req as unknown as IncomingMessage, res as unknown as ServerResponse, new URL("http://localhost/ui/upload?instance=room"), c);
+      req.emit("data", PNG);
+      remove();
+      req.emit("end");
+      expect(res.status).toBe(404);
+    }
+    expect(readdirSync(join(dir, "workspaces", "room", "inbox")), "only the first upload was stored").toHaveLength(1);
+  });
+
   it("an instance deleted while the body was still arriving gets nothing stored and no id (#1252 review P2-3)", async () => {
     const { c } = ctx();
     const ipc = (c as unknown as { instanceIpcClients: Map<string, unknown> }).instanceIpcClients;

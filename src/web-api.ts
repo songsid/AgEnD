@@ -155,6 +155,8 @@ export interface WebApiContext {
   readonly logger: { info(obj: unknown, msg?: string): void; debug(obj: unknown, msg?: string): void; error(obj: unknown, msg?: string): void };
   getInstanceDir(name: string): string;
   getInstanceStatus(name: string): "running" | "paused" | "stopped" | "crashed";
+  /** A ClassicBot room (registered in classicBot.yaml, not fleet.yaml) — shown on the dashboard like any instance. */
+  isClassicInstance?(name: string): boolean;
   /** false: definitely not delivered (the instance's IPC is gone, or it was restarted meanwhile). */
   deliverToInstance(instanceName: string, payload: Record<string, unknown>): Promise<boolean | void>;
   getUiStatus(): unknown;
@@ -907,7 +909,10 @@ function handleUpload(req: IncomingMessage, res: ServerResponse, url: URL, ctx: 
     if (!type) { json(res, 415, { error: "unsupported file type — images (PNG, JPEG, GIF, WebP), PDF and text files only" }); return; }
     // The instance is checked again now the whole body is here: it may have been deleted (and its files
     // forgotten) or stopped while the upload streamed in; storing now would bring its id back (#1252 review).
-    if (!ctx.instanceIpcClients.has(instance) || !ctx.fleetConfig?.instances?.[instance]) {
+    // Still deliverable means: its IPC is up (a paused one is woken by the send) and it is still registered —
+    // in fleet.yaml, or as a ClassicBot room in classicBot.yaml.
+    const registered = !!ctx.fleetConfig?.instances?.[instance] || ctx.isClassicInstance?.(instance) === true;
+    if (!ctx.instanceIpcClients.has(instance) || !registered) {
       json(res, 404, { error: `Instance not found: ${instance}` });
       return;
     }
