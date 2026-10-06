@@ -132,6 +132,9 @@ function privateNotice(interaction: { followUp(options: { content: string; flags
   };
 }
 
+/** #1231: a slash command acknowledged this late (of Discord's 3000 ms) gets a log line saying where the time went. */
+const SLASH_ACK_SLOW_MS = 1_500;
+
 /**
  * A nonce-armed prompt button (`postNonceButtonPrompt`): `<prefix>:<32 hex>:<action>`.
  * Fleet-manager validates these against the prompt that created them.
@@ -647,11 +650,27 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
         }
 
         if (interaction.isChatInputCommand()) {
+          // #1231: acknowledge FIRST. Discord gives a slash command 3 seconds
+          // from its creation to be acknowledged, and part of that is already
+          // gone in delivery; nothing that can wait may run before the defer.
+          // Only what decides the KIND of acknowledgement is read first.
+          const receivedAt = this.now();
+          // /update progress must survive the fleet process restart. A public
+          // bot message can be re-fetched and edited by the new process;
+          // Discord ephemeral interaction replies cannot.
+          const ephemeral = interaction.commandName !== "chat" && interaction.commandName !== "update"
+            && !(interaction.commandName === "restart" && interaction.options.getString("mode") === "full");
+          try {
+            await interaction.deferReply(ephemeral ? { flags: MessageFlags.Ephemeral } : {});
+          } catch (err) {
+            this.reportSlashDeferFailure(interaction, err, receivedAt);
+            return;
+          }
+          this.noteSlashAckTiming(interaction, receivedAt);
           const channelName = interaction.channel && "name" in interaction.channel ? (interaction.channel.name ?? "") : "";
           const username = interaction.user.username;
           if (interaction.commandName === "chat") {
             const text = interaction.options.getString("message") ?? "";
-            await interaction.deferReply();
             this.emitFromClient(client, generation, "slash_command", {
               command: "chat",
               channelId: interaction.channelId,
@@ -663,13 +682,6 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
               respond: async (reply: string) => { try { const m = await interaction.editReply(reply); return m.id; } catch { return undefined; } },
             });
           } else {
-            // /update progress must survive the fleet process restart. A public
-            // bot message can be re-fetched and edited by the new process;
-            // Discord ephemeral interaction replies cannot.
-            const fullRestart = interaction.commandName === "restart"
-              && interaction.options.getString("mode") === "full";
-            const ephemeral = interaction.commandName !== "update" && !fullRestart;
-            await interaction.deferReply(ephemeral ? { flags: MessageFlags.Ephemeral } : {});
             // Extract options as key-value pairs for fleet-manager
             const options: Record<string, string | boolean> = {};
             for (const opt of interaction.options.data) {
@@ -965,6 +977,56 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       lastReconnectReason: this.lastReconnectReason,
       reconnectCount: this.reconnectCount,
     };
+  }
+
+  /**
+   * #1231: how late a slash command was by the time it was acknowledged.
+   * `createdTimestamp` is Discord's clock (the interaction's snowflake), so
+   * "age" also carries clock skew; the defer's own round trip is local. Over
+   * half the 3 s window is worth a line: it says whether the time went in
+   * delivery (gateway, a blocked event loop) or in the acknowledgement (REST).
+   */
+  private noteSlashAckTiming(interaction: { commandName: string; createdTimestamp: number }, receivedAt: number): void {
+    const done = this.now();
+    const ageAtReceipt = receivedAt - interaction.createdTimestamp;
+    const deferMs = done - receivedAt;
+    if (done - interaction.createdTimestamp >= SLASH_ACK_SLOW_MS) {
+      console.warn(`[discord:${this.id}] /${interaction.commandName} acknowledged ${done - interaction.createdTimestamp}ms after it was sent `
+        + `(${ageAtReceipt}ms before AgEnD saw it, ${deferMs}ms to acknowledge) — Discord allows 3000ms`);
+    }
+  }
+
+  /**
+   * #1231: a slash command whose acknowledgement failed. It is NOT run: the
+   * user was shown "did not respond" (or will be) and may well run it again,
+   * so running it now could do it twice. Already acknowledged (40060) means
+   * another session of this bot answered it — that one handles the command,
+   * so stay silent. Otherwise say so where the user can see it: a private
+   * follow-up when the acknowledgement did land after all, else a message in
+   * the channel, never a silent drop.
+   */
+  private reportSlashDeferFailure(
+    interaction: {
+      commandName: string; createdTimestamp: number; user: { id: string };
+      followUp(options: { content: string; flags: number }): Promise<unknown>;
+      channel: unknown;
+    },
+    err: unknown,
+    receivedAt: number,
+  ): void {
+    const code = (err as { code?: unknown })?.code;
+    const age = this.now() - interaction.createdTimestamp;
+    if (code === 40060) {
+      console.info(`[discord:${this.id}] /${interaction.commandName} was acknowledged by another session of this bot — not handling it here`);
+      return;
+    }
+    console.warn(`[discord:${this.id}] /${interaction.commandName} could not be acknowledged `
+      + `(${code ?? (err as Error)?.message ?? "error"}; ${receivedAt - interaction.createdTimestamp}ms old when seen, ${age}ms when it failed) — not run`);
+    const notice = t("slash.ack_failed", `<@${interaction.user.id}>`, `/${interaction.commandName}`, Math.max(0, Math.round(age / 100) / 10));
+    const channel = interaction.channel as { send?: (content: string) => Promise<unknown> } | null;
+    void interaction.followUp({ content: notice, flags: MessageFlags.Ephemeral })
+      .catch(() => (typeof channel?.send === "function" ? channel.send(notice) : Promise.reject(new Error("no channel"))))
+      .catch(e => console.warn(`[discord:${this.id}] could not tell the user /${interaction.commandName} was not run (${(e as Error).message})`));
   }
 
   /**
