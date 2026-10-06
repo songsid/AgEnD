@@ -16,6 +16,12 @@ export interface DaemonDeliveryPort {
   abort(deliveryId: string, targetBootId: string, attemptNo: number, reason: string): boolean;
   complete(deliveryId: string, targetBootId: string, attemptNo: number, outcome: "delivered" | "failed" | "uncertain", evidence?: string): boolean;
   retryBeforeBegin(deliveryId: string, targetBootId: string, attemptNo: number, reason: string, delayMs?: number): boolean;
+  /**
+   * #1209: read-side query so a restarted daemon can tell whether the
+   * interrupted turn's delivery is still owned by the durable path.
+   * Optional — the concrete DeliveryOutbox already satisfies it via get().
+   */
+  get?(deliveryId: string): { state: OutboxState } | undefined;
 }
 
 export type OutboxState =
