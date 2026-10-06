@@ -89,7 +89,8 @@ import { DeliveryOutbox, type ClaimedOutboxDelivery, type OutboxDelivery, type D
 // a state transition or that generation is replaced.
 export const DURABLE_DELIVERY_LANE_ALERT_MS = 35 * 60_000;
 import { handleWebRequest, broadcastSseEvent, SSE_HEARTBEAT_MS } from "./web-api.js";
-import { WebChatHistory, WEB_CHAT_TEXT_MAX } from "./web-chat-history.js";
+import { WebChatHistory, WEB_CHAT_TEXT_MAX, type WebChatAttachment } from "./web-chat-history.js";
+import { publicAttachment, WebFileLedger } from "./web-upload.js";
 import { handleViewRequest, isViewPath } from "./view-api.js";
 import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, usageProviderIdForBackend } from "./usage/usage-api.js";
 import { LOGIN_FLOWS, LOGIN_BACKEND_ALIASES, type LoginFlow, type AuthCheckResult } from "./login-flows.js";
@@ -909,6 +910,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private sseClients = new Set<import("node:http").ServerResponse>();
   /** The web chat's recent messages: what `/ui/history` serves and what a reconnecting SSE stream is sent. */
   readonly webChatHistory = new WebChatHistory();
+  /** Uploaded files and the files the dashboard may fetch back (uploads, reply attachments). */
+  readonly webFiles = new WebFileLedger();
   /**
    * Read from disk on every access rather than cached at startup: `agend
    * web-token rotate` runs in a separate process, and a cached copy would keep
@@ -6625,10 +6628,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.reactDone(instanceName);
     const replyTo = this.lastInboundUser.get(instanceName) ?? "user";
     this.logger.info(`${instanceName} → ${replyTo}: ${(args.text as string ?? "").slice(0, 100)}`);
+    // Files the agent attached are shown in the web chat too: registered for fetching by id (the path
+    // already passed the reply tool's sendability check, and is resolved once more here), never by path.
+    const replyFiles = Array.isArray(args.files) ? (args.files as unknown[]).filter((f): f is string => typeof f === "string") : [];
+    const attachments = replyFiles
+      .map(path => this.webFiles.registerServed({ path, instance: instanceName }))
+      .filter((f): f is NonNullable<typeof f> => f !== null)
+      .map(publicAttachment);
     this.emitSseEvent("message", {
       instance: instanceName, sender: senderSessionName ?? instanceName,
       text: (args.text as string ?? "").slice(0, WEB_CHAT_TEXT_MAX),
       ts: new Date().toISOString(),
+      ...(attachments.length ? { attachments } : {}),
     });
     // Log bot reply to classic instance chat-log
     const isClassic = this.classicChannels?.getChannelIdByInstance(instanceName) !== undefined;
@@ -7892,6 +7903,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Its web chat goes with it (only after the removal succeeded): a later instance of the same name
     // must not be shown the old one's conversation, and deleted names must not pile up.
     this.webChatHistory.forget(name);
+    this.webFiles.forget(name);
 
     // Clean up statusline watcher + instance directory
     this.statuslineWatcher.unwatch(name);
@@ -11419,9 +11431,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const onError = (err: unknown) => this.logger.debug({ err }, "SSE client write failed; evicting");
     if (event === "message" && data && typeof data === "object") {
       // A chat message: record it, and send it WITH its id so a reconnecting stream can ask for what it missed.
-      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown };
+      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown };
       const recorded = this.webChatHistory.record({
         instance: String(m.instance ?? ""), sender: String(m.sender ?? ""), text: String(m.text ?? ""), ts: String(m.ts ?? new Date().toISOString()),
+        attachments: Array.isArray(m.attachments) ? m.attachments as WebChatAttachment[] : undefined,
       });
       broadcastSseEvent(this.sseClients, event, recorded, onError, this.webChatHistory.cursorOf(recorded));
       return;
@@ -15742,11 +15755,20 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       // ── Web UI endpoints (delegated to web-api.ts) ─────
 
       const url = new URL(req.url ?? "/", `http://localhost:${port}`);
-      if (handleAuthRequest(req, res, url, this as unknown as AuthApiContext)) return;
-      if (handleViewRequest(req, res, url, this as unknown as import("./view-api.js").ViewApiContext)) return;
-      if (handleUsageRequest(req, res, url, this as unknown as import("./usage/usage-api.js").UsageApiContext)) return;
-      if (handleSettingsRequest(req, res, url, this as unknown as import("./settings-api.js").SettingsApiContext)) return;
-      if (handleWebRequest(req, res, url, this as unknown as import("./web-api.js").WebApiContext)) return;
+      // A handler that throws synchronously answers this request with a 500; it must never reach the process's
+      // uncaughtException handler, which stops the whole fleet (#1252 review: one file name did that).
+      try {
+        if (handleAuthRequest(req, res, url, this as unknown as AuthApiContext)) return;
+        if (handleViewRequest(req, res, url, this as unknown as import("./view-api.js").ViewApiContext)) return;
+        if (handleUsageRequest(req, res, url, this as unknown as import("./usage/usage-api.js").UsageApiContext)) return;
+        if (handleSettingsRequest(req, res, url, this as unknown as import("./settings-api.js").SettingsApiContext)) return;
+        if (handleWebRequest(req, res, url, this as unknown as import("./web-api.js").WebApiContext)) return;
+      } catch (err) {
+        this.logger.error({ err: (err as Error)?.message, path: url.pathname }, "Web request handler threw");
+        if (!res.headersSent) { res.writeHead(500); res.end(JSON.stringify({ error: "internal error" })); }
+        else res.destroy();
+        return;
+      }
 
       res.writeHead(404);
       res.end(JSON.stringify({ error: "not found" }));

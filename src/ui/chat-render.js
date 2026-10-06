@@ -172,8 +172,59 @@
     return draft ? failedText + "\n" + draft : failedText;
   }
 
+  /** The upload limits the server enforces (web-upload.ts UPLOAD_LIMITS); checked here first only to say so early. */
+  var FILE_LIMITS = { maxFileBytes: 10 * 1024 * 1024, maxFiles: 5, maxTotalBytes: 25 * 1024 * 1024 };
+
+  function formatSize(n) {
+    var b = Number(n) || 0;
+    if (b < 1024) return b + " B";
+    if (b < 1024 * 1024) return (b / 1024).toFixed(b < 10 * 1024 ? 1 : 0) + " KB";
+    return (b / 1024 / 1024).toFixed(1) + " MB";
+  }
+
+  /**
+   * Which of `adding` can join `pending` on one message: within the count, per-file and total limits.
+   * Returns the files kept (pending first, then the accepted new ones) and, for each refused one, why.
+   */
+  function checkFiles(pending, adding) {
+    var kept = (pending || []).slice();
+    var total = 0;
+    kept.forEach(function (f) { total += Number(f.size) || 0; });
+    var rejected = [];
+    (adding || []).forEach(function (f) {
+      var size = Number(f.size) || 0;
+      if (size === 0) rejected.push({ name: f.name, reason: "empty" });
+      else if (size > FILE_LIMITS.maxFileBytes) rejected.push({ name: f.name, reason: "too-large" });
+      else if (kept.length >= FILE_LIMITS.maxFiles) rejected.push({ name: f.name, reason: "too-many" });
+      else if (total + size > FILE_LIMITS.maxTotalBytes) rejected.push({ name: f.name, reason: "too-much" });
+      else { kept.push(f); total += size; }
+    });
+    return { kept: kept, rejected: rejected };
+  }
+
+  /**
+   * The files shown with a message. Only an id the fleet issued (32 hex) becomes a URL, and only under
+   * /ui/file/; a name is text. Images are shown (and open full size), other files are download links.
+   */
+  function attachmentsHtml(attachments) {
+    if (!Array.isArray(attachments)) return "";
+    var out = [];
+    attachments.forEach(function (a) {
+      if (!a || typeof a.id !== "string" || !/^[0-9a-f]{32}$/.test(a.id)) return;
+      var url = "/ui/file/" + a.id;
+      var name = escapeHtml(a.name || "file");
+      if (a.kind === "photo") {
+        out.push('<a class="att-img" href="' + url + '" target="_blank" rel="noopener noreferrer"><img src="' + url + '" alt="' + name + '" loading="lazy"></a>');
+      } else {
+        out.push('<a class="att-file" href="' + url + '" download="' + name + '">📎 ' + name + ' <span class="att-size">' + escapeHtml(formatSize(a.size)) + "</span></a>");
+      }
+    });
+    return out.length ? '<div class="atts">' + out.join("") + "</div>" : "";
+  }
+
   return {
     renderMarkdown: renderMarkdown, escapeHtml: escapeHtml, mergeMessages: mergeMessages, composerKey: composerKey,
     settleFailedSend: settleFailedSend, putBack: putBack,
+    FILE_LIMITS: FILE_LIMITS, formatSize: formatSize, checkFiles: checkFiles, attachmentsHtml: attachmentsHtml,
   };
 });

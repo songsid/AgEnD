@@ -140,6 +140,26 @@ describe("a passive poll is not activity (#1251 review): it never keeps an idle 
   }, 30_000);
 });
 
+describe("a web handler that throws answers 500 — it never reaches the fleet's uncaughtException (#1252 review)", () => {
+  it("the request fails, the listener and every other route keep working", async () => {
+    const h = await startFleet();
+    const crashes: unknown[] = [];
+    const onCrash = (err: unknown) => { crashes.push(err); };
+    process.on("uncaughtException", onCrash);
+    try {
+      (h.fm as unknown as { getUiStatus(): unknown }).getUiStatus = () => { throw new URIError("URI malformed"); };
+      const res = await raw(h.port, "GET", "/ui/poll?after=", { cookie: h.cookie });
+      expect(res.status).toBe(500);
+      expect(res.body).toBe(JSON.stringify({ error: "internal error" }));
+      expect((await raw(h.port, "GET", "/ui/history?instance=w", { cookie: h.cookie })).status).toBe(200);
+      expect(crashes).toEqual([]);
+    } finally {
+      process.off("uncaughtException", onCrash);
+      await stop(h.fm);
+    }
+  }, 30_000);
+});
+
 describe("/ and the shared assets", () => {
   it("redirects / to the dashboard, with nothing about who may enter", async () => {
     const h = await startFleet();

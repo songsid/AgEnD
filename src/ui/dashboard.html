@@ -170,6 +170,17 @@
   .input-bar textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
   .failed-send { margin: 0 20px 8px; padding: 8px 12px; border-radius: 10px; font-size: 12px; background: rgba(218,54,51,0.12); border: 1px solid rgba(218,54,51,0.35); display: flex; gap: 8px; align-items: center; }
   .failed-send .txt { flex: 1; white-space: pre-wrap; word-break: break-word; max-height: 4.5em; overflow: hidden; }
+  .pending-files { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 20px 6px; }
+  .pending-files:empty { display: none; }
+  .file-chip { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--glass-border); background: var(--surface); max-width: 260px; }
+  .file-chip img { width: 28px; height: 28px; object-fit: cover; border-radius: 4px; }
+  .file-chip .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-chip button { background: none; border: 0; color: var(--text-muted); cursor: pointer; font-size: 13px; }
+  .chat-view.dragging { outline: 2px dashed var(--accent); outline-offset: -6px; }
+  .msg .atts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .msg .att-img img { max-width: 260px; max-height: 220px; border-radius: 8px; display: block; border: 1px solid var(--glass-border); }
+  .msg .att-file { font-size: 12px; color: var(--accent); }
+  .msg .att-size { color: var(--text-muted); }
   .input-hint { font-size: 11px; color: var(--text-muted); padding: 0 20px 8px; }
   /* Rendered Markdown inside a message */
   .msg .md { white-space: normal; }
@@ -302,7 +313,7 @@
 const UI_LANG = localStorage.getItem("agend_lang") || (navigator.language?.toLowerCase().startsWith("zh") ? "zh-TW" : "en");
 const UI_TEXT = {
   en: {
-    disconnected: "disconnected", notSent: "Not sent:", putBack: "Put back", discard: "Discard", selectTarget: "Select Fleet or an instance to begin", deleteConfirm: 'Type "delete {0}" to confirm:',
+    disconnected: "disconnected", file_empty: "empty file", file_too_large: "over 10 MB", file_too_many: "at most 5 files per message", file_too_much: "the files together would be over 25 MB", removeFile: "Remove", notSent: "Not sent:", putBack: "Put back", discard: "Discard", selectTarget: "Select Fleet or an instance to begin", deleteConfirm: 'Type "delete {0}" to confirm:',
     instanceDeleted: "Instance deleted", noMessages: "No messages yet", sendFirst: "Send a message to start the conversation",
     loadFailed: "Failed to load", configLoadFailed: "Failed to load config", topicRequired: "Topic Name is required when Directory is empty",
     titleRequired: "Title required", scheduleFieldsRequired: "Cron, message, and target required", teamFieldsRequired: "Name and at least one member required",
@@ -311,7 +322,7 @@ const UI_TEXT = {
     teamCreated: "Team created", teamDeleted: "Team deleted", configSaved: "Config saved", configRestart: " (restart Fleet to apply channel changes)",
   },
   "zh-TW": {
-    disconnected: "已斷線", notSent: "未送出：", putBack: "放回輸入框", discard: "捨棄", selectTarget: "請選擇 Fleet 或 instance", deleteConfirm: '請輸入「delete {0}」以確認：',
+    disconnected: "已斷線", file_empty: "空檔案", file_too_large: "超過 10 MB", file_too_many: "每則訊息最多 5 個檔案", file_too_much: "檔案合計會超過 25 MB", removeFile: "移除", notSent: "未送出：", putBack: "放回輸入框", discard: "捨棄", selectTarget: "請選擇 Fleet 或 instance", deleteConfirm: '請輸入「delete {0}」以確認：',
     instanceDeleted: "Instance 已刪除", noMessages: "尚無訊息", sendFirst: "傳送訊息以開始對話",
     loadFailed: "載入失敗", configLoadFailed: "載入設定失敗", topicRequired: "Directory 留空時必須填寫 Topic Name",
     titleRequired: "必須填寫標題", scheduleFieldsRequired: "必須填寫 Cron、訊息與目標 instance", teamFieldsRequired: "必須填寫名稱並選擇至少一名成員",
@@ -328,6 +339,10 @@ const msgs = {};
 // Per target, independent of the DOM (the chat view is re-rendered often): what is being typed, and
 // messages whose send failed and that could not go back into their own composer.
 const drafts = {}, failedSends = {};
+// Files chosen for a chat and not sent yet, and whether a send is in flight — per chat, like drafts.
+const pendingFiles = {}, sending = {};
+// Files of a send still in flight: if it fails they come back, so new files are accepted only into the room left.
+const inFlightFiles = {};
 
 async function api(m, p, b) {
   const o = { method: m, headers: { "Content-Type": "application/json" } };
@@ -453,7 +468,8 @@ function renderInstanceMain(main) {
     <div class="chat-view" id="chatView" style="display:${curTab==="chat"?"flex":"none"}">
       <div class="messages" id="messages"></div>
       <div id="failedSend"></div>
-      <div class="input-bar"><textarea id="msgIn" rows="1" placeholder="Send a message..." autocomplete="off"></textarea><button class="btn btn-accent" onclick="sendMsg()">Send</button></div>
+      <div id="pendingFiles" class="pending-files"></div>
+      <div class="input-bar"><button class="btn" id="attachBtn" type="button" title="Attach files (images, PDF, text — or paste / drop them)">📎</button><input type="file" id="fileIn" multiple hidden accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/*,.md,.csv,.json,.log,.yaml,.yml"><textarea id="msgIn" rows="1" placeholder="Send a message..." autocomplete="off"></textarea><button class="btn btn-accent" onclick="sendMsg()">Send</button></div>
       <div class="input-hint">Enter to send · Shift+Enter for a new line</div>
     </div>
     <div class="detail-view" id="detailView" style="display:${curTab==="detail"?"block":"none"}"><div style="color:var(--text-muted);text-align:center;padding:24px">Loading...</div></div>`;
@@ -465,6 +481,19 @@ function renderInstanceMain(main) {
     inp.value = drafts[cur] || ""; growComposer(inp);
     inp.addEventListener("keydown", e => { if (AgendChatRender.composerKey(e) === "send") { e.preventDefault(); sendMsg(); } });
     inp.addEventListener("input", () => { drafts[cur] = inp.value; growComposer(inp); });
+    // Files: the 📎 button, a paste with files in it, or a drop onto the chat.
+    const fileIn = document.getElementById("fileIn");
+    document.getElementById("attachBtn").addEventListener("click", () => fileIn.click());
+    fileIn.addEventListener("change", () => { addFiles(fileIn.files); fileIn.value = ""; });
+    inp.addEventListener("paste", e => {
+      const files = e.clipboardData && e.clipboardData.files;
+      if (files && files.length) { addFiles(files); if (!e.clipboardData.getData("text")) e.preventDefault(); }
+    });
+    const view = document.getElementById("chatView");
+    view.addEventListener("dragover", e => { if (e.dataTransfer && [...e.dataTransfer.types].includes("Files")) { e.preventDefault(); view.classList.add("dragging"); } });
+    view.addEventListener("dragleave", () => view.classList.remove("dragging"));
+    view.addEventListener("drop", e => { if (e.dataTransfer && e.dataTransfer.files.length) { e.preventDefault(); addFiles(e.dataTransfer.files); } view.classList.remove("dragging"); });
+    renderPendingFiles();
     renderFailedSend();
     inp.focus();
   }
@@ -504,7 +533,7 @@ function renderMsgs() {
     const u = x.sender==="web-user"||(!x.sender.startsWith("agend")&&x.sender!==cur&&x.sender!=="general");
     const t = x.ts ? new Date(x.ts).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}) : "";
     // renderMarkdown escapes the whole text before it adds any tag of its own (src/ui/chat-render.js).
-    return `<div class="msg ${u?"inbound":"outbound"}"><div class="sender ${u?"user":"agent"}">${esc(x.sender)}<span class="time">${t}</span></div><div class="md">${AgendChatRender.renderMarkdown(x.text)}</div></div>`;
+    return `<div class="msg ${u?"inbound":"outbound"}"><div class="sender ${u?"user":"agent"}">${esc(x.sender)}<span class="time">${t}</span></div><div class="md">${AgendChatRender.renderMarkdown(x.text)}</div>${AgendChatRender.attachmentsHtml(x.attachments)}</div>`;
   }).join("");
   el.scrollTop = el.scrollHeight;
 }
@@ -512,21 +541,74 @@ function growComposer(inp) { inp.style.height = "auto"; inp.style.height = Math.
 async function sendMsg() {
   const inp = document.getElementById("msgIn"), txt = inp.value.trim();
   const target = cur;                                  // the chat this message belongs to, whatever is on screen later
-  if (!txt||!target) return;
+  const files = (pendingFiles[target] || []).slice();
+  if ((!txt && !files.length) || !target || sending[target]) return;
+  sending[target] = true;
   inp.value = ""; drafts[target] = ""; growComposer(inp);
+  pendingFiles[target] = []; inFlightFiles[target] = files; renderPendingFiles();
   let r;
-  try { r = await api("POST", "/ui/send", { instance: target, message: txt }); } catch { r = { error: tr("disconnected") }; }
+  try {
+    // Each file goes up on its own (the server reads its type from the bytes and stores it in the
+    // instance's inbox), then the message names them by the ids it got back.
+    const ids = [];
+    for (const f of files) ids.push((await uploadFile(target, f)).id);
+    r = await api("POST", "/ui/send", ids.length ? { instance: target, message: txt, attachments: ids } : { instance: target, message: txt });
+  } catch (err) { r = { error: err && err.message ? err.message : tr("disconnected") }; }
+  sending[target] = false;
+  delete inFlightFiles[target];
   if (r && !r.error) return;
-  // Not delivered: never lose the text. Back into its own composer if that is on screen and empty;
-  // otherwise kept for its chat (not someone else's composer, not over a new draft) and offered back.
-  const now = document.getElementById("msgIn");
-  if (AgendChatRender.settleFailedSend(target, cur, !!now, now ? now.value : "") === "restore") {
-    now.value = txt; drafts[target] = txt; growComposer(now);
-  } else {
-    failedSends[target] = failedSends[target] ? failedSends[target] + "\n" + txt : txt;
-    if (target === cur) renderFailedSend();
+  // Not delivered: never lose anything. The files go back to that chat's pending list, in front of any added
+  // meanwhile — which always fit, because addFiles counted these as taken while they were in flight; the text goes back into its own composer if that is on screen
+  // and empty, otherwise it is kept for its chat and offered back.
+  if (files.length) {
+    pendingFiles[target] = AgendChatRender.checkFiles(files, pendingFiles[target] || []).kept;
+    if (target === cur) renderPendingFiles();
+  }
+  if (txt) {
+    const now = document.getElementById("msgIn");
+    if (AgendChatRender.settleFailedSend(target, cur, !!now, now ? now.value : "") === "restore") {
+      now.value = txt; drafts[target] = txt; growComposer(now);
+    } else {
+      failedSends[target] = failedSends[target] ? failedSends[target] + "\n" + txt : txt;
+      if (target === cur) renderFailedSend();
+    }
   }
   toast(r && r.error ? r.error : tr("disconnected"), false);
+}
+/** One file up to the fleet; resolves to {id, …} or throws with the server's reason. */
+async function uploadFile(target, file) {
+  const r = await fetch(`/ui/upload?instance=${encodeURIComponent(target)}`, {
+    method: "POST",
+    headers: { "Content-Type": file.type || "application/octet-stream", "X-Agend-Filename": encodeURIComponent(file.name || "file") },
+    body: file,
+  });
+  let body = {};
+  try { body = await r.json(); } catch { /* not JSON */ }
+  if (!r.ok || !body || typeof body.id !== "string") throw new Error(body && body.error ? `${file.name}: ${body.error}` : `${file.name}: upload failed (${r.status})`);
+  return body;
+}
+function addFiles(list) {
+  if (!cur) return;
+  // A send in flight still owns its files (they return if it fails): new ones only get the room left beside them.
+  const inFlight = inFlightFiles[cur] || [];
+  const res = AgendChatRender.checkFiles(inFlight.concat(pendingFiles[cur] || []), [...(list || [])]);
+  pendingFiles[cur] = res.kept.slice(inFlight.length);
+  for (const x of res.rejected) toast(`${x.name}: ${tr("file_" + x.reason.replace(/-/g, "_"))}`, false);
+  renderPendingFiles();
+}
+function renderPendingFiles() {
+  const box = document.getElementById("pendingFiles"); if (!box) return;
+  box.textContent = "";
+  (pendingFiles[cur] || []).forEach((f, i) => {
+    const chip = document.createElement("span"); chip.className = "file-chip";
+    if (/^image\//.test(f.type) && typeof URL.createObjectURL === "function") {
+      const img = document.createElement("img"); img.alt = ""; img.src = URL.createObjectURL(f); img.onload = () => URL.revokeObjectURL(img.src); chip.append(img);
+    }
+    const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = `${f.name} · ${AgendChatRender.formatSize(f.size)}`;
+    const x = document.createElement("button"); x.type = "button"; x.title = tr("removeFile"); x.textContent = "✕";
+    x.onclick = () => { pendingFiles[cur].splice(i, 1); renderPendingFiles(); };
+    chip.append(nm, x); box.append(chip);
+  });
 }
 function renderFailedSend() {
   const box = document.getElementById("failedSend"); if (!box) return;

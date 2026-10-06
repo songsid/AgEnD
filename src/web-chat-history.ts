@@ -15,7 +15,12 @@
  */
 import { randomBytes } from "node:crypto";
 
+/** A file shown with a message: an id the dashboard can fetch, never a path. */
+export interface WebChatAttachment { id: string; kind: "photo" | "document"; name: string; size: number; mime: string }
+
 export interface WebChatMessage {
+  /** Files shown with the message (absent when none). */
+  attachments?: WebChatAttachment[];
   /** The fleet process generation the id belongs to. */
   boot: string;
   id: number;
@@ -58,7 +63,7 @@ export class WebChatHistory {
   get lastId(): number { return this.nextId - 1; }
 
   /** Record one message; returns it with its id. Text beyond WEB_CHAT_TEXT_MAX is cut. */
-  record(msg: { instance: string; sender: string; text: string; ts: string }): WebChatMessage {
+  record(msg: { instance: string; sender: string; text: string; ts: string; attachments?: WebChatAttachment[] }): WebChatMessage {
     const entry: WebChatMessage = {
       boot: this.boot,
       id: this.nextId++,
@@ -66,6 +71,7 @@ export class WebChatHistory {
       sender: String(msg.sender),
       text: String(msg.text ?? "").slice(0, WEB_CHAT_TEXT_MAX),
       ts: String(msg.ts),
+      ...(msg.attachments && msg.attachments.length ? { attachments: msg.attachments.slice(0, 20).map(a => ({ id: a.id, kind: a.kind, name: a.name, size: a.size, mime: a.mime })) } : {}),
     };
     let slot = this.byInstance.get(entry.instance);
     if (!slot) { slot = { messages: [], chars: 0 }; this.byInstance.set(entry.instance, slot); }
