@@ -473,6 +473,33 @@ export function claudeBashPermissionActive(pane: string): boolean {
   return /^[ \t]*Esc to cancel · Tab to amend[ \t]*$/.test(rows[question + 5]);
 }
 
+/**
+ * #1217: Claude's answer to `/exit` while a background task runs (2.1.289,
+ * captured from a live pane):
+ *
+ *    Background work is running
+ *    The following will stop when you exit:
+ *    shell · python3 - <<'EOF' p="src/…
+ *    ❯ 1. Exit and stop tasks
+ *      2. Move to background and exit
+ *      3. Stay
+ *    Enter to confirm · Esc to cancel
+ *
+ * Enter takes the selected option, so a stray Enter (a delivery's) exits and
+ * kills the tasks. Recognised only as a whole, at the bottom of the pane.
+ */
+export const CLAUDE_BACKGROUND_WORK_EXIT = /^[ \t]*Background work is running[ \t]*$/m;
+export function claudeBackgroundWorkExitActive(pane: string): boolean {
+  const rows = pane.replace(/\r/g, "").split("\n").filter(row => row.trim() !== "");
+  const footer = rows.length - 1;
+  if (footer < 4 || !/^[ \t]*Enter to confirm · Esc to cancel[ \t]*$/.test(rows[footer])) return false;
+  const head = rows.slice(Math.max(0, footer - 12), footer).findIndex(row => CLAUDE_BACKGROUND_WORK_EXIT.test(row));
+  if (head < 0) return false;
+  const block = rows.slice(Math.max(0, footer - 12), footer).slice(head).join("\n");
+  return /^[ \t]*[❯›]?[ \t]*1\.[ \t]+Exit and stop tasks[ \t]*$/m.test(block)
+    && /^[ \t]*[❯›]?[ \t]*3\.[ \t]+Stay[ \t]*$/m.test(block);
+}
+
 /** Private request text: excludes history, cursor motion, and native auto-deny countdown. */
 function claudeCommandRequestIdentity(pane: string): string {
   const rows = pane.replace(/\r/g, "").split("\n");
@@ -980,6 +1007,17 @@ export class ClaudeCodeBackend implements CliBackend {
         autoResolutionKey: "claude-dangerous-command",
       },
       {
+        // #1217: never answered here. A delivery's Enter would pick "Exit and
+        // stop tasks"; the stop flow answers it (Escape, then SIGTERM).
+        pattern: CLAUDE_BACKGROUND_WORK_EXIT,
+        isActive: claudeBackgroundWorkExitActive,
+        keys: [],
+        holdOnly: true,
+        blocksDelivery: true,
+        inputBlocked: true,
+        description: "Claude \"Background work is running\" exit prompt — holding, never answering with Enter",
+      },
+      {
         pattern: CLAUDE_DANGEROUS_COMMAND_PROMPT,
         isActive: claudeBashPermissionActive,
         requestIdentity: claudeCommandRequestIdentity,
@@ -1017,6 +1055,15 @@ export class ClaudeCodeBackend implements CliBackend {
   getClearCommand(): string { return "/clear"; }
 
   getCancelKey(): string { return "Escape"; }
+
+  /** #1217: Claude's own words for a session that is not there to resume. */
+  resumeMissingPattern(): RegExp {
+    return /no conversation found|no conversation to (continue|resume)|no previous (session|conversation)/i;
+  }
+
+  quitBlockedByDialog(pane: string): boolean {
+    return claudeBackgroundWorkExitActive(pane);
+  }
 
   // `claude --effort <level>` (low, medium, high, xhigh, max) and a `/effort`
   // slash command in the TUI — verified from `claude --help` on 2026-08-02.

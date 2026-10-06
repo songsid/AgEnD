@@ -14,6 +14,10 @@
 - **`list_emojis` 變輕了（#1226）。** 伺服器 emoji 預設不再附圖片網址（要的話設 `with_image_urls`；想看圖用 `preview_emojis`），並可用 `name`、`limit`、`primary_only` 縮小清單——在 emoji 很多的伺服器上，一次呼叫原本要花約 1 萬字的 context，而 agent 只需要一個 emoji。emoji 與貼圖工具的呼叫改用共用的 30 秒時限，不再是固定 10 秒，一次下載多張圖的預覽不會被中途切掉。
 
 ### 修復 (Fixed)
+- **切換 instance 的 backend 後不再啟動不了（#1217）。** session id 現在屬於產生它的 backend（旁邊記一個 `session-id.backend`）。換成另一個 backend 後第一次啟動時，舊 id 會被放到一旁（跟以前一樣是 `session-id.abandoned-<ts>`），新的 CLI 全新開始，而不是被要求去 resume 一段它從沒有過的對話。`update_instance_config` 改了 `backend` 時，執行中的 instance 現在會被重啟並全新開始。以前只會存下設定，舊 CLI 繼續跑，直到其他事情讓它重啟。另外三個讓這種失敗變成永久的缺口也一併補上：
+  - 每個 backend 各自指定「session 已經不存在」的字樣，例如 muse 的「retained session not found」；
+  - 未經證實的 resume 失敗次數改存在 instance 目錄裡、以 session id 為鍵。每次啟動都會建一個新的 Daemon，所以以前永遠停在「attempt 1/3」，到不了三次後的全新啟動；
+  - 認得 Claude 的「Background work is running」退出提示。訊息投遞會等它結束；stop 與 pause 會用 Escape 取消它並停止程序，絕不選它的任何選項。
 - **Discord slash 指令：較少出現「應用程式沒有回應」，而且不再靜默（#1231）。** slash 指令現在第一件事就是回應（acknowledge），
   其他讀取都在之後。回應失敗時不執行該指令（你已看到「沒有回應」，重試時若照樣執行會做兩次），並且會告訴你——私下回覆，或發在頻道。
   若同一個 bot 的另一個連線已經回應，這邊就保持安靜。超過 1.5 秒才回應時，log 會記下時間花在哪（送達 vs 回應本身）；fleet 會記錄每次

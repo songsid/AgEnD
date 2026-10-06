@@ -430,6 +430,22 @@ export interface CliBackend {
   retriesResumeOnStartupFailure?(): boolean;
 
   /**
+   * #1217: what this CLI prints when the session it was told to resume does
+   * not exist — positive proof the stored session id can be set aside. Each
+   * CLI words it differently; a backend that names none is judged by the Claude
+   * phrasing AgEnD always used. Must match only the CLI's own message.
+   */
+  resumeMissingPattern?(): RegExp;
+
+  /**
+   * #1217: a dialog the CLI shows in answer to its quit command that must not
+   * be answered by a stray key (Claude's "Background work is running": Enter
+   * picks "Exit and stop tasks"). When the stop flow sees it, it presses
+   * Escape (cancel, never a choice) and stops the process itself.
+   */
+  quitBlockedByDialog?(pane: string): boolean;
+
+  /**
    * Whether the TUI can emit terminal output while its visible pane is
    * unchanged (for example, rerunning and repainting a status-line hook).
    *
