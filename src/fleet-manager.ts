@@ -48,7 +48,7 @@ import { CostGuard, formatCents } from "./cost-guard.js";
 import { TmuxManager } from "./tmux-manager.js";
 import { AccessManager } from "./channel/access-manager.js";
 import { IpcClient } from "./channel/ipc-bridge.js";
-import type { AdapterHealthSnapshot, AlertData, ChannelAdapter, InboundMessage, InboundReaction, Choice, TopicPresence } from "./channel/types.js";
+import type { AdapterHealthSnapshot, AlertData, ChannelAdapter, InboundMessage, InboundReaction, Choice, TopicPresence, StickerInfo, StickerList, StickerPreview, StickerTarget } from "./channel/types.js";
 import { createAdapter } from "./channel/factory.js";
 import { TelegramAdapter } from "./channel/adapters/telegram.js";
 import { createBackend } from "./backend/factory.js";
@@ -608,6 +608,24 @@ export function deriveSpawnConcurrency(freeMemMB: number, cores: number): number
 const REPLY_OBLIGATION_SWEEP_MS = 30_000;
 const REPLY_REMINDER_GRACE_MS = 60_000;
 const DEFAULT_REPLY_OVERDUE_MINUTES = 15;
+
+/**
+ * The filter `list_emojis` and `list_stickers` take (#1226). Values may come from the agent CLI as strings, so a
+ * limit is read as a number and the flags accept "true". No limit means all of them — never zero.
+ */
+function emojiListFilter(opts: Record<string, unknown>): {
+  matches(...texts: string[]): boolean; limit: number; primaryOnly: boolean; withImageUrls: boolean;
+} {
+  const name = typeof opts.name === "string" ? opts.name.trim().toLowerCase() : "";
+  const n = Number(opts.limit);
+  const flag = (v: unknown) => v === true || v === "true";
+  return {
+    matches: (...texts) => !name || texts.some(t => t.toLowerCase().includes(name)),
+    limit: Number.isInteger(n) && n >= 1 ? n : Infinity,
+    primaryOnly: flag(opts.primary_only),
+    withImageUrls: flag(opts.with_image_urls),
+  };
+}
 
 export class FleetManager implements FleetContext, LifecycleContext, ArchiverContext, StatuslineWatcherContext, OutboundContext, AgentEndpointContext {
   private static signalTarget: FleetManager | null = null;
@@ -6458,9 +6476,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // still in flight and about to succeed. One real send, everyone gets its
     // outcome; a genuinely failed send clears the entry so a retry passes.
     if (tool === "reply") {
+      // Stickers (#1226) are checked before anything is sent: a refused one is the reply's error, not a gap.
+      const stickerProblem = await this.replyStickerProblem(outAdapter, args, threadId, contextAdapterId ?? this.getInstanceAdapterId(senderInstanceName ?? instanceName));
+      if (stickerProblem) { respond(null, stickerProblem); return; }
+      const stickers = Array.isArray(args.stickers) ? (args.stickers as string[]) : [];
       const ticket = this.replyDeduper.begin(
         instanceName,
-        String(args.text ?? ""),
+        // A reply with stickers is not the same reply as its text alone.
+        stickers.length ? `${String(args.text ?? "")}\u0000stickers:${stickers.join(",")}` : String(args.text ?? ""),
         Array.isArray(args.files) ? args.files as string[] : [],
       );
       if (ticket.duplicate) {
@@ -6767,7 +6790,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       : type.startsWith("fleet_decision_") ? "fleet_decision_response"
       : type === "fleet_task" ? "fleet_task_response"
       : type === "fleet_set_display_name" ? "fleet_display_name_response"
-      : type === "fleet_list_emojis" || type === "fleet_set_persona_emoji" || type === "fleet_preview_emojis" ? "fleet_persona_emoji_response"
+      : type === "fleet_list_emojis" || type === "fleet_set_persona_emoji" || type === "fleet_preview_emojis"
+        || type === "fleet_list_stickers" || type === "fleet_preview_stickers" ? "fleet_persona_emoji_response"
       : "fleet_description_response";
     ipc.send({ type: responseType, fleetRequestId, error: message });
   }
@@ -6779,17 +6803,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (type === "fleet_task") { this.handleTaskCrud(name, msg); return; }
     if (type === "fleet_set_display_name") { this.handleSetDisplayName(name, msg); return; }
     if (type === "fleet_set_description") { this.handleSetDescription(name, msg); return; }
-    if (type === "fleet_list_emojis" || type === "fleet_set_persona_emoji" || type === "fleet_preview_emojis") { this.handlePersonaEmoji(name, msg); return; }
+    if (type === "fleet_list_emojis" || type === "fleet_set_persona_emoji" || type === "fleet_preview_emojis"
+      || type === "fleet_list_stickers" || type === "fleet_preview_stickers") { this.handlePersonaEmoji(name, msg); return; }
   }
 
-  /** `list_emojis` / `set_persona_emoji` / `preview_emojis` over IPC; the agent endpoint calls the same methods. */
+  /** `list_emojis` / `set_persona_emoji` / `preview_emojis` / `list_stickers` / `preview_stickers` over IPC; the agent endpoint calls the same methods. */
   private handlePersonaEmoji(instanceName: string, msg: Record<string, unknown>): void {
     const fleetRequestId = msg.fleetRequestId as string;
     const payload = (msg.payload ?? {}) as Record<string, unknown>;
     const ipc = this.instanceIpcClients.get(instanceName);
     if (!ipc) return;
-    const op = msg.type === "fleet_list_emojis" ? this.listEmojisFor(instanceName, payload.refresh === true)
+    const op = msg.type === "fleet_list_emojis" ? this.listEmojisFor(instanceName, payload.refresh === true, payload)
       : msg.type === "fleet_preview_emojis" ? this.previewEmojis(instanceName, payload)
+      : msg.type === "fleet_list_stickers" ? this.listStickersFor(instanceName, payload)
+      : msg.type === "fleet_preview_stickers" ? this.previewStickers(instanceName, payload)
       : this.setPersonaEmoji(instanceName, payload);
     op.then(
       (r) => typeof r.error === "string"
@@ -7157,8 +7184,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return { display_name: name };
   }
 
-  async handleListEmojisHttp(instance: string, refresh: boolean): Promise<unknown> {
-    return this.listEmojisFor(instance, refresh);
+  async handleListEmojisHttp(instance: string, refresh: boolean, args: Record<string, unknown> = {}): Promise<unknown> {
+    return this.listEmojisFor(instance, refresh, args);
+  }
+
+  async handleListStickersHttp(instance: string, args: Record<string, unknown>): Promise<unknown> {
+    return this.listStickersFor(instance, args);
+  }
+
+  async handlePreviewStickersHttp(instance: string, args: Record<string, unknown>): Promise<unknown> {
+    return this.previewStickers(instance, args);
   }
 
   async handleSetPersonaEmojiHttp(instance: string, args: Record<string, unknown>): Promise<unknown> {
@@ -7947,7 +7982,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * bot can draw on — the same lists, and the same resolution, as the
    * Settings picker (#1005/#1021), so an agent and an operator see one truth.
    */
-  async listEmojisFor(instanceName: string, refresh = false): Promise<Record<string, unknown>> {
+  async listEmojisFor(instanceName: string, refresh = false, opts: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
     // Seeing is not setting: a ClassicBot instance has no per-instance stamp,
     // but it reacts in its own channel like any bot and must be able to see
     // the emojis it can use (only set_persona_emoji refuses it).
@@ -7969,18 +8004,24 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       ...(classic ? { note: "ClassicBot instances have no per-instance status emojis: the statuses above are the connection's, which an operator sets in Settings. You can still use any emoji listed here in your own reactions." } : {}),
     };
     if (platform === "discord" && worldId) {
+      // #1226: a busy server's list was ~10k characters for an agent that wanted one emoji. Filter by name, cap
+      // the count, keep to the primary server if asked, and leave the image URLs out unless asked
+      // (preview_emojis is how an agent looks at one).
+      const filter = emojiListFilter(opts);
       const listed = await this.listGuildEmojis(worldId, refresh);
+      let left = filter.limit;
       out.server_emojis = listed.ok
-        ? listed.guilds.map(g => g.emojis
+        ? listed.guilds.filter(g => !filter.primaryOnly || g.primary).map(g => g.emojis
           ? {
             server: g.name || g.id, primary: g.primary,
-            emojis: g.emojis.filter(e => e.available).map(e => {
+            emojis: g.emojis.filter(e => e.available && filter.matches(e.name)).filter(() => left-- > 0).map(e => {
               const value = customEmojiValue(e);
-              return { value, image_url: emojiImageUrl(value) };
+              return filter.withImageUrls ? { value, image_url: emojiImageUrl(value) } : { value };
             }),
           }
           : { server: g.name || g.id, primary: g.primary, error: g.error })
         : { error: listed.error };
+      if (!filter.withImageUrls) out.server_emojis_note = "Image URLs are left out; preview_emojis downloads the ones you want to look at (or pass with_image_urls).";
     }
     return out;
   }
@@ -8030,6 +8071,175 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
     }
     return { previews, errors, note: "Read each path to see the emoji (a static PNG)." };
+  }
+
+  // ── Stickers (#1226) ─────────────────────────────────────────────────────
+
+  /** Where an instance talks: its connection, and its chat (and topic). The same address its notices go to. */
+  private instanceChatTarget(instanceName: string): { worldId?: string; adapter?: ChannelAdapter; chatId?: string; threadId?: string } {
+    const worldId = this.getInstanceAdapterId(instanceName);
+    const adapter = (worldId ? this.worlds.get(worldId)?.adapter : undefined) ?? this.getAdapterForInstance(instanceName) ?? this.adapter ?? undefined;
+    const topic = this.fleetConfig?.instances[instanceName]?.topic_id;
+    const groupId = this.getChannelConfig(worldId)?.group_id;
+    if (topic != null && groupId != null) return { worldId, adapter, chatId: String(groupId), threadId: String(topic) };
+    const classicChat = this.classicChannels?.getChannelIdByInstance(instanceName);
+    return { worldId, adapter, chatId: classicChat ?? (groupId != null ? String(groupId) : undefined) };
+  }
+
+  private static STICKER_LIST_TTL_MS = 10 * 60_000;
+  /** Keyed `<connection>\0<scope key>` (a Discord channel, or "set:<name>"). */
+  private stickerCache = new Map<string, { fetched_at: number; list: StickerList }>();
+
+  /** One sticker list through the adapter, cached; `refresh` forces a fetch. Errors are the platform's, reworded. */
+  private async stickerListFor(
+    worldId: string, adapter: ChannelAdapter, target: StickerTarget, refresh = false,
+  ): Promise<StickerList> {
+    const key = `${worldId}\0${target.set ? `set:${target.set}` : `chat:${target.threadId ?? target.chatId ?? ""}`}`;
+    const cached = this.stickerCache.get(key);
+    if (!refresh && cached && Date.now() - cached.fetched_at < FleetManager.STICKER_LIST_TTL_MS) return cached.list;
+    const list = await adapter.listStickers!(target);
+    this.stickerCache.set(key, { fetched_at: Date.now(), list });
+    return list;
+  }
+
+  /** The Telegram sticker sets an instance lists by default: its connection's `options.sticker_sets`. */
+  private defaultStickerSets(worldId: string | undefined): string[] {
+    const sets = (this.getChannelConfig(worldId)?.options as { sticker_sets?: unknown } | undefined)?.sticker_sets;
+    return Array.isArray(sets) ? sets.filter((x): x is string => typeof x === "string" && x.trim() !== "").slice(0, 10) : [];
+  }
+
+  /**
+   * `list_stickers` (#1226): the stickers this instance can send where it talks, one shape on both platforms —
+   * `{ id, name, emoji_or_tags, format }` and no image URLs (preview_stickers shows them). Discord: its channel's
+   * server only — a bot cannot send another server's stickers, so listing them would only cost context.
+   * Telegram: the set named, or the connection's `options.sticker_sets`.
+   */
+  async listStickersFor(instanceName: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    if (!this.ownInstanceConfig(instanceName) && !this.isClassicPersonaTarget(instanceName)) {
+      return { error: this.personaEmojiMissing(instanceName) };
+    }
+    const { worldId, adapter, chatId, threadId } = this.instanceChatTarget(instanceName);
+    if (!worldId || !adapter?.listStickers) return { error: "this channel has no stickers to list" };
+    const filter = emojiListFilter(args);
+    const refresh = args.refresh === true || args.refresh === "true";
+    const telegram = adapter.type === "telegram";
+    const requested = typeof args.set === "string" && args.set.trim() ? [args.set.trim()] : [];
+    const sets = telegram ? (requested.length ? requested : this.defaultStickerSets(worldId)) : [];
+    if (telegram && !sets.length) {
+      return { error: "name a sticker set: set=<name> (the <name> in t.me/addstickers/<name>), or have an operator add options.sticker_sets to this connection" };
+    }
+    const targets: StickerTarget[] = telegram ? sets.map(set => ({ set })) : [{ chatId, threadId }];
+    const lists: Array<Record<string, unknown>> = [];
+    let left = filter.limit;
+    for (const target of targets) {
+      try {
+        const list = await this.stickerListFor(worldId, adapter, target, refresh);
+        const stickers = list.stickers
+          .filter(st => st.available && filter.matches(st.name, st.emoji_or_tags))
+          .filter(() => left-- > 0)
+          .map(({ id, name, emoji_or_tags, format }) => ({ id, name, emoji_or_tags, format }));
+        lists.push({ scope: list.scope, stickers });
+      } catch (err) {
+        lists.push({ scope: target.set ? `set ${target.set}` : "this server", error: `cannot list stickers: ${(err as Error).message}` });
+      }
+    }
+    return {
+      platform: adapter.type,
+      lists,
+      note: "Send one with reply({ stickers: [id] }) — up to 3, never in the text. preview_stickers shows what they look like.",
+    };
+  }
+
+  /**
+   * `preview_stickers` (#1226), the sticker twin of preview_emojis: the fleet downloads a still picture of each named
+   * sticker and returns a local path to Read. Only ids this instance's list_stickers returned (from the cache it
+   * filled) — nothing the caller writes reaches a URL. A Lottie sticker, or an animated one with no thumbnail, has no
+   * still picture: it is listed as preview_unavailable.
+   */
+  async previewStickers(instanceName: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    if (!this.ownInstanceConfig(instanceName) && !this.isClassicPersonaTarget(instanceName)) {
+      return { error: this.personaEmojiMissing(instanceName) };
+    }
+    const wanted = args.stickers;
+    if (!Array.isArray(wanted) || wanted.length === 0 || wanted.some(x => typeof x !== "string" || !x)) {
+      return { error: "stickers is required: a list of ids from list_stickers" };
+    }
+    if (wanted.length > FleetManager.EMOJI_PREVIEW_MAX) return { error: `at most ${FleetManager.EMOJI_PREVIEW_MAX} at a time: narrow them down by name first` };
+    const { worldId, adapter } = this.instanceChatTarget(instanceName);
+    if (!worldId || !adapter?.fetchStickerPreview) return { error: "this channel has no stickers to preview" };
+    const known = new Map<string, StickerInfo>();
+    for (const [key, entry] of this.stickerCache) {
+      if (key.startsWith(`${worldId}\0`)) for (const st of entry.list.stickers) known.set(st.id, st);
+    }
+    const previews: Array<{ sticker: string; name: string; path: string }> = [];
+    const unavailable: Array<{ sticker: string; name: string; reason: string }> = [];
+    const errors: Array<{ sticker: string; error: string }> = [];
+    // In parallel: eight sequential downloads could outlast the tool's budget.
+    const outcomes = await Promise.all((wanted as string[]).map(async id => {
+      const st = known.get(id);
+      if (!st) return { id, error: "not a sticker list_stickers returned here; list them first" };
+      try {
+        return { id, st, picture: await adapter.fetchStickerPreview!(st) };
+      } catch (err) {
+        return { id, error: `download failed: ${(err as Error).message}` };
+      }
+    }));
+    for (const o of outcomes) {
+      if ("error" in o) { errors.push({ sticker: o.id, error: o.error! }); continue; }
+      if (!o.picture) { unavailable.push({ sticker: o.id, name: o.st.name, reason: `preview_unavailable: a ${o.st.format} sticker has no still picture` }); continue; }
+      previews.push({ sticker: o.id, name: o.st.name, path: this.storeStickerPreview(o.id, o.picture) });
+    }
+    return { previews, unavailable, errors, note: "Read each path to see the sticker (a still picture)." };
+  }
+
+  /** A preview under the inbox, named by a hash of the id (a Telegram file_id is long), pruned after a day. */
+  private storeStickerPreview(id: string, picture: StickerPreview): string {
+    const dir = join(this.dataDir, "inbox", "sticker-previews");
+    mkdirSync(dir, { recursive: true });
+    const now = Date.now();
+    for (const name of readdirSync(dir)) {
+      try { if (now - statSync(join(dir, name)).mtimeMs > FleetManager.EMOJI_PREVIEW_TTL_MS) unlinkSync(join(dir, name)); } catch { /* raced */ }
+    }
+    const path = join(dir, `${createHash("sha256").update(id).digest("hex").slice(0, 24)}.${picture.ext}`);
+    const tmp = `${path}.${process.pid}.tmp`;
+    writeFileSync(tmp, picture.bytes);
+    renameSync(tmp, path);
+    return path;
+  }
+
+  /**
+   * `reply.stickers` (#1226), checked before anything is sent — a refused sticker is an error the agent sees, never
+   * a reply that silently arrives without it. At most 3, text or stickers required. Discord: each must be an available
+   * sticker of the server the reply goes to (another server's cannot be sent). Telegram: any sticker's file_id can be
+   * sent anywhere; only its shape is checked here, and Telegram's own refusal still comes back as the reply's error.
+   */
+  async replyStickerProblem(adapter: ChannelAdapter, args: Record<string, unknown>, threadId: string | undefined, worldId: string | undefined): Promise<string | null> {
+    const raw = args.stickers;
+    const hasText = typeof args.text === "string" && args.text.length > 0;
+    if (raw === undefined || (Array.isArray(raw) && raw.length === 0)) return hasText ? null : "reply: text is required (or stickers)";
+    if (!Array.isArray(raw) || raw.some(x => typeof x !== "string" || !x.trim())) return "reply: stickers must be a list of sticker ids from list_stickers";
+    const ids = raw as string[];
+    if (ids.length > 3) return "reply: at most 3 stickers per message";
+    if (new Set(ids).size !== ids.length) return "reply: the same sticker twice";
+    if (!adapter.sendStickers || !adapter.listStickers) return "reply: this channel cannot send stickers";
+    if (adapter.type === "telegram") {
+      const bad = ids.find(id => !/^[A-Za-z0-9_-]{10,255}$/.test(id));
+      return bad ? `reply: ${bad} is not a Telegram sticker id (use an id from list_stickers)` : null;
+    }
+    const target: StickerTarget = { chatId: typeof args.chat_id === "string" ? args.chat_id : undefined, threadId };
+    let list: StickerList;
+    try {
+      list = await this.stickerListFor(worldId ?? adapter.id ?? adapter.type, adapter, target);
+      if (ids.some(id => !list.stickers.some(st => st.id === id))) list = await this.stickerListFor(worldId ?? adapter.id ?? adapter.type, adapter, target, true);
+    } catch (err) {
+      return `reply: cannot check the stickers for this channel: ${(err as Error).message}`;
+    }
+    for (const id of ids) {
+      const st = list.stickers.find(x => x.id === id);
+      if (!st) return `reply: sticker ${id} cannot be sent here — only stickers of this channel's server can (${list.scope}); call list_stickers`;
+      if (!st.available) return `reply: sticker ${st.name} (${id}) is unavailable on this server (it lost the boost level it needs)`;
+    }
+    return null;
   }
 
   private static EMOJI_PREVIEW_MAX = 8;

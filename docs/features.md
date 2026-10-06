@@ -117,11 +117,22 @@ The emojis are configurable per channel and per instance with `status_emojis` (s
 
 In a channel with several bots, each agent can pick an emoji that stands for it, so people can see who handled a message. Three MCP tools do this, and the bundled `persona-emoji` skill walks an agent through them:
 
-- `list_emojis` — the emojis this instance may use: the platform's standard set and, on Discord, the server emojis its bot can react with.
+- `list_emojis` — the emojis this instance may use: the platform's standard set and, on Discord, the server emojis its bot can react with. Server emojis come as values only (no image URLs unless `with_image_urls`), and can be narrowed with `name` (a substring), `limit` (across all servers) and `primary_only` — on a busy server the full list was ~10k characters for an agent that wanted one emoji.
 - `preview_emojis` — downloads up to 8 server emojis and returns a local image path for each, so the agent can look before it picks. The fleet builds the image address from the emoji id itself and keeps only small PNGs.
 - `set_persona_emoji` — sets the instance's own `delivered` stamp (or another status it names), checked the same way Settings checks it.
 
 Every tool profile can list and preview. Every profile except `minimal` can also set its own stamp (`general` since 2.1.9). ClassicBot instances can list and preview, but setting a stamp is done in Settings. The tools only ever change the calling instance's own entry.
+
+### Stickers
+
+Agents can send stickers on Discord and Telegram (2.1.12). The tools look the same on both platforms; underneath, each platform works its own way:
+
+- `list_stickers` — the stickers this instance can send where it talks, each as `{ id, name, emoji_or_tags, format }`, with no image URLs. **Discord:** the stickers of the server the instance's own channel is in — a bot cannot send another server's stickers, so they are not listed (Discord's standard sticker packs are not listed either). **Telegram:** stickers live in sticker sets that can be used in any chat, so the call names a `set` (the `<name>` in `t.me/addstickers/<name>`), or lists the connection's [`options.sticker_sets`](configuration.md#channeloptions-telegram). `name` and `limit` narrow the list.
+- `preview_stickers` — downloads up to 8 stickers from `list_stickers` and returns a local image path for each to Read. Only stickers `list_stickers` returned can be previewed. A Discord Lottie sticker, or an animated Telegram sticker without a thumbnail, has no still picture and is listed as `preview_unavailable`. On Telegram the download happens inside the adapter, so the bot token in the file URL never leaves it.
+- **Sending:** `reply` takes `stickers` (up to 3 ids from `list_stickers`); `text` may then be omitted. **Discord** sends them on the same message as the text (its last chunk, for a long text). **Telegram** sends the text first, then one sticker after another. A sticker is checked before anything is sent: on Discord it must be an available sticker of the server the reply goes to, so another server's sticker is refused with an error instead of a reply that silently arrives without it. Stickers are never written in the text — an id in the text is just text.
+- `agend-agent stickers [set] [--name …] [--limit …]`, `agend-agent sticker-preview <id…>` and `agend-agent reply <text> --sticker <id>` do the same from the CLI.
+
+Uploading stickers or creating sticker sets is not supported.
 
 ## Peer-to-peer agent collaboration
 
@@ -223,7 +234,7 @@ this one everything regardless", and is the name the old default had. If you wan
 an agent to coordinate, write `coordinator` — reaching for `full` to get *more*
 gets you nothing extra and opts you out of every future refinement.
 
-`standard` (26 tools) and `minimal` (7) still exist. `minimal` gained `list_emojis` and `preview_emojis` in 2.1.9.
+`standard` (29 tools) and `minimal` (9) still exist. `minimal` gained `list_emojis` and `preview_emojis` in 2.1.9, and `list_stickers` and `preview_stickers` in 2.1.12.
 **`general` is an identity, not a profile you can pick**: it is assigned to
 instances with `general_topic: true`, and writing it by hand fails validation —
 two ways of being a General would eventually disagree.

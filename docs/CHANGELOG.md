@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **Agents can send stickers on Discord and Telegram (#1226).** Three tools, the same on both platforms:
+  `list_stickers` (`{ id, name, emoji_or_tags, format }` each, no image URLs), `preview_stickers` (up to 8, downloaded
+  for the agent to Read; an animated sticker with no still picture is marked `preview_unavailable`), and a new
+  `stickers` field on `reply` (up to 3; `text` may then be omitted). Underneath, each platform works its own way:
+  Discord lists the stickers of the server the instance's channel is in (a bot cannot send another server's) and sends
+  them on the same message as the text; Telegram lists a sticker set — named in the call or set as the connection's
+  `options.sticker_sets` — and sends the text first, then each sticker in order. Every sticker is checked before
+  anything is sent, so one that cannot be sent is an error, not a reply that silently arrives without it. Also on the
+  agent CLI: `agend-agent stickers`, `sticker-preview`, and `reply … --sticker <id>`.
+
+### Changed
+- **`list_emojis` is lighter (#1226).** Server emojis no longer come with image URLs unless `with_image_urls` is set
+  (`preview_emojis` shows the ones an agent wants to look at), and `name`, `limit` and `primary_only` narrow the list —
+  on a busy server one call used to cost ~10k characters of context for an agent that needed one emoji. The emoji and
+  sticker tool calls now get the shared 30 s budget instead of a fixed 10 s, so a preview that downloads several
+  pictures is not cut short.
+
 ### Fixed
 - **Waiting for input is visible (#812).** `describe_instance`, `list_instances`, and status APIs expose a confirmed `awaiting_input` presentation alongside the unchanged execution state and a static interaction category. A second fresh capture confirms a prompt; observations older than 15 seconds are explicitly unverified without releasing safety holds. Claude's captured four-option Bash permission menu is held for a human with no keys sent. Generic terminal hints remain suspected, and editor coverage is not claimed. The 500ms confirmation and 15s freshness values are sandbox-tested policies, not live CLI guarantees.
 - **Cancel stops reply recovery too (#1199).** The cancel button and `/cancel` now mark the current human turn before interrupting the CLI, so an intentional stop no longer triggers the missing-reply warning or asks the agent to produce another conclusion. Replies already being delivered still settle normally; new messages retain their own reply guard. A cancelled recovery's late failure and a cancelled paste's late success cannot restart that turn.

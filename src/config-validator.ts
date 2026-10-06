@@ -245,6 +245,15 @@ export function validateFleetConfig(config: unknown): ValidationResult {
       channelIds.add(cid);
     }
     if (isObj(ch.options)) validateStatusEmojis(ch.options.status_emojis, `${at}.options.status_emojis`, [typeof ch.type === "string" ? ch.type : undefined]);
+    // #1226: the sticker sets list_stickers shows on Telegram when no set is named.
+    if (isObj(ch.options) && ch.options.sticker_sets !== undefined) {
+      const sets = ch.options.sticker_sets;
+      if (ch.type !== "telegram") {
+        warn(`${at}.options.sticker_sets`, "only Telegram has sticker sets — Discord lists the channel's server's stickers");
+      } else if (!Array.isArray(sets) || sets.some(x => typeof x !== "string" || !/^[A-Za-z0-9_]{1,64}$/.test(x))) {
+        err(`${at}.options.sticker_sets`, "must be a list of sticker set names (the <name> in t.me/addstickers/<name>)");
+      }
+    }
     if (cid && typeof ch.type === "string") channelTypes.set(cid, ch.type);
     if (isObj(ch.access) && ch.access.allowed_users !== undefined && !isIdArray(ch.access.allowed_users)) {
       err(`${at}.access.allowed_users`, "must be an array of strings/numbers");

@@ -18,8 +18,10 @@ persona emoji replaces your `delivered` stamp with one of your own, the way
   yours, platform = the connection's, builtin = AgEnD's), the standard emojis
   your platform accepts (`standard`), and on Discord the server emojis your
   bot can react with (`server_emojis`, grouped by server; each has a `value`
-  ready to pass on, e.g. `<:fox:123456789012345678>`, and its `image_url`).
-  `refresh: true` refetches those.
+  ready to pass on, e.g. `<:fox:123456789012345678>`). No image URLs by
+  default — preview what you shortlist instead. Narrow a long list with
+  `name` (part of the name), `limit` and `primary_only`; `refresh: true`
+  refetches.
 - `preview_emojis` — up to 8 server emojis at a time; downloads each and
   returns a local `path`. Read the path to see the emoji. A name or an id says
   nothing about what a server emoji looks like.

@@ -16,12 +16,15 @@ const MessageFormat = z.enum(["text", "markdown"]);
 // ── Channel interaction (handled outside outbound-handlers.ts) ──────────
 
 export const ReplyArgs = z.object({
-  text: NonEmptyString,
+  text: z.string().optional()
+    .describe("The message. Required unless you send stickers; with stickers it may be omitted."),
   reply_to: z.string().optional()
     .describe("Message ID to thread under. Use message_id from the inbound block."),
   files: z.array(z.string()).optional()
     .describe("Absolute file paths to attach. Files under the AgEnD state dir (~/.agend, incl. workspaces/) are refused — copy an artifact to /tmp first and attach that."),
   format: MessageFormat.optional().describe("Rendering mode. Default: 'text'."),
+  stickers: z.array(NonEmptyString).max(3).optional()
+    .describe("Up to 3 sticker ids from list_stickers, sent with the text (Discord: the same message; Telegram: after it). Stickers are never written in the text."),
 });
 
 export const ReactArgs = z.object({
@@ -140,6 +143,23 @@ export const SetDisplayNameArgs = z.object({
 
 export const ListEmojisArgs = z.object({
   refresh: z.boolean().optional().describe("Refetch the Discord server emoji lists instead of using the cache"),
+  name: z.string().max(64).optional().describe("Only server emojis whose name contains this (case-insensitive)"),
+  limit: z.number().int().min(1).max(500).optional().describe("At most this many server emojis in all (default: all of them)"),
+  primary_only: z.boolean().optional().describe("Only the primary server's emojis, not those of the other servers the bot is in"),
+  with_image_urls: z.boolean().optional().describe("Include each server emoji's image URL (default: no — preview_emojis shows them)"),
+});
+
+export const ListStickersArgs = z.object({
+  set: z.string().max(64).optional()
+    .describe("Telegram: the sticker set to list (the <name> in t.me/addstickers/<name>); default: the channel's sticker_sets. Discord: not used — you get your channel's server's stickers"),
+  name: z.string().max(64).optional().describe("Only stickers whose name, tags or emoji contain this (case-insensitive)"),
+  limit: z.number().int().min(1).max(200).optional().describe("At most this many stickers (default: all of them)"),
+  refresh: z.boolean().optional().describe("Refetch instead of using the cache"),
+});
+
+export const PreviewStickersArgs = z.object({
+  stickers: z.array(NonEmptyString).min(1).max(8)
+    .describe("Up to 8 sticker ids from list_stickers; narrow them down by name first"),
 });
 
 export const PreviewEmojisArgs = z.object({

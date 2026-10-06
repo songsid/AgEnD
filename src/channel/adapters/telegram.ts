@@ -7,7 +7,8 @@ import { join, extname, basename } from "node:path";
 import { Bot, GrammyError, HttpError, InputFile } from "grammy";
 import type { Context, InlineKeyboard as InlineKeyboardType } from "grammy";
 import { InlineKeyboard } from "grammy";
-import type { ChannelAdapter, ApprovalHandle, SendOpts, SentMessage, PermissionPrompt, Choice, AlertData, TopicPresence, TopicProbePolicy } from "../types.js";
+import type { ChannelAdapter, ApprovalHandle, SendOpts, SentMessage, PermissionPrompt, Choice, AlertData, TopicPresence, TopicProbePolicy, StickerInfo, StickerList, StickerPreview, StickerTarget } from "../types.js";
+import { downloadStickerImage } from "../sticker-download.js";
 import type { AccessManager } from "../access-manager.js";
 import { MessageQueue } from "../message-queue.js";
 import { t } from "../../locale.js";
@@ -1148,6 +1149,59 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   }
 
   // ── File download ─────────────────────────────────────────────────────────
+
+  /**
+   * The stickers of one sticker set (#1226). Telegram stickers are not per chat: any public set can be sent
+   * anywhere, so the caller names the set. A sticker has no name of its own; it is "<set> #<n>".
+   */
+  async listStickers(target: StickerTarget): Promise<StickerList> {
+    const set = target.set?.trim();
+    if (!set) throw new Error("set is required on Telegram: a sticker set name (the <name> in t.me/addstickers/<name>)");
+    const result = await this.bot.api.getStickerSet(set);
+    const stickers = (result.stickers ?? []).map((st, i): StickerInfo => ({
+      id: st.file_id,
+      name: `${result.name} #${i + 1}`,
+      emoji_or_tags: st.emoji ?? "",
+      format: st.is_animated ? "tgs" : st.is_video ? "webm" : "webp",
+      available: true,
+      ...(st.thumbnail?.file_id ? { thumbnailId: st.thumbnail.file_id } : {}),
+    }));
+    return { scope: `set ${result.title || result.name}`, stickers };
+  }
+
+  /**
+   * A still picture of a sticker: a static sticker is its own picture; an animated or video one has a thumbnail,
+   * when Telegram made one. Downloaded here — the file URL carries the bot token, which must not leave the adapter.
+   */
+  async fetchStickerPreview(sticker: StickerInfo): Promise<StickerPreview | null> {
+    const fileId = sticker.format === "webp" ? sticker.id : sticker.thumbnailId;
+    if (!fileId) return null;
+    const file = await this.bot.api.getFile(fileId);
+    if (!file.file_path) throw new Error("Telegram gave no file for this sticker");
+    const token = (this.bot as unknown as { token: string }).token;
+    const ext = /\.jpe?g$/i.test(file.file_path) ? "jpg" : /\.png$/i.test(file.file_path) ? "png" : "webp";
+    return downloadStickerImage(`${this.apiRoot}/file/bot${token}/${file.file_path}`, { fallbackExt: ext });
+  }
+
+  /**
+   * The text first (when there is any), then one sendSticker per sticker, in order (#1226). A long text's later
+   * chunks go through the queue, so the stickers wait for this chat's queue to drain; each sticker is awaited, and
+   * one that Telegram refuses is an error, not a silent gap.
+   */
+  async sendStickers(chatId: string, stickers: string[], opts?: SendOpts & { text?: string }): Promise<SentMessage> {
+    const threadId = opts?.threadId;
+    let first: SentMessage | undefined;
+    if (opts?.text) {
+      first = await this.sendText(chatId, opts.text, opts);
+      await this.queue.whenIdle(chatId, threadId);
+    }
+    for (const sticker of stickers) {
+      const msg = await this.bot.api.sendSticker(Number(chatId), sticker, threadOptions(threadId));
+      first ??= { messageId: String(msg.message_id), chatId, threadId };
+    }
+    if (!first) throw new Error("nothing to send");
+    return first;
+  }
 
   async downloadAttachment(fileId: string): Promise<string> {
     const file = await this.bot.api.getFile(fileId);

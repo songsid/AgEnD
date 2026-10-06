@@ -107,7 +107,7 @@ Cloudflare 的公共解析器（1.1.1.1 / 1.0.0.1）解析 tunnel 名稱，再�
 | `group_id` | number | — | Telegram 群組 ID（負數）或 Discord guild ID |
 | `access` | object | **必填** | 存取控制 |
 | `mirror_topic_id` | number \| string | — | 鏡像跨 instance 通訊的 Telegram topic ID。所有 `send_to_instance` 訊息都會出現在此 |
-| `options` | object | — | 平台特定選項（Discord：`category_name`、`general_channel_id`；Telegram：`topic_probe`，`on-demand`（預設，只在真實投遞回報 topic 不存在時才確認，不做定期送刪訊息）或 `periodic`（每 5 分鐘對每個 topic 送刪一則空白訊息確認存在）；兩者皆可設 `status_emojis`，見 instance 的 `status_emojis`） |
+| `options` | object | — | 平台特定選項（Discord：`category_name`、`general_channel_id`；Telegram：`topic_probe`，`on-demand`（預設，只在真實投遞回報 topic 不存在時才確認，不做定期送刪訊息）或 `periodic`（每 5 分鐘對每個 topic 送刪一則空白訊息確認存在）；`sticker_sets`（Telegram：agent 沒指定時 `list_stickers` 列出的貼圖包名稱清單，即 `t.me/addstickers/<name>` 的 `<name>`，最多取 10 個）；兩者皆可設 `status_emojis`，見 instance 的 `status_emojis`） |
 
 ### channel.access
 

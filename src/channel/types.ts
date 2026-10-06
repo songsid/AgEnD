@@ -132,6 +132,26 @@ export interface ChannelAdapter extends EventEmitter {
   ): Promise<ApprovalHandle>;
 
   downloadAttachment(fileId: string): Promise<string>;
+  /**
+   * Stickers this bot can send (#1226). Discord: the stickers of the server the
+   * given channel belongs to — a bot cannot send another server's. Telegram:
+   * the stickers of one sticker set, named by `set`. Optional: an adapter
+   * without stickers leaves it out.
+   */
+  listStickers?(target: StickerTarget): Promise<StickerList>;
+  /**
+   * One sticker's picture, downloaded server-side (the Telegram file URL holds
+   * the bot token). null when there is no still picture to show — a Discord
+   * Lottie sticker, or an animated Telegram sticker without a thumbnail.
+   */
+  fetchStickerPreview?(sticker: StickerInfo): Promise<StickerPreview | null>;
+  /**
+   * Send stickers, after `text` when there is any (#1226). Discord: on the same
+   * message as the text's last chunk (`sticker_ids`); Telegram: the text, then
+   * one sendSticker per sticker, in order. Every send is awaited — a sticker
+   * that fails is an error, never silently dropped.
+   */
+  sendStickers?(chatId: string, stickers: string[], opts?: SendOpts & { text?: string }): Promise<SentMessage>;
 
   handlePairing(chatId: string, userId: string): Promise<string>;
   confirmPairing(code: string, callerUserId?: string): Promise<boolean>;
@@ -176,6 +196,33 @@ export interface ChannelAdapter extends EventEmitter {
 export interface ApprovalHandle {
   cancel(): void;
 }
+
+/** Where to look for stickers: a Discord channel (its server's stickers), or a Telegram sticker set. */
+export interface StickerTarget { chatId?: string; threadId?: string; set?: string }
+
+/**
+ * One sticker, the same shape on every platform (#1226). `id` is what `reply.stickers` takes: a Discord sticker id
+ * or a Telegram file_id. `emoji_or_tags` is Discord's tags or Telegram's associated emoji.
+ */
+export interface StickerInfo {
+  id: string;
+  name: string;
+  emoji_or_tags: string;
+  /** png / apng / gif / lottie (Discord); webp / tgs / webm (Telegram). */
+  format: "png" | "apng" | "gif" | "lottie" | "webp" | "tgs" | "webm";
+  /** Discord: false when the server lost the boost level the sticker needs. */
+  available: boolean;
+  /** Telegram only, never shown to an agent: the thumbnail's file_id, for a preview of an animated sticker. */
+  thumbnailId?: string;
+}
+
+export interface StickerList {
+  /** What the list is of: "server <name or id>" or "set <name>". */
+  scope: string;
+  stickers: StickerInfo[];
+}
+
+export interface StickerPreview { bytes: Buffer; ext: "png" | "gif" | "webp" | "jpg" }
 
 export interface SendOpts {
   threadId?: string;

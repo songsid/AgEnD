@@ -95,7 +95,9 @@ Claude：→ create_schedule(cron: "0 9 * * *", message: "檢查需要審核的�
 - `set_display_name` — 設定實例的顯示名稱（如「Astra」、「Kuro」）。
 - `set_description` — 設定實例的角色描述（Persona），這會影響實例的行為風格。
 - `list_emojis` / `set_persona_emoji` — 查可用的 emoji，並設定自己的 persona emoji（預設是 `delivered` 狀態標記），讓多 bot 頻道裡看得出是誰處理的。驗證方式與 Settings 相同。
-- `preview_emojis` — 下載最多 8 個 Discord 伺服器 emoji 並回傳本機圖片路徑，讓 agent 看過圖再挑。
+- `preview_emojis` — 下載最多 8 個 Discord 伺服器 emoji 並回傳本機圖片路徑，讓 agent 看過圖再挑。`list_emojis` 預設不再附圖片網址（要的話加 `with_image_urls`），並可用 `name`（名稱片段）、`limit`（所有伺服器合計上限）、`primary_only` 縮小清單。
+- `list_stickers` / `preview_stickers` — 查可傳的貼圖（每張 `{ id, name, emoji_or_tags, format }`，不附圖片網址）並下載預覽。Discord 只列 instance 自己頻道所在伺服器的貼圖（別的伺服器的傳不出去）；Telegram 要指定貼圖包 `set`（`t.me/addstickers/<name>` 的 `<name>`），或用連線設定的 `options.sticker_sets`。動畫貼圖沒有靜態圖時標 `preview_unavailable`。
+- 傳貼圖：`reply` 的 `stickers`（最多 3 個，來自 `list_stickers`），有貼圖時 `text` 可以省略。Discord 跟文字放在同一則訊息；Telegram 先送文字再一張張送貼圖。送出前就會檢查：Discord 必須是回覆目標伺服器可用的貼圖，別的伺服器的貼圖會直接回錯誤，不會悄悄漏掉。貼圖不能寫在文字裡。
 
 ## General 主題實例 (General Topic instance)
 

@@ -8166,16 +8166,21 @@ export class Daemon extends EventEmitter {
       return;
     }
 
-    if (tool === "set_display_name" || tool === "set_description" || tool === "list_emojis" || tool === "set_persona_emoji" || tool === "preview_emojis") {
+    if (tool === "set_display_name" || tool === "set_description" || tool === "list_emojis" || tool === "set_persona_emoji" || tool === "preview_emojis"
+      || tool === "list_stickers" || tool === "preview_stickers") {
       const type = tool === "set_display_name" ? "fleet_set_display_name"
         : tool === "set_description" ? "fleet_set_description"
         : tool === "list_emojis" ? "fleet_list_emojis"
-        : tool === "preview_emojis" ? "fleet_preview_emojis" : "fleet_set_persona_emoji";
+        : tool === "preview_emojis" ? "fleet_preview_emojis"
+        : tool === "list_stickers" ? "fleet_list_stickers"
+        : tool === "preview_stickers" ? "fleet_preview_stickers" : "fleet_set_persona_emoji";
       const fleetReqId = `${tool === "set_display_name" ? "dn" : tool === "set_description" ? "desc" : "emoji"}_${++this.fleetRequestSeq}_${requestId}`;
       const timeout = setTimeout(() => {
         this.pendingIpcRequests.delete(fleetReqId);
         respond(null, `${tool} timed out`);
-      }, 10_000);
+        // The shared budget (ipc-timeouts.ts), so the MCP ceiling stays above it and this message is the one seen;
+        // a preview downloads pictures and needs more than the old fixed 10s.
+      }, daemonBudgetMs(tool));
       this.pendingIpcRequests.set(fleetReqId, (respMsg) => {
         clearTimeout(timeout);
         respond(respMsg.result, respMsg.error as string | undefined);

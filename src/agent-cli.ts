@@ -11,6 +11,7 @@ import { request } from "node:http";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { splitFlags } from "./cli-flags.js";
 
 const PORT = parseInt(process.env.AGEND_PORT ?? "19280", 10);
 const INSTANCE = process.env.AGEND_INSTANCE_NAME ?? "";
@@ -65,7 +66,17 @@ async function main(): Promise<void> {
 
   switch (op) {
     // Channel
-    case "reply": args = { text: rest[0] ?? "", ...(rest.length > 1 ? { files: rest.slice(1) } : {}) }; break;
+    case "reply": {
+      // --sticker <id> (repeatable, up to 3; #1226) may come anywhere; the rest is <text> [files…].
+      const { flags, positional } = splitFlags(rest, ["--sticker"]);
+      const stickers = flags["--sticker"] ?? [];
+      args = {
+        text: positional[0] ?? "",
+        ...(positional.length > 1 ? { files: positional.slice(1) } : {}),
+        ...(stickers.length ? { stickers } : {}),
+      };
+      break;
+    }
     case "react": args = { emoji: rest[0] ?? "", message_id: rest[1] }; break;
     case "edit": args = { message_id: rest[0], text: rest[1] ?? "" }; break;
     case "download": args = { file_id: rest[0] ?? "" }; break;
@@ -101,7 +112,31 @@ async function main(): Promise<void> {
     case "replace": args = { name: rest[0] ?? "", reason: rest[1] }; break;
     case "rename": args = { name: rest[0] ?? "" }; break;
     case "set-description": args = { description: rest[0] ?? "" }; break;
-    case "emojis": args = { ...(rest[0] === "--refresh" ? { refresh: true } : {}) }; break;
+    case "emojis": {
+      const { flags } = splitFlags(rest, ["--name", "--limit"], ["--refresh", "--primary", "--urls"]);
+      args = {
+        ...(flags["--refresh"] ? { refresh: true } : {}),
+        ...(flags["--name"]?.[0] ? { name: flags["--name"][0] } : {}),
+        ...(flags["--limit"]?.[0] ? { limit: Number(flags["--limit"][0]) } : {}),
+        ...(flags["--primary"] ? { primary_only: true } : {}),
+        ...(flags["--urls"] ? { with_image_urls: true } : {}),
+      };
+      break;
+    }
+    case "stickers": {
+      const { flags, positional } = splitFlags(rest, ["--name", "--limit"], ["--refresh"]);
+      args = {
+        ...(positional[0] ? { set: positional[0] } : {}),
+        ...(flags["--refresh"] ? { refresh: true } : {}),
+        ...(flags["--name"]?.[0] ? { name: flags["--name"][0] } : {}),
+        ...(flags["--limit"]?.[0] ? { limit: Number(flags["--limit"][0]) } : {}),
+      };
+      break;
+    }
+    case "sticker-preview":
+      if (rest.length === 0) die("Usage: agend-agent sticker-preview <sticker id> [more…]");
+      args = { stickers: rest };
+      break;
     case "persona-emoji":
       // No argument is a mistake, not a request to clear: that takes an explicit "".
       if (rest[0] === undefined) die('Usage: agend-agent persona-emoji <emoji | ""> [status]');
@@ -174,3 +209,4 @@ async function main(): Promise<void> {
 }
 
 main();
+
