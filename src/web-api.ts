@@ -13,7 +13,7 @@ import { readStatuslineModel, resolveInstanceContext } from "./topic-commands.js
 import { z } from "zod";
 import { isPassiveWebRead, isWebRequestAuthorized, WEB_TOKEN_INVALID_MESSAGE } from "./web-auth.js";
 import { parseLastEventId, type WebChatHistory } from "./web-chat-history.js";
-import { attachmentDelivery, displayName, INLINE_MIME, isFileId, publicAttachment, sniffUpload, UPLOAD_LIMITS, type UploadEntry, type WebFileLedger } from "./web-upload.js";
+import { attachmentDelivery, displayName, INLINE_MIME, isFileId, publicAttachment, sniffUpload, UPLOAD_LIMITS, wellFormed, type UploadEntry, type WebFileLedger } from "./web-upload.js";
 import { getAgendHome } from "./paths.js";
 import type { WebSessionStore } from "./web-session.js";
 import { authorizeExplicitInstanceRemoval } from "./instance-removal.js";
@@ -155,7 +155,8 @@ export interface WebApiContext {
   readonly logger: { info(obj: unknown, msg?: string): void; debug(obj: unknown, msg?: string): void; error(obj: unknown, msg?: string): void };
   getInstanceDir(name: string): string;
   getInstanceStatus(name: string): "running" | "paused" | "stopped" | "crashed";
-  deliverToInstance(instanceName: string, payload: Record<string, unknown>): Promise<void>;
+  /** false: definitely not delivered (the instance's IPC is gone, or it was restarted meanwhile). */
+  deliverToInstance(instanceName: string, payload: Record<string, unknown>): Promise<boolean | void>;
   getUiStatus(): unknown;
   emitSseEvent(event: string, data: unknown): void;
   /** The web chat's recent messages (history + SSE replay); absent in contexts that have no chat. */
@@ -404,7 +405,7 @@ export function handleWebRequest(
     const inline = INLINE_MIME.has(file.mime);
     // Only the four image types are shown in the page; anything else is a download, never rendered.
     res.setHeader("Content-Type", inline ? file.mime : (file.mime.startsWith("text/") ? "text/plain; charset=utf-8" : "application/octet-stream"));
-    res.setHeader("Content-Disposition", `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(file.name)}`);
+    res.setHeader("Content-Disposition", `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(wellFormed(file.name))}`);
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Cache-Control", "private, no-store");
     res.setHeader("Content-Security-Policy", "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox");
@@ -813,8 +814,9 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       // a separate reply path for that case.
       const groupId = ctx.fleetConfig?.channel?.group_id;
       const topicId = ctx.fleetConfig?.instances[instance]?.topic_id;
+      let delivered: boolean | void;
       try {
-        await ctx.deliverToInstance(instance, {
+        delivered = await ctx.deliverToInstance(instance, {
           type: "fleet_inbound",
           content: delivery.text,
           targetSession: instance,
@@ -829,10 +831,18 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
           },
         });
       } catch (err) {
+        ctx.webFiles?.release(files);                  // not delivered: the same ids can be sent again
         ctx.logger.error({ err, instance }, "Web message delivery failed");
         json(res, 503, { error: "Instance delivery failed" });
         return;
       }
+      if (delivered === false) {
+        ctx.webFiles?.release(files);
+        ctx.logger.error({ instance }, "Web message not delivered (the instance went away or restarted)");
+        json(res, 503, { error: "Instance delivery failed" });
+        return;
+      }
+      ctx.webFiles?.commit(files);
       ctx.lastInboundUser.set(instance, "web-user");
       ctx.eventLog?.logActivity("message", "web-user", (message || `[${files.length} file(s)]`).slice(0, 200), instance);
       ctx.emitSseEvent("message", { instance, sender: "web-user", text: message, ts, attachments: files.map(publicAttachment) });
@@ -895,6 +905,12 @@ function handleUpload(req: IncomingMessage, res: ServerResponse, url: URL, ctx: 
     const name = displayName(typeof req.headers["x-agend-filename"] === "string" ? req.headers["x-agend-filename"] : "", "file");
     const type = sniffUpload(bytes, name);
     if (!type) { json(res, 415, { error: "unsupported file type — images (PNG, JPEG, GIF, WebP), PDF and text files only" }); return; }
+    // The instance is checked again now the whole body is here: it may have been deleted (and its files
+    // forgotten) or stopped while the upload streamed in; storing now would bring its id back (#1252 review).
+    if (!ctx.instanceIpcClients.has(instance) || !ctx.fleetConfig?.instances?.[instance]) {
+      json(res, 404, { error: `Instance not found: ${instance}` });
+      return;
+    }
     try {
       const entry = ctx.webFiles!.storeUpload({ instance, inboxDir: join(getAgendHome(), "workspaces", instance, "inbox"), bytes, name, type });
       json(res, 200, publicAttachment(entry));

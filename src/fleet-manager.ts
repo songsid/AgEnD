@@ -15755,11 +15755,20 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       // ── Web UI endpoints (delegated to web-api.ts) ─────
 
       const url = new URL(req.url ?? "/", `http://localhost:${port}`);
-      if (handleAuthRequest(req, res, url, this as unknown as AuthApiContext)) return;
-      if (handleViewRequest(req, res, url, this as unknown as import("./view-api.js").ViewApiContext)) return;
-      if (handleUsageRequest(req, res, url, this as unknown as import("./usage/usage-api.js").UsageApiContext)) return;
-      if (handleSettingsRequest(req, res, url, this as unknown as import("./settings-api.js").SettingsApiContext)) return;
-      if (handleWebRequest(req, res, url, this as unknown as import("./web-api.js").WebApiContext)) return;
+      // A handler that throws synchronously answers this request with a 500; it must never reach the process's
+      // uncaughtException handler, which stops the whole fleet (#1252 review: one file name did that).
+      try {
+        if (handleAuthRequest(req, res, url, this as unknown as AuthApiContext)) return;
+        if (handleViewRequest(req, res, url, this as unknown as import("./view-api.js").ViewApiContext)) return;
+        if (handleUsageRequest(req, res, url, this as unknown as import("./usage/usage-api.js").UsageApiContext)) return;
+        if (handleSettingsRequest(req, res, url, this as unknown as import("./settings-api.js").SettingsApiContext)) return;
+        if (handleWebRequest(req, res, url, this as unknown as import("./web-api.js").WebApiContext)) return;
+      } catch (err) {
+        this.logger.error({ err: (err as Error)?.message, path: url.pathname }, "Web request handler threw");
+        if (!res.headersSent) { res.writeHead(500); res.end(JSON.stringify({ error: "internal error" })); }
+        else res.destroy();
+        return;
+      }
 
       res.writeHead(404);
       res.end(JSON.stringify({ error: "not found" }));

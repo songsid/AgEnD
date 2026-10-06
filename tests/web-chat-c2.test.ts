@@ -58,6 +58,8 @@ describe("displayName: a label, never a path", () => {
     ["../../etc/passwd", "passwd"], ["C:\\Users\\a\\secret.txt", "secret.txt"], ["%2e%2e%2fx.png", "x.png"],
     [".bashrc", "bashrc"], ["a\u202Egnp.exe", "agnp.exe"], ["line\nbreak.txt", "linebreak.txt"], ["", "file"], [null, "file"],
     ["x".repeat(150), "x".repeat(100)], ["report (final).pdf", "report (final).pdf"],
+    // Cut by code point (#1252 review P1), and a lone surrogate from anywhere becomes U+FFFD, so the name always encodes.
+    ["x".repeat(99) + "😀😀", "x".repeat(99) + "😀"], ["a\uD83D", "a\uFFFD"], ["\uDE00b", "\uFFFDb"],
   ])("%j → %j", (raw, expected) => { expect(displayName(raw as string, "file")).toBe(expected); });
 });
 
@@ -105,7 +107,9 @@ describe("WebFileLedger", () => {
     const abandoned = ledger.storeUpload({ instance: "w", inboxDir: inbox, bytes: PNG, name: "a.png", type: png });
     const sent = ledger.storeUpload({ instance: "w", inboxDir: inbox, bytes: PNG, name: "s.png", type: png });
     const fresh = () => ledger.storeUpload({ instance: "w", inboxDir: inbox, bytes: PNG, name: "f.png", type: png });
-    expect(ledger.takeForMessage("w", [sent.id]).ok).toBe(true);
+    const took = ledger.takeForMessage("w", [sent.id]);
+    expect(took.ok).toBe(true);
+    if (took.ok) ledger.commit(took.entries);
     now += UPLOAD_TTL_MS - 1;
     ledger.prune();
     expect(existsSync(abandoned.path), "not expired yet").toBe(true);
@@ -120,7 +124,7 @@ describe("WebFileLedger", () => {
   });
 
   it("the sweep runs on its own once the upload window passes — no later upload needed", () => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date", "performance"] });
     try {
       const ledger = new WebFileLedger();
       const e = ledger.storeUpload({ instance: "w", inboxDir: join(dir, "inbox"), bytes: PNG, name: "a.png", type: png });
@@ -178,7 +182,7 @@ describe("WebFileLedger", () => {
 });
 
 describe("attachmentDelivery: what the agent is handed is what Telegram gives it", () => {
-  const entry = (kind: "photo" | "document", path: string, name: string) => ({ id: "x", instance: "w", path, kind, mime: "", name, size: 1, expiresAt: 0, pending: false }) as UploadEntry;
+  const entry = (kind: "photo" | "document", path: string, name: string) => ({ id: "x", instance: "w", path, kind, mime: "", name, size: 1, expiresAt: 0, state: "sent" }) as UploadEntry;
   it("photos then files, each tagged, the first in image_path / attachment_path, all in *_paths", () => {
     const d = attachmentDelivery("look", [entry("photo", "/i/a.png", "a.png"), entry("document", "/i/r.pdf", "report.pdf"), entry("photo", "/i/b.jpg", "b.jpg")]);
     expect(d.text).toBe("[📷 Image: /i/a.png]\n[📷 Image: /i/b.jpg]\n[📎 File: report.pdf → /i/r.pdf]\nlook");
@@ -263,6 +267,40 @@ describe("POST /ui/upload", () => {
     expect((await upload(c, "w", Buffer.concat([PNG, Buffer.alloc(UPLOAD_LIMITS.maxFileBytes)]), "x.png")).status).toBe(413);
   });
 
+  it("a long Unicode name is cut by code point: the upload and its download both work (#1252 review P1)", async () => {
+    const { c } = ctx();
+    const name = "x".repeat(99) + "😀.txt";                          // the 100th code point is the emoji
+    const up = await upload(c, "w", Buffer.from("hello"), name);
+    expect(up.status).toBe(200);
+    expect(up.body.name).toBe("x".repeat(99) + "😀");                 // whole, never half a surrogate pair
+    const got = call("GET", `/ui/file/${up.body.id}`, c);
+    await got.done();
+    expect(got.res.status).toBe(200);
+    expect(got.res.headers["content-disposition"]).toBe(`attachment; filename*=UTF-8''${encodeURIComponent("x".repeat(99) + "😀")}`);
+    expect(got.res.body.toString()).toBe("hello");
+  });
+
+  it("an instance deleted while the body was still arriving gets nothing stored and no id (#1252 review P2-3)", async () => {
+    const { c } = ctx();
+    const ipc = (c as unknown as { instanceIpcClients: Map<string, unknown> }).instanceIpcClients;
+    const config = (c as unknown as { fleetConfig: { instances: Record<string, unknown> } }).fleetConfig;
+    for (const remove of [
+      () => { ipc.delete("w"); delete config.instances.w; c.webFiles!.forget("w"); },   // deleted
+      () => { ipc.delete("w"); },                                                         // stopped: its IPC is gone
+    ]) {
+      ipc.set("w", { send() {} }); config.instances.w = { working_directory: dir };
+      const req = Object.assign(new EventEmitter(), { method: "POST", url: "/ui/upload?instance=w", headers: { "x-agend-token": TOKEN, "x-agend-filename": "a.png" }, destroy() {}, resume() {} });
+      const res = Object.assign(new EventEmitter(), { status: 0, headers: {} as Record<string, unknown>, body: "",
+        setHeader() {}, writeHead(st: number) { res.status = st; return res; }, end(b?: unknown) { res.body = String(b ?? ""); return res; } });
+      handleWebRequest(req as unknown as IncomingMessage, res as unknown as ServerResponse, new URL("http://localhost/ui/upload?instance=w"), c);
+      req.emit("data", PNG);                                         // the body is still arriving…
+      remove();                                                      // …when the instance goes away
+      req.emit("end");
+      expect(res.status).toBe(404);
+    }
+    expect(() => readdirSync(join(dir, "workspaces", "w", "inbox"))).toThrow();   // nothing was ever written
+  });
+
   it("needs the same credential as every /ui route", async () => {
     const { c } = ctx();
     const r = call("POST", "/ui/upload?instance=w", c, { body: PNG, headers: { "x-agend-token": "wrong".padEnd(48, "x") } });
@@ -309,6 +347,95 @@ describe("POST /ui/send with files", () => {
     expect((await send(c, { instance: "w", message: "3", attachments: [other.id] })).status).toBe(400);
     expect((await send(c, { instance: "w", message: "4", attachments: ["../../etc/passwd"] })).status).toBe(400);
     expect(delivered).toHaveLength(1);
+  });
+});
+
+describe("a message's files are only used up once the agent has them (#1252 review P2-2)", () => {
+  beforeEach(() => { vi.stubEnv("AGEND_HOME", dir); });
+  const send = async (c: WebApiContext, body: unknown) => {
+    const r = call("POST", "/ui/send", c, { body: JSON.stringify(body) });
+    await r.done();
+    return { status: r.res.status, body: JSON.parse(r.res.body.toString()) };
+  };
+
+  it.each([
+    ["answers false (the IPC went away, or the instance restarted)", async () => false],
+    ["throws", async () => { throw new Error("socket closed"); }],
+  ])("delivery that %s: 503, nothing shown, and the same ids can be sent again", async (_why, fail) => {
+    let outcome: () => Promise<unknown> = fail;
+    const delivered: unknown[] = [];
+    const { c, events } = ctx({ deliverToInstance: async (_n: string, p: unknown) => { const r = await outcome(); delivered.push(p); return r; } });
+    const img = (await upload(c, "w", PNG, "a.png")).body;
+    expect((await send(c, { instance: "w", message: "hi", attachments: [img.id] })).status).toBe(503);
+    expect(events.filter(e => e.event === "message")).toEqual([]);
+    outcome = async () => true;
+    expect((await send(c, { instance: "w", message: "hi", attachments: [img.id] })).status, "retry with the same id").toBe(200);
+    expect((await send(c, { instance: "w", message: "again", attachments: [img.id] })).status, "now it is used up").toBe(400);
+  });
+
+  it("two sends of the same file at once: one takes it, the other is refused while it is on its way", async () => {
+    let finish!: (v: boolean) => void;
+    const { c } = ctx({ deliverToInstance: () => new Promise<boolean>(r => { finish = r; }) });
+    const img = (await upload(c, "w", PNG, "a.png")).body;
+    const first = call("POST", "/ui/send", c, { body: JSON.stringify({ instance: "w", message: "1", attachments: [img.id] }) });
+    await vi.waitFor(() => expect(finish).toBeTypeOf("function"));
+    expect((await send(c, { instance: "w", message: "2", attachments: [img.id] })).status).toBe(400);
+    finish(true);
+    await first.done();
+    expect(first.res.status).toBe(200);
+  });
+
+  it("a file whose window closes while its message is being delivered is not swept from under it", () => {
+    let now = 0;
+    const ledger = new WebFileLedger({ now: () => now });
+    const png = sniffUpload(PNG, "a.png")!;
+    const a = ledger.storeUpload({ instance: "w", inboxDir: join(dir, "inbox"), bytes: PNG, name: "a.png", type: png });
+    const b = ledger.storeUpload({ instance: "w", inboxDir: join(dir, "inbox"), bytes: PNG, name: "b.png", type: png });
+    const ta = ledger.takeForMessage("w", [a.id]); const tb = ledger.takeForMessage("w", [b.id]);
+    if (!ta.ok || !tb.ok) throw new Error("not taken");
+    now += UPLOAD_TTL_MS + 1;
+    ledger.prune();
+    expect([existsSync(a.path), existsSync(b.path)], "both reserved: kept").toEqual([true, true]);
+    ledger.commit(ta.entries);                                       // delivered: the agent's
+    ledger.release(tb.entries);                                      // not delivered, and its window has closed: gone
+    expect([existsSync(a.path), existsSync(b.path)]).toEqual([true, false]);
+    expect(ledger.read(b.id)).toBeNull();
+  });
+
+  it("commit is final: a later release cannot hand a delivered file to another message", () => {
+    const ledger = new WebFileLedger({ now: () => 0 });
+    const e = ledger.storeUpload({ instance: "w", inboxDir: join(dir, "inbox"), bytes: PNG, name: "a.png", type: sniffUpload(PNG, "a.png")! });
+    const t = ledger.takeForMessage("w", [e.id]);
+    if (!t.ok) throw new Error("not taken");
+    ledger.commit(t.entries);
+    ledger.release(t.entries);
+    expect(ledger.takeForMessage("w", [e.id]).ok).toBe(false);
+  });
+});
+
+describe("the upload window is measured on an elapsed clock, not the wall clock (#1252 review P2-4)", () => {
+  afterEach(() => { vi.useRealTimers(); });
+  const png = () => sniffUpload(PNG, "a.png")!;
+
+  it("the wall clock jumping forward does not expire an upload early", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date", "performance"] });
+    const ledger = new WebFileLedger();
+    const a = ledger.storeUpload({ instance: "w", inboxDir: join(dir, "inbox"), bytes: PNG, name: "a.png", type: png() });
+    vi.advanceTimersByTime(5 * 60_000);
+    vi.setSystemTime(Date.now() + 60 * 60_000);                       // an hour ahead
+    ledger.storeUpload({ instance: "w", inboxDir: join(dir, "inbox"), bytes: PNG, name: "b.png", type: png() });   // sweeps
+    expect(existsSync(a.path)).toBe(true);
+    expect(ledger.takeForMessage("w", [a.id]).ok).toBe(true);
+  });
+
+  it("the wall clock jumping back does not keep an upload past its sweep", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date", "performance"] });
+    const ledger = new WebFileLedger();
+    const a = ledger.storeUpload({ instance: "w", inboxDir: join(dir, "inbox"), bytes: PNG, name: "a.png", type: png() });
+    vi.setSystemTime(Date.now() - 60 * 60_000);                       // an hour back
+    vi.advanceTimersByTime(UPLOAD_TTL_MS + 1_000);                    // the one sweep timer fires
+    expect(existsSync(a.path)).toBe(false);
+    expect(ledger.read(a.id)).toBeNull();
   });
 });
 
@@ -482,6 +609,33 @@ describe("dashboard sendMsg with files (the real page script)", () => {
     p.read(`pendingFiles.w = [{ name: "a.png", size: 3, type: "image/png" }]`);
     await p.read("sendMsg()");
     expect(calls).toEqual([{ instance: "w", message: "", attachments: ["3".repeat(32)] }]);
+  });
+
+  it("files chosen while a send is in flight are never lost when it fails (#1252 review P2-5)", async () => {
+    const p = page();
+    let fail!: () => void;
+    p.read(`uploadFile = async (t, f) => ({ id: "${"4".repeat(32)}" })`);
+    (p.c as any).held = new Promise<void>(r => { fail = r; });
+    p.read(`api = async () => { await held; return { error: "Instance delivery failed" }; }`);
+    p.read(`pendingFiles.w = [0,1,2,3,4].map(i => ({ name: "old" + i, size: 1, type: "text/plain" }))`);
+    const sending = p.read("sendMsg()");
+    await new Promise(r => setImmediate(r));
+    // While the five are on their way, five more are chosen: there is no room — the five in flight still own it.
+    p.read(`addFiles([0,1,2,3,4].map(i => ({ name: "new" + i, size: 1, type: "text/plain" })))`);
+    expect(p.read("pendingFiles.w.length")).toBe(0);
+    expect(p.toasts.filter(t => t.includes("new"))).toHaveLength(5);  // each refusal is said, none is silent
+    fail();
+    await sending;
+    expect(p.read("pendingFiles.w.map(f => f.name)")).toEqual(["old0", "old1", "old2", "old3", "old4"]);
+    // With room left, a file chosen meanwhile is kept beside the ones that come back.
+    p.read(`pendingFiles.w = [{ name: "a", size: 1, type: "text/plain" }]`);
+    (p.c as any).held = new Promise<void>(r => { fail = r; });
+    const again = p.read("sendMsg()");
+    await new Promise(r => setImmediate(r));
+    p.read(`addFiles([{ name: "b", size: 1, type: "text/plain" }])`);
+    fail();
+    await again;
+    expect(p.read("pendingFiles.w.map(f => f.name)")).toEqual(["a", "b"]);
   });
 
   it("addFiles refuses what does not fit and says why", () => {

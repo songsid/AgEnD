@@ -74,8 +74,16 @@ export function displayName(raw: string | undefined | null, fallback: string): s
   s = basename(s.replace(/\\/g, "/"));
   // eslint-disable-next-line no-control-regex
   s = s.replace(/[\u0000-\u001f\u007f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g, "").replace(/^\.+/, "").trim();
-  if (s.length > 100) s = s.slice(0, 100);
-  return s || fallback;
+  // Bounded by code point, never by UTF-16 unit: cutting between the halves of an emoji left a lone surrogate,
+  // which encodeURIComponent refuses with a throw — in the download header, on the fleet's own loop (#1252 review).
+  const points = Array.from(s);
+  if (points.length > 100) s = points.slice(0, 100).join("");
+  return wellFormed(s) || fallback;
+}
+
+/** Any lone surrogate replaced by U+FFFD, so the name always encodes. */
+export function wellFormed(s: string): string {
+  return s.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, "\uFFFD");
 }
 
 export interface UploadEntry {
@@ -86,9 +94,13 @@ export interface UploadEntry {
   mime: string;
   name: string;
   size: number;
+  /** On the ledger's own elapsed clock (not the wall clock): when the upload window closes. */
   expiresAt: number;
-  /** Uploaded and not yet attached to a message. */
-  pending: boolean;
+  /**
+   * pending: uploaded, waiting for a message. reserved: a message has taken it and is being delivered (no other
+   * message can take it, and no sweep may remove it). sent: delivered — the agent has it.
+   */
+  state: "pending" | "reserved" | "sent";
 }
 
 export interface ServedFile {
@@ -125,7 +137,9 @@ export class WebFileLedger {
   private readonly maxServed: number;
 
   constructor(opts: { now?: () => number; maxServed?: number } = {}) {
-    this.now = opts.now ?? Date.now;
+    // Elapsed time, like the sweep timer below: a wall-clock jump must neither expire an upload early nor keep
+    // one past the timer that was meant to remove it (#1252 review).
+    this.now = opts.now ?? (() => performance.now());
     this.maxServed = opts.maxServed ?? 2000;
   }
 
@@ -140,7 +154,7 @@ export class WebFileLedger {
     writeFileSync(path, input.bytes, { mode: 0o600, flag: "wx" });
     const entry: UploadEntry = {
       id, instance: input.instance, path, kind: input.type.kind, mime: input.type.mime,
-      name: displayName(input.name, "file"), size: input.bytes.length, expiresAt: this.now() + UPLOAD_TTL_MS, pending: true,
+      name: displayName(input.name, "file"), size: input.bytes.length, expiresAt: this.now() + UPLOAD_TTL_MS, state: "pending",
     };
     this.prune();
     this.uploads.set(id, entry);
@@ -153,8 +167,9 @@ export class WebFileLedger {
 
   /**
    * The uploads a message names, all or nothing: each must exist, belong to this instance, not be
-   * expired and not have been sent already; together within the per-message limits. On success they
-   * are marked sent (an id cannot be attached twice).
+   * expired and be waiting for a message; together within the per-message limits. On success they are
+   * RESERVED for this message — no other message can take them, no sweep removes them — until the caller
+   * says how the delivery went: commit() when it was delivered, release() when it definitely was not.
    */
   takeForMessage(instance: string, ids: readonly string[]): { ok: true; entries: UploadEntry[] } | { ok: false; error: string } {
     if (ids.length > UPLOAD_LIMITS.maxFiles) return { ok: false, error: `at most ${UPLOAD_LIMITS.maxFiles} files per message` };
@@ -163,15 +178,32 @@ export class WebFileLedger {
     let total = 0;
     for (const id of ids) {
       const e = isFileId(id) ? this.uploads.get(id) : undefined;
-      if (!e || !e.pending || e.instance !== instance || this.now() >= e.expiresAt) {
+      if (!e || e.state !== "pending" || e.instance !== instance || this.now() >= e.expiresAt) {
         return { ok: false, error: "an attached file is unknown, expired, already sent, or for another chat — attach it again" };
       }
       total += e.size;
       entries.push(e);
     }
     if (total > UPLOAD_LIMITS.maxTotalBytes) return { ok: false, error: `the files together are over ${UPLOAD_LIMITS.maxTotalBytes / 1024 / 1024} MB` };
-    for (const e of entries) e.pending = false;
+    for (const e of entries) e.state = "reserved";
     return { ok: true, entries };
+  }
+
+  /** The reserved uploads were delivered: they are the agent's now. */
+  commit(entries: readonly UploadEntry[]): void {
+    for (const e of entries) if (this.uploads.get(e.id) === e && e.state === "reserved") e.state = "sent";
+  }
+
+  /**
+   * The delivery definitely did not happen: the uploads wait for a message again, and the user can retry with the
+   * same ids. One whose window closed meanwhile is removed now (file and id) — its sweep has already run.
+   */
+  release(entries: readonly UploadEntry[]): void {
+    for (const e of entries) {
+      if (this.uploads.get(e.id) !== e || e.state !== "reserved") continue;
+      e.state = "pending";
+    }
+    this.prune();
   }
 
   /**
@@ -243,8 +275,8 @@ export class WebFileLedger {
   prune(): void {
     const now = this.now();
     for (const [id, e] of this.uploads) {
-      if (!e.pending) { this.uploads.delete(id); continue; }
-      if (now < e.expiresAt) continue;
+      if (e.state === "sent") { this.uploads.delete(id); continue; }
+      if (e.state === "reserved" || now < e.expiresAt) continue;
       try { unlinkSync(e.path); } catch { /* already gone */ }
       this.uploads.delete(id);
       this.served.delete(id);
