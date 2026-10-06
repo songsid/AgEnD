@@ -7,7 +7,7 @@
 ## [未發佈] (Unreleased)
 
 ### 新增 (Added)
-- **一眼看到每個 backend 下次額度重置的時間（#1232）。** `/usage` 會在每個有回報重置時間的 backend 下方顯示「⏳ 下次重置：5h12m」——取它所有還沒到期的 window 中最早的一個（已經過去的 window 會跳過，閒置的 per-model window、以及會到期而不會補回的 bonus credits 都不算）。View 的用量面板最上方用一行列出全部（「⏳ 下次重置 · Claude 5h12m 後重置 · Codex 2d3h 後重置」），`get_usage` 也在每個 provider 上回傳 `nextResetAt`，agent 讀得到。沒有提供重置時間的 backend——例如不在週期計費中的 Grok——就不顯示，不用猜的。
+- **額度重置券最快到期的日期，顯示在券那一行（#1232、#1244）。** Codex 的「額度重置券: 2 可用」現在會標出這些券中最早到期的那張——「額度重置券: 2 可用 · 🎫 最近過期：10/22（16d6h 後）」——`/usage`、View 用量面板與 `get_usage` 的文字都有，資料取自 Codex 自己的券清單（該 metric 的 `expiresAt`）。沒有到期日的券不計；全都沒有時，照舊只顯示張數。這是到期、不是重置：沒用掉的券就沒了。（2.1.12-beta.2 在 #1232 加的每個 backend 一行「⏳ 下次重置」是誤解了需求，已移除，`nextResetAt` 也一併拿掉；各 window 仍各自顯示「X 後重置」。）
 - **Agent 可以在 Discord 與 Telegram 傳貼圖（#1226）。** 三個工具，兩個平台用法相同：`list_stickers`（每張 `{ id, name, emoji_or_tags, format }`，不附圖片網址）、`preview_stickers`（最多 8 張，下載給 agent 讀圖；沒有靜態圖的動畫貼圖標 `preview_unavailable`），以及 `reply` 新增的 `stickers` 欄位（最多 3 張；有貼圖時 `text` 可省略）。底層依平台各自處理：Discord 只列 instance 自己頻道所在伺服器的貼圖（別的伺服器的傳不出去），並跟文字放在同一則訊息送出；Telegram 列出貼圖包——在呼叫時指定，或用連線設定的 `options.sticker_sets`——先送文字，再依序送每張貼圖。所有貼圖都在送出任何東西之前檢查，傳不出去的會回錯誤，不會變成一則悄悄少了貼圖的回覆。agent CLI 也有：`agend-agent stickers`、`sticker-preview`，以及 `reply … --sticker <id>`。
 
 ### 變更 (Changed)

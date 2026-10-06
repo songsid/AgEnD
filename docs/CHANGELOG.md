@@ -7,12 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
-- **Each backend's next quota reset, at a glance (#1232).** `/usage` shows "⏳ Next reset: 5h 12m" under every backend
-  that reports one — the soonest of its windows still ahead (a window already past is skipped, and an idle per-model
-  window, or bonus credits that expire rather than refill, do not count). The View usage panel opens with one line for all of them ("⏳ Next reset · Claude resets in
-  5h 12m · Codex resets in 2d 3h"), and `get_usage` returns it as `nextResetAt` on each provider, so an agent can read
-  it too. A backend that does not say when it resets — Grok outside a weekly billing period — shows none rather than a
-  guess.
+- **When the soonest rate-limit reset ticket expires, on the ticket line (#1232, #1244).** Codex's "Rate limit resets:
+  2 available" now says when the first of those tickets expires — "Rate limit resets: 2 available · 🎫 Nearest expiry:
+  10/22 (in 16d 6h)" — in `/usage`, the View usage panel and `get_usage`'s text, read from Codex's own ticket list
+  (`expiresAt` on that metric). A ticket without an expiry is skipped, and with none the line shows the count as
+  before. It is an expiry, not a reset: an unused ticket is lost. (The per-backend "⏳ Next reset" line that
+  2.1.12-beta.2 added under #1232 was a misreading of the request and is gone, `nextResetAt` with it; each window
+  still shows its own "resets in".)
 - **Agents can send stickers on Discord and Telegram (#1226).** Three tools, the same on both platforms:
   `list_stickers` (`{ id, name, emoji_or_tags, format }` each, no image URLs), `preview_stickers` (up to 8, downloaded
   for the agent to Read; an animated sticker with no still picture is marked `preview_unavailable`), and a new

@@ -17,7 +17,7 @@ import type { Logger } from "pino";
 import { fetchAllUsage, type ProviderUsage, type UsageMetric } from "./providers.js";
 import { museUsageRevision } from "../muse-usage-relay.js";
 import { t } from "../locale.js";
-import { usageResetText, usageText, usageNextResetText } from "./i18n.js";
+import { usageExpiryText, usageResetText, usageText } from "./i18n.js";
 
 export interface UsageApiContext {
   readonly fleetConfig: FleetConfig | null;
@@ -224,32 +224,7 @@ async function usage(force: boolean): Promise<UsagePayload> {
  * second entry point that bypassed it would defeat that.
  */
 export async function getUsageSnapshot(force = false, providerIds?: Iterable<string>): Promise<UsagePayload> {
-  return withNextResets(filterUsageProviders(await usage(force), providerIds));
-}
-
-/**
- * The soonest reset still ahead among a provider's visible metrics (#1232) — min(resetsAt) over its windows, skipping
- * ones already past, ones hidden as per-model noise (an idle model's window is not the account's reset) and
- * allowances that expire rather than refill (`resetKind: "expiry"`). null when none of them says when it resets
- * (e.g. Grok outside a weekly period, or Kiro with bonus credits only).
- */
-export function nearestResetAt(provider: ProviderUsage, now = Date.now()): string | null {
-  let best: number | null = null;
-  for (const m of provider.metrics.filter(isVisibleUsageMetric)) {
-    // An allowance that expires (Kiro bonus credits) does not reset: its end is not the provider's next reset.
-    if (m.resetKind === "expiry") continue;
-    const at = m.resetsAt ? new Date(m.resetsAt).getTime() : NaN;
-    if (Number.isFinite(at) && at > now && (best === null || at < best)) best = at;
-  }
-  return best === null ? null : new Date(best).toISOString();
-}
-
-/** Each ok provider with its nextResetAt, worked out now — the payload behind it may be minutes old. */
-export function withNextResets(payload: UsagePayload, now = Date.now()): UsagePayload {
-  return {
-    ...payload,
-    providers: payload.providers.map(p => (p.status === "ok" ? { ...p, nextResetAt: nearestResetAt(p, now) } : p)),
-  };
+  return filterUsageProviders(await usage(force), providerIds);
 }
 
 /**
@@ -282,9 +257,6 @@ export function formatUsageSummary(payload: UsagePayload): string {
     const parts = provider.metrics.filter(isVisibleUsageMetric).map(formatMetric).filter(Boolean);
     const staleness = provider.hint ? ` (${usageText(provider.hint, provider.hintI18n)})` : "";
     lines.push(`· ${name}: ${parts.length ? parts.join(" | ") : t("usage.no_data")}${staleness}`);
-    // #1232: the provider's soonest reset on a line of its own, so it is seen without reading every window.
-    const next = usageNextResetText(provider.nextResetAt);
-    if (next) lines.push(`  ${next}`);
   }
   return lines.join("\n");
 }
@@ -385,13 +357,18 @@ function formatMetric(m: UsageMetric): string {
     }
     case "count": {
       const unit = m.unit ? usageText(m.unit, m.unitI18n) : "";
-      return `${label} ${m.value ?? "?"}${unit ? ` ${unit}` : ""}${note ? ` (${note})` : ""}`;
+      return `${label} ${m.value ?? "?"}${unit ? ` ${unit}` : ""}${note ? ` (${note})` : ""}${expirySuffix(m.expiresAt)}`;
     }
     case "text": {
       const value = m.value != null ? usageText(String(m.value), m.valueI18n) : null;
       return value != null ? `${label} ${value}${note ? ` (${note})` : ""}` : "";
     }
   }
+}
+
+function expirySuffix(expiresAt?: string | null): string {
+  const text = usageExpiryText(expiresAt);
+  return text ? ` · ${text}` : "";
 }
 
 function resetSuffix(resetsAt?: string | null): string {

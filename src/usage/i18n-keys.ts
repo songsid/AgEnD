@@ -10,7 +10,7 @@ export const USAGE_I18N_KEYS = [
   "usage.metric.session", "usage.metric.weekly", "usage.metric.monthly", "usage.metric.days_window",
   "usage.metric.named", "usage.metric.named_session", "usage.metric.named_weekly",
   "usage.metric.named_monthly", "usage.metric.named_days", "usage.metric.extra_usage",
-  "usage.metric.rate_limit_resets", "usage.metric.credits", "usage.metric.weekly_limit",
+  "usage.metric.rate_limit_resets", "usage.ticket_expiry", "usage.metric.credits", "usage.metric.weekly_limit",
   "usage.metric.pay_as_you_go", "usage.metric.bonus_credits", "usage.metric.overage_charges",
   "usage.metric.pay_per_use", "usage.unit.available", "usage.unit.credits",
   "usage.metric.usage_monthly", "usage.note.used_limit_unit", "usage.note.bonus_codes",
