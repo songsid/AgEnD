@@ -1392,7 +1392,11 @@ export class Daemon extends EventEmitter {
    * #1241: an idle edge that has not yet proven the turn ended. Armed instead
    * of recovering immediately; a steady idle snapshot past confirmAt promotes
    * it to a real recovery, while a delivered reply, cancel, or newly observed
-   * work dissolves it. Scoped to one guard generation.
+   * work dissolves it. Scoped to one guard generation. Split clock domains
+   * (R3): edgeAt is wall-clock (compared only against lastBusyAt, also wall —
+   * event ordering, never a deadline), while confirmAt is monotonic
+   * (performance.now, same domain as the setTimeout firing the deadline), so
+   * a wall jump can neither shorten nor stretch the window.
    */
   private replyGuardIdleConfirm: { generation: number; edgeAt: number; confirmAt: number } | null = null;
   /**
@@ -1413,12 +1417,11 @@ export class Daemon extends EventEmitter {
 
   /** #1241: arm a confirmation window with its own deadline capture. */
   private armReplyGuardConfirm(generation: number): void {
-    const now = Date.now();
     this.clearReplyGuardConfirm();
     this.replyGuardIdleConfirm = {
       generation,
-      edgeAt: now,
-      confirmAt: now + REPLY_GUARD_IDLE_CONFIRM_MS,
+      edgeAt: Date.now(),
+      confirmAt: performance.now() + REPLY_GUARD_IDLE_CONFIRM_MS,
     };
     this.replyGuardConfirmTimer = setTimeout(() => {
       this.replyGuardConfirmTimer = null;
@@ -4823,7 +4826,7 @@ export class Daemon extends EventEmitter {
    */
   private maybeConfirmReplyGuardIdle(pane?: string): void {
     const pending = this.replyGuardIdleConfirm;
-    if (!pending || this.isPaused || Date.now() < pending.confirmAt) return;
+    if (!pending || this.isPaused || performance.now() < pending.confirmAt) return;
     this.maybeProxyReplyOnTurnEnd(pane, true);
   }
 

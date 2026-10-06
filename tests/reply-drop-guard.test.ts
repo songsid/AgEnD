@@ -659,6 +659,85 @@ describe("reply guard false idle edge (#1241)", () => {
     expect(daemon.turnReplyGuard.snapshot()?.phase).toBe("awaiting");
   });
 
+  it("pre-arm work on a cancelled turn carries into the next generation (R3 cancel→held writer)", async () => {
+    // Old turn cancelled; the new delivery's paste is held while its output
+    // lands. That output must survive the fresh arm — it used to die on the
+    // doomed cancelled generation and hold a genuine miss forever.
+    vi.useFakeTimers();
+    const daemon = makeDaemon();
+    const detected = vi.fn();
+    daemon.on("reply_drop_detected", detected);
+    daemon.markTurnStarted(meta(), "[user] do the task\nreply marker");
+    daemon.clearPendingDeliveries();
+    let releasePaste!: (ok: boolean) => void;
+    daemon.deliverMessage.mockImplementationOnce(() => new Promise<boolean>(resolve => { releasePaste = resolve; }));
+    daemon.pushChannelMessage("do the next task", meta({ message_id: "message-2" }));
+    await vi.advanceTimersByTimeAsync(0);
+    vi.advanceTimersByTime(100);
+    daemon.applyInstanceStateSnapshot(working(), "spinner…");
+    releasePaste(true);
+    await daemon.pasteLock;
+    const snap = daemon.turnReplyGuard.snapshot();
+    expect(snap?.cancelledByUser).toBe(false);
+    expect(snap).toMatchObject({ busyObserved: true });
+
+    daemon.applyInstanceStateSnapshot(idle(), "work finished\n❯");
+    await elapseConfirmWindow(daemon);
+    expect(detected).toHaveBeenCalledWith(expect.objectContaining({
+      reason: "no_valid_call",
+      recoveryStarted: true,
+    }));
+  });
+
+  it("a wall-clock jump forward does not shorten the confirmation window (R3)", async () => {
+    vi.useFakeTimers();
+    const daemon = makeDaemon();
+    const detected = vi.fn();
+    daemon.on("reply_drop_detected", detected);
+    daemon.markTurnStarted(meta(), "[user] do the task\nreply marker");
+    busyThenIdleEdge(daemon);
+    expect(detected).not.toHaveBeenCalled();
+
+    // The wall jumps +60s with (almost) no time elapsed: still held.
+    const wallNow = Date.now();
+    const dateMock = vi.spyOn(Date, "now").mockImplementation(() => wallNow + 60_000);
+    daemon.applyInstanceStateSnapshot(idle(Date.now()), "work finished\n❯");
+    await daemon.pasteLock;
+    expect(detected).not.toHaveBeenCalled();
+    expect(daemon.turnReplyGuard.snapshot()?.phase).toBe("awaiting");
+    dateMock.mockRestore();
+
+    // The elapsed window still recovers the genuine miss afterwards.
+    await elapseConfirmWindow(daemon);
+    expect(detected).toHaveBeenCalledWith(expect.objectContaining({
+      reason: "no_valid_call",
+      recoveryStarted: true,
+    }));
+  });
+
+  it("a wall-clock jump backward does not delay the elapsed deadline (R3)", async () => {
+    vi.useFakeTimers();
+    const daemon = makeDaemon();
+    const detected = vi.fn();
+    daemon.on("reply_drop_detected", detected);
+    daemon.markTurnStarted(meta(), "[user] do the task\nreply marker");
+    busyThenIdleEdge(daemon);
+    expect(detected).not.toHaveBeenCalled();
+
+    // The wall falls back; the monotonic deadline still promotes on schedule.
+    const wallNow = Date.now();
+    const dateMock = vi.spyOn(Date, "now").mockImplementation(() => wallNow - 1_500);
+    await vi.advanceTimersByTimeAsync(61_000);
+    daemon.applyInstanceStateSnapshot(idle(Date.now()), "work finished\n❯");
+    await daemon.pasteLock;
+    dateMock.mockRestore();
+    expect(detected).toHaveBeenCalledWith(expect.objectContaining({
+      reason: "no_valid_call",
+      recoveryStarted: true,
+    }));
+    expect(daemon.turnReplyGuard.snapshot()?.phase).toBe("recovering");
+  });
+
   it("re-arms the confirmation on a later edge after the turn continued, still recovering a true miss", async () => {
     vi.useFakeTimers();
     const daemon = makeDaemon();

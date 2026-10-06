@@ -113,7 +113,12 @@ export class TurnReplyGuard {
    * obligation belongs to the same turn.
    */
   noteTurnActivity(): void {
-    if (this.active) this.active.busyObservedAt = Date.now();
+    const active = this.active;
+    // A cancelled turn is over: activity from here on belongs to whatever
+    // arms next, so it waits in pending (still ingress-bounded at that arm)
+    // instead of dying on the doomed generation. (#1241 R3: cancel → new
+    // held-writer output used to be lost the same way pre-arm output was.)
+    if (active && !active.cancelledByUser) active.busyObservedAt = Date.now();
     else this.pendingActivityAt = Date.now();
   }
 
