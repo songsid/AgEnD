@@ -32,6 +32,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   pictures is not cut short.
 
 ### Fixed
+- **No more duplicate replies from an early reply-drop recovery (#1241).** On claude-code the reply completion guard
+  used to fire on the first idle-looking pane while the agent was still composing its first answer, pasting a
+  `[system:reply-required]` prompt the agent later answered a second time. Recovery now waits until the turn proves
+  itself over: the first idle edge only arms a 60 s confirmation window (work observed after the edge, a delivered
+  reply, or cancel dissolves it), and the prompt goes out only when steady idle persists past the window with no
+  reply. An edge with no work observed since the turn armed is held outright. Genuine misses still recover (#750),
+  at most a minute later — and the recovery prompt now says to do nothing if the message was already answered.
 - **Claude transcript events survive partial writes (#1221).** Tool progress and activity now wait for a record's
   terminating newline before advancing the read offset. A record flushed across polls is read once when complete,
   including after a monitor restart; complete final records still appear immediately. The shared Codex/Kiro JSONL

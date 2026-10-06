@@ -94,6 +94,14 @@ function harness(ui: Ui = "legacy", configured = true, claude = false) {
       await daemon.captureAndEvaluateInstanceState("idle_debounce", outputAt);
       if (waitForPaste) await daemon.pasteLock;
     },
+    async confirmIdle(waitForPaste = true) {
+      // #1241: the first edge only arms the confirmation window. Let it
+      // elapse, then re-observe the unchanged pane — no new output, so the
+      // pending confirmation still stands and a silent turn recovers.
+      vi.advanceTimersByTime(61_000);
+      await daemon.captureAndEvaluateInstanceState("idle_debounce", daemon.instanceStateLastOutputAt);
+      if (waitForPaste) await daemon.pasteLock;
+    },
   };
 }
 
@@ -156,6 +164,7 @@ describe.each(["legacy", "tui"] as const)("Kiro %s real-pane human completion", 
     expect(h.daemon.turnReplyGuard.snapshot()).toMatchObject({ completionDelivered: false, outboundDelivered: false });
     await h.capture(idlePane());
     expect(h.daemon.getInstanceState()).toBe("idle");
+    await h.confirmIdle();
     expect(h.detected).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ reason: "no_valid_call", recoveryStarted: true }));
     expect(h.daemon.deliverDaemonReply).toHaveBeenCalledExactlyOnceWith(t("inst.reply_drop_retrying"), "replydrop", "Reply-drop status", expect.objectContaining({
       adapterId: "discord-persona", chatId: "guild-1", threadId: "channel-1", messageId: "message-1",
@@ -177,6 +186,7 @@ describe.each(["legacy", "tui"] as const)("Kiro %s real-pane human completion", 
     expect(recoveryWrites(h)).toHaveLength(0);
     expect(h.daemon.turnReplyGuard.snapshot()?.phase).toBe("awaiting");
     await h.capture(idlePane());
+    await h.confirmIdle();
     expect(h.detected).toHaveBeenCalledOnce();
     expect(recoveryWrites(h)).toHaveLength(1);
   });
@@ -195,6 +205,7 @@ describe.each(["legacy", "tui"] as const)("Kiro %s real-pane human completion", 
     expect(h.detected).not.toHaveBeenCalled();
     expect(recoveryWrites(h)).toHaveLength(0);
     await h.capture(`I will run a command (using tool: shell)\n - Completed in 2s\n${idlePane()}`);
+    await h.confirmIdle();
     expect(h.detected).toHaveBeenCalledOnce();
   });
 
@@ -227,6 +238,7 @@ describe.each(["legacy", "tui"] as const)("Kiro %s real-pane human completion", 
     tool(h.daemon, "send_to_instance")({ sent: true, queued: true });
     expect(h.daemon.turnReplyGuard.snapshot()).toMatchObject({ completionDelivered: false, outboundDelivered: true });
     await h.capture(idlePane());
+    await h.confirmIdle();
     expect(recoveryWrites(h)).toHaveLength(1);
   });
 
@@ -235,6 +247,7 @@ describe.each(["legacy", "tui"] as const)("Kiro %s real-pane human completion", 
     await h.inbound();
     tool(h.daemon, "reply", "sibling")({ messageId: "sibling-ack" });
     await h.capture(idlePane());
+    await h.confirmIdle();
     expect(recoveryWrites(h)).toHaveLength(1);
   });
 
@@ -245,6 +258,7 @@ describe.each(["legacy", "tui"] as const)("Kiro %s real-pane human completion", 
     await h.inbound("also check this", { message_id: "message-2", thread_id: "channel-2" });
     settleOld({ messageId: "old-ack" });
     await h.capture(idlePane());
+    await h.confirmIdle();
     expect(recoveryWrites(h)).toHaveLength(1);
     expect(h.daemon.deliverDaemonReply.mock.calls[0][3]).toMatchObject({ messageId: "message-2", threadId: "channel-2" });
   });
@@ -257,6 +271,7 @@ describe.each(["legacy", "tui"] as const)("Kiro %s real-pane human completion", 
     expect(h.detected).not.toHaveBeenCalled();
     expect(h.daemon.turnReplyGuard.snapshot()).not.toBeNull();
     await h.capture(idlePane());
+    await h.confirmIdle();
     expect(recoveryWrites(h)).toHaveLength(1);
   });
 
@@ -277,6 +292,7 @@ describe.each(["legacy", "tui"] as const)("Kiro %s real-pane human completion", 
       if (turn === 2) vi.advanceTimersByTime(5 * 60_000);
       await h.inbound(`task ${turn}`);
       await h.capture(idlePane());
+      await h.confirmIdle();
       await h.capture(idlePane());
       expect(h.daemon.turnReplyGuard.snapshot()).toBeNull();
     }
@@ -296,6 +312,8 @@ describe.each(["legacy", "tui"] as const)("Kiro %s real-pane human completion", 
     h.daemon.clearPendingDeliveries();
     release();
     await h.daemon.pasteLock;
+    // Cancel leaves the turn armed; its next edge completes it as intentional.
+    await h.capture(idlePane(), false);
     expect(recoveryWrites(h)).toHaveLength(0);
     expect(h.daemon.deliverMessage).toHaveBeenCalledTimes(1); // only the original ingress; no cancelled recovery
     expect(h.unrecovered).not.toHaveBeenCalled();
@@ -308,6 +326,7 @@ describe.each(["legacy", "tui"] as const)("Kiro %s real-pane human completion", 
     let release!: () => void;
     h.daemon.pasteLock = new Promise<void>(resolve => { release = resolve; });
     await h.capture(idlePane(), false);
+    await h.confirmIdle(false); // the recovery prompt is genuinely queued now
     h.daemon.fenceDeliveryWritesForStop();
     h.daemon.turnReplyGuard.reset(); // stop() resets before any await
     release();
@@ -346,6 +365,7 @@ describe("other backend guard behavior stays scoped", () => {
     const h = harness("legacy", true, true);
     await h.inbound();
     await h.capture("work finished\n❯");
+    await h.confirmIdle();
     expect(h.detected).toHaveBeenCalledOnce();
     expect(recoveryWrites(h)).toHaveLength(1);
   });

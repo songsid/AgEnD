@@ -82,7 +82,16 @@ const TURN_OUTBOUND_TOOLS = new Set([
 // a deliberate reaction or edit is a valid response even without new text.
 const TURN_COMPLETION_TOOLS = new Set(["reply", "react", "edit_message"]);
 const REPLY_DROP_WARNING_COOLDOWN_MS = 5 * 60_000;
-const REPLY_RECOVERY_PROMPT = "[system:reply-required] The previous human-facing turn ended without a successfully delivered reply. Do not redo the work. React with an emoji or use the reply tool exactly once now to send the user a concise conclusion. If no substantive answer is needed, a brief react is sufficient. Do not reply to this system instruction except through the react or reply tool.";
+/**
+ * #1241: how long an idle edge must persist — with no reply and no further
+ * observed work — before the reply guard declares the turn a miss. A claude
+ * turn can repaint idle mid-turn (long thinking, subagent delegation) while
+ * the first reply is still minutes out; recovering on the first edge injects
+ * a prompt the agent later answers twice. A genuine miss stays idle, so the
+ * backstop is delayed by at most this window, never disabled.
+ */
+const REPLY_GUARD_IDLE_CONFIRM_MS = 60_000;
+const REPLY_RECOVERY_PROMPT = "[system:reply-required] The previous human-facing turn ended without a successfully delivered reply. Do not redo the work. React with an emoji or use the reply tool exactly once now to send the user a concise conclusion. If no substantive answer is needed, a brief react is sufficient. If you already replied to this message, do nothing. Do not reply to this system instruction except through the react or reply tool.";
 
 /** Point a resumed CLI at its one backend-native instruction source. */
 export function buildInstructionReloadNotice(binaryName: string, instanceName: string, instanceDir: string): string {
@@ -485,6 +494,11 @@ export class PendingWorkTracker {
   recordInbound(now = Date.now()): void {
     this.lastInboundAt = now;
     this.lastInboundOrder = ++this.sequence;
+  }
+
+  /** #1241 P2-1: when the latest delivery entered, bounding pre-arm activity. */
+  lastInboundTimestamp(): number {
+    return this.lastInboundAt;
   }
 
   recordIdle(now = Date.now()): boolean {
@@ -1357,6 +1371,11 @@ export class Daemon extends EventEmitter {
   private instanceStateIdleDebounceMs = DEFAULT_STATE_IDLE_DEBOUNCE_MS;
   private instanceStateStuckTimeoutMs = DEFAULT_STUCK_TIMEOUT_MS;
   private instanceStateReadyPattern: RegExp | null = null;
+  /**
+   * #1241 P2-2: an execution snapshot was suppressed by a blocking dialog.
+   * When the block lifts, the silence since counts as a fresh interval.
+   */
+  private sawBlockedInput = false;
   private instanceStateBusyPattern: RegExp | null = null;
   private instanceStateMonitorActive = false;
   private sessionCheckpointWarningEmitted = false;
@@ -1369,6 +1388,64 @@ export class Daemon extends EventEmitter {
   private lastMalformedToolCallSignature: string | undefined;
   private proxyReplySeq = 0;
   private lastReplyDropWarningAt = 0;
+  /**
+   * #1241: an idle edge that has not yet proven the turn ended. Armed instead
+   * of recovering immediately; a steady idle snapshot past confirmAt promotes
+   * it to a real recovery, while a delivered reply, cancel, or newly observed
+   * work dissolves it. Scoped to one guard generation. Split clock domains
+   * (R3): edgeAt is wall-clock (compared only against lastBusyAt, also wall —
+   * event ordering, never a deadline), while confirmAt is monotonic
+   * (performance.now, same domain as the setTimeout firing the deadline), so
+   * a wall jump can neither shorten nor stretch the window.
+   */
+  private replyGuardIdleConfirm: { generation: number; edgeAt: number; confirmAt: number } | null = null;
+  /**
+   * #1241 P3: the confirmation window's own wake-up. Monitor ticks may be up
+   * to 60 s apart, so without this the real delay could approach two windows.
+   * At the deadline a fresh, fenced capture re-observes the pane instead.
+   */
+  private replyGuardConfirmTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** #1241: dissolve a pending confirmation and its deadline, if any. */
+  private clearReplyGuardConfirm(): void {
+    this.replyGuardIdleConfirm = null;
+    if (this.replyGuardConfirmTimer) {
+      clearTimeout(this.replyGuardConfirmTimer);
+      this.replyGuardConfirmTimer = null;
+    }
+  }
+
+  /** #1241: arm a confirmation window with its own deadline capture. */
+  private armReplyGuardConfirm(generation: number): void {
+    this.clearReplyGuardConfirm();
+    this.replyGuardIdleConfirm = {
+      generation,
+      edgeAt: Date.now(),
+      confirmAt: performance.now() + REPLY_GUARD_IDLE_CONFIRM_MS,
+    };
+    this.replyGuardConfirmTimer = setTimeout(() => {
+      this.replyGuardConfirmTimer = null;
+      this.fireReplyGuardConfirm();
+    }, REPLY_GUARD_IDLE_CONFIRM_MS);
+  }
+
+  /**
+   * #1241 P3: the window elapsed with no verdict from monitor ticks — drive
+   * one fresh observation. Generation-fenced twice: a stale record returns
+   * before capturing, and the resulting snapshot still flows through the
+   * normal confirmed evaluation. When the capture cannot run (paused, frozen,
+   * spawning), the record stays and the next monitor tick promotes instead.
+   */
+  private fireReplyGuardConfirm(): void {
+    const pending = this.replyGuardIdleConfirm;
+    if (!pending) return;
+    const turn = this.turnReplyGuard.snapshot();
+    if (!turn || turn.generation !== pending.generation || turn.phase !== "awaiting") {
+      this.clearReplyGuardConfirm();
+      return;
+    }
+    void this.captureAndEvaluateInstanceState("reply_guard_confirm", this.instanceStateLastOutputAt);
+  }
   private autoPauseController: AutoPauseController;
   private pauseRequested = false;
   /**
@@ -3649,6 +3726,9 @@ export class Daemon extends EventEmitter {
     // FleetManager calls this synchronously before sendEscape. Cancel only the
     // current human turn; leave already-forwarded tool requests to settle.
     this.turnReplyGuard.cancelByUser();
+    // #1241: a cancelled turn never confirms — its next edge completes it as
+    // intentional. Drop a pending confirmation so it cannot promote afterwards.
+    this.clearReplyGuardConfirm();
     // #1209: a cancelled turn must never resume (#1199) — drop its marker.
     // (Completion paths clear via the guard's onComplete; a cancel with no
     // later idle edge would otherwise leave the marker behind.)
@@ -4004,6 +4084,8 @@ export class Daemon extends EventEmitter {
     this.clearQuitRelaunchWatch();
     this.fenceDeliveryWritesForStop();
     this.turnReplyGuard.reset();
+    this.clearReplyGuardConfirm();
+    this.sawBlockedInput = false;
     // Invalidate any bounded pre-Enter wait from the process generation being
     // stopped. It must fail closed, not press Enter in a replacement pane.
     this.inputTransientGuardGeneration = null;
@@ -4454,7 +4536,23 @@ export class Daemon extends EventEmitter {
     // dedicated input_blocked event carries the reason to observers.
     if (this.inputBlockedDialogKey !== null) {
       this.logger.debug({ dialog: this.inputBlockedDialogKey }, "Suppressing execution-state edge while CLI input is blocked by a dialog");
+      // #1241 P2-2: stdin-owned work is not idle evidence. A pending window
+      // measured through a dialog would recover on pre-dialog idle time, so
+      // the block dissolves it; the silence after the dialog clears starts a
+      // fresh interval below.
+      this.sawBlockedInput = true;
+      this.clearReplyGuardConfirm();
       return;
+    }
+    // #1241 P2-2: the block just lifted. With the pane idle, evaluate like an
+    // edge so a genuine miss re-accumulates a full window instead of inheriting
+    // pre-dialog idle time (or never re-arming at all when the daemon froze at
+    // idle). Only arming runs here: recovery-phase turns keep their lifecycle.
+    const justUnblocked = this.sawBlockedInput;
+    this.sawBlockedInput = false;
+    if (justUnblocked && snapshot.state === "idle") {
+      const unblockedTurn = this.turnReplyGuard.snapshot();
+      if (unblockedTurn && unblockedTurn.phase === "awaiting") this.maybeProxyReplyOnTurnEnd(pane);
     }
     this.instanceState = snapshot.state;
     this.acceptedInstanceSnapshot = { ...snapshot };
@@ -4470,6 +4568,20 @@ export class Daemon extends EventEmitter {
       this.checkpointSessionIdInBackground();
     }
 
+    // #1241: the turn demonstrably continued — work observed after an idle
+    // edge dissolves a pending guard confirmation. A later genuine end
+    // re-arms it with a fresh edge.
+    if (snapshot.state !== "idle") {
+      this.turnReplyGuard.noteTurnActivity();
+      const pending = this.replyGuardIdleConfirm;
+      const turn = this.turnReplyGuard.snapshot();
+      if (pending && turn && turn.generation === pending.generation && turn.phase === "awaiting") {
+        this.clearReplyGuardConfirm();
+        this.logger.debug({ correlationId: turn.target.correlationId, generation: turn.generation },
+          "Reply guard confirmation dropped — work observed after the idle edge, the turn continued");
+      }
+    }
+
     // Only a transition back to idle completes pending work. Repeated idle
     // observations between enqueue and paste must not clear a newer inbound.
     if (snapshot.state === "idle" && previous !== "idle") {
@@ -4482,6 +4594,11 @@ export class Daemon extends EventEmitter {
       // Must run before the mcpRestartPending branch below: the pane text is the
       // only copy of the answer, and the revival restart is about to clear it.
       if (acceptedIdle) this.maybeProxyReplyOnTurnEnd(pane);
+    } else if (snapshot.state === "idle") {
+      // #1241: steady idle between edges. A pending confirmation whose window
+      // has elapsed is promoted to a real evaluation here — proven idle,
+      // not the first output gap.
+      this.maybeConfirmReplyGuardIdle(pane);
     }
 
     if (snapshot.state !== previous) {
@@ -4553,6 +4670,8 @@ export class Daemon extends EventEmitter {
     // The last non-empty line of what we pasted: everything on screen after it
     // is the agent's own output.
     const inboundMarker = deliveredText.split(/\r?\n/).map(l => l.trim()).filter(Boolean).pop();
+    // #1241 P2-1: carry pre-arm work evidence over the arm, bounded by this
+    // delivery's ingress — output the paste produced before it confirmed.
     this.turnReplyGuard.arm({
       adapterId: meta.adapter_id || undefined,
       chatId: meta.chat_id,
@@ -4560,7 +4679,7 @@ export class Daemon extends EventEmitter {
       messageId: meta.message_id || undefined,
       correlationId: meta.correlation_id || undefined,
       inboundMarker,
-    });
+    }, this.pendingWork.lastInboundTimestamp());
     // #1209: persist the in-flight turn with a seam checkpoint. A marker
     // that survives a restart is an interrupted turn by construction —
     // completion (via the guard's onComplete) and cancel paths delete it.
@@ -4700,7 +4819,18 @@ export class Daemon extends EventEmitter {
    * manager does not pass through the dead MCP server. Consuming the turn state
    * here (edge-triggered, then reset) is what makes it at most once per turn.
    */
-  private maybeProxyReplyOnTurnEnd(pane?: string): void {
+  /**
+   * #1241: promote a pending idle-edge confirmation once the window has
+   * elapsed. Steady idle with no reply and no work since the edge is proven
+   * idle; anything else dissolves the confirmation and leaves the turn armed.
+   */
+  private maybeConfirmReplyGuardIdle(pane?: string): void {
+    const pending = this.replyGuardIdleConfirm;
+    if (!pending || this.isPaused || performance.now() < pending.confirmAt) return;
+    this.maybeProxyReplyOnTurnEnd(pane, true);
+  }
+
+  private maybeProxyReplyOnTurnEnd(pane?: string, confirmed = false): void {
     const turn = this.turnReplyGuard.snapshot();
     if (!turn || this.isPaused) return;
 
@@ -4712,6 +4842,7 @@ export class Daemon extends EventEmitter {
           generation: turn.generation,
         });
       }
+      this.clearReplyGuardConfirm();
       this.turnReplyGuard.complete(turn.generation);
       return;
     }
@@ -4719,6 +4850,7 @@ export class Daemon extends EventEmitter {
     // An intentional stop is not a dropped reply. Successful in-flight replies
     // still settle above, but cancellation cannot start another model turn.
     if (turn.cancelledByUser) {
+      this.clearReplyGuardConfirm();
       this.turnReplyGuard.complete(turn.generation);
       return;
     }
@@ -4726,6 +4858,7 @@ export class Daemon extends EventEmitter {
     // A second idle edge ends the one permitted recovery turn. Never create a
     // third turn or guess at terminal text; make the failure visible instead.
     if (turn.phase === "recovering") {
+      this.clearReplyGuardConfirm();
       this.turnReplyGuard.complete(turn.generation);
       this.reportUnrecoveredReplyDrop(turn);
       return;
@@ -4788,11 +4921,51 @@ export class Daemon extends EventEmitter {
     if (turn.replyAttempted) {
       // A provider timeout can be "applied, then timed out". Retrying it would
       // risk a duplicate; report the unknown result and stop here.
+      this.clearReplyGuardConfirm();
       this.turnReplyGuard.complete(turn.generation);
       this.reportReplyDropWithoutRetry(turn, "reply_failed_or_unknown");
       return;
     }
 
+    // #1241: an idle edge is not proof the turn ended. Two gates before the
+    // recovery prompt goes anywhere near the CLI's input:
+    // 1. work must have been observed after this generation armed — otherwise
+    //    the "edge" is a pane flicker (or a stale working state) mid-turn,
+    //    and the turn stays armed for its real end;
+    // 2. the edge must persist: the first qualifying edge only arms a
+    //    confirmation window, and recovery starts only when steady idle past
+    //    the window still shows no reply and no further work.
+    if (!turn.busyObserved) {
+      this.logger.info({
+        correlationId: turn.target.correlationId,
+        generation: turn.generation,
+        reason: "no_busy_since_arm",
+      }, "Reply guard holding — idle edge with no work observed since the turn armed, not a turn end");
+      return;
+    }
+    if (!confirmed) {
+      if (this.replyGuardIdleConfirm?.generation === turn.generation) return;
+      this.armReplyGuardConfirm(turn.generation);
+      this.logger.info({
+        correlationId: turn.target.correlationId,
+        generation: turn.generation,
+        reason: "idle_edge_pending_confirm",
+        confirmMs: REPLY_GUARD_IDLE_CONFIRM_MS,
+      }, "Reply guard idle edge pending confirmation — holding recovery until idle persists");
+      return;
+    }
+    if (this.replyGuardIdleConfirm && turn.lastBusyAt > this.replyGuardIdleConfirm.edgeAt) {
+      this.clearReplyGuardConfirm();
+      this.logger.info({ correlationId: turn.target.correlationId, generation: turn.generation },
+        "Reply guard confirmation dropped — work observed after the idle edge, the turn continued");
+      return;
+    }
+    // A stale confirmation for another generation proves nothing about this one.
+    if (this.replyGuardIdleConfirm && this.replyGuardIdleConfirm.generation !== turn.generation) {
+      this.clearReplyGuardConfirm();
+      return;
+    }
+    this.clearReplyGuardConfirm();
     this.startReplyRecovery(turn, "no_valid_call");
   }
 
@@ -4808,6 +4981,9 @@ export class Daemon extends EventEmitter {
   }
 
   private startReplyRecovery(turn: TurnReplySnapshot, reason: "no_valid_call" | "malformed_call"): void {
+    // The confirmation served its purpose: recovery has its own lifecycle now
+    // (a second edge ends it), so a pending window must not linger past this.
+    this.clearReplyGuardConfirm();
     const current = this.turnReplyGuard.snapshot();
     if (current?.generation === turn.generation && current.cancelledByUser) {
       this.turnReplyGuard.complete(turn.generation);
@@ -8795,6 +8971,8 @@ export class Daemon extends EventEmitter {
     // warning is safer than treating the replacement's startup idle as the old
     // turn ending and injecting a stale recovery prompt.
     this.turnReplyGuard.reset();
+    this.clearReplyGuardConfirm();
+    this.sawBlockedInput = false;
     if (this.spawnDepth === 0) {
       this.spawnGeneration++;
       this.interactionObservation.reset(this.interactionOwner());
