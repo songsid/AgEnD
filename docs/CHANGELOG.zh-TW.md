@@ -70,6 +70,14 @@
 - **[行為變更] dashboard 現在會拒絕 `Host` 不認得的請求。** health/dashboard server 雖然只綁 127.0.0.1，但這擋不住 DNS rebinding：網頁可以把自己的網域解析到 127.0.0.1，再用 script 讀取不需要 cookie 的路由，包含 `/view` 的即時終端畫面（`/api/pane/*`）。這種網頁唯一改不了的是瀏覽器送出的 `Host`，所以所有路由（含 `/health`、`/agent`）現在只有在 `Host` 是 `localhost`、`127.0.0.1`、`[::1]`、fleet 的 `hostname:`，或新增的 `web.allowed_hosts` 列出的名稱時才回應，其餘一律 403（不比對 port）。**如果你是透過反向代理或 port forward、且它呈現的是別的名稱，請把該名稱加進 `web.allowed_hosts`**；每個被拒的名稱第一次出現時，`fleet.log` 會記一行並附上這個提示。CLI、`agend web`、`/dashboard` 與內部呼叫都用 loopback 名稱，不受影響。
 
 ### 新增 (Added)
+- **跨重啟回合判斷的統一偵測訊號 seam（#1209、#1217a、#1210、#1215）。** 新增唯讀觀測層（`src/backend/session-signals.ts`）：
+  各 backend 的 `TurnFingerprint` reader——claude-code（transcript JSONL mtime＋最新有 timestamp 的 tail 條目；tail 本身通常是沒有
+  timestamp 的 bookkeeping）、codex（唯讀開啟 `state_5.sqlite` threads 列＋rollout tail）、muse（session 目錄最新檔案 mtime＋
+  `recorded_at`），以及 backend-agnostic 的 `compareFingerprints` checkpoint 比對，回 `reengaged`／`quiet`／`unknown`。
+  daemon 自己造成的寫入會被排除；session id 變了算 reengaged；daemon 寫入後 10 秒 flush grace 內不回 `quiet`、改回 `unknown`
+ （剛 re-engage、還沒 flush 的 CLI 短暫看起來像 quiet）。`readinessFromStore` 永遠回 `unknown`：pane 仍是 idle/busy 權威，
+  既有偵測完全不受影響。kiro-classic schema 覆蓋另排。殘留風險（by design、有界）：比對之後才 flush 的 engagement 由下一次
+  checkpoint 比對抓到，本層絕不捏造。
 - **ClassicBot 頻道可以跑在第二組訂閱上（#1220）。** `classicBot.yaml` 的頻道現在接受 `backend_options.<backend>.credential_profile`，
   跟 `fleet.yaml` instance 一樣——例如讓 classic codex bot 用 `credential_profile: personal`。該頻道的 agent 會用那個 profile 啟動，
   `get_usage` / `/usage` 把它算在那組訂閱的列（`Codex (personal)`），`kiro_engine_status` 也會顯示。以前這個設定會被靜默丟掉，
