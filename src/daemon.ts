@@ -677,6 +677,12 @@ const INPUT_TRANSIENT_WAIT_MS = 10 * 60_000;
 const INPUT_TRANSIENT_POLL_MS = 250;
 /** Max "stranded text → submit → wait for prompt → re-check" rounds per delivery; each may send one recovery Enter. */
 const STRANDED_INPUT_MAX_ROUNDS = 3;
+/** The Claude phrasing every backend was judged by before #1217; still the default for a backend that names none. */
+const LEGACY_NO_CONVERSATION = /no conversation found|no conversation to (continue|resume)|no previous (session|conversation)/i;
+/** #1217: unproven resume failures, kept across Daemon instances, keyed by session id. */
+const RESUME_FAILURES_FILE = "resume-failures.json";
+/** #1217: the backend that owns the stored session id. */
+const SESSION_OWNER_FILE = "session-id.backend";
 /** #829: most clearing rounds for a restored draft (one row each), and how long one round may take to show. */
 const INPUT_RESIDUE_MAX_ROUNDS = 60;
 const INPUT_RESIDUE_ROUND_WAIT_MS = 1_000;
@@ -3973,6 +3979,26 @@ export class Daemon extends EventEmitter {
     return this.waitForPaneReadyForDelivery(windowId, KIRO_STOP_IDLE_BUDGET_MS);
   }
 
+  /**
+   * #1217: the CLI answered its quit command with a confirmation that a stray
+   * key would answer for us (Claude's "Background work is running": Enter
+   * picks "Exit and stop tasks"). Never choose an option: cancel the prompt
+   * with Escape and let the caller stop the process itself (SIGTERM), which is
+   * what the bounded grace would have come to anyway — just without waiting
+   * it out. True when that prompt was on screen.
+   */
+  private async cancelQuitConfirmation(reason: string): Promise<boolean> {
+    const backend = this.backend;
+    if (!backend?.quitBlockedByDialog || !this.tmux) return false;
+    let pane: string;
+    try { pane = await this.tmux.capturePane(); } catch { return false; }
+    if (!backend.quitBlockedByDialog(pane)) return false;
+    this.logger.warn({ reason },
+      "The CLI asked to confirm its exit (background work is running) — cancelling that prompt and stopping the process, not answering it");
+    await this.tmux.sendSpecialKey("Escape").catch(() => false);
+    return true;
+  }
+
   async stop(): Promise<void> {
     this.logger.info("Stopping daemon instance");
     this.clearQuitRelaunchWatch();
@@ -4016,6 +4042,7 @@ export class Daemon extends EventEmitter {
           await new Promise(r => setTimeout(r, 200));
           const status = await this.tmux.getPaneStatus();
           if (!status || !status.alive) { killed = true; break; }
+          if (await this.cancelQuitConfirmation("stop")) break;
         }
       }
       if (!killed) {
@@ -4274,6 +4301,7 @@ export class Daemon extends EventEmitter {
           await new Promise(r => setTimeout(r, 200));
           const status = await this.tmux?.getPaneStatus();
           if (status && !status.alive) { exited = true; break; }
+          if (await this.cancelQuitConfirmation(pauseReason)) break;
         }
         if (!exited) {
           await this.killProcessTree("SIGTERM", `${pauseReason}: the CLI outlived its quit grace`);
@@ -8848,14 +8876,63 @@ export class Daemon extends EventEmitter {
    */
   private paneSaysNoConversation(paneText: string | undefined): boolean {
     if (!paneText) return false;
-    return /no conversation found|no conversation to (continue|resume)|no previous (session|conversation)/i
-      .test(paneText);
+    // Each CLI says it in its own words (#1217): muse's "retained session not
+    // found" never matched the Claude phrasing, so a muse session that was not
+    // there could never be proven gone. Backends that name no pattern keep the
+    // phrasing this always used.
+    const pattern = this.backend?.resumeMissingPattern?.() ?? LEGACY_NO_CONVERSATION;
+    return pattern.test(paneText);
   }
 
-  /** How many consecutive startups have failed without proving the session is gone. */
-  private unprovenResumeFailures = 0;
   /** After this many, start fresh anyway — loudly — so a truly broken session still recovers. */
   private static readonly MAX_UNPROVEN_RESUME_FAILURES = 3;
+
+  /**
+   * #1217: the unproven-failure count lives in the instance directory, keyed by
+   * the session id. Each start builds a new Daemon, so a count kept on the
+   * object was always "attempt 1/3": the escape hatch could never fire, and an
+   * unresumable session failed every start forever. A different session id (or
+   * none) starts the count again; a successful resume or a set-aside ends it.
+   */
+  private bumpUnprovenResumeFailures(): number {
+    const path = join(this.instanceDir, RESUME_FAILURES_FILE);
+    let sessionId = "";
+    try { sessionId = readFileSync(join(this.instanceDir, "session-id"), "utf-8").trim(); } catch { /* none */ }
+    let previous: { sessionId?: unknown; count?: unknown } | null = null;
+    try { previous = JSON.parse(readFileSync(path, "utf-8")); } catch { /* first failure, or unreadable */ }
+    const count = previous && previous.sessionId === sessionId && Number.isInteger(previous.count) && (previous.count as number) > 0
+      ? (previous.count as number) + 1
+      : 1;
+    try { writeFileSync(path, JSON.stringify({ sessionId, count })); } catch { /* best effort: counts as before */ }
+    return count;
+  }
+
+  private clearUnprovenResumeFailures(): void {
+    try { unlinkSync(join(this.instanceDir, RESUME_FAILURES_FILE)); } catch { /* none */ }
+  }
+
+  /**
+   * #1217: a session id belongs to the backend that made it. After a backend
+   * switch the old id names nothing the new CLI knows (a Claude id handed to
+   * muse is "retained session not found"), so resuming it can only fail. The
+   * owner is recorded on every successful start; an id recorded for another
+   * backend is set aside (kept on disk, as always) and this start is fresh.
+   * An id with no recorded owner (from before this was recorded) is left to
+   * the resume itself — its failure is proven or counted like any other.
+   */
+  private setAsideForeignSession(): void {
+    if (!existsSync(join(this.instanceDir, "session-id"))) return;
+    let owner = "";
+    try { owner = readFileSync(join(this.instanceDir, SESSION_OWNER_FILE), "utf-8").trim(); } catch { return; }
+    const current = this.config.backend ?? "claude-code";
+    if (!owner || owner === current) return;
+    this.logger.warn({ from: owner, to: current }, "The stored session belongs to another backend — not resuming it");
+    this.setSessionAside(`backend_switched:${owner}->${current}`);
+  }
+
+  private recordSessionOwner(): void {
+    try { writeFileSync(join(this.instanceDir, SESSION_OWNER_FILE), this.config.backend ?? "claude-code"); } catch { /* best effort */ }
+  }
 
   /**
    * Set the session aside instead of deleting it.
@@ -8871,6 +8948,7 @@ export class Daemon extends EventEmitter {
       const stamp = new Date().toISOString().replace(/[:.]/g, "-");
       renameSync(sidFile, join(this.instanceDir, `session-id.abandoned-${stamp}`));
       this.logger.warn({ reason }, "Session set aside (kept on disk as session-id.abandoned-*), starting fresh");
+      this.clearUnprovenResumeFailures();
       this.pruneAbandonedSessions();
     } catch (err) {
       // Never let bookkeeping block a spawn; falling back to the old behaviour
@@ -8900,6 +8978,10 @@ export class Daemon extends EventEmitter {
       throw new Error("No backend configured — cannot spawn CLI window");
     }
 
+    // Fresh start or not: the owner is recorded below once this CLI is up, so an
+    // id it does not own must be out of the way first, or it would be recorded
+    // as this backend's and resumed by the next start.
+    this.setAsideForeignSession();
     const attemptedResume = !this.skipResume;
     // A resume launch may get a longer budget than a fresh one (kiro: the
     // conversation must come back from the backend before anything paints).
@@ -8939,21 +9021,21 @@ export class Daemon extends EventEmitter {
       try { paneText = await this.tmux?.capturePaneWithHistory(50); } catch { /* pane may be gone */ }
       const proven = this.paneSaysNoConversation(paneText);
       if (!proven) {
-        this.unprovenResumeFailures++;
-        if (this.unprovenResumeFailures < Daemon.MAX_UNPROVEN_RESUME_FAILURES) {
+        const failures = this.bumpUnprovenResumeFailures();
+        if (failures < Daemon.MAX_UNPROVEN_RESUME_FAILURES) {
           // Keep the session and fail this attempt; the fleet retries with
           // backoff, which is also how the backend-outage path behaves.
           await this.killProcessTree("SIGTERM", "spawn: clearing the previous CLI process");
           await this.tmux!.killWindow();
           throw new Error(
-            `CLI startup failed with a session to resume (attempt ${this.unprovenResumeFailures}/${Daemon.MAX_UNPROVEN_RESUME_FAILURES}) `
+            `CLI startup failed with a session to resume (attempt ${failures}/${Daemon.MAX_UNPROVEN_RESUME_FAILURES}) `
             + "— session kept, will retry",
           );
         }
         // Escape hatch: a genuinely broken session must still recover. Say so
         // out loud — this start does NOT continue the previous conversation.
         this.logger.error(
-          { attempts: this.unprovenResumeFailures },
+          { attempts: failures },
           "Giving up on resuming after repeated startup failures — starting fresh. "
           + "The previous conversation is NOT continued; its context is lost to this session.",
         );
@@ -8976,12 +9058,15 @@ export class Daemon extends EventEmitter {
       }
     } else if (attemptedResume) {
       resumedSuccessfully = true;
+      this.clearUnprovenResumeFailures();
       // A resume needs the backend: its success is positive proof the backend
       // is reachable again (a fresh prompt is local and proves nothing).
       this.backendOutage?.clear(this.backendKey());
     }
 
     this.lastSpawnAt = Date.now();
+    // #1217: whatever session this CLI writes from here on is this backend's.
+    this.recordSessionOwner();
     this.skipResume = false; // CLI started successfully — reset for next spawn
     this.backgroundSessionRecoveryAttempted = false;
     } finally {

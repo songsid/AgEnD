@@ -31,6 +31,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   pictures is not cut short.
 
 ### Fixed
+- **Switching an instance's backend no longer leaves it unable to start (#1217).** A session id now belongs to the
+  backend that made it (`session-id.backend` next to it). On the first start under a different backend, the old id is
+  set aside (`session-id.abandoned-<ts>`, as before) and the new CLI starts fresh, instead of being asked to resume a
+  conversation it never had. `update_instance_config` now restarts a running instance, fresh, when its `backend`
+  changes. Before, the change was saved and the old CLI kept running until something else restarted it. Three related
+  gaps made such a failure permanent, and they are closed too:
+  - each backend names the words that prove its session is gone, e.g. muse's "retained session not found";
+  - the count of unproven resume failures is kept in the instance directory, keyed by session id. Every start builds
+    a new Daemon, so it used to stay at "attempt 1/3" forever and never reached the fresh start after three;
+  - Claude's "Background work is running" exit prompt is recognised. Deliveries hold on it, and stop and pause cancel
+    it with Escape and stop the process, never choosing one of its options.
 - **Discord slash commands: fewer "The application did not respond", and none silent (#1231).** A slash command is
   now acknowledged before anything else is read. When the acknowledgement fails, the command is not run (you were told
   it did not respond, and running it would do it twice on a retry) and you are told so: privately, or in the channel.
