@@ -4540,24 +4540,28 @@ export class Daemon extends EventEmitter {
     // completion (via the guard's onComplete) and cancel paths delete it.
     // Synchronous by necessity: a crash between arm and write must not lose
     // the interruption. Reads are windowed/bounded (see turn-resume.ts).
-    const resumeBackend = this.config.backend ?? this.backend?.binaryName ?? this.runtimeIdentity?.backend;
-    const resumeCwd = this.config.working_directory ?? "";
-    writeInFlightTurnMarker(this.instanceDir, {
-      version: 1,
-      deliveryId: meta.delivery_id || undefined,
-      correlationId: meta.correlation_id || undefined,
-      messageId: meta.message_id || undefined,
-      chatId: meta.chat_id,
-      threadId: meta.thread_id || undefined,
-      adapterId: meta.adapter_id || undefined,
-      backend: resumeBackend ?? "unknown",
-      cwd: resumeCwd,
-      armedAt: Date.now(),
-      before: readResumeFingerprint(normalizeResumeBackend(resumeBackend), {
-        instanceDir: this.instanceDir,
-        workingDirectory: resumeCwd,
-      }),
-    });
+    // A resumed continuation never re-arms (P3a): episode-once means a crash
+    // during the continuation boots clean instead of chaining resumes.
+    if (!meta.resumedContinuationOf) {
+      const resumeBackend = this.config.backend ?? this.backend?.binaryName ?? this.runtimeIdentity?.backend;
+      const resumeCwd = this.config.working_directory ?? "";
+      writeInFlightTurnMarker(this.instanceDir, {
+        version: 1,
+        deliveryId: meta.delivery_id || undefined,
+        correlationId: meta.correlation_id || undefined,
+        messageId: meta.message_id || undefined,
+        chatId: meta.chat_id,
+        threadId: meta.thread_id || undefined,
+        adapterId: meta.adapter_id || undefined,
+        backend: resumeBackend ?? "unknown",
+        cwd: resumeCwd,
+        armedAt: Date.now(),
+        before: readResumeFingerprint(normalizeResumeBackend(resumeBackend), {
+          instanceDir: this.instanceDir,
+          workingDirectory: resumeCwd,
+        }),
+      });
+    }
   }
 
   /** #1209: which seam reader serves this instance (live config preferred). */
@@ -4591,6 +4595,18 @@ export class Daemon extends EventEmitter {
   private async maybeResumeInterruptedTurn(): Promise<string> {
     const marker = consumeInFlightTurnMarker(this.instanceDir);
     if (!marker) return "none";
+    // P1 fence: capture before any await. A cancel (deliveryEpoch),
+    // respawn (spawnGeneration) or stop/pause (launchFenceEpoch) during the
+    // grace hold must stale this gate — the push below rechecks, and the
+    // push path itself carries the then-current epoch, so a post-push
+    // cancel still drops the queued paste. Fence follows the write (#1192).
+    const gateEpoch = this.deliveryEpoch;
+    const gateSpawn = this.spawnGeneration;
+    const gateFence = this.launchFenceEpoch;
+    const gateFresh = (): boolean =>
+      this.deliveryEpoch === gateEpoch
+      && this.spawnGeneration === gateSpawn
+      && this.launchFenceEpoch === gateFence;
     const backend = this.resolveResumeBackend() ?? normalizeResumeBackend(marker.backend);
     const roots = { instanceDir: this.instanceDir, workingDirectory: this.config.working_directory ?? "" };
     // This boot's CLI spawn is what the daemon itself caused: pre-restart
@@ -4620,6 +4636,13 @@ export class Daemon extends EventEmitter {
           detail: "still inside the flush grace after the hold; default-deny",
         }
         : recheck;
+    }
+    // The hold above is the only await on this path: recheck the fence
+    // after it (and before the write). Stale → skip quietly, never an
+    // error notice — the cancel/stop owner already reported itself.
+    if (!gateFresh()) {
+      this.logger.info("Interrupted-turn continuation dropped — cancel/stop/pause/respawn during the grace hold");
+      return "skipped-stale";
     }
     if (decision.action === "inject") {
       const continuation = buildResumeContinuation(marker);
@@ -8289,6 +8312,11 @@ export class Daemon extends EventEmitter {
       // for this turn: the agent proved it can still speak for itself.
       if (!error && result != null && TURN_OUTBOUND_TOOLS.has(tool)) {
         this.turnReplyGuard.settleToolAttempt(replyAttempt, true);
+        // #1209 P2: the user got an answer — the turn is over for resume
+        // purposes even before the idle edge completes the guard. Without
+        // this, a restart in the reply-to-idle window would re-inject a
+        // continuation for an already-answered turn.
+        if (replyAttempt?.completionAction) clearInFlightTurnMarker(this.instanceDir);
       }
       const sent = this.ipcServer?.send(socket, { requestId, result, error, operationId }) ?? false;
       if (!sent) {

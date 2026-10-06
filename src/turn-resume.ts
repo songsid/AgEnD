@@ -22,6 +22,12 @@
  * a second boot never repeats), and completion/cancel paths delete it so a
  * finished turn never resumes. Backends without a seam reader resolve to
  * unknown and therefore never continue.
+ *
+ * Hit-rate note (P3c): post-boot writes that look like turns — the warmup
+ * steering reload, durable outbox redelivery — advance the turn tail and
+ * read as reengaged, so this gate skips. Safe (never double-drives) at the
+ * cost of a missed resume; the seam cannot tell "the CLI resumed the work"
+ * from "the daemon just drove the CLI".
  */
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";

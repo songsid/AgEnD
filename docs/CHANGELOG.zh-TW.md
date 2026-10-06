@@ -81,7 +81,8 @@
   crash-loop 開機保持乾淨（#835）、取消過的不續（cancel 會刪 marker，#1199）、durable outbox 還在處理的投遞留給那條路、seam verdict
   排除雙重驅動——CLI 已 re-engage 或對話已切換就跳過，unknown 在 flush grace 內等一次（之後拒絕），只有 grace 之外確定的 quiet
   才重注一個綁原 correlation 的 bounded continuation（絕不是重貼）。marker 先消費再 gate，第二次開機不會重複；完成路徑經 reply
-  guard 清掉它。沒有 seam reader 的 backend 判 unknown、永遠不續。
+  guard 清掉它，已投遞的回覆在 idle edge 之前就清，續接訊息自己不再 arm（真正 episode-once）。grace 等待中遇到 cancel、stop、
+  pause 或 respawn 會讓 gate 過期、不再注入。沒有 seam reader 的 backend 判 unknown、永遠不續。
 - **跨重啟回合判斷的統一偵測訊號 seam（#1209、#1217a、#1210、#1215）。** 新增唯讀觀測層（`src/backend/session-signals.ts`）：
   各 backend 在 CLI 自己的 store 發現工作目錄 session 的 `TurnFingerprint` reader——claude-code（project 內最新 transcript＋最新有
   timestamp 的 tail 條目；tail 本身通常是沒有 timestamp 的 bookkeeping）、codex（唯讀開啟 `state_5.sqlite` 找 exact-cwd thread＋

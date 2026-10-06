@@ -275,7 +275,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   re-engaged or conversation switched means skip, unknown holds through the flush grace (one bounded wait, then
   deny), and only a quiet seam outside the grace injects one bounded continuation tied to the original correlation
   (never a re-paste). The marker is consumed before gating, so a second boot never repeats; completion paths clear
-  it through the reply guard. Backends without a seam reader resolve to unknown and never continue.
+  it through the reply guard, a delivered reply clears it even before the idle edge, and a resumed continuation
+  never re-arms (truly episode-once). A cancel, stop, pause or respawn during the grace hold stales the gate, so
+  nothing is injected after the user already stopped it. Backends without a seam reader resolve to unknown and
+  never continue.
 - **Unified detection-signal seam for cross-restart turn questions (#1209, #1217a, #1210, #1215).** A new read-only
   observation layer (`src/backend/session-signals.ts`): per-backend `TurnFingerprint` readers that discover the
   workspace's session in the CLI's own store — claude-code (newest project transcript plus its newest timestamped
