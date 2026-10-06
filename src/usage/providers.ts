@@ -792,7 +792,8 @@ async function codexNearestTicketExpiry(headers: Record<string, string>, nowMs: 
 }
 
 export async function fetchCodexUsage(storeHome?: string): Promise<Omit<ProviderUsage, "id" | "name">> {
-  const startedAt = Date.now();
+  // Monotonic: the deadline this budget is measured against is a timer, which a wall-clock change does not move.
+  const startedAt = performance.now();
   // A credential profile owns its own auth.json; without one this is the shared
   // login, exactly as before.
   const home = storeHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex");
@@ -873,7 +874,7 @@ export async function fetchCodexUsage(storeHome?: string): Promise<Omit<Provider
   if (typeof resets?.available_count === "number" && resets.available_count >= 0) {
     const available = Math.floor(resets.available_count);
     // #1244: the usage endpoint gives only the count; when each ticket expires is on the tickets' own list.
-    const budgetMs = Math.min(CODEX_TICKET_LOOKUP_MS, providerDeadlineMs - (Date.now() - startedAt) - CODEX_TICKET_DEADLINE_MARGIN_MS);
+    const budgetMs = Math.min(CODEX_TICKET_LOOKUP_MS, providerDeadlineMs - (performance.now() - startedAt) - CODEX_TICKET_DEADLINE_MARGIN_MS);
     const expiresAt = available > 0 ? await codexNearestTicketExpiry(headers, nowMs, budgetMs) : null;
     metrics.push({
       label: "Rate limit resets", labelI18n: i18n("usage.metric.rate_limit_resets"),

@@ -109,14 +109,17 @@ describe("the ticket list never costs the row its numbers (#1246 review: the 16s
   // The real fetchCodexUsage inside the real fetchAllUsage deadline, on fake timers: the usage answer arrives late,
   // then the ticket list stalls. The row must come back ok with its count, only without an expiry.
   const USAGE = "https://chatgpt.com/backend-api/wham/usage";
-  async function run(usageDelayMs: number, ticketList: "stall" | "stall-ignoring-abort" | number) {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+  async function run(usageDelayMs: number, ticketList: "stall" | "stall-ignoring-abort" | number, wallClockSetback?: { atMs: number; byMs: number }) {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date", "performance"] });
     vi.setSystemTime(NOW);
+    const t0 = performance.now();
+    const elapsed = () => performance.now() - t0;                        // monotonic: the wall clock may be set back
+    if (wallClockSetback) setTimeout(() => vi.setSystemTime(Date.now() - wallClockSetback.byMs), wallClockSetback.atMs);
     const home = mkdtempSync(join(tmpdir(), "agend-1246-codex-")); dirs.push(home);
     writeFileSync(join(home, "auth.json"), JSON.stringify({ tokens: { access_token: ["test", "payload", "value"].join("."), account_id: "acct" } }));
     const calls: Array<{ url: string; at: number; signal?: AbortSignal }> = [];
     vi.stubGlobal("fetch", vi.fn((url: string, init: { signal?: AbortSignal } = {}) => {
-      calls.push({ url: String(url), at: Date.now() - NOW, signal: init.signal });
+      calls.push({ url: String(url), at: elapsed(), signal: init.signal });
       if (String(url) === USAGE) {
         return new Promise(resolve => setTimeout(() => resolve(new Response(JSON.stringify({
           rate_limit: { primary_window: { used_percent: 40, limit_window_seconds: 18_000, reset_after_seconds: 3_600 } },
@@ -132,7 +135,7 @@ describe("the ticket list never costs the row its numbers (#1246 review: the 16s
     }));
     setUsageProvidersForTests([{ id: "codex", name: "Codex", fetch: () => fetchCodexUsage(home) }]);
     let settledAt: number | null = null;
-    const snapshot = fetchAllUsage(null as never).then(r => { settledAt = Date.now() - NOW; return r; });
+    const snapshot = fetchAllUsage(null as never).then(r => { settledAt = elapsed(); return r; });
     while (calls.length === 0) await new Promise(r => setImmediate(r));   // auth.json is read for real first
     await vi.advanceTimersByTimeAsync(DEFAULT_PROVIDER_DEADLINE_MS + 1_000);
     const r = await snapshot;
@@ -156,6 +159,13 @@ describe("the ticket list never costs the row its numbers (#1246 review: the 16s
 
   it("usage at 14.5s: the list only gets what is left before the deadline, less the margin", async () => {
     const { row, settledAt, resets } = await run(14_500, "stall");
+    expect([row.status, resets?.value, resets?.expiresAt, settledAt]).toEqual(["ok", 2, undefined, 15_000]);
+  });
+
+  it("the wall clock set back 1.5s while usage is in flight: the budget is still what is left on the deadline's timer", async () => {
+    // Usage at 14.5s; the deadline timer has 1.5s left, so the list gets 500ms. Measured on the wall clock the elapsed
+    // time would read 13s, the list would get 2s, and the 16s deadline would take the row (#1246 review r2).
+    const { row, settledAt, resets } = await run(14_500, "stall", { atMs: 10_000, byMs: 1_500 });
     expect([row.status, resets?.value, resets?.expiresAt, settledAt]).toEqual(["ok", 2, undefined, 15_000]);
   });
 
