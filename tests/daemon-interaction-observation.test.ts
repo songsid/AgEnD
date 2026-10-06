@@ -365,7 +365,7 @@ describe("outward presentation and incident privacy", () => {
     expect(await h.readTool("describe_instance")).toMatchObject({ instance_state: "awaiting_input", execution_state: "working", interaction: { phase: "waiting" } });
     expect((await h.readTool("list_instances", {})).instances[0]).toMatchObject({ instance_state: "awaiting_input", execution_state: "working" });
     expect(h.fm.getUiStatus().instances[0]).toMatchObject({ state: "awaiting_input", execution_state: "working" });
-    vi.spyOn(h.fm, "webToken", "get").mockReturnValue("test-token"); vi.spyOn(h.fm, "viewToken", "get").mockReturnValue("test-view"); h.fm.startHealthServer(12345);
+    vi.spyOn(h.fm, "webToken", "get").mockReturnValue("test-token"); h.fm.startHealthServer(12345);
     h.fm.getSysInfo = () => ({ instances: [{ name: "worker", status: "running" }] });
     let result = "";
     hooks.http!({ method: "GET", url: "/api/fleet", headers: { host: "localhost:12345", "x-agend-token": "test-token" } },
