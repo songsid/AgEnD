@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import vm from "node:vm";
 import Database from "better-sqlite3";
-import { codexTicketsNearestExpiry, fetchCodexUsage, fetchKiroUsage } from "../src/usage/providers.js";
+import { codexTicketsNearestExpiry, DEFAULT_PROVIDER_DEADLINE_MS, fetchAllUsage, fetchCodexUsage, fetchKiroUsage, setUsageProvidersForTests } from "../src/usage/providers.js";
 import { setLocale } from "../src/locale.js";
 import type { ProviderUsage, UsageMetric } from "../src/usage/providers.js";
 import * as usageApi from "../src/usage/usage-api.js";
@@ -25,7 +25,7 @@ const iso = (s: string) => new Date(Date.parse(s)).toISOString();
 beforeEach(() => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(NOW); });
 const dirs: string[] = [];
 afterEach(() => {
-  vi.useRealTimers(); vi.unstubAllGlobals(); setLocale("en"); setUsageFetcherForTests(null);
+  vi.useRealTimers(); vi.unstubAllGlobals(); setLocale("en"); setUsageFetcherForTests(null); setUsageProvidersForTests(null);
   delete process.env.KIRO_CLI_HOME; delete process.env.CODEX_HOME;
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
@@ -102,6 +102,72 @@ describe("through the real Codex mapping", () => {
       expect(r.status).toBe("ok");
       expect([resets(r)?.value, resets(r)?.expiresAt]).toEqual([2, undefined]);
     }
+  });
+});
+
+describe("the ticket list never costs the row its numbers (#1246 review: the 16s provider deadline)", () => {
+  // The real fetchCodexUsage inside the real fetchAllUsage deadline, on fake timers: the usage answer arrives late,
+  // then the ticket list stalls. The row must come back ok with its count, only without an expiry.
+  const USAGE = "https://chatgpt.com/backend-api/wham/usage";
+  async function run(usageDelayMs: number, ticketList: "stall" | "stall-ignoring-abort" | number) {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    vi.setSystemTime(NOW);
+    const home = mkdtempSync(join(tmpdir(), "agend-1246-codex-")); dirs.push(home);
+    writeFileSync(join(home, "auth.json"), JSON.stringify({ tokens: { access_token: ["test", "payload", "value"].join("."), account_id: "acct" } }));
+    const calls: Array<{ url: string; at: number; signal?: AbortSignal }> = [];
+    vi.stubGlobal("fetch", vi.fn((url: string, init: { signal?: AbortSignal } = {}) => {
+      calls.push({ url: String(url), at: Date.now() - NOW, signal: init.signal });
+      if (String(url) === USAGE) {
+        return new Promise(resolve => setTimeout(() => resolve(new Response(JSON.stringify({
+          rate_limit: { primary_window: { used_percent: 40, limit_window_seconds: 18_000, reset_after_seconds: 3_600 } },
+          rate_limit_reset_credits: { available_count: 2 },
+        }), { status: 200 })), usageDelayMs));
+      }
+      if (typeof ticketList === "number") {
+        return new Promise(resolve => setTimeout(() => resolve(new Response(JSON.stringify({ credits: [ticket("available", "2026-10-22T06:00:00Z")] }), { status: 200 })), ticketList));
+      }
+      return new Promise((_resolve, reject) => {
+        if (ticketList === "stall") init.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+      });
+    }));
+    setUsageProvidersForTests([{ id: "codex", name: "Codex", fetch: () => fetchCodexUsage(home) }]);
+    let settledAt: number | null = null;
+    const snapshot = fetchAllUsage(null as never).then(r => { settledAt = Date.now() - NOW; return r; });
+    while (calls.length === 0) await new Promise(r => setImmediate(r));   // auth.json is read for real first
+    await vi.advanceTimersByTimeAsync(DEFAULT_PROVIDER_DEADLINE_MS + 1_000);
+    const r = await snapshot;
+    const row = r.providers.find(p => p.id === "codex")!;
+    return { row, settledAt: settledAt as number | null, calls, resets: row.metrics.find(m => m.label === "Rate limit resets") };
+  }
+
+  it("usage at 9s, then a ticket list that never answers: ok with the count and the window, no expiry — before the deadline", async () => {
+    const { row, settledAt, calls, resets } = await run(9_000, "stall");
+    expect([row.status, resets?.value, resets?.expiresAt]).toEqual(["ok", 2, undefined]);
+    expect(row.metrics.map(m => m.label)).toEqual(["Session", "Rate limit resets"]);
+    expect(calls.map(c => [c.url.split("/").pop(), c.at])).toEqual([["usage", 0], ["rate-limit-reset-credits", 9_000]]);
+    expect(calls[1]!.signal?.aborted, "the stalled request is cancelled").toBe(true);
+    expect(settledAt).toBe(12_000);                                       // 9s + the 3s ticket budget
+  });
+
+  it("even a request that ignores its abort cannot hold the row", async () => {
+    const { row, settledAt, resets } = await run(9_000, "stall-ignoring-abort");
+    expect([row.status, resets?.value, resets?.expiresAt, settledAt]).toEqual(["ok", 2, undefined, 12_000]);
+  });
+
+  it("usage at 14.5s: the list only gets what is left before the deadline, less the margin", async () => {
+    const { row, settledAt, resets } = await run(14_500, "stall");
+    expect([row.status, resets?.value, resets?.expiresAt, settledAt]).toEqual(["ok", 2, undefined, 15_000]);
+  });
+
+  it("usage at 15.5s: no time left — the list is not asked for at all", async () => {
+    const { row, calls, resets } = await run(15_500, "stall");
+    expect([row.status, resets?.value, resets?.expiresAt]).toEqual(["ok", 2, undefined]);
+    expect(calls.map(c => c.url.split("/").pop())).toEqual(["usage"]);
+  });
+
+  it("a list that answers within its budget still gives the expiry", async () => {
+    const { row, settledAt, resets } = await run(9_000, 2_000);
+    expect([row.status, resets?.expiresAt, settledAt]).toEqual(["ok", iso("2026-10-22T06:00:00Z"), 11_000]);
   });
 });
 

@@ -693,6 +693,13 @@ async function fetchAntigravityUsage(): Promise<Omit<ProviderUsage, "id" | "name
 const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
 /** The reset tickets one by one (read only; the CLI redeems through `…/consume`, which AgEnD never calls). */
 const CODEX_RESET_CREDITS_URL = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits";
+/**
+ * The ticket list is optional — only the expiry hangs on it — so it gets a short budget, and never more than the time
+ * left before the provider deadline minus a margin (#1246 review): a slow usage answer followed by a stalled list must
+ * still return the numbers already in hand, not lose the whole row to the deadline.
+ */
+const CODEX_TICKET_LOOKUP_MS = 3_000;
+const CODEX_TICKET_DEADLINE_MARGIN_MS = 1_000;
 const CREDIT_USD_RATE = 0.04;
 
 type CodexWindow = { used_percent?: unknown; limit_window_seconds?: unknown; reset_at?: unknown; reset_after_seconds?: unknown };
@@ -766,17 +773,26 @@ export function codexTicketsNearestExpiry(body: unknown, nowMs: number): string 
   return best === null ? null : new Date(best).toISOString();
 }
 
-async function codexNearestTicketExpiry(headers: Record<string, string>, nowMs: number): Promise<string | null> {
-  try {
-    const res = await fetch(CODEX_RESET_CREDITS_URL, { headers, signal: AbortSignal.timeout(10_000) });
+async function codexNearestTicketExpiry(headers: Record<string, string>, nowMs: number, budgetMs: number): Promise<string | null> {
+  if (!(budgetMs > 0)) return null;
+  const abort = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  // The timer both aborts the request and settles the race, so a fetch that ignores its signal cannot hold the row.
+  const timedOut = new Promise<null>(resolve => { timer = setTimeout(() => { abort.abort(); resolve(null); }, budgetMs); });
+  const lookup = (async () => {
+    const res = await fetch(CODEX_RESET_CREDITS_URL, { headers, signal: abort.signal });
     if (!res.ok) return null;
     return codexTicketsNearestExpiry(await res.json(), nowMs);
-  } catch {
-    return null;
+  })().catch(() => null);
+  try {
+    return await Promise.race([lookup, timedOut]);
+  } finally {
+    clearTimeout(timer);
   }
 }
 
 export async function fetchCodexUsage(storeHome?: string): Promise<Omit<ProviderUsage, "id" | "name">> {
+  const startedAt = Date.now();
   // A credential profile owns its own auth.json; without one this is the shared
   // login, exactly as before.
   const home = storeHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex");
@@ -857,7 +873,8 @@ export async function fetchCodexUsage(storeHome?: string): Promise<Omit<Provider
   if (typeof resets?.available_count === "number" && resets.available_count >= 0) {
     const available = Math.floor(resets.available_count);
     // #1244: the usage endpoint gives only the count; when each ticket expires is on the tickets' own list.
-    const expiresAt = available > 0 ? await codexNearestTicketExpiry(headers, nowMs) : null;
+    const budgetMs = Math.min(CODEX_TICKET_LOOKUP_MS, providerDeadlineMs - (Date.now() - startedAt) - CODEX_TICKET_DEADLINE_MARGIN_MS);
+    const expiresAt = available > 0 ? await codexNearestTicketExpiry(headers, nowMs, budgetMs) : null;
     metrics.push({
       label: "Rate limit resets", labelI18n: i18n("usage.metric.rate_limit_resets"),
       type: "count", value: available,
