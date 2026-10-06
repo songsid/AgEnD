@@ -65,9 +65,10 @@ describe("GET /ui/poll", () => {
     h.fm.emitSseEvent("status", { ignored: true });
     const poll = async (q: string) => JSON.parse((await raw(h.port, "GET", `/ui/poll${q}`, { cookie: h.cookie })).body);
 
-    // No cursor yet: the current cursor and no backlog (the page loads history separately).
+    // No cursor yet (the page has seen no stream message): everything still retained, so nothing said while the
+    // stream was silent is skipped by the cursor handed out here; the page keeps one entry per boot+id.
     const first = await poll("");
-    expect(first.messages).toEqual([]);
+    expect(first.messages.map((m: { text: string }) => m.text)).toEqual(["one", "two"]);
     expect(first.cursor).toBe(`${boot}-2`);
     expect(first.status).toHaveProperty("instances");
 
@@ -85,6 +86,56 @@ describe("GET /ui/poll", () => {
     expect((await raw(h.port, "GET", `/ui/poll?after=${boot}-0`)).status).toBe(401);
     // Status events are not chat: only messages get ids.
     expect(h.fm.webChatHistory.lastId).toBe(2);
+    await stop(h.fm);
+  }, 30_000);
+});
+
+describe("a passive poll is not activity (#1251 review): it never keeps an idle session alive", () => {
+  // The real listener: the outer gate and the /ui handler's own check, a real session cookie, the store's clock
+  // driven by the test. Local sessions end after 2h idle (12h absolute).
+  async function signedInAt(h: Awaited<ReturnType<typeof startFleet>>, clock: { t: number }) {
+    (h.fm as unknown as { webSessions: { now: () => number } }).webSessions.now = () => clock.t;
+    const login = await raw(h.port, "POST", "/auth/login", { "content-type": "application/json", origin: h.origin }, JSON.stringify({ code: h.fm.issueDashboardLogin()!.display }));
+    expect(login.status).toBe(200);
+    return String(login.headers["set-cookie"]).split(";")[0]!;
+  }
+  const H = 3_600_000, M = 60_000;
+  const poll = (h: { port: number }, cookie: string) => raw(h.port, "GET", "/ui/poll?after=", { cookie });
+
+  it("polls alone: still authorized up to the idle limit, refused after it — the polls did not extend it", async () => {
+    const h = await startFleet();
+    const clock = { t: Date.now() };
+    const cookie = await signedInAt(h, clock);
+    const start = clock.t;
+    for (const at of [5_000, 1 * H, 1 * H + 59 * M, 2 * H - 5_000]) {
+      clock.t = start + at;
+      expect((await poll(h, cookie)).status, `poll at +${at / M}m`).toBe(200);
+    }
+    clock.t = start + 2 * H + 5_000;
+    expect((await poll(h, cookie)).status, "two hours after the last real use").toBe(401);
+    expect((await raw(h.port, "GET", "/ui/history?instance=w", { cookie })).status, "and the session is over for everything").toBe(401);
+    await stop(h.fm);
+  }, 30_000);
+
+  it("a real request (the person using the page) still extends it, and polls in between change nothing", async () => {
+    const h = await startFleet();
+    const clock = { t: Date.now() };
+    const cookie = await signedInAt(h, clock);
+    const start = clock.t;
+    clock.t = start + 1 * H;
+    expect((await raw(h.port, "GET", "/ui/history?instance=w", { cookie })).status).toBe(200);   // activity: idle now ends at +3h
+    clock.t = start + 2 * H + 5_000;
+    expect((await poll(h, cookie)).status, "past the first idle limit, inside the extended one").toBe(200);
+    clock.t = start + 3 * H + 5_000;
+    expect((await poll(h, cookie)).status, "the polls since did not extend it again").toBe(401);
+    await stop(h.fm);
+  }, 30_000);
+
+  it("a passive poll still checks everything else: a revoked session is refused at once", async () => {
+    const h = await startFleet();
+    expect((await poll(h, h.cookie)).status).toBe(200);
+    (h.fm as unknown as { webSessions: { revokeAll(): unknown } }).webSessions.revokeAll();
+    expect((await poll(h, h.cookie)).status).toBe(401);
     await stop(h.fm);
   }, 30_000);
 });

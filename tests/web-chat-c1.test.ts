@@ -580,6 +580,36 @@ describe("dashboard sendMsg (the real page script)", () => {
     expect(p.read("msgs.w.map(m => m.text)")).toEqual(["before restart", "after restart"]);
   });
 
+  it("first fallback with ZERO stream messages: a message that arrived while the stream was silent is not skipped (#1251 review)", async () => {
+    // The real page script, and the real /ui/history and /ui/poll handlers over one real history. The stream only
+    // ever sent a status frame — no message event, so the page has no cursor of its own.
+    const p = page();
+    const h = new WebChatHistory({ boot: "b1" });
+    const ctx = { ...ctxWith(h), getUiStatus: () => ({ instances: [], uptime: 1 }) } as unknown as WebApiContext;
+    const viaHandler = (url: string) => JSON.parse(call(url, ctx).res.body);
+    h.record(msg("w", "one"));
+    p.sse.status!({ data: JSON.stringify({ instances: [], uptime: 1 }) });
+    // The chat is opened: its history is loaded (through the real handler) — "one".
+    (p.c as any).historyVia = viaHandler;
+    p.read("api = async (_m, path) => historyVia(path)");
+    await p.read('loadHistory("w")');
+    expect(p.read("msgs.w.map(m => m.text)")).toEqual(["one"]);
+    expect(p.read("lastCursor")).toBe("");
+    // The stream goes quiet; meanwhile "two" is said. Then the first poll.
+    h.record(msg("w", "two"));
+    p.setPollReply(viaHandler);
+    await p.read("pollOnce()");
+    expect(p.fetched.at(-1)).toBe("/ui/poll?after=");
+    expect(p.read("msgs.w.map(m => m.text)"), "two is shown, one is not doubled").toEqual(["one", "two"]);
+    expect(p.read("lastCursor")).toBe("b1-2");
+    // From the cursor on, polling goes on as usual.
+    h.record(msg("w", "three"));
+    await p.read("pollOnce()");
+    expect(p.fetched.at(-1)).toBe("/ui/poll?after=b1-2");
+    expect(p.read("msgs.w.map(m => m.text)")).toEqual(["one", "two", "three"]);
+    expect(p.sse.message, "no stream message was ever delivered").toBeDefined();
+  });
+
   it("dashboard polling: uses the stream's cursor, and a message seen on both paths shows once", async () => {
     const p = page();
     const h = new WebChatHistory({ boot: "b1" });
