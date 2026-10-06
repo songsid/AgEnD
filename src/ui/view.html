@@ -159,6 +159,7 @@
   /* Neutral note (subscription plan, or "sign-in needed") — deliberately not the
      amber error colour, since neither state is a failure. */
   .u-note { color: var(--dim); font-size: 13px; margin: 8px 0; }
+  .u-next { font-size: 13px; font-weight: 600; margin: 4px 0 10px; line-height: 1.5; }
   .u-foot { color: var(--dim); font-size: 11px; margin-top: 14px; display: flex; gap: 8px; align-items: baseline; }
   .u-foot button { background: none; border: 1px solid var(--border); border-radius: 5px; color: var(--dim); cursor: pointer; font-size: 11px; padding: 2px 8px; }
   .u-foot button:hover { color: var(--fg); border-color: var(--accent); }
@@ -251,7 +252,7 @@
       usageResets: "resets in {t}", usageSoon: "resets soon", usageFail: "Could not load usage data.",
       "usage.title": "AI Subscription Usage", "usage.title_plain": "AI subscription usage", "usage.empty_active": "No active backends with usage tracking",
       "usage.not_logged_in": "not logged in", "usage.error_fallback": "error", "usage.no_data": "no data",
-      "usage.reset.in": "resets in {0}", "usage.reset.soon": "resets soon",
+      "usage.reset.in": "resets in {0}", "usage.reset.soon": "resets soon", "usage.next_resets": "⏳ Next reset",
       "usage.duration.days_hours": "{0}d {1}h", "usage.duration.hours_minutes": "{0}h {1}m", "usage.duration.minutes": "{0}m",
       "usage.metric.session": "Session", "usage.metric.weekly": "Weekly", "usage.metric.monthly": "Monthly",
       "usage.metric.days_window": "{0}-day window", "usage.metric.named": "{0}",
@@ -315,7 +316,7 @@
       usageResets: "{t}後重置", usageSoon: "即將重置", usageFail: "無法載入用量資料。",
       "usage.title": "AI 訂閱用量", "usage.title_plain": "AI 訂閱用量", "usage.empty_active": "沒有使用中且支援用量追蹤的 Backend",
       "usage.not_logged_in": "未登入", "usage.error_fallback": "錯誤", "usage.no_data": "無資料",
-      "usage.reset.in": "{0} 後重置", "usage.reset.soon": "即將重置",
+      "usage.reset.in": "{0} 後重置", "usage.reset.soon": "即將重置", "usage.next_resets": "⏳ 下次重置",
       "usage.duration.days_hours": "{0}d{1}h", "usage.duration.hours_minutes": "{0}h{1}m", "usage.duration.minutes": "{0}m",
       "usage.metric.session": "Session", "usage.metric.weekly": "每週", "usage.metric.monthly": "每月",
       "usage.metric.days_window": "{0} 天視窗", "usage.metric.named": "{0}",
@@ -1050,6 +1051,11 @@
     let html = `<h3>${USAGE_ICON}${T("usage.title")}</h3>`;
     const providers = orderedUsageProviders(usageData.providers);
     if (!providers.length) html += `<div class="u-err">${T("usage.empty_active")}</div>`;
+    // #1232: each backend's soonest reset, in one line at the top — "⏳ Next reset · Claude resets in 5h 12m · Codex …".
+    const nextResets = providers
+      .filter(p => p.status === "ok" && p.nextResetAt && new Date(p.nextResetAt).getTime() > Date.now())
+      .map(p => `${esc(p.name)} ${esc(usageResetText(p.nextResetAt))}`);
+    if (nextResets.length) html += `<div class="u-next">${esc(T("usage.next_resets"))} · ${nextResets.join(" · ")}</div>`;
     for (let index = 0; index < providers.length; index++) {
       const p = providers[index];
       const key = providerKey(p);

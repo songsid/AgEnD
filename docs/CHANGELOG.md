@@ -7,6 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Each backend's next quota reset, at a glance (#1232).** `/usage` shows "⏳ Next reset: 5h 12m" under every backend
+  that reports one — the soonest of its windows still ahead (a window already past is skipped, and an idle per-model
+  window, or bonus credits that expire rather than refill, do not count). The View usage panel opens with one line for all of them ("⏳ Next reset · Claude resets in
+  5h 12m · Codex resets in 2d 3h"), and `get_usage` returns it as `nextResetAt` on each provider, so an agent can read
+  it too. A backend that does not say when it resets — Grok outside a weekly billing period — shows none rather than a
+  guess.
 - **Agents can send stickers on Discord and Telegram (#1226).** Three tools, the same on both platforms:
   `list_stickers` (`{ id, name, emoji_or_tags, format }` each, no image URLs), `preview_stickers` (up to 8, downloaded
   for the agent to Read; an animated sticker with no still picture is marked `preview_unavailable`), and a new

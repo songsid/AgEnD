@@ -13,7 +13,7 @@
 import type { ProviderUsage, UsageMetric } from "./providers.js";
 import { isVisibleUsageMetric, type UsagePayload } from "./usage-api.js";
 import { t } from "../locale.js";
-import { usageResetText, usageText } from "./i18n.js";
+import { usageNextResetText, usageResetText, usageText } from "./i18n.js";
 
 const BAR_WIDTH = 10;
 
@@ -83,6 +83,7 @@ interface ProviderBlock {
   plan: string | null;
   note: string | null;      // "not logged in" / error text — instead of metrics
   okHint: string | null;    // context under an ok row's metrics (e.g. staleness)
+  nextReset: string | null; // "⏳ Next reset: 5h 12m" — the soonest window reset (#1232)
   lines: MetricLine[];
 }
 
@@ -98,6 +99,7 @@ function toBlocks(payload: UsagePayload): ProviderBlock[] {
       : p.status === "error" ? `⚠️ ${usageText(p.error ?? t("usage.error_fallback"), p.errorI18n)}`
         : null,
     okHint: p.status === "ok" && p.hint ? usageText(p.hint, p.hintI18n) : null,
+    nextReset: p.status === "ok" ? usageNextResetText(p.nextResetAt) || null : null,
     lines: p.status === "ok"
       ? p.metrics.filter(isVisibleUsageMetric).map(metricLine).filter((l): l is MetricLine => l !== null)
       : [],
@@ -110,6 +112,7 @@ export function renderUsageMarkdown(payload: UsagePayload): string {
   for (const b of toBlocks(payload)) {
     out.push("", `${b.dot} **${b.name}**${b.plan ? ` (${b.plan})` : ""}`);
     if (b.note) { out.push(`> ${b.note}`); continue; }
+    if (b.nextReset) out.push(b.nextReset);
     if (b.lines.length === 0) {
       out.push(b.okHint ? `> ${b.okHint}` : `> ${t("usage.no_data")}`);
       continue;
@@ -136,6 +139,7 @@ export function renderUsageHtml(payload: UsagePayload): string {
   for (const b of toBlocks(payload)) {
     out.push("", `${b.dot} <b>${escapeHtml(b.name)}</b>${b.plan ? ` (${escapeHtml(b.plan)})` : ""}`);
     if (b.note) { out.push(escapeHtml(b.note)); continue; }
+    if (b.nextReset) out.push(escapeHtml(b.nextReset));
     if (b.lines.length === 0) {
       out.push(b.okHint ? escapeHtml(b.okHint) : escapeHtml(t("usage.no_data")));
       continue;
