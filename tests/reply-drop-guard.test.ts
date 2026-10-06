@@ -6,7 +6,7 @@ import pino from "pino";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ClaudeCodeBackend } from "../src/backend/claude-code.js";
 import { daemonBudgetMs } from "../src/channel/ipc-timeouts.js";
-import { Daemon, PendingWorkTracker } from "../src/daemon.js";
+import { Daemon, PaneStateMachine, PendingWorkTracker } from "../src/daemon.js";
 import { TurnReplyGuard } from "../src/turn-reply-guard.js";
 import type { Logger } from "../src/logger.js";
 
@@ -455,6 +455,91 @@ describe("Claude human-turn reply completion harness", () => {
 });
 
 describe("reply guard false idle edge (#1241)", () => {
+  /** Claude's "Background work is running" exit prompt: inputBlocked, held, never answered (#1217). */
+  const DIALOG_PANE = [
+    "● Running python3 - <<'EOF'",
+    "   Background work is running",
+    "   The following will stop when you exit:",
+    "   shell · python3",
+    "   ❯ 1. Exit and stop tasks",
+    "     2. Move to background and exit",
+    "     3. Stay",
+    "   Enter to confirm · Esc to cancel",
+  ].join("\n");
+  const IDLE_PANE = "work finished\n❯";
+
+  /**
+   * Real backend (for true updateInputBlockedState matching) + real state
+   * machine + the production capture path. The pane is the mock's.
+   */
+  function blockingDialogHarness() {
+    const dir = mkdtempSync(join(tmpdir(), "agend-reply-guard-dialog-"));
+    dirs.push(dir);
+    const backend = new ClaudeCodeBackend(dir);
+    const daemon = new Daemon("worker", {
+      backend: "claude-code",
+      working_directory: dir,
+      restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
+      context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
+      log_level: "silent",
+    } as any, dir, true, backend, undefined, logger) as AnyDaemon;
+    let pane = IDLE_PANE;
+    daemon.tmux = { capturePane: vi.fn(async () => pane) };
+    daemon.deliverMessage = vi.fn(async () => true);
+    daemon.deliverDaemonReply = vi.fn(async () => true);
+    daemon.mcpServerAlive = vi.fn(() => ({ alive: true, source: "connection" }));
+    daemon.ipcServer = { broadcast: vi.fn(), send: vi.fn(() => true) };
+    daemon.instanceStateMonitorActive = true;
+    daemon.instanceStateMachine = new PaneStateMachine(backend.getReadyPattern(), 600_000, Date.now(), backend.getBusyPattern());
+    return {
+      daemon,
+      setPane(next: string) { pane = next; },
+      async capture() {
+        await daemon.captureAndEvaluateInstanceState("test_capture", daemon.instanceStateLastOutputAt);
+        await daemon.pasteLock;
+      },
+    };
+  }
+
+  it("a blocking dialog dissolves the pending window; idle re-accumulates after it clears (P2-2)", async () => {
+    vi.useFakeTimers();
+    const h = blockingDialogHarness();
+    const daemon = h.daemon;
+    const detected = vi.fn();
+    daemon.on("reply_drop_detected", detected);
+    daemon.markTurnStarted(meta(), "[user] do the task\nreply marker");
+    daemon.applyInstanceStateSnapshot(working(), "spinner…");
+    daemon.applyInstanceStateSnapshot(idle(), IDLE_PANE);
+    expect(detected).not.toHaveBeenCalled();
+
+    // Stdin is owned mid-window, through the true update/capture path.
+    h.setPane(DIALOG_PANE);
+    await vi.advanceTimersByTimeAsync(30_000);
+    await h.capture();
+    expect(daemon.isInputBlocked()).toBe(true);
+
+    // Past the ORIGINAL window: no recovery on pre-dialog idle time.
+    await vi.advanceTimersByTimeAsync(40_000);
+    await h.capture();
+    await daemon.pasteLock;
+    expect(detected).not.toHaveBeenCalled();
+
+    // The dialog clears: silence re-accumulates a FULL new window...
+    h.setPane(IDLE_PANE);
+    await h.capture();
+    expect(daemon.isInputBlocked()).toBe(false);
+    expect(detected).not.toHaveBeenCalled();
+    // ...which still recovers a genuine miss when it elapses.
+    await vi.advanceTimersByTimeAsync(61_000);
+    await h.capture();
+    await daemon.pasteLock;
+    expect(detected).toHaveBeenCalledWith(expect.objectContaining({
+      reason: "no_valid_call",
+      recoveryStarted: true,
+    }));
+    expect(daemon.turnReplyGuard.snapshot()?.phase).toBe("recovering");
+  });
+
   function replyDelivered(daemon: AnyDaemon, requestId: number) {
     const socket = new EventEmitter() as any;
     daemon.socketSessionNames.set(socket, "worker");
@@ -523,6 +608,55 @@ describe("reply guard false idle edge (#1241)", () => {
     expect(daemon.deliverDaemonReply).not.toHaveBeenCalled();
     expect(daemon.deliverMessage).not.toHaveBeenCalled();
     expect(daemon.turnReplyGuard.snapshot()).toBeNull();
+  });
+
+  it("recovers a genuine miss whose only work landed before the paste confirmed (P2-1)", async () => {
+    // The held writer: this delivery's output arrives while the paste is
+    // still unconfirmed, i.e. before markTurnStarted arms the guard. That
+    // activity must survive the arm — no post-arm busy is fabricated here.
+    vi.useFakeTimers();
+    const daemon = makeDaemon();
+    const detected = vi.fn();
+    daemon.on("reply_drop_detected", detected);
+    let releasePaste!: (ok: boolean) => void;
+    daemon.deliverMessage.mockImplementationOnce(() => new Promise<boolean>(resolve => { releasePaste = resolve; }));
+    daemon.pushChannelMessage("do the task", meta());
+    await vi.advanceTimersByTimeAsync(0); // let the paste reach deliverMessage
+    vi.advanceTimersByTime(100);
+    daemon.applyInstanceStateSnapshot(working(), "spinner…");
+    releasePaste(true);
+    await daemon.pasteLock; // markTurnStarted arms here, after the output
+    expect(daemon.turnReplyGuard.snapshot()).toMatchObject({ busyObserved: true });
+
+    // Genuine miss from here on: only idle, no reply.
+    daemon.applyInstanceStateSnapshot(idle(), "work finished\n❯");
+    expect(detected).not.toHaveBeenCalled();
+    await elapseConfirmWindow(daemon);
+    expect(detected).toHaveBeenCalledWith(expect.objectContaining({
+      reason: "no_valid_call",
+      recoveryStarted: true,
+    }));
+    expect(daemon.turnReplyGuard.snapshot()?.phase).toBe("recovering");
+  });
+
+  it("ignores work that predates the delivery's ingress when arming (P2-1)", async () => {
+    // Stale output from before this delivery must not satisfy the gate.
+    vi.useFakeTimers();
+    const daemon = makeDaemon();
+    const detected = vi.fn();
+    daemon.on("reply_drop_detected", detected);
+    daemon.applyInstanceStateSnapshot(working(), "older turn settling…");
+    vi.advanceTimersByTime(100);
+    daemon.pushChannelMessage("do the task", meta());
+    await daemon.pasteLock;
+    expect(daemon.turnReplyGuard.snapshot()).toMatchObject({ busyObserved: false });
+
+    daemon.applyInstanceStateSnapshot(idle(), "work finished\n❯");
+    await daemon.pasteLock;
+    expect(detected).not.toHaveBeenCalled();
+    await elapseConfirmWindow(daemon);
+    expect(detected).not.toHaveBeenCalled();
+    expect(daemon.turnReplyGuard.snapshot()?.phase).toBe("awaiting");
   });
 
   it("re-arms the confirmation on a later edge after the turn continued, still recovering a true miss", async () => {

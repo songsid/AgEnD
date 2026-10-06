@@ -63,6 +63,13 @@ export class TurnReplyGuard {
   private active: ActiveTurn | null = null;
   private generation = 0;
   /**
+   * #1241 P2-1: work observed while no turn was armed. A paste's output can
+   * land before the paste confirms and the arm runs; dropping it would hold a
+   * genuine miss forever. A fresh arm carries it over only when it postdates
+   * that delivery's ingress — anything older belongs to an earlier turn.
+   */
+  private pendingActivityAt = 0;
+  /**
    * Fired exactly when a turn actually completes (stale generations are
    * fenced out, like the boolean result). #1209 registers a marker-clear
    * here so every completion path — not just the ones someone remembered —
@@ -70,8 +77,10 @@ export class TurnReplyGuard {
    */
   onComplete: (() => void) | undefined;
 
-  arm(target: TurnReplyTarget): number {
+  arm(target: TurnReplyTarget, ingressAt = Date.now()): number {
     if (!this.active || this.active.cancelledByUser) {
+      const carried = this.pendingActivityAt >= ingressAt ? this.pendingActivityAt : 0;
+      this.pendingActivityAt = 0;
       this.active = {
         generation: ++this.generation,
         phase: "awaiting",
@@ -82,11 +91,15 @@ export class TurnReplyGuard {
         replyDeliveredAt: 0,
         completionDeliveredAt: 0,
         outboundDeliveredAt: 0,
-        busyObservedAt: 0,
+        busyObservedAt: carried,
       };
       return this.active.generation;
     }
 
+    if (this.pendingActivityAt >= ingressAt) {
+      this.active.busyObservedAt = Math.max(this.active.busyObservedAt, this.pendingActivityAt);
+    }
+    this.pendingActivityAt = 0;
     this.active.latestObligation++;
     this.active.target = target;
     return this.active.generation;
@@ -95,11 +108,13 @@ export class TurnReplyGuard {
   /**
    * #1241: record that the CLI was observably working during the active turn.
    * The daemon calls this for every non-idle execution snapshot. A fresh
-   * generation starts unobserved; an obligation bump keeps the flag, since
-   * work for the earlier obligation belongs to the same turn.
+   * generation starts unobserved (apart from carried pre-arm evidence, see
+   * arm); an obligation bump keeps the flag, since work for the earlier
+   * obligation belongs to the same turn.
    */
   noteTurnActivity(): void {
     if (this.active) this.active.busyObservedAt = Date.now();
+    else this.pendingActivityAt = Date.now();
   }
 
   /** Keep outstanding adapter acknowledgments valid until this turn finishes. */
@@ -164,5 +179,6 @@ export class TurnReplyGuard {
 
   reset(): void {
     this.active = null;
+    this.pendingActivityAt = 0;
   }
 }

@@ -273,6 +273,23 @@ describe("#1199 real fleet cancel → real Daemon → idle", () => {
     expectQuiet(h);
   });
 
+  it("the window's own deadline drives a fresh capture with no further snapshots (P3)", async () => {
+    // Monitor ticks may be a full sweep apart: without its own wake-up the
+    // real delay could approach two windows. The deadline fires its own
+    // generation-fenced capture — no explicit re-capture is issued here.
+    const h = harness();
+    await h.inbound();
+    await h.idle();
+    expect(h.detected).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(61_000);
+    await h.daemon.pasteLock;
+    expect(h.detected).toHaveBeenCalledWith(expect.objectContaining({
+      reason: "no_valid_call",
+      recoveryStarted: true,
+    }));
+    expect(prompts(h)).toHaveLength(1);
+  });
+
   it("a cancelled old reply settles normally without cancelling or fulfilling the new turn", async () => {
     const h = harness();
     await h.inbound();
