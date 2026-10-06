@@ -16,12 +16,16 @@ export function usageResetText(resetsAt?: string | null): string {
   return t("usage.reset.in", usageDuration(remainingMs));
 }
 
-/** "⏳ Next reset: 5h 12m" for a provider's nearest reset (#1232); "" when there is none still ahead. */
-export function usageNextResetText(nextResetAt?: string | null): string {
-  if (!nextResetAt) return "";
-  const remainingMs = new Date(nextResetAt).getTime() - Date.now();
+/**
+ * "🎫 Nearest expiry: 10/22 (in 15d 4h)" — when the soonest of a metric's tickets expires (#1244); "" when none is
+ * still ahead. An expiry, never a reset: the ticket is gone, nothing refills.
+ */
+export function usageExpiryText(expiresAt?: string | null): string {
+  if (!expiresAt) return "";
+  const at = new Date(expiresAt);
+  const remainingMs = at.getTime() - Date.now();
   if (!(remainingMs > 0)) return "";
-  return t("usage.next_reset", usageDuration(remainingMs));
+  return t("usage.ticket_expiry", `${at.getMonth() + 1}/${at.getDate()}`, usageDuration(remainingMs));
 }
 
 /** "2d 3h" from two days, "5h 12m" from an hour, "7m" below that — minute precision, rounded up. */
