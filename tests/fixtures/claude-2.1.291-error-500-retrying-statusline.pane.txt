@@ -1,0 +1,50 @@
+
+ ▐▛███▛█   Claude Code v2.1.291
+▝▜██████▀  Opus 5.5 · API Usage Billing
+ ▝▝   ▝▝   /home/user/project
+
+
+❯ /clear
+
+❯ [user:alice via telegram, id:1] E429 please/clear
+  ⎿  Interrupted · What should Claude do instead?
+
+❯ [user:alice via telegram, id:1] E500 please
+
+❯ /clear
+
+❯ [user:alice via telegram, id:1] E401 please
+  ctrl+x ctrl+s to send now
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+✻ 500 mock api_error · Retrying in 7s · attempt 5/10
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ Press up to edit queued messages
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ok
+  ⏵⏵ bypass permissions on · 1 shell · ← for agents
