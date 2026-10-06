@@ -82,6 +82,7 @@
 - **[行為變更] dashboard 現在會拒絕 `Host` 不認得的請求。** health/dashboard server 雖然只綁 127.0.0.1，但這擋不住 DNS rebinding：網頁可以把自己的網域解析到 127.0.0.1，再用 script 讀取不需要 cookie 的路由，包含 `/view` 的即時終端畫面（`/api/pane/*`）。這種網頁唯一改不了的是瀏覽器送出的 `Host`，所以所有路由（含 `/health`、`/agent`）現在只有在 `Host` 是 `localhost`、`127.0.0.1`、`[::1]`、fleet 的 `hostname:`，或新增的 `web.allowed_hosts` 列出的名稱時才回應，其餘一律 403（不比對 port）。**如果你是透過反向代理或 port forward、且它呈現的是別的名稱，請把該名稱加進 `web.allowed_hosts`**；每個被拒的名稱第一次出現時，`fleet.log` 會記一行並附上這個提示。CLI、`agend web`、`/dashboard` 與內部呼叫都用 loopback 名稱，不受影響。
 
 ### 新增 (Added)
+- **Codex capacity 偵測硬化：不怕 glyph 換、不吃 scrollback（#1215）。** capacity 那行必須是 live transcript item（composer 上方最後一則、之後沒有更新的）——arm 跟 accept 都檢查；引用或 scrollback 只通知使用者、不注入。capacity pattern 不再接受 box-drawing chrome（`│ …` popup／表格列也是 `So`）；quota、rate-limit、auth 共用一個 `CODEX_STATUS_GLYPH` 常數，下次 glyph 再變不會像 #1208 那樣靜默壞掉；occurrence counting 合成同一個。nudge 改說「沒做完才繼續」。pane 仍是 capacity 權威；session-store seam 仍只觀測。
 - **被打斷的回合在 CLI 自己沒接手時會跨重啟續接（#1209）。** channel 回合 armed 時 daemon 寫一次性 `in-flight-turn.json`
   marker（含 TurnFingerprint checkpoint）；重啟後還留著的，by construction 就是被打斷的回合。開機＋CLI spawn 後純 gate 只判一次：
   crash-loop 開機保持乾淨（#835）、取消過的不續（cancel 會刪 marker，#1199）、durable outbox 還在處理的投遞留給那條路、seam verdict
