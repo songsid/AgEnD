@@ -11,7 +11,7 @@
 - **Web 聊天：Markdown、多行輸入、重新整理不再清空。** 儀表板聊天的訊息現在會渲染 Markdown（粗體、斜體、`code`、程式碼區塊、清單、引用、連結——只接受 http/https/mailto、在新分頁開啟），
   而訊息內容無法產生任何自己的標記（先跳脫整段文字再套格式）。輸入框可多行（Enter 送出、Shift+Enter 換行），送出失敗會把文字還給你。重新整理不再清空聊天：fleet 會保留每個 instance 最近的訊息
   （`GET /ui/history`，存在記憶體、有上限），SSE 斷線重連時會補送漏掉的訊息。Agent 的長回覆在 web 聊天中不再於 2,000 字截斷（現在 16,000）。
-- **Web 聊天：可以傳檔案與圖片，也看得到 agent 回傳的檔案。** 輸入框有 📎 按鈕，也可以把檔案貼上或拖進聊天區（每則訊息最多 5 個、每個 10 MB、合計 25 MB；PNG、JPEG、GIF、WebP、PDF 與文字檔）。Agent 收到的方式和 Telegram 完全相同——檔案放在該 instance 工作區的 inbox、一行 `[📷 Image: …]` / `[📎 File: … → …]`，以及 `image_path` / `attachment_path`；agent 在回覆裡附的檔案也會顯示在 web 聊天中（圖片直接顯示，其他是下載連結）。檔案型別由內容判斷，不看檔名或瀏覽器的說法；存檔名由 fleet 決定；而且只能用 fleet 發出的 id 取回檔案（`/ui/file/<id>`），絕不能用路徑。四種圖片以外的檔案一律以下載方式提供，不會在頁面上渲染。
+- **Web 聊天：可以傳檔案與圖片，也看得到 agent 回傳的檔案。** 輸入框有 📎 按鈕，也可以把檔案貼上或拖進聊天區（每則訊息最多 5 個、每個 10 MB、合計 25 MB；PNG、JPEG、GIF、WebP、PDF 與文字檔）。Agent 收到的方式和 Telegram 完全相同——檔案放在該 instance 工作區的 inbox、一行 `[📷 Image: …]` / `[📎 File: … → …]`，以及 `image_path` / `attachment_path`；agent 在回覆裡附的檔案也會顯示在 web 聊天中（圖片直接顯示，其他是下載連結）。檔案型別由內容判斷，不看檔名或瀏覽器的說法；存檔名由 fleet 決定；而且只能用 fleet 發出的 id 取回檔案（`/ui/file/<id>`），絕不能用路徑。四種圖片以外的檔案一律以下載方式提供，不會在頁面上渲染。附加了但 30 分鐘內沒送出的檔案會被刪除。
 
 ### 安全 (Security)
 - **三個網頁面板共用同一條導覽列與 Session 選單，`/` 直接開 dashboard。** `/ui`、`/view`、`/settings` 都有相同的「Dashboard · View · Settings」連結與 Session 按鈕：顯示目前以哪個瀏覽器登入、session 何時結束、其他已登入的裝置（各自可登出）以及「全部登出」。只是一支小 script 與樣式表（`/assets/shell.js`、`/assets/shell.css`），不是重寫面板。
