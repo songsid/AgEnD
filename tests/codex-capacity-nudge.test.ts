@@ -10,7 +10,7 @@ import { setLocale } from "../src/locale.js";
 
 /**
  * Codex "Selected model is at capacity" (#905): the user is told, and about a minute later the daemon tells the agent to
- * keep going — once per episode, only into a screen that has not changed, never into a stopped / paused / busy instance.
+ * bounded continuation — once per episode, only into a screen that has not changed, never into a stopped / paused / busy instance.
  * The tmux is a stub serving a scripted pane; the daemon's own pane write is a spy. Nothing here starts Codex, a fleet or
  * a tmux server.
  */
@@ -83,9 +83,9 @@ describe("the daemon's continue nudge", () => {
     await poll(50_000);
     expect(sent).toEqual([]);                               // not before it is due
     await poll(10_000);
-    expect(sent).toEqual(["keep going"]);
+    expect(sent).toEqual(["Continue only if the last request is unfinished; if it is done, reply that it is done."]);
     await poll(300_000);
-    expect(sent).toEqual(["keep going"]);                   // once per episode — not once per poll
+    expect(sent).toEqual(["Continue only if the last request is unfinished; if it is done, reply that it is done."]);                   // once per episode — not once per poll
     stop();
   });
 
@@ -100,7 +100,7 @@ describe("the daemon's continue nudge", () => {
     expect(errors).toHaveLength(1);
     expect(errors[0]).toMatchObject({ type: "model_error", action: "nudge_continue" });
     await poll(60_000);
-    expect(sent).toEqual(["keep going"]);
+    expect(sent).toEqual(["Continue only if the last request is unfinished; if it is done, reply that it is done."]);
     stop();
   });
 
@@ -108,7 +108,7 @@ describe("the daemon's continue nudge", () => {
     setLocale("zh-TW");
     const { sent, poll, stop } = rig();
     await poll(70_000);
-    expect(sent).toEqual(["繼續"]);
+    expect(sent).toEqual(["只有上一個請求還沒做完才繼續；如果已經做完，就回覆說已完成。"]);
     stop();
   });
 
@@ -116,11 +116,28 @@ describe("the daemon's continue nudge", () => {
     const { screen, sent, errors, poll, stop } = rig();
     await poll(70_000);
     expect(sent).toHaveLength(1);
-    screen.text = `• earlier answer\n\n${CAPACITY}\n\n› keep going\n${CAPACITY}\n\n› Ask Codex to do anything\n  Context 100% left`;   // it failed again
+    screen.text = `• earlier answer\n\n${CAPACITY}\n\n› typed draft\n${CAPACITY}\n\n› Ask Codex to do anything\n  Context 100% left`;   // it failed again
     await poll(5_100);
     expect(errors).toHaveLength(2);                         // skipCooldown: seen at once, not after 5 minutes
     await poll(60_000);
     expect(sent).toHaveLength(2);
+    stop();
+  });
+
+  it("a capacity row that is not the live item still notifies, but never arms a nudge (#1215)", async () => {
+    // The row matches (whole-pane count fires the user-facing error) but a
+    // transcript echo below the composer disowns it: arm itself refuses, so
+    // nothing is ever injected no matter how long the screen sits.
+    const row = CAPACITY.replace("⚠", "■");
+    const { d, errors, sent, poll, stop } = rig({
+      start: `${row}\n\n› Ask Codex to do anything\n• transcript echo below the composer\n  Context 100% left`,
+    });
+    await poll(5_100);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ type: "model_error", action: "nudge_continue" });
+    expect(d.armCapacityNudge(errors[0].pattern, 60_000)).toBe(false);
+    await poll(70_000);
+    expect(sent).toEqual([]);
     stop();
   });
 
@@ -264,6 +281,26 @@ describe("the daemon's continue nudge", () => {
       r.stop();
     });
 
+    it("a byte-identical pane whose row is not live is still refused (#1215)", async () => {
+      // Forged nudge, all fences green, and the stub screen serves the forged
+      // pane so the byte-identical AND idle clauses pass (probed live): only
+      // the accept's live-row clause can refuse this. (Live panes injecting
+      // is already proven by the "sent once" tests above.)
+      const r = rig();
+      const pattern = new CodexBackend(join(dir, "inst")).getErrorPatterns()
+        .find(p => p.action === "nudge_continue")!.pattern;
+      const quoted = "• you asked about Selected model is at capacity. Please try a different model. huh"
+        + "\n\n• yes, then continued\n\nWorked for 14s\n\n› Ask Codex to do anything\n  Context 100% left";
+      expect(r.d.paneAuthoritativelyIdle(quoted)).toBe(true);
+      r.screen.text = quoted;
+      await r.d.sendCapacityNudge({
+        pane: quoted, pattern, spawn: r.d.spawnGeneration, fence: r.d.launchFenceEpoch,
+        epoch: r.d.deliveryEpoch, dueAt: 0,
+      });
+      expect(r.sent).toEqual([]);
+      r.stop();
+    });
+
     it("a stop while it waited for the lock", async () => {
       const r = rig();
       await r.poll(5_100);
@@ -319,8 +356,8 @@ describe("the daemon's continue nudge", () => {
       const lock = await waitingForLock(r);
       await lock.release(); await r.poll(1_000);
       expect(r.d.submitSystemPaste).toHaveBeenCalledTimes(1);
-      expect(r.d.submitSystemPaste).toHaveBeenCalledWith("keep going", "capacity-continue", expect.objectContaining({ current: expect.any(Function), accept: expect.any(Function) }));
-      expect(r.sent).toEqual(["keep going"]);
+      expect(r.d.submitSystemPaste).toHaveBeenCalledWith("Continue only if the last request is unfinished; if it is done, reply that it is done.", "capacity-continue", expect.objectContaining({ current: expect.any(Function), accept: expect.any(Function) }));
+      expect(r.sent).toEqual(["Continue only if the last request is unfinished; if it is done, reply that it is done."]);
       expect(r.enters.count).toBe(1);
       r.stop();
     });
@@ -367,7 +404,7 @@ describe("the daemon's continue nudge", () => {
 
     it.each(interruptions)("%s during the pause between the paste and the Enter: no key", async (_name, interrupt) => {
       const r = await dueWith(() => {}, 1_200);
-      expect(r.sent).toEqual(["keep going"]);               // pasted…
+      expect(r.sent).toEqual(["Continue only if the last request is unfinished; if it is done, reply that it is done."]);               // pasted…
       expect(r.enters.count).toBe(0);                       // …Enter not yet (settling)
       interrupt(r.d);
       await r.poll(10_000);
@@ -388,7 +425,7 @@ describe("the daemon's continue nudge", () => {
       const r = await dueWith(x => { holdAt = x.screen.reads + 2; x.screen.holdRead = holdAt; });
       r.screen.release?.();
       await r.poll(700);                                     // the paste and the Enter (after its 500 ms settle) complete; no poll is due yet
-      expect(r.sent).toEqual(["keep going"]);
+      expect(r.sent).toEqual(["Continue only if the last request is unfinished; if it is done, reply that it is done."]);
       expect(r.enters.count).toBe(1);
       expect(r.screen.reads).toBe(holdAt);                   // the primitive's capture was the only picture it took
     });
@@ -423,7 +460,7 @@ describe("the daemon's continue nudge", () => {
     it("an untouched nudge writes the paste and the Enter, once each", async () => {
       const r = await dueWith(() => {});
       await r.poll(10_000);
-      expect(r.sent).toEqual(["keep going"]);
+      expect(r.sent).toEqual(["Continue only if the last request is unfinished; if it is done, reply that it is done."]);
       expect(r.enters.count).toBe(1);
     });
   });
@@ -434,7 +471,7 @@ describe("the daemon's continue nudge", () => {
       await poll(5_100);
       vi.setSystemTime(Date.now() - 3_600_000);
       await poll(60_000);
-      expect(sent).toEqual(["keep going"]);
+      expect(sent).toEqual(["Continue only if the last request is unfinished; if it is done, reply that it is done."]);
       stop();
     });
 
@@ -445,7 +482,7 @@ describe("the daemon's continue nudge", () => {
       await poll(30_000);
       expect(sent).toEqual([]);
       await poll(35_000);
-      expect(sent).toEqual(["keep going"]);
+      expect(sent).toEqual(["Continue only if the last request is unfinished; if it is done, reply that it is done."]);
       stop();
     });
   });
@@ -524,7 +561,7 @@ describe("scrollback from a resumed session is history, not a new capacity error
     await poll(5_100);
     expect(errors.length).toBeGreaterThanOrEqual(1);
     await poll(60_000);
-    expect(sent).toEqual(["keep going"]);
+    expect(sent).toEqual(["Continue only if the last request is unfinished; if it is done, reply that it is done."]);
     stop();
   });
 
@@ -535,7 +572,7 @@ describe("scrollback from a resumed session is history, not a new capacity error
     await poll(5_100);
     screen.text = PANE;                                    // a new failure
     await poll(65_000);
-    expect(sent).toEqual(["keep going"]);
+    expect(sent).toEqual(["Continue only if the last request is unfinished; if it is done, reply that it is done."]);
     stop();
   });
 

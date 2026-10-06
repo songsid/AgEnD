@@ -60,6 +60,7 @@ import {
   type ResumeBackend,
 } from "./turn-resume.js";
 import type { TurnFingerprint } from "./backend/session-signals.js";
+import { codexLiveRowMatches } from "./backend/codex.js";
 import { InteractionObservation, INTERACTION_CONFIRM_MS, sameInteractionOwner, type InteractionEvidence } from "./interaction-observation.js";
 import type { InteractionOwner, InteractionSnapshot } from "./backend/types.js";
 
@@ -1295,7 +1296,7 @@ export class Daemon extends EventEmitter {
    * resumed session whose scrollback holds an old capacity line must not be told to "keep going" for it (#949).
    */
   private nudgeBaselines: Map<string, number> | null = null;
-  private capacityNudge: { pane: string; spawn: number; fence: number; epoch: number; dueAt: number } | null = null;
+  private capacityNudge: { pane: string; pattern: RegExp; spawn: number; fence: number; epoch: number; dueAt: number } | null = null;
   /** Current stdin-owning runtime dialog, independent from execution state. */
   private inputBlockedDialogKey: string | null = null;
   private readonly interactionObservation = new InteractionObservation();
@@ -3403,12 +3404,9 @@ export class Daemon extends EventEmitter {
     busyPattern: RegExp | null = null,
   ): void {
     // Count occurrences across the WHOLE pane (not just text after the last
-    // ready prompt). Clone with `g` so stateful backend regexes cannot leak
-    // lastIndex between monitor cycles.
-    const countMatches = (pattern: RegExp): number => {
-      const flags = pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g";
-      return (pane.match(new RegExp(pattern.source, flags)) || []).length;
-    };
+    // ready prompt). One shared counter (the static below): arm requires
+    // count > baseline, so a drifted clone here would silently gate nudges.
+    const countMatches = (pattern: RegExp): number => Daemon.countOccurrences(pattern, pane);
     // Same veto as the state machine: a backend whose ready marker is permanently
     // on screen would otherwise "recover" on the very first tick after the error,
     // rebaselining the occurrence count while the error is still displayed — one
@@ -6598,8 +6596,11 @@ export class Daemon extends EventEmitter {
     // it is scrollback from a resumed session.
     const baseline = this.nudgeBaselines?.get(episode.key);
     if (baseline === undefined || Daemon.countOccurrences(pattern, episode.pane) <= baseline) return false;
+    // And only when the row is the live item, not a quotation or scrollback above a newer turn. (Never a regex
+    // lookahead on the counting pattern: whole-pane dedup would max at 1 and miss later hits. See #1215.)
+    if (!codexLiveRowMatches(episode.pane, pattern)) return false;
     this.capacityNudge = {
-      pane: episode.pane, spawn: episode.spawn, fence: episode.fence,
+      pane: episode.pane, pattern, spawn: episode.spawn, fence: episode.fence,
       epoch: this.deliveryEpoch, dueAt: performance.now() + delayMs,
     };
     this.logger.info({ delayMs }, "Model-capacity nudge armed");
@@ -6669,7 +6670,8 @@ export class Daemon extends EventEmitter {
       // vouching for the first — "same screen" here, "idle" there — would let a half-typed draft through.)
       const sent = await this.submitSystemPaste(t("inst.codex_capacity_nudge_text"), "capacity-continue", {
         current,
-        accept: pane => pane === nudge.pane && this.paneAuthoritativelyIdle(pane),
+        accept: pane => pane === nudge.pane && this.paneAuthoritativelyIdle(pane)
+          && codexLiveRowMatches(pane, nudge.pattern),
       });
       this.logger.info({ sent }, "Model-capacity nudge attempted");
     });

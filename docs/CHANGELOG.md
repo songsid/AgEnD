@@ -280,6 +280,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   are unaffected.
 
 ### Added
+- **Codex capacity detection hardened against glyph changes and scrollback (#1215).** The capacity row must be the
+  live transcript item (last item above the composer, nothing newer) both when the "keep going" nudge is armed and
+  when it is accepted — a quotation or scrollback line still notifies the user but never injects. The capacity
+  pattern no longer accepts box-drawing chrome (`│ …` popup/table rows are `So` too); quota, rate-limit and auth
+  patterns share one `CODEX_STATUS_GLYPH` constant so the next glyph change cannot break them the way #1208 broke
+  capacity, and occurrence counting is unified into one counter. The nudge now says to continue only if the last
+  request is unfinished. Pane stays the capacity authority; the session-store seam stays observation-only.
 - **Interrupted turns resume across restarts when the CLI itself stayed idle (#1209).** When a channel turn is
   armed, the daemon writes a one-shot `in-flight-turn.json` marker (with a TurnFingerprint checkpoint); whatever
   survives a restart is, by construction, an interrupted turn. After boot and CLI spawn, a pure gate decides once:
