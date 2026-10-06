@@ -27,11 +27,12 @@
  */
 
 import { closeSync, existsSync, openSync, readdirSync, readFileSync, readSync, realpathSync, statSync } from "node:fs";
-import { open, stat } from "node:fs/promises";
+import { stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { sharedRolloutIndex, type RolloutIndex } from "./rollout-index.js";
 import Database from "better-sqlite3";
+import { readNewLines } from "./transcript-jsonl.js";
 
 export interface ToolUseEvent { name: string; input: unknown }
 
@@ -63,21 +64,6 @@ const EMPTY: TranscriptEvents = { toolUses: [], toolResults: [], assistantTexts:
 
 function emptyEvents(): TranscriptEvents {
   return { toolUses: [], toolResults: [], assistantTexts: [] };
-}
-
-/** Shared JSONL tailer: byte-offset incremental reads of a single file. */
-async function readNewLines(path: string, fromOffset: number): Promise<{ lines: string[]; newOffset: number }> {
-  const stats = await stat(path);
-  if (stats.size <= fromOffset) return { lines: [], newOffset: fromOffset };
-  const fh = await open(path, "r");
-  try {
-    const length = stats.size - fromOffset;
-    const buffer = Buffer.alloc(length);
-    await fh.read(buffer, 0, length, fromOffset);
-    return { lines: buffer.toString("utf-8").split("\n").filter(l => l.trim()), newOffset: stats.size };
-  } finally {
-    await fh.close();
-  }
 }
 
 /* ------------------------------------------------------------------ codex */
