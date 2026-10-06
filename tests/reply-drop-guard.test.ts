@@ -58,6 +58,26 @@ function idle(observedAt = Date.now()) {
   return { state: "idle", unchangedForMs: 0, observedAt, stateChangedAt: observedAt } as any;
 }
 
+function working(observedAt = Date.now()) {
+  return { state: "working", unchangedForMs: 0, observedAt, stateChangedAt: observedAt } as any;
+}
+
+/** Feed a genuinely observed busy period, then an idle edge — the confirm flow's entry. */
+function busyThenIdleEdge(daemon: AnyDaemon, pane = "work finished\n❯") {
+  daemon.applyInstanceStateSnapshot(working(), pane);
+  daemon.applyInstanceStateSnapshot(idle(), pane);
+}
+
+/**
+ * #1241: advance past the guard's idle-confirm window and deliver one more
+ * steady idle snapshot, so a still-silent turn is evaluated as proven idle.
+ */
+async function elapseConfirmWindow(daemon: AnyDaemon, pane = "work finished\n❯") {
+  await vi.advanceTimersByTimeAsync(61_000);
+  daemon.applyInstanceStateSnapshot(idle(Date.now()), pane);
+  await daemon.pasteLock;
+}
+
 afterEach(() => {
   vi.useRealTimers();
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
@@ -129,6 +149,25 @@ describe("TurnReplyGuard", () => {
     expect(guard.beginRecovery(generation)).toBe(false);
     expect(guard.snapshot()?.phase).toBe("recovering");
   });
+
+  it("tracks work observed since the arm; a fresh generation starts unobserved (#1241)", () => {
+    const guard = new TurnReplyGuard();
+    guard.arm({ chatId: "c" });
+    expect(guard.snapshot()).toMatchObject({ busyObserved: false, lastBusyAt: 0 });
+    guard.noteTurnActivity();
+    expect(guard.snapshot()).toMatchObject({ busyObserved: true });
+    expect(guard.snapshot()?.lastBusyAt).toBeGreaterThan(0);
+
+    // An obligation bump keeps the flag — same turn, same generation.
+    guard.arm({ chatId: "c", messageId: "m2" });
+    expect(guard.snapshot()).toMatchObject({ busyObserved: true });
+
+    // A fresh generation (after complete) starts unobserved again.
+    const generation = guard.snapshot()!.generation;
+    guard.complete(generation);
+    guard.arm({ chatId: "c" });
+    expect(guard.snapshot()).toMatchObject({ busyObserved: false, lastBusyAt: 0 });
+  });
 });
 
 describe("Claude human-turn reply completion harness", () => {
@@ -172,16 +211,20 @@ describe("Claude human-turn reply completion harness", () => {
     });
   });
 
-  it("reports a zero-reply turn immediately and queues exactly one recovery prompt", async () => {
+  it("reports a zero-reply turn once idle persists and queues exactly one recovery prompt (#750, #1241)", async () => {
+    vi.useFakeTimers();
     const daemon = makeDaemon();
     const detected = vi.fn();
     daemon.on("reply_drop_detected", detected);
     daemon.markTurnStarted(meta(), "[user] do the task\nreply marker");
-    daemon.instanceState = "working";
+    busyThenIdleEdge(daemon);
 
-    daemon.applyInstanceStateSnapshot(idle(), "work finished\n❯");
-    await daemon.pasteLock;
+    // The first edge only arms the confirmation window — no recovery yet.
+    expect(detected).not.toHaveBeenCalled();
+    expect(daemon.deliverMessage).not.toHaveBeenCalled();
+    expect(daemon.turnReplyGuard.snapshot()?.phase).toBe("awaiting");
 
+    await elapseConfirmWindow(daemon);
     expect(detected).toHaveBeenCalledWith(expect.objectContaining({
       name: "worker",
       correlationId: "cid-1",
@@ -196,6 +239,7 @@ describe("Claude human-turn reply completion harness", () => {
     expect(daemon.deliverMessage).toHaveBeenCalledTimes(1);
     expect(daemon.deliverMessage.mock.calls[0][0]).toContain("React with an emoji or use the reply tool");
     expect(daemon.deliverMessage.mock.calls[0][0]).not.toMatch(/👍|✅|👀|⏳|❌/); // no specific emoji
+    expect(daemon.deliverMessage.mock.calls[0][0]).toContain("already replied"); // idempotent (#1241)
     expect(daemon.turnReplyGuard.snapshot()?.phase).toBe("recovering");
   });
 
@@ -203,11 +247,11 @@ describe("Claude human-turn reply completion harness", () => {
     // Mutation guard: if the prompt is reverted to "Use the reply tool exactly once"
     // (no react option), this test fails. Also guards against accidentally mentioning
     // reserved status emoji (👍✅👀⏳❌) which would steer agents toward system emoji.
+    vi.useFakeTimers();
     const daemon = makeDaemon();
     daemon.markTurnStarted(meta(), "[user] do the task\nreply marker");
-    daemon.instanceState = "working";
-    daemon.applyInstanceStateSnapshot(idle(), "work finished\n❯");
-    await daemon.pasteLock;
+    busyThenIdleEdge(daemon);
+    await elapseConfirmWindow(daemon);
     // The recovery prompt is delivered via deliverMessage — extract it.
     const prompt = daemon.deliverMessage.mock.calls[0]?.[0] as string | undefined;
     expect(prompt).toBeDefined();
@@ -249,6 +293,7 @@ describe("Claude human-turn reply completion harness", () => {
   });
 
   it("still re-prompts when a react call fails and no outbound action was delivered", async () => {
+    vi.useFakeTimers();
     const daemon = makeDaemon();
     const detected = vi.fn();
     daemon.on("reply_drop_detected", detected);
@@ -261,9 +306,8 @@ describe("Claude human-turn reply completion harness", () => {
     expect(pending).toBeDefined();
     pending![1]({ result: null, error: "adapter rejected reaction" });
 
-    daemon.instanceState = "working";
-    daemon.applyInstanceStateSnapshot(idle(), "work finished\n❯");
-    await daemon.pasteLock;
+    busyThenIdleEdge(daemon);
+    await elapseConfirmWindow(daemon);
 
     expect(detected).toHaveBeenCalledWith(expect.objectContaining({ reason: "no_valid_call", recoveryStarted: true }));
     expect(daemon.deliverMessage).toHaveBeenCalledTimes(1);
@@ -271,6 +315,7 @@ describe("Claude human-turn reply completion harness", () => {
   });
 
   it("still re-prompts when only a non-human-facing outbound succeeded", async () => {
+    vi.useFakeTimers();
     const daemon = makeDaemon();
     const detected = vi.fn();
     daemon.on("reply_drop_detected", detected);
@@ -288,9 +333,8 @@ describe("Claude human-turn reply completion harness", () => {
     pending![1]({ result: { sent: true } });
     expect(daemon.turnReplyGuard.snapshot()).toMatchObject({ outboundDelivered: true, completionDelivered: false });
 
-    daemon.instanceState = "working";
-    daemon.applyInstanceStateSnapshot(idle(), "work finished\n❯");
-    await daemon.pasteLock;
+    busyThenIdleEdge(daemon);
+    await elapseConfirmWindow(daemon);
 
     expect(detected).toHaveBeenCalledWith(expect.objectContaining({ reason: "no_valid_call", recoveryStarted: true }));
   });
@@ -316,13 +360,13 @@ describe("Claude human-turn reply completion harness", () => {
   });
 
   it("a successful reply in the recovery turn closes the incident", async () => {
+    vi.useFakeTimers();
     const daemon = makeDaemon();
     const recovered = vi.fn();
     daemon.on("reply_drop_recovered", recovered);
     daemon.markTurnStarted(meta(), "[user] do the task\nreply marker");
-    daemon.instanceState = "working";
-    daemon.applyInstanceStateSnapshot(idle(), "work finished\n❯");
-    await daemon.pasteLock;
+    busyThenIdleEdge(daemon);
+    await elapseConfirmWindow(daemon);
 
     const socket = new EventEmitter() as any;
     daemon.socketSessionNames.set(socket, "worker");
@@ -338,13 +382,13 @@ describe("Claude human-turn reply completion harness", () => {
   });
 
   it("does not create a third turn when the one recovery turn is also silent", async () => {
+    vi.useFakeTimers();
     const daemon = makeDaemon();
     const unrecovered = vi.fn();
     daemon.on("reply_drop_unrecovered", unrecovered);
     daemon.markTurnStarted(meta(), "[user] do the task\nreply marker");
-    daemon.instanceState = "working";
-    daemon.applyInstanceStateSnapshot(idle(), "work finished\n❯");
-    await daemon.pasteLock;
+    busyThenIdleEdge(daemon);
+    await elapseConfirmWindow(daemon);
 
     daemon.instanceState = "working";
     daemon.applyInstanceStateSnapshot(idle(Date.now() + 1), "still no reply\n❯");
@@ -407,5 +451,102 @@ describe("Claude human-turn reply completion harness", () => {
     expect(daemon.deliverDaemonReply).not.toHaveBeenCalled();
     expect(daemon.deliverMessage).not.toHaveBeenCalled();
     expect(daemon.turnReplyGuard.snapshot()).not.toBeNull();
+  });
+});
+
+describe("reply guard false idle edge (#1241)", () => {
+  function replyDelivered(daemon: AnyDaemon, requestId: number) {
+    const socket = new EventEmitter() as any;
+    daemon.socketSessionNames.set(socket, "worker");
+    daemon.handleToolCall({ tool: "reply", args: { text: "done" }, requestId }, socket);
+    const pending = [...daemon.pendingIpcRequests.entries()].find(([key]: [string]) => key.startsWith("tool_"));
+    expect(pending).toBeDefined();
+    pending![1]({ result: { messageId: "sent-1" } });
+  }
+
+  it("holds on an idle edge with no work observed since the arm — even past the window", async () => {
+    // Case 2 shape (+7s): a stale working state with no observed busy
+    // snapshot behind it. The turn stays armed for its real end.
+    vi.useFakeTimers();
+    const daemon = makeDaemon();
+    const detected = vi.fn();
+    const unrecovered = vi.fn();
+    daemon.on("reply_drop_detected", detected);
+    daemon.on("reply_drop_unrecovered", unrecovered);
+    daemon.markTurnStarted(meta(), "[user] do the task\nreply marker");
+
+    daemon.instanceState = "working";
+    daemon.applyInstanceStateSnapshot(idle(), "❯");
+    await daemon.pasteLock;
+    expect(detected).not.toHaveBeenCalled();
+    expect(daemon.turnReplyGuard.snapshot()?.phase).toBe("awaiting");
+
+    // Case 1's +2s second edge must not end anything while still awaiting.
+    await vi.advanceTimersByTimeAsync(2_000);
+    daemon.instanceState = "working";
+    daemon.applyInstanceStateSnapshot(idle(Date.now()), "❯");
+    expect(unrecovered).not.toHaveBeenCalled();
+    expect(daemon.turnReplyGuard.snapshot()).not.toBeNull();
+
+    // Past the confirm window with still no observed work: still held.
+    await vi.advanceTimersByTimeAsync(61_000);
+    daemon.applyInstanceStateSnapshot(idle(Date.now()), "❯");
+    await daemon.pasteLock;
+    expect(detected).not.toHaveBeenCalled();
+
+    // The agent's late first reply lands; the turn completes with no recovery.
+    replyDelivered(daemon, 7);
+    daemon.instanceState = "working";
+    daemon.applyInstanceStateSnapshot(idle(Date.now()), "done\n❯");
+    expect(detected).not.toHaveBeenCalled();
+    expect(daemon.deliverMessage).not.toHaveBeenCalled();
+    expect(daemon.turnReplyGuard.snapshot()).toBeNull();
+  });
+
+  it("holds recovery across the window while the turn continues, then completes on the late reply", async () => {
+    // Case 1 shape: edge at +22s, first reply at +49s, no recovery in between.
+    vi.useFakeTimers();
+    const daemon = makeDaemon();
+    const detected = vi.fn();
+    daemon.on("reply_drop_detected", detected);
+    daemon.markTurnStarted(meta(), "[user] do the task\nreply marker");
+    busyThenIdleEdge(daemon);
+    expect(detected).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(22_000);
+    daemon.applyInstanceStateSnapshot(working(Date.now()), "still thinking…");
+    await vi.advanceTimersByTimeAsync(27_000);
+    replyDelivered(daemon, 8);
+    daemon.applyInstanceStateSnapshot(idle(Date.now()), "done\n❯");
+
+    expect(detected).not.toHaveBeenCalled();
+    expect(daemon.deliverDaemonReply).not.toHaveBeenCalled();
+    expect(daemon.deliverMessage).not.toHaveBeenCalled();
+    expect(daemon.turnReplyGuard.snapshot()).toBeNull();
+  });
+
+  it("re-arms the confirmation on a later edge after the turn continued, still recovering a true miss", async () => {
+    vi.useFakeTimers();
+    const daemon = makeDaemon();
+    const detected = vi.fn();
+    daemon.on("reply_drop_detected", detected);
+    daemon.markTurnStarted(meta(), "[user] do the task\nreply marker");
+    busyThenIdleEdge(daemon);
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    daemon.applyInstanceStateSnapshot(working(Date.now()), "back to work…");
+    // A fresh edge re-arms the window instead of recovering at once.
+    daemon.applyInstanceStateSnapshot(idle(Date.now()), "quiet again\n❯");
+    await daemon.pasteLock;
+    expect(detected).not.toHaveBeenCalled();
+    expect(daemon.turnReplyGuard.snapshot()?.phase).toBe("awaiting");
+
+    // Idle persists past the new window with no reply: a genuine miss recovers.
+    await elapseConfirmWindow(daemon);
+    expect(detected).toHaveBeenCalledWith(expect.objectContaining({
+      reason: "no_valid_call",
+      recoveryStarted: true,
+    }));
+    expect(daemon.turnReplyGuard.snapshot()?.phase).toBe("recovering");
   });
 });

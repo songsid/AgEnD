@@ -108,19 +108,29 @@ function harness(key: "Escape" | "C-c" = "Escape") {
   fm.lifecycle.daemons.set("worker", daemon);
   fm.clearCancelButton = vi.fn();
   fm.resolveSlashTarget = vi.fn(() => "worker");
+  async function hIdle(waitForPaste = true) {
+    pane = "READY";
+    const outputAt = Date.now();
+    daemon.instanceStateLastOutputAt = outputAt;
+    daemon.applyInstanceStateSnapshot(daemon.instanceStateMachine.recordOutput(outputAt));
+    vi.advanceTimersByTime(2_100);
+    await daemon.captureAndEvaluateInstanceState("idle_debounce", outputAt);
+    if (waitForPaste) await daemon.pasteLock;
+  }
   return {
     daemon, fm, writes, interrupts, detected, unrecovered, recovered,
     async inbound(messageId = "m1") {
       daemon.pushChannelMessage(`task ${messageId}`, meta(messageId));
       await daemon.pasteLock;
     },
-    async idle(waitForPaste = true) {
-      pane = "READY";
-      const outputAt = Date.now();
-      daemon.instanceStateLastOutputAt = outputAt;
-      daemon.applyInstanceStateSnapshot(daemon.instanceStateMachine.recordOutput(outputAt));
-      vi.advanceTimersByTime(2_100);
-      await daemon.captureAndEvaluateInstanceState("idle_debounce", outputAt);
+    idle: hIdle,
+    async idleConfirmed(waitForPaste = true) {
+      // #1241: the first edge only arms the confirmation window. Let it
+      // elapse, then re-observe the unchanged pane — no new output, so the
+      // pending confirmation still stands and a silent turn recovers.
+      await hIdle(waitForPaste);
+      vi.advanceTimersByTime(61_000);
+      await daemon.captureAndEvaluateInstanceState("idle_debounce", daemon.instanceStateLastOutputAt);
       if (waitForPaste) await daemon.pasteLock;
     },
   };
@@ -275,7 +285,7 @@ describe("#1199 real fleet cancel → real Daemon → idle", () => {
     attempt.settle({ messageId: "old-reply" });
     expect(h.daemon.ipcServer.send).toHaveBeenCalledWith(attempt.socket, expect.objectContaining({ result: { messageId: "old-reply" } }));
     expect(h.daemon.turnReplyGuard.snapshot()).toMatchObject({ generation: newGeneration, cancelledByUser: false, completionDelivered: false });
-    await h.idle();
+    await h.idleConfirmed();
     expect(h.detected).toHaveBeenCalledOnce();
     expect(prompts(h)).toHaveLength(1);
     expect(h.daemon.deliverDaemonReply).toHaveBeenCalledWith(t("inst.reply_drop_retrying"), "replydrop", "Reply-drop status", expect.objectContaining({ messageId: "m2" }), true);
@@ -326,7 +336,7 @@ describe("#1199 cancellation while awaiting recovery or ingress IO", () => {
   it("cancelling an already-running recovery turn makes its next idle intentional", async () => {
     const h = harness();
     await h.inbound();
-    await h.idle();
+    await h.idleConfirmed();
     expect(prompts(h)).toHaveLength(1);
     h.daemon.deliverDaemonReply.mockClear();
     h.fm.cancelInstance("worker");
@@ -362,7 +372,7 @@ describe("#1199 cancellation while awaiting recovery or ingress IO", () => {
     await h.inbound();
     const hold = deferred<void>();
     h.daemon.pasteLock = hold.promise;
-    await h.idle(false);
+    await h.idleConfirmed(false);
     expect(h.detected).toHaveBeenCalledOnce();
     h.daemon.deliverDaemonReply.mockClear(); // already-issued notice is not retractable
     h.fm.cancelInstance("worker");
@@ -380,7 +390,7 @@ describe("#1199 cancellation while awaiting recovery or ingress IO", () => {
     await h.inbound();
     const pending = deferred<boolean>();
     h.daemon.deliverMessage.mockImplementationOnce(() => pending.promise);
-    await h.idle(false);
+    await h.idleConfirmed(false);
     await flush();
     h.daemon.deliverDaemonReply.mockClear();
     h.fm.cancelInstance("worker");
@@ -397,7 +407,7 @@ describe("#1199 cancellation while awaiting recovery or ingress IO", () => {
     await h.inbound();
     const pending = deferred<boolean>();
     h.daemon.deliverMessage.mockImplementationOnce(() => pending.promise);
-    await h.idle(false);
+    await h.idleConfirmed(false);
     await flush();
     h.fm.cancelInstance("worker");
     // Independent steer lock may deliver new input while the old paste settles.
@@ -409,7 +419,7 @@ describe("#1199 cancellation while awaiting recovery or ingress IO", () => {
     expect(h.daemon.turnReplyGuard.snapshot()).toMatchObject({ generation: next, cancelledByUser: false, phase: "awaiting" });
     expect(h.unrecovered).not.toHaveBeenCalled();
     expect(h.daemon.deliverDaemonReply).not.toHaveBeenCalled();
-    await h.idle();
+    await h.idleConfirmed();
     expect(h.detected).toHaveBeenCalledTimes(2); // old recovery plus the genuinely unanswered new turn
     expect(prompts(h)).toHaveLength(1);
   });
@@ -429,7 +439,7 @@ describe("#1199 cancellation while awaiting recovery or ingress IO", () => {
     await h.idle();
     expectQuiet(h);
     await h.inbound("new");
-    await h.idle();
+    await h.idleConfirmed();
     expect(h.detected).toHaveBeenCalledOnce();
     expect(prompts(h)).toHaveLength(1);
   });

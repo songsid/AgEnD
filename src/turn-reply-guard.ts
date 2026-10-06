@@ -28,6 +28,15 @@ export interface TurnReplySnapshot {
   replyDelivered: boolean;
   completionDelivered: boolean;
   outboundDelivered: boolean;
+  /**
+   * #1241: whether a non-idle execution snapshot was observed after this
+   * generation armed. An idle edge with no observed work since the arm is not
+   * a turn end — the pane flickered idle while the turn never observably
+   * started (or the working state predates the arm).
+   */
+  busyObserved: boolean;
+  /** Unix timestamp of the last observed non-idle snapshot, 0 when none. */
+  lastBusyAt: number;
 }
 
 interface ActiveTurn {
@@ -40,6 +49,7 @@ interface ActiveTurn {
   replyDeliveredAt: number;
   completionDeliveredAt: number;
   outboundDeliveredAt: number;
+  busyObservedAt: number;
 }
 
 /**
@@ -72,6 +82,7 @@ export class TurnReplyGuard {
         replyDeliveredAt: 0,
         completionDeliveredAt: 0,
         outboundDeliveredAt: 0,
+        busyObservedAt: 0,
       };
       return this.active.generation;
     }
@@ -79,6 +90,16 @@ export class TurnReplyGuard {
     this.active.latestObligation++;
     this.active.target = target;
     return this.active.generation;
+  }
+
+  /**
+   * #1241: record that the CLI was observably working during the active turn.
+   * The daemon calls this for every non-idle execution snapshot. A fresh
+   * generation starts unobserved; an obligation bump keeps the flag, since
+   * work for the earlier obligation belongs to the same turn.
+   */
+  noteTurnActivity(): void {
+    if (this.active) this.active.busyObservedAt = Date.now();
   }
 
   /** Keep outstanding adapter acknowledgments valid until this turn finishes. */
@@ -120,6 +141,8 @@ export class TurnReplyGuard {
       replyDelivered: active.replyDeliveredAt >= active.latestObligation,
       completionDelivered: active.completionDeliveredAt >= active.latestObligation,
       outboundDelivered: active.outboundDeliveredAt >= active.latestObligation,
+      busyObserved: active.busyObservedAt > 0,
+      lastBusyAt: active.busyObservedAt,
     };
   }
 
