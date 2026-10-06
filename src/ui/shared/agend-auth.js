@@ -19,6 +19,12 @@
     }
   } catch { /* nothing to clean */ }
 
+  // Before U2, /view kept the fleet's web token in localStorage ("agend_web_token") and sent it with every request.
+  // It is not read any more, but the token still opens every write through X-Agend-Token: remove that one key — and
+  // nothing else of the page's preferences — on any panel this browser opens. Storage can be blocked (privacy mode,
+  // a sandboxed frame); that must not stop the rest of this script.
+  try { window.localStorage.removeItem("agend_web_token"); } catch { /* no storage, nothing stored */ }
+
   const nativeFetch = window.fetch.bind(window);
   let csrfPending = null;
 

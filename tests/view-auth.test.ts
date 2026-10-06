@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { request, type Server } from "node:http";
 import { Readable } from "node:stream";
 import { mkdtempSync, readFileSync, existsSync, rmSync, writeFileSync } from "node:fs";
@@ -10,10 +10,48 @@ import { WEB_TOKEN_INVALID_MESSAGE } from "../src/web-auth.js";
 import { validateFleetConfig } from "../src/config-validator.js";
 import { bypassesWebGate } from "../src/auth-api.js";
 import { isViewPath } from "../src/view-api.js";
-import { isUsagePath } from "../src/usage/usage-api.js";
+import { isUsagePath, setUsageFetcherForTests } from "../src/usage/usage-api.js";
+import { getTmuxSocketName } from "../src/paths.js";
+
+// This suite starts a real listener and calls /api/ai-usage, whose default fetcher reads the host's CLI logins
+// (Codex/Claude/… auth files under the real home) and calls the vendors (#1248 review). Nothing here may touch
+// either: usage comes from a fixed payload, any outbound fetch fails the test, and no child process ever starts.
+// The one child process a /view read asks for is the roster's background context scrape — `tmux -L <this run's
+// private socket> capture-pane`, a read. It is refused too (nothing runs) but expected; any other is a failure.
+const outbound = vi.hoisted(() => ({ calls: [] as string[], expectedRefusals: [] as string[], tmuxSocket: null as string | null }));
+vi.mock("node:child_process", async importOriginal => {
+  const real = await importOriginal<typeof import("node:child_process")>();
+  const refuse = (name: string) => (...args: unknown[]) => {
+    const argv = Array.isArray(args[1]) ? (args[1] as unknown[]).map(String) : [];
+    const socket = outbound.tmuxSocket;
+    const privateTmuxRead = name === "execFile" && args[0] === "tmux" && socket !== null && argv[0] === "-L" && argv[1] === socket
+      && argv[2] === "capture-pane";
+    (privateTmuxRead ? outbound.expectedRefusals : outbound.calls).push(`child_process.${name} ${String(args[0])} ${argv.join(" ")}`);
+    throw new Error(`view-auth: no child process may start (${name} ${String(args[0])})`);
+  };
+  return { ...real, spawn: refuse("spawn"), spawnSync: refuse("spawnSync"), exec: refuse("exec"), execSync: refuse("execSync"),
+    execFile: refuse("execFile"), execFileSync: refuse("execFileSync"), fork: refuse("fork") };
+});
+const USAGE_FIXTURE = { fetchedAt: "2026-10-06T00:00:00.000Z", providers: [{ id: "claude", name: "Claude (fixture)", status: "ok" as const, metrics: [] }] };
+beforeEach(() => {
+  outbound.calls.length = 0; outbound.expectedRefusals.length = 0;
+  outbound.tmuxSocket = getTmuxSocketName();
+  // A private socket for this run, never the live server's default one.
+  expect(outbound.tmuxSocket, "tests run on their own tmux socket").toMatch(/^agend-[0-9a-f]+$/);
+  setUsageFetcherForTests(async () => USAGE_FIXTURE);
+  vi.stubGlobal("fetch", (url: unknown) => {
+    outbound.calls.push(`fetch ${String(url)}`);
+    return Promise.reject(new Error(`view-auth: no outbound fetch (${String(url)})`));
+  });
+});
 
 const tempDirs: string[] = [];
-afterEach(() => { for (const d of tempDirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
+afterEach(() => {
+  for (const d of tempDirs.splice(0)) rmSync(d, { recursive: true, force: true });
+  setUsageFetcherForTests(null);
+  vi.unstubAllGlobals();
+  expect(outbound.calls, "nothing left this process: no vendor fetch, no child process").toEqual([]);
+});
 
 interface Res { status: number; headers: Record<string, string | string[] | undefined>; body: string }
 
@@ -69,10 +107,13 @@ const PNG = Buffer.from("89504e470d0a1a0a", "hex");
 describe("/view reads are open by default", () => {
   it("serves the page, the roster, the pane and usage to anyone who can reach the listener", async () => {
     const h = await startFleet();
+    // A running Claude instance's usage row: what /api/ai-usage serves must then be the fixture's, by name.
+    vi.spyOn(h.fm, "getActiveUsageProviderIds").mockReturnValue(new Set(["claude"]));
     for (const path of ["/view", "/api/profiles", "/api/pane/alpha", "/api/profile/alpha", "/api/sort-order", "/api/ai-usage"]) {
       const res = await raw(h.port, "GET", path);
       expect(res.status, path).not.toBe(401);
       expect(res.status, path).not.toBe(403);
+      if (path === "/api/ai-usage") expect(JSON.parse(res.body).providers.map((p: { name: string }) => p.name), "usage is served — from the fixture").toEqual(["Claude (fixture)"]);
     }
     // HEAD is a read too: it must not be treated as a write needing a credential.
     for (const path of ["/view", "/api/profiles"]) {
@@ -307,25 +348,60 @@ describe("nothing credential-shaped is left behind", () => {
 
 
 describe("agend-auth.js (loaded by /ui, /view and /settings), run against a fake page", () => {
-  async function load(href: string) {
+  /** A browser's localStorage, as far as the script can tell: a Map behind the Storage methods. */
+  function storage(entries: Record<string, string> = {}) {
+    const data = new Map(Object.entries(entries));
+    return {
+      data,
+      getItem: (k: string) => data.get(k) ?? null,
+      setItem: (k: string, v: string) => { data.set(k, String(v)); },
+      removeItem: (k: string) => { data.delete(k); },
+    };
+  }
+  /** `localStorage` itself can throw (blocked storage, a sandboxed frame), or only its removeItem can. */
+  type StorageMode = ReturnType<typeof storage> | "access-throws" | "remove-throws";
+  async function loadPage(href: string, store: StorageMode = storage()) {
     const { readFileSync } = await import("node:fs");
     const { join } = await import("node:path");
     const vm = await import("node:vm");
     const url = new URL(href);
     const replaced: string[] = [];
     const win: Record<string, unknown> = { fetch: () => new Promise(() => {}) };
+    if (store === "access-throws") Object.defineProperty(win, "localStorage", { get() { throw new Error("SecurityError: storage is blocked"); } });
+    else if (store === "remove-throws") win.localStorage = { ...storage(), removeItem() { throw new Error("SecurityError"); } };
+    else win.localStorage = store;
     const context = vm.createContext({
       window: win, location: { href: url.href }, history: { replaceState: (_s: unknown, _t: unknown, u: string) => { replaced.push(u); } },
       URL, document: { addEventListener() {}, body: null, createElement: () => ({ style: {}, append() {} }) },
     });
     vm.runInContext(readFileSync(join(process.cwd(), "src", "ui", "shared", "agend-auth.js"), "utf8"), context);
-    return replaced;
+    return { replaced, win };
   }
+  const load = async (href: string) => (await loadPage(href)).replaced;
 
   it("takes a leftover ?token= out of the address bar of any panel, keeping everything else", async () => {
     const token = "f".repeat(48);
     expect(await load(`http://127.0.0.1:1/view?token=${token}`)).toEqual(["/view"]);
     expect(await load(`http://127.0.0.1:1/view?i=w&token=${token}#p`)).toEqual(["/view?i=w#p"]);
+  });
+
+  it("an upgraded browser loses the web token old /view kept in localStorage — that key only, the preferences stay", async () => {
+    const prefs = { agend_lang: "zh-TW", agend_view_density: "compact", agend_view_card_expanded: "1", agend_view_sidebar_order: "[\"alpha\"]" };
+    for (const panel of ["/view", "/ui", "/settings"]) {
+      const store = storage({ agend_web_token: "f".repeat(48), ...prefs });
+      await loadPage(`http://127.0.0.1:1${panel}`, store);
+      expect(Object.fromEntries(store.data), panel).toEqual(prefs);
+    }
+  });
+
+  it("storage that is blocked, or refuses the removal, does not stop the rest: ?token= is still scrubbed and writes still get CSRF", async () => {
+    for (const mode of ["access-throws", "remove-throws"] as const) {
+      const { replaced, win } = await loadPage(`http://127.0.0.1:1/view?token=${"f".repeat(48)}&i=w`, mode);
+      expect(replaced, mode).toEqual(["/view?i=w"]);
+      expect(win.AgendAuth, mode).toBeDefined();
+      expect(typeof win.fetch, mode).toBe("function");
+      expect(String(win.fetch), mode).toContain("csrf");             // the wrapper, not the page's own fetch
+    }
   });
 
   it("leaves an address without one alone", async () => {
