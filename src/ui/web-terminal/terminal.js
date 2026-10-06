@@ -87,7 +87,11 @@
         term.onData(function (s) { send(new TextEncoder().encode(s)); });
         term.onBinary(function (s) { var b = new Uint8Array(s.length); for (var i = 0; i < s.length; i++) b[i] = s.charCodeAt(i) & 255; send(b); });
         term.onResize(function (size) { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: "resize", cols: size.cols, rows: size.rows })); });
-        window.addEventListener("resize", function () { if (fit) fit.fit(); });
+        // Re-fit whenever the terminal's box changes, not only when the window does (#1242): the sign-in code row
+        // appears after the first fit (on "hello"), and a terminal fitted to the taller box ran under that row and
+        // covered it — the code box was not on screen until a zoom change (a window resize) re-fitted it.
+        if (typeof ResizeObserver === "function") new ResizeObserver(function () { if (fit) fit.fit(); }).observe(termEl);
+        else window.addEventListener("resize", function () { if (fit) fit.fit(); });
       } else {
         term.reset();                        // the server replays its buffer on (re)connect
       }

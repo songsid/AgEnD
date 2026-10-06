@@ -9,7 +9,7 @@ body { display: flex; flex-direction: column; }
 #gate input { flex: 1; font: 16px ui-monospace, monospace; letter-spacing: 1px; padding: 8px; background: #000; color: #fff; border: 1px solid #555; border-radius: 4px; }
 #gate button { padding: 8px 16px; background: #246; color: #fff; border: 0; border-radius: 4px; cursor: pointer; }
 #gate-msg { color: #f88; min-height: 1.5em; }
-#term { flex: 1; min-height: 0; padding: 4px; }
+#term { flex: 1; min-height: 0; padding: 4px; overflow: hidden; }  /* never drawn over the rows below it (#1242) */
 #code-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; background: #1c1c1c; border-top: 1px solid #333; }
 #code-row[hidden] { display: none; }
 #code-row input { flex: 1; min-width: 12em; font: 16px ui-monospace, monospace; padding: 8px; background: #000; color: #fff; border: 1px solid #555; border-radius: 4px; }

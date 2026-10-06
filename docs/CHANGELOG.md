@@ -31,6 +31,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   pictures is not cut short.
 
 ### Fixed
+- **The web login page's sign-in code box is on screen at 100% zoom (#1242).** On a `/login` web terminal the terminal
+  sized itself before the "Sign-in code" row appeared and then kept that size: its bottom rows, the CLI's
+  `Paste code here` prompt among them, ran under the row and covered it. The box was there, but could not be seen or
+  clicked until a zoom change re-fitted the terminal. The terminal now re-fits whenever its own area changes and never
+  draws past it, so the prompt and the box are both visible at any window size.
 - **Switching an instance's backend no longer leaves it unable to start (#1217).** A session id now belongs to the
   backend that made it (`session-id.backend` next to it). On the first start under a different backend, the old id is
   set aside (`session-id.abandoned-<ts>`, as before) and the new CLI starts fresh, instead of being asked to resume a
