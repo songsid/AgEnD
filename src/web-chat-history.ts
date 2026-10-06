@@ -165,6 +165,20 @@ export class WebChatHistory {
    * from the queue. The queue is first in, first out, so nothing older than a message that got further can
    * still be waiting: the walk goes back from the newest and stops there. Returns the messages it changed.
    */
+  /**
+   * Where every retained web message got — the ticks — in one list. A delivery report has no cursor of its own and
+   * changes a message already sent, so a page that missed one (a dropped stream, a poll) catches up from this:
+   * the stream sends it on every (re)connect and each poll carries it (#1253 review). Ticks only move forward on
+   * the page, so receiving it twice changes nothing.
+   */
+  deliveries(): Array<{ instance: string; messageId: string; delivery: WebDeliveryState }> {
+    const out: Array<{ instance: string; messageId: string; delivery: WebDeliveryState }> = [];
+    for (const [instance, slot] of this.byInstance) {
+      for (const m of slot.messages) if (m.messageId !== undefined && m.delivery !== undefined) out.push({ instance, messageId: m.messageId, delivery: m.delivery });
+    }
+    return out;
+  }
+
   cancelPending(instance: string): WebChatMessage[] {
     const changed: WebChatMessage[] = [];
     const messages = this.byInstance.get(instance)?.messages ?? [];

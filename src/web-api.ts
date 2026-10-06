@@ -316,6 +316,9 @@ export function handleWebRequest(
     json(res, 200, {
       status: ctx.getUiStatus(),
       messages: history ? (fresh ? history.after(0) : history.replayFor(parseLastEventId(after))) : [],
+      // The ticks too, so polling never has to re-read a chat's history — that read would count as the person's
+      // activity; this poll does not (isPassiveWebRead).
+      deliveries: history ? history.deliveries() : [],
       cursor: history ? `${history.boot}-${history.lastId}` : null,
     });
     return true;
@@ -334,6 +337,9 @@ export function handleWebRequest(
       const history = ctx.webChatHistory;
       for (const m of history.replayFor(lastSeen)) res.write(sseFrame("message", m, history.cursorOf(m)));
     }
+    // Ticks change messages already sent and carry no cursor: every (re)connect gets where each one is now, so a
+    // report that fell into a gap is not lost until a reload (#1253 review). No id: it is not a message.
+    if (ctx.webChatHistory) res.write(`event: deliveries\ndata: ${JSON.stringify(ctx.webChatHistory.deliveries())}\n\n`);
     ctx.sseClients.add(res);
     const interval = setInterval(() => {
       // A stream authorized once must not outlive the authorization. Re-checked

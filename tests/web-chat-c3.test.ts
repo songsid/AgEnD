@@ -474,13 +474,69 @@ describe("the dashboard (the real page script)", () => {
     expect(p.read("msgs.w[0].delivery")).toBe("cancelled");
   });
 
-  it("while polling, the open chat is re-read so ticks still move", async () => {
+  it("while polling, the ticks come with the poll — the chat's history is never re-read in the background (#1253 review)", async () => {
     const p = page();
+    p.read(`msgs.w = [{ boot: "b", id: 1, instance: "w", sender: "web-user", text: "hi", ts: "1", messageId: "web-1", delivery: "processing" }]`);
     const fetched: string[] = [];
     (p.c as any).recordFetch = (u: string) => fetched.push(u);
-    p.read('fetch = async (u) => { recordFetch(u); return { ok: true, json: async () => ({ status: { uptime: 1, instances: [] }, messages: [], cursor: "b-1" }) }; }');
+    p.read('fetch = async (u) => { recordFetch(u); return { ok: true, json: async () => ({ status: { uptime: 1, instances: [] }, messages: [], cursor: "b-1", deliveries: [{ instance: "w", messageId: "web-1", delivery: "delivered" }] }) }; }');
     p.read('api = async (m, path) => { recordFetch(path); return { messages: [] }; }');
     await p.read("pollOnce()");
-    expect(fetched).toEqual(["/ui/poll?after=", "/ui/history?instance=w&limit=200"]);
+    expect(fetched, "one passive poll, no history read").toEqual(["/ui/poll?after="]);
+    expect(p.read("msgs.w[0].delivery")).toBe("delivered");
+  });
+
+  // The real /ui/events handler, as an EventSource that reconnects sees it: the frames it writes, in order.
+  function connect(c: WebApiContext, lastEventId?: string) {
+    const writes: string[] = [];
+    const req = Object.assign(new EventEmitter(), { method: "GET", url: "/ui/events", headers: { "x-agend-token": TOKEN, ...(lastEventId ? { "last-event-id": lastEventId } : {}) }, socket: null });
+    const res = Object.assign(new EventEmitter(), { status: 0, setHeader() {}, writeHead(st: number) { res.status = st; return res; }, write(x: string) { writes.push(x); return true; }, end() { return res; } });
+    handleWebRequest(req as unknown as IncomingMessage, res as unknown as ServerResponse, new URL("http://localhost/ui/events"), c);
+    res.emit("close");                                              // this test only needs what was sent on connect
+    return writes.join("").split("\n\n").filter(Boolean).map(f => {
+      const field = (k: string) => f.split("\n").find(l => l.startsWith(`${k}: `))?.slice(k.length + 2);
+      return { event: field("event")!, id: field("id"), data: field("data")! };
+    });
+  }
+
+  it.each(["delivered", "failed", "cancelled"] as const)("a tick that became %s while the stream was down is caught up on reconnect — no new message, no poll (#1253 review)", (final) => {
+    const p = page();
+    const h = new WebChatHistory({ boot: "b1" });
+    const m = h.record({ instance: "w", sender: "web-user", text: "hi", ts: "1", messageId: "web-1" });
+    h.setDelivery("w", "web-1", final === "cancelled" ? "queued" : "processing");
+    p.sse.message!({ data: JSON.stringify(m), lastEventId: h.cursorOf(m) });          // the page saw it…
+    const seen = p.read("msgs.w[0].delivery");
+    // …the stream drops; the report arrives while it is down…
+    if (final === "cancelled") h.cancelPending("w"); else h.setDelivery("w", "web-1", final);
+    // …and the browser reconnects with the cursor it had, before any fallback poll.
+    const { c } = ctx({ webChatHistory: h, getUiStatus: () => ({ uptime: 1, instances: [] }) });
+    const frames = connect(c, h.cursorOf(m));
+    expect(frames.map(f => f.event), "nothing new to replay — only the status and the ticks").toEqual(["status", "deliveries"]);
+    for (const f of frames) p.sse[f.event]!({ data: f.data, lastEventId: f.id });
+    expect([seen, p.read("msgs.w[0].delivery")]).toEqual([final === "cancelled" ? "queued" : "processing", final]);
+    expect(p.read("pollTimer"), "no poll was needed").toBeNull();
+  });
+
+  it("GET /ui/poll carries the ticks of every retained web message (and only those)", async () => {
+    const h = new WebChatHistory({ boot: "b1" });
+    h.record({ instance: "w", sender: "web-user", text: "a", ts: "1", messageId: "web-1" });
+    h.setDelivery("w", "web-1", "failed");
+    h.record({ instance: "w", sender: "web-user", text: "b", ts: "2", messageId: "web-2" });
+    const { c } = ctx({ webChatHistory: h, getUiStatus: () => ({ uptime: 1, instances: [] }) });
+    const r = await call("GET", "/ui/poll?after=b1-2", c);
+    expect(r.status).toBe(200);
+    expect(r.body.deliveries).toEqual([{ instance: "w", messageId: "web-1", delivery: "failed" }]);
+  });
+
+  it("the first connect, with no cursor at all, carries the ticks too", () => {
+    const h = new WebChatHistory({ boot: "b1" });
+    h.record({ instance: "w", sender: "web-user", text: "hi", ts: "1", messageId: "web-1" });
+    h.setDelivery("w", "web-1", "delivered");
+    h.record({ instance: "w", sender: "agent", text: "agent says", ts: "2" });                // no ticks: not listed
+    h.record({ instance: "w", sender: "web-user", text: "just sent", ts: "3", messageId: "web-2" });   // no report yet: not listed
+    const { c } = ctx({ webChatHistory: h, getUiStatus: () => ({ uptime: 1, instances: [] }) });
+    const frames = connect(c);
+    expect(frames.find(f => f.event === "deliveries")!.data).toBe(JSON.stringify([{ instance: "w", messageId: "web-1", delivery: "delivered" }]));
+    expect(frames.find(f => f.event === "deliveries")!.id, "not a message: no cursor").toBeUndefined();
   });
 });

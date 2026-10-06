@@ -401,8 +401,9 @@ async function pollOnce() {
     applyStatus(d.status);
     for (const m of d.messages) ingestMessage(m);
     if (typeof d.cursor === "string") lastCursor = d.cursor;
-    // Ticks move on messages already shown, which a cursor does not cover: the open chat is re-read.
-    if (cur && curTab === "chat") loadHistory(cur);
+    // Ticks move on messages already shown, which a cursor does not cover: the poll carries them. (Re-reading the
+    // chat's history instead would count as the person's activity and keep an idle session alive.)
+    applyDeliveries(d.deliveries);
   } catch { /* the next tick tries again */ }
 }
 function startPolling() { if (pollTimer) return; pollOnce(); pollTimer = setInterval(pollOnce, 5000); }
@@ -418,13 +419,20 @@ sse.addEventListener("message", e => {
   ingestMessage(JSON.parse(e.data));
 });
 // A web user's message got further (or a Stop dropped it): its ticks.
-sse.addEventListener("delivery", e => {
-  sseAlive();
-  const d = JSON.parse(e.data);
-  const before = msgs[d.instance];
-  msgs[d.instance] = AgendChatRender.applyDelivery(before, d.messageId, d.delivery);
-  if (msgs[d.instance] !== before && d.instance === cur && curTab === "chat") renderMsgs();
-});
+function applyDeliveries(list) {
+  if (!Array.isArray(list)) return;
+  let redraw = false;
+  for (const d of list) {
+    if (!d || typeof d.instance !== "string") continue;
+    const before = msgs[d.instance];
+    msgs[d.instance] = AgendChatRender.applyDelivery(before, d.messageId, d.delivery);
+    if (msgs[d.instance] !== before && d.instance === cur) redraw = true;
+  }
+  if (redraw && curTab === "chat") renderMsgs();
+}
+sse.addEventListener("delivery", e => { sseAlive(); applyDeliveries([JSON.parse(e.data)]); });
+// Where every message is now, sent on each (re)connect: a report that fell into a dropped stream is not lost.
+sse.addEventListener("deliveries", e => { sseAlive(); applyDeliveries(JSON.parse(e.data)); });
 sse.addEventListener("activity", e => {
   sseAlive();
   const d = JSON.parse(e.data);

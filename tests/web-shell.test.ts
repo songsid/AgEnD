@@ -131,6 +131,40 @@ describe("a passive poll is not activity (#1251 review): it never keeps an idle 
     await stop(h.fm);
   }, 30_000);
 
+  it("the dashboard's own polling, left alone, never keeps the session: the real page script against the real listener (#1253 review)", async () => {
+    const h = await startFleet();
+    const clock = { t: Date.now() };
+    const cookie = await signedInAt(h, clock);
+    const start = clock.t;
+    // The page as served, its fetch going to the real listener with this browser's cookie.
+    const vm = await import("node:vm");
+    const RENDER = ui("chat-render.js");
+    const PAGE = ui("dashboard.html").match(/<script>\n([\s\S]*?)<\/script>/)![1]!;
+    const requested: string[] = [];
+    const browserFetch = async (url: string, o: { method?: string; headers?: Record<string, string>; body?: string } = {}) => {
+      requested.push(url);
+      const r = await raw(h.port, o.method ?? "GET", url, { cookie, origin: h.origin, ...(o.headers ?? {}) }, o.body);
+      return { ok: r.status >= 200 && r.status < 300, status: r.status, json: async () => JSON.parse(r.body || "{}") };
+    };
+    const node = () => ({ style: {}, remove() {}, append() {}, setAttribute() {}, children: [], textContent: "", innerHTML: "" });
+    const c = vm.createContext({
+      localStorage: { getItem: () => null }, navigator: { language: "en" },
+      document: { getElementById: () => node(), createElement: () => node(), body: { appendChild() {} } },
+      setTimeout: () => 0, clearTimeout() {}, setInterval: () => 0, clearInterval() {},
+      fetch: browserFetch, EventSource: class { addEventListener() {} },
+    });
+    vm.runInContext(RENDER, c);
+    vm.runInContext(PAGE, c);
+    vm.runInContext('renderList=()=>{};renderActions=()=>{};renderMsgs=()=>{};mode="instance";cur="w";curTab="chat";', c);
+    const pollOnce = () => vm.runInContext("pollOnce()", c) as Promise<void>;
+    for (const at of [5_000, 1 * H, 2 * H - 5_000]) { clock.t = start + at; await pollOnce(); }
+    expect(requested.length, "three polls").toBe(3);
+    expect(requested.every(u => u.startsWith("/ui/poll?")), `only polls, no background history read: ${requested.join(" ")}`).toBe(true);
+    clock.t = start + 2 * H + 5_000;
+    expect((await raw(h.port, "GET", "/ui/history?instance=w", { cookie })).status, "two hours after sign-in, nobody touched it").toBe(401);
+    await stop(h.fm);
+  }, 30_000);
+
   it("a passive poll still checks everything else: a revoked session is refused at once", async () => {
     const h = await startFleet();
     expect((await poll(h, h.cookie)).status).toBe(200);
