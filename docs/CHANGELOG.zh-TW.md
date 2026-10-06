@@ -76,6 +76,12 @@
 - **[行為變更] dashboard 現在會拒絕 `Host` 不認得的請求。** health/dashboard server 雖然只綁 127.0.0.1，但這擋不住 DNS rebinding：網頁可以把自己的網域解析到 127.0.0.1，再用 script 讀取不需要 cookie 的路由，包含 `/view` 的即時終端畫面（`/api/pane/*`）。這種網頁唯一改不了的是瀏覽器送出的 `Host`，所以所有路由（含 `/health`、`/agent`）現在只有在 `Host` 是 `localhost`、`127.0.0.1`、`[::1]`、fleet 的 `hostname:`，或新增的 `web.allowed_hosts` 列出的名稱時才回應，其餘一律 403（不比對 port）。**如果你是透過反向代理或 port forward、且它呈現的是別的名稱，請把該名稱加進 `web.allowed_hosts`**；每個被拒的名稱第一次出現時，`fleet.log` 會記一行並附上這個提示。CLI、`agend web`、`/dashboard` 與內部呼叫都用 loopback 名稱，不受影響。
 
 ### 新增 (Added)
+- **被打斷的回合在 CLI 自己沒接手時會跨重啟續接（#1209）。** channel 回合 armed 時 daemon 寫一次性 `in-flight-turn.json`
+  marker（含 TurnFingerprint checkpoint）；重啟後還留著的，by construction 就是被打斷的回合。開機＋CLI spawn 後純 gate 只判一次：
+  crash-loop 開機保持乾淨（#835）、取消過的不續（cancel 會刪 marker，#1199）、durable outbox 還在處理的投遞留給那條路、seam verdict
+  排除雙重驅動——CLI 已 re-engage 或對話已切換就跳過，unknown 在 flush grace 內等一次（之後拒絕），只有 grace 之外確定的 quiet
+  才重注一個綁原 correlation 的 bounded continuation（絕不是重貼）。marker 先消費再 gate，第二次開機不會重複；完成路徑經 reply
+  guard 清掉它。沒有 seam reader 的 backend 判 unknown、永遠不續。
 - **跨重啟回合判斷的統一偵測訊號 seam（#1209、#1217a、#1210、#1215）。** 新增唯讀觀測層（`src/backend/session-signals.ts`）：
   各 backend 在 CLI 自己的 store 發現工作目錄 session 的 `TurnFingerprint` reader——claude-code（project 內最新 transcript＋最新有
   timestamp 的 tail 條目；tail 本身通常是沒有 timestamp 的 bookkeeping）、codex（唯讀開啟 `state_5.sqlite` 找 exact-cwd thread＋

@@ -47,6 +47,19 @@ import { MuseUsageRelay, clearMuseUsageSnapshot } from "./muse-usage-relay.js";
 import { deliveryContentDigest, type DaemonDeliveryPort, type DeliveryAttemptEvidence, type DurableSubmissionMode } from "./delivery-outbox.js";
 import { queueResumePolicyForAttempt } from "./delivery-queue-evidence.js";
 import { scanTranscriptForDeliveryMarker } from "./delivery-reconciliation.js";
+import {
+  buildResumeContinuation,
+  clearInFlightTurnMarker,
+  consumeInFlightTurnMarker,
+  decideTurnResume,
+  normalizeResumeBackend,
+  readResumeFingerprint,
+  RESUME_BLOCKING_DELIVERY_STATES,
+  writeInFlightTurnMarker,
+  type InFlightTurnMarker,
+  type ResumeBackend,
+} from "./turn-resume.js";
+import type { TurnFingerprint } from "./backend/session-signals.js";
 import { InteractionObservation, INTERACTION_CONFIRM_MS, sameInteractionOwner, type InteractionEvidence } from "./interaction-observation.js";
 import type { InteractionOwner, InteractionSnapshot } from "./backend/types.js";
 
@@ -1248,6 +1261,12 @@ export class Daemon extends EventEmitter {
    */
   private launchAttempt = 0;
   private skipResume = false;
+  /**
+   * #1209: whether THIS boot was asked to skip resume by a crash-loop
+   * (crash-state.json). Captured at boot before spawnClaudeWindow resets
+   * skipResume — the #1209 gate reads this, never the resettable flag.
+   */
+  private bootSkippedResume = false;
   private startupAborted = false;
   /** First time the current on-screen blocking dialog was seen (0 = none); drives the parked report. */
   private dialogParkedSince = 0;
@@ -1734,6 +1753,11 @@ export class Daemon extends EventEmitter {
       Math.max(0, autoPauseMinutes) * 60_000,
       readLastInboundAt(instanceDir) ?? Date.now(),
     );
+    // #1209: every real completion clears the in-flight marker, so a
+    // finished turn can never resume after a later restart. reset() is
+    // deliberately NOT hooked: stop/spawn abandon the in-memory turn while
+    // the on-disk interruption must survive for the resume gate.
+    this.turnReplyGuard.onComplete = () => clearInFlightTurnMarker(this.instanceDir);
   }
 
   /** FleetManager and this daemon share a process, so durable begin/ACK is a direct synchronous store call. */
@@ -2013,6 +2037,7 @@ export class Daemon extends EventEmitter {
     // an unreadable marker for a later start; clear successfully read bytes
     // even when the JSON is corrupt so it cannot remain forever.
     const crashStatePath = join(this.instanceDir, "crash-state.json");
+    this.bootSkippedResume = false;
     try {
       if (existsSync(crashStatePath)) {
         const content = readFileSync(crashStatePath, "utf-8");
@@ -2020,6 +2045,7 @@ export class Daemon extends EventEmitter {
           const state = JSON.parse(content);
           if (state?.resumeDisabled === true) {
             this.skipResume = true;
+            this.bootSkippedResume = true;
             this.logger.warn("Previous crash loop detected — starting without resume");
           }
         } finally {
@@ -2148,6 +2174,11 @@ export class Daemon extends EventEmitter {
       // Clean up stale snapshot file — resume restored full context, snapshot not needed
       try { unlinkSync(join(this.instanceDir, "rotation-state.json")); } catch { /* may not exist */ }
     }
+
+    // #1209: conditional continuation for the turn interrupted by the last
+    // restart, if the gates allow. Detached like the warmup notice; the gate
+    // consumes its one-shot marker first and never throws into boot.
+    void this.maybeResumeInterruptedTurn().catch(() => {});
 
     // Warmup: wait for CLI idle, then trigger steering reload — but only when
     // the instructions actually changed since the agent last saw them.
@@ -3614,6 +3645,10 @@ export class Daemon extends EventEmitter {
     // FleetManager calls this synchronously before sendEscape. Cancel only the
     // current human turn; leave already-forwarded tool requests to settle.
     this.turnReplyGuard.cancelByUser();
+    // #1209: a cancelled turn must never resume (#1199) — drop its marker.
+    // (Completion paths clear via the guard's onComplete; a cancel with no
+    // later idle edge would otherwise leave the marker behind.)
+    clearInFlightTurnMarker(this.instanceDir);
     this.deliveryEpoch = fleetEpoch === undefined
       ? this.deliveryEpoch + 1
       : Math.max(this.deliveryEpoch, fleetEpoch);
@@ -4500,7 +4535,114 @@ export class Daemon extends EventEmitter {
       correlationId: meta.correlation_id || undefined,
       inboundMarker,
     });
+    // #1209: persist the in-flight turn with a seam checkpoint. A marker
+    // that survives a restart is an interrupted turn by construction —
+    // completion (via the guard's onComplete) and cancel paths delete it.
+    // Synchronous by necessity: a crash between arm and write must not lose
+    // the interruption. Reads are windowed/bounded (see turn-resume.ts).
+    const resumeBackend = this.config.backend ?? this.backend?.binaryName ?? this.runtimeIdentity?.backend;
+    const resumeCwd = this.config.working_directory ?? "";
+    writeInFlightTurnMarker(this.instanceDir, {
+      version: 1,
+      deliveryId: meta.delivery_id || undefined,
+      correlationId: meta.correlation_id || undefined,
+      messageId: meta.message_id || undefined,
+      chatId: meta.chat_id,
+      threadId: meta.thread_id || undefined,
+      adapterId: meta.adapter_id || undefined,
+      backend: resumeBackend ?? "unknown",
+      cwd: resumeCwd,
+      armedAt: Date.now(),
+      before: readResumeFingerprint(normalizeResumeBackend(resumeBackend), {
+        instanceDir: this.instanceDir,
+        workingDirectory: resumeCwd,
+      }),
+    });
   }
+
+  /** #1209: which seam reader serves this instance (live config preferred). */
+  private resolveResumeBackend(): ResumeBackend | null {
+    return normalizeResumeBackend(
+      this.config.backend ?? this.backend?.binaryName ?? this.runtimeIdentity?.backend,
+    );
+  }
+
+  /** #1209: whether the marker's delivery is still owned by the durable path. */
+  private isMarkerDeliveryPending(marker: InFlightTurnMarker): boolean {
+    const id = marker.deliveryId;
+    if (!id) return false;
+    try {
+      const row = this.deliveryOutbox?.get?.(id);
+      return !!row && (RESUME_BLOCKING_DELIVERY_STATES as readonly string[]).includes(row.state);
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * #1209 ACP-resume-like gate: one bounded continuation for the turn that
+   * was in flight when the process died. The one-shot marker is consumed
+   * FIRST (episode-once: at most one continuation per interrupted turn, even
+   * if the inject below throws or the process dies holding the grace wait),
+   * then the pure gate in turn-resume.ts decides. A hold inside the flush
+   * grace sleeps once and re-gates with a fresh read; a second hold denies
+   * rather than waiting forever. Returns a short outcome for logs/tests.
+   */
+  private async maybeResumeInterruptedTurn(): Promise<string> {
+    const marker = consumeInFlightTurnMarker(this.instanceDir);
+    if (!marker) return "none";
+    const backend = this.resolveResumeBackend() ?? normalizeResumeBackend(marker.backend);
+    const roots = { instanceDir: this.instanceDir, workingDirectory: this.config.working_directory ?? "" };
+    // This boot's CLI spawn is what the daemon itself caused: pre-restart
+    // writes (including pre-crash progress) are excluded, and the flush
+    // grace holds the decision until post-spawn writes are observable.
+    const daemonCausedMtimeMs = this.lastSpawnAt > 0 ? this.lastSpawnAt : -1;
+    const gate = (after: TurnFingerprint | null, nowMs: number) => decideTurnResume({
+      marker,
+      before: marker.before,
+      after,
+      daemonCausedMtimeMs,
+      nowMs,
+      crashLoopBoot: this.bootSkippedResume,
+      deliveryPending: this.isMarkerDeliveryPending(marker),
+    });
+    const readAfter = (): TurnFingerprint | null =>
+      backend ? readResumeFingerprint(backend, roots) : null;
+    let decision = gate(readAfter(), Date.now());
+    if (decision.action === "wait") {
+      const waitMs = decision.waitMs;
+      await new Promise(resolve => setTimeout(resolve, waitMs));
+      const recheck = gate(readAfter(), Date.now());
+      decision = recheck.action === "wait"
+        ? {
+          action: "skip" as const,
+          reason: "unobservable" as const,
+          detail: "still inside the flush grace after the hold; default-deny",
+        }
+        : recheck;
+    }
+    if (decision.action === "inject") {
+      const continuation = buildResumeContinuation(marker);
+      try {
+        this.pushChannelMessage(continuation.text, continuation.meta);
+      } catch (err) {
+        this.logger.warn({ err }, "Interrupted-turn continuation failed to queue");
+        return "inject-failed";
+      }
+      this.logger.info(
+        { correlationId: marker.correlationId },
+        "Injected one bounded continuation for the interrupted turn",
+      );
+      return "injected";
+    }
+    this.logger.info(
+      { reason: decision.reason, detail: decision.detail },
+      "Interrupted turn NOT resumed",
+    );
+    return `skipped-${decision.reason}`;
+  }
+
+
 
   /**
    * Turn ended (busy→idle edge): if the MCP server is dead and none of the

@@ -52,6 +52,13 @@ interface ActiveTurn {
 export class TurnReplyGuard {
   private active: ActiveTurn | null = null;
   private generation = 0;
+  /**
+   * Fired exactly when a turn actually completes (stale generations are
+   * fenced out, like the boolean result). #1209 registers a marker-clear
+   * here so every completion path — not just the ones someone remembered —
+   * keeps a finished turn from resuming after a later restart.
+   */
+  onComplete: (() => void) | undefined;
 
   arm(target: TurnReplyTarget): number {
     if (!this.active || this.active.cancelledByUser) {
@@ -126,6 +133,9 @@ export class TurnReplyGuard {
   complete(generation: number): boolean {
     if (!this.active || this.active.generation !== generation) return false;
     this.active = null;
+    try {
+      this.onComplete?.();
+    } catch { /* a consumer callback must never break completion */ }
     return true;
   }
 
