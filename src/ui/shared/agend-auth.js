@@ -7,6 +7,24 @@
 (() => {
   "use strict";
   if (window.AgendAuth) return;
+
+  // An old link carries `?token=` (e.g. /view?token=…, which is open to read and so is served, not
+  // answered with the sign-in page). It is not a credential any more, but it is still the fleet's
+  // token: take it out of the address bar and this history entry at once.
+  try {
+    const here = new URL(location.href);
+    if (here.searchParams.has("token")) {
+      here.searchParams.delete("token");
+      history.replaceState(null, "", here.pathname + here.search + here.hash);
+    }
+  } catch { /* nothing to clean */ }
+
+  // Before U2, /view kept the fleet's web token in localStorage ("agend_web_token") and sent it with every request.
+  // It is not read any more, but the token still opens every write through X-Agend-Token: remove that one key — and
+  // nothing else of the page's preferences — on any panel this browser opens. Storage can be blocked (privacy mode,
+  // a sandboxed frame); that must not stop the rest of this script.
+  try { window.localStorage.removeItem("agend_web_token"); } catch { /* no storage, nothing stored */ }
+
   const nativeFetch = window.fetch.bind(window);
   let csrfPending = null;
 

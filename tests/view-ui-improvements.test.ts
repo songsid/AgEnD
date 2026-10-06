@@ -62,7 +62,9 @@ describe("View UI improvements", () => {
     expect(html).toContain('data-i18n-title="usageButton"');
     expect(html).toContain('rosterFailed: "載入 instance 清單失敗：{error}');
     expect(html).toContain('paneFailed: "⚠ 無法載入 {name} 的 pane');
-    expect(html).toContain('tokenRequired: "需要 web.token"');
+    // Saving is refused for want of a session, not a pasted token: the box for one is gone.
+    expect(html).toContain('signInToSave: "請先登入才能儲存');
+    expect(html).not.toContain("tokenRequired");
     expect(html).toContain('document.querySelectorAll("[data-i18n-title]")');
     expect(html).toContain('q("pre").textContent = TF("rosterFailed"');
   });

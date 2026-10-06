@@ -262,7 +262,6 @@ describe("FleetManager status composers", () => {
   it("serves the real /api/fleet enrichment with pure effort metadata", () => {
     const fm = fleet(); const token = "a".repeat(48);
     vi.spyOn(fm as unknown as { readonly webToken: string | null }, "webToken", "get").mockReturnValue(token);
-    Object.assign(fm, { viewToken: "b".repeat(48) });
     vi.spyOn(fm, "getSysInfo").mockReturnValue({ instances: Object.keys(fm.fleetConfig!.instances).map(name => ({ name, status: "stopped" })) } as never);
     fm["startHealthServer"](0); // createServer and listen are stubbed above.
     const req = { method: "GET", url: "/api/fleet", headers: { host: "localhost", "x-agend-token": token } } as unknown as IncomingMessage;

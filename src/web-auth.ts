@@ -352,6 +352,21 @@ export function decideWebGate(
 }
 
 /**
+ * The decision, for a handler that needs to say *why* it refused (401 vs the 403
+ * a cross-site or CSRF failure earns) rather than only whether. A `?token=` in the
+ * URL is not a credential here either.
+ */
+export function evaluateWebRequest(
+  req: WebGateRequest,
+  url: URL,
+  token: string | null,
+  sessions?: WebSessionStore | null,
+  opts: { touch?: boolean } = {},
+): WebGateDecision {
+  return authorize(req, url, token, sessions, { touch: opts.touch !== false });
+}
+
+/**
  * Defence in depth for handlers that run behind the gate: the same decision, as a boolean.
  *
  * `touch: false` is for a long-lived stream re-checking itself on a timer, which
