@@ -32,6 +32,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   pictures is not cut short.
 
 ### Fixed
+- **Claude transcript events survive partial writes (#1221).** Tool progress and activity now wait for a record's
+  terminating newline before advancing the read offset. A record flushed across polls is read once when complete,
+  including after a monitor restart; complete final records still appear immediately. The shared Codex/Kiro JSONL
+  tailer uses the same byte boundary, preserving UTF-8 text split across writes.
 - **Claude's API retries are seen again (#1239).** While Claude Code retries a failing request
   (`✻ 429 … · Retrying in 4s · attempt 4/10`), AgEnD posts a notice and keeps the turn as running. Since #1101 that
   only worked on screens without a status line. With one, which AgEnD always sets, Claude leaves `esc to interrupt`
