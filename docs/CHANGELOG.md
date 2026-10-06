@@ -31,6 +31,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   pictures is not cut short.
 
 ### Fixed
+- **Claude's API retries are seen again (#1239).** While Claude Code retries a failing request
+  (`✻ 429 … · Retrying in 4s · attempt 4/10`), AgEnD posts a notice and keeps the turn as running. Since #1101 that
+  only worked on screens without a status line. With one, which AgEnD always sets, Claude leaves `esc to interrupt`
+  out of the footer, and the check relied on that hint. A live retry therefore read as idle with no notice, and a long
+  wait could retire Cancel mid-turn. The row is now told live by where it sits: in the spinner's place, directly above
+  the composer. A finished, interrupted or quoted row is still history, and the final rows (`Request rejected (429)`,
+  repeated 529, an invalid configured key) are recognised as before. Also, Claude's own Bash permission prompt is
+  held again when a long working directory wraps its second option onto two rows.
 - **The web login page's sign-in code box is on screen at 100% zoom (#1242).** On a `/login` web terminal the terminal
   sized itself before the "Sign-in code" row appeared and then kept that size: its bottom rows, the CLI's
   `Paste code here` prompt among them, ran under the row and covered it. The box was there, but could not be seen or

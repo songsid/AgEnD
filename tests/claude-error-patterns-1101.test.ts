@@ -256,9 +256,12 @@ describe("only the live retry row counts (a quotation of one in a finished trans
     expect(matched(pane)).toEqual([]);
   });
 
-  it("the retry row straight above an IDLE composer (no `esc to interrupt` in the footer) is not live", () => {
-    const pane = finished(REAL_RETRY_ROW).replace(/^✻ Cogitated.*\n/m, "");
-    expect(pane).not.toContain("Cogitated");
+  it("the retry row with the completed-turn row under it is history: the turn has ended", () => {
+    // The footer is no evidence either way (#1239): with AgEnD's statusLine a running
+    // turn's footer has no `esc to interrupt` either. The completed-turn row is.
+    const pane = finished(REAL_RETRY_ROW);
+    const rows = pane.split("\n").filter(row => row.trim() !== "");
+    expect(rows[rows.indexOf(REAL_RETRY_ROW) + 1]).toMatch(/^✻ Cogitated for /);
     expect(pane).not.toContain("esc to interrupt");
     expect(busy.test(pane)).toBe(false);
     expect(state(pane)).toBe("idle");
