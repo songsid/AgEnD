@@ -36,7 +36,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   an old `?token=` link or bookmark opens the sign-in page — sign in there once
   with a one-time code from `agend web` or `/dashboard`. `agend web` now prints a
   code and opens `/signin` instead of a token link. New sign-ins are announced in the General topic
-  (`web.notify_login: false` to silence). `/view` is unchanged in this release.
+  (`web.notify_login: false` to silence).
+- **[Behaviour change] `/view` no longer takes the web token in its URL or a text box.**
+  Saving a profile or avatar (and the sidebar order) used to work with the
+  fleet-wide `web.token` sent as `?token=` — which `/dashboard`'s "View (edit)" link
+  put in the address bar, and which `view.html` then appended to *every* API
+  request and kept in `localStorage`. Writes now need a signed-in session (with
+  the same CSRF checks as the other panels) or `X-Agend-Token` from a script; a
+  `?token=` is refused as a write credential, the token box is gone, and Edit sends
+  a signed-out visitor to the sign-in page and back. **Reading `/view` stays open by
+  default** (the live terminal capture included); the new `web.view_access: session`
+  requires a sign-in for reads too. The unused `view.token` file (a read-only
+  credential nothing ever accepted) is no longer written, and an old one is
+  deleted at startup.
 
 ## [Unreleased]
 
