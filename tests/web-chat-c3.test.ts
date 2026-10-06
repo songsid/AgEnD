@@ -161,7 +161,10 @@ describe("FleetManager: delivery reports for web messages", () => {
   it("a cancel marks the waiting web messages cancelled, on every page", async () => {
     const { fm, any, events } = await bareFleet();
     const escapes: string[] = [];
-    any.daemons.set("w", { sendEscape: async () => { escapes.push("w"); }, clearPendingDeliveries() {} });
+    const order: string[] = [];
+    // The daemon's clearPendingDeliveries is where #1199 lives: the human turn is cancelled (no reply nag, no
+    // resume) BEFORE the interrupt key — the same order as Telegram's cancel button and /cancel.
+    any.daemons.set("w", { sendEscape: async () => { escapes.push("w"); order.push("escape"); }, clearPendingDeliveries() { order.push("clear"); } });
     any.clearCancelButton = () => {};
     fm.emitSseEvent("message", { instance: "w", sender: "web-user", text: "1", ts: "1", messageId: "web-1" });
     fm.reactMessageStatus("w", "", "web-1", "processing");
@@ -169,6 +172,7 @@ describe("FleetManager: delivery reports for web messages", () => {
     fm.reactMessageStatus("w", "", "web-2", "queued");
     expect(fm.cancelInstance("w")).toBe(true);
     expect(escapes).toEqual(["w"]);
+    expect(order, "the turn is cancelled before the Esc").toEqual(["clear", "escape"]);
     expect(events.filter(e => e.event === "delivery").at(-1)!.data).toEqual({ instance: "w", messageId: "web-2", delivery: "cancelled" });
     expect(fm.webChatHistory.list("w").map(m => m.delivery)).toEqual(["processing", "cancelled"]);
     expect(fm.cancelInstance("nobody"), "not running").toBe(false);
