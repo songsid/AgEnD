@@ -1412,7 +1412,11 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     const channel = await this._fetchTextChannel(opts?.threadId ?? chatId);
     const chunks = opts?.text ? splitTextFenceAware(opts.text, DISCORD_MAX_LENGTH) : [];
     let first: { id: string } | undefined;
-    for (const chunk of chunks.slice(0, -1)) first ??= await channel.send(chunk);
+    // Every chunk is sent: `first ??= await send()` would skip the send once `first` is set (#1229 review).
+    for (const chunk of chunks.slice(0, -1)) {
+      const sent = await channel.send(chunk);
+      first ??= sent;
+    }
     const last = await channel.send(chunks.length
       ? { content: chunks[chunks.length - 1]!, stickers }
       : { stickers });

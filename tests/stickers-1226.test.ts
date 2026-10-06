@@ -140,6 +140,19 @@ describe("Discord: list_stickers is the channel's own server", () => {
     expect((sent[2] as string) + (sent[3] as { content: string }).content).toBe(long);
     expect(r.messageId).toBe("m3");
   });
+
+  it("send: a long text — every chunk goes out, in order, the stickers on the last; the first message is the answer", async () => {
+    const { adapter, sent } = discord();
+    const parts = ["A", "B", "C", "D"].map(c => c.repeat(1990));
+    const r = await adapter.sendStickers("chan-a", ["333333333333333331"], { text: parts.join("\n") });
+    expect(sent).toHaveLength(4);
+    const texts = sent.map(m => (typeof m === "string" ? m : (m as { content: string }).content));
+    expect(texts.map(t => t.trim()[0])).toEqual(["A", "B", "C", "D"]);
+    expect(texts.join("").replace(/\n/g, "")).toBe(parts.join(""));
+    expect(sent.slice(0, 3).every(m => typeof m === "string"), "stickers only on the last message").toBe(true);
+    expect(sent[3]).toEqual({ content: expect.any(String), stickers: ["333333333333333331"] });
+    expect(r.messageId).toBe("m1");
+  });
 });
 
 // ── Telegram ────────────────────────────────────────────────────────────────────────────────────────────────────
