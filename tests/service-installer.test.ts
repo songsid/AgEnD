@@ -106,8 +106,7 @@ describe("ServiceInstaller", () => {
     // process.execPath itself — the second argument to buildServicePath only
     // controls npmPrefixBin, not the runtime-dir fallback.
     const saved = process.execPath;
-    // @ts-expect-error — process.execPath is normally read-only
-    process.execPath = "/project/node_modules/node/bin/node";
+    (process as unknown as Record<string, unknown>).execPath = "/project/node_modules/node/bin/node";
     try {
       const result = buildServicePath(
         "/usr/bin:/bin",
@@ -121,8 +120,7 @@ describe("ServiceInstaller", () => {
       // Normal entries still present.
       expect(entries).toContain("/usr/bin");
     } finally {
-      // @ts-expect-error
-      process.execPath = saved;
+      (process as unknown as Record<string, unknown>).execPath = saved;
     }
   });
 
