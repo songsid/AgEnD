@@ -612,6 +612,9 @@ export function handleSettingsRequest(
       try { body = JSON.parse(buf.toString("utf-8") || "{}"); } catch { return json(res, 400, { error: "invalid JSON" }); }
       if (typeof body !== "object" || body === null || Array.isArray(body)) return json(res, 400, { error: "expected an object" });
       const merged = { ...cfg.defaults, ...body };
+      // #1310: locale:null means "clear the key" (user chose Auto). Mirrors
+      // how the instance save handles model ("" → delete) and nullable overrides.
+      if (body.locale === null || body.locale === "") delete (merged as Record<string, unknown>).locale;
       const before = validateFleetConfig(cfg);
       const after = validateFleetConfig({ ...cfg, defaults: merged });
       if (rejectIfWorse(res, before, after)) return;

@@ -121,6 +121,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - Config validation warns about a reference that names no file.
   - `systemPrompt` is split on commas only when a part is a `file:` reference: an inline prompt such as "You are Kuro,
     a careful reviewer" stays one paragraph (it used to become two).
+- **Settings → Defaults language: no longer pins locale to English on any unrelated save (#1310).** The language `<select>` had no "unset" option, so with `defaults.locale` absent the picker fell to its first choice (en). Any save — even an unrelated one like changing log_level — therefore wrote `locale: en` to fleet.yaml, pinning the UI language and disabling timezone/locale auto-detect. The picker now has an explicit **"Auto (follow system)"** option as the first entry that maps to *unset*. Only changed fields reach the API (`changedFields` against baseline); choosing Auto sends `null` to remove the key.
 - **Corrected security, permissions and access documentation (#1275).** Removed the nonexistent IPC secret handshake and generated Bash denylist; documented default permission bypass, persisted access precedence, platform-specific command roles, and the actual dashboard/public View/Host/agent-token boundaries. Documentation only; runtime behavior is unchanged.
 - **kiro-cli 2.28.0's "Classic is being deprecated" prompt no longer blocks a legacy instance at launch (#1308).**
   2.28.0 asks before every Classic session, even one launched with AgEnD's pinned `--legacy-ui --agent-engine=v1`:
