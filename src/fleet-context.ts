@@ -76,6 +76,13 @@ export interface FleetContext {
   hasFleetAdmins(adapterId?: string): boolean;
   /** Telegram-only General command; owns admin/route checks and completion notice. */
   runProfileCommand?(msg: InboundMessage, seconds?: string): Promise<void>;
+  /**
+   * #1346: the adapter that owns an instance's topic. Text commands resolve
+   * permission and replies through the owner, never the adapter whose copy
+   * happened to win the cross-adapter dedup race. Optional so older stubs
+   * keep working (they fall back to the receiving adapter).
+   */
+  getInstanceAdapterId?(instanceName: string): string | undefined;
   changeInstancePauseState(name: string, action: "pause" | "wake"): Promise<"paused" | "awake" | "not_idle">;
   startInstance(name: string, config: InstanceConfig, topicMode: boolean): Promise<void>;
   stopInstance(name: string): Promise<void>;
