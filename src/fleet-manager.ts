@@ -7351,6 +7351,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
+  getForumTopicDeleter(adapterId?: string): ((topicId: number | string) => Promise<void>) | null {
+    const adapter = (adapterId ? this.worlds.get(adapterId)?.adapter : undefined) ?? this.adapter;
+    if (!adapter?.deleteTopic) return null;
+    return (topicId) => adapter.deleteTopic!(topicId);
+  }
+
   private topicCleanupTimer: ReturnType<typeof setInterval> | null = null;
   private sessionPruneTimer: ReturnType<typeof setInterval> | null = null;
   private classicReloadTimer: ReturnType<typeof setInterval> | null = null;

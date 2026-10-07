@@ -183,6 +183,13 @@ export interface LifecycleContext {
   createForumTopic(topicName: string, adapterId?: string): Promise<number | string>;
   /** adapterId selects the world, mirroring createForumTopic (rollback must delete where it created). */
   deleteForumTopic(topicId: number | string, adapterId?: string): Promise<void>;
+  /**
+   * A bound delete for the world `adapterId` selects, captured by the caller
+   * BEFORE awaiting createForumTopic. Rollback must use exactly this — never
+   * re-resolve afterwards, or a world removed mid-await substitutes the
+   * primary. Null when no channel adapter can delete (fail closed).
+   */
+  getForumTopicDeleter(adapterId?: string): ((topicId: number | string) => Promise<void>) | null;
   setTopicIcon(name: string, state: "green" | "blue" | "red" | "remove"): void;
   /** Remove instance with full cleanup (scheduler, IPC, routing, config). */
   removeInstance(name: string, authorization: ExplicitInstanceRemoval): Promise<void>;
@@ -2144,6 +2151,11 @@ export class InstanceLifecycle {
     // Sequential steps with rollback
     let createdTopicId: number | string | undefined;
     let newInstanceName: string | undefined;
+    // Capture the creating world's delete capability BEFORE the create await:
+    // rollback must use exactly this adapter even if the world is removed or
+    // replaced while creating. Never re-resolve (that would substitute the
+    // primary or a new world). Null means fail closed at rollback.
+    const topicDeleter = this.ctx.getForumTopicDeleter(adapterId);
 
     try {
       createdTopicId = await this.ctx.createForumTopic(topicName!, adapterId);
@@ -2231,8 +2243,18 @@ export class InstanceLifecycle {
         this.ctx.saveFleetConfig();
       }
       if (createdTopicId) {
-        // Delete where the topic was created: same adapter/world (#1305 P2-4).
-        await this.ctx.deleteForumTopic(createdTopicId, adapterId);
+        // Delete through the captured creating adapter only (#1305 P2-4/r4).
+        // If the world went away, fail closed: log and leave the topic for
+        // manual cleanup rather than deleting through a substituted adapter.
+        if (topicDeleter) {
+          try {
+            await topicDeleter(createdTopicId);
+          } catch (e) {
+            this.ctx.logger.warn({ err: e, topicId: createdTopicId }, "Failed to delete forum topic during rollback");
+          }
+        } else {
+          this.ctx.logger.warn({ topicId: createdTopicId }, "Creating world has no delete capability; leaving topic for manual cleanup");
+        }
       }
       if (worktreePath) {
         try {

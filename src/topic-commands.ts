@@ -83,17 +83,24 @@ export function uniqueInstanceName(
   const clean = sanitizeInstanceName(base);
   const id = String(topicId);
   const full = `${clean}-t${id}`;
-  // Same-topic retry/rebind of the full form: keep the deterministic path.
-  if (exists(full) && (isSameTopic?.(full) ?? true)) return full;
-  // Prefer the short suffix, lengthening on collision. A taken candidate
-  // owned by this same topic (an earlier partial attempt) is reused, never
-  // re-allocated into a second entry.
+  const candidates: string[] = [];
   for (let n = Math.min(INSTANCE_NAME_SUFFIX_DIGITS, id.length); n < id.length; n++) {
-    const name = `${clean}-t${id.slice(-n)}`;
-    if (!exists(name)) return name;
-    if (isSameTopic?.(name) ?? false) return name;
+    candidates.push(`${clean}-t${id.slice(-n)}`);
   }
-  if (!exists(full)) return full;
+  candidates.push(full);
+  // First pass: reuse any candidate already owned by this same topic
+  // (retry/rebind keeps the deterministic old path instead of opening a
+  // second entry). Every candidate is scanned before anything is allocated:
+  // a freed shorter form must not shadow a longer form this topic still owns.
+  // Without a proof function the legacy rule applies (a taken full form is
+  // reused, taken short forms are skipped).
+  for (const name of candidates) {
+    if (exists(name) && (isSameTopic?.(name) ?? name === full)) return name;
+  }
+  // Second pass: the first free candidate, short first.
+  for (const name of candidates) {
+    if (!exists(name)) return name;
+  }
   // Even the full-id form is owned by a different topic: refuse. Callers
   // surface this (handleCreate responds an error and rolls back the topic;
   // bindAndStart throws), so creation fails closed with a clear hint.
@@ -163,9 +170,17 @@ function disambiguateLabel(
       }
     }
   }
-  const qualified = `${base} (${displayInstanceName(name)})`;
-  if (!used.has(qualified)) return qualified;
-  return name; // Real names are unique by construction.
+  // Every fallback is checked against the same namespace: real names are
+  // unique, but they are NOT unique against arbitrary display_name strings,
+  // so even the real-name-shaped fallback must be verified. The numbered
+  // loop always terminates (i is unbounded) and is deterministic for a
+  // given fleet, since entries are processed in name order.
+  const short = displayInstanceName(name);
+  let candidate = `${base} (${short})`;
+  for (let i = 2; used.has(candidate); i++) {
+    candidate = `${base} (${short}) (#${i})`;
+  }
+  return candidate;
 }
 
 /** Allowed filename for /save and /load (no path separators, no shell/inject chars). */

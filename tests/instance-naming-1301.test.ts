@@ -88,6 +88,17 @@ describe("uniqueInstanceName (#1301)", () => {
       .toBe("blog-t9793300");
   });
 
+  it("reuses the longer owned form when the shorter collision disappears (#1305 r4)", () => {
+    // Topic 9999999999999793300 owns blog-t9793300; the old owner of
+    // blog-t793300 is gone. A rebind must reuse blog-t9793300, never start
+    // a second instance at the free shorter form.
+    const idB = "9999999999999793300";
+    const taken = new Set(["blog-t9793300"]);
+    const sameTopic = (n: string) => n === "blog-t9793300";
+    expect(uniqueInstanceName("blog", idB, (n) => taken.has(n), sameTopic))
+      .toBe("blog-t9793300");
+  });
+
   it("treats an unproven full-form collision as a different topic (#1305 P1)", () => {
     // The full form is taken but nothing proves it is this topic (dir-only,
     // no config entry): it must not be reused — fall back to the short form.
@@ -212,7 +223,8 @@ describe("create_instance naming (#1301)", () => {
     // Telegram topic 123456, same base: its full form equals the taken short name.
     const projectDir2 = makeTempDir("agend-1301-project2-");
     vi.spyOn(fm, "createForumTopic").mockResolvedValue("123456");
-    vi.spyOn(fm, "deleteForumTopic").mockResolvedValue(undefined);
+    const primaryDelete = vi.fn(async () => {});
+    (fm as unknown as { adapter: unknown }).adapter = { deleteTopic: primaryDelete };
     let result: unknown;
     let failure: unknown;
     await fm.lifecycle.handleCreate(
@@ -221,8 +233,9 @@ describe("create_instance naming (#1301)", () => {
     );
     expect(result).toBeNull();
     expect(String(failure)).toMatch(/already used by a different topic.*different topic_name/);
-    // The created topic is rolled back, and the original entry is untouched.
-    expect(fm.deleteForumTopic).toHaveBeenCalledWith("123456", undefined);
+    // The created topic is rolled back through the captured primary adapter,
+    // and the original entry is untouched.
+    expect(primaryDelete).toHaveBeenCalledWith("123456");
     const after = readInstances(configPath);
     expect(after["blog-t123456"]).toMatchObject({ topic_id: discordTopic });
     expect(Object.keys(after)).toEqual(["blog-t123456"]);
@@ -253,6 +266,44 @@ describe("create_instance naming (#1301)", () => {
     expect(secondaryDelete).toHaveBeenCalledWith("123456");
     expect(primaryDelete).not.toHaveBeenCalled();
     expect(fm.fleetConfig!.instances["blog-t123456"]).toMatchObject({ topic_id: "999" });
+  });
+
+  it("uses the captured adapter when the creating world disappears mid-await (#1305 r4)", async () => {
+    const { fm } = makeFleet();
+    fm.fleetConfig!.instances["blog-t123456"] = { working_directory: "/tmp/x", topic_id: "999" } as never;
+    fm.saveFleetConfig();
+    const secondaryDelete = vi.fn(async () => {});
+    let resolveSecondaryCreate: ((topicId: string) => void) | undefined;
+    const secondaryAdapter = {
+      createTopic: () => new Promise<string>((resolve) => { resolveSecondaryCreate = resolve; }),
+      deleteTopic: secondaryDelete,
+    };
+    fm.worlds.set("secondary", { adapter: secondaryAdapter } as never);
+    (fm as unknown as { adapter: unknown }).adapter = { deleteTopic: vi.fn(async () => {}) };
+    const projectDir = makeTempDir("agend-1301-r4-");
+    let result: unknown;
+    let failure: unknown;
+    const pending = fm.lifecycle.handleCreate(
+      CreateInstanceArgs.parse({ directory: projectDir, topic_name: "blog" }),
+      (value, err) => { result = value; failure = err; },
+      "secondary",
+    );
+    // Let handleCreate reach the create await, then vanish the world
+    // (settings rebuild) while creation is awaiting.
+    for (let i = 0; i < 1000 && !resolveSecondaryCreate; i++) {
+      await new Promise((r) => setImmediate(r));
+    }
+    expect(resolveSecondaryCreate).toBeDefined();
+    fm.worlds.delete("secondary");
+    resolveSecondaryCreate!("123456");
+    await pending;
+    expect(result).toBeNull();
+    expect(String(failure)).toMatch(/different topic_name/);
+    // Rollback goes through the captured secondary adapter object — never
+    // re-resolved to the primary after the world disappeared.
+    expect(secondaryDelete).toHaveBeenCalledTimes(1);
+    expect(secondaryDelete).toHaveBeenCalledWith("123456");
+    expect((fm as unknown as { adapter: { deleteTopic: unknown } }).adapter.deleteTopic).not.toHaveBeenCalled();
   });
 
   it("replace keeps the old long name instead of renaming to a short one", async () => {
@@ -391,6 +442,29 @@ describe("bindAndStart naming (#1305 P1/r3)", () => {
     expect(name).toBe("blog-t123456");
     expect(Object.keys(instances)).toEqual(["blog-t123456"]);
   });
+
+  it("reuses the longer owned form when the shorter collision is gone (#1305 r4)", async () => {
+    const dir = makeTempDir("agend-1305-rebind2-");
+    const ownedId = "9999999999999793300";
+    const instances: Record<string, { working_directory: string; topic_id: string }> = {
+      "blog-t9793300": { working_directory: "/tmp/orig", topic_id: ownedId },
+    };
+    const routing = new Map<string, unknown>();
+    const tc = new TopicCommands({
+      dataDir: dir,
+      fleetConfig: { defaults: {}, instances },
+      getInstanceDir: (name: string) => join(dir, name),
+      saveFleetConfig: () => {},
+      routingTable: { set: (k: string, v: unknown) => { routing.set(k, v); } },
+      startInstance: async () => {},
+      logger: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} },
+    } as never);
+    // blog-t793300 is free, but the topic still owns blog-t9793300: reuse it,
+    // never start a second instance at the shorter form.
+    const name = await tc.bindAndStart("/again/blog", ownedId);
+    expect(name).toBe("blog-t9793300");
+    expect(Object.keys(instances)).toEqual(["blog-t9793300"]);
+  });
 });
 
 describe("allocator output always matches the orphan predicate (#1305 P2-3)", () => {
@@ -439,6 +513,28 @@ describe("assignDisplayLabels (#1305 P2-1)", () => {
     const fwd = assignDisplayLabels([{ name: LEG_A }, { name: LEG_B }]);
     const rev = assignDisplayLabels([{ name: LEG_B }, { name: LEG_A }]);
     expect([...fwd.entries()]).toEqual([...rev.entries()]);
+  });
+
+  it("survives namespace exhaustion: every fallback stays collision-checked (#1305 r4)", () => {
+    // Prism's case: the qualified form AND the real-name fallback are both
+    // already taken as labels. Every instance must still get a unique label.
+    const entries = [
+      { name: "a-t111111", displayName: "Blog" },
+      { name: "b-t222222", displayName: "Blog (d-t444444)" },
+      { name: "c-t333333", displayName: "d-t444444" },
+      { name: "d-t444444", displayName: "Blog" },
+    ];
+    const check = (list: typeof entries) => {
+      const labels = assignDisplayLabels(list);
+      expect(labels.size).toBe(4);
+      expect(new Set(labels.values()).size).toBe(4);
+      return labels;
+    };
+    const fwd = check(entries);
+    expect(fwd.get("a-t111111")).toBe("Blog");
+    expect(fwd.get("d-t444444")).toBe("Blog (d-t444444) (#2)");
+    const rev = check([...entries].reverse());
+    expect([...rev.entries()]).toEqual([...fwd.entries()]);
   });
 });
 
