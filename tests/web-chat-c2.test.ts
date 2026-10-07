@@ -72,7 +72,7 @@ describe("WebFileLedger", () => {
     const inbox = join(dir, "ws", "inbox");
     const e = ledger.storeUpload({ instance: "w", inboxDir: inbox, bytes: PNG, name: "../../evil name.png", type: png });
     expect(e.path.startsWith(inbox + "/")).toBe(true);
-    expect(e.path).toMatch(/\/web-\d+-[0-9a-f]{8}\.png$/);
+    expect(e.path).toMatch(/\/web-pending-\d+-[0-9a-f]{8}\.png$/);   // pending until a message takes it (#1273)
     expect(e.path).not.toContain("evil");
     expect(e.name).toBe("evil name.png");
     expect(readFileSync(e.path)).toEqual(PNG);

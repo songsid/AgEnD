@@ -12,8 +12,8 @@
  * label, and a file can be fetched back only by an id this process issued for it — never by a path.
  */
 import { randomBytes } from "node:crypto";
-import { constants as fsConstants, closeSync, fstatSync, mkdirSync, openSync, readSync, realpathSync, statSync, unlinkSync, writeFileSync } from "node:fs";
-import { basename, extname, join } from "node:path";
+import { constants as fsConstants, closeSync, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, readSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { basename, dirname, extname, join } from "node:path";
 
 export const UPLOAD_LIMITS = {
   /** One file. */
@@ -26,6 +26,11 @@ export const UPLOAD_LIMITS = {
 
 /** How long an uploaded file waits to be sent with a message before its id stops working. */
 export const UPLOAD_TTL_MS = 30 * 60 * 1000;
+
+/** An upload no message has taken yet is stored under this prefix; it drops the prefix when a message takes it. */
+export const PENDING_PREFIX = "web-pending-";
+function sentPath(p: string): string { const b = basename(p); return b.startsWith(PENDING_PREFIX) ? join(dirname(p), "web-" + b.slice(PENDING_PREFIX.length)) : p; }
+function pendingPath(p: string): string { const b = basename(p); return b.startsWith("web-") && !b.startsWith(PENDING_PREFIX) ? join(dirname(p), PENDING_PREFIX + b.slice(4)) : p; }
 /** The largest file the dashboard will serve back (a reply attachment can be anything the agent made). */
 export const MAX_SERVED_BYTES = 50 * 1024 * 1024;
 
@@ -150,7 +155,9 @@ export class WebFileLedger {
   storeUpload(input: { instance: string; inboxDir: string; bytes: Uint8Array; name: string; type: SniffedType }): UploadEntry {
     mkdirSync(input.inboxDir, { recursive: true, mode: 0o700 });
     const id = randomBytes(16).toString("hex");
-    const path = join(input.inboxDir, `web-${Date.now()}-${id.slice(0, 8)}${input.type.ext}`);
+    // Stored as web-pending-…: the name says on disk that no message has taken it yet, so a sweep after a restart
+    // (which loses this ledger) can still tell an abandoned upload from one an agent got (#1273).
+    const path = join(input.inboxDir, `${PENDING_PREFIX}${Date.now()}-${id.slice(0, 8)}${input.type.ext}`);
     writeFileSync(path, input.bytes, { mode: 0o600, flag: "wx" });
     const entry: UploadEntry = {
       id, instance: input.instance, path, kind: input.type.kind, mime: input.type.mime,
@@ -185,8 +192,27 @@ export class WebFileLedger {
       entries.push(e);
     }
     if (total > UPLOAD_LIMITS.maxTotalBytes) return { ok: false, error: `the files together are over ${UPLOAD_LIMITS.maxTotalBytes / 1024 / 1024} MB` };
+    // Each file gets its sent name now, before the delivery names it to the agent; all or nothing.
+    const moved: UploadEntry[] = [];
+    for (const e of entries) {
+      if (!this.rename(e, sentPath(e.path))) {
+        for (const m of moved) this.rename(m, pendingPath(m.path));
+        return { ok: false, error: "an attached file could not be prepared — attach it again" };
+      }
+      moved.push(e);
+    }
     for (const e of entries) e.state = "reserved";
     return { ok: true, entries };
+  }
+
+  /** Move an upload's file (same directory) and keep what is served for its id on the new path. */
+  private rename(e: UploadEntry, to: string): boolean {
+    if (to === e.path) return true;
+    try { renameSync(e.path, to); } catch { return false; }
+    e.path = to;
+    const served = this.served.get(e.id);
+    if (served) { try { served.realPath = realpathSync(to); } catch { this.served.delete(e.id); } }
+    return true;
   }
 
   /** The reserved uploads were delivered: they are the agent's now. */
@@ -202,6 +228,7 @@ export class WebFileLedger {
     for (const e of entries) {
       if (this.uploads.get(e.id) !== e || e.state !== "reserved") continue;
       e.state = "pending";
+      this.rename(e, pendingPath(e.path));     // back to "not taken" on disk (if this fails it reads as sent: kept 7 days)
     }
     this.prune();
   }
@@ -309,4 +336,41 @@ export function attachmentDelivery(message: string, entries: readonly UploadEntr
 /** What the chat shows for a file: never the path. */
 export function publicAttachment(f: { id: string; kind: UploadKind; name: string; size: number; mime: string }): { id: string; kind: UploadKind; name: string; size: number; mime: string } {
   return { id: f.id, kind: f.kind, name: f.name, size: f.size, mime: f.mime };
+}
+
+/**
+ * At fleet startup (#1273): the ledger of uploads waiting for a message lives in memory, so after a restart an
+ * upload no message took is nobody's — its id is gone. Remove each such file (named web-pending-…) in every
+ * workspace inbox once it is older than the upload window. Files a message took (web-…, no "pending") are the
+ * agent's and follow the inbox's ordinary 7-day rotation, exactly like a file from Telegram; nothing else in an
+ * inbox is ever touched here.
+ *
+ * Age is the file's mtime against the wall clock — the only clock a file has. A future mtime (the clock was set
+ * back) counts as just written, never as a negative age, so it is kept and looked at again later; a clock set
+ * forward can only remove an upload early, and after a restart none of them can be sent anyway.
+ * Returns how many were removed and, when younger ones remain, in how long the next one comes due.
+ */
+export function sweepOrphanedUploads(workspacesDir: string, nowMs: number = Date.now(), ttlMs: number = UPLOAD_TTL_MS): { deleted: number; nextDueInMs: number | null } {
+  let deleted = 0;
+  let nextDueInMs: number | null = null;
+  let workspaces: string[];
+  try { workspaces = existsSync(workspacesDir) ? readdirSync(workspacesDir) : []; } catch { return { deleted, nextDueInMs }; }
+  for (const ws of workspaces) {
+    const inbox = join(workspacesDir, ws, "inbox");
+    let files: string[];
+    try { files = readdirSync(inbox); } catch { continue; }
+    for (const f of files) {
+      if (!f.startsWith(PENDING_PREFIX)) continue;
+      const full = join(inbox, f);
+      try {
+        const st = lstatSync(full);                 // a symlink is not one of ours: never followed, never removed
+        if (!st.isFile()) continue;
+        const age = Math.max(0, nowMs - st.mtimeMs);
+        if (age >= ttlMs) { unlinkSync(full); deleted++; continue; }
+        const due = ttlMs - age;
+        if (nextDueInMs === null || due < nextDueInMs) nextDueInMs = due;
+      } catch { /* vanished or unreadable: leave it */ }
+    }
+  }
+  return { deleted, nextDueInMs };
 }
