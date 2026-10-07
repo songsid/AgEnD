@@ -413,7 +413,8 @@
   // ── ANSI (SGR) → HTML ─────────────────────────────────
   const BASE = ["#000000","#cd3131","#0dbc79","#e5e510","#2472c8","#bc3fbc","#11a8cd","#e5e5e5"];
   const BRIGHT = ["#666666","#f14c4c","#23d18b","#f5f543","#3b8eea","#d670d6","#29b8db","#ffffff"];
-  const esc = (s) => s.replace(/[&<>]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;" }[c]));
+  // Quotes too: the same function writes into quoted attributes (title, aria-label, data-provider) — #1303 review.
+  const esc = (s) => String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
 
   function ansiToHtml(text) {
     let out = "", fg = null, bg = null, bold = false, open = false;
@@ -628,7 +629,7 @@
         el.draggable = !view.active;
         // M2: context_pct != null shows value including 0%; null means unavailable (empty)
         const alias = sidebarAlias(it);
-        el.innerHTML = `<span class="dot ${it.status}"></span><span class="identity"><span class="nm">${esc(it.instance_name)}</span>${alias ? `<span class="alias">${esc(alias)}</span>` : ""}</span><span class="pct">${it.context_pct != null ? Math.round(it.context_pct)+"%" : ""}</span>${backendIconHtml(it.backend)}`;
+        el.innerHTML = `<span class="dot ${esc(it.status)}"></span><span class="identity"><span class="nm">${esc(it.instance_name)}</span>${alias ? `<span class="alias">${esc(alias)}</span>` : ""}</span><span class="pct">${it.context_pct != null ? Math.round(it.context_pct)+"%" : ""}</span>${backendIconHtml(it.backend)}`;
         el.title = instanceTooltip(it);
         el.onclick = () => select(name);
         wireDrag(el, { type: "instance", name, group: g });
@@ -741,7 +742,7 @@
       const sameAvatar = existingImg && (cur.startsWith(base + "?") || cur.startsWith(base + "&"));
       if (!sameAvatar) {
         const src = base + (base.includes("?") ? "&" : "?") + "t=" + Date.now(); // cache-bust, correct query separator
-        box.innerHTML = `<img class="avatar-img" alt="" src="${src}">`;
+        box.innerHTML = `<img class="avatar-img" alt="" src="${esc(src)}">`;
       }
     } else {
       const initial = (it.display_name || it.instance_name || "?").trim().charAt(0) || "?";

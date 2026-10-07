@@ -150,3 +150,75 @@ describe("the dashboard's one click listener (the real page script)", () => {
     expect(p.read("escAttr(null)")).toBe("");
   });
 });
+
+// ── #1303 review: a value in a quoted attribute can never become attributes of its own ──
+
+/** The attributes of every start tag, the way an HTML tokenizer reads double-quoted values (up to the next `"`). */
+function startTags(html: string): Array<{ tag: string; attrs: Array<[string, string]> }> {
+  const out: Array<{ tag: string; attrs: Array<[string, string]> }> = [];
+  for (const m of html.matchAll(/<([a-zA-Z][\w-]*)((?:\s+[^\s"'>\/=]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'>]+))?)*)\s*\/?>/g)) {
+    const attrs: Array<[string, string]> = [];
+    for (const a of m[2]!.matchAll(/([^\s"'>\/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+)))?/g)) attrs.push([a[1]!.toLowerCase(), a[2] ?? a[3] ?? a[4] ?? ""]);
+    out.push({ tag: m[1]!.toLowerCase(), attrs });
+  }
+  return out;
+}
+const unescape = (v: string) => v.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+
+describe("hostile names and config values stay inside their attribute (#1303 review)", () => {
+  const RENDER = readFileSync(join(UI, "chat-render.js"), "utf8");
+  const PAGE = readFileSync(join(UI, "dashboard.html"), "utf8").match(/<script>\n([\s\S]*?)<\/script>/)![1]!;
+  const HOSTILE = `victim" data-act="doAction" data-arg="stop" x="`;
+  function page(api: (m: string, p: string) => unknown) {
+    const nodes: Record<string, { innerHTML: string; textContent: string; style: Record<string, string>; className: string; querySelectorAll(): unknown[]; addEventListener(): void }> = {};
+    const node = (id: string) => (nodes[id] ??= { innerHTML: "", textContent: "", style: {}, className: "", querySelectorAll: () => [], addEventListener() {} });
+    const posts: string[] = [];
+    const c = vm.createContext({
+      localStorage: { getItem: () => null }, navigator: { language: "en" },
+      document: { addEventListener() {}, getElementById: (id: string) => node(id), createElement: () => ({ style: {}, remove() {}, append() {} }), body: { appendChild() {} } },
+      setTimeout: () => 0, clearTimeout() {}, setInterval: () => 0, clearInterval() {},
+      fetch: async (u: string, o: { method?: string } = {}) => { if ((o.method ?? "GET") !== "GET") posts.push(String(u)); return { ok: true, json: async () => ({}) }; },
+      EventSource: class { addEventListener() {} },
+    });
+    vm.runInContext(RENDER, c);
+    vm.runInContext(PAGE, c);
+    (c as any).apiStub = api;
+    vm.runInContext("api = async (m, p, b) => apiStub(m, p, b);", c);
+    return { nodes, posts, read: (s: string) => vm.runInContext(s, c) };
+  }
+
+  it("the roster: a quote-bearing instance name forges no data-act; data-n and the tooltip carry the name whole", () => {
+    const p = page(() => ({}));
+    p.read(`instances = [{ name: ${JSON.stringify(HOSTILE)}, status: "running", backend: "claude-code" }]; mode = "instance"; cur = null; renderList();`);
+    const tags = startTags(p.nodes.instanceList!.innerHTML);
+    const row = tags.find(t => t.attrs.some(([k]) => k === "data-n"))!;
+    expect(row.attrs.map(([k]) => k).sort()).toEqual(["class", "data-n", "title"]);
+    expect(unescape(row.attrs.find(([k]) => k === "data-n")![1])).toBe(HOSTILE);
+    expect(tags.flatMap(t => t.attrs).filter(([k]) => k === "data-act"), "no element in the roster names an action").toEqual([]);
+  });
+
+  it("the config tab: hostile group id and allowed users stay one value each; the only data-act are the page's own", async () => {
+    const p = page(async (_m, path) => path === "/ui/config"
+      ? { channel: { type: `x" data-act="doAction`, group_id: `-1" data-act="doAction" data-arg="delete`, access: { mode: "locked", allowed_users: [`a" data-act="saveConfig`, "b"] } }, defaults: {}, project_roots: [`/r" data-act="removeParent`] }
+      : {});
+    await p.read("loadConfig()");
+    const tags = startTags(p.nodes.configView!.innerHTML);
+    const acts = tags.flatMap(t => t.attrs).filter(([k]) => k === "data-act").map(([, v]) => v);
+    expect(acts.sort()).toEqual(["addRoot", "removeParent", "saveConfig", "togglePw", "togglePw"].sort());
+    const gid = tags.find(t => t.attrs.some(([k, v]) => k === "id" && v === "cfg-gid"))!;
+    expect(unescape(gid.attrs.find(([k]) => k === "value")![1])).toBe(`-1" data-act="doAction" data-arg="delete`);
+    const users = tags.find(t => t.attrs.some(([k, v]) => k === "id" && v === "cfg-users"))!;
+    expect(unescape(users.attrs.find(([k]) => k === "value")![1])).toBe(`a" data-act="saveConfig, b`);
+  });
+
+  it("esc() escapes quotes on every panel (the same function writes text and attributes)", () => {
+    for (const file of ["dashboard.html", "view.html", "settings.html"]) {
+      const src = readFileSync(join(UI, file), "utf8");
+      const m = src.match(/(?:function esc\(s\) \{[^\n]*\}|const esc = \(s\) => [^\n]*;)/);
+      expect(m, file).not.toBeNull();
+      const ctx = vm.createContext({ escAttr: (s: unknown) => String(s ?? "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/'/g, "&#39;").replace(/</g, "&lt;").replace(/>/g, "&gt;") });
+      const esc = vm.runInContext(`(() => { ${m![0]}; return esc; })()`, ctx) as (s: string) => string;
+      expect(esc(`a"b'c<d>&`), file).toBe("a&quot;b&#39;c&lt;d&gt;&amp;");
+    }
+  });
+});

@@ -30,6 +30,7 @@ function renderDashboardSidebar(instances: Array<Record<string, unknown>>): stri
     cur: null,
     mode: "fleet",
     esc: (value: unknown) => String(value),
+    escAttr: (value: unknown) => String(value),
     document: {
       getElementById: (id: string) => id === "instanceList" ? list : fleetEntry,
     },
