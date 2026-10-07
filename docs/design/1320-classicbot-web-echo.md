@@ -97,18 +97,25 @@ The implementable rule has three parts, all echo-side:
 1. **Neutralise every mention syntax** in the echoed preview AND in
    attachment names before posting: Discord `<@…>`, `<@!…>`, `<@&…>`,
    `@everyone`/`@here`; Telegram `@username` and bot commands shaped
-   `/cmd@bot`. Neutralise by inserting a zero-width joiner (or equivalent
-   escape) so no sibling-bot ingress match can fire, while the text stays
-   human-readable. "The format contains no mention of our own bot" is
-   necessary but explicitly insufficient — the rule covers *any* bot's
-   mention syntax.
+   `/cmd@bot` (plus bare leading-slash commands). Implementation: the shared
+   `neutralizeWebEchoText` (`src/web-channel-echo.ts`, sol's PR #1325)
+   converts `@`/`/` to full width and strips injectable frame/control chars.
+   Blanket `/` conversion mangles URLs/paths in the *display* copy — an
+   accepted, documented readability trade-off; the text actually delivered
+   to the agent is unchanged. "The format contains no mention of our own
+   bot" is necessary but explicitly insufficient — the rule covers *any*
+   bot's mention syntax.
 2. **Code-owned echo provenance** that every AgEnD adapter recognises and
-   drops on ingress: a marker (e.g. a fleet-only prefix/tag on the echo)
-   plus a registry of recently posted echo message ids checked before any
-   trigger evaluation. This also covers stale or replayed echoes that
-   satisfy no live mention. The provenance check must run before
-   mention-matching in `handleClassicChannelMessage` and the fleet-topic
-   ingress, on both platforms.
+   drops on ingress: reuse sol's shared helper directly —
+   `formatWebChannelEcho(user, preview)` /
+   `isWebChannelEcho(text, fromBot)` (`src/web-channel-echo.ts`, PR #1325),
+   with the pinned frame `WEB_ECHO_FRAME = "\u2063\u2060\u2063\u2060\u2060\u2063"`
+   (six code points, literal-regression-pinned; do not re-spell the frame).
+   The check runs
+   before trigger evaluation in `handleClassicChannelMessage` and the
+   fleet-topic ingress, on both platforms, bot-authored only. This also
+   covers stale or replayed echoes. The frame marks provenance, never
+   authentication.
 3. **Delivery-layer suppression** as defence in depth:
    `allowedMentions: { parse: [] }` on Discord sends, no mention entities on
    Telegram sends — so other clients/bots also see no ping.
