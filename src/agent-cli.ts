@@ -152,7 +152,18 @@ async function main(): Promise<void> {
       const action = rest[0];
       switch (action) {
         case "create": args = { action, title: rest[1] ?? "", description: rest[2], priority: rest[3], assignee: rest[4] }; break;
-        case "list": args = { action, filter_assignee: rest[1], filter_status: rest[2] }; break;
+        case "list": {
+          // list [filter_assignee] [filter_status[,filter_status…]] [verbose]
+          // e.g. `task list "" "done,cancelled"` or `task list "" "" true`
+          const rawStatus = rest[2];
+          const statusArg = rawStatus
+            ? rawStatus.includes(",") ? rawStatus.split(",").map(s => s.trim()).filter(Boolean)
+              : rawStatus.trim() || undefined
+            : undefined;
+          args = { action, filter_assignee: rest[1] || undefined, filter_status: statusArg, verbose: rest[3] === "true" || undefined };
+          break;
+        }
+        case "get": args = { action, id: rest[1] ?? "" }; break;
         case "claim": args = { action, id: rest[1] ?? "" }; break;
         case "done": args = { action, id: rest[1] ?? "", result: rest[2] }; break;
         case "update": args = { action, id: rest[1] ?? "", status: rest[2], priority: rest[3] }; break;

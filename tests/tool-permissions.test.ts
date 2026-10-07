@@ -427,7 +427,7 @@ describe("sink 3 — the agent endpoint", () => {
     const body = cli.slice(cli.indexOf("switch (op)"));
     const ops = [...body.matchAll(/^\s*(?:\/\/ .*\n\s*)?case "([a-z][a-z-]*)":/gm)].map(m => m[1]!);
     // The task sub-actions are arguments, not ops.
-    const subActions = new Set(["create", "list", "claim", "done", "update"]);
+    const subActions = new Set(["create", "list", "claim", "done", "update", "get"]);
 
     const unnamed = [...new Set(ops)].filter(op => !subActions.has(op) && toolForAgentOp(op) === null);
 
