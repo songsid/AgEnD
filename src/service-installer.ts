@@ -109,7 +109,13 @@ export function buildServicePath(
   ];
 
   for (const candidate of fallbacks) {
-    if (candidate && !seen.has(candidate)) { seen.add(candidate); dirs.push(candidate); }
+    // Apply the same node_modules predicate to fallback candidates: even
+    // dirname(process.execPath) can be e.g. /project/node_modules/node/bin
+    // when Node itself lives inside a node_modules tree.
+    if (candidate && !candidate.includes("/node_modules/") && !seen.has(candidate)) {
+      seen.add(candidate);
+      dirs.push(candidate);
+    }
   }
   return dirs.join(":");
 }

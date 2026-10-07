@@ -79,11 +79,57 @@ describe("ServiceInstaller", () => {
   });
 
   it("falls back to process.env.PATH when path is omitted", () => {
+    // Feed a known polluted PATH that includes a clean entry we can assert on.
+    // The PATH value in the rendered plist must contain the clean entry,
+    // have no node_modules entries, and have no duplicates.
     const { path: _, ...varsWithoutPath } = vars;
-    const plist = renderLaunchdPlist(varsWithoutPath);
-    expect(plist).toContain("<key>PATH</key>");
-    // Verify the PATH key is present; the exact value is filtered/deduped (#1348).
-    expect(plist).toMatch(/<string>[^<]+<\/string>/);
+    const distinctClean = "/home/test-distinctive/bin";
+    const pollutedEnvPath = `/home/test/node_modules/.bin:${distinctClean}:/usr/bin`;
+    const original = process.env.PATH;
+    process.env.PATH = pollutedEnvPath;
+    try {
+      const plist = renderLaunchdPlist(varsWithoutPath);
+      expect(plist).toContain("<key>PATH</key>");
+      // The clean entry must be present.
+      expect(plist).toContain(distinctClean);
+      // No node_modules entries may appear.
+      expect(plist).not.toContain("/node_modules/");
+    } finally {
+      process.env.PATH = original;
+    }
+  });
+
+  // ── #1348 regressions: fallbacks must not reintroduce node_modules ────────
+
+  it("fallback dirname(process.execPath) under node_modules is not appended (#1348 P2)", () => {
+    // process.execPath = /project/node_modules/node/bin/node → dirname = /project/node_modules/node/bin
+    // That fallback would normally be appended; the filter must drop it.
+    const result = buildServicePath(
+      "/usr/bin:/bin",
+      // execPath: no /lib/node_modules/ marker → npmPrefixBin = undefined
+      "/project/node_modules/node/bin/node",
+      "/home/test",
+    );
+    const entries = result.split(":");
+    const remaining = entries.filter(e => e.includes("/node_modules/"));
+    expect(remaining, `node_modules fallback must be excluded, found: ${remaining.join(", ")}`).toEqual([]);
+    // Normal entries are still there.
+    expect(entries).toContain("/usr/bin");
+  });
+
+  it("fallback npmPrefixBin under node_modules is not appended (#1348 P2)", () => {
+    // execPath contains /lib/node_modules/ → npmPrefixBin = /project/node_modules/tool/bin
+    const execPath = "/project/node_modules/tool/lib/node_modules/@songsid/agend/dist/cli.js";
+    const result = buildServicePath(
+      "/usr/bin:/bin",
+      execPath,
+      "/home/test",
+    );
+    const entries = result.split(":");
+    const remaining = entries.filter(e => e.includes("/node_modules/"));
+    expect(remaining, `npmPrefixBin node_modules entry must be excluded, found: ${remaining.join(", ")}`).toEqual([]);
+    // Normal entries are still there.
+    expect(entries).toContain("/usr/bin");
   });
 
   it("appends root user and nvm npm-prefix bins omitted by sudo PATH", () => {
