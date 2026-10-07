@@ -1,5 +1,5 @@
 /**
- * Phase 2b (docs/design/phase2-submit-contract.md §1.2–§1.6, §3.1): the one
+ * Phase 2b (docs/design/929-durable-outbox.md §3): the one
  * owner that wakes a paused target because durable work is waiting for it.
  *
  * Before this, the only code that woke a target for a queued cross-instance

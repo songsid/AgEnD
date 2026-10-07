@@ -46,10 +46,8 @@ describe("backend clear commands", () => {
     expect(createBackend(name, "/tmp/agend-clear-test").getClearCommand()).toBe(expected);
   });
 
-  it("keeps deprecated gemini-cli explicitly unsupported", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    expect(createBackend("gemini-cli", "/tmp/agend-clear-test").getClearCommand()).toBeNull();
-    warn.mockRestore();
+  it("the removed gemini-cli is not a backend any more (#1280): it names its replacement", () => {
+    expect(() => createBackend("gemini-cli", "/tmp/agend-clear-test")).toThrow(/gemini-cli was removed.*backend: antigravity/);
   });
 
   it("describes Kiro's destructive clear confirmation precisely", () => {
@@ -106,7 +104,7 @@ describe("/clear topic command", () => {
   });
 
   it("reports unsupported backends without sending anything", async () => {
-    const { commands, ipcSend } = setup("gemini-cli");
+    const { commands, ipcSend } = setup("some-other-cli");
 
     expect(await commands.sendClear("worker")).toBe(CLEAR_UNSUPPORTED_MSG);
     expect(ipcSend).not.toHaveBeenCalled();

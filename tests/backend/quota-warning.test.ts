@@ -180,7 +180,7 @@ describe("period-scoped limit patterns across backends", () => {
   // Guard against the same "only one period spelled out" gap reappearing: any
   // pattern mentioning a period must accept every period it could be scoped by.
   const PERIODS = ["hourly", "daily", "weekly", "monthly"];
-  const BACKENDS = ["claude-code", "codex", "opencode", "kiro-cli", "grok", "antigravity", "gemini-cli"];
+  const BACKENDS = ["claude-code", "codex", "opencode", "kiro-cli", "grok", "antigravity", "muse"];
 
   it("no backend matches one period while ignoring the others", () => {
     for (const name of BACKENDS) {

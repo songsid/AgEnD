@@ -184,7 +184,7 @@ export const SetDescriptionArgs = z.object({
 // ── Repo checkout ───────────────────────────────────────────────────────
 
 export const CheckoutRepoArgs = z.object({
-  source: NonEmptyString.describe("Repo path (absolute or ~-prefixed) or instance name."),
+  source: NonEmptyString.describe("Repo path (absolute or ~-prefixed path). Instance names are not accepted — use describe_instance to get the working_directory first."),
   branch: z.string().optional().describe("Branch or commit to checkout. Default: HEAD."),
 });
 
@@ -306,9 +306,9 @@ export const CreateInstanceArgs = z.object({
     "Human-readable description of what this instance does (e.g., 'Daily secretary for scheduling and reminders').",
   ),
   model: z.string().optional().describe(
-    "Model to use. Claude: sonnet, opus, haiku, opusplan, best, Fable, sonnet[1m], opus[1m]. Codex: gpt-4o, o3. Gemini: gemini-2.5-pro. Omit for default.",
+    "Model to use. Claude: sonnet, opus, haiku, opusplan, best, Fable, sonnet[1m], opus[1m]. Codex: gpt-4o, o3. Omit for default.",
   ),
-  backend: z.enum(["claude-code", "gemini-cli", "codex", "opencode", "kiro-cli", "antigravity", "grok", "muse"]).optional()
+  backend: z.enum(["claude-code", "codex", "opencode", "kiro-cli", "antigravity", "grok", "muse"]).optional()
     .describe("CLI backend to use. Defaults to claude-code."),
   backend_options: z.record(z.string(), z.record(z.string(), z.unknown())).optional().describe(
     "Backend-specific options keyed by backend name. For a Codex custom provider, use { codex: { provider: \"glm\" } }.",

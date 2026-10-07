@@ -63,8 +63,9 @@ instances:
     // context_guardian from instance overrides defaults. Both values differ from
     // the built-in ones (600_000 / 0), so passing means the instance block won
     // rather than the default happening to match.
-    expect(fleet.instances.mybot.context_guardian.grace_period_ms).toBe(900_000);
-    expect(fleet.instances.mybot.context_guardian.max_age_hours).toBe(2);
+    // context_guardian is optional (#1296); use ?. to avoid strict-null errors.
+    expect(fleet.instances.mybot.context_guardian?.grace_period_ms).toBe(900_000);
+    expect(fleet.instances.mybot.context_guardian?.max_age_hours).toBe(2);
 
     // topic_id preserved
     expect(fleet.instances.mybot.topic_id).toBe(42);
