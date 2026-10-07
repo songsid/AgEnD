@@ -95,7 +95,7 @@ describe("the redesigned panel loses nothing", () => {
 
   it("can still write every agent setting", () => {
     expect(patchKeys("function agentEditForm")).toEqual([
-      "agent_mode", "auto_pause_after", "backend", "channel_id", "description",
+      "agent_mode", "auto_pause_after", "backend", "channel_id", "cross_instance_visibility", "description",
       "display_name", "general_topic", "hang_detector", "lightweight",
       "log_level", "model", "model_failover", "reply_completion_guard",
       "status_emojis", "systemPrompt", "tags", "tool_progress", "tool_set", "working_directory",

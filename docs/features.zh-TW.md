@@ -635,6 +635,20 @@ agent 建立 instance 時，可以透過 `systemPrompt` 參數傳入自訂的系
 
 `agend export-chat` 會把 fleet 活動匯出成一個獨立的 HTML 檔。支援用 `--from` 和 `--to` 篩選日期，用 `-o` 指定輸出路徑。匯出的檔案以好讀的聊天格式，收錄所有訊息、工具呼叫和跨 instance 的通訊。
 
+## Agent 之間的訊息顯示 (Bot-to-bot message visibility)
+
+一個 instance 傳訊息給另一個時（`send_to_instance`、`delegate_task`、`report_result` 等），AgEnD 也會把它貼到各 instance 的主題，讓人可以跟著看：發送方主題貼完整訊息；接收方主題在 task 或 query 時貼完整訊息，其他種類貼簡短摘要，report 或 update 則不貼。Fleet 一忙，這些貼文會淹沒與人的對話。`cross_instance_visibility` 決定要貼多少（#1302）：
+
+| 模式 | 各 instance 主題 |
+|------|-----------------|
+| `full`（預設） | 如上所述，與以往版本相同 |
+| `summary` | 同樣的貼文，每則一行：`發送方 → 接收方: ` 加上發送方的任務摘要，或訊息開頭 |
+| `hidden` | 不貼 |
+
+每個主題依自己的 instance 而定：`instances.<name>.cross_instance_visibility`，否則 `defaults.cross_instance_visibility`，否則 `full`。Fleet 管理員可用 `/visibility full|summary|hidden`（Telegram General topic 或 Discord）設定 fleet 預設值，並存入 `fleet.yaml`；只打 `/visibility` 會顯示目前設定，以及有自己設定的 instance。Settings 有 fleet 預設值（Defaults）與每個 agent 的覆寫（agent → 進階）。變更立即生效，不需重啟。
+
+只有這些主題貼文會改變。訊息照常送達，[Mirror Topic](#mirror-topic) 仍會收到每一則訊息，General topic 在任何模式下都不會出現這些貼文。
+
 ## Mirror Topic
 
 在 `fleet.yaml` 設定 `mirror_topic_id`，指定一個 Telegram topic 用來觀察跨 instance 的通訊。所有 `send_to_instance` 訊息都會即時鏡像到這個 topic。這是 daemon 層級的 hook，完全不改變 agent 的行為，agent 也不知道自己正被觀察。
