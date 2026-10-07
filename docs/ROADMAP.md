@@ -31,7 +31,7 @@ documentation. Details are in the CHANGELOG release sections.
 - 2.1.12 (in beta): kiro 2.28 Classic-nudge handling, bot-to-bot visibility
   setting, gemini-cli removed, macOS memory alerts off, alpha release
   channel, reaction ownership fixes, docs overhaul. Short unique instance
-  names are planned for 2.1.12, pending review.
+  names ship in 2.1.12-beta.4.
 
 ## Next: 2.2.0 — the web line
 

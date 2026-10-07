@@ -28,7 +28,7 @@ quickstart、Mirror Topic、完整繁體中文文件。細節見 CHANGELOG 各�
   與授權門。
 - 2.1.12（beta 中）：kiro 2.28 Classic 提示處理、bot 對 bot 可見度設定、
   移除 gemini-cli、macOS 記憶體警報關閉、alpha 發布頻道、反應擁有權修正、
-  文件大整理。短的唯一 instance 名稱預計進 2.1.12，待審閱合併。
+  文件大整理。短的唯一 instance 名稱在 2.1.12-beta.4 上線。
 
 ## 接下來：2.2.0 — web 主線
 
