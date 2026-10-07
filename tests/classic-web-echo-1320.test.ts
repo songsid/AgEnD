@@ -392,10 +392,10 @@ describe("classic echo reservation fences (#1330 R2)", () => {
     addSecondEntry(h);
     seedGuard(h, performance.now() + 60_000);
     const adapterA = h.s.worlds.get("tg-a").adapter;
-    const orig = adapterA.sendText.bind(adapterA);
-    vi.spyOn(adapterA, "sendText").mockImplementation(async (chatId: string, text: string, opts: unknown) => {
+    const orig = adapterA.sendText.bind(adapterA) as (...args: any[]) => unknown;
+    vi.spyOn(adapterA, "sendText").mockImplementation(async (...args: any[]) => {
       (h.fm as any).cancelPendingDeliveries("classic-a");
-      return orig(chatId, text, opts);
+      return orig(...args);
     });
     expect(await (h.fm as any).sendClassicWebEcho("classic-a", "hi")).toBe(1);
     expect(h.sentA).toHaveLength(1);
@@ -407,10 +407,10 @@ describe("classic echo reservation fences (#1330 R2)", () => {
     addSecondEntry(h);
     seedGuard(h, performance.now() + 60_000);
     const adapterA = h.s.worlds.get("tg-a").adapter;
-    const orig = adapterA.sendText.bind(adapterA);
-    vi.spyOn(adapterA, "sendText").mockImplementation(async (chatId: string, text: string, opts: unknown) => {
+    const orig = adapterA.sendText.bind(adapterA) as (...args: any[]) => unknown;
+    vi.spyOn(adapterA, "sendText").mockImplementation(async (...args: any[]) => {
       (h.fm.classicChannels as any).channels.get(`${CHANNEL}#tg-b2`).webEcho = false;
-      return orig(chatId, text, opts);
+      return orig(...args);
     });
     expect(await (h.fm as any).sendClassicWebEcho("classic-a", "hi")).toBe(1);
     expect(h.sentA).toHaveLength(1);
