@@ -163,8 +163,11 @@ node scripts/changelog-assemble.mjs --check                         # validate o
 - Entries go to the top of their subsection, ordered by issue number. A
   missing subsection is created in the order below. A missing release section
   is created right under `[Unreleased]`.
-- It deletes the fragments it moved. An entry already in the target section is
-  not added twice, so rerunning it is harmless.
+- It deletes the fragments it moved. An entry already in the target section
+  (the whole entry, not a line that starts the same) is not added twice, so
+  rerunning it is harmless. If a run stopped between deleting the two halves
+  of a pair, `--check` reports the half left behind, and running the assembler
+  again with the same target removes it.
 - Commit its result with the trailer `Changelog: assemble` on a line of its
   own; the script prints it.
 
@@ -173,10 +176,16 @@ node scripts/changelog-assemble.mjs --check                         # validate o
 - `changelog-assemble.mjs --check` fails on a fragment that does not parse,
   names an unknown section, or has no pair.
 - On a pull request,
-  [`scripts/changelog-guard.mjs`](../scripts/changelog-guard.mjs) fails when
-  the PR changes `docs/CHANGELOG*.md`, counted from the merge-base, so a
-  merge-sync from `main` does not count. The exception is a PR whose every
-  commit editing them carries the `Changelog: assemble` trailer.
+  [`scripts/changelog-guard.mjs`](../scripts/changelog-guard.mjs) counts from
+  the merge-base, so what a merge-sync brought in from `main` is not the PR's
+  change. It fails when:
+  - a commit of the PR edits `docs/CHANGELOG*.md` without the
+    `Changelog: assemble` trailer;
+  - an entry the PR adds to or removes from them came from no marked commit.
+    That covers an edit slipped into a merge, or a conflict resolved to one
+    side that dropped the other side's entries. A merge that resolves a
+    CHANGELOG conflict on purpose carries the trailer too;
+  - a fragment the PR deletes does not have its entry in the CHANGELOG.
 
 #### A long-lived line landing on `main`
 

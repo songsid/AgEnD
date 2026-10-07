@@ -192,6 +192,77 @@ describe("changelog-assemble: idempotence", () => {
   });
 });
 
+describe("changelog-assemble: an entry is already there only as a whole (Prism #1333 r1)", () => {
+  it("an existing entry that merely starts with the new one does not swallow it", () => {
+    const r = repo(PAIR("60", "Fixed", "- Added automatic restart support", "- 新增自動重啟支援"));
+    writeFileSync(join(r.root, "docs", "CHANGELOG.md"), EN.replace("### Fixed\n", "### Fixed\n- Added automatic restart support detection.\n"));
+    writeFileSync(join(r.root, "docs", "CHANGELOG.zh-TW.md"), ZH.replace("### 修正 (Fixed)\n", "### 修正 (Fixed)\n- 新增自動重啟支援偵測。\n"));
+    expect(r.run().status).toBe(0);
+    const { en, zh, changes } = r.read();
+    expect(en).toContain("### Fixed\n- Added automatic restart support\n- Added automatic restart support detection.\n");
+    expect(zh).toContain("### 修正 (Fixed)\n- 新增自動重啟支援\n- 新增自動重啟支援偵測。\n");
+    expect(changes).toEqual([]);
+  });
+
+  it("an entry with continuation lines is not the same as its first line, and vice versa", () => {
+    // The fragment adds a continuation to an existing one-line entry: a different entry.
+    const r = repo(PAIR("61", "Fixed", "- **Existing fix (#2).** b\n  more detail"));
+    expect(r.run().status).toBe(0);
+    expect(r.read().en).toContain("### Fixed\n- **Existing fix (#2).** b\n  more detail\n- **Existing fix (#2).** b\n");
+    // The fragment is the first line of an existing multi-line entry: also a different entry.
+    const r2 = repo(PAIR("63", "Fixed", "- **Long (#63).** a"));
+    writeFileSync(join(r2.root, "docs", "CHANGELOG.md"), EN.replace("### Fixed\n", "### Fixed\n- **Long (#63).** a\n  continued\n"));
+    expect(r2.run().status).toBe(0);
+    expect(r2.read().en).toContain("### Fixed\n- **Long (#63).** a\n- **Long (#63).** a\n  continued\n");
+  });
+
+  it("the whole multi-line entry already present → skipped (the rerun case)", () => {
+    const body = "- **Twice (#62).** a\n  b";
+    const r = repo(PAIR("62", "Fixed", body));
+    writeFileSync(join(r.root, "docs", "CHANGELOG.md"), EN.replace("### Fixed\n", `### Fixed\n${body}\n`));
+    expect(r.run().status).toBe(0);
+    expect(r.read().en.split(body)).toHaveLength(2);
+  });
+});
+
+describe("changelog-assemble: an interrupted cleanup is finished by running it again (Prism #1333 r1)", () => {
+  // Simulate the failure: assemble succeeded in writing both CHANGELOGs, then deleting one half failed.
+  it.each([["the zh-TW half", "3.zh-TW.md"], ["the en half", "3.md"]])("%s left behind → a rerun removes it and adds nothing", (_label, left) => {
+    const files = PAIR("3", "Fixed");
+    const r = repo(files);
+    expect(r.run().status).toBe(0);
+    const once = r.read();
+    writeFileSync(join(r.root, "changes", left), files[left]!);
+    const check = r.run("--check");
+    expect(check.status).toBe(1);
+    expect(check.stderr).toContain("removed by running the assembler again");
+    const again = r.run();
+    expect(again.status, again.stderr).toBe(0);
+    expect(again.stdout).toContain(`removed changes/${left}, left by an interrupted run`);
+    expect(r.read()).toEqual(once);
+  });
+
+  it("the same with --release: the leftover is judged against that release", () => {
+    const files = PAIR("4", "Added");
+    const r = repo(files);
+    expect(r.run("--release", "1.1.0", "--date", "2026-10-08").status).toBe(0);
+    const once = r.read();
+    writeFileSync(join(r.root, "changes", "4.zh-TW.md"), files["4.zh-TW.md"]!);
+    expect(r.run().status).toBe(1);                                   // not in [Unreleased]: a real orphan there
+    expect(r.run("--release", "1.1.0", "--date", "2026-10-08").status).toBe(0);
+    expect(r.read()).toEqual(once);
+  });
+
+  it("a half whose entry is not in the CHANGELOG is still an error, and nothing is written", () => {
+    const r = repo({ ...PAIR("70", "Fixed"), "71.md": frag("Fixed", "- **lonely.** x") });
+    const before = r.read();
+    const res = r.run();
+    expect(res.status).toBe(1);
+    expect(res.stderr).toContain("changes/71.md: no changes/71.zh-TW.md");
+    expect(r.read()).toEqual(before);
+  });
+});
+
 describe("changelog-assemble: a bad fragment writes nothing", () => {
   const good = PAIR("30", "Fixed");
   it.each([
@@ -373,7 +444,7 @@ describe("changelog-guard (ci.yml's step, on a scratch repository)", () => {
     expect(r.guard(mainTip, r.git("rev-parse", "HEAD")).status).toBe(0);
   });
 
-  it("an assemble PR with an unmarked CHANGELOG edit slipped into a merge → fails, naming the merge", () => {
+  it("an assemble PR with an unmarked CHANGELOG edit slipped into a merge → fails, naming the entry", () => {
     const r = gitRepo();
     r.commit("chore: assemble\n\nChangelog: assemble", { "docs/CHANGELOG.md": EN.replace("### Fixed\n", "### Fixed\n- **assembled (#9).** a\n") });
     r.git("checkout", "-q", "main");
@@ -382,10 +453,9 @@ describe("changelog-guard (ci.yml's step, on a scratch repository)", () => {
     r.git("merge", "-q", "--no-commit", "main");
     writeFileSync(join(r.dir, "docs", "CHANGELOG.md"), EN.replace("### Fixed\n", "### Fixed\n- **assembled (#9).** a\n- **slipped (#11).** s\n"));
     r.git("add", "-A"); r.git("commit", "-q", "--no-edit");
-    const merge = r.git("rev-parse", "HEAD");
-    const res = r.guard(mainTip, merge);
+    const res = r.guard(mainTip, r.git("rev-parse", "HEAD"));
     expect(res.status).toBe(1);
-    expect(res.stdout).toContain(merge.slice(0, 12));
+    expect(res.stdout).toContain('added by no "Changelog: assemble" commit: - **slipped (#11).** s');
   });
 
   it("an edit that the PR itself reverts → passes (the PR does not change the CHANGELOG)", () => {
@@ -414,6 +484,82 @@ describe("changelog-guard (ci.yml's step, on a scratch repository)", () => {
     expect(r.guard(mainTip, head).status).toBe(0);
     const check = spawnSync(process.execPath, [join(r.dir, "scripts", "changelog-assemble.mjs"), "--check"], { cwd: r.dir, encoding: "utf8" });
     expect(check.status, check.stderr).toBe(0);                                        // 4.
+  });
+
+  // Prism #1333 r1: a conflict between the PR's assemble commit and main, resolved to one side by an unmarked merge.
+  const conflicted = () => {
+    const r = gitRepo();
+    r.git("checkout", "-q", "main");
+    r.commit("fragments land on main", { "changes/5.md": frag("Fixed", "- **five (#5).** f"), "changes/5.zh-TW.md": frag("Fixed", "- **五（#5）。** f") });
+    r.git("checkout", "-q", "pr");
+    r.git("merge", "-q", "--no-edit", "main");
+    r.git("rm", "-q", "changes/5.md", "changes/5.zh-TW.md");
+    r.commit("chore: assemble\n\nChangelog: assemble", {
+      "docs/CHANGELOG.md": EN.replace("### Fixed\n", "### Fixed\n- **five (#5).** f\n"),
+      "docs/CHANGELOG.zh-TW.md": ZH.replace("### 修正 (Fixed)\n", "### 修正 (Fixed)\n- **五（#5）。** f\n"),
+    });
+    r.git("checkout", "-q", "main");
+    const mainTip = r.commit("main reworded an entry\n\nChangelog: assemble", { "docs/CHANGELOG.md": EN.replace("- **Existing fix (#2).** b", "- **Existing fix (#2).** b, reworded") });
+    r.git("checkout", "-q", "pr");
+    const res = spawnSync("git", ["merge", "-q", "main"], { cwd: r.dir, encoding: "utf8", env: { ...process.env, HOME: r.dir, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@example.invalid", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@example.invalid" } });
+    expect(res.status, "the merge must conflict").not.toBe(0);
+    return { r, mainTip };
+  };
+
+  it.each([
+    ["--ours (main's reworded entry dropped)", "--ours", /removed by no "Changelog: assemble" commit[^.]*Existing fix \(#2\)\.\*\* b, reworded/],
+    ["--theirs (the assembled entry dropped, its fragments already deleted)", "--theirs", /changes\/5\.md is deleted but its entry is not in the CHANGELOG/],
+  ])("a conflict resolved %s in an unmarked merge → fails", (_label, side, why) => {
+    const { r, mainTip } = conflicted();
+    r.git("checkout", side, "--", "docs/CHANGELOG.md");
+    r.git("add", "-A"); r.git("commit", "-q", "--no-edit");
+    const res = r.guard(mainTip, r.git("rev-parse", "HEAD"));
+    expect(res.status).toBe(1);
+    expect(res.stdout).toMatch(why);
+  });
+
+  it("the same conflict, resolved to keep both and the merge marked → passes", () => {
+    const { r, mainTip } = conflicted();
+    writeFileSync(join(r.dir, "docs", "CHANGELOG.md"), EN.replace("### Fixed\n- **Existing fix (#2).** b", "### Fixed\n- **five (#5).** f\n- **Existing fix (#2).** b, reworded"));
+    r.git("add", "-A"); r.git("commit", "-q", "-m", "Merge main\n\nChangelog: assemble");
+    expect(r.guard(mainTip, r.git("rev-parse", "HEAD")).status).toBe(0);
+  });
+
+  it("the conflict resolved --ours on purpose, the merge marked → passes (it vouches for what it dropped from main's side)", () => {
+    const { r, mainTip } = conflicted();
+    r.git("checkout", "--ours", "--", "docs/CHANGELOG.md");
+    r.git("add", "-A"); r.git("commit", "-q", "-m", "Merge main, keeping ours\n\nChangelog: assemble");
+    expect(r.guard(mainTip, r.git("rev-parse", "HEAD")).status).toBe(0);
+  });
+
+  it("control: an assemble PR merge-synced with a main that assembled its own entries elsewhere (clean, unmarked) → passes", () => {
+    const r = gitRepo();
+    r.commit("chore: assemble\n\nChangelog: assemble", { "docs/CHANGELOG.md": EN.replace("### Fixed\n", "### Fixed\n- **mine (#21).** a\n") });
+    r.git("checkout", "-q", "main");
+    const mainTip = r.commit("main assembles\n\nChangelog: assemble", { "docs/CHANGELOG.md": EN.replace("### Added\n", "### Added\n- **theirs (#22).** t\n"), "src/m.ts": "m\n" });
+    r.git("checkout", "-q", "pr");
+    r.git("merge", "-q", "--no-edit", "main");
+    expect(r.guard(mainTip, r.git("rev-parse", "HEAD")).status).toBe(0);
+  });
+
+  it("a PR that deletes someone's fragment without assembling it → fails", () => {
+    const r = gitRepo();
+    r.git("checkout", "-q", "main");
+    const mainTip = r.commit("fragments", { "changes/30.md": frag("Fixed", "- x"), "changes/30.zh-TW.md": frag("Fixed", "- y") });
+    r.git("checkout", "-q", "pr"); r.git("merge", "-q", "--no-edit", "main");
+    r.git("rm", "-q", "changes/30.md", "changes/30.zh-TW.md"); r.git("commit", "-q", "-m", "tidy");
+    const res = r.guard(mainTip, r.git("rev-parse", "HEAD"));
+    expect(res.status).toBe(1);
+    expect(res.stdout).toMatch(/changes\/30\.md is deleted but its entry is not in the CHANGELOG/);
+  });
+
+  it("an edit the PR reverted, while main moved on with CHANGELOG changes of its own → passes (counted from the merge-base)", () => {
+    const r = gitRepo();
+    r.commit("oops", { "docs/CHANGELOG.md": EN + "x\n" });
+    const head = r.commit("revert oops", { "docs/CHANGELOG.md": EN });
+    r.git("checkout", "-q", "main");
+    const mainTip = r.commit("main assembles\n\nChangelog: assemble", { "docs/CHANGELOG.md": EN.replace("### Added\n", "### Added\n- **main (#40).** m\n") });
+    expect(r.guard(mainTip, head).status).toBe(0);
   });
 
   it("missing or malformed SHAs, or ones git does not know → exit 2", () => {
