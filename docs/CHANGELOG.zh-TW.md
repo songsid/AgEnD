@@ -4,37 +4,6 @@
 
 格式基於 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)。
 
-## [2.2.0] - 未發佈（web 線，`feature/2.2-web`）
-
-### 新增 (Added)
-- **Web chat → ClassicBot 頻道同步（#1320 part B）。** 成功送到 classic instance 的 web 訊息，會同步到該 instance 開了 `web_echo: true` 的 ClassicBot 頻道（預設關、逐 entry）。同步走該頻道自己的 adapter 並關閉 mention，排序與 part A 同一條 before-reply lane，失敗不阻擋 web 投遞。防重入直接沿用 part A 的共用 helper（`neutralizeWebEchoText`、`formatWebChannelEcho`、`isWebChannelEcho`、固定 `WEB_ECHO_PREFIX`）：預覽與附件名稱的 mention 換成可見 ASCII 標籤，ingress 核對 fleet bot 作者加固定前綴。開關在 classicBot.yaml 與 Settings（非 boolean 拒絕、改了重啟該頻道、群組頻道在頁面二次確認）。
-- **Web chat → fleet 主題同步（#1320 part A）。** 成功的 web 訊息同步至綁定的 Telegram 或 Discord 主題，排序等待總共最多五秒，之後 Agent 回覆繼續。逾時丟棄尚未開始的副本；已在飛的副本可能晚到，結果另記日誌。`web.echo_to_channel` 預設開啟，可在 Settings 切換，未變更的選項不寫入設定。同步失敗不阻擋 web 投遞；mention／command 改成可見標籤，ingress 核對 fleet bot 作者與固定前綴，避免自己、同 fleet 的其他 bot 或重播副本觸發新回合；同平台任一已設定 bot 身分未知時暫時隔離 bot 前綴候選，人類不受影響。不包含 ClassicBot 或純 web fleet。
-- （web 線，暫時性）CI 與 gitleaks 也會對 `feature/2.2-web` 的 push 與 pull request 執行，讓每一段 reland 都跑全套測試；整條線 rebase 回 main 時再決定是否保留。
-- **Web 聊天：Markdown、多行輸入、重新整理不再清空。** 儀表板聊天的訊息現在會渲染 Markdown（粗體、斜體、`code`、程式碼區塊、清單、引用、連結——只接受 http/https/mailto、在新分頁開啟），
-  而訊息內容無法產生任何自己的標記（先跳脫整段文字再套格式）。輸入框可多行（Enter 送出、Shift+Enter 換行），送出失敗會把文字還給你。重新整理不再清空聊天：fleet 會保留每個 instance 最近的訊息
-  （`GET /ui/history`，存在記憶體、有上限），SSE 斷線重連時會補送漏掉的訊息。Agent 的長回覆在 web 聊天中不再於 2,000 字截斷（現在 16,000）。
-- **Web 聊天：可以傳檔案與圖片，也看得到 agent 回傳的檔案。** 輸入框有 📎 按鈕，也可以把檔案貼上或拖進聊天區（每則訊息最多 5 個、每個 10 MB、合計 25 MB；PNG、JPEG、GIF、WebP、PDF 與文字檔）。Agent 收到的方式和 Telegram 完全相同——檔案放在該 instance 工作區的 inbox、一行 `[📷 Image: …]` / `[📎 File: … → …]`，以及 `image_path` / `attachment_path`；agent 在回覆裡附的檔案也會顯示在 web 聊天中（圖片直接顯示，其他是下載連結）。檔案型別由內容判斷，不看檔名或瀏覽器的說法；存檔名由 fleet 決定；而且只能用 fleet 發出的 id 取回檔案（`/ui/file/<id>`），絕不能用路徑。四種圖片以外的檔案一律以下載方式提供，不會在頁面上渲染。附加了但 30 分鐘內沒送出的檔案會被刪除，fleet 中途重啟也一樣：上傳在被訊息帶走前存成 `web-pending-…`，重啟時會掃掉放超過 30 分鐘的（#1273）。已送出的檔案跟 Telegram 的一樣，依 inbox 的 7 天輪替處理。
-- **Web 聊天：看得到訊息送到哪一步、看得到 agent 正在處理，也能中止它。** 從 web 聊天送出的每則訊息都有送達勾，和 Telegram 訊息上的表情回應是同一套流程：◷ 排在前一則之後、✓ 已交給 agent、✓✓ agent 已收到、! 未送達（每個都有給螢幕閱讀器的標籤，重新整理後仍保留）。目前開著的聊天，其 agent 正在處理時，輸入框上方會顯示「*名稱* 處理中…」與 **中止** 按鈕，作用和 Telegram 的取消按鈕與 `/cancel` 相同：對 CLI 送 Esc，並取消還在排隊的訊息——它們的勾會變成 ⊘。（中止是 `POST /ui/cancel/<instance>`，和 dashboard 其他寫入一樣需要 session 與 CSRF 檢查；它不是 instance 的 Stop，後者會結束整個程序。）Web 訊息的送達回報也不再拿一個從來不是 Telegram 訊息的 id 去 Telegram 上加表情。
-- **Web 聊天：可以在 dashboard 上回答 fleet 的提示。** instance 看起來卡住、自行結束，或卡在互動式提示時，Telegram 上的按鈕（*強制重啟* / *繼續等待*、*重啟* / *忽略*、*確認* / *取消*）也會出現在該 instance 的 web 聊天中。兩邊是同一個提示，不是複製品：只算一次回答，哪一邊先按就算哪一邊；另一邊的按鈕會收成結果；過期也是兩邊同時。只有這幾種與 instance 健康有關的提示會出現在 web——`/clear` 確認、登入、Classic 群組核准、tips 與 `/model` / `/effort` 選單仍只留在原本發問的地方。從 dashboard 回答需要已登入的 session 與它的 CSRF token、必須指明 instance，而且必須是該提示自己的按鈕之一。
-- **沒有設定任何聊天平台的 fleet，只靠 web dashboard 也能運作。** 沒有設定 `channel` / `channels` 時，agent 的回覆現在會送到 web 聊天（並告訴 agent 已送出），不再永遠被「Channel adapters are not ready — retry shortly」拒絕。
-- **Web 聊天：表格、巢狀清單、程式碼上色（#1269）。** agent 回覆裡的 Markdown 表格會以表格顯示（標題列、`:--`/`--:`/`:-:` 對齊，儲存格裡的粗體、連結、`code` 照常生效；儲存格內的直線請寫 `\|`）；清單會依縮排巢狀（項目符號與數字可混用，最多六層）；js/ts/json/python/sh 的程式碼區塊會上色。沒有用任何外部函式庫、也不從 CDN 載入：仍是先跳脫再套格式的同一個 renderer，只多了固定的標籤與 class，訊息內容依然無法產生自己的標記。
-- **Web 聊天：以聊天為主的版面，支援淺色與深色（#1307 版面部分）。** 對話是置中的一欄：你的訊息是靠右的泡泡，agent 的回覆佔滿整欄（每則都能複製）；程式碼區塊標出語言、有複製與換行，超過 30 行時先收合；只有停在最底部時畫面才跟著新訊息捲動，不在底部時會出現「↓ N 則新訊息」；agent 工作時輸入框的送出鈕會變成 Stop（開始打字後送出鈕會回來）。側欄可以隱藏（會被記住），在手機上是抽屜。dashboard 會跟隨裝置的淺色／深色設定，也可以在各瀏覽器自選（`/assets/theme.js` 在頁面繪製前就套用），改用系統字型，並且不再有任何行內 `style` 屬性（#1300）。
-- **Web 聊天：agent 的這一輪與附件（#1307 狀態部分）。** 工作列會顯示 agent 已工作多久（從頁面看到它開始起算）；按下 Stop 後顯示「正在中止…」直到 agent 停下；agent 停在終端機上等待（權限詢問、登入、對話框）時會註明，側欄也會出現「等你回應」標記，並說明這是從終端畫面判讀的。把檔案拖到聊天區時會顯示放置位置；每個檔案以標籤顯示檔名與大小；貼上超過 10,000 個字元時會改成文字檔附加（可以再改回文字）。沒有聊天平台的 fleet，卡住、程序自行結束與互動式提示這幾種提示現在會出現在 dashboard 上（之前哪裡都不會出現）；互動式提示只在有 General 可以協助時才會出現。
-- **Web 聊天：手機、鍵盤與螢幕閱讀器（#1307 行動版與無障礙部分）。** 在手機上，螢幕鍵盤出現時會縮小頁面而不是蓋住輸入框（`interactive-widget=resizes-content`），版面會避開瀏海與 home bar（safe-area insets），輸入框文字改為 16px，iOS 不會因此放大頁面。agent 工作時按 Esc 會中止回覆（表單或選單開著時、輸入法選字時都不會）。側欄每一列都能用 Tab 移到、用 Enter／空白鍵打開；手機抽屜打開時焦點留在抽屜內，關上後回到 ☰。訊息清單是不會逐則朗讀的紀錄，另有一行 polite 狀態區播報粗略事件（開始工作、完成、已回覆、等你回應）。
-
-- **Web 聊天：預覽 agent 的 HTML（#1306）。** agent 回覆裡的 ` ```html ` 區塊下方會出現一張卡片：**預覽** 會在一個由另一個本機 listener（`web.preview_port`，預設 `health_port + 1`）提供的沙箱框架裡執行 HTML，因此它無法使用 dashboard 的登入，也無法操作 dashboard；**停止** 會關閉它；**下載** 會存成 `reply.html`。每台裝置的預覽**預設都是關閉的，要那台裝置自己允許**（在側欄或卡片選單），而且每次都要按下才會執行，並附上說明：預覽可能把資料傳出去，也可能讓分頁變慢或卡住。只有 fleet 標記為 agent 的回覆才會有卡片——來自人的 HTML 一律只顯示成程式碼。透過 tunnel 或 proxy 時需要 `web.preview_origin`（另一個主機名稱），否則卡片會說明預覽為什麼關閉。
-
-### 安全 (Security)
-- **三個網頁面板共用同一條導覽列與 Session 選單，`/` 直接開 dashboard。** `/ui`、`/view`、`/settings` 都有相同的「Dashboard · View · Settings」連結與 Session 按鈕：顯示目前以哪個瀏覽器登入、session 何時結束、其他已登入的裝置（各自可登出）以及「全部登出」。只是一支小 script 與樣式表（`/assets/shell.js`、`/assets/shell.css`），不是重寫面板。
-- **Dashboard 不再依賴 Server-Sent Events。** 即時串流 15 秒沒有任何訊息或一直失敗時，頁面改為每 5 秒用 `GET /ui/poll` 取得相同的狀態與聊天訊息，串流恢復後再切回去。輪詢與串流使用同一個 `<boot>-<id>` 游標，所以兩者交替時不會重複也不會漏訊息，fleet 重啟後也一樣。（Cloudflare Quick Tunnel 不支援 SSE，會緩衝串流的 proxy 看起來就像從不送資料的伺服器。）
-- **Dashboard 不再從 Google 載入字型，每個面板都帶 `Content-Security-Policy`**，把 script、樣式、圖片、字型與連線都限制在本站（`connect-src 'self'`），即使頁面上真的跑了不該跑的 script，也無法把讀到的內容送到別的伺服器。
-- **網頁面板上只會執行頁面自己的 inline script（#1268）。** `script-src` 不再允許 `'unsafe-inline'`：每個面板自己的 script 會帶一個每次回應都不同的 nonce，dashboard 的按鈕也不再使用 `onclick=` 屬性（改由一個 listener 執行 `data-act` 指定、而且在固定清單裡的動作）。被注入到頁面的標記（例如 `onerror=` 或 `<script>`）不會再執行。
-- **……也只會套用頁面自己的 inline 樣式（#1300）。** `style-src` 也不再允許 `'unsafe-inline'`：每個面板的 `<style>` 區塊帶著同一個每次回應都不同的 nonce，而且所有面板都不再有 `style="…"` 屬性（dashboard 的已在 #1307 移除，/view 與 /settings 的在這次移除；即時終端的顏色與用量條改用 style 物件設定）。被注入的標記無法加上自己的 inline 樣式（但仍可能套用頁面既有的 class）。web terminal 維持它自己的政策。
-
-### 升級注意事項 (Upgrade Notes)
-- **[行為變更] 網頁面板改用一次性登入碼登入，dashboard 連結不再帶憑證。** `/dashboard` 以前會把整個 fleet 共用的 `web.token` 貼進 `/view?token=`、`/settings?token=`、`/ui?token=`：它會留在聊天紀錄、瀏覽器歷史與截圖裡，直到執行 `agend web-token rotate` 才失效。現在改給登入頁位址與一組 8 字元登入碼，只能用一次、5 分鐘過期；在登入頁輸入後會建立**伺服器端 session**（不透明的隨機 id，伺服器可以讓它過期、列出、撤銷；不再是 `sha256(web.token)` 那種每台裝置都相同、要到 rotate 才失效的 cookie）。**升級後每個人都要重新登入一次**，舊 cookie 不再被接受。Session 自登入起最多 12 小時、閒置 2 小時即結束，fleet 重啟後仍在，頁面上每個寫入動作也都需要每個 session 專屬的 `X-Agend-CSRF` 標頭與相符的 `Origin`。`/dashboard revoke`（Discord：`/dashboard` 選 `action: revoke`）讓所有瀏覽器登出；`agend web --code` 在主機上印出登入碼；`agend web-token rotate` 仍會一次殺掉所有 session。標頭 token（`X-Agend-Token`）維持不變，給 CLI 與腳本使用。**URL 裡的 `?token=` 在 `/ui` 與 `/settings` 上不再是憑證**：舊的 `?token=` 連結或書籤會開到登入頁——在那裡用 `agend web` 或 `/dashboard` 給的一次性登入碼登入一次即可。`agend web` 改為印出登入碼並開啟 `/signin`，不再開 token 連結。新的登入會通知 General topic（`web.notify_login: false` 可關閉）。
-- **[行為變更] `/view` 不再接受網址或文字框裡的 web token。** 以前儲存個人檔案、頭像與側欄順序，可以用整個 fleet 共用的 `web.token` 以 `?token=` 送出：`/dashboard` 的「View (edit)」連結會把它放進網址列，而 `view.html` 還會把它附加到**每一個** API 請求並存進 `localStorage`。現在寫入需要已登入的 session（與其他面板相同的 CSRF 檢查），或腳本使用 `X-Agend-Token`；`?token=` 不再被當成寫入憑證，token 輸入框已移除，Edit 會把未登入的訪客帶到登入頁再回來。**預設仍可公開讀取 `/view`**（包含即時終端畫面）；新增的 `web.view_access: session` 可要求讀取也要登入。沒有任何程式接受過的唯讀 `view.token` 檔不再寫入，舊檔會在啟動時刪除。
-
 ## [未發佈] (Unreleased)
 
 ### 2.1.13 — 修正 (Fixed)

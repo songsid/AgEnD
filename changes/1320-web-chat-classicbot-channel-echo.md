@@ -1,0 +1,4 @@
+---
+section: Added
+---
+- **Web chat → ClassicBot channel echo (#1320 part B).** Successful web sends to a classic instance are copied to that instance's ClassicBot channels, but only to entries with `web_echo: true` (default off, per entry). The copy goes through the channel's own adapter with mention suppression, in the same before-reply ordering lane as part A, and failures never block the web send. No-re-entry reuses part A's shared helper verbatim (`neutralizeWebEchoText`, `formatWebChannelEcho`, `isWebChannelEcho`, fixed `WEB_ECHO_PREFIX`): visible-ASCII mention neutralisation in preview and attachment names, fleet-bot-author plus prefix ingress drop. The opt-in lives in classicBot.yaml and Settings (non-boolean rejected, channel restart on change, second confirmation for group channels in the page).

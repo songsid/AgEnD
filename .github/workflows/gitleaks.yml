@@ -1,12 +1,10 @@
 name: Gitleaks
 
 on:
-  # feature/2.2-web: TEMPORARY web-line trigger (2.2 reland, R0-R6 PRs). Decide whether to drop it when the line is
-  # rebased back into main.
   push:
-    branches: [main, feature/2.2-web]
+    branches: [main]
   pull_request:
-    branches: [main, feature/2.2-web]
+    branches: [main]
 
 permissions:
   contents: read
