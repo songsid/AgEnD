@@ -178,6 +178,16 @@ describe.each([["a classic script", asScript], ["a CommonJS module", asModule]])
       expect(md(inputs[0]!)).not.toContain("<table>");
     });
 
+    it("the tokenizer scales linearly: 16k characters of unclosed comments cost about 4x 4k, not 16x (#1287 review)", () => {
+      // Unclosed block comments were the quadratic case (each `/*` re-scanned to the end): ~60 ms at the cap, 16x per 4x.
+      const input = (chars: number) => "```js\n" + "/*\n".repeat(Math.floor(chars / 3)) + "```";
+      const best = (s: string) => { let b = Infinity; for (let i = 0; i < 5; i++) { const t = performance.now(); md(s); b = Math.min(b, performance.now() - t); } return b; };
+      const small = best(input(4_000)), large = best(input(16_000));
+      // Under 2 ms there is nothing to measure (timer noise); above it the growth must look linear, not quadratic.
+      if (large >= 2) expect(large / Math.max(small, 0.01), `${small.toFixed(2)} ms → ${large.toFixed(2)} ms`).toBeLessThan(8);
+      expect(md(input(16_000))).toContain('<span class="tk-c">/*');
+    });
+
     it("separator rows: only dashes with optional colons per cell; anything else is not a table", () => {
       for (const sep of ["| -- | x |", "|--|-- -|", "| : |---|", "|---|:-:x|", "--- ---"]) {
         expect(md(`| a | b |\n${sep}`), sep).not.toContain("<table>");
