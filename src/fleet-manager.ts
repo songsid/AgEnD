@@ -108,6 +108,7 @@ import { handleAgentRequest, ToolNotPermittedError, type AgentEndpointContext } 
 import { ClassicChannelManager, getClassicBackendChoices, isSelectableClassicBackend, readClassicLastActivityAt } from "./classic-channel-manager.js";
 import { assertExplicitInstanceRemoval, type ExplicitInstanceRemoval } from "./instance-removal.js";
 import { validateFleetConfig } from "./config-validator.js";
+import { isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
 import { presentationState, interactionSummary } from "./interaction-observation.js";
 import type { InstanceState, InstanceStateSnapshot, InteractionSnapshot } from "./backend/types.js";
 import { readLastInboundAt } from "./daemon.js";
@@ -10693,9 +10694,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const installed = this.probeInstalledBackends();
     // One entry point for "get this CLI working" (#1131): a backend that is
     // not installed is offered too, and the click installs it first, then
-    // signs in (startLoginSession routes it). gemini-cli is not recommended,
-    // as before; `/login gemini-cli` still installs it.
-    const installable = new Set(Object.keys(BACKEND_INSTALLATION_INFO).filter(backend => backend !== "gemini-cli"));
+    // signs in (startLoginSession routes it).
+    const installable = new Set(Object.keys(BACKEND_INSTALLATION_INFO));
     const candidates = new Set<string>([...installed, ...configured, ...installable]);
     const unsupported: Array<{ backend: string; flow?: LoginFlow; status: string[] }> = [];
     const choices = [...candidates].sort().flatMap(backend => {
@@ -10718,7 +10718,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return [];
     });
     if (unsupported.length) {
-      const guidance = unsupported.map(({ backend, flow, status }) => `${backend} · ${status.join(" · ")} — ${!installed.has(backend)
+      const guidance = unsupported.map(({ backend, flow, status }) => `${backend} · ${status.join(" · ")} — ${isRemovedBackend(backend)
+        ? removedBackendMessage(backend)
+        : !installed.has(backend)
         ? (BACKEND_INSTALLATION_INFO[backend] ? t("login.install_by_name", backend) : t("login.install_on_host", backend))
         : flow?.remoteLogin === "unsupported"
         ? t("login.remote_unsupported_agent_cli", backend, flow.command)
@@ -10900,6 +10902,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // went missing meanwhile must not start an installer from a "go" button.
     if (opts.skipAuthCheck) return this.launchSignIn(backendArg, chat, opts);
     const wanted = LOGIN_BACKEND_ALIASES[backendArg.toLowerCase()] ?? backendArg.toLowerCase();
+    // A removed backend (#1280) is neither installed nor signed into: say what replaces it.
+    if (isRemovedBackend(wanted)) return removedBackendMessage(wanted);
     if (BACKEND_INSTALLATION_INFO[wanted] && !this.isCliInstalled(wanted)) {
       const flow = LOGIN_FLOWS[wanted];
       this.recordLoginFlow(wanted, flow && flow.remoteLogin !== "unsupported" ? "install_then_login" : "install_only", chat.userId);
@@ -11479,7 +11483,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private static INSTRUCTIONS_FILENAME: Record<string, string> = {
     "claude-code": "CLAUDE.md",
     "codex": "AGENTS.md",
-    "gemini-cli": "GEMINI.md",
     "opencode": "AGENTS.md",
     "kiro-cli": ".kiro/steering/project.md",
     // Grok reads AGENTS.md project docs; agy reads .agents/agents.md — the
@@ -11552,7 +11555,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   /**
    * Where each backend natively loads on-demand skills from, relative to the
    * workspace. Backends without a native skill mechanism (opencode, grok,
-   * antigravity, gemini-cli) are deliberately absent: dropping files a CLI
+   * antigravity) are deliberately absent: dropping files a CLI
    * never reads is clutter, not capability. Unknown directories are ignored
    * by older CLI versions, so publishing is fail-open across upgrades.
    */

@@ -6,6 +6,12 @@
 
 ## [未發佈] (Unreleased)
 
+### 升級注意事項 (Upgrade Notes)
+- **[移除] `gemini-cli` backend（#1280）。** 它先前已標為 deprecated，警告上寫的停用日期也已經過了。改用 `backend: antigravity`：同樣是 Google 登入，透過 agy。仍寫著 `gemini-cli` 的設定現在會被拒絕、不會照跑，不論是寫在 instance、fleet 預設值，還是 ClassicBot 的頻道或預設值：
+  - **`agend validate`** 與 Settings 會報錯，指出是哪個 instance，並說明請設定 `backend: antigravity`。仍含有它的 fleet.yaml 重新載入會整份被拒絕，並附上這則訊息。
+  - **`agend update` 之後**，fleet 照常啟動。只有那個 instance 不會啟動：它的頻道會收到通知，說明原因和該怎麼設定，而且不會自動重試。其他 instance 都正常啟動。AgEnD 絕不會自行換上別的 backend：要讓 instance 改用哪個 CLI、哪個帳號，由你決定。
+  - `/login gemini-cli` 與 `agend backend doctor gemini-cli` 也會給同樣的說明，而不是安裝或檢查它。只用來預先信任 Gemini CLI 資料夾的 `agend backend trust` 已移除。
+
 ### 新增 (Added)
 - **新增 alpha 頻道，與 beta、穩定版分開（#1259）。** `vX.Y.Z-alpha.N` tag 現在發布到 npm `@alpha`。以前所有不含 `-beta` 的 tag 都進 `@latest`，第一個 2.2 alpha 會被所有穩定版使用者裝到。發布 workflow 現在嚴格對應：`vX.Y.Z` → `@latest`、`-beta.N` → `@beta`、`-alpha.N` → `@alpha`。其他 tag 會在建置前就失敗，`@latest` 也不會往回移。客戶端的 `agend update`（以及聊天的 `/update`）會讓 alpha 安裝留在 `@alpha`。新增 `agend update --alpha`。「有新版本」通知會告訴 alpha 較新的 alpha 與穩定版，不會提到 beta。beta 與穩定版的行為不變。舊的手動 `scripts/publish.sh` 已移除：發版就是推 tag。
 - **額度重置券最快到期的日期，顯示在券那一行（#1232、#1244）。** Codex 的「額度重置券: 2 可用」現在會標出這些券中最早到期的那張——「額度重置券: 2 可用 · 🎫 最近過期：10/22（16d6h 後）」——`/usage`、View 用量面板與 `get_usage` 的文字都有，資料取自 Codex 自己的券清單（該 metric 的 `expiresAt`）。沒有到期日的券不計；全都沒有時，照舊只顯示張數。這是到期、不是重置：沒用掉的券就沒了。（2.1.12-beta.2 在 #1232 加的每個 backend 一行「⏳ 下次重置」是誤解了需求，已移除，`nextResetAt` 也一併拿掉；各 window 仍各自顯示「X 後重置」。）

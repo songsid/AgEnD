@@ -742,7 +742,7 @@ export class OpenCodeDbSource implements TranscriptSource {
 /**
  * Source for a backend, or null for backends handled elsewhere (claude-code
  * lives inside TranscriptMonitor) and backends with no known source
- * (antigravity, gemini-cli — nothing usable found on disk; grok has
+ * (antigravity — nothing usable found on disk; grok has
  * events.jsonl with tool names only and can be added later).
  */
 export function createTranscriptSource(

@@ -58,7 +58,6 @@ agend fleet cleanup             # 移除孤兒實例目錄
 
 ```bash
 agend backend doctor [backend]  # 檢查後端環境（代碼、驗證、tmux、TERM）
-agend backend trust <backend>   # 預先核准工作目錄（避免 CLI 的信任對話框）
 agend delivery scan-forged-envelopes --instance <name>  # 檢查 kiro instance 的 transcript 裡是否有 fleet 從未投遞過的 peer envelope（--all、--json）
 ```
 

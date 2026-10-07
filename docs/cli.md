@@ -142,7 +142,6 @@ agend doctor mcp                # Fleet-wide MCP health check (IPC, config paths
 agend health                    # Fleet health check — shows problems and diagnostics
 agend validate                  # Validate fleet.yaml and classicBot.yaml
 agend backend doctor [backend]  # Check backend environment (binary, auth, tmux, TERM)
-agend backend trust <backend>   # Pre-trust working directories (avoid CLI trust dialogs)
 agend delivery scan-forged-envelopes --instance <name>  # Check a kiro instance's transcript for peer envelopes the fleet never delivered (--all, --json)
 ```
 

@@ -146,12 +146,6 @@ Check a backend's environment — binary, auth, tmux, `TERM`:
 agend backend doctor claude-code
 ```
 
-Pre-approve working directories so the CLI's own trust dialog never blocks startup:
-
-```bash
-agend backend trust claude-code
-```
-
 Validate config before starting anything:
 
 ```bash

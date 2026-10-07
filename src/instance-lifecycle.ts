@@ -1,3 +1,4 @@
+import { REMOVED_BACKENDS, isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
 import { existsSync, readFileSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { ensureInstanceDir } from "./private-dir.js";
 import { execFileSync } from "node:child_process";
@@ -64,7 +65,6 @@ const localBin = (home: string) => join(home, ".local", "bin");
 /** Shared CLI metadata used by startup validation and ClassicBot onboarding. */
 export const BACKEND_INSTALLATION_INFO: Readonly<Record<string, BackendInstallationInfo>> = {
   "claude-code": { binary: "claude", install: "curl -fsSL https://claude.ai/install.sh | bash", binDirs: (_env, home) => [localBin(home)] },
-  "gemini-cli": { binary: "gemini", install: "npm i -g @google/gemini-cli" },
   // The curl installer serves Linux and macOS (verified: 200, text/x-shellscript);
   // the previous `brew install --cask` form only worked on macOS.
   "kiro-cli": { binary: "kiro-cli", install: "curl -fsSL https://cli.kiro.dev/install | bash", binDirs: (_env, home) => [localBin(home)] },
@@ -1457,6 +1457,15 @@ export class InstanceLifecycle {
     const { createBackend } = await import("./backend/factory.js");
 
     const backendName = config.backend ?? this.ctx.fleetConfig?.defaults?.backend ?? "claude-code";
+
+    // A removed backend (#1280): this instance refuses to start, says why and what to use instead, and the rest of
+    // the fleet is unaffected. Never a fallback to another backend.
+    if (isRemovedBackend(backendName)) {
+      const message = removedBackendMessage(backendName, name);
+      this.ctx.logger.error({ name, backend: backendName }, `Not starting: ${message}`);
+      this.ctx.notifyInstanceTopic(name, t("inst.backend_removed", name, backendName, REMOVED_BACKENDS[backendName]!.replacement));
+      return;
+    }
 
     // Verify backend binary is in PATH before spawning
     const installation = BACKEND_INSTALLATION_INFO[backendName];

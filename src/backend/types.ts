@@ -327,7 +327,7 @@ export interface InputDraft {
 }
 
 export interface CliBackend {
-  /** The CLI binary name (e.g. "claude", "gemini", "codex") */
+  /** The CLI binary name (e.g. "claude", "codex", "agy") */
   readonly binaryName: string;
 
   /**
@@ -831,7 +831,6 @@ const BACKEND_MODEL_PATTERNS: Record<string, RegExp> = {
   "claude-code": /^(sonnet|opus|haiku|opusplan|best|fable|claude)/i,
   "kiro-cli": /^(claude|sonnet|opus|haiku|auto|gpt|deepseek|minimax|glm|qwen)/i,
   "codex": /^(gpt|o[0-9]|chatgpt)/i,
-  "gemini-cli": /^gemini/i,
   "opencode": /./,  // opencode accepts anything (provider-dependent)
   // Current agy emits slugs (gemini-3.6-flash-high); older versions emitted
   // display names (Gemini 3.5 Flash (High)). Accept both forms.

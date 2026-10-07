@@ -793,12 +793,17 @@ const backend = program.command("backend").description("Backend diagnostics");
 backend
   .command("doctor")
   .description("Check backend prerequisites and configuration")
-  .argument("[backend]", "Backend to check (claude-code, codex, opencode, kiro-cli, antigravity, grok, gemini-cli [deprecated])", "claude-code")
+  .argument("[backend]", "Backend to check (claude-code, codex, opencode, kiro-cli, antigravity, grok, muse)", "claude-code")
   .action(async (backendName: string) => {
     // Single source of truth for backend metadata — a hand-copied list here is
     // how the doctor previously drifted (missing antigravity/grok entirely).
     const { BACKENDS } = await import("./setup-wizard.js");
     const info = BACKENDS.find(b => b.id === backendName);
+    const { isRemovedBackend, removedBackendMessage } = await import("./backend/removed.js");
+    if (isRemovedBackend(backendName)) {
+      console.error(removedBackendMessage(backendName));
+      process.exit(1);
+    }
     if (!info) {
       console.error(`Unknown backend: ${backendName}. Available: ${BACKENDS.map(b => b.id).join(", ")}`);
       process.exit(1);
@@ -837,22 +842,6 @@ backend
       ok(`TERM${" ".repeat(16)} ${process.env.TERM}`);
     } else {
       fail(`TERM${" ".repeat(16)} not set — may cause TUI issues in daemon mode`);
-    }
-
-    // Gemini trust check
-    if (backendName === "gemini-cli") {
-      try {
-        const trustFile = join(homedir(), ".gemini", "trustedFolders.json");
-        if (existsSync(trustFile)) {
-          const trusted = JSON.parse(readFileSync(trustFile, "utf-8"));
-          const count = typeof trusted === "object" ? Object.keys(trusted).length : 0;
-          ok(`Trust config${" ".repeat(8)} ${count} folder(s) trusted`);
-        } else {
-          fail(`Trust config${" ".repeat(8)} ~/.gemini/trustedFolders.json not found`);
-        }
-      } catch {
-        fail(`Trust config${" ".repeat(8)} Could not read trust config`);
-      }
     }
 
     // Claude Code OAuth check
@@ -1127,7 +1116,7 @@ async function doctorMcp(): Promise<void> {
     backendsUsed.add(cfg.backend ?? fleet?.defaults?.backend ?? "claude-code");
   }
   const binaryMap: Record<string, string> = {
-    "claude-code": "claude", "codex": "codex", "gemini-cli": "gemini",
+    "claude-code": "claude", "codex": "codex",
     "opencode": "opencode", "kiro-cli": "kiro-cli", "antigravity": "agy",
   };
   for (const b of backendsUsed) {
@@ -1143,41 +1132,6 @@ async function doctorMcp(): Promise<void> {
   const total = healthy + errors + warnings;
   console.log(`\n  Summary: ${healthy}/${total} healthy, ${errors} error(s), ${warnings} warning(s)\n`);
 }
-
-backend
-  .command("trust")
-  .description("Pre-trust Gemini CLI working directories (prevents trust dialogs)")
-  .argument("<backend>", "Backend (gemini-cli only)")
-  .argument("[directories...]", "Directories to trust (defaults to all fleet instance dirs)")
-  .action(async (backendName: string, directories: string[]) => {
-    if (backendName !== "gemini-cli") {
-      console.log(`${backendName} uses CLI flags to skip trust dialogs — no manual trust needed.`);
-      return;
-    }
-
-    const { GeminiCliBackend } = await import("./backend/gemini-cli.js");
-    const gemini = new GeminiCliBackend(DATA_DIR);
-
-    let dirs = directories;
-    if (dirs.length === 0) {
-      // Trust all fleet instance working directories
-      try {
-        const { loadFleetConfig } = await import("./config.js");
-        const config = loadFleetConfig(FLEET_CONFIG_PATH);
-        dirs = Object.values(config.instances).map(i => i.working_directory);
-      } catch {
-        console.error("No directories specified and no fleet config found.");
-        process.exit(1);
-      }
-    }
-
-    for (const dir of dirs) {
-      const expanded = dir.replace(/^~/, homedir());
-      gemini.preTrust(expanded);
-      console.log(`  \x1b[32m✓\x1b[0m Trusted: ${expanded}`);
-    }
-    console.log(`\n  ${dirs.length} directory(s) trusted for Gemini CLI.`);
-  });
 
 // === Topic commands ===
 const topic = program.command("topic").description("Topic binding management");

@@ -250,7 +250,7 @@
   const $ = (id) => document.getElementById(id);
   const el = (tag, attrs = {}, ...kids) => { const e = document.createElement(tag); for (const k in attrs) { if (k === "class") e.className = attrs[k]; else if (k === "html") e.innerHTML = attrs[k]; else if (k.startsWith("on")) e.addEventListener(k.slice(2), attrs[k]); else e.setAttribute(k, attrs[k]); } for (const c of kids) if (c != null) e.append(c); return e; };
   const esc = (s) => String(s).replace(/[&<>]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;" }[c]));
-  const BACKENDS = ["claude-code", "kiro-cli", "codex", "opencode", "gemini-cli", "antigravity", "grok"];
+  const BACKENDS = ["claude-code", "kiro-cli", "codex", "opencode", "antigravity", "grok", "muse"];
 
   // ── i18n ──
   const I18N = {
@@ -1650,7 +1650,7 @@
     const inheritedToolProgress = classicDefaults.tool_progress ?? fleetDefaults.tool_progress ?? "off";
     const inheritedReplyGuard = classicDefaults.reply_completion_guard ?? fleetDefaults.reply_completion_guard ?? true;
     const runtime = classicRuntime(c.instanceName);
-    const fBackend = select(c.backend || inheritedBackend, BACKENDS.filter(value => value !== "gemini-cli"));
+    const fBackend = select(c.backend || inheritedBackend, BACKENDS);
     const fModel = el("input", { type: "text", value: c.model || "", placeholder: inheritedModel || "(inherit default)" });
     const auto = overrideControl(c, "auto_pause_after", el("input", { type: "number", min: "0", step: "1", value: c.auto_pause_after ?? inheritedAutoPause, placeholder: "0 = disabled" }), inheritedAutoPause, "classic.auto_pause_after");
     const toolProgress = overrideControl(c, "tool_progress", select(c.tool_progress ?? inheritedToolProgress, ["off", "standard", "verbose"]), inheritedToolProgress, "classic.tool_progress");
@@ -1837,7 +1837,7 @@
     c.admin_users = c.admin_users || []; c.allowed_guilds = c.allowed_guilds || [];
 
     const fBackend = select(d.backend || "claude-code", BACKENDS);
-    const fClassicBackend = select(c.backend || d.backend || "claude-code", BACKENDS.filter(value => value !== "gemini-cli"));
+    const fClassicBackend = select(c.backend || d.backend || "claude-code", BACKENDS);
     const fModel = el("input", { type: "text", value: d.model || "", placeholder: "e.g. claude-opus-4-8" });
     const fAgentMode = select(d.agent_mode || "mcp", ["mcp", "cli"]);
     const fToolSet = select(d.tool_set || "full", ["full", "standard", "minimal"]);
