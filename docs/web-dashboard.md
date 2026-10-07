@@ -61,6 +61,13 @@ Pick an instance on the left to talk to it. The web chat is **the same conversat
 - You can switch between the web and your phone mid-conversation.
 - **No chat platform at all?** With no `channel` / `channels` in `fleet.yaml`, the dashboard alone is enough: an agent's replies come to the web chat.
 
+### The layout
+- The conversation is one centred column. Your messages are bubbles on the right; an agent's replies use the full column, each with **Copy**.
+- **Code blocks** show their language, with **Copy** and **Wrap** (long lines wrap instead of scrolling; remembered for this browser). A block longer than 30 lines is folded: **Show all N lines** opens it.
+- The view follows new messages only while you are at the bottom. Scrolled up to read, it stays where you are, and **↓ N new** takes you down.
+- **‹** at the top of the sidebar hides it (☰ brings it back); the choice is remembered. On a phone the sidebar is a drawer: ☰ opens it, and choosing something, tapping outside it or Esc closes it.
+- **Theme** (bottom of the sidebar): *System* follows your device's light or dark setting; *Light* or *Dark* fixes it for this browser.
+
 ### Writing
 - **Enter** sends; **Shift+Enter** adds a line. If sending fails, your text is given back.
 - Messages render **Markdown**: headings, **bold**, *italics*, ~~strike-through~~, `code`, code blocks, lists, quotes, rules and links. Also:
@@ -91,7 +98,7 @@ Each message you send shows how far it got, the same steps Telegram shows as rea
 | ⊘ | Dropped by **Stop** before the agent got it |
 
 ### "*name* is working…" and Stop
-While the open chat's agent is working, a line above the composer says so, with a **Stop** button.
+While the open chat's agent is working, a line above the composer says so, and the composer's **Send** becomes **Stop**. Type something and **Send** comes back beside it: a message sent while the agent works waits its turn.
 - Stop does what Telegram's cancel button and `/cancel` do: it interrupts the agent's current reply (Esc), and the messages still waiting are dropped. Their ticks turn to ⊘.
 - Stop does **not** stop the instance's process. The instance's own Stop in its actions does that.
 

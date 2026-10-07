@@ -379,13 +379,40 @@ describe("the dashboard (the real page script)", () => {
     Object.defineProperty(node, "textContent", { get: () => text, set: (v: string) => { text = v; if (v === "") node.children = []; } });
     return node;
   }
+  // The message list as the page builds it (#1307): one node per message, inserted, replaced and removed — enough of
+  // the DOM for that, and its innerHTML is the messages' HTML in order.
+  function msgNode(html: string, parent: any) {
+    const n: any = {
+      html, querySelectorAll: () => [],
+      remove() { const i = parent.kids.indexOf(n); if (i >= 0) parent.kids.splice(i, 1); },
+      replaceWith(m: any) { const i = parent.kids.indexOf(n); if (i >= 0) parent.kids.splice(i, 1, m); },
+      get nextSibling() { return parent.kids[parent.kids.indexOf(n) + 1] ?? null; },
+    };
+    return n;
+  }
+  function msgList() {
+    const list: any = {
+      kids: [] as any[], scrollHeight: 0,
+      get firstChild() { return list.kids[0] ?? null; },
+      insertBefore(n: any, ref: any) { const i = list.kids.indexOf(n); if (i >= 0) list.kids.splice(i, 1); const j = ref ? list.kids.indexOf(ref) : -1; if (j < 0) list.kids.push(n); else list.kids.splice(j, 0, n); },
+      set textContent(_v: string) { list.kids = []; },
+      set innerHTML(v: string) { list.kids = [msgNode(v, list)]; },
+      get innerHTML() { return list.kids.map((k: any) => k.html).join(""); },
+    };
+    return list;
+  }
   function page() {
-    const nodes: Record<string, any> = { workBar: el(), messages: { innerHTML: "", scrollHeight: 0 }, uptime: { textContent: "" } };
+    const messages = msgList();
+    // The composer buttons start as the page writes them: Stop hidden.
+    const nodes: Record<string, any> = { workBar: el(), messages, uptime: { textContent: "" }, stopBtn: Object.assign(el("button"), { hidden: true }), sendBtn: el("button"), msgIn: { value: "" } };
+    const create = (t: string) => t === "template"
+      ? { set innerHTML(v: string) { (this as any).content = { firstElementChild: msgNode(v, messages) }; } }
+      : el(t);
     const sse: Record<string, (e: { data: string; lastEventId?: string }) => void> = {};
     const toasts: Array<[string, boolean]> = [];
     const c = vm.createContext({
       localStorage: { getItem: () => null }, navigator: { language: "en" },
-      document: { addEventListener() {}, getElementById: (n: string) => nodes[n] ?? null, createElement: (t: string) => el(t), body: { appendChild() {} } },
+      document: { addEventListener() {}, getElementById: (n: string) => nodes[n] ?? null, createElement: create, body: { appendChild() {} } },
       setTimeout: () => 0, clearTimeout() {}, setInterval: () => 0, clearInterval() {},
       fetch: async () => ({ ok: true, json: async () => ({}) }),
       EventSource: class { addEventListener(k: string, f: (e: { data: string }) => void) { sse[k] = f; } },
@@ -397,26 +424,34 @@ describe("the dashboard (the real page script)", () => {
     return { c, nodes, sse, toasts, read: (s: string) => vm.runInContext(s, c) };
   }
   const bar = (p: ReturnType<typeof page>) => p.nodes.workBar;
-  const button = (p: ReturnType<typeof page>) => bar(p).children.find((k: any) => k.tag === "button");
+  // Stop is the composer's (#1307): shown while the agent works, beside Send only when there is something to send.
+  const button = (p: ReturnType<typeof page>) => p.nodes.stopBtn;
 
   it("shows '<name> is working…' and a Stop while the open chat's agent works, and hides them when it is idle", () => {
     const p = page();
     p.sse.activity!({ data: JSON.stringify({ instance: "w", state: "working" }) });
     expect(bar(p).className).toBe("work-bar on");
-    expect(bar(p).children.map((k: any) => k.textContent)).toEqual(["", "w is working…", "Stop"]);
-    expect(button(p).type).toBe("button");
+    expect(bar(p).children.map((k: any) => k.textContent)).toEqual(["", "w is working…"]);
+    expect([button(p).hidden, p.nodes.sendBtn.hidden], "an empty composer: Send becomes Stop").toEqual([false, true]);
+    p.nodes.msgIn.value = "next, please";
+    p.read("renderComposerButtons()");
+    expect([button(p).hidden, p.nodes.sendBtn.hidden], "something typed: it can be sent to wait its turn, and Stop stays").toEqual([false, false]);
+    p.nodes.msgIn.value = "";
     p.sse.activity!({ data: JSON.stringify({ instance: "w", state: "stuck" }) });
     expect(bar(p).className).toBe("work-bar on stuck");
     expect(bar(p).children[1].textContent).toBe("w looks stuck");
+    expect(button(p).hidden).toBe(false);
     p.sse.activity!({ data: JSON.stringify({ instance: "w", state: "idle" }) });
     expect(bar(p).className).toBe("work-bar");
     expect(bar(p).children).toEqual([]);
+    expect([button(p).hidden, p.nodes.sendBtn.hidden]).toEqual([true, false]);
   });
 
   it("another instance working does not show here; the status frames carry the state too", () => {
     const p = page();
     p.sse.activity!({ data: JSON.stringify({ instance: "other", state: "working" }) });
     expect(bar(p).children).toEqual([]);
+    expect(button(p).hidden).toBe(true);
     p.sse.status!({ data: JSON.stringify({ uptime: 1, instances: [{ name: "w", state: "working" }, { name: "other", state: null }] }) });
     expect(bar(p).className).toBe("work-bar on");
     expect(p.read("activity.other")).toBeNull();
@@ -447,6 +482,7 @@ describe("the dashboard (the real page script)", () => {
     const first = button(p);
     p.sse.status!({ data: JSON.stringify({ uptime: 1, instances: [{ name: "w", state: "working" }] }) });
     expect(button(p)).toBe(first);
+    expect(first.hidden).toBe(false);
   });
 
   it("Stop posts /ui/cancel/<the chat it was pressed in> and says how it went", async () => {
@@ -455,7 +491,8 @@ describe("the dashboard (the real page script)", () => {
     (p.c as any).recordCall = (x: unknown) => calls.push(x);
     p.read('api = async (m, path) => { recordCall([m, path]); return path.endsWith("/a%2Fb") ? { error: "a/b is not running" } : { cancelled: "w" }; }');
     p.sse.activity!({ data: JSON.stringify({ instance: "w", state: "working" }) });
-    await button(p).onclick();
+    (p.c as any).stopNode = button(p);
+    await p.read("ACTIONS.stopReply(stopNode)");
     expect(calls).toEqual([["POST", "/ui/cancel/w"]]);
     expect(p.toasts).toEqual([["w: Stopped", true]]);
     await p.read('cancelReply("a/b")');
@@ -472,6 +509,43 @@ describe("the dashboard (the real page script)", () => {
     p.sse.delivery!({ data: JSON.stringify({ instance: "w", messageId: "web-a", delivery: "cancelled" }) });
     expect(p.nodes.messages.innerHTML).toContain("tick-cancelled");
     expect(p.read("msgs.w[0].delivery")).toBe("cancelled");
+  });
+
+  // #1307: one node per message, so an update touches only its own message, and the view is the reader's.
+  const say = (p: ReturnType<typeof page>, id: number, sender: string, text: string) =>
+    p.sse.message!({ data: JSON.stringify({ boot: "b", id, instance: "w", sender, text, ts: "2026-01-01T00:00:00Z", ...(sender === "web-user" ? { messageId: `web-${id}` } : {}) }) });
+
+  it("a tick re-renders only its own message: the others are the same nodes, in the same order", () => {
+    const p = page();
+    say(p, 1, "web-user", "hi"); say(p, 2, "w", "hello"); say(p, 3, "web-user", "and?");
+    const [a, b, c] = p.nodes.messages.kids;
+    p.sse.delivery!({ data: JSON.stringify({ instance: "w", messageId: "web-1", delivery: "delivered" }) });
+    const after = p.nodes.messages.kids;
+    expect(after).toHaveLength(3);
+    expect(after[0]).not.toBe(a);
+    expect(after[0].html).toContain("tick-delivered");
+    expect([after[1], after[2]]).toEqual([b, c]);
+    expect(after[1]).toBe(b);
+    expect(after[2]).toBe(c);
+  });
+
+  it("at the bottom, a new message pulls the view down; scrolled up, it stays put and '↓ N new' counts", () => {
+    const p = page();
+    const sc = { scrollTop: 0, clientHeight: 500, scrollHeight: 2000 };
+    p.nodes.scroller = sc;
+    p.nodes.jumpLatest = { hidden: true, textContent: "" };
+    say(p, 1, "w", "one");
+    expect(sc.scrollTop, "it was not at the bottom: stays").toBe(0);
+    expect([p.nodes.jumpLatest.hidden, p.nodes.jumpLatest.textContent]).toEqual([false, "↓ 1 new"]);
+    say(p, 2, "w", "two");
+    expect(p.nodes.jumpLatest.textContent).toBe("↓ 2 new");
+    p.read("jumpLatest()");
+    expect(sc.scrollTop).toBe(2000);
+    expect(p.nodes.jumpLatest.hidden).toBe(true);
+    sc.scrollTop = 1460;                                           // 40px above the bottom: counts as at it…
+    say(p, 3, "w", "three");                                       // …so a new one follows
+    expect(sc.scrollTop).toBe(2000);
+    expect(p.nodes.jumpLatest.hidden).toBe(true);
   });
 
   it("while polling, the ticks come with the poll — the chat's history is never re-read in the background (#1253 review)", async () => {

@@ -216,6 +216,9 @@ describe("/ and the shared assets", () => {
     const css = await raw(h.port, "GET", "/assets/shell.css");
     expect(css.status).toBe(200);
     expect(css.headers["content-type"]).toContain("text/css");
+    const theme = await raw(h.port, "GET", "/assets/theme.js");                       // #1307: light / dark before paint
+    expect(theme.status).toBe(200);
+    expect(theme.headers["content-type"]).toContain("text/javascript");
     expect((await raw(h.port, "GET", "/assets/shell.css.map")).status).toBe(404);
     await stop(h.fm);
   }, 30_000);
