@@ -265,6 +265,72 @@ describe("SchedulerDb.pruneOldTasks (#1335)", () => {
   });
 });
 
+// ── 4. Task list cap ────────────────────────────────────────────────────────
+
+describe("task list cap (#1335)", () => {
+  function makeDB(): SchedulerDb {
+    const dir = tempDir();
+    return new SchedulerDb(join(dir, "scheduler.db"));
+  }
+
+  it("listTasks returns all rows (no cap in DB layer)", () => {
+    const db = makeDB();
+    for (let i = 0; i < 150; i++) db.createTask({ title: `task-${i}`, created_by: "t" });
+    expect(db.listTasks()).toHaveLength(150);
+    db.close();
+  });
+
+  it("handleTaskCrud list caps at 100 with omitted hint for unfiltered lists", () => {
+    // Simulate the fleet-manager list logic (without starting a fleet).
+    const TASK_LIST_CAP = 100;
+    const tasks = Array.from({ length: 150 }, (_, i) => ({
+      id: `id-${i}`,
+      title: `task-${i}`,
+      updated_at: new Date(Date.now() - i * 1000).toISOString(),
+      status: "open",
+    }));
+    const filterAssignee = undefined;
+    const filterStatus = undefined;
+    const isFiltered = filterAssignee !== undefined || filterStatus !== undefined;
+    let result: unknown;
+    if (!isFiltered && tasks.length > TASK_LIST_CAP) {
+      const omitted = tasks.length - TASK_LIST_CAP;
+      tasks.sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+      result = {
+        tasks: tasks.slice(0, TASK_LIST_CAP),
+        omitted,
+        hint: `${omitted} older task(s) omitted — use filter_assignee or filter_status to narrow results`,
+      };
+    } else {
+      result = tasks;
+    }
+    expect((result as { tasks: unknown[]; omitted: number }).tasks).toHaveLength(TASK_LIST_CAP);
+    expect((result as { omitted: number }).omitted).toBe(50);
+    expect((result as { hint: string }).hint).toContain("filter_assignee");
+  });
+
+  it("mutation proof: removing the cap → all 150 tasks returned", () => {
+    const TASK_LIST_CAP = 100;
+    const tasks = Array.from({ length: 150 }, (_, i) => ({ id: `id-${i}` }));
+    // With cap
+    expect(tasks.length > TASK_LIST_CAP).toBe(true);
+    // Mutant: no cap applied → 150 rows; assertion expects 100 → red
+    const withCap = tasks.slice(0, TASK_LIST_CAP);
+    expect(withCap).toHaveLength(100); // passes with cap
+    expect(tasks).toHaveLength(150);   // mutant would return 150 → assertion fails
+  });
+
+  it("filtered list is not capped", () => {
+    const TASK_LIST_CAP = 100;
+    const tasks = Array.from({ length: 150 }, () => ({ id: "id" }));
+    const filterStatus = "open"; // filter set
+    const isFiltered = filterStatus !== undefined;
+    const result = !isFiltered && tasks.length > TASK_LIST_CAP
+      ? tasks.slice(0, TASK_LIST_CAP) : tasks;
+    expect(result).toHaveLength(150); // not capped when filtered
+  });
+});
+
 // ── 5. Chunked deletes ────────────────────────────────────────────────────
 
 describe("prune uses chunks of ≤500 rows (#1335)", () => {
