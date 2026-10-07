@@ -525,6 +525,12 @@ export class TopicCommands {
     const text = msg.text?.trim();
     if (!text) return false;
 
+    const profile = msg.source === "telegram" ? text.match(/^\/profile(?:@\w+)?(?:\s+([\s\S]*))?$/) : null;
+    if (profile) {
+      await this.ctx.runProfileCommand?.(msg, profile[1]?.trim());
+      return true;
+    }
+
     if (text === "/status" || text === "/status@" || text.startsWith("/status@")) {
       await this.handleStatusCommand(msg);
       return true;

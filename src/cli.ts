@@ -51,7 +51,8 @@ import { loadRawFleetConfig } from "./config.js";
 import { setLocale, t } from "./locale.js";
 import { DeliveryOutbox, deliveryStatusSelector, type DeliveryStatusSelector } from "./delivery-outbox.js";
 import { DeliveryStatusArgs } from "./outbound-schemas.js";
-import { startCpuProfileFromEnvironment, type CpuProfile } from "./cpu-profile.js";
+import type { CpuProfile } from "./cpu-profile.js";
+import { requestCpuProfile } from "./profile-control.js";
 
 /** Prefix tmux args with -L when socket isolation is active. */
 function tmuxArgs(args: string[]): string[] {
@@ -120,6 +121,16 @@ function signalFleetReload(): void {
 
 // === Fleet commands ===
 const fleet = program.command("fleet").description("Fleet management");
+
+program.command("profile")
+  .description("Record the running fleet's CPU profile (local operator only; no restart)")
+  .argument("[seconds]", "Recording duration, 1–1800 seconds", "60")
+  .action(async (seconds: string) => {
+    try {
+      const result = await requestCpuProfile(DATA_DIR, seconds);
+      console.log(result.path);
+    } catch (err) { console.error((err as Error).message); process.exitCode = 1; }
+  });
 
 fleet
   .command("start")
@@ -235,9 +246,9 @@ fleet
       }
     });
 
-    cpuProfile = await startCpuProfileFromEnvironment({
-      dataDir: DATA_DIR, logger: { info: message => console.log(message), warn: message => console.warn(message) },
-    });
+    await fm.startCpuProfileControl().catch(err => console.warn(`Local profile control unavailable: ${String(err)}`));
+    if (stopping) return;
+    cpuProfile = await fm.startEnvironmentCpuProfile();
     if (stopping) { await cpuProfile?.stop("startup superseded by shutdown"); return; }
 
     if (instance) {

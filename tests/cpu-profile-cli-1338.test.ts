@@ -20,6 +20,8 @@ function harness() {
   const stop = vi.fn(async () => { order.push("profile.stop"); return null; });
   const startProfile = vi.fn(async () => { order.push("profile.start"); return { stop }; });
   const manager = {
+    startCpuProfileControl: vi.fn(async () => {}),
+    startEnvironmentCpuProfile: startProfile,
     startAll: vi.fn(async () => { order.push("fleet.start"); }),
     startInstance: vi.fn(async () => { order.push("instance.start"); }),
     stopAll: vi.fn(async () => { order.push("fleet.stop"); }),
@@ -43,6 +45,7 @@ afterEach(() => vi.restoreAllMocks());
 describe("real fleet-start callback with fully stubbed effects", () => {
   it.each([undefined, "example"])("profiles the cold startup %s path and stops before fleet disposal", async instance => {
     const h = harness(); await h.action(instance);
+    expect(h.manager.startCpuProfileControl).toHaveBeenCalledTimes(1);
     expect(h.startProfile).toHaveBeenCalledTimes(1);
     expect(h.order).toEqual(["profile.start", instance ? "instance.start" : "fleet.start"]);
     await h.events.get("SIGINT")!();
@@ -55,6 +58,7 @@ describe("real fleet-start callback with fully stubbed effects", () => {
     let markStarted!: () => void; const started = new Promise<void>(r => { markStarted = r; });
     h.startProfile.mockImplementation(() => new Promise(r => { resolve = r; markStarted(); }));
     const pending = h.action(); await started;
+    expect(h.manager.startCpuProfileControl).toHaveBeenCalledTimes(1);
     expect(h.startProfile).toHaveBeenCalledTimes(1); await h.events.get("SIGINT")!();
     resolve({ stop: h.stop }); await pending;
     expect(h.stop).toHaveBeenCalledWith("startup superseded by shutdown");
