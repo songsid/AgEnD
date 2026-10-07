@@ -242,13 +242,40 @@
     return out + escapeHtml(code.slice(last));
   }
 
-  /** The whole message: fenced code blocks verbatim (escaped), everything else as Markdown. */
-  function renderMarkdown(text) {
+  // A fenced code block: ```lang …``` — or unterminated to the end of the text (what a length cut leaves).
+  var FENCE_RE = /```([A-Za-z0-9_+.-]{0,32})[^\n]*\n([\s\S]*?)(?:```|$)/g;
+  function isHtmlLang(lang) { return String(lang || "").toLowerCase() === "html"; }
+
+  /**
+   * The ```html fences of a message, in order (#1306): each one's code, and whether it was closed. The n-th entry is
+   * the card renderMarkdown(text, { htmlCards: true }) numbered n. Only `html` exactly (any case) — not html5, xhtml, htm.
+   */
+  function htmlFences(text) {
+    var src = String(text == null ? "" : text).replace(/\r\n?/g, "\n").replace(/\u0000/g, "");
+    var re = new RegExp(FENCE_RE.source, "g");
+    var out = [];
+    var m;
+    while ((m = re.exec(src)) !== null) {
+      if (isHtmlLang(m[1])) out.push({ code: m[2].replace(/\n$/, ""), terminated: m[0].slice(-3) === "```" });
+      if (m[0].length === 0) break;
+    }
+    return out;
+  }
+
+  /**
+   * The whole message: fenced code blocks verbatim (escaped), everything else as Markdown. With { htmlCards: true }
+   * (only ever for a message the server marked `agent` — #1306), each ```html fence is followed by an empty card
+   * placeholder <div class="html-card" data-card="n">, or — for a fence a cut left open — one marked "truncated",
+   * which gets no Preview. No text of the HTML goes into an attribute: the page reads it from the message, by n.
+   */
+  function renderMarkdown(text, opts) {
+    var cards = !!(opts && opts.htmlCards);
     var src = String(text == null ? "" : text).replace(/\r\n?/g, "\n").replace(/\u0000/g, "");   // \u0000 is the placeholder mark
     var store = [];
     var html = "";
-    var re = /```([A-Za-z0-9_+.-]{0,32})[^\n]*\n([\s\S]*?)(?:```|$)/g;
+    var re = new RegExp(FENCE_RE.source, "g");
     var last = 0;
+    var n = 0;
     var m;
     while ((m = re.exec(src)) !== null) {
       html += blocks(src.slice(last, m.index), store);
@@ -256,6 +283,10 @@
       var code = m[2].replace(/\n$/, "");
       var lit = highlight(code, m[1]);
       html += "<pre" + lang + "><code>" + (lit === null ? escapeHtml(code) : lit) + "</code></pre>";
+      if (cards && isHtmlLang(m[1])) {
+        html += '<div class="html-card' + (m[0].slice(-3) === "```" ? "" : " truncated") + '" data-card="' + n + '"></div>';
+        n++;
+      }
       last = re.lastIndex;
       if (m[0].length === 0) break;
     }
@@ -441,5 +472,6 @@
     nextDeliveryState: nextDeliveryState, applyDelivery: applyDelivery, deliveryHtml: deliveryHtml, isBusy: isBusy,
     isNearBottom: isNearBottom, CODE_FOLD_LINES: CODE_FOLD_LINES, lineCount: lineCount,
     LONG_PASTE_CHARS: LONG_PASTE_CHARS, isLongPaste: isLongPaste, formatElapsed: formatElapsed,
+    htmlFences: htmlFences,
   };
 });

@@ -559,7 +559,8 @@ describe("dashboard.html", () => {
   it("loads the renderer before its own script, and renders message text only through it", () => {
     expect(html.indexOf('<script src="/ui/js/chat-render.js"></script>')).toBeGreaterThan(-1);
     expect(html.indexOf('<script src="/ui/js/chat-render.js"></script>')).toBeLessThan(html.indexOf("<script>\n"));
-    expect(html).toContain("AgendChatRender.renderMarkdown(x.text)");
+    // HTML cards (#1306) only for a message the server marked agent — never from sender or text.
+    expect(html).toContain('AgendChatRender.renderMarkdown(x.text, x.role === "agent" ? { htmlCards: true } : undefined)');
     expect(html).not.toContain("${esc(x.text)}");
     expect(html).not.toMatch(/innerHTML\s*=\s*[^;]*x\.text(?!\))/);
   });
