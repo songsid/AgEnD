@@ -14,9 +14,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The CHANGELOG guard diffs the PR against its merge-base with main.
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      # CHANGELOG fragments (docs/development.md): every changes/*.md parses
+      # and has its zh-TW pair, and a PR adds fragments instead of editing
+      # docs/CHANGELOG*.md. Only the assemble commit (trailer
+      # "Changelog: assemble") edits those. Neither script needs npm ci.
+      - name: CHANGELOG fragments are valid
+        run: node scripts/changelog-assemble.mjs --check
+      - name: CHANGELOG is assembled, not edited
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/changelog-guard.mjs --base "$BASE_SHA" --head "$HEAD_SHA"
       - run: npm ci
       - run: npx tsc --noEmit
       # The test suites are excluded from tsconfig.json (it emits dist/ from
