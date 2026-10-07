@@ -332,6 +332,22 @@
     return '<span class="tick tick-' + state + '" role="img" aria-label="' + label + '" title="' + label + '">' + TICK_GLYPH[state] + "</span>";
   }
 
+  /**
+   * Whether a scrolled list counts as "at the bottom" (#1307): within `slack` px of it. Only then does a new message
+   * pull the view down; a reader who scrolled up stays where they are.
+   */
+  function isNearBottom(scrollTop, clientHeight, scrollHeight, slack) {
+    return Number(scrollHeight) - Number(scrollTop) - Number(clientHeight) <= (slack == null ? 48 : slack);
+  }
+
+  /** A code block longer than this many lines is folded until it is opened. */
+  var CODE_FOLD_LINES = 30;
+  /** Lines in a block of code (a trailing newline does not start another). */
+  function lineCount(code) {
+    var s = String(code == null ? "" : code).replace(/\n$/, "");
+    return s === "" ? 0 : s.split("\n").length;
+  }
+
   /** Whether the chat shows "working" and its Stop button for an instance in this execution state. */
   function isBusy(state) { return state === "working" || state === "stuck"; }
 
@@ -411,5 +427,6 @@
     settleFailedSend: settleFailedSend, putBack: putBack,
     FILE_LIMITS: FILE_LIMITS, formatSize: formatSize, checkFiles: checkFiles, attachmentsHtml: attachmentsHtml,
     nextDeliveryState: nextDeliveryState, applyDelivery: applyDelivery, deliveryHtml: deliveryHtml, isBusy: isBusy,
+    isNearBottom: isNearBottom, CODE_FOLD_LINES: CODE_FOLD_LINES, lineCount: lineCount,
   };
 });

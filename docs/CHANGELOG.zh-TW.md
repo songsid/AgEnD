@@ -16,6 +16,7 @@
 - **Web 聊天：可以在 dashboard 上回答 fleet 的提示。** instance 看起來卡住、自行結束，或卡在互動式提示時，Telegram 上的按鈕（*強制重啟* / *繼續等待*、*重啟* / *忽略*、*確認* / *取消*）也會出現在該 instance 的 web 聊天中。兩邊是同一個提示，不是複製品：只算一次回答，哪一邊先按就算哪一邊；另一邊的按鈕會收成結果；過期也是兩邊同時。只有這幾種與 instance 健康有關的提示會出現在 web——`/clear` 確認、登入、Classic 群組核准、tips 與 `/model` / `/effort` 選單仍只留在原本發問的地方。從 dashboard 回答需要已登入的 session 與它的 CSRF token、必須指明 instance，而且必須是該提示自己的按鈕之一。
 - **沒有設定任何聊天平台的 fleet，只靠 web dashboard 也能運作。** 沒有設定 `channel` / `channels` 時，agent 的回覆現在會送到 web 聊天（並告訴 agent 已送出），不再永遠被「Channel adapters are not ready — retry shortly」拒絕。
 - **Web 聊天：表格、巢狀清單、程式碼上色（#1269）。** agent 回覆裡的 Markdown 表格會以表格顯示（標題列、`:--`/`--:`/`:-:` 對齊，儲存格裡的粗體、連結、`code` 照常生效；儲存格內的直線請寫 `\|`）；清單會依縮排巢狀（項目符號與數字可混用，最多六層）；js/ts/json/python/sh 的程式碼區塊會上色。沒有用任何外部函式庫、也不從 CDN 載入：仍是先跳脫再套格式的同一個 renderer，只多了固定的標籤與 class，訊息內容依然無法產生自己的標記。
+- **Web 聊天：以聊天為主的版面，支援淺色與深色（#1307 版面部分）。** 對話是置中的一欄：你的訊息是靠右的泡泡，agent 的回覆佔滿整欄（每則都能複製）；程式碼區塊標出語言、有複製與換行，超過 30 行時先收合；只有停在最底部時畫面才跟著新訊息捲動，不在底部時會出現「↓ N 則新訊息」；agent 工作時輸入框的送出鈕會變成 Stop（開始打字後送出鈕會回來）。側欄可以隱藏（會被記住），在手機上是抽屜。dashboard 會跟隨裝置的淺色／深色設定，也可以在各瀏覽器自選（`/assets/theme.js` 在頁面繪製前就套用），改用系統字型，並且不再有任何行內 `style` 屬性（#1300）。
 
 ### 安全 (Security)
 - **三個網頁面板共用同一條導覽列與 Session 選單，`/` 直接開 dashboard。** `/ui`、`/view`、`/settings` 都有相同的「Dashboard · View · Settings」連結與 Session 按鈕：顯示目前以哪個瀏覽器登入、session 何時結束、其他已登入的裝置（各自可登出）以及「全部登出」。只是一支小 script 與樣式表（`/assets/shell.js`、`/assets/shell.css`），不是重寫面板。
