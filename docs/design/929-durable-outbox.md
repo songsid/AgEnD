@@ -1,6 +1,6 @@
 # #929 Durable Outbox 設計
 
-**狀態：Phase 1 已 merge；Phase 2 設計增補待 review，尚未實作。**
+**狀態：Phase 1 與 Phase 2 皆已在 main（CHANGELOG 2.1.7，#929 已關閉）。** Phase 2 的重啟後 reconciliation 見 `src/delivery-reconciliation.ts`（由 `src/instance-lifecycle.ts` 的 `capturePendingTargetReconciliation()` 呼叫）；silent-schedule `raw_paste` 已 durable admission 進 outbox（`src/fleet-manager.ts` 的 `schedule:…:raw_paste` source key 與 pump 端 `claimed.kind === "raw_paste"`）；`delivery_status` 查詢已提供（`src/outbound-handlers.ts`）。下文保留設計當時的寫法。
 **設計基準：** `origin/main` `d1b43f63411de497d8917d4b8b09dcf27825a2ba`（Phase 2 authoring base；已包含請求時的 `b4101f66`）；FleetManager 與 instance daemon 由同一個 AgEnD Node process 管理。
 **範圍：** #926、#927 與 FleetManager 接受的 agent-directed delivery。Phase 1 暫將 silent-schedule `raw_paste` 標為 non-durable；Phase 2 設計將其接入 outbox。
 

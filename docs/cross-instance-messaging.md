@@ -1,293 +1,104 @@
 # Cross-Instance Messaging & Peer-to-Peer Collaboration
 
-Instance 之間以及外部 Claude Code session 與 daemon instance 之間的通訊機制。每個 instance 都是對等 peer，可以發現、喚醒、建立和傳訊給其他 instance。
+Instance 之間、以及外部 CLI session 與 daemon instance 之間的通訊機制。每個 instance 都是對等 peer，可以發現其他 instance 並傳訊給它——但不是每個 peer 都能喚醒或建立 instance：能不能 wake/create/start 要看它的工具組（tool profile），見下文。
 
 ## MCP Tools
 
 ### `list_instances`
 
-列出所有已設定的 instance（不含自己），包含狀態和工作目錄。回傳所有 fleet config 中的 instance（不只是執行中的）。
+列出 fleet 所有的 instance（含狀態和工作目錄），以及連上來的外部 session（`external_sessions`）。輸出有三層（超過預算自動降級）：完整版 → 精簡版（無描述，需 `describe_instance` 看詳情）→ 計數版。篩選用 `{tags, backend, status, name}`。
 
 ```
 → list_instances()
 ← { instances: [
-    { name: "blog", status: "running", working_directory: "~/Documents/Hack/blog" },
-    { name: "ccd", status: "stopped", working_directory: "~/Documents/Hack/claude-channel-daemon" },
-    { name: "external-myproject", type: "session", host: "myproject" }
-  ] }
+    { name: "blog", status: "running", working_directory: "~/Documents/Hack/blog", backend: "claude-code", ... }
+  ],
+  external_sessions: [ { name: "external-myproject-1234", type: "session", host: "blog" } ] }
 ```
 
-### `send_to_instance`
+### `send_to_instance` — fire-and-queue
 
-發送訊息給指定 instance。訊息以 `fleet_inbound` 形式到達對方的 channel，對方自行決定是否回覆。
-
-如果目標 instance 已停止，會回傳錯誤並提示使用 `start_instance()`：
+訊息交給 fleet 就立即回覆，不等送達。回傳是**受理收據**，不是送達證明：
 
 ```
 → send_to_instance({ instance_name: "blog", message: "幫我 review 這個 diff" })
-← { error: "Instance 'blog' is stopped. Use start_instance('blog') to start it first." }
+← { sent: true, queued: true, target: "blog", target_state: "running",
+    operation_id: "…", delivery_id: "…", delivery_state: "queued",
+    correlation_id: "…" }
 ```
 
-正常情況：
+- `sent: true, queued: true` 只代表 fleet 收下了；送達與否查 `delivery_status`（用 `operation_id` 或 `delivery_id`）。
+- `queued ≠ delivered`：投遞是背景進行的（見下文 durable outbox）。狀態 `uncertain` 表示 fleet 無法確認到底送達沒——**不要盲目重送**，先查 `delivery_status`。
+- 目標已停止會回錯誤並提示用 `start_instance()`（如果你有這個工具——worker 工具組沒有）。
+
+### `delivery_status`
+
+查一則跨 instance 訊息的投遞狀態（queued / delivering / delivered / failed / uncertain）。`uncertain` 時以這裡的答案為準，不要重送。
+
+### `start_instance` / `create_instance` / `restart_instance` / `wake_instance`
+
+喚醒、建立、重啟 instance。只有較大的工具組才有這些動作：`worker` 工具組完全沒有（只能 `reply`、`send_to_instance`、`report_result` 等協作工具）；`general` 有其中一部分（create/start/restart/wake）；`coordinator` 與 `full` 才有全部。權限不足時工具會直接拒絕並說明它是 coordinator 的工具。所以「每個 peer 都能喚醒或建立別人」是錯的——先確認自己的工具組。
+
+## 訊息流程（fire-and-queue）
 
 ```
-→ send_to_instance({ instance_name: "ccplugin", message: "幫我 review 這個 diff" })
-← { sent: true, target: "ccplugin" }
+發送方 CLI                        Fleet                        接收方 CLI
+     │                              │                                │
+     │  send_to_instance            │                                │
+     │  (MCP tool call)             │                                │
+     │ ───────────────────────────►│  受理 → 寫入 durable outbox     │
+     │                              │                                │
+     │  { sent: true, queued: true, │  背景按 target lane 投遞        │
+     │    operation_id, … }         │  (FIFO；重啟後對帳續投)         │
+     │◄───────────────────────────│                                │
+     │                              │  daemon pane 注入訊息           │
+     │                              │ ──────────────────────────────►│
 ```
 
-### `start_instance`
+回覆義務：`request_kind: "task"` 或 `"query"` 且 `requires_reply` 的訊息，對方應該用 `report_result`（或實質回覆）結案；`report`/`update` 只是告知，不需回覆。
 
-喚醒已停止的 instance。如果已在執行中，直接回傳成功。
+## Durable outbox
 
-```
-→ start_instance({ name: "blog" })
-← { success: true }
-```
+跨 instance 訊息先寫進本機 outbox 再投遞，所以 daemon 重啟不會弄丟已受理的訊息：
 
-### `create_instance`
-
-從專案目錄建立新 instance，自動建立 Telegram topic、寫入 fleet config、啟動 instance。
-
-```
-→ create_instance({ directory: "~/Documents/Hack/blog" })
-← { success: true, name: "blog", topic_id: 1385 }
-```
-
-失敗時會按反向順序 rollback（刪 topic、移除 config 等）。
-
-## 訊息流程
-
-```
-發送方 Claude                     Fleet Manager              接收方 Claude
-     │                                 │                           │
-     │  send_to_instance               │                           │
-     │  (tool_call via MCP)            │                           │
-     │ ───────────────────────────────►│                           │
-     │                                 │                           │
-     │                                 │  fleet_inbound            │
-     │                                 │  (IPC to target daemon)   │
-     │                                 │──────────────────────────►│
-     │                                 │                           │
-     │                                 │  Telegram: ← sender: msg  │
-     │                                 │  (posted to target topic) │
-     │                                 │                           │
-     │  Telegram: → target: msg        │                           │
-     │  (posted to sender topic)       │                           │
-     │                                 │                           │
-     │  { sent: true }                 │                           │
-     │◄───────────────────────────────│                           │
-```
+- 同一目標保證 FIFO；重啟後未完成的列恢復為 `queued` 續投，投遞中、證據不足的列先對帳（reconciliation），**絕不盲目重播**。
+- 每則訊息有 `operation_id`（呼叫端冪等鍵）與 `delivery_id`（fleet 配發）；重送相同 `operation_id` 會被認出是重複（`duplicate: true`），不會投遞兩次。
+- `delivery_status` 是唯一的狀態權威；`uncertain` 是誠實的「不知道」，不是失敗。
 
 ## Telegram 可見性
 
-跨 instance 訊息的 Telegram topic 通知規則：
+跨 instance 訊息的 Telegram topic 通知規則（`src/outbound-handlers.ts`）：
 
-- **Instance → Instance**：雙方 topic 都會收到通知
-  - 發送方 topic：`→ targetName: 訊息預覽`
-  - 接收方 topic：`← senderName: 訊息預覽`
-- **外部 Session → Instance**：只有接收方 topic 收到通知（發送方沒有 topic）
-- **Instance → 外部 Session**：只有發送方 topic 收到通知（接收方沒有 topic）
+- **Target topic**：`task`/`query` 貼全文；`report`/`update` **靜默**（不貼）；其他只貼 100 字預覽（或 `task_summary`）。General topic 的 instance 永遠跳過（保持 General 乾淨）。
+- **Sender topic**：永遠貼完整的送出訊息（讓使用者看到 agent 發了什麼）。
+- 通知標籤為 `sender → target`；訊息本體仍經由 daemon pane 投遞，通知只是可見性。
 
-訊息超過 200 字會自動截斷。
+訊息本體的 meta（給 pane 內的 agent 看的 envelope）：`chat_id` 為空字串，`message_id` 形如 `xmsg-…`，`user`/`user_id` 為 `instance:<sender>`，`from_instance` 為發送方機器名（回覆目標以此為準）。
 
 ## Session Identity（Env Var Layering）
 
-MCP server 連線時自報 sessionName。Daemon 用 sessionName 做訊息路由，確保內部和外部 session 的訊息隔離。
+MCP server 連線時自報 session 名，daemon 據此路由。`AGEND_SOCKET_PATH` 必填，沒設則 MCP server 直接結束。
 
-### 身份決定邏輯
-
-MCP server 按以下優先順序決定自己的 sessionName：
+身份優先順序：
 
 ```
-CCD_INSTANCE_NAME → CCD_SESSION_NAME → external-<basename(cwd)>
+AGEND_INSTANCE_NAME → AGEND_SESSION_NAME → external-<basename(cwd)>-<pid>
 ```
 
-| 優先級 | Env Var | 來源 | 誰設定 |
-|---|---|---|---|
-| 1 | `CCD_INSTANCE_NAME` | tmux shell 環境 | Daemon 在啟動 Claude 時注入 |
-| 2 | `CCD_SESSION_NAME` | `.mcp.json` env | 使用者手動設定（可選）|
-| 3 | (fallback) | `basename(process.cwd())` | 自動產生 |
-
-### 為什麼需要分層？
-
-內部和外部 session 共用同一份 `.mcp.json`（因為在同一個專案目錄）。如果只靠 `.mcp.json` 的 env var，兩者會拿到相同的身份。
-
-解法：Daemon 透過 tmux shell 環境注入 `CCD_INSTANCE_NAME`（不在 `.mcp.json` 裡）。內部 session 在 tmux 裡啟動，所以有這個變數；外部 session 不在 tmux 裡，沒有這個變數，fallback 到 `CCD_SESSION_NAME` 或自動名稱。
-
-### Targeted IPC Send
-
-Daemon 的 `pushChannelMessage` 用 sessionName 做定向投遞（不是 broadcast）：
-
-```
-fleet_inbound { targetSession: "ccplugin" }  → 只送給 sessionName="ccplugin" 的 socket
-fleet_inbound { targetSession: "dev" }       → 只送給 sessionName="dev" 的 socket
-```
-
-這確保共用同一個 IPC socket 的內部和外部 session 不會互相干擾。
-
-### Fleet Manager Session Registry
-
-Fleet manager 維護 `sessionRegistry: Map<sessionName, instanceName>`。當 MCP server 的 `mcp_ready` 帶著一個不等於 instance name 的 sessionName 時，註冊為外部 session。
-
-`list_instances` 回傳所有已設定的 instances（含狀態和工作目錄）和 external sessions：
-
-```json
-{
-  "instances": [
-    { "name": "ccplugin", "status": "running", "working_directory": "~/Documents/Hack/ccplugin" },
-    { "name": "blog", "status": "stopped", "working_directory": "~/Documents/Hack/blog" },
-    { "name": "external-myproject", "type": "session", "host": "myproject" }
-  ]
-}
-```
-
-## 外部 Session 雙向通訊
-
-外部 Claude Code session（不是 daemon 管理的 instance）也能與 daemon instances 通訊。
-
-### 前置條件
-
-1. `.mcp.json` 指向 daemon instance 的 IPC socket：
-
-```json
-{
-  "mcpServers": {
-    "ccd-channel": {
-      "command": "node",
-      "args": ["<project>/dist/channel/mcp-server.js"],
-      "env": {
-        "CCD_SOCKET_PATH": "~/.claude-channel-daemon/instances/<name>/channel.sock"
-      }
-    }
-  }
-}
-```
-
-可選：加 `"CCD_SESSION_NAME": "dev"` 自訂名稱（否則自動用 `external-<dirname>`）。
-
-2. 啟動時帶 `--dangerously-load-development-channels` flag：
-
-```bash
-claude --dangerously-load-development-channels server:ccd-channel
-```
-
-### 為什麼需要這個 flag？
-
-| | 沒有 flag | 有 flag |
+| 優先級 | Env Var | 誰設定 |
 |---|---|---|
-| `send_to_instance` | ✅ 可以發送 | ✅ 可以發送 |
-| `list_instances` | ✅ 可以查詢 | ✅ 可以查詢 |
-| 接收回覆 | ❌ 靜默丟棄 | ✅ 顯示為 `<channel>` block |
+| 1 | `AGEND_INSTANCE_NAME` | Daemon 經 tmux 環境注入（內部 session） |
+| 2 | `AGEND_SESSION_NAME` | `.mcp.json` 的 env（外部 session 自取，可選） |
+| 3 | (fallback) | 工作目錄 + PID 自動產生（同目錄多 session 不會撞名） |
 
-MCP tools 本身不需要 channel flag — 它們是標準的 tool call/response。但**接收方回覆時**，訊息以 MCP notification（`notifications/claude/channel`）形式推送。Claude Code 只在啟用 development channels 時才處理這類 notification。
+Fleet manager 維護 `sessionRegistry: Map<sessionName, instanceName>`；`mcp_ready` 帶來的 session 名不等於 instance 名時，記為外部 session，會出現在 `list_instances` 的 `external_sessions`。MCP server 本身只提供工具（tool-only）； inbound 投遞走 daemon pane，不是 MCP notification。
 
-### 安全風險
+## Wake coordinator 與 per-target workers
 
-低。`--dangerously-load-development-channels` 允許 MCP server 注入 channel notification 到 Claude 的對話中。但在此場景下：
+投遞給暫停中 instance 的訊息不會直接喚醒它：`delivery_worker` 預設是 `wake_only`——訊息先排隊，由 wake coordinator 在名額允許時喚醒目標，醒了才投遞。per-target worker 保證同一目標一次只有一個投遞者在推進。`wake_only` 以外的模式（`off`/`on`）是 fleet 配置，不是單則訊息能指定的。
 
-- IPC socket 是 local Unix socket，僅限當前使用者存取
-- MCP server 是自己的程式碼
-- Daemon instances 本身已經在用這個 flag
+## 重啟
 
-## IPC 實作細節
+二進制是 `agend`（不是 `ccd`）。開發 daemon 功能改完 code：`npm run build`，再 `agend fleet restart --reload` 載入新代碼（`--reload` 不能與實例名併用；不加則是在進程內等閒置重啟）。
 
-### fleetRequestId 避免 broadcast collision
-
-Cross-instance tools 用 `fleetRequestId`（而非 `requestId`）廣播到 fleet manager。這是因為 daemon 的 `ipcServer.broadcast()` 會送到所有 IPC client（包括 MCP server），如果用 `requestId`，MCP server 會提前 resolve pending request。
-
-```typescript
-// daemon.ts — 發送 cross-instance tool call
-const fleetReqId = `xmsg_${requestId}`;
-this.ipcServer.broadcast({
-  type: "fleet_outbound",
-  tool,
-  args,
-  fleetRequestId: fleetReqId,  // 不用 requestId
-});
-```
-
-```typescript
-// fleet-manager.ts — 回覆時帶 fleetRequestId
-ipc.send({ type: "fleet_outbound_response", fleetRequestId, result, error });
-```
-
-### cross-instance 訊息的 meta
-
-```typescript
-{
-  chat_id: "cross-instance",
-  message_id: `xmsg-${Date.now()}`,
-  user: `instance:${senderName}`,
-  user_id: `instance:${senderName}`,
-  from_instance: senderName,
-}
-```
-
-`from_instance` 欄位可用來識別訊息來源是其他 instance 而非人類使用者。
-
-## Graceful Restart
-
-開發 daemon 功能時，修改 code 後需要重啟 daemon 才能生效。
-
-### `ccd fleet restart`
-
-發送 SIGUSR2 給 fleet manager process，觸發 graceful restart：
-
-1. 等待所有 instance idle（10 秒無 transcript activity）
-2. Stop 所有 instances
-3. 重新載入 fleet config
-4. Start 所有 instances
-5. 重建 IPC connections
-
-Fleet manager process 本身不會重啟 — adapter、scheduler 保持運作。
-
-```bash
-npm run build && ccd fleet restart
-```
-
-Telegram group 會收到通知：
-- `🔄 Graceful restart initiated — waiting for all instances to idle...`
-- `✅ Graceful restart complete — 8 instances running`
-
-### 注意事項
-
-- Fleet manager 的 SIGUSR2 handler 需要在 fleet manager 啟動後才生效。第一次部署新的 restart 功能時，仍需手動 `ccd fleet stop && ccd fleet start`。
-- Restart 後所有 instance 的 Claude session 重新開始（使用 `--resume` 恢復 session state）。
-- 如果某個 instance 長時間不 idle（例如正在跑長任務），restart 會一直等待。
-
-## 外部 Session 協同開發模式
-
-外部 Claude Code session 可以透過跨 instance 通訊與 daemon instances 協同開發：
-
-```
-外部 Session                                    Daemon Instances
-     │                                               │
-     │  1. 修改 daemon 程式碼                          │
-     │  2. npm run build                              │
-     │  3. ccd fleet restart                          │
-     │     (等 idle → stop → start)                    │
-     │                                               │
-     │  4. send_to_instance("ccplugin",               │
-     │     "restart 後功能正常嗎？")                     │
-     │ ──────────────────────────────────────────────►│
-     │                                               │
-     │◄──────────────────────────────────────────────│
-     │  5. 收到 channel notification:                  │
-     │     "restart OK"                               │
-     │                                               │
-     │  6. 繼續開發下一個功能...                         │
-```
-
-### 啟動方式
-
-```bash
-claude --dangerously-load-development-channels server:ccd-channel
-```
-
-### 能力
-
-- 修改 daemon code 並 build
-- 用 `ccd fleet restart` 重啟 daemon
-- 用 `send_to_instance` 請 daemon instance 驗證功能
-- 收到 daemon instance 的回覆（channel notification）
-- 全程不離開 terminal session
+`agend fleet restart`（全 fleet）會等每個 instance idle（各等最多 10 秒），整體最多等 **5 分鐘**，超時就強制重啟、不再無限等。Telegram/Discord 會收到開始與完成通知。
