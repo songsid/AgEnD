@@ -1,10 +1,12 @@
 name: Gitleaks
 
 on:
+  # release/** are maintenance lines (release/2.1: 2.1.x fixes cherry-picked from main). Their PRs and pushes
+  # get the same checks as main's.
   push:
-    branches: [main]
+    branches: [main, 'release/**']
   pull_request:
-    branches: [main]
+    branches: [main, 'release/**']
 
 permissions:
   contents: read
