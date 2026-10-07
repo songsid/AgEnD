@@ -168,7 +168,7 @@ export function kiroUnavailableModelPickerActive(pane: string): boolean {
   return cursorCount === 1 && modelCount >= 1;
 }
 
-interface KiroLaunchPromptSpec {
+export interface KiroLaunchPromptSpec {
   /** Text that identifies the prompt; the LAST occurrence heads it. */
   header: string;
   /** Option labels, in screen order (matched as a row prefix). */
@@ -265,7 +265,7 @@ const KIRO_AGENT_UPGRADE: KiroLaunchPromptSpec = {
  * (tests/fixtures/kiro-2.28.0-classic-nudge/). The header is the description's first words, which stay on its first
  * row however narrow the pane; the rest of the description re-wraps with the width.
  */
-const KIRO_CLASSIC_NUDGE: KiroLaunchPromptSpec = {
+export const KIRO_CLASSIC_NUDGE: KiroLaunchPromptSpec = {
   header: "Classic is being deprecated with the Kiro CLI 3.0",
   options: ["Switch to 3.0 and upgrade my agent configs", "Remind me later"],
 };

@@ -10,11 +10,12 @@
  * 120 columns, before and after one Down, and after "Remind me later". The help is that binary's `chat --help`.
  * No daemon, CLI or tmux runs here (bd0c88aa); the daemon tests stub tmux.
  */
+import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { KIRO_TESTED_MAX, KiroBackend, kiroLaunchPromptState, planKiroLaunch, probeKiroCliCompatibility } from "../src/backend/kiro.js";
+import { KIRO_CLASSIC_NUDGE, KIRO_TESTED_MAX, KiroBackend, kiroLaunchPromptState, planKiroLaunch, probeKiroCliCompatibility } from "../src/backend/kiro.js";
 import type { CliBackendConfig, RuntimeDialog } from "../src/backend/types.js";
 import { Daemon } from "../src/daemon.js";
 
@@ -24,7 +25,7 @@ const HELP_228 = readFileSync(join(FIXTURES, "kiro-help", "chat-help-2.28.0.txt"
 
 const SWITCH = ["80-cursor-switch", "60-cursor-switch", "120-cursor-switch"] as const;
 const REMIND = ["80-cursor-remind", "120-cursor-remind"] as const;
-const SPEC = { header: "Classic is being deprecated with the Kiro CLI 3.0", options: ["Switch to 3.0 and upgrade my agent configs", "Remind me later"] };
+const SPEC = KIRO_CLASSIC_NUDGE;
 
 function probe(version: string | null, helpText: string | null) {
   return probeKiroCliCompatibility("/fake/kiro-cli", (_bin, args) => {
@@ -189,5 +190,51 @@ describe("on the real daemon (tmux stubbed), from the captured screens", () => {
       expect(probed.state).toBe("dialog");
       expect(probed.dialog.holdOnly).toBe(true);
     } finally { cleanup(); }
+  });
+});
+
+/**
+ * The fixtures and the spec are the binary's own text: `binary-strings.txt` holds the nudge's literals copied byte
+ * for byte out of kiro-cli-chat 2.28.0 (offsets, the binary's and the tarball's sha256, and the help fixture's sha256
+ * recorded in it). A capture or a spec that drifted from what the binary prints fails here.
+ */
+describe("the fixtures and the spec are the 2.28.0 binary's text", () => {
+  const excerpt = readFileSync(join(FIXTURES, "kiro-2.28.0-classic-nudge", "binary-strings.txt"), "utf-8").split("\n");
+  const rows = excerpt.filter(l => l && !l.startsWith("#")).map(l => l.split("\t"));
+  const description = rows.filter(r => r[0] === "description").map(r => r[2]!);
+  const options = rows.filter(r => r[0] === "option").map(r => r[2]!);
+  const meta = (key: string) => excerpt.find(l => l.startsWith(`# ${key} `))?.split(" ")[2];
+
+  it("the excerpt names the verified binary", () => {
+    expect(meta("tarball-sha256")).toBe("f48ef68df4cc7e83c942ce17e15d2a2c4316d08c6eba8829c4a7b277eba7be5b");
+    expect(meta("kiro-cli-chat-sha256")).toMatch(/^[0-9a-f]{64}$/);
+    expect(description).toHaveLength(1);
+    expect(options).toHaveLength(2);
+  });
+
+  it("the spec: its header opens the binary's description, its options are the binary's labels in order", () => {
+    expect(description[0]!.startsWith(KIRO_CLASSIC_NUDGE.header)).toBe(true);
+    expect(KIRO_CLASSIC_NUDGE.options).toEqual(options);
+  });
+
+  /** Only wrapping, ANSI, the cursor glyph and indentation are normalised; every other character must match. */
+  const normalise = (screen: string) => {
+    const lines = screen.replace(/\x1b\[[0-9;]*m/g, "").split("\n").map(l => l.trimEnd()).filter(Boolean);
+    const first = lines.findIndex(l => /^\s*(?:[❯›>]\s+)?Switch to 3\.0/.test(l));
+    return {
+      description: lines.slice(0, first).join(" "),
+      options: lines.slice(first).map(l => l.replace(/^\s*(?:[❯›>]\s+)?/, "")),
+    };
+  };
+  it.each([...SWITCH, ...REMIND])("%s is the binary's text", name => {
+    expect(normalise(pane(name))).toEqual({ description: description[0], options });
+  });
+  it("80-answered keeps the binary's description, and no option", () => {
+    expect(normalise(`${pane("80-answered")}\nSwitch to 3.0`).description).toBe(description[0]);
+  });
+
+  it("chat-help-2.28.0.txt is the binary's own --help, byte for byte", () => {
+    const help = readFileSync(join(FIXTURES, "kiro-help", "chat-help-2.28.0.txt"));
+    expect(createHash("sha256").update(help).digest("hex")).toBe(meta("chat-help-2.28.0.txt-sha256"));
   });
 });
