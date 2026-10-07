@@ -111,6 +111,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 - **Corrected security, permissions and access documentation (#1275).** Removed the nonexistent IPC secret handshake and generated Bash denylist; documented default permission bypass, persisted access precedence, platform-specific command roles, and the actual dashboard/public View/Host/agent-token boundaries. Documentation only; runtime behavior is unchanged.
+- **kiro-cli 2.28.0's "Classic is being deprecated" prompt no longer blocks a legacy instance at launch (#1308).**
+  2.28.0 asks before every Classic session, even one launched with AgEnD's pinned `--legacy-ui --agent-engine=v1`:
+  "Switch to 3.0 and upgrade my agent configs" or "Remind me later". AgEnD did not recognise it, so the instance sat
+  on it. It now answers "Remind me later", moving one verified step off "Switch to 3.0" and pressing Enter only once
+  the cursor is seen on "Remind me later". Anything else is held for a human and reported. "Switch to 3.0" is never
+  chosen: it makes 3.0 the machine-wide default and reruns the session there, a one-way move. kiro asks again after
+  its 7-day snooze. kiro-cli 2.27.x does not show this prompt.
 - **Muse session discovery no longer reads whole session logs (#1228).** Finding the workspace's session used to
   `readFileSync` all of every candidate `session.jsonl` before slicing the 64KB head that names the working
   directory — slow when sessions grow long. Both `MuseBackend.getSessionId` and the detection-seam `museFingerprint`

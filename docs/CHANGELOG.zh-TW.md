@@ -51,6 +51,7 @@
 
 ### 修正 (Fixed)
 - **修正安全、權限與存取文件（#1275）。** 移除不存在的 IPC 共享金鑰握手與 Bash 拒絕名單，說明預設權限 bypass、持久化 access 優先序、分平台的指令管理員要求，以及 dashboard／公開 View／Host／agent token 的實際邊界。純文件，沒有修改執行行為。
+- **kiro-cli 2.28.0 的「Classic is being deprecated」提示不再讓 legacy instance 卡在啟動（#1308）。** 2.28.0 在每次 Classic session 開始前都會詢問，即使是用 AgEnD 固定的 `--legacy-ui --agent-engine=v1` 啟動：「Switch to 3.0 and upgrade my agent configs」或「Remind me later」。AgEnD 以前認不得它，instance 就停在那裡。現在會回答「Remind me later」：先從「Switch to 3.0」往下移一格並確認游標真的移到了，只有看到游標停在「Remind me later」才按 Enter；其他情況都留給人處理並回報。絕不選「Switch to 3.0」：它會把 3.0 設成整台機器的預設並在 3.0 重新執行 session，是單向的。kiro 的 7 天暫緩期過後會再問。kiro-cli 2.27.x 沒有這個提示。
 - **找 muse session 只讀前面的字、不再整檔讀進來（#1228）。** `MuseBackend.getSessionId` 與偵測 seam 的 `museFingerprint` 現在都走共用的 `readFileHeadSync`（開檔、串流解出前 65536 個字元、關檔），結果與整檔讀相同（算的是解出的字元數、不是 byte，多位元組開頭一樣找得到）。
 - **Telegram 的投遞狀態不再覆蓋 agent 主動加的反應（#959）。** 系統會記錄 bot 唯一反應欄位的擁有者，並讓狀態與 agent 反應共用每則訊息的佇列。無法確認擁有者時（包括 adapter 被重建、或 API 回應不明），晚到的狀態就跳過；agent 選了跟舊狀態一樣的 emoji 也會保留。General fallback 投遞亦保留原始 chat/thread 資料，Discord topic 路由不變。
 - **修正 `checkout_repo` 與 `get_usage` 工具描述（#1296）。** `checkout_repo` 的描述說「唯讀 worktree」及「接受 instance 名稱或絕對路徑」；實際上 handler（`daemon.ts`）拒絕非路徑的 source，且建立的是 detached HEAD worktree，並非強制唯讀掛載。`get_usage` 的描述只列了 Claude/Codex/Grok/Kiro，漏掉了 Muse 與 Antigravity。兩者已更正。讀取工具描述來決定用法的 agent 會看到錯誤資訊。

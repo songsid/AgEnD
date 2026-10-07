@@ -1,0 +1,36 @@
+Classic is being deprecated with the Kiro CLI 3.0 release in October. 3.0 runs
+in the terminal UI and also brings cloud sessions, tangents, specs, global
+hooks, and more.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
