@@ -78,10 +78,10 @@ export const DEFAULT_INSTANCE_CONFIG: Omit<InstanceConfig, "working_directory"> 
     backoff: "exponential",
     reset_after: 300,
   },
-  context_guardian: {
-    grace_period_ms: 600_000,
-    max_age_hours: 0, // 0 = disabled; Claude Code auto-compact handles context limits
-  },
+  // context_guardian removed from built-in defaults (#1296): context rotation is
+  // gone, neither field is read, and an empty {} would propagate into fleet.yaml
+  // whenever create_instance persists an instance config. Users who still have
+  // max_age_hours / grace_period_ms in fleet.yaml get a validator warning.
   log_level: "info",
 };
 
