@@ -95,15 +95,24 @@ export const DURABLE_DELIVERY_LANE_ALERT_MS = 35 * 60_000;
  * #1335: Cap an unfiltered task list at 100 rows (most recently updated first).
  * Exported so the production branch can be tested directly without starting a fleet.
  * Filtered calls pass-through unchanged. Empty strings count as "not set" (P3).
+ * #1336: generic over the row shape so it works on both full Task and compact rows.
  */
 export const TASK_LIST_CAP = 100;
-export function applyTaskListCap(
-  tasks: Task[],
+
+/**
+ * #1336: the non-terminal statuses a bare `list` returns by default. `done`
+ * and `cancelled` are excluded unless the caller passes `filter_status`.
+ */
+export const LIVE_TASK_STATUSES: string[] = ["open", "claimed", "blocked"];
+
+export function applyTaskListCap<T extends { updated_at: string }>(
+  tasks: T[],
   filterAssignee: string | undefined,
-  filterStatus: string | undefined,
-): { tasks: Task[]; omitted: number; hint: string } | Task[] {
-  // Empty strings are treated as "not filtered" (same as undefined).
-  const isFiltered = !!filterAssignee || !!filterStatus;
+  filterStatus: string | string[] | undefined,
+): { tasks: T[]; omitted: number; hint: string } | T[] {
+  // Empty strings / empty arrays are treated as "not filtered" (same as undefined).
+  const hasStatusFilter = Array.isArray(filterStatus) ? filterStatus.length > 0 : !!filterStatus;
+  const isFiltered = !!filterAssignee || hasStatusFilter;
   if (!isFiltered && tasks.length > TASK_LIST_CAP) {
     const omitted = tasks.length - TASK_LIST_CAP;
     tasks.sort((a, b) => b.updated_at.localeCompare(a.updated_at));
@@ -7199,41 +7208,74 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const asStatus = (v: unknown): "open" | "claimed" | "done" | "blocked" | "cancelled" | undefined => {
       return (v === "open" || v === "claimed" || v === "done" || v === "blocked" || v === "cancelled") ? v : undefined;
     };
-    switch (action) {
-      case "create": {
-        const title = asStr(args.title);
-        if (!title) return { error: "title is required" };
-        return db.createTask({
-          title,
-          description: asStr(args.description),
-          priority: asPriority(args.priority),
-          assignee: asStr(args.assignee),
-          depends_on: asStrArr(args.depends_on),
-          created_by: instance,
-        });
+    // #1336: a status filter is either a single string or an array of strings.
+    const asStatusFilter = (v: unknown): string | string[] | undefined => {
+      if (typeof v === "string") return v || undefined;
+      if (Array.isArray(v) && v.every(x => typeof x === "string")) {
+        const arr = (v as string[]).filter(s => s.length > 0);
+        return arr.length > 0 ? arr : undefined;
       }
-      case "list": return db.listTasks({ assignee: asStr(args.filter_assignee), status: asStr(args.filter_status) });
-      case "claim": {
-        const id = asStr(args.id);
-        if (!id) return { error: "id is required" };
-        return db.claimTask(id, instance);
+      return undefined;
+    };
+    // #1336: small write ack — identifying fields only.
+    const ack = (t: Task) => ({ id: t.id, status: t.status, updated_at: t.updated_at });
+    try {
+      switch (action) {
+        case "create": {
+          const title = asStr(args.title);
+          if (!title) return { error: "title is required" };
+          return ack(db.createTask({
+            title,
+            description: asStr(args.description),
+            priority: asPriority(args.priority),
+            assignee: asStr(args.assignee),
+            depends_on: asStrArr(args.depends_on),
+            created_by: instance,
+          }));
+        }
+        case "list": {
+          const filterAssignee = asStr(args.filter_assignee) || undefined;
+          const explicitStatus = asStatusFilter(args.filter_status);
+          // #1336 item 1: default to live-only (no done/cancelled) unless the
+          // caller explicitly asked for a status.
+          const effectiveStatus = explicitStatus ?? LIVE_TASK_STATUSES;
+          const verbose = args.verbose === true;
+          const tasks = verbose
+            ? db.listTasks({ assignee: filterAssignee, status: effectiveStatus, verbose: true })
+            : db.listTasks({ assignee: filterAssignee, status: effectiveStatus });
+          // #1335: cap unfiltered list. The default live-only filter does not
+          // count as an explicit filter for the cap decision.
+          return applyTaskListCap(tasks, filterAssignee, explicitStatus);
+        }
+        case "get": {
+          const id = asStr(args.id);
+          if (!id) return { error: "id is required" };
+          return db.getTaskByPrefix(id);
+        }
+        case "claim": {
+          const id = asStr(args.id);
+          if (!id) return { error: "id is required" };
+          return ack(db.claimTask(db.getTaskByPrefix(id).id, instance));
+        }
+        case "done": {
+          const id = asStr(args.id);
+          if (!id) return { error: "id is required" };
+          return ack(db.completeTask(db.getTaskByPrefix(id).id, asStr(args.result)));
+        }
+        case "update": {
+          const id = asStr(args.id);
+          if (!id) return { error: "id is required" };
+          return ack(db.updateTask(db.getTaskByPrefix(id).id, {
+            status: asStatus(args.status),
+            assignee: asStr(args.assignee),
+            result: asStr(args.result),
+            priority: asPriority(args.priority),
+          }));
+        }
+        default: return { error: `Unknown task action: ${action}` };
       }
-      case "done": {
-        const id = asStr(args.id);
-        if (!id) return { error: "id is required" };
-        return db.completeTask(id, asStr(args.result));
-      }
-      case "update": {
-        const id = asStr(args.id);
-        if (!id) return { error: "id is required" };
-        return db.updateTask(id, {
-          status: asStatus(args.status),
-          assignee: asStr(args.assignee),
-          result: asStr(args.result),
-          priority: asPriority(args.priority),
-        });
-      }
-      default: return { error: `Unknown task action: ${action}` };
+    } catch (err) {
+      return { error: (err as Error).message };
     }
   }
 
@@ -7308,12 +7350,24 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     const db = this.scheduler.db;
     const action = payload.action as string;
+    // #1336: a status filter is a single string or an array of strings.
+    const asStatusFilter = (v: unknown): string | string[] | undefined => {
+      if (typeof v === "string") return v || undefined;
+      if (Array.isArray(v) && v.every(x => typeof x === "string")) {
+        const arr = (v as string[]).filter(s => s.length > 0);
+        return arr.length > 0 ? arr : undefined;
+      }
+      return undefined;
+    };
+    const ack = (t: Task) => ({ id: t.id, status: t.status, updated_at: t.updated_at });
 
     try {
       let result: unknown;
+      // Full task kept for activity logging; the IPC reply uses the compact ack.
+      let logTask: Task | undefined;
       switch (action) {
         case "create":
-          result = db.createTask({
+          logTask = db.createTask({
             title: payload.title as string,
             description: payload.description as string | undefined,
             priority: payload.priority as "low" | "normal" | "high" | "urgent" | undefined,
@@ -7321,30 +7375,43 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             depends_on: payload.depends_on as string[] | undefined,
             created_by: meta.instance_name || instanceName,
           });
+          result = ack(logTask);
           break;
         case "list": {
           // P3: normalize empty strings to undefined — SchedulerDb.listTasks
           // ignores them but the cap logic must treat them as "not filtered".
           const filterAssignee = (payload.filter_assignee as string | undefined) || undefined;
-          const filterStatus = (payload.filter_status as string | undefined) || undefined;
-          const tasks = db.listTasks({ assignee: filterAssignee, status: filterStatus });
-          // #1335: cap unfiltered list at 100 rows via the exported helper.
-          result = applyTaskListCap(tasks, filterAssignee, filterStatus);
+          const explicitStatus = asStatusFilter(payload.filter_status);
+          // #1336 item 1: default to live-only (no done/cancelled).
+          const effectiveStatus = explicitStatus ?? LIVE_TASK_STATUSES;
+          const verbose = payload.verbose === true;
+          const tasks = verbose
+            ? db.listTasks({ assignee: filterAssignee, status: effectiveStatus, verbose: true })
+            : db.listTasks({ assignee: filterAssignee, status: effectiveStatus });
+          // #1335: cap unfiltered list — the default live-only filter does not
+          // count as an explicit filter.
+          result = applyTaskListCap(tasks, filterAssignee, explicitStatus);
           break;
         }
+        case "get":
+          result = db.getTaskByPrefix(payload.id as string);
+          break;
         case "claim":
-          result = db.claimTask(payload.id as string, meta.instance_name || instanceName);
+          logTask = db.claimTask(db.getTaskByPrefix(payload.id as string).id, meta.instance_name || instanceName);
+          result = ack(logTask);
           break;
         case "done":
-          result = db.completeTask(payload.id as string, payload.result as string | undefined);
+          logTask = db.completeTask(db.getTaskByPrefix(payload.id as string).id, payload.result as string | undefined);
+          result = ack(logTask);
           break;
         case "update":
-          result = db.updateTask(payload.id as string, {
+          logTask = db.updateTask(db.getTaskByPrefix(payload.id as string).id, {
             status: payload.status as string | undefined,
             assignee: payload.assignee as string | undefined,
             result: payload.result as string | undefined,
             priority: payload.priority as string | undefined,
           } as Record<string, unknown>);
+          result = ack(logTask);
           break;
         default:
           throw new Error(`Unknown task action: ${action}`);
@@ -7352,15 +7419,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       ipc.send({ type: "fleet_task_response", fleetRequestId, result });
 
       // Activity log for task lifecycle events
-      if (action === "create") {
-        const t = result as { title: string; assignee?: string };
-        this.eventLog?.logActivity("task_update", instanceName, `created task: ${t.title}`, t.assignee ?? undefined);
-      } else if (action === "claim") {
-        const t = result as { title: string };
-        this.eventLog?.logActivity("task_update", instanceName, `claimed: ${t.title}`);
-      } else if (action === "done") {
-        const t = result as { title: string; result?: string };
-        this.eventLog?.logActivity("task_update", instanceName, `completed: ${t.title}`, undefined, t.result ?? undefined);
+      if (action === "create" && logTask) {
+        this.eventLog?.logActivity("task_update", instanceName, `created task: ${logTask.title}`, logTask.assignee ?? undefined);
+      } else if (action === "claim" && logTask) {
+        this.eventLog?.logActivity("task_update", instanceName, `claimed: ${logTask.title}`);
+      } else if (action === "done" && logTask) {
+        this.eventLog?.logActivity("task_update", instanceName, `completed: ${logTask.title}`, undefined, logTask.result ?? undefined);
       }
     } catch (err) {
       ipc.send({ type: "fleet_task_response", fleetRequestId, error: (err as Error).message });

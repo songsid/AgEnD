@@ -104,9 +104,16 @@ describe("SchedulerDb — Tasks", () => {
     expect(done.result).toBe("All done");
   });
 
-  it("rejects complete on non-claimed task", () => {
+  it("completes an open task directly (#1336: done works from open)", () => {
     const t = db.createTask({ title: "Do thing", created_by: "x" });
-    expect(() => db.completeTask(t.id)).toThrow(/must be claimed/);
+    const done = db.completeTask(t.id);
+    expect(done.status).toBe("done");
+  });
+
+  it("rejects complete on a terminal task", () => {
+    const t = db.createTask({ title: "Do thing", created_by: "x" });
+    db.updateTask(t.id, { status: "cancelled" });
+    expect(() => db.completeTask(t.id)).toThrow(/cannot complete/);
   });
 
   it("updates task fields", () => {
