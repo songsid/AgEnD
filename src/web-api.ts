@@ -2,6 +2,7 @@
  * Web UI HTTP API handler.
  * All /ui/* routes are handled here, extracted from fleet-manager.ts.
  */
+import { sendPanelHtml } from "./web-host-guard.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -251,9 +252,7 @@ export function handleWebRequest(
   if (method === "GET" && path === "/ui") {
     try {
       const html = readFileSync(join(__dirname, "ui", "dashboard.html"), "utf-8");
-      res.setHeader("Content-Type", "text/html; charset=utf-8");
-      res.writeHead(200);
-      res.end(html);
+      sendPanelHtml(res, html);
     } catch {
       json(res, 500, { error: "dashboard.html not found" });
     }

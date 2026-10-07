@@ -311,7 +311,7 @@
   </div>
   <div style="padding:8px 12px 0"><nav data-agend-nav data-compact data-current="ui"></nav></div>
   <div style="padding:8px 12px 0">
-    <div class="fleet-entry" id="fleetEntry" onclick="selFleet()">
+    <div class="fleet-entry" id="fleetEntry" data-act="selFleet">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
       Fleet
     </div>
@@ -319,7 +319,7 @@
   <div class="nav-section">Instances</div>
   <div class="instance-list" id="instanceList"></div>
   <div class="sidebar-footer">
-    <button class="btn btn-accent" style="width:100%;justify-content:center" onclick="showCreateInstance()">+ New Instance</button>
+    <button class="btn btn-accent" style="width:100%;justify-content:center" data-act="showCreateInstance">+ New Instance</button>
   </div>
 </div>
 
@@ -385,7 +385,11 @@ async function api(m, p, b) {
   const r = await fetch(p, o);
   return r.json();
 }
-function esc(s) { const d = document.createElement("div"); d.textContent = s || ""; return d.innerHTML; }
+// Escapes quotes too, so the same function is safe inside a quoted attribute (#1303 review: a name carrying `"` must
+// never become attributes of its own — e.g. a forged data-act on a roster row).
+function esc(s) { return escAttr(s); }
+// For a value inside a quoted attribute: esc() leaves quotes alone, which is fine for text but not here.
+function escAttr(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/'/g, "&#39;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 function fmtUp(s) { return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s/60)}m` : `${Math.floor(s/3600)}h ${Math.floor((s%3600)/60)}m`; }
 function toast(msg, ok=true) {
   const el = document.createElement("div"); el.className = `toast ${ok?"ok":"err"}`; el.textContent = msg;
@@ -429,6 +433,22 @@ function startPolling() { if (pollTimer) return; pollOnce(); pollTimer = setInte
 function stopPolling() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
 function sseAlive() { stopPolling(); clearTimeout(errorTimer); errorTimer = null; clearTimeout(silentTimer); silentTimer = setTimeout(startPolling, 30000); }
 
+// Every button names its action in data-act (its arguments in data-arg / data-arg2) and one listener runs it: no
+// inline on*= handler anywhere, so the page needs no 'unsafe-inline' script (#1268). Only names listed here run.
+const ACTIONS = {
+  selFleet: () => selFleet(), showCreateInstance: () => showCreateInstance(), sendMsg: () => sendMsg(),
+  showCreateTask: () => showCreateTask(), showCreateSchedule: () => showCreateSchedule(), showCreateTeam: () => showCreateTeam(),
+  addRoot: () => addRoot(), saveConfig: () => saveConfig(),
+  doAction: el => doAction(el.dataset.arg), sel: el => sel(el.dataset.arg), delSchedule: el => delSchedule(el.dataset.arg),
+  delTeam: el => delTeam(el.dataset.arg), togglePw: el => togglePw(el.dataset.arg),
+  taskAct: el => taskAct(el.dataset.arg, el.dataset.arg2),
+  closeOverlay: el => el.closest(".form-overlay")?.remove(), removeParent: el => el.parentElement?.remove(),
+};
+document.addEventListener("click", e => {
+  const el = e.target && e.target.closest ? e.target.closest("[data-act]") : null;
+  if (!el || !Object.hasOwn(ACTIONS, el.dataset.act)) return;
+  ACTIONS[el.dataset.act](el, e);
+});
 const sse = new EventSource("/ui/events");
 silentTimer = setTimeout(startPolling, 15000);   // the server sends a status frame the moment a stream opens
 sse.addEventListener("status", e => { sseAlive(); applyStatus(JSON.parse(e.data)); });
@@ -504,7 +524,7 @@ function renderList() {
     const ctxMeta = i.context_pct != null ? ` ctx:${Math.round(i.context_pct)}%` : "";
     const alias = typeof i.display_name === "string" && i.display_name.trim() !== i.name ? i.display_name.trim() : "";
     return `<div class="instance-item${i.name===cur&&mode==="instance"?" active":""}" data-n="${esc(i.name)}" title="${esc(tip)}">
-    <div class="dot ${i.status}" title="${i.status}"></div><div class="inst-identity">
+    <div class="dot ${escAttr(i.status)}" title="${escAttr(i.status)}"></div><div class="inst-identity">
     <div class="inst-name">${esc(i.name)}</div>${alias ? `<div class="inst-alias">${esc(alias)}</div>` : ""}
     </div><div class="inst-meta">${i.cost>0?`$${i.cost.toFixed(2)}`:""}${ctxMeta}</div></div>`;
   }).join("");
@@ -549,7 +569,7 @@ function renderInstanceMain(main) {
       <div id="workBar" class="work-bar" aria-live="polite"></div>
       <div id="failedSend"></div>
       <div id="pendingFiles" class="pending-files"></div>
-      <div class="input-bar"><button class="btn" id="attachBtn" type="button" title="Attach files (images, PDF, text — or paste / drop them)">📎</button><input type="file" id="fileIn" multiple hidden accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/*,.md,.csv,.json,.log,.yaml,.yml"><textarea id="msgIn" rows="1" placeholder="Send a message..." autocomplete="off"></textarea><button class="btn btn-accent" onclick="sendMsg()">Send</button></div>
+      <div class="input-bar"><button class="btn" id="attachBtn" type="button" title="Attach files (images, PDF, text — or paste / drop them)">📎</button><input type="file" id="fileIn" multiple hidden accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/*,.md,.csv,.json,.log,.yaml,.yml"><textarea id="msgIn" rows="1" placeholder="Send a message..." autocomplete="off"></textarea><button class="btn btn-accent" data-act="sendMsg">Send</button></div>
       <div class="input-hint">Enter to send · Shift+Enter for a new line</div>
     </div>
     <div class="detail-view" id="detailView" style="display:${curTab==="detail"?"block":"none"}"><div style="color:var(--text-muted);text-align:center;padding:24px">Loading...</div></div>`;
@@ -586,9 +606,9 @@ function renderActions(i) {
   const el = document.getElementById("actions"); if (!el || !i) return;
   const r = i.status === "running";
   el.innerHTML = `${r
-    ?`<button class="btn btn-warn" onclick="doAction('stop')"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg> Stop</button><button class="btn btn-warn" onclick="doAction('restart')"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg> Restart</button>`
-    :`<button class="btn btn-green" onclick="doAction('start')"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> Start</button>`}
-    <button class="btn btn-red" onclick="doAction('delete')"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg> Delete</button>`;
+    ?`<button class="btn btn-warn" data-act="doAction" data-arg="stop"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg> Stop</button><button class="btn btn-warn" data-act="doAction" data-arg="restart"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg> Restart</button>`
+    :`<button class="btn btn-green" data-act="doAction" data-arg="start"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> Start</button>`}
+    <button class="btn btn-red" data-act="doAction" data-arg="delete"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg> Delete</button>`;
 }
 async function doAction(a) {
   if (!cur) return;
@@ -857,16 +877,16 @@ async function loadTasks() {
     const d = await api("GET", "/ui/tasks");
     const tasks = d.tasks || [];
     let h = `<div class="list-header"><span>${tasks.length} tasks</span>
-      <button class="btn btn-accent" onclick="showCreateTask()">+ New Task</button></div>`;
+      <button class="btn btn-accent" data-act="showCreateTask">+ New Task</button></div>`;
     if (!tasks.length) h += `<div class="msg-empty"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>No tasks yet<br><span style="font-size:12px">Create one to coordinate fleet work</span></div>`;
     else for (const t of tasks) {
       h += `<div class="task-item">
-        <span class="task-status ${t.status}">${t.status}</span>
+        <span class="task-status ${escAttr(t.status)}">${t.status}</span>
         <span class="task-title">${esc(t.title)}</span>
-        <span class="task-assignee">${t.assignee?`<span style="cursor:pointer;color:var(--accent)" onclick="sel('${esc(t.assignee)}')">${esc(t.assignee)}</span>`:""}</span>
+        <span class="task-assignee">${t.assignee?`<span style="cursor:pointer;color:var(--accent)" data-act="sel" data-arg="${escAttr(t.assignee)}">${esc(t.assignee)}</span>`:""}</span>
         <div class="task-actions">
-          ${t.status==="open"?`<button class="btn btn-ghost" onclick="taskAct('${t.id}','claim')">Claim</button>`:""}
-          ${t.status==="claimed"?`<button class="btn btn-ghost" onclick="taskAct('${t.id}','complete')">Done</button>`:""}
+          ${t.status==="open"?`<button class="btn btn-ghost" data-act="taskAct" data-arg="${escAttr(t.id)}" data-arg2="claim">Claim</button>`:""}
+          ${t.status==="claimed"?`<button class="btn btn-ghost" data-act="taskAct" data-arg="${escAttr(t.id)}" data-arg2="complete">Done</button>`:""}
         </div></div>`;
     }
     el.innerHTML = h;
@@ -886,9 +906,9 @@ async function showCreateInstance() {
     backendOpts += (bd.backends || []).map(b => {
       let label = b.deprecated ? `${b.name} (deprecated)` : b.name;
       if (!b.installed) label += " (not installed)";
-      return `<option value="${b.name}" ${b.installed ? "" : "disabled"} ${b.name === first?.name ? "selected" : ""}>${label}</option>`;
+      return `<option value="${escAttr(b.name)}" ${b.installed ? "" : "disabled"} ${b.name === first?.name ? "selected" : ""}>${label}</option>`;
     }).join("");
-  } catch { backendOpts += ["claude-code","codex","opencode","kiro-cli","antigravity","grok","gemini-cli"].map(b => `<option value="${b}">${b === "gemini-cli" ? "gemini-cli (deprecated)" : b}</option>`).join(""); }
+  } catch { backendOpts += ["claude-code","codex","opencode","kiro-cli","antigravity","grok","gemini-cli"].map(b => `<option value="${escAttr(b)}">${b === "gemini-cli" ? "gemini-cli (deprecated)" : b}</option>`).join(""); }
   ov.innerHTML = `<div class="form-card"><h2>Create Instance</h2>
     <div class="form-field"><label>Directory</label><input id="ci-dir" placeholder="Optional — auto-creates workspace if empty"></div>
     <div class="form-field"><label id="ci-topic-label">Topic Name</label><input id="ci-topic" placeholder="Auto from directory name"></div>
@@ -898,7 +918,7 @@ async function showCreateInstance() {
     <div class="form-field"><label>Branch (git worktree)</label><input id="ci-branch" placeholder="e.g. feature-x"></div>
     <div class="form-field"><label>Tags</label><input id="ci-tags" placeholder="comma-separated, e.g. dev, review"></div>
     <div class="form-field"><label>System Prompt</label><textarea id="ci-prompt" rows="3" placeholder="Custom instructions for this instance"></textarea></div>
-    <div class="form-actions"><button class="btn btn-ghost" onclick="this.closest('.form-overlay').remove()">Cancel</button>
+    <div class="form-actions"><button class="btn btn-ghost" data-act="closeOverlay">Cancel</button>
     <button class="btn btn-accent" id="ci-go">Create</button></div></div>`;
   document.body.appendChild(ov);
   ov.addEventListener("click", e => { if (e.target === ov) ov.remove(); });
@@ -935,7 +955,7 @@ function showCreateTask() {
     <div class="form-field"><label>Description</label><input id="ct-desc" placeholder="Details"></div>
     <div class="form-field"><label>Priority</label><select id="ct-pri"><option value="normal">Normal</option><option value="low">Low</option><option value="high">High</option><option value="urgent">Urgent</option></select></div>
     <div class="form-field"><label>Assignee</label><select id="ct-assign"><option value="">Unassigned</option>${opts}</select></div>
-    <div class="form-actions"><button class="btn btn-ghost" onclick="this.closest('.form-overlay').remove()">Cancel</button>
+    <div class="form-actions"><button class="btn btn-ghost" data-act="closeOverlay">Cancel</button>
     <button class="btn btn-accent" id="ct-go">Create</button></div></div>`;
   document.body.appendChild(ov);
   ov.addEventListener("click", e => { if (e.target === ov) ov.remove(); });
@@ -959,16 +979,16 @@ async function loadSchedules() {
     const d = await api("GET", "/ui/schedules");
     const scheds = d.schedules || [];
     let h = `<div class="list-header"><span>${scheds.length} schedules</span>
-      <button class="btn btn-accent" onclick="showCreateSchedule()">+ New Schedule</button></div>`;
+      <button class="btn btn-accent" data-act="showCreateSchedule">+ New Schedule</button></div>`;
     if (!scheds.length) h += `<div class="msg-empty"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>No schedules yet<br><span style="font-size:12px">Automate recurring tasks with cron</span></div>`;
     else for (const s of scheds) {
       h += `<div class="task-item">
         <span class="task-status ${s.enabled?"open":"done"}">${s.enabled?"on":"off"}</span>
         <span class="task-title">${esc(s.label||cronDesc(s.cron))}</span>
         <span class="task-assignee" style="font-family:'IBM Plex Mono',monospace" title="${esc(cronDesc(s.cron))}">${esc(s.cron)}</span>
-        <span class="task-assignee" style="cursor:pointer;color:var(--accent)" onclick="sel('${esc(s.target)}')">${esc(s.target)}</span>
+        <span class="task-assignee" style="cursor:pointer;color:var(--accent)" data-act="sel" data-arg="${escAttr(s.target)}">${esc(s.target)}</span>
         <div class="task-actions">
-          <button class="btn btn-ghost btn-red" onclick="delSchedule('${s.id}')">Delete</button>
+          <button class="btn btn-ghost btn-red" data-act="delSchedule" data-arg="${escAttr(s.id)}">Delete</button>
         </div></div>`;
     }
     el.innerHTML = h;
@@ -987,7 +1007,7 @@ function showCreateSchedule() {
     <div class="form-field"><label>Message *</label><input id="cs-msg" placeholder="What to send"></div>
     <div class="form-field"><label>Target Instance *</label><select id="cs-target">${tgtOpts}</select></div>
     <div class="form-field"><label>Label</label><input id="cs-label" placeholder="Daily standup"></div>
-    <div class="form-actions"><button class="btn btn-ghost" onclick="this.closest('.form-overlay').remove()">Cancel</button>
+    <div class="form-actions"><button class="btn btn-ghost" data-act="closeOverlay">Cancel</button>
     <button class="btn btn-accent" id="cs-go">Create</button></div></div>`;
   document.body.appendChild(ov);
   ov.addEventListener("click", e => { if (e.target === ov) ov.remove(); });
@@ -1013,14 +1033,14 @@ async function loadTeams() {
     const teams = d.teams || {};
     const entries = Object.entries(teams);
     let h = `<div class="list-header"><span>${entries.length} teams</span>
-      <button class="btn btn-accent" onclick="showCreateTeam()">+ New Team</button></div>`;
+      <button class="btn btn-accent" data-act="showCreateTeam">+ New Team</button></div>`;
     if (!entries.length) h += `<div class="msg-empty"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>No teams yet<br><span style="font-size:12px">Group instances for coordinated work</span></div>`;
     else for (const [name, team] of entries) {
       h += `<div class="task-item">
         <span class="task-title" style="font-weight:600">${esc(name)}</span>
         <span class="task-assignee">${esc((team.members||[]).join(", "))}</span>
         <div class="task-actions">
-          <button class="btn btn-ghost btn-red" onclick="delTeam('${esc(name)}')">Delete</button>
+          <button class="btn btn-ghost btn-red" data-act="delTeam" data-arg="${escAttr(name)}">Delete</button>
         </div></div>`;
     }
     el.innerHTML = h;
@@ -1038,7 +1058,7 @@ function showCreateTeam() {
     <div class="form-field"><label>Team Name *</label><input id="ct2-name" placeholder="team-name"></div>
     <div class="form-field"><label>Description</label><input id="ct2-desc" placeholder="What this team does"></div>
     <div class="form-field"><label>Members *</label><div id="ct2-members" style="max-height:150px;overflow-y:auto">${memOpts}</div></div>
-    <div class="form-actions"><button class="btn btn-ghost" onclick="this.closest('.form-overlay').remove()">Cancel</button>
+    <div class="form-actions"><button class="btn btn-ghost" data-act="closeOverlay">Cancel</button>
     <button class="btn btn-accent" id="ct2-go">Create</button></div></div>`;
   document.body.appendChild(ov);
   ov.addEventListener("click", e => { if (e.target === ov) ov.remove(); });
@@ -1092,8 +1112,8 @@ async function loadConfig() {
         <div class="form-field"><label>Bot Token Env</label><input id="cfg-token-env" value="${esc(ch.bot_token_env||"AGEND_BOT_TOKEN")}" disabled style="opacity:0.5"></div>
         <div class="form-field"><label>Group ID</label>
           <div style="display:flex;gap:4px;align-items:center">
-            <input id="cfg-gid" type="password" value="${ch.group_id||""}" style="flex:1">
-            <button class="eye-btn" onclick="togglePw('cfg-gid')">&#128065;</button>
+            <input id="cfg-gid" type="password" value="${escAttr(ch.group_id||"")}" style="flex:1">
+            <button class="eye-btn" data-act="togglePw" data-arg="cfg-gid">&#128065;</button>
           </div></div>
       </div>
       <div class="card"><h3>Access Control</h3>
@@ -1101,29 +1121,29 @@ async function loadConfig() {
           <select id="cfg-acc-mode"><option value="locked" ${acc.mode==="locked"?"selected":""}>Locked</option><option value="open" ${acc.mode==="open"?"selected":""}>Open</option></select></div>
         <div class="form-field"><label>Allowed Users</label>
           <div style="display:flex;gap:4px;align-items:center">
-            <input id="cfg-users" type="password" value="${(acc.allowed_users||[]).join(", ")}" style="flex:1">
-            <button class="eye-btn" onclick="togglePw('cfg-users')">&#128065;</button>
+            <input id="cfg-users" type="password" value="${escAttr((acc.allowed_users||[]).join(", "))}" style="flex:1">
+            <button class="eye-btn" data-act="togglePw" data-arg="cfg-users">&#128065;</button>
           </div>
           <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Comma-separated user IDs</div></div>
       </div>
       <div class="card"><h3>Defaults</h3>
         <div class="form-field"><label>Backend</label>
           <select id="cfg-backend">
-            ${["claude-code","codex","opencode","kiro-cli","antigravity","grok","gemini-cli"].map(b => `<option value="${b}" ${defs.backend===b?"selected":""}>${b === "gemini-cli" ? "gemini-cli (deprecated)" : b}</option>`).join("")}
+            ${["claude-code","codex","opencode","kiro-cli","antigravity","grok","gemini-cli"].map(b => `<option value="${escAttr(b)}" ${defs.backend===b?"selected":""}>${b === "gemini-cli" ? "gemini-cli (deprecated)" : b}</option>`).join("")}
           </select></div>
       </div>
       <div class="card"><h3>Project Roots</h3>
-        <div id="cfg-roots">${roots.map((r,i) => `<div style="display:flex;gap:4px;margin-bottom:6px"><input class="cfg-root" value="${esc(r)}" style="flex:1"><button class="btn btn-ghost" style="padding:4px 8px" onclick="this.parentElement.remove()">&#10005;</button></div>`).join("")}</div>
-        <button class="btn btn-ghost" onclick="addRoot()">+ Add Root</button>
+        <div id="cfg-roots">${roots.map((r,i) => `<div style="display:flex;gap:4px;margin-bottom:6px"><input class="cfg-root" value="${esc(r)}" style="flex:1"><button class="btn btn-ghost" style="padding:4px 8px" data-act="removeParent">&#10005;</button></div>`).join("")}</div>
+        <button class="btn btn-ghost" data-act="addRoot">+ Add Root</button>
       </div>
       <div style="display:flex;gap:10px;align-items:center;margin-top:16px">
-        <button class="btn btn-accent" onclick="saveConfig()">Save Changes</button>
+        <button class="btn btn-accent" data-act="saveConfig">Save Changes</button>
         <span style="font-size:11px;color:var(--text-muted)">Saving will reformat fleet.yaml (comments will be lost)</span>
       </div>`;
   } catch { el.innerHTML = `<div style="color:var(--error);padding:24px">${tr("configLoadFailed")}</div>`; }
 }
 function togglePw(id) { const el = document.getElementById(id); el.type = el.type === "password" ? "text" : "password"; }
-function addRoot() { const el = document.getElementById("cfg-roots"); el.insertAdjacentHTML("beforeend", `<div style="display:flex;gap:4px;margin-bottom:6px"><input class="cfg-root" value="" placeholder="/path/to/projects" style="flex:1"><button class="btn btn-ghost" style="padding:4px 8px" onclick="this.parentElement.remove()">&#10005;</button></div>`); }
+function addRoot() { const el = document.getElementById("cfg-roots"); el.insertAdjacentHTML("beforeend", `<div style="display:flex;gap:4px;margin-bottom:6px"><input class="cfg-root" value="" placeholder="/path/to/projects" style="flex:1"><button class="btn btn-ghost" style="padding:4px 8px" data-act="removeParent">&#10005;</button></div>`); }
 async function saveConfig() {
   const body = {
     channel: { group_id: document.getElementById("cfg-gid").value.trim(), access: { mode: document.getElementById("cfg-acc-mode").value, allowed_users: document.getElementById("cfg-users").value.split(",").map(s => s.trim()).filter(Boolean) } },
