@@ -78,10 +78,10 @@ export const DEFAULT_INSTANCE_CONFIG: Omit<InstanceConfig, "working_directory"> 
     backoff: "exponential",
     reset_after: 300,
   },
-  context_guardian: {
-    // max_age_hours and grace_period_ms were removed: context rotation is gone.
-    // ContextGuardian only monitors; no restart trigger reads these values.
-  },
+  // context_guardian removed from built-in defaults (#1296): context rotation is
+  // gone, neither field is read, and an empty {} would propagate into fleet.yaml
+  // whenever create_instance persists an instance config. Users who still have
+  // max_age_hours / grace_period_ms in fleet.yaml get a validator warning.
   log_level: "info",
 };
 

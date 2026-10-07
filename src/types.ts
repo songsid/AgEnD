@@ -145,7 +145,8 @@ export interface InstanceConfig {
     /** Health check polling interval in ms. Default: 30000 */
     health_check_interval_ms?: number;
   };
-  context_guardian: {
+  /** Retained for backwards compat; context rotation was removed (#1296). */
+  context_guardian?: {
     /** Retained for backwards compat but has no effect; context rotation was removed. */
     grace_period_ms?: number;
     /** Retained for backwards compat but has no effect; context rotation was removed. */
