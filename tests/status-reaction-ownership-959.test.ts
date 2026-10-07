@@ -276,6 +276,30 @@ describe("#959 real ingress → daemon status → bound adapter", () => {
 });
 
 describe("Telegram conditional status ownership", () => {
+  it.each([[1_000, 2_250], [10_000, 10_001]])("an evicted message cannot re-acquire ownership by replaying receivedAt=%s", async (receivedAt, newerAt) => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(2_000);
+    const tg = telegram();
+    const slots = new Map<string, string[]>();
+    tg.api.mockImplementation(async (chat, message, values) => {
+      expect(values.length).toBeLessThanOrEqual(1);
+      slots.set(`${chat}:${message}`, values.map(v => v.emoji));
+    });
+    await tg.adapter.reactDeliveryStatus("-100", "42", "👀", receivedAt);
+    now.mockReturnValue(2_500);
+    await tg.adapter.react("-100", "42", "👍");
+    now.mockReturnValue(5_000);
+    for (let i = 0; i < 1_000; i++) await tg.adapter.react("-100", String(100 + i), "👍");
+    expect((tg.adapter as any).telegramReactions.has("-100:42")).toBe(false);
+    const calls = tg.api.mock.calls.length;
+    expect(await tg.adapter.reactDeliveryStatus("-100", "42", "👎", receivedAt)).toBe(false);
+    expect(tg.api).toHaveBeenCalledTimes(calls);
+    expect(slots.get("-100:42")).toEqual(["👍"]);
+    // The boundary tracks first observation, not the latest agent update.
+    // A distinct, genuinely newer receipt remains eligible.
+    expect(await tg.adapter.reactDeliveryStatus("-100", "99", "👀", newerAt)).toBe(true);
+    expect(slots.get("-100:99")).toEqual(["👀"]);
+  });
+
   it("cannot bootstrap from an old receipt or an unverified timestamp", async () => {
     const tg = telegram({ slot: ["👍"] });
     (tg.adapter as any).reactionTrackingStartedAt = 2000;

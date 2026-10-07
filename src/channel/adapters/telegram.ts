@@ -757,6 +757,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     // not inherit proof from this object's pending requests.
     this.reactionGeneration = (this.reactionGeneration ?? 0) + 1;
     this.telegramReactions?.clear();
+    this.reactionOwnershipLostThroughAt = Number.NEGATIVE_INFINITY;
     this.reactionTrackingStartedAt = Date.now();
     if (this.cleanupTimer) clearInterval(this.cleanupTimer);
     this.queue.stop();
@@ -927,10 +928,11 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   // an ambiguous API failure is unknown, so late delivery statuses must skip.
   // Ordinary react calls (including agent tools) own the single slot even when
   // their emoji happens to equal the previous delivery marker.
-  private telegramReactions: Map<string, { emojis: string[]; owner: "status" | "other" | "unknown" }> | undefined;
+  private telegramReactions: Map<string, { emojis: string[]; owner: "status" | "other" | "unknown"; firstObservedAt: number }> | undefined;
   private reactionChains: Map<string, Promise<void>> | undefined;
   private reactionGeneration = 0;
   private reactionTrackingStartedAt = Date.now();
+  private reactionOwnershipLostThroughAt = Number.NEGATIVE_INFINITY;
   private static readonly REACTION_TRACK_CAP = 1000;
 
   private toReactionList(emojis: string[]): { type: "emoji"; emoji: import("grammy/types").ReactionTypeEmoji["emoji"] }[] {
@@ -940,14 +942,24 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     }));
   }
 
-  private rememberReactions(chatId: string, messageId: string, emojis: string[], owner: "status" | "other" | "unknown"): void {
+  private rememberReactions(chatId: string, messageId: string, emojis: string[], owner: "status" | "other" | "unknown", receivedAt?: number): void {
     const key = `${chatId}:${messageId}`;
     this.telegramReactions ??= new Map();
+    // Preserve first observation across updates. It bounds the creation time
+    // of a forgotten message without keeping unbounded tombstones.
+    const firstObservedAt = this.telegramReactions.get(key)?.firstObservedAt
+      ?? Math.max(Date.now(), receivedAt ?? Number.NEGATIVE_INFINITY);
     this.telegramReactions.delete(key);
-    this.telegramReactions.set(key, { emojis, owner });
+    this.telegramReactions.set(key, { emojis, owner, firstObservedAt });
     if (this.telegramReactions.size > TelegramAdapter.REACTION_TRACK_CAP) {
       const oldest = this.telegramReactions.keys().next();
-      if (!oldest.done) this.telegramReactions.delete(oldest.value);
+      if (!oldest.done) {
+        this.reactionOwnershipLostThroughAt = Math.max(
+          this.reactionOwnershipLostThroughAt ?? Number.NEGATIVE_INFINITY,
+          this.telegramReactions.get(oldest.value)!.firstObservedAt,
+        );
+        this.telegramReactions.delete(oldest.value);
+      }
     }
   }
 
@@ -968,13 +980,13 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     return run;
   }
 
-  private async setTrackedReaction(chatId: string, messageId: string, emojis: string[], owner: "status" | "other"): Promise<void> {
+  private async setTrackedReaction(chatId: string, messageId: string, emojis: string[], owner: "status" | "other", receivedAt?: number): Promise<void> {
     // A timeout/error can happen after Telegram has applied the request. Never
     // retain the old status-owned proof across an unacknowledged mutation.
     const generation = this.reactionGeneration ?? 0;
-    this.rememberReactions(chatId, messageId, [], "unknown");
+    this.rememberReactions(chatId, messageId, [], "unknown", receivedAt);
     await this.bot.api.setMessageReaction(Number(chatId), Number(messageId), this.toReactionList(emojis));
-    if (generation === (this.reactionGeneration ?? 0)) this.rememberReactions(chatId, messageId, emojis, owner);
+    if (generation === (this.reactionGeneration ?? 0)) this.rememberReactions(chatId, messageId, emojis, owner, receivedAt);
   }
 
   /**
@@ -988,11 +1000,12 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     return this.queueReaction(chatId, messageId, async () => {
       const current = this.telegramReactions?.get(`${chatId}:${messageId}`);
       const freshReceipt = !current && receivedAt !== undefined && Number.isFinite(receivedAt)
-        && receivedAt >= (this.reactionTrackingStartedAt ??= Date.now());
+        && receivedAt >= (this.reactionTrackingStartedAt ??= Date.now())
+        && receivedAt > (this.reactionOwnershipLostThroughAt ?? Number.NEGATIVE_INFINITY);
       if (current?.owner !== "status" && !freshReceipt) return false;
       const next = emoji == null ? [] : [emoji];
       if (current?.emojis.length === next.length && current.emojis.every((e, i) => e === next[i])) return true;
-      await this.setTrackedReaction(chatId, messageId, next, "status");
+      await this.setTrackedReaction(chatId, messageId, next, "status", freshReceipt ? receivedAt : undefined);
       return true;
     });
   }
