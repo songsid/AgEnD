@@ -287,9 +287,16 @@ export function validateFleetConfig(config: unknown): ValidationResult {
   }
 
   // ── Web UI ────────────────────────────────────────────────
+  // #1306: the preview listener defaults to health_port + 1, which does not exist above 65535.
+  if (config.health_port === 65535 && !(isObj(config.web) && (config.web.preview === false || config.web.preview_port !== undefined))) {
+    warn("web.preview_port", "health_port is 65535, so there is no default preview port (health_port + 1) — set web.preview_port, or previews are off");
+  }
   if (config.web !== undefined && !isObj(config.web)) {
     err("web", "must be a mapping");
   } else if (isObj(config.web)) {
+    if (config.web.echo_to_channel !== undefined && typeof config.web.echo_to_channel !== "boolean") {
+      err("web.echo_to_channel", "must be a boolean");
+    }
     if (config.web.usage_panel !== undefined && typeof config.web.usage_panel !== "boolean") {
       err("web.usage_panel", "must be a boolean");
     }

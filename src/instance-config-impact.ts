@@ -87,6 +87,7 @@ const CLASSIC_FIELDS = [
  * fleet process or the channel binding rather than to an instance's config.
  */
 const FLEET_FIELD_IMPACTS: Readonly<Record<string, ConfigImpact>> = {
+  "web.echo_to_channel": "now",
   "defaults.locale": "now",
   "fleet.channels": "fleet",
   "fleet.channel.access.mode": "fleet",
