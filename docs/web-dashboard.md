@@ -84,7 +84,8 @@ Pick an instance on the left to talk to it. The web chat is **the same conversat
 - Types: **PNG, JPEG, GIF, WebP, PDF and text files**. The type is read from the file itself, not from its name.
 - The agent receives files exactly as from Telegram: the file lands in the instance's workspace inbox (`<AGEND_HOME>/workspaces/<instance>/inbox`), with an `[📷 Image: …]` / `[📎 File: …]` line.
 - Files the agent attaches to its reply show in the chat. Images show inline; anything else is a download, never opened in the page.
-- An attached file that is **not sent within 30 minutes** is deleted. This holds only while the fleet keeps running: if it restarts in between, the file stays in the inbox ([#1273](https://github.com/songsid/AgEnD/issues/1273)).
+- An attached file that is **not sent within 30 minutes** is deleted. After a fleet restart, any such file left over is removed at startup once it is 30 minutes old.
+- Files that were sent stay in the inbox for **7 days**, like files from Telegram.
 
 ### Ticks: where your message got
 Each message you send shows how far it got, the same steps Telegram shows as reactions:

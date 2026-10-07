@@ -23,7 +23,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the file's bytes, not from its name or the browser's word for it; the stored name is chosen by the fleet; and a
   file can be fetched back only by an id the fleet issued for it (`/ui/file/<id>`), never by a path. Anything that
   is not one of the four image types is served as a download, never rendered. A file attached but not sent within
-  30 minutes is deleted.
+  30 minutes is deleted, also across a fleet restart: an upload is stored as `web-pending-…` until a message takes
+  it, and those left over are swept at startup once 30 minutes old (#1273). Sent files follow the inbox's 7-day
+  rotation, like Telegram's.
 - **Web chat: see where your message got, see that the agent is working, and stop it.** Each message you send
   from the web chat gets ticks, the same lifecycle a Telegram message shows as reactions: ◷ waiting behind another
   message, ✓ handed to the agent, ✓✓ the agent has it, ! not delivered (each labelled for screen readers, and

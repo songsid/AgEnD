@@ -84,7 +84,8 @@ dashboard 用**一次性登入碼**登入，絕不使用帶有憑證的連結。
 - 類型：**PNG、JPEG、GIF、WebP、PDF 與文字檔**。類型由檔案內容判斷，不看檔名。
 - agent 收到檔案的方式跟從 Telegram 收到完全一樣：檔案會放在 instance 工作區的 inbox（`<AGEND_HOME>/workspaces/<instance>/inbox`），並附上一行 `[📷 Image: …]` 或 `[📎 File: …]`。
 - agent 在回覆裡附的檔案也會顯示在聊天裡：圖片直接顯示，其他檔案則是下載，絕不會在頁面上開啟。
-- 附加了但**30 分鐘內沒送出**的檔案會被刪除。這只在 fleet 一直在跑時成立；中途重啟的話，檔案會留在 inbox（[#1273](https://github.com/songsid/AgEnD/issues/1273)）。
+- 附加了但**30 分鐘內沒送出**的檔案會被刪除。fleet 重啟後，留下的這類檔案也會在啟動時、放滿 30 分鐘後刪除。
+- 已送出的檔案會在 inbox 保留 **7 天**，跟從 Telegram 收到的檔案一樣。
 
 ### Ticks：訊息送到哪一步了
 你送出的每則訊息都會顯示目前進度，跟 Telegram 用 reaction 表示的步驟相同：
