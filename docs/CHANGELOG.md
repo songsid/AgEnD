@@ -89,8 +89,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **No inline script runs on the web panels unless it is the page's own (#1268).** `script-src` no longer allows
   `'unsafe-inline'`: each panel's own script is served with a fresh per-response nonce, and the dashboard's buttons
   no longer carry `onclick=` attributes (one listener runs a fixed list of actions named in `data-act`). Markup
-  injected into a page — an `onerror=` handler, a `<script>` — no longer runs. `style-src` still allows
-  `'unsafe-inline'` for the panels' `style="…"` attributes; styles cannot run code.
+  injected into a page — an `onerror=` handler, a `<script>` — no longer runs.
+- **…and no inline style applies unless it is the page's own (#1300).** `style-src` no longer allows
+  `'unsafe-inline'` either: each panel's `<style>` block carries the same per-response nonce, and no panel has a
+  `style="…"` attribute any more (the dashboard's went in #1307; /view's and /settings' now — the live terminal's
+  colours and the usage meters are set through the style object). Injected markup cannot restyle a page, for example
+  to overlay a fake prompt or hide a warning. The web terminal keeps its own policy.
 
 ### Upgrade Notes
 - **[Behaviour change] The web panels sign in with a one-time code, and a

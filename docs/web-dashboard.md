@@ -168,7 +168,7 @@ Full reference: [configuration.md](configuration.md). CLI commands: [cli.md](cli
 - Writes from a signed-in browser need the session **and** a per-session CSRF header **and** a matching `Origin`. The cookie alone cannot change anything. Scripts that send `X-Agend-Token` are not affected, since a browser never attaches that header on its own.
 - Every panel carries a Content-Security-Policy: scripts, styles, images and connections are limited to the dashboard's own address.
   - Only the page's own script runs. It carries a fresh nonce on each load, and there is no `'unsafe-inline'` for scripts, so markup injected into a page cannot run code.
-  - Styles still allow `'unsafe-inline'`, for the panels' `style` attributes.
+  - The same for styles: only the page's own stylesheet applies (no `'unsafe-inline'`), so injected markup cannot restyle a page either.
 
 ## When something is off
 
