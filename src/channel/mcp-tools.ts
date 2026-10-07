@@ -57,7 +57,7 @@ const DEFS: Array<[string, ZodType, string]> = [
   ["delete_schedule", schemas.DeleteScheduleArgs,
     "Delete a schedule by ID."],
   ["task", schemas.TaskBoardArgs,
-    "Manage fleet task board. Actions: create (new task), list (show tasks), claim (assign to self), done (mark complete), update (change status/priority/assignee)."],
+    "Manage fleet task board. Actions: create (new task), list (live tasks by default — compact rows; pass filter_status to include done/cancelled, verbose=true for full records), get (one full task by id/8-hex prefix), claim (assign to self), done (mark complete, works from open or claimed), update (change status/priority/assignee). Ids accept an 8-hex prefix. Write actions return {id, status, updated_at}."],
   ["post_decision", schemas.PostDecisionArgs,
     "Record a decision. scope='project' (default) is visible to instances sharing this working directory. scope='fleet' is visible to ALL instances regardless of directory — use for workflow rules, review policies, and team conventions."],
   ["list_decisions", schemas.ListDecisionsArgs,

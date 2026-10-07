@@ -89,7 +89,7 @@ export const DeleteScheduleArgs = z.object({
 // ── Fleet Task Board ────────────────────────────────────────────────────
 
 export const TaskBoardArgs = z.object({
-  action: z.enum(["create", "list", "claim", "done", "update"])
+  action: z.enum(["create", "list", "claim", "done", "update", "get"])
     .describe("Operation to perform"),
   title: z.string().optional().describe("Task title (create)"),
   description: z.string().optional().describe("Task details (create)"),
@@ -98,12 +98,18 @@ export const TaskBoardArgs = z.object({
   assignee: z.string().optional().describe("Instance name to assign (create/update)"),
   depends_on: z.array(z.string()).optional()
     .describe("Task IDs this depends on (create)"),
-  id: z.string().optional().describe("Task ID (claim/done/update)"),
+  id: z.string().optional().describe("Task ID or 8-hex id prefix (claim/done/update/get)"),
   result: z.string().optional().describe("Completion summary (done)"),
   status: z.enum(["open", "claimed", "done", "blocked", "cancelled"]).optional()
     .describe("New status (update)"),
   filter_assignee: z.string().optional().describe("Filter by assignee (list)"),
-  filter_status: z.string().optional().describe("Filter by status (list)"),
+  filter_status: z.union([
+    z.enum(["open", "claimed", "done", "blocked", "cancelled"]),
+    z.array(z.enum(["open", "claimed", "done", "blocked", "cancelled"])),
+  ]).optional()
+    .describe("Filter by status (list) — a single status or an array of statuses. Omit for live-only (open/claimed/blocked)."),
+  verbose: z.boolean().optional()
+    .describe("list: return full task records instead of compact rows (default false)"),
 });
 
 // ── Shared Decisions ────────────────────────────────────────────────────

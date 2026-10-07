@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
-import type { Schedule, ScheduleRun, CreateScheduleParams, UpdateScheduleParams, Decision, CreateDecisionParams, UpdateDecisionParams, Task, CreateTaskParams, UpdateTaskParams } from "./types.js";
+import type { Schedule, ScheduleRun, CreateScheduleParams, UpdateScheduleParams, Decision, CreateDecisionParams, UpdateDecisionParams, Task, TaskCompact, ListTasksOpts, CreateTaskParams, UpdateTaskParams } from "./types.js";
 
 export class SchedulerDb {
   private db: Database.Database;
@@ -531,13 +531,68 @@ export class SchedulerDb {
     return row ? this.rowToTask(row) : null;
   }
 
-  listTasks(opts?: { assignee?: string; status?: string }): Task[] {
+  /** #1336: project a full Task down to the compact list row. */
+  private toCompact(t: Task): TaskCompact {
+    return {
+      id: t.id,
+      title: t.title,
+      status: t.status,
+      assignee: t.assignee,
+      priority: t.priority,
+      updated_at: t.updated_at,
+    };
+  }
+
+  /**
+   * #1336: Resolve a task by an 8-hex (or longer) id prefix. A full 36-char
+   * UUID is matched exactly first. Throws on ambiguous or not-found so the
+   * caller surfaces a clear error instead of silently acting on the wrong row.
+   */
+  getTaskByPrefix(prefix: string): Task {
+    const p = (prefix ?? "").trim();
+    if (!p) throw new Error("Task id is required");
+    // Exact match wins — avoids an "ambiguous" error when one id is a prefix
+    // of another and the caller passed the full id.
+    const exact = this.getTask(p);
+    if (exact) return exact;
+    if (!/^[0-9a-f]{8,}$/i.test(p)) {
+      throw new Error(`Task "${p}" not found`);
+    }
+    const rows = this.db.prepare(
+      "SELECT * FROM tasks WHERE id LIKE ? || '%' LIMIT 2",
+    ).all(p.toLowerCase()) as Record<string, unknown>[];
+    if (rows.length === 0) throw new Error(`Task "${p}" not found`);
+    if (rows.length > 1) throw new Error(`Task id prefix "${p}" is ambiguous — matches multiple tasks; use the full id`);
+    return this.rowToTask(rows[0]);
+  }
+
+  /**
+   * #1336: list tasks. Returns compact rows by default; pass `verbose: true`
+   * for full {@link Task} rows. `status` accepts a single value or an array
+   * (OR-matched). No implicit live-only filtering happens here — the caller
+   * decides the default status set.
+   */
+  listTasks(opts?: ListTasksOpts & { verbose: true }): Task[];
+  listTasks(opts?: ListTasksOpts): TaskCompact[];
+  listTasks(opts?: ListTasksOpts): Task[] | TaskCompact[] {
     let sql = "SELECT * FROM tasks WHERE 1=1";
     const values: unknown[] = [];
     if (opts?.assignee) { sql += " AND assignee = ?"; values.push(opts.assignee); }
-    if (opts?.status) { sql += " AND status = ?"; values.push(opts.status); }
+    const statuses = this.normalizeStatuses(opts?.status);
+    if (statuses.length > 0) {
+      sql += ` AND status IN (${statuses.map(() => "?").join(",")})`;
+      values.push(...statuses);
+    }
     sql += " ORDER BY CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END, created_at";
-    return (this.db.prepare(sql).all(...values) as Record<string, unknown>[]).map(r => this.rowToTask(r));
+    const tasks = (this.db.prepare(sql).all(...values) as Record<string, unknown>[]).map(r => this.rowToTask(r));
+    return opts?.verbose ? tasks : tasks.map(t => this.toCompact(t));
+  }
+
+  /** Normalize a status filter (string | string[] | undefined) to a deduped non-empty array. */
+  private normalizeStatuses(status: ListTasksOpts["status"]): string[] {
+    if (status === undefined || status === null) return [];
+    const arr = Array.isArray(status) ? status : [status];
+    return [...new Set(arr.map(s => String(s).trim()).filter(s => s.length > 0))];
   }
 
   updateTask(id: string, params: UpdateTaskParams): Task {
@@ -573,7 +628,12 @@ export class SchedulerDb {
   completeTask(id: string, result?: string): Task {
     const task = this.getTask(id);
     if (!task) throw new Error(`Task "${id}" not found`);
-    if (task.status !== "claimed") throw new Error(`Task "${id}" is ${task.status}, cannot complete (must be claimed first)`);
+    // #1336: allow completing a task straight from `open` (not just `claimed`)
+    // — a worker that finishes without a separate claim step can still mark it
+    // done. Terminal/blocked states are rejected.
+    if (task.status !== "claimed" && task.status !== "open") {
+      throw new Error(`Task "${id}" is ${task.status}, cannot complete (must be open or claimed)`);
+    }
     return this.updateTask(id, { status: "done", result: result ?? undefined });
   }
 

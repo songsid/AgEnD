@@ -122,6 +122,42 @@ export interface Task {
   updated_at: string;
 }
 
+/**
+ * #1336: Compact list row. Trims the heavy `description`, `result`,
+ * `created_by`, `depends_on` and `created_at` fields so a `list` returns the
+ * minimum a caller needs to triage. Use `verbose: true` (or the `get` action)
+ * to retrieve the full {@link Task}.
+ */
+export interface TaskCompact {
+  id: string;
+  title: string;
+  status: TaskStatus;
+  assignee: string | null;
+  priority: TaskPriority;
+  updated_at: string;
+}
+
+/**
+ * #1336: Small write acknowledgement for create/update/claim/done. Returns the
+ * identifying fields instead of the full task body.
+ */
+export interface TaskWriteAck {
+  id: string;
+  status: TaskStatus;
+  updated_at: string;
+}
+
+export interface ListTasksOpts {
+  assignee?: string;
+  /** A single status, or a list of statuses (OR-matched). */
+  status?: TaskStatus | TaskStatus[] | string | string[];
+  /**
+   * Return full {@link Task} rows instead of compact {@link TaskCompact} rows.
+   * Defaults to false (compact).
+   */
+  verbose?: boolean;
+}
+
 export interface CreateTaskParams {
   title: string;
   description?: string;
