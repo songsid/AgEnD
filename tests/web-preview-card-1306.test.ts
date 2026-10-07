@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import v8 from "node:v8";
 import vm from "node:vm";
 
 const UI = join(process.cwd(), "src", "ui");
@@ -104,10 +105,12 @@ function holder(doc = fakeDoc()): FakeHolder {
 type Preview = {
   init(d: object): void; availability(): { ok: boolean; why: string; reason: string }; optedIn(): boolean; setOptIn(on: boolean): void; never(): boolean; setNever(on: boolean): void;
   start(key: string, h: FakeHolder, html: string, ui: { state(n: string, r: string): void }): boolean; stop(key: string): boolean; stopAll(): string[]; stopIn(node: unknown): string[];
-  running(key: string): boolean; mountPreview(doc: unknown): FakeFrame; onMessage(e: unknown): void; BANNER: string;
+  running(key: string): boolean; mountPreview(doc: unknown): FakeFrame; onMessage(e: unknown): void; onChange(fn: () => void): void; BANNER: string;
 };
-function load(o: { optIn?: boolean; never?: boolean; at?: string; data?: Record<string, string> } = {}) {
-  const local = new Map<string, string>(o.optIn ? [["agend_html_preview", "on"]] : []);
+function load(o: { optIn?: boolean; never?: boolean; at?: string; data?: Record<string, string>; local?: Map<string, string> } = {}) {
+  // Two tabs of one dashboard share localStorage (pass the same map); each has its own sessionStorage.
+  const local = o.local ?? new Map<string, string>(o.optIn ? [["agend_html_preview", "on"]] : []);
+  const listeners: Record<string, Array<(e: unknown) => void>> = {};
   const session = new Map<string, string>(o.never ? [["agend_html_preview_never", "1"]] : []);
   const timers: Array<{ at: number; f: () => void; id: number }> = [];
   let clock = 0, nextId = 1;
@@ -121,7 +124,7 @@ function load(o: { optIn?: boolean; never?: boolean; at?: string; data?: Record<
     setTimeout: (f: () => void, ms: number) => { const id = nextId++; timers.push({ at: clock + ms, f, id }); return id; },
     clearTimeout: (id: number) => { const i = timers.findIndex(t => t.id === id); if (i >= 0) timers.splice(i, 1); },
     requestAnimationFrame: (f: () => void) => { f(); return 0; },
-    addEventListener() {},
+    addEventListener: (t: string, f: (e: unknown) => void) => { (listeners[t] ??= []).push(f); },
     document: { visibilityState: "visible" },
   };
   root.window = root;
@@ -139,7 +142,9 @@ function load(o: { optIn?: boolean; never?: boolean; at?: string; data?: Record<
     }
     clock = end;
   };
-  return { P, local, session, advance, setClock: (t: number) => { clock = t; } };
+  // What the browser does in every OTHER tab when localStorage changes.
+  const storageEvent = (key: string | null) => { for (const f of listeners.storage ?? []) f({ key }); };
+  return { P, local, session, advance, storageEvent, setClock: (t: number) => { clock = t; } };
 }
 function started(o: Parameters<typeof load>[0] = { optIn: true }) {
   const env = load(o);
@@ -295,6 +300,54 @@ describe("the parent: the frame's messages (§4.2)", () => {
   });
 });
 
+describe("the opt-in is per device: another tab turning it off stops the previews here (#1332 review)", () => {
+  function twoTabs() {
+    const local = new Map<string, string>([["agend_html_preview", "on"]]);
+    const a = load({ local }), b = load({ local });
+    const h = holder();
+    a.P.start("k", h, "<p>a</p>", { state() {} });
+    const frame = h.children[0]!;
+    a.P.onMessage({ source: frame.contentWindow, origin: "null", data: { v: 1, type: "ready", ch: null, boot: "e".repeat(32) } });
+    const ch = (frame.contentWindow.posted[0]![0] as { ch: string }).ch;
+    const changes: string[] = [];
+    a.P.onChange(() => changes.push(a.P.optedIn() ? "on" : "off"));
+    return { a, b, local, h, frame, ch, changes };
+  }
+  it("tab B opts out: tab A's running preview stops at once, and A's checkbox/cards are told", () => {
+    const t = twoTabs();
+    expect(t.a.P.running("k")).toBe(true);
+    t.b.P.setOptIn(false);
+    t.a.storageEvent("agend_html_preview");
+    expect([t.a.P.running("k"), t.h.children.length]).toEqual([false, 0]);
+    expect(t.changes).toEqual(["off"]);
+  });
+  it("storage cleared in another tab (key null): the same", () => {
+    const t = twoTabs();
+    t.local.clear();
+    t.a.storageEvent(null);
+    expect(t.a.P.running("k")).toBe(false);
+  });
+  it("another key changing stops nothing; opting in elsewhere starts nothing here", () => {
+    const t = twoTabs();
+    t.a.storageEvent("agend_theme");
+    expect(t.a.P.running("k")).toBe(true);
+    expect(t.changes, "another key is not this device's choice").toEqual([]);
+    const local = new Map<string, string>(), c = load({ local });
+    const h = holder(), seen: boolean[] = [];
+    c.P.onChange(() => seen.push(c.P.optedIn()));
+    local.set("agend_html_preview", "on");                            // tab B opted in
+    c.storageEvent("agend_html_preview");
+    expect(seen).toEqual([true]);                                     // the checkbox follows…
+    expect([c.P.running("k"), h.children.length]).toEqual([false, 0]); // …but nothing starts by itself
+  });
+  it("a missed storage event: the next heartbeat ends it — a preview never outlives the permission", () => {
+    const t = twoTabs();
+    t.b.P.setOptIn(false);                                            // …and tab A never hears about it
+    t.a.P.onMessage({ source: t.frame.contentWindow, origin: "null", data: { v: 1, type: "heartbeat", ch: t.ch } });
+    expect(t.a.P.running("k")).toBe(false);
+  });
+});
+
 // ── 8. The keyed renderer keeps a live preview — or stops it first (§6.2) ──
 
 describe("the chat's renderer and a live preview (§6.2)", () => {
@@ -320,22 +373,24 @@ describe("the chat's renderer and a live preview (§6.2)", () => {
       set textContent(_v: string) { log.push("start over"); kids.length = 0; },
       set innerHTML(v: string) { kids.length = 0; kids.push(node(v)); },
     };
-    const nodes: Record<string, any> = { messages: list, uptime: { textContent: "" }, mainArea: { innerHTML: "" } };
+    const box = { checked: true, addEventListener() {} };
+    const nodes: Record<string, any> = { messages: list, uptime: { textContent: "" }, mainArea: { innerHTML: "" }, previewOptIn: box };
+    const pv = { optIn: true, changed: [] as Array<() => void>, cards: [] as unknown[] };
     const c = vm.createContext({
       localStorage: { getItem: () => null }, navigator: { language: "en" },
-      document: { addEventListener() {}, getElementById: (n: string) => nodes[n] ?? null, createElement: (t: string) => t === "template" ? { set innerHTML(v: string) { (this as any).content = { firstElementChild: node(v) }; } } : {}, body: { appendChild() {} } },
+      document: { addEventListener() {}, querySelectorAll: () => pv.cards, getElementById: (n: string) => nodes[n] ?? null, createElement: (t: string) => t === "template" ? { set innerHTML(v: string) { (this as any).content = { firstElementChild: node(v) }; } } : {}, body: { appendChild() {} } },
       setTimeout: () => 0, clearTimeout() {}, setInterval: () => 0, clearInterval() {},
       fetch: async () => ({ ok: true, json: async () => ({}) }),
       EventSource: class { addEventListener() {} },
       // The preview module, as the renderer sees it: it records which message nodes were stopped, and when.
-      AgendPreview: { init() {}, stopAll: () => { log.push("stopAll"); return []; }, stopIn: (n: any) => { log.push(`stop ${tag(n)}`); return []; }, availability: () => ({ ok: false }), BANNER: "" },
+      AgendPreview: { init() {}, optedIn: () => pv.optIn, onChange: (f: () => void) => pv.changed.push(f), stopAll: () => { log.push("stopAll"); return []; }, stopIn: (n: any) => { log.push(`stop ${tag(n)}`); return []; }, availability: () => ({ ok: false }), BANNER: "" },
     });
     vm.runInContext(RENDER, c);
     vm.runInContext(PAGE, c);
     vm.runInContext('toast=()=>{};renderList=()=>{};renderActions=()=>{};mode="instance";cur="w";curTab="chat";', c);
     const msg = (id: number, text: string, role = "agent", sender = "w") => ({ boot: "b", id, instance: "w", sender, role, text, ts: "2026-01-01T00:00:00Z" });
     const set = (list: unknown[]) => { (c as any).next = list; vm.runInContext("msgs.w = next; renderMsgs()", c); };
-    return { log, set, msg, c, kids };
+    return { log, set, msg, c, kids, nodes, box, pv };
   }
 
   it("new messages, another message's ticks: the agent's node — and its live frame — stays; nothing is stopped", () => {
@@ -390,5 +445,53 @@ describe("the chat's renderer and a live preview (§6.2)", () => {
     p2.log.length = 0;
     vm.runInContext('document.getElementById = (n) => n === "messages" ? { set textContent(v) {}, get firstChild() { return null; }, insertBefore() {} } : null; msgs.w = []; renderMsgs()', p2.c);
     expect(p2.log.slice(0, 2).sort()).toEqual(["stop AGENT", "stop MORE"]);
+  });
+
+  it("the instance deleted: its previews stop before the view is overwritten (#1332 review)", async () => {
+    const p = page();
+    Object.defineProperty(p.nodes.mainArea, "innerHTML", { set: () => p.log.push("mainArea overwritten") });
+    vm.runInContext('prompt = () => "delete w"; api = async () => ({}); renderTopbar = () => {}', p.c);
+    p.log.length = 0;
+    await vm.runInContext('doAction("delete")', p.c);
+    expect(p.log).toEqual(["stopAll", "mainArea overwritten"]);
+  });
+
+  it("changed in another tab: this tab's checkbox and every card on the page follow (#1332 review)", () => {
+    const p = page();
+    let reads = 0;
+    vm.runInContext('AgendPreview.never = () => false; document.createElement = () => ({ classList: { contains: () => false }, dataset: {}, append() {}, setAttribute() {} })', p.c);
+    (p.c as any).reads = () => reads++;
+    vm.runInContext('AgendPreview.availability = () => { reads(); return { ok: false, reason: "off" }; }', p.c);
+    const card: any = { dataset: { card: "0" }, classList: { contains: () => false }, append() {}, set textContent(_v: string) {} };
+    (p.c as any).host = { querySelectorAll: () => [card] };
+    (p.c as any).x = p.msg(1, "```html\n<p>hi</p>\n```");
+    vm.runInContext("decorateHtmlCards(host, x, [])", p.c);
+    p.pv.cards = [card];
+    reads = 0;
+    p.pv.optIn = false;                                               // tab B opted out; the storage event reached this tab
+    for (const f of p.pv.changed) f();
+    expect([p.box.checked, reads]).toEqual([false, 1]);
+  });
+
+  it("a card that left the page is not kept alive by the card registry — without any refreshCards call (#1332 review)", async () => {
+    const p = page();
+    vm.runInContext('AgendPreview.optedIn = () => false; AgendPreview.never = () => false; AgendPreview.availability = () => ({ ok: false, reason: "off" })', p.c);
+    const el = (): any => ({ classList: { contains: () => false }, dataset: {}, append() {}, setAttribute() {} });
+    vm.runInContext('document.createElement = () => (' + el.toString() + ')()', p.c);
+    let decorated = 0;
+    // Built in its own scope so nothing in this test holds the card afterwards.
+    const build = () => {
+      const card: any = { dataset: { card: "0" }, classList: { contains: () => false }, append() { decorated++; }, set textContent(_v: string) {} };
+      (p.c as any).host = { querySelectorAll: () => [card] };
+      (p.c as any).x = p.msg(1, "```html\n<p>hi</p>\n```");
+      vm.runInContext("decorateHtmlCards(host, x, []); host = null; x = null", p.c);
+      return new WeakRef(card);
+    };
+    const ref = build();
+    expect(decorated, "the card was really built and registered").toBe(1);
+    v8.setFlagsFromString("--expose-gc");
+    const gc = vm.runInNewContext("gc") as () => void;
+    for (let i = 0; i < 5 && ref.deref(); i++) { await new Promise(r => setImmediate(r)); gc(); }
+    expect(ref.deref(), "the retired card was collected").toBeUndefined();
   });
 });

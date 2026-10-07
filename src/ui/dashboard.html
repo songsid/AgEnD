@@ -588,6 +588,8 @@ if (typeof AgendPreview !== "undefined" && document.body?.dataset) AgendPreview.
   if (box && typeof AgendPreview !== "undefined") {
     box.checked = AgendPreview.optedIn();
     box.addEventListener("change", () => setPreviewOptIn(box.checked));
+    // Changed in another tab of this dashboard too: the checkbox and the cards follow (previews were stopped already).
+    AgendPreview.onChange(() => { box.checked = AgendPreview.optedIn(); refreshCards(); });
   }
 }
 {
@@ -900,6 +902,7 @@ async function doAction(a) {
     if (r.error) { toast(r.error, false); return; }
     toast(`${cur}: ${tr("instanceDeleted")}`); cur = null; mode = "none";
     renderTopbar("", []);
+    if (typeof AgendPreview !== "undefined") AgendPreview.stopAll();   // the view goes: its previews stop first (#1332 review)
     document.getElementById("mainArea").innerHTML = `<div class="no-sel"><span>${tr("instanceDeleted")}</span></div>`;
     return;
   }
@@ -941,7 +944,9 @@ function msgNode(html, x, stoppedKeys) {
 // Each ```html fence of a server-marked agent message gets a card under its code block, built from nodes: Preview
 // (only where available and opted in), Stop, Download, and a menu with this device's choices. Building a card makes
 // no frame; Preview does (AgendPreview.start → mountPreview). The HTML is read from the message by fence number.
-const cardUpdaters = new Map();   // card node → its "re-read availability" function (dropped once the card left the page)
+// card node → its "re-read availability" function. Weak: a card that left the page (its message replaced, trimmed, or
+// the view rebuilt) is not kept alive by this — nothing else holds it, so its fence source goes with it (#1332 review).
+const cardRefresh = new WeakMap();
 function decorateHtmlCards(node, x, stoppedKeys) {
   const fences = AgendChatRender.htmlFences(x.text);
   for (const ph of node.querySelectorAll(".html-card[data-card]")) {
@@ -985,12 +990,13 @@ function decorateHtmlCards(node, x, stoppedKeys) {
     dl.onclick = () => downloadHtml(fence.code);
     optB.onclick = () => { menu.open = false; setPreviewOptIn(!AgendPreview.optedIn()); };
     neverB.onclick = () => { menu.open = false; AgendPreview.setNever(!AgendPreview.never()); refreshCards(); };
-    cardUpdaters.set(ph, refresh);
+    cardRefresh.set(ph, refresh);
     refresh(stoppedKeys.includes(key) ? tr("pvChanged") : null);
   }
 }
+/** Re-read this device's choice on every card that is on the page now — found in the document, not in a list. */
 function refreshCards() {
-  for (const [node, f] of [...cardUpdaters]) { if (node.isConnected === false) cardUpdaters.delete(node); else f(); }
+  for (const node of document.querySelectorAll(".html-card[data-card]")) { const f = cardRefresh.get(node); if (f) f(); }
 }
 /** This device's opt-in: asks once and says what it means; turning it off stops every running preview. */
 function setPreviewOptIn(on) {

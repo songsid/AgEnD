@@ -25,6 +25,7 @@
   var BANNER = "Previews run the agent's HTML in an isolated frame. It cannot use your login, but it may be able to send data out. Only preview content you trust. A preview can slow or freeze this tab.";
 
   var cfg = { dashboardOrigin: "", previewOrigin: "", boot: "", reason: "" };
+  var changed = [];   // the page's "this device's choice changed" callbacks (checkbox, cards)
   var live = new Map();   // cardKey → { key, iframe, ch, holder, state, … }   (at most one: one running preview per page)
   var listening = false;
 
@@ -47,8 +48,22 @@
       boot: String((data && data.previewBoot) || ""),
       reason: String((data && data.previewReason) || ""),
     };
-    if (!listening && typeof root.addEventListener === "function") { root.addEventListener("message", onMessage); listening = true; }
+    if (!listening && typeof root.addEventListener === "function") {
+      root.addEventListener("message", onMessage);
+      // The opt-in is per device: another tab of this dashboard turning it off (or clearing storage) stops the
+      // previews running here at once. Turning it on elsewhere starts nothing here — only a click on Preview does.
+      root.addEventListener("storage", onStorage);
+      listening = true;
+    }
   }
+  function onStorage(event) {
+    if (event && event.key !== OPT_IN_KEY && event.key !== null) return;   // key null: storage was cleared
+    if (!optedIn()) stopAll("off");
+    notify();
+  }
+  /** Call `fn` whenever this device's choice may have changed (here or in another tab). */
+  function onChange(fn) { if (typeof fn === "function") changed.push(fn); }
+  function notify() { for (var i = 0; i < changed.length; i++) { try { changed[i](); } catch (e) { /* one listener's error stops no other */ } } }
 
   // ── This device's choice ────────────────────────────────
 
@@ -58,12 +73,14 @@
     var s = store("localStorage");
     try { if (s) { if (on) s.setItem(OPT_IN_KEY, "on"); else s.removeItem(OPT_IN_KEY); } } catch (e) { /* this page only */ }
     if (!on) stopAll("off");
+    notify();
   }
   function never() { var s = store("sessionStorage"); try { return !!s && s.getItem(NEVER_KEY) === "1"; } catch (e) { return false; } }
   function setNever(on) {
     var s = store("sessionStorage");
     try { if (s) { if (on) s.setItem(NEVER_KEY, "1"); else s.removeItem(NEVER_KEY); } } catch (e) { /* this page only */ }
     if (on) stopAll("off");
+    notify();
   }
 
   /**
@@ -196,7 +213,13 @@
       return;
     }
     if (d.ch !== card.ch || !card.rendered) return;
-    if (d.type === "heartbeat") { armWatchdog(card); return; }
+    if (d.type === "heartbeat") {
+      // A heartbeat never outlives the permission: if this device stopped allowing previews (and the storage event
+      // was missed), the next heartbeat ends it.
+      if (!availability().ok) { stop(card.key, "stopped", "Previews were switched off on this device."); return; }
+      armWatchdog(card);
+      return;
+    }
     if (typeof d.height !== "number" || !isFinite(d.height) || Math.floor(d.height) !== d.height) return;
     requestHeight(card, d.height);
   }
@@ -228,7 +251,7 @@
   }
 
   return {
-    init: init, availability: availability, optedIn: optedIn, setOptIn: setOptIn, never: never, setNever: setNever,
+    init: init, availability: availability, optedIn: optedIn, setOptIn: setOptIn, never: never, setNever: setNever, onChange: onChange, onStorage: onStorage,
     start: start, stop: stop, stopAll: stopAll, stopIn: stopIn, running: running, liveFrame: liveFrame,
     mountPreview: mountPreview, onMessage: onMessage, BANNER: BANNER, LIMITS: LIMITS,
   };
