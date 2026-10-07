@@ -1046,7 +1046,16 @@ export class InstanceLifecycle {
       this.ctx.eventLog?.insert(name, "dialog_parked", { description: data.description, holdOnly: data.holdOnly });
       this.ctx.logger.warn({ name, description: data.description, holdOnly: data.holdOnly }, "Instance is parked on a CLI dialog — not auto-answering");
       if (this.ctx.isPlannedRestart()) return;
-      const category = data.kind ? interactionCategory(data.kind, data.backend) : null;
+      // kind === "dialog" is the default bucket for dialogs without a specific
+      // interactionKind — it says no more than no kind at all, so the
+      // code-owned description stays in the notice instead of the generic
+      // "waiting for your input". That keeps the kiro outage picker's
+      // actionable "model unavailable — choose a replacement" text (#1219).
+      // Specific kinds (permission, login, …) keep their category text.
+      // (Kept `description` for kind === "dialog" rather than a dedicated
+      // kiro interactionKind: a new union member would flow into the category
+      // labels, summaries and every exhaustive match for one picker's text.)
+      const category = data.kind && data.kind !== "dialog" ? interactionCategory(data.kind, data.backend) : null;
       const text = category ? t("inst.interaction_parked", name, category) : data.holdOnly
         ? t("inst.dialog_parked_hold", name, data.description)
         : t("inst.dialog_parked_stuck", name, data.description);
