@@ -125,7 +125,12 @@ export function inputShowsPastedText(input: string, signature: string): boolean 
  */
 export function strandedAgendMessageInInput(pane: string, promptPattern: RegExp): boolean {
   const input = inputAreaText(pane, promptPattern);
-  return input != null && AGEND_MESSAGE_MARKER.test(input);
+  return input != null && agendMessageInInput(input);
+}
+
+/** Whether input-box text carries an AgEnD message header (`[user:…]`, `[from:…]`, `[system:…]`). */
+export function agendMessageInInput(input: string): boolean {
+  return AGEND_MESSAGE_MARKER.test(input);
 }
 
 function rowMatches(row: string, pattern: RegExp): boolean {

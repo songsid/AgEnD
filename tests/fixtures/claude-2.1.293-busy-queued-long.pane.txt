@@ -1,0 +1,50 @@
+
+❯ stranded while busy
+
+● mock reply 6
+
+✻ Baked for 0s · done 7:19 AM
+
+❯ [agend-delivery-id:5b0c1d2e-0000-4000-8000-000000000001]
+  [from:agend-leader-t1] Please check the build.
+  Line three of the task.
+  Line four.
+  Line five.
+  Line six.
+  Line seven.
+  Line eight.
+  Line nine.
+  Line ten.
+  Line eleven.
+  Line twelve.
+
+● mock reply 8
+
+✻ Worked for 0s · done 7:20 AM
+
+❯ SLOW again
+
+●
+
+❯ [agend-delivery-id:5b0c1d2e-0000-4000-8000-000000000002]
+  [from:agend-leader-t1] Second task while busy.
+  Line three.
+  Line four.
+  Line five.
+  Line six.
+  Line seven.
+  Line eight.
+  Line nine.
+  Line ten.
+  Line eleven.
+  Line twelve.
+  ctrl+x ctrl+s to send now
+
+· Billowing… (3s · ↓ 10 tokens)
+  ⎿  Tip: Use /memory to view and manage Claude memory
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ Press up to edit queued messages
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ok
+  paste again to expand
