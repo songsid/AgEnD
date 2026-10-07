@@ -8,6 +8,7 @@
  */
 import { execFileSync, spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
+import { createServer } from "node:net";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -244,7 +245,24 @@ describe("Prism #1321 review", () => {
       expect(text).toBe("");
       expect(warnings).toEqual([{ field: "systemPrompt", path: fifo, problem: "unreadable", code: "ENOTREG" }]);
     } finally {
-      writer.kill("SIGKILL");
+      writer.kill("SIGINT");
+    }
+  });
+
+  it.skipIf(process.platform === "win32")("a Unix socket is refused at once with a diagnostic", async () => {
+    const { ctx, warnings, workingDirectory } = layout();
+    const sock = join(workingDirectory, "prompt.sock");
+    const server = createServer();
+    await new Promise<void>(done => server.listen(sock, done));
+    try {
+      const started = performance.now();
+      expect(readFileRef("prompt.sock", "systemPrompt", ctx)).toBe("");
+      expect(performance.now() - started).toBeLessThan(1_000);
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toMatchObject({ field: "systemPrompt", path: sock, problem: "unreadable" });
+      expect(["ENXIO", "ENOTREG", "EOPNOTSUPP"]).toContain(warnings[0]!.code);
+    } finally {
+      await new Promise<void>(done => server.close(() => done()));
     }
   });
 
