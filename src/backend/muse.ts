@@ -630,6 +630,15 @@ export class MuseBackend implements CliBackend {
    */
   getCancelKey(): string { return "Escape"; }
 
+  /**
+   * #1217: muse 1.4.2 on `resume <id>` for a session it does not have (verified
+   * live on a private socket): `retained session not found: session <id> has
+   * no saved log`, then exit 1.
+   */
+  resumeMissingPattern(): RegExp {
+    return /retained session not found: session \S+ has no saved log/;
+  }
+
   /** The live input box (#829): no rows when empty, null when the bottom of the screen is not muse's layout. */
   inputDraft(pane: string): InputDraft | null {
     return museInputBox(pane, this.getBusyPattern());

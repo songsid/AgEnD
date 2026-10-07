@@ -30,9 +30,9 @@ describe("host memory pressure", () => {
     expect(freemem).not.toHaveBeenCalled(); expect(meminfo).not.toHaveBeenCalled();
     const pressure = new MemoryPressure({ platform: "darwin", read: () => value });
     expect(pressure.sample().level).toBe("unknown");
-    expect(pressure.allowsUnknown()).toBe(true);
+    expect(pressure.advisoryOnly()).toBe(true);
     expect(pressure.startRecoveryWindow().recovering).toBe(false);
-    expect(new MemoryPressure({ platform: "linux", read: () => value }).allowsUnknown()).toBe(false);
+    expect(new MemoryPressure({ platform: "linux", read: () => value }).advisoryOnly()).toBe(false);
     expect(new MemoryPressure({ platform: "darwin", read: () => ({ ...memory(1), availableKind: "free" }) }).sample().level).toBe("unknown");
   });
 

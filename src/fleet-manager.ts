@@ -25,7 +25,7 @@ import { formatUpdateProgress } from "./update-progress.js";
 import { sdNotify, sdNotifyBlocking } from "./sd-notify.js";
 import { readFleetMemory, type FleetMemory } from "./process-memory.js";
 import { MemoryPressure, type MemoryPressureSnapshot } from "./memory-pressure.js";
-import { ReplyDeduper } from "./reply-dedup.js";
+import { replyDedupText, ReplyDeduper } from "./reply-dedup.js";
 import { isMap, isScalar, parseDocument } from "yaml";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -98,7 +98,7 @@ import { LoginSession } from "./login-manager.js";
 import { tightenInstanceDirs } from "./private-dir.js";
 import { decideSlash, type SlashFacts, type SlashScope, type SlashSpeaker } from "./slash-authz.js";
 import { commandSpec, decideCommand, type CommandScope } from "./command-table.js";
-import { UPDATE_COMMAND, isPrereleaseVersion, updateNoticeKey } from "./update-check.js";
+import { UPDATE_COMMAND, installedChannel, isPrereleaseVersion, updateNoticeKey } from "./update-check.js";
 import { LoginController, LOGIN_TOKEN_RESEND_PREFIX, POST_LOGIN_RECOVERY_DEADLINE_MS, type PostLoginRecovery } from "./login-controller.js";
 import { runBeforeDeadline } from "./deadline.js";
 import { LoginWindowLock } from "./login-window-lock.js";
@@ -1362,7 +1362,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger.debug({ hostMemory: snapshot }, "Host memory sample");
     }
     const changed = snapshot.level !== this.memoryLogLevel;
-    if (this.memoryPressure.allowsUnknown(snapshot)) {
+    if (this.memoryPressure.advisoryOnly()) {
+      // macOS (#1256): the sample is kept in the log for calibration, but nothing is sent to a channel.
+      if (changed) this.logger.info({ hostMemory: snapshot }, "Host memory sample (macOS: logged only — no notice, no spawn throttling)");
       this.memoryLogLevel = snapshot.level;
       return;
     }
@@ -5050,7 +5052,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     const problems: string[] = [];
     const hostMemory = this.memoryPressure.snapshot();
-    if (hostMemory.level === "critical" || hostMemory.level === "elevated") {
+    if (!this.memoryPressure.advisoryOnly() && (hostMemory.level === "critical" || hostMemory.level === "elevated")) {
       problems.push(`host memory pressure is ${hostMemory.level}`);
     }
     if (this.adapterState.size > 0 && connected === 0) problems.push("no channel adapter is connected");
@@ -6560,11 +6562,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // Stickers (#1226) are checked before anything is sent: a refused one is the reply's error, not a gap.
       const stickerProblem = await this.replyStickerProblem(outAdapter, args, threadId, contextAdapterId ?? this.getInstanceAdapterId(senderInstanceName ?? instanceName));
       if (stickerProblem) { respond(null, stickerProblem); return; }
-      const stickers = Array.isArray(args.stickers) ? (args.stickers as string[]) : [];
       const ticket = this.replyDeduper.begin(
         instanceName,
-        // A reply with stickers is not the same reply as its text alone.
-        stickers.length ? `${String(args.text ?? "")}\u0000stickers:${stickers.join(",")}` : String(args.text ?? ""),
+        replyDedupText(args),
         Array.isArray(args.files) ? args.files as string[] : [],
       );
       if (ticket.duplicate) {
@@ -15409,16 +15409,17 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       const currentVersion = JSON.parse(readFileSync(pkgPath, "utf-8")).version ?? "0.0.0";
       const latest = await npmVersion("@songsid/agend");
       let target = latest;
-      // The same channel rule as `agend update` (any SemVer prerelease is on @beta): rc and alpha too.
-      if (isPrereleaseVersion(currentVersion)) {
-        // Beta users track the @beta channel (never fall back to @latest, which is
-        // older), but should also hear when a newer STABLE ships — pick whichever
-        // of beta/latest is the newest.
-        let beta = "";
+      // The same channel rule as `agend update` (#1259): an alpha follows @alpha, any other prerelease @beta.
+      const channel = installedChannel(currentVersion);
+      if (channel !== "latest") {
+        // Prerelease users track their own channel (never fall back to @latest,
+        // which is older, and an alpha is never offered @beta), but should also
+        // hear when a newer STABLE ships — pick whichever is the newest.
+        let pre = "";
         try {
-          beta = await npmVersion("@songsid/agend@beta");
-        } catch { /* no beta tag */ }
-        target = beta || latest;
+          pre = await npmVersion(`@songsid/agend@${channel}`);
+        } catch { /* no such tag */ }
+        target = pre || latest;
         if (latest && this.semverGt(latest, target)) target = latest;
       }
       // A beta already at/ahead of its matching stable must NOT be told to

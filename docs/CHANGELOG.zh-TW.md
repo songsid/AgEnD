@@ -26,13 +26,25 @@
 ## [未發佈] (Unreleased)
 
 ### 新增 (Added)
-- **一眼看到每個 backend 下次額度重置的時間（#1232）。** `/usage` 會在每個有回報重置時間的 backend 下方顯示「⏳ 下次重置：5h12m」——取它所有還沒到期的 window 中最早的一個（已經過去的 window 會跳過，閒置的 per-model window、以及會到期而不會補回的 bonus credits 都不算）。View 的用量面板最上方用一行列出全部（「⏳ 下次重置 · Claude 5h12m 後重置 · Codex 2d3h 後重置」），`get_usage` 也在每個 provider 上回傳 `nextResetAt`，agent 讀得到。沒有提供重置時間的 backend——例如不在週期計費中的 Grok——就不顯示，不用猜的。
+- **新增 alpha 頻道，與 beta、穩定版分開（#1259）。** `vX.Y.Z-alpha.N` tag 現在發布到 npm `@alpha`。以前所有不含 `-beta` 的 tag 都進 `@latest`，第一個 2.2 alpha 會被所有穩定版使用者裝到。發布 workflow 現在嚴格對應：`vX.Y.Z` → `@latest`、`-beta.N` → `@beta`、`-alpha.N` → `@alpha`。其他 tag 會在建置前就失敗，`@latest` 也不會往回移。客戶端的 `agend update`（以及聊天的 `/update`）會讓 alpha 安裝留在 `@alpha`。新增 `agend update --alpha`。「有新版本」通知會告訴 alpha 較新的 alpha 與穩定版，不會提到 beta。beta 與穩定版的行為不變。舊的手動 `scripts/publish.sh` 已移除：發版就是推 tag。
+- **額度重置券最快到期的日期，顯示在券那一行（#1232、#1244）。** Codex 的「額度重置券: 2 可用」現在會標出這些券中最早到期的那張——「額度重置券: 2 可用 · 🎫 最近過期：10/22（16d6h 後）」——`/usage`、View 用量面板與 `get_usage` 的文字都有，資料取自 Codex 自己的券清單（該 metric 的 `expiresAt`）。沒有到期日的券不計；全都沒有時，照舊只顯示張數。這是到期、不是重置：沒用掉的券就沒了。（2.1.12-beta.2 在 #1232 加的每個 backend 一行「⏳ 下次重置」是誤解了需求，已移除，`nextResetAt` 也一併拿掉；各 window 仍各自顯示「X 後重置」。）
 - **Agent 可以在 Discord 與 Telegram 傳貼圖（#1226）。** 三個工具，兩個平台用法相同：`list_stickers`（每張 `{ id, name, emoji_or_tags, format }`，不附圖片網址）、`preview_stickers`（最多 8 張，下載給 agent 讀圖；沒有靜態圖的動畫貼圖標 `preview_unavailable`），以及 `reply` 新增的 `stickers` 欄位（最多 3 張；有貼圖時 `text` 可省略）。底層依平台各自處理：Discord 只列 instance 自己頻道所在伺服器的貼圖（別的伺服器的傳不出去），並跟文字放在同一則訊息送出；Telegram 列出貼圖包——在呼叫時指定，或用連線設定的 `options.sticker_sets`——先送文字，再依序送每張貼圖。所有貼圖都在送出任何東西之前檢查，傳不出去的會回錯誤，不會變成一則悄悄少了貼圖的回覆。agent CLI 也有：`agend-agent stickers`、`sticker-preview`，以及 `reply … --sticker <id>`。
 
 ### 變更 (Changed)
 - **`list_emojis` 變輕了（#1226）。** 伺服器 emoji 預設不再附圖片網址（要的話設 `with_image_urls`；想看圖用 `preview_emojis`），並可用 `name`、`limit`、`primary_only` 縮小清單——在 emoji 很多的伺服器上，一次呼叫原本要花約 1 萬字的 context，而 agent 只需要一個 emoji。emoji 與貼圖工具的呼叫改用共用的 30 秒時限，不再是固定 10 秒，一次下載多張圖的預覽不會被中途切掉。
 
 ### 修復 (Fixed)
+- **macOS 不再誤報記憶體警報（#1257）。** 在 Mac 上，AgEnD 不再發「主機記憶體吃緊」通知，也不再因記憶體而放慢或暫停啟動 agent。那裡的可用記憶體與 swap 數字不是記憶體壓力的訊號：macOS 會依需要增加 swap 檔，swap 接近用滿是正常的；一台 16 GB、還有 2.8 GB 可用的 Mac 卻被要求一次只啟動一個 agent。採樣數值仍會寫進 log。改用 macOS 自己的記憶體壓力等級記在 #1256。Linux 不變。
+- **`agend-agent reply … --sticker` 與 MCP 的 reply 規則一致（#1254）。** `agent_mode: cli` 的 agent 若帶了此頻道送不出的貼圖（Discord 上別的伺服器的貼圖、或不是 Telegram 貼圖 id 的東西），現在會在送出任何東西之前先檢查，並以該則回覆的錯誤回報。以前是直接交給 adapter。另外，帶貼圖的回覆不再被當成同一段文字（不帶貼圖、仍在送出中）的重複回覆。兩條路徑現在用同一套方式判斷是否重複。
+- **補回覆不再因為太早觸發而造成重複回覆（#1241）。** claude-code 上，回覆完成防線以前會在 agent 還在寫第一則回覆時、看到 pane 像閒置就觸發，把一則 `[system:reply-required]` 提示貼進 CLI，agent 之後又回答一次、變成回覆兩次。現在要回合「證明自己真的結束了」才會補救：第一次的閒置邊緣只會啟動 60 秒確認窗（之後又看到工作、有回覆送達、或取消都會解除），要閒置持續超過整個窗口、且一直沒有回覆，才會送出提示。從回合開始後完全沒觀察到工作、就出現的閒置邊緣，會直接按住不理。真的漏回還是會補（#750），最多晚一分鐘——而且補救提示現在會說：如果已經回過了，就什麼都不必做。
+- **又看得到 Claude 的 API 重試了（#1239）。** Claude Code 重試失敗的請求時（`✻ 429 … · Retrying in 4s · attempt 4/10`），AgEnD 會發通知，並把這個回合當成仍在進行。從 #1101 起，這只在沒有 status line 的畫面上有效。有 status line 時（AgEnD 一律會設），Claude 不會在 footer 印 `esc to interrupt`，而判斷正是靠這行提示。所以進行中的重試被當成閒置、沒有通知，等很久的重試還可能在回合中途把取消按鈕收掉。現在改看那一列的位置：它在 spinner 的位置，緊貼在輸入框正上方。已結束、被中斷或被引用的那一列仍算歷史，最後的錯誤列（`Request rejected (429)`、重複 529、設定的金鑰無效）照舊認得。另外，工作目錄很長、讓 Claude 自己的 Bash 權限提示第二個選項換成兩行時，現在也會正確停住等人處理。
+- **網頁登入頁的登入碼輸入框在 100% 縮放下就看得到（#1242）。** `/login` 開的網頁終端機，會在「Sign-in code」那一列出現之前先決定終端機大小，之後一直沿用：
+  終端機最下面幾行（包括 CLI 的 `Paste code here` 提示）延伸到那一列底下並蓋住它。輸入框其實在，但看不到也點不到，要改變縮放、讓終端機重新調整大小才會出現。
+  現在終端機自己的區域一有變化就重新調整，也不會畫出自己的區域，所以任何視窗大小下提示和輸入框都看得到。
+- **切換 instance 的 backend 後不再啟動不了（#1217）。** session id 現在屬於產生它的 backend（旁邊記一個 `session-id.backend`）。換成另一個 backend 後第一次啟動時，舊 id 會被放到一旁（跟以前一樣是 `session-id.abandoned-<ts>`），新的 CLI 全新開始，而不是被要求去 resume 一段它從沒有過的對話。`update_instance_config` 改了 `backend` 時，執行中的 instance 現在會被重啟並全新開始。以前只會存下設定，舊 CLI 繼續跑，直到其他事情讓它重啟。另外三個讓這種失敗變成永久的缺口也一併補上：
+  - 每個 backend 各自指定「session 已經不存在」的字樣，例如 muse 的「retained session not found」；
+  - 未經證實的 resume 失敗次數改存在 instance 目錄裡、以 session id 為鍵。每次啟動都會建一個新的 Daemon，所以以前永遠停在「attempt 1/3」，到不了三次後的全新啟動；
+  - 認得 Claude 的「Background work is running」退出提示。訊息投遞會等它結束；stop 與 pause 會用 Escape 取消它並停止程序，絕不選它的任何選項。
 - **Discord slash 指令：較少出現「應用程式沒有回應」，而且不再靜默（#1231）。** slash 指令現在第一件事就是回應（acknowledge），
   其他讀取都在之後。回應失敗時不執行該指令（你已看到「沒有回應」，重試時若照樣執行會做兩次），並且會告訴你——私下回覆，或發在頻道。
   若同一個 bot 的另一個連線已經回應，這邊就保持安靜。超過 1.5 秒才回應時，log 會記下時間花在哪（送達 vs 回應本身）；fleet 會記錄每次
@@ -101,6 +113,7 @@
 - **[行為變更] dashboard 現在會拒絕 `Host` 不認得的請求。** health/dashboard server 雖然只綁 127.0.0.1，但這擋不住 DNS rebinding：網頁可以把自己的網域解析到 127.0.0.1，再用 script 讀取不需要 cookie 的路由，包含 `/view` 的即時終端畫面（`/api/pane/*`）。這種網頁唯一改不了的是瀏覽器送出的 `Host`，所以所有路由（含 `/health`、`/agent`）現在只有在 `Host` 是 `localhost`、`127.0.0.1`、`[::1]`、fleet 的 `hostname:`，或新增的 `web.allowed_hosts` 列出的名稱時才回應，其餘一律 403（不比對 port）。**如果你是透過反向代理或 port forward、且它呈現的是別的名稱，請把該名稱加進 `web.allowed_hosts`**；每個被拒的名稱第一次出現時，`fleet.log` 會記一行並附上這個提示。CLI、`agend web`、`/dashboard` 與內部呼叫都用 loopback 名稱，不受影響。
 
 ### 新增 (Added)
+- **Codex capacity 偵測硬化：不怕 glyph 換、不吃 scrollback（#1215）。** capacity 那行必須是 live transcript item（composer 上方最後一則、之後沒有更新的）——arm 跟 accept 都檢查；引用或 scrollback 只通知使用者、不注入。capacity pattern 不再接受 box-drawing chrome（`│ …` popup／表格列也是 `So`）；quota、rate-limit、auth 共用一個 `CODEX_STATUS_GLYPH` 常數，下次 glyph 再變不會像 #1208 那樣靜默壞掉；occurrence counting 合成同一個。nudge 改說「沒做完才繼續」。pane 仍是 capacity 權威；session-store seam 仍只觀測。
 - **被打斷的回合在 CLI 自己沒接手時會跨重啟續接（#1209）。** channel 回合 armed 時 daemon 寫一次性 `in-flight-turn.json`
   marker（含 TurnFingerprint checkpoint）；重啟後還留著的，by construction 就是被打斷的回合。開機＋CLI spawn 後純 gate 只判一次：
   crash-loop 開機保持乾淨（#835）、取消過的不續（cancel 會刪 marker，#1199）、durable outbox 還在處理的投遞留給那條路、seam verdict
@@ -140,6 +153,7 @@
   見 `docs/configuration.zh-TW.md`「人不在機器旁完成 /login」。
 
 ### 修正 (Fixed)
+- **Claude 分段寫入的 transcript 事件不再漏掉（#1221）。** 工具進度與活動紀錄會等該筆資料的結尾換行寫完，才推進讀取位置。跨次 poll 寫完的資料只讀一次，monitor 重啟後也能補讀；已完整換行的最後一筆仍立即顯示。Codex／Kiro 共用的 JSONL reader 使用同一個 byte 邊界，跨次寫入的 UTF-8 文字也保留完整。
 - **Telegram ClassicBot 的 `/start` 回覆改成請你 @bot 對話（#1196）。** 「Agent 已啟動」與「已有活動中的 Agent」原本以 `/chat` 開頭，那是 Discord 的用法；在 Telegram 上是 @ClassicBot 來對話，回覆現在照實說。Discord 的回覆不變，送到 agent 的內容也不變。
 - **送進忙碌中 Claude / Grok / Muse instance 的 steer 現在是 `delivered`，不再是 `uncertain`（#1197）。** 這些 CLI 沒有可讀的輸入列，而證明一般送出的「閒置→忙碌」邊緣在本來就忙碌的 pane 上不可能出現，所以每個 durable steer 都落在 `uncertain`——操作者看到 ⚠️、寄件者收到 `[system:delivery-outcome]`，但 steer 其實已送達（不是 IPC 逾時：`send_to_instance` 立刻回傳，沒有任何東西在等）。現在 steer 只要在成功的 Enter 之後，pane 上出現它自己可信的 `message_id`（次數多於貼上前）、沒有對話框、spawn 與視窗都沒變，就是 `delivered`，證據為 `steer-accepted-marker-on-pane; input-row-unreadable`：已進入進行中回合的輸入，不代表模型已讀（`delivery_status` 本來就顯示 `delivery_mode: steer`）。證據不足仍是 `uncertain`。另外：steer 的橫幅現在放在 delivery marker 之後而不是之前，重啟後可以從 CLI transcript 證明 steer。
 - **Codex 長時間執行、畫面沒有新內容的回合，不再被誤判為卡住（#1188）。** 即時狀態列自己的經過時間計數（`• Working (5m 51s • esc to interrupt)`）現在算作存活證明：只要計數自上次檢查後有前進，不論畫面其他部分多久沒變，該回合都維持「工作中」。以前 10 分鐘卡住判斷會把「畫面變了」蓋上最後一次輸出事件的時間——已經是幾分鐘前——於是健康的長回合被標成卡住（hang 通知，接著重啟嘗試，而原本的 process 其實還活著、重啟「逾時」）。計數整個 stuck 逾時都停住的畫面仍會被判為卡住。另外：daemon 的「最後變動」時間不會倒退，卡住 deadline 改依最近的存活跡象，不會立刻重複觸發。

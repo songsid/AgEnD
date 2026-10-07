@@ -165,7 +165,7 @@ describe.each([["a classic script", loadAsScript], ["a CommonJS module", loadAsM
 interface Fake {
   [k: string]: any;
 }
-function page() {
+function page(opts: { resizeObserver?: boolean } = {}) {
   const elements: Record<string, Fake> = {};
   const el = (id: string): Fake => (elements[id] ??= { id, hidden: false, textContent: "", value: "", className: "", listeners: {} as Record<string, Array<(ev: unknown) => void>>,
     addEventListener(type: string, fn: (ev: unknown) => void) { (this.listeners[type] ??= []).push(fn); },
@@ -194,14 +194,23 @@ function page() {
     attachCustomKeyEventHandler(fn: (ev: unknown) => boolean) { this.state.keyHandler = fn; }
     onData(fn: (s: string) => void) { this.state.onData = fn; } onBinary() {} onResize() {}
   }
+  let fits = 0;
+  const observers: Array<{ callback: () => void; observed: unknown[] }> = [];
+  class FakeResizeObserver {
+    observed: unknown[] = [];
+    constructor(public callback: () => void) { observers.push(this); }
+    observe(target: unknown) { this.observed.push(target); }
+  }
+  const windowListeners: Record<string, Array<() => void>> = {};
   const input = vm.runInContext(`${source("terminal-input.js")}\n;this.AgendTerminalInput`, vm.createContext({}));
   const consoleSpy = { log: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
   const context = vm.createContext({
     document: { getElementById: (id: string) => elements[id] ?? null },
-    window: { AgendTerminalInput: input, addEventListener() {} },
+    window: { AgendTerminalInput: input, addEventListener(type: string, fn: () => void) { (windowListeners[type] ??= []).push(fn); } },
+    ...(opts.resizeObserver === false ? {} : { ResizeObserver: FakeResizeObserver }),
     location: { pathname: "/t/abc/", protocol: "https:", host: "x.trycloudflare.com" },
     WebSocket: FakeSocket, Terminal: FakeTerminal,
-    FitAddon: { FitAddon: class { fit() {} } }, WebLinksAddon: { WebLinksAddon: class {} },
+    FitAddon: { FitAddon: class { fit() { fits++; } } }, WebLinksAddon: { WebLinksAddon: class {} },
     TextEncoder, Uint8Array, JSON, Date, Math, setInterval: () => 0, clearInterval() {}, setTimeout: () => 0, fetch: async () => ({}),
     console: consoleSpy,
   });
@@ -214,7 +223,7 @@ function page() {
   };
   const emit = (id: string, type: string, ev: unknown = { preventDefault() {} }) => elements[id]!.listeners[type]!.forEach((fn: (e: unknown) => void) => fn(ev));
   const bytesSent = () => socket.sent.filter((d): d is Uint8Array => typeof d !== "string").map(d => new TextDecoder().decode(d));
-  return { elements, socket, open, emit, bytesSent, consoleSpy, terminals };
+  return { elements, socket, open, emit, bytesSent, consoleSpy, terminals, observers, windowListeners, fits: () => fits };
 }
 
 describe("terminal.js on the login page", () => {
@@ -337,6 +346,39 @@ describe("terminal.js on the login page", () => {
     p.open("login");
     p.socket.onmessage?.({ data: JSON.stringify({ t: "hello", kind: "login", backend: "claude-code", ttlRemainingMs: 500_000 }) });
     expect([p.elements["code-row"]!.hidden, p.elements["key-ctrlc"]!.hidden]).toEqual([false, true]);
+  });
+});
+
+// #1242: the code row appears on "hello", after the first fit. A terminal that only re-fitted on a window resize kept
+// the taller size, ran under the row and covered the code box until the user changed the zoom.
+describe("terminal.js re-fits when the terminal's own box changes", () => {
+  it("watches the terminal element, and every change re-fits it", () => {
+    const p = page();
+    p.open("login");
+    expect(p.elements["code-row"]!.hidden).toBe(false);
+    expect(p.observers.map(o => o.observed)).toEqual([[p.elements["term"]]]);
+    const before = p.fits();
+    p.observers[0]!.callback();                              // the code row took its height from the terminal
+    expect(p.fits()).toBe(before + 1);
+  });
+
+  it("one watcher however many times the socket reconnects", () => {
+    const p = page();
+    p.open("login");
+    p.socket.onopen?.();
+    expect(p.observers).toHaveLength(1);
+  });
+
+  it("a browser without ResizeObserver still re-fits on a window resize", () => {
+    const p = page({ resizeObserver: false });
+    p.open("login");
+    const before = p.fits();
+    p.windowListeners["resize"]!.forEach(fn => fn());
+    expect(p.fits()).toBe(before + 1);
+  });
+
+  it("the terminal never draws past its own box onto the code row (overflow hidden)", () => {
+    expect(source("terminal.css")).toMatch(/^#term \{[^}]*\boverflow: hidden;[^}]*\}/m);
   });
 });
 

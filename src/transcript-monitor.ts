@@ -1,9 +1,10 @@
 import { EventEmitter } from "node:events";
-import { open, stat } from "node:fs/promises";
+import { stat } from "node:fs/promises";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Logger } from "./logger.js";
 import type { TranscriptCheckpoint, TranscriptSource } from "./transcript-sources.js";
+import { readNewLines } from "./transcript-jsonl.js";
 
 /**
  * Emits tool_use / tool_result / assistant_text events off the CLI's own
@@ -142,31 +143,18 @@ export class TranscriptMonitor extends EventEmitter {
     if (!this.transcriptPath || !existsSync(this.transcriptPath)) return;
 
     try {
-      const stats = await stat(this.transcriptPath);
-      if (stats.size <= this.byteOffset) return;
-
-      const fh = await open(this.transcriptPath, "r");
-      try {
-        const length = stats.size - this.byteOffset;
-        const buffer = Buffer.alloc(length);
-        await fh.read(buffer, 0, length, this.byteOffset);
-        this.byteOffset = stats.size;
-
-        const text = buffer.toString("utf-8");
-        for (const line of text.split("\n")) {
-          if (!line.trim()) continue;
-          try {
-            const entry = JSON.parse(line);
-            this.processEntry(entry);
-          } catch {
-            // Malformed JSONL line in transcript — skip
-          }
+      const { lines, newOffset } = await readNewLines(this.transcriptPath, this.byteOffset);
+      if (newOffset === this.byteOffset) return;
+      this.byteOffset = newOffset;
+      for (const line of lines) {
+        try {
+          const entry = JSON.parse(line);
+          this.processEntry(entry);
+        } catch {
+          // Malformed complete JSONL line in transcript — skip
         }
-
-        this.saveOffset();
-      } finally {
-        await fh.close();
       }
+      this.saveOffset();
     } catch (err) {
       this.logger.debug({ err }, "TranscriptMonitor poll error");
     }

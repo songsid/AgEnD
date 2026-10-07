@@ -48,15 +48,29 @@ describe("fleet host memory wiring", () => {
     return { fm, internal, read, logger, sendText, attach, set: (value: HostMemory) => { current = value; } };
   }
 
-  it("logs macOS unknown at debug only without consuming pressure cooldowns", () => {
+  it("macOS (#1256): a sample is logged, never a warning, a channel notice or a health problem — even at critical", () => {
     const { fm, internal, attach, sendText, logger, set } = make({ ...memory(), availableBytes: null, availableKind: "unknown" });
     Object.defineProperty(fm.memoryPressure, "platform", { value: "darwin" });
     attach(); fm.memoryPressure.start();
     expect(logger.debug).toHaveBeenCalledOnce();
-    expect(logger.warn).not.toHaveBeenCalled(); expect(sendText).not.toHaveBeenCalled();
+    // The reported Mac: 16 GB, 2845 MiB available, swap nearly full (274 MiB free of 6 GB) — read as elevated.
+    set({ totalBytes: 16_000 * MiB, availableBytes: 2_845 * MiB, availableKind: "available", swapTotalBytes: 6_000 * MiB, swapFreeBytes: 274 * MiB });
+    fm.memoryPressure.sample();
+    expect(fm.memoryPressure.snapshot().level).toBe("elevated");
+    set(memory(100, 0)); fm.memoryPressure.sample();
+    expect(fm.memoryPressure.snapshot().level).toBe("critical");
+    expect(sendText).not.toHaveBeenCalled(); expect(logger.warn).not.toHaveBeenCalled();
     expect(internal.memoryNoticeAt).toBeNull(); expect(internal.memoryLogAt).toBeNull();
-    set(memory(700)); fm.memoryPressure.sample();
+    expect(logger.info).toHaveBeenCalledWith(expect.objectContaining({ hostMemory: expect.objectContaining({ level: "critical" }) }), expect.stringContaining("macOS: logged only"));
+    expect(fm.getFleetHealth().problems ?? []).not.toEqual(expect.arrayContaining([expect.stringContaining("host memory")]));
+  });
+
+  it("Linux is unchanged: the same critical sample warns and posts the notice", () => {
+    const { fm, attach, sendText, logger, set } = make();
+    attach(); fm.memoryPressure.start();
+    set(memory(100, 0)); fm.memoryPressure.sample();
     expect(logger.warn).toHaveBeenCalledOnce(); expect(sendText).toHaveBeenCalledOnce();
+    expect(String(sendText.mock.calls[0]![1])).toContain("Host memory pressure");
   });
 
   it("never starts polling in the constructor and health is a cache-only host/process split", () => {

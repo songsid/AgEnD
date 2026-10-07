@@ -28,6 +28,15 @@ export interface TurnReplySnapshot {
   replyDelivered: boolean;
   completionDelivered: boolean;
   outboundDelivered: boolean;
+  /**
+   * #1241: whether a non-idle execution snapshot was observed after this
+   * generation armed. An idle edge with no observed work since the arm is not
+   * a turn end — the pane flickered idle while the turn never observably
+   * started (or the working state predates the arm).
+   */
+  busyObserved: boolean;
+  /** Unix timestamp of the last observed non-idle snapshot, 0 when none. */
+  lastBusyAt: number;
 }
 
 interface ActiveTurn {
@@ -40,6 +49,7 @@ interface ActiveTurn {
   replyDeliveredAt: number;
   completionDeliveredAt: number;
   outboundDeliveredAt: number;
+  busyObservedAt: number;
 }
 
 /**
@@ -53,6 +63,13 @@ export class TurnReplyGuard {
   private active: ActiveTurn | null = null;
   private generation = 0;
   /**
+   * #1241 P2-1: work observed while no turn was armed. A paste's output can
+   * land before the paste confirms and the arm runs; dropping it would hold a
+   * genuine miss forever. A fresh arm carries it over only when it postdates
+   * that delivery's ingress — anything older belongs to an earlier turn.
+   */
+  private pendingActivityAt = 0;
+  /**
    * Fired exactly when a turn actually completes (stale generations are
    * fenced out, like the boolean result). #1209 registers a marker-clear
    * here so every completion path — not just the ones someone remembered —
@@ -60,8 +77,10 @@ export class TurnReplyGuard {
    */
   onComplete: (() => void) | undefined;
 
-  arm(target: TurnReplyTarget): number {
+  arm(target: TurnReplyTarget, ingressAt = Date.now()): number {
     if (!this.active || this.active.cancelledByUser) {
+      const carried = this.pendingActivityAt >= ingressAt ? this.pendingActivityAt : 0;
+      this.pendingActivityAt = 0;
       this.active = {
         generation: ++this.generation,
         phase: "awaiting",
@@ -72,13 +91,35 @@ export class TurnReplyGuard {
         replyDeliveredAt: 0,
         completionDeliveredAt: 0,
         outboundDeliveredAt: 0,
+        busyObservedAt: carried,
       };
       return this.active.generation;
     }
 
+    if (this.pendingActivityAt >= ingressAt) {
+      this.active.busyObservedAt = Math.max(this.active.busyObservedAt, this.pendingActivityAt);
+    }
+    this.pendingActivityAt = 0;
     this.active.latestObligation++;
     this.active.target = target;
     return this.active.generation;
+  }
+
+  /**
+   * #1241: record that the CLI was observably working during the active turn.
+   * The daemon calls this for every non-idle execution snapshot. A fresh
+   * generation starts unobserved (apart from carried pre-arm evidence, see
+   * arm); an obligation bump keeps the flag, since work for the earlier
+   * obligation belongs to the same turn.
+   */
+  noteTurnActivity(): void {
+    const active = this.active;
+    // A cancelled turn is over: activity from here on belongs to whatever
+    // arms next, so it waits in pending (still ingress-bounded at that arm)
+    // instead of dying on the doomed generation. (#1241 R3: cancel → new
+    // held-writer output used to be lost the same way pre-arm output was.)
+    if (active && !active.cancelledByUser) active.busyObservedAt = Date.now();
+    else this.pendingActivityAt = Date.now();
   }
 
   /** Keep outstanding adapter acknowledgments valid until this turn finishes. */
@@ -120,6 +161,8 @@ export class TurnReplyGuard {
       replyDelivered: active.replyDeliveredAt >= active.latestObligation,
       completionDelivered: active.completionDeliveredAt >= active.latestObligation,
       outboundDelivered: active.outboundDeliveredAt >= active.latestObligation,
+      busyObserved: active.busyObservedAt > 0,
+      lastBusyAt: active.busyObservedAt,
     };
   }
 
@@ -141,5 +184,6 @@ export class TurnReplyGuard {
 
   reset(): void {
     this.active = null;
+    this.pendingActivityAt = 0;
   }
 }

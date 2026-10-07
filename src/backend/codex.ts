@@ -544,6 +544,47 @@ function codexUnknownSelectionVisible(pane: string): boolean {
 }
 
 /**
+ * Status glyphs Codex decorates error lines with (#1215). Quota, rate-limit
+ * and auth patterns share this ONE place: the next Codex glyph change must
+ * not silently break them the way #1208 broke capacity. `■` U+25A0 and `⚠`
+ * U+26A0 are outside the U+2500–U+259F box-drawing/block range the capacity
+ * pattern excludes, so they stay valid there too.
+ */
+export const CODEX_STATUS_GLYPH = String.raw`■|⚠`;
+
+/**
+ * Whether a decorated row is the LIVE transcript item — the last transcript
+ * item above the composer, followed only by blank rows / the composer /
+ * footer rows, with no later `•`/`■`/`⚠` item (#1215). Same ownership rule
+ * as {@link codexAppServerDisconnected}: a quotation of the text inside an
+ * answer, or scrollback above a newer turn, is not evidence of anything now.
+ * The row pattern is tested against that one row only. Never inline this as
+ * a regex lookahead on a whole-pane counting pattern: a live-only pattern
+ * maxes at 1, so after the first hit the count never exceeds its baseline
+ * and later occurrences are missed.
+ */
+export function codexLiveRowMatches(pane: string, rowPattern: RegExp): boolean {
+  const rows = pane.replace(/\r/g, "").split("\n");
+  while (rows.length && rows[rows.length - 1].trim() === "") rows.pop();
+  let composer = -1;
+  for (let i = rows.length - 1; i >= Math.max(0, rows.length - 12); i--) {
+    if (/^[›>]/.test(rows[i])) { composer = i; break; }
+  }
+  if (composer < 0) return false;
+  if (rows.slice(composer + 1).some(row => /^[•■⚠]/.test(row))) return false;
+  let status = composer - 1;
+  while (status >= 0 && rows[status].trim() === "") status--;
+  if (status < 0) return false;
+  const lastIndex = rowPattern.lastIndex;
+  try {
+    rowPattern.lastIndex = 0;
+    return rowPattern.test(rows[status]);
+  } finally {
+    rowPattern.lastIndex = lastIndex;
+  }
+}
+
+/**
  * #1099: the Codex TUI lost its app-server. The composer is still painted (empty,
  * or holding the user's draft) but nothing is listening behind it, so a paste
  * only piles up in the input row. Captured from the real binary
@@ -1724,7 +1765,10 @@ export class CodexBackend implements CliBackend {
       // OpenAI returns insufficient_quota with status 429, but switching models
       // cannot repair an exhausted account and would only start a failover loop.
       {
-        pattern: /^\s*(?:■|⚠|Error:|API Error:)\s*[\s\S]{0,240}?\b(?:insufficient_quota|billing_hard_limit_reached|exceeded\s+your\s+current\s+quota)\b/im,
+        pattern: new RegExp(
+          String.raw`^\s*(?:${CODEX_STATUS_GLYPH}|Error:|API Error:)\s*[\s\S]{0,240}?\b(?:insufficient_quota|billing_hard_limit_reached|exceeded\s+your\s+current\s+quota)\b`,
+          "im",
+        ),
         type: "quota",
         action: "pause",
         message: "OpenAI quota exceeded",
@@ -1734,7 +1778,10 @@ export class CodexBackend implements CliBackend {
         // results. Bare `rate limit` used to fail over an otherwise healthy
         // Codex merely for discussing this regex. Match machine-readable API
         // forms or an error-decorated terminal line instead.
-        pattern: /^\s*unexpected\s+status\s+429\b|^\s*(?:■|⚠|Error:|API Error:)\s*[\s\S]{0,240}?(?:["'](?:status|code)["']\s*:\s*429\b|\b(?:rate_limit_exceeded|too_many_requests)\b|\brate limit(?:ed| exceeded| reached)?\b|\btoo many requests\b)/im,
+        pattern: new RegExp(
+          String.raw`^\s*unexpected\s+status\s+429\b|^\s*(?:${CODEX_STATUS_GLYPH}|Error:|API Error:)\s*[\s\S]{0,240}?(?:["'](?:status|code)["']\s*:\s*429\b|\b(?:rate_limit_exceeded|too_many_requests)\b|\brate limit(?:ed| exceeded| reached)?\b|\btoo many requests\b)`,
+          "im",
+        ),
         type: "rate_limit",
         action: "failover",
         message: "OpenAI rate limit reached",
@@ -1744,7 +1791,10 @@ export class CodexBackend implements CliBackend {
         // normal English/code word. Require a structured 401/code or a
         // decorated CLI error line before pausing every instance on the shared
         // credential.
-        pattern: /^\s*unexpected\s+status\s+401\b|^\s*(?:■|⚠|Error:|API Error:)\s*[\s\S]{0,240}?(?:["'](?:status|code)["']\s*:\s*401\b|\b(?:invalid_api_key|authentication_error)\b|\b401\s+Unauthorized\b|\bauthentication (?:failed|error)\b|\binvalid api key\b)/im,
+        pattern: new RegExp(
+          String.raw`^\s*unexpected\s+status\s+401\b|^\s*(?:${CODEX_STATUS_GLYPH}|Error:|API Error:)\s*[\s\S]{0,240}?(?:["'](?:status|code)["']\s*:\s*401\b|\b(?:invalid_api_key|authentication_error)\b|\b401\s+Unauthorized\b|\bauthentication (?:failed|error)\b|\binvalid api key\b)`,
+          "im",
+        ),
         type: "auth_error",
         action: "pause",
         message: "OpenAI authentication error",
@@ -1792,14 +1842,16 @@ export class CodexBackend implements CliBackend {
         // "Other Symbol" glyph (optionally with its emoji selector) opens the line —
         // never a bullet, dash, quote marker or number, which prose and the model's
         // own transcript items use (`•`, `-`, `>`). The sentence must fill the line,
-        // from column 0. The CLI is
+        // from column 0. Box drawing and block elements (U+2500–U+259F) are
+        // excluded up front: they are `So` too, but a left-border popup or
+        // table row (`│ …`) is chrome, not a status line. The CLI is
         // already back at the prompt, so skipRecoveryWait avoids an extra wait.
         // action "nudge_continue": tell the user, then about a minute later tell
         // the agent to keep going (the lifecycle bounds this to 3 per 30 minutes,
         // then pauses; see #905). No restart — nothing would re-send the turn — and
         // no model switch. skipCooldown: each NEW capacity line is a new episode,
         // including a second one right after the nudge.
-        pattern: /^\p{So}\uFE0F? Selected model is at capacity\. Please try a different model\.\r?$/mu,
+        pattern: /^(?![─-▟])\p{So}\uFE0F? Selected model is at capacity\. Please try a different model\.\r?$/mu,
         type: "model_error",
         action: "nudge_continue",
         message: t("inst.codex_model_capacity"),

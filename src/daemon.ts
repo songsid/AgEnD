@@ -60,6 +60,7 @@ import {
   type ResumeBackend,
 } from "./turn-resume.js";
 import type { TurnFingerprint } from "./backend/session-signals.js";
+import { codexLiveRowMatches } from "./backend/codex.js";
 import { InteractionObservation, INTERACTION_CONFIRM_MS, sameInteractionOwner, type InteractionEvidence } from "./interaction-observation.js";
 import type { InteractionOwner, InteractionSnapshot } from "./backend/types.js";
 
@@ -81,7 +82,16 @@ const TURN_OUTBOUND_TOOLS = new Set([
 // a deliberate reaction or edit is a valid response even without new text.
 const TURN_COMPLETION_TOOLS = new Set(["reply", "react", "edit_message"]);
 const REPLY_DROP_WARNING_COOLDOWN_MS = 5 * 60_000;
-const REPLY_RECOVERY_PROMPT = "[system:reply-required] The previous human-facing turn ended without a successfully delivered reply. Do not redo the work. React with an emoji or use the reply tool exactly once now to send the user a concise conclusion. If no substantive answer is needed, a brief react is sufficient. Do not reply to this system instruction except through the react or reply tool.";
+/**
+ * #1241: how long an idle edge must persist — with no reply and no further
+ * observed work — before the reply guard declares the turn a miss. A claude
+ * turn can repaint idle mid-turn (long thinking, subagent delegation) while
+ * the first reply is still minutes out; recovering on the first edge injects
+ * a prompt the agent later answers twice. A genuine miss stays idle, so the
+ * backstop is delayed by at most this window, never disabled.
+ */
+const REPLY_GUARD_IDLE_CONFIRM_MS = 60_000;
+const REPLY_RECOVERY_PROMPT = "[system:reply-required] The previous human-facing turn ended without a successfully delivered reply. Do not redo the work. React with an emoji or use the reply tool exactly once now to send the user a concise conclusion. If no substantive answer is needed, a brief react is sufficient. If you already replied to this message, do nothing. Do not reply to this system instruction except through the react or reply tool.";
 
 /** Point a resumed CLI at its one backend-native instruction source. */
 export function buildInstructionReloadNotice(binaryName: string, instanceName: string, instanceDir: string): string {
@@ -486,6 +496,11 @@ export class PendingWorkTracker {
     this.lastInboundOrder = ++this.sequence;
   }
 
+  /** #1241 P2-1: when the latest delivery entered, bounding pre-arm activity. */
+  lastInboundTimestamp(): number {
+    return this.lastInboundAt;
+  }
+
   recordIdle(now = Date.now()): boolean {
     // An async pane poll can finish after a newer inbound. Do not let its stale
     // observation clear work which had not arrived when the pane was captured.
@@ -676,6 +691,12 @@ const INPUT_TRANSIENT_WAIT_MS = 10 * 60_000;
 const INPUT_TRANSIENT_POLL_MS = 250;
 /** Max "stranded text → submit → wait for prompt → re-check" rounds per delivery; each may send one recovery Enter. */
 const STRANDED_INPUT_MAX_ROUNDS = 3;
+/** The Claude phrasing every backend was judged by before #1217; still the default for a backend that names none. */
+const LEGACY_NO_CONVERSATION = /no conversation found|no conversation to (continue|resume)|no previous (session|conversation)/i;
+/** #1217: unproven resume failures, kept across Daemon instances, keyed by session id. */
+const RESUME_FAILURES_FILE = "resume-failures.json";
+/** #1217: the backend that owns the stored session id. */
+const SESSION_OWNER_FILE = "session-id.backend";
 /** #829: most clearing rounds for a restored draft (one row each), and how long one round may take to show. */
 const INPUT_RESIDUE_MAX_ROUNDS = 60;
 const INPUT_RESIDUE_ROUND_WAIT_MS = 1_000;
@@ -1298,7 +1319,7 @@ export class Daemon extends EventEmitter {
    * resumed session whose scrollback holds an old capacity line must not be told to "keep going" for it (#949).
    */
   private nudgeBaselines: Map<string, number> | null = null;
-  private capacityNudge: { pane: string; spawn: number; fence: number; epoch: number; dueAt: number } | null = null;
+  private capacityNudge: { pane: string; pattern: RegExp; spawn: number; fence: number; epoch: number; dueAt: number } | null = null;
   /** Current stdin-owning runtime dialog, independent from execution state. */
   private inputBlockedDialogKey: string | null = null;
   private readonly interactionObservation = new InteractionObservation();
@@ -1353,6 +1374,11 @@ export class Daemon extends EventEmitter {
   private instanceStateIdleDebounceMs = DEFAULT_STATE_IDLE_DEBOUNCE_MS;
   private instanceStateStuckTimeoutMs = DEFAULT_STUCK_TIMEOUT_MS;
   private instanceStateReadyPattern: RegExp | null = null;
+  /**
+   * #1241 P2-2: an execution snapshot was suppressed by a blocking dialog.
+   * When the block lifts, the silence since counts as a fresh interval.
+   */
+  private sawBlockedInput = false;
   private instanceStateBusyPattern: RegExp | null = null;
   private instanceStateMonitorActive = false;
   private sessionCheckpointWarningEmitted = false;
@@ -1365,6 +1391,64 @@ export class Daemon extends EventEmitter {
   private lastMalformedToolCallSignature: string | undefined;
   private proxyReplySeq = 0;
   private lastReplyDropWarningAt = 0;
+  /**
+   * #1241: an idle edge that has not yet proven the turn ended. Armed instead
+   * of recovering immediately; a steady idle snapshot past confirmAt promotes
+   * it to a real recovery, while a delivered reply, cancel, or newly observed
+   * work dissolves it. Scoped to one guard generation. Split clock domains
+   * (R3): edgeAt is wall-clock (compared only against lastBusyAt, also wall —
+   * event ordering, never a deadline), while confirmAt is monotonic
+   * (performance.now, same domain as the setTimeout firing the deadline), so
+   * a wall jump can neither shorten nor stretch the window.
+   */
+  private replyGuardIdleConfirm: { generation: number; edgeAt: number; confirmAt: number } | null = null;
+  /**
+   * #1241 P3: the confirmation window's own wake-up. Monitor ticks may be up
+   * to 60 s apart, so without this the real delay could approach two windows.
+   * At the deadline a fresh, fenced capture re-observes the pane instead.
+   */
+  private replyGuardConfirmTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** #1241: dissolve a pending confirmation and its deadline, if any. */
+  private clearReplyGuardConfirm(): void {
+    this.replyGuardIdleConfirm = null;
+    if (this.replyGuardConfirmTimer) {
+      clearTimeout(this.replyGuardConfirmTimer);
+      this.replyGuardConfirmTimer = null;
+    }
+  }
+
+  /** #1241: arm a confirmation window with its own deadline capture. */
+  private armReplyGuardConfirm(generation: number): void {
+    this.clearReplyGuardConfirm();
+    this.replyGuardIdleConfirm = {
+      generation,
+      edgeAt: Date.now(),
+      confirmAt: performance.now() + REPLY_GUARD_IDLE_CONFIRM_MS,
+    };
+    this.replyGuardConfirmTimer = setTimeout(() => {
+      this.replyGuardConfirmTimer = null;
+      this.fireReplyGuardConfirm();
+    }, REPLY_GUARD_IDLE_CONFIRM_MS);
+  }
+
+  /**
+   * #1241 P3: the window elapsed with no verdict from monitor ticks — drive
+   * one fresh observation. Generation-fenced twice: a stale record returns
+   * before capturing, and the resulting snapshot still flows through the
+   * normal confirmed evaluation. When the capture cannot run (paused, frozen,
+   * spawning), the record stays and the next monitor tick promotes instead.
+   */
+  private fireReplyGuardConfirm(): void {
+    const pending = this.replyGuardIdleConfirm;
+    if (!pending) return;
+    const turn = this.turnReplyGuard.snapshot();
+    if (!turn || turn.generation !== pending.generation || turn.phase !== "awaiting") {
+      this.clearReplyGuardConfirm();
+      return;
+    }
+    void this.captureAndEvaluateInstanceState("reply_guard_confirm", this.instanceStateLastOutputAt);
+  }
   private autoPauseController: AutoPauseController;
   private pauseRequested = false;
   /**
@@ -3406,12 +3490,9 @@ export class Daemon extends EventEmitter {
     busyPattern: RegExp | null = null,
   ): void {
     // Count occurrences across the WHOLE pane (not just text after the last
-    // ready prompt). Clone with `g` so stateful backend regexes cannot leak
-    // lastIndex between monitor cycles.
-    const countMatches = (pattern: RegExp): number => {
-      const flags = pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g";
-      return (pane.match(new RegExp(pattern.source, flags)) || []).length;
-    };
+    // ready prompt). One shared counter (the static below): arm requires
+    // count > baseline, so a drifted clone here would silently gate nudges.
+    const countMatches = (pattern: RegExp): number => Daemon.countOccurrences(pattern, pane);
     // Same veto as the state machine: a backend whose ready marker is permanently
     // on screen would otherwise "recover" on the very first tick after the error,
     // rebaselining the occurrence count while the error is still displayed — one
@@ -3648,6 +3729,9 @@ export class Daemon extends EventEmitter {
     // FleetManager calls this synchronously before sendEscape. Cancel only the
     // current human turn; leave already-forwarded tool requests to settle.
     this.turnReplyGuard.cancelByUser();
+    // #1241: a cancelled turn never confirms — its next edge completes it as
+    // intentional. Drop a pending confirmation so it cannot promote afterwards.
+    this.clearReplyGuardConfirm();
     // #1209: a cancelled turn must never resume (#1199) — drop its marker.
     // (Completion paths clear via the guard's onComplete; a cancel with no
     // later idle edge would otherwise leave the marker behind.)
@@ -3978,11 +4062,33 @@ export class Daemon extends EventEmitter {
     return this.waitForPaneReadyForDelivery(windowId, KIRO_STOP_IDLE_BUDGET_MS);
   }
 
+  /**
+   * #1217: the CLI answered its quit command with a confirmation that a stray
+   * key would answer for us (Claude's "Background work is running": Enter
+   * picks "Exit and stop tasks"). Never choose an option: cancel the prompt
+   * with Escape and let the caller stop the process itself (SIGTERM), which is
+   * what the bounded grace would have come to anyway — just without waiting
+   * it out. True when that prompt was on screen.
+   */
+  private async cancelQuitConfirmation(reason: string): Promise<boolean> {
+    const backend = this.backend;
+    if (!backend?.quitBlockedByDialog || !this.tmux) return false;
+    let pane: string;
+    try { pane = await this.tmux.capturePane(); } catch { return false; }
+    if (!backend.quitBlockedByDialog(pane)) return false;
+    this.logger.warn({ reason },
+      "The CLI asked to confirm its exit (background work is running) — cancelling that prompt and stopping the process, not answering it");
+    await this.tmux.sendSpecialKey("Escape").catch(() => false);
+    return true;
+  }
+
   async stop(): Promise<void> {
     this.logger.info("Stopping daemon instance");
     this.clearQuitRelaunchWatch();
     this.fenceDeliveryWritesForStop();
     this.turnReplyGuard.reset();
+    this.clearReplyGuardConfirm();
+    this.sawBlockedInput = false;
     // Invalidate any bounded pre-Enter wait from the process generation being
     // stopped. It must fail closed, not press Enter in a replacement pane.
     this.inputTransientGuardGeneration = null;
@@ -4021,6 +4127,7 @@ export class Daemon extends EventEmitter {
           await new Promise(r => setTimeout(r, 200));
           const status = await this.tmux.getPaneStatus();
           if (!status || !status.alive) { killed = true; break; }
+          if (await this.cancelQuitConfirmation("stop")) break;
         }
       }
       if (!killed) {
@@ -4279,6 +4386,7 @@ export class Daemon extends EventEmitter {
           await new Promise(r => setTimeout(r, 200));
           const status = await this.tmux?.getPaneStatus();
           if (status && !status.alive) { exited = true; break; }
+          if (await this.cancelQuitConfirmation(pauseReason)) break;
         }
         if (!exited) {
           await this.killProcessTree("SIGTERM", `${pauseReason}: the CLI outlived its quit grace`);
@@ -4431,7 +4539,23 @@ export class Daemon extends EventEmitter {
     // dedicated input_blocked event carries the reason to observers.
     if (this.inputBlockedDialogKey !== null) {
       this.logger.debug({ dialog: this.inputBlockedDialogKey }, "Suppressing execution-state edge while CLI input is blocked by a dialog");
+      // #1241 P2-2: stdin-owned work is not idle evidence. A pending window
+      // measured through a dialog would recover on pre-dialog idle time, so
+      // the block dissolves it; the silence after the dialog clears starts a
+      // fresh interval below.
+      this.sawBlockedInput = true;
+      this.clearReplyGuardConfirm();
       return;
+    }
+    // #1241 P2-2: the block just lifted. With the pane idle, evaluate like an
+    // edge so a genuine miss re-accumulates a full window instead of inheriting
+    // pre-dialog idle time (or never re-arming at all when the daemon froze at
+    // idle). Only arming runs here: recovery-phase turns keep their lifecycle.
+    const justUnblocked = this.sawBlockedInput;
+    this.sawBlockedInput = false;
+    if (justUnblocked && snapshot.state === "idle") {
+      const unblockedTurn = this.turnReplyGuard.snapshot();
+      if (unblockedTurn && unblockedTurn.phase === "awaiting") this.maybeProxyReplyOnTurnEnd(pane);
     }
     this.instanceState = snapshot.state;
     this.acceptedInstanceSnapshot = { ...snapshot };
@@ -4447,6 +4571,20 @@ export class Daemon extends EventEmitter {
       this.checkpointSessionIdInBackground();
     }
 
+    // #1241: the turn demonstrably continued — work observed after an idle
+    // edge dissolves a pending guard confirmation. A later genuine end
+    // re-arms it with a fresh edge.
+    if (snapshot.state !== "idle") {
+      this.turnReplyGuard.noteTurnActivity();
+      const pending = this.replyGuardIdleConfirm;
+      const turn = this.turnReplyGuard.snapshot();
+      if (pending && turn && turn.generation === pending.generation && turn.phase === "awaiting") {
+        this.clearReplyGuardConfirm();
+        this.logger.debug({ correlationId: turn.target.correlationId, generation: turn.generation },
+          "Reply guard confirmation dropped — work observed after the idle edge, the turn continued");
+      }
+    }
+
     // Only a transition back to idle completes pending work. Repeated idle
     // observations between enqueue and paste must not clear a newer inbound.
     if (snapshot.state === "idle" && previous !== "idle") {
@@ -4459,6 +4597,11 @@ export class Daemon extends EventEmitter {
       // Must run before the mcpRestartPending branch below: the pane text is the
       // only copy of the answer, and the revival restart is about to clear it.
       if (acceptedIdle) this.maybeProxyReplyOnTurnEnd(pane);
+    } else if (snapshot.state === "idle") {
+      // #1241: steady idle between edges. A pending confirmation whose window
+      // has elapsed is promoted to a real evaluation here — proven idle,
+      // not the first output gap.
+      this.maybeConfirmReplyGuardIdle(pane);
     }
 
     if (snapshot.state !== previous) {
@@ -4530,6 +4673,8 @@ export class Daemon extends EventEmitter {
     // The last non-empty line of what we pasted: everything on screen after it
     // is the agent's own output.
     const inboundMarker = deliveredText.split(/\r?\n/).map(l => l.trim()).filter(Boolean).pop();
+    // #1241 P2-1: carry pre-arm work evidence over the arm, bounded by this
+    // delivery's ingress — output the paste produced before it confirmed.
     this.turnReplyGuard.arm({
       adapterId: meta.adapter_id || undefined,
       chatId: meta.chat_id,
@@ -4537,7 +4682,7 @@ export class Daemon extends EventEmitter {
       messageId: meta.message_id || undefined,
       correlationId: meta.correlation_id || undefined,
       inboundMarker,
-    });
+    }, this.pendingWork.lastInboundTimestamp());
     // #1209: persist the in-flight turn with a seam checkpoint. A marker
     // that survives a restart is an interrupted turn by construction —
     // completion (via the guard's onComplete) and cancel paths delete it.
@@ -4677,7 +4822,18 @@ export class Daemon extends EventEmitter {
    * manager does not pass through the dead MCP server. Consuming the turn state
    * here (edge-triggered, then reset) is what makes it at most once per turn.
    */
-  private maybeProxyReplyOnTurnEnd(pane?: string): void {
+  /**
+   * #1241: promote a pending idle-edge confirmation once the window has
+   * elapsed. Steady idle with no reply and no work since the edge is proven
+   * idle; anything else dissolves the confirmation and leaves the turn armed.
+   */
+  private maybeConfirmReplyGuardIdle(pane?: string): void {
+    const pending = this.replyGuardIdleConfirm;
+    if (!pending || this.isPaused || performance.now() < pending.confirmAt) return;
+    this.maybeProxyReplyOnTurnEnd(pane, true);
+  }
+
+  private maybeProxyReplyOnTurnEnd(pane?: string, confirmed = false): void {
     const turn = this.turnReplyGuard.snapshot();
     if (!turn || this.isPaused) return;
 
@@ -4689,6 +4845,7 @@ export class Daemon extends EventEmitter {
           generation: turn.generation,
         });
       }
+      this.clearReplyGuardConfirm();
       this.turnReplyGuard.complete(turn.generation);
       return;
     }
@@ -4696,6 +4853,7 @@ export class Daemon extends EventEmitter {
     // An intentional stop is not a dropped reply. Successful in-flight replies
     // still settle above, but cancellation cannot start another model turn.
     if (turn.cancelledByUser) {
+      this.clearReplyGuardConfirm();
       this.turnReplyGuard.complete(turn.generation);
       return;
     }
@@ -4703,6 +4861,7 @@ export class Daemon extends EventEmitter {
     // A second idle edge ends the one permitted recovery turn. Never create a
     // third turn or guess at terminal text; make the failure visible instead.
     if (turn.phase === "recovering") {
+      this.clearReplyGuardConfirm();
       this.turnReplyGuard.complete(turn.generation);
       this.reportUnrecoveredReplyDrop(turn);
       return;
@@ -4765,11 +4924,51 @@ export class Daemon extends EventEmitter {
     if (turn.replyAttempted) {
       // A provider timeout can be "applied, then timed out". Retrying it would
       // risk a duplicate; report the unknown result and stop here.
+      this.clearReplyGuardConfirm();
       this.turnReplyGuard.complete(turn.generation);
       this.reportReplyDropWithoutRetry(turn, "reply_failed_or_unknown");
       return;
     }
 
+    // #1241: an idle edge is not proof the turn ended. Two gates before the
+    // recovery prompt goes anywhere near the CLI's input:
+    // 1. work must have been observed after this generation armed — otherwise
+    //    the "edge" is a pane flicker (or a stale working state) mid-turn,
+    //    and the turn stays armed for its real end;
+    // 2. the edge must persist: the first qualifying edge only arms a
+    //    confirmation window, and recovery starts only when steady idle past
+    //    the window still shows no reply and no further work.
+    if (!turn.busyObserved) {
+      this.logger.info({
+        correlationId: turn.target.correlationId,
+        generation: turn.generation,
+        reason: "no_busy_since_arm",
+      }, "Reply guard holding — idle edge with no work observed since the turn armed, not a turn end");
+      return;
+    }
+    if (!confirmed) {
+      if (this.replyGuardIdleConfirm?.generation === turn.generation) return;
+      this.armReplyGuardConfirm(turn.generation);
+      this.logger.info({
+        correlationId: turn.target.correlationId,
+        generation: turn.generation,
+        reason: "idle_edge_pending_confirm",
+        confirmMs: REPLY_GUARD_IDLE_CONFIRM_MS,
+      }, "Reply guard idle edge pending confirmation — holding recovery until idle persists");
+      return;
+    }
+    if (this.replyGuardIdleConfirm && turn.lastBusyAt > this.replyGuardIdleConfirm.edgeAt) {
+      this.clearReplyGuardConfirm();
+      this.logger.info({ correlationId: turn.target.correlationId, generation: turn.generation },
+        "Reply guard confirmation dropped — work observed after the idle edge, the turn continued");
+      return;
+    }
+    // A stale confirmation for another generation proves nothing about this one.
+    if (this.replyGuardIdleConfirm && this.replyGuardIdleConfirm.generation !== turn.generation) {
+      this.clearReplyGuardConfirm();
+      return;
+    }
+    this.clearReplyGuardConfirm();
     this.startReplyRecovery(turn, "no_valid_call");
   }
 
@@ -4785,6 +4984,9 @@ export class Daemon extends EventEmitter {
   }
 
   private startReplyRecovery(turn: TurnReplySnapshot, reason: "no_valid_call" | "malformed_call"): void {
+    // The confirmation served its purpose: recovery has its own lifecycle now
+    // (a second edge ends it), so a pending window must not linger past this.
+    this.clearReplyGuardConfirm();
     const current = this.turnReplyGuard.snapshot();
     if (current?.generation === turn.generation && current.cancelledByUser) {
       this.turnReplyGuard.complete(turn.generation);
@@ -6601,8 +6803,11 @@ export class Daemon extends EventEmitter {
     // it is scrollback from a resumed session.
     const baseline = this.nudgeBaselines?.get(episode.key);
     if (baseline === undefined || Daemon.countOccurrences(pattern, episode.pane) <= baseline) return false;
+    // And only when the row is the live item, not a quotation or scrollback above a newer turn. (Never a regex
+    // lookahead on the counting pattern: whole-pane dedup would max at 1 and miss later hits. See #1215.)
+    if (!codexLiveRowMatches(episode.pane, pattern)) return false;
     this.capacityNudge = {
-      pane: episode.pane, spawn: episode.spawn, fence: episode.fence,
+      pane: episode.pane, pattern, spawn: episode.spawn, fence: episode.fence,
       epoch: this.deliveryEpoch, dueAt: performance.now() + delayMs,
     };
     this.logger.info({ delayMs }, "Model-capacity nudge armed");
@@ -6672,7 +6877,8 @@ export class Daemon extends EventEmitter {
       // vouching for the first — "same screen" here, "idle" there — would let a half-typed draft through.)
       const sent = await this.submitSystemPaste(t("inst.codex_capacity_nudge_text"), "capacity-continue", {
         current,
-        accept: pane => pane === nudge.pane && this.paneAuthoritativelyIdle(pane),
+        accept: pane => pane === nudge.pane && this.paneAuthoritativelyIdle(pane)
+          && codexLiveRowMatches(pane, nudge.pattern),
       });
       this.logger.info({ sent }, "Model-capacity nudge attempted");
     });
@@ -8768,6 +8974,8 @@ export class Daemon extends EventEmitter {
     // warning is safer than treating the replacement's startup idle as the old
     // turn ending and injecting a stale recovery prompt.
     this.turnReplyGuard.reset();
+    this.clearReplyGuardConfirm();
+    this.sawBlockedInput = false;
     if (this.spawnDepth === 0) {
       this.spawnGeneration++;
       this.interactionObservation.reset(this.interactionOwner());
@@ -8849,14 +9057,63 @@ export class Daemon extends EventEmitter {
    */
   private paneSaysNoConversation(paneText: string | undefined): boolean {
     if (!paneText) return false;
-    return /no conversation found|no conversation to (continue|resume)|no previous (session|conversation)/i
-      .test(paneText);
+    // Each CLI says it in its own words (#1217): muse's "retained session not
+    // found" never matched the Claude phrasing, so a muse session that was not
+    // there could never be proven gone. Backends that name no pattern keep the
+    // phrasing this always used.
+    const pattern = this.backend?.resumeMissingPattern?.() ?? LEGACY_NO_CONVERSATION;
+    return pattern.test(paneText);
   }
 
-  /** How many consecutive startups have failed without proving the session is gone. */
-  private unprovenResumeFailures = 0;
   /** After this many, start fresh anyway — loudly — so a truly broken session still recovers. */
   private static readonly MAX_UNPROVEN_RESUME_FAILURES = 3;
+
+  /**
+   * #1217: the unproven-failure count lives in the instance directory, keyed by
+   * the session id. Each start builds a new Daemon, so a count kept on the
+   * object was always "attempt 1/3": the escape hatch could never fire, and an
+   * unresumable session failed every start forever. A different session id (or
+   * none) starts the count again; a successful resume or a set-aside ends it.
+   */
+  private bumpUnprovenResumeFailures(): number {
+    const path = join(this.instanceDir, RESUME_FAILURES_FILE);
+    let sessionId = "";
+    try { sessionId = readFileSync(join(this.instanceDir, "session-id"), "utf-8").trim(); } catch { /* none */ }
+    let previous: { sessionId?: unknown; count?: unknown } | null = null;
+    try { previous = JSON.parse(readFileSync(path, "utf-8")); } catch { /* first failure, or unreadable */ }
+    const count = previous && previous.sessionId === sessionId && Number.isInteger(previous.count) && (previous.count as number) > 0
+      ? (previous.count as number) + 1
+      : 1;
+    try { writeFileSync(path, JSON.stringify({ sessionId, count })); } catch { /* best effort: counts as before */ }
+    return count;
+  }
+
+  private clearUnprovenResumeFailures(): void {
+    try { unlinkSync(join(this.instanceDir, RESUME_FAILURES_FILE)); } catch { /* none */ }
+  }
+
+  /**
+   * #1217: a session id belongs to the backend that made it. After a backend
+   * switch the old id names nothing the new CLI knows (a Claude id handed to
+   * muse is "retained session not found"), so resuming it can only fail. The
+   * owner is recorded on every successful start; an id recorded for another
+   * backend is set aside (kept on disk, as always) and this start is fresh.
+   * An id with no recorded owner (from before this was recorded) is left to
+   * the resume itself — its failure is proven or counted like any other.
+   */
+  private setAsideForeignSession(): void {
+    if (!existsSync(join(this.instanceDir, "session-id"))) return;
+    let owner = "";
+    try { owner = readFileSync(join(this.instanceDir, SESSION_OWNER_FILE), "utf-8").trim(); } catch { return; }
+    const current = this.config.backend ?? "claude-code";
+    if (!owner || owner === current) return;
+    this.logger.warn({ from: owner, to: current }, "The stored session belongs to another backend — not resuming it");
+    this.setSessionAside(`backend_switched:${owner}->${current}`);
+  }
+
+  private recordSessionOwner(): void {
+    try { writeFileSync(join(this.instanceDir, SESSION_OWNER_FILE), this.config.backend ?? "claude-code"); } catch { /* best effort */ }
+  }
 
   /**
    * Set the session aside instead of deleting it.
@@ -8872,6 +9129,7 @@ export class Daemon extends EventEmitter {
       const stamp = new Date().toISOString().replace(/[:.]/g, "-");
       renameSync(sidFile, join(this.instanceDir, `session-id.abandoned-${stamp}`));
       this.logger.warn({ reason }, "Session set aside (kept on disk as session-id.abandoned-*), starting fresh");
+      this.clearUnprovenResumeFailures();
       this.pruneAbandonedSessions();
     } catch (err) {
       // Never let bookkeeping block a spawn; falling back to the old behaviour
@@ -8901,6 +9159,10 @@ export class Daemon extends EventEmitter {
       throw new Error("No backend configured — cannot spawn CLI window");
     }
 
+    // Fresh start or not: the owner is recorded below once this CLI is up, so an
+    // id it does not own must be out of the way first, or it would be recorded
+    // as this backend's and resumed by the next start.
+    this.setAsideForeignSession();
     const attemptedResume = !this.skipResume;
     // A resume launch may get a longer budget than a fresh one (kiro: the
     // conversation must come back from the backend before anything paints).
@@ -8940,21 +9202,21 @@ export class Daemon extends EventEmitter {
       try { paneText = await this.tmux?.capturePaneWithHistory(50); } catch { /* pane may be gone */ }
       const proven = this.paneSaysNoConversation(paneText);
       if (!proven) {
-        this.unprovenResumeFailures++;
-        if (this.unprovenResumeFailures < Daemon.MAX_UNPROVEN_RESUME_FAILURES) {
+        const failures = this.bumpUnprovenResumeFailures();
+        if (failures < Daemon.MAX_UNPROVEN_RESUME_FAILURES) {
           // Keep the session and fail this attempt; the fleet retries with
           // backoff, which is also how the backend-outage path behaves.
           await this.killProcessTree("SIGTERM", "spawn: clearing the previous CLI process");
           await this.tmux!.killWindow();
           throw new Error(
-            `CLI startup failed with a session to resume (attempt ${this.unprovenResumeFailures}/${Daemon.MAX_UNPROVEN_RESUME_FAILURES}) `
+            `CLI startup failed with a session to resume (attempt ${failures}/${Daemon.MAX_UNPROVEN_RESUME_FAILURES}) `
             + "— session kept, will retry",
           );
         }
         // Escape hatch: a genuinely broken session must still recover. Say so
         // out loud — this start does NOT continue the previous conversation.
         this.logger.error(
-          { attempts: this.unprovenResumeFailures },
+          { attempts: failures },
           "Giving up on resuming after repeated startup failures — starting fresh. "
           + "The previous conversation is NOT continued; its context is lost to this session.",
         );
@@ -8977,12 +9239,15 @@ export class Daemon extends EventEmitter {
       }
     } else if (attemptedResume) {
       resumedSuccessfully = true;
+      this.clearUnprovenResumeFailures();
       // A resume needs the backend: its success is positive proof the backend
       // is reachable again (a fresh prompt is local and proves nothing).
       this.backendOutage?.clear(this.backendKey());
     }
 
     this.lastSpawnAt = Date.now();
+    // #1217: whatever session this CLI writes from here on is this backend's.
+    this.recordSessionOwner();
     this.skipResume = false; // CLI started successfully — reset for next spawn
     this.backgroundSessionRecoveryAttempted = false;
     } finally {

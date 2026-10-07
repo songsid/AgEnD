@@ -87,12 +87,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
-- **Each backend's next quota reset, at a glance (#1232).** `/usage` shows "⏳ Next reset: 5h 12m" under every backend
-  that reports one — the soonest of its windows still ahead (a window already past is skipped, and an idle per-model
-  window, or bonus credits that expire rather than refill, do not count). The View usage panel opens with one line for all of them ("⏳ Next reset · Claude resets in
-  5h 12m · Codex resets in 2d 3h"), and `get_usage` returns it as `nextResetAt` on each provider, so an agent can read
-  it too. A backend that does not say when it resets — Grok outside a weekly billing period — shows none rather than a
-  guess.
+- **An alpha channel, separate from beta and stable (#1259).** A `vX.Y.Z-alpha.N` tag now publishes to npm `@alpha`.
+  Before, every tag without `-beta` went to `@latest`, so the first 2.2 alpha would have reached every stable user.
+  The publish workflow now maps tags strictly: `vX.Y.Z` → `@latest`, `-beta.N` → `@beta`, `-alpha.N` → `@alpha`.
+  Any other tag fails before anything is built, and `@latest` never moves backwards. On the client, `agend update`
+  (and chat `/update`) keeps an alpha install on `@alpha`. There is a new `agend update --alpha`, and the "update
+  available" notice tells an alpha about newer alphas and stables, never about a beta. Beta and stable installs
+  behave as before. The old manual `scripts/publish.sh` is removed: a release is a pushed tag.
+- **When the soonest rate-limit reset ticket expires, on the ticket line (#1232, #1244).** Codex's "Rate limit resets:
+  2 available" now says when the first of those tickets expires — "Rate limit resets: 2 available · 🎫 Nearest expiry:
+  10/22 (in 16d 6h)" — in `/usage`, the View usage panel and `get_usage`'s text, read from Codex's own ticket list
+  (`expiresAt` on that metric). A ticket without an expiry is skipped, and with none the line shows the count as
+  before. It is an expiry, not a reset: an unused ticket is lost. (The per-backend "⏳ Next reset" line that
+  2.1.12-beta.2 added under #1232 was a misreading of the request and is gone, `nextResetAt` with it; each window
+  still shows its own "resets in".)
 - **Agents can send stickers on Discord and Telegram (#1226).** Three tools, the same on both platforms:
   `list_stickers` (`{ id, name, emoji_or_tags, format }` each, no image URLs), `preview_stickers` (up to 8, downloaded
   for the agent to Read; an animated sticker with no still picture is marked `preview_unavailable`), and a new
@@ -111,6 +119,51 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   pictures is not cut short.
 
 ### Fixed
+- **No more false memory alerts on macOS (#1257).** On a Mac, AgEnD no longer posts the "Host memory pressure"
+  notice and no longer slows or holds agent starts for memory. Its free-memory and swap figures are not a pressure
+  signal there: macOS adds swap files as it needs them, so a nearly full swap is normal, and a 16 GB Mac with 2.8 GB
+  available was being told to start agents one at a time. The samples are still written to the log. Using macOS's own
+  memory-pressure level instead is tracked in #1256. Linux is unchanged.
+- **`agend-agent reply … --sticker` follows the same rules as the MCP reply (#1254).** For an agent on
+  `agent_mode: cli`, a sticker this channel cannot send is checked before anything goes out and comes back as the
+  reply's error: another server's sticker on Discord, or something that is not a Telegram sticker id. Before, the
+  reply went straight to the adapter. A reply with stickers is also no longer treated as a duplicate of the same text
+  sent without them while that one is still in flight. Both paths now build the duplicate check the same way.
+- **No more duplicate replies from an early reply-drop recovery (#1241).** On claude-code the reply completion guard
+  used to fire on the first idle-looking pane while the agent was still composing its first answer, pasting a
+  `[system:reply-required]` prompt the agent later answered a second time. Recovery now waits until the turn proves
+  itself over: the first idle edge only arms a 60 s confirmation window (work observed after the edge, a delivered
+  reply, or cancel dissolves it), and the prompt goes out only when steady idle persists past the window with no
+  reply. An edge with no work observed since the turn armed is held outright. Genuine misses still recover (#750),
+  at most a minute later — and the recovery prompt now says to do nothing if the message was already answered.
+- **Claude transcript events survive partial writes (#1221).** Tool progress and activity now wait for a record's
+  terminating newline before advancing the read offset. A record flushed across polls is read once when complete,
+  including after a monitor restart; complete final records still appear immediately. The shared Codex/Kiro JSONL
+  tailer uses the same byte boundary, preserving UTF-8 text split across writes.
+- **Claude's API retries are seen again (#1239).** While Claude Code retries a failing request
+  (`✻ 429 … · Retrying in 4s · attempt 4/10`), AgEnD posts a notice and keeps the turn as running. Since #1101 that
+  only worked on screens without a status line. With one, which AgEnD always sets, Claude leaves `esc to interrupt`
+  out of the footer, and the check relied on that hint. A live retry therefore read as idle with no notice, and a long
+  wait could retire Cancel mid-turn. The row is now told live by where it sits: in the spinner's place, directly above
+  the composer. A finished, interrupted or quoted row is still history, and the final rows (`Request rejected (429)`,
+  repeated 529, an invalid configured key) are recognised as before. Also, Claude's own Bash permission prompt is
+  held again when a long working directory wraps its second option onto two rows.
+- **The web login page's sign-in code box is on screen at 100% zoom (#1242).** On a `/login` web terminal the terminal
+  sized itself before the "Sign-in code" row appeared and then kept that size: its bottom rows, the CLI's
+  `Paste code here` prompt among them, ran under the row and covered it. The box was there, but could not be seen or
+  clicked until a zoom change re-fitted the terminal. The terminal now re-fits whenever its own area changes and never
+  draws past it, so the prompt and the box are both visible at any window size.
+- **Switching an instance's backend no longer leaves it unable to start (#1217).** A session id now belongs to the
+  backend that made it (`session-id.backend` next to it). On the first start under a different backend, the old id is
+  set aside (`session-id.abandoned-<ts>`, as before) and the new CLI starts fresh, instead of being asked to resume a
+  conversation it never had. `update_instance_config` now restarts a running instance, fresh, when its `backend`
+  changes. Before, the change was saved and the old CLI kept running until something else restarted it. Three related
+  gaps made such a failure permanent, and they are closed too:
+  - each backend names the words that prove its session is gone, e.g. muse's "retained session not found";
+  - the count of unproven resume failures is kept in the instance directory, keyed by session id. Every start builds
+    a new Daemon, so it used to stay at "attempt 1/3" forever and never reached the fresh start after three;
+  - Claude's "Background work is running" exit prompt is recognised. Deliveries hold on it, and stop and pause cancel
+    it with Escape and stop the process, never choosing one of its options.
 - **Discord slash commands: fewer "The application did not respond", and none silent (#1231).** A slash command is
   now acknowledged before anything else is read. When the acknowledgement fails, the command is not run (you were told
   it did not respond, and running it would do it twice on a retry) and you are told so: privately, or in the channel.
@@ -360,6 +413,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   are unaffected.
 
 ### Added
+- **Codex capacity detection hardened against glyph changes and scrollback (#1215).** The capacity row must be the
+  live transcript item (last item above the composer, nothing newer) both when the "keep going" nudge is armed and
+  when it is accepted — a quotation or scrollback line still notifies the user but never injects. The capacity
+  pattern no longer accepts box-drawing chrome (`│ …` popup/table rows are `So` too); quota, rate-limit and auth
+  patterns share one `CODEX_STATUS_GLYPH` constant so the next glyph change cannot break them the way #1208 broke
+  capacity, and occurrence counting is unified into one counter. The nudge now says to continue only if the last
+  request is unfinished. Pane stays the capacity authority; the session-store seam stays observation-only.
 - **Interrupted turns resume across restarts when the CLI itself stayed idle (#1209).** When a channel turn is
   armed, the daemon writes a one-shot `in-flight-turn.json` marker (with a TurnFingerprint checkpoint); whatever
   survives a restart is, by construction, an interrupted turn. After boot and CLI spawn, a pure gate decides once:

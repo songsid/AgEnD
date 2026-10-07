@@ -9,6 +9,8 @@ export const UPDATE_COMMAND = "agend update";
 
 export interface UpdateVersionOptions {
   version?: string;
+  /** The alpha channel (`@alpha`, the next minor's previews, #1259). */
+  alpha?: boolean;
   beta?: boolean;
   /** Back to the stable line (`@latest`), even from a beta install — may go back a version. */
   stable?: boolean;
@@ -75,25 +77,39 @@ export function compareSemver(a: string, b: string): number | null {
   return Math.sign(pa.pre.length - pb.pre.length);
 }
 
+export type UpdateChannel = "latest" | "beta" | "alpha";
+
+/**
+ * The npm dist-tag an install follows (#1259): an alpha (`x.y.z-alpha.N`) is on
+ * `@alpha`, any other prerelease (beta, rc…) on `@beta`, a release on `@latest`.
+ * Mirrors what publish.yml publishes each tag to (scripts/npm-dist-tag.mjs).
+ */
+export function installedChannel(version: string): UpdateChannel {
+  const pre = parseSemver(version)?.pre ?? [];
+  if (pre.length === 0) return "latest";
+  return pre[0] === "alpha" ? "alpha" : "beta";
+}
+
 /**
  * The npm selector `agend update` installs from. An explicit choice wins
- * (`--version`, then `--beta`, then `--stable`); with none, the line the
- * installed version is on — a prerelease install stays on `@beta`, so a beta
- * user is never moved to `@latest` without asking. `installedVersion` is the
+ * (`--version`, then `--alpha`, `--beta`, `--stable`); with none, the line the
+ * installed version is on — an alpha stays on `@alpha`, a beta on `@beta`, so
+ * nobody is moved to another channel without asking. `installedVersion` is the
  * version of the package being replaced (the CLI's own package.json), never
  * the version of whatever code happened to call it.
  */
 export function getUpdateSelector(opts: UpdateVersionOptions, installedVersion: string): string {
   if (opts.version) return opts.version;
+  if (opts.alpha) return "alpha";
   if (opts.beta) return "beta";
   if (opts.stable) return "latest";
-  return isPrereleaseVersion(installedVersion) ? "beta" : "latest";
+  return installedChannel(installedVersion);
 }
 
 /**
- * Which "update available" line to post. A beta install's `/update` stays on
- * the beta channel, so a newer STABLE release needs `--stable` — say so rather
- * than "Run: /update", which would not move it there.
+ * Which "update available" line to post. A beta or alpha install's `/update`
+ * stays on its channel, so a newer STABLE release needs `--stable` — say so
+ * rather than "Run: /update", which would not move it there.
  */
 export function updateNoticeKey(currentVersion: string, targetVersion: string): "update.available_stable" | "update.available_current" {
   return isPrereleaseVersion(currentVersion) && !isPrereleaseVersion(targetVersion) ? "update.available_stable" : "update.available_current";

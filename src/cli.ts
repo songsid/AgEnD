@@ -1352,18 +1352,19 @@ program
   .command("update")
   .description("Update AgEnD to the selected release and restart the fleet service")
   .option("--version <ver>", "Specific version to install")
+  .option("--alpha", "Install from the alpha channel (the default when an alpha is installed)")
   .option("--beta", "Install from the beta channel (the default when a beta is installed)")
   .option("--stable", "Install from the stable channel, even from a beta install (may go back a version)")
   .option("--force", "Force reinstall and restart even when already up to date")
   .option("-y, --yes", "Confirm when run from a fleet agent session (this affects every instance)")
-  .action(async (opts: { version?: string; beta?: boolean; stable?: boolean; force?: boolean; yes?: boolean }) => {
-    if (opts.beta && opts.stable) {
-      console.error("  --beta and --stable choose different channels; pass one.");
+  .action(async (opts: { version?: string; alpha?: boolean; beta?: boolean; stable?: boolean; force?: boolean; yes?: boolean }) => {
+    if ([opts.alpha, opts.beta, opts.stable].filter(Boolean).length > 1) {
+      console.error("  --alpha, --beta and --stable choose different channels; pass one.");
       process.exit(1);
     }
     if (!gateFleetControl(DATA_DIR, "update", { yes: opts.yes })) process.exit(1);
     const { spawnSync } = await import("node:child_process");
-    // The channel follows the version being replaced — this CLI's own package — so a beta install stays on beta.
+    // The channel follows the version being replaced — this CLI's own package — so an alpha or beta stays on its channel.
     const tag = getUpdateSelector(opts, pkgVersion);
     const looked = lookupTargetVersion(tag);
     // Only a strict SemVer answer counts as the version this update is about; anything else is "unknown".

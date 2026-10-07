@@ -369,30 +369,35 @@ const CLAUDE_RETRY_SUFFIX = `[ \\t]·[ \\t]Retrying in ${CLAUDE_RETRY_WAIT}[ \\t
 /** The spinner glyphs Claude Code cycles through (six measured frames). */
 const CLAUDE_SPINNER_GLYPH = "[✻✽✢·✶*]";
 /**
- * What makes a retry row LIVE rather than history or a quotation: it is the status
- * row of the composer at the BOTTOM of the pane, and that composer's footer shows
- * the running-turn hint. Asserted as a lookahead (the match stays the row):
+ * What makes a retry row LIVE rather than history or a quotation: it holds the
+ * spinner's slot, directly above the composer at the BOTTOM of the pane.
+ * Asserted as a lookahead (the match stays the row):
  *
- *  - between the row and the composer's top separator only blank rows, `⎿` tip
- *    rows, and Claude's own right-aligned hint rows — `tmux detected · …`, `tmux
+ *  - between the row and the composer's top separator only blank rows, `⎿` rows
+ *    (a tip or the todo list under the spinner, never `⎿ Interrupted`), and
+ *    Claude's own right-aligned hint rows — `tmux detected · …`, `tmux
  *    focus-events off · …`, `◐ medium · /effort` — which are matched by shape,
  *    not by "indented text";
  *  - then separator, `❯` row(s), separator;
- *  - then a footer with no further separator that contains `esc to interrupt`
- *    (shown while a turn runs: bypass, auto-mode and the other footers alike; an
- *    idle footer reads `· ← for agents` without it) and runs to the end of the
- *    pane.
+ *  - then footer rows to the end of the pane, with no further separator.
  *
- * A retry row in a finished transcript is followed by more history and ends in
- * the current idle composer; one inside a quoted TUI is followed by the real
- * composer's own separators, which the footer cannot contain; either way the
- * lookahead fails. Only a quotation sitting directly above a composer whose
- * footer says `esc to interrupt` — a turn that really is running — is read as
- * live, and then the pane IS busy.
+ * The footer's text is NOT the signal (#1239). Without a statusLine a running
+ * turn's footer says `esc to interrupt`, but with one Claude Code leaves that
+ * hint out, and AgEnD always configures a statusLine (writeConfig): a running
+ * turn's footer and an idle one then read the same. The slot is what tells
+ * them apart. While a request runs the spinner, or the retry row in its place,
+ * sits right above the composer; once the turn ends that row is gone —
+ * replaced by the final `● API Error: …`, by the completed-turn row (`✻ Worked
+ * for 3m · done …`), or, on Esc, by `⎿ Interrupted`.
+ *
+ * A retry row in a finished transcript is followed by more history (at least
+ * that completed-turn row) before the composer; one inside a quoted TUI is
+ * followed by its own separators and composer and then the real composer's,
+ * which the footer cannot contain. Either way the lookahead fails.
  */
-const CLAUDE_LIVE_TAIL = "\\n(?:[ \\t]*\\n|[ \\t]*⎿[^\\n]*\\n|[ \\t]{10,}(?:tmux (?:detected|focus-events)[^\\n]*|\\S \\w+ · /effort)[ \\t]*\\n)*"
+const CLAUDE_LIVE_TAIL = "\\n(?:[ \\t]*\\n|[ \\t]*⎿(?![ \\t\\u00a0]*Interrupted\\b)[^\\n]*\\n|[ \\t]{10,}(?:tmux (?:detected|focus-events)[^\\n]*|\\S \\w+ · /effort)[ \\t]*\\n)*"
   + "─{10,}[ \\t]*\\n[ \\t]*❯[^\\n]*\\n(?:(?!─{10,})[^\\n]*\\n)*─{10,}[ \\t]*\\n"
-  + "(?:(?!─{10,})[^\\n]*\\n)*?[^\\n]*esc to interrupt[^\\n]*(?:\\n(?!─{10,})[^\\n]*)*(?![\\s\\S])";
+  + "(?:(?!─{10,})[^\\n]*\\n)*(?!─{10,})[^\\n]*(?![\\s\\S])";
 /** A LIVE retry row whose message starts with one of these HTTP statuses. */
 const claudeRetryRow = (statuses: string): RegExp =>
   new RegExp(`^[ \\t]*${CLAUDE_SPINNER_GLYPH}[ \\t]+(${statuses})\\b[^\\n]*?[ \\t]·[ \\t]Retrying in ${CLAUDE_RETRY_WAIT}[ \\t]·[ \\t]attempt (\\d+)/(\\d+)[ \\t]*$(?=${CLAUDE_LIVE_TAIL})`, "im");
@@ -463,14 +468,50 @@ export function claudeBashPermissionActive(pane: string): boolean {
   for (let i = rows.length - 1; i >= 0; i--) {
     if (/^[ \t]*Do you want to proceed\?[ \t]*$/.test(rows[i])) { question = i; break; }
   }
-  if (question < 0 || rows.length !== question + 6) return false;
+  if (question < 0 || !/^[ \t]*Esc to cancel · Tab to amend[ \t]*$/.test(rows[rows.length - 1])) return false;
   const before = rows.slice(Math.max(0, question - 20), question);
   if (!before.some(row => /^[ \t]*Bash command[ \t]*$/.test(row))) return false;
-  if (!/^[ \t]*[❯›]?[ \t]*1\.[ \t]+Yes[ \t]*$/.test(rows[question + 1])) return false;
-  if (!/^[ \t]*[❯›]?[ \t]*2\.[ \t]+Yes, and always allow access to .+ from this project[ \t]*$/.test(rows[question + 2])) return false;
-  if (!/^[ \t]*[❯›]?[ \t]*3\.[ \t]+Yes, and switch to auto mode · auto mode handles these prompts for you[ \t]*$/.test(rows[question + 3])) return false;
-  if (!/^[ \t]*[❯›]?[ \t]*4\.[ \t]+No[ \t]*$/.test(rows[question + 4])) return false;
-  return /^[ \t]*Esc to cancel · Tab to amend[ \t]*$/.test(rows[question + 5]);
+  // An option too long for the pane wraps onto indented rows below it (#1239):
+  // option 2 names the working directory, so a long path wraps it. A row that
+  // does not start a numbered option continues the one above.
+  const options: string[] = [];
+  for (const row of rows.slice(question + 1, rows.length - 1)) {
+    if (/^[ \t]*[❯›]?[ \t]*\d\.[ \t]/.test(row)) options.push(row.trimEnd());
+    else if (options.length) options[options.length - 1] += ` ${row.trim()}`;
+    else return false;
+  }
+  return options.length === 4
+    && /^[ \t]*[❯›]?[ \t]*1\.[ \t]+Yes$/.test(options[0])
+    && /^[ \t]*[❯›]?[ \t]*2\.[ \t]+Yes, and always allow access to .+ from this project$/.test(options[1])
+    && /^[ \t]*[❯›]?[ \t]*3\.[ \t]+Yes, and switch to auto mode · auto mode handles these prompts for you$/.test(options[2])
+    && /^[ \t]*[❯›]?[ \t]*4\.[ \t]+No$/.test(options[3]);
+}
+
+/**
+ * #1217: Claude's answer to `/exit` while a background task runs (2.1.289,
+ * captured from a live pane):
+ *
+ *    Background work is running
+ *    The following will stop when you exit:
+ *    shell · python3 - <<'EOF' p="src/…
+ *    ❯ 1. Exit and stop tasks
+ *      2. Move to background and exit
+ *      3. Stay
+ *    Enter to confirm · Esc to cancel
+ *
+ * Enter takes the selected option, so a stray Enter (a delivery's) exits and
+ * kills the tasks. Recognised only as a whole, at the bottom of the pane.
+ */
+export const CLAUDE_BACKGROUND_WORK_EXIT = /^[ \t]*Background work is running[ \t]*$/m;
+export function claudeBackgroundWorkExitActive(pane: string): boolean {
+  const rows = pane.replace(/\r/g, "").split("\n").filter(row => row.trim() !== "");
+  const footer = rows.length - 1;
+  if (footer < 4 || !/^[ \t]*Enter to confirm · Esc to cancel[ \t]*$/.test(rows[footer])) return false;
+  const head = rows.slice(Math.max(0, footer - 12), footer).findIndex(row => CLAUDE_BACKGROUND_WORK_EXIT.test(row));
+  if (head < 0) return false;
+  const block = rows.slice(Math.max(0, footer - 12), footer).slice(head).join("\n");
+  return /^[ \t]*[❯›]?[ \t]*1\.[ \t]+Exit and stop tasks[ \t]*$/m.test(block)
+    && /^[ \t]*[❯›]?[ \t]*3\.[ \t]+Stay[ \t]*$/m.test(block);
 }
 
 /** Private request text: excludes history, cursor motion, and native auto-deny countdown. */
@@ -980,6 +1021,17 @@ export class ClaudeCodeBackend implements CliBackend {
         autoResolutionKey: "claude-dangerous-command",
       },
       {
+        // #1217: never answered here. A delivery's Enter would pick "Exit and
+        // stop tasks"; the stop flow answers it (Escape, then SIGTERM).
+        pattern: CLAUDE_BACKGROUND_WORK_EXIT,
+        isActive: claudeBackgroundWorkExitActive,
+        keys: [],
+        holdOnly: true,
+        blocksDelivery: true,
+        inputBlocked: true,
+        description: "Claude \"Background work is running\" exit prompt — holding, never answering with Enter",
+      },
+      {
         pattern: CLAUDE_DANGEROUS_COMMAND_PROMPT,
         isActive: claudeBashPermissionActive,
         requestIdentity: claudeCommandRequestIdentity,
@@ -1017,6 +1069,15 @@ export class ClaudeCodeBackend implements CliBackend {
   getClearCommand(): string { return "/clear"; }
 
   getCancelKey(): string { return "Escape"; }
+
+  /** #1217: Claude's own words for a session that is not there to resume. */
+  resumeMissingPattern(): RegExp {
+    return /no conversation found|no conversation to (continue|resume)|no previous (session|conversation)/i;
+  }
+
+  quitBlockedByDialog(pane: string): boolean {
+    return claudeBackgroundWorkExitActive(pane);
+  }
 
   // `claude --effort <level>` (low, medium, high, xhigh, max) and a `/effort`
   // slash command in the TUI — verified from `claude --help` on 2026-08-02.

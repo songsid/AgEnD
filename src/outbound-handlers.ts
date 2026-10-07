@@ -1160,6 +1160,13 @@ const updateInstanceConfig: Handler = (ctx, rawArgs, respond) => {
   const backendAfter = (inst as any).backend ?? "claude-code";
   const profileAfter = instanceCredentialProfile(inst, ctx.fleetConfig?.defaults, backendAfter);
   const profileSwitched = profileAfter !== profileBefore;
+  // #1217: a running CLI is the backend it was launched as. Saving a new
+  // backend without a restart left the old CLI running under the new name, and
+  // its session id was then handed to the new backend at the next start —
+  // which can only fail (a Claude id given to muse is "session not found").
+  // A switch restarts now, fresh: the other backend has no conversation here.
+  const backendSwitched = backendAfter !== backendBefore;
+  if (backendSwitched) relaunchNeeded = true;
 
   // Switching to a profile nobody has logged into does not start a signed-out
   // session — kiro-cli stops at "let's get you signed in!" and waits for a
@@ -1205,7 +1212,7 @@ const updateInstanceConfig: Handler = (ctx, rawArgs, respond) => {
       name: v.data.name,
       applied: patch,
       restarted: false,
-      note: `Instance is ${status}; the new backend_options apply when it next starts.`,
+      note: `Instance is ${status}; the new ${backendSwitched ? "backend" : "backend_options"} apply when it next starts.`,
     });
     return;
   }
@@ -1231,7 +1238,7 @@ const updateInstanceConfig: Handler = (ctx, rawArgs, respond) => {
   // A switch also starts fresh: the new store has no conversation for this
   // directory, so resuming can only spend the resume startup budget waiting for
   // something that is not there.
-  ctx.restartSingleInstance(v.data.name, switchLosesConversation ? { freshStart: true } : undefined).then(
+  ctx.restartSingleInstance(v.data.name, switchLosesConversation || backendSwitched ? { freshStart: true } : undefined).then(
     async () => {
       const handoverChars = await deliverProfileHandover(ctx, v.data.name, profileBefore, profileAfter, handover);
       respond({
@@ -1239,6 +1246,7 @@ const updateInstanceConfig: Handler = (ctx, rawArgs, respond) => {
         name: v.data.name,
         applied: patch,
         restarted: true,
+        ...(backendSwitched ? { backend_switched: true, conversation_carried_over: false } : {}),
         ...(profileSwitched
           ? {
               credential_profile_switched: true,

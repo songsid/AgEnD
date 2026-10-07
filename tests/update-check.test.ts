@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   compareSemver,
   getUpdateSelector,
+  installedChannel,
   isPrereleaseVersion,
   isExactVersion,
   isUnrequestedDowngrade,
@@ -22,6 +23,37 @@ describe("update version precheck", () => {
     expect(getUpdateSelector({ stable: true, version: "2.1.0" }, "2.1.10")).toBe("2.1.0");
     // A source checkout's own package.json (1.22.0) is a plain release: latest, not a guess.
     expect(getUpdateSelector({}, "1.22.0")).toBe("latest");
+  });
+
+  it("the alpha channel (#1259): installed 2.1.12 / 2.1.12-beta.4 / 2.2.0-alpha.1 × no flag, --alpha, --beta, --stable, --version", () => {
+    const table: Array<[string, Record<string, unknown>, string]> = [
+      ["2.1.12", {}, "latest"], ["2.1.12-beta.4", {}, "beta"], ["2.2.0-alpha.1", {}, "alpha"],
+      ["2.1.12", { alpha: true }, "alpha"], ["2.1.12-beta.4", { alpha: true }, "alpha"], ["2.2.0-alpha.1", { alpha: true }, "alpha"],
+      ["2.1.12", { beta: true }, "beta"], ["2.1.12-beta.4", { beta: true }, "beta"], ["2.2.0-alpha.1", { beta: true }, "beta"],
+      ["2.1.12", { stable: true }, "latest"], ["2.1.12-beta.4", { stable: true }, "latest"], ["2.2.0-alpha.1", { stable: true }, "latest"],
+      ["2.2.0-alpha.1", { version: "2.2.0-alpha.1", alpha: true }, "2.2.0-alpha.1"],
+    ];
+    for (const [installed, opts, selector] of table) expect(getUpdateSelector(opts, installed), `${installed} ${JSON.stringify(opts)}`).toBe(selector);
+  });
+
+  it("which channel an install is on: only an `alpha` first identifier is alpha", () => {
+    expect(installedChannel("2.2.0-alpha.1")).toBe("alpha");
+    expect(installedChannel("v2.2.0-alpha.12")).toBe("alpha");
+    expect(installedChannel("2.1.12-beta.4")).toBe("beta");
+    expect(installedChannel("2.2.0-rc.1")).toBe("beta");
+    expect(installedChannel("2.2.0-alphabet.1")).toBe("beta");
+    expect(installedChannel("2.2.0-beta.1.alpha")).toBe("beta");
+    expect(installedChannel("2.1.12")).toBe("latest");
+    expect(installedChannel("garbage")).toBe("latest");
+  });
+
+  it("an alpha install is not moved back to an older @beta or @latest without asking", () => {
+    expect(isUnrequestedDowngrade("2.2.0-alpha.1", "2.1.12-beta.9", { beta: true })).toBe(true);
+    expect(isUnrequestedDowngrade("2.2.0-alpha.1", "2.1.12-beta.9", {})).toBe(true);
+    expect(isUnrequestedDowngrade("2.2.0-alpha.1", "2.2.0-alpha.2", {})).toBe(false);
+    expect(isUnrequestedDowngrade("2.1.12-beta.4", "2.2.0-alpha.1", { alpha: true })).toBe(false);
+    expect(updateNoticeKey("2.2.0-alpha.1", "2.2.0")).toBe("update.available_stable");
+    expect(updateNoticeKey("2.2.0-alpha.1", "2.2.0-alpha.2")).toBe("update.available_current");
   });
 
   it("queries the matching npm dist-tag or explicit version", () => {
