@@ -80,6 +80,7 @@ const INSTANCE_FIELDS = [
 const CLASSIC_FIELDS = [
   "backend", "model", "auto_pause_after", "tool_progress",
   "reply_completion_guard", "collab", "context_lines", "pre_task_command",
+  "web_echo",
 ] as const;
 
 /**
