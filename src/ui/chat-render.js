@@ -77,31 +77,161 @@
     return s;
   }
 
-  /** Block Markdown (headings, lists, quotes, rules, paragraphs) over one run of non-code text. */
+  /** How deep a list may nest: deeper items stay at the deepest level (a message cannot build an unbounded tree). */
+  var MAX_LIST_DEPTH = 6;
+  /** The widest table rendered as a table; a wider one stays text. */
+  var MAX_TABLE_COLUMNS = 20;
+
+  /** Leading whitespace as columns: a tab counts four. */
+  function indentOf(ws) { var n = 0; for (var i = 0; i < ws.length; i++) n += ws[i] === "\t" ? 4 : 1; return n; }
+
+  /**
+   * A run of list items as nested lists. An item indented deeper than the one before opens a list inside that
+   * item; a shallower one closes lists back to its level; at the same level a change of kind (- vs 1.) starts a
+   * new list. Every tag is the renderer's own; item text goes through inline() like any other text.
+   */
+  function renderList(items, store) {
+    var html = "";
+    var stack = [];   // { indent, tag }
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i];
+      while (stack.length && it.indent < stack[stack.length - 1].indent) html += "</li></" + stack.pop().tag + ">";
+      var top = stack[stack.length - 1];
+      if (!top || (it.indent > top.indent && stack.length < MAX_LIST_DEPTH)) {
+        html += "<" + it.tag + ">";
+        stack.push({ indent: it.indent, tag: it.tag });
+      } else if (top.tag !== it.tag) {
+        html += "</li></" + top.tag + "><" + it.tag + ">";
+        top.tag = it.tag;
+      } else {
+        html += "</li>";
+      }
+      html += "<li>" + inline(it.text, store);
+    }
+    while (stack.length) html += "</li></" + stack.pop().tag + ">";
+    return html;
+  }
+
+  /** The cells of one table row (escaped text). A leading/trailing pipe is optional; `\|` is a literal pipe. */
+  function tableCells(line) {
+    var t = line.trim();
+    if (t.charAt(0) === "|") t = t.slice(1);
+    if (t.charAt(t.length - 1) === "|" && t.charAt(t.length - 2) !== "\\") t = t.slice(0, -1);
+    var cells = [];
+    var cur = "";
+    for (var i = 0; i < t.length; i++) {
+      if (t[i] === "\\" && t[i + 1] === "|") { cur += "|"; i++; continue; }
+      if (t[i] === "|") { cells.push(cur.trim()); cur = ""; continue; }
+      cur += t[i];
+    }
+    cells.push(cur.trim());
+    return cells;
+  }
+
+  /** The alignments of a separator row (`|---|:--:|--:|`), or null when the line is not one. */
+  function tableAligns(line) {
+    if (line.indexOf("-") === -1 || !/^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/.test(line)) return null;
+    return tableCells(line).map(function (c) {
+      var l = c.charAt(0) === ":", r = c.charAt(c.length - 1) === ":";
+      return l && r ? "c" : r ? "r" : l ? "l" : "";
+    });
+  }
+
+  function renderTable(header, aligns, rows, store) {
+    function cell(tag, text, i) {
+      var a = aligns[i] ? ' class="al-' + aligns[i] + '"' : "";
+      return "<" + tag + a + ">" + inline(text, store) + "</" + tag + ">";
+    }
+    function row(tag, cells) {
+      var out = "";
+      for (var i = 0; i < aligns.length; i++) out += cell(tag, cells[i] === undefined ? "" : cells[i], i);
+      return "<tr>" + out + "</tr>";
+    }
+    return '<div class="tbl"><table><thead>' + row("th", header) + "</thead><tbody>" +
+      rows.map(function (r) { return row("td", r); }).join("") + "</tbody></table></div>";
+  }
+
+  /** Block Markdown (headings, lists, tables, quotes, rules, paragraphs) over one run of non-code text. */
   function blocks(text, store) {
     var lines = escapeHtml(text).split("\n");
     var out = [];
     var para = [];
-    var list = null;   // { tag: "ul" | "ol", items: [] }
+    var list = [];    // [{ indent, tag, text }]
     var quote = [];
     function flushPara() { if (para.length) { out.push("<p>" + para.map(function (l) { return inline(l, store); }).join("<br>") + "</p>"); para = []; } }
-    function flushList() { if (list) { out.push("<" + list.tag + ">" + list.items.map(function (i) { return "<li>" + inline(i, store) + "</li>"; }).join("") + "</" + list.tag + ">"); list = null; } }
+    function flushList() { if (list.length) { out.push(renderList(list, store)); list = []; } }
     function flushQuote() { if (quote.length) { out.push("<blockquote>" + quote.map(function (l) { return inline(l, store); }).join("<br>") + "</blockquote>"); quote = []; } }
     function flushAll() { flushPara(); flushList(); flushQuote(); }
     for (var i = 0; i < lines.length; i++) {
       var line = lines[i];
       var m;
       if (/^\s*$/.test(line)) { flushAll(); continue; }
+      // A table: a header row with a pipe, then a separator row with the same number of columns.
+      if (line.indexOf("|") !== -1 && i + 1 < lines.length) {
+        var aligns = tableAligns(lines[i + 1]);
+        var header = aligns && tableCells(line);
+        if (aligns && header.length === aligns.length && aligns.length <= MAX_TABLE_COLUMNS) {
+          flushAll();
+          var rows = [];
+          var j = i + 2;
+          for (; j < lines.length && lines[j].indexOf("|") !== -1 && !/^\s*$/.test(lines[j]); j++) rows.push(tableCells(lines[j]));
+          out.push(renderTable(header, aligns, rows, store));
+          i = j - 1;
+          continue;
+        }
+      }
       if ((m = /^(#{1,6})\s+(.*)$/.exec(line))) { flushAll(); var n = Math.min(m[1].length + 2, 6); out.push("<h" + n + ">" + inline(m[2], store) + "</h" + n + ">"); continue; }
       if (/^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/.test(line)) { flushAll(); out.push("<hr>"); continue; }
       if ((m = /^&gt;\s?(.*)$/.exec(line))) { flushPara(); flushList(); quote.push(m[1]); continue; }
-      if ((m = /^\s*[-*+]\s+(.*)$/.exec(line))) { flushPara(); flushQuote(); if (!list || list.tag !== "ul") { flushList(); list = { tag: "ul", items: [] }; } list.items.push(m[1]); continue; }
-      if ((m = /^\s*\d{1,9}[.)]\s+(.*)$/.exec(line))) { flushPara(); flushQuote(); if (!list || list.tag !== "ol") { flushList(); list = { tag: "ol", items: [] }; } list.items.push(m[1]); continue; }
+      if ((m = /^([ \t]*)([-*+]|\d{1,9}[.)])\s+(.*)$/.exec(line))) {
+        flushPara(); flushQuote();
+        list.push({ indent: indentOf(m[1]), tag: /\d/.test(m[2]) ? "ol" : "ul", text: m[3] });
+        continue;
+      }
       flushList(); flushQuote();
       para.push(line);
     }
     flushAll();
     return out.join("");
+  }
+
+  // ── Code highlighting: a small tokenizer, never a library. Every token is escaped and wrapped in one of four
+  //    fixed classes; what is not recognised stays plain escaped text. Unknown languages are not highlighted. ──
+  var KEYWORDS = {
+    js: "break case catch class const continue default delete do else export extends false finally for function if import in instanceof let new null of return static super switch this throw true try typeof undefined var void while yield async await",
+    py: "and as assert async await break class continue def del elif else except False finally for from global if import in is lambda None nonlocal not or pass raise return True try while with yield",
+    sh: "if then else elif fi for while until do done case esac function in return local export set unset echo exit",
+    json: "true false null"
+  };
+  KEYWORDS.ts = KEYWORDS.js + " interface type enum implements private public protected readonly declare namespace keyof as";
+  var LANG_ALIAS = { javascript: "js", jsx: "js", mjs: "js", cjs: "js", typescript: "ts", tsx: "ts", python: "py", bash: "sh", shell: "sh", zsh: "sh", console: "sh" };
+  var TOKEN_RE = {
+    js: /(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|("(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`)|(\b\d+(?:\.\d+)?\b)|([A-Za-z_$][\w$]*)/g,
+    py: /(#[^\n]*)|("""[\s\S]*?"""|'''[\s\S]*?'''|"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*')|(\b\d+(?:\.\d+)?\b)|([A-Za-z_]\w*)/g,
+    sh: /(#[^\n]*)|("(?:[^"\\]|\\.)*"|'[^']*')|(\b\d+\b)|([A-Za-z_][\w-]*)/g,
+    json: /(\u0001)|("(?:[^"\\\n]|\\.)*")|(-?\b\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b)|([A-Za-z_]\w*)/g
+  };
+  TOKEN_RE.ts = TOKEN_RE.js;
+
+  /** Code as highlighted HTML for a known language, or null (then the caller escapes it as before). */
+  function highlight(code, lang) {
+    var key = String(lang || "").toLowerCase();
+    if (Object.prototype.hasOwnProperty.call(LANG_ALIAS, key)) key = LANG_ALIAS[key];
+    if (!Object.prototype.hasOwnProperty.call(TOKEN_RE, key)) return null;
+    var words = {};
+    KEYWORDS[key].split(" ").forEach(function (w) { words[w] = true; });
+    var re = new RegExp(TOKEN_RE[key].source, "g");
+    var out = "";
+    var last = 0;
+    var m;
+    while ((m = re.exec(code)) !== null) {
+      if (m[0] === "") { re.lastIndex++; continue; }
+      out += escapeHtml(code.slice(last, m.index));
+      var cls = m[1] ? "tk-c" : m[2] ? "tk-s" : m[3] ? "tk-n" : (m[4] && Object.prototype.hasOwnProperty.call(words, m[4])) ? "tk-k" : null;
+      out += cls ? '<span class="' + cls + '">' + escapeHtml(m[0]) + "</span>" : escapeHtml(m[0]);
+      last = re.lastIndex;
+    }
+    return out + escapeHtml(code.slice(last));
   }
 
   /** The whole message: fenced code blocks verbatim (escaped), everything else as Markdown. */
@@ -115,7 +245,9 @@
     while ((m = re.exec(src)) !== null) {
       html += blocks(src.slice(last, m.index), store);
       var lang = m[1] ? ' data-lang="' + escapeHtml(m[1]) + '"' : "";
-      html += "<pre" + lang + "><code>" + escapeHtml(m[2].replace(/\n$/, "")) + "</code></pre>";
+      var code = m[2].replace(/\n$/, "");
+      var lit = highlight(code, m[1]);
+      html += "<pre" + lang + "><code>" + (lit === null ? escapeHtml(code) : lit) + "</code></pre>";
       last = re.lastIndex;
       if (m[0].length === 0) break;
     }
