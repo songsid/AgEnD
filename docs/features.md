@@ -662,6 +662,20 @@ When an instance is deleted via `delete_instance`, it is automatically removed f
 
 `agend export-chat` exports fleet activity as a self-contained HTML file. Supports `--from` and `--to` date filters and `-o` for output path. The exported file includes all messages, tool calls, and cross-instance communications in a readable chat format.
 
+## Bot-to-bot message visibility
+
+When one instance sends another a message (`send_to_instance`, `delegate_task`, `report_result`, …), AgEnD also posts it in the instance topics so people can follow along: the whole message in the sender's topic, and in the target's topic the whole message for a task or query, a short summary for any other kind, nothing for a report or update. In a busy fleet that can bury the conversation with people. `cross_instance_visibility` sets how much is posted (#1302):
+
+| Mode | Instance topics |
+|------|-----------------|
+| `full` (default) | As described above — unchanged from earlier versions |
+| `summary` | The same posts, each one line: `sender → target: ` plus the sender's task summary, or the opening of the message |
+| `hidden` | Nothing |
+
+Each topic follows its own instance: `instances.<name>.cross_instance_visibility`, else `defaults.cross_instance_visibility`, else `full`. A fleet admin sets the fleet default with `/visibility full|summary|hidden` (Telegram General topic, or Discord), which saves it to `fleet.yaml`; `/visibility` alone shows the current setting and the instances that have their own. Settings has the fleet default (Defaults) and a per-agent override (agent → Advanced). A change applies at once, with no restart.
+
+Only these topic posts change. Messages are delivered exactly as before, the [Mirror Topic](#mirror-topic) still receives every message, and General topics never show these posts in any mode.
+
 ## Mirror Topic
 
 Configure `mirror_topic_id` in `fleet.yaml` to designate a Telegram topic for observing cross-instance communication. All `send_to_instance` messages are mirrored to this topic in real time. This is a daemon-level hook with zero changes to agent behavior — agents don't know they're being observed.

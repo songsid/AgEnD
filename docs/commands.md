@@ -31,6 +31,7 @@ Registered via `setMyCommands` with `scope: chat` and `scope: chat_administrator
 | 🔒 `/clear` | Full conversation reset (destructive) — asks for Confirm/Cancel before running. Sends each backend's own reset command (`/clear` for most, `/new` for grok); unsupported on `gemini-cli`. | Admin |
 | 🔒 `/tips on\|off` | Toggle the daily auto-sent tip to the General topic | Admin |
 | 🔒 `/tips advanced on` | Fleet-wide manual unlock of the advanced tips tier (independent of the per-user dismiss-count unlock). Currently has no visible effect while the beginner-only rollout stage is active — see the `/tips` row above. | Admin |
+| 🔒 `/visibility [full\|summary\|hidden]` | How bot-to-bot (cross-instance) messages appear in instance topics: `full` posts the whole message (the default, as before), `summary` one line per message, `hidden` nothing. With a mode it sets the fleet default and saves it to `fleet.yaml` (`defaults.cross_instance_visibility`); with none it shows the current setting and which instances have their own. Delivery and the Mirror Topic are never affected. General topic only. See [features](features.md#bot-to-bot-message-visibility). | Admin |
 
 ## Telegram — ClassicBot (Private Chats + Groups)
 
@@ -85,6 +86,7 @@ Registered globally via `client.application.commands.set()`.
 | 🔒 `/restart [mode:full]` | Restart all instances in-process; `mode:full` reloads the entire Fleet process and adapters | Admin |
 | 🔒 `/update` | Update AgEnD to latest version | Admin |
 | 🔒 `/doctor` | Run health diagnostics | Admin |
+| 🔒 `/visibility [mode]` | Show, or set (`mode: full\|summary\|hidden`), how bot-to-bot messages appear in instance channels; saved to `fleet.yaml` | Admin |
 | 🔒 `/login [backend] [cancel]` | **(beta)** Remote CLI sign-in, installing the CLI first when it is missing (sign-in: `claude-code`/`codex`/`kiro-cli`/`grok`; install only: `opencode`, `muse`; `antigravity` refused outright — no isolated login sub-command) | Admin |
 | 🔒 `/compact [instructions]` | Compact agent context; the optional text steers the summary (Claude Code only — other backends compact without it and say so) | Admin |
 | 🔒 `/collab` | Toggle collaboration mode | Admin |
@@ -101,7 +103,7 @@ Registered globally via `client.application.commands.set()`.
 ### Fleet Admin (`fleet.yaml` → `channel.access.allowed_users`)
 
 Fleet-level commands — requires fleet admin:
-- `/status`, `/restart`, `/update`, `/doctor`, `/pause`, `/wake`, `/model`, `/effort`, `/clear`, `/login`
+- `/status`, `/restart`, `/update`, `/doctor`, `/visibility`, `/pause`, `/wake`, `/model`, `/effort`, `/clear`, `/login`
 
 ### ClassicBot Admin (`classicBot.yaml` → `defaults.admin_users`)
 

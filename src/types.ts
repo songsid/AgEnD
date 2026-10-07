@@ -168,6 +168,12 @@ export interface InstanceConfig {
    */
   tool_progress?: "off" | "standard" | "verbose";
   /**
+   * #1302: how much of a cross-instance (bot-to-bot) message is posted in this instance's topic, whether it sent the
+   * message or received it: "full" (the whole message), "summary" (one line), "hidden" (nothing). Delivery and the
+   * Mirror Topic are unaffected. Unset inherits `defaults.cross_instance_visibility`, else "full".
+   */
+  cross_instance_visibility?: "full" | "summary" | "hidden";
+  /**
    * Detect a human-channel turn that ended without a delivered reply and ask
    * the agent to send one bounded recovery reply. Only capable backends use
    * this switch; evidence tracking remains active for reply/tool correctness.

@@ -7,6 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **How much of a bot-to-bot message is posted in the topics: full, summary or hidden (#1302).** Cross-instance
+  messages are posted in the instance topics so people can follow along, and in a busy fleet they bury the
+  conversation. `cross_instance_visibility` now sets it: `full` (the default, exactly as before), `summary` (the same
+  posts, one line each: who sent it to whom and the task summary or the opening words) or `hidden` (none). Set it for
+  the fleet under `defaults`, with the new fleet-admin `/visibility full|summary|hidden` (Telegram General topic and
+  Discord, saved to `fleet.yaml`), or in Settings, which also has a per-agent override. Each topic follows its own
+  instance; a change applies at once. Delivery, the Mirror Topic and General are not affected in any mode.
 - **An alpha channel, separate from beta and stable (#1259).** A `vX.Y.Z-alpha.N` tag now publishes to npm `@alpha`.
   Before, every tag without `-beta` went to `@latest`, so the first 2.2 alpha would have reached every stable user.
   The publish workflow now maps tags strictly: `vX.Y.Z` → `@latest`, `-beta.N` → `@beta`, `-alpha.N` → `@alpha`.

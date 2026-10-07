@@ -15,6 +15,7 @@ import { detectPlatform } from "./service-installer.js";
 import { getTmuxSocketName, getTmuxSessionName } from "./paths.js";
 import { t, getLocale } from "./locale.js";
 import { telegramMenu, type TelegramMenu } from "./command-table.js";
+import { runVisibilityCommand } from "./cross-instance-notice.js";
 import type { ChannelConfig } from "./types.js";
 import {
   clampContextPercent,
@@ -439,6 +440,12 @@ export class TopicCommands {
 
     if (text === "/dashboard" || text.startsWith("/dashboard@")) {
       await this.handleDashboardCommand(msg);
+      return true;
+    }
+
+    const visibility = text.match(/^\/visibility(?:@\S+)?(?:\s+([\s\S]*))?$/i);
+    if (visibility) {
+      await this.handleVisibilityCommand(msg, visibility[1] ?? "");
       return true;
     }
 
@@ -1329,6 +1336,19 @@ export class TopicCommands {
     });
     child.once("error", err => this.ctx.failUpdateProgress?.(err.message));
     child.unref();
+  }
+
+  /** #1302: `/visibility [full|summary|hidden]` in the General topic. */
+  private async handleVisibilityCommand(msg: InboundMessage, arg: string): Promise<void> {
+    const adapter = this.getReplyAdapter(msg);
+    if (!adapter || !this.ctx.fleetConfig) return;
+    // Same rule as /doctor: this adapter's fleet admins only, and an empty list is "nobody", not "everybody".
+    if (!this.ctx.hasFleetAdmins(msg.adapterId) || !this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) {
+      await adapter.sendText(msg.chatId, t("not_authorized"), { threadId: msg.threadId });
+      return;
+    }
+    const reply = runVisibilityCommand(this.ctx.fleetConfig, arg, () => this.ctx.saveFleetConfig());
+    await adapter.sendText(msg.chatId, reply, { threadId: msg.threadId });
   }
 
   private async handleDoctorCommand(msg: InboundMessage): Promise<void> {

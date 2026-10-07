@@ -85,6 +85,7 @@ async function rig(): Promise<Rig> {
     if (text === "ok:usage") reached.push("usage");
     if (text === t("update.progress.preparing", 0)) { reached.push("update"); throw stop; }
     if (text === t("doctor.running")) { reached.push("doctor"); throw stop; }
+    if (String(text).startsWith(t("visibility.current", "full"))) reached.push("visibility");
     return { messageId: "m", chatId };
   };
   const tg = { id: "tg", type: "telegram", react: async () => {}, unreact: async () => {}, sendText, editMessage: async () => {}, sendWithKeyboard: async () => ({ messageId: "k", chatId: "x" }) };
@@ -225,6 +226,7 @@ const TG_EXPECTED: Array<{ name: string; text: string; label: string; general: T
   { name: "update", text: "/update", label: "update", general: FA_ONLY, fleet: PASS_, classic: PASS_, none: "pass" },
   { name: "doctor", text: "/doctor", label: "doctor", general: FA_ONLY, fleet: PASS_, classic: PASS_, none: "pass" },
   { name: "dashboard", text: "/dashboard", label: "dashboard", general: FA_ONLY, fleet: PASS_, classic: PASS_, none: "pass" },
+  { name: "visibility", text: "/visibility", label: "visibility", general: FA_ONLY, fleet: PASS_, classic: PASS_, none: "pass" },
   { name: "sysinfo", text: "/sysinfo", label: "sysinfo", general: ALL, fleet: PASS_, classic: PASS_, none: "pass" },
   { name: "usage", text: "/usage", label: "usage", general: ALL, fleet: PASS_, classic: PASS_, none: "pass" },
   // General and an instance's topic; not a ClassicBot chat

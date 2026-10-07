@@ -18,6 +18,7 @@ import { resolveToolSet } from "./tool-permissions.js";
 import { getAgendHome } from "./paths.js";
 import { LOGIN_FLOWS } from "./login-flows.js";
 import { ProgressAccumulator, summarizeProgress } from "./tool-progress.js";
+import { isCrossInstanceVisibility } from "./cross-instance-notice.js";
 import { ContextGuardian } from "./context-guardian.js";
 import { IpcServer } from "./channel/ipc-bridge.js";
 import { daemonBudgetMs } from "./channel/ipc-timeouts.js";
@@ -5839,6 +5840,8 @@ export class Daemon extends EventEmitter {
     }
     if (Array.isArray(update.tags) && update.tags.every(tag => typeof tag === "string")) this.config.tags = [...update.tags] as string[];
     else if (update.tags === null) delete this.config.tags;
+    if (isCrossInstanceVisibility(update.cross_instance_visibility)) this.config.cross_instance_visibility = update.cross_instance_visibility;
+    else if (update.cross_instance_visibility === null) delete this.config.cross_instance_visibility;
     if (["trace", "debug", "info", "warn", "error"].includes(String(update.log_level))) {
       const level = update.log_level as InstanceConfig["log_level"];
       if (this.config.log_level !== level) {

@@ -306,12 +306,13 @@ describe("a slash command is refused before it does anything", () => {
 });
 
 describe("/update /doctor /dashboard /collab: the invoking adapter's fleet admins, and an empty list is nobody", () => {
-  const adminCommands = ["update", "doctor", "dashboard"];
+  const adminCommands = ["update", "doctor", "dashboard", "visibility"];
 
   it("an empty allowed_users list refuses — it used to let everyone through", async () => {
     const r = await rig({ primary: { mode: "open", allowed_users: [] } });
     expect(await slash(r, "discord", { command: "update", userId: "member" })).toEqual([t("update.disabled")]);
     expect(await slash(r, "discord", { command: "doctor", userId: "member" })).toEqual([t("not_authorized")]);
+    expect(await slash(r, "discord", { command: "visibility", userId: "member", options: { mode: "hidden" } })).toEqual([t("not_authorized")]);
     expect(await slash(r, "discord", { command: "dashboard", userId: "member" })).toEqual([t("dashboard.disabled")]);
     expect(await slash(r, "discord", { command: "collab", userId: "member" })).toEqual([t("not_authorized")]);
     expect(r.doctor).not.toHaveBeenCalled();
@@ -331,6 +332,7 @@ describe("/update /doctor /dashboard /collab: the invoking adapter's fleet admin
     const r = await rig({ primary: OPEN });
     expect(await slash(r, "discord", { command: "doctor", userId: "admin" })).toEqual(["doctor-output"]);
     expect((await slash(r, "discord", { command: "dashboard", userId: "admin" }))[0]).not.toBe(t("not_authorized"));
+    expect((await slash(r, "discord", { command: "visibility", userId: "admin" }))[0]).toContain(t("visibility.current", "full"));
     const update = await slash(r, "discord", { command: "update", userId: "admin" });
     expect(update).toEqual([t("update.progress.preparing", 0)]);
     expect(spawned).toHaveLength(1);                         // the stubbed spawn: nothing real ran
