@@ -172,18 +172,31 @@
   .se-grid button { padding: 3px 6px; font-size: 18px; line-height: 1.2; }
   .se-grid button img { width: 22px; height: 22px; object-fit: contain; vertical-align: middle; }
   .se-grid button.off { opacity: .45; }
+  /* #1300: what used to be style attributes. */
+  .ver-badge { font-size: 12px; color: var(--muted); cursor: pointer; padding: 2px 8px; border: 1px solid var(--border); border-radius: 12px; }
+  input.agent-search { width: 220px; margin-right: 8px; }   /* beats input[type=text] by order; the phone rule is !important */
+  .card.spaced { margin-top: 12px; }
+  /* Small helpers for what the script builds (#1300: no style attribute — el() refuses one). Each is !important, as
+     the style attribute it replaces outranked every rule: the look is unchanged wherever a rule like .sub or .help-panel li
+     would otherwise win. */
+  .u-m0 { margin: 0 !important; } .u-mb8 { margin: 0 0 8px !important; } .u-mb6 { margin-bottom: 6px !important; } .u-mb12 { margin-bottom: 12px !important; }
+  .u-ml18 { margin: 0 0 0 18px !important; } .u-mt8 { margin-top: 8px !important; } .u-mt10 { margin-top: 10px !important; } .u-mt28 { margin-top: 28px !important; } .u-my4 { margin: 4px 0 !important; }
+  .u-row { display: flex !important; align-items: center !important; gap: 8px !important; } .u-click { cursor: pointer !important; } .u-noborder { border: none !important; }
+  .u-fs13 { font-size: 13px !important; } .u-good { color: var(--green) !important; } .u-bad { color: var(--red) !important; }
+  .u-link13 { color: var(--accent) !important; font-size: 13px !important; text-decoration: none !important; }
+  .tag.tag-collab { background: #ecfdf5 !important; color: #065f46 !important; }
 </style>
 </head>
 <body>
 <header>
   <h1 data-i18n="title">⚙️ AgEnD Settings</h1>
-  <span id="verBadge" data-i18n-title="whatsNew" title="What's New" style="font-size:12px;color:var(--muted);cursor:pointer;padding:2px 8px;border:1px solid var(--border);border-radius:12px">v…</span>
+  <span id="verBadge" class="ver-badge" data-i18n-title="whatsNew" title="What's New">v…</span>
   <nav data-agend-nav data-current="settings"></nav>
   <div class="grow"></div>
   <button class="help-btn" id="langBtn" data-i18n-title="languageButton" title="Language">🌐</button>
   <button class="help-btn" id="helpBtn" data-i18n-title="helpButton" title="Help">ℹ️</button>
   <button class="sm" id="wizardBtn" data-i18n="wizardButton">🧭 Setup wizard</button>
-  <input type="text" id="agentSearch" data-i18n-ph="searchPh" placeholder="🔍 Search agents, bots, channels…" style="width:220px;margin-right:8px">
+  <input type="text" id="agentSearch" data-i18n-ph="searchPh" placeholder="🔍 Search agents, bots, channels…" class="agent-search">
 </header>
 <div class="help-backdrop" id="helpBackdrop"></div>
 <aside class="help-panel" id="helpPanel">
@@ -221,7 +234,7 @@
     <div class="sec-head"><h2>🔌 Connections &amp; Bots</h2><div class="grow"></div><button class="sm" id="newBotBtn" data-i18n="add">+ Add</button></div>
     <div id="newBot"></div>
     <div class="card" id="bots"></div>
-    <div class="card" id="providerSecrets" style="margin-top:12px"></div>
+    <div class="card spaced" id="providerSecrets"></div>
   </section>
 
   <section>
@@ -252,7 +265,7 @@
   // No token in the URL: signing in with a one-time code set an HttpOnly session cookie,
   // which the browser attaches to these same-origin requests on its own.
   const $ = (id) => document.getElementById(id);
-  const el = (tag, attrs = {}, ...kids) => { const e = document.createElement(tag); for (const k in attrs) { if (k === "class") e.className = attrs[k]; else if (k === "html") e.innerHTML = attrs[k]; else if (k.startsWith("on")) e.addEventListener(k.slice(2), attrs[k]); else e.setAttribute(k, attrs[k]); } for (const c of kids) if (c != null) e.append(c); return e; };
+  const el = (tag, attrs = {}, ...kids) => { const e = document.createElement(tag); for (const k in attrs) { if (k === "class") e.className = attrs[k]; else if (k === "html") e.innerHTML = attrs[k]; else if (k.startsWith("on")) e.addEventListener(k.slice(2), attrs[k]); else if (k === "style") throw new Error("el(): use a class, not a style attribute (#1300)"); else e.setAttribute(k, attrs[k]); } for (const c of kids) if (c != null) e.append(c); return e; };
   // Quotes too, so it is safe inside a quoted attribute as well as in text (#1303 review).
   const esc = (s) => String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
   const BACKENDS = ["claude-code", "kiro-cli", "codex", "opencode", "gemini-cli", "antigravity", "grok"];
@@ -596,7 +609,7 @@
             }, emojiImg(e.image_url, `:${e.name}:`)))));
           }
         };
-        picker.append(el("div", { class: "hint", style: "display:flex;gap:8px;align-items:center" }, t("se_serverEmojis"),
+        picker.append(el("div", { class: "hint u-row" }, t("se_serverEmojis"),
           el("button", { type: "button", class: "sm ghost", onclick: () => load(true) }, "↻")), guildBox);
         load(false);
       }
@@ -1110,7 +1123,7 @@
     item.append(el("div", { class: "item-row" },
       el("span", { class: "dot " + st, title: STATUS_TEXT[st] || st }),
       el("span", { class: "name", title: name }, short),
-      el("span", { class: "sub", style: "margin:0", title: summary.backend }, summary.model),
+      el("span", { class: "sub u-m0", title: summary.backend }, summary.model),
       el("span", { class: "tag" }, `effort: ${summary.effort}`),
       chTag ? el("span", { class: "tag" + (chTag.includes("persona") ? " persona" : chTag.includes("telegram") ? " tg" : "") }, chTag) : null,
       el("span", { class: "spacer" }),
@@ -1270,7 +1283,7 @@
       renderAgents();
     };
     box.append(
-      el("div", { class: "sub", style: "margin:0 0 8px" }, "ID: " + name),
+      el("div", { class: "sub u-mb8" }, "ID: " + name),
       el("div", { class: "grid2" },
         el("div", {}, el("label", {}, t("displayName"), impact("instance.display_name")), displayName.row),
         el("div", {}, el("label", {}, t("description"), impact("instance.description")), fDesc),
@@ -1292,7 +1305,7 @@
         el("div", {}, el("label", {}, t("modelFailover"), impact("instance.model_failover")), failover.row, failoverFeedback)),
         el("label", {}, t("systemPrompt"), impact("instance.systemPrompt")), fSys,
         el("label", {}, t("tags"), impact("instance.tags")), chipList(tags, null, "tag"),
-        el("label", { style: "display:flex;align-items:center;gap:8px;cursor:pointer" }, fGeneral, el("span", {}, t("generalTopicField")), impact("instance.general_topic"))),
+        el("label", { class: "u-row u-click" }, fGeneral, el("span", {}, t("generalTopicField")), impact("instance.general_topic"))),
       drawer(t("statusEmojis"),
         el("label", {}, t("statusEmojisInstance"), impact("instance.status_emojis")), statusEmojis.box),
       el("div", { class: "actions" }, msg),
@@ -1363,13 +1376,13 @@
   function renderNewAgent(open) {
     const host = $("newAgent"); host.innerHTML = "";
     if (!open) return;
-    const box = el("div", { class: "card", style: "margin-bottom:12px" });
+    const box = el("div", { class: "card u-mb12" });
     const fName = el("input", { type: "text", placeholder: "agent name" });
     const fBackend = select(state.fleet.defaults?.backend || "claude-code", BACKENDS);
     const fWd = el("input", { type: "text", placeholder: "~/Projects/… (optional)" });
     const fChan = select("", ["", ...channelIds()]);
     const msg = el("span", { class: "msg" });
-    box.append(el("div", { class: "edit", style: "border:none" },
+    box.append(el("div", { class: "edit u-noborder" },
       el("div", { class: "grid2" }, el("div", {}, el("label", {}, t("nameField")), fName), el("div", {}, el("label", {}, t("backend")), fBackend)),
       el("div", { class: "grid2" }, el("div", {}, el("label", {}, t("workingDir")), fWd), el("div", {}, el("label", {}, t("channelBinding")), fChan)),
       el("div", { class: "actions" }, el("button", { class: "primary sm", onclick: async () => {
@@ -1397,16 +1410,16 @@
       item.append(el("div", { class: "item-row conn-row" },
         el("span", { class: "name" }, type === "telegram" ? "Telegram" : "Discord"),
         el("span", { class: "tag" + (i === 0 ? "" : " persona") + (type === "telegram" ? " tg" : "") }, ch.id || chLabel(i)),
-        el("span", { class: "sub", style: "margin:0" }, ch.bot_token_env || "(no token env)"),
+        el("span", { class: "sub u-m0" }, ch.bot_token_env || "(no token env)"),
         ch.group_id ? el("span", { class: "tag" }, `${type === "telegram" ? "group" : "guild"} ${ch.group_id}`) : null,
         el("span", { class: "tag" }, `${t("accessMode")}: ${ch.access?.mode || "locked"}`),
-        el("span", { class: "sub", style: "margin:0" },
+        el("span", { class: "sub u-m0" },
           (ch.access?.allowed_users || []).length
             ? (ch.access.allowed_users).slice(0, 3).join(", ") + ((ch.access.allowed_users).length > 3 ? ` +${(ch.access.allowed_users).length - 3}` : "")
             : t("noAllowedUsers")),
         el("span", { class: "row-end" },
           el("span", { class: "tag", title: "secret status" }, state.connections.find(c => (c.id || c.type) === (ch.id || ch.type))?.token_present ? "Token configured" : "Token missing"),
-          el("span", { style: `color:${state.fleetUp ? "var(--green)" : "var(--red)"};font-size:13px` }, state.fleetUp ? "Connected" : "Problem"),
+          el("span", { class: `u-fs13 ${state.fleetUp ? "u-good" : "u-bad"}` }, state.fleetUp ? "Connected" : "Problem"),
           el("button", { class: "sm ghost", onclick: () => {
             const form = botEditForm(ch, i);
             openModal({ title: type === "telegram" ? "Telegram" : "Discord", subtitle: ch.id || chLabel(i), body: form.box, impacts: form.impacts, stage: form.stage });
@@ -1722,14 +1735,14 @@
       renderClassic();
     };
     box.append(
-      el("div", { class: "sub", style: "margin:0 0 8px" }, `ID: ${c.instanceName} · ${EXECUTION_TEXT[runtime.execution] || runtime.execution}`),
+      el("div", { class: "sub u-mb8" }, `ID: ${c.instanceName} · ${EXECUTION_TEXT[runtime.execution] || runtime.execution}`),
       el("div", { class: "grid2" },
         el("div", {}, el("label", {}, t("backend"), impact("classic.backend")), fBackend),
         el("div", {}, el("label", {}, t("model"), impact("classic.model")), fModel),
         el("div", {}, el("label", {}, `${t("autoPause")} (${t("minutes")})`, impact("classic.auto_pause_after")), auto.row, autoFeedback),
         el("div", {}, el("label", {}, t("toolProgress"), impact("classic.tool_progress")), toolProgress.row),
         el("div", {}, el("label", {}, t("replyCompletionGuard"), impact("classic.reply_completion_guard")), replyGuard.row, replyHint),
-        el("div", {}, el("label", { style: "display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:28px" }, fCollab, el("span", {}, "Collaboration mode"), impact("classic.collab")))),
+        el("div", {}, el("label", { class: "u-row u-click u-mt28" }, fCollab, el("span", {}, "Collaboration mode"), impact("classic.collab")))),
       drawer(t("advancedSection"),
         el("label", {}, "Context lines", impact("classic.context_lines")), fContext, contextFeedback,
         el("div", { class: "actions" },
@@ -1771,10 +1784,10 @@
       item.append(el("div", { class: "item-row" },
         el("span", { class: "dot " + runtime.execution, title: EXECUTION_TEXT[runtime.execution] || runtime.execution }),
         el("span", { class: "name", title: c.instanceName || "" }, displayName),
-        el("span", { class: "sub", style: "margin:0", title: summary.backend }, summary.model),
+        el("span", { class: "sub u-m0", title: summary.backend }, summary.model),
         el("span", { class: "tag" }, `effort: ${summary.effort}`),
         el("span", { class: "tag" + (adapter !== "discord" ? " persona" : "") }, adapter),
-        c.collab ? el("span", { class: "tag", style: "background:#ecfdf5;color:#065f46" }, "collab") : null,
+        c.collab ? el("span", { class: "tag tag-collab" }, "collab") : null,
         el("span", { class: "spacer" }),
         el("span", { class: "tag", title: STATUS_TEXT[st] || st }, EXECUTION_TEXT[runtime.execution] || runtime.execution),
         el("button", { class: "sm ghost", onclick: () => {
@@ -1802,13 +1815,13 @@
   }
   function renderNewBot(open) {
     const host = $("newBot"); host.innerHTML = ""; if (!open) return;
-    const box = el("div", { class: "card", style: "margin-bottom:12px" });
+    const box = el("div", { class: "card u-mb12" });
     const fType = select("discord", CH_TYPES);
     const fId = el("input", { type: "text", placeholder: "adapter id (e.g. persona1)" });
     const fEnv = el("input", { type: "text", placeholder: "BOT_TOKEN_ENV" });
     const fGroup = el("input", { type: "text", placeholder: "guild / supergroup id" });
     const msg = el("span", { class: "msg" });
-    box.append(el("div", { class: "edit", style: "border:none" },
+    box.append(el("div", { class: "edit u-noborder" },
       el("div", { class: "grid2" }, el("div", {}, el("label", {}, t("type")), fType), el("div", {}, el("label", {}, t("adapterId")), fId)),
       el("div", { class: "grid2" }, el("div", {}, el("label", {}, t("tokenEnv")), fEnv), el("div", {}, el("label", {}, t("groupId")), fGroup)),
       el("div", { class: "hint" }, t("envHint")),
@@ -1964,7 +1977,7 @@
           el("div", { class: "field" }, el("label", {}, t("defaultModel"), impact("defaults.model")), fModel),
           el("div", { class: "field" }, el("label", {}, `${t("autoPause")} (${t("minutes")})`, impact("defaults.auto_pause_after")), fAutoPause, autoFeedback),
           el("div", { class: "field" }, el("label", {}, t("toolProgress"), impact("defaults.tool_progress")), fToolProgress),
-          el("div", { class: "field" }, el("label", { style: "display:flex;align-items:center;gap:8px" }, fReplyGuard, el("span", {}, t("replyCompletionGuard")), impact("defaults.reply_completion_guard")), defaultReplyHint))),
+          el("div", { class: "field" }, el("label", { class: "u-row" }, fReplyGuard, el("span", {}, t("replyCompletionGuard")), impact("defaults.reply_completion_guard")), defaultReplyHint))),
       section("ClassicBot", true,
         el("div", { class: "grid2" },
           el("div", { class: "field" }, el("label", {}, "Classic default backend", impact("classic_defaults.backend")), fClassicBackend),
@@ -1982,7 +1995,7 @@
           el("div", { class: "field" }, el("label", {}, t("agentMode"), impact("defaults.agent_mode")), fAgentMode))),
       section(t("detection"), false,
         el("div", { class: "grid2" },
-          el("div", { class: "field" }, el("label", { style: "display:flex;align-items:center;gap:8px" }, fHangEnabled, el("span", {}, t("hangEnabled")), impact("defaults.hang_detector"))),
+          el("div", { class: "field" }, el("label", { class: "u-row" }, fHangEnabled, el("span", {}, t("hangEnabled")), impact("defaults.hang_detector"))),
           el("div", { class: "field" }, el("label", {}, `${t("hangTimeout")} (${t("minutes")})`, impact("defaults.hang_detector")), fHangTimeout, hangFeedback))),
       section(t("startup"), false,
         el("div", { class: "grid2" },
@@ -2002,15 +2015,15 @@
   // ── What's New ──
   function renderWhatsNew() {
     const host = $("wnBody"); host.innerHTML = "";
-    host.append(el("div", { class: "sub", style: "margin:0 0 8px" }, `${t("currentVersion")}: ${state.version || "?"}`));
-    host.append(el("div", { style: "font-size:13px;margin-bottom:6px" }, t("wnIntro")));
-    const ul = el("ul", { style: "margin:0 0 0 18px" });
-    for (const line of WHATSNEW) ul.append(el("li", { style: "font-size:13px;margin:4px 0" }, line));
+    host.append(el("div", { class: "sub u-mb8" }, `${t("currentVersion")}: ${state.version || "?"}`));
+    host.append(el("div", { class: "u-fs13 u-mb6" }, t("wnIntro")));
+    const ul = el("ul", { class: "u-ml18" });
+    for (const line of WHATSNEW) ul.append(el("li", { class: "u-fs13 u-my4" }, line));
     host.append(ul);
     // Beta builds have no per-tag release page → link to the latest release.
     const v = state.version || "";
     const url = !v || v.includes("-") ? "https://github.com/songsid/AgEnD/releases/latest" : `https://github.com/songsid/AgEnD/releases/tag/v${v}`;
-    host.append(el("div", { style: "margin-top:10px" }, el("a", { href: url, target: "_blank", rel: "noopener", style: "color:var(--accent);font-size:13px;text-decoration:none" }, t("releaseNotes"))));
+    host.append(el("div", { class: "u-mt10" }, el("a", { class: "u-link13", href: url, target: "_blank", rel: "noopener" }, t("releaseNotes"))));
   }
 
   // ── Advanced (YAML/JSON) ──
@@ -2019,7 +2032,7 @@
     const host = $("advBody"); host.innerHTML = "";
     const fmt = state.advFmt; const model = fleetModel();
     const ser = fmt === "yaml" ? toYaml(model) : JSON.stringify(model, null, 2);
-    const msg = el("div", { class: "msg", style: "margin-top:8px" });
+    const msg = el("div", { class: "msg u-mt8" });
     const toolbar = el("div", { class: "toolbar" },
       el("div", { class: "seg" },
         el("button", { class: "sm" + (fmt === "yaml" ? " on" : ""), onclick: () => { state.advFmt = "yaml"; renderAdvanced(); } }, "YAML"),
