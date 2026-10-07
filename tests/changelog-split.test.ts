@@ -133,6 +133,18 @@ describe("changelog-split: a release section → fragment pairs", () => {
     expect(entries(r.read().zh)).toEqual(entries(ZH));
   });
 
+  it("an unindented continuation directly under an entry is part of it (as the assembler reads it); after a blank line it is refused", () => {
+    const en = EN.replace("- **Web chat: tables (#1269).** Tables show.", "- **Web chat: tables (#1269).** Tables show.\nThey scroll sideways on a phone.");
+    const r = repo(en, ZH);
+    expect(r.split("--release", "2.2.0", "--issue", "1262").status).toBe(0);
+    expect(r.read().changes["1269-web-chat-tables.md"]).toBe("---\nsection: Added\n---\n- **Web chat: tables (#1269).** Tables show.\nThey scroll sideways on a phone.\n");
+    expect(r.assemble("--check").status).toBe(0);
+    const stray = repo(EN.replace("- **Web chat: tables (#1269).** Tables show.", "- **Web chat: tables (#1269).** Tables show.\n\nLoose text."), ZH);
+    const res = stray.split("--release", "2.2.0", "--issue", "1262");
+    expect(res.status).toBe(1);
+    expect(res.stderr).toMatch(/not part of an entry/);
+  });
+
   it("two entries with the same issue and slug get distinct names", () => {
     const en = EN.replace("- **Web chat: tables (#1269).** Tables show.", "- **Web chat: tables (#1269).** Tables show.\n- **Web chat: tables (#1269).** More tables.");
     const zh = ZH.replace("- **Web 聊天：表格（#1269）。** 表格。", "- **Web 聊天：表格（#1269）。** 表格。\n- **Web 聊天：表格（#1269）。** 更多。");

@@ -32,8 +32,9 @@ function sectionOf(heading, lang) {
 
 /**
  * Split one release section of one file. Returns { start, end, subsections: Map<section, entry[]> } or throws.
- * An entry is a top-level `- ` line and everything up to the next top-level line (blank lines inside it included
- * when indented text follows them).
+ * An entry is a top-level `- ` line and everything up to the next top-level line: indented lines, blank lines followed
+ * by indented text, and unindented text directly under a non-blank line of it (lazy continuation) — the same entry
+ * changelog-assemble.mjs compares.
  */
 export function readSection(text, release, lang) {
   const lines = text.replace(/\r/g, "").split("\n");
@@ -61,6 +62,8 @@ export function readSection(text, release, lang) {
       if (entry) entry.push(line);
     } else if (/^[ \t]/.test(line) && entry) {
       entry.push(line);
+    } else if (entry && entry[entry.length - 1].trim() !== "" && !line.startsWith("#")) {
+      entry.push(line);                           // Markdown lazy continuation, as changelog-assemble.mjs reads it
     } else {
       throw new Error(`${FILES[lang]}:${i + 1}: a line that is not part of an entry: ${JSON.stringify(line.slice(0, 60))}`);
     }
