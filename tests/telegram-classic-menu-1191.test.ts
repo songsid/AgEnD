@@ -53,7 +53,7 @@ const tg = (over: Partial<ChannelConfig> = {}): ChannelConfig =>
 const FLEET_MENU = [
   ["status", "🔒 "], ["sysinfo", ""], ["dashboard", "🔒 "], ["ctx", ""], ["compact", ""], ["steer", ""], ["btw", ""],
   ["clear", "🔒 "], ["model", "🔒 "], ["effort", "🔒 "], ["pause", "🔒 "], ["wake", "🔒 "], ["restart", "🔒 "],
-  ["collab", ""], ["update", "🔒 "], ["doctor", "🔒 "], ["login", "🔒 "], ["usage", ""], ["tips", ""],
+  ["collab", ""], ["update", "🔒 "], ["doctor", "🔒 "], ["login", "🔒 "], ["usage", ""], ["tips", ""], ["visibility", "🔒 "],
 ];
 const CLASSIC_MENU = [
   ["start", ""], ["stop", "🔒 "], ["compact", "🔒 "], ["steer", ""], ["btw", ""], ["clear", "🔒 "], ["model", "🔒 "],
@@ -94,12 +94,13 @@ describe("the menus come from the command table (#1177)", () => {
     expect(isLockedOnTelegram(at("status"), ["fleet"])).toBe(false);           // passthrough
   });
 
-  it("/compact keeps its argument hint in both menus (#1145) — and nothing else has one", () => {
+  it("/compact keeps its argument hint in both menus (#1145), /visibility has its modes (#1302) — and nothing else has one", () => {
     for (const menu of ["fleet", "classic"] as const) {
       const entries = telegramMenu(menu);
       expect(entries.find(e => e.name === "compact")!.argHint, menu).toBe("slash.compact_arg");
-      expect(entries.filter(e => e.argHint).map(e => e.name), menu).toEqual(["compact"]);
+      expect(entries.filter(e => e.argHint).map(e => e.name), menu).toEqual(menu === "fleet" ? ["compact", "visibility"] : ["compact"]);
     }
+    expect(telegramMenu("fleet").find(e => e.name === "visibility")!.argHint).toBe("slash.visibility_arg");
   });
 
   it("a name the table does not know is an error, not a silent unlocked entry", () => {
