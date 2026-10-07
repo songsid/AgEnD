@@ -4,6 +4,7 @@ import { credentialHomeSpec, resolveCredentialProfile } from "./backend/credenti
 import { STATUS_EMOJI_CONFIG_KEYS, statusEmojiProblem, type StatusEmojiKey } from "./status-emojis.js";
 import { hostnameOf } from "./web-host-guard.js";
 import { isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
+import { CROSS_INSTANCE_VISIBILITY_MODES, isCrossInstanceVisibility } from "./cross-instance-notice.js";
 
 /**
  * Shared config validation for fleet.yaml and classicBot.yaml.
@@ -170,6 +171,9 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     }
     if (value.reply_completion_guard !== undefined && typeof value.reply_completion_guard !== "boolean") {
       err(`${path}.reply_completion_guard`, "must be a boolean");
+    }
+    if (value.cross_instance_visibility !== undefined && !isCrossInstanceVisibility(value.cross_instance_visibility)) {
+      err(`${path}.cross_instance_visibility`, `must be one of: ${CROSS_INSTANCE_VISIBILITY_MODES.join(", ")}`);
     }
 
     // #1296: context rotation was removed. max_age_hours and grace_period_ms

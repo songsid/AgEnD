@@ -38,6 +38,8 @@ export const HOT_INSTANCE_CONFIG_KEYS: ReadonlySet<keyof InstanceConfig> = new S
   "description",
   "tags",
   "log_level",
+  // #1302: the fleet reads it when it posts a notice; the daemon only keeps it current.
+  "cross_instance_visibility",
 ]);
 
 /**
@@ -74,6 +76,7 @@ const INSTANCE_FIELDS = [
   // #1005: the status reactions follow at once, but the instructions' avoid
   // list is built at spawn, so the honest cost is an agent restart.
   "status_emojis",
+  "cross_instance_visibility",
 ] as const;
 
 /** ClassicBot channel fields the settings page renders. */

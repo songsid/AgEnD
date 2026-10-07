@@ -289,6 +289,7 @@ templates:
 | `systemPrompt` | string | — | 額外指令：內嵌字串或 `file:path`，透過下方列出的 backend 原生指令路徑載入。目前相對檔案路徑以 fleet 程序的工作目錄解析；建議用絕對路徑避免載入位置不符 |
 | `workflow` | string \| false | `"builtin"` | 工作流程：`"builtin"`、`"file:path"`、內嵌內容或 `false`。可放在 instance 或 `defaults`，不可放在 fleet.yaml 頂層 |
 | `skipPermissions` | boolean | 未設 `false` 時視為 `true` | 依 backend 使用不同 bypass flag，見[安全邊界](SECURITY.zh-TW.md)。OpenCode：其 `--help` 有列 `--auto` 時以 `--auto` 啟動（明確的 `deny` 規則仍然有效）；舊版沒有啟動開關，prompt 由執行期回答「Allow once」 |
+| `cross_instance_visibility` | `"full"` \| `"summary"` \| `"hidden"` | `"full"` | Agent 之間（跨 instance）的訊息在此 instance 主題中顯示多少，不論它是發送方還是接收方：`full` 完整訊息（與以往相同）、`summary` 一行、`hidden` 不顯示。在 `defaults` 設定整個 fleet（也可用 `/visibility`），在這裡為單一 instance 覆寫；Settings 兩者都有。立即生效，不需重啟。訊息送達與 Mirror Topic 一律不受影響 —— 見 [features](features.zh-TW.md#agent-之間的訊息顯示-bot-to-bot-message-visibility)。 |
 | `lightweight` | boolean | `false` | 跳過 transcript monitor、context guardian 等非必要子系統 |
 | `pre_task_command` | string | — | 每次使用者訊息之前貼入的原始命令 |
 | `startup_timeout_ms` | number | `25000` | CLI 啟動預算（毫秒） |
