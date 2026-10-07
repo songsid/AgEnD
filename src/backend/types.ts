@@ -1,3 +1,4 @@
+import { measureSyncWork } from "../sync-work-attribution.js";
 import { execFileSync } from "node:child_process";
 import { accessSync, constants, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
@@ -767,11 +768,11 @@ function commonBinaryDirs(): string[] {
 
   // Also cover custom npm prefixes such as ~/.npm-global.
   try {
-    const prefix = execFileSync("npm", ["prefix", "-g"], {
+    const prefix = measureSyncWork("backend.npmPrefix", () => execFileSync("npm", ["prefix", "-g"], {
       encoding: "utf-8",
       timeout: 3000,
       stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
+    }).trim());
     if (prefix) dirs.push(join(prefix, "bin"));
   } catch { /* npm may not be in the restricted PATH */ }
 
@@ -779,8 +780,11 @@ function commonBinaryDirs(): string[] {
 }
 
 export function resolveBinary(name: string, fallbackDirs?: readonly string[]): string {
+  return measureSyncWork("backend.resolveBinary", () => resolveBinarySync(name, fallbackDirs));
+}
+function resolveBinarySync(name: string, fallbackDirs?: readonly string[]): string {
   try {
-    const resolved = execFileSync("which", [name], { encoding: "utf-8" }).trim();
+    const resolved = measureSyncWork("backend.which", () => execFileSync("which", [name], { encoding: "utf-8" }).trim());
     if (resolved) return resolved;
   } catch { /* search common absolute locations below */ }
 
