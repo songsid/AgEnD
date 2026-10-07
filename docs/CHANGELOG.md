@@ -119,6 +119,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   is unchanged (the adapter has no `HTTPS_PROXY` handling, before or after). Every acknowledgement now also
   logs its delivery/REST split at debug level, so cold vs reused latency can be compared even under the slow
   threshold.
+- **Logged-out agy and muse are recognised; agy's effort levels match the binary (#1328).** Found by
+  the 2026-10-07 CLI audit (agy 1.3.1, muse 1.4.3):
+  - A logged-out agy is now reported as a sign-in incident. Its screen ("You are currently not signed in. / Select
+    login method:") was never matched; the old wording only appears in agy's log file.
+  - A logged-out muse 1.4.3 ("Log in with browser / Set an API key") no longer passes as ready. Its menu is held,
+    with deliveries blocked, until someone logs in.
+  - agy's effort levels come from its own `--help` (1.3.1 offers xhigh and max), falling back to low/medium/high.
+    Levels are kept across a failed help only for the same agy version, and not past the 24h CLI env cache.
+- **A working agy is seen as working; its trust prompt is answered only on a verified cursor (#1328).** From a
+  signed-in agy 1.3.1:
+  - agy's working row is a braille spinner, a verb and an ellipsis (`⣯  Generating...`), with no timer and no
+    `(esc to cancel)`. AgEnD's pattern never matched it, so a working agy always looked idle. That row now counts as
+    busy, and so does the rolled-up thought agy shows in its place, but only in agy's own spot: at the left edge,
+    right above the input box. A reply that quotes the row leaves a finished turn idle.
+  - The trust prompt ("Do you trust the contents of this project?" / "> Yes, I trust this folder" / "No, exit") gets
+    one Enter, and only while the cursor is on "Yes". With the cursor anywhere else, or the prompt still up after
+    that Enter, it is held, with deliveries blocked, for a human. A copy of the prompt quoted in the conversation is
+    not answered.
 - **A relative `systemPrompt` / `workflow` `file:` path means the instance's working directory (#1314).** It was
   read against the fleet process's current directory: `~/.agend` under the installed service, the shell's directory
   after a manual `agend fleet start`. So one fleet.yaml could load another file, or none, depending on how the fleet
