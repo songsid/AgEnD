@@ -32,6 +32,7 @@ const fail = m => { process.stderr.write(m + "\n"); process.exit(1); };
 const opt = name => { const i = args.indexOf(name); return i < 0 ? undefined : args[i + 1]; };
 if (args[0] === "pr" && args[1] === "view") {
   const pr = st.prs[args[2]]; if (!pr) fail("no such PR");
+  if ((st.viewFails ?? []).includes(Number(args[2])) || (st.viewFailsAfterMerge && st.merged)) fail("HTTP 502");
   out(pr);
 }
 if (args[0] === "pr" && args[1] === "list") {
@@ -41,16 +42,22 @@ if (args[0] === "pr" && args[1] === "list") {
 if (args[0] === "pr" && args[1] === "edit") {
   if ((st.failEdit ?? []).includes(Number(args[2]))) fail("edit refused");
   if (!(st.ignoreEdit ?? []).includes(Number(args[2]))) st.prs[args[2]].baseRefName = opt("--base");
-  save(); process.exit(0);
+  save();
+  // Applied, but the answer was lost.
+  if ((st.editAppliedButFails ?? []).includes(Number(args[2]))) fail("HTTP 502 (after the write)");
+  process.exit(0);
 }
 if (args[0] === "pr" && args[1] === "merge") {
   const pr = st.prs[args[2]];
   if (st.failMerge) fail(st.failMerge);
   if (opt("--match-head-commit") !== pr.headRefOid) fail("Head branch was modified. Review and try the merge again.");
   if (!args.includes("--squash")) fail("not squash");
-  pr.state = "MERGED"; pr.mergeCommit = { oid: "f".repeat(40) }; save(); process.exit(0);
+  pr.state = "MERGED"; pr.mergeCommit = { oid: "f".repeat(40) }; st.merged = true; save();
+  if (st.mergeAppliedButFails) fail("HTTP 502 (after the merge)");
+  process.exit(0);
 }
 if (args[0] === "api" && args[1] === "-X" && args[2] === "DELETE") { process.exit(st.failDelete ? 1 : 0); }
+if (args[0] === "api" && /\/rules\/branches\//.test(args[1])) { if (st.failRules) fail("HTTP 500"); out(st.rules ?? []); }
 if (args[0] === "api") {
   const m = /commits\/([0-9a-f]{40})\/check-runs/.exec(args[1]);
   if (m) { const runs = st.checkRuns[m[1]] ?? []; out({ total_count: st.totalCount ?? runs.length, check_runs: runs }); }
@@ -59,7 +66,15 @@ fail("unexpected gh " + args.join(" "));
 `;
 
 type Pr = { state: string; isDraft: boolean; headRefOid: string; headRefName: string; baseRefName: string; isCrossRepository: boolean; mergeCommit?: { oid: string } };
-type State = { prs: Record<string, Pr>; checkRuns: Record<string, unknown[]>; failMerge?: string; failEdit?: number[]; ignoreEdit?: number[]; totalCount?: number; failDelete?: boolean };
+type State = {
+  prs: Record<string, Pr>; checkRuns: Record<string, unknown[]>; failMerge?: string; failEdit?: number[]; ignoreEdit?: number[]; totalCount?: number;
+  failDelete?: boolean; rules?: unknown[]; failRules?: boolean; viewFails?: number[]; viewFailsAfterMerge?: boolean; merged?: boolean;
+  editAppliedButFails?: number[]; mergeAppliedButFails?: boolean;
+};
+
+// main's gate: every required check, green.
+const REQUIRED = ["build", "scan", "CodeQL", "Analyze (javascript-typescript)", "Analyze (actions)"];
+const green = (ok: (name: string, id?: number) => unknown, from: number) => REQUIRED.map((name, i) => ok(name, from + i));
 
 function world() {
   const dir = mkdtempSync(join(tmpdir(), "agend-gate-"));
@@ -92,20 +107,25 @@ function world() {
   const ok = (name: string, id = 1) => ({ id, name, status: "completed", conclusion: "success" });
   const state: State = {
     prs: { 7: { state: "OPEN", isDraft: false, headRefOid: approved, headRefName: "feature", baseRefName: "main", isCrossRepository: false } },
-    checkRuns: { [approved]: [ok("build", 1), ok("scan", 2), ok("CodeQL", 3)] },
+    checkRuns: { [approved]: green(ok, 1) },
   };
   const saveState = () => writeFileSync(join(bin, "state.json"), JSON.stringify(state));
   const approval = (content: string, overrides: Record<string, unknown> = {}) => JSON.stringify({ items: [{
     message_id: "xmsg-approve-1", source_instance: PRISM, target_instance: "agend-coordinator-kiro", state: "delivered",
     content, content_sha256: createHash("sha256").update(content, "utf8").digest("hex"), ...overrides,
   }] });
-  const approveText = (sha: string, pr = 7) => `APPROVE — PR #${pr} @${sha}（GH exact head、CI 5/5 SUCCESS）。`;
+  const approveText = (sha: string, pr = 7) => `APPROVE — PR #${pr} @${sha}（GH exact head、CI 5/5 SUCCESS）。\nNotes: none.`;
+  // GIT_FAIL_ON: a regex over git's arguments; a matching call fails (a stand-in for a git read failure).
+  writeFileSync(join(bin, "git"), `#!/bin/bash\nif [ -n "\${GIT_FAIL_ON:-}" ] && [[ " $* " =~ $GIT_FAIL_ON ]]; then echo "fatal: injected" >&2; exit 128; fi\nexec ${spawnSync("bash", ["-c", "command -v git"], { encoding: "utf8" }).stdout.trim()} "$@"\n`);
+  chmodSync(join(bin, "git"), 0o755);
+  let extraEnv: Record<string, string> = {};
+  const setEnv = (e: Record<string, string>) => { extraEnv = e; };
   const run = (args: string[], input?: string) => {
     saveState();
     writeFileSync(join(bin, "calls.log"), "");
     const res = spawnSync("bash", [SCRIPT, ...args], {
       cwd: work, input: input ?? approval(approveText(state.prs[7]!.headRefOid)), encoding: "utf8",
-      env: { ...env, PATH: `${bin}:${dirname(process.execPath)}:/usr/bin:/bin` },
+      env: { ...env, ...extraEnv, PATH: `${bin}:${dirname(process.execPath)}:/usr/bin:/bin` },
     });
     const calls = readFileSync(join(bin, "calls.log"), "utf8").split("\n").filter(Boolean);
     Object.assign(state, JSON.parse(readFileSync(join(bin, "state.json"), "utf8")));
@@ -114,7 +134,7 @@ function world() {
     return { status: res.status, line: res.stdout, lines: res.stdout.split("\n").filter(Boolean), stderr: res.stderr, calls };
   };
   const writes = (calls: string[]) => calls.filter(c => /^pr (merge|edit)|^api -X DELETE/.test(c));
-  return { dir, dev, work, sh, commit, publish, approved, state, ok, approval, approveText, run, writes };
+  return { dir, dev, work, sh, commit, publish, approved, state, ok, approval, approveText, run, writes, setEnv };
 }
 
 describe("gate-merge: the happy path and the one-line verdict", () => {
@@ -156,12 +176,17 @@ describe("gate-merge: the approval must be verified", () => {
     ["no delivery with that message_id", w => w.approval(w.approveText(w.approved), { message_id: "xmsg-other" }), /0 deliveries/],
     ["not from the reviewer", w => w.approval(w.approveText(w.approved), { source_instance: "agend-dev-claude-t1" }), /not agend-reviewer/],
     ["content tampered (sha256 mismatch)", w => w.approval(w.approveText(w.approved), { content_sha256: "0".repeat(64) }), /content_sha256/],
-    ["no APPROVE", w => w.approval(`LGTM — PR #7 @${w.approved}`), /does not say APPROVE/],
-    ["REQUEST_CHANGES", w => w.approval(`REQUEST_CHANGES — PR #7 @${w.approved}; APPROVE after the fix`), /REQUEST_CHANGES/],
-    ["another PR (#70)", w => w.approval(w.approveText(w.approved, 70)), /does not name #7/],
-    ["another SHA", w => w.approval(w.approveText("a".repeat(40))), /does not contain/],
-    ["a SHA prefix only", w => w.approval(`APPROVE — PR #7 @${w.approved.slice(0, 12)}`), /does not contain/],
-    ["a longer hex run around the SHA", w => w.approval(`APPROVE — PR #7 @${w.approved}0`), /does not contain/],
+    ["no APPROVE", w => w.approval(`LGTM — PR #7 @${w.approved}`), /no line "APPROVE — PR #<pr> @<sha>"/],
+    ["REQUEST_CHANGES", w => w.approval(`REQUEST_CHANGES — PR #7 @${w.approved}; APPROVE after the fix`), /no line "APPROVE/],
+    ["another PR (#70)", w => w.approval(w.approveText(w.approved, 70)), /are for #70 /],
+    ["another SHA", w => w.approval(w.approveText("a".repeat(40))), /are for #7 @aaaaaaaaaaaa, not #7/],
+    ["a SHA prefix only", w => w.approval(`APPROVE — PR #7 @${w.approved.slice(0, 12)}`), /no line "APPROVE/],
+    ["a longer hex run around the SHA", w => w.approval(`APPROVE — PR #7 @${w.approved}0`), /no line "APPROVE/],
+    // Prism #1334 r1: the approval names another PR; this PR and SHA appear only in a sentence that blocks it.
+    ["another PR's verdict, this PR mentioned as blocked", w => w.approval(`APPROVE — PR #8 @${"b".repeat(40)}\nPR #7 @${w.approved} is BLOCKED: security review pending.`), /are for #8 /],
+    ["the verdict quoted", w => w.approval(`> APPROVE — PR #7 @${w.approved}\nThat was last round; not yet.`), /no line "APPROVE/],
+    ["the verdict negated", w => w.approval(`Not APPROVE — PR #7 @${w.approved}`), /no line "APPROVE/],
+    ["APPROVE and PR on one line, the SHA on the next", w => w.approval(`APPROVE — PR #7\n@${w.approved}`), /no line "APPROVE/],
   ];
   it.each(cases)("%s → BLOCKED, nothing written", (_label, delivery, why) => {
     const w = world();
@@ -171,6 +196,17 @@ describe("gate-merge: the approval must be verified", () => {
     expect(r.line).toMatch(/^BLOCKED approval not verified: /);
     expect(r.line).toMatch(why);
     expect(w.writes(r.calls)).toEqual([]);
+  });
+
+  it.each([
+    ["the usual form", (sha: string) => `APPROVE — PR #7 @${sha}（GH exact head）`],
+    ["no dash, no PR, no @", (sha: string) => `APPROVE #7 ${sha}`],
+    ["a colon", (sha: string) => `APPROVE: PR #7 @${sha} — CI 5/5`],
+    ["one verdict line among several, for several PRs", (sha: string) => `Round 2.\nAPPROVE — PR #1333 @${"c".repeat(40)}\nAPPROVE — PR #7 @${sha}\nThanks.`],
+  ])("an approval verdict: %s → accepted", (_label, text) => {
+    const w = world();
+    const r = w.run(["--dry-run", "7", w.approved, "xmsg-approve-1"], w.approval(text(w.approved)));
+    expect(r.lines, r.stderr).toEqual([`WOULD_MERGE ${w.approved}`]);
   });
 
   it("bad arguments → exit 2 before anything runs", () => {
@@ -205,7 +241,7 @@ describe("gate-merge: the PR state", () => {
 describe("gate-merge: a head that moved after the approval", () => {
   const moved = (w: ReturnType<typeof world>, head: string) => {
     w.state.prs[7]!.headRefOid = head;
-    w.state.checkRuns[head] = [w.ok("build", 11), w.ok("scan", 12)];
+    w.state.checkRuns[head] = green(w.ok, 11);
   };
 
   it("docs/ and changes/ only → carried (tree), merged at the new head", () => {
@@ -218,7 +254,7 @@ describe("gate-merge: a head that moved after the approval", () => {
     expect(w.writes(r.calls)[0]).toBe(`pr merge 7 -R ${REPO} --squash --match-head-commit ${head}`);
   });
 
-  it("a merge-sync of main (main changed src/) → carried (patch-id from the merge-base)", () => {
+  it("a merge-sync of main (main changed src/) → carried (own change from the merge-base)", () => {
     const w = world();
     w.sh(w.dev, "checkout", "-q", "main");
     w.commit("main moves", { "src/b.ts": "b\n", "scripts/x.sh": "s2\n" });
@@ -228,7 +264,7 @@ describe("gate-merge: a head that moved after the approval", () => {
     const head = w.publish(); moved(w, head);
     const r = w.run(["7", w.approved, "xmsg-approve-1"], w.approval(w.approveText(w.approved)));
     expect(r.status, r.line + r.stderr).toBe(0);
-    expect(r.stderr).toContain("patch-id-identical");
+    expect(r.stderr).toContain("own-change-identical");
   });
 
   it.each([
@@ -257,6 +293,58 @@ describe("gate-merge: a head that moved after the approval", () => {
     w.publish(); moved(w, head);
     const r = w.run(["7", w.approved, "xmsg-approve-1"], w.approval(w.approveText(w.approved)));
     expect(r.lines).toEqual(["NEEDS_REVIEW tests/a.test.ts"]);
+  });
+
+  // Prism #1334 r1: git patch-id ignores whitespace, so these would have been carried.
+  it.each([
+    ["a space inside a string", { "src/a.ts": "a2 \n" }, "src/a.ts"],
+    ["indentation (Python, YAML)", { "scripts/x.sh": " s1\n" }, "scripts/x.sh"],
+    ["a regex's whitespace", { "tests/a.test.ts": "t2\t\n" }, "tests/a.test.ts"],
+  ])("a whitespace-only change that means something — %s → NEEDS_REVIEW", (_label, files, path) => {
+    const w = world();
+    const head = w.commit("after approval", files);
+    w.publish(); moved(w, head);
+    const r = w.run(["7", w.approved, "xmsg-approve-1"], w.approval(w.approveText(w.approved)));
+    expect(r.status).toBe(3);
+    expect(r.lines).toEqual([`NEEDS_REVIEW ${path}`]);
+  });
+
+  it("a merge-sync that shifts the PR's hunk (main added lines above it in the same file) → still carried", () => {
+    const w = world();
+    const long = (top: string, mid: string) => `${top}${Array.from({ length: 20 }, (_, i) => (i === 10 ? mid : `line ${i}`)).join("\n")}\n`;
+    // Re-approve on a base that has the long file, so the PR's own change is one hunk in the middle of it.
+    w.sh(w.dev, "checkout", "-q", "main");
+    w.commit("long file", { "src/long.ts": long("", "line 10") });
+    w.sh(w.dev, "push", "-q", "origin", "main");
+    w.sh(w.dev, "checkout", "-q", "feature");
+    w.sh(w.dev, "merge", "-q", "--no-edit", "main");
+    const approved = w.commit("change the middle", { "src/long.ts": long("", "line 10 changed") });
+    w.publish(); moved(w, approved);
+    w.sh(w.dev, "checkout", "-q", "main");
+    w.commit("main adds lines at the top", { "src/long.ts": long("// header\n// more\n", "line 10") });
+    w.sh(w.dev, "push", "-q", "origin", "main");
+    w.sh(w.dev, "checkout", "-q", "feature");
+    w.sh(w.dev, "merge", "-q", "--no-edit", "main");
+    const head = w.publish(); moved(w, head);
+    const r = w.run(["7", approved, "xmsg-approve-1"], w.approval(w.approveText(approved)));
+    expect(r.status, r.line + r.stderr).toBe(0);
+    expect(r.stderr).toContain("own-change-identical");
+  });
+
+  it.each([
+    ["the fingerprint diff", " diff --binary ", /git failed fingerprinting/],
+    ["the tree comparison", " diff --quiet ", /git diff of the approved and current heads failed/],
+    ["the ancestry check", " merge-base --is-ancestor ", /git merge-base --is-ancestor failed/],
+  ])("git failing in %s → BLOCKED, never carried or merged", (_label, failOn, why) => {
+    const w = world();
+    const head = w.commit("after approval", { "src/a.ts": "a3\n" });
+    w.publish(); moved(w, head);
+    w.setEnv({ GIT_FAIL_ON: failOn });
+    const r = w.run(["7", w.approved, "xmsg-approve-1"], w.approval(w.approveText(w.approved)));
+    expect(r.status).toBe(1);
+    expect(r.lines).toHaveLength(1);
+    expect(r.lines[0]).toMatch(why);
+    expect(w.writes(r.calls)).toEqual([]);
   });
 
   it("a rewritten history (the approved SHA is not an ancestor) → NEEDS_REVIEW", () => {
@@ -293,28 +381,49 @@ describe("gate-merge: merge-synced and green", () => {
     ["a failed run", (w: ReturnType<typeof world>) => [w.ok("build", 1), { id: 2, name: "scan", status: "completed", conclusion: "failure" }], /scan=failure/],
     ["a run still going", (w: ReturnType<typeof world>) => [w.ok("build", 1), { id: 2, name: "scan", status: "in_progress", conclusion: null }], /scan=in_progress/],
     ["skipped is not success", (w: ReturnType<typeof world>) => [{ id: 2, name: "build", status: "completed", conclusion: "skipped" }], /build=skipped/],
-    ["no runs at all", () => [], /no check-runs/],
+    ["no runs at all", () => [], /build=missing/],
+    // Prism #1334 r1: only some jobs registered so far — the rest of main's gate has not run.
+    ["only scan registered, green", (w: ReturnType<typeof world>) => [w.ok("scan", 2)], /build=missing,CodeQL=missing,Analyze \(javascript-typescript\)=missing,Analyze \(actions\)=missing/],
+    ["everything but build", (w: ReturnType<typeof world>) => green(w.ok, 1).filter((r: any) => r.name !== "build"), /^BLOCKED CI on \S+: build=missing$/],
     ["an older green run, the latest red", (w: ReturnType<typeof world>) => [w.ok("build", 1), { id: 9, name: "build", status: "completed", conclusion: "failure" }], /build=failure/],
   ])("%s → BLOCKED", (_label, runs, why) => {
     const w = world();
     w.state.checkRuns[w.approved] = runs(w);
     const r = w.run(["7", w.approved, "xmsg-approve-1"]);
     expect(r.status).toBe(1);
-    expect(r.line).toMatch(/^BLOCKED CI on /);
-    expect(r.line).toMatch(why);
+    expect(r.lines).toHaveLength(1);
+    expect(r.lines[0]).toMatch(/^BLOCKED CI on /);
+    expect(r.lines[0]).toMatch(why);
     expect(w.writes(r.calls)).toEqual([]);
+  });
+
+  it("a check a ruleset of the base requires must have run too", () => {
+    const w = world();
+    w.state.rules = [{ type: "required_status_checks", parameters: { required_status_checks: [{ context: "e2e" }] } }];
+    expect(w.run(["7", w.approved, "xmsg-approve-1"]).line).toMatch(/^BLOCKED CI on \S+: e2e=missing/);
+    w.state.checkRuns[w.approved]!.push(w.ok("e2e", 50));
+    expect(w.run(["--dry-run", "7", w.approved, "xmsg-approve-1"]).lines).toEqual([`WOULD_MERGE ${w.approved}`]);
+  });
+
+  it("GATE_REQUIRED_CHECKS replaces the default list; unreadable rules → BLOCKED", () => {
+    const w = world();
+    w.state.checkRuns[w.approved] = [w.ok("unit", 1)];
+    w.setEnv({ GATE_REQUIRED_CHECKS: "unit" });
+    expect(w.run(["--dry-run", "7", w.approved, "xmsg-approve-1"]).lines).toEqual([`WOULD_MERGE ${w.approved}`]);
+    w.state.failRules = true;
+    expect(w.run(["--dry-run", "7", w.approved, "xmsg-approve-1"]).line).toMatch(/^BLOCKED the rules of main are unreadable/);
   });
 
   it("a re-run: the older run failed, the latest passed → merged", () => {
     const w = world();
-    w.state.checkRuns[w.approved] = [{ id: 1, name: "build", status: "completed", conclusion: "failure" }, w.ok("build", 5)];
+    w.state.checkRuns[w.approved] = [{ id: 0, name: "build", status: "completed", conclusion: "failure" }, ...green(w.ok, 5)];
     expect(w.run(["7", w.approved, "xmsg-approve-1"]).status).toBe(0);
   });
 
   it("more runs than one page holds → BLOCKED (a partial list never passes)", () => {
     const w = world();
     w.state.totalCount = 101;
-    expect(w.run(["7", w.approved, "xmsg-approve-1"]).line).toMatch(/^BLOCKED CI on .*101 check-runs, read 3/);
+    expect(w.run(["7", w.approved, "xmsg-approve-1"]).line).toMatch(/^BLOCKED CI on .*101 check-runs, read 5/);
   });
 });
 
@@ -368,6 +477,57 @@ describe("gate-merge: stacked PRs (never delete a branch another PR is based on)
       `pr merge 7 -R ${REPO} --squash --match-head-commit ${w.approved}`,
       `pr edit 8 -R ${REPO} --base feature`,
     ]);
+  });
+
+  // Prism #1334 r1: a write that happened but whose answer was lost is read back, not taken at gh's word.
+  it("a retarget that applied but reported failure counts as done; a later genuine failure puts it back too", () => {
+    const w = stacked();
+    w.state.prs[9] = { ...w.state.prs[8]!, headRefName: "feature-3" };
+    w.state.editAppliedButFails = [8];
+    w.state.failEdit = [9];
+    const r = w.run(["7", w.approved, "xmsg-approve-1"]);
+    expect(r.status).toBe(1);
+    expect(r.lines[0]).toMatch(/^BLOCKED could not retarget #9/);
+    expect(w.state.prs[8]!.baseRefName).toBe("feature");                  // put back, though gh said its retarget failed
+    expect(r.calls.some(c => c.startsWith("pr merge"))).toBe(false);
+  });
+
+  it("a retarget that applied but reported failure, then the merge → MERGED, the dependent on main", () => {
+    const w = stacked();
+    w.state.editAppliedButFails = [8];
+    const r = w.run(["7", w.approved, "xmsg-approve-1"]);
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stderr).toContain("#8: gh reported a failure, but its base is now main");
+    expect(w.state.prs[8]!.baseRefName).toBe("main");
+  });
+
+  it("a retarget that failed and whose base is unreadable → BLOCKED uncertain, nothing reverted", () => {
+    const w = stacked();
+    w.state.prs[9] = { ...w.state.prs[8]!, headRefName: "feature-3" };
+    w.state.failEdit = [9]; w.state.viewFails = [9];
+    const r = w.run(["7", w.approved, "xmsg-approve-1"]);
+    expect(r.lines[0]).toMatch(/^BLOCKED uncertain: retargeting #9 failed and its base is unreadable; nothing reverted \(done: 8\)/);
+    expect(w.writes(r.calls)).toEqual([`pr edit 8 -R ${REPO} --base main`, `pr edit 9 -R ${REPO} --base main`]);
+  });
+
+  it("a merge that happened but reported failure → MERGED, no rollback", () => {
+    const w = stacked();
+    w.state.mergeAppliedButFails = true;
+    const r = w.run(["7", w.approved, "xmsg-approve-1"]);
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.lines).toEqual([`MERGED ${"f".repeat(40)}`]);
+    expect(r.stderr).toContain("gh pr merge reported a failure, but #7 is MERGED");
+    expect(w.state.prs[8]!.baseRefName).toBe("main");
+    expect(r.calls.filter(c => c === `pr edit 8 -R ${REPO} --base feature`)).toEqual([]);
+  });
+
+  it("a merge whose outcome cannot be read back → BLOCKED uncertain, the retarget is not reverted", () => {
+    const w = stacked();
+    w.state.mergeAppliedButFails = true; w.state.viewFailsAfterMerge = true;
+    const r = w.run(["7", w.approved, "xmsg-approve-1"]);
+    expect(r.status).toBe(1);
+    expect(r.lines[0]).toMatch(/^BLOCKED uncertain: gh pr merge failed and #7 is unreadable; nothing reverted \(retargeted: 8\)/);
+    expect(w.writes(r.calls)).toEqual([`pr edit 8 -R ${REPO} --base main`, `pr merge 7 -R ${REPO} --squash --match-head-commit ${w.approved}`]);
   });
 
   it("a PR from a fork: same-named branches here are not its dependents, and nothing is deleted", () => {
