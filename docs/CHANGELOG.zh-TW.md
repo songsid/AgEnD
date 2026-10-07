@@ -44,6 +44,7 @@
 
 ### 修正 (Fixed)
 - **修正安全、權限與存取文件（#1275）。** 移除不存在的 IPC 共享金鑰握手與 Bash 拒絕名單，說明預設權限 bypass、持久化 access 優先序、分平台的指令管理員要求，以及 dashboard／公開 View／Host／agent token 的實際邊界。純文件，沒有修改執行行為。
+- **Telegram 的投遞狀態不再覆蓋 agent 主動加的反應（#959）。** 系統會記錄 bot 唯一反應欄位的擁有者，並讓狀態與 agent 反應共用每則訊息的佇列。無法確認擁有者時（包括 adapter 被重建、或 API 回應不明），晚到的狀態就跳過；agent 選了跟舊狀態一樣的 emoji 也會保留。General fallback 投遞亦保留原始 chat/thread 資料，Discord topic 路由不變。
 - **修正 `checkout_repo` 與 `get_usage` 工具描述（#1296）。** `checkout_repo` 的描述說「唯讀 worktree」及「接受 instance 名稱或絕對路徑」；實際上 handler（`daemon.ts`）拒絕非路徑的 source，且建立的是 detached HEAD worktree，並非強制唯讀掛載。`get_usage` 的描述只列了 Claude/Codex/Grok/Kiro，漏掉了 Muse 與 Antigravity。兩者已更正。讀取工具描述來決定用法的 agent 會看到錯誤資訊。
 - **設定了 `context_guardian.max_age_hours` 或 `grace_period_ms` 時，現在會發出警告（#1296）。** 上下文自動輪換已移除；這兩個欄位保留在 schema 中以維持相容性，但沒有任何效果。設定其中一個現在會觸發驗證警告：「無效果；上下文輪換已移除」。
 - **AgEnD 開始監看時剛好寫到一半的工具步驟不再遺失（#1250）。** #1221 讓 AgEnD 只讀到 CLI transcript 的最後一個完整行，但開始讀的位置仍然直接用檔案當下的大小。如果那一刻 CLI 正寫到一半（第一次接上、instance 重啟、投遞的 checkpoint），那筆記錄剩下的部分會被當成無法解析而跳過，它的工具進度也就不會出現。現在 Claude、Codex、Kiro 的這些起始位置都改為最後一個完整行。

@@ -6155,10 +6155,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const inboundAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter!;
 
         // React immediately — before any other API calls — through the status
-        // path, so a later delivery status replaces (not stacks onto) this
-        // acknowledgement.
+        // path, which tracks Telegram slot ownership and Discord status adds.
         if (msg.chatId && msg.messageId) {
-          this.reactMessageStatus(generalInstance, msg.chatId, msg.messageId, "received", msg.threadId || undefined);
+          this.reactMessageStatus(generalInstance, msg.chatId, msg.messageId, "received", msg.threadId || undefined, msg.timestamp.getTime());
         }
 
         this.warnIfRateLimited(generalInstance, msg);
@@ -6175,7 +6174,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
               user: msg.username,
               user_id: msg.userId,
               ts: msg.timestamp.toISOString(),
-              thread_id: "",
+              thread_id: msg.threadId ?? "",
               // Fleet instances have an authoritative adapter binding. Multiple
               // bots in one guild can observe the same inbound message, so the
               // adapter whose event wins dedup is not necessarily the bot that
@@ -6252,10 +6251,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const inboundAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter!;
 
     // React immediately — before any other Discord API calls — through the
-    // status path, so a later delivery status replaces (not stacks onto) this
-    // acknowledgement. Same bound-adapter routing as the status path itself.
+    // status path, which tracks Telegram slot ownership and Discord status adds.
+    // Same bound-adapter routing as the status path itself.
     if (msg.chatId && msg.messageId) {
-      this.reactMessageStatus(instanceName, msg.chatId, msg.messageId, "received", msg.threadId || undefined);
+      this.reactMessageStatus(instanceName, msg.chatId, msg.messageId, "received", msg.threadId || undefined, msg.timestamp.getTime());
     }
 
     // These may hit Discord API (topic icon, archive) — do after react
@@ -8425,6 +8424,29 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return reactionForm(resolved.platform, resolved.received);
   }
 
+  private reactClassicReceived(instanceName: string, adapter: ChannelAdapter, msg: InboundMessage): Promise<void> {
+    const emoji = this.receivedReactionFor(instanceName, adapter, msg.adapterId);
+    // Classic's system receipt is status-owned too. An ordinary react call
+    // would label it as an agent/other reaction and suppress later statuses.
+    if (adapter instanceof TelegramAdapter) {
+      return adapter.reactDeliveryStatus(msg.chatId, msg.messageId, emoji, msg.timestamp.getTime()).then(() => {});
+    }
+    return adapter.react(msg.threadId ?? msg.chatId, msg.messageId, emoji);
+  }
+
+  private reactClassicForwardedAttachment(
+    instanceName: string, adapter: ChannelAdapter, msg: InboundMessage, kind: string,
+  ): Promise<void> {
+    const emoji = this.savedAttachmentReactionFor(instanceName, adapter, msg.adapterId, kind);
+    // A forwarded attachment's saved stamp is ours, so later delivery statuses
+    // may replace it. The receipt queued first establishes ownership; this
+    // stamp cannot bootstrap an unknown slot or replace an agent's reaction.
+    if (adapter instanceof TelegramAdapter) {
+      return adapter.reactDeliveryStatus(msg.chatId, msg.messageId, emoji).then(() => {});
+    }
+    return adapter.react(msg.threadId ?? msg.chatId, msg.messageId, emoji);
+  }
+
   /**
    * The stamp for an inbound photo / file a classic bot saved (#1080): the
    * instance's `status_emojis.photo|attachment`, then its connection's, then
@@ -8439,7 +8461,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   reactMessageStatus(
-    instanceName: string, chatId: string, messageId: string, status: DeliveryStatus, threadId?: string,
+    instanceName: string, chatId: string, messageId: string, status: DeliveryStatus, threadId?: string, receivedAt?: number,
   ): void {
     // React via the adapter BOUND to this instance — NOT the first discord world.
     // Otherwise, in a same-channel/same-guild multi-bot setup, the inbound 👀
@@ -8459,7 +8481,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const adapterId = typeof (adapter as { id?: unknown }).id === "string"
       ? (adapter as unknown as { id: string }).id : "?";
     const key = `${adapterId}:${chatId}:${threadId ?? ""}:${messageId}`;
-    this.queueDeliveryStatusReaction(adapter, key, chatId, messageId, statusEmoji, threadId, status);
+    this.queueDeliveryStatusReaction(adapter, key, chatId, messageId, statusEmoji, threadId, status, status === "received" ? receivedAt : undefined);
   }
 
   /**
@@ -8474,10 +8496,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private queueDeliveryStatusReaction(
     adapter: ChannelAdapter, key: string, chatId: string, messageId: string, emoji: string | null, threadId?: string,
-    status?: DeliveryStatus,
+    status?: DeliveryStatus, receivedAt?: number,
   ): void {
     const prev = this.deliveryStatusChains.get(key) ?? Promise.resolve();
-    const run = prev.then(() => this.applyDeliveryStatusReaction(adapter, key, chatId, messageId, emoji, threadId, status));
+    const run = prev.then(() => this.applyDeliveryStatusReaction(adapter, key, chatId, messageId, emoji, threadId, status, receivedAt));
     this.deliveryStatusChains.set(key, run);
     void run.then(
       () => { if (this.deliveryStatusChains.get(key) === run) this.deliveryStatusChains.delete(key); },
@@ -8487,12 +8509,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private async applyDeliveryStatusReaction(
     adapter: ChannelAdapter, key: string,
-    chatId: string, messageId: string, emoji: string | null, threadId?: string, status?: DeliveryStatus,
+    chatId: string, messageId: string, emoji: string | null, threadId?: string, status?: DeliveryStatus, receivedAt?: number,
   ): Promise<void> {
     try {
       const target = adapter instanceof TelegramAdapter ? chatId : (threadId ?? chatId);
       const last = this.lastStatusEmoji.get(key);
       const prev = last?.emoji;
+      if (adapter instanceof TelegramAdapter) {
+        // The adapter owns the one-reaction slot and serializes this check
+        // with agent react calls. The fleet's last emoji is not ownership.
+        if (await adapter.reactDeliveryStatus(chatId, messageId, emoji, receivedAt)) {
+          if (emoji == null) this.lastStatusEmoji.delete(key);
+          else this.lastStatusEmoji.set(key, { emoji, status });
+        }
+        return;
+      }
       if (emoji == null) {
         if (prev && adapter.unreact) {
           await adapter.unreact(target, messageId, prev, threadId);
@@ -8500,9 +8531,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         }
         return;
       }
-      // A Telegram status may map multiple lifecycle states to the same
-      // reaction. Avoid resending it: an agent may have replaced the one
-      // reaction slot with its own 👍 between delivered and confirmed.
+      // Discord adds reactions rather than replacing a single slot.
       if (prev === emoji) return;
       // Thread-aware adapters (Discord) react where the thread is; Telegram
       // addresses the supergroup chat and ignores the thread part.
@@ -11905,7 +11934,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       const classicAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter;
       const collabReactChatId = msg.threadId ?? msg.chatId;
       if (classicAdapter && collabReactChatId && msg.messageId) {
-        classicAdapter.react(collabReactChatId, msg.messageId, this.receivedReactionFor(instanceName, classicAdapter, msg.adapterId))
+        this.reactClassicReceived(instanceName, classicAdapter, msg)
           .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
       }
 
@@ -11915,8 +11944,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
       // Attachments already saved at the top of the collab block.
       if (saved && classicAdapter && collabReactChatId && msg.messageId) {
-        const emoji = this.savedAttachmentReactionFor(instanceName, classicAdapter, msg.adapterId, saved.kind);
-        classicAdapter.react(collabReactChatId, msg.messageId, emoji)
+        this.reactClassicForwardedAttachment(instanceName, classicAdapter, msg, saved.kind)
           .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
       }
       // Strip saved attachment to avoid double download
@@ -12006,12 +12034,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     }
 
     if (msg.chatId && msg.messageId) {
-      const reactChatId = msg.threadId ?? msg.chatId;
-      classicMsgAdapter.react(reactChatId, msg.messageId, this.receivedReactionFor(instanceName, classicMsgAdapter, msg.adapterId))
+      this.reactClassicReceived(instanceName, classicMsgAdapter, msg)
         .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
       if (saved) {
-        const savedEmoji = this.savedAttachmentReactionFor(instanceName, classicMsgAdapter, msg.adapterId, saved.kind);
-        classicMsgAdapter.react(reactChatId, msg.messageId, savedEmoji)
+        this.reactClassicForwardedAttachment(instanceName, classicMsgAdapter, msg, saved.kind)
           .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
       }
     }
