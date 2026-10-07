@@ -156,6 +156,8 @@ export interface CliEnv {
    * the quick-pick tier stays short.
    */
   apiModels?: ModelOption[];
+  /** Effort levels the CLI's own `--help` lists (antigravity, #1328), in AgEnD's canonical order. */
+  effortLevels?: string[];
   /** Epoch ms the probe ran (drives the cache TTL). */
   probedAt: number;
 }
@@ -719,7 +721,7 @@ export interface CliBackend {
    * (best-effort) auth/current model. Result is cached to disk so `/model` and
    * status views read it without re-running the CLI. Must never throw.
    */
-  probeCLIEnv?(config: CliBackendConfig): Promise<{ version?: string; authenticated?: boolean; currentModel?: string; models: ModelOption[] }>;
+  probeCLIEnv?(config: CliBackendConfig): Promise<{ version?: string; authenticated?: boolean; currentModel?: string; models: ModelOption[]; effortLevels?: string[] }>;
 
   /**
    * Ask the CLI to refresh its OWN model catalog before the next probe reads it.

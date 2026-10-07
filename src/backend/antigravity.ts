@@ -1,4 +1,4 @@
-import { EFFORT_CAPABILITIES } from "./effort-metadata.js";
+import { CANONICAL_EFFORT, EFFORT_CAPABILITIES, agyEffortLevels } from "./effort-metadata.js";
 import { dirname, join } from "node:path";
 import { ensureInstanceDir } from "../private-dir.js";
 import { homedir } from "node:os";
@@ -31,6 +31,45 @@ import { getAgendHome } from "../paths.js";
 import { PIE_CLASS } from "../tui-glyphs.js";
 
 /** Parse `agy models`, which may emit TSV slug/display pairs or legacy single-column names. */
+/**
+ * agy's logged-out startup screen, as the CLI paints it (captured offline from 1.0.10 and 1.3.1):
+ *
+ *   Welcome to the Antigravity CLI. You are currently not signed in.
+ *   Select login method:
+ *   > 1. Google OAuth
+ *     2. Use a Google Cloud project
+ *   ↑/↓ Navigate · enter Select            (1.0.10: [Use arrow keys to navigate, Enter to select])
+ *
+ * Bottom-anchored: the not-signed-in line, then the title, then only numbered option rows and at most one key-hint
+ * row. A transcript that quotes the screen has the prompt below it, so it never matches. ("not logged into
+ * Antigravity", the old pattern, is only ever written to agy's log file, never to the pane.)
+ */
+export function agyLoginScreenActive(pane: string): boolean {
+  const rows = pane.replace(/\r/g, "").split("\n").map(row => row.replace(/\s+$/, "")).filter(row => row.trim() !== "");
+  let title = -1;
+  for (let i = rows.length - 1; i >= 0; i--) if (/^[ \t]*Select login method:$/.test(rows[i]!)) { title = i; break; }
+  if (title < 1 || !/You are currently not signed in\.?$/.test(rows[title - 1]!)) return false;
+  const below = rows.slice(title + 1);
+  let options = 0;
+  while (options < below.length && /^[ \t]*(?:[>❯›][ \t]*)?\d\.[ \t]+\S/.test(below[options]!)) options++;
+  const rest = below.slice(options);
+  return options >= 2 && (rest.length === 0 || (rest.length === 1 && /navigate/i.test(rest[0]!) && /select/i.test(rest[0]!)));
+}
+
+/**
+ * The levels on the `--effort` row of `agy --help`, in AgEnD's canonical order, or null when the row or its
+ * `(a|b|…)` list is absent. 1.3.1: "--effort   Reasoning effort for the current CLI session (low|medium|high|xhigh|max)";
+ * 1.0.10 has no --effort at all. Unknown names are dropped.
+ */
+export function parseAgyEffortLevels(help: string): string[] | null {
+  const row = help.split("\n").find(line => /^\s*--effort\b/.test(line));
+  const list = row ? /\(([A-Za-z]+(?:\|[A-Za-z]+)+)\)/.exec(row) : null;
+  if (!list) return null;
+  const offered = new Set(list[1].toLowerCase().split("|"));
+  const levels = CANONICAL_EFFORT.filter(level => offered.has(level));
+  return levels.length > 0 ? levels : null;
+}
+
 export function parseAntigravityModelsOutput(output: string): import("./types.js").ModelOption[] {
   const models: import("./types.js").ModelOption[] = [];
   const seen = new Set<string>();
@@ -341,11 +380,11 @@ node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{t
   // Escape also stops streams and can't exit the app, so it's the safer cancel.
   getCancelKey(): string { return "Escape"; }
 
-  // `agy --help`: "--effort  Reasoning effort for the current CLI session
-  // (low|medium|high)" — three levels only, so xhigh/max clamp to high, which
-  // the caller reports rather than swallowing.
+  // The levels come from the binary's own `--help` ("--effort … (low|medium|high|xhigh|max)" in 1.3.1), read by the
+  // CLI env probe (probeCLIEnv, in its bounded worker) and cached with the rest of the CLI env; until a probe has run,
+  // or when the help lists none, low|medium|high, so xhigh/max then clamp to high, which the caller reports.
   getEffortStrategy(): "runtime" | "restart" | "unsupported" { return EFFORT_CAPABILITIES["antigravity"].strategy; }
-  getEffortLevels(): string[] { return [...EFFORT_CAPABILITIES["antigravity"].levels]; }
+  getEffortLevels(): string[] { return agyEffortLevels(); }
 
   // agy's model switch is an interactive TUI change → restart to apply reliably.
   getModelSwitchStrategy(): "runtime" | "restart" { return "restart"; }
@@ -378,7 +417,14 @@ node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{t
       // Settings picker use the TSV slug. Keep an already-slug value unchanged.
       currentModel = models.find(model => model.label === currentModel)?.id ?? currentModel;
     }
-    return { version: probeCliVersion(this.binaryPath), models, currentModel };
+    // The effort levels this binary takes, from its own --help (#1328). Runs here, in the probe worker, never on a
+    // tool path; a failed or list-less help leaves them out and readers keep the previous value or the fallback.
+    let effortLevels: string[] | undefined;
+    try {
+      const help = execFileSync(this.binaryPath, ["--help"], { encoding: "utf-8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] });
+      effortLevels = parseAgyEffortLevels(help) ?? undefined;
+    } catch { /* no help → previous value or the fallback */ }
+    return { version: probeCliVersion(this.binaryPath), models, currentModel, ...(effortLevels ? { effortLevels } : {}) };
   }
 
   getErrorPatterns(): ErrorPattern[] {
@@ -411,7 +457,9 @@ node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{t
 
   getStartupDialogs(): StartupDialog[] {
     return [
-      { pattern: /Do you trust.*folder|Yes, I trust/i, keys: ["Enter"], description: "Trust folder prompt" },
+      // The title is "Do you trust the contents of this project?" and the option "Yes, I trust this folder" (both in
+      // the agy 1.0.10 and 1.3.1 binaries; "…folder" was never the title). Either one identifies the prompt.
+      { pattern: /Do you trust the contents of this project|Do you trust.*folder|Yes, I trust/i, keys: ["Enter"], description: "Trust folder prompt" },
     ];
   }
 

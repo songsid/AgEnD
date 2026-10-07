@@ -12431,6 +12431,11 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       const previous = this.readCliEnv(backend);
       if (previous?.apiModels?.length) env.apiModels = previous.apiModels;
     }
+    // Same for effort levels read from --help (#1328): a failed help keeps the levels already known.
+    if (!env.effortLevels?.length) {
+      const previous = this.readCliEnv(backend);
+      if (previous?.effortLevels?.length) env.effortLevels = previous.effortLevels;
+    }
     const path = this.cliEnvPath(backend);
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, JSON.stringify(env, null, 2));
