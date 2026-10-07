@@ -99,6 +99,27 @@ skipped when unset). `ci.yml`, `gitleaks.yml` and `deploy-website.yml` post
 only failures; `publish.yml` posts every outcome. The notification never
 changes the run's result.
 
+### Cut the CHANGELOG section before tagging
+
+Entries collect under `## [Unreleased]` in both
+[`CHANGELOG.md`](CHANGELOG.md) and [`CHANGELOG.zh-TW.md`](CHANGELOG.zh-TW.md).
+A stable release moves them into its own section in the same PR that prepares
+the tag, so the tagged commit already carries its notes:
+
+1. Add `## [X.Y.Z] - YYYY-MM-DD` under `## [Unreleased]` in both files, dated
+   the day the tag is pushed (`git log -1 --format=%cs vX.Y.Z` afterwards).
+2. Move every entry whose change is in the release into it, Upgrade Notes
+   included. When in doubt, an entry belongs to the first tag whose history
+   contains the commit that added it:
+   `git merge-base --is-ancestor <sha> vX.Y.Z`.
+3. Order its subsections `### Upgrade Notes`, `### Added`, `### Changed`,
+   `### Fixed`, `### Security`, leaving out empty ones. The zh-TW file uses the
+   same subsections (`升級注意事項 (Upgrade Notes)` and so on) and the same entries.
+4. Leave only unreleased work under `## [Unreleased]`.
+
+Betas and alphas do not get their own section; their entries stay under
+`[Unreleased]` until the stable release that ships them.
+
 ### Publishing
 
 A release is a pushed tag. `publish.yml`:
