@@ -540,10 +540,11 @@ describe("FleetManager.emitSseEvent", () => {
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 
-  it("the three places the fleet pushes chat text no longer cut it at 2000 characters", () => {
+  it("the places the fleet pushes chat text no longer cut it at 2000 characters", () => {
     const src = readFileSync(join(process.cwd(), "src", "fleet-manager.ts"), "utf8");
     expect(src).not.toMatch(/\.slice\(0, 2000\)/);
-    expect(src.match(/slice\(0, WEB_CHAT_TEXT_MAX\)/g)).toHaveLength(3);
+    // Inbound General, inbound instance, a routed reply — and a web-only fleet's daemon status line (C4).
+    expect(src.match(/slice\(0, WEB_CHAT_TEXT_MAX\)/g)).toHaveLength(4);
   });
 });
 

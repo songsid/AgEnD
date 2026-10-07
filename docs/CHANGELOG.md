@@ -33,6 +33,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the same session and CSRF check as every other dashboard write; it is not the instance's Stop, which ends its
   process.) Delivery reports for web messages no longer try to react on Telegram with an id that was never a
   Telegram message.
+- **Web chat: answer the fleet's prompts from the dashboard.** When an instance looks hung, exits on its own, or is
+  stuck on an interactive prompt, the buttons Telegram shows (*Force restart* / *Keep waiting*, *Restart* / *Ignore*,
+  *Confirm* / *Cancel*) also appear in that instance's web chat. They are the same prompt, not a copy: one answer counts,
+  whichever surface gives it first; the other's buttons collapse to the outcome; and the prompt expires on both at
+  once. Only these instance-health prompts are offered there — a `/clear` confirmation, login, Classic group
+  approval, tips and the `/model` / `/effort` menus stay where they were asked. A dashboard answer needs the
+  signed-in session and its CSRF token, names the instance, and must be one of that prompt's own buttons.
+- **A fleet with no chat platform works from the web dashboard alone.** With no `channel` / `channels` configured,
+  an agent's reply now goes to the web chat (and the agent is told it was sent) instead of being refused with
+  "Channel adapters are not ready — retry shortly" forever.
 - **Web chat: tables, nested lists and highlighted code (#1269).** Agent replies with a Markdown table now show as a
   table (header, `:--`/`--:`/`:-:` alignment, cells with their own bold/links/`code`; a pipe inside a cell is `\|`), lists
   nest by indentation (bullets and numbers mixed, up to six levels), and fenced code in js/ts/json/python/sh is
