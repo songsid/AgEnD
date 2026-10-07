@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync, readdirSync, renameSync, copyFileSync, chmodSync, statSync, accessSync, constants as fsConstants, type Dirent } from "node:fs";
+import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync, readdirSync, renameSync, copyFileSync, chmodSync, statSync, accessSync, realpathSync, constants as fsConstants, type Dirent } from "node:fs";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { freemem, totalmem, cpus, homedir } from "node:os";
@@ -4911,7 +4911,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * are looked at again when the first comes due (an unref'd timer, so it never holds the process).
    */
   private sweepOrphanedWebUploads(): void {
-    const { deleted, nextDueInMs } = sweepOrphanedUploads(join(getAgendHome(), "workspaces"));
+    // Skip what this process's ledger still holds: those are uploads made since this start, timed by the ledger.
+    // (Compared the way the sweep names files: the inbox directory resolved, the file name as it is.)
+    const owned = new Set([...this.webFiles.ownedPaths()].map(p => { try { return join(realpathSync(dirname(p)), basename(p)); } catch { return p; } }));
+    const { deleted, nextDueInMs } = sweepOrphanedUploads(join(getAgendHome(), "workspaces"), Date.now(), undefined, owned);
     if (deleted > 0) this.logger.info({ deleted }, "Removed web uploads no message took before the restart");
     if (nextDueInMs !== null) {
       const t = setTimeout(() => this.sweepOrphanedWebUploads(), Math.max(1_000, nextDueInMs + 1_000));

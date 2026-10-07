@@ -5,7 +5,7 @@
  * Scratch directories only (a scratch AGEND_HOME for the fleet path); no fleet started.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PENDING_PREFIX, sniffUpload, sweepOrphanedUploads, UPLOAD_TTL_MS, WebFileLedger } from "../src/web-upload.js";
@@ -70,6 +70,44 @@ describe("a partial failure is rolled back", () => {
   });
 });
 
+describe("a file swapped on disk is never served under the upload's id (#1304 review)", () => {
+  const TXT = Buffer.from("public");
+  const SECRET = "secret";                                              // same size as the upload
+  function swapForLink(path: string) {
+    const target = join(dir, "secret.txt"); writeFileSync(target, SECRET);
+    unlinkSync(path); symlinkSync(target, path);
+  }
+  it("swapped before the take: the take is refused, and neither read nor the take ever yields the link's target", () => {
+    const ledger = new WebFileLedger({ now: () => 0 });
+    const a = ledger.storeUpload({ instance: "w", inboxDir: join(dir, "inbox"), bytes: TXT, name: "a.txt", type: sniffUpload(TXT, "a.txt")! });
+    const pending = a.path;
+    swapForLink(pending);
+    expect(ledger.read(a.id), "refused before the take").toBeNull();
+    expect(ledger.takeForMessage("w", [a.id]).ok, "a link is not the file this ledger wrote").toBe(false);
+    expect(a.path, "not moved").toBe(pending);
+    expect(ledger.read(a.id), "still refused after the take").toBeNull();
+    expect(readFileSync(join(dir, "secret.txt"), "utf8")).toBe(SECRET);
+  });
+  it("a different regular file of the same size swapped in: the take is refused (it is not the file the ledger wrote)", () => {
+    const ledger = new WebFileLedger({ now: () => 0 });
+    const a = ledger.storeUpload({ instance: "w", inboxDir: join(dir, "inbox"), bytes: TXT, name: "a.txt", type: sniffUpload(TXT, "a.txt")! });
+    const other = join(dir, "other.txt"); writeFileSync(other, SECRET);
+    renameSync(other, a.path);                                          // same name, same size, another inode
+    expect(ledger.takeForMessage("w", [a.id]).ok).toBe(false);
+  });
+  it("swapped after the take: read refuses, and the served path stays the inbox name (never the link's target)", () => {
+    const ledger = new WebFileLedger({ now: () => 0 });
+    const a = ledger.storeUpload({ instance: "w", inboxDir: join(dir, "inbox"), bytes: TXT, name: "a.txt", type: sniffUpload(TXT, "a.txt")! });
+    const t = ledger.takeForMessage("w", [a.id]);
+    if (!t.ok) throw new Error(t.error);
+    expect(ledger.read(a.id)?.bytes).toEqual(TXT);
+    swapForLink(a.path);
+    expect(ledger.read(a.id)).toBeNull();
+    ledger.release(t.entries);                                          // the release rename refuses the link too
+    expect(ledger.read(a.id)).toBeNull();
+  });
+});
+
 describe("sweepOrphanedUploads (startup)", () => {
   const NOW = Date.parse("2026-10-07T12:00:00Z");
   function file(ws: string, name: string, ageMs: number) {
@@ -110,6 +148,40 @@ describe("sweepOrphanedUploads (startup)", () => {
     expect(readdirSync(inbox).sort()).toEqual([`${PENDING_PREFIX}6-ffffffff.png`, `${PENDING_PREFIX}dir`]);
   });
 
+  it("never goes through a symlinked workspace or inbox: files outside the workspaces tree are untouched", () => {
+    const outside = join(dir, "outside"); mkdirSync(join(outside, "inbox"), { recursive: true });
+    const victim = join(outside, "inbox", `${PENDING_PREFIX}7-11111111.png`); writeFileSync(victim, "x");
+    const t = new Date(NOW - UPLOAD_TTL_MS - 60_000); utimesSync(victim, t, t);
+    const ws = join(dir, "workspaces"); mkdirSync(join(ws, "linkedinbox"), { recursive: true });
+    symlinkSync(outside, join(ws, "linkedws"));                         // the workspace is a link
+    symlinkSync(join(outside, "inbox"), join(ws, "linkedinbox", "inbox"));   // the inbox is a link
+    mkdirSync(join(ws, "real", "inbox"), { recursive: true });
+    const control = join(ws, "real", "inbox", `${PENDING_PREFIX}8-22222222.png`); writeFileSync(control, "x"); utimesSync(control, t, t);
+    const r = sweepOrphanedUploads(ws, NOW);
+    expect(existsSync(control), "the control in a real inbox is swept").toBe(false);
+    expect(existsSync(victim), "the file behind either link is not").toBe(true);
+    expect(r.deleted).toBe(1);
+  });
+
+  it("a parent swapped for a link mid-sweep cannot redirect the delete outside the tree", () => {
+    const outside = join(dir, "outside"); mkdirSync(join(outside, "inbox"), { recursive: true });
+    const t = new Date(NOW - UPLOAD_TTL_MS - 60_000);
+    const name = `${PENDING_PREFIX}9-33333333.png`;
+    const victim = join(outside, "inbox", name); writeFileSync(victim, "x"); utimesSync(victim, t, t);
+    const ws = join(dir, "workspaces"); mkdirSync(join(ws, "w", "inbox"), { recursive: true });
+    const ours = join(ws, "w", "inbox", name); writeFileSync(ours, "x"); utimesSync(ours, t, t);
+    // The swap happens after the sweep opened the inbox and before it deletes: the owned check runs in between.
+    class SwapOnCheck extends Set<string> {
+      override has(p: string) { renameSync(join(ws, "w"), join(ws, "w-moved")); symlinkSync(outside, join(ws, "w")); return super.has(p); }
+    }
+    const r = sweepOrphanedUploads(ws, NOW, UPLOAD_TTL_MS, new SwapOnCheck());
+    expect(existsSync(victim), "nothing outside the tree is deleted").toBe(true);
+    if (process.platform === "linux") {
+      expect(existsSync(join(ws, "w-moved", "inbox", name)), "the delete went to the inbox it opened").toBe(false);
+      expect(r.deleted).toBe(1);
+    }
+  });
+
   it("no workspaces, or unreadable ones: nothing to do, nothing thrown", () => {
     expect(sweepOrphanedUploads(join(dir, "nope"), NOW)).toEqual({ deleted: 0, nextDueInMs: null });
     mkdirSync(join(dir, "w")); writeFileSync(join(dir, "w", "inbox"), "a file, not a dir");
@@ -134,5 +206,26 @@ describe("the fleet runs it at startup and again when the youngest comes due (sc
     expect([existsSync(old), existsSync(young)]).toEqual([false, true]);
     vi.advanceTimersByTime(5 * 60_000 + 1_000);
     expect(existsSync(young), "swept by the follow-up when it came due").toBe(false);
+  });
+
+  it("the follow-up skips this process's own uploads, even with the wall clock jumped forward an hour", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const now = Date.now();
+    vi.stubEnv("AGEND_HOME", dir);
+    const inbox = join(dir, "workspaces", "w", "inbox"); mkdirSync(inbox, { recursive: true });
+    const prior = join(inbox, `${PENDING_PREFIX}1-aaaaaaaa.png`); writeFileSync(prior, "x");
+    const t = new Date(now - 25 * 60_000); utimesSync(prior, t, t);    // a prior boot's: due in ~5 minutes
+    const { FleetManager } = await import("../src/fleet-manager.js");
+    const fm = new FleetManager(join(dir, "data"));
+    const quiet = () => {};
+    fm.logger = { info: quiet, warn: quiet, error: quiet, debug: quiet, trace: quiet, fatal: quiet, child: () => fm.logger } as unknown as typeof fm.logger;
+    (fm as unknown as { sweepOrphanedWebUploads(): void }).sweepOrphanedWebUploads();
+    const ledger = (fm as unknown as { webFiles: WebFileLedger }).webFiles;
+    const cur = ledger.storeUpload({ instance: "w", inboxDir: inbox, bytes: PNG, name: "c.png", type: sniffUpload(PNG, "c.png")! });
+    vi.setSystemTime(now + 3_600_000);                                  // the wall clock jumps; the ledger's elapsed time does not
+    vi.advanceTimersByTime(5 * 60_000 + 1_000);
+    expect(existsSync(prior), "the prior boot's orphan is swept").toBe(false);
+    expect(existsSync(cur.path), "the current upload is the ledger's").toBe(true);
+    expect(ledger.takeForMessage("w", [cur.id]).ok).toBe(true);
   });
 });

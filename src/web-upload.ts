@@ -137,6 +137,8 @@ export const INLINE_MIME = new Set(["image/png", "image/jpeg", "image/gif", "ima
  */
 export class WebFileLedger {
   private readonly uploads = new Map<string, UploadEntry>();
+  /** The file each upload was written as (device + inode): a rename moves only that file (#1304 review). */
+  private readonly written = new WeakMap<UploadEntry, { dev: number; ino: number }>();
   private readonly served = new Map<string, ServedFile>();
   private readonly now: () => number;
   private readonly maxServed: number;
@@ -163,6 +165,8 @@ export class WebFileLedger {
       id, instance: input.instance, path, kind: input.type.kind, mime: input.type.mime,
       name: displayName(input.name, "file"), size: input.bytes.length, expiresAt: this.now() + UPLOAD_TTL_MS, state: "pending",
     };
+    const st = lstatSync(path);
+    this.written.set(entry, { dev: st.dev, ino: st.ino });
     this.prune();
     this.uploads.set(id, entry);
     this.registerServed({ id, path, name: entry.name, mime: entry.mime, instance: entry.instance, kind: entry.kind });
@@ -208,11 +212,35 @@ export class WebFileLedger {
   /** Move an upload's file (same directory) and keep what is served for its id on the new path. */
   private rename(e: UploadEntry, to: string): boolean {
     if (to === e.path) return true;
+    // Only the regular file this ledger wrote moves (#1304 review): something swapped in on disk — a symlink,
+    // a directory, another file (by inode) — is refused, never renamed and never resolved.
+    const written = this.written.get(e);
+    const isWritten = (p: string) => {
+      const st = lstatSync(p);
+      return !!written && st.isFile() && st.size === e.size && st.dev === written.dev && st.ino === written.ino;
+    };
+    try { if (!isWritten(e.path)) return false; } catch { return false; }
     try { renameSync(e.path, to); } catch { return false; }
+    // And the same file arrived (a swap between the check and the rename): otherwise put it back and refuse.
+    try {
+      if (!isWritten(to)) throw new Error("swapped");
+    } catch {
+      try { renameSync(to, e.path); } catch { /* left under the other name: read() still refuses it */ }
+      return false;
+    }
     e.path = to;
+    // The served path moves by NAME only, in the directory it was registered in: never realpath() the new name,
+    // which would bind the id to whatever a link points at. read() still opens it O_NOFOLLOW and re-checks size.
     const served = this.served.get(e.id);
-    if (served) { try { served.realPath = realpathSync(to); } catch { this.served.delete(e.id); } }
+    if (served) served.realPath = join(dirname(served.realPath), basename(to));
     return true;
+  }
+
+  /** The files this process still owns — waiting for a message or on their way: a sweep must not touch them. */
+  ownedPaths(): Set<string> {
+    const out = new Set<string>();
+    for (const e of this.uploads.values()) if (e.state !== "sent") out.add(e.path);
+    return out;
   }
 
   /** The reserved uploads were delivered: they are the agent's now. */
@@ -338,6 +366,9 @@ export function publicAttachment(f: { id: string; kind: UploadKind; name: string
   return { id: f.id, kind: f.kind, name: f.name, size: f.size, mime: f.mime };
 }
 
+/** Linux names an open directory by its descriptor: a path through it cannot be redirected by a renamed parent. */
+const PROC_FD = process.platform === "linux" ? "/proc/self/fd" : null;
+
 /**
  * At fleet startup (#1273): the ledger of uploads waiting for a message lives in memory, so after a restart an
  * upload no message took is nobody's — its id is gone. Remove each such file (named web-pending-…) in every
@@ -347,30 +378,63 @@ export function publicAttachment(f: { id: string; kind: UploadKind; name: string
  *
  * Age is the file's mtime against the wall clock — the only clock a file has. A future mtime (the clock was set
  * back) counts as just written, never as a negative age, so it is kept and looked at again later; a clock set
- * forward can only remove an upload early, and after a restart none of them can be sent anyway.
+ * forward can only remove an upload early, and after a restart none of them can be sent anyway. The uploads this
+ * process holds (`owned`, by inbox path) are skipped: their window is the ledger's elapsed time, not a file's mtime.
  * Returns how many were removed and, when younger ones remain, in how long the next one comes due.
  */
-export function sweepOrphanedUploads(workspacesDir: string, nowMs: number = Date.now(), ttlMs: number = UPLOAD_TTL_MS): { deleted: number; nextDueInMs: number | null } {
+export function sweepOrphanedUploads(
+  workspacesDir: string,
+  nowMs: number = Date.now(),
+  ttlMs: number = UPLOAD_TTL_MS,
+  owned: ReadonlySet<string> = new Set(),
+): { deleted: number; nextDueInMs: number | null } {
   let deleted = 0;
   let nextDueInMs: number | null = null;
   let workspaces: string[];
-  try { workspaces = existsSync(workspacesDir) ? readdirSync(workspacesDir) : []; } catch { return { deleted, nextDueInMs }; }
+  let root: string;
+  try {
+    if (!existsSync(workspacesDir)) return { deleted, nextDueInMs };
+    root = realpathSync(workspacesDir);
+    workspaces = readdirSync(root);
+  } catch { return { deleted, nextDueInMs }; }
   for (const ws of workspaces) {
-    const inbox = join(workspacesDir, ws, "inbox");
-    let files: string[];
-    try { files = readdirSync(inbox); } catch { continue; }
-    for (const f of files) {
-      if (!f.startsWith(PENDING_PREFIX)) continue;
-      const full = join(inbox, f);
-      try {
-        const st = lstatSync(full);                 // a symlink is not one of ours: never followed, never removed
-        if (!st.isFile()) continue;
-        const age = Math.max(0, nowMs - st.mtimeMs);
-        if (age >= ttlMs) { unlinkSync(full); deleted++; continue; }
-        const due = ttlMs - age;
-        if (nextDueInMs === null || due < nextDueInMs) nextDueInMs = due;
-      } catch { /* vanished or unreadable: leave it */ }
-    }
+    // Only real directories inside the workspaces tree (#1304 review): a workspace or an inbox that is a symlink
+    // could lead the sweep to delete files anywhere it points.
+    const wsDir = join(root, ws);
+    const inbox = join(wsDir, "inbox");
+    let fd: number | null = null;
+    try {
+      if (!lstatSync(wsDir).isDirectory() || !lstatSync(inbox).isDirectory()) continue;
+      // Pin the inbox: opened as a directory, then checked to be the in-tree one. A parent swapped for a link after
+      // this cannot redirect the deletes, which go through the open directory where the platform allows it.
+      fd = openSync(inbox, fsConstants.O_RDONLY | fsConstants.O_DIRECTORY | fsConstants.O_NOFOLLOW);
+      const pinned = fstatSync(fd);
+      const here = lstatSync(inbox);
+      if (realpathSync(inbox) !== inbox || pinned.dev !== here.dev || pinned.ino !== here.ino) continue;
+      const anchor = PROC_FD && existsSync(`${PROC_FD}/${fd}`) ? `${PROC_FD}/${fd}` : inbox;
+      const stillPinned = () => {
+        if (anchor !== inbox) return true;
+        const now = lstatSync(inbox);
+        return now.isDirectory() && now.dev === pinned.dev && now.ino === pinned.ino && realpathSync(inbox) === inbox;
+      };
+      for (const f of readdirSync(anchor)) {
+        if (!f.startsWith(PENDING_PREFIX)) continue;
+        // An upload this process holds is governed by its ledger (elapsed time), never by this wall-clock sweep.
+        if (owned.has(join(inbox, f))) continue;
+        const full = join(anchor, f);
+        try {
+          const st = lstatSync(full);                 // a symlink is not one of ours: never followed, never removed
+          if (!st.isFile()) continue;
+          const age = Math.max(0, nowMs - st.mtimeMs);
+          if (age >= ttlMs) {
+            if (!stillPinned()) break;
+            unlinkSync(full); deleted++; continue;
+          }
+          const due = ttlMs - age;
+          if (nextDueInMs === null || due < nextDueInMs) nextDueInMs = due;
+        } catch { /* vanished or unreadable: leave it */ }
+      }
+    } catch { continue; } finally { if (fd !== null) try { closeSync(fd); } catch { /* closed */ } }
   }
   return { deleted, nextDueInMs };
 }
