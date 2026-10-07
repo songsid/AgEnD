@@ -12589,13 +12589,17 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
     // #1346: Discord ClassicBot channels ignore plain-text /xxx silently —
     // no warning (multi-bot groups must not all warn), no command, and no
-    // /chat forward either. Telegram keeps working (text is its command
-    // path there).
-    if (msg.source === "discord" && /^\/\w/.test(text.trim())) return;
+    // forward to the agent either. The received-reaction and chat-log paths
+    // below still run (a /chat ack is not a reply). Telegram keeps working
+    // (text is its command path there).
+    const discordSlashText = msg.source === "discord" && /^\/\w/.test(text.trim());
 
     // Handle /ctx in classic mode — always, regardless of collab mode.
     // Only the adapter that owns an entry in this channel answers; the
     // per-adapter dedup key already scopes copies, this guards the rest.
+    // Discord /chat still flows through (its received-reaction below is an
+    // ack, not a reply); only its forward is skipped.
+    if (discordSlashText && !/^\/chat(\s|$)/.test(text.trim())) return;
     if (text === "/ctx" || text.startsWith("/ctx@")) {
       if (!this.classicChannels?.getInstanceByChannel(channelId, msg.adapterId)) return;
       const reply = await this.topicCommands.getCtxText(instanceName);
@@ -12701,7 +12705,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         }
       }
 
-      await this.forwardToClassicInstance(instanceName, finalText, msg, extraMeta);
+      // #1346: Discord typed /xxx is never forwarded (reacts above already ran).
+      if (!discordSlashText) await this.forwardToClassicInstance(instanceName, finalText, msg, extraMeta);
       return;
     }
 
@@ -12772,7 +12777,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       }
     }
 
-    await this.forwardToClassicInstance(instanceName, finalText, msg, extraMeta);
+    // #1346: Discord typed /chat gets its received-reaction above but is
+    // never forwarded to the agent.
+    if (!discordSlashText) await this.forwardToClassicInstance(instanceName, finalText, msg, extraMeta);
   }
 
   /** Download photo or document attachment to classic instance workspace inbox. Returns { path, kind } or undefined. */

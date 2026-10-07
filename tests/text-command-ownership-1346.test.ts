@@ -261,12 +261,15 @@ describe("Discord classic ignores /xxx; Telegram classic still answers", () => {
     const fm = new FleetManager(dir) as any;
     const sentA: string[] = [];
     const sentB: string[] = [];
-    const mkAdapter = (store: string[]) => ({
+    const reactedA: unknown[][] = [];
+    const reactedB: unknown[][] = [];
+    const mkAdapter = (store: string[], reacted: unknown[][]) => ({
       sendText: vi.fn(async (_c: string, text: string) => { store.push(text); }),
+      react: vi.fn(async (...args: unknown[]) => { reacted.push(args); }),
     });
     fm.worlds = new Map([
-      ["da", { adapterId: "da", adapter: mkAdapter(sentA), channelConfig: { id: "da" }, botUserId: "b1" }],
-      ["db", { adapterId: "db", adapter: mkAdapter(sentB), channelConfig: { id: "db" }, botUserId: "b2" }],
+      ["da", { adapterId: "da", adapter: mkAdapter(sentA, reactedA), channelConfig: { id: "da" }, botUserId: "b1" }],
+      ["db", { adapterId: "db", adapter: mkAdapter(sentB, reactedB), channelConfig: { id: "db" }, botUserId: "b2" }],
     ]);
     fm.adapter = fm.worlds.get("da").adapter;
     fm.classicChannels = {
@@ -274,13 +277,14 @@ describe("Discord classic ignores /xxx; Telegram classic still answers", () => {
         channelId === "chan-1" && (adapterId === "da" || adapterId === "db") ? "classic-a" : undefined),
       isCollab: () => false,
     };
+    const forward = vi.spyOn(fm, "forwardToClassicInstance").mockResolvedValue(undefined);
     vi.spyOn(fm.topicCommands, "getCtxText").mockResolvedValue("CTX-CARD");
-    return { fm, dir, sentA, sentB };
+    return { fm, dir, sentA, sentB, reactedA, reactedB, forward };
   }
 
   const classicMsg = (text: string, adapterId: string, source = "discord") => ({
     source, adapterId, chatId: "chan-1", threadId: undefined, messageId: `c-${text}-${adapterId}`,
-    userId: "u", userName: "u", text, isBotMessage: false,
+    userId: "u", userName: "u", text, isBotMessage: false, timestamp: new Date(),
   });
 
   it("no bot answers /ctx on Discord classic, not even multi-bot", async () => {
@@ -296,12 +300,14 @@ describe("Discord classic ignores /xxx; Telegram classic still answers", () => {
     }
   });
 
-  it("Discord /chat text is not forwarded either", async () => {
-    const { fm, dir, sentA } = classicSetup();
+  it("Discord /chat text is not forwarded, but still gets its received ack", async () => {
+    const { fm, dir, sentA, reactedA, forward } = classicSetup();
     try {
       await fm.handleClassicChannelMessage("classic-a", classicMsg("/chat hello?", "da") as any);
+      expect(forward, "never reaches the agent").not.toHaveBeenCalled();
       expect(sentA).toHaveLength(0);
       expect(fm.topicCommands.getCtxText).not.toHaveBeenCalled();
+      expect(reactedA, "the received ack still fires").toHaveLength(1);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
