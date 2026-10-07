@@ -1262,6 +1262,8 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     return message.id;
   }
 
+  getBotUserId(): string | undefined { return this.client.user?.id; }
+
   /** Private delivery: a DM to the user (fails if the user disallows DMs from this server). */
   async sendDirect(userId: string, text: string, opts?: SendOpts): Promise<SentMessage> {
     const user = await this.client.users.fetch(userId);
@@ -1283,8 +1285,8 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     // so the reply tool could return success for a silently truncated message.
     let first: Awaited<ReturnType<typeof channel.send>> | undefined;
     for (const chunk of chunks) {
-      const sent = await channel.send(opts?.disablePreview
-        ? { content: chunk, flags: MessageFlags.SuppressEmbeds }
+      const sent = await channel.send(opts?.disablePreview || opts?.allowedMentions
+        ? { content: chunk, ...(opts?.disablePreview ? { flags: MessageFlags.SuppressEmbeds } : {}), ...(opts?.allowedMentions ? { allowedMentions: opts.allowedMentions } : {}) }
         : chunk);
       first ??= sent;
     }

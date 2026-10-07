@@ -289,6 +289,9 @@ export function validateFleetConfig(config: unknown): ValidationResult {
   if (config.web !== undefined && !isObj(config.web)) {
     err("web", "must be a mapping");
   } else if (isObj(config.web)) {
+    if (config.web.echo_to_channel !== undefined && typeof config.web.echo_to_channel !== "boolean") {
+      err("web.echo_to_channel", "must be a boolean");
+    }
     if (config.web.usage_panel !== undefined && typeof config.web.usage_panel !== "boolean") {
       err("web.usage_panel", "must be a boolean");
     }

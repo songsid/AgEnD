@@ -2,6 +2,9 @@
  * Web UI HTTP API handler.
  * All /ui/* routes are handled here, extracted from fleet-manager.ts.
  */
+import { formatWebChannelEcho } from "./web-channel-echo.js";
+import type { SendOpts } from "./channel/types.js";
+import { t } from "./locale.js";
 import { sendPanelHtml } from "./web-host-guard.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readFileSync } from "node:fs";
@@ -143,14 +146,17 @@ export interface WebApiContext {
   readonly sseClients: Set<ServerResponse>;
   readonly fleetConfig: {
     channel?: { group_id?: number | string; mode?: string };
+    web?: { echo_to_channel?: boolean };
     defaults?: { backend?: string; effort?: string };
     instances: Record<string, { topic_id?: number | string; working_directory: string; description?: string; display_name?: string; backend?: string }>;
     teams?: Record<string, { members: string[]; description?: string }>;
   } | null;
   readonly instanceIpcClients: Map<string, { send(msg: unknown): void }>;
-  readonly adapter: { sendText(chatId: string, text: string, opts?: { threadId?: string }): Promise<unknown> } | null;
-  getAdapterForInstance?(name: string): { sendText(chatId: string, text: string, opts?: { threadId?: string }): Promise<unknown> } | null;
+  readonly adapter: { readonly id?: string; sendText(chatId: string, text: string, opts?: SendOpts): Promise<unknown> } | null;
+  getAdapterForInstance?(name: string): { readonly id?: string; sendText(chatId: string, text: string, opts?: SendOpts): Promise<unknown> } | null;
   getGroupIdForInstance?(name: string): string;
+  /** Reserve display ordering before IPC handoff, then settle delivery without waiting for the echo. */
+  reserveWebChannelEcho?(name: string, sendEcho: () => Promise<unknown>): (accepted: boolean) => void;
   readonly daemons: Map<string, unknown>;
   readonly eventLog: { logActivity(event: string, sender: string, summary: string, receiver?: string, detail?: string): void; listActivity(opts?: { since?: string; limit?: number }): unknown[] } | null;
   readonly logger: { info(obj: unknown, msg?: string): void; debug(obj: unknown, msg?: string): void; error(obj: unknown, msg?: string): void };
@@ -835,6 +841,15 @@ export function handleWebRequest(
   return true;
 }
 
+/** Keep the echo in a single platform message, including its attachment names. */
+function webEchoPreview(message: string, names: string[]): string {
+  const text = wellFormed(message.slice(0, 500));
+  const files = names.length ? `[📎 ${names.map(name => displayName(name, "attachment")).join(", ")}]` : "";
+  const preview = [text, files].filter(Boolean).join(" ");
+  const truncated = message.length > 500 || preview.length > 1400;
+  return wellFormed(preview.slice(0, 1400)) + (truncated ? ` … (${t("web.echo_full_text")})` : "");
+}
+
 /** Handle POST /ui/send — extracted for readability. */
 function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebApiContext): void {
   let body = "";
@@ -879,8 +894,20 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       // enabling reply tool even when first message comes from Web UI.
       // Pure Web UI mode (no channel config) leaves these empty; the agent's reply then comes back to the
       // web chat alone (FleetManager's web-only reply sink).
-      const groupId = ctx.fleetConfig?.channel?.group_id;
+      const syncAdapter = ctx.getAdapterForInstance ? ctx.getAdapterForInstance(instance) : ctx.adapter;
+      const groupId = ctx.getGroupIdForInstance?.(instance) ?? String(ctx.fleetConfig?.channel?.group_id ?? "");
       const topicId = ctx.fleetConfig?.instances[instance]?.topic_id;
+      const canEcho = ctx.fleetConfig?.web?.echo_to_channel !== false
+        && !ctx.isClassicInstance?.(instance) && syncAdapter && groupId && topicId != null;
+      // Add no runtime credentials or local attachment paths to the display copy.
+      const preview = webEchoPreview(message, files.map(f => f.name));
+      const settleEcho = canEcho ? ctx.reserveWebChannelEcho?.(instance, async () => {
+        // A replacement adapter or edited binding is not the route we reserved.
+        if ((ctx.getAdapterForInstance ? ctx.getAdapterForInstance(instance) : ctx.adapter) !== syncAdapter
+          || (ctx.getGroupIdForInstance?.(instance) ?? String(ctx.fleetConfig?.channel?.group_id ?? "")) !== groupId
+          || ctx.fleetConfig?.instances[instance]?.topic_id !== topicId) return;
+        return syncAdapter.sendText(String(groupId), formatWebChannelEcho("web-user", preview, t("web.echo_full_text")), { threadId: String(topicId), format: "text", allowedMentions: { parse: [] } });
+      }) : undefined;
       let delivered: boolean | void;
       try {
         delivered = await ctx.deliverToInstance(instance, {
@@ -894,38 +921,29 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
             ts,
             thread_id: topicId != null ? String(topicId) : "",
             source: "web",
+            adapter_id: syncAdapter?.id,
             ...delivery.meta,
           },
         });
       } catch (err) {
+        settleEcho?.(false);
         ctx.webFiles?.release(files);                  // not delivered: the same ids can be sent again
         ctx.logger.error({ err, instance }, "Web message delivery failed");
         json(res, 503, { error: "Instance delivery failed" });
         return;
       }
       if (delivered === false) {
+        settleEcho?.(false);
         ctx.webFiles?.release(files);
         ctx.logger.error({ instance }, "Web message not delivered (the instance went away or restarted)");
         json(res, 503, { error: "Instance delivery failed" });
         return;
       }
+      settleEcho?.(true);
       ctx.webFiles?.commit(files);
       ctx.lastInboundUser.set(instance, "web-user");
       ctx.eventLog?.logActivity("message", "web-user", (message || `[${files.length} file(s)]`).slice(0, 200), instance);
       ctx.emitSseEvent("message", { instance, sender: "web-user", text: message, ts, attachments: files.map(publicAttachment), messageId });
-      // Sync to Telegram/Discord
-      const syncAdapter = ctx.getAdapterForInstance?.(instance) ?? ctx.adapter;
-      const syncGroupId = ctx.getGroupIdForInstance?.(instance) ?? String(ctx.fleetConfig?.channel?.group_id ?? "");
-      if (syncAdapter && syncGroupId) {
-        const topicId = ctx.fleetConfig?.instances[instance]?.topic_id;
-        const preview = (message.length > 500 ? message.slice(0, 500) + " [...]" : message)
-          + (files.length ? `${message ? " " : ""}[📎 ${files.length} file${files.length === 1 ? "" : "s"}: ${files.map(f => f.name).join(", ")}]` : "");
-        syncAdapter.sendText(
-          syncGroupId,
-          `🌐 web-user: ${preview}`,
-          { threadId: topicId != null ? String(topicId) : undefined },
-        ).catch(() => ctx.logger.debug({}, "Web→Channel sync failed"));
-      }
       json(res, 200, { sent: true, messageId });
     } catch {
       json(res, 400, { error: "Invalid JSON" });

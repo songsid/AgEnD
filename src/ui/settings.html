@@ -274,6 +274,7 @@
   const I18N = {
     en: {
       title: "⚙️ AgEnD Settings", reloadFleet: "↻ Reload Fleet", myAgents: "🤖 My Agents", bots: "🔌 Bots", classicChannels: "🎮 ClassicBot Channels", noClassic: "No ClassicBot channels — start one with /start in a chat.",
+      webEcho: "Echo web chat to the agent topic", webEchoHint: "Copies web messages to the bound Telegram or Discord topic. ClassicBot rooms are excluded.",
       general: "⚙️ General Settings", whatsNew: "🆕 What's New", advanced: "📋 Advanced",
       expand: "▶ Expand", collapse: "▼ Collapse", new: "+ New", add: "+ Add", searchPh: "🔍 Search…",
       edit: "Edit", close: "Close", save: "Save", cancel: "Cancel", create: "Create", start: "Start", stop: "Stop",
@@ -338,6 +339,7 @@
       se_unicode: "Emoji", se_telegramOnly: "Telegram 只允許這些反應", se_serverEmojis: "伺服器 emoji", se_noServerEmojis: "此伺服器沒有自訂 emoji。", se_primaryServer: "主伺服器", se_externalEmojiHint: "使用其他伺服器的 emoji，bot 在要加反應的頻道需有「使用外部表情符號」權限。", se_unavailable: "無法使用",
       se_hint: "留空即使用預設值。預覽由 AgEnD 依 bot 實際 react 的方式解析。",
       title: "⚙️ AgEnD 設定", reloadFleet: "↻ 重新載入", myAgents: "🤖 我的 Agent", bots: "🔌 機器人", classicChannels: "🎮 ClassicBot 頻道", noClassic: "沒有 ClassicBot 頻道 — 在聊天中用 /start 建立。",
+      webEcho: "將 web chat 同步至 Agent 主題", webEchoHint: "將網頁訊息複製到綁定的 Telegram 或 Discord 主題，不包含 ClassicBot 群組。",
       general: "⚙️ 一般設定", whatsNew: "🆕 更新重點", advanced: "📋 進階",
       expand: "▶ 展開", collapse: "▼ 收合", new: "+ 新增", add: "+ 加入", searchPh: "🔍 搜尋…",
       edit: "編輯", close: "關閉", save: "儲存", cancel: "取消", create: "建立", start: "啟動", stop: "停止",
@@ -1854,6 +1856,9 @@
     const allowedUsers = [...(originalPrimaryAccess.allowed_users || [])];
     c.admin_users = c.admin_users || []; c.allowed_guilds = c.allowed_guilds || [];
 
+    const originalWebConfig = structuredClone(state.fleet.web);
+    const originalWebEcho = state.fleet.web?.echo_to_channel ?? true;
+    const fWebEcho = el("input", { type: "checkbox", id: "webEchoToChannel" }); fWebEcho.checked = originalWebEcho;
     const fBackend = select(d.backend || "claude-code", BACKENDS);
     const fClassicBackend = select(c.backend || d.backend || "claude-code", BACKENDS.filter(value => value !== "gemini-cli"));
     const fModel = el("input", { type: "text", value: d.model || "", placeholder: "e.g. claude-opus-4-8" });
@@ -1961,6 +1966,16 @@
         const classicHotOnly = Object.keys(classicPatch).every(key => impactOf(`classic_defaults.${key}`) === "now");
         stageChange("defaults:classic", { label: "Update ClassicBot defaults and access", impact: classicHotOnly ? "now" : "fleet", apply: () => api("/api/settings/classic/defaults", { method: "PUT", body: JSON.stringify(classicPatch) }) });
       }
+      if (fWebEcho.checked !== originalWebEcho) {
+        const webPatch = { echo_to_channel: fWebEcho.checked };
+        state.fleet.web = { ...state.fleet.web, ...webPatch };
+        stageChange("web:echo", { label: t("webEcho"), impact: impactOf("web.echo_to_channel"), apply: () => api("/api/settings/fleet/web", { method: "PUT", body: JSON.stringify(webPatch) }) });
+      } else if (state.pending.has("web:echo")) {
+        state.pending.delete("web:echo");
+        if (originalWebConfig === undefined) delete state.fleet.web;
+        else state.fleet.web = structuredClone(originalWebConfig);
+        updatePendingBar();
+      }
       msg.innerHTML = `<span class="s">${esc(t("readyApply"))}</span>`;
     };
 
@@ -1970,6 +1985,7 @@
       return details;
     };
     host.append(
+      section("Web chat", true, el("label", {}, fWebEcho, el("span", {}, t("webEcho")), impact("web.echo_to_channel")), el("div", { class: "hint" }, t("webEchoHint"))),
       section("Defaults", true,
         el("div", { class: "grid2" },
           el("div", { class: "field" }, el("label", {}, t("language"), impact("defaults.locale")), fLocale),
