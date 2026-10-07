@@ -87,13 +87,38 @@ describe("discord REST keep-alive (#1235 part 2)", () => {
     }
   });
 
-  it("stop() leaves the owned dispatcher open for the next start", async () => {
+  it("stop() retires the owned dispatcher; a later build makes a new one", async () => {
+    // A stopped adapter is discarded (secret rebuild, rebind, shutdown), so
+    // stop must close its pools; the field resets so a later build — same
+    // allocation site reconnects use — lazily makes a fresh dispatcher.
     const a = adapter();
     const agent = a.client.rest.agent as UndiciAgent;
     await a.stop();
-    expect(agent.closed).toBe(false);
-    expect(agent.destroyed).toBe(false);
-    expect(a.ownedRestAgent).toBe(agent);
+    expect(agent.closed).toBe(true);
+    expect(a.ownedRestAgent).toBeNull();
+    const rebuilt = a.buildClient() as { rest: { agent: unknown }; destroy(): void };
+    try {
+      expect(rebuilt.rest.agent).toBeInstanceOf(UndiciAgent);
+      expect(rebuilt.rest.agent).not.toBe(agent);
+      expect(agentOptions(rebuilt.rest.agent as object).keepAliveTimeout).toBe(60_000);
+      expect((rebuilt.rest.agent as UndiciAgent).closed).toBe(false);
+    } finally {
+      rebuilt.destroy();
+    }
+  });
+
+  it("replacing an adapter retires only the old dispatchers", async () => {
+    // Mirrors FleetManager.rebuildAdapterForSecret: the old adapter is
+    // stopped and discarded while a fresh one takes over the connection.
+    const oldA = adapter();
+    const newA = adapter();
+    const oldAgent = oldA.client.rest.agent as UndiciAgent;
+    const newAgent = newA.client.rest.agent as UndiciAgent;
+    expect(newAgent).not.toBe(oldAgent);
+    await oldA.stop();
+    expect(oldAgent.closed).toBe(true);
+    expect(newAgent.closed).toBe(false);
+    expect(newAgent.destroyed).toBe(false);
   });
 
   it("an injected client factory never allocates an owned dispatcher", () => {

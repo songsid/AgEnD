@@ -143,14 +143,16 @@ const SLASH_ACK_SLOW_MS = 1_500;
  * pause pays a fresh TLS handshake to discord.com. 60 s keeps one socket
  * warm across typical human command gaps. Best effort, not a ceiling:
  * keepAliveTimeout is the fallback when the server sends no Keep-Alive hint;
- * a hinted timeout overrides it (observed: timeout=120 → effective 118 s),
- * and either way the client side closes first, so a defer inside the 3 s
- * acknowledgement window does not race a server-side FIN. keepAliveMaxTimeout
- * stays at undici's default (max socket age, not idle time) — a hot socket
- * may live up to 10 min; only idle ones are reaped at 60 s. Scoped to this
- * adapter's own REST manager only; the global dispatcher is untouched.
+ * a hinted idle timeout overrides it (observed: timeout=120 → effective
+ * 118 s). keepAliveMaxTimeout stays at undici's default — a maximum
+ * server-hinted idle timeout, not a socket-age cap — so no new pinning
+ * policy is introduced here. Scoped to this adapter's own REST manager
+ * only; the global dispatcher is untouched.
  */
 export const DISCORD_REST_KEEP_ALIVE_MS = 60_000;
+
+/** Bound for retiring the owned REST dispatcher in stop(). Idle by then. */
+const DISCORD_REST_CLOSE_TIMEOUT_MS = 5_000;
 
 /**
  * A nonce-armed prompt button (`postNonceButtonPrompt`): `<prefix>:<32 hex>:<action>`.
@@ -255,11 +257,12 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
   /**
    * #1235 part 2: the one REST dispatcher this adapter owns. Reused across
    * every gateway Client generation — loginFreshClient destroys the Client
-   * but never the dispatcher, and stop() leaves it open for the next start —
-   * so rebuilds never strand pools or sockets. Never the global dispatcher,
-   * and never an injected factory's client (those keep their own). Created
-   * lazily so adapters with an injected client factory never allocate one.
-   * It lives with the adapter; idle sockets reap themselves at 60 s.
+   * but never the dispatcher, so reconnects never strand pools or sockets.
+   * Only stop() retires it (a stopped adapter is discarded by secret
+   * rebuild, rebind and shutdown); a later build then lazily makes a new
+   * one. Never the global dispatcher, and never an injected factory's
+   * client (those keep their own). Created lazily so adapters with an
+   * injected client factory never allocate one.
    */
   private ownedRestAgent: UndiciAgent | null = null;
   private restAgent(): UndiciAgent {
@@ -1278,6 +1281,27 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     this.watchdogTimer = null;
     this.queue.stop();
     this.client.destroy();
+    // #1235 part 2 R2: a stopped adapter is retired — secret rebuild, rebind
+    // and fleet shutdown all discard it after stop — so retire the owned REST
+    // dispatcher here or its pools leak. Only stop ends its life:
+    // loginFreshClient keeps sharing it across gateway generations. Bounded:
+    // idle keep-alive sockets close at once; the race caps stragglers, and a
+    // later build lazily makes a new one via restAgent().
+    const agent = this.ownedRestAgent;
+    this.ownedRestAgent = null;
+    if (agent && !agent.destroyed) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          agent.close(),
+          new Promise(resolve => { timer = setTimeout(resolve, DISCORD_REST_CLOSE_TIMEOUT_MS); }),
+        ]);
+      } catch (err) {
+        console.warn(`[discord:${this.id}] closing the REST dispatcher failed (${(err as Error)?.message ?? err})`);
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+    }
   }
 
   // ── Text / file sending ────────────────────────────────────────────────

@@ -113,9 +113,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **The first Discord slash acknowledgement after an idle gap reuses its connection (#1235).**
   The discord.js REST manager now gets a dedicated undici agent with a 60 s keep-alive (undici's default is
   4 s, so the first `deferReply` after any pause paid a fresh TLS handshake). 60 s is the idle fallback when
-  the server sends no Keep-Alive hint; a hinted timeout overrides it, and either way the client side closes
-  first, so a defer inside the 3 s acknowledgement window does not race a server-side FIN. The one dispatcher
-  is owned by the adapter and reused across gateway reconnects. Scoped to this adapter's REST manager only —
+  the server sends no Keep-Alive hint; a hinted idle timeout overrides it. The one dispatcher is owned by the
+  adapter, reused across gateway reconnects and retired on stop. Scoped to this adapter's REST manager only —
   the global dispatcher is untouched, and proxy behaviour
   is unchanged (the adapter has no `HTTPS_PROXY` handling, before or after). Every acknowledgement now also
   logs its delivery/REST split at debug level, so cold vs reused latency can be compared even under the slow
