@@ -100,8 +100,8 @@ export class GrokBackend implements CliBackend {
   // can scope to grok's per-cwd session directory.
   private workingDirectory?: string;
 
-  constructor(private instanceDir: string) {
-    this.binaryPath = resolveBinary("grok");
+  constructor(private instanceDir: string, resolvedBinary?: string) {
+    this.binaryPath = resolvedBinary ?? resolveBinary("grok");
   }
 
   buildCommand(config: CliBackendConfig): string {

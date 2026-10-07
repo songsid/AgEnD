@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2.1.13 — Fixed
+- **Fleet discovery and statusline polling no longer block channel ingress (#1235, part 1).** Binary lookup,
+  Kiro compatibility checks and post-install login-shell verification run asynchronously with bounded CLI
+  timeouts; stale stop/restart results are discarded. Statusline polling has bounded concurrency. Stall warnings
+  now include a bounded list of remaining slow synchronous callers. Historical stall causes remain unconfirmed.
+
 ### Upgrade Notes
 - **[Removed] The `gemini-cli` backend (#1280).** It had been deprecated, and the date its warning named has passed.
   `backend: antigravity` replaces it: the same Google sign-in, through agy. A config that still names `gemini-cli` is

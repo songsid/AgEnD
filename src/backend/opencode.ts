@@ -33,8 +33,8 @@ export class OpenCodeBackend implements CliBackend {
   /** The discovery running now: concurrent callers share it instead of forking another CLI. */
   private discovering: { generation: number; promise: Promise<string | null> } | null = null;
 
-  constructor(private instanceDir: string) {
-    this.binaryPath = resolveBinary("opencode");
+  constructor(private instanceDir: string, resolvedBinary?: string) {
+    this.binaryPath = resolvedBinary ?? resolveBinary("opencode");
   }
 
   /**

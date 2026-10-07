@@ -36,6 +36,7 @@ vi.mock("node:fs", async importOriginal => {
 });
 vi.mock("../src/backend/factory.js", () => ({
   createBackend: vi.fn(() => ({ binaryName: "mock" })),
+  createBackendAsync: (...args: unknown[]) => (createBackend as (...a: unknown[]) => unknown)(...args),
 }));
 
 import { createBackend } from "../src/backend/factory.js";

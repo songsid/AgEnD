@@ -1,3 +1,4 @@
+import { measureSyncWork } from "../sync-work-attribution.js";
 import { execFileSync } from "node:child_process";
 import { accessSync, constants, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
@@ -771,6 +772,9 @@ function commonBinaryDirs(): string[] {
 }
 
 export function resolveBinary(name: string, fallbackDirs?: readonly string[]): string {
+  return measureSyncWork("backend.resolveBinary", () => resolveBinarySync(name, fallbackDirs));
+}
+function resolveBinarySync(name: string, fallbackDirs?: readonly string[]): string {
   try {
     const resolved = execFileSync("which", [name], { encoding: "utf-8" }).trim();
     if (resolved) return resolved;

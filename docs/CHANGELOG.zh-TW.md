@@ -6,6 +6,11 @@
 
 ## [未發佈] (Unreleased)
 
+### 2.1.13 — 修正 (Fixed)
+- **Fleet 的 CLI 探測與 statusline 輪詢不再阻塞頻道收訊（#1235，第一部分）。** Binary lookup、Kiro
+  相容性探測與安裝後的 login-shell 驗證改用非同步、有界 CLI 等待；停止或重啟後的舊結果不會套用。
+  Statusline 讀取限制並行數。Stall 警告會附上固定筆數內的慢同步 caller；歷史 stall 的原因仍未確認。
+
 ### 升級注意事項 (Upgrade Notes)
 - **[移除] `gemini-cli` backend（#1280）。** 它先前已標為 deprecated，警告上寫的停用日期也已經過了。改用 `backend: antigravity`：同樣是 Google 登入，透過 agy。仍寫著 `gemini-cli` 的設定現在會被拒絕、不會照跑，不論是寫在 instance、fleet 預設值，還是 ClassicBot 的頻道或預設值：
   - **`agend validate`** 與 Settings 會報錯，指出是哪個 instance，並說明請設定 `backend: antigravity`。仍含有它的 fleet.yaml 重新載入會整份被拒絕，並附上這則訊息。

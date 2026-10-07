@@ -10,7 +10,8 @@
  * stall in the log, with how long it was, so the cause can be found instead of
  * guessed at. Observation only: it changes nothing about scheduling.
  */
-import { monitorEventLoopDelay } from "node:perf_hooks";
+import { slowSyncWorkSince } from "./sync-work-attribution.js";
+import { performance, monitorEventLoopDelay } from "node:perf_hooks";
 
 /** A stall at least this long (of Discord's 3000 ms acknowledgement window) is logged. */
 export const EVENT_LOOP_STALL_MS = 1_000;
@@ -41,14 +42,19 @@ export function startEventLoopWatch(opts: {
   const thresholdMs = opts.thresholdMs ?? EVENT_LOOP_STALL_MS;
   const histogram = opts.histogram ?? monitorEventLoopDelay({ resolution: 20 });
   histogram.enable();
+  let lastCheckAt = performance.now();
   const check = (): number => {
+    const now = performance.now();
+    const syncWork = slowSyncWorkSince(lastCheckAt, now);
+    lastCheckAt = now;
     const maxMs = Math.round(histogram.max / 1e6);
     if (maxMs >= thresholdMs) {
       opts.logger.warn({
         maxMs,
+        syncWork,
         p99Ms: Math.round(histogram.percentile(99) / 1e6),
         meanMs: Math.round(histogram.mean / 1e6),
-      }, `Event loop stalled for ${maxMs}ms — Discord slash commands (3s to acknowledge) and gateway heartbeats arriving then could be missed`);
+      }, `Event loop stalled for ${maxMs}ms — Discord slash commands (3s to acknowledge) and gateway heartbeats arriving then could be missed${syncWork.length ? `; slow sync work: ${syncWork.map(entry => `${entry.caller}=${entry.durationMs}ms`).join(", ")}` : "; slow sync work: unknown"}`);
     }
     histogram.reset();
     return maxMs;

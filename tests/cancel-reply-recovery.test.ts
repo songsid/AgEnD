@@ -18,7 +18,7 @@ vi.mock("node:net", async importOriginal => ({
   ...await importOriginal<typeof import("node:net")>(),
   createServer: hooks.forbidden, createConnection: hooks.forbidden, connect: hooks.forbidden,
 }));
-vi.mock("../src/backend/factory.js", () => ({ createBackend: hooks.forbidden }));
+vi.mock("../src/backend/factory.js", () => ({ createBackend: hooks.forbidden, createBackendAsync: hooks.forbidden }));
 vi.mock("../src/logger.js", async importOriginal => ({
   ...await importOriginal<typeof import("../src/logger.js")>(),
   createLogger: () => pino({ level: "silent" }),

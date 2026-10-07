@@ -1,6 +1,8 @@
+import { measureSyncWork } from "./sync-work-attribution.js";
 import { REMOVED_BACKENDS, isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
 import { existsSync, readFileSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { ensureInstanceDir } from "./private-dir.js";
+import { checkBinaryInstalledAsync } from "./backend/binary-discovery.js";
 import { execFileSync } from "node:child_process";
 import { join, basename, dirname, resolve, sep as pathSep } from "node:path";
 import { access, unlink } from "node:fs/promises";
@@ -104,6 +106,9 @@ export function checkBinaryInstalled(binary: string): boolean {
 }
 
 function readProcessCommandLine(pid: number): string {
+  return measureSyncWork("lifecycle.processIdentity", () => readProcessCommandLineSync(pid));
+}
+function readProcessCommandLineSync(pid: number): string {
   try {
     return readFileSync(`/proc/${pid}/cmdline`, "utf8").replace(/\0/g, " ").trim();
   } catch {
@@ -1476,7 +1481,7 @@ export class InstanceLifecycle {
     // that fails before reaching the daemon must leave that intent intact.
 
     const { Daemon } = await import("./daemon.js");
-    const { createBackend } = await import("./backend/factory.js");
+    const { createBackendAsync } = await import("./backend/factory.js");
 
     const backendName = config.backend ?? this.ctx.fleetConfig?.defaults?.backend ?? "claude-code";
 
@@ -1491,7 +1496,7 @@ export class InstanceLifecycle {
 
     // Verify backend binary is in PATH before spawning
     const installation = BACKEND_INSTALLATION_INFO[backendName];
-    if (installation && !checkBinaryInstalled(installation.binary)) {
+    if (installation && !(await checkBinaryInstalledAsync(installation.binary))) {
       this.ctx.logger.error(
         { binary: installation.binary, backend: backendName, instance: name },
         `Backend binary "${installation.binary}" not found in PATH`,
@@ -1507,7 +1512,11 @@ export class InstanceLifecycle {
       return;
     }
 
-    const backend = createBackend(backendName, instanceDir);
+    if (this.epochOf(name) !== epoch) throw new SupersededStartError(name);
+    const backend = await createBackendAsync(backendName, instanceDir, () => {
+      if (this.epochOf(name) !== epoch) throw new SupersededStartError(name);
+    });
+    if (this.epochOf(name) !== epoch) throw new SupersededStartError(name);
     const daemon = new Daemon(
       name,
       config,

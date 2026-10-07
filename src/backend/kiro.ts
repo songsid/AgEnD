@@ -1,3 +1,4 @@
+import { measureSyncWork } from "../sync-work-attribution.js";
 import { EFFORT_CAPABILITIES } from "./effort-metadata.js";
 import { join } from "node:path";
 import { getAgendHome } from "../paths.js";
@@ -7,6 +8,9 @@ import {
   prepareCredentialProfileHome,
   resolveCredentialProfile,
 } from "./credential-profile.js";
+import { discoveryOutput } from "./binary-discovery.js";
+import { stat } from "node:fs/promises";
+import { performance } from "node:perf_hooks";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, unlinkSync, statSync } from "node:fs";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, UnsupportedCliError, resolveBinary, shellQuote, validateEffort, validateModel, warnIfModelMismatch } from "./types.js";
@@ -409,6 +413,16 @@ export function probeKiroCliCompatibility(
     stdio: ["ignore", "pipe", "ignore"],
   }),
 ): KiroCliCompatibility {
+  return measureSyncWork("kiro.compatibilitySync", () => probeKiroCliCompatibilitySync(binaryPath, run));
+}
+function probeKiroCliCompatibilitySync(
+  binaryPath: string,
+  run: KiroProbeRunner = (binary, args) => execFileSync(binary, args, {
+    encoding: "utf-8",
+    timeout: 5000,
+    stdio: ["ignore", "pipe", "ignore"],
+  }),
+): KiroCliCompatibility {
   let version: string | undefined;
   try {
     version = run(binaryPath, ["--version"]).trim().split("\n")[0].slice(0, 80) || undefined;
@@ -426,6 +440,43 @@ export function probeKiroCliCompatibility(
     if (parsed && !versionAtLeast(parsed, "3.0.0")) return compatibilityFromVersion(version!, parsed);
     return { ...UNKNOWN_KIRO_COMPATIBILITY, version };
   }
+}
+
+/** Async fleet probe using exactly the existing version/help policy. */
+export async function probeKiroCliCompatibilityAsync(binaryPath: string): Promise<KiroCliCompatibility> {
+  const outputs = new Map<string, string>();
+  try { outputs.set("--version", await discoveryOutput(binaryPath, ["--version"], 5000)); } catch { /* help fallback */ }
+  const version = outputs.get("--version")?.trim().split("\n")[0].slice(0, 80);
+  const parsed = parseSemver(version);
+  if (!parsed || versionAtLeast(parsed, nextPatch(KIRO_TESTED_MAX))) {
+    try { outputs.set("chat --help", await discoveryOutput(binaryPath, ["chat", "--help"], 5000)); } catch { /* unknown */ }
+  }
+  return probeKiroCliCompatibility(binaryPath, (_binary, args) => {
+    const output = outputs.get(args.join(" "));
+    if (output === undefined) throw new Error("Probe did not answer");
+    return output;
+  });
+}
+
+const asyncCompatibilityCache = new Map<string, CachedKiroCompatibility>();
+const asyncCompatibilityFlights = new Map<string, Promise<CachedKiroCompatibility>>();
+async function cachedKiroCliCompatibilityAsync(binaryPath: string): Promise<CachedKiroCompatibility> {
+  let cacheKey = `${binaryPath}\0unavailable`;
+  try {
+    const info = await stat(binaryPath);
+    cacheKey = `${binaryPath}\0${info.dev}:${info.ino}:${info.size}:${info.mtimeMs}`;
+  } catch { /* next launch checks again */ }
+  const cached = asyncCompatibilityCache.get(cacheKey);
+  if (cached && (cached.compatibility.source !== "unknown" || performance.now() - cached.probedAt < UNKNOWN_COMPATIBILITY_TTL_MS)) return cached;
+  const pending = asyncCompatibilityFlights.get(cacheKey);
+  if (pending) return pending;
+  const flight = probeKiroCliCompatibilityAsync(binaryPath).then(compatibility => {
+    const entry = { cacheKey, compatibility, probedAt: performance.now() };
+    asyncCompatibilityCache.set(cacheKey, entry);
+    return entry;
+  }).finally(() => { if (asyncCompatibilityFlights.get(cacheKey) === flight) asyncCompatibilityFlights.delete(cacheKey); });
+  asyncCompatibilityFlights.set(cacheKey, flight);
+  return flight;
 }
 
 function nextPatch(version: string): string {
@@ -537,6 +588,8 @@ export function getCachedKiroCliCompatibility(
 /** Test-only reset for the process-level compatibility and warning memo. */
 export function resetKiroCompatibilityCacheForTests(): void {
   compatibilityCache.clear();
+  asyncCompatibilityCache.clear();
+  asyncCompatibilityFlights.clear();
   warnedUnsupportedEffortCacheKeys.clear();
   warnedVersionGateCacheKeys.clear();
 }
@@ -586,17 +639,26 @@ export class KiroBackend implements CliBackend {
   /** Version-gate notice for the launch just built (consumeLaunchWarning). */
   private launchWarning: string | null = null;
 
-  constructor(private instanceDir: string, compatibility?: KiroCliCompatibility) {
-    this.binaryPath = resolveBinary("kiro-cli");
+  constructor(private instanceDir: string, compatibility?: KiroCliCompatibility, private resolvedBinary?: string) {
+    this.binaryPath = resolvedBinary ?? resolveBinary("kiro-cli");
     this.fixedCompatibility = compatibility !== undefined;
     if (compatibility) {
       this.compatibility = compatibility;
+    } else if (resolvedBinary !== undefined) {
+      this.compatibility = UNKNOWN_KIRO_COMPATIBILITY;
     } else {
       const cached = cachedKiroCliCompatibility(this.binaryPath);
       this.compatibility = cached.compatibility;
       this.compatibilityCacheKey = cached.cacheKey;
       publishKiroCompatibility(this.binaryPath, this.compatibility);
     }
+  }
+
+  async prepareLaunch(): Promise<void> {
+    if (this.resolvedBinary === undefined || this.fixedCompatibility) return;
+    const current = await cachedKiroCliCompatibilityAsync(this.binaryPath);
+    this.compatibility = current.compatibility;
+    this.compatibilityCacheKey = current.cacheKey;
   }
 
   requiresDeliveryEnterRetry(): boolean {
@@ -676,7 +738,7 @@ export class KiroBackend implements CliBackend {
     // backend, and kiro-cli may have replaced itself in place since the last
     // launch (an auto-update to a release without this instance's engine).
     // Cheap — a stat and a map lookup unless the binary changed.
-    if (!this.fixedCompatibility) {
+    if (!this.fixedCompatibility && this.resolvedBinary === undefined) {
       const current = cachedKiroCliCompatibility(this.binaryPath);
       this.compatibility = current.compatibility;
       this.compatibilityCacheKey = current.cacheKey;

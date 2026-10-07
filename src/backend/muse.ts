@@ -212,8 +212,8 @@ export class MuseBackend implements CliBackend {
   // args) can match sessions against this instance's workspace.
   private workingDirectory?: string;
 
-  constructor(private instanceDir: string) {
-    this.binaryPath = resolveBinary("muse");
+  constructor(private instanceDir: string, resolvedBinary?: string) {
+    this.binaryPath = resolvedBinary ?? resolveBinary("muse");
     this.sharedXdgConfigHome = resolve(process.env.XDG_CONFIG_HOME || join(homedir(), ".config"));
   }
 

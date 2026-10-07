@@ -55,6 +55,12 @@ export function parseAntigravityModelsOutput(output: string): import("./types.js
   return models;
 }
 
+/** Shared knowledge/launch workspace preparation, without binary discovery or a backend constructor. */
+export function resolveAntigravityWorkingDirectory(workingDirectory: string): string {
+  mkdirSync(workingDirectory, { recursive: true });
+  return workingDirectory;
+}
+
 export class AntigravityBackend implements CliBackend {
   readonly binaryName = "agy";
   private binaryPath: string;
@@ -64,8 +70,9 @@ export class AntigravityBackend implements CliBackend {
     private instanceDir: string,
     private userHome = homedir(),
     private agendHome = getAgendHome(),
+    resolvedBinary?: string,
   ) {
-    this.binaryPath = resolveBinary("agy");
+    this.binaryPath = resolvedBinary ?? resolveBinary("agy");
     this.mcpWrapperPath = join(instanceDir, "agy-mcp-env.sh");
   }
 
@@ -90,8 +97,7 @@ export class AntigravityBackend implements CliBackend {
   /** agy >= 1.1.0 accepts hidden working directories (upstream issue #20). */
   resolveWorkingDirectory(workingDirectory: string, instanceName?: string): string {
     void instanceName;
-    mkdirSync(workingDirectory, { recursive: true });
-    return workingDirectory;
+    return resolveAntigravityWorkingDirectory(workingDirectory);
   }
 
   writeConfig(config: CliBackendConfig): void {
