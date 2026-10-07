@@ -621,8 +621,11 @@ function applyPrompts(list) {
   const open = new Set(list.map(p => p.nonce));
   for (const p of list) {
     const had = prompts[p.nonce];
-    // An answer already on its way keeps its "answering…" state: a snapshot must not hand its buttons back.
-    if (!had || had.resolved === false) prompts[p.nonce] = { ...p, resolved: false, busy: !!(had && had.busy) };
+    // A prompt this page already holds is updated IN PLACE: an answer on its way holds that same object and
+    // settles it when its response arrives (#1282 review), and its "answering…" state stays. A resolved one
+    // is never reopened.
+    if (!had) prompts[p.nonce] = { ...p, resolved: false, busy: false };
+    else if (!had.resolved) Object.assign(had, { text: p.text, actions: p.actions, expiresAt: p.expiresAt });
   }
   // Open here but not there: answered or expired while this page was not listening.
   for (const n of Object.keys(prompts)) if (!prompts[n].resolved && !open.has(n)) prompts[n].resolved = true;
@@ -669,8 +672,13 @@ async function answerPrompt(p, action) {
   // Answered: the outcome arrives as prompt_resolved. Refused or gone: say why; a prompt that is no longer
   // open (answered on Telegram first, or expired) loses its buttons.
   if (r && r.answered) return;
-  p.busy = false;
-  if (r && r.gone) p.resolved = true;
+  // Settle the prompt this page holds NOW for that nonce (a snapshot may have arrived meanwhile), and every
+  // copy, so no object is left "answering" with its buttons off.
+  const now = prompts[p.nonce];
+  for (const q of now && now !== p ? [p, now] : [p]) {
+    q.busy = false;
+    if (r && r.gone) q.resolved = true;
+  }
   renderPrompts();
   toast(r && r.error ? r.error : tr("disconnected"), false);
 }

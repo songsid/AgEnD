@@ -468,6 +468,66 @@ describe("the dashboard (the real page script)", () => {
     await answering;
   });
 
+  it.each([
+    ["the request fails (network)", () => Promise.reject(new Error("Failed to fetch")), "buttons back"],
+    ["it is refused", () => Promise.resolve({ error: "This prompt belongs to another instance" }), "buttons back"],
+    ["it was answered elsewhere first", () => Promise.resolve({ error: "gone", gone: true }), "resolved"],
+  ] as const)("a snapshot arrives while an answer is on its way, then %s: the prompt on screen is settled (#1282 review)", async (_why, reply, outcome) => {
+    const p = page();
+    let finish!: () => void;
+    (p.c as any).held = new Promise<void>(r => { finish = r; });
+    (p.c as any).reply = reply;
+    p.read("api = async () => { await held; return reply(); }");
+    offer(p);
+    const answering = buttons(p)[0].onclick();
+    // The poll / a reconnect still lists the prompt while the answer is in flight.
+    p.sse.prompts!({ data: JSON.stringify([{ instance: "w", nonce: NONCE, text: "w looks hung", actions: [{ id: "restart", label: "Restart" }, { id: "wait", label: "Wait" }], expiresAt: 1 }]) });
+    finish();
+    await answering;
+    if (outcome === "buttons back") {
+      expect(cards(p)[0].className).toBe("prompt");
+      expect(buttons(p).map((b: any) => b.disabled), "the buttons can be pressed again").toEqual([false, false]);
+      // …and a retry goes out.
+      (p.c as any).reply = () => Promise.resolve({ answered: true });
+      (p.c as any).held = Promise.resolve();
+      await buttons(p)[1].onclick();
+      expect(buttons(p).map((b: any) => b.disabled)).toEqual([true, true]);
+    } else {
+      expect(cards(p)[0].className).toBe("prompt done");
+      // A later snapshot that still lists it (stale) never reopens it.
+      p.sse.prompts!({ data: JSON.stringify([{ instance: "w", nonce: NONCE, text: "w looks hung", actions: [{ id: "wait", label: "Wait" }], expiresAt: 1 }]) });
+      expect(cards(p)[0].className).toBe("prompt done");
+    }
+  });
+
+  it("each layer on its own: a snapshot keeps the very object an answer holds; a response settles whatever object holds the nonce now", async () => {
+    const p = page();
+    offer(p);
+    p.read(`globalThis.__held = prompts["${NONCE}"]`);
+    p.sse.prompts!({ data: JSON.stringify([{ instance: "w", nonce: NONCE, text: "w looks hung (2)", actions: [{ id: "wait", label: "Wait" }], expiresAt: 2 }]) });
+    expect(p.read(`prompts["${NONCE}"] === globalThis.__held`), "updated in place, not replaced").toBe(true);
+    expect(p.read(`prompts["${NONCE}"].text`)).toBe("w looks hung (2)");
+    // The response side alone: the object is swapped under an in-flight answer (as an older page did) — still settled.
+    let finish!: () => void;
+    (p.c as any).held = new Promise<void>(r => { finish = r; });
+    p.read('api = async () => { await held; return { error: "Failed" }; }');
+    const answering = buttons(p)[0].onclick();
+    p.read(`prompts["${NONCE}"] = Object.assign({}, prompts["${NONCE}"])`);
+    finish();
+    await answering;
+    expect(p.read(`prompts["${NONCE}"].busy`)).toBe(false);
+    expect(buttons(p).map((b: any) => b.disabled)).toEqual([false]);
+  });
+
+  it("a resolved prompt is never reopened by a snapshot that still lists it", () => {
+    const p = page();
+    offer(p);
+    p.sse.prompt_resolved!({ data: JSON.stringify({ instance: "w", nonce: NONCE, outcome: "Restarted" }) });
+    p.sse.prompts!({ data: JSON.stringify([{ instance: "w", nonce: NONCE, text: "w looks hung", actions: [{ id: "wait", label: "Wait" }], expiresAt: 1 }]) });
+    expect(cards(p)[0].className).toBe("prompt done");
+    expect(cards(p)[0].children[0].textContent).toBe("Restarted");
+  });
+
   it("polling carries the open prompts: the poll alone catches one up — the page never re-reads /ui/prompts on a timer (#1253 rule)", async () => {
     const p = page();
     const fetched: string[] = [];
