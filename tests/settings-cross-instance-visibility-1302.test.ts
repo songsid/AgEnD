@@ -75,6 +75,8 @@ const PAGE_HELPERS = () => [
   line("const el = (tag, attrs = {}, ...kids) =>"),
   line("const BACKENDS = ["),
   line("function select(value, options) {"),
+  // #1294: the backend pickers are built by backendSelect, a page-level helper next to select().
+  slice("  /**\n   * The backend picker keeps", "  const impactText"),
   slice("  const hasOwn = ", "  function setValidation("),
   slice("  function setValidation(", "  function confirmAccessChange("),
 ];
