@@ -110,6 +110,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   pictures is not cut short.
 
 ### Fixed
+- **Settings → Defaults language: no longer pins locale to English on any unrelated save (#1310).** The language `<select>` had no "unset" option, so with `defaults.locale` absent the picker fell to its first choice (en). Any save — even an unrelated one like changing log_level — therefore wrote `locale: en` to fleet.yaml, pinning the UI language and disabling timezone/locale auto-detect. The picker now has an explicit **"Auto (follow system)"** option as the first entry that maps to *unset*. Only changed fields reach the API (`changedFields` against baseline); choosing Auto sends `null` to remove the key.
 - **Muse session discovery no longer reads whole session logs (#1228).** Finding the workspace's session used to
   `readFileSync` all of every candidate `session.jsonl` before slicing the 64KB head that names the working
   directory — slow when sessions grow long. Both `MuseBackend.getSessionId` and the detection-seam `museFingerprint`

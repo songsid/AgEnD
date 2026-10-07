@@ -50,6 +50,7 @@
 - **`list_emojis` 變輕了（#1226）。** 伺服器 emoji 預設不再附圖片網址（要的話設 `with_image_urls`；想看圖用 `preview_emojis`），並可用 `name`、`limit`、`primary_only` 縮小清單——在 emoji 很多的伺服器上，一次呼叫原本要花約 1 萬字的 context，而 agent 只需要一個 emoji。emoji 與貼圖工具的呼叫改用共用的 30 秒時限，不再是固定 10 秒，一次下載多張圖的預覽不會被中途切掉。
 
 ### 修正 (Fixed)
+- **設定 → Defaults 語言選單：存任何不相關的設定時不再把語言釘死成英文（#1310）。** 語言 `<select>` 沒有「未設定」選項，因此 `defaults.locale` 未設定時，選單會落到第一個選項（en）。存任何設定——哪怕只是改 log_level——都會把 `locale: en` 寫進 fleet.yaml，把 UI 語言釘成英文並關掉時區與語言的自動偵測。現在選單的第一個選項改為明確的**「自動（跟隨系統）」**，對應到「未設定」。只有使用者實際更改的欄位才會送到 API（`changedFields` 對比 baseline）；選擇「自動」時送出 `null`，讓伺服器移除該 key。
 - **找 muse session 只讀前面的字、不再整檔讀進來（#1228）。** `MuseBackend.getSessionId` 與偵測 seam 的 `museFingerprint` 現在都走共用的 `readFileHeadSync`（開檔、串流解出前 65536 個字元、關檔），結果與整檔讀相同（算的是解出的字元數、不是 byte，多位元組開頭一樣找得到）。
 - **Telegram 的投遞狀態不再覆蓋 agent 主動加的反應（#959）。** 系統會記錄 bot 唯一反應欄位的擁有者，並讓狀態與 agent 反應共用每則訊息的佇列。無法確認擁有者時（包括 adapter 被重建、或 API 回應不明），晚到的狀態就跳過；agent 選了跟舊狀態一樣的 emoji 也會保留。General fallback 投遞亦保留原始 chat/thread 資料，Discord topic 路由不變。
 - **修正 `checkout_repo` 與 `get_usage` 工具描述（#1296）。** `checkout_repo` 的描述說「唯讀 worktree」及「接受 instance 名稱或絕對路徑」；實際上 handler（`daemon.ts`）拒絕非路徑的 source，且建立的是 detached HEAD worktree，並非強制唯讀掛載。`get_usage` 的描述只列了 Claude/Codex/Grok/Kiro，漏掉了 Muse 與 Antigravity。兩者已更正。讀取工具描述來決定用法的 agent 會看到錯誤資訊。
