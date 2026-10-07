@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 import { createWriteStream } from "node:fs";
+import { Agent as UndiciAgent } from "undici";
 import {
   Client,
   GatewayIntentBits,
@@ -137,6 +138,17 @@ function privateNotice(interaction: { followUp(options: { content: string; flags
 const SLASH_ACK_SLOW_MS = 1_500;
 
 /**
+ * #1235 part 2: the discord.js REST connection survives idle gaps.
+ * undici's default keepAliveTimeout is 4 s, so the first deferReply after any
+ * pause pays a fresh TLS handshake to discord.com. 60 s keeps one socket
+ * warm across typical human command gaps, and it stays under Cloudflare's
+ * ~100 s idle close — we close first and never race a server-side FIN with
+ * a defer inside the 3 s acknowledgement window. Scoped to this adapter's
+ * own REST manager only; the global dispatcher is untouched.
+ */
+export const DISCORD_REST_KEEP_ALIVE_MS = 60_000;
+
+/**
  * A nonce-armed prompt button (`postNonceButtonPrompt`): `<prefix>:<32 hex>:<action>`.
  * Fleet-manager validates these against the prompt that created them.
  */
@@ -246,6 +258,8 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       ],
       // Events for messages/reactions created before this process started are partial.
       partials: [Partials.Message, Partials.Reaction, Partials.User],
+      // #1235 part 2: a dedicated keep-alive agent for this REST manager.
+      rest: { agent: new UndiciAgent({ keepAliveTimeout: DISCORD_REST_KEEP_ALIVE_MS }) },
     });
   }
 
@@ -991,6 +1005,11 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     const done = this.now();
     const ageAtReceipt = receivedAt - interaction.createdTimestamp;
     const deferMs = done - receivedAt;
+    // #1235 part 2: every acknowledgement reports its split at debug level,
+    // so cold (fresh TLS) vs reused-connection latency can be compared even
+    // when the total stays under the slow warn threshold below.
+    console.debug(`[discord:${this.id}] /${interaction.commandName} acknowledged ${done - interaction.createdTimestamp}ms after it was sent `
+      + `(${ageAtReceipt}ms before AgEnD saw it, ${deferMs}ms to acknowledge)`);
     if (done - interaction.createdTimestamp >= SLASH_ACK_SLOW_MS) {
       console.warn(`[discord:${this.id}] /${interaction.commandName} acknowledged ${done - interaction.createdTimestamp}ms after it was sent `
         + `(${ageAtReceipt}ms before AgEnD saw it, ${deferMs}ms to acknowledge) — Discord allows 3000ms`);

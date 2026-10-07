@@ -110,6 +110,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   pictures is not cut short.
 
 ### Fixed
+- **The first Discord slash acknowledgement after an idle gap reuses its connection (#1235).**
+  The discord.js REST manager now gets a dedicated undici agent with a 60 s keep-alive (undici's default is
+  4 s, so the first `deferReply` after any pause paid a fresh TLS handshake). 60 s stays under Cloudflare's
+  ~100 s idle close, so AgEnD closes first and never races a server-side FIN inside the 3 s acknowledgement
+  window. Scoped to this adapter's REST manager only — the global dispatcher is untouched, and proxy behaviour
+  is unchanged (the adapter has no `HTTPS_PROXY` handling, before or after). Every acknowledgement now also
+  logs its delivery/REST split at debug level, so cold vs reused latency can be compared even under the slow
+  threshold.
 - **A relative `systemPrompt` / `workflow` `file:` path means the instance's working directory (#1314).** It was
   read against the fleet process's current directory: `~/.agend` under the installed service, the shell's directory
   after a manual `agend fleet start`. So one fleet.yaml could load another file, or none, depending on how the fleet
