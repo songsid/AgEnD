@@ -343,6 +343,18 @@ export interface WebConfig {
   view_access?: "open" | "session";
   /** Tell the admin channel when someone signs in to the web panel (default true). */
   notify_login?: boolean;
+  /**
+   * #1306: HTML previews in the web chat (default true). false: no preview listener; cards show Source and
+   * Download only. Even when true, a browser runs a preview only after that device opted in.
+   */
+  preview?: boolean;
+  /** The preview listener's port on 127.0.0.1 (default health_port + 1, i.e. 19281). */
+  preview_port?: number;
+  /**
+   * A separate host name a proxy maps to the preview listener, as a bare origin (`https://preview.example.net`):
+   * previews through a tunnel or proxy need one. It must not be a name the dashboard answers to.
+   */
+  preview_origin?: string;
 }
 
 /** `login:` section — remote /login behaviour. */

@@ -32,6 +32,8 @@ export const STARTUP_ONLY_FLEET_KEYS = [
   "defaults.daily_summary",               // new DailySummary(...)
   "defaults.scheduler.max_schedules",     // Scheduler ctor config
   "defaults.scheduler.default_timezone",  // Scheduler ctor config
+  "web.preview_port",                     // #1306: the preview listener binds it once (web.preview itself is hot)
+  "web.preview_origin",                   // #1306: built into the listener's shim and headers once
 ] as const;
 
 /**
@@ -57,7 +59,8 @@ export const RUNTIME_READ_FLEET_KEYS = [
   // Read on every schedule trigger, unlike the two Scheduler ctor keys.
   "defaults.scheduler.retry_count",
   "defaults.scheduler.retry_interval_ms",
-  // Read when the value is used; no construction captures them.
+  // Read when the value is used; no construction captures them — except web.preview_port / web.preview_origin, split
+  // out above like defaults.scheduler's two ctor keys (web.preview, the on/off switch, is applied on reload).
   "web",
   "hostname",
   "login",

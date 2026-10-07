@@ -94,6 +94,17 @@ dashboard 用**一次性登入碼**登入，絕不使用帶有憑證的連結。
 - 附加了但**30 分鐘內沒送出**的檔案會被刪除。fleet 重啟後，留下的這類檔案也會在啟動時、放滿 30 分鐘後刪除。
 - 已送出的檔案會在 inbox 保留 **7 天**，跟從 Telegram 收到的檔案一樣。
 
+### HTML 預覽
+agent 的回覆裡有 ` ```html ` 區塊時，下方會出現一張卡片，可以幫你執行那段 HTML。
+- **每台裝置預設都是關閉的，要你自己打開。** 用側欄底部的 **Allow HTML previews on this device**，或卡片的 **⋯** 選單。它只會問一次，並說明這代表什麼；關掉時，所有正在執行的預覽都會停止。
+- **每次都要你按下才會執行。** **預覽** 會在卡片下方的框架裡執行，並顯示這段說明：*「Previews run the agent's HTML in an isolated frame. It cannot use your login, but it may be able to send data out. Only preview content you trust. A preview can slow or freeze this tab.」* 按 **停止** 關閉。一次只會執行一個預覽。
+- **下載** 會把 HTML 存成 `reply.html`，絕不會在 dashboard 裡開啟。
+- **它能做什麼、不能做什麼。** 預覽在另一個位址的沙箱裡執行，所以無法使用你的登入、讀取你的 session，也無法操作 dashboard。但它**可能**可以把資料傳出去（沒有瀏覽器能擋住所有管道），所以只預覽你信任的 HTML。
+- **只有 agent 的回覆**（由 fleet 標記）才會有卡片。來自人的 HTML（web、Telegram 或 Discord）一律只顯示成程式碼。被長度上限截斷的區塊不會有預覽：請 agent 改用 `.html` 檔案傳送。
+- **在哪裡能用。** 預覽來自第二個本機 port：`health_port + 1`（19281）。透過 SSH 使用時也要轉送它：`ssh -L 19280:127.0.0.1:19280 -L 19281:127.0.0.1:19281 <host>`。透過 tunnel 或 proxy 時需要設定 `web.preview_origin`（對應到那個 port 的另一個主機名稱），而且 proxy 必須原樣傳遞外部的 `Host`。不符合時，卡片會說明預覽為什麼關閉，只提供程式碼與 **下載**。
+- **⋯ → 這台裝置永不預覽 HTML** 會在這個瀏覽器工作階段裡，隱藏所有卡片的 **預覽**。
+- **卡住的預覽** 可以按 **停止** 關掉；但它可能繼續佔用該分頁的預覽程序，之後在同一個分頁裡的新預覽可能無法啟動，請在新分頁打開 dashboard。
+
 ### Ticks：訊息送到哪一步了
 你送出的每則訊息都會顯示目前進度，跟 Telegram 用 reaction 表示的步驟相同：
 
@@ -159,6 +170,9 @@ server 只回應 `127.0.0.1`。要從別的裝置使用 dashboard，你需要開
 | `web.allowed_hosts` | — | 額外允許的 `Host` 名稱（經由 proxy、tunnel 或 port forward 連線時） |
 | `web.notify_login` | `true` | `false`：不在 General 通知新的登入 |
 | `web.usage_panel` | `true` | `false`：在 `/view` 隱藏 AI 用量面板 |
+| `web.preview` | `true` | `false`：完全不提供 HTML 預覽（卡片只顯示程式碼與下載） |
+| `web.preview_port` | `health_port + 1` | 預覽 listener 的 port（只聽 `127.0.0.1`） |
+| `web.preview_origin` | — | 透過 tunnel 或 proxy 預覽時，對應到預覽 port 的另一個主機名稱 |
 
 完整設定說明：[configuration.zh-TW.md](configuration.zh-TW.md)；CLI 指令：[cli.zh-TW.md](cli.zh-TW.md)。
 
@@ -168,7 +182,7 @@ server 只回應 `127.0.0.1`。要從別的裝置使用 dashboard，你需要開
 - 已登入的瀏覽器要寫入時，必須同時有 session、每個 session 專屬的 CSRF header，**以及**相符的 `Origin`；光有 cookie 什麼都改不了。用 `X-Agend-Token` header 的腳本不受影響，因為瀏覽器不會自己帶上這個 header。
 - 每個面板都帶 Content-Security-Policy：script、樣式、圖片與連線都只限 dashboard 自己的位址。
   - 只會執行頁面自己的 script：每次載入都帶一個新的 nonce，script 不允許 `'unsafe-inline'`，所以被注入到頁面的標記無法執行程式碼。
-  - 樣式也一樣：只會套用頁面自己的樣式表（不允許 `'unsafe-inline'`），所以被注入的標記也無法改變頁面的樣式。
+  - 樣式也一樣：只會套用頁面自己的樣式表（不允許 `'unsafe-inline'`），所以被注入的標記無法加上自己的 inline 樣式（但仍可能套用頁面既有的 class）。
 
 ## 遇到問題時
 

@@ -374,6 +374,24 @@
   .eye-btn { background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 14px; padding: 4px 6px; border-radius: 6px; }
   .eye-btn:hover { color: var(--accent); }
   .offscreen { position: fixed; left: -9999px; top: 0; opacity: 0; }
+  /* #1306: HTML cards and previews */
+  .html-card { margin: 4px 0 10px; border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; background: var(--surface); }
+  .html-card:empty { display: none; }
+  .pv-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .pv-label { font-size: 12px; font-weight: 700; color: var(--text-sec); margin-right: auto; font-family: var(--font-mono); }
+  .pv-note { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+  .pv-note:empty { display: none; }
+  .pv-banner { margin-top: 8px; padding: 8px 10px; border-radius: 8px; font-size: 12px; background: var(--warn-bg); border: 1px solid var(--warn-line); color: var(--text); }
+  .pv-holder:empty { display: none; }
+  .pv-holder { margin-top: 8px; }
+  .preview-frame { display: block; width: 100%; border: 2px solid var(--warn-line); border-radius: 8px; background: #ffffff; }
+  .pv-menu { position: relative; }
+  .pv-menu > summary { list-style: none; cursor: pointer; padding: 2px 8px; border-radius: 6px; color: var(--text-muted); }
+  .pv-menu > summary::-webkit-details-marker { display: none; }
+  .pv-menu[open] { z-index: 6; }
+  .pv-menu[open] > .chip-btn { display: block; position: relative; text-align: left; width: max-content; max-width: 260px; white-space: normal; }
+  .pv-menu[open] { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 4px; }
+  .toggle-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-sec); cursor: pointer; }
   .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
   .instance-item:focus-visible, .fleet-entry:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
   /* Phones with a notch or a home bar: keep the chrome clear of them. */
@@ -426,6 +444,7 @@
     <button class="btn btn-accent btn-block" data-act="showCreateInstance">+ New Instance</button>
     <label class="theme-pick"><span id="themeLabel">Theme</span>
       <select id="themePick"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+    <label class="toggle-row"><input type="checkbox" id="previewOptIn"><span id="previewOptInLabel">Allow HTML previews on this device</span></label>
   </div>
 </aside>
 
@@ -447,6 +466,7 @@
 </div>
 
 <script src="/ui/js/chat-render.js"></script>
+<script src="/ui/js/preview.js"></script>
 <script>
 // No token in the URL: signing in with a one-time code set an HttpOnly session cookie,
 // which the browser attaches to these same-origin requests on its own.
@@ -457,6 +477,11 @@ const UI_TEXT = {
     stopping: "Stopping {0}…", awaiting: "{0} is waiting for your input", approxNote: "Read from the terminal, so approximate", elapsedTitle: "Time since this page saw it start (approximate)", needsYou: "needs you",
     dropHere: "Drop files to attach them", asText: "As text", pasteAttached: "A long paste ({0} characters) was attached as a text file", pasteKeptAsText: "No room for another attachment: the long paste stays as text",
     send: "Send", composerPlaceholder: "Send a message…", composerHint: "Enter to send · Shift+Enter for a new line · Esc stops the reply", attachTitle: "Attach files (images, PDF, text — or paste / drop them)",
+    pvPreview: "Preview", pvStop: "Stop", pvDownload: "Download", pvMenu: "Preview options", pvHtml: "HTML",
+    pvAllow: "Allow HTML previews on this device — they may be able to send data out", pvDisallow: "Stop allowing HTML previews on this device",
+    pvConfirm: "Allow HTML previews on this device?\n\nA preview runs the agent's HTML in an isolated frame. It cannot use your login, but it may be able to send data out, and it can slow or freeze this tab. You still click Preview each time.",
+    pvNever: "Never preview HTML on this device", pvNeverUndo: "Let this device preview HTML again", pvStarting: "Starting the preview…",
+    pvChanged: "Preview stopped — the message changed. Preview again.", pvTruncated: "Truncated — ask the agent to send it as a .html file.",
     copy: "Copy", copyMessage: "Copy this reply", copied: "Copied", copyFailed: "Copy failed", wrap: "Wrap", showAll: "Show all {0} lines", showLess: "Show less", jumpLatest: "↓ Latest", newBelow: "↓ {0} new",
     disconnected: "disconnected", tick_queued: "Waiting behind another message", tick_processing: "Handed to the agent", tick_delivered: "The agent has it", tick_failed: "Not delivered", tick_cancelled: "Dropped by Stop",
     promptAnswering: "Answering…", promptGone: "This prompt is no longer open", promptFor: "{0}: {1}",
@@ -474,6 +499,11 @@ const UI_TEXT = {
     stopping: "正在中止 {0}…", awaiting: "{0} 正在等你回應", approxNote: "從終端畫面判讀，僅供參考", elapsedTitle: "從這個頁面看到它開始工作起算（約略）", needsYou: "等你回應",
     dropHere: "放開即可附加檔案", asText: "改為文字", pasteAttached: "貼上的長文字（{0} 個字元）已改為文字檔附加", pasteKeptAsText: "附件已滿，貼上的長文字保留為一般文字",
     send: "送出", composerPlaceholder: "輸入訊息…", composerHint: "Enter 送出 · Shift+Enter 換行 · Esc 中止回覆", attachTitle: "附加檔案（圖片、PDF、文字檔，也可以貼上或拖曳）",
+    pvPreview: "預覽", pvStop: "停止", pvDownload: "下載", pvMenu: "預覽選項", pvHtml: "HTML",
+    pvAllow: "允許這台裝置預覽 HTML（預覽可能把資料傳出去）", pvDisallow: "不再允許這台裝置預覽 HTML",
+    pvConfirm: "要允許這台裝置預覽 HTML 嗎？\n\n預覽會在隔離的框架裡執行 agent 的 HTML。它無法使用你的登入，但可能把資料傳出去，也可能讓這個分頁變慢或卡住。每次仍需要你按「預覽」。",
+    pvNever: "這台裝置永不預覽 HTML", pvNeverUndo: "讓這台裝置再次可以預覽 HTML", pvStarting: "正在啟動預覽…",
+    pvChanged: "預覽已停止——訊息內容變了。請再預覽一次。", pvTruncated: "內容被截斷——請 agent 改用 .html 檔案傳送。",
     copy: "複製", copyMessage: "複製這則回覆", copied: "已複製", copyFailed: "複製失敗", wrap: "換行", showAll: "展開全部 {0} 行", showLess: "收合", jumpLatest: "↓ 最新", newBelow: "↓ {0} 則新訊息",
     disconnected: "已斷線", tick_queued: "排在前一則訊息之後", tick_processing: "已交給 agent", tick_delivered: "agent 已收到", tick_failed: "未送達", tick_cancelled: "已被中止取消",
     promptAnswering: "回覆中…", promptGone: "這個提示已經結束", promptFor: "{0}：{1}",
@@ -551,6 +581,17 @@ function trapDrawerTab(e) {
   else if (!document.getElementById("sidebar").contains(document.activeElement)) { e.preventDefault(); first.focus(); }
 }
 if (stored("agend_sidebar") === "hidden") document.body.classList?.add("sb-collapsed");
+// #1306: what the server said about previews for this load (the <body data-*> it served), and this device's choice.
+if (typeof AgendPreview !== "undefined" && document.body?.dataset) AgendPreview.init(document.body.dataset);
+{
+  const box = document.getElementById("previewOptIn");
+  if (box && typeof AgendPreview !== "undefined") {
+    box.checked = AgendPreview.optedIn();
+    box.addEventListener("change", () => setPreviewOptIn(box.checked));
+    // Changed in another tab of this dashboard too: the checkbox and the cards follow (previews were stopped already).
+    AgendPreview.onChange(() => { box.checked = AgendPreview.optedIn(); refreshCards(); });
+  }
+}
 {
   const pick = document.getElementById("themePick");
   if (pick && typeof AgendTheme !== "undefined") {
@@ -764,6 +805,8 @@ function renderTopbar(title, tabs) {
 }
 function renderMain() {
   const main = document.getElementById("mainArea");
+  // The whole view is rebuilt: no preview survives it (design §6.2 — never re-parented or reloaded silently).
+  if (typeof AgendPreview !== "undefined") AgendPreview.stopAll();
   if (mode === "fleet") return renderFleetMain(main);
   if (mode === "instance" && cur) return renderInstanceMain(main);
   renderTopbar("", []);
@@ -859,6 +902,7 @@ async function doAction(a) {
     if (r.error) { toast(r.error, false); return; }
     toast(`${cur}: ${tr("instanceDeleted")}`); cur = null; mode = "none";
     renderTopbar("", []);
+    if (typeof AgendPreview !== "undefined") AgendPreview.stopAll();   // the view goes: its previews stop first (#1332 review)
     document.getElementById("mainArea").innerHTML = `<div class="no-sel"><span>${tr("instanceDeleted")}</span></div>`;
     return;
   }
@@ -887,13 +931,86 @@ function msgHtml(x) {
   // renderMarkdown escapes the whole text before it adds any tag of its own (src/ui/chat-render.js).
   const ticks = u && x.delivery ? AgendChatRender.deliveryHtml(x.delivery, TICK_LABELS()) : "";
   const tools = u ? "" : `<div class="msg-tools"><button type="button" class="chip-btn icon-only" data-act="copyMsg" data-arg="${escAttr(msgKey(x))}" title="${escAttr(tr("copyMessage"))}" aria-label="${escAttr(tr("copyMessage"))}">${ICON_COPY}</button></div>`;
-  return `<div class="msg ${u?"user":"agent"}"><div class="meta"><span class="sender">${esc(x.sender)}</span><span class="time">${t}</span>${ticks}</div><div class="body"><div class="md">${AgendChatRender.renderMarkdown(x.text)}</div>${AgendChatRender.attachmentsHtml(x.attachments)}</div>${tools}</div>`;
+  return `<div class="msg ${u?"user":"agent"}"><div class="meta"><span class="sender">${esc(x.sender)}</span><span class="time">${t}</span>${ticks}</div><div class="body"><div class="md">${AgendChatRender.renderMarkdown(x.text, x.role === "agent" ? { htmlCards: true } : undefined)}</div>${AgendChatRender.attachmentsHtml(x.attachments)}</div>${tools}</div>`;
 }
-function msgNode(html) {
+function msgNode(html, x, stoppedKeys) {
   const tpl = document.createElement("template"); tpl.innerHTML = html;
   const node = tpl.content.firstElementChild;
   decorateCode(node);
+  if (x) decorateHtmlCards(node, x, stoppedKeys || []);
   return node;
+}
+// ── HTML cards (#1306) ──────────────────────────────────
+// Each ```html fence of a server-marked agent message gets a card under its code block, built from nodes: Preview
+// (only where available and opted in), Stop, Download, and a menu with this device's choices. Building a card makes
+// no frame; Preview does (AgendPreview.start → mountPreview). The HTML is read from the message by fence number.
+// card node → its "re-read availability" function. Weak: a card that left the page (its message replaced, trimmed, or
+// the view rebuilt) is not kept alive by this — nothing else holds it, so its fence source goes with it (#1332 review).
+const cardRefresh = new WeakMap();
+function decorateHtmlCards(node, x, stoppedKeys) {
+  const fences = AgendChatRender.htmlFences(x.text);
+  for (const ph of node.querySelectorAll(".html-card[data-card]")) {
+    const n = Number(ph.dataset.card), fence = fences[n];
+    if (!fence) continue;
+    const key = `${msgKey(x)}:f${n}`;
+    ph.textContent = "";
+    if (ph.classList.contains("truncated") || !fence.terminated) {
+      const note = document.createElement("div"); note.className = "pv-note"; note.textContent = tr("pvTruncated"); ph.append(note);
+      continue;
+    }
+    const head = document.createElement("div"); head.className = "pv-head";
+    const label = document.createElement("span"); label.className = "pv-label"; label.textContent = tr("pvHtml");
+    const run = document.createElement("button"); run.type = "button"; run.className = "btn btn-sm pv-run"; run.textContent = tr("pvPreview");
+    const stopB = document.createElement("button"); stopB.type = "button"; stopB.className = "btn btn-sm pv-stop"; stopB.textContent = tr("pvStop"); stopB.hidden = true;
+    const dl = document.createElement("button"); dl.type = "button"; dl.className = "btn btn-sm btn-ghost pv-dl"; dl.textContent = tr("pvDownload");
+    const menu = document.createElement("details"); menu.className = "pv-menu";
+    const sum = document.createElement("summary"); sum.textContent = "⋯"; sum.title = tr("pvMenu"); sum.setAttribute("aria-label", tr("pvMenu"));
+    const optB = document.createElement("button"); optB.type = "button"; optB.className = "chip-btn pv-opt";
+    const neverB = document.createElement("button"); neverB.type = "button"; neverB.className = "chip-btn pv-never";
+    menu.append(sum, optB, neverB);
+    head.append(label, run, stopB, dl, menu);
+    const note = document.createElement("div"); note.className = "pv-note";
+    const banner = document.createElement("div"); banner.className = "pv-banner"; banner.textContent = AgendPreview.BANNER; banner.hidden = true;
+    const holder = document.createElement("div"); holder.className = "pv-holder";
+    ph.append(head, note, banner, holder);
+    let state = "idle";
+    const refresh = (reason) => {
+      const a = AgendPreview.availability();
+      const going = state === "starting" || state === "running";
+      run.hidden = !a.ok || going;
+      stopB.hidden = !going;
+      banner.hidden = !going;
+      note.textContent = reason != null ? reason : going ? (state === "starting" ? tr("pvStarting") : "") : a.ok ? "" : a.reason;
+      optB.textContent = AgendPreview.optedIn() ? tr("pvDisallow") : tr("pvAllow");
+      neverB.textContent = AgendPreview.never() ? tr("pvNeverUndo") : tr("pvNever");
+    };
+    const ui = { state: (name, reason) => { state = name === "starting" || name === "running" ? name : "idle"; refresh(reason || null); } };
+    run.onclick = () => AgendPreview.start(key, holder, fence.code, ui);
+    stopB.onclick = () => AgendPreview.stop(key, "stopped", "");
+    dl.onclick = () => downloadHtml(fence.code);
+    optB.onclick = () => { menu.open = false; setPreviewOptIn(!AgendPreview.optedIn()); };
+    neverB.onclick = () => { menu.open = false; AgendPreview.setNever(!AgendPreview.never()); refreshCards(); };
+    cardRefresh.set(ph, refresh);
+    refresh(stoppedKeys.includes(key) ? tr("pvChanged") : null);
+  }
+}
+/** Re-read this device's choice on every card that is on the page now — found in the document, not in a list. */
+function refreshCards() {
+  for (const node of document.querySelectorAll(".html-card[data-card]")) { const f = cardRefresh.get(node); if (f) f(); }
+}
+/** This device's opt-in: asks once and says what it means; turning it off stops every running preview. */
+function setPreviewOptIn(on) {
+  if (on && !AgendPreview.optedIn() && !confirm(tr("pvConfirm"))) on = false;
+  AgendPreview.setOptIn(on);
+  const box = document.getElementById("previewOptIn"); if (box) box.checked = AgendPreview.optedIn();
+  refreshCards();
+}
+/** The HTML as a file: a blob of the source as application/octet-stream, saved as reply.html — never opened or navigated to. */
+function downloadHtml(code) {
+  const url = URL.createObjectURL(new Blob([code], { type: "application/octet-stream" }));
+  const a = document.createElement("a"); a.href = url; a.download = "reply.html"; a.className = "offscreen";
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
 }
 // Code blocks get a header (language, Wrap, Copy); a long one is folded until opened. Built from nodes: the language
 // is text, and the code is the escaped text renderMarkdown produced.
@@ -920,26 +1037,30 @@ function renderMsgs(opts) {
   const sc = document.getElementById("scroller");
   const stick = !sc || AgendChatRender.isNearBottom(sc.scrollTop, sc.clientHeight, sc.scrollHeight);
   const m = msgs[cur] || [];
-  if (msgNodesIn !== el) { msgNodes.clear(); msgNodesIn = el; el.textContent = ""; }
+  // A running preview is never replaced, moved or removed alive (#1306 §6.2): stop first.
+  const stopPv = node => (typeof AgendPreview !== "undefined" ? AgendPreview.stopIn(node) : []);
+  if (msgNodesIn !== el) { for (const v of msgNodes.values()) stopPv(v.node); msgNodes.clear(); msgNodesIn = el; el.textContent = ""; }
   if (!m.length) {
+    for (const v of msgNodes.values()) stopPv(v.node);
     msgNodes.clear();
     el.innerHTML = `<div class="msg-empty"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>${tr("noMessages")}<br><span class="sub">${tr("sendFirst")}</span></div>`;
     return;
   }
   if (!msgNodes.size) el.textContent = "";      // the empty-chat placeholder goes
   const keep = new Set(m.map(msgKey));
-  for (const [k, v] of msgNodes) if (!keep.has(k)) { v.node.remove(); msgNodes.delete(k); }
+  for (const [k, v] of msgNodes) if (!keep.has(k)) { stopPv(v.node); v.node.remove(); msgNodes.delete(k); }
   let prev = null, added = 0;
   for (const x of m) {
     const key = msgKey(x), html = msgHtml(x);
     let have = msgNodes.get(key);
     if (!have || have.html !== html) {
-      const node = msgNode(html);
+      const stopped = have ? stopPv(have.node) : [];
+      const node = msgNode(html, x, stopped);
       if (have) have.node.replaceWith(node); else added++;
       have = { html, node }; msgNodes.set(key, have);
     }
     const want = prev ? prev.nextSibling : el.firstChild;
-    if (have.node !== want) el.insertBefore(have.node, want);
+    if (have.node !== want) { if (have.node.parentNode) stopPv(have.node); el.insertBefore(have.node, want); }
     prev = have.node;
   }
   if (!sc) return;

@@ -137,6 +137,7 @@ import { bypassesWebGate, handleAuthRequest, serveSigninPage, type AuthApiContex
 import { tokenEpoch, WebSessionStore } from "./web-session.js";
 import { WebLoginCodes, LOGIN_CODE_TTL_MS } from "./web-login.js";
 import { allowedHostNames, applyWebSecurityHeaders, hostnameOf, isHostAllowed, WEB_HOST_REJECTED_MESSAGE } from "./web-host-guard.js";
+import { createPreviewListener, previewAvailability, previewSettings, type PreviewAvailability, type PreviewListener } from "./web-preview.js";
 import { fleetLevelDifferences, fleetLevelSignature } from "./fleet-level-config.js";
 import { checkSelfRestartAllowance, recordSelfRestartAttempt } from "./self-restart-limit.js";
 import { SecretStore } from "./secret-store.js";
@@ -934,6 +935,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   // Health endpoint
   private healthServer: Server | null = null;
+  /** #1306: the preview listener (health_port + 1 by default), and whether it is listening. */
+  private previewListener: PreviewListener | null = null;
+  private previewListening = false;
+  /** The ports the preview listener was started for, and the inputs it was built from (a reload compares them). */
+  private previewPorts: { requested: number; bound: number } | null = null;
+  private previewInputs = "";
   private healthPortRetried = false;
   private updateCheckTimer: ReturnType<typeof setTimeout> | ReturnType<typeof setInterval> | null = null;
   private updateProgressTimer: ReturnType<typeof setInterval> | null = null;
@@ -6501,7 +6508,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           this.logger.info(`${msg.username} → ${generalInstance}: ${(text ?? "").slice(0, 100)}`);
           this.eventLog?.logActivity("message", msg.username, (text ?? "").slice(0, 200), generalInstance);
           this.emitSseEvent("message", {
-            instance: generalInstance, sender: msg.username,
+            instance: generalInstance, sender: msg.username, role: "user",
             text: (text ?? "").slice(0, WEB_CHAT_TEXT_MAX), ts: new Date().toISOString(),
           });
           this.trackInboundMsg(generalInstance, msg);
@@ -6617,7 +6624,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.logger.info(`${msg.username} → ${instanceName}: ${(text ?? "").slice(0, 100)}`);
     this.eventLog?.logActivity("message", msg.username, (text ?? "").slice(0, 200), instanceName);
     this.emitSseEvent("message", {
-      instance: instanceName, sender: msg.username,
+      instance: instanceName, sender: msg.username, role: "user",
       text: (text ?? "").slice(0, WEB_CHAT_TEXT_MAX), ts: new Date().toISOString(),
     });
     this.trackInboundMsg(instanceName, msg);
@@ -6853,7 +6860,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           // A daemon status line skips the bookkeeping, but on a web-only fleet the web chat is the only
           // place anyone could read it.
           this.emitSseEvent("message", {
-            instance: instanceName, sender: senderSessionName ?? instanceName,
+            instance: instanceName, sender: senderSessionName ?? instanceName, role: "status",
             text: String(args.text ?? "").slice(0, WEB_CHAT_TEXT_MAX), ts: new Date().toISOString(),
           });
         }
@@ -6922,8 +6929,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       .map(path => this.webFiles.registerServed({ path, instance: instanceName }))
       .filter((f): f is NonNullable<typeof f> => f !== null)
       .map(publicAttachment);
+    // The one place a delivered agent reply reaches the web chat: the server marks it `agent` (#1306) — the only
+    // role that may get HTML preview cards. Never inferred from the sender name or the text.
     this.emitSseEvent("message", {
-      instance: instanceName, sender: senderSessionName ?? instanceName,
+      instance: instanceName, sender: senderSessionName ?? instanceName, role: "agent",
       text: (args.text as string ?? "").slice(0, WEB_CHAT_TEXT_MAX),
       ts: new Date().toISOString(),
       ...(attachments.length ? { attachments } : {}),
@@ -11808,11 +11817,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const onError = (err: unknown) => this.logger.debug({ err }, "SSE client write failed; evicting");
     if (event === "message" && data && typeof data === "object") {
       // A chat message: record it, and send it WITH its id so a reconnecting stream can ask for what it missed.
-      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown };
+      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; role?: unknown };
       const recorded = this.webChatHistory.record({
         instance: String(m.instance ?? ""), sender: String(m.sender ?? ""), text: String(m.text ?? ""), ts: String(m.ts ?? new Date().toISOString()),
         attachments: Array.isArray(m.attachments) ? m.attachments as WebChatAttachment[] : undefined,
         messageId: typeof m.messageId === "string" ? m.messageId : undefined,
+        role: typeof m.role === "string" ? m.role : undefined,
       });
       broadcastSseEvent(this.sseClients, event, recorded, onError, this.webChatHistory.cursorOf(recorded));
       return;
@@ -14104,6 +14114,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       this.healthServer.close();
       this.healthServer = null;
     }
+    this.stopPreviewListener();
 
     // The store writes lastSeen at most once a minute; what that debounce is still holding — and any
     // write that failed and is still owed — is paid now, so a restart neither shortens the idle window
@@ -14340,6 +14351,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     this.routing.rebuild(this.fleetConfig!);
     this.reregisterClassicChannels();
     this.scheduler?.reload();
+    this.reconcilePreviewListener();
 
     const newInstances = this.fleetConfig!.instances;
     const topicMode = this.fleetConfig?.channel?.mode === "topic";
@@ -16166,6 +16178,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       // `/dashboard` and `agend web` are the ways to get an authorized link.
       this.logger.info({ url: `http://localhost:${port}/ui` }, "Web UI available (open it with /dashboard or `agend web`)");
       this.logger.info({ url: `http://localhost:${port}/view` }, "Web View available");
+      // #1306: the preview listener starts once the web listener is bound — its frame-ancestors name the real port.
+      const bound = this.healthServer?.address();
+      this.startPreviewListener(port, bound && typeof bound === "object" ? bound.port : port);
     };
 
     this.healthServer.on("error", (err: NodeJS.ErrnoException) => {
@@ -16217,6 +16232,73 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     });
 
     this.healthServer.listen(port, "127.0.0.1", () => markListening());
+  }
+
+  /**
+   * #1306: the preview listener, beside the web listener and closed with it. When it cannot listen (the port is
+   * taken, web.preview: false), cards show Source and Download only; nothing else changes.
+   */
+  private startPreviewListener(requestedPort: number, boundPort: number): void {
+    this.stopPreviewListener();
+    this.previewPorts = { requested: requestedPort, bound: boundPort };
+    this.previewInputs = this.previewInputsSignature();
+    // web.preview is hot; web.preview_port and web.preview_origin are startup-only (STARTUP_ONLY_FLEET_KEYS): they
+    // come from the configuration this process started on, so a reload that changes them reports "restart required"
+    // and a hot re-enable never half-applies them.
+    const started = (this.startupFleetConfig ?? this.fleetConfig)?.web;
+    const settings = previewSettings({ preview: this.fleetConfig?.web?.preview, preview_port: started?.preview_port, preview_origin: started?.preview_origin }, requestedPort);
+    if (!settings.enabled) return;
+    if (settings.port === null) {
+      this.logger.warn({ health_port: requestedPort }, "No port for the HTML preview listener (health_port is the highest port) — set web.preview_port; previews are off");
+      return;
+    }
+    const listener = createPreviewListener({ settings, healthPort: boundPort, config: this.fleetConfig });
+    this.previewListener = listener;
+    listener.server.on("error", (err: NodeJS.ErrnoException) => {
+      if (this.previewListener !== listener) return;
+      this.logger.warn({ code: err.code, port: settings.port }, "Preview listener unavailable; HTML previews are off");
+      this.previewListening = false;
+      this.previewListener = null;
+    });
+    // An optional listener never takes the fleet down: a port Node refuses outright throws here, synchronously.
+    try {
+      listener.server.listen(settings.port, "127.0.0.1", () => { if (this.previewListener === listener) this.previewListening = true; });
+    } catch (err) {
+      this.logger.warn({ err: (err as Error).message, port: settings.port }, "Preview listener cannot listen; HTML previews are off");
+      this.previewListening = false;
+      this.previewListener = null;
+    }
+  }
+
+  /** What a reload may change hot: web.preview, and the dashboard names (the shim's allow-list and frame-ancestors). */
+  private previewInputsSignature(): string {
+    const c = this.fleetConfig;
+    return JSON.stringify({ p: c?.web?.preview ?? null, h: c?.hostname ?? null, a: c?.web?.allowed_hosts ?? null });
+  }
+
+  /**
+   * After a config reload: web.preview true→false stops the listener at once (/ui then offers no origin, boot or
+   * frame-src), false→true starts it, and a change of dashboard names rebuilds it (a new boot id). preview_port and
+   * preview_origin are not adopted here: they are startup-only, and the reload reports "restart required".
+   */
+  private reconcilePreviewListener(): void {
+    if (!this.previewPorts || this.previewInputsSignature() === this.previewInputs) return;
+    this.logger.info({}, "HTML preview settings changed — rebuilding the preview listener");
+    this.startPreviewListener(this.previewPorts.requested, this.previewPorts.bound);
+  }
+
+  private stopPreviewListener(): void {
+    this.previewListening = false;
+    this.previewListener?.close();
+    this.previewListener = null;
+  }
+
+  /** For one /ui load: the preview origin it may frame, and the listener's boot id (see web-preview.ts). */
+  previewForUi(hostHeader: string | undefined, secure: boolean): PreviewAvailability & { boot: string | null } {
+    const listener = this.previewListening ? this.previewListener : null;
+    const decided = previewAvailability(listener ? listener.settings : null, hostHeader, secure, listener ? listener.origins : undefined);
+    if (!listener && this.fleetConfig?.web?.preview !== false) decided.reason = "Previews are not available on this fleet right now.";
+    return { ...decided, boot: listener ? listener.bootId : null };
   }
 
   getUiStatus(): unknown {

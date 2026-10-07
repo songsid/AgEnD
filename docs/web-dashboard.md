@@ -94,6 +94,17 @@ Pick an instance on the left to talk to it. The web chat is **the same conversat
 - An attached file that is **not sent within 30 minutes** is deleted. After a fleet restart, any such file left over is removed at startup once it is 30 minutes old.
 - Files that were sent stay in the inbox for **7 days**, like files from Telegram.
 
+### HTML previews
+When an agent's reply contains a ` ```html ` block, a card under it can run that HTML for you.
+- **Off on every device until you turn it on.** Use **Allow HTML previews on this device** at the bottom of the sidebar, or the card's **⋯** menu. It asks once and says what it means. Turning it off stops every running preview.
+- **Click to run, every time.** **Preview** runs it in a frame under the card, with this banner: *"Previews run the agent's HTML in an isolated frame. It cannot use your login, but it may be able to send data out. Only preview content you trust. A preview can slow or freeze this tab."* **Stop** closes it. One preview runs at a time.
+- **Download** saves the HTML as `reply.html`. It is never opened in the dashboard.
+- **What it can and cannot do.** The preview runs in a sandbox on a separate address, so it cannot use your sign-in, read your session or act on the dashboard. It **may** be able to send data out (no browser blocks every way), so preview only HTML you trust.
+- **Only agents' replies** get a card, marked so by the fleet. HTML from people (on the web, Telegram or Discord) is only ever shown as code. A block cut off by the length limit gets no preview: ask the agent to send a `.html` file instead.
+- **Where it works.** Previews come from a second local port, `health_port + 1` (19281). Over SSH, forward it too: `ssh -L 19280:127.0.0.1:19280 -L 19281:127.0.0.1:19281 <host>`. Through a tunnel or proxy they need `web.preview_origin`, a separate host name mapped to that port; the proxy must pass the external `Host` through. Otherwise the card says why previews are off, and shows the code and **Download** only.
+- **⋯ → Never preview HTML on this device** hides **Preview** on every card for this browser session.
+- **A preview that hangs** can be stopped with **Stop**; it may keep using that tab's preview process, so new previews in that tab may not start until you open the dashboard in a new tab.
+
 ### Ticks: where your message got
 Each message you send shows how far it got, the same steps Telegram shows as reactions:
 
@@ -159,6 +170,9 @@ Whoever reaches the address still has to sign in with a code from you, and each 
 | `web.allowed_hosts` | — | Extra `Host` names to answer to (behind a proxy, tunnel or port forward) |
 | `web.notify_login` | `true` | `false`: don't announce new sign-ins in General |
 | `web.usage_panel` | `true` | `false`: hide the AI usage panel on `/view` |
+| `web.preview` | `true` | `false`: no HTML previews at all (cards show the code and Download only) |
+| `web.preview_port` | `health_port + 1` | The preview listener's port, on `127.0.0.1` |
+| `web.preview_origin` | — | A separate host name, mapped to the preview port, for previews through a tunnel or proxy |
 
 Full reference: [configuration.md](configuration.md). CLI commands: [cli.md](cli.md).
 
@@ -168,7 +182,7 @@ Full reference: [configuration.md](configuration.md). CLI commands: [cli.md](cli
 - Writes from a signed-in browser need the session **and** a per-session CSRF header **and** a matching `Origin`. The cookie alone cannot change anything. Scripts that send `X-Agend-Token` are not affected, since a browser never attaches that header on its own.
 - Every panel carries a Content-Security-Policy: scripts, styles, images and connections are limited to the dashboard's own address.
   - Only the page's own script runs. It carries a fresh nonce on each load, and there is no `'unsafe-inline'` for scripts, so markup injected into a page cannot run code.
-  - The same for styles: only the page's own stylesheet applies (no `'unsafe-inline'`), so injected markup cannot restyle a page either.
+  - The same for styles: only the page's own stylesheet applies (no `'unsafe-inline'`), so injected markup cannot add inline styles of its own (it can still use the page's existing class names).
 
 ## When something is off
 
