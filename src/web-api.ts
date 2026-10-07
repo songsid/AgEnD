@@ -15,7 +15,8 @@ import type { LifecycleCreateArgs } from "./instance-lifecycle.js";
 import { CreateInstanceArgs, validateArgs } from "./outbound-schemas.js";
 import { readStatuslineModel, resolveInstanceContext } from "./topic-commands.js";
 import { z } from "zod";
-import { isPassiveWebRead, isWebRequestAuthorized, WEB_TOKEN_INVALID_MESSAGE } from "./web-auth.js";
+import { isPassiveWebRead, isSecureRequest, isWebRequestAuthorized, WEB_TOKEN_INVALID_MESSAGE } from "./web-auth.js";
+import type { PreviewAvailability } from "./web-preview.js";
 import { newWebMessageId, parseLastEventId, type WebChatHistory } from "./web-chat-history.js";
 import { attachmentDelivery, displayName, INLINE_MIME, isFileId, publicAttachment, sniffUpload, UPLOAD_LIMITS, wellFormed, type UploadEntry, type WebFileLedger } from "./web-upload.js";
 import { getAgendHome } from "./paths.js";
@@ -167,6 +168,8 @@ export interface WebApiContext {
   /** false: definitely not delivered (the instance's IPC is gone, or it was restarted meanwhile). */
   deliverToInstance(instanceName: string, payload: Record<string, unknown>): Promise<boolean | void>;
   getUiStatus(): unknown;
+  /** #1306: which preview origin this /ui load may frame (Host and the TLS signal only); absent: previews off. */
+  previewForUi?(hostHeader: string | undefined, secure: boolean): PreviewAvailability & { boot: string | null };
   emitSseEvent(event: string, data: unknown): void;
   /** The web chat's recent messages (history + SSE replay); absent in contexts that have no chat. */
   readonly webChatHistory?: WebChatHistory;
@@ -258,7 +261,14 @@ export function handleWebRequest(
   if (method === "GET" && path === "/ui") {
     try {
       const html = readFileSync(join(__dirname, "ui", "dashboard.html"), "utf-8");
-      sendPanelHtml(res, html);
+      // #1306: the page learns which origin the server believes it is at, the preview origin chosen for it (empty:
+      // disabled, with the reason) and the preview listener's boot id; /ui's CSP may frame exactly <origin>/frame.
+      // The page re-checks the first against location.origin before it makes any frame.
+      const p = ctx.previewForUi?.(typeof req.headers.host === "string" ? req.headers.host : undefined, isSecureRequest(req)) ?? null;
+      const attr = (v: string | null | undefined) => String(v ?? "").replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
+      const body = `<body data-dashboard-origin="${attr(p?.dashboardOrigin)}" data-preview-origin="${attr(p?.previewOrigin)}"`
+        + ` data-preview-boot="${attr(p?.previewOrigin ? p.boot : "")}" data-preview-reason="${attr(p ? p.reason : "Previews are not available on this fleet.")}">`;
+      sendPanelHtml(res, html.replace("<body>", body), 200, {}, p?.previewOrigin ? { frameSrc: `${p.previewOrigin}/frame` } : {});
     } catch {
       json(res, 500, { error: "dashboard.html not found" });
     }
@@ -943,7 +953,7 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       ctx.webFiles?.commit(files);
       ctx.lastInboundUser.set(instance, "web-user");
       ctx.eventLog?.logActivity("message", "web-user", (message || `[${files.length} file(s)]`).slice(0, 200), instance);
-      ctx.emitSseEvent("message", { instance, sender: "web-user", text: message, ts, attachments: files.map(publicAttachment), messageId });
+      ctx.emitSseEvent("message", { instance, sender: "web-user", role: "user", text: message, ts, attachments: files.map(publicAttachment), messageId });
       json(res, 200, { sent: true, messageId });
     } catch {
       json(res, 400, { error: "Invalid JSON" });
