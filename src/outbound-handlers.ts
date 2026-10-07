@@ -114,6 +114,8 @@ export interface OutboundContext {
   }): { deliveryId: string; state: string; duplicate: boolean };
   /** Read-only status query scoped to a server-authenticated source/target. */
   queryDurableDeliveryStatus?(callerInstance: string, selector: DeliveryStatusSelector): DeliveryStatusPage;
+  /** #1335: True when the delivery_id was pruned AND the caller is the source or target. */
+  wasDeliveryIdPrunedForCaller?(deliveryId: string, callerInstance: string): boolean;
   /** Current Daemon generation for authenticated HTTP/CLI ingress. */
   getDaemonBootId?(instanceName: string): string | undefined;
   /** True for the bounded stop/spawn window of an already planned replacement. */
@@ -1895,6 +1897,14 @@ const deliveryStatus: Handler = (ctx, rawArgs, respond, meta) => {
     // token. Ignore any identity-like argument; the schema is strict as well.
     const page = ctx.queryDurableDeliveryStatus(meta.instanceName, selector);
     if (page.items.length === 0) {
+      // #1335: distinguish "never existed" from "pruned by retention".
+      // Only delivery_id lookups can use the pruned_ids index; operation_id /
+      // correlation_id / message_id queries fall back to "not found".
+      // Ownership-gated: only the original source or target sees "expired".
+      if (v.data.delivery_id && ctx.wasDeliveryIdPrunedForCaller?.(v.data.delivery_id, meta.instanceName)) {
+        respond(null, t("delivery.retention_expired"));
+        return;
+      }
       respond(null, t("delivery.not_found"));
       return;
     }

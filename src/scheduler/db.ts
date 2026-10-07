@@ -288,6 +288,49 @@ export class SchedulerDb {
     this.db.prepare("DELETE FROM schedule_runs WHERE triggered_at < datetime('now', '-' || ? || ' days')").run(days);
   }
 
+  /**
+   * #1335: Prune done/cancelled tasks older than `days`. Open, claimed and
+   * blocked tasks are never pruned regardless of age.
+   * Cancelled tasks that appear in a live task's `depends_on` are also kept:
+   * pruning a cancelled dep would silently un-block a task whose prerequisite
+   * was explicitly cancelled (claimTask treats a missing dep as satisfied).
+   * Runs in async chunks of 500 rows with setImmediate yields (#1340 P4).
+   */
+  async pruneOldTasks(days = 30): Promise<number> {
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60_000).toISOString();
+    const CHUNK = 500;
+    let total = 0;
+
+    for (;;) {
+      // Find a batch of eligible ids: done/cancelled, old, and not a
+      // dependency of any live (non-terminal) task.
+      const rows = this.db.prepare(`
+        SELECT id FROM tasks
+        WHERE status IN ('done', 'cancelled')
+          AND updated_at < ?
+          AND id NOT IN (
+            SELECT DISTINCT je.value
+            FROM tasks AS live
+            CROSS JOIN json_each(live.depends_on) AS je
+            WHERE live.status NOT IN ('done', 'cancelled')
+              AND live.depends_on IS NOT NULL
+              AND live.depends_on != '[]'
+          )
+        ORDER BY updated_at
+        LIMIT ?
+      `).all(cutoff, CHUNK) as Array<{ id: string }>;
+
+      if (rows.length === 0) break;
+      const ids = rows.map(r => r.id);
+      const placeholders = ids.map(() => "?").join(",");
+      this.db.prepare(`DELETE FROM tasks WHERE id IN (${placeholders})`).run(...ids);
+      total += rows.length;
+      if (rows.length < CHUNK) break;
+      await new Promise<void>(resolve => setImmediate(resolve));
+    }
+    return total;
+  }
+
   // ── Tips ───────────────────────────────────────────────────
 
   dismissTip(userId: string, tipId: string): void {
