@@ -134,3 +134,51 @@ describe("chat-render: the turn's elapsed time and a long paste (segment 2)", ()
     expect([r.isLongPaste("a".repeat(10_000)), r.isLongPaste("a".repeat(10_001)), r.isLongPaste(""), r.isLongPaste(null)]).toEqual([false, true, false, false]);
   });
 });
+
+describe("phones and assistive tech (segment 3)", () => {
+  const style = DASHBOARD.slice(DASHBOARD.indexOf("<style>"), DASHBOARD.indexOf("</style>"));
+  const narrow = style.slice(style.indexOf("@media (max-width: 760px)"));
+
+  it("the keyboard resizes the page instead of covering the composer; content may reach the notch, and is padded clear of it", () => {
+    expect(DASHBOARD).toContain('<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">');
+    expect(style).toMatch(/height: 100vh; height: 100dvh;/);
+    for (const inset of ["top", "bottom", "left", "right"]) expect(style, inset).toContain(`env(safe-area-inset-${inset})`);
+  });
+
+  // #1317 review: the cascade, not the presence of env(): at phone width every padding rule the top bar ends up with
+  // keeps the notch insets — no later shorthand resets them to plain pixels.
+  it("at phone width the top bar's padding still honours the top and side insets (the last rule that sets it wins)", () => {
+    const rules = [...narrow.matchAll(/\.topbar \{([^}]*)\}/g)].map(m => m[1]!);
+    expect(rules.length).toBeGreaterThan(0);
+    const last = rules.filter(r => /padding/.test(r)).at(-1)!;
+    // Split the shorthand on spaces outside parentheses: max(6px, env(…)) is one value.
+    const value = /padding:\s*([^;]+);/.exec(last)![1]!;
+    const shorthand: string[] = [];
+    let depth = 0, part = "";
+    for (const ch of value) {
+      if (ch === "(") depth++; else if (ch === ")") depth--;
+      if (ch === " " && depth === 0) { if (part) shorthand.push(part); part = ""; } else part += ch;
+    }
+    if (part) shorthand.push(part);
+    expect(shorthand, "top right bottom left").toHaveLength(4);
+    expect(shorthand[0]).toContain("env(safe-area-inset-top)");
+    expect(shorthand[1]).toContain("env(safe-area-inset-right)");
+    expect(shorthand[3]).toContain("env(safe-area-inset-left)");
+    expect(narrow).toMatch(/\.toasts \{ top: calc\(60px \+ env\(safe-area-inset-top\)\)/);
+  });
+
+  it("on a phone the composer's text is 16px (smaller, and iOS zooms the page on focus)", () => {
+    expect(narrow).toMatch(/\.composer textarea \{ font-size: 16px; \}/);
+  });
+
+  it("the conversation is a log that is not read out message by message; one polite status line carries the coarse events", () => {
+    expect(DASHBOARD).toMatch(/id="messages" role="log" aria-live="off" aria-label=/);
+    expect(DASHBOARD).toContain('<div id="announcer" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>');
+    expect(DASHBOARD, "the working line is no longer a live region of its own").toContain('<div id="workBar" class="work-bar"></div>');
+  });
+
+  it("the sidebar's rows can be reached and chosen from the keyboard", () => {
+    expect(DASHBOARD).toContain('data-act="selFleet" role="button" tabindex="0"');
+    expect(DASHBOARD).toMatch(/class="instance-item[^`]*role="button" tabindex="0"/);
+  });
+});

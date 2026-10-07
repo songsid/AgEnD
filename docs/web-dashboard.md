@@ -67,6 +67,12 @@ Pick an instance on the left to talk to it. The web chat is **the same conversat
 - The view follows new messages only while you are at the bottom. Scrolled up to read, it stays where you are, and **↓ N new** takes you down.
 - **‹** at the top of the sidebar hides it (☰ brings it back); the choice is remembered. On a phone the sidebar is a drawer: ☰ opens it, and choosing something, tapping outside it or Esc closes it.
 - **Theme** (bottom of the sidebar): *System* follows your device's light or dark setting; *Light* or *Dark* fixes it for this browser.
+- **On a phone** the on-screen keyboard resizes the page, so the composer stays above it, and the layout keeps clear of the notch and the home bar.
+
+### Keyboard and screen readers
+- **Esc** stops the agent's reply while it works, as Esc in its terminal would. It does nothing while it is idle or when a form or menu is open: Esc closes that first.
+- The sidebar's rows can be reached with **Tab** and opened with **Enter** or **Space**. On a phone, the drawer keeps focus inside it until it closes, and focus then returns to ☰.
+- Messages are not read out as they arrive. A screen reader hears the coarse events once each: the agent started, finished, replied, or is waiting for your input. The conversation itself is a log to browse.
 
 ### Writing
 - **Enter** sends; **Shift+Enter** adds a line. If sending fails, your text is given back.
