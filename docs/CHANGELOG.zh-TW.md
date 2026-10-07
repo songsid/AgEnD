@@ -12,6 +12,7 @@
 - **Agent 可以在 Discord 與 Telegram 傳貼圖（#1226）。** 三個工具，兩個平台用法相同：`list_stickers`（每張 `{ id, name, emoji_or_tags, format }`，不附圖片網址）、`preview_stickers`（最多 8 張，下載給 agent 讀圖；沒有靜態圖的動畫貼圖標 `preview_unavailable`），以及 `reply` 新增的 `stickers` 欄位（最多 3 張；有貼圖時 `text` 可省略）。底層依平台各自處理：Discord 只列 instance 自己頻道所在伺服器的貼圖（別的伺服器的傳不出去），並跟文字放在同一則訊息送出；Telegram 列出貼圖包——在呼叫時指定，或用連線設定的 `options.sticker_sets`——先送文字，再依序送每張貼圖。所有貼圖都在送出任何東西之前檢查，傳不出去的會回錯誤，不會變成一則悄悄少了貼圖的回覆。agent CLI 也有：`agend-agent stickers`、`sticker-preview`，以及 `reply … --sticker <id>`。
 
 ### 變更 (Changed)
+- **文件：退役 `wiki/`，`docs/` 成為唯一來源（#1279）。** 仍有用的頁面依目前程式碼改寫後，併入 `docs/development.md`（發佈與 CI、發佈說明寫法）與 `docs/design/` 的四份新文件（頻道投遞、ClassicBot 回覆路由、指令權限、記憶分層）；其餘刪除，保留在 git 歷史。五份已被取代的文件移到 `docs/archive/`，開頭註明由哪份文件取代；`docs/design/` 各份筆記的狀態列也已更新為實際上線的狀況。
 - **`list_emojis` 變輕了（#1226）。** 伺服器 emoji 預設不再附圖片網址（要的話設 `with_image_urls`；想看圖用 `preview_emojis`），並可用 `name`、`limit`、`primary_only` 縮小清單——在 emoji 很多的伺服器上，一次呼叫原本要花約 1 萬字的 context，而 agent 只需要一個 emoji。emoji 與貼圖工具的呼叫改用共用的 30 秒時限，不再是固定 10 秒，一次下載多張圖的預覽不會被中途切掉。
 
 ### 修復 (Fixed)
