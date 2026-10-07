@@ -1,6 +1,6 @@
 # 逃生艙 setup 宿主的對外通道：設計與分階段計畫
 
-狀態：**設計已通過 fable 安全 review，S1 可實作**。T1／T3／T4／T5 由 leader 裁定、T2 由 fable 裁定，全部折入本文（見 §6）。fable 另抓到第七個攻擊面（§3.8）與三條補強，也已折入。本文件回答三件事：cloudflared tunnel provider 目前的實作狀態、sol 的 tunnel 設計與票 5 setup 宿主兩份安全信封要怎麼同時成立、以及可逐段 review 的 stage 拆分。最後一節列出**我不自己拍、要 leader／fable 裁的取捨**。
+狀態：**Stage 1–4 已實作**（CHANGELOG 2.1.6，#799–#803）。`src/tunnel/` 現有 6 個檔案：`types.ts`、`cloudflared.ts`、`manager.ts`、`lease.ts`、`cloudflared-install.ts`、`public-fetch.ts`；消費者為 `agend setup --tunnel`（`src/setup-host.ts`）與 web terminal 的遠端 `/login` 公開連結（`src/login-controller.ts`，#1137），fleet dashboard 仍未接 tunnel（見 #1265）。以下為原設計：設計已通過 fable 安全 review。T1／T3／T4／T5 由 leader 裁定、T2 由 fable 裁定，全部折入本文（見 §6）。fable 另抓到第七個攻擊面（§3.8）與三條補強，也已折入。本文件回答三件事：cloudflared tunnel provider 目前的實作狀態、sol 的 tunnel 設計與票 5 setup 宿主兩份安全信封要怎麼同時成立、以及可逐段 review 的 stage 拆分。最後一節列出**我不自己拍、要 leader／fable 裁的取捨**。
 
 參考：`docs/design/web-terminal-tunnel-provider.zh-TW.md`（sol，branch `design/web-terminal-tunnel-provider`，doc-only）、`docs/design/prefleet-host-spike.zh-TW.md`、`src/setup-host.ts`、`src/setup-form.ts`、`src/setup-marker.ts`。
 

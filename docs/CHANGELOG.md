@@ -32,6 +32,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   agent CLI: `agend-agent stickers`, `sticker-preview`, and `reply … --sticker <id>`.
 
 ### Changed
+- **Docs: the `wiki/` directory is retired; `docs/` is the single source (#1279).** Its still-useful pages were rewritten
+  against the current code and moved into `docs/development.md` (Releases and CI, Release notes style) and four new pages
+  in `docs/design/` (channel delivery, ClassicBot reply routing, command permissions, memory layering); the rest was
+  deleted and stays in git history. Five superseded docs moved to `docs/archive/` with a header saying what replaced them,
+  and the status lines of the `docs/design/` notes now match what shipped.
 - **`list_emojis` is lighter (#1226).** Server emojis no longer come with image URLs unless `with_image_urls` is set
   (`preview_emojis` shows the ones an agent wants to look at), and `name`, `limit` and `primary_only` narrow the list —
   on a busy server one call used to cost ~10k characters of context for an agent that needed one emoji. The emoji and
