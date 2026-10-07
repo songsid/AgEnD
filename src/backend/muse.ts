@@ -1,6 +1,6 @@
 import { EFFORT_CAPABILITIES } from "./effort-metadata.js";
 import { join, resolve } from "node:path";
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync, chmodSync, lstatSync, readlinkSync, symlinkSync, renameSync, unlinkSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, fstatSync, readdirSync, statSync, writeFileSync, chmodSync, lstatSync, readlinkSync, symlinkSync, renameSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { createHash, randomBytes } from "node:crypto";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type InputDraft, type ModelOption, type RuntimeDialog, type StartupDialog, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
@@ -20,6 +20,33 @@ const SESSION_HEAD_BYTES = 65_536;
 /** Read the workspace a session was started in, without reading the whole log. */
 export function museSessionCwd(head: string): string | null {
   return head.match(/"cwd":"((?:[^"\\]|\\.)*)"/)?.[1]?.replace(/\\(.)/g, "$1") ?? null;
+}
+
+/**
+ * Bounded head read: the first `maxBytes` of a file, decoded as UTF-8,
+ * without reading the whole file (#1228: session logs grow past hundreds of
+ * KB while discovery only needs the `route_facts` head). Returns null when
+ * the file cannot be opened or read. Synchronous blocking I/O like the other
+ * store readers — never on the fleet event loop.
+ */
+export function readFileHeadSync(filePath: string, maxBytes: number): string | null {
+  let fd: number | undefined;
+  try {
+    fd = openSync(filePath, "r");
+    const n = Math.max(0, Math.min(fstatSync(fd).size, maxBytes));
+    const buf = Buffer.alloc(n);
+    let off = 0;
+    while (off < n) {
+      const r = readSync(fd, buf, off, n - off, off);
+      if (r <= 0) break;
+      off += r;
+    }
+    return buf.subarray(0, off).toString("utf-8");
+  } catch {
+    return null;
+  } finally {
+    if (fd !== undefined) { try { closeSync(fd); } catch { /* already closed */ } }
+  }
 }
 
 const MUSE_SEPARATOR = /^─{10,}\s*$/;
@@ -587,11 +614,8 @@ export class MuseBackend implements CliBackend {
       for (const sessionDir of museSessionDirs(root)) {
         const name = sessionDir.slice(sessionDir.lastIndexOf("/") + 1);
         if (!SESSION_ID_RE.test(name)) continue;
-        let head: string;
-        try {
-          const fd = readFileSync(join(sessionDir, "session.jsonl"), { encoding: "utf-8", flag: "r" });
-          head = fd.slice(0, SESSION_HEAD_BYTES);
-        } catch { continue; }
+        const head = readFileHeadSync(join(sessionDir, "session.jsonl"), SESSION_HEAD_BYTES);
+        if (head === null) continue;
         if (museSessionCwd(head) !== this.workingDirectory) continue;
         // Activity = latest inner-file mtime. The directory's own mtime does not
         // move when a log is appended, and is misleadingly recent for a session
