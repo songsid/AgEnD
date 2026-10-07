@@ -183,6 +183,66 @@ describe("readTailLines reviewer round (a)-(c) + P1", () => {
   });
 });
 
+describe("readTailLines regression (#1225)", () => {
+  // R1 — kills the CR-strip mutant: removing `.replace(/\r$/, "")` from the
+  //   partial-fallback blank-check makes `"\r" === ""` false, so the branch is
+  //   never entered and partial stays false instead of true.
+  it("R1: \\r\\n\\r\\n after a 2 MiB line — CR strip enables the partial fallback", async () => {
+    // A 2 MiB content run terminated by \r\n\r\n. After the backwards scan
+    // reads the last ~1 MiB, the scanned window holds one giant content run
+    // and two CR+LF blank lines. head-cut (parts.shift) removes the partial
+    // content run, leaving ["\r", ""]. The CR strip turns both to "":
+    //   parts.every(p => p.replace(/\r$/, "") === "") → true → partial fallback.
+    // Mutant: strip removed → "\r" === "" is false → no partial → partial: false.
+    const content = "A".repeat(2 * 1024 * 1024) + "\r\n\r\n";
+    const r = await readTailLines(tmpFile(content), 50);
+    expect(r.truncated, "file exceeds the byte cap").toBe(true);
+    expect(r.totalLines).toBeNull();
+    expect(r.partial, "CR strip made the blank check true → partial fallback").toBe(true);
+    expect(r.text.length).toBeGreaterThan(0);
+  });
+
+  // R2 — kills the per-chunk-decode mutant: decoding each backwards chunk
+  //   separately before concat produces U+FFFD for every orphaned byte of a
+  //   multibyte char split at the chunk edge; concat-before-decode repairs it.
+  it("R2: 3-byte CJK at a chunk boundary — concat-before-decode, no U+FFFD", async () => {
+    // A 3-byte CJK char (中, U+4E2D: E4 B8 AD) is placed so E4 is the last byte
+    // of chunk_B (the small backwards chunk) and B8+AD open chunk_A (64 KiB).
+    // Buffer.concat(chunks).toString("utf-8") assembles the char correctly;
+    // chunk-by-chunk decoding produces U+FFFD for each orphaned byte instead.
+    //
+    // Layout:  [head "x"×9][中  ][y×65525][\n][中][\nlast]
+    //           ^-- chunk_B (10 B) --^
+    //           boundary at byte 10: E4 in chunk_B, B8+AD in chunk_A.
+    //           File size = TAIL_CHUNK_BYTES + 10.
+    const cjk = "\u4e2d"; // 中: UTF-8 E4 B8 AD
+    const head = "x".repeat(9);
+    const rest = "y".repeat(65525) + "\n" + cjk + "\nlast";
+    const content = head + cjk + rest;
+    expect(Buffer.byteLength(content)).toBe(TAIL_CHUNK_BYTES + 10); // self-check
+    const r = await readTailLines(tmpFile(content), 3);
+    expect(r.truncated).toBe(false);
+    expect(r.text).not.toContain("\uFFFD"); // concat-before-decode: no orphaned bytes
+    expect(r.text).toContain(cjk);          // char is present and intact in the tail
+  });
+
+  // R3 — kills the !reachedStart guard mutant: removing `!reachedStart &&`
+  //   from the partial-fallback condition makes a fully-scanned small file with
+  //   only blank lines enter the partial branch (partial: true); the guard
+  //   ensures a whole-file scan never hits that path (partial: false).
+  it("R3: small file of only blank lines — !reachedStart guard keeps partial false", async () => {
+    // File = "\n\n\n\n\n" (five blank lines, 5 bytes < TAIL_BYTE_CAP).
+    // reachedStart = true (entire file scanned); the guard `!reachedStart &&`
+    // short-circuits the blank check → partial branch is never entered.
+    // Mutant: guard removed → parts.every(p => "" === "") is true → partial: true.
+    const content = "\n\n\n\n\n";
+    const r = await readTailLines(tmpFile(content), 50);
+    expect(r.partial, "whole-file scan: !reachedStart guard prevents partial fallback").toBe(false);
+    expect(r.truncated).toBe(false);
+    expect(r.totalLines).toBe(content.split("\n").length); // 6
+  });
+});
+
 describe("attachPipePaneLog (d)", () => {
   const makeDaemon = async () => {
     const { Daemon } = await import("../src/daemon.js");
