@@ -22,9 +22,16 @@ documentation. Details are in the CHANGELOG release sections.
   Codex custom providers, full zh-TW interface.
 - 2.1.5–2.1.9: fail-closed hardening, tool-profile defaults, Codex resume
   flows, delivery-status emoji config, session-lock screens, delivery worker.
-- 2.1.10–2.1.12: short unique instance names with fleet-unique display
-  labels, bounded session-head reads, reply-completion guard fixes, Discord
-  defer/ack reliability, capacity detection hardening.
+- 2.1.10: one-tap public `/login` links (AgEnD fetches cloudflared itself),
+  `/install-cli` folded into `/login`, login hardening, paused-instance
+  auto-wake, kiro engine pinning.
+- 2.1.11: Codex capacity answered with keep-going nudge, update-channel
+  pinning, cancel stops reply recovery, restart no-resend, capacity/stuck
+  detection fixes, Discord slash table and auth door.
+- 2.1.12 (in beta): kiro 2.28 Classic-nudge handling, bot-to-bot visibility
+  setting, gemini-cli removed, macOS memory alerts off, alpha release
+  channel, reaction ownership fixes, docs overhaul. Short unique instance
+  names are planned for 2.1.12, pending review.
 
 ## Next: 2.2.0 — the web line
 
@@ -38,19 +45,19 @@ The dashboard becomes a first-class way to talk to the fleet:
   (fleet topics on, ClassicBot per-channel opt-in — see
   `docs/design/1320-classicbot-web-echo.md`).
 
-## 2.2.1 — chat depth
+## 2.2.1 — chat depth (planned direction, subject to change)
 
 - Inline HTML preview.
 - Persisted, searchable chat history per instance.
 - Step list: what the agent is doing, step by step.
 
-## 2.2.2 — review flow
+## 2.2.2 — review flow (planned direction, subject to change)
 
 - Diff view and review comments.
 - Kanban board for tasks.
 - Timeline and export.
 
-## 2.2.3 — code flow
+## 2.2.3 — code flow (planned direction, subject to change)
 
 - Per-task worktrees.
 - PR flow: from task to pull request.
