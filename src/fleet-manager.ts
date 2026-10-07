@@ -54,7 +54,7 @@ import { createAdapter } from "./channel/factory.js";
 import { TelegramAdapter } from "./channel/adapters/telegram.js";
 import { createBackend } from "./backend/factory.js";
 import { readEffortMetadata } from "./backend/effort-metadata.js";
-import { isModelCompatible, SYSINFO_BACKEND_IDS, UnsupportedCliError, type BackendCliVersionSnapshot } from "./backend/types.js";
+import { CLI_ENV_TTL_MS, isModelCompatible, SYSINFO_BACKEND_IDS, UnsupportedCliError, type BackendCliVersionSnapshot } from "./backend/types.js";
 import { createLogger, rotateLogIfNeeded, type Logger } from "./logger.js";
 import { processAttachments } from "./channel/attachment-handler.js";
 import { routeToolCall } from "./channel/tool-router.js";
@@ -571,7 +571,6 @@ const NONCE_BUTTON_TIMEOUT_MS = 15 * 60_000;
 const TIP_BUTTON_TIMEOUT_MS = 24 * 60 * 60_000;
 /** How long shutdown will spend retiring still-armed button prompts. */
 const NONCE_RETIRE_BUDGET_MS = 5_000;
-const CLI_ENV_TTL_MS = 24 * 60 * 60 * 1000; // hard validity bound for the cached CLI env
 /**
  * How old the cached CLI env may be before `/model` re-probes it live.
  *
@@ -12430,6 +12429,15 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (!env.apiModels?.length) {
       const previous = this.readCliEnv(backend);
       if (previous?.apiModels?.length) env.apiModels = previous.apiModels;
+    }
+    // Effort levels read from --help (#1328) are a capability of one binary. A help that could not be read (absent)
+    // keeps the cached levels only for that same binary: both versions known and equal, cache still valid. A help
+    // that was read and lists none ([]) is an answer and is written as is, so the fallback applies.
+    if (env.effortLevels === undefined) {
+      const previous = this.readCliEnv(backend);
+      if (previous?.effortLevels && previous.version && env.version && previous.version === env.version) {
+        env.effortLevels = previous.effortLevels;
+      }
     }
     const path = this.cliEnvPath(backend);
     mkdirSync(dirname(path), { recursive: true });
