@@ -176,3 +176,92 @@ describe("validateFleetConfig terminal", () => {
       .toEqual(expect.arrayContaining([expect.objectContaining({ path })]));
   });
 });
+
+describe("validateFleetConfig context_guardian no-op fields (#1296)", () => {
+  const base = {
+    defaults: {},
+    instances: { worker: { working_directory: "/tmp/worker" } },
+  };
+
+  it("warns on max_age_hours and grace_period_ms under defaults (raw user config)", () => {
+    const result = validateFleetConfig({
+      ...base,
+      defaults: { context_guardian: { max_age_hours: 4, grace_period_ms: 600_000 } },
+    });
+    expect(result.errors).toEqual([]);
+    expect(result.warnings.some(w => w.path === "defaults.context_guardian.max_age_hours")).toBe(true);
+    expect(result.warnings.some(w => w.path === "defaults.context_guardian.grace_period_ms")).toBe(true);
+  });
+
+  it("warns even when max_age_hours is explicitly set to 0 — any write of the key warns", () => {
+    // A user who writes `max_age_hours: 0` in fleet.yaml still gets the warning:
+    // the key does nothing (context rotation is gone), regardless of the value.
+    const result = validateFleetConfig({
+      ...base,
+      defaults: { context_guardian: { max_age_hours: 0 } },
+    });
+    expect(result.errors).toEqual([]);
+    expect(result.warnings.some(w => w.path === "defaults.context_guardian.max_age_hours")).toBe(true);
+  });
+
+  it("warns when max_age_hours is set on an instance (raw user config)", () => {
+    const result = validateFleetConfig({
+      defaults: {},
+      instances: {
+        worker: { working_directory: "/tmp/worker", context_guardian: { max_age_hours: 2 } },
+      },
+    });
+    expect(result.errors).toEqual([]);
+    expect(result.warnings.some(w => w.path === "instances.worker.context_guardian.max_age_hours")).toBe(true);
+  });
+
+  it("does not warn when context_guardian is absent", () => {
+    const result = validateFleetConfig(base);
+    expect(result.warnings.some(w => w.path.includes("context_guardian"))).toBe(false);
+  });
+
+  it("loadFleetConfig expansion + Settings save path: no spurious context_guardian warnings", async () => {
+    // Regression for P2: Settings validates ctx.fleetConfig (already expanded by
+    // loadFleetConfig). An unrelated log_level edit must produce zero context_guardian
+    // warnings. The Settings PUT /api/settings/fleet/defaults handler (settings-api.ts:615)
+    // returns saveWarnings(before, after) = after.warnings; we check exactly that.
+    const { loadFleetConfig } = await import("../src/config.js");
+    const { writeFileSync, mkdirSync, rmSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const { tmpdir } = await import("node:os");
+
+    const dir = join(tmpdir(), `agend-cg-regression-${Date.now()}`);
+    mkdirSync(dir, { recursive: true });
+    try {
+      // A minimal fleet.yaml — no context_guardian keys anywhere.
+      writeFileSync(join(dir, "fleet.yaml"),
+        "defaults:\n  log_level: info\ninstances:\n  w:\n    working_directory: /tmp\n",
+      );
+      const expanded = loadFleetConfig(join(dir, "fleet.yaml"));
+
+      // Confirm context_guardian keys are NOT present in the expanded config
+      // (they were removed from DEFAULT_INSTANCE_CONFIG in config.ts).
+      expect((expanded.instances.w as any).context_guardian?.max_age_hours).toBeUndefined();
+      expect((expanded.instances.w as any).context_guardian?.grace_period_ms).toBeUndefined();
+
+      // Settings PUT /defaults with only log_level changed (lines 614-620):
+      //   const merged = { ...cfg.defaults, ...body };
+      //   const before = validateFleetConfig(cfg);
+      //   const after = validateFleetConfig({ ...cfg, defaults: merged });
+      //   json(res, 200, { ok: true, warnings: saveWarnings(before, after) });
+      // saveWarnings returns after.warnings — check that directly.
+      const merged = { ...expanded.defaults, log_level: "warn" as const };
+      const before = validateFleetConfig(expanded);
+      const after = validateFleetConfig({ ...expanded, defaults: merged });
+      // saveWarnings(before, after) = [...after.warnings, ...preExistingErrors]
+      const saveWarningsResult = after.warnings;
+
+      expect(before.warnings.some(w => w.path.includes("context_guardian")),
+        "before: no spurious warning").toBe(false);
+      expect(saveWarningsResult.some(w => w.path.includes("context_guardian")),
+        "saveWarnings result: no spurious warning on log_level edit").toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

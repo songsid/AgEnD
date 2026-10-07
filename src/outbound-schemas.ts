@@ -184,7 +184,7 @@ export const SetDescriptionArgs = z.object({
 // ── Repo checkout ───────────────────────────────────────────────────────
 
 export const CheckoutRepoArgs = z.object({
-  source: NonEmptyString.describe("Repo path (absolute or ~-prefixed) or instance name."),
+  source: NonEmptyString.describe("Repo path (absolute or ~-prefixed path). Instance names are not accepted — use describe_instance to get the working_directory first."),
   branch: z.string().optional().describe("Branch or commit to checkout. Default: HEAD."),
 });
 

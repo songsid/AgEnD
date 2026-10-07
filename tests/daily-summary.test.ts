@@ -20,15 +20,15 @@ describe("DailySummary.generateText", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("generates summary with costs and restarts", () => {
-    eventLog.insert("proj-a", "context_restart", { reason: "context_full" });
+  it("generates summary with costs (context_restart no longer emitted)", () => {
+    // nothing emits context_restart; the counter was removed (#1296)
     eventLog.insert("proj-b", "cost_snapshot", { accumulated_cents: 200 });
 
     const costMap = new Map([["proj-a", 820], ["proj-b", 200]]);
     const text = DailySummary.generateText(eventLog, ["proj-a", "proj-b"], costMap, 1020);
     expect(text).toContain("proj-a");
     expect(text).toContain("$8.20");
-    expect(text).toContain("1 restart");
+    expect(text).not.toContain("restart"); // counter removed
     expect(text).toContain("$10.20"); // fleet total
   });
 

@@ -2333,7 +2333,7 @@ export class Daemon extends EventEmitter {
 
       // 8. Context guardian
       const statusFile = join(this.instanceDir, "statusline.json");
-      this.guardian = new ContextGuardian(this.config.context_guardian, this.logger, statusFile);
+      this.guardian = new ContextGuardian(this.config.context_guardian ?? {}, this.logger, statusFile);
       this.guardian.startWatching();
 
       this.guardian.on("status_update", () => {

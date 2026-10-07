@@ -1,5 +1,5 @@
 /**
- * Phase 2c (docs/design/phase2-submit-contract.md §1.1, §1.5, §4 2c): the
+ * Phase 2c (docs/design/929-durable-outbox.md §4): the
  * per-target owner of a durable delivery lane when `delivery_worker: on`.
  *
  * ENSURE_AWAKE belongs to the WakeCoordinator (2b); this worker only runs
