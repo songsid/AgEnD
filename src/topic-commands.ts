@@ -44,6 +44,51 @@ export function sanitizeInstanceName(name: string): string {
   return sanitized || "project";
 }
 
+/** Digits of the topic id kept in a fresh instance-name suffix; lengthened on collision. */
+export const INSTANCE_NAME_SUFFIX_DIGITS = 6;
+
+/**
+ * Build `<base>-t<last N digits of topicId>` (#1301): when the full-id form
+ * is free, N starts at 6 and lengthens on collision, up to the full id.
+ * `exists` must cover fleet.yaml keys and instance dirs (a stale tmux window
+ * with no config or dir is an orphan that startup cleanup kills — the
+ * `-t<digits>` shape is what its matcher recognises). A taken full form
+ * means the same topic was created before, so it is returned as-is: retry
+ * keeps the deterministic old path instead of opening a second entry.
+ */
+export function uniqueInstanceName(
+  base: string,
+  topicId: number | string,
+  exists: (name: string) => boolean,
+): string {
+  const clean = sanitizeInstanceName(base);
+  const id = String(topicId);
+  const full = `${clean}-t${id}`;
+  // The full form already taken means this topic was (partially) created
+  // before — retry, rebind or replace: keep the deterministic old path
+  // instead of opening a second entry for the same topic.
+  if (exists(full)) return full;
+  for (let n = Math.min(INSTANCE_NAME_SUFFIX_DIGITS, id.length); n < id.length; n++) {
+    const name = `${clean}-t${id.slice(-n)}`;
+    if (!exists(name)) return name;
+  }
+  return full;
+}
+
+/**
+ * User-facing label for an instance name (#1301): an explicit display_name
+ * wins; otherwise a long `-t<digits>` suffix (7+ digits, the pre-2.1.12
+ * 19-digit form) is shortened to its last 6, keeping the `-t` shape so it
+ * stays recognisable and unique. Short (new-style) suffixes and bare names
+ * are shown whole. Agent-facing uses (the `[from:…]` header, logs, lookups)
+ * keep the real name — agents address by it.
+ */
+export function displayInstanceName(name: string, displayName?: string | null): string {
+  const dn = displayName?.trim();
+  if (dn) return dn;
+  return name.replace(/-t(\d{7,})$/, (_, digits: string) => `-t${digits.slice(-6)}`);
+}
+
 /** Allowed filename for /save and /load (no path separators, no shell/inject chars). */
 export const SAVE_FILENAME_RE = /^[\w.-]+$/;
 
@@ -1095,14 +1140,13 @@ export class TopicCommands {
     await adapter.sendText(msg.chatId, text, { threadId: msg.threadId });
   }
 
-  /** Compact label for status/sysinfo tables: prefer display_name, else strip the
-   * `-t<topicId>` suffix (e.g. doupo-server-t1503381916525793300 → doupo-server).
-   * Keeps rows short so a large fleet's table fits Discord's 2000-char limit. The
-   * FULL name is still used for all lookups — only the displayed label changes. */
+  /** Compact label for status/sysinfo tables: display_name first, else a long
+   * `-t<digits>` suffix shortened to its last 6 (#1301 — never a 19-digit id,
+   * but same-base instances stay distinguishable). Keeps rows short so a
+   * large fleet's table fits Discord's 2000-char limit. The FULL name is
+   * still used for all lookups — only the displayed label changes. */
   private shortInstanceName(name: string): string {
-    const dn = this.ctx.fleetConfig?.instances[name]?.display_name;
-    if (dn && dn.trim()) return dn.trim();
-    return name.replace(/-t\d+$/, "");
+    return displayInstanceName(name, this.ctx.fleetConfig?.instances[name]?.display_name);
   }
 
   /** Get fleet status as markdown text (shared by TG + DC) */
@@ -1398,7 +1442,10 @@ export class TopicCommands {
   async bindAndStart(dirPath: string, topicId: number | string): Promise<string> {
     if (!this.ctx.fleetConfig) throw new Error("Fleet config not loaded");
 
-    const instanceName = `${sanitizeInstanceName(basename(dirPath))}-t${topicId}`;
+    // Short unique suffix (#1301), same rule as create_instance.
+    const instanceName = uniqueInstanceName(basename(dirPath), topicId, (candidate) =>
+      candidate in (this.ctx.fleetConfig?.instances ?? {})
+      || existsSync(this.ctx.getInstanceDir(candidate)));
 
     this.ctx.fleetConfig.instances[instanceName] = {
       working_directory: dirPath,

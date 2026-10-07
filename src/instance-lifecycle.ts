@@ -6,7 +6,7 @@ import { access, unlink } from "node:fs/promises";
 import { getAgendHome, ensureWorkspaceGit } from "./paths.js";
 import type { InstanceConfig, FleetConfig } from "./types.js";
 import { DEFAULT_INSTANCE_CONFIG, getTmuxSession } from "./config.js";
-import { readStatuslineModel, sanitizeInstanceName } from "./topic-commands.js";
+import { readStatuslineModel, uniqueInstanceName } from "./topic-commands.js";
 import { isModelCompatible } from "./backend/types.js";
 import { RoutingEngine } from "./routing-engine.js";
 import { safeHandler } from "./safe-async.js";
@@ -2141,7 +2141,11 @@ export class InstanceLifecycle {
       // Use explicit topic_name as name base when provided; fall back to directory basename
       const explicitTopicName = args.topic_name;
       const nameBase = explicitTopicName ?? (worktreePath ? topicName! : (directory ? basename(workDir) : topicName!));
-      newInstanceName = `${sanitizeInstanceName(nameBase)}-t${createdTopicId}`;
+      // Short unique suffix (#1301): last 6 topic digits, lengthened on
+      // collision. Existing instances are untouched — only new names go here.
+      newInstanceName = uniqueInstanceName(nameBase, createdTopicId!, (candidate) =>
+        candidate in (this.ctx.fleetConfig?.instances ?? {})
+        || existsSync(this.ctx.getInstanceDir(candidate)));
       // A recycled name must never inherit a stale pause marker.
       clearPausedMarker(this.ctx.getInstanceDir(newInstanceName));
 
@@ -2297,8 +2301,10 @@ export class InstanceLifecycle {
       await rm(instanceDir, { recursive: true, force: true });
     } catch { /* best effort */ }
 
-    // 6. Create new instance with same config, reusing topic
-    const newName = `${instanceName.replace(/-t\d+$/, "")}-t${topicId}`;
+    // 6. Create new instance with same config, reusing topic AND name: a
+    // respawn is not a rename, so an old long name keeps its long form and
+    // only genuinely new instances get short names (#1301).
+    const newName = instanceName;
     const instanceConfig = { ...savedConfig } as InstanceConfig;
     try {
       this.ctx.fleetConfig!.instances[newName] = instanceConfig;

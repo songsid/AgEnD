@@ -2661,7 +2661,11 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?:
     const statusLabel = lsStatusLabel;
     const padDisplay = (s: string, width: number): string => s + " ".repeat(Math.max(0, width - displayWidth(s)));
 
-    const displayName = (row: { name: string; classic: boolean }): string => row.name;
+    // Human table only: display labels, never long ids (#1301). --json and
+    // --names-only above keep the real names (machine use + attach target).
+    const { displayInstanceName } = await import("./topic-commands.js");
+    const displayName = (row: { name: string; classic: boolean }): string =>
+      displayInstanceName(row.name, (config.instances[row.name] as { display_name?: string } | undefined)?.display_name);
     const nameW = Math.max(20, ...rows.map(r => displayWidth(displayName(r)) + 2));
     const backendW = 14;
     const statusW = 12;

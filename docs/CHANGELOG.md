@@ -91,6 +91,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   pictures is not cut short.
 
 ### Fixed
+- **New instances get short unique names; user-facing labels never show a 19-digit id (#1301).**
+  A new instance is now `<base>-t<last 6 topic digits>` (lengthened on collision, up to the full id), across
+  fleet.yaml keys, instance dirs and tmux windows — existing instances are untouched, never renamed or migrated.
+  Display labels prefer `display_name`, else shorten a long `-t<digits>` suffix to its last 6 (visibility posts,
+  Mirror Topic, broadcasts, `/status`, the `agend ls` table); agent-facing names (`[from:…]`, logs, lookups,
+  `list_instances`, `--json`/`--names-only`) keep the real name. Orphan detection recognises both forms.
 - **Kiro outage picker notice is actionable again, interaction IPC is quiet, dead gate removed (#1219).**
   The parked-dialog notice for a generic `dialog` kind (e.g. the Kiro model-unavailable picker) again carries its
   code-owned description — "model unavailable, choose a replacement" — instead of the generic "waiting for your

@@ -18,7 +18,7 @@ import type { InteractionSnapshot } from "./backend/types.js";
 import { presentationState, interactionSummary } from "./interaction-observation.js";
 import { truncatePreview } from "./channel/markdown-chunk.js";
 import { backendSupportsSteer } from "./steer-capability.js";
-import { readStatuslineModel } from "./topic-commands.js";
+import { displayInstanceName, readStatuslineModel } from "./topic-commands.js";
 import { credentialProfileLogin, credentialSwitchStartsFresh, instanceCredentialProfile } from "./backend/credential-profile.js";
 import { kiroEngineCandidates, kiroEngineStatus } from "./kiro-engine-status.js";
 import {
@@ -512,9 +512,14 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   // Sender topic: always show full outbound message (so users can see what the agent sent).
   const requestKind = ipcMeta.request_kind;
   const groupId = ctx.fleetConfig?.channel?.group_id;
+  // User-facing labels (#1301): display_name first, else a long -t<digits>
+  // suffix shortened. Used by topic posts and the Mirror Topic below.
+  // Agent-facing uses (headers, logs, lookups) keep the real names.
+  const displayLabel = (name: string) =>
+    displayInstanceName(name, ctx.fleetConfig?.instances[name]?.display_name);
   if (groupId && ctx.adapter) {
     const instances = ctx.fleetConfig?.instances ?? {};
-    const notificationLabel = `${senderLabel} → ${targetName}`;
+    const notificationLabel = `${displayLabel(senderLabel)} → ${displayLabel(targetName)}`;
 
     // ── Target topic notification ──
     const skipTargetNotification = requestKind === "report" || requestKind === "update";
@@ -552,7 +557,7 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   ctx.logger.info(`✉ ${senderLabel} → ${targetName}: ${(message ?? "").slice(0, 100)} [msg=${ipcMeta.message_id} sha=${deliveryContentDigest(message ?? "").slice(0, 12)}]`);
   const taskSummary = ipcMeta.task_summary || (message ?? "").slice(0, 200);
   ctx.eventLog?.logActivity("message", senderLabel, taskSummary, targetName, ipcMeta.request_kind);
-  ctx.queueMirrorMessage?.(`${senderLabel} → ${targetName}: ${truncatePreview(message ?? "", 500)}`);
+  ctx.queueMirrorMessage?.(`${displayLabel(senderLabel)} → ${displayLabel(targetName)}: ${truncatePreview(message ?? "", 500)}`);
   const targetDaemon = ctx.lifecycle.daemons.get(targetInstanceName);
   const targetStateWarning = targetDaemon?.isErrorState
     ? targetDaemon.isCrashLoop
@@ -1543,7 +1548,10 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
   for (const target of sentTo) {
     ctx.eventLog?.logActivity("message", senderLabel, summary, target);
   }
-  ctx.queueMirrorMessage?.(`📢 ${senderLabel} → [${sentTo.join(", ")}]: ${truncatePreview(message, 500)}`);
+  // Mirror Topic is user-facing: display labels, never long ids (#1301).
+  const bDisplay = (name: string) =>
+    displayInstanceName(name, ctx.fleetConfig?.instances[name]?.display_name);
+  ctx.queueMirrorMessage?.(`📢 ${bDisplay(senderLabel)} → [${sentTo.map(bDisplay).join(", ")}]: ${truncatePreview(message, 500)}`);
   respond({
     sent_to: sentTo,
     failed,
