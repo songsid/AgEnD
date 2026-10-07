@@ -409,10 +409,15 @@ describe("the dashboard (the real page script)", () => {
       ? { set innerHTML(v: string) { (this as any).content = { firstElementChild: msgNode(v, messages) }; } }
       : el(t);
     const sse: Record<string, (e: { data: string; lastEventId?: string }) => void> = {};
+    const doc: Record<string, (e: any) => void> = {};            // the page's own document listeners (keys)
+    const open = { overlay: null as unknown };
     const toasts: Array<[string, boolean]> = [];
     const c = vm.createContext({
       localStorage: { getItem: () => null }, navigator: { language: "en" },
-      document: { addEventListener() {}, getElementById: (n: string) => nodes[n] ?? null, createElement: create, body: { appendChild() {} } },
+      document: {
+        addEventListener: (t: string, f: (e: any) => void) => { doc[t] = f; }, getElementById: (n: string) => nodes[n] ?? null, createElement: create,
+        body: { appendChild() {} }, querySelector: (q: string) => q === ".form-overlay" ? open.overlay : null,
+      },
       setTimeout: () => 0, clearTimeout() {}, setInterval: () => 0, clearInterval() {},
       fetch: async () => ({ ok: true, json: async () => ({}) }),
       EventSource: class { addEventListener(k: string, f: (e: { data: string }) => void) { sse[k] = f; } },
@@ -421,7 +426,7 @@ describe("the dashboard (the real page script)", () => {
     vm.runInContext(PAGE, c);
     (c as any).captureToast = (m: string, ok: boolean) => toasts.push([m, ok]);
     vm.runInContext('toast=(m,ok=true)=>captureToast(m,ok);renderList=()=>{};renderActions=()=>{};mode="instance";cur="w";curTab="chat";', c);
-    return { c, nodes, sse, toasts, read: (s: string) => vm.runInContext(s, c) };
+    return { c, nodes, sse, toasts, doc, open, read: (s: string) => vm.runInContext(s, c) };
   }
   const bar = (p: ReturnType<typeof page>) => p.nodes.workBar;
   // Stop is the composer's (#1307): shown while the agent works, beside Send only when there is something to send.
@@ -523,6 +528,51 @@ describe("the dashboard (the real page script)", () => {
     p.read('cur = "x"; activity.x = "working"');
     await p.read('cancelReply("x")');
     expect(p.read("stopping.x")).toBeUndefined();
+  });
+
+  // Segment 3: Esc stops the reply from the chat, while it works, when nothing else is open for Esc to close.
+  it("Esc stops the agent's reply — only while it works, not twice, not over an open form", async () => {
+    const p = page();
+    const calls: string[] = [];
+    (p.c as any).recordCall = (x: string) => calls.push(x);
+    p.read('api = async (m, path) => { recordCall(path); return { cancelled: "w" }; }');
+    const esc = () => { let prevented = false; p.doc.keydown!({ key: "Escape", isComposing: false, preventDefault: () => { prevented = true; } }); return prevented; };
+    expect(esc(), "idle: Esc is left alone").toBe(false);
+    p.sse.activity!({ data: JSON.stringify({ instance: "w", state: "working" }) });
+    p.open.overlay = {};
+    expect(esc(), "a form is open: Esc is the form's").toBe(false);
+    p.open.overlay = null;
+    p.doc.keydown!({ key: "Escape", isComposing: true, preventDefault() {} });   // closing an IME candidate list
+    await new Promise(r => setImmediate(r));
+    expect(calls, "Esc that belongs to the input method stops nothing").toEqual([]);
+    expect(esc()).toBe(true);
+    await new Promise(r => setImmediate(r));
+    expect(calls).toEqual(["/ui/cancel/w"]);
+    expect(esc(), "already stopping").toBe(false);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("a polite status line says the coarse things only: started, finished, replied, waits on you", () => {
+    const p = page();
+    p.nodes.announcer = { textContent: "" };
+    p.read("setTimeout = (f) => { f(); return 0; }");          // the line is set after a beat, so a repeat is read again
+    const said = () => p.nodes.announcer.textContent;
+    // The page's first status says w is already working, and "other" is idle: that is how things are, not news.
+    p.sse.status!({ data: JSON.stringify({ uptime: 1, instances: [{ name: "w", state: "working" }, { name: "other", state: "idle" }] }) });
+    expect(said(), "the first status is not news").toBe("");
+    p.sse.activity!({ data: JSON.stringify({ instance: "w", state: "idle" }) });
+    p.sse.activity!({ data: JSON.stringify({ instance: "w", state: "working" }) });
+    expect(said()).toBe("w started working");
+    p.sse.status!({ data: JSON.stringify({ uptime: 1, instances: [{ name: "w", state: "awaiting_input", execution_state: "working" }] }) });
+    expect(said()).toBe("w is waiting for your input");
+    p.sse.message!({ data: JSON.stringify({ boot: "b", id: 1, instance: "w", sender: "w", text: "**done**", ts: "2026-01-01T00:00:00Z" }) });
+    expect(said(), "not the reply's text").toBe("w replied");
+    p.sse.message!({ data: JSON.stringify({ boot: "b", id: 2, instance: "w", sender: "web-user", text: "thanks", ts: "2026-01-01T00:00:01Z", messageId: "web-2" }) });
+    expect(said(), "your own message is not announced").toBe("w replied");
+    p.sse.activity!({ data: JSON.stringify({ instance: "w", state: "idle" }) });
+    expect(said()).toBe("w finished");
+    p.sse.activity!({ data: JSON.stringify({ instance: "other", state: "working" }) });
+    expect(said(), "another instance's edges are not this chat's").toBe("w finished");
   });
 
   it("a `delivery` event puts the ticks on that message", () => {

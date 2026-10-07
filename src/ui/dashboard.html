@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="referrer" content="no-referrer">
 <title>AgEnD Dashboard</title>
 <script src="/assets/theme.js"></script>
@@ -374,6 +374,12 @@
   .eye-btn { background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 14px; padding: 4px 6px; border-radius: 6px; }
   .eye-btn:hover { color: var(--accent); }
   .offscreen { position: fixed; left: -9999px; top: 0; opacity: 0; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  .instance-item:focus-visible, .fleet-entry:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+  /* Phones with a notch or a home bar: keep the chrome clear of them. */
+  .topbar { padding-top: max(8px, env(safe-area-inset-top)); padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
+  .composer-wrap { padding-bottom: max(14px, env(safe-area-inset-bottom)); }
+  .sidebar { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
   .scrim { display: none; }
 
   /* ── Narrow screens: the sidebar is a drawer over the chat ── */
@@ -389,7 +395,8 @@
     .sidebar-header .icon-btn { display: none; }
     .topbar { gap: 6px; padding: 6px 8px; }
     .thread { padding: 16px 12px 8px; }
-    .composer-wrap { padding: 0 10px 10px; }
+    .composer-wrap { padding: 0 max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left)); }
+    .composer textarea { font-size: 16px; }          /* under 16px, iOS Safari zooms the page on focus */
     .msg.user { max-width: 88%; }
     .detail-view, .task-view { padding: 16px 12px; }
     .toasts { top: 60px; bottom: auto; left: 12px; right: 12px; align-items: stretch; }
@@ -407,7 +414,7 @@
   </div>
   <div class="sidebar-pad"><nav data-agend-nav data-compact data-current="ui"></nav></div>
   <div class="sidebar-pad">
-    <div class="fleet-entry" id="fleetEntry" data-act="selFleet">
+    <div class="fleet-entry" id="fleetEntry" data-act="selFleet" role="button" tabindex="0">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
       Fleet
     </div>
@@ -422,9 +429,10 @@
 </aside>
 
 <div class="scrim" data-act="closeDrawer"></div>
+<div id="announcer" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
 <div class="main">
   <header class="topbar">
-    <button class="icon-btn sb-open" type="button" data-act="toggleSidebar" title="Show the sidebar" aria-label="Show the sidebar" aria-controls="sidebar">&#9776;</button>
+    <button class="icon-btn sb-open" id="sbOpen" type="button" data-act="toggleSidebar" title="Show the sidebar" aria-label="Show the sidebar" aria-controls="sidebar" aria-expanded="false">&#9776;</button>
     <div class="top-title" id="topTitle"></div>
     <div class="tabs" id="topTabs" role="tablist"></div>
     <div class="actions" id="actions"></div>
@@ -444,9 +452,10 @@
 const UI_LANG = localStorage.getItem("agend_lang") || (navigator.language?.toLowerCase().startsWith("zh") ? "zh-TW" : "en");
 const UI_TEXT = {
   en: {
+    a11yWorking: "{0} started working", a11yIdle: "{0} finished", a11yReplied: "{0} replied", conversationWith: "Conversation with {0}",
     stopping: "Stopping {0}…", awaiting: "{0} is waiting for your input", approxNote: "Read from the terminal, so approximate", elapsedTitle: "Time since this page saw it start (approximate)", needsYou: "needs you",
     dropHere: "Drop files to attach them", asText: "As text", pasteAttached: "A long paste ({0} characters) was attached as a text file",
-    send: "Send", composerPlaceholder: "Send a message…", composerHint: "Enter to send · Shift+Enter for a new line", attachTitle: "Attach files (images, PDF, text — or paste / drop them)",
+    send: "Send", composerPlaceholder: "Send a message…", composerHint: "Enter to send · Shift+Enter for a new line · Esc stops the reply", attachTitle: "Attach files (images, PDF, text — or paste / drop them)",
     copy: "Copy", copyMessage: "Copy this reply", copied: "Copied", copyFailed: "Copy failed", wrap: "Wrap", showAll: "Show all {0} lines", showLess: "Show less", jumpLatest: "↓ Latest", newBelow: "↓ {0} new",
     disconnected: "disconnected", tick_queued: "Waiting behind another message", tick_processing: "Handed to the agent", tick_delivered: "The agent has it", tick_failed: "Not delivered", tick_cancelled: "Dropped by Stop",
     promptAnswering: "Answering…", promptGone: "This prompt is no longer open", promptFor: "{0}: {1}",
@@ -460,9 +469,10 @@ const UI_TEXT = {
     teamCreated: "Team created", teamDeleted: "Team deleted", configSaved: "Config saved", configRestart: " (restart Fleet to apply channel changes)",
   },
   "zh-TW": {
+    a11yWorking: "{0} 開始工作", a11yIdle: "{0} 已完成", a11yReplied: "{0} 已回覆", conversationWith: "與 {0} 的對話",
     stopping: "正在中止 {0}…", awaiting: "{0} 正在等你回應", approxNote: "從終端畫面判讀，僅供參考", elapsedTitle: "從這個頁面看到它開始工作起算（約略）", needsYou: "等你回應",
     dropHere: "放開即可附加檔案", asText: "改為文字", pasteAttached: "貼上的長文字（{0} 個字元）已改為文字檔附加",
-    send: "送出", composerPlaceholder: "輸入訊息…", composerHint: "Enter 送出 · Shift+Enter 換行", attachTitle: "附加檔案（圖片、PDF、文字檔，也可以貼上或拖曳）",
+    send: "送出", composerPlaceholder: "輸入訊息…", composerHint: "Enter 送出 · Shift+Enter 換行 · Esc 中止回覆", attachTitle: "附加檔案（圖片、PDF、文字檔，也可以貼上或拖曳）",
     copy: "複製", copyMessage: "複製這則回覆", copied: "已複製", copyFailed: "複製失敗", wrap: "換行", showAll: "展開全部 {0} 行", showLess: "收合", jumpLatest: "↓ 最新", newBelow: "↓ {0} 則新訊息",
     disconnected: "已斷線", tick_queued: "排在前一則訊息之後", tick_processing: "已交給 agent", tick_delivered: "agent 已收到", tick_failed: "未送達", tick_cancelled: "已被中止取消",
     promptAnswering: "回覆中…", promptGone: "這個提示已經結束", promptFor: "{0}：{1}",
@@ -500,9 +510,11 @@ const monoNow = () => (typeof performance !== "undefined" ? performance.now() : 
 let elapsedTimer = null, elapsedEl = null;
 function noteActivity(name, state) {
   const was = AgendChatRender.isBusy(activity[name]), now = AgendChatRender.isBusy(state);
+  const known = Object.prototype.hasOwnProperty.call(activity, name);
   activity[name] = state;
   if (now && !was) workingSince[name] = monoNow();
   if (!now) { delete workingSince[name]; delete stopping[name]; }
+  if (known && name === cur && now !== was) announce(trf(now ? "a11yWorking" : "a11yIdle", name));
 }
 // This browser's choices (#1307), kept like agend_lang: wrapped code lines, a hidden sidebar. Theme: /assets/theme.js.
 const stored = key => { try { return localStorage.getItem(key); } catch { return null; } };
@@ -511,11 +523,32 @@ let codeWrap = stored("agend_code_wrap") === "1";
 // something, tapping outside it, or Esc.
 const narrow = () => typeof matchMedia === "function" && matchMedia("(max-width: 760px)").matches;
 function toggleSidebar() {
-  if (narrow()) { document.body.classList.toggle("sb-open"); return; }
+  if (narrow()) { if (document.body.classList.contains("sb-open")) closeDrawer(); else openDrawer(); return; }
   const hidden = document.body.classList.toggle("sb-collapsed");
   try { localStorage.setItem("agend_sidebar", hidden ? "hidden" : "shown"); } catch { /* this page only */ }
 }
-function closeDrawer() { document.body.classList?.remove("sb-open"); }
+function openDrawer() {
+  document.body.classList.add("sb-open");
+  document.getElementById("sbOpen")?.setAttribute("aria-expanded", "true");
+  setTimeout(() => (document.querySelector(".instance-item.active") || document.getElementById("fleetEntry"))?.focus(), 0);
+}
+function closeDrawer() {
+  if (!document.body.classList?.contains("sb-open")) return;
+  document.body.classList.remove("sb-open");
+  const opener = document.getElementById("sbOpen");
+  opener?.setAttribute("aria-expanded", "false");
+  if (narrow() && opener) opener.focus();
+}
+const FOCUSABLE = 'a[href], button:not([disabled]), select, input, textarea, [tabindex="0"]';
+function trapDrawerTab(e) {
+  if (e.key !== "Tab" || !document.body.classList.contains("sb-open")) return;
+  const items = [...document.getElementById("sidebar").querySelectorAll(FOCUSABLE)].filter(x => x.offsetParent !== null);
+  if (!items.length) return;
+  const first = items[0], last = items[items.length - 1];
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  else if (!document.getElementById("sidebar").contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+}
 if (stored("agend_sidebar") === "hidden") document.body.classList?.add("sb-collapsed");
 {
   const pick = document.getElementById("themePick");
@@ -556,7 +589,9 @@ function applyStatus(d) {
   for (const i of instances) {
     noteActivity(i.name, (i.execution_state !== undefined ? i.execution_state : i.state) ?? null);
     // Waiting on a terminal prompt (a permission, a login, a dialog): read from the pane, so approximate.
-    awaiting[i.name] = i.state === "awaiting_input" ? (typeof i.interaction_summary === "string" ? i.interaction_summary : "") : null;
+    const waitsNow = i.state === "awaiting_input" ? (typeof i.interaction_summary === "string" ? i.interaction_summary : "") : null;
+    if (i.name === cur && waitsNow != null && awaiting[i.name] == null) announce(trf("awaiting", i.name));
+    awaiting[i.name] = waitsNow;
   }
   document.getElementById("uptime").textContent = fmtUp(d.uptime);
   renderList();
@@ -565,7 +600,9 @@ function applyStatus(d) {
 }
 // One way in for a chat message, from the stream, a poll or a replay: one entry per boot+id.
 function ingestMessage(m) {
-  msgs[m.instance] = AgendChatRender.mergeMessages(msgs[m.instance], [m], 500);
+  const before = msgs[m.instance];
+  msgs[m.instance] = AgendChatRender.mergeMessages(before, [m], 500);
+  if (m.instance === cur && msgs[m.instance] !== before && !isUserMsg(m) && (msgs[m.instance] || []).length > (before || []).length) announce(trf("a11yReplied", m.sender));
   if (m.instance === cur && curTab === "chat") renderMsgs();
 }
 async function pollOnce() {
@@ -605,7 +642,33 @@ document.addEventListener("click", e => {
   if (!el || !Object.hasOwn(ACTIONS, el.dataset.act)) return;
   ACTIONS[el.dataset.act](el, e);
 });
-document.addEventListener("keydown", e => { if (e.key === "Escape" && document.body.classList?.contains("sb-open")) closeDrawer(); });
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && !e.isComposing) {
+    if (document.body.classList?.contains("sb-open")) { closeDrawer(); return; }
+    if (stopOnEscape(document.activeElement)) { e.preventDefault(); cancelReply(cur, document.getElementById("stopBtn")); }
+    return;
+  }
+  // The sidebar's rows act as buttons for the keyboard too.
+  if ((e.key === "Enter" || e.key === " ") && e.target?.matches?.('.instance-item, .fleet-entry')) { e.preventDefault(); e.target.click(); return; }
+  trapDrawerTab(e);
+});
+// Esc stops the agent's reply (as Esc in its terminal would) — from the chat, while it works, and only when nothing
+// else on the page is open that Esc would close first (a form, the Session menu).
+function stopOnEscape(active) {
+  if (mode !== "instance" || curTab !== "chat" || !cur || !AgendChatRender.isBusy(activity[cur]) || stopping[cur]) return false;
+  if (document.querySelector(".form-overlay") || document.querySelector(".agend-pop:not([hidden])")) return false;
+  const view = document.getElementById("chatView");
+  return !active || active === document.body || !!(view && view.contains(active));
+}
+// One polite, visually hidden line for the coarse events only (#1307): a reply arrived, the agent started, finished,
+// or waits on you. Messages themselves are not read out as they arrive; the list is a log to browse.
+let announceTimer = null;
+function announce(text) {
+  const el = document.getElementById("announcer"); if (!el || !text) return;
+  el.textContent = "";
+  clearTimeout(announceTimer);
+  announceTimer = setTimeout(() => { el.textContent = text; }, 60);
+}
 const sse = new EventSource("/ui/events");
 silentTimer = setTimeout(startPolling, 15000);   // the server sends a status frame the moment a stream opens
 sse.addEventListener("status", e => { sseAlive(); applyStatus(JSON.parse(e.data)); });
@@ -680,7 +743,7 @@ function renderList() {
     // M2: show ctx:0% when context_pct is 0, only hide when null (unavailable)
     const ctxMeta = i.context_pct != null ? ` ctx:${Math.round(i.context_pct)}%` : "";
     const alias = typeof i.display_name === "string" && i.display_name.trim() !== i.name ? i.display_name.trim() : "";
-    return `<div class="instance-item${i.name===cur&&mode==="instance"?" active":""}" data-n="${esc(i.name)}" title="${esc(tip)}">
+    return `<div class="instance-item${i.name===cur&&mode==="instance"?" active":""}" data-n="${esc(i.name)}" title="${esc(tip)}" role="button" tabindex="0"${i.name===cur&&mode==="instance"?' aria-current="true"':""}>
     <div class="dot ${escAttr(i.status)}" title="${escAttr(i.status)}"></div><div class="inst-identity">
     <div class="inst-name">${esc(i.name)}</div>${alias ? `<div class="inst-alias">${esc(alias)}</div>` : ""}
     </div>${awaiting[i.name] != null ? `<span class="badge-await" title="${escAttr(awaiting[i.name] || tr("approxNote"))}">${tr("needsYou")}</span>` : ""}<div class="inst-meta">${i.cost>0?`$${i.cost.toFixed(2)}`:""}${ctxMeta}</div></div>`;
@@ -728,12 +791,12 @@ function renderInstanceMain(main) {
   renderTopbar(cur, tabs);
   main.innerHTML = `
     <div class="chat-view${codeWrap ? " wrap-code" : ""}" id="chatView"${curTab==="chat"?"":" hidden"}>
-      <div class="scroller" id="scroller"><div class="thread" id="messages"></div></div>
+      <div class="scroller" id="scroller"><div class="thread" id="messages" role="log" aria-live="off" aria-label="${escAttr(trf("conversationWith", cur))}"></div></div>
       <div class="drop-overlay" aria-hidden="true"><div class="drop-card">${ICON_CLIP}<span>${tr("dropHere")}</span></div></div>
       <div class="composer-wrap"><div class="composer-col">
         <button type="button" class="jump-latest" id="jumpLatest" data-act="jumpLatest" hidden></button>
         <div id="prompts" class="prompts" aria-live="polite"></div>
-        <div id="workBar" class="work-bar" aria-live="polite"></div>
+        <div id="workBar" class="work-bar"></div>
         <div id="failedSend"></div>
         <div id="pendingFiles" class="pending-files"></div>
         <div class="composer">
