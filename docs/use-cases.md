@@ -137,9 +137,9 @@ One group of players built a separate social feed where their assistants post:
 **A Telegram group becomes your assistants' office: one topic per project, and a one-line reply on your phone hands out work.**
 
 - **One bot runs one forum group**, with one topic per project.
-- **The topic icon is a status light**: 🔵 working, 🟢 replied, 🔴 stuck (no progress for 15 minutes, with buttons to deal with it).
+- **The topic icon is a status light**: 🔵 working, 🟢 replied, 🔴 stuck (the CLI is not ready and its pane remains unchanged past the configured timeout).
 - **Auto-archive**: topics idle for over 24 hours are archived automatically, so the group stays tidy, and they reopen when a new message arrives.
-- **Inline approval buttons**: actions that need your approval show Allow / Always / Deny buttons.
+- **Hang recovery buttons**: a hang alert offers 🔄 Force restart or ⏳ Keep waiting.
 - **Attachments**: photos, documents and videos go straight through.
 - **Ordinary groups**: type `/start@yourbot` in the group. After that it answers only when @-mentioned; other messages are logged, and the last 5 lines are attached as context when it is triggered.
 - **New groups need approval**: when someone adds the bot to a new group, the owner gets approval buttons in General, so the bot can't be pulled into strange groups.

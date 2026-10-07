@@ -180,7 +180,7 @@ agend schedule trigger <id>     # 只印出作法：CLI 自己無法觸發排程
 - `teardown_deployment`——停掉並刪除一次部署的所有實例
 - `list_deployments`——列出使用中的部署與狀態
 
-樣板定義語法見 [configuration.md](configuration.md#templatesname)。
+樣板定義語法見 [configuration.md](configuration.md#templates)。
 
 ## 主題綁定 (Topic Bindings)
 
