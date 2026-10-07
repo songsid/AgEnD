@@ -10,7 +10,9 @@ permissions:
 
 # One release at a time (#1271 review): "read latest → compare → publish" must not interleave with another
 # release run, or an older stable that passed its check before a newer one published could still move latest
-# back. Queued, never cancelled mid-run.
+# back. A running release is never cancelled. GitHub keeps only one *pending* run per group, so when two more tags
+# queue behind a running one the older pending run is cancelled; a cancelled run publishes nothing (re-run it, or
+# push its tag again, once the queue is clear).
 concurrency:
   group: npm-publish
   cancel-in-progress: false
