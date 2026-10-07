@@ -249,3 +249,44 @@ Modelled on [Outline's releases](https://github.com/outline/outline/releases):
 - The compare link runs from the previous release on the same channel to this
   one, for example
   [`v2.1.8...v2.1.9`](https://github.com/songsid/AgEnD/compare/v2.1.8...v2.1.9).
+
+## Merge gate
+
+A reviewed PR is merged by
+[`scripts/gate-merge.sh`](../scripts/gate-merge.sh), not by hand. The
+coordinator runs an installed copy, `~/.agend/scripts/gate-merge.sh`, when the
+reviewer sends APPROVE with the full head SHA:
+
+```bash
+# delivery_status is an MCP tool: save its result for the approval message and pipe it in.
+gate-merge.sh [--dry-run] [--delivery-json <file>|-] <pr> <approved-sha> <approval-message-id>
+```
+
+Run it from a clone whose `origin` is the repository. It fetches into
+`refs/gate/*` only and never moves a local branch. It merges only when all of
+these hold:
+
+1. **The approval is verified.** The delivery has that message id, comes from
+   the reviewer (`GATE_APPROVER`, default `agend-reviewer`), and its content
+   matches its `content_sha256`. The text says APPROVE (not REQUEST_CHANGES),
+   names `#<pr>` and contains the full SHA.
+2. **The PR is open** and not a draft.
+3. **The head is the approved SHA**, or a descendant of it whose own change is
+   unchanged. "Unchanged" means an identical tree, or the same patch-id from
+   the merge-base with the base branch, so a merge-sync carries the approval.
+   This is compared on every path except `docs/` and `changes/`. Anything else
+   prints `NEEDS_REVIEW <paths>`: the reviewer re-confirms.
+4. **The base branch tip is an ancestor** of the head.
+5. **Every check-run on the exact head** (the latest of each name) is completed
+   with `success`. A skipped or neutral run does not count.
+
+It then retargets open PRs based on this branch to this PR's base, and
+squash-merges with `--match-head-commit`. It deletes the branch only when no
+open PR is based on it any more. A failed merge puts the retargets back.
+
+The output is one line: `MERGED <merge sha>` (exit 0), `WOULD_MERGE <head>`
+with `--dry-run` (exit 0, nothing changed), `BLOCKED <reason>` (exit 1) or
+`NEEDS_REVIEW <paths>` (exit 3).
+
+After changing the script, install it again:
+`install -m 755 scripts/gate-merge.sh ~/.agend/scripts/gate-merge.sh`.
