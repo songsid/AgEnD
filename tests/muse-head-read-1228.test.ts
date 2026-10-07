@@ -125,6 +125,17 @@ describe("readFileHeadSync (#1228)", () => {
     expect(head).not.toContain("�");
   });
 
+  it("keeps a leading BOM like the old full read (#1281 P3)", () => {
+    const root = tempDir();
+    const content = "﻿" + bigSessionContent("/w");
+    const path = join(root, "session.jsonl");
+    writeFileSync(path, content);
+    // Old behavior: full decode keeps U+FEFF, then slice. The streaming
+    // head must match it exactly (TextDecoder strips BOM by default).
+    expect(readFileHeadSync(path, HEAD_BYTES)).toBe(content.slice(0, HEAD_BYTES));
+    expect(readFileHeadSync(path, HEAD_BYTES)!.startsWith("﻿")).toBe(true);
+  });
+
   it("returns null for a missing file instead of throwing", () => {
     expect(readFileHeadSync(join(tempDir(), "nope.jsonl"), HEAD_BYTES)).toBeNull();
   });

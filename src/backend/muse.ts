@@ -40,7 +40,9 @@ export function readFileHeadSync(filePath: string, maxChars: number): string | n
   let fd: number | undefined;
   try {
     fd = openSync(filePath, "r");
-    const decoder = new TextDecoder("utf-8");
+    // ignoreBOM: the old Buffer.toString kept a leading U+FEFF, so the
+    // equivalence with full-read-then-slice holds for BOM files too (#1281).
+    const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
     const chunk = Buffer.alloc(65_536);
     let head = "";
     for (;;) {
