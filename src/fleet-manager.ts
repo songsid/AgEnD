@@ -7296,27 +7296,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             created_by: meta.instance_name || instanceName,
           });
           break;
-        case "list": {
-          const filterAssignee = payload.filter_assignee as string | undefined;
-          const filterStatus = payload.filter_status as string | undefined;
-          const tasks = db.listTasks({ assignee: filterAssignee, status: filterStatus });
-          // #1335: cap unfiltered list at 100 rows (most recently updated first).
-          const isFiltered = filterAssignee !== undefined || filterStatus !== undefined;
-          const TASK_LIST_CAP = 100;
-          if (!isFiltered && tasks.length > TASK_LIST_CAP) {
-            const omitted = tasks.length - TASK_LIST_CAP;
-            // Sort most-recently-updated first and take the first CAP.
-            tasks.sort((a, b) => b.updated_at.localeCompare(a.updated_at));
-            result = {
-              tasks: tasks.slice(0, TASK_LIST_CAP),
-              omitted,
-              hint: `${omitted} older task(s) omitted — use filter_assignee or filter_status to narrow results`,
-            };
-          } else {
-            result = tasks;
-          }
+        case "list":
+          result = db.listTasks({
+            assignee: payload.filter_assignee as string | undefined,
+            status: payload.filter_status as string | undefined,
+          });
           break;
-        }
         case "claim":
           result = db.claimTask(payload.id as string, meta.instance_name || instanceName);
           break;
