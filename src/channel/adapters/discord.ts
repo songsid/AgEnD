@@ -152,6 +152,25 @@ const SLASH_ACK_SLOW_MS = 1_500;
 export const DISCORD_REST_KEEP_ALIVE_MS = 60_000;
 
 /**
+ * #1235 part 2 R5 (leader decision): one process-lifetime REST dispatcher,
+ * shared by every Discord adapter, never closed. Per-adapter teardown was
+ * removed deliberately: in locked undici 6.24.1 no public primitive tears
+ * down a mid-response-wedged socket (verified: close hangs, destroy and
+ * request timeouts settle the request but leave the socket server-visible),
+ * so per-adapter close/destroy accounting could never prove what Prism
+ * asked. Never closing is no worse than the pre-PR baseline, where the
+ * global dispatcher was likewise never closed on stop; idle sockets age
+ * out by keep-alive and in-flight requests finish or time out as before.
+ */
+let sharedRestAgent: UndiciAgent | null = null;
+function discordRestAgent(): UndiciAgent {
+  if (!sharedRestAgent) {
+    sharedRestAgent = new UndiciAgent({ keepAliveTimeout: DISCORD_REST_KEEP_ALIVE_MS });
+  }
+  return sharedRestAgent;
+}
+
+/**
  * A nonce-armed prompt button (`postNonceButtonPrompt`): `<prefix>:<32 hex>:<action>`.
  * Fleet-manager validates these against the prompt that created them.
  */
@@ -251,24 +270,6 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     this.registerClientHandlers(this.client, this.clientGeneration);
   }
 
-  /**
-   * #1235 part 2: the one REST dispatcher this adapter owns. Reused across
-   * every gateway Client generation — loginFreshClient destroys the Client
-   * but never the dispatcher, so reconnects never strand pools or sockets.
-   * Only stop() retires it (a stopped adapter is discarded by secret
-   * rebuild, rebind and shutdown); a later build then lazily makes a new
-   * one. Never the global dispatcher, and never an injected factory's
-   * client (those keep their own). Created lazily so adapters with an
-   * injected client factory never allocate one.
-   */
-  private ownedRestAgent: UndiciAgent | null = null;
-  private restAgent(): UndiciAgent {
-    if (!this.ownedRestAgent) {
-      this.ownedRestAgent = new UndiciAgent({ keepAliveTimeout: DISCORD_REST_KEEP_ALIVE_MS });
-    }
-    return this.ownedRestAgent;
-  }
-
   private buildClient(): Client {
     return new Client({
       intents: [
@@ -279,8 +280,8 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       ],
       // Events for messages/reactions created before this process started are partial.
       partials: [Partials.Message, Partials.Reaction, Partials.User],
-      // #1235 part 2: the adapter-owned dispatcher, shared across generations.
-      rest: { agent: this.restAgent() },
+      // #1235 part 2: the shared process-lifetime dispatcher.
+      rest: { agent: discordRestAgent() },
     });
   }
 
@@ -1278,30 +1279,6 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     this.watchdogTimer = null;
     this.queue.stop();
     this.client.destroy();
-    // #1235 part 2 R3: a stopped adapter is retired — secret rebuild, rebind
-    // and fleet shutdown all discard it after stop — so retire the owned REST
-    // dispatcher here or its pools leak. Only stop ends its life:
-    // loginFreshClient keeps sharing it across gateway generations.
-    // destroy(), not close(): close() merely releases the await on a
-    // deadline while a never-responding request keeps its socket open, and
-    // a destroy() after a timed-out close cannot reach pools the close
-    // already detached. destroy() is synchronous: every in-flight request
-    // settles at once and no new dispatch is possible afterwards — verified
-    // against loopback with a never-responding server. Residual, documented:
-    // a mid-response-wedged socket's TCP teardown is undici-internal — in
-    // locked 6.24.1 neither close, destroy nor a request timeout makes it
-    // server-visible — and unreachable via the public Dispatcher API, so it
-    // is bounded in production by the server's idle close, not by us. A
-    // later build lazily makes a new dispatcher via restAgent().
-    const agent = this.ownedRestAgent;
-    this.ownedRestAgent = null;
-    if (agent && !agent.destroyed) {
-      try {
-        agent.destroy();
-      } catch (err) {
-        console.warn(`[discord:${this.id}] destroying the REST dispatcher failed (${(err as Error)?.message ?? err})`);
-      }
-    }
   }
 
   // ── Text / file sending ────────────────────────────────────────────────
