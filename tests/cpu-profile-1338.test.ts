@@ -120,6 +120,21 @@ describe("local opt-in CPU recording, inspector fully stubbed", () => {
     expect(native.disconnect).toHaveBeenCalledTimes(1); expect(o.logger.warn.mock.calls.flat().join(" ")).toContain("deadline");
   });
 
+  it("keeps finite awaited command/save budgets referenced before fleet handles exist", async () => {
+    const timers = vi.spyOn(globalThis, "setTimeout");
+    native.post.mockImplementationOnce(() => {});
+    const pending = startCpuProfileFromEnvironment(opts("10"));
+    const commandTimer = timers.mock.results.at(-1)!.value as ReturnType<typeof setTimeout>;
+    expect(commandTimer.hasRef()).toBe(true);
+    clock = 2000; await vi.advanceTimersByTimeAsync(2000); expect(await pending).toBeNull();
+    const o = { ...opts("10"), save: vi.fn(() => new Promise<string>(() => {})) };
+    const recorder = await startCpuProfileFromEnvironment(o); const stopped = recorder!.stop();
+    await Promise.resolve(); await Promise.resolve();
+    const saveTimer = timers.mock.results.at(-1)!.value as ReturnType<typeof setTimeout>;
+    expect(saveTimer.hasRef()).toBe(true);
+    clock = 7000; await vi.advanceTimersByTimeAsync(5000); expect(await stopped).toBeNull();
+  });
+
   it("a never-settling artifact save cannot block cleanup/shutdown beyond its budget", async () => {
     let signal: AbortSignal | undefined;
     const o = { ...opts(), save: vi.fn((_dir: string, _profile: unknown, received?: AbortSignal) => {

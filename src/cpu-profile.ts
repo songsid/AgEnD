@@ -108,7 +108,7 @@ export async function startCpuProfileFromEnvironment(opts: {
       else resolve(result ?? {});
     };
     const timeout = setTimeout(() => finish(new Error(`${method} timed out`)), POST_TIMEOUT_MS);
-    timeout.unref?.();
+    // The awaited startup/stop must get its fallback even before fleet handles exist.
     try { session.post(method, params, finish); } catch (err) { finish(err as Error); }
   });
   const stop = (reason = "operator/shutdown"): Promise<string | null> => {
@@ -130,7 +130,7 @@ export async function startCpuProfileFromEnvironment(opts: {
           (opts.save ?? saveCpuProfile)(opts.dataDir, profile, controller.signal),
           new Promise<never>((_resolve, reject) => {
             saveTimer = setTimeout(() => { controller.abort(); reject(new Error("CPU profile save timed out")); }, SAVE_TIMEOUT_MS);
-            saveTimer.unref?.();
+            // Keep this finite awaited save alive through shutdown until it settles.
           }),
         ]);
         if (performance.now() >= saveDeadline) { controller.abort(); throw new Error("CPU profile save deadline exceeded"); }
