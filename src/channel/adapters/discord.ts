@@ -141,10 +141,14 @@ const SLASH_ACK_SLOW_MS = 1_500;
  * #1235 part 2: the discord.js REST connection survives idle gaps.
  * undici's default keepAliveTimeout is 4 s, so the first deferReply after any
  * pause pays a fresh TLS handshake to discord.com. 60 s keeps one socket
- * warm across typical human command gaps, and it stays under Cloudflare's
- * ~100 s idle close — we close first and never race a server-side FIN with
- * a defer inside the 3 s acknowledgement window. Scoped to this adapter's
- * own REST manager only; the global dispatcher is untouched.
+ * warm across typical human command gaps. Best effort, not a ceiling:
+ * keepAliveTimeout is the fallback when the server sends no Keep-Alive hint;
+ * a hinted timeout overrides it (observed: timeout=120 → effective 118 s),
+ * and either way the client side closes first, so a defer inside the 3 s
+ * acknowledgement window does not race a server-side FIN. keepAliveMaxTimeout
+ * stays at undici's default (max socket age, not idle time) — a hot socket
+ * may live up to 10 min; only idle ones are reaped at 60 s. Scoped to this
+ * adapter's own REST manager only; the global dispatcher is untouched.
  */
 export const DISCORD_REST_KEEP_ALIVE_MS = 60_000;
 
@@ -248,6 +252,23 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     this.registerClientHandlers(this.client, this.clientGeneration);
   }
 
+  /**
+   * #1235 part 2: the one REST dispatcher this adapter owns. Reused across
+   * every gateway Client generation — loginFreshClient destroys the Client
+   * but never the dispatcher, and stop() leaves it open for the next start —
+   * so rebuilds never strand pools or sockets. Never the global dispatcher,
+   * and never an injected factory's client (those keep their own). Created
+   * lazily so adapters with an injected client factory never allocate one.
+   * It lives with the adapter; idle sockets reap themselves at 60 s.
+   */
+  private ownedRestAgent: UndiciAgent | null = null;
+  private restAgent(): UndiciAgent {
+    if (!this.ownedRestAgent) {
+      this.ownedRestAgent = new UndiciAgent({ keepAliveTimeout: DISCORD_REST_KEEP_ALIVE_MS });
+    }
+    return this.ownedRestAgent;
+  }
+
   private buildClient(): Client {
     return new Client({
       intents: [
@@ -258,8 +279,8 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       ],
       // Events for messages/reactions created before this process started are partial.
       partials: [Partials.Message, Partials.Reaction, Partials.User],
-      // #1235 part 2: a dedicated keep-alive agent for this REST manager.
-      rest: { agent: new UndiciAgent({ keepAliveTimeout: DISCORD_REST_KEEP_ALIVE_MS }) },
+      // #1235 part 2: the adapter-owned dispatcher, shared across generations.
+      rest: { agent: this.restAgent() },
     });
   }
 
