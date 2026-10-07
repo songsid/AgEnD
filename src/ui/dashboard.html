@@ -454,7 +454,7 @@ const UI_TEXT = {
   en: {
     a11yWorking: "{0} started working", a11yIdle: "{0} finished", a11yReplied: "{0} replied", conversationWith: "Conversation with {0}",
     stopping: "Stopping {0}…", awaiting: "{0} is waiting for your input", approxNote: "Read from the terminal, so approximate", elapsedTitle: "Time since this page saw it start (approximate)", needsYou: "needs you",
-    dropHere: "Drop files to attach them", asText: "As text", pasteAttached: "A long paste ({0} characters) was attached as a text file",
+    dropHere: "Drop files to attach them", asText: "As text", pasteAttached: "A long paste ({0} characters) was attached as a text file", pasteKeptAsText: "No room for another attachment: the long paste stays as text",
     send: "Send", composerPlaceholder: "Send a message…", composerHint: "Enter to send · Shift+Enter for a new line · Esc stops the reply", attachTitle: "Attach files (images, PDF, text — or paste / drop them)",
     copy: "Copy", copyMessage: "Copy this reply", copied: "Copied", copyFailed: "Copy failed", wrap: "Wrap", showAll: "Show all {0} lines", showLess: "Show less", jumpLatest: "↓ Latest", newBelow: "↓ {0} new",
     disconnected: "disconnected", tick_queued: "Waiting behind another message", tick_processing: "Handed to the agent", tick_delivered: "The agent has it", tick_failed: "Not delivered", tick_cancelled: "Dropped by Stop",
@@ -471,7 +471,7 @@ const UI_TEXT = {
   "zh-TW": {
     a11yWorking: "{0} 開始工作", a11yIdle: "{0} 已完成", a11yReplied: "{0} 已回覆", conversationWith: "與 {0} 的對話",
     stopping: "正在中止 {0}…", awaiting: "{0} 正在等你回應", approxNote: "從終端畫面判讀，僅供參考", elapsedTitle: "從這個頁面看到它開始工作起算（約略）", needsYou: "等你回應",
-    dropHere: "放開即可附加檔案", asText: "改為文字", pasteAttached: "貼上的長文字（{0} 個字元）已改為文字檔附加",
+    dropHere: "放開即可附加檔案", asText: "改為文字", pasteAttached: "貼上的長文字（{0} 個字元）已改為文字檔附加", pasteKeptAsText: "附件已滿，貼上的長文字保留為一般文字",
     send: "送出", composerPlaceholder: "輸入訊息…", composerHint: "Enter 送出 · Shift+Enter 換行 · Esc 中止回覆", attachTitle: "附加檔案（圖片、PDF、文字檔，也可以貼上或拖曳）",
     copy: "複製", copyMessage: "複製這則回覆", copied: "已複製", copyFailed: "複製失敗", wrap: "換行", showAll: "展開全部 {0} 行", showLess: "收合", jumpLatest: "↓ 最新", newBelow: "↓ {0} 則新訊息",
     disconnected: "已斷線", tick_queued: "排在前一則訊息之後", tick_processing: "已交給 agent", tick_delivered: "agent 已收到", tick_failed: "未送達", tick_cancelled: "已被中止取消",
@@ -822,13 +822,7 @@ function renderInstanceMain(main) {
     const fileIn = document.getElementById("fileIn");
     document.getElementById("attachBtn").addEventListener("click", () => fileIn.click());
     fileIn.addEventListener("change", () => { addFiles(fileIn.files); fileIn.value = ""; });
-    inp.addEventListener("paste", e => {
-      const files = e.clipboardData && e.clipboardData.files;
-      const text = e.clipboardData ? e.clipboardData.getData("text") : "";
-      if (files && files.length) { addFiles(files); if (!text) e.preventDefault(); return; }
-      // A very long paste goes as a text file instead of filling the composer (it can go back in as text).
-      if (AgendChatRender.isLongPaste(text)) { e.preventDefault(); attachPastedText(text); }
-    });
+    inp.addEventListener("paste", onComposerPaste);
     // A file dragged over the chat shows where it will go; leaving or dropping clears it (counted, so moving over
     // the messages inside does not flicker it).
     const view = document.getElementById("chatView");
@@ -1249,14 +1243,29 @@ function renderPendingFiles() {
     chip.append(x); box.append(chip);
   });
 }
+// Files in a paste are attached; a very long text paste goes as a text file instead of filling the composer (it can
+// go back in as text). The browser's own paste is stopped only once that file is really attached (#1316 review): when
+// it cannot be — five files already, 25 MB used, or the text itself over 10 MB — the text is pasted as usual.
+function onComposerPaste(e) {
+  const files = e.clipboardData && e.clipboardData.files;
+  const text = e.clipboardData ? e.clipboardData.getData("text") : "";
+  if (files && files.length) { addFiles(files); if (!text) e.preventDefault(); return; }
+  if (AgendChatRender.isLongPaste(text) && attachPastedText(text)) e.preventDefault();
+}
 // Long pastes turned into files, and their text (to put back on request).
 const pastedTexts = new WeakMap();
+/** Attach `text` as a .txt file when it fits beside what is already attached; true when it was. */
 function attachPastedText(text) {
+  if (!cur) return false;
   const stamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "");
   const f = new File([text], `pasted-${stamp}.txt`, { type: "text/plain" });
+  // Checked first, quietly: a paste that does not fit is a paste, not a refused file.
+  const taken = (inFlightFiles[cur] || []).concat(pendingFiles[cur] || []);
+  if (AgendChatRender.checkFiles(taken, [f]).rejected.length) { toast(tr("pasteKeptAsText")); return false; }
   pastedTexts.set(f, text);
   addFiles([f]);
-  if ((pendingFiles[cur] || []).includes(f)) toast(trf("pasteAttached", text.length.toLocaleString()));
+  toast(trf("pasteAttached", text.length.toLocaleString()));
+  return true;
 }
 function renderFailedSend() {
   const box = document.getElementById("failedSend"); if (!box) return;
