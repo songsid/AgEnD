@@ -62,10 +62,35 @@ export function parseFragment(text) {
   if (body === "") return { error: "the entry is empty" };
   if (!body.startsWith("- ")) return { error: "the entry must be a list item starting with `- `" };
   if (/^#{1,6}[ \t]/m.test(body)) return { error: "the entry contains a heading line; headings come from `section`" };
+  // Every line must belong to an entry as entryBlocks reads it, so whole-entry comparison sees all of it. Text after
+  // a blank line that is neither a new `- ` item nor indented is outside the list: it would land in the CHANGELOG as
+  // a stray paragraph and take no part in the comparison.
+  const covered = entryBlocks(body.split("\n")).join("\n").split("\n").filter(l => l.trim() !== "").length;
+  const stray = body.split("\n").filter(l => l.trim() !== "").length - covered;
+  if (stray > 0) return { error: "a line of the entry is outside its list item: indent the lines that continue it" };
   return { section: fields.section, body };
 }
 
-/** Read and validate every fragment under <root>/changes. Returns { fragments, errors }. */
+/**
+ * The complete entries in some lines: a top-level `- ` line plus what continues it, up to the next top-level line —
+ * indented or blank lines, and (Markdown's lazy continuation) unindented text directly under a non-blank line of the
+ * entry; trailing blank lines dropped. An entry is "already there" only when one of these equals it.
+ */
+export function entryBlocks(lines) {
+  const blocks = [];
+  let cur = null;
+  const close = () => { if (cur) { blocks.push(cur.join("\n").trimEnd()); cur = null; } };
+  for (const line of lines) {
+    if (line.startsWith("- ")) { close(); cur = [line]; }
+    else if (cur && (line.trim() === "" || /^[ \t]/.test(line))) cur.push(line);
+    else if (cur && cur[cur.length - 1].trim() !== "" && !/^#/.test(line)) cur.push(line);   // lazy continuation
+    else close();
+  }
+  close();
+  return blocks;
+}
+
+/** Read and validate every fragment under <root>/changes. Returns { fragments, errors, orphans }. */
 export function readFragments(root) {
   const dir = join(root, "changes");
   const errors = [];
@@ -84,12 +109,16 @@ export function readFragments(root) {
     byKey.set(key, entry);
   }
   const fragments = [];
+  const orphans = [];
   for (const entry of byKey.values()) {
     if (!entry.en || !entry.zh) {
       const has = entry.en ? `${entry.key}.md` : `${entry.key}.zh-TW.md`;
       const missing = entry.en ? `${entry.key}.zh-TW.md` : `${entry.key}.md`;
       // A half that failed to parse was already reported; do not report its pair as missing too.
-      if (!errors.some(e => e.startsWith(`changes/${missing}:`))) errors.push(`changes/${has}: no changes/${missing} (every entry is written in en and zh-TW)`);
+      if (!errors.some(e => e.startsWith(`changes/${missing}:`))) {
+        errors.push(`changes/${has}: no changes/${missing} (every entry is written in en and zh-TW)`);
+        orphans.push({ lang: entry.en ? "en" : "zh", file: entry.files[0], name: has, body: (entry.en ?? entry.zh).body, error: errors.length - 1 });
+      }
       continue;
     }
     if (entry.en.section !== entry.zh.section) {
@@ -99,13 +128,25 @@ export function readFragments(root) {
     fragments.push(entry);
   }
   fragments.sort((a, b) => a.issue - b.issue || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
-  return { fragments, errors };
+  return { fragments, errors, orphans };
 }
 
 /**
  * Insert entries into one CHANGELOG text. `target` is null for [Unreleased], else { version, date }.
  * `entries` is [{ section, body }] in insertion order. Pure; returns the new text.
  */
+/** The complete entries already in the target section (empty when a --release section does not exist yet). */
+export function targetBlocks(text, lang, target) {
+  const L = LANGS[lang];
+  const lines = text.replace(/\r/g, "").split("\n");
+  const start = target === null ? lines.findIndex(line => line === L.unreleased)
+    : lines.findIndex(line => line === `## [${target.version}]` || line.startsWith(`## [${target.version}] `));
+  if (start < 0) return [];
+  let end = lines.findIndex((line, n) => n > start && line.startsWith("## "));
+  if (end < 0) end = lines.length;
+  return entryBlocks(lines.slice(start + 1, end));
+}
+
 export function insertEntries(text, lang, target, entries) {
   const L = LANGS[lang];
   const lines = text.replace(/\r/g, "").split("\n");
@@ -130,8 +171,9 @@ export function insertEntries(text, lang, target, entries) {
     const mine = entries.filter(e => e.section === section);
     if (mine.length === 0) continue;
     const end = endOf(start);
-    const sectionText = lines.slice(start, end).join("\n");
-    const fresh = mine.filter(e => !sectionText.includes(e.body));
+    // Already there means every entry of the fragment is a complete entry of this release, not a substring of one.
+    const present = new Set(entryBlocks(lines.slice(start + 1, end)));
+    const fresh = mine.filter(e => !entryBlocks(e.body.split("\n")).every(block => present.has(block)));
     if (fresh.length === 0) continue;
     const heading = `### ${L.heading(section)}`;
     const body = fresh.map(e => e.body).join("\n").split("\n");
@@ -171,14 +213,28 @@ function parseArgs(argv) {
 export function main(argv) {
   let opts;
   try { opts = parseArgs(argv); } catch (err) { console.error(`changelog-assemble: ${err.message}`); return 2; }
-  const { fragments, errors } = readFragments(opts.root);
-  if (errors.length) {
-    for (const e of errors) console.error(`changelog-assemble: ${e}`);
+  const { fragments, errors, orphans } = readFragments(opts.root);
+  const target = opts.release === null ? null : { version: opts.release, date: opts.date ?? new Date().toISOString().slice(0, 10) };
+  // A run interrupted between deleting the two halves of a pair leaves one half whose entry is already in the target
+  // release. Assembling again (same target) finishes that cleanup; --check still reports it, so CI says to rerun.
+  const leftovers = [];
+  if (!opts.check) {
+    for (const o of orphans) {
+      let blocks;
+      try { blocks = targetBlocks(readFileSync(join(opts.root, LANGS[o.lang].file), "utf8"), o.lang, target); } catch { continue; }
+      const have = new Set(blocks);
+      if (entryBlocks(o.body.split("\n")).every(block => have.has(block))) { leftovers.push(o); errors[o.error] = null; }
+    }
+  }
+  const problems = errors.filter(e => e !== null);
+  if (problems.length) {
+    for (const e of problems) console.error(`changelog-assemble: ${e}`);
+    if (opts.check && orphans.length) console.error("changelog-assemble: a half left by an interrupted assemble is removed by running the assembler again");
     return 1;
   }
   if (opts.check) { console.log(`changelog-assemble: ${fragments.length} fragment(s) OK`); return 0; }
+  for (const o of leftovers) { unlinkSync(o.file); console.log(`changelog-assemble: removed changes/${o.name}, left by an interrupted run (its entry is already in the CHANGELOG)`); }
   if (fragments.length === 0) { console.log("changelog-assemble: no fragments"); return 0; }
-  const target = opts.release === null ? null : { version: opts.release, date: opts.date ?? new Date().toISOString().slice(0, 10) };
   const out = {};
   try {
     for (const lang of Object.keys(LANGS)) {

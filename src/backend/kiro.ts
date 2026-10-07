@@ -1,3 +1,4 @@
+import { measureSyncWork } from "../sync-work-attribution.js";
 import { EFFORT_CAPABILITIES } from "./effort-metadata.js";
 import { join } from "node:path";
 import { getAgendHome } from "../paths.js";
@@ -403,12 +404,15 @@ function compatibilityFromHelp(version: string | undefined, help: string): KiroC
  */
 export function probeKiroCliCompatibility(
   binaryPath: string,
-  run: KiroProbeRunner = (binary, args) => execFileSync(binary, args, {
+  run: KiroProbeRunner = (binary, args) => measureSyncWork(args[0] === "--version" ? "kiro.version" : "kiro.help", () => execFileSync(binary, args, {
     encoding: "utf-8",
     timeout: 5000,
     stdio: ["ignore", "pipe", "ignore"],
-  }),
+  })),
 ): KiroCliCompatibility {
+  return measureSyncWork("kiro.compatibilitySync", () => probeKiroCliCompatibilitySync(binaryPath, run));
+}
+function probeKiroCliCompatibilitySync(binaryPath: string, run: KiroProbeRunner): KiroCliCompatibility {
   let version: string | undefined;
   try {
     version = run(binaryPath, ["--version"]).trim().split("\n")[0].slice(0, 80) || undefined;

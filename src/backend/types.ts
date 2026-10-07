@@ -1,3 +1,4 @@
+import { measureSyncWork } from "../sync-work-attribution.js";
 import { execFileSync } from "node:child_process";
 import { accessSync, constants, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
@@ -143,6 +144,9 @@ export interface ModelOption {
   description?: string;
 }
 
+/** How long a cached CLI env (`<AGEND_HOME>/cli-env/<backend>.json`) is valid; after that nothing may read it. */
+export const CLI_ENV_TTL_MS = 24 * 60 * 60 * 1000;
+
 /** Result of probing a CLI backend's environment at startup (cached to disk). */
 export interface CliEnv {
   backend: string;
@@ -156,6 +160,11 @@ export interface CliEnv {
    * the quick-pick tier stays short.
    */
   apiModels?: ModelOption[];
+  /**
+   * Effort levels the CLI's own `--help` lists (antigravity, #1328), in AgEnD's canonical order. `[]`: the help was
+   * read and lists none (the fallback applies); absent: the help could not be read.
+   */
+  effortLevels?: string[];
   /** Epoch ms the probe ran (drives the cache TTL). */
   probedAt: number;
 }
@@ -719,7 +728,7 @@ export interface CliBackend {
    * (best-effort) auth/current model. Result is cached to disk so `/model` and
    * status views read it without re-running the CLI. Must never throw.
    */
-  probeCLIEnv?(config: CliBackendConfig): Promise<{ version?: string; authenticated?: boolean; currentModel?: string; models: ModelOption[] }>;
+  probeCLIEnv?(config: CliBackendConfig): Promise<{ version?: string; authenticated?: boolean; currentModel?: string; models: ModelOption[]; effortLevels?: string[] }>;
 
   /**
    * Ask the CLI to refresh its OWN model catalog before the next probe reads it.
@@ -759,11 +768,11 @@ function commonBinaryDirs(): string[] {
 
   // Also cover custom npm prefixes such as ~/.npm-global.
   try {
-    const prefix = execFileSync("npm", ["prefix", "-g"], {
+    const prefix = measureSyncWork("backend.npmPrefix", () => execFileSync("npm", ["prefix", "-g"], {
       encoding: "utf-8",
       timeout: 3000,
       stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
+    }).trim());
     if (prefix) dirs.push(join(prefix, "bin"));
   } catch { /* npm may not be in the restricted PATH */ }
 
@@ -771,8 +780,11 @@ function commonBinaryDirs(): string[] {
 }
 
 export function resolveBinary(name: string, fallbackDirs?: readonly string[]): string {
+  return measureSyncWork("backend.resolveBinary", () => resolveBinarySync(name, fallbackDirs));
+}
+function resolveBinarySync(name: string, fallbackDirs?: readonly string[]): string {
   try {
-    const resolved = execFileSync("which", [name], { encoding: "utf-8" }).trim();
+    const resolved = measureSyncWork("backend.which", () => execFileSync("which", [name], { encoding: "utf-8" }).trim());
     if (resolved) return resolved;
   } catch { /* search common absolute locations below */ }
 

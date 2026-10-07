@@ -1,3 +1,4 @@
+import { measureSyncWork } from "./sync-work-attribution.js";
 import Database from "better-sqlite3";
 
 export interface EventRow {
@@ -96,10 +97,13 @@ export class EventLog {
   }
 
   insert(instance: string, type: string, payload?: Record<string, unknown>): void {
-    this.insertStmt.run(instance, type, payload != null ? JSON.stringify(payload) : null);
+    measureSyncWork("eventLog.insert", () => this.insertStmt.run(instance, type, payload != null ? JSON.stringify(payload) : null));
   }
 
   query(opts: QueryOpts = {}): EventRow[] {
+    return measureSyncWork("eventLog.query", () => this.querySync(opts));
+  }
+  private querySync(opts: QueryOpts): EventRow[] {
     const conditions: string[] = [];
     const params: unknown[] = [];
 
