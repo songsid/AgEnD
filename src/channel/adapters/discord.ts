@@ -1,7 +1,6 @@
 import { EventEmitter } from "node:events";
 import { slashLock } from "../../command-table.js";
 import { randomBytes } from "node:crypto";
-import { isWebChannelEcho } from "../../web-channel-echo.js";
 import { t } from "../../locale.js";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -387,7 +386,6 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     client.on("messageCreate", async (msg: Message) => {
       try {
       if (!this.isCurrentClient(client, generation)) return;
-      if (isWebChannelEcho(msg.content, msg.author.bot || !!msg.webhookId)) return;
       if (msg.author.id === client.user?.id) return; // Ignore own messages
       if (!msg.guildId) return;
       if (msg.guildId !== this.guildId) {
@@ -1263,6 +1261,8 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     }
     return message.id;
   }
+
+  getBotUserId(): string | undefined { return this.client.user?.id; }
 
   /** Private delivery: a DM to the user (fails if the user disallows DMs from this server). */
   async sendDirect(userId: string, text: string, opts?: SendOpts): Promise<SentMessage> {

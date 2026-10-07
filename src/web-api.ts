@@ -899,14 +899,14 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       const topicId = ctx.fleetConfig?.instances[instance]?.topic_id;
       const canEcho = ctx.fleetConfig?.web?.echo_to_channel !== false
         && !ctx.isClassicInstance?.(instance) && syncAdapter && groupId && topicId != null;
-      // No terminal paths, tokens or local attachment paths appear in the display copy.
+      // Add no runtime credentials or local attachment paths to the display copy.
       const preview = webEchoPreview(message, files.map(f => f.name));
       const settleEcho = canEcho ? ctx.reserveWebChannelEcho?.(instance, async () => {
         // A replacement adapter or edited binding is not the route we reserved.
         if ((ctx.getAdapterForInstance ? ctx.getAdapterForInstance(instance) : ctx.adapter) !== syncAdapter
           || (ctx.getGroupIdForInstance?.(instance) ?? String(ctx.fleetConfig?.channel?.group_id ?? "")) !== groupId
           || ctx.fleetConfig?.instances[instance]?.topic_id !== topicId) return;
-        return syncAdapter.sendText(String(groupId), formatWebChannelEcho("web-user", preview), { threadId: String(topicId), format: "text", allowedMentions: { parse: [] } });
+        return syncAdapter.sendText(String(groupId), formatWebChannelEcho("web-user", preview, t("web.echo_full_text")), { threadId: String(topicId), format: "text", allowedMentions: { parse: [] } });
       }) : undefined;
       let delivered: boolean | void;
       try {

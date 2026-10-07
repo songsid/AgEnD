@@ -77,6 +77,8 @@ export type TopicPresence =
 export interface ChannelAdapter extends EventEmitter {
   readonly type: string;
   readonly id: string;
+  /** Authenticated platform identity, cache-only; absent until login/init. */
+  getBotUserId?(): string | undefined;
 
   start(): Promise<void>;
   stop(): Promise<void>;

@@ -51,6 +51,7 @@ import { AccessManager } from "./channel/access-manager.js";
 import { IpcClient } from "./channel/ipc-bridge.js";
 import type { AdapterHealthSnapshot, AlertData, ChannelAdapter, InboundMessage, InboundReaction, Choice, TopicPresence, StickerInfo, StickerList, StickerPreview, StickerTarget } from "./channel/types.js";
 import { createAdapter } from "./channel/factory.js";
+import { isWebChannelEcho } from "./web-channel-echo.js";
 import { TelegramAdapter } from "./channel/adapters/telegram.js";
 import { createBackend } from "./backend/factory.js";
 import { readEffortMetadata } from "./backend/effort-metadata.js";
@@ -5905,6 +5906,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private async handleInboundMessage(msg: InboundMessage): Promise<void> {
+    // Platform author identity is the authority. This runs before routing,
+    // collab/commands/access/dedup and does not depend on any echo setting/ACK.
+    const fleetBotIds = new Set<string>();
+    for (const world of this.worlds.values()) {
+      if (world.adapter.type !== msg.source) continue;
+      const id = world.adapter.getBotUserId?.() ?? world.botUserId;
+      if (id) fleetBotIds.add(id);
+    }
+    if (isWebChannelEcho(msg.text ?? "", msg.userId, fleetBotIds)) return;
     const threadId = this.inboundRouteThreadId(msg);
 
     this.logger.debug({ source: msg.source, chatId: msg.chatId, threadId, userId: msg.userId, isBotMessage: msg.isBotMessage, textLen: (msg.text ?? "").length, text: (msg.text ?? "").slice(0, 80) }, "handleInboundMessage entry");
