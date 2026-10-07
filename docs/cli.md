@@ -228,6 +228,9 @@ place — this page writes the file by dumping the loaded configuration, which i
 right for a file it creates and would flatten comments and freeze defaults in
 one somebody already has.
 
+A user guide to the whole dashboard (panels, chat, files, Stop, sessions, reaching it from elsewhere) is in
+[web-dashboard.md](web-dashboard.md).
+
 The dashboard signs in with a **one-time code**, not a link that carries a
 credential. Send `/dashboard` to your bot (or run `agend web --code` on the host)
 and you get the sign-in page address plus an 8-character code — `ABCD-EFGH`,
