@@ -81,27 +81,41 @@ under username `web-user`, matching how bot replies are logged as `"bot"`
 
 ## 4. Never re-enter the agent
 
-Three independent layers, all already in the code:
+Correction to the r1 draft: the "three independent guards" claim does NOT
+hold for cross-bot echoes. The scenario: bot A's echo text contains bot B's
+mention (`🌐 web-user: <@200> hello`), B has collab on in that Classic
+channel. Discord drops only a bot's *own* messages
+(`src/channel/adapters/discord.ts:388`), so B sees A's echo;
+`topicOwnerDropReason` deliberately exempts classic channels
+(`src/fleet-manager.ts:5778-5788`), `botMessageDropReason` returns null for
+a collab-on classic entry (`:5803-5810`), and `handleClassicChannelMessage`
+triggers B on `text.includes('<@B>')` (`:12145-12155`). Prism reproduced
+exactly this. `allowedMentions` suppression alone does not help either,
+because AgEnD's own text match fires regardless of what Discord renders.
+The implementable rule has three parts, all echo-side:
 
-1. **Discord** drops the bot's own messages in-adapter
-   (`src/channel/adapters/discord.ts:388`).
-2. **Telegram** never delivers a bot its own messages (stated at
-   `src/fleet-manager.ts:6260-6262`); on top, fleet-level gates drop bot
-   copies that do arrive: `botMessageDropReason`
-   (`src/fleet-manager.ts:5794-5824`) and the owner check
-   `topicOwnerDropReason` (`src/fleet-manager.ts:5778-5788`), applied at
-   `src/fleet-manager.ts:5897-5899`.
-3. **Collab trigger** needs an exact `<@BOT_USER_ID>` mention, matched only
-   against the *message's own* adapter id
-   (`src/fleet-manager.ts:12145-12155`); the echo format contains no mention,
-   so even a leaked copy cannot trigger a turn. (The self-marker `@user (you)`
-   rewrite at `:12176-12179` / `:6263-6264` only applies to inbound text that
-   already mentioned the bot.)
+1. **Neutralise every mention syntax** in the echoed preview AND in
+   attachment names before posting: Discord `<@…>`, `<@!…>`, `<@&…>`,
+   `@everyone`/`@here`; Telegram `@username` and bot commands shaped
+   `/cmd@bot`. Neutralise by inserting a zero-width joiner (or equivalent
+   escape) so no sibling-bot ingress match can fire, while the text stays
+   human-readable. "The format contains no mention of our own bot" is
+   necessary but explicitly insufficient — the rule covers *any* bot's
+   mention syntax.
+2. **Code-owned echo provenance** that every AgEnD adapter recognises and
+   drops on ingress: a marker (e.g. a fleet-only prefix/tag on the echo)
+   plus a registry of recently posted echo message ids checked before any
+   trigger evaluation. This also covers stale or replayed echoes that
+   satisfy no live mention. The provenance check must run before
+   mention-matching in `handleClassicChannelMessage` and the fleet-topic
+   ingress, on both platforms.
+3. **Delivery-layer suppression** as defence in depth:
+   `allowedMentions: { parse: [] }` on Discord sends, no mention entities on
+   Telegram sends — so other clients/bots also see no ping.
 
-Echo-side obligation: the format must never include the bot's mention tag.
-A unit test pins the rendered echo for a bot whose username appears in the
-web text (e.g. web text "@mybot hello" stays literal, never becomes a
-triggering mention).
+A unit test pins the rendered echo for hostile inputs: a `<@other-bot>`
+mention, `@everyone`, an attachment literally named `<@200>.png`, and a
+replayed echo id — none may reach any agent.
 
 ## 5. Multi-bot channels
 
@@ -118,16 +132,23 @@ A channel with bot A opted in and bot B not must show exactly one echo.
 ## 6. Tests
 
 - TG private chat opted in → echo lands in that chat; off/absent → silence.
-- TG group opted in → echo lands (with the Settings warning covered by a
-  config-shape test, not UI automation).
+- TG group opted in → echo lands.
 - Discord guild channel opted in → echo lands; no re-entry via the
   in-adapter self-drop (fake `messageCreate` from self).
-- Echo text never contains a triggering `<@id>` mention (mention-shaped web
-  text stays literal).
+- **A→B cross-bot regression** (real inbound + Classic collab): A opted in,
+  B with `web_echo` **off** and collab on; A's echo carries a direct
+  `<@B>` mention, an attachment named `<@B>.png`, and a replayed older echo.
+  B's agent receives nothing in all three cases; the channel shows exactly
+  one neutralised echo.
 - Multi-bot channel: A opted in, B not → one echo, addressed from A's
   adapter entry; B's agent receives nothing.
 - Classic instance in part-A path: no fallback post to the primary group
   (regression for the §0 hazard).
+- Settings reuses the existing session/header-token + Origin/CSRF gate
+  (`src/settings-api.ts`); group membership alone never authorises an
+  opt-in change. A non-boolean `web_echo` is rejected and stays off.
+- The group-warning second confirmation is tested against the real page
+  logic (what the user must click through), not just the config shape.
 - Setting respected end to end: `web_echo` absent/false/true through
   `PATCH /api/settings/classic/channels/:key` shape.
 
