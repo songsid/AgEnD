@@ -6,9 +6,6 @@
 
 ## [未發佈] (Unreleased)
 
-### 2.1.13 — 新增 (Added)
-- **選擇性錄製 fleet CPU profile，追查尚未歸因的 event-loop 阻塞（#1338，#1235 的一部分）。** 主機操作者可在冷啟動 `agend fleet start` 時設定 `AGEND_CPU_PROFILE_SECONDS=60`，省略即關閉。行程內以 100 Hz 錄製，最長 30 分鐘後停止（主執行緒能處理期限時），不開 inspector 監聽埠。`AGEND_HOME/profiles` 下的私有檔案每份最多 20 MiB、保留五份；檔案上限不等於 V8 錄製記憶體上限。Agent session 不能透過繼承的環境啟用；未增加聊天、web 或 MCP 觸發入口。
-
 ### 2.1.13 — 修正 (Fixed)
 - **Fleet 的 stall 警告會列出慢同步 caller 與 GC 停頓（#1235，PR-A）。** 用 monotonic 時間、固定容量
   記錄已包裝呼叫中至少 50ms 的工作，以及同一觀測窗口內至少 200ms 的 GC 停頓。不改排程或投遞行為；
