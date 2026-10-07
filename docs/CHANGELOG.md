@@ -63,7 +63,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the old cookie is no longer accepted. Sessions end 12 hours after sign-in or
   after 2 hours idle, survive a fleet restart, and every write from a page now
   also needs a per-session `X-Agend-CSRF` header and a matching `Origin`.
-  `/dashboard revoke` signs every browser out; `agend web --code` prints a code on
+  `/dashboard revoke` (on Discord: `/dashboard` with `action: revoke`) signs every browser out; `agend web --code` prints a code on
   the host; `agend web-token rotate` still kills every session at once. The
   header token (`X-Agend-Token`) is unchanged for the CLI and scripts. **A
   `?token=` in a URL is no longer a credential anywhere on `/ui` and `/settings`:**

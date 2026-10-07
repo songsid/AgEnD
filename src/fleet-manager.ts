@@ -2848,9 +2848,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // Slash commands are Discord-only; use plain lines (no markdown table)
       await this.topicCommands.sendSysInfo(text => data.respond(text), { platform: "discord" });
     } else if (data.command === "dashboard") {
-      // Reply is ephemeral (adapter defers non-chat commands ephemerally), so
-      // the web-token-bearing URLs are only visible to the caller.
-      await data.respond(this.topicCommands.getDashboardText());
+      // The reply is ephemeral (the adapter defers non-chat commands ephemerally): the sign-in link and its
+      // one-time code are seen only by the caller. Who may call it is decided before this point (fleet admins
+      // of the invoking adapter). `action: revoke` is the typed `/dashboard revoke` — the one every new-sign-in
+      // notice tells the operator to send (#1260): sign every browser out, and say so honestly if it could not
+      // be saved.
+      if (String(data.options?.action ?? "").trim().toLowerCase() === "revoke") {
+        const result = this.revokeWebSessions();
+        await data.respond(result.durable ? t("dashboard.revoked", result.count) : t("dashboard.revoked_not_durable", result.count));
+      } else {
+        await data.respond(this.topicCommands.getDashboardText());
+      }
     } else if (data.command === "restart") {
       await this.handleRestartSlash(data, adapterId);
     } else if (data.command === "compact") {

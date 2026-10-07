@@ -1085,7 +1085,14 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
           },
           { name: "status", description: slashLock("status") + t("slash.status") },
           { name: "sysinfo", description: slashLock("sysinfo") + t("slash.sysinfo") },
-          { name: "dashboard", description: slashLock("dashboard") + t("slash.dashboard") },
+          {
+            name: "dashboard", description: slashLock("dashboard") + t("slash.dashboard"),
+            options: [{
+              name: "action", description: t("slash.option.dashboard_action"),
+              type: ApplicationCommandOptionType.String, required: false,
+              choices: [{ name: "revoke", value: "revoke" }],
+            }],
+          },
           { name: "ctx", description: slashLock("ctx") + t("slash.ctx") },
           {
             name: "restart", description: slashLock("restart") + t("slash.restart"),

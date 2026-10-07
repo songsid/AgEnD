@@ -243,7 +243,7 @@ records request URLs.
   `web.token`. It ends after 12 hours from sign-in at the latest, or after 2
   hours without use, whichever comes first — the server decides, not the
   browser. It survives a fleet restart (Settings can restart the fleet).
-- **`/dashboard revoke`** in the chat signs every browser out and withdraws any
+- **`/dashboard revoke`** in the chat (on Discord, the `/dashboard` slash command with `action: revoke`) signs every browser out and withdraws any
   unused code. `agend web-token rotate` does the same and also rotates the token
   the CLI uses; a running fleet picks it up with no restart. The sign-in
   endpoints also list your signed-in devices and end one or all of them

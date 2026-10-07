@@ -38,6 +38,7 @@ vi.mock("../src/channel/factory.js", async () => {
 import { FleetManager } from "../src/fleet-manager.js";
 import { decideSlash, type SlashFacts } from "../src/slash-authz.js";
 import { setLocale, t } from "../src/locale.js";
+import { tokenEpoch } from "../src/web-session.js";
 
 /**
  * Discord registers its slash commands globally, so every guild and every DM shows the same menu and the handler is
@@ -361,6 +362,37 @@ describe("/update /doctor /dashboard /collab: the invoking adapter's fleet admin
     expect(await slash(r, "second", { command: "update", userId: "admin", guildId: "G2", channelId: "C-second" })).toEqual([t("update.disabled")]);
     expect(await slash(r, "second", { command: "dashboard", userId: "admin", guildId: "G2", channelId: "C-second" })).toEqual([t("dashboard.disabled")]);
     expect(spawned).toHaveLength(0);
+  });
+
+  it("/dashboard action:revoke signs every browser out — the Discord form of the typed /dashboard revoke (#1260)", async () => {
+    const r = await rig({ primary: OPEN });
+    const fm = r.fm as unknown as {
+      initializeWebAuthTokens(): void; initializeWebSessions(): void; readonly webToken: string | null;
+      webSessions: { create(o: object): { sessionId: string }; authenticate(id: string, epoch: string, o?: object): unknown; ops: Record<string, unknown> };
+    };
+    fm.initializeWebAuthTokens();
+    fm.initializeWebSessions();
+    const epoch = tokenEpoch(fm.webToken!);
+    const signIn = () => fm.webSessions.create({ tier: "admin", surface: "local", label: "Firefox on Linux", tokenEpoch: epoch }).sessionId;
+    const alive = (id: string) => fm.webSessions.authenticate(id, epoch, { touch: false }) !== null;
+    const a = signIn(), b = signIn();
+
+    // Not a fleet admin: refused, and nothing is signed out.
+    expect(await slash(r, "discord", { command: "dashboard", userId: "member", options: { action: "revoke" } })).toEqual([t("not_authorized")]);
+    // No action: the sign-in text, nothing signed out.
+    const shown = await slash(r, "discord", { command: "dashboard", userId: "admin" });
+    expect(shown[0]).not.toBe(t("dashboard.revoked", 2));
+    expect([alive(a), alive(b)]).toEqual([true, true]);
+
+    expect(await slash(r, "discord", { command: "dashboard", userId: "admin", options: { action: "revoke" } })).toEqual([t("dashboard.revoked", 2)]);
+    expect([alive(a), alive(b)], "both browsers are signed out").toEqual([false, false]);
+
+    // A revocation that could not be saved says so — never "done".
+    const c = signIn();
+    fm.webSessions.ops.renameSync = () => { throw Object.assign(new Error("EACCES"), { code: "EACCES" }); };
+    fm.webSessions.ops.unlinkSync = () => { throw Object.assign(new Error("EACCES"), { code: "EACCES" }); };
+    expect(await slash(r, "discord", { command: "dashboard", userId: "admin", options: { action: "revoke" } })).toEqual([t("dashboard.revoked_not_durable", 1)]);
+    expect(alive(c)).toBe(false);
   });
 
   it("/collab in a fleet channel needs a fleet admin too", async () => {
