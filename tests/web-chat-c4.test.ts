@@ -367,7 +367,7 @@ describe("the dashboard (the real page script)", () => {
     const toasts: Array<[string, boolean]> = [];
     const c = vm.createContext({
       localStorage: { getItem: () => null }, navigator: { language: "en" },
-      document: { getElementById: (n: string) => nodes[n] ?? null, createElement: (t: string) => el(t), body: { appendChild() {} } },
+      document: { addEventListener() {}, getElementById: (n: string) => nodes[n] ?? null, createElement: (t: string) => el(t), body: { appendChild() {} } },
       setTimeout: () => 0, clearTimeout() {}, setInterval: () => 0, clearInterval() {},
       fetch: async () => ({ ok: true, json: async () => ({}) }),
       EventSource: class { addEventListener(k: string, f: (e: { data: string }) => void) { sse[k] = f; } },

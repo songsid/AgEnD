@@ -62,8 +62,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   SSE, and a buffering proxy looks exactly like a server that never sends.)
 - **The dashboard no longer loads its fonts from Google, and every panel carries a Content-Security-Policy**
   keeping scripts, styles, images, fonts and connections to this origin (`connect-src 'self'`), so script that
-  somehow ran on a page could not send what it read to another server. (`'unsafe-inline'` stays for now: the
-  panels are single files of inline script and the dashboard uses `onclick=` attributes.)
+  somehow ran on a page could not send what it read to another server.
+- **No inline script runs on the web panels unless it is the page's own (#1268).** `script-src` no longer allows
+  `'unsafe-inline'`: each panel's own script is served with a fresh per-response nonce, and the dashboard's buttons
+  no longer carry `onclick=` attributes (one listener runs a fixed list of actions named in `data-act`). Markup
+  injected into a page — an `onerror=` handler, a `<script>` — no longer runs. `style-src` still allows
+  `'unsafe-inline'` for the panels' `style="…"` attributes; styles cannot run code.
 
 ### Upgrade Notes
 - **[Behaviour change] The web panels sign in with a one-time code, and a

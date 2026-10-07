@@ -148,7 +148,9 @@ server 只回應 `127.0.0.1`。要從別的裝置使用 dashboard，你需要開
 
 - 任何憑證都不會出現在網址裡：fleet token、登入碼、session 都一樣。
 - 已登入的瀏覽器要寫入時，必須同時有 session、每個 session 專屬的 CSRF header，**以及**相符的 `Origin`；光有 cookie 什麼都改不了。用 `X-Agend-Token` header 的腳本不受影響，因為瀏覽器不會自己帶上這個 header。
-- 每個面板都帶 Content-Security-Policy：script、樣式、圖片與連線都只限 dashboard 自己的位址。（目前仍允許 `'unsafe-inline'`。）
+- 每個面板都帶 Content-Security-Policy：script、樣式、圖片與連線都只限 dashboard 自己的位址。
+  - 只會執行頁面自己的 script：每次載入都帶一個新的 nonce，script 不允許 `'unsafe-inline'`，所以被注入到頁面的標記無法執行程式碼。
+  - 樣式仍允許 `'unsafe-inline'`，因為面板還有 `style` 屬性。
 
 ## 遇到問題時
 
