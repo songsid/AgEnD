@@ -176,14 +176,19 @@ export class CodexRolloutSource implements TranscriptSource {
     if (!active) return EMPTY;
 
     if (active.path !== this.currentFile) {
-      this.currentFile = active.path;
       // Existing rollout: continue at the EOF captured when the source was
       // created. New rollout: read from the start. Using current mtime here is
       // wrong because appending to a resumed rollout makes an old file look new.
       // The captured size is anchored to its last line boundary (#1250): a record mid-write at creation is kept.
+      // Only an anchor that succeeded is committed (#1283 review): if the boundary cannot be read now, nothing is
+      // adopted and the next poll tries again from the same captured size — never the raw size, mid-record.
       const captured = this.initialOffsets.get(active.path);
-      if (captured === undefined) this.byteOffset = 0;
-      else try { this.byteOffset = await lastLineBoundary(active.path, captured); } catch { this.byteOffset = captured; }
+      let offset = 0;
+      if (captured !== undefined) {
+        try { offset = await lastLineBoundary(active.path, captured); } catch { return EMPTY; }
+      }
+      this.currentFile = active.path;
+      this.byteOffset = offset;
     }
 
     const { lines, newOffset } = await readNewLines(this.currentFile, this.byteOffset);
@@ -571,11 +576,16 @@ export class KiroSessionSource implements TranscriptSource {
     if (!active) return EMPTY;
 
     if (active.jsonlPath !== this.currentFile) {
-      this.currentFile = active.jsonlPath;
       if (active.createdAtMs >= this.createdAt) {
+        this.currentFile = active.jsonlPath;
         this.byteOffset = 0; // our own fresh session — observable from the start
       } else {
-        try { this.byteOffset = await lastLineBoundary(active.jsonlPath); } catch { this.byteOffset = 0; }
+        // An older session is attached at its last line boundary. If that cannot be read now, nothing is adopted
+        // and the next poll tries again (#1283 review) — never offset 0, which would replay the whole session.
+        let offset: number;
+        try { offset = await lastLineBoundary(active.jsonlPath); } catch { return EMPTY; }
+        this.currentFile = active.jsonlPath;
+        this.byteOffset = offset;
         return EMPTY;
       }
     }

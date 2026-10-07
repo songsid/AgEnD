@@ -130,11 +130,14 @@ export class TranscriptMonitor extends EventEmitter {
         this.saveOffset();
       } else {
         // First-ever attach: baseline to EOF so history does not replay — to its last line boundary, so a
-        // record being written right now is read once complete rather than lost (#1250).
+        // record being written right now is read once complete rather than lost (#1250). If the boundary cannot
+        // be read, nothing is attached or saved and the next poll tries again (#1283 review): offset 0 would
+        // replay the whole history.
         try {
           this.byteOffset = await lastLineBoundary(current);
         } catch {
-          this.byteOffset = 0;
+          this.transcriptPath = null;
+          return;
         }
         this.saveOffset();
         return;
