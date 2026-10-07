@@ -189,12 +189,20 @@ section into fragments:
 2. For each entry the line added, add `changes/<issue>.md` and
    `changes/<issue>.zh-TW.md` with the same text and the section it was
    under. An entry without an issue number uses the landing PR's number with
-   a slug, for example `changes/1262-web-chat-markdown.md`. Drop entries that
-   only concerned the line itself, such as its temporary CI.
-3. Put both CHANGELOGs back to `main`'s version, so the PR no longer changes
+   a slug, for example `changes/1262-web-chat-markdown.md`.
+   [`scripts/changelog-split.mjs`](../scripts/changelog-split.mjs) does this
+   for a whole release section, removing it from both files:
+   `node scripts/changelog-split.mjs --release 2.2.0 --issue <landing PR> --dry-run`,
+   then the same without `--dry-run`. It pairs the en and zh-TW entries per
+   subsection, in order. It refuses, writing nothing, when the counts differ,
+   when the two halves of a pair name different issues, or when a target file
+   already exists (unless `--force`).
+3. Drop the fragments for entries that only concerned the line itself, such
+   as its temporary CI.
+4. Put both CHANGELOGs back to `main`'s version, so the PR no longer changes
    them:
    `git checkout origin/main -- docs/CHANGELOG.md docs/CHANGELOG.zh-TW.md`.
-4. `node scripts/changelog-assemble.mjs --check` and commit.
+5. `node scripts/changelog-assemble.mjs --check` and commit.
 
 The guard counts from the merge-base, so the line's old commits that edited
 the CHANGELOG no longer matter once the files equal `main`'s.

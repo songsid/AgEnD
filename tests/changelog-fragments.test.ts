@@ -410,10 +410,10 @@ describe("changelog-guard (ci.yml's step, on a scratch repository)", () => {
       "changes/1262-web-1.md": frag("Added", "- **web 1.** w"), "changes/1262-web-1.zh-TW.md": frag("Added", "- **web 1。** w"),
     });
     const head = r.git("rev-parse", "HEAD");
-    expect(r.git("diff", "--name-only", `${mainTip}...${head}`, "--", "docs")).toBe(""); // 3. the files are main's
+    expect(r.git("diff", "--name-only", `${mainTip}...${head}`, "--", "docs")).toBe(""); // 4. the files are main's
     expect(r.guard(mainTip, head).status).toBe(0);
     const check = spawnSync(process.execPath, [join(r.dir, "scripts", "changelog-assemble.mjs"), "--check"], { cwd: r.dir, encoding: "utf8" });
-    expect(check.status, check.stderr).toBe(0);                                        // 4.
+    expect(check.status, check.stderr).toBe(0);                                        // 5.
   });
 
   it("missing or malformed SHAs, or ones git does not know → exit 2", () => {
