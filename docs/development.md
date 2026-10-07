@@ -200,12 +200,20 @@ section into fragments:
 2. For each entry the line added, add `changes/<issue>.md` and
    `changes/<issue>.zh-TW.md` with the same text and the section it was
    under. An entry without an issue number uses the landing PR's number with
-   a slug, for example `changes/1262-web-chat-markdown.md`. Drop entries that
-   only concerned the line itself, such as its temporary CI.
-3. Put both CHANGELOGs back to `main`'s version, so the PR no longer changes
+   a slug, for example `changes/1262-web-chat-markdown.md`.
+   [`scripts/changelog-split.mjs`](../scripts/changelog-split.mjs) does this
+   for a whole release section, removing it from both files:
+   `node scripts/changelog-split.mjs --release 2.2.0 --issue <landing PR> --dry-run`,
+   then the same without `--dry-run`. It pairs the en and zh-TW entries per
+   subsection, in order. It refuses, writing nothing, when the counts differ,
+   when the two halves of a pair name different issues, or when a target file
+   already exists (unless `--force`).
+3. Drop the fragments for entries that only concerned the line itself, such
+   as its temporary CI.
+4. Put both CHANGELOGs back to `main`'s version, so the PR no longer changes
    them:
    `git checkout origin/main -- docs/CHANGELOG.md docs/CHANGELOG.zh-TW.md`.
-4. `node scripts/changelog-assemble.mjs --check` and commit.
+5. `node scripts/changelog-assemble.mjs --check` and commit.
 
 The guard counts from the merge-base, so the line's old commits that edited
 the CHANGELOG no longer matter once the files equal `main`'s.
@@ -350,3 +358,78 @@ Modelled on [Outline's releases](https://github.com/outline/outline/releases):
 - The compare link runs from the previous release on the same channel to this
   one, for example
   [`v2.1.8...v2.1.9`](https://github.com/songsid/AgEnD/compare/v2.1.8...v2.1.9).
+
+## Merge gate
+
+A reviewed PR is merged by
+[`scripts/gate-merge.sh`](../scripts/gate-merge.sh), not by hand. The
+coordinator runs an installed copy, `~/.agend/scripts/gate-merge.sh`, when the
+reviewer's approval arrives:
+
+```bash
+# delivery_status is an MCP tool: save its result for the approval message and pipe it in.
+gate-merge.sh [--dry-run] [--delivery-json <file>|-] <pr> <approved-sha> <approval-message-id>
+```
+
+**The approval is a line of its own.** The reviewer writes the verdict at the
+start of a line, binding the PR and the full head SHA together:
+
+```
+APPROVE — PR #1334 @d719d476b28ae36067f8815b6956162a5e1c27ed
+```
+
+The dash, `PR` and `@` are optional, and one message may carry several such
+lines for several PRs. A mention anywhere else (another line, a quote, another
+PR's verdict) grants nothing.
+
+**The delivery JSON is trusted input.** The caller must pass exactly what its
+own `delivery_status` call returned. `content_sha256` is checked against the
+content, but a hash does not prove where the message came from.
+
+Run the gate from a clone whose `origin` is the repository. It fetches into
+`refs/gate/*` only and never moves a local branch. It merges only when all of
+these hold:
+
+1. **The approval is verified.** The delivery has that message id, comes from
+   the reviewer (`GATE_APPROVER`, default `agend-reviewer`), its content
+   matches its `content_sha256`, and it has the verdict line above for this PR
+   and SHA.
+2. **The PR is open** and not a draft, and the fetched `refs/pull/<n>/head` is
+   the head gh reports.
+3. **The head is the approved SHA**, or a descendant of it whose own change is
+   unchanged:
+   - **Identical tree.**
+   - **The same fingerprint of its own change.** That is its diff from the
+     merge-base with the base branch, every byte of whitespace kept, with only
+     `index` lines and hunk line numbers normalised. So a merge-sync carries
+     the approval, and a whitespace change inside a string does not.
+
+   This is compared on every path except `docs/` and `changes/`. Anything else
+   prints `NEEDS_REVIEW <paths>`, and the reviewer re-confirms.
+4. **The base branch tip is an ancestor** of the head.
+5. **CI passed in full on the exact head.** Every required check has a run, and
+   every run (the latest of each name) is completed with `success`. A skipped
+   or neutral run does not count. The required checks are
+   `GATE_REQUIRED_CHECKS` (default: `main`'s gate, `build`, `scan`, `CodeQL`,
+   `Analyze (javascript-typescript)` and `Analyze (actions)`) plus any that a
+   ruleset on the base branch requires.
+
+It then retargets open PRs based on this branch to this PR's base, and
+squash-merges with `--match-head-commit`. It deletes the branch only when no
+open PR is based on it any more.
+
+**A gh write that reports failure is read back before anything else
+happens.**
+- A retarget or merge that did happen counts as done.
+- One that did not is rolled back: the retargets go back to this branch.
+- If the read-back fails too, the result is `BLOCKED uncertain: …` and nothing
+  more is changed or reverted.
+
+Any git or gh read that fails blocks.
+
+The output is one line: `MERGED <merge sha>` (exit 0), `WOULD_MERGE <head>`
+with `--dry-run` (exit 0, nothing changed), `BLOCKED <reason>` (exit 1) or
+`NEEDS_REVIEW <paths>` (exit 3).
+
+After changing the script, install it again:
+`install -m 755 scripts/gate-merge.sh ~/.agend/scripts/gate-merge.sh`.
