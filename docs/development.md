@@ -106,7 +106,7 @@ Four workflows live in `.github/workflows/`.
 
 | Workflow | Runs on | Does |
 |---|---|---|
-| `ci.yml` | push and pull request to `main` | `npm ci`, `tsc --noEmit`, `npm run typecheck:tests`, `npm run build`, `npm test`, `npm run test:integration` (Node 22) |
+| `ci.yml` | push and pull request to `main` | CHANGELOG fragment checks (below), `npm ci`, `tsc --noEmit`, `npm run typecheck:tests`, `npm run build`, `npm test`, `npm run test:integration` (Node 22) |
 | `gitleaks.yml` | push and pull request to `main` | Secret scan of the full history |
 | `deploy-website.yml` | push to `main` touching `website/**`, `src/tips.ts`, the tips generator or the package files; manual | Builds and deploys the GitHub Pages site |
 | `publish.yml` | push of a tag matching `v*` | Publishes `@songsid/agend` to npm |
@@ -116,6 +116,68 @@ skipped when unset). `ci.yml`, `gitleaks.yml` and `deploy-website.yml` post
 only failures; `publish.yml` posts every outcome. The notification never
 changes the run's result.
 
+### CHANGELOG fragments
+
+A PR does not edit [`CHANGELOG.md`](CHANGELOG.md) or
+[`CHANGELOG.zh-TW.md`](CHANGELOG.zh-TW.md). It adds its entry as two files in
+`changes/`, and the entries are moved into the CHANGELOG in one commit, so two
+PRs never conflict on it. `changes/1328.md`:
+
+```markdown
+---
+section: Fixed
+---
+- **A working agy is seen as working (#1328).** agy's working row is …
+```
+
+`changes/1328.zh-TW.md`:
+
+```markdown
+---
+section: Fixed
+---
+- **工作中的 agy 會被看成工作中（#1328）。** agy 工作中的那一列是 …
+```
+
+- A PR that changes nothing a package user would notice (CI, tests, these
+  docs) adds no fragment.
+- The name is `<issue>.md`, or `<issue>-<slug>.md` for a second entry on the
+  same issue, and its zh-TW pair is the same name with `.zh-TW.md`. Both are
+  required.
+- `section` is one of `Upgrade Notes`, `Added`, `Changed`, `Fixed` or
+  `Security`, and both languages name the same one. There is no other key.
+- The body is one or more list items, written exactly as they should appear,
+  following [CHANGELOG entries](#changelog-entries). No headings: the
+  subsection comes from `section`.
+
+[`scripts/changelog-assemble.mjs`](../scripts/changelog-assemble.mjs) moves
+them:
+
+```bash
+node scripts/changelog-assemble.mjs                                 # into ## [Unreleased]
+node scripts/changelog-assemble.mjs --release X.Y.Z --date YYYY-MM-DD  # into ## [X.Y.Z] - YYYY-MM-DD
+node scripts/changelog-assemble.mjs --check                         # validate only
+```
+
+- It validates every fragment first, and one bad fragment writes nothing.
+- Entries go to the top of their subsection, ordered by issue number. A
+  missing subsection is created in the order below. A missing release section
+  is created right under `[Unreleased]`.
+- It deletes the fragments it moved. An entry already in the target section is
+  not added twice, so rerunning it is harmless.
+- Commit its result with the trailer `Changelog: assemble` on a line of its
+  own; the script prints it.
+
+`ci.yml` checks both rules, before `npm ci`:
+
+- `changelog-assemble.mjs --check` fails on a fragment that does not parse,
+  names an unknown section, or has no pair.
+- On a pull request,
+  [`scripts/changelog-guard.mjs`](../scripts/changelog-guard.mjs) fails when
+  the PR changes `docs/CHANGELOG*.md`, counted from the merge-base, so a
+  merge-sync from `main` does not count. The exception is a PR whose every
+  commit editing them carries the `Changelog: assemble` trailer.
+
 ### Cut the CHANGELOG section before tagging
 
 Entries collect under `## [Unreleased]` in both
@@ -123,19 +185,26 @@ Entries collect under `## [Unreleased]` in both
 A stable release moves them into its own section in the same PR that prepares
 the tag, so the tagged commit already carries its notes:
 
-1. Add `## [X.Y.Z] - YYYY-MM-DD` under `## [Unreleased]` in both files, dated
-   the day the tag is pushed (`git log -1 --format=%cs vX.Y.Z` afterwards).
-2. Move every entry whose change is in the release into it, Upgrade Notes
-   included. When in doubt, an entry belongs to the first tag whose history
-   contains the commit that added it:
-   `git merge-base --is-ancestor <sha> vX.Y.Z`.
+1. Assemble the fragments first:
+   `node scripts/changelog-assemble.mjs --release X.Y.Z --date YYYY-MM-DD`,
+   dated the day the tag is pushed. This creates `## [X.Y.Z] - YYYY-MM-DD`
+   under `## [Unreleased]` in both files and moves every fragment into it.
+   Leave out a fragment whose change is not in the release by moving it out
+   of `changes/` first. Commit with the `Changelog: assemble` trailer. Check
+   the date afterwards with `git log -1 --format=%cs vX.Y.Z`.
+2. Move every entry already under `[Unreleased]` whose change is in the
+   release into the new section, Upgrade Notes included, in the same commit.
+   When in doubt, an entry belongs to the first tag whose history contains the
+   commit that added it: `git merge-base --is-ancestor <sha> vX.Y.Z`.
 3. Order its subsections `### Upgrade Notes`, `### Added`, `### Changed`,
-   `### Fixed`, `### Security`, leaving out empty ones. The zh-TW file uses the
-   same subsections (`升級注意事項 (Upgrade Notes)` and so on) and the same entries.
+   `### Fixed`, `### Security`, leaving out empty ones. The assembler already
+   does this for what it adds. The zh-TW file uses the same subsections
+   (`升級注意事項 (Upgrade Notes)` and so on) and the same entries.
 4. Leave only unreleased work under `## [Unreleased]`.
 
-Betas and alphas do not get their own section; their entries stay under
-`[Unreleased]` until the stable release that ships them.
+Betas and alphas do not get their own section. Before tagging one, run the
+assembler without `--release`, so its fragments land under `[Unreleased]`
+until the stable release that ships them.
 
 ### Publishing
 
