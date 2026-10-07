@@ -74,6 +74,13 @@ export interface FleetContext {
   isFleetAdmin(userId: string, adapterId?: string): boolean;
   /** Whether the adapter has any fleet admin at all (an empty allowlist turns the admin commands off). */
   hasFleetAdmins(adapterId?: string): boolean;
+  /**
+   * #1346: the adapter that owns an instance's topic. Text commands resolve
+   * permission and replies through the owner, never the adapter whose copy
+   * happened to win the cross-adapter dedup race. Optional so older stubs
+   * keep working (they fall back to the receiving adapter).
+   */
+  getInstanceAdapterId?(instanceName: string): string | undefined;
   changeInstancePauseState(name: string, action: "pause" | "wake"): Promise<"paused" | "awake" | "not_idle">;
   startInstance(name: string, config: InstanceConfig, topicMode: boolean): Promise<void>;
   stopInstance(name: string): Promise<void>;
