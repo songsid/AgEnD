@@ -22,6 +22,7 @@
  * fleet config and tmux is invoked via execFile (no shell) to prevent command
  * injection.
  */
+import { sendPanelHtml } from "./web-host-guard.js";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
 import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -237,8 +238,7 @@ export function handleViewRequest(
   if (method === "GET" && path === "/view") {
     try {
       const html = readFileSync(join(__dirname, "ui", "view.html"), "utf-8");
-      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      res.end(html);
+      sendPanelHtml(res, html);
     } catch {
       json(res, 500, { error: "view.html not found" });
     }

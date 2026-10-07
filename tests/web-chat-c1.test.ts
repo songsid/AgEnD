@@ -595,7 +595,7 @@ describe("dashboard sendMsg (the real page script)", () => {
     let pollReply: (url: string) => unknown = () => ({});
     const c = vm.createContext({
       localStorage: { getItem: () => null }, navigator: { language: "en" },
-      document: { getElementById: (n: string) => nodes[n] ?? null, createElement: () => ({ style: {}, remove() {} }), body: { appendChild() {} } },
+      document: { addEventListener() {}, getElementById: (n: string) => nodes[n] ?? null, createElement: () => ({ style: {}, remove() {} }), body: { appendChild() {} } },
       setTimeout: (f: () => void) => { timers.push(f); return timers.length; }, clearTimeout() {},
       setInterval: (f: () => void) => { timers.push(f); return timers.length; }, clearInterval() {},
       fetch: async (url: string) => { fetched.push(url); const body = pollReply(url); return { ok: true, json: async () => body }; },

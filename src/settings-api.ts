@@ -25,6 +25,7 @@
  * Writes are validated first (config-validator): any error → 400 and nothing is
  * written; warnings are non-blocking and returned alongside the result.
  */
+import { sendPanelHtml } from "./web-host-guard.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readFileSync, writeFileSync, existsSync, renameSync, unlinkSync, statSync } from "node:fs";
 import { randomBytes } from "node:crypto";
@@ -259,8 +260,7 @@ export function handleSettingsRequest(
   if (method === "GET" && path === "/settings") {
     try {
       const html = readFileSync(join(__dirname, "ui", "settings.html"), "utf-8");
-      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      res.end(html);
+      sendPanelHtml(res, html);
     } catch {
       json(res, 500, { error: "settings.html not found" });
     }

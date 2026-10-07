@@ -14,6 +14,7 @@
  * it legitimately, and the attack does not depend on it.
  */
 import type { ServerResponse } from "node:http";
+import { randomBytes } from "node:crypto";
 
 export const WEB_HOST_REJECTED_MESSAGE =
   "Host not allowed — if you reach AgEnD through a reverse proxy or another name, add it to web.allowed_hosts in fleet.yaml";
@@ -50,19 +51,20 @@ export function hostnameOf(value: string): string | null {
 /**
  * What a page served here may load and where it may send anything.
  *
- * `script-src` keeps `'unsafe-inline'` because the panels are single files of inline
- * script and the dashboard wires its buttons with `onclick=` attributes; a nonce
- * would switch those off. What this policy does buy is the part that matters when
- * script somehow runs: `connect-src`, `img-src` and `form-action` are this origin,
- * so it cannot post what it reads to somebody else's server, and `base-uri`,
- * `object-src` and `frame-ancestors` are closed. Moving the inline handlers to
- * `addEventListener` (and then dropping `'unsafe-inline'`) is the follow-up.
+ * `script-src` is this origin only — no `'unsafe-inline'` (#1268): a panel's own inline
+ * script runs because the panel is served with a per-response nonce for it
+ * (sendPanelHtml), and no panel has an inline `on*=` handler. Injected markup can
+ * therefore not run script. `connect-src`, `img-src` and `form-action` are this
+ * origin, so nothing read can be posted elsewhere, and `base-uri`, `object-src` and
+ * `frame-ancestors` are closed. `style-src` keeps `'unsafe-inline'` for now: the
+ * panels still carry `style="…"` attributes (and a nonce in style-src would make
+ * browsers ignore `'unsafe-inline'`, blocking them); styles cannot run code.
  *
  * Fonts, scripts and styles are all served from here; nothing loads from a CDN.
  */
 export const WEB_CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline'",
+  "script-src 'self'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self' data:",
@@ -116,4 +118,21 @@ export function applyWebSecurityHeaders(res: ServerResponse): void {
   // Authorization now depends on a cookie, so a shared cache (a tunnel, a
   // corporate proxy) must not keep or replay any of it.
   res.setHeader("Cache-Control", "no-store");
+}
+
+/** The panel policy for one response: WEB_CONTENT_SECURITY_POLICY with this response's script nonce. */
+export function panelContentSecurityPolicy(nonce: string): string {
+  return WEB_CONTENT_SECURITY_POLICY.replace("script-src 'self'", `script-src 'self' 'nonce-${nonce}'`);
+}
+
+/**
+ * Send a panel page (/ui, /view, /settings, the sign-in page). Its own inline `<script>` blocks get a fresh nonce,
+ * and the response's CSP names that nonce and nothing else inline (#1268): a script that was not in the file as
+ * served — anything injected into the page — has no nonce and does not run.
+ */
+export function sendPanelHtml(res: ServerResponse, html: string, status = 200, headers: Record<string, string> = {}): void {
+  const nonce = randomBytes(18).toString("base64");
+  res.setHeader("Content-Security-Policy", panelContentSecurityPolicy(nonce));
+  res.writeHead(status, { "Content-Type": "text/html; charset=utf-8", ...headers });
+  res.end(html.replace(/<script>/g, `<script nonce="${nonce}">`));
 }

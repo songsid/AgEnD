@@ -20,6 +20,7 @@
  *
  * See `docs/design/web-unification-secure-login.zh-TW.md` §3.
  */
+import { sendPanelHtml } from "./web-host-guard.js";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -103,8 +104,7 @@ function json(res: ServerResponse, code: number, body: unknown, headers: Record<
 export function serveSigninPage(res: ServerResponse, status = 200): void {
   try {
     const html = readFileSync(join(__dirname, "ui", "signin.html"), "utf-8");
-    res.writeHead(status, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
-    res.end(html);
+    sendPanelHtml(res, html, status, { "Cache-Control": "no-store" });
   } catch {
     json(res, 500, { error: "signin.html not found" });
   }
