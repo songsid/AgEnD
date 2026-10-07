@@ -25,8 +25,9 @@ approve prompts).
   capability check runs before anything renders (§4.3). A browser that fails it is not sniffed by user agent; it
   fails the check. That is Firefox today, which does not implement CSP `webrtc`
   ([bug 1783489](https://bugzilla.mozilla.org/show_bug.cgi?id=1783489)). There, Preview is **disabled by
-  default** (Source and Download only), and an explicit **per-device opt-in** enables it with the banner "This
-  preview may be able to send data out" (§7). G2 does not hold for an opted-in device.
+  default** (Source and Download only). One explicit **per-device opt-in** enables it with the banner "This
+  browser can't fully block network access from the preview; content may be able to send data out" (§7). G2 does
+  not hold for an opted-in device.
 - **Not promised:**
   - The HTML is **not** assumed to be harmless or public. Agent output can contain private data. A preview shows it
     to code the agent wrote, inside the person's browser; G2 is what keeps that code from sending it anywhere.
@@ -212,9 +213,10 @@ One `window` `message` listener for all cards:
 - **Chromium family:** Preview is on, with the no-network claim. The §10.2 adversarial matrix backs it: fetch, img,
   form, WebSocket, RTCPeerConnection/STUN, and self-navigation through `data:`/`blob:`/`javascript:`.
 - **A browser whose probe says `"open"`:** Preview is off by default.
-- **Opt-in:** an explicit **per-device opt-in** in the card's menu, stored in `localStorage` and revocable. It asks
-  once, with the consequence spelled out. Every opted-in preview carries the banner "This preview may be able to
-  send data out".
+- **Opt-in:** **one** explicit **per-device opt-in** in the card's menu, stored in `localStorage` and revocable.
+  It is off by default and never silent: it asks once, with the consequence spelled out. Every opted-in preview
+  carries the banner "This browser can't fully block network access from the preview; content may be able to send
+  data out".
 - **The other controls still apply on an opted-in device:** the CSP, `frame-src`, sandbox and boot checks.
 
 ## 5. Content Security Policy
@@ -317,7 +319,7 @@ Built with DOM nodes; labels via `textContent`.
 | Control | Behaviour |
 |---|---|
 | **Source** (default) | The existing code block. |
-| **Preview** | Runs the checks in §3.2 and the capability check (§4.3), then creates the iframe (§5.3). One running preview per page: starting another stops the first. A parent-drawn banner. Where G2 holds: "Untrusted preview — it cannot use your account or reach the network. It shows what the agent wrote, which may be private." On an opted-in device whose browser failed the check: "Untrusted preview — it cannot use your account, but **this preview may be able to send data out**." |
+| **Preview** | Runs the checks in §3.2 and the capability check (§4.3), then creates the iframe (§5.3). One running preview per page: starting another stops the first. A parent-drawn banner. Where G2 holds: "Untrusted preview — it cannot use your account or reach the network. It shows what the agent wrote, which may be private. A preview can slow or freeze this tab." On an opted-in device whose browser failed the check: "Untrusted preview — it cannot use your account, but **this browser can't fully block network access from the preview; content may be able to send data out**. A preview can slow or freeze this tab." |
 | **Stop** | Removes the iframe. |
 | **Download** | A `Blob` of the source text with type `application/octet-stream`, saved through `<a download="reply.html">`, URL revoked at once. The `blob:` URL belongs to the dashboard origin, so it is **only** ever used for a download — never navigated to, never opened in a tab. |
 
@@ -356,7 +358,9 @@ So this design:
   - The mitigations are click-to-run, Stop, one preview at a time, the 1 MiB input cap, and recommending
     `web.preview_origin`.
   - None of these is described as containment.
-  - The probe results are recorded so the decision can be revisited with data.
+  - Preview is **not** disabled because of a parent-freeze probe result. The results are recorded only so the
+    decision can be revisited with data.
+  - The banner says so plainly: "A preview can slow or freeze this tab".
 
 ## 9. Threat model
 
@@ -367,12 +371,12 @@ So this design:
 | Reading open GET endpoints (`/view` reads, `/api/activity` with `ACAO: *`) | — | `connect-src 'none'`; images only `data:`/`blob:`. (`ACAO: *` at `fleet-manager.ts:15824`/`:15856` is a separate clean-up — Q6.) |
 | Exfiltration of **private** content by request (fetch, img, beacon, websocket, prefetch, CSS) | Image-markdown exfiltration in Bard/M365 Copilot; sandbox without CSP escapes via `data:` navigation (Willison) | Header CSP `default-src 'none'` and friends; meta CSP is not relied on. Proven per browser (§10.2). |
 | Exfiltration by **self-navigation** (`location`, meta refresh, link, `data:`/`blob:`/`javascript:`) | `navigate-to` never shipped | Parent `frame-src <preview origin>/frame` refuses every other navigation target; the listener 404s everything else and never redirects. Residual with `preview_origin`: a `/frame?…` query reaches that proxy's log (Q9). Proven per browser. |
-| Exfiltration by **WebRTC** | Firefox has no CSP `webrtc` (bug 1783489) | Capability check: content goes by default only to a frame whose browser produced no ICE candidate, and the WebRTC globals are removed before content runs. Where the check fails, Preview is off by default. A per-device opt-in accepts the risk, behind the banner "This preview may be able to send data out" (G2). |
+| Exfiltration by **WebRTC** | Firefox has no CSP `webrtc` (bug 1783489) | Capability check: content goes by default only to a frame whose browser produced no ICE candidate, and the WebRTC globals are removed before content runs. Where the check fails, Preview is off by default. A per-device opt-in accepts the risk, behind the banner "This browser can't fully block network access from the preview; content may be able to send data out" (G2). |
 | The HTML itself is private (an agent wrote a secret into it) | Pluto: agents published env values in 10/85 runs | Not assumed away: agent output can contain private data. G2 keeps the preview from sending it where the browser enforces the controls; an opted-in device is warned that it may. Click-to-run is consent, **not** a confidentiality check; Source view lets a person look first. |
 | Content delivered to the wrong frame (another process on the preview port; a Host-rewriting proxy) | — | `location.origin === data-dashboard-origin`; the `ready` must carry this fleet's boot id; mismatch → unavailable (§3.2). |
 | Phishing UI inside the frame | Open WebUI GHSA-9wj4-mcm3-ppj6 | Parent-drawn banner and border; no `allow-modals`, no fullscreen; a separate hostname keeps password managers from offering dashboard credentials. |
 | Top navigation, popups, tabnabbing | — | Flags not granted; content stays in the sandboxed frame; no new-tab feature in v1 (§13). |
-| CPU / memory exhaustion, freezing the dashboard | No resource quota for sandboxes; process isolation is browser- and site-dependent | Best effort only (§8): click-to-run, Stop, one running preview, the 1 MiB cap, a watchdog where the parent stays responsive, a recommended `preview_origin`. The residual risk is **accepted** (leader, 2026-10-07); no containment claim. |
+| CPU / memory exhaustion, freezing the dashboard | No resource quota for sandboxes; process isolation is browser- and site-dependent | Best effort only (§8): click-to-run, Stop, one running preview, the 1 MiB cap, a watchdog where the parent stays responsive, a recommended `preview_origin`. The residual risk is **accepted** (decision owner, 2026-10-07): Preview is not disabled on a freeze-probe result, and the banner says "A preview can slow or freeze this tab". No containment claim. |
 | Resize loop / layout bomb | Open WebUI's uncapped height | §4.2 clamps, rate limit, hysteresis, freeze. |
 | postMessage type confusion driving a privileged action | Open WebUI CVE-2026-54007 (`input:prompt` → `action:submit`) | Fixed shapes, one effect each; the listener holds no reference to any API/send/approve function; source checked by window identity, origin and boot. |
 | Card XSS (fence language, file name, the HTML) | #1306 acceptance | The fence still goes through `escapeHtml`; the card is DOM + `textContent`; HTML only travels by `postMessage`. |
@@ -416,7 +420,7 @@ These prove wiring, headers and the parent's logic. They do **not** prove what a
    - ignored: the wrong `source`, wrong `ch`, wrong boot, extra keys, unknown `type`, a non-integer, negative or huge
      `height`, string payloads;
    - capability: `rtc: "open"`/`"error"` → no `render` and the "Preview is off in this browser" card, unless the
-     device opted in. Then `render` is sent with the "may be able to send data out" banner. Revoking the opt-in
+     device opted in. Then `render` is sent with the "can't fully block network access" banner. Revoking the opt-in
      stops it again;
    - the shim refuses `render` from `"null"`, from a non-listed origin, and over 1 MiB;
    - heights are clamped, with the rate limit and growth freeze;
@@ -466,7 +470,7 @@ Targets:
 
 | Finding | r2 |
 |---|---|
-| P1 "no network / no secret" unsupported (Firefox `webrtc`, self-navigation; agent HTML can be private) | Dropped "no secret" entirely (§1, §9). G2 holds in a browser that enforces the controls — the Chromium family today — with an adversarial matrix (§10.2: fetch, img, form, WebSocket, RTCPeerConnection/STUN, self-navigation via `data:`/`blob:`/`javascript:`). A browser that fails the **capability check** (Firefox today) gets Preview off by default, plus a per-device opt-in that carries the banner "This preview may be able to send data out" (§4.3, §7). Click-to-run is consent, not confidentiality. |
+| P1 "no network / no secret" unsupported (Firefox `webrtc`, self-navigation; agent HTML can be private) | Dropped "no secret" entirely (§1, §9). G2 holds in a browser that enforces the controls — the Chromium family today — with an adversarial matrix (§10.2: fetch, img, form, WebSocket, RTCPeerConnection/STUN, self-navigation via `data:`/`blob:`/`javascript:`). A browser that fails the **capability check** (Firefox today) gets Preview off by default, plus a per-device opt-in that carries the banner "This browser can't fully block network access from the preview; content may be able to send data out" (§4.3, §7). Click-to-run is consent, not confidentiality. |
 | P2 new-tab handshake impossible (opaque `/open`, `frame-ancestors`, `null` origin) | **Removed from v1** (§13), along with the `/open` route and every wrapper exception in the CSP. A future design needs a trusted static wrapper and a bounded one-time transport. |
 | P2 Host-only availability fails behind a Host-rewriting proxy; timeout ≠ identity | §3.2: the page compares `location.origin` with the server's `data-dashboard-origin` before creating a frame or sending HTML, and a mismatch disables Preview. `X-Forwarded-Host` is never trusted. A preserved external Host is a deployment requirement. The boot id must come back in `ready`. The proxy case is in §10.1.3. |
 | P2 watchdog is not containment; memory unbounded | §8: best effort, with a responsive-parent probe recorded per browser and mode. The residual same-process CPU and memory risk is **accepted**, mitigated by click-to-run, Stop and the 1 MiB cap. No containment claim. |
@@ -486,9 +490,16 @@ Targets:
 7. **Q9 — `preview_origin` and query logging.** A self-navigation to `/frame?…` reaches the proxy's access log.
    Accept, document a proxy rule that drops queries for that host, or require one?
 
-Decided in r2 (leader, 2026-10-07): the browser gate is a recorded manual run (r1 Q7); browsers without enforced
-CSP `webrtc` get Preview off by default plus a per-device opt-in (r2 Q10); the freezing/memory risk is accepted
-(r2 Q11); new tab is deferred (r1 Q5).
+Decided in r2 (decision owner via the leader, 2026-10-07):
+- **r1 Q7:** the browser gate is a recorded manual run.
+- **r2 Q10, Firefox:** keep "no network" by gating on the WebRTC probe. Browsers that fail it get Preview off by
+  default (Source and Download), plus one explicit per-device opt-in with the "can't fully block network access"
+  banner.
+- **r2 Q11, freezing:** the same-process freeze and memory risk is accepted. Preview is not disabled on a probe
+  result, and the banner says a preview can slow or freeze the tab.
+- **r1 Q5:** new tab is deferred.
+
+The remaining questions above do not block approval of the design.
 
 ## 13. Deferred: Open in new tab
 
