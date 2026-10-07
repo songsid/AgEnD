@@ -1,3 +1,4 @@
+import { measureSyncWork } from "./sync-work-attribution.js";
 import { REMOVED_BACKENDS, isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
 import { existsSync, readFileSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { ensureInstanceDir } from "./private-dir.js";
@@ -95,6 +96,9 @@ export const BACKEND_INSTALLATION_INFO: Readonly<Record<string, BackendInstallat
 
 /** Check one executable using the same PATH visible to the fleet process. */
 export function checkBinaryInstalled(binary: string): boolean {
+  return measureSyncWork("lifecycle.checkBinaryInstalled", () => checkBinaryInstalledSync(binary));
+}
+function checkBinaryInstalledSync(binary: string): boolean {
   try {
     execFileSync("which", [binary], { stdio: "pipe", timeout: 2000 });
     return true;
@@ -104,6 +108,9 @@ export function checkBinaryInstalled(binary: string): boolean {
 }
 
 function readProcessCommandLine(pid: number): string {
+  return measureSyncWork("lifecycle.processIdentity", () => readProcessCommandLineSync(pid));
+}
+function readProcessCommandLineSync(pid: number): string {
   try {
     return readFileSync(`/proc/${pid}/cmdline`, "utf8").replace(/\0/g, " ").trim();
   } catch {

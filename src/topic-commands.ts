@@ -1,3 +1,4 @@
+import { measureSyncWork } from "./sync-work-attribution.js";
 import { readFileSync, existsSync } from "node:fs";
 import { exec, execFileSync, spawn } from "node:child_process";
 import { promisify } from "node:util";
@@ -237,7 +238,7 @@ let cachedTmuxVersion: string | null = null;
 function tmuxVersion(): string {
   if (cachedTmuxVersion === null) {
     try {
-      cachedTmuxVersion = execFileSync("tmux", ["-V"], { encoding: "utf-8", timeout: 3000 }).trim();
+      cachedTmuxVersion = measureSyncWork("topic.tmuxVersion", () => execFileSync("tmux", ["-V"], { encoding: "utf-8", timeout: 3000 }).trim());
     } catch {
       cachedTmuxVersion = "not found";
     }
@@ -359,6 +360,9 @@ export function formatContextUsageLine(context: number, tokenRatio: TokenContext
 
 /** Claude Code statusline.json context used % (null if missing / unreadable). */
 export function readStatuslineContextPct(dataDir: string, instanceName: string): number | null {
+  return measureSyncWork("topic.readStatuslineContextPct", () => readStatuslineContextPctSync(dataDir, instanceName));
+}
+function readStatuslineContextPctSync(dataDir: string, instanceName: string): number | null {
   try {
     const statusFile = join(dataDir, "instances", instanceName, "statusline.json");
     if (!existsSync(statusFile)) return null;
@@ -376,6 +380,9 @@ export function readStatuslineContextPct(dataDir: string, instanceName: string):
  * plan-gated model and keeps using its previous/default model.
  */
 export function readStatuslineModel(dataDir: string, instanceName: string): string | null {
+  return measureSyncWork("topic.readStatuslineModel", () => readStatuslineModelSync(dataDir, instanceName));
+}
+function readStatuslineModelSync(dataDir: string, instanceName: string): string | null {
   try {
     const statusFile = join(dataDir, "instances", instanceName, "statusline.json");
     if (!existsSync(statusFile)) return null;
@@ -401,11 +408,11 @@ export function scrapePaneContext(
     // Scrollback (-S -60) so a recent footer/statusline is kept even mid-output.
     const baseArgs = ["capture-pane", "-t", `${getTmuxSessionName()}:${instanceName}`, "-p", "-S", "-60"];
     const tmuxArgs = socketName ? ["-L", socketName, ...baseArgs] : baseArgs;
-    const pane = execFileSync("tmux", tmuxArgs, {
+    const pane = measureSyncWork("topic.scrapePaneContext", () => execFileSync("tmux", tmuxArgs, {
       encoding: "utf-8",
       timeout: 2000,
       stdio: ["pipe", "pipe", "pipe"],
-    });
+    }));
     const tokenRatio = backend === "grok" ? parseTokenContextRatio(pane) : null;
     const context = tokenRatio?.percentage ?? parseContextPercent(pane);
     return { context, tokenRatio };
