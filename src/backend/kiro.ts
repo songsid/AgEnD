@@ -257,6 +257,18 @@ const KIRO_AGENT_UPGRADE: KiroLaunchPromptSpec = {
   header: "Your agent configs are still in the 2.0 format",
   options: ["Enable auto-upgrade", "Not now"],
 };
+/**
+ * #1308: kiro-cli 2.28.0's Classic nudge (crates/chat-cli/src/launch/classic_nudge.rs), shown before a Classic
+ * session starts, including one launched with the pinned `--legacy-ui --agent-engine=v1`. "Switch to 3.0" saves v3 as
+ * the machine-wide default and reruns the session in 3.0; "Remind me later" only stores a 7-day snooze
+ * (`classicNudge.snoozeUntil`). It has no "don't ask again", so it returns weekly. Captured live from 2.28.0
+ * (tests/fixtures/kiro-2.28.0-classic-nudge/). The header is the description's first words, which stay on its first
+ * row however narrow the pane; the rest of the description re-wraps with the width.
+ */
+const KIRO_CLASSIC_NUDGE: KiroLaunchPromptSpec = {
+  header: "Classic is being deprecated with the Kiro CLI 3.0",
+  options: ["Switch to 3.0 and upgrade my agent configs", "Remind me later"],
+};
 
 function kiroLaunchPromptDialogs(spec: KiroLaunchPromptSpec, name: string, key: string, keep: number): RuntimeDialog[] {
   const pattern = new RegExp(spec.header.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
@@ -292,6 +304,7 @@ function kiroLaunchPromptDialogs(spec: KiroLaunchPromptSpec, name: string, key: 
 const KIRO_ENGINE_PROMPT_DIALOGS: RuntimeDialog[] = [
   ...kiroLaunchPromptDialogs(KIRO_V3_EASE_IN, "Kiro V3 ease-in prompt", "kiro-v3-ease-in", 1),
   ...kiroLaunchPromptDialogs(KIRO_AGENT_UPGRADE, "Kiro 3.0 agent-config upgrade prompt", "kiro-agent-upgrade", 1),
+  ...kiroLaunchPromptDialogs(KIRO_CLASSIC_NUDGE, "Kiro Classic deprecation nudge", "kiro-classic-nudge", 1),
 ];
 
 function parseSemver(value: string | undefined): [number, number, number] | undefined {
