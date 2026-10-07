@@ -65,16 +65,26 @@ function validateVars(vars: ServiceVars & { path: string }): void {
  * sudo/systemd. The npm-prefix inference is important for root+nvm installs:
  * `agend update` may run with sudo's secure_path even though Codex lives beside
  * the nvm-installed AgEnD binary.
+ *
+ * #1348: also strip any `node_modules` path segment, and deduplicate while
+ * preserving first-appearance order. `node_modules/.bin` entries (and npm's
+ * own `@npmcli/run-script/…/node-gyp-bin`) must never land in the service
+ * unit: they're process-local to an npm-script run and self-perpetuate across
+ * updates because each `agend install` copies the existing unit's PATH forward.
  */
 export function buildServicePath(
   basePath = process.env.PATH ?? "",
   execPath = process.argv[1] ?? "",
   homeDir = homedir(),
 ): string {
+  const seen = new Set<string>();
   const dirs = basePath
     .split(":")
     .filter(Boolean)
-    .filter(p => !p.includes("/mnt/") && !p.includes("Program Files"));
+    // Drop Windows/WSL mount noise and node_modules entries.
+    .filter(p => !p.includes("/mnt/") && !p.includes("Program Files") && !p.includes("/node_modules/"))
+    // Deduplicate, keeping the first occurrence.
+    .filter(p => { if (seen.has(p)) return false; seen.add(p); return true; });
   const moduleMarker = "/lib/node_modules/";
   const markerIndex = execPath.indexOf(moduleMarker);
   const npmPrefixBin = markerIndex >= 0
@@ -99,7 +109,7 @@ export function buildServicePath(
   ];
 
   for (const candidate of fallbacks) {
-    if (candidate && !dirs.includes(candidate)) dirs.push(candidate);
+    if (candidate && !seen.has(candidate)) { seen.add(candidate); dirs.push(candidate); }
   }
   return dirs.join(":");
 }
