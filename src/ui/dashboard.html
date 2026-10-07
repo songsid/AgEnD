@@ -200,12 +200,15 @@
   .msg.agent .sender { color: var(--success); }
   .msg-tools { display: flex; gap: 4px; margin-top: 4px; opacity: 0; transition: opacity 0.12s; }
   .msg:hover .msg-tools, .msg:focus-within .msg-tools { opacity: 1; }
-  @media (hover: none) { .msg-tools { opacity: 1; } }
+  @media (hover: none) { .msg-tools { opacity: 0.8; } }
   .chip-btn {
     background: transparent; border: 1px solid transparent; color: var(--text-muted); cursor: pointer; border-radius: 6px;
     font: inherit; font-size: 12px; padding: 2px 8px;
   }
   .chip-btn:hover { color: var(--text); background: var(--raised); border-color: var(--border); }
+  .chip-btn.icon-only { display: inline-flex; align-items: center; gap: 4px; padding: 4px 6px; }
+  .chip-btn.icon-only.done::after { content: "✓"; color: var(--success); }
+  .chip-btn.icon-only.fail::after { content: "!"; color: var(--error); }
   .msg-empty { color: var(--text-muted); text-align: center; margin-top: 80px; font-size: 14px; line-height: 2; }
   .msg-empty svg { display: block; margin: 0 auto 12px; opacity: 0.3; }
   .msg-empty .sub { font-size: 12px; }
@@ -285,7 +288,7 @@
   }
   .codeblock .cb-lang { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); }
   .codeblock pre { margin: 0; padding: 10px 12px; overflow-x: auto; white-space: pre; font-family: var(--font-mono); font-size: 12.5px; line-height: 1.5; }
-  .codeblock pre code { background: none; padding: 0; font-size: inherit; }
+  .msg .md .codeblock pre code { background: none; padding: 0; border-radius: 0; font-size: inherit; }
   .chat-view.wrap-code .codeblock pre { white-space: pre-wrap; word-break: break-word; }
   .codeblock.folded pre { max-height: 22.5em; overflow-y: hidden; mask-image: linear-gradient(to bottom, #000 70%, transparent); -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent); }
   .codeblock .cb-more { display: block; width: 100%; border: 0; border-top: 1px solid var(--border); background: var(--code-head); color: var(--text-sec); cursor: pointer; font: inherit; font-size: 12px; padding: 5px; }
@@ -425,7 +428,7 @@ const UI_LANG = localStorage.getItem("agend_lang") || (navigator.language?.toLow
 const UI_TEXT = {
   en: {
     send: "Send", composerPlaceholder: "Send a message…", composerHint: "Enter to send · Shift+Enter for a new line", attachTitle: "Attach files (images, PDF, text — or paste / drop them)",
-    copy: "Copy", copied: "Copied", copyFailed: "Copy failed", wrap: "Wrap", showAll: "Show all {0} lines", showLess: "Show less", jumpLatest: "↓ Latest", newBelow: "↓ {0} new",
+    copy: "Copy", copyMessage: "Copy this reply", copied: "Copied", copyFailed: "Copy failed", wrap: "Wrap", showAll: "Show all {0} lines", showLess: "Show less", jumpLatest: "↓ Latest", newBelow: "↓ {0} new",
     disconnected: "disconnected", tick_queued: "Waiting behind another message", tick_processing: "Handed to the agent", tick_delivered: "The agent has it", tick_failed: "Not delivered", tick_cancelled: "Dropped by Stop",
     promptAnswering: "Answering…", promptGone: "This prompt is no longer open", promptFor: "{0}: {1}",
     working: "{0} is working…", stuck: "{0} looks stuck", stopReply: "Stop", stopReplyTitle: "Stop the current reply (like Esc) and drop the messages still waiting", stopSent: "Stopped",
@@ -439,7 +442,7 @@ const UI_TEXT = {
   },
   "zh-TW": {
     send: "送出", composerPlaceholder: "輸入訊息…", composerHint: "Enter 送出 · Shift+Enter 換行", attachTitle: "附加檔案（圖片、PDF、文字檔，也可以貼上或拖曳）",
-    copy: "複製", copied: "已複製", copyFailed: "複製失敗", wrap: "換行", showAll: "展開全部 {0} 行", showLess: "收合", jumpLatest: "↓ 最新", newBelow: "↓ {0} 則新訊息",
+    copy: "複製", copyMessage: "複製這則回覆", copied: "已複製", copyFailed: "複製失敗", wrap: "換行", showAll: "展開全部 {0} 行", showLess: "收合", jumpLatest: "↓ 最新", newBelow: "↓ {0} 則新訊息",
     disconnected: "已斷線", tick_queued: "排在前一則訊息之後", tick_processing: "已交給 agent", tick_delivered: "agent 已收到", tick_failed: "未送達", tick_cancelled: "已被中止取消",
     promptAnswering: "回覆中…", promptGone: "這個提示已經結束", promptFor: "{0}：{1}",
     working: "{0} 處理中…", stuck: "{0} 似乎卡住了", stopReply: "中止", stopReplyTitle: "中止目前的回覆（同 Esc），並取消還在排隊的訊息", stopSent: "已中止",
@@ -694,7 +697,7 @@ function renderInstanceMain(main) {
         <div id="failedSend"></div>
         <div id="pendingFiles" class="pending-files"></div>
         <div class="composer">
-          <button class="icon-btn" id="attachBtn" type="button" title="${escAttr(tr("attachTitle"))}" aria-label="${escAttr(tr("attachTitle"))}">📎</button><input type="file" id="fileIn" multiple hidden accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/*,.md,.csv,.json,.log,.yaml,.yml">
+          <button class="icon-btn" id="attachBtn" type="button" title="${escAttr(tr("attachTitle"))}" aria-label="${escAttr(tr("attachTitle"))}">${ICON_CLIP}</button><input type="file" id="fileIn" multiple hidden accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/*,.md,.csv,.json,.log,.yaml,.yml">
           <textarea id="msgIn" rows="1" placeholder="${escAttr(tr("composerPlaceholder"))}" autocomplete="off"></textarea>
           <button class="btn btn-warn send-btn" id="stopBtn" type="button" data-act="stopReply" title="${escAttr(tr("stopReplyTitle"))}" hidden>${tr("stopReply")}</button>
           <button class="btn btn-accent send-btn" id="sendBtn" type="button" data-act="sendMsg">${tr("send")}</button>
@@ -768,13 +771,15 @@ let msgNodesIn = null;               // which #messages element they belong to
 const scrollMemo = {};               // per chat: where the reader left it (null = at the bottom)
 let unseen = 0;                      // messages that arrived below a reader who scrolled up
 function msgKey(x) { return `${x.boot}-${x.id}`; }
+const ICON_CLIP = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>';
+const ICON_COPY = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
 function isUserMsg(x) { return x.sender==="web-user"||(!x.sender.startsWith("agend")&&x.sender!==cur&&x.sender!=="general"); }
 function msgHtml(x) {
   const u = isUserMsg(x);
   const t = x.ts ? new Date(x.ts).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}) : "";
   // renderMarkdown escapes the whole text before it adds any tag of its own (src/ui/chat-render.js).
   const ticks = u && x.delivery ? AgendChatRender.deliveryHtml(x.delivery, TICK_LABELS()) : "";
-  const tools = u ? "" : `<div class="msg-tools"><button type="button" class="chip-btn" data-act="copyMsg" data-arg="${escAttr(msgKey(x))}">${tr("copy")}</button></div>`;
+  const tools = u ? "" : `<div class="msg-tools"><button type="button" class="chip-btn icon-only" data-act="copyMsg" data-arg="${escAttr(msgKey(x))}" title="${escAttr(tr("copyMessage"))}" aria-label="${escAttr(tr("copyMessage"))}">${ICON_COPY}</button></div>`;
   return `<div class="msg ${u?"user":"agent"}"><div class="meta"><span class="sender">${esc(x.sender)}</span><span class="time">${t}</span>${ticks}</div><div class="body"><div class="md">${AgendChatRender.renderMarkdown(x.text)}</div>${AgendChatRender.attachmentsHtml(x.attachments)}</div>${tools}</div>`;
 }
 function msgNode(html) {
@@ -868,6 +873,13 @@ async function copyText(text) {
 }
 async function copyFrom(button, text) {
   const ok = await copyText(text);
+  if (button.classList.contains("icon-only")) {
+    // The icon stays; the outcome is its title and label (and a tick beside it for a moment).
+    button.classList.add(ok ? "done" : "fail");
+    button.title = ok ? tr("copied") : tr("copyFailed"); button.setAttribute("aria-label", button.title);
+    setTimeout(() => { button.classList.remove("done", "fail"); button.title = tr("copyMessage"); button.setAttribute("aria-label", button.title); }, 1200);
+    return;
+  }
   const was = button.dataset.label || button.textContent; button.dataset.label = was;
   button.textContent = ok ? tr("copied") : tr("copyFailed");
   setTimeout(() => { button.textContent = was; }, 1200);
