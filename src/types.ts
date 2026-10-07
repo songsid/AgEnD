@@ -115,7 +115,7 @@ export interface InstanceConfig {
    */
   warm_overflow?: number;
   /**
-   * Phase 2 delivery owner for this target (docs/design/phase2-submit-contract.md):
+   * Phase 2 delivery owner for this target (docs/design/929-durable-outbox.md):
    * `off` keeps the outbox pump alone, `wake_only` (default since #1129) adds
    * the wake coordinator (2b), `on` hands claim/submit to the per-target
    * worker (2c). Read from `defaults.delivery_worker` with a per-instance

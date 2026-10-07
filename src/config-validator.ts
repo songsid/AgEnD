@@ -158,6 +158,17 @@ export function validateFleetConfig(config: unknown): ValidationResult {
       err(`${path}.reply_completion_guard`, "must be a boolean");
     }
 
+    // #1296: context rotation was removed. max_age_hours and grace_period_ms
+    // are retained in the schema for backwards compatibility but have no effect.
+    if (isObj(value.context_guardian)) {
+      if ((value.context_guardian as Record<string, unknown>).max_age_hours !== undefined) {
+        warn(`${path}.context_guardian.max_age_hours`, "no effect; context rotation was removed");
+      }
+      if ((value.context_guardian as Record<string, unknown>).grace_period_ms !== undefined) {
+        warn(`${path}.context_guardian.grace_period_ms`, "no effect; context rotation was removed");
+      }
+    }
+
     if (value.effort !== undefined) {
       const e = value.effort;
       if (typeof e !== "string" || !/^(low|medium|high|xhigh|max)$/.test(e.trim().toLowerCase())) {

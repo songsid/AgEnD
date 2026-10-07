@@ -8,7 +8,7 @@ type GuardianConfig = InstanceConfig["context_guardian"];
 /**
  * ContextGuardian — pure monitoring, no restart triggers.
  *
- * All CLI backends (Claude Code, Codex, Gemini CLI, OpenCode, Kiro CLI) have
+ * All CLI backends (Claude Code, Codex, OpenCode, Kiro CLI, Antigravity) have
  * built-in auto-compact that handles context limits internally. AgEnD no longer
  * triggers restarts based on context usage or session age.
  *

@@ -176,3 +176,36 @@ describe("validateFleetConfig terminal", () => {
       .toEqual(expect.arrayContaining([expect.objectContaining({ path })]));
   });
 });
+
+describe("validateFleetConfig context_guardian no-op fields (#1296)", () => {
+  const base = {
+    defaults: {},
+    instances: { worker: { working_directory: "/tmp/worker" } },
+  };
+
+  it("warns when max_age_hours is set under defaults", () => {
+    const result = validateFleetConfig({
+      ...base,
+      defaults: { context_guardian: { max_age_hours: 4, grace_period_ms: 600_000 } },
+    });
+    expect(result.errors).toEqual([]);
+    expect(result.warnings.some(w => w.path === "defaults.context_guardian.max_age_hours")).toBe(true);
+    expect(result.warnings.some(w => w.path === "defaults.context_guardian.grace_period_ms")).toBe(true);
+  });
+
+  it("warns when max_age_hours is set on an instance", () => {
+    const result = validateFleetConfig({
+      defaults: {},
+      instances: {
+        worker: { working_directory: "/tmp/worker", context_guardian: { max_age_hours: 2 } },
+      },
+    });
+    expect(result.errors).toEqual([]);
+    expect(result.warnings.some(w => w.path === "instances.worker.context_guardian.max_age_hours")).toBe(true);
+  });
+
+  it("does not warn when context_guardian is absent", () => {
+    const result = validateFleetConfig(base);
+    expect(result.warnings.some(w => w.path.includes("context_guardian"))).toBe(false);
+  });
+});
