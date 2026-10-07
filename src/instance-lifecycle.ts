@@ -2155,7 +2155,7 @@ export class InstanceLifecycle {
     // rollback must use exactly this adapter even if the world is removed or
     // replaced while creating. Never re-resolve (that would substitute the
     // primary or a new world). Null means fail closed at rollback.
-    const topicDeleter = this.ctx.getForumTopicDeleter(adapterId);
+    const topicDeleter = this.ctx.getForumTopicDeleter?.(adapterId) ?? null;
 
     try {
       createdTopicId = await this.ctx.createForumTopic(topicName!, adapterId);
