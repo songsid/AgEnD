@@ -151,9 +151,6 @@ const SLASH_ACK_SLOW_MS = 1_500;
  */
 export const DISCORD_REST_KEEP_ALIVE_MS = 60_000;
 
-/** Bound for retiring the owned REST dispatcher in stop(). Idle by then. */
-const DISCORD_REST_CLOSE_TIMEOUT_MS = 5_000;
-
 /**
  * A nonce-armed prompt button (`postNonceButtonPrompt`): `<prefix>:<32 hex>:<action>`.
  * Fleet-manager validates these against the prompt that created them.
@@ -1281,25 +1278,28 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     this.watchdogTimer = null;
     this.queue.stop();
     this.client.destroy();
-    // #1235 part 2 R2: a stopped adapter is retired — secret rebuild, rebind
+    // #1235 part 2 R3: a stopped adapter is retired — secret rebuild, rebind
     // and fleet shutdown all discard it after stop — so retire the owned REST
     // dispatcher here or its pools leak. Only stop ends its life:
-    // loginFreshClient keeps sharing it across gateway generations. Bounded:
-    // idle keep-alive sockets close at once; the race caps stragglers, and a
-    // later build lazily makes a new one via restAgent().
+    // loginFreshClient keeps sharing it across gateway generations.
+    // destroy(), not close(): close() merely releases the await on a
+    // deadline while a never-responding request keeps its socket open, and
+    // a destroy() after a timed-out close cannot reach pools the close
+    // already detached. destroy() is synchronous: every in-flight request
+    // settles at once and no new dispatch is possible afterwards — verified
+    // against loopback with a never-responding server. Residual, documented:
+    // a mid-response-wedged socket's TCP teardown is undici-internal — in
+    // locked 6.24.1 neither close, destroy nor a request timeout makes it
+    // server-visible — and unreachable via the public Dispatcher API, so it
+    // is bounded in production by the server's idle close, not by us. A
+    // later build lazily makes a new dispatcher via restAgent().
     const agent = this.ownedRestAgent;
     this.ownedRestAgent = null;
     if (agent && !agent.destroyed) {
-      let timer: ReturnType<typeof setTimeout> | undefined;
       try {
-        await Promise.race([
-          agent.close(),
-          new Promise(resolve => { timer = setTimeout(resolve, DISCORD_REST_CLOSE_TIMEOUT_MS); }),
-        ]);
+        agent.destroy();
       } catch (err) {
-        console.warn(`[discord:${this.id}] closing the REST dispatcher failed (${(err as Error)?.message ?? err})`);
-      } finally {
-        if (timer) clearTimeout(timer);
+        console.warn(`[discord:${this.id}] destroying the REST dispatcher failed (${(err as Error)?.message ?? err})`);
       }
     }
   }

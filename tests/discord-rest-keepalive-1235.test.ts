@@ -4,6 +4,8 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createServer, type AddressInfo, type Server, type Socket } from "node:net";
+import { createServer as createHttpServer } from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Agent as UndiciAgent, EnvHttpProxyAgent, getGlobalDispatcher } from "undici";
 import type { Client } from "discord.js";
@@ -94,7 +96,7 @@ describe("discord REST keep-alive (#1235 part 2)", () => {
     const a = adapter();
     const agent = a.client.rest.agent as UndiciAgent;
     await a.stop();
-    expect(agent.closed).toBe(true);
+    expect(agent.destroyed).toBe(true);
     expect(a.ownedRestAgent).toBeNull();
     const rebuilt = a.buildClient() as { rest: { agent: unknown }; destroy(): void };
     try {
@@ -107,6 +109,72 @@ describe("discord REST keep-alive (#1235 part 2)", () => {
     }
   });
 
+  it("stop() settles a never-responding request synchronously: retirement is bounded", async () => {
+    // A graceful close would release stop() on a deadline while the request
+    // stays open; destroy() settles every in-flight request at once and bars
+    // new dispatch. Loopback server, no Discord network.
+    const a = adapter();
+    const agent = a.client.rest.agent as UndiciAgent;
+    const request = (opts: object): Promise<unknown> =>
+      (agent as unknown as { request(opts: object): Promise<unknown> }).request(opts);
+    const serverSockets = new Set<Socket>();
+    const server: Server = createServer(() => { /* never respond */ });
+    server.on("connection", socket => {
+      serverSockets.add(socket);
+      socket.on("close", () => { serverSockets.delete(socket); });
+    });
+    await new Promise<void>(resolve => { server.listen(0, "127.0.0.1", resolve); });
+    const port = (server.address() as AddressInfo).port;
+    try {
+      const pending = request({ origin: `http://127.0.0.1:${port}`, path: "/", method: "GET" });
+      // Wait for the socket to actually arrive before retiring underneath it.
+      const deadline = Date.now() + 2_000;
+      while (serverSockets.size === 0 && Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      expect(serverSockets.size, "loopback socket connected").toBeGreaterThan(0);
+      const started = Date.now();
+      await a.stop();
+      // No deadline wait: retirement is synchronous.
+      expect(Date.now() - started).toBeLessThan(4_000);
+      await expect(pending, "stuck request settles on destroy").rejects.toThrow();
+      expect(agent.destroyed).toBe(true);
+      await expect(request({ origin: `http://127.0.0.1:${port}`, path: "/", method: "GET" }),
+        "no new dispatch after stop").rejects.toThrow();
+    } finally {
+      for (const socket of serverSockets) socket.destroy();
+      await new Promise<void>(resolve => { server.close(() => resolve()); });
+    }
+  });
+
+  it("stop() tears down a completed request's socket: the server sees it close", async () => {
+    // The common path: no wedged request, the socket fully closes.
+    const a = adapter();
+    const agent = a.client.rest.agent as UndiciAgent;
+    let closes = 0;
+    const server = createHttpServer((_req, res) => { res.end("ok"); });
+    server.on("connection", socket => {
+      socket.on("close", () => { closes++; });
+    });
+    await new Promise<void>(resolve => { server.listen(0, "127.0.0.1", resolve); });
+    const port = (server.address() as AddressInfo).port;
+    try {
+      const res = await (agent as unknown as {
+        request(opts: object): Promise<{ body: { text(): Promise<string> } }>;
+      }).request({ origin: `http://127.0.0.1:${port}`, path: "/", method: "GET" });
+      expect(await res.body.text()).toBe("ok");
+      await a.stop();
+      expect(agent.destroyed).toBe(true);
+      const deadline = Date.now() + 2_000;
+      while (closes === 0 && Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      expect(closes, "server sees the socket close").toBeGreaterThan(0);
+    } finally {
+      await new Promise<void>(resolve => { server.close(() => resolve()); });
+    }
+  });
+
   it("replacing an adapter retires only the old dispatchers", async () => {
     // Mirrors FleetManager.rebuildAdapterForSecret: the old adapter is
     // stopped and discarded while a fresh one takes over the connection.
@@ -116,7 +184,7 @@ describe("discord REST keep-alive (#1235 part 2)", () => {
     const newAgent = newA.client.rest.agent as UndiciAgent;
     expect(newAgent).not.toBe(oldAgent);
     await oldA.stop();
-    expect(oldAgent.closed).toBe(true);
+    expect(oldAgent.destroyed).toBe(true);
     expect(newAgent.closed).toBe(false);
     expect(newAgent.destroyed).toBe(false);
   });
