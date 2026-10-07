@@ -45,17 +45,23 @@ not a regression you just introduced.
 ## Tests
 
 ```bash
-npm test              # vitest run — full suite, single pass
-npm run test:watch    # vitest watch mode
-npm run test:e2e      # e2e suite (e2e/vitest.config.e2e.ts)
+npm test                # vitest run — full unit suite, single pass
+npm run test:integration # serial suites that use real tmux/child-process resources
+npm run test:watch       # vitest watch mode
+npm run test:e2e         # e2e suite (e2e/vitest.config.e2e.ts)
 AGEND_CODEX_E2E=1 npx vitest run --config vitest.config.integration.ts tests/codex-exact-cwd-resume-e2e.test.ts
                       # opt-in: a real codex 0.155–0.159 resumes a worktree's own session (#984) and holds input while it loads; symlinks your ~/.codex/auth.json, sends no prompt
                       # run it against a new codex release before adding the version to SUPPORTED_CODEX in that file
 npx vitest run tests/some-file.test.ts
 ```
 
-Two things `vitest.config.ts` handles for you, both of which used to be able to kill
-a running production fleet from a test run:
+The unit config excludes the integration suites and `e2e/**`. The integration
+config runs its explicit suite list with file parallelism disabled; `test:integration`
+also checks that the unit and integration configurations agree. Run the e2e
+suite separately with its own configuration.
+
+Two things the unit and integration configs handle for you, both of which used to
+be able to kill a running production fleet from a test run:
 
 - **`AGEND_HOME`** is set to a fresh temp directory per run. Without it,
   `getAgendHome()` falls back to the real `~/.agend`, and a `FleetManager` built in a
@@ -67,9 +73,19 @@ a running production fleet from a test run:
 `tests/test-isolation.test.ts` asserts both are in effect, so a config regression
 fails loudly instead of silently.
 
-`dist/**` is excluded from collection. `npm run build` copies compiled test files
-there, and running those stale copies both inflates the test count and invites a
-confusing "dist fails but src passes" report once source moves on.
+`dist/**` is excluded from collection. The build compiles `src/` and copies runtime
+assets; it does not copy the top-level `tests/` directory. Tests colocated under
+`src/` are still included in the TypeScript output, and old compiled tests can
+remain in an existing `dist/`, so collect tests from source rather than those artifacts.
+
+For a unit harness that constructs `FleetManager` or `Daemon`, stub the operational
+boundaries before exercising them: lifecycle start/stop/wake/restart, detached
+child-process launches, tmux operations, and HTTP/API listeners or calls. A temporary
+`AGEND_HOME` and blank `NOTIFY_SOCKET` do not make real launch methods inert. Keep
+the harness away from production daemon PIDs, tmux sessions, ports and adapters;
+do not start a live fleet to test a unit path. Tests that intentionally need real
+tmux or child processes belong in the integration configuration and must use
+temporary data directories, private sockets, test ports and cleanup.
 
 ## Verifying before a PR
 
@@ -78,6 +94,7 @@ npm run typecheck        # tsc --noEmit
 npm run typecheck:tests  # tsc --noEmit -p tsconfig.test.json
 npm run build
 npm test
+npm run test:integration
 ```
 
 `tsc --noEmit` and `npm run build` never construct a `FleetManager`, so they are safe

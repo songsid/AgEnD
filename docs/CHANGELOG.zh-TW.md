@@ -50,6 +50,7 @@
 - **`list_emojis` 變輕了（#1226）。** 伺服器 emoji 預設不再附圖片網址（要的話設 `with_image_urls`；想看圖用 `preview_emojis`），並可用 `name`、`limit`、`primary_only` 縮小清單——在 emoji 很多的伺服器上，一次呼叫原本要花約 1 萬字的 context，而 agent 只需要一個 emoji。emoji 與貼圖工具的呼叫改用共用的 30 秒時限，不再是固定 10 秒，一次下載多張圖的預覽不會被中途切掉。
 
 ### 修正 (Fixed)
+- **更新設定與維運文件（#1278）。** 中英設定文件改為現行的 backend 原生指令檔、啟動時 decisions 快照、帳號 profile 差異、預設值／工具數，以及只監測的 context guardian。修正 macOS 記憶體僅供觀測、診斷、測試／build 隔離、互動狀態術語與卡住處置，並修好中文 CLI 的 templates 連結。純文件，執行行為不變。
 - **設定 → Defaults 語言選單：存任何不相關的設定時不再把語言釘死成英文（#1310）。** 語言 `<select>` 沒有「未設定」選項，因此 `defaults.locale` 未設定時，選單會落到第一個選項（en）。存任何設定——哪怕只是改 log_level——都會把 `locale: en` 寫進 fleet.yaml，把 UI 語言釘成英文並關掉時區與語言的自動偵測。現在選單的第一個選項改為明確的**「自動（跟隨系統）」**，對應到「未設定」。只有使用者實際更改的欄位才會送到 API（`changedFields` 對比 baseline）；選擇「自動」時送出 `null`，讓伺服器移除該 key。
 - **修正安全、權限與存取文件（#1275）。** 移除不存在的 IPC 共享金鑰握手與 Bash 拒絕名單，說明預設權限 bypass、持久化 access 優先序、分平台的指令管理員要求，以及 dashboard／公開 View／Host／agent token 的實際邊界。純文件，沒有修改執行行為。
 - **kiro-cli 2.28.0 的「Classic is being deprecated」提示不再讓 legacy instance 卡在啟動（#1308）。** 2.28.0 在每次 Classic session 開始前都會詢問，即使是用 AgEnD 固定的 `--legacy-ui --agent-engine=v1` 啟動：「Switch to 3.0 and upgrade my agent configs」或「Remind me later」。AgEnD 以前認不得它，instance 就停在那裡。現在會回答「Remind me later」：先從「Switch to 3.0」往下移一格並確認游標真的移到了，只有看到游標停在「Remind me later」才按 Enter；其他情況都留給人處理並回報。絕不選「Switch to 3.0」：它會把 3.0 設成整台機器的預設並在 3.0 重新執行 session，是單向的。kiro 的 7 天暫緩期過後會再問。kiro-cli 2.27.x 沒有這個提示。
