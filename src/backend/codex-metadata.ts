@@ -1,3 +1,4 @@
+import { measureSyncWork } from "../sync-work-attribution.js";
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
@@ -33,6 +34,13 @@ export function codexMetadataHomes(instanceDir: string): { isolatedHome: string;
 
 /** Same per-model account cache/config reader used by the backend and UI. */
 export function readCodexEffortLevels(homes: {
+  isolatedHome: string;
+  sharedHome: string;
+  model?: string | null;
+}): string[] {
+  return measureSyncWork("codex.effortMetadata", () => readCodexEffortLevelsSync(homes));
+}
+function readCodexEffortLevelsSync(homes: {
   isolatedHome: string;
   sharedHome: string;
   model?: string | null;

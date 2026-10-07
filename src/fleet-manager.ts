@@ -1,3 +1,4 @@
+import { measureSyncWork } from "./sync-work-attribution.js";
 import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync, readdirSync, renameSync, copyFileSync, chmodSync, statSync, accessSync, constants as fsConstants, type Dirent } from "node:fs";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
@@ -3134,7 +3135,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         oldToolProgress.set(ch.instanceName, this.classicChannels.getToolProgress(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.tool_progress));
         oldReplyGuard.set(ch.instanceName, this.classicChannels.getReplyCompletionGuard(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.reply_completion_guard));
       }
-      if (!this.classicChannels.checkReload()) return;
+      if (!measureSyncWork("fleet.classicConfigReload", () => this.classicChannels!.checkReload())) return;
       // A reload can introduce a bad id (hand edit) or clear one; the
       // throttle keeps a repeated report from flooding the topic.
       this.reportClassicUnrecoverableIds();
@@ -3241,7 +3242,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // managed independently from fleet-topic workers.
       try {
         const skillsWorkDir = this.resolveKnowledgeWorkDir(config.working_directory, backend, name);
-        this.syncRoleSkills(skillsWorkDir, backend, "worker");
+        measureSyncWork("fleet.workerSkills", () => this.syncRoleSkills(skillsWorkDir, backend, "worker"));
       } catch (err) {
         // Skill publishing is additive. A read-only or temporarily unavailable
         // workspace must not turn an otherwise valid worker startup into a
@@ -11328,8 +11329,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * definition or a function name, neither of which a spawn could run.
    */
   private locateBinaryOnLoginShell(binary: string): string | null {
+    return measureSyncWork("fleet.installLookup", () => this.locateBinaryOnLoginShellSync(binary));
+  }
+  private locateBinaryOnLoginShellSync(binary: string): string | null {
     try {
-      const result = spawnSync("bash", ["-lc", `command -v ${binary}`], { timeout: 10_000, stdio: "pipe", encoding: "utf8" });
+      const result = measureSyncWork("fleet.installLoginShell", () => spawnSync("bash", ["-lc", `command -v ${binary}`], { timeout: 10_000, stdio: "pipe", encoding: "utf8" }));
       if (result.status !== 0) return null;
       const path = String(result.stdout ?? "").trim().split("\n").pop()?.trim() ?? "";
       if (!isAbsolute(path)) return null;
@@ -11583,6 +11587,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
   /** Ensure the general instance has its project instructions file + knowledge */
   private ensureGeneralInstructions(workDir: string, backendName?: string, instanceName?: string): void {
+    measureSyncWork("fleet.generalInstructions", () => this.ensureGeneralInstructionsSync(workDir, backendName, instanceName));
+  }
+  private ensureGeneralInstructionsSync(workDir: string, backendName?: string, instanceName?: string): void {
     const backend = backendName ?? "claude-code";
     workDir = this.resolveKnowledgeWorkDir(workDir, backend, instanceName);
     const filename = FleetManager.INSTRUCTIONS_FILENAME[backend] ?? "CLAUDE.md";
@@ -15811,6 +15818,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   }
 
   getUiStatus(): unknown {
+    return measureSyncWork("fleet.uiStatus", () => this.getUiStatusSync());
+  }
+  private getUiStatusSync(): unknown {
     const fleetNames = Object.keys(this.fleetConfig?.instances ?? {});
     // Classic rooms live only in classicBot.yaml — /api/profiles merges them into
     // the View roster, but previously getUiStatus skipped them so context_pct was

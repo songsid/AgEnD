@@ -1,3 +1,4 @@
+import { measureSyncWork } from "./sync-work-attribution.js";
 import Database from "better-sqlite3";
 import { createHash, randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
@@ -836,6 +837,9 @@ export class DeliveryOutbox extends EventEmitter {
   }
 
   listPending(): OutboxDelivery[] {
+    return measureSyncWork("outbox.listPending", () => this.listPendingSync());
+  }
+  private listPendingSync(): OutboxDelivery[] {
     const rows = this.db.prepare(`
       SELECT * FROM deliveries
       WHERE state IN ('queued','delivering','submission_started','retry_wait')
@@ -868,6 +872,9 @@ export class DeliveryOutbox extends EventEmitter {
     targetBootIdFor: (target: string) => string | null,
     blockedTargets: ReadonlySet<string>,
   ): ClaimedOutboxDelivery | undefined {
+    return measureSyncWork("outbox.claimNext", () => this.claimNextSync(managerBootId, targetBootIdFor, blockedTargets));
+  }
+  private claimNextSync(managerBootId: string, targetBootIdFor: (target: string) => string | null, blockedTargets: ReadonlySet<string>): ClaimedOutboxDelivery | undefined {
     const now = new Date().toISOString();
     const rows = this.db.prepare(`
       SELECT * FROM deliveries WHERE state IN ('queued','retry_wait')
