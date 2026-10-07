@@ -81,15 +81,6 @@ describe("Backend ready patterns", () => {
     });
   });
 
-  it("Gemini matches YOLO mode prompt", async () => {
-    const { GeminiCliBackend } = await import("../src/backend/gemini-cli.js");
-    const backend = new GeminiCliBackend("/tmp/test");
-    const pattern = backend.getReadyPattern();
-    expect(pattern.test("* Type your message or @path/to/file")).toBe(true);
-    expect(pattern.test("? for shortcuts")).toBe(true);
-    expect(pattern.test("Loading model...")).toBe(false);
-  });
-
   it("OpenCode matches TUI ready screen", async () => {
     const { OpenCodeBackend } = await import("../src/backend/opencode.js");
     const backend = new OpenCodeBackend("/tmp/test");

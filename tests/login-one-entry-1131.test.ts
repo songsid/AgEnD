@@ -31,12 +31,12 @@ const chat = (a: any, threadId?: string) => ({ adapter: a, adapterId: "telegram"
 const offered = (notifyAlert: any) => notifyAlert.mock.calls[0][1].choices as Array<{ id: string; label: string }>;
 
 describe("one /login picker for installing and signing in", () => {
-  it("offers every installable backend (not gemini-cli) plus the installed ones, each with what a click does", async () => {
+  it("offers every installable backend plus the installed ones, each with what a click does", async () => {
     const { fm, adapter, notifyAlert } = makeFleet(["codex"]);
     await fm.promptLoginBackends(chat(adapter, "t1"));
     const choices = offered(notifyAlert);
     const byBackend = new Map(choices.map(c => [c.id.split(":").pop()!, c.label]));
-    expect([...byBackend.keys()].sort()).toEqual(Object.keys(BACKEND_INSTALLATION_INFO).filter(b => b !== "gemini-cli").sort());
+    expect([...byBackend.keys()].sort()).toEqual(Object.keys(BACKEND_INSTALLATION_INFO).sort());
     expect(byBackend.get("codex")).toBe(`codex · ${t("login.status_installed")} · ${t("login.status_auth")}`);
     expect(byBackend.get("grok")).toBe(`grok · ${t("login.status_not_installed")} · ${t("login.status_install_then_auth")}`);
     // opencode can be installed, but has no sign-in flow.
@@ -72,10 +72,10 @@ describe("one /login picker for installing and signing in", () => {
     expect(install).toHaveBeenCalledWith("codex", expect.anything());
   });
 
-  it("typed /login <backend> follows the same rule: gemini-cli installs when named, though the picker hides it", async () => {
+  it("typed /login gemini-cli (removed, #1280) installs nothing and names the replacement", async () => {
     const { fm, adapter, install } = makeFleet([]);
-    expect(await fm.startLoginSession("gemini-cli", chat(adapter))).toBe("installing:gemini-cli");
-    expect(install).toHaveBeenCalledWith("gemini-cli", expect.anything());
+    expect(await fm.startLoginSession("gemini-cli", chat(adapter))).toMatch(/gemini-cli was removed.*backend: antigravity/);
+    expect(install).not.toHaveBeenCalled();
   });
 
   it("a button from an old /install-cli prompt gets the expired-prompt notice and is collapsed", async () => {
@@ -89,13 +89,15 @@ describe("one /login picker for installing and signing in", () => {
     expect(fm.startInstallSession).not.toHaveBeenCalled();
   });
 
-  it("a configured CLI the picker does not offer says how to install it by name", async () => {
+  it("an instance still configured with the removed gemini-cli is told what replaces it, not how to install it", async () => {
     const { fm, adapter, sendText } = makeFleet([]);
     fm.fleetConfig.instances = { g: { working_directory: "/tmp/g", backend: "gemini-cli" } };
     vi.spyOn(fm, "configuredBackendInstanceNames").mockReturnValue(["g"]);
     vi.spyOn(fm, "backendNameOf").mockReturnValue("gemini-cli");
     await fm.promptLoginBackends(chat(adapter, "t1"));
-    expect(String(sendText.mock.calls[0]![1])).toContain(t("login.install_by_name", "gemini-cli"));
+    const guidance = String(sendText.mock.calls[0]![1]);
+    expect(guidance).toMatch(/gemini-cli was removed.*backend: antigravity/);
+    expect(guidance).not.toContain(t("login.install_by_name", "gemini-cli"));
   });
 
   it("every /login records which way it went (flow telemetry)", async () => {

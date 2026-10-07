@@ -125,7 +125,7 @@ export function parsePauseWakeCommand(text: string): { action: "pause" | "wake";
  * The in-session compact/context-reset command for a backend NAME (the fleet
  * process routes /compact via IPC and only has the backend string, not a
  * CliBackend instance). Keep in sync with each backend's getCompactCommand().
- * Most CLIs (claude-code, kiro-cli, codex, opencode, gemini-cli) use "/compact".
+ * Most CLIs (claude-code, kiro-cli, codex, opencode) use "/compact".
  * Antigravity (agy) has NO summarizing compact — its only manual context-reset
  * is "/clear" (a full reset; it also auto-summarizes at a token threshold).
  */
@@ -235,7 +235,6 @@ export function clearCommandForBackend(backend: string): string | null {
       return "/clear";
     case "grok":
       return "/new";
-    case "gemini-cli":
     default:
       return null;
   }
@@ -1451,7 +1450,6 @@ export class TopicCommands {
       working_directory: dirPath,
       topic_id: topicId,
       restart_policy: this.ctx.fleetConfig.defaults.restart_policy ?? DEFAULT_INSTANCE_CONFIG.restart_policy,
-      context_guardian: this.ctx.fleetConfig.defaults.context_guardian ?? DEFAULT_INSTANCE_CONFIG.context_guardian,
       log_level: this.ctx.fleetConfig.defaults.log_level ?? DEFAULT_INSTANCE_CONFIG.log_level,
     };
 

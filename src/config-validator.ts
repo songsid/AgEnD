@@ -3,6 +3,7 @@ import { DELIVERY_WORKER_MODES } from "./types.js";
 import { credentialHomeSpec, resolveCredentialProfile } from "./backend/credential-profile.js";
 import { STATUS_EMOJI_CONFIG_KEYS, statusEmojiProblem, type StatusEmojiKey } from "./status-emojis.js";
 import { hostnameOf } from "./web-host-guard.js";
+import { isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
 
 /**
  * Shared config validation for fleet.yaml and classicBot.yaml.
@@ -24,7 +25,20 @@ export interface ValidationResult {
 }
 
 /** Backends the factory can instantiate (keep in sync with backend/factory.ts). */
-export const KNOWN_BACKENDS = ["claude-code", "gemini-cli", "codex", "opencode", "kiro-cli", "antigravity", "grok", "muse", "mock"];
+export const KNOWN_BACKENDS = ["claude-code", "codex", "opencode", "kiro-cli", "antigravity", "grok", "muse", "mock"];
+
+/**
+ * The error for a backend field: a removed backend names its replacement (#1280); anything else unknown lists the
+ * known ones. `inheritsWhenEmpty`: ClassicBot reads its backends with `||` (ClassicChannelManager.getBackend), so
+ * an empty string or null there means "inherit", not an unknown backend.
+ */
+function backendProblem(value: unknown, instance?: string, inheritsWhenEmpty = false): string | null {
+  if (value === undefined) return null;
+  if (inheritsWhenEmpty && (value === null || value === "")) return null;
+  if (typeof value === "string" && isRemovedBackend(value)) return removedBackendMessage(value, instance);
+  if (typeof value !== "string" || !KNOWN_BACKENDS.includes(value)) return `unknown backend "${String(value)}" (known: ${KNOWN_BACKENDS.join(", ")})`;
+  return null;
+}
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
@@ -156,6 +170,21 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     }
     if (value.reply_completion_guard !== undefined && typeof value.reply_completion_guard !== "boolean") {
       err(`${path}.reply_completion_guard`, "must be a boolean");
+    }
+
+    // #1296: context rotation was removed. max_age_hours and grace_period_ms
+    // are retained in the schema for backwards compatibility but have no effect.
+    // They are no longer in DEFAULT_INSTANCE_CONFIG, so loadFleetConfig never
+    // fills them into a normalized config — they only appear when the user
+    // explicitly writes them.
+    if (isObj(value.context_guardian)) {
+      const cg = value.context_guardian as Record<string, unknown>;
+      if (cg.max_age_hours !== undefined) {
+        warn(`${path}.context_guardian.max_age_hours`, "no effect; context rotation was removed");
+      }
+      if (cg.grace_period_ms !== undefined) {
+        warn(`${path}.context_guardian.grace_period_ms`, "no effect; context rotation was removed");
+      }
     }
 
     if (value.effort !== undefined) {
@@ -313,9 +342,8 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     err("defaults", "must be a mapping");
   } else if (isObj(config.defaults)) {
     const b = config.defaults.backend;
-    if (b !== undefined && (typeof b !== "string" || !KNOWN_BACKENDS.includes(b))) {
-      err("defaults.backend", `unknown backend "${String(b)}" (known: ${KNOWN_BACKENDS.join(", ")})`);
-    }
+    const problem = backendProblem(b);
+    if (problem) err("defaults.backend", problem);
     validateAutoPause(config.defaults.auto_pause_after, "defaults.auto_pause_after");
     validateDeliveryWorker(config.defaults.delivery_worker, "defaults.delivery_worker");
     if (config.defaults.warm_overflow !== undefined && (!Number.isInteger(config.defaults.warm_overflow) || (config.defaults.warm_overflow as number) < 0)) {
@@ -370,9 +398,8 @@ export function validateFleetConfig(config: unknown): ValidationResult {
         ? channelTypes.get(String(inst.channel_id)) : channelTypes.values().next().value;
       validateStatusEmojis(inst.status_emojis, `instances.${name}.status_emojis`, [boundTo]);
       const b = inst.backend;
-      if (b !== undefined && (typeof b !== "string" || !KNOWN_BACKENDS.includes(b))) {
-        err(`instances.${name}.backend`, `unknown backend "${String(b)}" (known: ${KNOWN_BACKENDS.join(", ")})`);
-      }
+      const problem = backendProblem(b, name);
+      if (problem) err(`instances.${name}.backend`, problem);
       if (inst.working_directory !== undefined && typeof inst.working_directory !== "string") {
         err(`instances.${name}.working_directory`, "must be a string path");
       }
@@ -409,9 +436,8 @@ export function validateClassicBotConfig(config: unknown): ValidationResult {
   } else if (isObj(config.defaults)) {
     const d = config.defaults;
     const b = d.backend;
-    if (b !== undefined && (typeof b !== "string" || !KNOWN_BACKENDS.includes(b))) {
-      err("defaults.backend", `unknown backend "${String(b)}" (known: ${KNOWN_BACKENDS.join(", ")})`);
-    }
+    const problem = backendProblem(b, undefined, true);
+    if (problem) err("defaults.backend", problem);
     validateAutoPause(d.auto_pause_after, "defaults.auto_pause_after");
     if (d.tool_progress !== undefined && !["off", "standard", "verbose"].includes(String(d.tool_progress))) {
       err("defaults.tool_progress", "must be off, standard, or verbose");
@@ -431,6 +457,8 @@ export function validateClassicBotConfig(config: unknown): ValidationResult {
   } else if (isObj(config.channels)) {
     for (const [key, channel] of Object.entries(config.channels)) {
       if (!isObj(channel)) { err(`channels.${key}`, "must be a mapping"); continue; }
+      const backendIssue = backendProblem(channel.backend, typeof channel.instanceName === "string" ? channel.instanceName : typeof channel.name === "string" ? channel.name : key, true);
+      if (backendIssue) err(`channels.${key}.backend`, backendIssue);
       validateAutoPause(channel.auto_pause_after, `channels.${key}.auto_pause_after`);
       if (channel.tool_progress !== undefined && !["off", "standard", "verbose"].includes(String(channel.tool_progress))) {
         err(`channels.${key}.tool_progress`, "must be off, standard, or verbose");
