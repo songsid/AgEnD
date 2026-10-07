@@ -65,12 +65,12 @@
  * classic schema needs its own round (see #1210) and the spike's KAS field
  * assumptions were never verified against a live store.
  */
-import { closeSync, openSync, readFileSync, readSync, readdirSync, statSync } from "node:fs";
+import { closeSync, openSync, readSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type Database from "better-sqlite3";
 import { claudeProjectKey } from "./claude-code.js";
 import { findExactCwdCodexSession, openCodexStateReadonly, rolloutRecordsTurn } from "./codex-session-lookup.js";
-import { museSessionCwd, museSessionDirs } from "./muse.js";
+import { museSessionCwd, museSessionDirs, readFileHeadSync } from "./muse.js";
 
 /** Which backend's journal a kind filter applies to. */
 export type TurnBackend = "claude" | "codex" | "muse";
@@ -430,7 +430,7 @@ export interface MuseRoots {
 const MUSE_SESSION_ID_RE = /^[0-9a-fA-F-]{8,}$/;
 
 /** Log head scanned for the workspace marker, mirroring muse.ts. */
-const MUSE_SESSION_HEAD_BYTES = 65_536;
+const MUSE_SESSION_HEAD_CHARS = 65_536;
 
 /**
  * The most recently active session started in this working directory,
@@ -447,11 +447,8 @@ export function museFingerprint(r: MuseRoots): TurnFingerprint | null {
   for (const sessionDir of museSessionDirs(r.sessionsRoot)) {
     const name = sessionDir.slice(sessionDir.lastIndexOf("/") + 1);
     if (!MUSE_SESSION_ID_RE.test(name)) continue;
-    let head: string;
-    try {
-      head = readFileSync(join(sessionDir, "session.jsonl"), { encoding: "utf-8", flag: "r" })
-        .slice(0, MUSE_SESSION_HEAD_BYTES);
-    } catch { continue; }
+    const head = readFileHeadSync(join(sessionDir, "session.jsonl"), MUSE_SESSION_HEAD_CHARS);
+    if (head === null) continue;
     if (museSessionCwd(head) !== r.cwd) continue;
     let activity = -1;
     try {
