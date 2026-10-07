@@ -122,6 +122,11 @@
   .err { color: #f85149; } .ok { color: #3fb950; }
   .help-btn { position: fixed; top: 10px; right: 14px; width: 34px; height: 34px; border-radius: 10px; border: 1px solid var(--border); background: rgba(21,27,35,.88); color: var(--dim); cursor: pointer; font-size: 16px; z-index: 60; display: inline-flex; align-items: center; justify-content: center; padding: 0; backdrop-filter: blur(6px); transition: color .15s, border-color .15s, background .15s; }
   .help-btn svg { width: 17px; height: 17px; }
+  .help-btn[hidden] { display: none; }
+  .help-btn.at-usage { right: 140px; } .help-btn.at-density { right: 98px; } .help-btn.at-lang { right: 56px; }
+  #sidebar .agend-nav-slot { margin: 0 10px 8px; }
+  /* Terminal colours: a run's colour is set through the style object after the frame is drawn (paintAnsi); bold is here. */
+  pre .ansi[data-b] { font-weight: bold; }
   .help-btn:hover { color: #f0f6fc; background: var(--accent-soft); border-color: var(--accent); }
   .help-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: none; z-index: 70; }
   .help-backdrop.open { display: block; }
@@ -176,9 +181,9 @@
 </style>
 </head>
 <body>
-  <button class="help-btn" id="usageBtn" data-i18n-title="usageButton" title="AI usage" style="right:140px; display:none"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M2.5 13.5h11"/><path d="M4.5 11V8"/><path d="M8 11V4.5"/><path d="M11.5 11V6.5"/></svg></button>
-  <button class="help-btn" id="densityBtn" data-i18n-title="densityLabel" title="Font density" style="right:98px">⤢</button>
-  <button class="help-btn" id="langBtn" data-i18n-title="languageButton" title="Language" style="right:56px"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="5.8"/><path d="M2.3 8h11.4M8 2.2c1.7 1.6 2.6 3.6 2.6 5.8S9.7 12.2 8 13.8M8 2.2C6.3 3.8 5.4 5.8 5.4 8s.9 4.2 2.6 5.8"/></svg></button>
+  <button class="help-btn at-usage" id="usageBtn" data-i18n-title="usageButton" title="AI usage" hidden><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M2.5 13.5h11"/><path d="M4.5 11V8"/><path d="M8 11V4.5"/><path d="M11.5 11V6.5"/></svg></button>
+  <button class="help-btn at-density" id="densityBtn" data-i18n-title="densityLabel" title="Font density">⤢</button>
+  <button class="help-btn at-lang" id="langBtn" data-i18n-title="languageButton" title="Language"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="5.8"/><path d="M2.3 8h11.4M8 2.2c1.7 1.6 2.6 3.6 2.6 5.8S9.7 12.2 8 13.8M8 2.2C6.3 3.8 5.4 5.8 5.4 8s.9 4.2 2.6 5.8"/></svg></button>
   <button class="help-btn" id="helpBtn" data-i18n-title="helpButton" title="Help"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="5.8"/><path d="M8 7.3v3.6"/><circle cx="8" cy="5.1" r=".6" fill="currentColor" stroke="none"/></svg></button>
   <div class="help-backdrop" id="helpBackdrop"></div>
   <aside class="help-panel" id="helpPanel">
@@ -189,7 +194,7 @@
     <button class="close" id="usageClose" data-i18n-title="close" title="Close">×</button>
     <div id="usageContent"></div>
   </aside>
-  <div id="sidebar"><h1 data-i18n="viewTitle">AgEnD · View</h1><nav data-agend-nav data-compact data-current="view" style="margin:0 10px 8px"></nav><div id="list"></div>
+  <div id="sidebar"><h1 data-i18n="viewTitle">AgEnD · View</h1><nav class="agend-nav-slot" data-agend-nav data-compact data-current="view"></nav><div id="list"></div>
     <div id="filterBar">
       <div class="filter-wrap">
         <svg class="filter-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3.5 3.5" stroke-linecap="round"/></svg>
@@ -416,20 +421,20 @@
   // Quotes too: the same function writes into quoted attributes (title, aria-label, data-provider) — #1303 review.
   const esc = (s) => String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
 
+  // A coloured run is <span class="ansi" data-fg data-bg data-b>, never a style attribute (#1300: the panel's
+  // style-src has no 'unsafe-inline'); paintAnsi() sets the colours through the style object once it is on the page.
+  // The colours are the palette's or rgb() of numbers — nothing from the pane's text.
   function ansiToHtml(text) {
     let out = "", fg = null, bg = null, bold = false, open = false;
-    const style = () => {
-      const p = [];
+    const attrs = () => {
       let f = fg;
       if (bold && typeof f === "number" && f < 8) f = BRIGHT[f];
       else if (typeof f === "number") f = BASE[f];
-      if (f) p.push("color:" + f);
-      if (bg) p.push("background:" + (typeof bg === "number" ? BASE[bg] : bg));
-      if (bold) p.push("font-weight:bold");
-      return p.join(";");
+      const b = bg == null ? null : typeof bg === "number" ? BASE[bg] : bg;
+      return (f ? ` data-fg="${esc(f)}"` : "") + (b ? ` data-bg="${esc(b)}"` : "") + (bold ? " data-b" : "");
     };
     const flush = () => { if (open) { out += "</span>"; open = false; } };
-    const openSpan = () => { const s = style(); if (s) { out += `<span style="${s}">`; open = true; } };
+    const openSpan = () => { const a = attrs(); if (a) { out += `<span class="ansi"${a}>`; open = true; } };
 
     const re = /\x1b\[([0-9;]*)m/g;
     let last = 0, m;
@@ -461,6 +466,12 @@
     emit(text.slice(last));
     flush();
     return out;
+  }
+  function paintAnsi(root) {
+    for (const el of root.querySelectorAll(".ansi[data-fg], .ansi[data-bg]")) {
+      if (el.dataset.fg) el.style.color = el.dataset.fg;
+      if (el.dataset.bg) el.style.background = el.dataset.bg;
+    }
   }
   function xterm256(n) {
     if (n < 8) return BASE[n];
@@ -789,6 +800,7 @@
       const c = Number(r.headers.get("X-Pane-Cols")), rw = Number(r.headers.get("X-Pane-Rows"));
       if (c >= 1 && rw >= 1 && (c !== paneCols || rw !== paneRows)) { paneCols = c; paneRows = rw; lastFitKey = ""; }
       q("pre").innerHTML = ansiToHtml(text);
+      paintAnsi(q("pre"));
       fitFont();
     } catch { /* transient network error — keep last frame */ }
   }
@@ -1051,7 +1063,7 @@
       return `<div class="u-metric"><div class="u-row"><span class="u-label">${esc(label)}</span>` +
         (word ? `<span class="u-status ${cls}">${esc(word)}</span>` : "") +
         `<span class="u-val u-pct ${cls}">${pct.toFixed(0)}<span class="u-unit">%</span></span></div>` +
-        `<div class="u-meter"><div class="u-fill ${cls}" style="width:${pct}%"></div></div>` +
+        `<div class="u-meter"><div class="u-fill ${cls}" data-pct="${pct}"></div></div>` +
         (sub ? `<div class="u-sub">${esc(sub)}</div>` : "") + `</div>`;
     }
     if (m.type === "dollars") {
@@ -1099,6 +1111,8 @@
     const at = new Date(usageData.fetchedAt).toLocaleTimeString();
     html += `<div class="u-foot"><span>${T("usageUpdated")} ${esc(at)}</span><button id="usageRefresh">${T("usageRefresh")}</button></div>`;
     box.innerHTML = html;
+    // The meters' widths, through the style object (no style attribute: #1300).
+    for (const f of box.querySelectorAll(".u-fill[data-pct]")) f.style.width = `${f.dataset.pct}%`;
     box.querySelectorAll(".u-move").forEach(button => {
       button.onclick = () => moveUsageProvider(button.dataset.provider, Number(button.dataset.delta));
     });
@@ -1109,7 +1123,7 @@
   async function loadUsage(force) {
     try {
       const r = await fetch(`/api/ai-usage${force ? "?force=1" : ""}`);
-      if (r.status === 404) { q("usageBtn").style.display = "none"; return false; }
+      if (r.status === 404) { q("usageBtn").hidden = true; return false; }
       usageData = await r.json();
     } catch { usageData = null; }
     renderUsage();
@@ -1130,7 +1144,7 @@
   q("langBtn").addEventListener("click", () => { if (usageData) renderUsage(); });
   // Probe once at boot: shows the usage button only when the endpoint is enabled,
   // and warms the server-side 5-minute cache so the first open is instant.
-  loadUsage(false).then(ok => { if (ok !== false) q("usageBtn").style.display = ""; });
+  loadUsage(false).then(ok => { if (ok !== false) q("usageBtn").hidden = false; });
 
   window.addEventListener("resize", scheduleFit);
   // Catches container changes the window resize event doesn't see — chiefly the
