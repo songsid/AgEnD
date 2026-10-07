@@ -102,19 +102,28 @@ describe("ServiceInstaller", () => {
   // ── #1348 regressions: fallbacks must not reintroduce node_modules ────────
 
   it("fallback dirname(process.execPath) under node_modules is not appended (#1348 P2)", () => {
-    // process.execPath = /project/node_modules/node/bin/node → dirname = /project/node_modules/node/bin
-    // That fallback would normally be appended; the filter must drop it.
-    const result = buildServicePath(
-      "/usr/bin:/bin",
-      // execPath: no /lib/node_modules/ marker → npmPrefixBin = undefined
-      "/project/node_modules/node/bin/node",
-      "/home/test",
-    );
-    const entries = result.split(":");
-    const remaining = entries.filter(e => e.includes("/node_modules/"));
-    expect(remaining, `node_modules fallback must be excluded, found: ${remaining.join(", ")}`).toEqual([]);
-    // Normal entries are still there.
-    expect(entries).toContain("/usr/bin");
+    // The fallback appends dirname(process.execPath), so we must mock
+    // process.execPath itself — the second argument to buildServicePath only
+    // controls npmPrefixBin, not the runtime-dir fallback.
+    const saved = process.execPath;
+    // @ts-expect-error — process.execPath is normally read-only
+    process.execPath = "/project/node_modules/node/bin/node";
+    try {
+      const result = buildServicePath(
+        "/usr/bin:/bin",
+        // ordinary agend execPath — no /lib/node_modules/ → npmPrefixBin = undefined
+        "/home/test/.nvm/versions/node/v22.22.0/lib/node_modules/@songsid/agend/dist/cli.js",
+        "/home/test",
+      );
+      const entries = result.split(":");
+      const remaining = entries.filter(e => e.includes("/node_modules/"));
+      expect(remaining, `node_modules runtime-dir fallback must be excluded, found: ${remaining.join(", ")}`).toEqual([]);
+      // Normal entries still present.
+      expect(entries).toContain("/usr/bin");
+    } finally {
+      // @ts-expect-error
+      process.execPath = saved;
+    }
   });
 
   it("fallback npmPrefixBin under node_modules is not appended (#1348 P2)", () => {
