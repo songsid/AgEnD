@@ -265,6 +265,17 @@ export function selectLruEvictions(
   return candidates.slice(0, warm.length - cap);
 }
 
+/**
+ * Window-name shape this fleet recognises as an instance window: the
+ * `-t<digits>` form every allocator emits, plus legacy `classic-` windows.
+ * Startup cleanup reaps windows matching this that are no longer in
+ * fleet.yaml. Keep in sync with `uniqueInstanceName` — every name it emits
+ * must match here, or a deleted instance's CLI is left running (#1305 P2-3).
+ */
+export function isOrphanInstanceWindowName(name: string): boolean {
+  return /-t\d+$/.test(name) || /^classic-/.test(name);
+}
+
 /** Retry cadence for retiring a cancel button whose delete failed (e.g. a DC
  * forum thread the bot momentarily can't reach). 3 retries × 5min = 15min. */
 const CANCEL_BTN_RETRY_INTERVAL_MS = 5 * 60_000;
@@ -4229,7 +4240,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // Also kill orphaned windows: any window with a topic ID suffix (name-tNNNNN)
         // that isn't in the current config — these are leftovers from deleted instances
         const isKnownInstance = agendNames.has(w.name);
-        const isOrphanedInstance = !isKnownInstance && (/-t\d+$/.test(w.name) || /^classic-/.test(w.name));
+        const isOrphanedInstance = !isKnownInstance && isOrphanInstanceWindowName(w.name);
         if (isKnownInstance || isOrphanedInstance) {
           if (isOrphanedInstance) this.logger.info({ window: w.name }, "Cleaning up orphaned tmux window");
           const tm = new TmuxManager(getTmuxSession(), w.id);
@@ -7330,13 +7341,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return adapter.createTopic(topicName);
   }
 
-  async deleteForumTopic(topicId: number | string): Promise<void> {
+  async deleteForumTopic(topicId: number | string, adapterId?: string): Promise<void> {
     try {
-      if (!this.adapter?.deleteTopic) return;
-      await this.adapter.deleteTopic(topicId);
+      const adapter = (adapterId ? this.worlds.get(adapterId)?.adapter : undefined) ?? this.adapter;
+      if (!adapter?.deleteTopic) return;
+      await adapter.deleteTopic(topicId);
     } catch (err) {
       this.logger.warn({ err, topicId }, "Failed to delete forum topic during rollback");
     }
+  }
+
+  getForumTopicDeleter(adapterId?: string): ((topicId: number | string) => Promise<void>) | null {
+    const adapter = (adapterId ? this.worlds.get(adapterId)?.adapter : undefined) ?? this.adapter;
+    if (!adapter?.deleteTopic) return null;
+    return (topicId) => adapter.deleteTopic!(topicId);
   }
 
   private topicCleanupTimer: ReturnType<typeof setInterval> | null = null;

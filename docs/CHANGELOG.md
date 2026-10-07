@@ -110,6 +110,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   pictures is not cut short.
 
 ### Fixed
+- **New instances get short unique names; user-facing labels never show a 19-digit id (#1301).**
+  A new instance is now `<base>-t<last 6 topic digits>` (lengthened on collision, up to the full id), across
+  fleet.yaml keys, instance dirs and tmux windows — existing instances are untouched, never renamed or migrated.
+  Reusing a taken name requires proof it belongs to the same topic (full `topic_id` string equality, plus the
+  adapter/world check when recorded — checked on the full form and every short/lengthened candidate, so a
+  rebind never opens a duplicate entry); a name owned by a different topic is never overwritten. When even
+  the full-id form is taken by another topic, creation is refused with an error suggesting a different
+  `topic_name`, so every allocated name keeps the `-t<digits>` shape that orphan cleanup recognises. A
+  dir-only collision without a config entry never counts as same-topic. Display labels prefer `display_name`,
+  else shorten a 19+-digit `-t<digits>` suffix to its last 6 — only while that short label is unique across the
+  fleet; on collision the shown tail lengthens just enough (legacy, new and explicit-label entries share one
+  namespace), so same-tail instances stay distinguishable in visibility posts, Mirror Topic, broadcasts,
+  `/status` and the `agend ls` table. Rollback deletes a created topic through the same adapter/world that
+  created it. Agent-facing names (`[from:…]`, logs, lookups, `list_instances`, `--json`/`--names-only`) keep
+  the real name. Orphan detection recognises both forms.
 - **Updated configuration and operational documentation (#1278).** English and Traditional Chinese now describe native backend instruction files, startup decision snapshots, credential-profile differences, current defaults/tool counts and monitoring-only context guardian settings. Corrected macOS advisory memory behavior, diagnostics, test/build isolation, interaction terminology and hang controls; repaired the Chinese CLI templates link. Documentation only; runtime behavior is unchanged.
 - **Settings → Defaults language: no longer pins locale to English on any unrelated save (#1310).** The language `<select>` had no "unset" option, so with `defaults.locale` absent the picker fell to its first choice (en). Any save — even an unrelated one like changing log_level — therefore wrote `locale: en` to fleet.yaml, pinning the UI language and disabling timezone/locale auto-detect. The picker now has an explicit **"Auto (follow system)"** option as the first entry that maps to *unset*. Only changed fields reach the API (`changedFields` against baseline); choosing Auto sends `null` to remove the key.
 - **Corrected security, permissions and access documentation (#1275).** Removed the nonexistent IPC secret handshake and generated Bash denylist; documented default permission bypass, persisted access precedence, platform-specific command roles, and the actual dashboard/public View/Host/agent-token boundaries. Documentation only; runtime behavior is unchanged.
