@@ -16175,7 +16175,11 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     this.stopPreviewListener();
     this.previewPorts = { requested: requestedPort, bound: boundPort };
     this.previewInputs = this.previewInputsSignature();
-    const settings = previewSettings(this.fleetConfig?.web, requestedPort);
+    // web.preview is hot; web.preview_port and web.preview_origin are startup-only (STARTUP_ONLY_FLEET_KEYS): they
+    // come from the configuration this process started on, so a reload that changes them reports "restart required"
+    // and a hot re-enable never half-applies them.
+    const started = (this.startupFleetConfig ?? this.fleetConfig)?.web;
+    const settings = previewSettings({ preview: this.fleetConfig?.web?.preview, preview_port: started?.preview_port, preview_origin: started?.preview_origin }, requestedPort);
     if (!settings.enabled) return;
     if (settings.port === null) {
       this.logger.warn({ health_port: requestedPort }, "No port for the HTML preview listener (health_port is the highest port) — set web.preview_port; previews are off");
@@ -16199,16 +16203,16 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     }
   }
 
-  /** What the preview listener is built from: web.preview / preview_port / preview_origin, and the dashboard names. */
+  /** What a reload may change hot: web.preview, and the dashboard names (the shim's allow-list and frame-ancestors). */
   private previewInputsSignature(): string {
     const c = this.fleetConfig;
-    return JSON.stringify({ p: c?.web?.preview ?? null, pp: c?.web?.preview_port ?? null, po: c?.web?.preview_origin ?? null, h: c?.hostname ?? null, a: c?.web?.allowed_hosts ?? null });
+    return JSON.stringify({ p: c?.web?.preview ?? null, h: c?.hostname ?? null, a: c?.web?.allowed_hosts ?? null });
   }
 
   /**
-   * After a config reload: the preview settings are read where they are used, so a change is adopted here, hot —
-   * the listener is rebuilt (a new boot id) or stopped (web.preview: false). Pages loaded before keep their old boot
-   * id and get "unavailable" from a rebuilt listener until they reload.
+   * After a config reload: web.preview true→false stops the listener at once (/ui then offers no origin, boot or
+   * frame-src), false→true starts it, and a change of dashboard names rebuilds it (a new boot id). preview_port and
+   * preview_origin are not adopted here: they are startup-only, and the reload reports "restart required".
    */
   private reconcilePreviewListener(): void {
     if (!this.previewPorts || this.previewInputsSignature() === this.previewInputs) return;

@@ -397,6 +397,9 @@ describe("a config reload adopts preview changes, hot (#1327 review P2-1)", () =
     const refuse = (what: string) => async () => { throw new Error(`test must not ${what}`); };
     any.startInstance = refuse("start an instance"); any.stopInstance = refuse("stop an instance");
     any.loadConfig(path);
+    // As start() records them: the baseline a reload is compared with, and the config this process runs on.
+    any.appliedFleetLevel = any.fleetLevelSignature();
+    any.startupFleetConfig = structuredClone(any.fleetConfig);
     any.initializeWebAuthTokens();
     any.startHealthServer(0);
     await vi.waitFor(() => expect(any.previewListening).toBe(true));
@@ -427,24 +430,33 @@ describe("a config reload adopts preview changes, hot (#1327 review P2-1)", () =
     h.any.previewListener?.close();
   });
 
-  it("preview_port and preview_origin changes rebuild it on the new port / for the new origin", async () => {
+  it("preview_port and preview_origin are startup-only: a reload reports restart-required and leaves the listener as it runs", async () => {
     const h = await fleetFromFile(BASE);
-    h.write(BASE + "web:\n  preview_port: 47395\n");
+    const before = h.ui(), server = h.any.previewListener.server;
+    for (const yaml of [BASE + "web:\n  preview_port: 47395\n", BASE + "web:\n  preview_origin: https://preview.example.net\n"]) {
+      h.write(yaml);
+      const observed: string[] = [];
+      await h.any.reconcileInstances((target: string, _k: string, state: string) => observed.push(`${target}:${state}`));
+      expect(observed.some(o => o.endsWith(":restart-required")), yaml).toBe(true);
+      expect([h.ui().previewOrigin, h.ui().boot, h.any.previewListener.server], yaml).toEqual([before.previewOrigin, before.boot, server]);
+    }
+    // …and a hot off→on in the meantime still uses what this process started with, never the pending port/origin.
+    h.write(BASE + "web:\n  preview: false\n  preview_origin: https://preview.example.net\n");
+    await h.any.reconcileInstances();
+    h.write(BASE + "web:\n  preview_origin: https://preview.example.net\n");
     await h.any.reconcileInstances();
     await vi.waitFor(() => expect(h.any.previewListening).toBe(true));
-    expect((h.any.previewListener.server.address() as { port: number }).port).toBe(47395);
-    expect(h.ui().previewOrigin).toBe("http://127.0.0.1:47395");
-    h.write(BASE + "web:\n  preview_port: 47396\n  preview_origin: https://preview.example.net\n");
-    await h.any.reconcileInstances();
-    await vi.waitFor(() => expect(h.any.previewListening).toBe(true));
-    expect((h.any.previewListener.server.address() as { port: number }).port).toBe(47396);
-    expect(h.ui().previewOrigin).toBe("https://preview.example.net");
-    // Only the origin changes (same port): rebuilt all the same — the shim's Host list and frame-ancestors follow it.
+    expect(h.ui().previewOrigin).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+    h.any.previewListener?.close();
+  });
+
+  it("a change of dashboard names (web.allowed_hosts) is hot: rebuilt with the new allow-list", async () => {
+    const h = await fleetFromFile(BASE);
     const boot = h.ui().boot;
-    h.write(BASE + "web:\n  preview_port: 47396\n  preview_origin: https://preview2.example.net\n");
+    h.write(BASE + "web:\n  allowed_hosts: [fleet.example.net]\n");
     await h.any.reconcileInstances();
     await vi.waitFor(() => expect(h.any.previewListening).toBe(true));
-    expect([h.ui().previewOrigin, h.ui().boot === boot]).toEqual(["https://preview2.example.net", false]);
+    expect(h.ui().boot).not.toBe(boot);
     h.any.previewListener?.close();
   });
 

@@ -524,7 +524,7 @@ mismatch check — is the guarantee, and it is unchanged.
 4. **Q4 — `.html` attachments in v1**, or fences only first?
 5. **Q6 — `Access-Control-Allow-Origin: *`** on `/api/activity` and the roster: remove here or separately?
 6. **Q8 — numbers.** 1 MiB, 4000 px, 10 s, 3 s, 10/s are inferences; adjust after the user's testing.
-7. **Q12 — a future network claim?** If a browser ships an enforced WebRTC block (Chromium's experimental
+7. **Q12 — a future network claim?** ([#1326](https://github.com/songsid/AgEnD/issues/1326) tracks browser enforcement of WebRTC blocking.) If a browser ships an enforced WebRTC block (Chromium's experimental
    `Connection-Allowlist`, or CSP `webrtc`), a no-network claim could be reconsidered, on a recorded §10.2 run per
    browser and mode. Not in v1.
 
