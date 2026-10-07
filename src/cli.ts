@@ -2625,11 +2625,16 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?:
     const statusLabel = lsStatusLabel;
     const padDisplay = (s: string, width: number): string => s + " ".repeat(Math.max(0, width - displayWidth(s)));
 
-    // Human table only: display labels, never long ids (#1301). --json and
-    // --names-only above keep the real names (machine use + attach target).
-    const { displayInstanceName } = await import("./topic-commands.js");
+    // Human table only: display labels, never long ids (#1301), unique
+    // across the fleet (#1305 P2-1). --json and --names-only above keep the
+    // real names (machine use + attach target).
+    const { assignDisplayLabels } = await import("./topic-commands.js");
+    const lsLabels = assignDisplayLabels(rows.map((r) => ({
+      name: r.name,
+      displayName: (config.instances[r.name] as { display_name?: string } | undefined)?.display_name,
+    })));
     const displayName = (row: { name: string; classic: boolean }): string =>
-      displayInstanceName(row.name, (config.instances[row.name] as { display_name?: string } | undefined)?.display_name);
+      lsLabels.get(row.name) ?? row.name;
     const nameW = Math.max(20, ...rows.map(r => displayWidth(displayName(r)) + 2));
     const backendW = 14;
     const statusW = 12;

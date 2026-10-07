@@ -18,7 +18,7 @@ import type { InteractionSnapshot } from "./backend/types.js";
 import { presentationState, interactionSummary } from "./interaction-observation.js";
 import { truncatePreview } from "./channel/markdown-chunk.js";
 import { backendSupportsSteer } from "./steer-capability.js";
-import { displayInstanceName, readStatuslineModel } from "./topic-commands.js";
+import { assignDisplayLabels, displayInstanceName, readStatuslineModel } from "./topic-commands.js";
 import { credentialProfileLogin, credentialSwitchStartsFresh, instanceCredentialProfile } from "./backend/credential-profile.js";
 import { kiroEngineCandidates, kiroEngineStatus } from "./kiro-engine-status.js";
 import {
@@ -512,11 +512,16 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   // Sender topic: always show full outbound message (so users can see what the agent sent).
   const requestKind = ipcMeta.request_kind;
   const groupId = ctx.fleetConfig?.channel?.group_id;
-  // User-facing labels (#1301): display_name first, else a long -t<digits>
-  // suffix shortened. Used by topic posts and the Mirror Topic below.
-  // Agent-facing uses (headers, logs, lookups) keep the real names.
+  // User-facing labels (#1301, unique across the fleet per #1305 P2-1):
+  // display_name first, else a long -t<digits> suffix shortened — lengthened
+  // while the label stays unique. Used by topic posts and the Mirror Topic
+  // below. Agent-facing uses (headers, logs, lookups) keep the real names.
+  const fleetLabels = assignDisplayLabels(Object.keys(ctx.fleetConfig?.instances ?? {}).map((name) => ({
+    name,
+    displayName: ctx.fleetConfig?.instances[name]?.display_name,
+  })));
   const displayLabel = (name: string) =>
-    displayInstanceName(name, ctx.fleetConfig?.instances[name]?.display_name);
+    fleetLabels.get(name) ?? displayInstanceName(name, ctx.fleetConfig?.instances[name]?.display_name);
   if (groupId && ctx.adapter) {
     const instances = ctx.fleetConfig?.instances ?? {};
     const notificationLabel = `${displayLabel(senderLabel)} → ${displayLabel(targetName)}`;
@@ -1548,9 +1553,14 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
   for (const target of sentTo) {
     ctx.eventLog?.logActivity("message", senderLabel, summary, target);
   }
-  // Mirror Topic is user-facing: display labels, never long ids (#1301).
+  // Mirror Topic is user-facing: display labels, never long ids (#1301),
+  // unique across the fleet (#1305 P2-1).
+  const bLabels = assignDisplayLabels(Object.keys(ctx.fleetConfig?.instances ?? {}).map((name) => ({
+    name,
+    displayName: ctx.fleetConfig?.instances[name]?.display_name,
+  })));
   const bDisplay = (name: string) =>
-    displayInstanceName(name, ctx.fleetConfig?.instances[name]?.display_name);
+    bLabels.get(name) ?? displayInstanceName(name, ctx.fleetConfig?.instances[name]?.display_name);
   ctx.queueMirrorMessage?.(`📢 ${bDisplay(senderLabel)} → [${sentTo.map(bDisplay).join(", ")}]: ${truncatePreview(message, 500)}`);
   respond({
     sent_to: sentTo,

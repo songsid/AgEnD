@@ -181,7 +181,8 @@ export interface LifecycleContext {
   restartSingleInstance(name: string, opts?: { freshStart?: boolean }): Promise<void>;
   connectIpcToInstance(name: string): Promise<void>;
   createForumTopic(topicName: string, adapterId?: string): Promise<number | string>;
-  deleteForumTopic(topicId: number | string): Promise<void>;
+  /** adapterId selects the world, mirroring createForumTopic (rollback must delete where it created). */
+  deleteForumTopic(topicId: number | string, adapterId?: string): Promise<void>;
   setTopicIcon(name: string, state: "green" | "blue" | "red" | "remove"): void;
   /** Remove instance with full cleanup (scheduler, IPC, routing, config). */
   removeInstance(name: string, authorization: ExplicitInstanceRemoval): Promise<void>;
@@ -2230,7 +2231,8 @@ export class InstanceLifecycle {
         this.ctx.saveFleetConfig();
       }
       if (createdTopicId) {
-        await this.ctx.deleteForumTopic(createdTopicId);
+        // Delete where the topic was created: same adapter/world (#1305 P2-4).
+        await this.ctx.deleteForumTopic(createdTopicId, adapterId);
       }
       if (worktreePath) {
         try {

@@ -107,13 +107,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   A new instance is now `<base>-t<last 6 topic digits>` (lengthened on collision, up to the full id), across
   fleet.yaml keys, instance dirs and tmux windows — existing instances are untouched, never renamed or migrated.
   Reusing a taken name requires proof it belongs to the same topic (full `topic_id` string equality, plus the
-  adapter/world check when recorded); a name owned by a different topic is never overwritten — the allocator
-  lengthens, then falls back to `<full>-2`, `<full>-3`, … A dir-only collision without a config entry never
-  counts as same-topic. Display labels prefer `display_name`, else shorten only a 19+-digit `-t<digits>`
-  suffix to its last 6 (visibility posts, Mirror Topic, broadcasts, `/status`, the `agend ls` table);
-  allocator-lengthened 7–18-digit suffixes are shown whole so same-tail instances stay distinguishable.
-  Agent-facing names (`[from:…]`, logs, lookups, `list_instances`, `--json`/`--names-only`) keep the real
-  name. Orphan detection recognises both forms.
+  adapter/world check when recorded — checked on the full form and every short/lengthened candidate, so a
+  rebind never opens a duplicate entry); a name owned by a different topic is never overwritten. When even
+  the full-id form is taken by another topic, creation is refused with an error suggesting a different
+  `topic_name`, so every allocated name keeps the `-t<digits>` shape that orphan cleanup recognises. A
+  dir-only collision without a config entry never counts as same-topic. Display labels prefer `display_name`,
+  else shorten a 19+-digit `-t<digits>` suffix to its last 6 — only while that short label is unique across the
+  fleet; on collision the shown tail lengthens just enough (legacy, new and explicit-label entries share one
+  namespace), so same-tail instances stay distinguishable in visibility posts, Mirror Topic, broadcasts,
+  `/status` and the `agend ls` table. Rollback deletes a created topic through the same adapter/world that
+  created it. Agent-facing names (`[from:…]`, logs, lookups, `list_instances`, `--json`/`--names-only`) keep
+  the real name. Orphan detection recognises both forms.
 - **Muse session discovery no longer reads whole session logs (#1228).** Finding the workspace's session used to
   `readFileSync` all of every candidate `session.jsonl` before slicing the 64KB head that names the working
   directory — slow when sessions grow long. Both `MuseBackend.getSessionId` and the detection-seam `museFingerprint`
