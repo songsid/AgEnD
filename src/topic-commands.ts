@@ -582,7 +582,7 @@ export class TopicCommands {
       return true;
     }
 
-    if (text === "/dashboard" || text.startsWith("/dashboard@")) {
+    if (text === "/dashboard" || text.startsWith("/dashboard@") || text.startsWith("/dashboard ")) {
       await this.handleDashboardCommand(msg);
       return true;
     }
@@ -597,34 +597,44 @@ export class TopicCommands {
   }
 
   /**
-   * Build the dashboard URL text (View / Settings / Web UI). The Settings/Web UI
-   * URLs carry the web token; when `htmlSpoiler` is set they're wrapped in a
-   * Telegram HTML spoiler (`<tg-spoiler>`) so the token isn't shown in the clear
-   * in a shared topic (the caller must send with format: "html"). /view is
-   * public, so it's never spoilered. DC uses the plain form (ephemeral reply).
+   * Build the dashboard text (View / sign-in / Settings / Web UI) plus a fresh
+   * single-use login code.
+   *
+   * No URL carries a credential any more. The code is the only secret in the
+   * message: five minutes, one use, and worth nothing without the sign-in page.
+   * When `htmlSpoiler` is set it is wrapped in a Telegram HTML spoiler so it is
+   * not shown in the clear in a shared topic (the caller must send with format:
+   * "html"). /view is public, so it is never spoilered. DC uses the plain form
+   * (ephemeral reply). Every call issues a new code and retires the previous one.
    */
   getDashboardText(htmlSpoiler = false): string {
     const port = this.ctx.fleetConfig?.health_port ?? 19280;
     const host = (this.ctx.fleetConfig as { hostname?: string } | null | undefined)?.hostname || "localhost";
     const access = this.ctx.getDashboardAccess?.();
     if (!access?.ready || !access.token) return t("dashboard.starting");
-    const token = access.token;
+    const login = this.ctx.issueDashboardLogin?.();
+    if (!login) return t("dashboard.starting");
     const base = `http://${host}:${port}`;
     const hide = (u: string) => htmlSpoiler ? `<tg-spoiler>${u}</tg-spoiler>` : u;
     return [
       t("dashboard.title"),
       "",
-      `• View:     ${base}/view`,
-      `• View (edit): ${hide(`${base}/view?token=${token}`)}`,
-      `• Settings: ${hide(`${base}/settings?token=${token}`)}`,
-      `• Web UI:   ${hide(`${base}/ui?token=${token}`)}`,
+      t("dashboard.signin", base),
+      t("dashboard.code", hide(login.display), login.ttlMinutes),
+      "",
+      `• View:      ${base}/view`,
+      `• Dashboard: ${base}/ui`,
+      `• Settings:  ${base}/settings`,
+      "",
+      t("dashboard.code_help"),
     ].join("\n");
   }
 
   /**
-   * /dashboard (TG): admin-only. Replies directly in the topic; the token-
-   * bearing URLs are wrapped in a Telegram HTML spoiler so they aren't shown in
-   * the clear (the adapter supports plain/HTML, not MarkdownV2's `||…||`).
+   * /dashboard (TG): admin-only. Replies directly in the topic; the login code is
+   * wrapped in a Telegram HTML spoiler so it isn't shown in the clear (the adapter
+   * supports plain/HTML, not MarkdownV2's `||…||`). `/dashboard revoke` signs
+   * every browser out.
    */
   private async handleDashboardCommand(msg: InboundMessage): Promise<void> {
     const adapter = this.getReplyAdapter(msg);
@@ -634,6 +644,14 @@ export class TopicCommands {
     // The caller's own adapter decides, and an empty list means the command is off for everyone.
     if (!this.ctx.hasFleetAdmins(msg.adapterId)) { await adapter.sendText(chatId, t("dashboard.disabled"), { threadId }); return; }
     if (!this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) { await adapter.sendText(chatId, t("not_authorized"), { threadId }); return; }
+
+    const arg = (msg.text ?? "").trim().replace(/^\/dashboard(?:@\S+)?/i, "").trim().toLowerCase();
+    if (arg === "revoke") {
+      const result = this.ctx.revokeWebSessions?.() ?? { count: 0, durable: true };
+      // Not durable: they are signed out now, but a restart may bring them back — say so, never "done".
+      await adapter.sendText(chatId, result.durable ? t("dashboard.revoked", result.count) : t("dashboard.revoked_not_durable", result.count), { threadId });
+      return;
+    }
 
     await adapter.sendText(chatId, this.getDashboardText(true), { threadId, format: "html" });
   }

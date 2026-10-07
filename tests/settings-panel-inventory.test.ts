@@ -105,7 +105,7 @@ describe("the redesigned panel loses nothing", () => {
   it("can still write every ClassicBot channel setting", () => {
     expect(patchKeys("function classicEditForm")).toEqual([
       "auto_pause_after", "backend", "collab", "context_lines", "model",
-      "reply_completion_guard", "tool_progress",
+      "reply_completion_guard", "tool_progress", "web_echo",
     ]);
   });
 });

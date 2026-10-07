@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AgEnD Settings</title>
+<link rel="stylesheet" href="/assets/shell.css">
+<script src="/assets/agend-auth.js"></script>
+<script src="/assets/shell.js" defer></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   :root {
@@ -169,17 +172,31 @@
   .se-grid button { padding: 3px 6px; font-size: 18px; line-height: 1.2; }
   .se-grid button img { width: 22px; height: 22px; object-fit: contain; vertical-align: middle; }
   .se-grid button.off { opacity: .45; }
+  /* #1300: what used to be style attributes. */
+  .ver-badge { font-size: 12px; color: var(--muted); cursor: pointer; padding: 2px 8px; border: 1px solid var(--border); border-radius: 12px; }
+  input.agent-search { width: 220px; margin-right: 8px; }   /* beats input[type=text] by order; the phone rule is !important */
+  .card.spaced { margin-top: 12px; }
+  /* Small helpers for what the script builds (#1300: no style attribute — el() refuses one). Each is !important, as
+     the style attribute it replaces outranked every rule: the look is unchanged wherever a rule like .sub or .help-panel li
+     would otherwise win. */
+  .u-m0 { margin: 0 !important; } .u-mb8 { margin: 0 0 8px !important; } .u-mb6 { margin-bottom: 6px !important; } .u-mb12 { margin-bottom: 12px !important; }
+  .u-ml18 { margin: 0 0 0 18px !important; } .u-mt8 { margin-top: 8px !important; } .u-mt10 { margin-top: 10px !important; } .u-mt28 { margin-top: 28px !important; } .u-my4 { margin: 4px 0 !important; }
+  .u-row { display: flex !important; align-items: center !important; gap: 8px !important; } .u-click { cursor: pointer !important; } .u-noborder { border: none !important; }
+  .u-fs13 { font-size: 13px !important; } .u-good { color: var(--green) !important; } .u-bad { color: var(--red) !important; }
+  .u-link13 { color: var(--accent) !important; font-size: 13px !important; text-decoration: none !important; }
+  .tag.tag-collab { background: #ecfdf5 !important; color: #065f46 !important; }
 </style>
 </head>
 <body>
 <header>
   <h1 data-i18n="title">⚙️ AgEnD Settings</h1>
-  <span id="verBadge" data-i18n-title="whatsNew" title="What's New" style="font-size:12px;color:var(--muted);cursor:pointer;padding:2px 8px;border:1px solid var(--border);border-radius:12px">v…</span>
+  <span id="verBadge" class="ver-badge" data-i18n-title="whatsNew" title="What's New">v…</span>
+  <nav data-agend-nav data-current="settings"></nav>
   <div class="grow"></div>
   <button class="help-btn" id="langBtn" data-i18n-title="languageButton" title="Language">🌐</button>
   <button class="help-btn" id="helpBtn" data-i18n-title="helpButton" title="Help">ℹ️</button>
   <button class="sm" id="wizardBtn" data-i18n="wizardButton">🧭 Setup wizard</button>
-  <input type="text" id="agentSearch" data-i18n-ph="searchPh" placeholder="🔍 Search agents, bots, channels…" style="width:220px;margin-right:8px">
+  <input type="text" id="agentSearch" data-i18n-ph="searchPh" placeholder="🔍 Search agents, bots, channels…" class="agent-search">
 </header>
 <div class="help-backdrop" id="helpBackdrop"></div>
 <aside class="help-panel" id="helpPanel">
@@ -217,7 +234,7 @@
     <div class="sec-head"><h2>🔌 Connections &amp; Bots</h2><div class="grow"></div><button class="sm" id="newBotBtn" data-i18n="add">+ Add</button></div>
     <div id="newBot"></div>
     <div class="card" id="bots"></div>
-    <div class="card" id="providerSecrets" style="margin-top:12px"></div>
+    <div class="card spaced" id="providerSecrets"></div>
   </section>
 
   <section>
@@ -245,17 +262,19 @@
 <script>
 (() => {
   "use strict";
-  // No token in the URL: the gate redeemed it for an HttpOnly session cookie,
+  // No token in the URL: signing in with a one-time code set an HttpOnly session cookie,
   // which the browser attaches to these same-origin requests on its own.
   const $ = (id) => document.getElementById(id);
-  const el = (tag, attrs = {}, ...kids) => { const e = document.createElement(tag); for (const k in attrs) { if (k === "class") e.className = attrs[k]; else if (k === "html") e.innerHTML = attrs[k]; else if (k.startsWith("on")) e.addEventListener(k.slice(2), attrs[k]); else e.setAttribute(k, attrs[k]); } for (const c of kids) if (c != null) e.append(c); return e; };
-  const esc = (s) => String(s).replace(/[&<>]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;" }[c]));
+  const el = (tag, attrs = {}, ...kids) => { const e = document.createElement(tag); for (const k in attrs) { if (k === "class") e.className = attrs[k]; else if (k === "html") e.innerHTML = attrs[k]; else if (k.startsWith("on")) e.addEventListener(k.slice(2), attrs[k]); else if (k === "style") throw new Error("el(): use a class, not a style attribute (#1300)"); else e.setAttribute(k, attrs[k]); } for (const c of kids) if (c != null) e.append(c); return e; };
+  // Quotes too, so it is safe inside a quoted attribute as well as in text (#1303 review).
+  const esc = (s) => String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
   const BACKENDS = ["claude-code", "kiro-cli", "codex", "opencode", "antigravity", "grok", "muse"];
 
   // ── i18n ──
   const I18N = {
     en: {
       title: "⚙️ AgEnD Settings", reloadFleet: "↻ Reload Fleet", myAgents: "🤖 My Agents", bots: "🔌 Bots", classicChannels: "🎮 ClassicBot Channels", noClassic: "No ClassicBot channels — start one with /start in a chat.",
+      webEcho: "Echo web chat to the agent topic", webEchoHint: "Copies web messages to the bound Telegram or Discord topic. ClassicBot rooms are excluded.",
       general: "⚙️ General Settings", whatsNew: "🆕 What's New", advanced: "📋 Advanced",
       expand: "▶ Expand", collapse: "▼ Collapse", new: "+ New", add: "+ Add", searchPh: "🔍 Search…",
       edit: "Edit", close: "Close", save: "Save", cancel: "Cancel", create: "Create", start: "Start", stop: "Stop",
@@ -267,7 +286,7 @@
       se_src_instance: "agent", se_src_platform: "connection", se_src_builtin: "default", se_pick: "Pick…", se_useDefault: "Use the default", se_fallback: "the default is used instead",
       se_unicode: "Emoji", se_telegramOnly: "Telegram allows only these reactions", se_serverEmojis: "Server emojis", se_noServerEmojis: "No custom emojis on this server.", se_primaryServer: "primary", se_externalEmojiHint: "Another server's emoji needs the bot's Use External Emojis permission in the channel it reacts in.", se_unavailable: "unavailable",
       se_hint: "Empty keeps the default. The preview is resolved by AgEnD exactly as the bot will react.",
-      detection: "Detection", startup: "Startup", backendSection: "Backend", advancedSection: "Advanced & Access", hangEnabled: "Hang detector enabled", hangTimeout: "Stuck timeout", agentMode: "Agent mode", toolSet: "Tool set", toolProgress: "Tool progress", crossInstanceVisibility: "Bot-to-bot messages in topics", crossInstanceVisibilityHint: "full: the whole message · summary: one line · hidden: nothing. Messages are always delivered; the Mirror Topic still shows them.", replyCompletionGuard: "Require a delivered reply", replyGuardSupported: "Available for Claude Code and Kiro legacy/TUI in MCP mode.", replyGuardUnsupported: "Stored but inactive: {0} in {1} mode does not support reply-drop recovery.", logLevel: "Log level", concurrency: "Startup concurrency", staggerDelay: "Stagger delay", lightweight: "Lightweight mode", modelFailover: "Fallback model", displayName: "Display name", pause: "Pause", wake: "Wake", accessMode: "Access mode", affected: "Affected instances",
+      detection: "Detection", startup: "Startup", backendSection: "Backend", advancedSection: "Advanced & Access", hangEnabled: "Hang detector enabled", hangTimeout: "Stuck timeout", agentMode: "Agent mode", toolSet: "Tool set", toolProgress: "Tool progress", crossInstanceVisibility: "Bot-to-bot messages in topics", crossInstanceVisibilityHint: "full: the whole message · summary: one line · hidden: nothing. Messages are always delivered; the Mirror Topic still shows them.", replyCompletionGuard: "Require a delivered reply", replyGuardSupported: "Available for Claude Code and Kiro legacy/TUI in MCP mode.", replyGuardUnsupported: "Stored but inactive: {0} in {1} mode does not support reply-drop recovery.", logLevel: "Log level", concurrency: "Startup concurrency", staggerDelay: "Stagger delay", lightweight: "Lightweight mode", modelFailover: "Fallback model", displayName: "Display name", pause: "Pause", wake: "Wake", accessMode: "Access mode", affected: "Affected instances", webEcho: "Web echo", webEchoGroupConfirm: "This looks like a group channel: enabling posts every web message to this instance where all channel members can read it. Enable web echo?",
       language: "Language (bot replies)", defaultBackend: "Default backend", defaultModel: "Default model", allowedUsers: "Allowed users (primary bot)", localeAuto: "Auto (follow system)",
       classicAdmins: "ClassicBot admins", allowedGuilds: "Allowed guilds", type: "Type", adapterId: "Adapter id",
       tokenEnv: "Bot token env var", groupId: "Group / guild id", nameField: "Name",
@@ -320,13 +339,14 @@
       se_unicode: "Emoji", se_telegramOnly: "Telegram 只允許這些反應", se_serverEmojis: "伺服器 emoji", se_noServerEmojis: "此伺服器沒有自訂 emoji。", se_primaryServer: "主伺服器", se_externalEmojiHint: "使用其他伺服器的 emoji，bot 在要加反應的頻道需有「使用外部表情符號」權限。", se_unavailable: "無法使用",
       se_hint: "留空即使用預設值。預覽由 AgEnD 依 bot 實際 react 的方式解析。",
       title: "⚙️ AgEnD 設定", reloadFleet: "↻ 重新載入", myAgents: "🤖 我的 Agent", bots: "🔌 機器人", classicChannels: "🎮 ClassicBot 頻道", noClassic: "沒有 ClassicBot 頻道 — 在聊天中用 /start 建立。",
+      webEcho: "將 web chat 同步至 Agent 主題", webEchoHint: "將網頁訊息複製到綁定的 Telegram 或 Discord 主題，不包含 ClassicBot 群組。",
       general: "⚙️ 一般設定", whatsNew: "🆕 更新重點", advanced: "📋 進階",
       expand: "▶ 展開", collapse: "▼ 收合", new: "+ 新增", add: "+ 加入", searchPh: "🔍 搜尋…",
       edit: "編輯", close: "關閉", save: "儲存", cancel: "取消", create: "建立", start: "啟動", stop: "停止",
       backend: "後端", model: "模型", workingDir: "工作目錄", channelBinding: "頻道綁定",
       description: "描述", systemPrompt: "System prompt", tags: "標籤", generalTopicField: "General topic（fleet 分派器）",
       runtimeResources: "執行環境與資源", autoPause: "閒置後自動暫停", minutes: "分鐘", inheritDefault: "沿用全域預設值",
-      detection: "偵測", startup: "啟動", backendSection: "後端", advancedSection: "進階與存取", hangEnabled: "啟用卡住偵測", hangTimeout: "卡住逾時", agentMode: "Agent 模式", toolSet: "工具集", toolProgress: "工具進度", crossInstanceVisibility: "Agent 之間的訊息在主題中", crossInstanceVisibilityHint: "full：完整訊息 · summary：一行摘要 · hidden：不顯示。訊息一律照常送達，Mirror Topic 也照常顯示。", replyCompletionGuard: "要求送出回覆", replyGuardSupported: "Claude Code 與 Kiro legacy/TUI 的 MCP 模式可用。", replyGuardUnsupported: "設定會保留，但不會生效：{0} 的 {1} 模式不支援回覆遺失補救。", logLevel: "Log 等級", concurrency: "啟動併發數", staggerDelay: "錯開延遲", lightweight: "輕量模式", modelFailover: "備援模型", displayName: "顯示名稱", pause: "暫停", wake: "喚醒", accessMode: "存取模式", affected: "受影響 instances",
+      detection: "偵測", startup: "啟動", backendSection: "後端", advancedSection: "進階與存取", hangEnabled: "啟用卡住偵測", hangTimeout: "卡住逾時", agentMode: "Agent 模式", toolSet: "工具集", toolProgress: "工具進度", crossInstanceVisibility: "Agent 之間的訊息在主題中", crossInstanceVisibilityHint: "full：完整訊息 · summary：一行摘要 · hidden：不顯示。訊息一律照常送達，Mirror Topic 也照常顯示。", replyCompletionGuard: "要求送出回覆", replyGuardSupported: "Claude Code 與 Kiro legacy/TUI 的 MCP 模式可用。", replyGuardUnsupported: "設定會保留，但不會生效：{0} 的 {1} 模式不支援回覆遺失補救。", logLevel: "Log 等級", concurrency: "啟動併發數", staggerDelay: "錯開延遲", lightweight: "輕量模式", modelFailover: "備援模型", displayName: "顯示名稱", pause: "暫停", wake: "喚醒", accessMode: "存取模式", affected: "受影響 instances", webEcho: "Web 同步", webEchoGroupConfirm: "這看起來是群組頻道：開啟後，這個 instance 的每則 web 訊息都會貼到所有頻道成員看得到的地方。確定要開啟 web echo？",
       language: "語言（bot 回覆）", defaultBackend: "預設後端", defaultModel: "預設模型", allowedUsers: "允許使用者（主 bot）", localeAuto: "自動（跟隨系統）",
       classicAdmins: "ClassicBot 管理員", allowedGuilds: "允許的伺服器", type: "類型", adapterId: "Adapter id",
       tokenEnv: "Bot token 環境變數", groupId: "群組 / guild id", nameField: "名稱",
@@ -539,7 +559,7 @@
     }
     return guildEmojiLists.get(channelId);
   }
-  // no-referrer: the settings URL can carry the web token.
+  // no-referrer: nothing on this page should tell a third-party image host where it was loaded from.
   const emojiImg = (url, alt) => el("img", { src: url, alt, referrerpolicy: "no-referrer", loading: "lazy" });
   const emojiGlyph = (entry) => el("span", { class: "se-glyph" }, entry.image_url ? emojiImg(entry.image_url, entry.display) : entry.value);
   /** Keys in catalog order, blanks dropped — so an unchanged map compares equal. */
@@ -620,7 +640,7 @@
             }, emojiImg(e.image_url, `:${e.name}:`)))));
           }
         };
-        picker.append(el("div", { class: "hint", style: "display:flex;gap:8px;align-items:center" }, t("se_serverEmojis"),
+        picker.append(el("div", { class: "hint u-row" }, t("se_serverEmojis"),
           el("button", { type: "button", class: "sm ghost", onclick: () => load(true) }, "↻")), guildBox);
         load(false);
       }
@@ -1137,7 +1157,7 @@
     item.append(el("div", { class: "item-row" },
       el("span", { class: "dot " + st, title: STATUS_TEXT[st] || st }),
       el("span", { class: "name", title: name }, short),
-      el("span", { class: "sub", style: "margin:0", title: summary.backend }, summary.model),
+      el("span", { class: "sub u-m0", title: summary.backend }, summary.model),
       el("span", { class: "tag" }, `effort: ${summary.effort}`),
       chTag ? el("span", { class: "tag" + (chTag.includes("persona") ? " persona" : chTag.includes("telegram") ? " tg" : "") }, chTag) : null,
       el("span", { class: "spacer" }),
@@ -1303,7 +1323,7 @@
       renderAgents();
     };
     box.append(
-      el("div", { class: "sub", style: "margin:0 0 8px" }, "ID: " + name),
+      el("div", { class: "sub u-mb8" }, "ID: " + name),
       el("div", { class: "grid2" },
         el("div", {}, el("label", {}, t("displayName"), impact("instance.display_name")), displayName.row),
         el("div", {}, el("label", {}, t("description"), impact("instance.description")), fDesc),
@@ -1326,7 +1346,7 @@
         el("div", {}, el("label", {}, t("modelFailover"), impact("instance.model_failover")), failover.row, failoverFeedback)),
         el("label", {}, t("systemPrompt"), impact("instance.systemPrompt")), fSys,
         el("label", {}, t("tags"), impact("instance.tags")), chipList(tags, null, "tag"),
-        el("label", { style: "display:flex;align-items:center;gap:8px;cursor:pointer" }, fGeneral, el("span", {}, t("generalTopicField")), impact("instance.general_topic"))),
+        el("label", { class: "u-row u-click" }, fGeneral, el("span", {}, t("generalTopicField")), impact("instance.general_topic"))),
       drawer(t("statusEmojis"),
         el("label", {}, t("statusEmojisInstance"), impact("instance.status_emojis")), statusEmojis.box),
       el("div", { class: "actions" }, msg),
@@ -1397,13 +1417,13 @@
   function renderNewAgent(open) {
     const host = $("newAgent"); host.innerHTML = "";
     if (!open) return;
-    const box = el("div", { class: "card", style: "margin-bottom:12px" });
+    const box = el("div", { class: "card u-mb12" });
     const fName = el("input", { type: "text", placeholder: "agent name" });
     const fBackend = select(state.fleet.defaults?.backend || "claude-code", BACKENDS);
     const fWd = el("input", { type: "text", placeholder: "~/Projects/… (optional)" });
     const fChan = select("", ["", ...channelIds()]);
     const msg = el("span", { class: "msg" });
-    box.append(el("div", { class: "edit", style: "border:none" },
+    box.append(el("div", { class: "edit u-noborder" },
       el("div", { class: "grid2" }, el("div", {}, el("label", {}, t("nameField")), fName), el("div", {}, el("label", {}, t("backend")), fBackend)),
       el("div", { class: "grid2" }, el("div", {}, el("label", {}, t("workingDir")), fWd), el("div", {}, el("label", {}, t("channelBinding")), fChan)),
       el("div", { class: "actions" }, el("button", { class: "primary sm", onclick: async () => {
@@ -1431,16 +1451,16 @@
       item.append(el("div", { class: "item-row conn-row" },
         el("span", { class: "name" }, type === "telegram" ? "Telegram" : "Discord"),
         el("span", { class: "tag" + (i === 0 ? "" : " persona") + (type === "telegram" ? " tg" : "") }, ch.id || chLabel(i)),
-        el("span", { class: "sub", style: "margin:0" }, ch.bot_token_env || "(no token env)"),
+        el("span", { class: "sub u-m0" }, ch.bot_token_env || "(no token env)"),
         ch.group_id ? el("span", { class: "tag" }, `${type === "telegram" ? "group" : "guild"} ${ch.group_id}`) : null,
         el("span", { class: "tag" }, `${t("accessMode")}: ${ch.access?.mode || "locked"}`),
-        el("span", { class: "sub", style: "margin:0" },
+        el("span", { class: "sub u-m0" },
           (ch.access?.allowed_users || []).length
             ? (ch.access.allowed_users).slice(0, 3).join(", ") + ((ch.access.allowed_users).length > 3 ? ` +${(ch.access.allowed_users).length - 3}` : "")
             : t("noAllowedUsers")),
         el("span", { class: "row-end" },
           el("span", { class: "tag", title: "secret status" }, state.connections.find(c => (c.id || c.type) === (ch.id || ch.type))?.token_present ? "Token configured" : "Token missing"),
-          el("span", { style: `color:${state.fleetUp ? "var(--green)" : "var(--red)"};font-size:13px` }, state.fleetUp ? "Connected" : "Problem"),
+          el("span", { class: `u-fs13 ${state.fleetUp ? "u-good" : "u-bad"}` }, state.fleetUp ? "Connected" : "Problem"),
           el("button", { class: "sm ghost", onclick: () => {
             const form = botEditForm(ch, i);
             openModal({ title: type === "telegram" ? "Telegram" : "Discord", subtitle: ch.id || chLabel(i), body: form.box, impacts: form.impacts, stage: form.stage });
@@ -1703,6 +1723,11 @@
       replyHint.textContent = supported ? t("replyGuardSupported") : tf("replyGuardUnsupported", fBackend.value, classicMode);
     });
     const fCollab = el("input", { type: "checkbox" }); fCollab.checked = !!c.collab;
+    const fWebEcho = el("input", { type: "checkbox" }); fWebEcho.checked = !!c.web_echo;
+    // Group heuristic for the web-echo second confirmation (#1320): only a
+    // short positive numeric id is a Telegram private chat; Discord guild
+    // channels (17-19 digit snowflakes) and negative ids are groups.
+    const webEchoIsGroup = !/^\d{1,12}$/.test(String(c.channelId || ""));
     const fContext = el("input", { type: "number", min: "0", step: "1", value: c.context_lines ?? classicDefaults.context_lines ?? 5 });
     const autoFeedback = el("div", { class: "feedback" });
     const contextFeedback = el("div", { class: "feedback" });
@@ -1731,6 +1756,7 @@
         reply_completion_guard: replyGuard.toggle.checked ? null : replyGuard.input.checked,
         collab: fCollab.checked,
         context_lines: Number(fContext.value),
+        web_echo: fWebEcho.checked,
       };
       const patch = changedFields(nextPatch, {
         backend: c.backend || inheritedBackend,
@@ -1740,8 +1766,15 @@
         reply_completion_guard: hasOwn(c, "reply_completion_guard") ? c.reply_completion_guard : null,
         collab: !!c.collab,
         context_lines: c.context_lines ?? classicDefaults.context_lines ?? 5,
+        web_echo: !!c.web_echo,
       });
       if (Object.keys(patch).length === 0) { renderClassic(); return; }
+      // Second confirmation for group channels (#1320): enabling posts every
+      // web message where all members can read it. Real page logic — the
+      // staged change is dropped when the operator cancels.
+      if (patch.web_echo === true && !c.web_echo && webEchoIsGroup) {
+        if (!confirm(t("webEchoGroupConfirm"))) { renderClassic(); return; }
+      }
       state.classic.channels[c.key] = { ...state.classic.channels[c.key], ...patch };
       if (patch.model === null) delete state.classic.channels[c.key].model;
       if (patch.auto_pause_after === null) delete state.classic.channels[c.key].auto_pause_after;
@@ -1756,14 +1789,15 @@
       renderClassic();
     };
     box.append(
-      el("div", { class: "sub", style: "margin:0 0 8px" }, `ID: ${c.instanceName} · ${EXECUTION_TEXT[runtime.execution] || runtime.execution}`),
+      el("div", { class: "sub u-mb8" }, `ID: ${c.instanceName} · ${EXECUTION_TEXT[runtime.execution] || runtime.execution}`),
       el("div", { class: "grid2" },
         el("div", {}, el("label", {}, t("backend"), impact("classic.backend")), fBackend),
         el("div", {}, el("label", {}, t("model"), impact("classic.model")), fModel),
         el("div", {}, el("label", {}, `${t("autoPause")} (${t("minutes")})`, impact("classic.auto_pause_after")), auto.row, autoFeedback),
         el("div", {}, el("label", {}, t("toolProgress"), impact("classic.tool_progress")), toolProgress.row),
         el("div", {}, el("label", {}, t("replyCompletionGuard"), impact("classic.reply_completion_guard")), replyGuard.row, replyHint),
-        el("div", {}, el("label", { style: "display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:28px" }, fCollab, el("span", {}, "Collaboration mode"), impact("classic.collab")))),
+        el("div", {}, el("label", { class: "u-row u-click u-mt28" }, fCollab, el("span", {}, "Collaboration mode"), impact("classic.collab"))),
+        el("div", {}, el("label", { class: "u-row u-click u-mt28" }, fWebEcho, el("span", {}, t("webEcho")), impact("classic.web_echo")))),
       drawer(t("advancedSection"),
         el("label", {}, "Context lines", impact("classic.context_lines")), fContext, contextFeedback,
         el("div", { class: "actions" },
@@ -1777,7 +1811,7 @@
       impacts: [
         "classic.backend", "classic.model", "classic.auto_pause_after",
         "classic.tool_progress", "classic.reply_completion_guard",
-        "classic.collab", "classic.context_lines",
+        "classic.collab", "classic.context_lines", "classic.web_echo",
       ],
     };
   }
@@ -1805,10 +1839,10 @@
       item.append(el("div", { class: "item-row" },
         el("span", { class: "dot " + runtime.execution, title: EXECUTION_TEXT[runtime.execution] || runtime.execution }),
         el("span", { class: "name", title: c.instanceName || "" }, displayName),
-        el("span", { class: "sub", style: "margin:0", title: summary.backend }, summary.model),
+        el("span", { class: "sub u-m0", title: summary.backend }, summary.model),
         el("span", { class: "tag" }, `effort: ${summary.effort}`),
         el("span", { class: "tag" + (adapter !== "discord" ? " persona" : "") }, adapter),
-        c.collab ? el("span", { class: "tag", style: "background:#ecfdf5;color:#065f46" }, "collab") : null,
+        c.collab ? el("span", { class: "tag tag-collab" }, "collab") : null,
         el("span", { class: "spacer" }),
         el("span", { class: "tag", title: STATUS_TEXT[st] || st }, EXECUTION_TEXT[runtime.execution] || runtime.execution),
         el("button", { class: "sm ghost", onclick: () => {
@@ -1836,13 +1870,13 @@
   }
   function renderNewBot(open) {
     const host = $("newBot"); host.innerHTML = ""; if (!open) return;
-    const box = el("div", { class: "card", style: "margin-bottom:12px" });
+    const box = el("div", { class: "card u-mb12" });
     const fType = select("discord", CH_TYPES);
     const fId = el("input", { type: "text", placeholder: "adapter id (e.g. persona1)" });
     const fEnv = el("input", { type: "text", placeholder: "BOT_TOKEN_ENV" });
     const fGroup = el("input", { type: "text", placeholder: "guild / supergroup id" });
     const msg = el("span", { class: "msg" });
-    box.append(el("div", { class: "edit", style: "border:none" },
+    box.append(el("div", { class: "edit u-noborder" },
       el("div", { class: "grid2" }, el("div", {}, el("label", {}, t("type")), fType), el("div", {}, el("label", {}, t("adapterId")), fId)),
       el("div", { class: "grid2" }, el("div", {}, el("label", {}, t("tokenEnv")), fEnv), el("div", {}, el("label", {}, t("groupId")), fGroup)),
       el("div", { class: "hint" }, t("envHint")),
@@ -1875,6 +1909,9 @@
     const allowedUsers = [...(originalPrimaryAccess.allowed_users || [])];
     c.admin_users = c.admin_users || []; c.allowed_guilds = c.allowed_guilds || [];
 
+    const originalWebConfig = structuredClone(state.fleet.web);
+    const originalWebEcho = state.fleet.web?.echo_to_channel ?? true;
+    const fWebEcho = el("input", { type: "checkbox", id: "webEchoToChannel" }); fWebEcho.checked = originalWebEcho;
     const fBackend = backendSelect(d.backend || "claude-code");
     const fClassicBackend = backendSelect(c.backend || d.backend || "claude-code");
     const fModel = el("input", { type: "text", value: d.model || "", placeholder: "e.g. claude-opus-4-8" });
@@ -1984,6 +2021,16 @@
         const classicHotOnly = Object.keys(classicPatch).every(key => impactOf(`classic_defaults.${key}`) === "now");
         stageChange("defaults:classic", { label: "Update ClassicBot defaults and access", impact: classicHotOnly ? "now" : "fleet", apply: () => api("/api/settings/classic/defaults", { method: "PUT", body: JSON.stringify(classicPatch) }) });
       }
+      if (fWebEcho.checked !== originalWebEcho) {
+        const webPatch = { echo_to_channel: fWebEcho.checked };
+        state.fleet.web = { ...state.fleet.web, ...webPatch };
+        stageChange("web:echo", { label: t("webEcho"), impact: impactOf("web.echo_to_channel"), apply: () => api("/api/settings/fleet/web", { method: "PUT", body: JSON.stringify(webPatch) }) });
+      } else if (state.pending.has("web:echo")) {
+        state.pending.delete("web:echo");
+        if (originalWebConfig === undefined) delete state.fleet.web;
+        else state.fleet.web = structuredClone(originalWebConfig);
+        updatePendingBar();
+      }
       msg.innerHTML = `<span class="s">${esc(t("readyApply"))}</span>`;
     };
 
@@ -1993,6 +2040,7 @@
       return details;
     };
     host.append(
+      section("Web chat", true, el("label", {}, fWebEcho, el("span", {}, t("webEcho")), impact("web.echo_to_channel")), el("div", { class: "hint" }, t("webEchoHint"))),
       section("Defaults", true,
         el("div", { class: "grid2" },
           el("div", { class: "field" }, el("label", {}, t("language"), impact("defaults.locale")), fLocale),
@@ -2001,7 +2049,7 @@
           el("div", { class: "field" }, el("label", {}, `${t("autoPause")} (${t("minutes")})`, impact("defaults.auto_pause_after")), fAutoPause, autoFeedback),
           el("div", { class: "field" }, el("label", {}, t("toolProgress"), impact("defaults.tool_progress")), fToolProgress),
           el("div", { class: "field" }, el("label", {}, t("crossInstanceVisibility"), impact("defaults.cross_instance_visibility")), fVisibility, el("div", { class: "hint" }, t("crossInstanceVisibilityHint"))),
-          el("div", { class: "field" }, el("label", { style: "display:flex;align-items:center;gap:8px" }, fReplyGuard, el("span", {}, t("replyCompletionGuard")), impact("defaults.reply_completion_guard")), defaultReplyHint))),
+          el("div", { class: "field" }, el("label", { class: "u-row" }, fReplyGuard, el("span", {}, t("replyCompletionGuard")), impact("defaults.reply_completion_guard")), defaultReplyHint))),
       section("ClassicBot", true,
         el("div", { class: "grid2" },
           el("div", { class: "field" }, el("label", {}, "Classic default backend", impact("classic_defaults.backend")), fClassicBackend),
@@ -2019,7 +2067,7 @@
           el("div", { class: "field" }, el("label", {}, t("agentMode"), impact("defaults.agent_mode")), fAgentMode))),
       section(t("detection"), false,
         el("div", { class: "grid2" },
-          el("div", { class: "field" }, el("label", { style: "display:flex;align-items:center;gap:8px" }, fHangEnabled, el("span", {}, t("hangEnabled")), impact("defaults.hang_detector"))),
+          el("div", { class: "field" }, el("label", { class: "u-row" }, fHangEnabled, el("span", {}, t("hangEnabled")), impact("defaults.hang_detector"))),
           el("div", { class: "field" }, el("label", {}, `${t("hangTimeout")} (${t("minutes")})`, impact("defaults.hang_detector")), fHangTimeout, hangFeedback))),
       section(t("startup"), false,
         el("div", { class: "grid2" },
@@ -2039,15 +2087,15 @@
   // ── What's New ──
   function renderWhatsNew() {
     const host = $("wnBody"); host.innerHTML = "";
-    host.append(el("div", { class: "sub", style: "margin:0 0 8px" }, `${t("currentVersion")}: ${state.version || "?"}`));
-    host.append(el("div", { style: "font-size:13px;margin-bottom:6px" }, t("wnIntro")));
-    const ul = el("ul", { style: "margin:0 0 0 18px" });
-    for (const line of WHATSNEW) ul.append(el("li", { style: "font-size:13px;margin:4px 0" }, line));
+    host.append(el("div", { class: "sub u-mb8" }, `${t("currentVersion")}: ${state.version || "?"}`));
+    host.append(el("div", { class: "u-fs13 u-mb6" }, t("wnIntro")));
+    const ul = el("ul", { class: "u-ml18" });
+    for (const line of WHATSNEW) ul.append(el("li", { class: "u-fs13 u-my4" }, line));
     host.append(ul);
     // Beta builds have no per-tag release page → link to the latest release.
     const v = state.version || "";
     const url = !v || v.includes("-") ? "https://github.com/songsid/AgEnD/releases/latest" : `https://github.com/songsid/AgEnD/releases/tag/v${v}`;
-    host.append(el("div", { style: "margin-top:10px" }, el("a", { href: url, target: "_blank", rel: "noopener", style: "color:var(--accent);font-size:13px;text-decoration:none" }, t("releaseNotes"))));
+    host.append(el("div", { class: "u-mt10" }, el("a", { class: "u-link13", href: url, target: "_blank", rel: "noopener" }, t("releaseNotes"))));
   }
 
   // ── Advanced (YAML/JSON) ──
@@ -2056,7 +2104,7 @@
     const host = $("advBody"); host.innerHTML = "";
     const fmt = state.advFmt; const model = fleetModel();
     const ser = fmt === "yaml" ? toYaml(model) : JSON.stringify(model, null, 2);
-    const msg = el("div", { class: "msg", style: "margin-top:8px" });
+    const msg = el("div", { class: "msg u-mt8" });
     const toolbar = el("div", { class: "toolbar" },
       el("div", { class: "seg" },
         el("button", { class: "sm" + (fmt === "yaml" ? " on" : ""), onclick: () => { state.advFmt = "yaml"; renderAdvanced(); } }, "YAML"),

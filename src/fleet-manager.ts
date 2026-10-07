@@ -1,5 +1,5 @@
 import { measureSyncWork } from "./sync-work-attribution.js";
-import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync, readdirSync, renameSync, copyFileSync, chmodSync, statSync, accessSync, constants as fsConstants, type Dirent } from "node:fs";
+import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync, readdirSync, renameSync, copyFileSync, chmodSync, statSync, accessSync, realpathSync, constants as fsConstants, type Dirent } from "node:fs";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { freemem, totalmem, cpus, homedir } from "node:os";
@@ -52,6 +52,7 @@ import { AccessManager } from "./channel/access-manager.js";
 import { IpcClient } from "./channel/ipc-bridge.js";
 import type { AdapterHealthSnapshot, AlertData, ChannelAdapter, InboundMessage, InboundReaction, Choice, TopicPresence, StickerInfo, StickerList, StickerPreview, StickerTarget } from "./channel/types.js";
 import { createAdapter } from "./channel/factory.js";
+import { isWebChannelEcho, WEB_ECHO_PREFIX } from "./web-channel-echo.js";
 import { TelegramAdapter } from "./channel/adapters/telegram.js";
 import { createBackend } from "./backend/factory.js";
 import { readEffortMetadata } from "./backend/effort-metadata.js";
@@ -143,7 +144,9 @@ export function applyTaskListCap<T extends { updated_at: string }>(
   }
   return tasks;
 }
-import { handleWebRequest, broadcastSseEvent } from "./web-api.js";
+import { handleWebRequest, broadcastSseEvent, SSE_HEARTBEAT_MS } from "./web-api.js";
+import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, type WebChatAttachment } from "./web-chat-history.js";
+import { publicAttachment, sweepOrphanedUploads, WebFileLedger } from "./web-upload.js";
 import { handleViewRequest, isViewPath } from "./view-api.js";
 import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, usageProviderIdForBackend } from "./usage/usage-api.js";
 import { LOGIN_FLOWS, LOGIN_BACKEND_ALIASES, type LoginFlow, type AuthCheckResult } from "./login-flows.js";
@@ -187,7 +190,11 @@ import {
   type ToolSink,
 } from "./tool-permissions.js";
 import { decideWebGate, loadOrCreateWebToken, readWebToken } from "./web-auth.js";
+import { bypassesWebGate, handleAuthRequest, serveSigninPage, type AuthApiContext } from "./auth-api.js";
+import { tokenEpoch, WebSessionStore } from "./web-session.js";
+import { WebLoginCodes, LOGIN_CODE_TTL_MS } from "./web-login.js";
 import { allowedHostNames, applyWebSecurityHeaders, hostnameOf, isHostAllowed, WEB_HOST_REJECTED_MESSAGE } from "./web-host-guard.js";
+import { createPreviewListener, previewAvailability, previewSettings, type PreviewAvailability, type PreviewListener } from "./web-preview.js";
 import { fleetLevelDifferences, fleetLevelSignature } from "./fleet-level-config.js";
 import { checkSelfRestartAllowance, recordSelfRestartAttempt } from "./self-restart-limit.js";
 import { SecretStore } from "./secret-store.js";
@@ -535,7 +542,15 @@ interface NonceButtonEntry {
   classicScope?: "guild" | "group";
   /** classic-approve only: the user who asked, when the trigger had one. */
   classicUserId?: string;
+  /** The entry's own key in pendingNonceButtons (set when posted). */
+  nonce?: string;
+  /**
+   * Set when the prompt is also offered in the web dashboard (web track C4): what the page shows. The same
+   * nonce, the same single claim and the same expiry as the platform's buttons — whoever clicks first wins.
+   */
+  web?: { text: string; actions: Array<{ id: string; label: string }>; expiresAt: number };
 }
+
 
 interface AdapterCallbackData {
   callbackData: string;
@@ -606,6 +621,38 @@ const INTERACTIVE_ASSIST_CALLBACK_PREFIX = "interactive-assist:";
 const EXIT_RESTART_CALLBACK_PREFIX = "exit-restart:";
 const HANG_CALLBACK_PREFIX = "hang:";
 const CLEAR_CONFIRM_CALLBACK_PREFIX = "clear-confirm:";
+/**
+ * The prompts the web dashboard also offers: the ones about an instance's own health, which a dashboard
+ * user — holding the full-fleet web credential — may answer exactly as a fleet admin on the platform may.
+ * Personal or channel-bound prompts stay where they were asked: a /clear confirmation, login, a Classic
+ * group's approval, tips, and the per-user /model and /effort menus (which are not nonce entries at all).
+ */
+const WEB_MIRRORED_PROMPT_PREFIXES: ReadonlySet<string> = new Set([
+  HANG_CALLBACK_PREFIX, EXIT_RESTART_CALLBACK_PREFIX, INTERACTIVE_ASSIST_CALLBACK_PREFIX,
+]);
+/**
+ * Where a reply goes on a fleet with no chat platform (web track C4): it is "sent" by being shown in the
+ * web chat, which afterReplyRouted does for every reply. Only what routeToolCall's reply path calls exists
+ * here; the path checks (assertSendable, the file count) are the reply tool's own, run before these.
+ */
+const WEB_ONLY_REPLY_SINK = {
+  type: "web",
+  sendText: async () => ({ chatId: "web", messageId: newWebMessageId() }),
+  sendFile: async () => ({ chatId: "web", messageId: newWebMessageId() }),
+} as unknown as ChannelAdapter;
+/**
+ * Where an instance-health prompt (hang, clean exit, interactive prompt) is posted on a fleet with no chat platform:
+ * nowhere but the dashboard (#1307 item 6). Posting "succeeds" with an id of its own, so the prompt is armed and
+ * offered on the web exactly as a platform prompt is; there are no platform buttons to edit afterwards, and the
+ * outcome reaches the page through prompt_resolved as for any web-answered prompt.
+ */
+const WEB_ONLY_PROMPT_SINK = {
+  type: "web",
+  notifyAlert: async () => ({ chatId: "web", messageId: newWebMessageId() }),
+  editMessage: async () => {},
+  editMessageRemoveButtons: async () => {},
+  sendText: async () => ({ chatId: "web", messageId: newWebMessageId() }),
+} as unknown as ChannelAdapter;
 const TIP_DISMISS_CALLBACK_PREFIX = "tip-dismiss:";
 const TIP_UNLOCK_CALLBACK_PREFIX = "tip-unlock:";
 export const LOGIN_CALLBACK_PREFIX = "login:";
@@ -840,6 +887,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private instanceProgress = new Map<string, string>();
   /** instanceName → tail of deliveries waiting for its IPC to come back. */
   private ipcWaitTails = new Map<string, Promise<void>>();
+  private webChannelEchoTails = new Map<string, {
+    tail: Promise<void>;
+    pending: Set<{ started: boolean; drop: () => void }>;
+  }>();
+  /**
+   * instanceName → the reservation whose echo callback is currently running.
+   * sendClassicWebEcho fences every per-entry copy against it: no new copy
+   * starts after the ordering budget is gone or the delivery epoch is revoked.
+   * Serialized per instance by the echo tail, so one slot is enough.
+   */
+  private webChannelEchoGuards = new Map<string, { epoch: number; deadlineAt: number }>();
   /** instanceName → restart currently executing; concurrent callers join it. */
   private restartsInFlight = new Map<string, Promise<void>>();
   /**
@@ -880,6 +938,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private pendingModelSelects = new Map<string, { instanceName: string; model: string; userId: string; channelId: string; timer: ReturnType<typeof setTimeout>; respond: (t: string) => Promise<string | undefined>; adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string; respondChoices?: (text: string, choices: { id: string; label: string }[]) => Promise<string | undefined>; }>();
   /** nonce → pending button prompt (hang restart, interactive assist, clean-exit restart). */
   private pendingNonceButtons = new Map<string, NonceButtonEntry>();
+  /**
+   * Clicks that came from the web dashboard (clickWebPrompt). Only that method adds to it, so nothing an
+   * adapter emits — whatever fields its payload carries — can claim a dashboard click's authority.
+   */
+  private readonly webPromptClicks = new WeakSet<AdapterCallbackData>();
+  /** The web clicks consumeNonceCallback actually claimed (the others were refused or lost a race). */
+  private readonly webPromptClaims = new WeakSet<AdapterCallbackData>();
 
   // Model failover state
   private failoverActive = new Map<string, string>(); // instance → current failover model
@@ -937,6 +1002,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   // Health endpoint
   private healthServer: Server | null = null;
+  /** #1306: the preview listener (health_port + 1 by default), and whether it is listening. */
+  private previewListener: PreviewListener | null = null;
+  private previewListening = false;
+  /** The ports the preview listener was started for, and the inputs it was built from (a reload compares them). */
+  private previewPorts: { requested: number; bound: number } | null = null;
+  private previewInputs = "";
   private healthPortRetried = false;
   private updateCheckTimer: ReturnType<typeof setTimeout> | ReturnType<typeof setInterval> | null = null;
   private updateProgressTimer: ReturnType<typeof setInterval> | null = null;
@@ -971,12 +1042,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   // Web UI: SSE clients + auth token
   private sseClients = new Set<import("node:http").ServerResponse>();
+  /** The web chat's recent messages: what `/ui/history` serves and what a reconnecting SSE stream is sent. */
+  readonly webChatHistory = new WebChatHistory();
+  /** Uploaded files and the files the dashboard may fetch back (uploads, reply attachments). */
+  readonly webFiles = new WebFileLedger();
   /**
    * Read from disk on every access rather than cached at startup: `agend
    * web-token rotate` runs in a separate process, and a cached copy would keep
    * authorizing revoked links and cookies until the fleet restarted.
    */
   private get webToken(): string | null { return readWebToken(this.dataDir); }
+  /**
+   * Server-side web sessions (see web-session.ts). Created with the token, not per
+   * request: they are persisted, and a restart must find them again.
+   */
+  private webSessions: WebSessionStore | null = null;
+  /** Heartbeat of the dashboard's SSE stream; public so a test can shorten it. */
+  sseHeartbeatMs = SSE_HEARTBEAT_MS;
+  /** The dashboard's login codes. Memory only: a code that outlives the process is a code nobody can prove was not copied. */
+  private webLoginCodes: WebLoginCodes | null = null;
   /**
    * Set while a Settings apply job is driving the reconcile. The reconcile
    * stays the single doer; it just says out loud what it is doing to whom, so
@@ -994,7 +1078,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** Set when the file on disk and the in-memory config disagree on a
    * startup-only key at startup. See checkStartupSignatureConsistency(). */
   private fleetSignatureMismatch: string[] | null = null;
-  private viewToken: string | null = null;
   private healthServerListening = false;
 
   constructor(public dataDir: string) {
@@ -2374,6 +2457,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // asks "is anyone still reporting", which only the receiver can date.
       receivedAt: now,
     });
+    // The dashboard's "working" line and its Stop button follow the edges, not the heartbeat.
+    if (previous?.state !== state) this.emitSseEvent("activity", { instance: name, state: this.getInstanceExecutionState(name) });
     for (const check of this.instanceIdleWaiters.get(name) ?? []) check();
     // warm_cap: a fresh transition into idle may free this instance for eviction,
     // or (more usefully) reveal that the fleet is now over cap. Only fire on the
@@ -2428,7 +2513,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.instanceProcessStatus.set(name, status);
     // Never display the last ready prompt as current execution state after its
     // owning CLI process has exited.
-    this.instanceStateCache.delete(name);
+    if (this.instanceStateCache.delete(name)) this.emitSseEvent("activity", { instance: name, state: null });
     for (const check of this.instanceIdleWaiters.get(name) ?? []) check();
   }
 
@@ -2689,6 +2774,141 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
+  /**
+   * Reserve the display echo before IPC handoff: a fast reply cannot overtake
+   * it. The web request settles admission without awaiting the platform POST.
+   * Only accepted messages send an echo; failures release replies normally.
+   * Each reservation has a 5s total monotonic ordering budget (queue/admission
+   * included). Expiry drops unstarted copies and releases replies. An adapter
+   * request already in flight may land late, but cannot retain the ordering lane.
+   */
+  /**
+   * Post an owner web-chat echo to every ClassicBot channel entry opted in
+   * for `instance` (#1320 part B). Per entry: the channel's own adapter, no
+   * thread, mention suppression on. Returns the number of channels posted
+   * to. Failures are per-entry warn-and-continue — a failed echo never fails
+   * the web send. Entries without `web_echo: true` are never touched.
+   *
+   * Every copy is fenced at start time: an entry whose explicit world is
+   * gone is skipped (only legacy adapterId-less entries fall back to the
+   * primary adapter); when running under a reservation, an exhausted
+   * ordering budget or a revoked delivery epoch stops the loop, and each
+   * entry is re-resolved against current registration so a removed opt-in
+   * or a rebound adapter is never posted through a stale route. A copy
+   * already in flight may still land late — the contract permits that.
+   */
+  async sendClassicWebEcho(instance: string, text: string): Promise<number> {
+    const guard = this.webChannelEchoGuards.get(instance);
+    const handled = new Set<string>();
+    let posted = 0;
+    for (;;) {
+      if (guard) {
+        if (performance.now() >= guard.deadlineAt) {
+          this.logger.warn({ instance, posted }, "Classic web echo stopped: ordering budget exhausted");
+          break;
+        }
+        if (!this.isDeliveryEpochCurrent(instance, guard.epoch)) {
+          this.logger.warn({ instance, posted }, "Classic web echo stopped: delivery epoch revoked");
+          break;
+        }
+      }
+      const entry = (this.classicChannels?.getAll() ?? [])
+        .find(candidate => candidate.instanceName === instance && candidate.webEcho === true
+          && !handled.has(`${candidate.channelId}#${candidate.adapterId ?? ""}`));
+      if (!entry) break;
+      handled.add(`${entry.channelId}#${entry.adapterId ?? ""}`);
+      const worldAdapter = entry.adapterId ? this.worlds.get(entry.adapterId)?.adapter : undefined;
+      if (entry.adapterId && !worldAdapter) {
+        this.logger.warn({ instance, channelId: entry.channelId, adapterId: entry.adapterId },
+          "Classic web echo skipped: adapter world unavailable");
+        continue;
+      }
+      const adapter = worldAdapter ?? this.adapter;
+      try {
+        if (!adapter?.sendText) continue;
+        await adapter.sendText(entry.channelId, text, { format: "text", allowedMentions: { parse: [] } });
+        ClassicChannelManager.logMessage(instance, "web-user", text, new Date());
+        posted++;
+      } catch (err) {
+        this.logger.warn({ err, instance, channelId: entry.channelId }, "Classic web echo failed");
+      }
+    }
+    return posted;
+  }
+
+  reserveWebChannelEcho(instanceName: string, sendEcho: () => Promise<unknown>): (accepted: boolean) => void {
+    const epoch = this.getDeliveryEpoch(instanceName);
+    const deadlineAt = performance.now() + 5_000;
+    let decide!: (accepted: boolean) => void;
+    const admission = new Promise<boolean>(resolve => { decide = resolve; });
+    const queue = this.webChannelEchoTails.get(instanceName)
+      ?? { tail: Promise.resolve(), pending: new Set<{ started: boolean; drop: () => void }>() };
+    const previous = queue.tail;
+    let resolveDone!: () => void;
+    const tail = new Promise<void>(resolve => { resolveDone = resolve; });
+    let done = false, expired = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let guard: { epoch: number; deadlineAt: number } | undefined;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      queue.pending.delete(entry);
+      if (guard && this.webChannelEchoGuards.get(instanceName) === guard) {
+        this.webChannelEchoGuards.delete(instanceName);
+      }
+      resolveDone();
+    };
+    const entry = { started: false, drop: () => {
+      this.logger.warn({ instanceName }, "Queued web channel echo dropped after ordering timeout");
+      finish();
+    } };
+    const expire = () => {
+      if (done) return;
+      expired = true;
+      this.logger.warn({ instanceName, inFlight: entry.started }, "Web channel echo ordering timed out");
+      finish();
+      // Do not post copies that were queued behind an ambiguous platform send.
+      for (const pending of queue.pending) if (!pending.started) pending.drop();
+    };
+    const checkDeadline = () => {
+      if (done) return;
+      const remaining = deadlineAt - performance.now();
+      if (remaining <= 0) expire();
+      else timer = setTimeout(checkDeadline, Math.ceil(remaining));
+    };
+    queue.pending.add(entry);
+    queue.tail = tail;
+    this.webChannelEchoTails.set(instanceName, queue);
+    checkDeadline();
+    void Promise.all([previous, admission]).then(([, accepted]) => {
+      if (done) return;
+      if (!accepted || !this.isDeliveryEpochCurrent(instanceName, epoch)) { finish(); return; }
+      // A delayed timer callback must not admit an already expired copy.
+      if (performance.now() >= deadlineAt) { expire(); return; }
+      entry.started = true;
+      guard = { epoch, deadlineAt };
+      this.webChannelEchoGuards.set(instanceName, guard);
+      let request: Promise<unknown>;
+      try { request = Promise.resolve(sendEcho()); }
+      catch (err) { request = Promise.reject(err); }
+      void request.then(() => {
+        if (expired) this.logger.warn({ instanceName }, "Web channel echo completed late after ordering timeout");
+        finish();
+      }, err => {
+        this.logger.warn({ err, instanceName }, expired
+          ? "Web channel echo failed late after ordering timeout" : "Web channel echo failed");
+        finish();
+      });
+    });
+    void tail.then(() => {
+      if (this.webChannelEchoTails.get(instanceName) === queue && queue.tail === tail && queue.pending.size === 0) {
+        this.webChannelEchoTails.delete(instanceName);
+      }
+    });
+    return decide;
+  }
+
   /** Whether this target already has an ordinary non-user delivery in its FIFO. */
   hasPendingIdleGatedDelivery(instanceName: string): boolean {
     return this.idleGatedDeliveryTails.has(instanceName);
@@ -2908,9 +3128,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // Slash commands are Discord-only; use plain lines (no markdown table)
       await this.topicCommands.sendSysInfo(text => data.respond(text), { platform: "discord" });
     } else if (data.command === "dashboard") {
-      // Reply is ephemeral (adapter defers non-chat commands ephemerally), so
-      // the web-token-bearing URLs are only visible to the caller.
-      await data.respond(this.topicCommands.getDashboardText());
+      // The reply is ephemeral (the adapter defers non-chat commands ephemerally): the sign-in link and its
+      // one-time code are seen only by the caller. Who may call it is decided before this point (fleet admins
+      // of the invoking adapter). `action: revoke` is the typed `/dashboard revoke` — the one every new-sign-in
+      // notice tells the operator to send (#1260): sign every browser out, and say so honestly if it could not
+      // be saved.
+      if (String(data.options?.action ?? "").trim().toLowerCase() === "revoke") {
+        const result = this.revokeWebSessions();
+        await data.respond(result.durable ? t("dashboard.revoked", result.count) : t("dashboard.revoked_not_durable", result.count));
+      } else {
+        await data.respond(this.topicCommands.getDashboardText());
+      }
     } else if (data.command === "restart") {
       await this.handleRestartSlash(data, adapterId);
     } else if (data.command === "compact") {
@@ -4013,11 +4241,59 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Creates web.token if absent; the value is then read back per request by
     // the `webToken` getter, so nothing is cached here.
     loadOrCreateWebToken(this.dataDir);
-    this.viewToken = randomBytes(24).toString("hex");
-    const viewTokenPath = join(this.dataDir, "view.token");
-    writeFileSync(viewTokenPath, this.viewToken, { encoding: "utf8", mode: 0o600 });
-    try { chmodSync(viewTokenPath, 0o600); } catch { /* best effort */ }
+    this.initializeWebSessions();
+    // A `view.token` file was written here for a read-only credential that nothing
+    // ever accepted. Older installs still have one; it authorizes nothing, so do
+    // not leave a credential-shaped file lying around.
+    try { rmSync(join(this.dataDir, "view.token"), { force: true }); } catch { /* best effort */ }
     this.healthServerListening = false;
+  }
+
+  private initializeWebSessions(): void {
+    if (!this.webSessions) {
+      this.webSessions = new WebSessionStore({
+        dataDir: this.dataDir,
+        onWarn: message => this.logger.warn(message),
+      });
+    }
+    if (!this.webLoginCodes) {
+      this.webLoginCodes = new WebLoginCodes({
+        onEvent: event => {
+          if (event === "burned") this.logger.warn("A web login code was used up by wrong attempts");
+          else if (event === "breaker-open") this.logger.warn("Web sign-in paused: too many wrong login codes");
+        },
+      });
+    }
+  }
+
+  /**
+   * A single-use login code for the dashboard, for a channel only the operator
+   * can read (`/dashboard`). Null while the panel is closed (no web.token).
+   */
+  issueDashboardLogin(): { display: string; expiresAt: number; ttlMinutes: number } | null {
+    const token = this.webToken;
+    if (!token) return null;
+    this.initializeWebSessions();
+    const issued = this.webLoginCodes!.issue({ tier: "admin", epoch: tokenEpoch(token) });
+    return { display: issued.display, expiresAt: issued.expiresAt, ttlMinutes: Math.round(LOGIN_CODE_TTL_MS / 60_000) };
+  }
+
+  /** `/dashboard revoke`: sign out every browser and withdraw any unused code. */
+  revokeWebSessions(): { count: number; durable: boolean } {
+    this.initializeWebSessions();
+    this.webLoginCodes!.revoke();
+    const result = this.webSessions!.revokeAll();
+    if (result.durable) this.logger.info({ count: result.count }, "Web sessions revoked (all)");
+    else this.logger.warn({ count: result.count }, "Web sessions revoked in memory only — the session file could not be updated or removed");
+    return result;
+  }
+
+  /** Called by the sign-in endpoint: a login the operator did not make should be visible to them. */
+  onWebLogin(info: { label: string; surface: "local" | "gateway"; tier: string; handle: string }): void {
+    if (this.fleetConfig?.web?.notify_login === false) return;
+    // The session handle makes each notice distinct: notifyFleetError throttles by text, and a second
+    // sign-in from the same kind of browser is exactly the one the operator most needs to hear about.
+    this.notifyFleetError(t("web.login_notice", info.label, info.surface, info.handle.slice(0, 8)));
   }
 
   getDashboardAccess(): { ready: boolean; token: string | null } {
@@ -4391,6 +4667,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Rotate classic channel chat logs daily (piggyback on daily summary timer)
     this.classicChannels?.rotateLogs();
     this.rotateInboxes();
+    // Web uploads no message took before this restart (#1273).
+    this.sweepOrphanedWebUploads();
 
     // Auto-create/adopt a general dispatcher — ONLY for the primary adapter.
     const channelConfigs = fleet.channels ?? (fleet.channel ? [fleet.channel] : []);
@@ -4876,6 +5154,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     if (deleted > 0) this.logger.info({ deleted }, "Rotated inbox files");
     return deleted;
+  }
+
+  /**
+   * Web uploads no message took before a restart (#1273): removed once older than the upload window. Younger ones
+   * are looked at again when the first comes due (an unref'd timer, so it never holds the process).
+   */
+  private sweepOrphanedWebUploads(): void {
+    // Skip what this process's ledger still holds: those are uploads made since this start, timed by the ledger.
+    // (Compared the way the sweep names files: the inbox directory resolved, the file name as it is.)
+    const owned = new Set([...this.webFiles.ownedPaths()].map(p => { try { return join(realpathSync(dirname(p)), basename(p)); } catch { return p; } }));
+    const { deleted, nextDueInMs } = sweepOrphanedUploads(join(getAgendHome(), "workspaces"), Date.now(), undefined, owned);
+    if (deleted > 0) this.logger.info({ deleted }, "Removed web uploads no message took before the restart");
+    if (nextDueInMs !== null) {
+      const t = setTimeout(() => this.sweepOrphanedWebUploads(), Math.max(1_000, nextDueInMs + 1_000));
+      t.unref?.();
+    }
   }
 
   /** Start the shared channel adapter(s) for topic mode */
@@ -5823,6 +6117,28 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private async handleInboundMessage(msg: InboundMessage): Promise<void> {
+    // Platform author identity is the authority. This runs before routing,
+    // collab/commands/access/dedup and does not depend on any echo setting/ACK.
+    const fleetBotIds = new Set<string>();
+    for (const world of this.worlds.values()) {
+      if (world.adapter.type !== msg.source) continue;
+      const id = world.adapter.getBotUserId?.() ?? world.botUserId;
+      if (id) fleetBotIds.add(id);
+    }
+    if (isWebChannelEcho(msg.text ?? "", msg.userId, fleetBotIds)) return;
+    const configured = this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
+    const identitiesPending = configured.some(channel => {
+      if (channel.type !== msg.source) return false;
+      const world = this.worlds.get(channel.id ?? channel.type);
+      return !(world?.adapter.getBotUserId?.() ?? world?.botUserId);
+    });
+    // Startup/rebuild can receive a replay before another configured world's
+    // authenticated ID is ready. Quarantine only bot-flagged prefix candidates;
+    // humans keep flowing, and no unknown author is labelled a fleet account.
+    if (identitiesPending && msg.isBotMessage === true && (msg.text ?? "").startsWith(WEB_ECHO_PREFIX)) {
+      this.logger.debug({ source: msg.source, adapterId: msg.adapterId }, "Web echo candidate quarantined while bot identities are pending");
+      return;
+    }
     const threadId = this.inboundRouteThreadId(msg);
 
     this.logger.debug({ source: msg.source, chatId: msg.chatId, threadId, userId: msg.userId, isBotMessage: msg.isBotMessage, textLen: (msg.text ?? "").length, text: (msg.text ?? "").slice(0, 80) }, "handleInboundMessage entry");
@@ -6274,8 +6590,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           this.logger.info(`${msg.username} → ${generalInstance}: ${(text ?? "").slice(0, 100)}`);
           this.eventLog?.logActivity("message", msg.username, (text ?? "").slice(0, 200), generalInstance);
           this.emitSseEvent("message", {
-            instance: generalInstance, sender: msg.username,
-            text: (text ?? "").slice(0, 2000), ts: new Date().toISOString(),
+            instance: generalInstance, sender: msg.username, role: "user",
+            text: (text ?? "").slice(0, WEB_CHAT_TEXT_MAX), ts: new Date().toISOString(),
           });
           this.trackInboundMsg(generalInstance, msg);
           void this.sendCancelButton(generalInstance);
@@ -6390,8 +6706,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.logger.info(`${msg.username} → ${instanceName}: ${(text ?? "").slice(0, 100)}`);
     this.eventLog?.logActivity("message", msg.username, (text ?? "").slice(0, 200), instanceName);
     this.emitSseEvent("message", {
-      instance: instanceName, sender: msg.username,
-      text: (text ?? "").slice(0, 2000), ts: new Date().toISOString(),
+      instance: instanceName, sender: msg.username, role: "user",
+      text: (text ?? "").slice(0, WEB_CHAT_TEXT_MAX), ts: new Date().toISOString(),
     });
     this.trackInboundMsg(instanceName, msg);
     void this.sendCancelButton(instanceName);
@@ -6510,7 +6826,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
 
-    if (this.worlds.size === 0) {
+    // A fleet with no chat platform at all is driven from the web dashboard alone: a reply has nowhere
+    // else to go, and "retry shortly" would have the agent retry forever. It goes to the web chat.
+    const webOnlyReply = tool === "reply" && this.worlds.size === 0 && this.isWebOnlyFleet();
+    if (this.worlds.size === 0 && !webOnlyReply) {
       respond(null, "Channel adapters are not ready — retry shortly");
       return;
     }
@@ -6540,7 +6859,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     const outAdapter = contextWorld?.adapter
       ?? this.getAdapterForInstance(senderInstanceName ?? instanceName)
-      ?? this.adapter;
+      ?? this.adapter
+      ?? (webOnlyReply ? WEB_ONLY_REPLY_SINK : null);
     if (!outAdapter) { respond(null, "No adapter available"); return; }
 
     // For classic instances: force chat_id to channelId and clear thread_id
@@ -6566,6 +6886,27 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // still in flight and about to succeed. One real send, everyone gets its
     // outcome; a genuinely failed send clears the entry so a retry passes.
     if (tool === "reply") {
+      // Registered synchronously before a web message is handed to this CLI.
+      // This waits only on display ordering, never on the web delivery itself.
+      const echoTail = this.webChannelEchoTails.get(instanceName)?.tail;
+      if (echoTail) {
+        const replyClient = this.instanceIpcClients.get(instanceName);
+        const bindingName = senderInstanceName ?? instanceName;
+        const binding = this.getAdapterForInstance(bindingName);
+        const bindingGroup = this.getGroupIdForInstance(bindingName);
+        const bindingTopic = this.fleetConfig?.instances[bindingName]?.topic_id;
+        await echoTail;
+        // A replacement daemon must not receive this old tool's response or
+        // publish its reply after the new async ordering boundary.
+        if (this.instanceIpcClients.get(instanceName) !== replyClient) return;
+        if (this.getAdapterForInstance(bindingName) !== binding
+          || this.getGroupIdForInstance(bindingName) !== bindingGroup
+          || this.fleetConfig?.instances[bindingName]?.topic_id !== bindingTopic
+          || (contextAdapterId && this.worlds.get(contextAdapterId)?.adapter !== outAdapter)) {
+          respond(null, "Channel binding changed while waiting for the web echo");
+          return;
+        }
+      }
       // Stickers (#1226) are checked before anything is sent: a refused one is the reply's error, not a gap.
       const stickerProblem = await this.replyStickerProblem(outAdapter, args, threadId, contextAdapterId ?? this.getInstanceAdapterId(senderInstanceName ?? instanceName));
       if (stickerProblem) { respond(null, stickerProblem); return; }
@@ -6597,6 +6938,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           } catch (err) {
             this.logger.warn({ err, instanceName }, "Reply delivered but post-delivery bookkeeping failed");
           }
+        } else if (!error && result != null && outAdapter === WEB_ONLY_REPLY_SINK) {
+          // A daemon status line skips the bookkeeping, but on a web-only fleet the web chat is the only
+          // place anyone could read it.
+          this.emitSseEvent("message", {
+            instance: instanceName, sender: senderSessionName ?? instanceName, role: "status",
+            text: String(args.text ?? "").slice(0, WEB_CHAT_TEXT_MAX), ts: new Date().toISOString(),
+          });
         }
       };
       if (routeToolCall(outAdapter, tool, args, threadId, respondAndRecord)) {
@@ -6629,6 +6977,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** Side effects of a routed reply: cancel-button lifecycle, logs, SSE, chat log. */
+  /** No chat platform is configured at all: the web dashboard is the fleet's only surface. */
+  private isWebOnlyFleet(): boolean {
+    const config = this.fleetConfig;
+    return config != null && !config.channel && !(config.channels?.length);
+  }
+
+  /** On a fleet with no chat platform, the dashboard is where an instance-health prompt is posted (#1307 item 6). */
+  private webOnlyPromptPlace(): { adapter: ChannelAdapter; adapterId: string; chatId: string } | null {
+    return this.worlds.size === 0 && this.isWebOnlyFleet() ? { adapter: WEB_ONLY_PROMPT_SINK, adapterId: "web", chatId: "web" } : null;
+  }
+
   private afterReplyRouted(instanceName: string, args: Record<string, unknown>, senderSessionName?: string): void {
     // A reply is NOT proof the turn is over (#410) — but it is not proof of
     // more work either. Split the difference: an instance that is clearly
@@ -6645,10 +7004,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.reactDone(instanceName);
     const replyTo = this.lastInboundUser.get(instanceName) ?? "user";
     this.logger.info(`${instanceName} → ${replyTo}: ${(args.text as string ?? "").slice(0, 100)}`);
+    // Files the agent attached are shown in the web chat too: registered for fetching by id (the path
+    // already passed the reply tool's sendability check, and is resolved once more here), never by path.
+    const replyFiles = Array.isArray(args.files) ? (args.files as unknown[]).filter((f): f is string => typeof f === "string") : [];
+    const attachments = replyFiles
+      .map(path => this.webFiles.registerServed({ path, instance: instanceName }))
+      .filter((f): f is NonNullable<typeof f> => f !== null)
+      .map(publicAttachment);
+    // The one place a delivered agent reply reaches the web chat: the server marks it `agent` (#1306) — the only
+    // role that may get HTML preview cards. Never inferred from the sender name or the text.
     this.emitSseEvent("message", {
-      instance: instanceName, sender: senderSessionName ?? instanceName,
-      text: (args.text as string ?? "").slice(0, 2000),
+      instance: instanceName, sender: senderSessionName ?? instanceName, role: "agent",
+      text: (args.text as string ?? "").slice(0, WEB_CHAT_TEXT_MAX),
       ts: new Date().toISOString(),
+      ...(attachments.length ? { attachments } : {}),
     });
     // Log bot reply to classic instance chat-log
     const isClassic = this.classicChannels?.getChannelIdByInstance(instanceName) !== undefined;
@@ -7963,6 +8332,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.lastActivity.delete(name);
     this.lastInboundUser.delete(name);
     this.rateLimitWarnedAt.delete(name);
+    // Its web chat goes with it (only after the removal succeeded): a later instance of the same name
+    // must not be shown the old one's conversation, and deleted names must not pile up.
+    this.webChatHistory.forget(name);
+    this.webFiles.forget(name);
 
     // Clean up statusline watcher + instance directory
     this.statuslineWatcher.unwatch(name);
@@ -8600,6 +8973,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   reactMessageStatus(
     instanceName: string, chatId: string, messageId: string, status: DeliveryStatus, threadId?: string, receivedAt?: number,
   ): void {
+    // A message the web user sent is no message on any platform: there is nothing to react on, and an id
+    // like web-… would only fail there. Its ticks are the dashboard's (web track C3).
+    if (isWebMessageId(messageId)) { this.reportWebDelivery(instanceName, messageId, status); return; }
     // React via the adapter BOUND to this instance — NOT the first discord world.
     // Otherwise, in a same-channel/same-guild multi-bot setup, the inbound 👀
     // (bound bot) and the delivery/confirm reactions (some other bot) come from
@@ -8619,6 +8995,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       ? (adapter as unknown as { id: string }).id : "?";
     const key = `${adapterId}:${chatId}:${threadId ?? ""}:${messageId}`;
     this.queueDeliveryStatusReaction(adapter, key, chatId, messageId, statusEmoji, threadId, status, status === "received" ? receivedAt : undefined);
+  }
+
+  /** One delivery report for a web user's message: recorded with it, and sent to the pages when it moved. */
+  private reportWebDelivery(instanceName: string, messageId: string, status: DeliveryStatus): void {
+    if (status !== "queued" && status !== "processing" && status !== "delivered" && status !== "failed") return;
+    const m = this.webChatHistory.setDelivery(instanceName, messageId, status);
+    if (m) this.emitSseEvent("delivery", { instance: instanceName, messageId, delivery: m.delivery });
   }
 
   /**
@@ -9170,6 +9553,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // install-backend-menu.test.ts and classic-approve-buttons.test.ts.
     const nonce = randomBytes(16).toString("hex");
     const entry: NonceButtonEntry = {
+      nonce,
       prefix: opts.prefix,
       instanceName: opts.instanceName,
       adapterId: opts.adapterId,
@@ -9183,6 +9567,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const pending = this.pendingNonceButtons.get(nonce);
       if (pending !== entry) return;
       this.pendingNonceButtons.delete(nonce);
+      this.webPromptGone(entry, entry.expiredText);
       if (entry.messageId && entry.adapter.editMessageRemoveButtons) {
         entry.adapter.editMessageRemoveButtons(
           entry.chatId,
@@ -9215,6 +9600,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         entry.threadId = sent.threadId;
       }
       entry.messageId = sent.messageId;
+      // Offered on the dashboard only once it is live on the platform (a failed post is disarmed above),
+      // and only if nothing claimed or expired it meanwhile.
+      if (WEB_MIRRORED_PROMPT_PREFIXES.has(opts.prefix) && this.pendingNonceButtons.get(nonce) === entry) {
+        entry.web = {
+          text: opts.message,
+          actions: opts.choices.map(c => ({ id: c.action, label: c.label })),
+          expiresAt: Date.now() + (opts.timeoutMs ?? NONCE_BUTTON_TIMEOUT_MS),
+        };
+        this.emitSseEvent("prompt", { instance: entry.instanceName, nonce, ...entry.web });
+      }
       return nonce;
     } catch (err) {
       this.pendingNonceButtons.delete(nonce);
@@ -9284,7 +9679,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Bind the capability to the exact message/world that created it. Telegram
     // keyboards are visible to everyone, so mutating actions require fleet admin;
     // a Tip acknowledgement only records that the shared content was read.
-    const isAuthorized = data.userId
+    // A dashboard click carries the full-fleet web session (checked by the web gate before it got here),
+    // and is good only for a prompt that was offered on the dashboard.
+    const fromWeb = this.webPromptClicks.has(data);
+    const isAuthorized = fromWeb
+      ? pending.web !== undefined
+      : data.userId
       ? pending.allowAnyUser
         ? true
         : pending.authChannelId
@@ -9314,6 +9714,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // can never act twice for state-changing actions.
     this.pendingNonceButtons.delete(match[1]);
     if (pending.timer) clearTimeout(pending.timer);
+    if (fromWeb) this.webPromptClaims.add(data);
+    // The dashboard's copy goes now; the outcome line follows from retireNonceButtons.
+    this.webPromptGone(pending);
     return { entry: pending, action: match[2] };
   }
 
@@ -9385,11 +9788,61 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return false;
   }
 
+  /**
+   * A prompt the dashboard was offered is no longer open (answered on either surface, expired, or its
+   * instance stopped): every page drops its buttons, and shows `outcome` when there is one.
+   */
+  private webPromptGone(entry: NonceButtonEntry, outcome?: string): void {
+    if (!entry.web || !entry.nonce) return;
+    this.emitSseEvent("prompt_resolved", { instance: entry.instanceName, nonce: entry.nonce, ...(outcome ? { outcome } : {}) });
+  }
+
+  /** The prompts open on the dashboard right now (a page that loads after one was posted asks for them). */
+  listWebPrompts(): Array<{ instance: string; nonce: string; text: string; actions: Array<{ id: string; label: string }>; expiresAt: number }> {
+    const open: ReturnType<FleetManager["listWebPrompts"]> = [];
+    for (const [nonce, e] of this.pendingNonceButtons) {
+      if (e.web) open.push({ instance: e.instanceName, nonce, ...e.web });
+    }
+    return open;
+  }
+
+  /**
+   * A click on a prompt in the web dashboard (web track C4). It is the platform click, made by the
+   * dashboard: the same handler, the same single claim (whoever answers first — here or on Telegram —
+   * wins), and the platform's buttons collapse to the outcome exactly as for a click there.
+   *
+   * The caller has passed the /ui gate (session, same origin, CSRF). Here: the prompt must be one offered
+   * on the dashboard, about the instance the page named, and the action one of its own buttons.
+   */
+  async clickWebPrompt(instance: string, nonce: string, action: string): Promise<{ status: 200 | 400 | 403 | 409; error?: string; outcome?: string }> {
+    if (!/^[0-9a-f]{32}$/.test(nonce) || !/^[a-z][a-z-]{0,23}$/.test(action)) return { status: 400, error: "Malformed prompt answer" };
+    const entry = this.pendingNonceButtons.get(nonce);
+    // Unknown is the same answer as answered or expired: the page drops the buttons either way.
+    if (!entry || !entry.web) return { status: 409, error: "This prompt is no longer open" };
+    if (entry.instanceName !== instance) return { status: 403, error: "This prompt belongs to another instance" };
+    if (!entry.web.actions.some(a => a.id === action)) return { status: 400, error: "Not one of this prompt's answers" };
+    let notice: string | undefined;
+    const data: AdapterCallbackData = {
+      callbackData: `${entry.prefix}${nonce}:${action}`,
+      // The exact place the prompt lives, so the platform-side binding checks hold as for a click there.
+      chatId: entry.chatId,
+      threadId: entry.threadId,
+      messageId: entry.messageId ?? "",
+      userId: "web-user",
+      ack: n => { if (notice === undefined && n) notice = n; },
+    };
+    this.webPromptClicks.add(data);
+    await this.dispatchAdapterCallback(data, entry.adapterId, entry.adapter);
+    if (this.webPromptClaims.has(data)) return { status: 200 };
+    return { status: 409, error: notice ?? "This prompt is no longer open" };
+  }
+
   private async retireNonceButtons(
     pending: NonceButtonEntry,
     messageId: string,
     text: string,
   ): Promise<void> {
+    this.webPromptGone(pending, text);
     try {
       if (!pending.adapter.editMessageRemoveButtons) throw new Error("adapter cannot remove prompt buttons");
       await pending.adapter.editMessageRemoveButtons(
@@ -9807,7 +10260,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private async retirePendingNoncePrompts(budgetMs = NONCE_RETIRE_BUDGET_MS): Promise<void> {
     const entries = [...this.pendingNonceButtons.values()];
     this.pendingNonceButtons.clear();
-    for (const entry of entries) if (entry.timer) clearTimeout(entry.timer);
+    for (const entry of entries) { if (entry.timer) clearTimeout(entry.timer); this.webPromptGone(entry, entry.expiredText); }
 
     const collapses = entries
       .filter(entry => entry.messageId && entry.adapter.editMessageRemoveButtons)
@@ -9833,6 +10286,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (entry.instanceName !== instanceName) continue;
       this.pendingNonceButtons.delete(nonce);
       if (entry.timer) clearTimeout(entry.timer);
+      this.webPromptGone(entry, entry.expiredText);
       if (entry.messageId && entry.adapter.editMessageRemoveButtons) {
         entry.adapter.editMessageRemoveButtons(entry.chatId, entry.messageId, entry.expiredText, entry.threadId)
           .catch(err => this.logger.debug({ err, instanceName, prefix: entry.prefix },
@@ -9847,6 +10301,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   async notifyNormalExit(instanceName: string): Promise<void> {
     this.notifyInstanceTopic(instanceName, t("exit.instance_notice", instanceName));
 
+    const web = this.webOnlyPromptPlace();
+    if (web) {
+      await this.postNonceButtonPrompt({
+        prefix: EXIT_RESTART_CALLBACK_PREFIX, alertType: "exit_restart", instanceName, ...web,
+        message: t("exit.general_notice", instanceName),
+        choices: [{ action: "restart", label: t("exit.restart") }, { action: "ignore", label: t("exit.ignore") }],
+        expiredText: t("exit.expired", instanceName),
+      });
+      return;
+    }
     const worldId = this.getInstanceAdapterId(instanceName);
     const generalName = this.findGeneralInstance(worldId);
     if (!generalName) {
@@ -9958,6 +10422,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger.warn({ instanceName }, "Interactive prompt has no General topic notification target");
       return;
     }
+    const label = this.interactivePromptLabel(kind);
+    const prompt = {
+      prefix: INTERACTIVE_ASSIST_CALLBACK_PREFIX, alertType: "interactive_prompt" as const, instanceName,
+      message: t("interactive.general_notice", instanceName, label),
+      choices: [{ action: "confirm", label: t("interactive.confirm") }, { action: "cancel", label: t("interactive.cancel") }],
+      expiredText: t("interactive.expired", instanceName),
+      extra: { generalName, promptKind: kind },
+    };
+    // No chat platform: the dashboard is where it is asked; Confirm still asks General to help.
+    const web = this.webOnlyPromptPlace();
+    if (web) { await this.postNonceButtonPrompt({ ...prompt, ...web }); return; }
 
     const adapterId = this.getInstanceAdapterId(generalName);
     const adapter = this.getAdapterForInstance(generalName);
@@ -9970,23 +10445,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
 
-    const label = this.interactivePromptLabel(kind);
-    await this.postNonceButtonPrompt({
-      prefix: INTERACTIVE_ASSIST_CALLBACK_PREFIX,
-      alertType: "interactive_prompt",
-      instanceName,
-      adapter,
-      adapterId,
-      chatId,
-      threadId,
-      message: t("interactive.general_notice", instanceName, label),
-      choices: [
-        { action: "confirm", label: t("interactive.confirm") },
-        { action: "cancel", label: t("interactive.cancel") },
-      ],
-      expiredText: t("interactive.expired", instanceName),
-      extra: { generalName, promptKind: kind },
-    });
+    await this.postNonceButtonPrompt({ ...prompt, adapter, adapterId, chatId, threadId });
   }
 
   /**
@@ -10820,6 +11279,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     daemon.sendEscape().catch(e => this.logger.warn({ err: e, instanceName }, "sendEscape failed"));
     this.lastInboundMsg.delete(instanceName);
     this.clearCancelButton(instanceName);
+    // The queued web messages were just dropped with the rest: their ticks say so, on every page.
+    for (const m of this.webChatHistory.cancelPending(instanceName)) {
+      this.emitSseEvent("delivery", { instance: instanceName, messageId: m.messageId, delivery: m.delivery });
+    }
     return true;
   }
 
@@ -11559,9 +12022,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Push an SSE event to all connected Web UI clients. */
   emitSseEvent(event: string, data: unknown): void {
-    broadcastSseEvent(this.sseClients, event, data, (err) =>
-      this.logger.debug({ err }, "SSE client write failed; evicting"),
-    );
+    const onError = (err: unknown) => this.logger.debug({ err }, "SSE client write failed; evicting");
+    if (event === "message" && data && typeof data === "object") {
+      // A chat message: record it, and send it WITH its id so a reconnecting stream can ask for what it missed.
+      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; role?: unknown };
+      const recorded = this.webChatHistory.record({
+        instance: String(m.instance ?? ""), sender: String(m.sender ?? ""), text: String(m.text ?? ""), ts: String(m.ts ?? new Date().toISOString()),
+        attachments: Array.isArray(m.attachments) ? m.attachments as WebChatAttachment[] : undefined,
+        messageId: typeof m.messageId === "string" ? m.messageId : undefined,
+        role: typeof m.role === "string" ? m.role : undefined,
+      });
+      broadcastSseEvent(this.sseClients, event, recorded, onError, this.webChatHistory.cursorOf(recorded));
+      return;
+    }
+    broadcastSseEvent(this.sseClients, event, data, onError);
   }
 
   listClaimedTasks(assignee: string): Array<{ id: string; title: string }> {
@@ -11571,8 +12045,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   async sendHangNotification(instanceName: string, unchangedForMs?: number): Promise<void> {
-    const adapter = this.getAdapterForInstance(instanceName) ?? this.adapter;
-    const adapterId = this.getInstanceAdapterId(instanceName);
+    const web = this.webOnlyPromptPlace();     // no chat platform: asked on the dashboard (#1307 item 6)
+    const adapter = web?.adapter ?? this.getAdapterForInstance(instanceName) ?? this.adapter;
+    const adapterId = web?.adapterId ?? this.getInstanceAdapterId(instanceName);
     // Same three-way addressing as sendCancelButton: fleet topic → group+thread,
     // Classic → its own channel (Classic instances are absent from
     // fleetConfig.instances, so the topic path can never address them), else the
@@ -11582,7 +12057,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const groupId = this.getGroupIdForInstance(instanceName) || undefined;
     let chatId: string | undefined;
     let threadId: string | undefined;
-    if (topicId != null && groupId) {
+    if (web) {
+      chatId = web.chatId;
+    } else if (topicId != null && groupId) {
       chatId = String(groupId);
       threadId = String(topicId);
     } else {
@@ -13854,6 +14331,12 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       this.healthServer.close();
       this.healthServer = null;
     }
+    this.stopPreviewListener();
+
+    // The store writes lastSeen at most once a minute; what that debounce is still holding — and any
+    // write that failed and is still owed — is paid now, so a restart neither shortens the idle window
+    // nor revives a session that was revoked while the disk was refusing writes.
+    this.webSessions?.flush();
 
     this.eventLog?.close();
 
@@ -14085,6 +14568,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     this.routing.rebuild(this.fleetConfig!);
     this.reregisterClassicChannels();
     this.scheduler?.reload();
+    this.reconcilePreviewListener();
 
     const newInstances = this.fleetConfig!.instances;
     const topicMode = this.fleetConfig?.channel?.mode === "topic";
@@ -15599,7 +16083,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     this.healthServerListening = false;
     this.healthPortRetried = false;
     // Defensive for direct/unit callers; normal startup initializes these before adapters.
-    if (!this.webToken || !this.viewToken) this.initializeWebAuthTokens();
+    if (!this.webToken || !this.webSessions) this.initializeWebAuthTokens();
 
     this.healthServer = createServer((req, res) => {
       res.setHeader("Content-Type", "application/json");
@@ -15632,37 +16116,29 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         return;
       }
 
-      // Public health probe — no auth required.
-      if (req.method === "GET" && req.url === "/health") {
-        // fallthrough to existing handler below
-      } else if (req.method === "POST" && req.url === "/agent") {
-        // /agent handles its own instance-level auth via X-Agend-Instance-Token
-      } else if (isViewPath(new URL(req.url ?? "/", `http://localhost:${port}`).pathname)) {
-        // /view routes accept the read-only view.token (or web.token) and do
-        // their own per-method auth in view-api.ts — skip the web-token gate.
-      } else if (isUsagePath(new URL(req.url ?? "/", `http://localhost:${port}`).pathname)) {
-        // /api/ai-usage is read-only GET data for the /view Usage panel — open
-        // like the other /view data routes (usage-api.ts rejects non-GET).
+      // Public: the health probe, /agent (instance-token auth of its own), the
+      // sign-in surface, and /view's reads unless web.view_access says otherwise.
+      if (bypassesWebGate(req, requestPath, this.fleetConfig, p => isViewPath(p) || isUsagePath(p))) {
+        // fall through to the handlers below
       } else {
         // All other endpoints require a session cookie or an X-Agend-Token
-        // header; a `?token=` in the URL is only redeemed for a cookie on a GET.
+        // header; a `?token=` in the URL is not a credential.
         // /ui/* will also re-check in web-api.ts, which is harmless.
         const parsedUrl = new URL(req.url ?? "/", `http://localhost:${port}`);
-        const decision = decideWebGate(req, parsedUrl, this.webToken);
+        const decision = decideWebGate(req, parsedUrl, this.webToken, this.webSessions);
         if (decision.kind === "reject") {
+          // A browser navigating to a panel with no cookie gets the sign-in page,
+          // not a JSON error: a SameSite=Strict cookie is not sent on a link
+          // followed from a chat app, and the page can tell "no session" from "cookie
+          // not sent" by asking from inside the site. API callers still get JSON.
+          if (decision.reason === "no-credential" && req.method === "GET"
+            && String(req.headers.accept ?? "").includes("text/html")
+            && (requestPath === "/ui" || requestPath === "/settings" || requestPath === "/view")) {
+            serveSigninPage(res, 401);
+            return;
+          }
           res.writeHead(decision.status);
           res.end(JSON.stringify({ error: decision.message }));
-          return;
-        }
-        if (decision.kind === "exchange") {
-          res.setHeader("Set-Cookie", decision.setCookie);
-          res.setHeader("Location", decision.location);
-          // A cached redirect would replay a Set-Cookie for a rotated token.
-          res.setHeader("Cache-Control", "no-store");
-          res.writeHead(302);
-          // Browsers follow the Location; a script that does not gets told why
-          // its URL token stopped being echoed back as data.
-          res.end(JSON.stringify({ redirect: decision.location }));
           return;
         }
       }
@@ -15890,10 +16366,20 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       // ── Web UI endpoints (delegated to web-api.ts) ─────
 
       const url = new URL(req.url ?? "/", `http://localhost:${port}`);
-      if (handleViewRequest(req, res, url, this as unknown as import("./view-api.js").ViewApiContext)) return;
-      if (handleUsageRequest(req, res, url, this as unknown as import("./usage/usage-api.js").UsageApiContext)) return;
-      if (handleSettingsRequest(req, res, url, this as unknown as import("./settings-api.js").SettingsApiContext)) return;
-      if (handleWebRequest(req, res, url, this as unknown as import("./web-api.js").WebApiContext)) return;
+      // A handler that throws synchronously answers this request with a 500; it must never reach the process's
+      // uncaughtException handler, which stops the whole fleet (#1252 review: one file name did that).
+      try {
+        if (handleAuthRequest(req, res, url, this as unknown as AuthApiContext)) return;
+        if (handleViewRequest(req, res, url, this as unknown as import("./view-api.js").ViewApiContext)) return;
+        if (handleUsageRequest(req, res, url, this as unknown as import("./usage/usage-api.js").UsageApiContext)) return;
+        if (handleSettingsRequest(req, res, url, this as unknown as import("./settings-api.js").SettingsApiContext)) return;
+        if (handleWebRequest(req, res, url, this as unknown as import("./web-api.js").WebApiContext)) return;
+      } catch (err) {
+        this.logger.error({ err: (err as Error)?.message, path: url.pathname }, "Web request handler threw");
+        if (!res.headersSent) { res.writeHead(500); res.end(JSON.stringify({ error: "internal error" })); }
+        else res.destroy();
+        return;
+      }
 
       res.writeHead(404);
       res.end(JSON.stringify({ error: "not found" }));
@@ -15909,6 +16395,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       // `/dashboard` and `agend web` are the ways to get an authorized link.
       this.logger.info({ url: `http://localhost:${port}/ui` }, "Web UI available (open it with /dashboard or `agend web`)");
       this.logger.info({ url: `http://localhost:${port}/view` }, "Web View available");
+      // #1306: the preview listener starts once the web listener is bound — its frame-ancestors name the real port.
+      const bound = this.healthServer?.address();
+      this.startPreviewListener(port, bound && typeof bound === "object" ? bound.port : port);
     };
 
     this.healthServer.on("error", (err: NodeJS.ErrnoException) => {
@@ -15960,6 +16449,73 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     });
 
     this.healthServer.listen(port, "127.0.0.1", () => markListening());
+  }
+
+  /**
+   * #1306: the preview listener, beside the web listener and closed with it. When it cannot listen (the port is
+   * taken, web.preview: false), cards show Source and Download only; nothing else changes.
+   */
+  private startPreviewListener(requestedPort: number, boundPort: number): void {
+    this.stopPreviewListener();
+    this.previewPorts = { requested: requestedPort, bound: boundPort };
+    this.previewInputs = this.previewInputsSignature();
+    // web.preview is hot; web.preview_port and web.preview_origin are startup-only (STARTUP_ONLY_FLEET_KEYS): they
+    // come from the configuration this process started on, so a reload that changes them reports "restart required"
+    // and a hot re-enable never half-applies them.
+    const started = (this.startupFleetConfig ?? this.fleetConfig)?.web;
+    const settings = previewSettings({ preview: this.fleetConfig?.web?.preview, preview_port: started?.preview_port, preview_origin: started?.preview_origin }, requestedPort);
+    if (!settings.enabled) return;
+    if (settings.port === null) {
+      this.logger.warn({ health_port: requestedPort }, "No port for the HTML preview listener (health_port is the highest port) — set web.preview_port; previews are off");
+      return;
+    }
+    const listener = createPreviewListener({ settings, healthPort: boundPort, config: this.fleetConfig });
+    this.previewListener = listener;
+    listener.server.on("error", (err: NodeJS.ErrnoException) => {
+      if (this.previewListener !== listener) return;
+      this.logger.warn({ code: err.code, port: settings.port }, "Preview listener unavailable; HTML previews are off");
+      this.previewListening = false;
+      this.previewListener = null;
+    });
+    // An optional listener never takes the fleet down: a port Node refuses outright throws here, synchronously.
+    try {
+      listener.server.listen(settings.port, "127.0.0.1", () => { if (this.previewListener === listener) this.previewListening = true; });
+    } catch (err) {
+      this.logger.warn({ err: (err as Error).message, port: settings.port }, "Preview listener cannot listen; HTML previews are off");
+      this.previewListening = false;
+      this.previewListener = null;
+    }
+  }
+
+  /** What a reload may change hot: web.preview, and the dashboard names (the shim's allow-list and frame-ancestors). */
+  private previewInputsSignature(): string {
+    const c = this.fleetConfig;
+    return JSON.stringify({ p: c?.web?.preview ?? null, h: c?.hostname ?? null, a: c?.web?.allowed_hosts ?? null });
+  }
+
+  /**
+   * After a config reload: web.preview true→false stops the listener at once (/ui then offers no origin, boot or
+   * frame-src), false→true starts it, and a change of dashboard names rebuilds it (a new boot id). preview_port and
+   * preview_origin are not adopted here: they are startup-only, and the reload reports "restart required".
+   */
+  private reconcilePreviewListener(): void {
+    if (!this.previewPorts || this.previewInputsSignature() === this.previewInputs) return;
+    this.logger.info({}, "HTML preview settings changed — rebuilding the preview listener");
+    this.startPreviewListener(this.previewPorts.requested, this.previewPorts.bound);
+  }
+
+  private stopPreviewListener(): void {
+    this.previewListening = false;
+    this.previewListener?.close();
+    this.previewListener = null;
+  }
+
+  /** For one /ui load: the preview origin it may frame, and the listener's boot id (see web-preview.ts). */
+  previewForUi(hostHeader: string | undefined, secure: boolean): PreviewAvailability & { boot: string | null } {
+    const listener = this.previewListening ? this.previewListener : null;
+    const decided = previewAvailability(listener ? listener.settings : null, hostHeader, secure, listener ? listener.origins : undefined);
+    if (!listener && this.fleetConfig?.web?.preview !== false) decided.reason = "Previews are not available on this fleet right now.";
+    return { ...decided, boot: listener ? listener.bootId : null };
   }
 
   getUiStatus(): unknown {
@@ -16018,6 +16574,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         name,
         display_name: display_name || undefined,
         status: this.getInstanceStatus(name),
+        // `state` (presentation: may be awaiting_input) and `execution_state` (working / idle / stuck, or null —
+        // what the dashboard's activity events carry) come from instancePresentation (#1212).
         context_pct,
         cost,
         model,

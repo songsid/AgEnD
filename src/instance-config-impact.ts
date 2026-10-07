@@ -83,6 +83,7 @@ const INSTANCE_FIELDS = [
 const CLASSIC_FIELDS = [
   "backend", "model", "auto_pause_after", "tool_progress",
   "reply_completion_guard", "collab", "context_lines", "pre_task_command",
+  "web_echo",
 ] as const;
 
 /**
@@ -90,6 +91,7 @@ const CLASSIC_FIELDS = [
  * fleet process or the channel binding rather than to an instance's config.
  */
 const FLEET_FIELD_IMPACTS: Readonly<Record<string, ConfigImpact>> = {
+  "web.echo_to_channel": "now",
   "defaults.locale": "now",
   "fleet.channels": "fleet",
   "fleet.channel.access.mode": "fleet",

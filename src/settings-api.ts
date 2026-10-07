@@ -25,6 +25,7 @@
  * Writes are validated first (config-validator): any error → 400 and nothing is
  * written; warnings are non-blocking and returned alongside the result.
  */
+import { sendPanelHtml } from "./web-host-guard.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readFileSync, writeFileSync, existsSync, renameSync, unlinkSync, statSync } from "node:fs";
 import { randomBytes } from "node:crypto";
@@ -259,8 +260,7 @@ export function handleSettingsRequest(
   if (method === "GET" && path === "/settings") {
     try {
       const html = readFileSync(join(__dirname, "ui", "settings.html"), "utf-8");
-      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      res.end(html);
+      sendPanelHtml(res, html);
     } catch {
       json(res, 500, { error: "settings.html not found" });
     }
@@ -604,6 +604,28 @@ export function handleSettingsRequest(
     return true;
   }
 
+  // One hot web toggle; an unrelated Settings edit never materializes defaults.
+  if (method === "PUT" && path === "/api/settings/fleet/web") {
+    if (!cfg) { json(res, 503, { error: "fleet not loaded" }); return true; }
+    readBody(req, 4096).then(buf => {
+      let body: unknown;
+      try { body = JSON.parse(buf.toString("utf-8")); } catch { return json(res, 400, { error: "invalid JSON" }); }
+      if (!body || typeof body !== "object" || Array.isArray(body)
+        || Object.keys(body).some(key => key !== "echo_to_channel")) return json(res, 400, { error: "expected echo_to_channel only" });
+      const patch = body as { echo_to_channel?: unknown };
+      if (!Object.hasOwn(patch, "echo_to_channel")) return json(res, 200, { ok: true });
+      if (typeof patch.echo_to_channel !== "boolean") return json(res, 400, { error: "echo_to_channel must be a boolean" });
+      const web = { ...cfg.web, echo_to_channel: patch.echo_to_channel };
+      const before = validateFleetConfig(cfg);
+      const after = validateFleetConfig({ ...cfg, web });
+      if (rejectIfWorse(res, before, after)) return;
+      cfg.web = web;
+      ctx.saveFleetConfig([{ path: ["web", "echo_to_channel"], value: patch.echo_to_channel }]);
+      json(res, 200, { ok: true, warnings: saveWarnings(before, after) });
+    }).catch(() => json(res, 400, { error: "bad request" }));
+    return true;
+  }
+
   // ── Fleet defaults ──
   if (method === "PUT" && path === "/api/settings/fleet/defaults") {
     if (!cfg) { json(res, 503, { error: "fleet not loaded" }); return true; }
@@ -741,6 +763,7 @@ export function handleSettingsRequest(
         "context_lines",
         "tool_progress",
         "reply_completion_guard",
+        "web_echo",
       ]);
       const unknown = Object.keys(body).filter(field => !allowed.has(field));
       if (unknown.length) return json(res, 400, { error: `unsupported fields: ${unknown.join(", ")}` });
@@ -763,6 +786,9 @@ export function handleSettingsRequest(
       if (body.reply_completion_guard !== undefined && body.reply_completion_guard !== null
         && typeof body.reply_completion_guard !== "boolean") {
         return json(res, 400, { error: "reply_completion_guard must be a boolean" });
+      }
+      if (body.web_echo !== undefined && typeof body.web_echo !== "boolean") {
+        return json(res, 400, { error: "web_echo must be a boolean" });
       }
 
       let classic: Record<string, unknown>;

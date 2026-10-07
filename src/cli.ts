@@ -2022,8 +2022,9 @@ program
 
 program
   .command("web")
-  .description("Open the Web UI dashboard in your browser")
-  .action(async () => {
+  .description("Open the Web UI sign-in page in your browser and print a one-time sign-in code")
+  .option("--code", "Only print the sign-in page and code; do not open a browser")
+  .action(async (opts: { code?: boolean }) => {
     const tokenPath = join(DATA_DIR, "web.token");
     if (!existsSync(tokenPath)) {
       console.error("Web token not found. Is the fleet running?");
@@ -2033,20 +2034,34 @@ program
     const { loadFleetConfig } = await import("./config.js");
     const fleet = loadFleetConfig(FLEET_CONFIG_PATH);
     const port = fleet.health_port ?? 19280;
-    const url = `http://localhost:${port}/ui?token=${encodeURIComponent(token)}`;
-    console.log(`Opening ${url}`);
-    // The token is sensitive: passing it on argv would expose it via `ps`,
-    // and exec(`${cmd} "${url}"`) additionally goes through a shell. Instead,
-    // write a 0600-mode HTML redirect into a per-user temp dir and open that
-    // file path — the token only ever lives on disk under user-only perms.
-    const { mkdtempSync } = await import("node:fs");
-    const { tmpdir } = await import("node:os");
-    const tmpDir = mkdtempSync(join(tmpdir(), "agend-web-"));
-    const htmlPath = join(tmpDir, "open.html");
-    const htmlUrl = url.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
-    writeFileSync(htmlPath, `<!doctype html><meta http-equiv="refresh" content="0; url=${htmlUrl}">`, { mode: 0o600 });
+    // The code is minted by the running fleet (it lives in that process's memory), so ask it — with
+    // the header token, the one credential a local script has. No credential ever goes into a URL:
+    // the browser is opened on the sign-in page and the code is typed there.
+    let code: string;
+    let minutes: number;
+    try {
+      const resp = await fetch(`http://127.0.0.1:${port}/auth/issue-code`, {
+        method: "POST",
+        headers: { "X-Agend-Token": token },
+        signal: AbortSignal.timeout(5000),
+      });
+      const body = await resp.json().catch(() => ({})) as { code?: string; expiresAt?: number; error?: string };
+      if (!resp.ok || !body.code) {
+        console.error(`Could not get a sign-in code: ${body.error ?? resp.statusText}`);
+        process.exit(1);
+      }
+      code = body.code;
+      minutes = Math.max(1, Math.round(((body.expiresAt ?? Date.now()) - Date.now()) / 60_000));
+    } catch {
+      console.error(`Cannot connect to fleet (port ${port}). Is the fleet running?`);
+      process.exit(1);
+    }
+    const signin = `http://localhost:${port}/signin`;
+    console.log(`Sign-in page: ${signin}`);
+    console.log(`Code:         ${code}   (works once, valid ~${minutes} min)`);
+    if (opts.code) return;
     const cmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer" : "xdg-open";
-    const child = spawn(cmd, [htmlPath], { detached: true, stdio: "ignore" });
+    const child = spawn(cmd, [signin], { detached: true, stdio: "ignore" });
     child.unref();
   });
 
@@ -2066,7 +2081,7 @@ program
     console.log("Web token rotated.");
     console.log("Every previously issued dashboard link and browser session is now rejected.");
     console.log("A running fleet picks this up immediately — no restart needed.");
-    console.log("Get a new link with `agend web`, or /dashboard in your chat channel.");
+    console.log("Sign in again with `agend web` (prints a one-time code), or /dashboard in your chat channel.");
   });
 
   program

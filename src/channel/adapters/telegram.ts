@@ -423,6 +423,15 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   }
 
   private _registerHandlers(): void {
+    // Own messages must never become inbound work even when transport replays
+    // them. Fleet-wide echo provenance is checked in the common ingress path.
+    // Put this ahead of rich-message middleware as well as ordinary messages.
+    this.bot.use(async (ctx, next) => {
+      const message = (ctx.update as any)?.message;
+      const sender = message?.from?.id;
+      if (sender != null && sender === this.bot.botInfo?.id) return;
+      return next();
+    });
     // Middleware: catch Rich Message updates that grammy doesn't route to bot.on("message")
     this.bot.use(async (ctx, next) => {
       const rawMsg = (ctx.update as any)?.message;
@@ -719,7 +728,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
               allowed_updates: TELEGRAM_ALLOWED_UPDATES,
               onStart: (info) => {
                 reconnects = 0; // reset on successful start
-                this.emit("started", info.username);
+                this.emit("started", info.username, String(info.id));
               },
             });
             return; // bot.stop() was called — clean exit
@@ -786,6 +795,8 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   private needsRichMessage(text: string): boolean {
     return /\n\|.+\|.+\|/m.test(text) || /```[\s\S]+?```/.test(text) || /^#{1,6}\s/m.test(text) || /^---$/m.test(text) || /<details/i.test(text);
   }
+
+  getBotUserId(): string | undefined { return this.bot.isInited() ? String(this.bot.botInfo.id) : undefined; }
 
   /**
    * Private delivery: the user's private chat with the bot (chat id == user

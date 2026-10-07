@@ -2,6 +2,10 @@
  * Web UI HTTP API handler.
  * All /ui/* routes are handled here, extracted from fleet-manager.ts.
  */
+import { formatWebChannelEcho } from "./web-channel-echo.js";
+import type { SendOpts } from "./channel/types.js";
+import { t } from "./locale.js";
+import { sendPanelHtml } from "./web-host-guard.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -11,7 +15,12 @@ import type { LifecycleCreateArgs } from "./instance-lifecycle.js";
 import { CreateInstanceArgs, validateArgs } from "./outbound-schemas.js";
 import { readStatuslineModel, resolveInstanceContext } from "./topic-commands.js";
 import { z } from "zod";
-import { isWebRequestAuthorized, WEB_TOKEN_INVALID_MESSAGE } from "./web-auth.js";
+import { isPassiveWebRead, isSecureRequest, isWebRequestAuthorized, WEB_TOKEN_INVALID_MESSAGE } from "./web-auth.js";
+import type { PreviewAvailability } from "./web-preview.js";
+import { newWebMessageId, parseLastEventId, type WebChatHistory } from "./web-chat-history.js";
+import { attachmentDelivery, displayName, INLINE_MIME, isFileId, publicAttachment, sniffUpload, UPLOAD_LIMITS, wellFormed, type UploadEntry, type WebFileLedger } from "./web-upload.js";
+import { getAgendHome } from "./paths.js";
+import type { WebSessionStore } from "./web-session.js";
 import { authorizeExplicitInstanceRemoval } from "./instance-removal.js";
 import type { ExplicitInstanceRemoval } from "./instance-removal.js";
 
@@ -66,8 +75,13 @@ const ConfigUpdateSchema = z.object({
 
 const SendMessageSchema = z.object({
   instance: z.string().min(1).max(128),
-  message: z.string().min(1).max(MAX_TEXT),
-}).strict();
+  message: z.string().max(MAX_TEXT),
+  /** Ids from POST /ui/upload, for this instance, not yet sent. */
+  attachments: z.array(z.string().regex(/^[0-9a-f]{32}$/)).max(UPLOAD_LIMITS.maxFiles).optional(),
+}).strict().refine(v => v.message.trim().length > 0 || (v.attachments?.length ?? 0) > 0, { message: "a message or at least one file", path: ["message"] });
+
+/** An instance name that is safe as one path segment (no separator, no NUL, not a dot name). */
+const safeInstanceSegment = (name: string): boolean => /^[^\\/\x00]+$/.test(name) && name !== "." && name !== "..";
 
 /**
  * Push a single SSE frame to every client. If a client throws (closed socket
@@ -80,8 +94,9 @@ export function broadcastSseEvent(
   event: string,
   data: unknown,
   onError?: (err: unknown) => void,
+  id?: string,
 ): void {
-  const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  const payload = sseFrame(event, data, id);
   const dead: ServerResponse[] = [];
   for (const client of clients) {
     try {
@@ -95,6 +110,11 @@ export function broadcastSseEvent(
     clients.delete(c);
     try { c.end(); } catch { /* socket already gone */ }
   }
+}
+
+/** One SSE frame; `id` (a chat message's) lets a reconnecting EventSource say what it last saw. */
+export function sseFrame(event: string, data: unknown, id?: string): string {
+  return `${id !== undefined ? `id: ${id}\n` : ""}event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
 function parseOrReject<T>(
@@ -115,31 +135,62 @@ function parseOrReject<T>(
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+/** How often a stream is refreshed, and how often it re-checks that its session still stands. */
+export const SSE_HEARTBEAT_MS = 10_000;
+
 /** Minimal interface — only what web-api needs from FleetManager. */
 export interface WebApiContext {
   readonly webToken: string | null;
+  /** Absent in a hand-built context: cookies are then simply not a credential, the header token still is. */
+  readonly webSessions?: WebSessionStore | null;
   readonly dataDir: string;
   readonly sseClients: Set<ServerResponse>;
   readonly fleetConfig: {
     channel?: { group_id?: number | string; mode?: string };
+    web?: { echo_to_channel?: boolean };
     defaults?: { backend?: string; effort?: string };
     instances: Record<string, { topic_id?: number | string; working_directory: string; description?: string; display_name?: string; backend?: string }>;
     teams?: Record<string, { members: string[]; description?: string }>;
   } | null;
   readonly instanceIpcClients: Map<string, { send(msg: unknown): void }>;
-  readonly adapter: { sendText(chatId: string, text: string, opts?: { threadId?: string }): Promise<unknown> } | null;
-  getAdapterForInstance?(name: string): { sendText(chatId: string, text: string, opts?: { threadId?: string }): Promise<unknown> } | null;
+  readonly adapter: { readonly id?: string; sendText(chatId: string, text: string, opts?: SendOpts): Promise<unknown> } | null;
+  getAdapterForInstance?(name: string): { readonly id?: string; sendText(chatId: string, text: string, opts?: SendOpts): Promise<unknown> } | null;
   getGroupIdForInstance?(name: string): string;
+  /** Reserve display ordering before IPC handoff, then settle delivery without waiting for the echo. */
+  reserveWebChannelEcho?(name: string, sendEcho: () => Promise<unknown>): (accepted: boolean) => void;
   readonly daemons: Map<string, unknown>;
   readonly eventLog: { logActivity(event: string, sender: string, summary: string, receiver?: string, detail?: string): void; listActivity(opts?: { since?: string; limit?: number }): unknown[] } | null;
   readonly logger: { info(obj: unknown, msg?: string): void; debug(obj: unknown, msg?: string): void; error(obj: unknown, msg?: string): void };
   getInstanceDir(name: string): string;
   getInstanceStatus(name: string): "running" | "paused" | "stopped" | "crashed";
-  deliverToInstance(instanceName: string, payload: Record<string, unknown>): Promise<void>;
+  /** A ClassicBot room (registered in classicBot.yaml, not fleet.yaml) — shown on the dashboard like any instance. */
+  isClassicInstance?(name: string): boolean;
+  /**
+   * Post an owner web-chat echo to `instance`'s opted-in ClassicBot channels
+   * (#1320 part B). Resolves the entries and adapters itself; returns how
+   * many channels were posted to. Never rejects the web send on failure.
+   */
+  sendClassicWebEcho?(instance: string, text: string): Promise<number>;
+  /** false: definitely not delivered (the instance's IPC is gone, or it was restarted meanwhile). */
+  deliverToInstance(instanceName: string, payload: Record<string, unknown>): Promise<boolean | void>;
   getUiStatus(): unknown;
+  /** #1306: which preview origin this /ui load may frame (Host and the TLS signal only); absent: previews off. */
+  previewForUi?(hostHeader: string | undefined, secure: boolean): PreviewAvailability & { boot: string | null };
   emitSseEvent(event: string, data: unknown): void;
+  /** The web chat's recent messages (history + SSE replay); absent in contexts that have no chat. */
+  readonly webChatHistory?: WebChatHistory;
+  /** Uploads and the files the dashboard may fetch back (web track C2); absent: no file routes. */
+  readonly webFiles?: WebFileLedger;
+  /** Absent means SSE_HEARTBEAT_MS; a test shortens it. */
+  readonly sseHeartbeatMs?: number;
   startInstance(name: string, config: unknown, topicMode: boolean): Promise<void>;
   stopInstance(name: string): Promise<void>;
+  /** The fleet prompts open on the dashboard (web track C4); absent: none are offered. */
+  listWebPrompts?(): unknown[];
+  /** Answer one of them, exactly as a click on its platform button would. */
+  clickWebPrompt?(instance: string, nonce: string, action: string): Promise<{ status: number; error?: string }>;
+  /** Interrupt the current reply and drop what was queued for it; false when the instance is not running. */
+  cancelInstance?(name: string): boolean;
   restartSingleInstance(name: string, opts?: { explicit?: boolean }): Promise<void>;
   removeInstance(name: string, authorization: ExplicitInstanceRemoval): Promise<void>;
   lastInboundUser: Map<string, string>;
@@ -200,11 +251,10 @@ export function handleWebRequest(
   const method = req.method ?? "GET";
 
   // Auth check for all /ui routes. Defence in depth behind the fleet-manager
-  // gate, which has already redeemed any `?token=` for a session cookie — so
-  // this accepts the cookie and the header too, and an unset token closes the
-  // panel instead of comparing null against a missing credential.
+  // gate: the same session cookie or header token, and an unset token closes
+  // the panel instead of comparing null against a missing credential.
   if (path.startsWith("/ui")) {
-    if (!isWebRequestAuthorized(req, url, ctx.webToken)) {
+    if (!isWebRequestAuthorized(req, url, ctx.webToken, ctx.webSessions, { touch: !isPassiveWebRead(method, path) })) {
       json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE });
       return true;
     }
@@ -217,9 +267,14 @@ export function handleWebRequest(
   if (method === "GET" && path === "/ui") {
     try {
       const html = readFileSync(join(__dirname, "ui", "dashboard.html"), "utf-8");
-      res.setHeader("Content-Type", "text/html; charset=utf-8");
-      res.writeHead(200);
-      res.end(html);
+      // #1306: the page learns which origin the server believes it is at, the preview origin chosen for it (empty:
+      // disabled, with the reason) and the preview listener's boot id; /ui's CSP may frame exactly <origin>/frame.
+      // The page re-checks the first against location.origin before it makes any frame.
+      const p = ctx.previewForUi?.(typeof req.headers.host === "string" ? req.headers.host : undefined, isSecureRequest(req)) ?? null;
+      const attr = (v: string | null | undefined) => String(v ?? "").replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
+      const body = `<body data-dashboard-origin="${attr(p?.dashboardOrigin)}" data-preview-origin="${attr(p?.previewOrigin)}"`
+        + ` data-preview-boot="${attr(p?.previewOrigin ? p.boot : "")}" data-preview-reason="${attr(p ? p.reason : "Previews are not available on this fleet.")}">`;
+      sendPanelHtml(res, html.replace("<body>", body), 200, {}, p?.previewOrigin ? { frameSrc: `${p.previewOrigin}/frame` } : {});
     } catch {
       json(res, 500, { error: "dashboard.html not found" });
     }
@@ -271,6 +326,30 @@ export function handleWebRequest(
 
   // ── SSE ────────────────────────────────────────────────
 
+  // The same data as the stream, over plain requests, for a path that cannot carry SSE (Cloudflare Quick
+  // Tunnels do not; a buffering proxy looks like a mute server). `after` is the same `<boot>-<id>` cursor
+  // as the stream's Last-Event-ID, so polling and the stream can take turns without a message twice or
+  // a gap — and a cursor from before a fleet restart gets the new process's backlog. No cursor yet (the page
+  // has not seen a single stream message): everything still retained, like a restart's backlog, so a message
+  // that arrived while the stream was silent is not skipped by the cursor this answer hands out (#1251
+  // review). The page keeps one entry per boot+id, so what it already loaded from /ui/history is not doubled.
+  if (method === "GET" && path === "/ui/poll") {
+    const history = ctx.webChatHistory;
+    const after = url.searchParams.get("after");
+    const fresh = after === null || after === "";              // a cursor that is not ours in shape still gets nothing
+    json(res, 200, {
+      status: ctx.getUiStatus(),
+      messages: history ? (fresh ? history.after(0) : history.replayFor(parseLastEventId(after))) : [],
+      // The ticks too, so polling never has to re-read a chat's history — that read would count as the person's
+      // activity; this poll does not (isPassiveWebRead).
+      deliveries: history ? history.deliveries() : [],
+      // And the fleet prompts open on the dashboard (C4): prompt events are stream-only too.
+      prompts: ctx.listWebPrompts?.() ?? [],
+      cursor: history ? `${history.boot}-${history.lastId}` : null,
+    });
+    return true;
+  }
+
   if (method === "GET" && path === "/ui/events") {
     res.writeHead(200, {
       "Content-Type": "text/event-stream",
@@ -278,14 +357,36 @@ export function handleWebRequest(
       Connection: "keep-alive",
     });
     res.write(`event: status\ndata: ${JSON.stringify(ctx.getUiStatus())}\n\n`);
+    // An EventSource that reconnects says what it last saw: send what it missed, before anything new.
+    const lastSeen = parseLastEventId(req.headers["last-event-id"]);
+    if (lastSeen !== null && ctx.webChatHistory) {
+      const history = ctx.webChatHistory;
+      for (const m of history.replayFor(lastSeen)) res.write(sseFrame("message", m, history.cursorOf(m)));
+    }
+    // Ticks change messages already sent and carry no cursor: every (re)connect gets where each one is now, so a
+    // report that fell into a gap is not lost until a reload (#1253 review). No id: it is not a message.
+    if (ctx.webChatHistory) res.write(`event: deliveries\ndata: ${JSON.stringify(ctx.webChatHistory.deliveries())}\n\n`);
+    // The same for the fleet prompts (C4): one posted, answered or expired during a gap is caught up here.
+    if (ctx.listWebPrompts) res.write(`event: prompts\ndata: ${JSON.stringify(ctx.listWebPrompts())}\n\n`);
     ctx.sseClients.add(res);
     const interval = setInterval(() => {
+      // A stream authorized once must not outlive the authorization. Re-checked
+      // without counting as activity, or an open tab would keep an idle session
+      // alive forever; a revoked, expired or rotated-away session ends here.
+      if (!isWebRequestAuthorized(req, url, ctx.webToken, ctx.webSessions, { touch: false })) {
+        // Close the connection too, not just the response: an ended response leaves the socket idle in
+        // keep-alive, still held open by whoever's session just ended.
+        const socket = req.socket;
+        try { res.end(() => socket?.destroy()); } catch { /* already closed */ }
+        cleanup();
+        return;
+      }
       try {
         res.write(`event: status\ndata: ${JSON.stringify(ctx.getUiStatus())}\n\n`);
       } catch {
         cleanup();
       }
-    }, 10_000);
+    }, ctx.sseHeartbeatMs ?? SSE_HEARTBEAT_MS);
     let cleanedUp = false;
     const cleanup = (): void => {
       if (cleanedUp) return;
@@ -293,12 +394,29 @@ export function handleWebRequest(
       ctx.sseClients.delete(res);
       clearInterval(interval);
     };
-    // `close` covers normal disconnects; `error` covers network resets that
-    // never deliver a clean FIN. Without both, dead clients accumulate in
+    // The *response's* `close` is the one that means the stream is over: it fires when the connection
+    // goes away or the response is finished. The request's `close` means "the request has been read"
+    // — on newer Node that can be as soon as it is consumed, which would drop a live stream from
+    // sseClients and stop its session re-check while the response is still open. `error` covers
+    // network resets that never deliver a clean FIN. Without these, dead clients accumulate in
     // sseClients and the heartbeat interval keeps firing forever.
-    req.on("close", cleanup);
+    res.on("close", cleanup);
     req.on("error", cleanup);
     res.on("error", cleanup);
+    return true;
+  }
+
+  // ── Chat history ───────────────────────────────────────
+
+  if (method === "GET" && path === "/ui/history") {
+    const instance = url.searchParams.get("instance") ?? "";
+    const limitRaw = url.searchParams.get("limit");
+    const limit = limitRaw === null ? 200 : Number(limitRaw);
+    if (instance.length === 0 || instance.length > 128 || !Number.isInteger(limit) || limit < 1 || limit > 500) {
+      json(res, 400, { error: "instance (1-128 chars) and limit (1-500) required" });
+      return true;
+    }
+    json(res, 200, { messages: ctx.webChatHistory?.list(instance, limit) ?? [], boot: ctx.webChatHistory?.boot ?? null, lastId: ctx.webChatHistory?.lastId ?? 0 });
     return true;
   }
 
@@ -309,7 +427,80 @@ export function handleWebRequest(
     return true;
   }
 
+  // ── Files (C2): upload one file for an instance; fetch a file by the id the fleet issued for it ──
+
+  if (method === "POST" && path === "/ui/upload") {
+    handleUpload(req, res, url, ctx);
+    return true;
+  }
+
+  const fileMatch = path.match(/^\/ui\/file\/([^/]+)$/);
+  if (method === "GET" && fileMatch) {
+    const id = fileMatch[1]!;
+    const got = isFileId(id) ? ctx.webFiles?.read(id) : null;
+    if (!got) { json(res, 404, { error: "No such file" }); return true; }
+    const { file, bytes } = got;
+    const inline = INLINE_MIME.has(file.mime);
+    // Only the four image types are shown in the page; anything else is a download, never rendered.
+    res.setHeader("Content-Type", inline ? file.mime : (file.mime.startsWith("text/") ? "text/plain; charset=utf-8" : "application/octet-stream"));
+    res.setHeader("Content-Disposition", `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(wellFormed(file.name))}`);
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("Content-Security-Policy", "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox");
+    res.writeHead(200);
+    res.end(bytes);
+    return true;
+  }
+
+  // ── Fleet prompts (C4): the hang / exit / interactive-prompt buttons, answerable here too ──
+
+  if (method === "GET" && path === "/ui/prompts") {
+    json(res, 200, { prompts: ctx.listWebPrompts?.() ?? [] });
+    return true;
+  }
+
+  // The nonce is the capability, so it travels in the body: never in a URL a log or a history could keep.
+  if (method === "POST" && path === "/ui/prompt") {
+    if (!ctx.clickWebPrompt) { json(res, 404, { error: "No prompts here" }); return true; }
+    const click = ctx.clickWebPrompt.bind(ctx);
+    (async () => {
+      let body: Record<string, unknown>;
+      try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
+      if (!body || typeof body !== "object") { json(res, 400, { error: "instance, nonce and action required" }); return; }
+      const { instance, nonce, action } = body;
+      if (typeof instance !== "string" || typeof nonce !== "string" || typeof action !== "string") {
+        json(res, 400, { error: "instance, nonce and action required" });
+        return;
+      }
+      const r = await click(instance, nonce, action);
+      // 409: answered elsewhere first, expired, or never open — the page drops the buttons on `gone`.
+      json(res, r.status, r.status === 200 ? { answered: true } : { error: r.error ?? "Refused", ...(r.status === 409 ? { gone: true } : {}) });
+    })().catch(err => {
+      ctx.logger.error({ err: (err as Error).message }, "Web prompt answer failed");
+      try { json(res, 500, { error: "Prompt answer failed" }); } catch { /* already answered */ }
+    });
+    return true;
+  }
+
   // ── Instance operations ────────────────────────────────
+
+  // Stop the agent's current reply — what Telegram's cancel button and /cancel do: Esc into the CLI, and the
+  // messages still waiting for it are dropped. Not /ui/stop, which stops the instance's process.
+  const cancelMatch = path.match(/^\/ui\/cancel\/([^/]+)$/);
+  if (method === "POST" && cancelMatch) {
+    let name: string;
+    try { name = decodeURIComponent(cancelMatch[1]!); } catch { json(res, 400, { error: "Bad instance name" }); return true; }
+    // Own keys only: "constructor" is in every object and names no instance.
+    const known = (ctx.fleetConfig ? Object.hasOwn(ctx.fleetConfig.instances, name) : false) || ctx.daemons.has(name);
+    if (!ctx.cancelInstance || !known) {
+      json(res, 404, { error: `Instance not found: ${name}` });
+      return true;
+    }
+    if (!ctx.cancelInstance(name)) { json(res, 409, { error: `${name} is not running` }); return true; }
+    ctx.eventLog?.logActivity("cancel", "web-user", "stop the current reply", name);
+    json(res, 200, { cancelled: name });
+    return true;
+  }
 
   const stopMatch = path.match(/^\/ui\/stop\/(.+)$/);
   if (method === "POST" && stopMatch) {
@@ -665,6 +856,15 @@ export function handleWebRequest(
   return true;
 }
 
+/** Keep the echo in a single platform message, including its attachment names. */
+function webEchoPreview(message: string, names: string[]): string {
+  const text = wellFormed(message.slice(0, 500));
+  const files = names.length ? `[📎 ${names.map(name => displayName(name, "attachment")).join(", ")}]` : "";
+  const preview = [text, files].filter(Boolean).join(" ");
+  const truncated = message.length > 500 || preview.length > 1400;
+  return wellFormed(preview.slice(0, 1400)) + (truncated ? ` … (${t("web.echo_full_text")})` : "");
+}
+
 /** Handle POST /ui/send — extracted for readability. */
 function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebApiContext): void {
   let body = "";
@@ -687,56 +887,151 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
         json(res, 400, { error: `${issue.path.join(".") || "body"}: ${issue.message}` });
         return;
       }
-      const { instance, message } = parsed.data;
+      const { instance, message: typed, attachments = [] } = parsed.data;
       const ipc = ctx.instanceIpcClients.get(instance);
       if (!ipc) {
         json(res, 404, { error: `Instance not found: ${instance}` });
         return;
       }
+      let files: UploadEntry[] = [];
+      if (attachments.length > 0) {
+        const taken = ctx.webFiles?.takeForMessage(instance, attachments);
+        if (!taken || !taken.ok) { json(res, 400, { error: taken && !taken.ok ? taken.error : "files are not available here" }); return; }
+        files = taken.entries;
+      }
+      // The same tags and meta a Telegram photo/document produces, so the agent needs nothing new.
+      const delivery = attachmentDelivery(typed, files);
+      const message = typed;
       const ts = new Date().toISOString();
+      // The id the agent is given, and the one its delivery reports come back under: the page's ticks.
+      const messageId = newWebMessageId();
       // Use real Telegram context so daemon's lastChatId/lastThreadId are set,
       // enabling reply tool even when first message comes from Web UI.
-      // Pure Web UI mode (no channel config) leaves these empty — TODO: needs
-      // a separate reply path for that case.
-      const groupId = ctx.fleetConfig?.channel?.group_id;
+      // Pure Web UI mode (no channel config) leaves these empty; the agent's reply then comes back to the
+      // web chat alone (FleetManager's web-only reply sink).
+      const syncAdapter = ctx.getAdapterForInstance ? ctx.getAdapterForInstance(instance) : ctx.adapter;
+      const groupId = ctx.getGroupIdForInstance?.(instance) ?? String(ctx.fleetConfig?.channel?.group_id ?? "");
       const topicId = ctx.fleetConfig?.instances[instance]?.topic_id;
+      const canEcho = ctx.fleetConfig?.web?.echo_to_channel !== false
+        && !ctx.isClassicInstance?.(instance) && syncAdapter && groupId && topicId != null;
+      // Add no runtime credentials or local attachment paths to the display copy.
+      const preview = webEchoPreview(message, files.map(f => f.name));
+      // ClassicBot echo (#1320 part B): same ordering lane, per-entry
+      // opt-in resolved at send time inside sendClassicWebEcho.
+      const canClassicEcho = ctx.isClassicInstance?.(instance) === true && !!ctx.sendClassicWebEcho;
+      const settleClassicEcho = canClassicEcho ? ctx.reserveWebChannelEcho?.(instance, async () => {
+        await ctx.sendClassicWebEcho!(instance, formatWebChannelEcho("web-user", preview, t("web.echo_full_text")));
+      }) : undefined;
+      const settleEcho = canEcho ? ctx.reserveWebChannelEcho?.(instance, async () => {
+        // A replacement adapter or edited binding is not the route we reserved.
+        if ((ctx.getAdapterForInstance ? ctx.getAdapterForInstance(instance) : ctx.adapter) !== syncAdapter
+          || (ctx.getGroupIdForInstance?.(instance) ?? String(ctx.fleetConfig?.channel?.group_id ?? "")) !== groupId
+          || ctx.fleetConfig?.instances[instance]?.topic_id !== topicId) return;
+        return syncAdapter.sendText(String(groupId), formatWebChannelEcho("web-user", preview, t("web.echo_full_text")), { threadId: String(topicId), format: "text", allowedMentions: { parse: [] } });
+      }) : undefined;
+      let delivered: boolean | void;
       try {
-        await ctx.deliverToInstance(instance, {
+        delivered = await ctx.deliverToInstance(instance, {
           type: "fleet_inbound",
-          content: message,
+          content: delivery.text,
           targetSession: instance,
           meta: {
             chat_id: groupId ? String(groupId) : "",
-            message_id: `web-${Date.now()}`,
+            message_id: messageId,
             user: "web-user", user_id: "web-user",
             ts,
             thread_id: topicId != null ? String(topicId) : "",
             source: "web",
+            adapter_id: syncAdapter?.id,
+            ...delivery.meta,
           },
         });
       } catch (err) {
+        settleEcho?.(false);
+        // A throw must release the Classic ordering lane too: otherwise the
+        // next accepted echo queues behind a reservation that never settles
+        // and is dropped by expiry (#1330 R2).
+        settleClassicEcho?.(false);
+        ctx.webFiles?.release(files);                  // not delivered: the same ids can be sent again
         ctx.logger.error({ err, instance }, "Web message delivery failed");
         json(res, 503, { error: "Instance delivery failed" });
         return;
       }
-      ctx.lastInboundUser.set(instance, "web-user");
-      ctx.eventLog?.logActivity("message", "web-user", message.slice(0, 200), instance);
-      ctx.emitSseEvent("message", { instance, sender: "web-user", text: message, ts });
-      // Sync to Telegram/Discord
-      const syncAdapter = ctx.getAdapterForInstance?.(instance) ?? ctx.adapter;
-      const syncGroupId = ctx.getGroupIdForInstance?.(instance) ?? String(ctx.fleetConfig?.channel?.group_id ?? "");
-      if (syncAdapter && syncGroupId) {
-        const topicId = ctx.fleetConfig?.instances[instance]?.topic_id;
-        const preview = message.length > 500 ? message.slice(0, 500) + " [...]" : message;
-        syncAdapter.sendText(
-          syncGroupId,
-          `🌐 web-user: ${preview}`,
-          { threadId: topicId != null ? String(topicId) : undefined },
-        ).catch(() => ctx.logger.debug({}, "Web→Channel sync failed"));
+      if (delivered === false) {
+        settleEcho?.(false);
+        settleClassicEcho?.(false);
+        ctx.webFiles?.release(files);
+        ctx.logger.error({ instance }, "Web message not delivered (the instance went away or restarted)");
+        json(res, 503, { error: "Instance delivery failed" });
+        return;
       }
-      json(res, 200, { sent: true });
+      settleEcho?.(true);
+      settleClassicEcho?.(true);
+      ctx.webFiles?.commit(files);
+      ctx.lastInboundUser.set(instance, "web-user");
+      ctx.eventLog?.logActivity("message", "web-user", (message || `[${files.length} file(s)]`).slice(0, 200), instance);
+      ctx.emitSseEvent("message", { instance, sender: "web-user", role: "user", text: message, ts, attachments: files.map(publicAttachment), messageId });
+      json(res, 200, { sent: true, messageId });
     } catch {
       json(res, 400, { error: "Invalid JSON" });
+    }
+  });
+}
+
+/**
+ * One file for one instance's chat. The body is the file itself (Content-Type is ignored: the type is
+ * read from the bytes), `X-Agend-Filename` its name for the label only. Stored in the instance's
+ * workspace inbox under a name chosen here; answered with the id the message will name.
+ */
+function handleUpload(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext): void {
+  const instance = url.searchParams.get("instance") ?? "";
+  if (!ctx.webFiles) { json(res, 404, { error: "uploads are not available" }); return; }
+  if (!instance || instance.length > 128 || !safeInstanceSegment(instance) || !ctx.instanceIpcClients.has(instance)) {
+    json(res, 404, { error: `Instance not found: ${instance}` });
+    return;
+  }
+  const declared = Number(req.headers["content-length"] ?? NaN);
+  if (Number.isFinite(declared) && declared > UPLOAD_LIMITS.maxFileBytes) {
+    json(res, 413, { error: `a file can be at most ${UPLOAD_LIMITS.maxFileBytes / 1024 / 1024} MB` });
+    req.resume();
+    return;
+  }
+  const chunks: Buffer[] = [];
+  let size = 0;
+  let refused = false;
+  req.on("data", (c: Buffer) => {
+    if (refused) return;
+    size += c.length;
+    if (size > UPLOAD_LIMITS.maxFileBytes) {
+      refused = true;
+      json(res, 413, { error: `a file can be at most ${UPLOAD_LIMITS.maxFileBytes / 1024 / 1024} MB` });
+      req.destroy();
+      return;
+    }
+    chunks.push(c);
+  });
+  req.on("error", () => { /* the client went away */ });
+  req.on("end", () => {
+    if (refused) return;
+    const bytes = Buffer.concat(chunks);
+    const name = displayName(typeof req.headers["x-agend-filename"] === "string" ? req.headers["x-agend-filename"] : "", "file");
+    const type = sniffUpload(bytes, name);
+    if (!type) { json(res, 415, { error: "unsupported file type — images (PNG, JPEG, GIF, WebP), PDF and text files only" }); return; }
+    // The instance is checked again now the whole body is here: it may have been deleted (and its files
+    // forgotten) or stopped while the upload streamed in; storing now would bring its id back (#1252 review).
+    // Still deliverable means: its IPC is up (a paused one is woken by the send) and it is still registered —
+    // in fleet.yaml, or as a ClassicBot room in classicBot.yaml.
+    const registered = !!ctx.fleetConfig?.instances?.[instance] || ctx.isClassicInstance?.(instance) === true;
+    if (!ctx.instanceIpcClients.has(instance) || !registered) {
+      json(res, 404, { error: `Instance not found: ${instance}` });
+      return;
+    }
+    try {
+      const entry = ctx.webFiles!.storeUpload({ instance, inboxDir: join(getAgendHome(), "workspaces", instance, "inbox"), bytes, name, type });
+      json(res, 200, publicAttachment(entry));
+    } catch (err) {
+      ctx.logger.error({ err: (err as Error).message, instance }, "Web upload could not be stored");
+      json(res, 500, { error: "the file could not be stored" });
     }
   });
 }

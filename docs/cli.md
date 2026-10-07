@@ -163,9 +163,10 @@ agend delivery scan-forged-envelopes --instance <name>  # Check a kiro instance'
 ## Web Dashboard
 
 ```bash
-agend web                       # Open Web UI dashboard in browser
+agend web                       # Print a one-time sign-in code and open the sign-in page
+agend web --code                # Only print the sign-in page and code (no browser)
 agend view                      # Open the read-only View dashboard in browser
-agend web-token rotate          # Revoke every dashboard link and browser session
+agend web-token rotate          # Sign every browser out and rotate the CLI token
 agend setup                     # Guided setup page, before a fleet exists
 agend setup --reset             # Allow setup to run again after it completed
 agend setup --tunnel            # …and expose it publicly, so a phone can open it
@@ -241,17 +242,61 @@ place — this page writes the file by dumping the loaded configuration, which i
 right for a file it creates and would flatten comments and freeze defaults in
 one somebody already has.
 
-Opening a dashboard link redeems its `?token=` for an `HttpOnly` session cookie
-and redirects to the same page without the token, so the credential stays out of
-the address bar, browser history and any log that records request URLs. The
-cookie lasts 12 hours. `agend web-token rotate` invalidates every issued link and
-cookie at once — a running fleet picks it up with no restart.
+A user guide to the whole dashboard (panels, chat, files, Stop, sessions, reaching it from elsewhere) is in
+[web-dashboard.md](web-dashboard.md).
 
-**If the page says "No session"** right after you followed a link from web
-Telegram or Discord, reload once. The session cookie is `SameSite=Strict`, and a
-browser that declines to send it on the first cross-site hop will send it on the
-reload, which is same-site. (Verified on Chromium; Firefox and WebKit have not
-been measured.)
+The dashboard signs in with a **one-time code**, not a link that carries a
+credential. Send `/dashboard` to your bot (or run `agend web --code` on the host)
+and you get the sign-in page address plus an 8-character code — `ABCD-EFGH`,
+typed with or without the dash, in any case. Type it into the sign-in page and
+you are signed in to `/ui`, `/view` and `/settings` for as long as the session
+lasts, with nothing in the address bar, the browser history or any log that
+records request URLs.
+
+- **The code works once and expires after 5 minutes.** Only the newest code
+  works: asking again replaces the previous one. Five wrong tries use up that one
+  code (ask for another); enough wrong tries across codes pause sign-in for a few
+  minutes. While no code has been issued there is nothing to guess.
+- **A session is an opaque server-side record**, not a value derived from
+  `web.token`. It ends after 12 hours from sign-in at the latest, or after 2
+  hours without use, whichever comes first — the server decides, not the
+  browser. It survives a fleet restart (Settings can restart the fleet).
+- **`/dashboard revoke`** in the chat (on Discord, the `/dashboard` slash command with `action: revoke`) signs every browser out and withdraws any
+  unused code. `agend web-token rotate` does the same and also rotates the token
+  the CLI uses; a running fleet picks it up with no restart. The sign-in
+  endpoints also list your signed-in devices and end one or all of them
+  (`GET/DELETE /auth/sessions`).
+- **Each sign-in is announced** in the General topic ("New web sign-in: Chrome on
+  macOS"). If it was not you, send `/dashboard revoke`. Turn this off with
+  `web.notify_login: false`.
+- **Writes need more than the cookie.** The panels add a per-session
+  `X-Agend-CSRF` header to every write, and the server also requires a matching
+  `Origin`; a cookie alone cannot change anything.
+- **One navigation across the panels.** `/ui`, `/view` and `/settings` share a
+  *Dashboard · View · Settings* bar and a **Session** menu (which browser you are,
+  when the session ends, your other signed-in devices with a Sign-out each, and
+  Sign out everywhere). `/` opens the dashboard. If the dashboard's live stream is
+  silent — a proxy that buffers it, or a path that cannot carry SSE such as a
+  Cloudflare Quick Tunnel — it polls `/ui/poll` every 5 seconds until the stream
+  speaks again.
+- **`/view` reads are open by default** (it is a read-only dashboard on a loopback
+  listener) — including the live terminal capture, so anyone who can reach the
+  port can watch your agents. Set `web.view_access: session` in `fleet.yaml` to
+  require a sign-in for the page, the capture, the roster and usage. **Editing a
+  profile or avatar always needs a signed-in session** (or `X-Agend-Token` from a
+  script): the Edit button on `/view` sends a signed-out visitor to sign in and
+  back. The old "paste your web.token to save" box is gone, and `/view?token=…` no
+  longer authorizes anything.
+- **No credential ever goes into a URL.** A `/ui?token=…` link (as older versions
+  printed, and as `agend web` used to open) is no longer a way in: it gets the
+  sign-in page. `agend web` now prints a code and opens `/signin`; scripts keep
+  using the `X-Agend-Token` header.
+
+Following a link from Telegram or Discord into a panel lands on the sign-in page
+first if the browser did not send the cookie on that cross-site hop
+(`SameSite=Strict`); the page checks for a session from inside the site and
+carries on to the panel you asked for by itself. (Verified on Chromium; Firefox
+and WebKit have not been measured.)
 
 ### Applying settings changes
 

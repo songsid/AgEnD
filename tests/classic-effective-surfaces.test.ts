@@ -76,7 +76,6 @@ describe("Classic effective backend surfaces", () => {
     const dataDir = mkdtempSync(join(tmpdir(), "classic-profiles-"));
     const getBackendByInstance = vi.fn((_name: string, fleetDefault?: string) => fleetDefault ?? "claude-code");
     const ctx: ViewApiContext = {
-      viewToken: null,
       webToken: null,
       dataDir,
       fleetConfig: {
@@ -119,7 +118,6 @@ describe("Classic effective backend surfaces", () => {
   it("/api/profiles uses fleet defaults.backend when instance omits backend", () => {
     const dataDir = mkdtempSync(join(tmpdir(), "fleet-profiles-default-"));
     const ctx: ViewApiContext = {
-      viewToken: null,
       webToken: null,
       dataDir,
       fleetConfig: {

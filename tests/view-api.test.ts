@@ -25,7 +25,6 @@ describe("parsePaneSize", () => {
 
 function fakeCtx(dataDir: string): ViewApiContext {
   return {
-    viewToken: null,
     webToken: "wt",
     dataDir,
     fleetConfig: { instances: { alpha: {} } } as unknown as ViewApiContext["fleetConfig"],
@@ -123,7 +122,6 @@ describe("/api/profiles new fields (B2 wiring)", () => {
 
   it("returns model_source, effort_source, display_name in roster", async () => {
     const ctx: ViewApiContext = {
-      viewToken: null,
       webToken: "wt",
       dataDir,
       fleetConfig: {

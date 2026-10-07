@@ -77,6 +77,8 @@ export type TopicPresence =
 export interface ChannelAdapter extends EventEmitter {
   readonly type: string;
   readonly id: string;
+  /** Authenticated platform identity, cache-only; absent until login/init. */
+  getBotUserId?(): string | undefined;
 
   start(): Promise<void>;
   stop(): Promise<void>;
@@ -225,6 +227,8 @@ export interface StickerList {
 export interface StickerPreview { bytes: Buffer; ext: "png" | "gif" | "webp" | "jpg" }
 
 export interface SendOpts {
+  /** Discord entity suppression for display-only echoes; text must also be neutralised. */
+  allowedMentions?: { parse: Array<"roles" | "users" | "everyone"> };
   threadId?: string;
   replyTo?: string;
   format?: "text" | "html";

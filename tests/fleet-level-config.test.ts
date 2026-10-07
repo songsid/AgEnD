@@ -34,6 +34,8 @@ describe("which fleet settings only a new process can adopt", () => {
       "defaults.daily_summary",
       "defaults.scheduler.max_schedules",
       "defaults.scheduler.default_timezone",
+      "web.preview_port",
+      "web.preview_origin",
     ]);
   });
 
