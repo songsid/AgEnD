@@ -744,7 +744,7 @@ async function loadConfig() {
       <div class="card"><h3>Defaults</h3>
         <div class="form-field"><label>Backend</label>
           <select id="cfg-backend">
-            ${["claude-code","codex","opencode","kiro-cli","antigravity","grok","muse"].map(b => `<option value="${b}" ${defs.backend===b?"selected":""}>${b}</option>`).join("")}
+            ${[...(defs.backend && !["claude-code","codex","opencode","kiro-cli","antigravity","grok","muse"].includes(defs.backend) ? [defs.backend] : []),"claude-code","codex","opencode","kiro-cli","antigravity","grok","muse"].map(b => `<option value="${b}" ${defs.backend===b?"selected":""}>${b}</option>`).join("")}
           </select></div>
       </div>
       <div class="card"><h3>Project Roots</h3>

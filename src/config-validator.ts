@@ -27,9 +27,14 @@ export interface ValidationResult {
 /** Backends the factory can instantiate (keep in sync with backend/factory.ts). */
 export const KNOWN_BACKENDS = ["claude-code", "codex", "opencode", "kiro-cli", "antigravity", "grok", "muse", "mock"];
 
-/** The error for a backend field: a removed backend names its replacement (#1280); anything else unknown lists the known ones. */
-function backendProblem(value: unknown, instance?: string): string | null {
+/**
+ * The error for a backend field: a removed backend names its replacement (#1280); anything else unknown lists the
+ * known ones. `inheritsWhenEmpty`: ClassicBot reads its backends with `||` (ClassicChannelManager.getBackend), so
+ * an empty string or null there means "inherit", not an unknown backend.
+ */
+function backendProblem(value: unknown, instance?: string, inheritsWhenEmpty = false): string | null {
   if (value === undefined) return null;
+  if (inheritsWhenEmpty && (value === null || value === "")) return null;
   if (typeof value === "string" && isRemovedBackend(value)) return removedBackendMessage(value, instance);
   if (typeof value !== "string" || !KNOWN_BACKENDS.includes(value)) return `unknown backend "${String(value)}" (known: ${KNOWN_BACKENDS.join(", ")})`;
   return null;
@@ -416,7 +421,7 @@ export function validateClassicBotConfig(config: unknown): ValidationResult {
   } else if (isObj(config.defaults)) {
     const d = config.defaults;
     const b = d.backend;
-    const problem = backendProblem(b);
+    const problem = backendProblem(b, undefined, true);
     if (problem) err("defaults.backend", problem);
     validateAutoPause(d.auto_pause_after, "defaults.auto_pause_after");
     if (d.tool_progress !== undefined && !["off", "standard", "verbose"].includes(String(d.tool_progress))) {
@@ -437,7 +442,7 @@ export function validateClassicBotConfig(config: unknown): ValidationResult {
   } else if (isObj(config.channels)) {
     for (const [key, channel] of Object.entries(config.channels)) {
       if (!isObj(channel)) { err(`channels.${key}`, "must be a mapping"); continue; }
-      const backendIssue = backendProblem(channel.backend, typeof channel.instanceName === "string" ? channel.instanceName : typeof channel.name === "string" ? channel.name : key);
+      const backendIssue = backendProblem(channel.backend, typeof channel.instanceName === "string" ? channel.instanceName : typeof channel.name === "string" ? channel.name : key, true);
       if (backendIssue) err(`channels.${key}.backend`, backendIssue);
       validateAutoPause(channel.auto_pause_after, `channels.${key}.auto_pause_after`);
       if (channel.tool_progress !== undefined && !["off", "standard", "verbose"].includes(String(channel.tool_progress))) {

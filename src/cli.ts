@@ -1133,6 +1133,16 @@ async function doctorMcp(): Promise<void> {
   console.log(`\n  Summary: ${healthy}/${total} healthy, ${errors} error(s), ${warnings} warning(s)\n`);
 }
 
+// Removed with gemini-cli (#1280): it only ever pre-trusted Gemini CLI folders. Kept, hidden, so the old command
+// says what happened instead of failing as an unknown command.
+backend
+  .command("trust", { hidden: true })
+  .argument("[args...]")
+  .action(() => {
+    console.error("  `agend backend trust` was removed with the gemini-cli backend in AgEnD 2.1.12. The other backends skip their trust dialogs themselves; for Gemini models set `backend: antigravity`.");
+    process.exit(1);
+  });
+
 // === Topic commands ===
 const topic = program.command("topic").description("Topic binding management");
 

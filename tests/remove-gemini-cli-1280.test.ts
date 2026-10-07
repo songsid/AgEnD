@@ -64,6 +64,13 @@ describe("validation names the instance and the replacement", () => {
     expect(fleet({ a: { working_directory: "/tmp/a", backend: "antigravity" } }).valid).toBe(true);
     expect(validateClassicBotConfig({ channels: { "1": { backend: "muse" } } }).valid).toBe(true);
   });
+
+  it("ClassicBot's empty or null backend inherits, as ClassicChannelManager.getBackend reads it — not an unknown backend", () => {
+    for (const empty of ["", null]) {
+      expect(validateClassicBotConfig({ defaults: { backend: "codex" }, channels: { room: { backend: empty } } }).valid).toBe(true);
+      expect(validateClassicBotConfig({ defaults: { backend: empty } }).valid).toBe(true);
+    }
+  });
 });
 
 describe("no backend is ever substituted", () => {
