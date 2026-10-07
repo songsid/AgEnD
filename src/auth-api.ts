@@ -63,6 +63,7 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
   "signin.js": { file: join("shared", "signin.js"), type: "text/javascript; charset=utf-8" },
   "shell.js": { file: join("shared", "shell.js"), type: "text/javascript; charset=utf-8" },
   "shell.css": { file: join("shared", "shell.css"), type: "text/css; charset=utf-8" },
+  "theme.js": { file: join("shared", "theme.js"), type: "text/javascript; charset=utf-8" },
 };
 
 export function isAuthPath(path: string): boolean {

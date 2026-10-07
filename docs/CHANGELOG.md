@@ -50,6 +50,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   nest by indentation (bullets and numbers mixed, up to six levels), and fenced code in js/ts/json/python/sh is
   highlighted. No library and nothing from a CDN: the same escape-first renderer, with only fixed tags and classes
   added, so nothing in a message can still produce markup of its own.
+- **Web chat: a chat-first layout, light and dark (#1307, layout part).** The conversation is a centred column with
+  your messages as bubbles on the right and agent replies across it (each with Copy); code blocks show their language,
+  with Copy and Wrap, and fold when longer than 30 lines; the view follows new messages only while you are at the
+  bottom, with "↓ N new" when you are not; while the agent works the composer's Send becomes Stop (Send comes back
+  when you type). The sidebar can be hidden (remembered) and is a drawer on a phone. The dashboard follows the
+  device's light or dark setting, or a per-browser choice (`/assets/theme.js` sets it before the page paints), uses
+  the system font stack, and has no inline `style` attribute left (#1300).
+- **Web chat: the agent's turn, and attachments (#1307, turn-status part).** The working line counts how long the agent
+  has worked (from when the page saw it start), reads "Stopping…" after Stop until the agent is idle, and says when it is
+  waiting on its terminal (a permission question, a login, a dialog) — with a "needs you" badge in the sidebar, labelled
+  as read from the terminal. Dragging files over the chat shows where they go; each waits as a chip with its name and
+  size; a paste over 10,000 characters is attached as a text file (it can go back in as text). On a fleet with no chat
+  platform, the hang, clean-exit and interactive-prompt prompts are now asked on the dashboard (they were not asked
+  anywhere); an interactive prompt only when there is a General to help.
+- **Web chat: phones, keyboards and screen readers (#1307, mobile + a11y part).** On a phone the on-screen keyboard
+  resizes the page instead of covering the composer (`interactive-widget=resizes-content`), the layout keeps clear of
+  the notch and home bar (safe-area insets), and the composer's text is 16px so iOS does not zoom. Esc stops the
+  agent's reply while it works (not while a form or menu is open, not mid-IME). The sidebar's rows are reachable by
+  Tab and open with Enter/Space; the phone drawer keeps focus inside and returns it to ☰ on close. The message list
+  is a log that is not read out message by message; one polite status line announces the coarse events (started,
+  finished, replied, waiting for your input).
 
 ### Security
 - **The three web panels share one navigation and one session menu, and `/` opens the dashboard.** `/ui`, `/view`

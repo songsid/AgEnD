@@ -61,6 +61,19 @@ Pick an instance on the left to talk to it. The web chat is **the same conversat
 - You can switch between the web and your phone mid-conversation.
 - **No chat platform at all?** With no `channel` / `channels` in `fleet.yaml`, the dashboard alone is enough: an agent's replies come to the web chat.
 
+### The layout
+- The conversation is one centred column. Your messages are bubbles on the right; an agent's replies use the full column, each with **Copy**.
+- **Code blocks** show their language, with **Copy** and **Wrap** (long lines wrap instead of scrolling; remembered for this browser). A block longer than 30 lines is folded: **Show all N lines** opens it.
+- The view follows new messages only while you are at the bottom. Scrolled up to read, it stays where you are, and **↓ N new** takes you down.
+- **‹** at the top of the sidebar hides it (☰ brings it back); the choice is remembered. On a phone the sidebar is a drawer: ☰ opens it, and choosing something, tapping outside it or Esc closes it.
+- **Theme** (bottom of the sidebar): *System* follows your device's light or dark setting; *Light* or *Dark* fixes it for this browser.
+- **On a phone** the on-screen keyboard resizes the page, so the composer stays above it, and the layout keeps clear of the notch and the home bar.
+
+### Keyboard and screen readers
+- **Esc** stops the agent's reply while it works, as Esc in its terminal would. It does nothing while it is idle or when a form or menu is open: Esc closes that first.
+- The sidebar's rows can be reached with **Tab** and opened with **Enter** or **Space**. On a phone, the drawer keeps focus inside it until it closes, and focus then returns to ☰.
+- Messages are not read out as they arrive. A screen reader hears the coarse events once each: the agent started, finished, replied, or is waiting for your input. The conversation itself is a log to browse.
+
 ### Writing
 - **Enter** sends; **Shift+Enter** adds a line. If sending fails, your text is given back.
 - Messages render **Markdown**: headings, **bold**, *italics*, ~~strike-through~~, `code`, code blocks, lists, quotes, rules and links. Also:
@@ -72,7 +85,8 @@ Pick an instance on the left to talk to it. The web chat is **the same conversat
 - Reloading the page keeps the conversation: the fleet keeps each instance's recent messages.
 
 ### Files and images
-- Attach with **📎**, by pasting, or by dropping files onto the chat.
+- Attach with **📎**, by pasting, or by dropping files onto the chat (it shows where they will go while you drag). Each file waits above the composer as a chip with its name and size, and **✕** removes it.
+- A paste longer than **10,000 characters** is attached as a text file instead of filling the composer. **As text** on its chip puts it back into the composer.
 - Limits: up to **5 files per message**, **10 MB each**, **25 MB together**.
 - Types: **PNG, JPEG, GIF, WebP, PDF and text files**. The type is read from the file itself, not from its name.
 - The agent receives files exactly as from Telegram: the file lands in the instance's workspace inbox (`<AGEND_HOME>/workspaces/<instance>/inbox`), with an `[📷 Image: …]` / `[📎 File: …]` line.
@@ -92,15 +106,18 @@ Each message you send shows how far it got, the same steps Telegram shows as rea
 | ⊘ | Dropped by **Stop** before the agent got it |
 
 ### "*name* is working…" and Stop
-While the open chat's agent is working, a line above the composer says so, with a **Stop** button.
+While the open chat's agent is working, a line above the composer says so, and the composer's **Send** becomes **Stop**. Type something and **Send** comes back beside it: a message sent while the agent works waits its turn.
 - Stop does what Telegram's cancel button and `/cancel` do: it interrupts the agent's current reply (Esc), and the messages still waiting are dropped. Their ticks turn to ⊘.
 - Stop does **not** stop the instance's process. The instance's own Stop in its actions does that.
+- The line shows how long the agent has been working, counted from when this page saw it start. After Stop it reads "Stopping *name*…" until the agent is idle.
+- When the agent is waiting on its terminal (a permission question, a login, a dialog), the line says "*name* is waiting for your input", and the instance gets a **needs you** badge in the sidebar. This is read from the terminal screen, so take it as approximate. Answer it from the prompt buttons below, or on the host.
 
 ### Answering the fleet's prompts
 When an instance looks hung, exits on its own, or is stuck on an interactive prompt, the buttons Telegram/Discord show also appear in that instance's chat: *Force restart* / *Keep waiting*, *Restart* / *Ignore*, *Confirm* / *Cancel*.
 - It is the **same prompt**: the first answer counts, from either place. The other side's buttons then show the outcome, and the prompt expires everywhere at once.
 - Only these instance-health prompts come to the web. A `/clear` confirmation, login, ClassicBot approvals, tips and the `/model` / `/effort` menus stay where they were asked.
 - A prompt raised while the page was not connected appears as soon as it reconnects. One answered elsewhere meanwhile shows as answered.
+- **No chat platform?** On a dashboard-only fleet these prompts are asked here, in the instance's chat. An interactive-prompt *Confirm* asks your General instance for help, so that one is offered only when the fleet has a General.
 
 ## `/view`
 

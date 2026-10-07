@@ -2,316 +2,420 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="referrer" content="no-referrer">
 <title>AgEnD Dashboard</title>
+<script src="/assets/theme.js"></script>
 <link rel="stylesheet" href="/assets/shell.css">
 <script src="/assets/agend-auth.js"></script>
 <script src="/assets/shell.js" defer></script>
 <style>
+  /* ── Theme tokens (#1307) ───────────────────────────────
+     Semantic names only: a rule says what a colour is FOR (surface, muted text, a user's bubble), never which
+     colour it is. Dark is the default; light follows the device (prefers-color-scheme) unless this browser chose
+     one (data-theme, set by /assets/theme.js before paint). Every text/surface pair is WCAG AA (4.5:1) or better. */
   :root {
-    --bg: #080b12; --surface: rgba(22,27,34,0.7); --raised: rgba(28,33,41,0.8);
-    --border: rgba(48,54,61,0.6); --border-bright: rgba(48,54,61,0.9);
-    --text: #f0f6fc; --text-sec: #8b949e; --text-muted: #484f58;
-    --accent: #2AABEE; --accent-dim: rgba(42,171,238,0.08); --accent-glow: rgba(42,171,238,0.2);
-    --success: #56d364; --error: #f85149; --warn: #d29922;
-    --glass: rgba(22,27,34,0.55); --glass-border: rgba(255,255,255,0.06);
+    color-scheme: dark;
+    --bg: #0d1117; --sidebar: #010409; --surface: #161b22; --raised: #1f2630; --panel: #161b22;
+    --border: #30363d; --border-strong: #484f58;
+    --text: #e6edf3; --text-sec: #9ea7b3; --text-muted: #7d8590;
+    --accent: #2aabee; --accent-dim: rgba(42,171,238,0.12); --accent-line: rgba(42,171,238,0.35);
+    --on-accent: #ffffff; --accent-fill: #0b72b5;
+    --success: #3fb950; --error: #f85149; --warn: #d29922;
+    --success-fill: #238636; --warn-fill: #9a6700; --danger-fill: #b62324;
+    --user-bubble: #1c2a3a; --user-bubble-border: #26405a;
+    --code-bg: #010409; --code-head: #161b22; --inline-code: rgba(110,118,129,0.25); --th-bg: rgba(110,118,129,0.15);
+    --tk-k: #ff7b72; --tk-s: #a5d6ff; --tk-n: #79c0ff; --tk-c: #8b949e;
+    --warn-bg: rgba(210,153,34,0.12); --warn-line: rgba(210,153,34,0.45);
+    --error-bg: rgba(248,81,73,0.12); --error-line: rgba(248,81,73,0.4);
+    --scrim: rgba(1,4,9,0.7); --shadow: 0 8px 28px rgba(0,0,0,0.45);
+    --focus: #58a6ff;
+    --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", Arial, "PingFang TC", "Microsoft JhengHei", "Noto Sans CJK TC", sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --col: 820px;        /* the conversation column */
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      color-scheme: light;
+      --bg: #ffffff; --sidebar: #f6f8fa; --surface: #ffffff; --raised: #eef1f4; --panel: #ffffff;
+      --border: #d0d7de; --border-strong: #afb8c1;
+      --text: #1f2328; --text-sec: #4b535d; --text-muted: #636c76;
+      --accent: #0969da; --accent-dim: rgba(9,105,218,0.08); --accent-line: rgba(9,105,218,0.35);
+      --on-accent: #ffffff; --accent-fill: #0969da;
+      --success: #1a7f37; --error: #cf222e; --warn: #9a6700;
+      --success-fill: #1a7f37; --warn-fill: #9a6700; --danger-fill: #cf222e;
+      --user-bubble: #ddf4ff; --user-bubble-border: #b6e3ff;
+      --code-bg: #f6f8fa; --code-head: #eaeef2; --inline-code: rgba(175,184,193,0.3); --th-bg: #f6f8fa;
+      --tk-k: #cf222e; --tk-s: #0a3069; --tk-n: #0550ae; --tk-c: #636c76;
+      --warn-bg: #fff8c5; --warn-line: #d4a72c;
+      --error-bg: #ffebe9; --error-line: #ff8182;
+      --scrim: rgba(31,35,40,0.45); --shadow: 0 8px 24px rgba(140,149,159,0.3);
+      --focus: #0969da;
+    }
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --bg: #ffffff; --sidebar: #f6f8fa; --surface: #ffffff; --raised: #eef1f4; --panel: #ffffff;
+    --border: #d0d7de; --border-strong: #afb8c1;
+    --text: #1f2328; --text-sec: #4b535d; --text-muted: #636c76;
+    --accent: #0969da; --accent-dim: rgba(9,105,218,0.08); --accent-line: rgba(9,105,218,0.35);
+    --on-accent: #ffffff; --accent-fill: #0969da;
+    --success: #1a7f37; --error: #cf222e; --warn: #9a6700;
+    --success-fill: #1a7f37; --warn-fill: #9a6700; --danger-fill: #cf222e;
+    --user-bubble: #ddf4ff; --user-bubble-border: #b6e3ff;
+    --code-bg: #f6f8fa; --code-head: #eaeef2; --inline-code: rgba(175,184,193,0.3); --th-bg: #f6f8fa;
+    --tk-k: #cf222e; --tk-s: #0a3069; --tk-n: #0550ae; --tk-c: #636c76;
+    --warn-bg: #fff8c5; --warn-line: #d4a72c;
+    --error-bg: #ffebe9; --error-line: #ff8182;
+    --scrim: rgba(31,35,40,0.45); --shadow: 0 8px 24px rgba(140,149,159,0.3);
+    --focus: #0969da;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html { font-size: 14px; }
   body {
-    background: var(--bg); color: var(--text);
-    font-family: 'DM Sans', system-ui, sans-serif;
-    display: flex; height: 100vh;
-    background-image:
-      radial-gradient(ellipse 120% 80% at 10% 20%, rgba(42,171,238,0.04), transparent 50%),
-      radial-gradient(ellipse 80% 60% at 90% 80%, rgba(86,211,100,0.03), transparent 50%);
+    background: var(--bg); color: var(--text); font-family: var(--font-ui);
+    display: flex; height: 100vh; height: 100dvh; overflow: hidden;
   }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .mono { font-family: var(--font-mono); }
+  .muted { color: var(--text-muted); }
+  .small { font-size: 11px; }
+  [hidden] { display: none !important; }
 
-  /* ── Sidebar ─────────────────────────────────────────── */
+  /* ── Sidebar: collapsible (#1307) ────────────────────── */
   .sidebar {
-    width: 280px; flex-shrink: 0; display: flex; flex-direction: column;
-    background: var(--glass); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-    border-right: 1px solid var(--glass-border);
+    width: 272px; flex-shrink: 0; display: flex; flex-direction: column;
+    background: var(--sidebar); border-right: 1px solid var(--border);
   }
-  .sidebar-header {
-    padding: 24px 20px 20px;
-    background: linear-gradient(135deg, rgba(42,171,238,0.08) 0%, transparent 60%);
-    border-bottom: 1px solid var(--glass-border);
+  body.sb-collapsed .sidebar { display: none; }
+  .sidebar-header { display: flex; align-items: center; gap: 10px; padding: 16px 12px 12px 18px; }
+  .sidebar-header h1 { font-size: 18px; font-weight: 700; letter-spacing: -0.02em; }
+  .sidebar-header .uptime { flex: 1; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); }
+  .sidebar-pad { padding: 4px 12px 0; }
+  .icon-btn {
+    background: transparent; border: 1px solid transparent; color: var(--text-sec); cursor: pointer;
+    border-radius: 8px; width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
+    font: inherit; font-size: 16px; line-height: 1; flex-shrink: 0;
   }
-  .sidebar-header h1 {
-    font-family: 'Outfit', sans-serif; font-size: 22px; font-weight: 800;
-    letter-spacing: -0.03em; color: var(--text);
-    background: linear-gradient(135deg, var(--text) 60%, var(--accent));
-    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-  }
-  .sidebar-header .uptime {
-    font-size: 11px; color: var(--text-muted); margin-top: 6px;
-    font-family: 'IBM Plex Mono', monospace; letter-spacing: 0.02em;
-  }
+  .icon-btn:hover { background: var(--raised); color: var(--text); }
   .nav-section {
-    font-family: 'Outfit', sans-serif; font-size: 10px; font-weight: 700;
-    letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-muted);
-    padding: 16px 20px 8px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted);
+    padding: 16px 20px 6px;
   }
   .fleet-entry {
-    margin: 0 12px; padding: 10px 12px; cursor: pointer;
-    border-radius: 10px; display: flex; align-items: center; gap: 10px;
-    font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 13px;
-    color: var(--accent); transition: all 0.15s;
-    border: 1px solid transparent;
+    padding: 8px 10px; cursor: pointer; border-radius: 8px; display: flex; align-items: center; gap: 10px;
+    font-weight: 600; font-size: 13px; color: var(--text); border: 1px solid transparent;
   }
-  .fleet-entry:hover { background: var(--accent-dim); }
-  .fleet-entry.active { background: var(--accent-dim); border-color: rgba(42,171,238,0.2); box-shadow: 0 0 20px rgba(42,171,238,0.06); }
-  .instance-list { flex: 1; overflow-y: auto; padding: 4px 0; }
+  .fleet-entry:hover { background: var(--raised); }
+  .fleet-entry.active { background: var(--accent-dim); border-color: var(--accent-line); }
+  .instance-list { flex: 1; overflow-y: auto; padding: 2px 0; }
   .instance-item {
-    margin: 2px 12px; padding: 10px 12px; cursor: pointer;
-    border-radius: 10px; display: flex; align-items: center; gap: 10px;
-    transition: all 0.15s; border: 1px solid transparent;
+    margin: 1px 12px; padding: 8px 10px; cursor: pointer;
+    border-radius: 8px; display: flex; align-items: center; gap: 10px; border: 1px solid transparent;
   }
   .instance-item:hover { background: var(--raised); }
-  .instance-item.active { background: var(--accent-dim); border-color: rgba(42,171,238,0.15); }
-  .dot {
-    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
-    transition: box-shadow 0.3s;
-  }
-  .dot.running { background: var(--success); box-shadow: 0 0 8px rgba(86,211,100,0.5); }
-  .dot.stopped { background: var(--error); opacity: 0.7; }
+  .instance-item.active { background: var(--accent-dim); border-color: var(--accent-line); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--text-muted); }
+  .dot.running { background: var(--success); }
+  .dot.stopped { background: var(--error); opacity: 0.8; }
   .dot.crashed { background: var(--warn); }
   .inst-identity { flex: 1; min-width: 0; }
   .inst-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .inst-alias { margin-top: 2px; font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .inst-meta { flex-shrink: 0; font-size: 11px; color: var(--text-muted); font-family: 'IBM Plex Mono', monospace; }
-  .sidebar-footer { padding: 16px; border-top: 1px solid var(--glass-border); }
+  .inst-meta { flex-shrink: 0; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); }
+  .sidebar-footer { padding: 12px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px; }
+  .theme-pick { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--text-sec); }
+  .theme-pick select { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; font: inherit; }
 
-  /* ── Main ────────────────────────────────────────────── */
-  .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  /* ── Main: a top bar, then the view ──────────────────── */
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+  .topbar {
+    display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 8px 12px;
+    border-bottom: 1px solid var(--border); flex-wrap: wrap;
+  }
+  .topbar .sb-open { display: none; }
+  body.sb-collapsed .topbar .sb-open { display: inline-flex; }
+  .top-title { font-weight: 600; font-size: 14px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .main-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
   .no-sel { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; color: var(--text-muted); }
-  .no-sel svg { opacity: 0.15; }
-  .no-sel span { font-family: 'Outfit', sans-serif; font-size: 15px; font-weight: 500; letter-spacing: -0.01em; }
+  .no-sel svg { opacity: 0.3; }
+  .no-sel span { font-size: 15px; font-weight: 500; }
 
   /* ── Tabs ─────────────────────────────────────────────── */
-  .tabs {
-    display: flex; gap: 2px; padding: 8px 16px;
-    background: var(--glass); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-    border-bottom: 1px solid var(--glass-border);
-  }
+  .tabs { display: flex; gap: 2px; }
   .tab {
-    padding: 8px 16px; cursor: pointer; border-radius: 8px;
-    font-family: 'Outfit', sans-serif; font-size: 13px; font-weight: 500;
-    color: var(--text-muted); transition: all 0.15s;
+    padding: 6px 12px; cursor: pointer; border-radius: 8px; font-size: 13px; font-weight: 500;
+    color: var(--text-sec); background: transparent; border: 0; font-family: inherit;
   }
-  .tab:hover { color: var(--text-sec); background: rgba(255,255,255,0.03); }
+  .tab:hover { color: var(--text); background: var(--raised); }
   .tab.active { color: var(--accent); background: var(--accent-dim); }
 
   /* ── Action buttons ──────────────────────────────────── */
-  .actions { display: flex; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--glass-border); }
+  .actions { display: flex; gap: 6px; margin-left: auto; flex-wrap: wrap; }
+  .actions:empty { display: none; }
   .btn {
-    padding: 7px 14px; border-radius: 8px; font-size: 12px; font-weight: 600;
-    cursor: pointer; border: 1px solid var(--border); font-family: 'DM Sans', sans-serif;
-    transition: all 0.15s; display: inline-flex; align-items: center; gap: 5px;
+    padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; line-height: 1.4;
+    cursor: pointer; border: 1px solid var(--border); font-family: inherit; color: var(--text); background: var(--surface);
+    display: inline-flex; align-items: center; gap: 5px;
   }
-  .btn:active:not(:disabled) { transform: scale(0.96); }
-  .btn:disabled { opacity: 0.35; cursor: default; }
-  .btn-accent { background: var(--accent); color: #fff; border-color: transparent; }
-  .btn-accent:hover:not(:disabled) { box-shadow: 0 4px 20px rgba(42,171,238,0.3); }
-  .btn-green { background: rgba(35,134,54,0.9); color: #fff; border-color: transparent; }
-  .btn-green:hover:not(:disabled) { box-shadow: 0 4px 16px rgba(35,134,54,0.3); }
-  .btn-warn { background: rgba(158,106,3,0.9); color: #fff; border-color: transparent; }
-  .btn-warn:hover:not(:disabled) { box-shadow: 0 4px 16px rgba(158,106,3,0.3); }
-  .btn-red { background: rgba(218,54,51,0.9); color: #fff; border-color: transparent; }
-  .btn-red:hover:not(:disabled) { box-shadow: 0 4px 16px rgba(218,54,51,0.3); }
-  .btn-ghost { background: transparent; color: var(--text-sec); }
+  .btn:hover:not(:disabled) { border-color: var(--border-strong); background: var(--raised); }
+  .btn:active:not(:disabled) { transform: scale(0.97); }
+  .btn:disabled { opacity: 0.45; cursor: default; }
+  .btn-block { width: 100%; justify-content: center; }
+  .btn-accent { background: var(--accent-fill); color: var(--on-accent); border-color: transparent; }
+  .btn-accent:hover:not(:disabled) { background: var(--accent-fill); filter: brightness(1.1); border-color: transparent; }
+  .btn-green { background: var(--success-fill); color: #fff; border-color: transparent; }
+  .btn-warn { background: var(--warn-fill); color: #fff; border-color: transparent; }
+  .btn-red { background: var(--danger-fill); color: #fff; border-color: transparent; }
+  .btn-green:hover:not(:disabled), .btn-warn:hover:not(:disabled), .btn-red:hover:not(:disabled) { filter: brightness(1.1); border-color: transparent; }
+  .btn-ghost { background: transparent; color: var(--text-sec); border-color: transparent; }
   .btn-ghost:hover:not(:disabled) { color: var(--text); background: var(--raised); }
+  .btn-ghost.btn-red { background: transparent; color: var(--error); }
+  .btn-sm { padding: 4px 8px; }
 
   /* ── Toast ───────────────────────────────────────────── */
+  .toasts { position: fixed; bottom: 24px; right: 24px; z-index: 100; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; pointer-events: none; }
   .toast {
-    position: fixed; bottom: 24px; right: 24px; padding: 12px 20px;
-    border-radius: 12px; font-size: 13px; font-weight: 500; z-index: 100;
-    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-    animation: toastIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-    border: 1px solid var(--glass-border);
+    padding: 10px 16px; max-width: min(420px, calc(100vw - 32px));
+    border-radius: 10px; font-size: 13px; font-weight: 500; z-index: 100; color: #fff; box-shadow: var(--shadow);
+    animation: toastIn 0.25s ease-out;
   }
-  .toast.ok { background: rgba(35,134,54,0.85); color: #fff; }
-  .toast.err { background: rgba(218,54,51,0.85); color: #fff; }
-  @keyframes toastIn { from { transform: translateY(16px) scale(0.95); opacity: 0; } to { transform: translateY(0) scale(1); opacity: 1; } }
+  .toast.ok { background: var(--success-fill); }
+  .toast.err { background: var(--danger-fill); }
+  @keyframes toastIn { from { transform: translateY(12px); opacity: 0; } to { transform: none; opacity: 1; } }
 
-  /* ── Chat ─────────────────────────────────────────────── */
-  .chat-view { flex: 1; display: flex; flex-direction: column; }
-  .messages { flex: 1; overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 10px; }
-  .msg {
-    max-width: 78%; padding: 12px 16px; border-radius: 16px;
-    font-size: 13px; line-height: 1.65; white-space: pre-wrap; word-break: break-word;
+  /* ── Chat: a centred column, the composer pinned below (#1307) ── */
+  .chat-view { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; }
+  .scroller { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  .thread { max-width: var(--col); margin: 0 auto; padding: 24px 20px 12px; display: flex; flex-direction: column; gap: 18px; }
+  .msg { font-size: 14px; line-height: 1.6; word-break: break-word; min-width: 0; }
+  .msg .meta { display: flex; align-items: baseline; gap: 8px; font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
+  .msg .sender { font-weight: 600; color: var(--text-sec); }
+  .msg .time { font-family: var(--font-mono); font-size: 11px; }
+  /* The person's own messages: a bubble on the right. */
+  .msg.user { align-self: flex-end; max-width: min(80%, 640px); }
+  .msg.user .meta { justify-content: flex-end; }
+  .msg.user .body { background: var(--user-bubble); border: 1px solid var(--user-bubble-border); border-radius: 18px 18px 4px 18px; padding: 10px 14px; }
+  /* An agent's reply: the full column, no box. */
+  .msg.agent { align-self: stretch; }
+  .msg.agent .sender { color: var(--success); }
+  .msg-tools { display: flex; gap: 4px; margin-top: 4px; opacity: 0; transition: opacity 0.12s; }
+  .msg:hover .msg-tools, .msg:focus-within .msg-tools { opacity: 1; }
+  @media (hover: none) { .msg-tools { opacity: 0.8; } }
+  .chip-btn {
+    background: transparent; border: 1px solid transparent; color: var(--text-muted); cursor: pointer; border-radius: 6px;
+    font: inherit; font-size: 12px; padding: 2px 8px;
   }
-  .msg.inbound {
-    align-self: flex-end; border-bottom-right-radius: 4px;
-    background: linear-gradient(135deg, rgba(42,171,238,0.12), rgba(42,171,238,0.06));
-    border: 1px solid rgba(42,171,238,0.1);
+  .chip-btn:hover { color: var(--text); background: var(--raised); border-color: var(--border); }
+  .chip-btn.icon-only { display: inline-flex; align-items: center; gap: 4px; padding: 4px 6px; }
+  .chip-btn.icon-only.done::after { content: "✓"; color: var(--success); }
+  .chip-btn.icon-only.fail::after { content: "!"; color: var(--error); }
+  .msg-empty { color: var(--text-muted); text-align: center; margin-top: 80px; font-size: 14px; line-height: 2; }
+  .msg-empty svg { display: block; margin: 0 auto 12px; opacity: 0.3; }
+  .msg-empty .sub { font-size: 12px; }
+  .jump-latest {
+    position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(100% + 10px); z-index: 5;
+    background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 999px; box-shadow: var(--shadow);
+    padding: 6px 14px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
   }
-  .msg.outbound {
-    align-self: flex-start; border-bottom-left-radius: 4px;
-    background: var(--surface); border: 1px solid var(--glass-border);
-    border-left: 2px solid var(--success);
+  .jump-latest:hover { border-color: var(--border-strong); }
+  .composer-wrap { flex-shrink: 0; padding: 0 20px 14px; }
+  .composer-col { max-width: var(--col); margin: 0 auto; position: relative; }
+  .composer {
+    display: flex; align-items: flex-end; gap: 6px; padding: 8px; border: 1px solid var(--border); border-radius: 18px;
+    background: var(--surface); box-shadow: var(--shadow);
   }
-  .msg .sender { font-size: 11px; font-weight: 600; margin-bottom: 4px; font-family: 'Outfit', sans-serif; }
-  .msg .sender.user { color: var(--accent); }
-  .msg .sender.agent { color: var(--success); }
-  .msg .time { font-size: 10px; color: var(--text-muted); float: right; margin-left: 12px; font-family: 'IBM Plex Mono', monospace; }
-  .msg-empty { color: var(--text-muted); text-align: center; margin-top: 80px; font-size: 13px; line-height: 2; }
-  .msg-empty svg { display: block; margin: 0 auto 12px; opacity: 0.15; }
-  .input-bar { padding: 16px 20px; border-top: 1px solid var(--glass-border); display: flex; gap: 8px; }
-  .input-bar { align-items: flex-end; }
-  .input-bar textarea {
-    flex: 1; background: rgba(255,255,255,0.04); color: var(--text);
-    border: 1px solid var(--border); border-radius: 12px; padding: 11px 16px;
-    font-size: 13px; font-family: 'DM Sans', sans-serif; outline: none; transition: border-color 0.15s, box-shadow 0.15s;
-    resize: none; min-height: 20px; max-height: 240px; line-height: 1.5; overflow-y: auto;
+  .composer:focus-within { border-color: var(--accent-line); }
+  .composer textarea {
+    flex: 1; background: transparent; color: var(--text); border: 0; padding: 7px 6px; outline: none;
+    font: inherit; font-size: 14px; resize: none; min-height: 22px; max-height: 240px; line-height: 1.5; overflow-y: auto;
   }
-  .input-bar textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
-  .prompts { margin: 0 20px; }
-  .prompt { margin-bottom: 8px; padding: 10px 12px; border-radius: 10px; font-size: 13px; background: rgba(210,153,34,0.12); border: 1px solid rgba(210,153,34,0.4); }
+  .composer .icon-btn { width: 34px; height: 34px; }
+  .send-btn { border-radius: 999px; min-width: 64px; justify-content: center; padding: 8px 14px; }
+  .input-hint { font-size: 11px; color: var(--text-muted); padding: 6px 4px 0; text-align: center; }
+  .prompts:empty, .work-bar:empty, #failedSend:empty { display: none; }
+  .prompt { margin-bottom: 8px; padding: 10px 12px; border-radius: 10px; font-size: 13px; background: var(--warn-bg); border: 1px solid var(--warn-line); }
   .prompt.done { background: transparent; border-style: dashed; color: var(--text-muted); }
   .prompt .txt { white-space: pre-wrap; word-break: break-word; }
   .prompt .acts { display: flex; gap: 8px; margin-top: 8px; align-items: center; flex-wrap: wrap; }
   .prompt .wait { font-size: 12px; color: var(--text-muted); }
   .work-bar { display: none; }
-  .work-bar.on { display: flex; gap: 8px; align-items: center; margin: 0 20px 8px; font-size: 12px; color: var(--text-muted); }
+  .work-bar.on { display: flex; gap: 8px; align-items: center; margin: 0 4px 8px; font-size: 12px; color: var(--text-sec); }
   .work-bar .lbl { flex: 1; }
   .work-bar .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--success); animation: agendPulse 1.2s ease-in-out infinite; }
-  .work-bar.stuck .pulse { background: var(--warn); animation: none; }
+  .work-bar.stuck .pulse, .work-bar.awaiting .pulse { background: var(--warn); animation: none; }
+  .work-bar.stopping .pulse { background: var(--text-muted); }
+  .work-bar .elapsed { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-muted); }
+  .work-bar.awaiting { color: var(--text); }
+  .work-bar .note { color: var(--text-muted); font-size: 11px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .badge-await { flex-shrink: 0; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 999px; background: var(--warn-bg); color: var(--warn); border: 1px solid var(--warn-line); }
+  .drop-overlay { display: none; }
+  .chat-view.dragging .drop-overlay {
+    display: flex; position: absolute; inset: 8px; z-index: 20; align-items: center; justify-content: center; pointer-events: none;
+    border: 2px dashed var(--accent); border-radius: 16px; background: color-mix(in srgb, var(--bg) 82%, transparent);
+  }
+  .drop-card { display: flex; flex-direction: column; align-items: center; gap: 8px; color: var(--accent); font-weight: 600; font-size: 15px; }
+  .drop-card svg { width: 32px; height: 32px; }
   @keyframes agendPulse { 0%, 100% { opacity: .3; } 50% { opacity: 1; } }
-  @media (prefers-reduced-motion: reduce) { .work-bar .pulse { animation: none; } }
-  .tick { margin-left: 6px; font-size: 11px; }
+  @media (prefers-reduced-motion: reduce) { .work-bar .pulse { animation: none; } .toast { animation: none; } }
+  .tick { margin-left: 4px; font-size: 11px; }
   .tick-delivered { color: var(--success); }
   .tick-failed { color: var(--error); font-weight: 700; }
   .tick-cancelled { color: var(--text-muted); }
-  .failed-send { margin: 0 20px 8px; padding: 8px 12px; border-radius: 10px; font-size: 12px; background: rgba(218,54,51,0.12); border: 1px solid rgba(218,54,51,0.35); display: flex; gap: 8px; align-items: center; }
+  .failed-send { margin: 0 0 8px; padding: 8px 12px; border-radius: 10px; font-size: 12px; background: var(--error-bg); border: 1px solid var(--error-line); display: flex; gap: 8px; align-items: center; }
   .failed-send .txt { flex: 1; white-space: pre-wrap; word-break: break-word; max-height: 4.5em; overflow: hidden; }
-  .pending-files { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 20px 6px; }
+  .pending-files { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 0 8px; }
   .pending-files:empty { display: none; }
-  .file-chip { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--glass-border); background: var(--surface); max-width: 260px; }
+  .file-chip { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 4px 8px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); max-width: 320px; }
   .file-chip img { width: 28px; height: 28px; object-fit: cover; border-radius: 4px; }
-  .file-chip .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-chip .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .file-chip .sz { color: var(--text-muted); flex-shrink: 0; }
+  .file-chip .ic { display: inline-flex; color: var(--text-sec); }
+  .file-chip .as-text { white-space: nowrap; flex-shrink: 0; background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--text-sec); cursor: pointer; font: inherit; font-size: 11px; padding: 1px 6px; }
+  .file-chip .as-text:hover { color: var(--text); border-color: var(--border-strong); }
   .file-chip button { background: none; border: 0; color: var(--text-muted); cursor: pointer; font-size: 13px; }
-  .chat-view.dragging { outline: 2px dashed var(--accent); outline-offset: -6px; }
   .msg .atts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-  .msg .att-img img { max-width: 260px; max-height: 220px; border-radius: 8px; display: block; border: 1px solid var(--glass-border); }
+  .msg.user .atts { justify-content: flex-end; }
+  .msg .att-img img { max-width: 260px; max-height: 220px; border-radius: 8px; display: block; border: 1px solid var(--border); }
   .msg .att-file { font-size: 12px; color: var(--accent); }
   .msg .att-size { color: var(--text-muted); }
-  .input-hint { font-size: 11px; color: var(--text-muted); padding: 0 20px 8px; }
+
   /* Rendered Markdown inside a message */
   .msg .md { white-space: normal; }
-  .msg .md p { margin: 0 0 6px; } .msg .md p:last-child { margin-bottom: 0; }
-  .msg .md pre { white-space: pre; overflow-x: auto; background: rgba(0,0,0,0.35); border: 1px solid var(--glass-border); border-radius: 8px; padding: 8px 10px; margin: 6px 0; }
-  .msg .md code { font-family: 'IBM Plex Mono', monospace; font-size: 12px; background: rgba(255,255,255,0.06); border-radius: 4px; padding: 1px 4px; }
-  .msg .md pre code { background: none; padding: 0; }
+  .msg .md p { margin: 0 0 8px; } .msg .md p:last-child { margin-bottom: 0; }
+  .msg .md code { font-family: var(--font-mono); font-size: 0.9em; background: var(--inline-code); border-radius: 4px; padding: 1px 4px; }
   .msg .md a { color: var(--accent); }
-  .msg .md blockquote { margin: 6px 0; padding-left: 10px; border-left: 3px solid var(--glass-border); color: var(--text-muted); }
-  .msg .md ul, .msg .md ol { margin: 4px 0; padding-left: 20px; }
+  .msg .md blockquote { margin: 6px 0; padding-left: 10px; border-left: 3px solid var(--border-strong); color: var(--text-sec); }
+  .msg .md ul, .msg .md ol { margin: 4px 0 8px; padding-left: 22px; }
   .msg .md li > ul, .msg .md li > ol { margin: 2px 0; }
-  .msg .md .tbl { overflow-x: auto; margin: 6px 0; }
-  .msg .md table { border-collapse: collapse; font-size: 12px; }
-  .msg .md th, .msg .md td { border: 1px solid var(--glass-border); padding: 4px 8px; text-align: left; vertical-align: top; }
-  .msg .md th { background: rgba(255,255,255,0.05); font-weight: 600; }
+  .msg .md hr { border: 0; border-top: 1px solid var(--border); margin: 10px 0; }
+  .msg .md .tbl { overflow-x: auto; margin: 8px 0; }
+  .msg .md table { border-collapse: collapse; font-size: 13px; }
+  .msg .md th, .msg .md td { border: 1px solid var(--border); padding: 5px 9px; text-align: left; vertical-align: top; }
+  .msg .md th { background: var(--th-bg); font-weight: 600; }
   .msg .md .al-c { text-align: center; } .msg .md .al-r { text-align: right; }
-  .msg .md .tk-k { color: #c792ea; } .msg .md .tk-s { color: #c3e88d; } .msg .md .tk-n { color: #f78c6c; } .msg .md .tk-c { color: #7f8a99; font-style: italic; }
-  .msg .md h3, .msg .md h4, .msg .md h5, .msg .md h6 { margin: 6px 0 4px; font-size: 13px; }
+  .msg .md h3, .msg .md h4, .msg .md h5, .msg .md h6 { margin: 10px 0 6px; font-size: 14px; }
+  .msg .md .tk-k { color: var(--tk-k); } .msg .md .tk-s { color: var(--tk-s); } .msg .md .tk-n { color: var(--tk-n); } .msg .md .tk-c { color: var(--tk-c); font-style: italic; }
+  /* Code blocks: a header with the language, Wrap and Copy; a long one is folded until opened. */
+  .codeblock { margin: 8px 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--code-bg); }
+  .codeblock .cb-head {
+    display: flex; align-items: center; gap: 4px; padding: 3px 6px 3px 12px; background: var(--code-head);
+    border-bottom: 1px solid var(--border); font-size: 12px; color: var(--text-sec); position: sticky; top: 0;
+  }
+  .codeblock .cb-lang { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); }
+  .codeblock pre { margin: 0; padding: 10px 12px; overflow-x: auto; white-space: pre; font-family: var(--font-mono); font-size: 12.5px; line-height: 1.5; }
+  .msg .md .codeblock pre code { background: none; padding: 0; border-radius: 0; font-size: inherit; }
+  .chat-view.wrap-code .codeblock pre { white-space: pre-wrap; word-break: break-word; }
+  .codeblock.folded pre { max-height: 22.5em; overflow-y: hidden; mask-image: linear-gradient(to bottom, #000 70%, transparent); -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent); }
+  .codeblock .cb-more { display: block; width: 100%; border: 0; border-top: 1px solid var(--border); background: var(--code-head); color: var(--text-sec); cursor: pointer; font: inherit; font-size: 12px; padding: 5px; }
+  .codeblock .cb-more:hover { color: var(--text); }
 
   /* ── Detail cards ────────────────────────────────────── */
-  .detail-view { flex: 1; overflow-y: auto; padding: 24px; display: none; }
-  .card {
-    background: var(--surface); border: 1px solid var(--glass-border);
-    border-radius: 16px; padding: 20px 24px; margin-bottom: 16px;
-    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-    transition: border-color 0.2s;
-  }
-  .card:hover { border-color: rgba(255,255,255,0.1); }
-  .card h3 {
-    font-family: 'Outfit', sans-serif; font-size: 10px; font-weight: 700;
-    letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent);
-    margin-bottom: 14px;
-  }
+  .detail-view { flex: 1; overflow-y: auto; padding: 24px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px 22px; margin: 0 auto 16px; max-width: var(--col); }
+  .card h3 { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); margin-bottom: 12px; }
   .detail-row { display: flex; align-items: center; gap: 10px; font-size: 13px; padding: 6px 0; }
-  .detail-label { color: var(--text-muted); min-width: 100px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
-  /* Readable at a glance: the percentage is bold and the bar thick (usage readability). */
-  .progress-bar { display: inline-block; width: 120px; height: 8px; background: rgba(255,255,255,0.07); border-radius: 4px; vertical-align: middle; margin-left: 10px; overflow: hidden; }
-  .progress-fill { display: block; height: 100%; border-radius: 4px; transition: width 0.4s cubic-bezier(0.4,0,0.2,1); }
+  .detail-label { color: var(--text-muted); min-width: 100px; font-family: var(--font-mono); font-size: 11px; }
+  .progress-bar { display: inline-block; width: 120px; height: 8px; background: var(--raised); border-radius: 4px; vertical-align: middle; margin-left: 10px; overflow: hidden; }
+  .progress-fill { display: block; height: 100%; border-radius: 4px; background: var(--accent); transition: width 0.4s ease; }
+  .progress-fill.warn { background: var(--warn); } .progress-fill.error { background: var(--error); }
   .pct-val { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
-  .activity-item { font-size: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.03); font-family: 'IBM Plex Mono', monospace; }
+  .activity-item { font-size: 12px; padding: 6px 0; border-bottom: 1px solid var(--border); font-family: var(--font-mono); }
   .act-time { color: var(--text-muted); margin-right: 8px; }
   .act-event { color: var(--warn); margin-right: 4px; }
+  .loading { color: var(--text-muted); text-align: center; padding: 24px; }
+  .load-error { color: var(--error); padding: 24px; }
 
   /* ── List items (tasks, schedules, teams) ─────────────── */
-  .task-view { flex: 1; overflow-y: auto; padding: 24px; display: none; }
-  .list-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-  .list-header span { font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 15px; }
+  .task-view { flex: 1; overflow-y: auto; padding: 24px; }
+  .task-view > * { max-width: var(--col); margin-left: auto; margin-right: auto; }
+  .list-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+  .list-header span { font-weight: 600; font-size: 15px; }
   .task-item {
-    background: var(--surface); border: 1px solid var(--glass-border);
-    border-radius: 12px; padding: 14px 18px; margin-bottom: 10px;
-    display: flex; align-items: center; gap: 12px;
-    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-    transition: all 0.15s;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; margin-bottom: 8px;
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
   }
-  .task-item:hover { border-color: rgba(255,255,255,0.08); transform: translateY(-1px); }
-  .task-status {
-    font-size: 10px; padding: 3px 10px; border-radius: 999px; font-weight: 600;
-    font-family: 'IBM Plex Mono', monospace; text-transform: uppercase; letter-spacing: 0.06em;
-  }
+  .task-item:hover { border-color: var(--border-strong); }
+  .task-status { font-size: 10px; padding: 3px 10px; border-radius: 999px; font-weight: 600; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; }
   .task-status.open { background: var(--accent-dim); color: var(--accent); }
-  .task-status.claimed { background: rgba(210,153,34,0.12); color: var(--warn); }
-  .task-status.done { background: rgba(86,211,100,0.1); color: var(--success); }
+  .task-status.claimed { background: var(--warn-bg); color: var(--warn); }
+  .task-status.done { background: var(--raised); color: var(--success); }
   .task-title { flex: 1; font-size: 13px; font-weight: 500; }
+  .task-title.strong { font-weight: 600; }
   .task-assignee { font-size: 11px; color: var(--text-sec); }
+  .link-like { cursor: pointer; color: var(--accent); }
   .task-actions { display: flex; gap: 4px; }
 
   /* ── Form overlay ────────────────────────────────────── */
-  .form-overlay {
-    position: fixed; inset: 0; background: rgba(0,0,0,0.65);
-    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-    display: flex; align-items: center; justify-content: center; z-index: 50;
-    animation: fadeIn 0.2s ease;
-  }
+  .form-overlay { position: fixed; inset: 0; background: var(--scrim); display: flex; align-items: center; justify-content: center; z-index: 50; animation: fadeIn 0.15s ease; }
   @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
   .form-card {
-    background: var(--glass); border: 1px solid var(--glass-border);
-    border-radius: 20px; padding: 32px; width: 480px; max-width: 92vw; max-height: 82vh;
-    overflow-y: auto; backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
-    box-shadow: 0 24px 80px rgba(0,0,0,0.4);
+    background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 28px; width: 480px; max-width: 92vw; max-height: 82vh;
+    overflow-y: auto; box-shadow: var(--shadow);
   }
-  .form-card h2 {
-    font-family: 'Outfit', sans-serif; font-size: 20px; font-weight: 700;
-    margin-bottom: 24px; letter-spacing: -0.02em;
+  .form-card h2 { font-size: 19px; font-weight: 700; margin-bottom: 20px; }
+  .form-field { margin-bottom: 14px; }
+  .form-field label { display: block; font-size: 11px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .form-field input, .form-field select, .form-field textarea {
+    width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px;
+    font: inherit; font-size: 13px; outline: none;
   }
-  .form-field { margin-bottom: 16px; }
-  .form-field label {
-    display: block; font-size: 11px; font-weight: 600; color: var(--text-muted);
-    margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.08em;
-    font-family: 'Outfit', sans-serif;
-  }
-  .form-field input, .form-field select {
-    width: 100%; background: rgba(255,255,255,0.04); color: var(--text);
-    border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px;
-    font-size: 13px; font-family: 'DM Sans', sans-serif; outline: none;
-    transition: all 0.15s;
-  }
-  .form-field input:focus, .form-field select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
-  .form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 24px; }
-  .eye-btn { background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 14px; padding: 4px 6px; border-radius: 6px; transition: all 0.15s; }
+  .form-field input:focus, .form-field select:focus, .form-field textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+  .form-field input:disabled { opacity: 0.55; }
+  .form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+  .field-row { display: flex; gap: 4px; align-items: center; }
+  .field-row input { flex: 1; }
+  .root-row { display: flex; gap: 4px; margin-bottom: 6px; }
+  .root-row input { flex: 1; }
+  .field-note { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+  .check-row { display: flex; gap: 6px; align-items: center; font-size: 13px; padding: 3px 0; }
+  .check-list { max-height: 150px; overflow-y: auto; }
+  .save-row { display: flex; gap: 10px; align-items: center; margin: 16px auto 0; max-width: var(--col); }
+  .eye-btn { background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 14px; padding: 4px 6px; border-radius: 6px; }
   .eye-btn:hover { color: var(--accent); }
+  .offscreen { position: fixed; left: -9999px; top: 0; opacity: 0; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  .instance-item:focus-visible, .fleet-entry:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+  /* Phones with a notch or a home bar: keep the chrome clear of them. */
+  .topbar { padding-top: max(8px, env(safe-area-inset-top)); padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
+  .composer-wrap { padding-bottom: max(14px, env(safe-area-inset-bottom)); }
+  .sidebar { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+  .scrim { display: none; }
 
-  @media (max-width: 700px) { .sidebar { width: 240px; } }
+  /* ── Narrow screens: the sidebar is a drawer over the chat ── */
+  @media (max-width: 760px) {
+    .sidebar {
+      position: fixed; top: 0; bottom: 0; left: 0; width: min(300px, 86vw); z-index: 40; box-shadow: var(--shadow);
+      transform: translateX(-105%); transition: transform 0.2s ease; visibility: hidden;
+    }
+    body.sb-collapsed .sidebar { display: flex; }            /* "hidden" is a wide-screen choice; here it is the drawer */
+    body.sb-open .sidebar { transform: none; visibility: visible; }
+    body.sb-open .scrim { display: block; position: fixed; inset: 0; background: var(--scrim); z-index: 39; }
+    .topbar .sb-open { display: inline-flex; }
+    .sidebar-header .icon-btn { display: none; }
+    /* The notch insets stay in force at phone width too (#1317 review): a plain shorthand here would undo them. */
+    .topbar { gap: 6px; padding: max(6px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) 6px max(8px, env(safe-area-inset-left)); }
+    .thread { padding: 16px 12px 8px; }
+    .composer-wrap { padding: 0 max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left)); }
+    .composer textarea { font-size: 16px; }          /* under 16px, iOS Safari zooms the page on focus */
+    .msg.user { max-width: 88%; }
+    .detail-view, .task-view { padding: 16px 12px; }
+    .toasts { top: calc(60px + env(safe-area-inset-top)); bottom: auto; left: max(12px, env(safe-area-inset-left)); right: max(12px, env(safe-area-inset-right)); align-items: stretch; }
+  }
+  @media (prefers-reduced-motion: reduce) { .sidebar { transition: none; } }
 </style>
 </head>
 <body>
 
-<div class="sidebar">
+<aside class="sidebar" id="sidebar">
   <div class="sidebar-header">
     <h1>AgEnD</h1>
-    <div class="uptime" id="uptime">--</div>
+    <span class="uptime" id="uptime">--</span>
+    <button class="icon-btn" type="button" data-act="toggleSidebar" title="Hide the sidebar" aria-label="Hide the sidebar" aria-controls="sidebar">&#8249;</button>
   </div>
-  <div style="padding:8px 12px 0"><nav data-agend-nav data-compact data-current="ui"></nav></div>
-  <div style="padding:8px 12px 0">
-    <div class="fleet-entry" id="fleetEntry" data-act="selFleet">
+  <div class="sidebar-pad"><nav data-agend-nav data-compact data-current="ui"></nav></div>
+  <div class="sidebar-pad">
+    <div class="fleet-entry" id="fleetEntry" data-act="selFleet" role="button" tabindex="0">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
       Fleet
     </div>
@@ -319,14 +423,26 @@
   <div class="nav-section">Instances</div>
   <div class="instance-list" id="instanceList"></div>
   <div class="sidebar-footer">
-    <button class="btn btn-accent" style="width:100%;justify-content:center" data-act="showCreateInstance">+ New Instance</button>
+    <button class="btn btn-accent btn-block" data-act="showCreateInstance">+ New Instance</button>
+    <label class="theme-pick"><span id="themeLabel">Theme</span>
+      <select id="themePick"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
   </div>
-</div>
+</aside>
 
-<div class="main" id="mainArea">
-  <div class="no-sel">
-    <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
-    <span>Select Fleet or an instance to begin</span>
+<div class="scrim" data-act="closeDrawer"></div>
+<div id="announcer" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+<div class="main">
+  <header class="topbar">
+    <button class="icon-btn sb-open" id="sbOpen" type="button" data-act="toggleSidebar" title="Show the sidebar" aria-label="Show the sidebar" aria-controls="sidebar" aria-expanded="false">&#9776;</button>
+    <div class="top-title" id="topTitle"></div>
+    <div class="tabs" id="topTabs" role="tablist"></div>
+    <div class="actions" id="actions"></div>
+  </header>
+  <div class="main-body" id="mainArea">
+    <div class="no-sel">
+      <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+      <span>Select Fleet or an instance to begin</span>
+    </div>
   </div>
 </div>
 
@@ -337,6 +453,11 @@
 const UI_LANG = localStorage.getItem("agend_lang") || (navigator.language?.toLowerCase().startsWith("zh") ? "zh-TW" : "en");
 const UI_TEXT = {
   en: {
+    a11yWorking: "{0} started working", a11yIdle: "{0} finished", a11yReplied: "{0} replied", conversationWith: "Conversation with {0}",
+    stopping: "Stopping {0}…", awaiting: "{0} is waiting for your input", approxNote: "Read from the terminal, so approximate", elapsedTitle: "Time since this page saw it start (approximate)", needsYou: "needs you",
+    dropHere: "Drop files to attach them", asText: "As text", pasteAttached: "A long paste ({0} characters) was attached as a text file", pasteKeptAsText: "No room for another attachment: the long paste stays as text",
+    send: "Send", composerPlaceholder: "Send a message…", composerHint: "Enter to send · Shift+Enter for a new line · Esc stops the reply", attachTitle: "Attach files (images, PDF, text — or paste / drop them)",
+    copy: "Copy", copyMessage: "Copy this reply", copied: "Copied", copyFailed: "Copy failed", wrap: "Wrap", showAll: "Show all {0} lines", showLess: "Show less", jumpLatest: "↓ Latest", newBelow: "↓ {0} new",
     disconnected: "disconnected", tick_queued: "Waiting behind another message", tick_processing: "Handed to the agent", tick_delivered: "The agent has it", tick_failed: "Not delivered", tick_cancelled: "Dropped by Stop",
     promptAnswering: "Answering…", promptGone: "This prompt is no longer open", promptFor: "{0}: {1}",
     working: "{0} is working…", stuck: "{0} looks stuck", stopReply: "Stop", stopReplyTitle: "Stop the current reply (like Esc) and drop the messages still waiting", stopSent: "Stopped",
@@ -349,6 +470,11 @@ const UI_TEXT = {
     teamCreated: "Team created", teamDeleted: "Team deleted", configSaved: "Config saved", configRestart: " (restart Fleet to apply channel changes)",
   },
   "zh-TW": {
+    a11yWorking: "{0} 開始工作", a11yIdle: "{0} 已完成", a11yReplied: "{0} 已回覆", conversationWith: "與 {0} 的對話",
+    stopping: "正在中止 {0}…", awaiting: "{0} 正在等你回應", approxNote: "從終端畫面判讀，僅供參考", elapsedTitle: "從這個頁面看到它開始工作起算（約略）", needsYou: "等你回應",
+    dropHere: "放開即可附加檔案", asText: "改為文字", pasteAttached: "貼上的長文字（{0} 個字元）已改為文字檔附加", pasteKeptAsText: "附件已滿，貼上的長文字保留為一般文字",
+    send: "送出", composerPlaceholder: "輸入訊息…", composerHint: "Enter 送出 · Shift+Enter 換行 · Esc 中止回覆", attachTitle: "附加檔案（圖片、PDF、文字檔，也可以貼上或拖曳）",
+    copy: "複製", copyMessage: "複製這則回覆", copied: "已複製", copyFailed: "複製失敗", wrap: "換行", showAll: "展開全部 {0} 行", showLess: "收合", jumpLatest: "↓ 最新", newBelow: "↓ {0} 則新訊息",
     disconnected: "已斷線", tick_queued: "排在前一則訊息之後", tick_processing: "已交給 agent", tick_delivered: "agent 已收到", tick_failed: "未送達", tick_cancelled: "已被中止取消",
     promptAnswering: "回覆中…", promptGone: "這個提示已經結束", promptFor: "{0}：{1}",
     working: "{0} 處理中…", stuck: "{0} 似乎卡住了", stopReply: "中止", stopReplyTitle: "中止目前的回覆（同 Esc），並取消還在排隊的訊息", stopSent: "已中止",
@@ -378,6 +504,60 @@ const activity = {};
 // Fleet prompts open for an instance (hang / clean exit / interactive prompt), by nonce: the same buttons the
 // platform shows, answerable here. A resolved one keeps its outcome line for a minute, without buttons.
 const prompts = {};
+// The turn (#1307), as near as a terminal lets the page tell: when this page saw the agent start working (its own
+// monotonic clock, so the elapsed time is approximate), a Stop on its way, and an instance waiting on a terminal prompt.
+const workingSince = {}, stopping = {}, awaiting = {};
+const monoNow = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
+let elapsedTimer = null, elapsedEl = null;
+function noteActivity(name, state) {
+  const was = AgendChatRender.isBusy(activity[name]), now = AgendChatRender.isBusy(state);
+  const known = Object.prototype.hasOwnProperty.call(activity, name);
+  activity[name] = state;
+  if (now && !was) workingSince[name] = monoNow();
+  if (!now) { delete workingSince[name]; delete stopping[name]; }
+  if (known && name === cur && now !== was) announce(trf(now ? "a11yWorking" : "a11yIdle", name));
+}
+// This browser's choices (#1307), kept like agend_lang: wrapped code lines, a hidden sidebar. Theme: /assets/theme.js.
+const stored = key => { try { return localStorage.getItem(key); } catch { return null; } };
+let codeWrap = stored("agend_code_wrap") === "1";
+// Wide: the sidebar shows or hides, and stays that way. Narrow: it is a drawer, opened by ☰ and closed by choosing
+// something, tapping outside it, or Esc.
+const narrow = () => typeof matchMedia === "function" && matchMedia("(max-width: 760px)").matches;
+function toggleSidebar() {
+  if (narrow()) { if (document.body.classList.contains("sb-open")) closeDrawer(); else openDrawer(); return; }
+  const hidden = document.body.classList.toggle("sb-collapsed");
+  try { localStorage.setItem("agend_sidebar", hidden ? "hidden" : "shown"); } catch { /* this page only */ }
+}
+function openDrawer() {
+  document.body.classList.add("sb-open");
+  document.getElementById("sbOpen")?.setAttribute("aria-expanded", "true");
+  setTimeout(() => (document.querySelector(".instance-item.active") || document.getElementById("fleetEntry"))?.focus(), 0);
+}
+function closeDrawer() {
+  if (!document.body.classList?.contains("sb-open")) return;
+  document.body.classList.remove("sb-open");
+  const opener = document.getElementById("sbOpen");
+  opener?.setAttribute("aria-expanded", "false");
+  if (narrow() && opener) opener.focus();
+}
+const FOCUSABLE = 'a[href], button:not([disabled]), select, input, textarea, [tabindex="0"]';
+function trapDrawerTab(e) {
+  if (e.key !== "Tab" || !document.body.classList.contains("sb-open")) return;
+  const items = [...document.getElementById("sidebar").querySelectorAll(FOCUSABLE)].filter(x => x.offsetParent !== null);
+  if (!items.length) return;
+  const first = items[0], last = items[items.length - 1];
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  else if (!document.getElementById("sidebar").contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+}
+if (stored("agend_sidebar") === "hidden") document.body.classList?.add("sb-collapsed");
+{
+  const pick = document.getElementById("themePick");
+  if (pick && typeof AgendTheme !== "undefined") {
+    pick.value = AgendTheme.get();
+    pick.addEventListener("change", () => AgendTheme.set(pick.value));
+  }
+}
 
 async function api(m, p, b) {
   const o = { method: m, headers: { "Content-Type": "application/json" } };
@@ -391,9 +571,12 @@ function esc(s) { return escAttr(s); }
 // Escapes & " ' < >: safe for text and inside a quoted attribute. esc() is this same function; attribute sites name it.
 function escAttr(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/'/g, "&#39;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 function fmtUp(s) { return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s/60)}m` : `${Math.floor(s/3600)}h ${Math.floor((s%3600)/60)}m`; }
+// Toasts stack in one corner (on a phone, under the top bar) instead of piling up on the composer.
 function toast(msg, ok=true) {
+  let box = document.getElementById("toasts");
+  if (!box) { box = document.createElement("div"); box.id = "toasts"; box.className = "toasts"; document.body.appendChild(box); }
   const el = document.createElement("div"); el.className = `toast ${ok?"ok":"err"}`; el.textContent = msg;
-  document.body.appendChild(el); setTimeout(() => el.remove(), 3000);
+  box.appendChild(el); setTimeout(() => el.remove(), 3000);
 }
 
 // Live updates arrive over SSE. Some paths cannot carry it (Cloudflare Quick Tunnels do not), and a proxy
@@ -404,7 +587,13 @@ function applyStatus(d) {
   instances = d.instances;
   // The raw execution state, the same thing the "activity" events carry; `state` may be the presentation
   // "awaiting_input" (#1212), which must not hide the working line and Stop between two events.
-  for (const i of instances) activity[i.name] = (i.execution_state !== undefined ? i.execution_state : i.state) ?? null;
+  for (const i of instances) {
+    noteActivity(i.name, (i.execution_state !== undefined ? i.execution_state : i.state) ?? null);
+    // Waiting on a terminal prompt (a permission, a login, a dialog): read from the pane, so approximate.
+    const waitsNow = i.state === "awaiting_input" ? (typeof i.interaction_summary === "string" ? i.interaction_summary : "") : null;
+    if (i.name === cur && waitsNow != null && awaiting[i.name] == null) announce(trf("awaiting", i.name));
+    awaiting[i.name] = waitsNow;
+  }
   document.getElementById("uptime").textContent = fmtUp(d.uptime);
   renderList();
   if (cur) { const i = instances.find(x => x.name === cur); const a = document.getElementById("actions"); if (i && a) renderActions(i); }
@@ -412,7 +601,9 @@ function applyStatus(d) {
 }
 // One way in for a chat message, from the stream, a poll or a replay: one entry per boot+id.
 function ingestMessage(m) {
-  msgs[m.instance] = AgendChatRender.mergeMessages(msgs[m.instance], [m], 500);
+  const before = msgs[m.instance];
+  msgs[m.instance] = AgendChatRender.mergeMessages(before, [m], 500);
+  if (m.instance === cur && msgs[m.instance] !== before && !isUserMsg(m) && (msgs[m.instance] || []).length > (before || []).length) announce(trf("a11yReplied", m.sender));
   if (m.instance === cur && curTab === "chat") renderMsgs();
 }
 async function pollOnce() {
@@ -443,12 +634,42 @@ const ACTIONS = {
   delTeam: el => delTeam(el.dataset.arg), togglePw: el => togglePw(el.dataset.arg),
   taskAct: el => taskAct(el.dataset.arg, el.dataset.arg2),
   closeOverlay: el => el.closest(".form-overlay")?.remove(), removeParent: el => el.parentElement?.remove(),
+  tab: el => { curTab = el.dataset.arg; renderMain(); }, toggleSidebar: () => toggleSidebar(), closeDrawer: () => closeDrawer(),
+  stopReply: el => cancelReply(cur, el), jumpLatest: () => jumpLatest(),
+  copyMsg: el => copyMsg(el), copyCode: el => copyCode(el), toggleFold: el => toggleFold(el), toggleWrap: () => toggleWrap(),
 };
 document.addEventListener("click", e => {
   const el = e.target && e.target.closest ? e.target.closest("[data-act]") : null;
   if (!el || !Object.hasOwn(ACTIONS, el.dataset.act)) return;
   ACTIONS[el.dataset.act](el, e);
 });
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && !e.isComposing) {
+    if (document.body.classList?.contains("sb-open")) { closeDrawer(); return; }
+    if (stopOnEscape(document.activeElement)) { e.preventDefault(); cancelReply(cur, document.getElementById("stopBtn")); }
+    return;
+  }
+  // The sidebar's rows act as buttons for the keyboard too.
+  if ((e.key === "Enter" || e.key === " ") && e.target?.matches?.('.instance-item, .fleet-entry')) { e.preventDefault(); e.target.click(); return; }
+  trapDrawerTab(e);
+});
+// Esc stops the agent's reply (as Esc in its terminal would) — from the chat, while it works, and only when nothing
+// else on the page is open that Esc would close first (a form, the Session menu).
+function stopOnEscape(active) {
+  if (mode !== "instance" || curTab !== "chat" || !cur || !AgendChatRender.isBusy(activity[cur]) || stopping[cur] || cancelling[cur]) return false;
+  if (document.querySelector(".form-overlay") || document.querySelector(".agend-pop:not([hidden])")) return false;
+  const view = document.getElementById("chatView");
+  return !active || active === document.body || !!(view && view.contains(active));
+}
+// One polite, visually hidden line for the coarse events only (#1307): a reply arrived, the agent started, finished,
+// or waits on you. Messages themselves are not read out as they arrive; the list is a log to browse.
+let announceTimer = null;
+function announce(text) {
+  const el = document.getElementById("announcer"); if (!el || !text) return;
+  el.textContent = "";
+  clearTimeout(announceTimer);
+  announceTimer = setTimeout(() => { el.textContent = text; }, 60);
+}
 const sse = new EventSource("/ui/events");
 silentTimer = setTimeout(startPolling, 15000);   // the server sends a status frame the moment a stream opens
 sse.addEventListener("status", e => { sseAlive(); applyStatus(JSON.parse(e.data)); });
@@ -489,7 +710,7 @@ sse.addEventListener("prompt_resolved", e => {
 sse.addEventListener("activity", e => {
   sseAlive();
   const d = JSON.parse(e.data);
-  activity[d.instance] = d.state ?? null;
+  noteActivity(d.instance, d.state ?? null);
   if (d.instance === cur) renderWorkBar();
 });
 // What was said before this page loaded (a reload no longer starts from an empty chat).
@@ -523,34 +744,42 @@ function renderList() {
     // M2: show ctx:0% when context_pct is 0, only hide when null (unavailable)
     const ctxMeta = i.context_pct != null ? ` ctx:${Math.round(i.context_pct)}%` : "";
     const alias = typeof i.display_name === "string" && i.display_name.trim() !== i.name ? i.display_name.trim() : "";
-    return `<div class="instance-item${i.name===cur&&mode==="instance"?" active":""}" data-n="${esc(i.name)}" title="${esc(tip)}">
+    return `<div class="instance-item${i.name===cur&&mode==="instance"?" active":""}" data-n="${esc(i.name)}" title="${esc(tip)}" role="button" tabindex="0"${i.name===cur&&mode==="instance"?' aria-current="true"':""}>
     <div class="dot ${escAttr(i.status)}" title="${escAttr(i.status)}"></div><div class="inst-identity">
     <div class="inst-name">${esc(i.name)}</div>${alias ? `<div class="inst-alias">${esc(alias)}</div>` : ""}
-    </div><div class="inst-meta">${i.cost>0?`$${i.cost.toFixed(2)}`:""}${ctxMeta}</div></div>`;
+    </div>${awaiting[i.name] != null ? `<span class="badge-await" title="${escAttr(awaiting[i.name] || tr("approxNote"))}">${tr("needsYou")}</span>` : ""}<div class="inst-meta">${i.cost>0?`$${i.cost.toFixed(2)}`:""}${ctxMeta}</div></div>`;
   }).join("");
   el.querySelectorAll(".instance-item").forEach(x => x.addEventListener("click", () => sel(x.dataset.n)));
 }
 
-function selFleet() { mode = "fleet"; cur = null; curTab = "tasks"; renderList(); renderMain(); }
-function sel(name) { mode = "instance"; cur = name; curTab = "chat"; renderMain(); renderList(); loadHistory(name); }
+function selFleet() { closeDrawer(); mode = "fleet"; cur = null; curTab = "tasks"; renderList(); renderMain(); }
+function sel(name) { closeDrawer(); mode = "instance"; cur = name; curTab = "chat"; renderMain(); renderList(); loadHistory(name); }
 
+// The top bar: the view's title, its tabs, and (for an instance) its actions.
+function renderTopbar(title, tabs) {
+  const t = document.getElementById("topTitle"); if (t) t.textContent = title;
+  const box = document.getElementById("topTabs");
+  if (box) box.innerHTML = tabs.map(x => `<button type="button" class="tab${curTab===x?" active":""}" role="tab" aria-selected="${curTab===x}" data-act="tab" data-arg="${x}">${x[0].toUpperCase()+x.slice(1)}</button>`).join("");
+  const a = document.getElementById("actions"); if (a && mode !== "instance") a.innerHTML = "";
+}
 function renderMain() {
   const main = document.getElementById("mainArea");
   if (mode === "fleet") return renderFleetMain(main);
   if (mode === "instance" && cur) return renderInstanceMain(main);
+  renderTopbar("", []);
   main.innerHTML = `<div class="no-sel"><svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg><span>${tr("selectTarget")}</span></div>`;
 }
 
 function renderFleetMain(main) {
   const tabs = ["tasks","schedules","teams","config"];
   if (!tabs.includes(curTab)) curTab = "tasks";
+  renderTopbar("Fleet", tabs);
+  const loading = `<div class="loading">Loading...</div>`;
   main.innerHTML = `
-    <div class="tabs">${tabs.map(t => `<div class="tab${curTab===t?" active":""}" data-t="${t}">${t[0].toUpperCase()+t.slice(1)}</div>`).join("")}</div>
-    <div class="task-view" id="taskView" style="display:${curTab==="tasks"?"block":"none"}"><div style="color:var(--text-muted);text-align:center;padding:24px">Loading...</div></div>
-    <div class="task-view" id="schedView" style="display:${curTab==="schedules"?"block":"none"}"><div style="color:var(--text-muted);text-align:center;padding:24px">Loading...</div></div>
-    <div class="task-view" id="teamView" style="display:${curTab==="teams"?"block":"none"}"><div style="color:var(--text-muted);text-align:center;padding:24px">Loading...</div></div>
-    <div class="detail-view" id="configView" style="display:${curTab==="config"?"block":"none"}"><div style="color:var(--text-muted);text-align:center;padding:24px">Loading...</div></div>`;
-  main.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => { curTab = t.dataset.t; renderMain(); }));
+    <div class="task-view" id="taskView"${curTab==="tasks"?"":" hidden"}>${loading}</div>
+    <div class="task-view" id="schedView"${curTab==="schedules"?"":" hidden"}>${loading}</div>
+    <div class="task-view" id="teamView"${curTab==="teams"?"":" hidden"}>${loading}</div>
+    <div class="detail-view" id="configView"${curTab==="config"?"":" hidden"}>${loading}</div>`;
   if (curTab === "tasks") loadTasks();
   else if (curTab === "schedules") loadSchedules();
   else if (curTab === "teams") loadTeams();
@@ -560,39 +789,50 @@ function renderFleetMain(main) {
 function renderInstanceMain(main) {
   const tabs = ["chat","detail"];
   if (!tabs.includes(curTab)) curTab = "chat";
+  renderTopbar(cur, tabs);
   main.innerHTML = `
-    <div class="tabs">${tabs.map(t => `<div class="tab${curTab===t?" active":""}" data-t="${t}">${t[0].toUpperCase()+t.slice(1)}</div>`).join("")}</div>
-    <div class="actions" id="actions"></div>
-    <div class="chat-view" id="chatView" style="display:${curTab==="chat"?"flex":"none"}">
-      <div class="messages" id="messages"></div>
-      <div id="prompts" class="prompts" aria-live="polite"></div>
-      <div id="workBar" class="work-bar" aria-live="polite"></div>
-      <div id="failedSend"></div>
-      <div id="pendingFiles" class="pending-files"></div>
-      <div class="input-bar"><button class="btn" id="attachBtn" type="button" title="Attach files (images, PDF, text — or paste / drop them)">📎</button><input type="file" id="fileIn" multiple hidden accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/*,.md,.csv,.json,.log,.yaml,.yml"><textarea id="msgIn" rows="1" placeholder="Send a message..." autocomplete="off"></textarea><button class="btn btn-accent" data-act="sendMsg">Send</button></div>
-      <div class="input-hint">Enter to send · Shift+Enter for a new line</div>
+    <div class="chat-view${codeWrap ? " wrap-code" : ""}" id="chatView"${curTab==="chat"?"":" hidden"}>
+      <div class="scroller" id="scroller"><div class="thread" id="messages" role="log" aria-live="off" aria-label="${escAttr(trf("conversationWith", cur))}"></div></div>
+      <div class="drop-overlay" aria-hidden="true"><div class="drop-card">${ICON_CLIP}<span>${tr("dropHere")}</span></div></div>
+      <div class="composer-wrap"><div class="composer-col">
+        <button type="button" class="jump-latest" id="jumpLatest" data-act="jumpLatest" hidden></button>
+        <div id="prompts" class="prompts" aria-live="polite"></div>
+        <div id="workBar" class="work-bar"></div>
+        <div id="failedSend"></div>
+        <div id="pendingFiles" class="pending-files"></div>
+        <div class="composer">
+          <button class="icon-btn" id="attachBtn" type="button" title="${escAttr(tr("attachTitle"))}" aria-label="${escAttr(tr("attachTitle"))}">${ICON_CLIP}</button><input type="file" id="fileIn" multiple hidden accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/*,.md,.csv,.json,.log,.yaml,.yml">
+          <textarea id="msgIn" rows="1" placeholder="${escAttr(tr("composerPlaceholder"))}" autocomplete="off"></textarea>
+          <button class="btn btn-warn send-btn" id="stopBtn" type="button" data-act="stopReply" title="${escAttr(tr("stopReplyTitle"))}" hidden>${tr("stopReply")}</button>
+          <button class="btn btn-accent send-btn" id="sendBtn" type="button" data-act="sendMsg">${tr("send")}</button>
+        </div>
+        <div class="input-hint">${tr("composerHint")}</div>
+      </div></div>
     </div>
-    <div class="detail-view" id="detailView" style="display:${curTab==="detail"?"block":"none"}"><div style="color:var(--text-muted);text-align:center;padding:24px">Loading...</div></div>`;
-  main.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => { curTab = t.dataset.t; renderMain(); }));
+    <div class="detail-view" id="detailView"${curTab==="detail"?"":" hidden"}><div class="loading">Loading...</div></div>`;
   const i = instances.find(x => x.name === cur); renderActions(i);
   if (curTab === "chat") {
-    renderMsgs();
+    renderMsgs({ restore: true });
+    const sc = document.getElementById("scroller");
+    sc.addEventListener("scroll", onThreadScroll, { passive: true });
     const inp = document.getElementById("msgIn");
-    inp.value = drafts[cur] || ""; growComposer(inp);
+    setComposer(inp, drafts[cur] || "");
     inp.addEventListener("keydown", e => { if (AgendChatRender.composerKey(e) === "send") { e.preventDefault(); sendMsg(); } });
-    inp.addEventListener("input", () => { drafts[cur] = inp.value; growComposer(inp); });
+    inp.addEventListener("input", () => { drafts[cur] = inp.value; growComposer(inp); renderComposerButtons(); });
     // Files: the 📎 button, a paste with files in it, or a drop onto the chat.
     const fileIn = document.getElementById("fileIn");
     document.getElementById("attachBtn").addEventListener("click", () => fileIn.click());
     fileIn.addEventListener("change", () => { addFiles(fileIn.files); fileIn.value = ""; });
-    inp.addEventListener("paste", e => {
-      const files = e.clipboardData && e.clipboardData.files;
-      if (files && files.length) { addFiles(files); if (!e.clipboardData.getData("text")) e.preventDefault(); }
-    });
+    inp.addEventListener("paste", onComposerPaste);
+    // A file dragged over the chat shows where it will go; leaving or dropping clears it (counted, so moving over
+    // the messages inside does not flicker it).
     const view = document.getElementById("chatView");
-    view.addEventListener("dragover", e => { if (e.dataTransfer && [...e.dataTransfer.types].includes("Files")) { e.preventDefault(); view.classList.add("dragging"); } });
-    view.addEventListener("dragleave", () => view.classList.remove("dragging"));
-    view.addEventListener("drop", e => { if (e.dataTransfer && e.dataTransfer.files.length) { e.preventDefault(); addFiles(e.dataTransfer.files); } view.classList.remove("dragging"); });
+    let dragDepth = 0;
+    const hasFiles = e => !!(e.dataTransfer && [...e.dataTransfer.types].includes("Files"));
+    view.addEventListener("dragenter", e => { if (hasFiles(e)) { dragDepth++; view.classList.add("dragging"); } });
+    view.addEventListener("dragover", e => { if (hasFiles(e)) e.preventDefault(); });
+    view.addEventListener("dragleave", e => { if (hasFiles(e) && --dragDepth <= 0) { dragDepth = 0; view.classList.remove("dragging"); } });
+    view.addEventListener("drop", e => { dragDepth = 0; view.classList.remove("dragging"); if (e.dataTransfer && e.dataTransfer.files.length) { e.preventDefault(); addFiles(e.dataTransfer.files); } });
     renderPendingFiles();
     renderFailedSend();
     renderWorkBar();
@@ -617,7 +857,8 @@ async function doAction(a) {
     if (c !== `delete ${cur}`) return;
     const r = await api("POST", `/ui/instances/${encodeURIComponent(cur)}/delete`, { confirm: c });
     if (r.error) { toast(r.error, false); return; }
-    toast(`${cur}: ${tr("instanceDeleted")}`); cur = null;
+    toast(`${cur}: ${tr("instanceDeleted")}`); cur = null; mode = "none";
+    renderTopbar("", []);
     document.getElementById("mainArea").innerHTML = `<div class="no-sel"><span>${tr("instanceDeleted")}</span></div>`;
     return;
   }
@@ -627,19 +868,147 @@ async function doAction(a) {
   else toast(`${cur} ${a}ed`);
 }
 
-function renderMsgs() {
-  const el = document.getElementById("messages"); if (!el) return;
-  const m = msgs[cur] || [];
-  if (!m.length) { el.innerHTML = `<div class="msg-empty"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>${tr("noMessages")}<br><span style="font-size:12px;color:var(--text-muted)">${tr("sendFirst")}</span></div>`; return; }
-  el.innerHTML = m.map(x => {
-    const u = x.sender==="web-user"||(!x.sender.startsWith("agend")&&x.sender!==cur&&x.sender!=="general");
-    const t = x.ts ? new Date(x.ts).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}) : "";
-    // renderMarkdown escapes the whole text before it adds any tag of its own (src/ui/chat-render.js).
-    const ticks = u && x.delivery ? AgendChatRender.deliveryHtml(x.delivery, TICK_LABELS()) : "";
-    return `<div class="msg ${u?"inbound":"outbound"}"><div class="sender ${u?"user":"agent"}">${esc(x.sender)}<span class="time">${t}${ticks}</span></div><div class="md">${AgendChatRender.renderMarkdown(x.text)}</div>${AgendChatRender.attachmentsHtml(x.attachments)}</div>`;
-  }).join("");
-  el.scrollTop = el.scrollHeight;
+// ── The conversation (#1307) ─────────────────────────────
+// Each message is one node, keyed by boot+id: a new one is appended, a changed one (its ticks) is replaced, the rest are
+// left alone — so an opened code block stays open, a selection survives, and where the reader scrolled stays theirs.
+// The view follows new messages only while it is at the bottom; scrolled up, it shows "jump to latest" instead.
+const msgNodes = new Map();          // key → { html, node } for the list on screen
+let msgNodesIn = null;               // which #messages element they belong to
+const scrollMemo = {};               // per chat: where the reader left it (null = at the bottom)
+let unseen = 0;                      // messages that arrived below a reader who scrolled up
+function msgKey(x) { return `${x.boot}-${x.id}`; }
+const ICON_CLIP = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>';
+const ICON_FILE = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+const ICON_COPY = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+function isUserMsg(x) { return x.sender==="web-user"||(!x.sender.startsWith("agend")&&x.sender!==cur&&x.sender!=="general"); }
+function msgHtml(x) {
+  const u = isUserMsg(x);
+  const t = x.ts ? new Date(x.ts).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}) : "";
+  // renderMarkdown escapes the whole text before it adds any tag of its own (src/ui/chat-render.js).
+  const ticks = u && x.delivery ? AgendChatRender.deliveryHtml(x.delivery, TICK_LABELS()) : "";
+  const tools = u ? "" : `<div class="msg-tools"><button type="button" class="chip-btn icon-only" data-act="copyMsg" data-arg="${escAttr(msgKey(x))}" title="${escAttr(tr("copyMessage"))}" aria-label="${escAttr(tr("copyMessage"))}">${ICON_COPY}</button></div>`;
+  return `<div class="msg ${u?"user":"agent"}"><div class="meta"><span class="sender">${esc(x.sender)}</span><span class="time">${t}</span>${ticks}</div><div class="body"><div class="md">${AgendChatRender.renderMarkdown(x.text)}</div>${AgendChatRender.attachmentsHtml(x.attachments)}</div>${tools}</div>`;
 }
+function msgNode(html) {
+  const tpl = document.createElement("template"); tpl.innerHTML = html;
+  const node = tpl.content.firstElementChild;
+  decorateCode(node);
+  return node;
+}
+// Code blocks get a header (language, Wrap, Copy); a long one is folded until opened. Built from nodes: the language
+// is text, and the code is the escaped text renderMarkdown produced.
+function decorateCode(root) {
+  for (const pre of root.querySelectorAll(".md pre")) {
+    const box = document.createElement("div"); box.className = "codeblock";
+    const head = document.createElement("div"); head.className = "cb-head";
+    const lang = document.createElement("span"); lang.className = "cb-lang"; lang.textContent = pre.dataset.lang || "text";
+    const wrap = document.createElement("button"); wrap.type = "button"; wrap.className = "chip-btn"; wrap.dataset.act = "toggleWrap"; wrap.textContent = tr("wrap");
+    const copy = document.createElement("button"); copy.type = "button"; copy.className = "chip-btn"; copy.dataset.act = "copyCode"; copy.textContent = tr("copy");
+    head.append(lang, wrap, copy);
+    pre.replaceWith(box); box.append(head, pre);
+    const lines = AgendChatRender.lineCount(pre.textContent);
+    if (lines > AgendChatRender.CODE_FOLD_LINES) {
+      box.classList.add("folded");
+      const more = document.createElement("button"); more.type = "button"; more.className = "cb-more"; more.dataset.act = "toggleFold";
+      more.dataset.lines = String(lines); more.textContent = trf("showAll", lines);
+      box.append(more);
+    }
+  }
+}
+function renderMsgs(opts) {
+  const el = document.getElementById("messages"); if (!el) return;
+  const sc = document.getElementById("scroller");
+  const stick = !sc || AgendChatRender.isNearBottom(sc.scrollTop, sc.clientHeight, sc.scrollHeight);
+  const m = msgs[cur] || [];
+  if (msgNodesIn !== el) { msgNodes.clear(); msgNodesIn = el; el.textContent = ""; }
+  if (!m.length) {
+    msgNodes.clear();
+    el.innerHTML = `<div class="msg-empty"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>${tr("noMessages")}<br><span class="sub">${tr("sendFirst")}</span></div>`;
+    return;
+  }
+  if (!msgNodes.size) el.textContent = "";      // the empty-chat placeholder goes
+  const keep = new Set(m.map(msgKey));
+  for (const [k, v] of msgNodes) if (!keep.has(k)) { v.node.remove(); msgNodes.delete(k); }
+  let prev = null, added = 0;
+  for (const x of m) {
+    const key = msgKey(x), html = msgHtml(x);
+    let have = msgNodes.get(key);
+    if (!have || have.html !== html) {
+      const node = msgNode(html);
+      if (have) have.node.replaceWith(node); else added++;
+      have = { html, node }; msgNodes.set(key, have);
+    }
+    const want = prev ? prev.nextSibling : el.firstChild;
+    if (have.node !== want) el.insertBefore(have.node, want);
+    prev = have.node;
+  }
+  if (!sc) return;
+  if (opts && opts.restore) {
+    unseen = 0;
+    const at = scrollMemo[cur];
+    sc.scrollTop = at == null ? sc.scrollHeight : at;
+  } else if (stick) sc.scrollTop = sc.scrollHeight;
+  else unseen += added;
+  renderJump();
+}
+function onThreadScroll() {
+  const sc = document.getElementById("scroller"); if (!sc || !cur) return;
+  const bottom = AgendChatRender.isNearBottom(sc.scrollTop, sc.clientHeight, sc.scrollHeight);
+  scrollMemo[cur] = bottom ? null : sc.scrollTop;
+  if (bottom) unseen = 0;
+  renderJump();
+}
+function renderJump() {
+  const b = document.getElementById("jumpLatest"), sc = document.getElementById("scroller"); if (!b || !sc) return;
+  const show = !AgendChatRender.isNearBottom(sc.scrollTop, sc.clientHeight, sc.scrollHeight);
+  b.hidden = !show;
+  b.textContent = unseen > 0 ? trf("newBelow", unseen) : tr("jumpLatest");
+}
+function jumpLatest() {
+  const sc = document.getElementById("scroller"); if (!sc) return;
+  sc.scrollTop = sc.scrollHeight; unseen = 0; scrollMemo[cur] = null; renderJump();
+}
+// Copy: the Clipboard API where the page may use it (https, or localhost); otherwise the older selection copy, which
+// works on plain http through a tunnel or a LAN address too.
+async function copyText(text) {
+  try { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); return true; } } catch { /* fall back */ }
+  const ta = document.createElement("textarea"); ta.value = text; ta.setAttribute("readonly", ""); ta.className = "offscreen";
+  document.body.appendChild(ta); ta.select();
+  let ok = false; try { ok = document.execCommand("copy"); } catch { ok = false; }
+  ta.remove();
+  return ok;
+}
+async function copyFrom(button, text) {
+  const ok = await copyText(text);
+  if (button.classList.contains("icon-only")) {
+    // The icon stays; the outcome is its title and label (and a tick beside it for a moment).
+    button.classList.add(ok ? "done" : "fail");
+    button.title = ok ? tr("copied") : tr("copyFailed"); button.setAttribute("aria-label", button.title);
+    setTimeout(() => { button.classList.remove("done", "fail"); button.title = tr("copyMessage"); button.setAttribute("aria-label", button.title); }, 1200);
+    return;
+  }
+  const was = button.dataset.label || button.textContent; button.dataset.label = was;
+  button.textContent = ok ? tr("copied") : tr("copyFailed");
+  setTimeout(() => { button.textContent = was; }, 1200);
+}
+function copyMsg(el) {
+  const x = (msgs[cur] || []).find(y => msgKey(y) === el.dataset.arg);
+  if (x) copyFrom(el, x.text);
+}
+function copyCode(el) { const pre = el.closest(".codeblock")?.querySelector("pre"); if (pre) copyFrom(el, pre.textContent); }
+function toggleFold(el) {
+  const box = el.closest(".codeblock"); if (!box) return;
+  const folded = box.classList.toggle("folded");
+  el.textContent = folded ? trf("showAll", el.dataset.lines) : tr("showLess");
+}
+function toggleWrap() {
+  codeWrap = !codeWrap;
+  try { localStorage.setItem("agend_code_wrap", codeWrap ? "1" : "0"); } catch { /* this page only */ }
+  document.getElementById("chatView")?.classList.toggle("wrap-code", codeWrap);
+}
+// Sizes the detail view's bars after it is drawn: set through the style object (CSSOM), never a style attribute.
+function bar(pct, level) { return `<span class="progress-bar"><span class="progress-fill${level ? " " + level : ""}" data-pct="${Math.max(0, Math.min(Number(pct) || 0, 100))}"></span></span>`; }
+function sizeBars(root) { for (const f of root.querySelectorAll(".progress-fill[data-pct]")) f.style.width = `${f.dataset.pct}%`; }
 // What the fleet has open for prompts right now. Prompt events are stream-only, so every stream (re)connect
 // and every poll carries the whole list: a prompt posted, answered or expired while this page was not
 // listening is caught up — and no timer ever re-reads anything, which would count as the person's activity.
@@ -713,41 +1082,94 @@ const TICK_LABELS = () => ({ queued: tr("tick_queued"), processing: tr("tick_pro
 // "<name> is working…" and a Stop for the reply under way — built from nodes: the name is text, never markup.
 function renderWorkBar() {
   const bar = document.getElementById("workBar"); if (!bar) return;
-  const state = AgendChatRender.isBusy(activity[cur]) ? activity[cur] : "";
-  // Every status frame comes through here: rebuild only on a change, or the Stop button a keyboard user
-  // is on would be replaced (and its focus lost) every ten seconds.
-  const shown = `${cur}\u0000${state}`;
-  if (bar.dataset.shown === shown) return;
-  bar.dataset.shown = shown;
-  bar.textContent = "";
-  if (!cur || !state) { bar.className = "work-bar"; return; }
-  bar.className = `work-bar on${state === "stuck" ? " stuck" : ""}`;
-  const dot = document.createElement("span"); dot.className = "pulse"; dot.setAttribute("aria-hidden", "true");
-  const label = document.createElement("span"); label.className = "lbl"; label.textContent = trf(state === "stuck" ? "stuck" : "working", cur);
-  const stop = document.createElement("button"); stop.type = "button"; stop.className = "btn btn-warn"; stop.id = "stopReply";
-  stop.textContent = tr("stopReply"); stop.title = tr("stopReplyTitle");
-  stop.onclick = () => cancelReply(cur, stop);
-  bar.append(dot, label, stop);
+  renderComposerButtons();
+  const busy = AgendChatRender.isBusy(activity[cur]) ? activity[cur] : "";
+  const wait = cur && awaiting[cur] != null ? awaiting[cur] : null;
+  const kind = !cur ? "" : wait != null ? "awaiting" : stopping[cur] && busy ? "stopping" : busy;
+  // Every status frame comes through here: rebuild only on a change; the elapsed time ticks in place.
+  const shown = `${cur}\u0000${kind}\u0000${wait ?? ""}`;
+  if (bar.dataset.shown !== shown) {
+    bar.dataset.shown = shown;
+    bar.textContent = ""; elapsedEl = null;
+    if (!kind) { bar.className = "work-bar"; }
+    else {
+      bar.className = kind === "working" ? "work-bar on" : `work-bar on ${kind}`;
+      const dot = document.createElement("span"); dot.className = "pulse"; dot.setAttribute("aria-hidden", "true");
+      const label = document.createElement("span"); label.className = "lbl";
+      label.textContent = trf(kind === "stuck" ? "stuck" : kind === "stopping" ? "stopping" : kind === "awaiting" ? "awaiting" : "working", cur);
+      bar.append(dot, label);
+      if (kind === "awaiting") {
+        // What kind of prompt, in the fleet's words, and that it is read from the terminal.
+        const note = document.createElement("span"); note.className = "note"; note.textContent = wait || tr("approxNote");
+        note.title = tr("approxNote"); bar.append(note);
+      } else {
+        // Ticks every second inside a polite live region: hidden from screen readers, or it would be read out each tick.
+        const t = document.createElement("span"); t.className = "elapsed"; t.title = tr("elapsedTitle"); t.setAttribute("aria-hidden", "true");
+        bar.append(t); elapsedEl = t;
+      }
+    }
+  }
+  tickElapsed();
+  const run = !!kind && kind !== "awaiting";
+  if (run && !elapsedTimer) elapsedTimer = setInterval(tickElapsed, 1000);
+  if (!run && elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; }
 }
+function tickElapsed() {
+  const t = elapsedEl; if (!t) return;
+  const since = workingSince[cur];
+  t.textContent = since == null ? "" : AgendChatRender.formatElapsed(monoNow() - since);
+}
+// The composer's buttons (#1307): while the agent works, Stop is there; Send shows beside it only when there is something
+// to send (a message sent while it works waits its turn, as on Telegram). Shown and hidden, never rebuilt, so a
+// keyboard user's focus on either stays put through every status frame.
+function renderComposerButtons() {
+  const stop = document.getElementById("stopBtn"), send = document.getElementById("sendBtn"); if (!stop || !send) return;
+  const inp = document.getElementById("msgIn");
+  const busy = !!cur && AgendChatRender.isBusy(activity[cur]);
+  const content = !!(inp && inp.value.trim()) || !!(pendingFiles[cur] && pendingFiles[cur].length);
+  stop.hidden = !busy;
+  send.hidden = busy && !content;
+}
+// A Stop on its way, per instance: set before the request goes, so a second Esc (a held key repeats it) or a click
+// while the first answer is pending sends nothing more (#1317 review). Cleared when the answer comes, whatever it is.
+const cancelling = {};
 async function cancelReply(target, button) {
-  if (!target) return;
+  if (!target || cancelling[target]) return;
+  cancelling[target] = true;
   if (button) button.disabled = true;
   let r;
   try { r = await api("POST", `/ui/cancel/${encodeURIComponent(target)}`); }
   catch (err) { r = { error: err && err.message ? err.message : tr("disconnected") }; }
+  delete cancelling[target];
   if (button) button.disabled = false;
-  if (r && !r.error) toast(`${target}: ${tr("stopSent")}`);
+  if (r && !r.error) {
+    // "Stopping…" until the agent goes idle (or a minute passes: the edge can be missed by a dropped stream).
+    if (AgendChatRender.isBusy(activity[target])) {
+      stopping[target] = true;
+      setTimeout(() => { if (stopping[target]) { delete stopping[target]; if (target === cur) renderWorkBar(); } }, 60000);
+      if (target === cur) renderWorkBar();
+    }
+    toast(`${target}: ${tr("stopSent")}`);
+  }
   else toast(r && r.error ? r.error : tr("disconnected"), false);
 }
 function growComposer(inp) { inp.style.height = "auto"; inp.style.height = Math.min(inp.scrollHeight, 240) + "px"; }
+// Every change the page itself makes to the composer's text (not typing) goes through here, so the kept draft, the
+// height and the Send / Stop buttons follow it at once (#1313 review: text given back after a failed send, or put
+// back, must bring Send back without waiting for a keystroke or a status frame).
+function setComposer(inp, value, target = cur) {
+  inp.value = value; drafts[target] = value; growComposer(inp);
+  renderComposerButtons();
+}
 async function sendMsg() {
   const inp = document.getElementById("msgIn"), txt = inp.value.trim();
   const target = cur;                                  // the chat this message belongs to, whatever is on screen later
   const files = (pendingFiles[target] || []).slice();
   if ((!txt && !files.length) || !target || sending[target]) return;
   sending[target] = true;
-  inp.value = ""; drafts[target] = ""; growComposer(inp);
+  setComposer(inp, "", target);
   pendingFiles[target] = []; inFlightFiles[target] = files; renderPendingFiles();
+  if (target === cur) jumpLatest();          // your own message: the view goes to it
   let r;
   try {
     // Each file goes up on its own (the server reads its type from the bytes and stores it in the
@@ -769,7 +1191,7 @@ async function sendMsg() {
   if (txt) {
     const now = document.getElementById("msgIn");
     if (AgendChatRender.settleFailedSend(target, cur, !!now, now ? now.value : "") === "restore") {
-      now.value = txt; drafts[target] = txt; growComposer(now);
+      setComposer(now, txt, target);
     } else {
       failedSends[target] = failedSends[target] ? failedSends[target] + "\n" + txt : txt;
       if (target === cur) renderFailedSend();
@@ -800,17 +1222,56 @@ function addFiles(list) {
 }
 function renderPendingFiles() {
   const box = document.getElementById("pendingFiles"); if (!box) return;
+  renderComposerButtons();
   box.textContent = "";
   (pendingFiles[cur] || []).forEach((f, i) => {
     const chip = document.createElement("span"); chip.className = "file-chip";
     if (/^image\//.test(f.type) && typeof URL.createObjectURL === "function") {
       const img = document.createElement("img"); img.alt = ""; img.src = URL.createObjectURL(f); img.onload = () => URL.revokeObjectURL(img.src); chip.append(img);
     }
-    const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = `${f.name} · ${AgendChatRender.formatSize(f.size)}`;
-    const x = document.createElement("button"); x.type = "button"; x.title = tr("removeFile"); x.textContent = "✕";
+    else { const ic = document.createElement("span"); ic.className = "ic"; ic.setAttribute("aria-hidden", "true"); ic.innerHTML = ICON_FILE; chip.append(ic); }
+    const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = f.name;
+    const sz = document.createElement("span"); sz.className = "sz"; sz.textContent = AgendChatRender.formatSize(f.size);
+    chip.append(nm, sz);
+    if (pastedTexts.has(f)) {
+      // A long paste that became a file: it can go back into the composer as text.
+      const back = document.createElement("button"); back.type = "button"; back.className = "as-text"; back.textContent = tr("asText");
+      back.onclick = () => {
+        const inp = document.getElementById("msgIn"); if (!inp) return;
+        pendingFiles[cur].splice(i, 1);
+        setComposer(inp, inp.value ? `${inp.value}\n${pastedTexts.get(f)}` : pastedTexts.get(f));
+        renderPendingFiles(); inp.focus();
+      };
+      chip.append(back);
+    }
+    const x = document.createElement("button"); x.type = "button"; x.title = tr("removeFile"); x.setAttribute("aria-label", `${tr("removeFile")} ${f.name}`); x.textContent = "✕";
     x.onclick = () => { pendingFiles[cur].splice(i, 1); renderPendingFiles(); };
-    chip.append(nm, x); box.append(chip);
+    chip.append(x); box.append(chip);
   });
+}
+// Files in a paste are attached; a very long text paste goes as a text file instead of filling the composer (it can
+// go back in as text). The browser's own paste is stopped only once that file is really attached (#1316 review): when
+// it cannot be — five files already, 25 MB used, or the text itself over 10 MB — the text is pasted as usual.
+function onComposerPaste(e) {
+  const files = e.clipboardData && e.clipboardData.files;
+  const text = e.clipboardData ? e.clipboardData.getData("text") : "";
+  if (files && files.length) { addFiles(files); if (!text) e.preventDefault(); return; }
+  if (AgendChatRender.isLongPaste(text) && attachPastedText(text)) e.preventDefault();
+}
+// Long pastes turned into files, and their text (to put back on request).
+const pastedTexts = new WeakMap();
+/** Attach `text` as a .txt file when it fits beside what is already attached; true when it was. */
+function attachPastedText(text) {
+  if (!cur) return false;
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "");
+  const f = new File([text], `pasted-${stamp}.txt`, { type: "text/plain" });
+  // Checked first, quietly: a paste that does not fit is a paste, not a refused file.
+  const taken = (inFlightFiles[cur] || []).concat(pendingFiles[cur] || []);
+  if (AgendChatRender.checkFiles(taken, [f]).rejected.length) { toast(tr("pasteKeptAsText")); return false; }
+  pastedTexts.set(f, text);
+  addFiles([f]);
+  toast(trf("pasteAttached", text.length.toLocaleString()));
+  return true;
 }
 function renderFailedSend() {
   const box = document.getElementById("failedSend"); if (!box) return;
@@ -823,7 +1284,7 @@ function renderFailedSend() {
   const back = document.createElement("button"); back.className = "btn btn-accent"; back.textContent = tr("putBack");
   back.onclick = () => {
     const inp = document.getElementById("msgIn"); if (!inp) return;
-    inp.value = AgendChatRender.putBack(kept, inp.value); drafts[cur] = inp.value; growComposer(inp);
+    setComposer(inp, AgendChatRender.putBack(kept, inp.value));
     delete failedSends[cur]; renderFailedSend(); inp.focus();
   };
   const drop = document.createElement("button"); drop.className = "btn"; drop.textContent = tr("discard");
@@ -839,36 +1300,37 @@ async function loadDetail() {
     // Context: use API's resolved context (aligned with /ctx), not statusline
     const ctx = d.context_pct;
     const ctxDisplay = ctx != null ? `${Math.round(ctx)}%` : "--";
-    const ctxBar = ctx != null ? `<span class="progress-bar"><span class="progress-fill" style="width:${Math.min(ctx,100)}%;background:${ctx>80?'var(--warn)':'var(--accent)'}"></span></span>` : "";
+    const ctxBar = ctx != null ? bar(ctx, ctx > 80 ? "warn" : "") : "";
     // Model: with source labeling
     const model = d.model || sl.model?.display_name || "--";
-    const modelSource = d.model_source === "live" ? "" : d.model_source === "instance" ? " <span style='color:var(--text-muted);font-size:11px'>(configured)</span>" : d.model_source === "fleet-default" ? " <span style='color:var(--text-muted);font-size:11px'>(fleet default)</span>" : "";
+    const modelSource = d.model_source === "live" ? "" : d.model_source === "instance" ? " <span class='muted small'>(configured)</span>" : d.model_source === "fleet-default" ? " <span class='muted small'>(fleet default)</span>" : "";
     const rl5=sl.rate_limits?.five_hour?.used_percentage??0, rl7=sl.rate_limits?.seven_day?.used_percentage??0;
     // Effort: only show if configured (no live value from CLI), with source labeling
     const effortLine = d.effort
-      ? `<div class="detail-row"><span class="detail-label">Effort</span><span>${esc(d.effort)}${d.effort_source==="instance"?" <span style='color:var(--text-muted);font-size:11px'>(configured)</span>":d.effort_source==="fleet-default"?" <span style='color:var(--text-muted);font-size:11px'>(fleet default)</span>":""}</span></div>`
+      ? `<div class="detail-row"><span class="detail-label">Effort</span><span>${esc(d.effort)}${d.effort_source==="instance"?" <span class='muted small'>(configured)</span>":d.effort_source==="fleet-default"?" <span class='muted small'>(fleet default)</span>":""}</span></div>`
       : "";
     let h = `<div class="card"><h3>Instance</h3>
       <div class="detail-row"><span class="detail-label">Name</span><span>${esc(d.name)}</span></div>
       <div class="detail-row"><span class="detail-label">Status</span><span>${esc(d.status)}</span></div>
       <div class="detail-row"><span class="detail-label">Display</span><span>${esc(d.display_name||"--")}</span></div>
       <div class="detail-row"><span class="detail-label">Description</span><span>${esc(d.description||"--")}</span></div>
-      <div class="detail-row"><span class="detail-label">Directory</span><span style="font-family:'IBM Plex Mono',monospace;font-size:12px">${esc(d.working_directory)}</span></div></div>
+      <div class="detail-row"><span class="detail-label">Directory</span><span class="mono">${esc(d.working_directory)}</span></div></div>
       <div class="card"><h3>Runtime</h3>
       <div class="detail-row"><span class="detail-label">Backend</span><span>${esc(d.backend||"--")}</span></div>
       <div class="detail-row"><span class="detail-label">Model</span><span>${esc(model)}${modelSource}</span></div>
       ${effortLine}
-      <div class="detail-row"><span class="detail-label">Cost</span><span>$${cost.toFixed(2)} <span style="color:var(--text-muted);font-size:11px">(session accumulated)</span></span></div>
+      <div class="detail-row"><span class="detail-label">Cost</span><span>$${cost.toFixed(2)} <span class="muted small">(session accumulated)</span></span></div>
       <div class="detail-row"><span class="detail-label">Context</span><span><span class="pct-val">${ctxDisplay}</span> ${ctxBar}</span></div>
-      <div class="detail-row"><span class="detail-label">Rate 5h</span><span><span class="pct-val">${Math.round(rl5)}%</span> <span class="progress-bar"><span class="progress-fill" style="width:${Math.min(rl5,100)}%;background:${rl5>90?'var(--error)':rl5>70?'var(--warn)':'var(--accent)'}"></span></span></span></div>
-      <div class="detail-row"><span class="detail-label">Rate 7d</span><span><span class="pct-val">${Math.round(rl7)}%</span> <span class="progress-bar"><span class="progress-fill" style="width:${Math.min(rl7,100)}%;background:${rl7>90?'var(--error)':rl7>70?'var(--warn)':'var(--accent)'}"></span></span></span></div></div>`;
+      <div class="detail-row"><span class="detail-label">Rate 5h</span><span><span class="pct-val">${Math.round(rl5)}%</span> ${bar(rl5, rl5 > 90 ? "error" : rl5 > 70 ? "warn" : "")}</span></div>
+      <div class="detail-row"><span class="detail-label">Rate 7d</span><span><span class="pct-val">${Math.round(rl7)}%</span> ${bar(rl7, rl7 > 90 ? "error" : rl7 > 70 ? "warn" : "")}</span></div></div>`;
     if (d.recent_activity?.length) {
       h += `<div class="card"><h3>Recent Activity</h3>`;
       for (const a of d.recent_activity) { const t=a.timestamp?new Date(a.timestamp.replace(" ","T")+"Z").toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):""; h+=`<div class="activity-item"><span class="act-time">${t}</span><span class="act-event">${esc(a.event)}</span>${esc(a.summary||"")}</div>`; }
       h += `</div>`;
     }
     el.innerHTML = h;
-  } catch { el.innerHTML = `<div style="color:var(--error);padding:24px">${tr("loadFailed")}</div>`; }
+    sizeBars(el);
+  } catch { el.innerHTML = `<div class="load-error">${tr("loadFailed")}</div>`; }
 }
 
 async function loadTasks() {
@@ -878,19 +1340,19 @@ async function loadTasks() {
     const tasks = d.tasks || [];
     let h = `<div class="list-header"><span>${tasks.length} tasks</span>
       <button class="btn btn-accent" data-act="showCreateTask">+ New Task</button></div>`;
-    if (!tasks.length) h += `<div class="msg-empty"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>No tasks yet<br><span style="font-size:12px">Create one to coordinate fleet work</span></div>`;
+    if (!tasks.length) h += `<div class="msg-empty"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>No tasks yet<br><span class="sub">Create one to coordinate fleet work</span></div>`;
     else for (const t of tasks) {
       h += `<div class="task-item">
         <span class="task-status ${escAttr(t.status)}">${t.status}</span>
         <span class="task-title">${esc(t.title)}</span>
-        <span class="task-assignee">${t.assignee?`<span style="cursor:pointer;color:var(--accent)" data-act="sel" data-arg="${escAttr(t.assignee)}">${esc(t.assignee)}</span>`:""}</span>
+        <span class="task-assignee">${t.assignee?`<span class="link-like" data-act="sel" data-arg="${escAttr(t.assignee)}">${esc(t.assignee)}</span>`:""}</span>
         <div class="task-actions">
           ${t.status==="open"?`<button class="btn btn-ghost" data-act="taskAct" data-arg="${escAttr(t.id)}" data-arg2="claim">Claim</button>`:""}
           ${t.status==="claimed"?`<button class="btn btn-ghost" data-act="taskAct" data-arg="${escAttr(t.id)}" data-arg2="complete">Done</button>`:""}
         </div></div>`;
     }
     el.innerHTML = h;
-  } catch { el.innerHTML = `<div style="color:var(--error);padding:24px">${tr("loadFailed")}</div>`; }
+  } catch { el.innerHTML = `<div class="load-error">${tr("loadFailed")}</div>`; }
 }
 async function taskAct(id, action) {
   const r = await api("POST", `/ui/tasks/${id}`, { action });
@@ -980,19 +1442,19 @@ async function loadSchedules() {
     const scheds = d.schedules || [];
     let h = `<div class="list-header"><span>${scheds.length} schedules</span>
       <button class="btn btn-accent" data-act="showCreateSchedule">+ New Schedule</button></div>`;
-    if (!scheds.length) h += `<div class="msg-empty"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>No schedules yet<br><span style="font-size:12px">Automate recurring tasks with cron</span></div>`;
+    if (!scheds.length) h += `<div class="msg-empty"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>No schedules yet<br><span class="sub">Automate recurring tasks with cron</span></div>`;
     else for (const s of scheds) {
       h += `<div class="task-item">
         <span class="task-status ${s.enabled?"open":"done"}">${s.enabled?"on":"off"}</span>
         <span class="task-title">${esc(s.label||cronDesc(s.cron))}</span>
-        <span class="task-assignee" style="font-family:'IBM Plex Mono',monospace" title="${esc(cronDesc(s.cron))}">${esc(s.cron)}</span>
-        <span class="task-assignee" style="cursor:pointer;color:var(--accent)" data-act="sel" data-arg="${escAttr(s.target)}">${esc(s.target)}</span>
+        <span class="task-assignee mono" title="${esc(cronDesc(s.cron))}">${esc(s.cron)}</span>
+        <span class="task-assignee link-like" data-act="sel" data-arg="${escAttr(s.target)}">${esc(s.target)}</span>
         <div class="task-actions">
           <button class="btn btn-ghost btn-red" data-act="delSchedule" data-arg="${escAttr(s.id)}">Delete</button>
         </div></div>`;
     }
     el.innerHTML = h;
-  } catch { el.innerHTML = `<div style="color:var(--error);padding:24px">${tr("loadFailed")}</div>`; }
+  } catch { el.innerHTML = `<div class="load-error">${tr("loadFailed")}</div>`; }
 }
 async function delSchedule(id) {
   if (!confirm(tr("deleteSchedule"))) return;
@@ -1034,17 +1496,17 @@ async function loadTeams() {
     const entries = Object.entries(teams);
     let h = `<div class="list-header"><span>${entries.length} teams</span>
       <button class="btn btn-accent" data-act="showCreateTeam">+ New Team</button></div>`;
-    if (!entries.length) h += `<div class="msg-empty"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>No teams yet<br><span style="font-size:12px">Group instances for coordinated work</span></div>`;
+    if (!entries.length) h += `<div class="msg-empty"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>No teams yet<br><span class="sub">Group instances for coordinated work</span></div>`;
     else for (const [name, team] of entries) {
       h += `<div class="task-item">
-        <span class="task-title" style="font-weight:600">${esc(name)}</span>
+        <span class="task-title strong">${esc(name)}</span>
         <span class="task-assignee">${esc((team.members||[]).join(", "))}</span>
         <div class="task-actions">
           <button class="btn btn-ghost btn-red" data-act="delTeam" data-arg="${escAttr(name)}">Delete</button>
         </div></div>`;
     }
     el.innerHTML = h;
-  } catch { el.innerHTML = `<div style="color:var(--error);padding:24px">${tr("loadFailed")}</div>`; }
+  } catch { el.innerHTML = `<div class="load-error">${tr("loadFailed")}</div>`; }
 }
 async function delTeam(name) {
   if (!confirm(trf("deleteTeam", name))) return;
@@ -1053,11 +1515,11 @@ async function delTeam(name) {
 }
 function showCreateTeam() {
   const ov = document.createElement("div"); ov.className = "form-overlay";
-  const memOpts = instances.map(i => `<label style="display:flex;gap:6px;align-items:center;font-size:13px;padding:3px 0"><input type="checkbox" value="${esc(i.name)}">${esc(i.name)}</label>`).join("");
+  const memOpts = instances.map(i => `<label class="check-row"><input type="checkbox" value="${esc(i.name)}">${esc(i.name)}</label>`).join("");
   ov.innerHTML = `<div class="form-card"><h2>Create Team</h2>
     <div class="form-field"><label>Team Name *</label><input id="ct2-name" placeholder="team-name"></div>
     <div class="form-field"><label>Description</label><input id="ct2-desc" placeholder="What this team does"></div>
-    <div class="form-field"><label>Members *</label><div id="ct2-members" style="max-height:150px;overflow-y:auto">${memOpts}</div></div>
+    <div class="form-field"><label>Members *</label><div id="ct2-members" class="check-list">${memOpts}</div></div>
     <div class="form-actions"><button class="btn btn-ghost" data-act="closeOverlay">Cancel</button>
     <button class="btn btn-accent" id="ct2-go">Create</button></div></div>`;
   document.body.appendChild(ov);
@@ -1108,11 +1570,11 @@ async function loadConfig() {
     const roots = cfgData.project_roots || [];
     el.innerHTML = `
       <div class="card"><h3>Channel</h3>
-        <div class="form-field"><label>Type</label><input id="cfg-type" value="${esc(ch.type||"")}" disabled style="opacity:0.5"></div>
-        <div class="form-field"><label>Bot Token Env</label><input id="cfg-token-env" value="${esc(ch.bot_token_env||"AGEND_BOT_TOKEN")}" disabled style="opacity:0.5"></div>
+        <div class="form-field"><label>Type</label><input id="cfg-type" value="${esc(ch.type||"")}" disabled></div>
+        <div class="form-field"><label>Bot Token Env</label><input id="cfg-token-env" value="${esc(ch.bot_token_env||"AGEND_BOT_TOKEN")}" disabled></div>
         <div class="form-field"><label>Group ID</label>
-          <div style="display:flex;gap:4px;align-items:center">
-            <input id="cfg-gid" type="password" value="${escAttr(ch.group_id||"")}" style="flex:1">
+          <div class="field-row">
+            <input id="cfg-gid" type="password" value="${escAttr(ch.group_id||"")}">
             <button class="eye-btn" data-act="togglePw" data-arg="cfg-gid">&#128065;</button>
           </div></div>
       </div>
@@ -1120,11 +1582,11 @@ async function loadConfig() {
         <div class="form-field"><label>Mode</label>
           <select id="cfg-acc-mode"><option value="locked" ${acc.mode==="locked"?"selected":""}>Locked</option><option value="open" ${acc.mode==="open"?"selected":""}>Open</option></select></div>
         <div class="form-field"><label>Allowed Users</label>
-          <div style="display:flex;gap:4px;align-items:center">
-            <input id="cfg-users" type="password" value="${escAttr((acc.allowed_users||[]).join(", "))}" style="flex:1">
+          <div class="field-row">
+            <input id="cfg-users" type="password" value="${escAttr((acc.allowed_users||[]).join(", "))}">
             <button class="eye-btn" data-act="togglePw" data-arg="cfg-users">&#128065;</button>
           </div>
-          <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Comma-separated user IDs</div></div>
+          <div class="field-note">Comma-separated user IDs</div></div>
       </div>
       <div class="card"><h3>Defaults</h3>
         <div class="form-field"><label>Backend</label>
@@ -1133,17 +1595,17 @@ async function loadConfig() {
           </select></div>
       </div>
       <div class="card"><h3>Project Roots</h3>
-        <div id="cfg-roots">${roots.map((r,i) => `<div style="display:flex;gap:4px;margin-bottom:6px"><input class="cfg-root" value="${esc(r)}" style="flex:1"><button class="btn btn-ghost" style="padding:4px 8px" data-act="removeParent">&#10005;</button></div>`).join("")}</div>
+        <div id="cfg-roots">${roots.map((r,i) => `<div class="root-row"><input class="cfg-root" value="${esc(r)}"><button class="btn btn-ghost btn-sm" data-act="removeParent">&#10005;</button></div>`).join("")}</div>
         <button class="btn btn-ghost" data-act="addRoot">+ Add Root</button>
       </div>
-      <div style="display:flex;gap:10px;align-items:center;margin-top:16px">
+      <div class="save-row">
         <button class="btn btn-accent" data-act="saveConfig">Save Changes</button>
-        <span style="font-size:11px;color:var(--text-muted)">Saving will reformat fleet.yaml (comments will be lost)</span>
+        <span class="muted small">Saving will reformat fleet.yaml (comments will be lost)</span>
       </div>`;
-  } catch { el.innerHTML = `<div style="color:var(--error);padding:24px">${tr("configLoadFailed")}</div>`; }
+  } catch { el.innerHTML = `<div class="load-error">${tr("configLoadFailed")}</div>`; }
 }
 function togglePw(id) { const el = document.getElementById(id); el.type = el.type === "password" ? "text" : "password"; }
-function addRoot() { const el = document.getElementById("cfg-roots"); el.insertAdjacentHTML("beforeend", `<div style="display:flex;gap:4px;margin-bottom:6px"><input class="cfg-root" value="" placeholder="/path/to/projects" style="flex:1"><button class="btn btn-ghost" style="padding:4px 8px" data-act="removeParent">&#10005;</button></div>`); }
+function addRoot() { const el = document.getElementById("cfg-roots"); el.insertAdjacentHTML("beforeend", `<div class="root-row"><input class="cfg-root" value="" placeholder="/path/to/projects"><button class="btn btn-ghost btn-sm" data-act="removeParent">&#10005;</button></div>`); }
 async function saveConfig() {
   const body = {
     channel: { group_id: document.getElementById("cfg-gid").value.trim(), access: { mode: document.getElementById("cfg-acc-mode").value, allowed_users: document.getElementById("cfg-users").value.split(",").map(s => s.trim()).filter(Boolean) } },

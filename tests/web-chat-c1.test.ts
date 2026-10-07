@@ -577,7 +577,7 @@ describe("dashboard.html", () => {
     expect(html).toContain('AgendChatRender.settleFailedSend(target, cur, !!now, now ? now.value : "")');
     expect(html).toContain("failedSends[target] = failedSends[target] ?");
     expect(html).toContain("AgendChatRender.putBack(kept, inp.value)");
-    expect(html).toMatch(/inp\.value = drafts\[cur\] \|\| "";/);
+    expect(html).toContain(`setComposer(inp, drafts[cur] || "");`);
   });
 });
 
@@ -731,5 +731,52 @@ describe("dashboard sendMsg (the real page script)", () => {
     // The stream comes back with "two" (already shown by the poll): still once.
     p.sse.message!({ data: JSON.stringify(two), lastEventId: h.cursorOf(two) });
     expect(p.read("msgs.w.map(m => m.text)")).toEqual(["one", "two"]);
+  });
+
+  // #1313 review: while the agent works, an empty composer shows only Stop. Text the page itself puts back — after a
+  // failed send, or by Put Back — must bring Send back at once: no keystroke and no status frame in between.
+  function busyComposer() {
+    const p = page();
+    const made: any[] = [];
+    const el = () => { const n: any = { style: {}, dataset: {}, children: [] as any[], remove() {}, append(...k: any[]) { n.children.push(...k); }, setAttribute() {} }; made.push(n); return n; };
+    p.read("document.createElement = () => makeEl()");
+    (p.c as any).makeEl = el;
+    Object.assign(p.nodes, { stopBtn: { hidden: true }, sendBtn: { hidden: false }, pendingFiles: { textContent: "", append() {} }, failedSend: { className: "", textContent: "", append() {} } });
+    p.read('activity.w = "working"');
+    const shown = () => ({ stop: !p.nodes.stopBtn.hidden, send: !p.nodes.sendBtn.hidden });
+    return { p, made, shown };
+  }
+
+  it("busy, a text-only send fails: the text comes back with Send beside Stop", async () => {
+    const { p, shown } = busyComposer();
+    p.nodes.msgIn.value = "hello";
+    p.read("renderComposerButtons()");
+    expect(shown()).toEqual({ stop: true, send: true });
+    const send = p.read("sendMsg()");
+    expect(shown(), "sent: the composer is empty, only Stop").toEqual({ stop: true, send: false });
+    p.release({ error: "instance is busy" });
+    await send;
+    expect(p.nodes.msgIn.value).toBe("hello");
+    expect(shown(), "given back: Send is there again").toEqual({ stop: true, send: true });
+  });
+
+  it("busy, Put Back: the kept text comes back with Send beside Stop", () => {
+    const { p, made, shown } = busyComposer();
+    p.read('failedSends.w = "kept for later"; renderComposerButtons(); renderFailedSend()');
+    expect(shown()).toEqual({ stop: true, send: false });
+    made.find(n => n.textContent === "Put back")!.onclick();
+    expect(p.nodes.msgIn.value).toBe("kept for later");
+    expect(shown()).toEqual({ stop: true, send: true });
+  });
+
+  it("control: text and files given back together — the files first, then the text — and Send is there", async () => {
+    const { p, shown } = busyComposer();
+    p.release({});                                                     // api is not reached: the upload fails first
+    p.nodes.msgIn.value = "with a file";
+    p.read('pendingFiles.w = [{ name: "a.txt", size: 3, type: "text/plain" }]');
+    await p.read("sendMsg()");
+    expect(p.read("pendingFiles.w.map(f => f.name)")).toEqual(["a.txt"]);
+    expect(p.nodes.msgIn.value).toBe("with a file");
+    expect(shown()).toEqual({ stop: true, send: true });
   });
 });

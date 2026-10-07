@@ -570,6 +570,19 @@ const WEB_ONLY_REPLY_SINK = {
   sendText: async () => ({ chatId: "web", messageId: newWebMessageId() }),
   sendFile: async () => ({ chatId: "web", messageId: newWebMessageId() }),
 } as unknown as ChannelAdapter;
+/**
+ * Where an instance-health prompt (hang, clean exit, interactive prompt) is posted on a fleet with no chat platform:
+ * nowhere but the dashboard (#1307 item 6). Posting "succeeds" with an id of its own, so the prompt is armed and
+ * offered on the web exactly as a platform prompt is; there are no platform buttons to edit afterwards, and the
+ * outcome reaches the page through prompt_resolved as for any web-answered prompt.
+ */
+const WEB_ONLY_PROMPT_SINK = {
+  type: "web",
+  notifyAlert: async () => ({ chatId: "web", messageId: newWebMessageId() }),
+  editMessage: async () => {},
+  editMessageRemoveButtons: async () => {},
+  sendText: async () => ({ chatId: "web", messageId: newWebMessageId() }),
+} as unknown as ChannelAdapter;
 const TIP_DISMISS_CALLBACK_PREFIX = "tip-dismiss:";
 const TIP_UNLOCK_CALLBACK_PREFIX = "tip-unlock:";
 export const LOGIN_CALLBACK_PREFIX = "login:";
@@ -6691,6 +6704,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return config != null && !config.channel && !(config.channels?.length);
   }
 
+  /** On a fleet with no chat platform, the dashboard is where an instance-health prompt is posted (#1307 item 6). */
+  private webOnlyPromptPlace(): { adapter: ChannelAdapter; adapterId: string; chatId: string } | null {
+    return this.worlds.size === 0 && this.isWebOnlyFleet() ? { adapter: WEB_ONLY_PROMPT_SINK, adapterId: "web", chatId: "web" } : null;
+  }
+
   private afterReplyRouted(instanceName: string, args: Record<string, unknown>, senderSessionName?: string): void {
     // A reply is NOT proof the turn is over (#410) — but it is not proof of
     // more work either. Split the difference: an instance that is clearly
@@ -9882,6 +9900,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   async notifyNormalExit(instanceName: string): Promise<void> {
     this.notifyInstanceTopic(instanceName, t("exit.instance_notice", instanceName));
 
+    const web = this.webOnlyPromptPlace();
+    if (web) {
+      await this.postNonceButtonPrompt({
+        prefix: EXIT_RESTART_CALLBACK_PREFIX, alertType: "exit_restart", instanceName, ...web,
+        message: t("exit.general_notice", instanceName),
+        choices: [{ action: "restart", label: t("exit.restart") }, { action: "ignore", label: t("exit.ignore") }],
+        expiredText: t("exit.expired", instanceName),
+      });
+      return;
+    }
     const worldId = this.getInstanceAdapterId(instanceName);
     const generalName = this.findGeneralInstance(worldId);
     if (!generalName) {
@@ -9993,6 +10021,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger.warn({ instanceName }, "Interactive prompt has no General topic notification target");
       return;
     }
+    const label = this.interactivePromptLabel(kind);
+    const prompt = {
+      prefix: INTERACTIVE_ASSIST_CALLBACK_PREFIX, alertType: "interactive_prompt" as const, instanceName,
+      message: t("interactive.general_notice", instanceName, label),
+      choices: [{ action: "confirm", label: t("interactive.confirm") }, { action: "cancel", label: t("interactive.cancel") }],
+      expiredText: t("interactive.expired", instanceName),
+      extra: { generalName, promptKind: kind },
+    };
+    // No chat platform: the dashboard is where it is asked; Confirm still asks General to help.
+    const web = this.webOnlyPromptPlace();
+    if (web) { await this.postNonceButtonPrompt({ ...prompt, ...web }); return; }
 
     const adapterId = this.getInstanceAdapterId(generalName);
     const adapter = this.getAdapterForInstance(generalName);
@@ -10005,23 +10044,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
 
-    const label = this.interactivePromptLabel(kind);
-    await this.postNonceButtonPrompt({
-      prefix: INTERACTIVE_ASSIST_CALLBACK_PREFIX,
-      alertType: "interactive_prompt",
-      instanceName,
-      adapter,
-      adapterId,
-      chatId,
-      threadId,
-      message: t("interactive.general_notice", instanceName, label),
-      choices: [
-        { action: "confirm", label: t("interactive.confirm") },
-        { action: "cancel", label: t("interactive.cancel") },
-      ],
-      expiredText: t("interactive.expired", instanceName),
-      extra: { generalName, promptKind: kind },
-    });
+    await this.postNonceButtonPrompt({ ...prompt, adapter, adapterId, chatId, threadId });
   }
 
   /**
@@ -11614,8 +11637,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   async sendHangNotification(instanceName: string, unchangedForMs?: number): Promise<void> {
-    const adapter = this.getAdapterForInstance(instanceName) ?? this.adapter;
-    const adapterId = this.getInstanceAdapterId(instanceName);
+    const web = this.webOnlyPromptPlace();     // no chat platform: asked on the dashboard (#1307 item 6)
+    const adapter = web?.adapter ?? this.getAdapterForInstance(instanceName) ?? this.adapter;
+    const adapterId = web?.adapterId ?? this.getInstanceAdapterId(instanceName);
     // Same three-way addressing as sendCancelButton: fleet topic → group+thread,
     // Classic → its own channel (Classic instances are absent from
     // fleetConfig.instances, so the topic path can never address them), else the
@@ -11625,7 +11649,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const groupId = this.getGroupIdForInstance(instanceName) || undefined;
     let chatId: string | undefined;
     let threadId: string | undefined;
-    if (topicId != null && groupId) {
+    if (web) {
+      chatId = web.chatId;
+    } else if (topicId != null && groupId) {
       chatId = String(groupId);
       threadId = String(topicId);
     } else {

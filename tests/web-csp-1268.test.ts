@@ -192,7 +192,7 @@ describe("hostile names and config values stay inside their attribute (#1303 rev
     p.read(`instances = [{ name: ${JSON.stringify(HOSTILE)}, status: "running", backend: "claude-code" }]; mode = "instance"; cur = null; renderList();`);
     const tags = startTags(p.nodes.instanceList!.innerHTML);
     const row = tags.find(t => t.attrs.some(([k]) => k === "data-n"))!;
-    expect(row.attrs.map(([k]) => k).sort()).toEqual(["class", "data-n", "title"]);
+    expect(row.attrs.map(([k]) => k).sort()).toEqual(["class", "data-n", "role", "tabindex", "title"]);
     expect(unescape(row.attrs.find(([k]) => k === "data-n")![1])).toBe(HOSTILE);
     expect(tags.flatMap(t => t.attrs).filter(([k]) => k === "data-act"), "no element in the roster names an action").toEqual([]);
   });
