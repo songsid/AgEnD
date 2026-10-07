@@ -9,6 +9,7 @@ import { Daemon } from "../src/daemon.js";
 import { DiscordAdapter } from "../src/channel/adapters/discord.js";
 import { TelegramAdapter } from "../src/channel/adapters/telegram.js";
 import type { ChannelAdapter } from "../src/channel/types.js";
+import type { CliBackend } from "../src/backend/types.js";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -154,9 +155,13 @@ describe("review #956 adapter contracts", () => {
       working_directory: dir,
       restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
       context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 }, log_level: "error",
-    }, dir, true, undefined, undefined, fleet.logger);
+    }, dir, true, { binaryName: "fixture" } as CliBackend, undefined, fleet.logger);
     (daemon as any).tmux = {};
-    daemon.on("message_delivered", ({ chatId, messageId }) => fleet.reactMessageStatus("inst", chatId, messageId, "processing"));
+    for (const method of ["start", "wake", "stop", "trySpawn"])
+      vi.spyOn(daemon as any, method).mockImplementation(() => { throw new Error(`forbidden lifecycle: ${method}`); });
+    // Use the production event binding, including threadId; the old manual
+    // listener dropped it and could not detect a forum-address regression.
+    (fleet as any).lifecycle.attachDeliveryStatusHandlers("inst", daemon);
     (daemon as any).deliverMessage = async (_text: string, data: { chatId: string; messageId: string }) => {
       daemon.emit("message_delivered", data); return true;
     };
