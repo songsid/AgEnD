@@ -36,7 +36,8 @@ function telegram(shared = { slot: [] as string[] }) {
     shared.slot = next;
   });
   const adapter = Object.create(TelegramAdapter.prototype) as TelegramAdapter;
-  Object.assign(adapter, { id: "bot", reactionTrackingStartedAt: 0, bot: { api: { setMessageReaction: api } } });
+  // isInited: grammy's own; #1320's getBotUserId() asks it on every inbound message (not initialised → no id).
+  Object.assign(adapter, { id: "bot", reactionTrackingStartedAt: 0, bot: { isInited: () => false, api: { setMessageReaction: api } } });
   return { adapter, api, calls, shared };
 }
 
