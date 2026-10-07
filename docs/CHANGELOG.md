@@ -91,6 +91,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   pictures is not cut short.
 
 ### Fixed
+- **A tool step being written when AgEnD starts watching is no longer lost (#1250).** #1221 made AgEnD read a CLI's
+  transcript only up to the last complete line. The point it starts from still went to the file's current size. If
+  the CLI was half-way through writing an entry at that moment (a first attach, an instance restart, a delivery
+  checkpoint), the rest of that entry was skipped as unreadable and its tool progress never showed. Every such
+  starting point is now the last complete line, for Claude, Codex and Kiro alike.
 - **Kiro outage picker notice is actionable again, interaction IPC is quiet, dead gate removed (#1219).**
   The parked-dialog notice for a generic `dialog` kind (e.g. the Kiro model-unavailable picker) again carries its
   code-owned description — "model unavailable, choose a replacement" — instead of the generic "waiting for your
