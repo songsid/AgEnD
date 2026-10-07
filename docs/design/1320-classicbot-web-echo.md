@@ -110,24 +110,28 @@ The implementable rule has three parts, all echo-side:
    explicitly insufficient — the rule covers *any* bot's mention syntax.
 2. **Echo provenance is author identity, not a cache.** An inbound message
    is an echo, dropped before any trigger evaluation, iff its author is one
-   of this fleet's own bot accounts (the bot user ids known for every
-   configured adapter/world, from config/getMe — restart-proof, nothing to
-   evict) **and** its text starts with the fixed echo prefix
-   (`formatWebChannelEcho` frame, `src/web-channel-echo.ts`, PR #1325; do
-   not re-spell it). A human copying the prefix doesn't match — their author
-   id is not a fleet bot — so their message flows normally; a non-fleet bot
-   posting the prefix is treated like any other bot message under the
-   existing collab rules. Every adapter applies this in the common ingress
-   helper regardless of its own `web_echo` flag. No recent-ID registry is
-   required (keep one only as optional telemetry). Pre-ACK arrival is covered
-   automatically: the author id is known at ingress.
+   of this fleet's own bot accounts **and** its text starts with the fixed
+   echo prefix `WEB_ECHO_PREFIX = "🌐 web · "`. Shared API, implemented once
+   in `src/web-channel-echo.ts` (sol's PR #1325) and reused verbatim here —
+   `neutralizeWebEchoText(text)`, `formatWebChannelEcho(user, preview)`,
+   `isWebChannelEcho(text, authorId, fleetBotIds)`; do not re-spell the
+   prefix or the predicate. Fleet bot ids come from read-only authenticated
+   identity per configured adapter/world (native adapter getter, no hot-path
+   network) — restart-proof, nothing to evict, no recent-ID registry. A
+   human copying the prefix doesn't match — their author id is not a fleet
+   bot — so their message flows normally; a non-fleet bot posting the prefix
+   is treated like any other bot message under the existing collab rules.
+   Every adapter applies `isWebChannelEcho` in the common ingress helper,
+   first, regardless of `is_bot`, ACK state, or its own `web_echo` flag.
+   Pre-ACK arrival is covered automatically: the author id is known at
+   ingress.
 3. **Delivery-layer suppression** as defence in depth:
    `allowedMentions: { parse: [] }` on Discord sends, no mention entities on
    Telegram sends — so other clients/bots also see no ping.
 
 A unit test pins the rendered echo for hostile inputs: a `<@other-bot>`
 mention, `@everyone`, an attachment literally named `<@200>.png`, and a
-replayed echo id — none may reach any agent.
+replayed echo (same bytes, after restart) — none may reach any agent.
 
 ## 5. Multi-bot channels
 
