@@ -32,6 +32,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   pictures is not cut short.
 
 ### Fixed
+- **`agend-agent reply … --sticker` follows the same rules as the MCP reply (#1254).** For an agent on
+  `agent_mode: cli`, a sticker this channel cannot send is checked before anything goes out and comes back as the
+  reply's error: another server's sticker on Discord, or something that is not a Telegram sticker id. Before, the
+  reply went straight to the adapter. A reply with stickers is also no longer treated as a duplicate of the same text
+  sent without them while that one is still in flight. Both paths now build the duplicate check the same way.
 - **No more duplicate replies from an early reply-drop recovery (#1241).** On claude-code the reply completion guard
   used to fire on the first idle-looking pane while the agent was still composing its first answer, pasting a
   `[system:reply-required]` prompt the agent later answered a second time. Recovery now waits until the turn proves

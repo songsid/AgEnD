@@ -22,6 +22,16 @@ import { createHash } from "node:crypto";
  * - An in-flight entry has a hard lifetime. If an adapter promise never settles,
  *   later identical replies must not join that dead promise forever.
  */
+/**
+ * The text a reply is deduplicated by: a reply with stickers (#1226) is not the same reply as its text alone.
+ * One rule for the MCP path (FleetManager) and the HTTP path (agend-agent, agent-endpoint.ts).
+ */
+export function replyDedupText(args: Record<string, unknown>): string {
+  const text = String(args.text ?? "");
+  const stickers = Array.isArray(args.stickers) ? (args.stickers as unknown[]).map(String) : [];
+  return stickers.length ? `${text}\u0000stickers:${stickers.join(",")}` : text;
+}
+
 export class ReplyDeduper {
   private entries = new Map<string, Entry>();
 

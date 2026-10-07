@@ -18,6 +18,7 @@ import { randomUUID, timingSafeEqual } from "node:crypto";
 import type { OutboundContext } from "./outbound-handlers.js";
 import { outboundHandlers } from "./outbound-handlers.js";
 import { routeToolCall } from "./channel/tool-router.js";
+import { replyDedupText } from "./reply-dedup.js";
 import {
   EARLY_AGENT_OP_TOOLS,
   mayUseTool,
@@ -90,6 +91,8 @@ export interface AgentEndpointContext extends OutboundContext {
   readonly dataDir: string;
   /** Duplicate-reply suppression shared with the MCP path (see reply-dedup.ts). */
   readonly replyDeduper?: import("./reply-dedup.js").ReplyDeduper;
+  /** The MCP path's `reply.stickers` pre-check (#1226): a refused sticker is the reply's error, sent nothing. */
+  replyStickerProblem?(adapter: import("./channel/types.js").ChannelAdapter, args: Record<string, unknown>, threadId: string | undefined, worldId: string | undefined): Promise<string | null>;
   /** Mark an HTTP durable-operation result once its response is written. */
   markDurableResponseDelivered?(sourceInstance: string, operationId: string): void;
   handleScheduleCrudHttp(instance: string, op: string, args: Record<string, unknown>): Promise<unknown>;
@@ -326,7 +329,7 @@ export async function dispatchAgentOperation(
   // Channel tools (reply, react, edit, download)
   const channelTools = new Set(["reply", "react", "edit_message", "download_attachment"]);
   if (channelTools.has(tool)) {
-    return new Promise((resolve) => {
+    return (async (): Promise<unknown> => {
       const persisted = readPersistedReplyContext(ctx.dataDir, instance);
       const configuredThreadId = ctx.fleetConfig?.instances[instance]?.topic_id != null
         ? String(ctx.fleetConfig.instances[instance].topic_id)
@@ -338,43 +341,51 @@ export async function dispatchAgentOperation(
       const chatId = classicChannelId ?? persisted?.chatId ?? configuredChatId;
       const threadId = classicChannelId ? undefined : (persisted?.threadId ?? configuredThreadId);
       if (tool !== "download_attachment" && !chatId) {
-        resolve({ error: "No active chat context — awaiting inbound message" });
-        return;
+        return { error: "No active chat context — awaiting inbound message" };
       }
       const fullArgs = { ...args, chat_id: chatId, ...(threadId ? { thread_id: threadId } : {}) };
       const adapter = (persisted?.adapterId ? ctx.adapters?.get(persisted.adapterId) : undefined)
         ?? ctx.getAdapterForInstance?.(instance) ?? ctx.adapter!;
 
-      // Reply dedup, same ledger as the MCP path. The HTTP variant of the race:
-      // the agent's shell tool kills a slow `agend-agent reply` (the adapter send
-      // is waiting out a rate limit and will succeed), the agent re-runs it, and
-      // the channel shows the reply twice.
-      const ticket = tool === "reply"
-        ? ctx.replyDeduper?.begin(
-          instance,
-          String((args as Record<string, unknown>).text ?? ""),
-          Array.isArray((args as Record<string, unknown>).files) ? (args as Record<string, unknown>).files as string[] : [],
-        )
-        : undefined;
-      if (ticket?.duplicate) {
-        ticket.subscribe((result, error) => resolve(error ? { error } : result));
-        return;
+      // The same pre-check as the MCP path, before anything is sent: a sticker this channel cannot send
+      // (another server's, an id that is not Telegram's) is the reply's error, not a reply without it.
+      if (tool === "reply" && ctx.replyStickerProblem) {
+        const problem = await ctx.replyStickerProblem(adapter, fullArgs, threadId, persisted?.adapterId);
+        if (problem) return { error: problem };
       }
 
-      const handled = routeToolCall(adapter, tool, fullArgs, threadId, (result, error) => {
-        if (ticket && !ticket.duplicate) ticket.complete(result, error);
-        // A successful reply retires the instance's cancel button — mirroring the
-        // MCP path (handleOutboundFromInstance). HTTP agents (e.g. Antigravity,
-        // which replies via POST /agent instead of an MCP tool call) never hit
-        // that path, so without this their cancel button would never clear.
-        if (!error && tool === "reply") ctx.clearCancelButton?.(instance);
-        resolve(error ? { error } : result);
+      return new Promise((resolve) => {
+        // Reply dedup, same ledger as the MCP path. The HTTP variant of the race:
+        // the agent's shell tool kills a slow `agend-agent reply` (the adapter send
+        // is waiting out a rate limit and will succeed), the agent re-runs it, and
+        // the channel shows the reply twice.
+        const ticket = tool === "reply"
+          ? ctx.replyDeduper?.begin(
+            instance,
+            replyDedupText(args as Record<string, unknown>),
+            Array.isArray((args as Record<string, unknown>).files) ? (args as Record<string, unknown>).files as string[] : [],
+          )
+          : undefined;
+        if (ticket?.duplicate) {
+          ticket.subscribe((result, error) => resolve(error ? { error } : result));
+          return;
+        }
+
+        const handled = routeToolCall(adapter, tool, fullArgs, threadId, (result, error) => {
+          if (ticket && !ticket.duplicate) ticket.complete(result, error);
+          // A successful reply retires the instance's cancel button — mirroring the
+          // MCP path (handleOutboundFromInstance). HTTP agents (e.g. Antigravity,
+          // which replies via POST /agent instead of an MCP tool call) never hit
+          // that path, so without this their cancel button would never clear.
+          if (!error && tool === "reply") ctx.clearCancelButton?.(instance);
+          resolve(error ? { error } : result);
+        });
+        if (!handled) {
+          if (ticket && !ticket.duplicate) ticket.complete(null, "unhandled");
+          resolve({ error: `Unhandled channel tool: ${tool}` });
+        }
       });
-      if (!handled) {
-        if (ticket && !ticket.duplicate) ticket.complete(null, "unhandled");
-        resolve({ error: `Unhandled channel tool: ${tool}` });
-      }
-    });
+    })();
   }
 
   // Fleet tools (outbound handlers)
