@@ -7,6 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **An alpha channel, separate from beta and stable (#1259).** A `vX.Y.Z-alpha.N` tag now publishes to npm `@alpha`.
+  Before, every tag without `-beta` went to `@latest`, so the first 2.2 alpha would have reached every stable user.
+  The publish workflow now maps tags strictly: `vX.Y.Z` → `@latest`, `-beta.N` → `@beta`, `-alpha.N` → `@alpha`.
+  Any other tag fails before anything is built, and `@latest` never moves backwards. On the client, `agend update`
+  (and chat `/update`) keeps an alpha install on `@alpha`. There is a new `agend update --alpha`, and the "update
+  available" notice tells an alpha about newer alphas and stables, never about a beta. Beta and stable installs
+  behave as before. The old manual `scripts/publish.sh` is removed: a release is a pushed tag.
 - **When the soonest rate-limit reset ticket expires, on the ticket line (#1232, #1244).** Codex's "Rate limit resets:
   2 available" now says when the first of those tickets expires — "Rate limit resets: 2 available · 🎫 Nearest expiry:
   10/22 (in 16d 6h)" — in `/usage`, the View usage panel and `get_usage`'s text, read from Codex's own ticket list

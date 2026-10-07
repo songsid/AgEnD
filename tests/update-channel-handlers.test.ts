@@ -115,6 +115,34 @@ describe("the update notice follows the same channel rule (#1182 review)", () =>
     expect(posted[0]).toContain("v2.1.11-rc.2");
   });
 
+  it("an alpha install (#1259) looks at @alpha and @latest, never @beta, and hears about the next alpha", async () => {
+    const tags = { "@songsid/agend": "2.1.11", "@songsid/agend@beta": "2.1.12-beta.9", "@songsid/agend@alpha": "2.2.0-alpha.2" };
+    const { posted, views } = await notice("2.2.0-alpha.1", tags);
+    expect(views.sort()).toEqual(["@songsid/agend", "@songsid/agend@alpha"]);
+    expect(posted).toHaveLength(1);
+    expect(posted[0]).toContain("v2.2.0-alpha.2");
+  });
+
+  it("an alpha install hears about a stable that passed it (with --stable), and nothing about an older beta", async () => {
+    const newer = await notice("2.2.0-alpha.3", { "@songsid/agend": "2.2.1", "@songsid/agend@alpha": "2.2.0-alpha.3" });
+    expect(newer.posted).toHaveLength(1);
+    expect(newer.posted[0]).toContain("v2.2.1");
+    expect(newer.posted[0]).toContain("--stable");
+    // The rule beta installs already have: a stable of the SAME core is not offered (a prerelease may continue
+    // after it). So when 2.2.0 ships, the release moves @alpha to it (see docs/cli.md).
+    const sameCore = await notice("2.2.0-alpha.3", { "@songsid/agend": "2.2.0", "@songsid/agend@alpha": "2.2.0-alpha.3" });
+    expect(sameCore.posted).toEqual([]);
+    const quiet = await notice("2.2.0-alpha.3", { "@songsid/agend": "2.1.11", "@songsid/agend@beta": "2.1.12-beta.9", "@songsid/agend@alpha": "2.2.0-alpha.3" });
+    expect(quiet.posted).toEqual([]);
+  });
+
+  it("a beta install still looks at @beta and @latest, never @alpha", async () => {
+    const tags = { "@songsid/agend": "2.1.11", "@songsid/agend@beta": "2.1.12-beta.5", "@songsid/agend@alpha": "2.2.0-alpha.1" };
+    const { posted, views } = await notice("2.1.12-beta.4", tags);
+    expect(views.sort()).toEqual(["@songsid/agend", "@songsid/agend@beta"]);
+    expect(posted[0]).toContain("v2.1.12-beta.5");
+  });
+
   it("a stable install looks at @latest only", async () => {
     const { posted, views } = await notice("2.1.10", { "@songsid/agend": "2.1.11", "@songsid/agend@beta": "2.1.12-beta.1" });
     expect(views).toEqual(["@songsid/agend"]);

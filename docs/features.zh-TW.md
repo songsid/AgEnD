@@ -581,19 +581,20 @@ Instance 關閉使用併發數 5 加速 `agend fleet stop` 和 `agend stop`。sy
 
 傳給暫停中 instance 的跨 instance 訊息（`send_to_instance`、`delegate_task` 等）會把它喚醒，包括跨 fleet 重啟仍保持暫停的 instance。這是預設行為（`delivery_worker: wake_only`，#1129 起）；設為 `off` 時，傳給跨 fleet 重啟仍暫停的 instance 的訊息，會一直排隊到有人手動喚醒它（fleet 啟動後才暫停的 instance，訊息投遞時仍會被喚醒）。`wake_only`（預設）會在有排隊工作時喚醒暫停中的目標（走跟 `/wake` 相同的路徑、失敗會退避重試、連續三次失敗通知雙方 topic、不會喚醒因登入失敗而暫停的 instance）；`on`（canary）另外讓一個專屬 worker 負責該目標的投遞，等 CLI 可以接受輸入後一次交付一則。設為 `wake_only` 或 `on` 時，`defaults.warm_overflow`（預設 2）是為了喚醒排隊目標，`warm_cap` 最多可以超出的數量；上限加超出額度都滿、又沒有閒置 instance 可暫停時，對暫停中 instance 的 `/wake` 或訊息會被拒絕，而不是超出上限。
 
-## Beta 更新頻道
+## Beta 與 Alpha 更新頻道
 
-安裝預發布版本：
+三個 npm dist-tag，各對應一條線：`@latest`（穩定版）、`@beta`（下一個修訂版）、`@alpha`（下一個次版本的預覽，例如目前是 2.1.x 時的 2.2.0-alpha.N）。
 
 ```bash
-agend update            # 留在已安裝的頻道：beta 從 @beta 更新，穩定版從 @latest 更新
+agend update            # 留在已安裝的頻道：alpha 從 @alpha、beta 從 @beta、穩定版從 @latest 更新
+agend update --alpha    # 從 @alpha npm dist-tag 安裝
 agend update --beta     # 從 @beta npm dist-tag 安裝
-agend update --stable   # 從 @latest 安裝，即使目前是 beta
+agend update --stable   # 從 @latest 安裝，即使目前是 beta 或 alpha
 ```
 
-聊天裡的 `/update` 跟 `agend update` 相同：beta 會留在 beta。會回到較舊版本的更新（例如 beta 頻道目前指向較舊的版本）會被拒絕；要這麼做請加 `--stable`、`--version` 或 `--force`。
+聊天裡的 `/update` 跟 `agend update` 相同：安裝會留在它的頻道。會回到較舊版本的更新（例如 alpha 要求 @beta）會被拒絕；要這麼做請加 `--stable`、`--version` 或 `--force`。「有新版本」通知也依同一個頻道：alpha 只會被告知較新的 alpha 或較新的穩定版，不會被告知 beta。
 
-CI pipeline 在 git tag 包含 `-beta` 時自動以 `--tag beta` 發布（例如 `v1.24.0-beta.1`）。
+發版就是推一個 `v*` tag。發布 workflow 嚴格對應：`vX.Y.Z` → `@latest`、`vX.Y.Z-beta.N` → `@beta`、`vX.Y.Z-alpha.N` → `@alpha`。其他 tag（`-rc.N`、打錯字）會在任何建置之前讓 job 失敗；比目前 `@latest` 舊的穩定版也會被拒絕。某個次版本正式發布時（2.2.0），也把 `@alpha` 指向它（`npm dist-tag add @songsid/agend@2.2.0 alpha`）：alpha 安裝不會被告知與自己同版號的穩定版。
 
 ## PSS 記憶體報告
 

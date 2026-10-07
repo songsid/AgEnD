@@ -19,7 +19,8 @@
 agend start                     # 啟動 AgEnD 服務（需先安裝）
 agend stop                      # 停止 AgEnD 服務
 agend restart                   # 重啟 AgEnD 服務
-agend update                    # 依已安裝的頻道更新（beta 會留在 beta）並重啟服務
+agend update                    # 依已安裝的頻道更新（alpha 留在 alpha、beta 留在 beta）並重啟服務
+agend update --alpha            # 從 alpha 頻道安裝（下一個次版本的預覽）
 agend update --beta             # 從 beta 頻道安裝
 agend update --stable           # 從穩定頻道安裝，即使目前是 beta（可能回到較舊的版本）
 agend update --version 2.1.9    # 安裝指定版本

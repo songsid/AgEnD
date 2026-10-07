@@ -18,6 +18,17 @@ jobs:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
+      # Before anything is built: a tag that cannot be published fails here.
+      - name: Set version from tag
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_ENV"
+      # X.Y.Z → latest, X.Y.Z-beta.N → beta, X.Y.Z-alpha.N → alpha; anything else fails the job, and latest never
+      # moves backwards (#1259). A failed lookup of the current latest skips only that last check.
+      - name: Determine npm tag
+        run: |
+          LATEST="$(npm view @songsid/agend@latest version 2>/dev/null || true)"
+          NPM_TAG="$(node scripts/npm-dist-tag.mjs "$VERSION" "$LATEST")"
+          echo "NPM_TAG=$NPM_TAG" >> "$GITHUB_ENV"
+
       - name: Use OIDC-capable npm
         run: npm install --global npm@11
 
@@ -26,15 +37,6 @@ jobs:
       - run: npx tsc --noEmit
       - run: npm run build
 
-      - name: Set version from tag
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_ENV"
-      - name: Determine npm tag
-        run: |
-          if [[ "$VERSION" == *-beta* ]]; then
-            echo "NPM_TAG=beta" >> "$GITHUB_ENV"
-          else
-            echo "NPM_TAG=latest" >> "$GITHUB_ENV"
-          fi
       - name: Set package version
         run: npm pkg set "version=$VERSION"
       - name: Publish

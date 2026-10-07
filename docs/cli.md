@@ -19,7 +19,8 @@ All other operations (create/delete/start instances, delegate tasks) are handled
 agend start                     # Start AgEnD service (requires install)
 agend stop                      # Stop AgEnD service
 agend restart                   # Restart AgEnD service
-agend update                    # Update on the installed channel (a beta stays on beta) and restart
+agend update                    # Update on the installed channel (an alpha stays on alpha, a beta on beta) and restart
+agend update --alpha            # Install from the alpha channel (previews of the next minor)
 agend update --beta             # Install from the beta channel
 agend update --stable           # Install from the stable channel, even from a beta (may go back a version)
 agend update --version 2.1.9    # Install a specific version
