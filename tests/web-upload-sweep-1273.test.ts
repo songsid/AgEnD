@@ -10,10 +10,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PENDING_PREFIX, sniffUpload, sweepOrphanedUploads, UPLOAD_TTL_MS, WebFileLedger } from "../src/web-upload.js";
 
+// A seam inside the ledger's rename (#1304 review): a test can swap the file between the check and the rename.
+const fsSeam = vi.hoisted(() => ({ beforeRename: null as null | ((from: string, to: string) => void) }));
+vi.mock("node:fs", async (importOriginal) => {
+  const fs = await importOriginal<typeof import("node:fs")>();
+  return { ...fs, renameSync: (from: string, to: string) => { fsSeam.beforeRename?.(from, to); return fs.renameSync(from, to); } };
+});
+
 const PNG = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex");
 let dir: string;
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), "agend-1273-")); });
-afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); try { chmodSync(join(dir, "inbox"), 0o700); } catch { /* none */ } rmSync(dir, { recursive: true, force: true }); });
+afterEach(() => { fsSeam.beforeRename = null; vi.useRealTimers(); vi.unstubAllEnvs(); try { chmodSync(join(dir, "inbox"), 0o700); } catch { /* none */ } rmSync(dir, { recursive: true, force: true }); });
 
 describe("the name on disk says whether a message took the file", () => {
   const png = () => sniffUpload(PNG, "a.png")!;
@@ -95,6 +102,49 @@ describe("a file swapped on disk is never served under the upload's id (#1304 re
     renameSync(other, a.path);                                          // same name, same size, another inode
     expect(ledger.takeForMessage("w", [a.id]).ok).toBe(false);
   });
+  it("swapped between the check and the rename: the arrival is checked too — put back, refused, never served", () => {
+    const ledger = new WebFileLedger({ now: () => 0 });
+    const a = ledger.storeUpload({ instance: "w", inboxDir: join(dir, "inbox"), bytes: TXT, name: "a.txt", type: sniffUpload(TXT, "a.txt")! });
+    const pending = a.path;
+    fsSeam.beforeRename = (from) => {
+      fsSeam.beforeRename = null;
+      const other = join(dir, "other.txt"); writeFileSync(other, SECRET); renameSync(other, from);   // same size, another inode
+    };
+    expect(ledger.takeForMessage("w", [a.id]).ok).toBe(false);
+    expect(a.path).toBe(pending);
+    expect(readFileSync(pending, "utf8"), "the swapped-in file is put back under the pending name").toBe(SECRET);
+    expect(ledger.read(a.id), "and never served under the upload's id").toBeNull();
+  });
+
+  for (const [what, swap] of [
+    ["a same-size regular file", (p: string) => { const o = join(dir, "other.txt"); writeFileSync(o, SECRET); renameSync(o, p); }],
+    ["a symlink", (p: string) => swapForLink(p)],
+  ] as const) {
+    it(`swapped for ${what} while delivering, the release refuses it, and a retry with the same id is refused too`, () => {
+      const ledger = new WebFileLedger({ now: () => 0 });
+      const a = ledger.storeUpload({ instance: "w", inboxDir: join(dir, "inbox"), bytes: TXT, name: "a.txt", type: sniffUpload(TXT, "a.txt")! });
+      const t = ledger.takeForMessage("w", [a.id]);
+      if (!t.ok) throw new Error(t.error);
+      const sent = a.path;
+      swap(sent);
+      ledger.release(t.entries);                                        // the delivery failed
+      expect(a.path, "the release could not rename it back").toBe(sent);
+      expect(ledger.takeForMessage("w", [a.id]).ok, "already under its sent name, still not ours: refused").toBe(false);
+      expect(ledger.read(a.id), "never served").toBeNull();
+    });
+  }
+
+  it("at expiry the id goes, but a file swapped in under its name is not the ledger's to delete", () => {
+    let now = 0;
+    const ledger = new WebFileLedger({ now: () => now });
+    const a = ledger.storeUpload({ instance: "w", inboxDir: join(dir, "inbox"), bytes: TXT, name: "a.txt", type: sniffUpload(TXT, "a.txt")! });
+    const o = join(dir, "other.txt"); writeFileSync(o, SECRET); renameSync(o, a.path);
+    now = UPLOAD_TTL_MS + 1;
+    ledger.prune();
+    expect(readFileSync(a.path, "utf8")).toBe(SECRET);
+    expect(ledger.ownedPaths().size, "the id is gone").toBe(0);
+  });
+
   it("swapped after the take: read refuses, and the served path stays the inbox name (never the link's target)", () => {
     const ledger = new WebFileLedger({ now: () => 0 });
     const a = ledger.storeUpload({ instance: "w", inboxDir: join(dir, "inbox"), bytes: TXT, name: "a.txt", type: sniffUpload(TXT, "a.txt")! });

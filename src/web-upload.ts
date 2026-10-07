@@ -115,6 +115,9 @@ export interface ServedFile {
   name: string;
   mime: string;
   size: number;
+  /** The file registered (device + inode): a file put in its place later is not served under this id (#1304 review). */
+  dev: number;
+  ino: number;
   /** The instance whose chat shows it. */
   instance: string;
   kind: UploadKind;
@@ -211,19 +214,15 @@ export class WebFileLedger {
 
   /** Move an upload's file (same directory) and keep what is served for its id on the new path. */
   private rename(e: UploadEntry, to: string): boolean {
-    if (to === e.path) return true;
     // Only the regular file this ledger wrote moves (#1304 review): something swapped in on disk — a symlink,
-    // a directory, another file (by inode) — is refused, never renamed and never resolved.
-    const written = this.written.get(e);
-    const isWritten = (p: string) => {
-      const st = lstatSync(p);
-      return !!written && st.isFile() && st.size === e.size && st.dev === written.dev && st.ino === written.ino;
-    };
-    try { if (!isWritten(e.path)) return false; } catch { return false; }
+    // a directory, another file (by inode) — is refused, never renamed and never resolved. Checked even when the
+    // name is already right (a retry after a release that could not rename back): that is still a take.
+    if (!this.isWritten(e, e.path)) return false;
+    if (to === e.path) return true;
     try { renameSync(e.path, to); } catch { return false; }
     // And the same file arrived (a swap between the check and the rename): otherwise put it back and refuse.
     try {
-      if (!isWritten(to)) throw new Error("swapped");
+      if (!this.isWritten(e, to)) throw new Error("swapped");
     } catch {
       try { renameSync(to, e.path); } catch { /* left under the other name: read() still refuses it */ }
       return false;
@@ -234,6 +233,15 @@ export class WebFileLedger {
     const served = this.served.get(e.id);
     if (served) served.realPath = join(dirname(served.realPath), basename(to));
     return true;
+  }
+
+  /** Is the file at `p` the one this ledger wrote for `e` (regular, same size, same device + inode)? */
+  private isWritten(e: UploadEntry, p: string): boolean {
+    const written = this.written.get(e);
+    try {
+      const st = lstatSync(p);
+      return !!written && st.isFile() && st.size === e.size && st.dev === written.dev && st.ino === written.ino;
+    } catch { return false; }
   }
 
   /** The files this process still owns — waiting for a message or on their way: a sweep must not touch them. */
@@ -268,11 +276,13 @@ export class WebFileLedger {
   registerServed(input: { id?: string; path: string; name?: string; mime?: string; instance: string; kind?: UploadKind }): ServedFile | null {
     let realPath: string;
     let size: number;
+    let dev: number;
+    let ino: number;
     try {
       realPath = realpathSync(input.path);
       const st = statSync(realPath);
       if (!st.isFile() || st.size > MAX_SERVED_BYTES) return null;
-      size = st.size;
+      ({ size, dev, ino } = st);
     } catch {
       return null;
     }
@@ -280,7 +290,7 @@ export class WebFileLedger {
     const mime = input.mime ?? MIME_BY_EXT[ext] ?? "application/octet-stream";
     const file: ServedFile = {
       id: input.id ?? randomBytes(16).toString("hex"),
-      realPath, size, mime, instance: input.instance,
+      realPath, size, dev, ino, mime, instance: input.instance,
       name: displayName(input.name ?? basename(realPath), "file"),
       kind: input.kind ?? (INLINE_MIME.has(mime) ? "photo" : "document"),
     };
@@ -291,7 +301,7 @@ export class WebFileLedger {
 
   /**
    * The bytes of a served file, re-checked at read time: opened without following a symlink, still a
-   * regular file, still the size it was registered with. Null when any of that fails.
+   * regular file, still the file (device + inode) and size it was registered with. Null when any of that fails.
    */
   read(id: string): { file: ServedFile; bytes: Buffer } | null {
     const file = isFileId(id) ? this.served.get(id) : undefined;
@@ -300,7 +310,7 @@ export class WebFileLedger {
     try {
       fd = openSync(file.realPath, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
       const st = fstatSync(fd);
-      if (!st.isFile() || st.size !== file.size) return null;
+      if (!st.isFile() || st.size !== file.size || st.dev !== file.dev || st.ino !== file.ino) return null;
       const bytes = Buffer.alloc(st.size);
       let off = 0;
       while (off < st.size) {
@@ -332,7 +342,8 @@ export class WebFileLedger {
     for (const [id, e] of this.uploads) {
       if (e.state === "sent") { this.uploads.delete(id); continue; }
       if (e.state === "reserved" || now < e.expiresAt) continue;
-      try { unlinkSync(e.path); } catch { /* already gone */ }
+      // Only the file this ledger wrote: something swapped in under its name is not ours to delete.
+      if (this.isWritten(e, e.path)) try { unlinkSync(e.path); } catch { /* already gone */ }
       this.uploads.delete(id);
       this.served.delete(id);
     }
