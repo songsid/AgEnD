@@ -344,3 +344,88 @@ describe("classic echo config (#1320 B)", () => {
     expect(channels.find(c => c.instanceName === "c").web_echo).toBeUndefined();
   });
 });
+
+describe("classic echo reservation fences (#1330 R2)", () => {
+  // A second classic-a entry riding tg-b's world, so mid-loop fencing has a
+  // B to stop at. Call sites below seed webChannelEchoGuards the way
+  // reserveWebChannelEcho does when it admits a copy.
+  function addSecondEntry(h: Awaited<ReturnType<typeof harness>>) {
+    (h.fm.classicChannels as any).channels.set(`${CHANNEL}#tg-b2`, {
+      channelId: CHANNEL, adapterId: "tg-b", instanceName: "classic-a", webEcho: true,
+    });
+  }
+  function seedGuard(h: Awaited<ReturnType<typeof harness>>, deadlineAt: number) {
+    (h.fm as any).webChannelEchoGuards.set("classic-a", {
+      epoch: (h.fm as any).getDeliveryEpoch("classic-a"), deadlineAt,
+    });
+  }
+
+  it("skips an entry whose explicit world is gone; legacy entries still use the primary adapter", async () => {
+    const h = await harness({ aEcho: true });
+    (h.fm.classicChannels as any).channels.set(`${CHANNEL}#gone`, {
+      channelId: CHANNEL, adapterId: "gone", instanceName: "classic-a", webEcho: true,
+    });
+    (h.fm.classicChannels as any).channels.set("legacy", {
+      channelId: CHANNEL, instanceName: "classic-a", webEcho: true,
+    });
+    const n = await (h.fm as any).sendClassicWebEcho("classic-a", "hi");
+    expect(n).toBe(2);
+    expect(h.sentA).toHaveLength(2);
+    expect(h.sentB).toHaveLength(0);
+    expect(h.s.logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ adapterId: "gone" }),
+      "Classic web echo skipped: adapter world unavailable",
+    );
+  });
+
+  it("an exhausted ordering budget stops the loop before the first copy", async () => {
+    const h = await harness({ aEcho: true });
+    addSecondEntry(h);
+    seedGuard(h, performance.now() - 1);
+    expect(await (h.fm as any).sendClassicWebEcho("classic-a", "hi")).toBe(0);
+    expect(h.sentA).toHaveLength(0);
+    expect(h.sentB).toHaveLength(0);
+  });
+
+  it("a revoked delivery epoch stops the loop after the in-flight copy", async () => {
+    const h = await harness({ aEcho: true });
+    addSecondEntry(h);
+    seedGuard(h, performance.now() + 60_000);
+    const adapterA = h.s.worlds.get("tg-a").adapter;
+    const orig = adapterA.sendText.bind(adapterA);
+    vi.spyOn(adapterA, "sendText").mockImplementation(async (chatId: string, text: string, opts: unknown) => {
+      (h.fm as any).cancelPendingDeliveries("classic-a");
+      return orig(chatId, text, opts);
+    });
+    expect(await (h.fm as any).sendClassicWebEcho("classic-a", "hi")).toBe(1);
+    expect(h.sentA).toHaveLength(1);
+    expect(h.sentB).toHaveLength(0);
+  });
+
+  it("an opt-in removed mid-loop is re-resolved: B never starts", async () => {
+    const h = await harness({ aEcho: true });
+    addSecondEntry(h);
+    seedGuard(h, performance.now() + 60_000);
+    const adapterA = h.s.worlds.get("tg-a").adapter;
+    const orig = adapterA.sendText.bind(adapterA);
+    vi.spyOn(adapterA, "sendText").mockImplementation(async (chatId: string, text: string, opts: unknown) => {
+      (h.fm.classicChannels as any).channels.get(`${CHANNEL}#tg-b2`).webEcho = false;
+      return orig(chatId, text, opts);
+    });
+    expect(await (h.fm as any).sendClassicWebEcho("classic-a", "hi")).toBe(1);
+    expect(h.sentA).toHaveLength(1);
+    expect(h.sentB).toHaveLength(0);
+  });
+
+  it("a delivery throw releases the Classic lane: the next accepted echo still posts", async () => {
+    const h = await harness({ aEcho: true });
+    vi.spyOn(h.fm as any, "deliverToInstance").mockRejectedValueOnce(new Error("ipc down"));
+    expect((await postSend(h.fm, "classic-a", "first")).status).toBe(503);
+    await flush(); await flush();
+    expect(h.sentA).toHaveLength(0);
+    expect((await postSend(h.fm, "classic-a", "second")).status).toBe(200);
+    await flush(); await flush();
+    expect(h.sentA).toHaveLength(1);
+    expect(h.sentA[0].text.startsWith(WEB_ECHO_PREFIX)).toBe(true);
+  });
+});

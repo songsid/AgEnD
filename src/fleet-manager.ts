@@ -823,6 +823,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     tail: Promise<void>;
     pending: Set<{ started: boolean; drop: () => void }>;
   }>();
+  /**
+   * instanceName → the reservation whose echo callback is currently running.
+   * sendClassicWebEcho fences every per-entry copy against it: no new copy
+   * starts after the ordering budget is gone or the delivery epoch is revoked.
+   * Serialized per instance by the echo tail, so one slot is enough.
+   */
+  private webChannelEchoGuards = new Map<string, { epoch: number; deadlineAt: number }>();
   /** instanceName → restart currently executing; concurrent callers join it. */
   private restartsInFlight = new Map<string, Promise<void>>();
   /**
@@ -2699,13 +2706,42 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * thread, mention suppression on. Returns the number of channels posted
    * to. Failures are per-entry warn-and-continue — a failed echo never fails
    * the web send. Entries without `web_echo: true` are never touched.
+   *
+   * Every copy is fenced at start time: an entry whose explicit world is
+   * gone is skipped (only legacy adapterId-less entries fall back to the
+   * primary adapter); when running under a reservation, an exhausted
+   * ordering budget or a revoked delivery epoch stops the loop, and each
+   * entry is re-resolved against current registration so a removed opt-in
+   * or a rebound adapter is never posted through a stale route. A copy
+   * already in flight may still land late — the contract permits that.
    */
   async sendClassicWebEcho(instance: string, text: string): Promise<number> {
-    const entries = this.classicChannels?.getAll()
-      .filter(entry => entry.instanceName === instance && entry.webEcho === true) ?? [];
+    const guard = this.webChannelEchoGuards.get(instance);
+    const handled = new Set<string>();
     let posted = 0;
-    for (const entry of entries) {
-      const adapter = (entry.adapterId ? this.worlds.get(entry.adapterId)?.adapter : undefined) ?? this.adapter;
+    for (;;) {
+      if (guard) {
+        if (performance.now() >= guard.deadlineAt) {
+          this.logger.warn({ instance, posted }, "Classic web echo stopped: ordering budget exhausted");
+          break;
+        }
+        if (!this.isDeliveryEpochCurrent(instance, guard.epoch)) {
+          this.logger.warn({ instance, posted }, "Classic web echo stopped: delivery epoch revoked");
+          break;
+        }
+      }
+      const entry = (this.classicChannels?.getAll() ?? [])
+        .find(candidate => candidate.instanceName === instance && candidate.webEcho === true
+          && !handled.has(`${candidate.channelId}#${candidate.adapterId ?? ""}`));
+      if (!entry) break;
+      handled.add(`${entry.channelId}#${entry.adapterId ?? ""}`);
+      const worldAdapter = entry.adapterId ? this.worlds.get(entry.adapterId)?.adapter : undefined;
+      if (entry.adapterId && !worldAdapter) {
+        this.logger.warn({ instance, channelId: entry.channelId, adapterId: entry.adapterId },
+          "Classic web echo skipped: adapter world unavailable");
+        continue;
+      }
+      const adapter = worldAdapter ?? this.adapter;
       try {
         if (!adapter?.sendText) continue;
         await adapter.sendText(entry.channelId, text, { format: "text", allowedMentions: { parse: [] } });
@@ -2730,11 +2766,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const tail = new Promise<void>(resolve => { resolveDone = resolve; });
     let done = false, expired = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let guard: { epoch: number; deadlineAt: number } | undefined;
     const finish = () => {
       if (done) return;
       done = true;
       clearTimeout(timer);
       queue.pending.delete(entry);
+      if (guard && this.webChannelEchoGuards.get(instanceName) === guard) {
+        this.webChannelEchoGuards.delete(instanceName);
+      }
       resolveDone();
     };
     const entry = { started: false, drop: () => {
@@ -2765,6 +2805,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // A delayed timer callback must not admit an already expired copy.
       if (performance.now() >= deadlineAt) { expire(); return; }
       entry.started = true;
+      guard = { epoch, deadlineAt };
+      this.webChannelEchoGuards.set(instanceName, guard);
       let request: Promise<unknown>;
       try { request = Promise.resolve(sendEcho()); }
       catch (err) { request = Promise.reject(err); }

@@ -939,6 +939,10 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
         });
       } catch (err) {
         settleEcho?.(false);
+        // A throw must release the Classic ordering lane too: otherwise the
+        // next accepted echo queues behind a reservation that never settles
+        // and is dropped by expiry (#1330 R2).
+        settleClassicEcho?.(false);
         ctx.webFiles?.release(files);                  // not delivered: the same ids can be sent again
         ctx.logger.error({ err, instance }, "Web message delivery failed");
         json(res, 503, { error: "Instance delivery failed" });
