@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync, readdirSync, renameSync, copyFileSync, chmodSync, statSync, accessSync, constants as fsConstants, type Dirent } from "node:fs";
+import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync, readdirSync, renameSync, copyFileSync, chmodSync, statSync, accessSync, realpathSync, constants as fsConstants, type Dirent } from "node:fs";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { freemem, totalmem, cpus, homedir } from "node:os";
@@ -90,7 +90,7 @@ import { DeliveryOutbox, type ClaimedOutboxDelivery, type OutboxDelivery, type D
 export const DURABLE_DELIVERY_LANE_ALERT_MS = 35 * 60_000;
 import { handleWebRequest, broadcastSseEvent, SSE_HEARTBEAT_MS } from "./web-api.js";
 import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, type WebChatAttachment } from "./web-chat-history.js";
-import { publicAttachment, WebFileLedger } from "./web-upload.js";
+import { publicAttachment, sweepOrphanedUploads, WebFileLedger } from "./web-upload.js";
 import { handleViewRequest, isViewPath } from "./view-api.js";
 import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, usageProviderIdForBackend } from "./usage/usage-api.js";
 import { LOGIN_FLOWS, LOGIN_BACKEND_ALIASES, type LoginFlow, type AuthCheckResult } from "./login-flows.js";
@@ -4423,6 +4423,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Rotate classic channel chat logs daily (piggyback on daily summary timer)
     this.classicChannels?.rotateLogs();
     this.rotateInboxes();
+    // Web uploads no message took before this restart (#1273).
+    this.sweepOrphanedWebUploads();
 
     // Auto-create/adopt a general dispatcher — ONLY for the primary adapter.
     const channelConfigs = fleet.channels ?? (fleet.channel ? [fleet.channel] : []);
@@ -4902,6 +4904,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     if (deleted > 0) this.logger.info({ deleted }, "Rotated inbox files");
     return deleted;
+  }
+
+  /**
+   * Web uploads no message took before a restart (#1273): removed once older than the upload window. Younger ones
+   * are looked at again when the first comes due (an unref'd timer, so it never holds the process).
+   */
+  private sweepOrphanedWebUploads(): void {
+    // Skip what this process's ledger still holds: those are uploads made since this start, timed by the ledger.
+    // (Compared the way the sweep names files: the inbox directory resolved, the file name as it is.)
+    const owned = new Set([...this.webFiles.ownedPaths()].map(p => { try { return join(realpathSync(dirname(p)), basename(p)); } catch { return p; } }));
+    const { deleted, nextDueInMs } = sweepOrphanedUploads(join(getAgendHome(), "workspaces"), Date.now(), undefined, owned);
+    if (deleted > 0) this.logger.info({ deleted }, "Removed web uploads no message took before the restart");
+    if (nextDueInMs !== null) {
+      const t = setTimeout(() => this.sweepOrphanedWebUploads(), Math.max(1_000, nextDueInMs + 1_000));
+      t.unref?.();
+    }
   }
 
   /** Start the shared channel adapter(s) for topic mode */

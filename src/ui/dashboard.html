@@ -388,7 +388,7 @@ async function api(m, p, b) {
 // Escapes quotes too, so the same function is safe inside a quoted attribute (#1303 review: a name carrying `"` must
 // never become attributes of its own — e.g. a forged data-act on a roster row).
 function esc(s) { return escAttr(s); }
-// For a value inside a quoted attribute: esc() leaves quotes alone, which is fine for text but not here.
+// Escapes & " ' < >: safe for text and inside a quoted attribute. esc() is this same function; attribute sites name it.
 function escAttr(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/'/g, "&#39;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 function fmtUp(s) { return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s/60)}m` : `${Math.floor(s/3600)}h ${Math.floor((s%3600)/60)}m`; }
 function toast(msg, ok=true) {

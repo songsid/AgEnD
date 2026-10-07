@@ -12,8 +12,8 @@
  * label, and a file can be fetched back only by an id this process issued for it — never by a path.
  */
 import { randomBytes } from "node:crypto";
-import { constants as fsConstants, closeSync, fstatSync, mkdirSync, openSync, readSync, realpathSync, statSync, unlinkSync, writeFileSync } from "node:fs";
-import { basename, extname, join } from "node:path";
+import { constants as fsConstants, closeSync, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, readSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { basename, dirname, extname, join } from "node:path";
 
 export const UPLOAD_LIMITS = {
   /** One file. */
@@ -26,6 +26,11 @@ export const UPLOAD_LIMITS = {
 
 /** How long an uploaded file waits to be sent with a message before its id stops working. */
 export const UPLOAD_TTL_MS = 30 * 60 * 1000;
+
+/** An upload no message has taken yet is stored under this prefix; it drops the prefix when a message takes it. */
+export const PENDING_PREFIX = "web-pending-";
+function sentPath(p: string): string { const b = basename(p); return b.startsWith(PENDING_PREFIX) ? join(dirname(p), "web-" + b.slice(PENDING_PREFIX.length)) : p; }
+function pendingPath(p: string): string { const b = basename(p); return b.startsWith("web-") && !b.startsWith(PENDING_PREFIX) ? join(dirname(p), PENDING_PREFIX + b.slice(4)) : p; }
 /** The largest file the dashboard will serve back (a reply attachment can be anything the agent made). */
 export const MAX_SERVED_BYTES = 50 * 1024 * 1024;
 
@@ -110,6 +115,9 @@ export interface ServedFile {
   name: string;
   mime: string;
   size: number;
+  /** The file registered (device + inode): a file put in its place later is not served under this id (#1304 review). */
+  dev: number;
+  ino: number;
   /** The instance whose chat shows it. */
   instance: string;
   kind: UploadKind;
@@ -132,6 +140,8 @@ export const INLINE_MIME = new Set(["image/png", "image/jpeg", "image/gif", "ima
  */
 export class WebFileLedger {
   private readonly uploads = new Map<string, UploadEntry>();
+  /** The file each upload was written as (device + inode): a rename moves only that file (#1304 review). */
+  private readonly written = new WeakMap<UploadEntry, { dev: number; ino: number }>();
   private readonly served = new Map<string, ServedFile>();
   private readonly now: () => number;
   private readonly maxServed: number;
@@ -150,12 +160,16 @@ export class WebFileLedger {
   storeUpload(input: { instance: string; inboxDir: string; bytes: Uint8Array; name: string; type: SniffedType }): UploadEntry {
     mkdirSync(input.inboxDir, { recursive: true, mode: 0o700 });
     const id = randomBytes(16).toString("hex");
-    const path = join(input.inboxDir, `web-${Date.now()}-${id.slice(0, 8)}${input.type.ext}`);
+    // Stored as web-pending-…: the name says on disk that no message has taken it yet, so a sweep after a restart
+    // (which loses this ledger) can still tell an abandoned upload from one an agent got (#1273).
+    const path = join(input.inboxDir, `${PENDING_PREFIX}${Date.now()}-${id.slice(0, 8)}${input.type.ext}`);
     writeFileSync(path, input.bytes, { mode: 0o600, flag: "wx" });
     const entry: UploadEntry = {
       id, instance: input.instance, path, kind: input.type.kind, mime: input.type.mime,
       name: displayName(input.name, "file"), size: input.bytes.length, expiresAt: this.now() + UPLOAD_TTL_MS, state: "pending",
     };
+    const st = lstatSync(path);
+    this.written.set(entry, { dev: st.dev, ino: st.ino });
     this.prune();
     this.uploads.set(id, entry);
     this.registerServed({ id, path, name: entry.name, mime: entry.mime, instance: entry.instance, kind: entry.kind });
@@ -185,8 +199,56 @@ export class WebFileLedger {
       entries.push(e);
     }
     if (total > UPLOAD_LIMITS.maxTotalBytes) return { ok: false, error: `the files together are over ${UPLOAD_LIMITS.maxTotalBytes / 1024 / 1024} MB` };
+    // Each file gets its sent name now, before the delivery names it to the agent; all or nothing.
+    const moved: UploadEntry[] = [];
+    for (const e of entries) {
+      if (!this.rename(e, sentPath(e.path))) {
+        for (const m of moved) this.rename(m, pendingPath(m.path));
+        return { ok: false, error: "an attached file could not be prepared — attach it again" };
+      }
+      moved.push(e);
+    }
     for (const e of entries) e.state = "reserved";
     return { ok: true, entries };
+  }
+
+  /** Move an upload's file (same directory) and keep what is served for its id on the new path. */
+  private rename(e: UploadEntry, to: string): boolean {
+    // Only the regular file this ledger wrote moves (#1304 review): something swapped in on disk — a symlink,
+    // a directory, another file (by inode) — is refused, never renamed and never resolved. Checked even when the
+    // name is already right (a retry after a release that could not rename back): that is still a take.
+    if (!this.isWritten(e, e.path)) return false;
+    if (to === e.path) return true;
+    try { renameSync(e.path, to); } catch { return false; }
+    // And the same file arrived (a swap between the check and the rename): otherwise put it back and refuse.
+    try {
+      if (!this.isWritten(e, to)) throw new Error("swapped");
+    } catch {
+      try { renameSync(to, e.path); } catch { /* left under the other name: read() still refuses it */ }
+      return false;
+    }
+    e.path = to;
+    // The served path moves by NAME only, in the directory it was registered in: never realpath() the new name,
+    // which would bind the id to whatever a link points at. read() still opens it O_NOFOLLOW and re-checks size.
+    const served = this.served.get(e.id);
+    if (served) served.realPath = join(dirname(served.realPath), basename(to));
+    return true;
+  }
+
+  /** Is the file at `p` the one this ledger wrote for `e` (regular, same size, same device + inode)? */
+  private isWritten(e: UploadEntry, p: string): boolean {
+    const written = this.written.get(e);
+    try {
+      const st = lstatSync(p);
+      return !!written && st.isFile() && st.size === e.size && st.dev === written.dev && st.ino === written.ino;
+    } catch { return false; }
+  }
+
+  /** The files this process still owns — waiting for a message or on their way: a sweep must not touch them. */
+  ownedPaths(): Set<string> {
+    const out = new Set<string>();
+    for (const e of this.uploads.values()) if (e.state !== "sent") out.add(e.path);
+    return out;
   }
 
   /** The reserved uploads were delivered: they are the agent's now. */
@@ -202,6 +264,7 @@ export class WebFileLedger {
     for (const e of entries) {
       if (this.uploads.get(e.id) !== e || e.state !== "reserved") continue;
       e.state = "pending";
+      this.rename(e, pendingPath(e.path));     // back to "not taken" on disk (if this fails it reads as sent: kept 7 days)
     }
     this.prune();
   }
@@ -213,11 +276,13 @@ export class WebFileLedger {
   registerServed(input: { id?: string; path: string; name?: string; mime?: string; instance: string; kind?: UploadKind }): ServedFile | null {
     let realPath: string;
     let size: number;
+    let dev: number;
+    let ino: number;
     try {
       realPath = realpathSync(input.path);
       const st = statSync(realPath);
       if (!st.isFile() || st.size > MAX_SERVED_BYTES) return null;
-      size = st.size;
+      ({ size, dev, ino } = st);
     } catch {
       return null;
     }
@@ -225,7 +290,7 @@ export class WebFileLedger {
     const mime = input.mime ?? MIME_BY_EXT[ext] ?? "application/octet-stream";
     const file: ServedFile = {
       id: input.id ?? randomBytes(16).toString("hex"),
-      realPath, size, mime, instance: input.instance,
+      realPath, size, dev, ino, mime, instance: input.instance,
       name: displayName(input.name ?? basename(realPath), "file"),
       kind: input.kind ?? (INLINE_MIME.has(mime) ? "photo" : "document"),
     };
@@ -236,7 +301,7 @@ export class WebFileLedger {
 
   /**
    * The bytes of a served file, re-checked at read time: opened without following a symlink, still a
-   * regular file, still the size it was registered with. Null when any of that fails.
+   * regular file, still the file (device + inode) and size it was registered with. Null when any of that fails.
    */
   read(id: string): { file: ServedFile; bytes: Buffer } | null {
     const file = isFileId(id) ? this.served.get(id) : undefined;
@@ -245,7 +310,7 @@ export class WebFileLedger {
     try {
       fd = openSync(file.realPath, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
       const st = fstatSync(fd);
-      if (!st.isFile() || st.size !== file.size) return null;
+      if (!st.isFile() || st.size !== file.size || st.dev !== file.dev || st.ino !== file.ino) return null;
       const bytes = Buffer.alloc(st.size);
       let off = 0;
       while (off < st.size) {
@@ -277,7 +342,8 @@ export class WebFileLedger {
     for (const [id, e] of this.uploads) {
       if (e.state === "sent") { this.uploads.delete(id); continue; }
       if (e.state === "reserved" || now < e.expiresAt) continue;
-      try { unlinkSync(e.path); } catch { /* already gone */ }
+      // Only the file this ledger wrote: something swapped in under its name is not ours to delete.
+      if (this.isWritten(e, e.path)) try { unlinkSync(e.path); } catch { /* already gone */ }
       this.uploads.delete(id);
       this.served.delete(id);
     }
@@ -309,4 +375,77 @@ export function attachmentDelivery(message: string, entries: readonly UploadEntr
 /** What the chat shows for a file: never the path. */
 export function publicAttachment(f: { id: string; kind: UploadKind; name: string; size: number; mime: string }): { id: string; kind: UploadKind; name: string; size: number; mime: string } {
   return { id: f.id, kind: f.kind, name: f.name, size: f.size, mime: f.mime };
+}
+
+/** Linux names an open directory by its descriptor: a path through it cannot be redirected by a renamed parent. */
+const PROC_FD = process.platform === "linux" ? "/proc/self/fd" : null;
+
+/**
+ * At fleet startup (#1273): the ledger of uploads waiting for a message lives in memory, so after a restart an
+ * upload no message took is nobody's — its id is gone. Remove each such file (named web-pending-…) in every
+ * workspace inbox once it is older than the upload window. Files a message took (web-…, no "pending") are the
+ * agent's and follow the inbox's ordinary 7-day rotation, exactly like a file from Telegram; nothing else in an
+ * inbox is ever touched here.
+ *
+ * Age is the file's mtime against the wall clock — the only clock a file has. A future mtime (the clock was set
+ * back) counts as just written, never as a negative age, so it is kept and looked at again later; a clock set
+ * forward can only remove an upload early, and after a restart none of them can be sent anyway. The uploads this
+ * process holds (`owned`, by inbox path) are skipped: their window is the ledger's elapsed time, not a file's mtime.
+ * Returns how many were removed and, when younger ones remain, in how long the next one comes due.
+ */
+export function sweepOrphanedUploads(
+  workspacesDir: string,
+  nowMs: number = Date.now(),
+  ttlMs: number = UPLOAD_TTL_MS,
+  owned: ReadonlySet<string> = new Set(),
+): { deleted: number; nextDueInMs: number | null } {
+  let deleted = 0;
+  let nextDueInMs: number | null = null;
+  let workspaces: string[];
+  let root: string;
+  try {
+    if (!existsSync(workspacesDir)) return { deleted, nextDueInMs };
+    root = realpathSync(workspacesDir);
+    workspaces = readdirSync(root);
+  } catch { return { deleted, nextDueInMs }; }
+  for (const ws of workspaces) {
+    // Only real directories inside the workspaces tree (#1304 review): a workspace or an inbox that is a symlink
+    // could lead the sweep to delete files anywhere it points.
+    const wsDir = join(root, ws);
+    const inbox = join(wsDir, "inbox");
+    let fd: number | null = null;
+    try {
+      if (!lstatSync(wsDir).isDirectory() || !lstatSync(inbox).isDirectory()) continue;
+      // Pin the inbox: opened as a directory, then checked to be the in-tree one. A parent swapped for a link after
+      // this cannot redirect the deletes, which go through the open directory where the platform allows it.
+      fd = openSync(inbox, fsConstants.O_RDONLY | fsConstants.O_DIRECTORY | fsConstants.O_NOFOLLOW);
+      const pinned = fstatSync(fd);
+      const here = lstatSync(inbox);
+      if (realpathSync(inbox) !== inbox || pinned.dev !== here.dev || pinned.ino !== here.ino) continue;
+      const anchor = PROC_FD && existsSync(`${PROC_FD}/${fd}`) ? `${PROC_FD}/${fd}` : inbox;
+      const stillPinned = () => {
+        if (anchor !== inbox) return true;
+        const now = lstatSync(inbox);
+        return now.isDirectory() && now.dev === pinned.dev && now.ino === pinned.ino && realpathSync(inbox) === inbox;
+      };
+      for (const f of readdirSync(anchor)) {
+        if (!f.startsWith(PENDING_PREFIX)) continue;
+        // An upload this process holds is governed by its ledger (elapsed time), never by this wall-clock sweep.
+        if (owned.has(join(inbox, f))) continue;
+        const full = join(anchor, f);
+        try {
+          const st = lstatSync(full);                 // a symlink is not one of ours: never followed, never removed
+          if (!st.isFile()) continue;
+          const age = Math.max(0, nowMs - st.mtimeMs);
+          if (age >= ttlMs) {
+            if (!stillPinned()) break;
+            unlinkSync(full); deleted++; continue;
+          }
+          const due = ttlMs - age;
+          if (nextDueInMs === null || due < nextDueInMs) nextDueInMs = due;
+        } catch { /* vanished or unreadable: leave it */ }
+      }
+    } catch { continue; } finally { if (fd !== null) try { closeSync(fd); } catch { /* closed */ } }
+  }
+  return { deleted, nextDueInMs };
 }

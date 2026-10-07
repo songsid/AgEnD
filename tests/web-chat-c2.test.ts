@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync, mkdirSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
@@ -72,7 +72,7 @@ describe("WebFileLedger", () => {
     const inbox = join(dir, "ws", "inbox");
     const e = ledger.storeUpload({ instance: "w", inboxDir: inbox, bytes: PNG, name: "../../evil name.png", type: png });
     expect(e.path.startsWith(inbox + "/")).toBe(true);
-    expect(e.path).toMatch(/\/web-\d+-[0-9a-f]{8}\.png$/);
+    expect(e.path).toMatch(/\/web-pending-\d+-[0-9a-f]{8}\.png$/);   // pending until a message takes it (#1273)
     expect(e.path).not.toContain("evil");
     expect(e.name).toBe("evil name.png");
     expect(readFileSync(e.path)).toEqual(PNG);
@@ -396,6 +396,19 @@ describe("a message's files are only used up once the agent has them (#1252 revi
     outcome = async () => true;
     expect((await send(c, { instance: "w", message: "hi", attachments: [img.id] })).status, "retry with the same id").toBe(200);
     expect((await send(c, { instance: "w", message: "again", attachments: [img.id] })).status, "now it is used up").toBe(400);
+  });
+
+  it.each([
+    ["a same-size regular file", (p: string) => { const o = join(dir, "other.png"); writeFileSync(o, Buffer.alloc(PNG.length, 7)); renameSync(o, p); }],
+    ["a symlink", (p: string) => { const t = join(dir, "secret.bin"); writeFileSync(t, Buffer.alloc(PNG.length, 7)); unlinkSync(p); symlinkSync(t, p); }],
+  ])("the file swapped for %s while it was being delivered: the failed send's retry is refused (400) and the id serves nothing (#1304 review r2)", async (_what, swap) => {
+    let attempts = 0;
+    const { c } = ctx({ deliverToInstance: async (_n: string, p: { meta: Record<string, string> }) => { attempts++; swap(p.meta.image_path!); return false; } });
+    const img = (await upload(c, "w", PNG, "a.png")).body;
+    expect((await send(c, { instance: "w", message: "hi", attachments: [img.id] })).status).toBe(503);
+    expect((await send(c, { instance: "w", message: "hi", attachments: [img.id] })).status, "not the file that was uploaded").toBe(400);
+    expect(attempts, "nothing delivered on the retry").toBe(1);
+    expect(c.webFiles!.read(img.id)).toBeNull();
   });
 
   it("two sends of the same file at once: one takes it, the other is refused while it is on its way", async () => {
