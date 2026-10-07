@@ -21,38 +21,60 @@ const steps = (yaml.load(readFileSync(join(ROOT, ".github", "workflows", "publis
 const dirs: string[] = [];
 afterAll(() => { for (const d of dirs) rmSync(d, { recursive: true, force: true }); });
 
-/** Run publish.yml up to and including its Publish step for `tag`; npm answers `latest` for `npm view`. */
-function publish(tag: string, latest: string | null) {
+/**
+ * One release run of publish.yml with `npm`/`npx` stubbed. `npm view` reads the shared registry file (empty
+ * means the lookup fails); `npm publish … --tag latest` writes the run's VERSION to it, so two runs can share a
+ * registry. `steps(until)` runs the next steps up to (not including) the named one; `steps()` runs to Publish.
+ */
+function release(tag: string, registry: string, ref = `refs/tags/${tag}`) {
   const dir = mkdtempSync(join(tmpdir(), "agend-publish-1259-"));
   dirs.push(dir);
   const bin = join(dir, "bin"), log = join(dir, "npm.log"), envFile = join(dir, "github.env");
   spawnSync("mkdir", ["-p", bin]);
   writeFileSync(log, ""); writeFileSync(envFile, "");
-  // `npm view …` prints the current latest (or fails when there is none); every other npm/npx call is logged only.
-  const stub = `#!/bin/bash\necho "$(basename "$0") $*" >> "${log}"\nif [ "$1" = view ]; then [ -n "$STUB_LATEST" ] || exit 1; echo "$STUB_LATEST"; fi\nexit 0\n`;
+  const stub = [
+    "#!/bin/bash",
+    `echo "$(basename "$0") $*" >> "${log}"`,
+    `if [ "$1" = view ]; then v="$(cat "${registry}" 2>/dev/null)"; [ -n "$v" ] || exit 1; echo "$v"; fi`,
+    `if [ "$1" = publish ] && [[ " $* " == *" --tag latest "* ]]; then echo "$VERSION" > "${registry}"; fi`,
+    "exit 0", "",
+  ].join("\n");
   for (const name of ["npm", "npx"]) { writeFileSync(join(bin, name), stub); chmodSync(join(bin, name), 0o755); }
-  const env: Record<string, string> = {
-    PATH: `${bin}:${dirname(process.execPath)}:/usr/bin:/bin`, HOME: dir,
-    GITHUB_REF: `refs/tags/${tag}`, GITHUB_ENV: envFile, STUB_LATEST: latest ?? "",
-  };
-  let failedStep: string | null = null, stderr = "";
-  const ran: string[] = [];
-  for (const step of steps) {
-    if (step.uses || !step.run) continue;
-    if (step.name === "Notify Discord") break;
-    // Actions exports what earlier steps appended to GITHUB_ENV.
-    for (const line of readFileSync(envFile, "utf8").split("\n")) {
-      const at = line.indexOf("=");
-      if (at > 0) env[line.slice(0, at)] = line.slice(at + 1);
+  const env: Record<string, string> = { PATH: `${bin}:${dirname(process.execPath)}:/usr/bin:/bin`, HOME: dir, GITHUB_REF: ref, GITHUB_ENV: envFile };
+  const runnable = steps.filter(step => step.run && !step.uses);
+  let next = 0, failedStep: string | null = null, stderr = "";
+  const runSteps = (until?: string) => {
+    while (failedStep === null && next < runnable.length) {
+      const step = runnable[next]!;
+      if (step.name === "Notify Discord" || (until && step.name === until)) return;
+      next++;
+      // Actions exports what earlier steps appended to GITHUB_ENV.
+      for (const line of readFileSync(envFile, "utf8").split("\n")) {
+        const at = line.indexOf("=");
+        if (at > 0) env[line.slice(0, at)] = line.slice(at + 1);
+      }
+      const result = spawnSync("bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", step.run!], { cwd: ROOT, env, encoding: "utf8" });
+      // `::error::` annotations go to stdout; keep both so a failure's reason can be asserted.
+      if (result.status !== 0) { failedStep = step.name ?? step.run!.split("\n")[0]!; stderr = result.stderr + result.stdout; return; }
+      if (step.name === "Publish") return;
     }
-    const label = step.name ?? step.run.split("\n")[0]!;
-    ran.push(label);
-    const result = spawnSync("bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", step.run], { cwd: ROOT, env, encoding: "utf8" });
-    if (result.status !== 0) { failedStep = label; stderr = result.stderr; break; }
-    if (step.name === "Publish") break;
-  }
-  const npm = readFileSync(log, "utf8").split("\n").filter(Boolean);
-  return { failedStep, stderr, ran, npm, published: npm.find(line => line.startsWith("npm publish")) ?? null };
+  };
+  const outcome = () => {
+    const npm = readFileSync(log, "utf8").split("\n").filter(Boolean);
+    return { failedStep, stderr, npm, published: npm.find(line => line.startsWith("npm publish")) ?? null };
+  };
+  return { steps: runSteps, outcome };
+}
+
+/** A whole run against a registry whose latest is `latest` (null: the lookup fails). */
+function publish(tag: string, latest: string | null) {
+  const dir = mkdtempSync(join(tmpdir(), "agend-registry-1259-"));
+  dirs.push(dir);
+  const registry = join(dir, "latest");
+  writeFileSync(registry, latest ?? "");
+  const run = release(tag, registry);
+  run.steps();
+  return run.outcome();
 }
 
 describe("publish.yml: tag → npm dist-tag, by running the workflow's steps (#1259)", () => {
@@ -89,6 +111,61 @@ describe("publish.yml: tag → npm dist-tag, by running the workflow's steps (#1
     // Equal or newer is fine (an equal version is npm's own refusal to make).
     expect(publish("v2.1.11", "2.1.11").published).toBe("npm publish --access public --tag latest");
     expect(publish("v2.10.0", "2.9.99").published).toBe("npm publish --access public --tag latest");
+  });
+
+  it.each([
+    ["v2.1.12", "2.2.0-alpha.1", "would move latest backwards"],   // an old workflow had put an alpha on latest
+    ["v2.1.11", "2.1.12+build.1", "would move latest backwards"],  // build metadata does not hide the version
+    ["v2.1.12", "garbage", "cannot read the current latest"],      // an answer that is not a version: fail closed
+  ])("%s against latest %s fails the job (#1271 review: any readable latest is compared)", (tag, latest, why) => {
+    const run = publish(tag, latest);
+    expect(run.failedStep).toBe("Determine npm tag");
+    expect(run.stderr).toContain(why);
+    expect(run.published).toBeNull();
+  });
+
+  it("a newer stable still replaces a prerelease that got onto latest", () => {
+    expect(publish("v2.2.1", "2.2.0-alpha.1").published).toBe("npm publish --access public --tag latest");
+  });
+
+  it("two releases interleaved (#1271 review): an older stable checked before a newer one published does not publish", () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-registry-1259-"));
+    dirs.push(dir);
+    const registry = join(dir, "latest");
+    writeFileSync(registry, "2.1.11");
+    const older = release("v2.1.12", registry), newer = release("v2.1.13", registry);
+    older.steps("Publish");                    // checked against 2.1.11 and built, not yet published
+    expect(older.outcome().failedStep).toBeNull();
+    newer.steps();                             // the whole newer release, latest is now 2.1.13
+    expect(newer.outcome().published).toBe("npm publish --access public --tag latest");
+    expect(readFileSync(registry, "utf8").trim()).toBe("2.1.13");
+    older.steps();                             // resumes at Publish
+    expect(older.outcome().failedStep).toBe("Publish");
+    expect(older.outcome().stderr).toContain("would move latest backwards");
+    expect(older.outcome().published).toBeNull();
+    expect(readFileSync(registry, "utf8").trim()).toBe("2.1.13");
+  });
+
+  it("release runs are serialised: one fixed concurrency group, never cancelled mid-run", () => {
+    const doc = yaml.load(readFileSync(join(ROOT, ".github", "workflows", "publish.yml"), "utf8")) as { concurrency?: { group?: string; "cancel-in-progress"?: boolean } };
+    expect(doc.concurrency?.group).toBe("npm-publish");
+    expect(doc.concurrency?.["cancel-in-progress"]).toBe(false);
+  });
+
+  it.each([
+    ["refs/tags/v2.2.0-alpha.1\nVERSION=2.2.0", "unexpected characters"],
+    ["refs/heads/main", "not a v* tag"],
+    ["refs/tags/2.2.0", "not a v* tag"],
+  ])("a ref that is not a plain v-tag never reaches GITHUB_ENV (%j)", (ref, why) => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-registry-1259-"));
+    dirs.push(dir);
+    const registry = join(dir, "latest");
+    writeFileSync(registry, "2.1.11");
+    const run = release("v2.2.0-alpha.1", registry, ref);
+    run.steps();
+    expect(run.outcome().failedStep).toBe("Set version from tag");
+    expect(run.outcome().stderr).toContain(why);
+    expect(run.outcome().published).toBeNull();
   });
 
   it("a prerelease never consults or is limited by latest", () => {

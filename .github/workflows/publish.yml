@@ -8,6 +8,13 @@ permissions:
   contents: read
   id-token: write
 
+# One release at a time (#1271 review): "read latest → compare → publish" must not interleave with another
+# release run, or an older stable that passed its check before a newer one published could still move latest
+# back. Queued, never cancelled mid-run.
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -20,7 +27,12 @@ jobs:
 
       # Before anything is built: a tag that cannot be published fails here.
       - name: Set version from tag
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_ENV"
+        run: |
+          # Only a v-tag, and only version characters, may reach GITHUB_ENV (a newline would add a line of its own).
+          case "$GITHUB_REF" in refs/tags/v*) ;; *) echo "::error::not a v* tag: $GITHUB_REF"; exit 1 ;; esac
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          if ! [[ "$VERSION" =~ ^[0-9A-Za-z.+-]+$ ]]; then echo "::error::unexpected characters in the tag"; exit 1; fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
       # X.Y.Z → latest, X.Y.Z-beta.N → beta, X.Y.Z-alpha.N → alpha; anything else fails the job, and latest never
       # moves backwards (#1259). A failed lookup of the current latest skips only that last check.
       - name: Determine npm tag
@@ -39,8 +51,13 @@ jobs:
 
       - name: Set package version
         run: npm pkg set "version=$VERSION"
+      # The latest check again, right before publishing: the build took minutes, and the check is only as good
+      # as the latest it read. The concurrency group keeps other release runs out of this window.
       - name: Publish
-        run: npm publish --access public --tag "$NPM_TAG"
+        run: |
+          LATEST="$(npm view @songsid/agend@latest version 2>/dev/null || true)"
+          test "$(node scripts/npm-dist-tag.mjs "$VERSION" "$LATEST")" = "$NPM_TAG"
+          npm publish --access public --tag "$NPM_TAG"
 
       # Tell Discord how this run ended, whichever way it ended.
       #
