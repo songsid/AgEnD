@@ -1,3 +1,5 @@
+> **Historical — superseded.** Its "defer, focus on Claude Code" conclusion was reversed — AgEnD now ships many backends, see [features.md](../features.md).
+
 # Multi-Backend Feasibility Study
 
 Date: 2026-03-26

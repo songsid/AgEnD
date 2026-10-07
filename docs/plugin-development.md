@@ -293,11 +293,6 @@ channel:
 MYAPP_BOT_TOKEN=your-token-here
 ```
 
-## Reference: Discord Plugin
+## Reference: Built-in Discord Adapter
 
-See [`plugins/agend-plugin-discord/`](../plugins/agend-plugin-discord/) for a complete, production adapter implementation covering all required methods.
-
-Key files:
-- `src/index.ts` — Factory function (default export)
-- `src/discord-adapter.ts` — Full ChannelAdapter implementation (~470 lines)
-- `package.json` — peerDependencies + discord.js dependency
+Discord is built into AgEnD core rather than shipped as a plugin. See [`src/channel/adapters/discord.ts`](../src/channel/adapters/discord.ts) (`DiscordAdapter`) for a complete, production `ChannelAdapter` implementation covering all required methods. Core loads it from [`src/channel/factory.ts`](../src/channel/factory.ts); an external plugin instead exports a factory function as its default export and declares `@songsid/agend` as a peer dependency, as described above.

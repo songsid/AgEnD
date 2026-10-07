@@ -317,7 +317,7 @@ Template deployment is managed via MCP tools (used by agents), not CLI commands:
 - `teardown_deployment` — stop and delete all instances from a deployment
 - `list_deployments` — list active deployments with status
 
-See [configuration.md](configuration.md#templatesname) for template definition syntax.
+See [configuration.md](configuration.md#templates) for template definition syntax.
 
 ## Topic bindings
 

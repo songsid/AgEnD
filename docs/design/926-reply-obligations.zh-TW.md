@@ -1,6 +1,6 @@
 # #926：要求回覆的訊息，回覆義務要被追蹤（reply obligation）
 
-狀態：設計稿，待 leader review；本輪不寫 code。
+狀態：**已實作**（CHANGELOG 2.1.7，#926 已關閉）。sweep 在 `FleetManager.sweepReplyObligations()`（`src/fleet-manager.ts`），obligation 存在 outbox 的 `reply_obligations` 表（`src/delivery-outbox.ts`）。逾時預設採 15 分鐘（`DEFAULT_REPLY_OVERDUE_MINUTES`），下文已依程式更正。
 相關：#926、#929 durable outbox、#910 submit proof、#856 可驗證 message_id。
 
 ## 1. 2026-09-24 那兩次到底發生什麼（實證，唯讀）
@@ -63,10 +63,10 @@
    - 每筆 obligation 只提醒一次；requester 再追問時會重新開放一次提醒。
    - **重啟情境（解 #925 那種）**：`onDaemonReady` 時，如果 owner 身上還有 open obligation，就提醒一次，文字改為「A restart interrupted your work on correlation_id X from <requester>; resume and report with report_result.」
 2. **通知 requester（leader／coordinator 的 poll-on-timeout 安全網）**：
-   - 觸發條件：obligation 仍是 `open`，owner 目前**是 idle**（owner 還在工作時不打擾，長時間的審查是正常的），而且距離 `max(opened_at, nudged_at, last_asked_at)` 已超過 `reply_overdue_minutes`（預設 20 分鐘；設 0 表示關閉）。
+   - 觸發條件：obligation 仍是 `open`，owner 目前**是 idle**（owner 還在工作時不打擾，長時間的審查是正常的），而且距離 `max(opened_at, nudged_at, last_asked_at)` 已超過 `reply_overdue_minutes`（預設 15 分鐘，見 `src/fleet-manager.ts` 的 `DEFAULT_REPLY_OVERDUE_MINUTES`；設 0 表示關閉）。
    - 動作：通知 requester 一次：
      `[system:reply-overdue] <owner> has not answered correlation_id X (asked HH:MM, reminded HH:MM, idle since HH:MM). Check with describe_instance / delivery_status, or ask again.`
-   - 實作：fleet 每分鐘掃一次，搭 outbox 既有的 pump timer。
+   - 實作：fleet 每 30 秒掃一次（`REPLY_OBLIGATION_SWEEP_MS = 30_000`，`src/fleet-manager.ts`），搭 outbox 既有的 pump timer。
    - 這條規則的目的：coordinator 不再無限期 idle 等待；超時就有人主動告訴它。
 
 ### 2.4 查得到
@@ -106,7 +106,7 @@
 
 ## 6. 待 leader 決定
 
-1. `reply_overdue_minutes` 預設值：我建議 20 分鐘。你那邊的 re-poke 經驗，多久合理？
+1. `reply_overdue_minutes` 預設值：我建議 20 分鐘（實作採 15 分鐘）。你那邊的 re-poke 經驗，多久合理？
 2. 提醒 owner 的寬限：我建議 60 秒。
 3. `broadcast` 是否要逐一 target 開 obligation？我建議第一版不要。
 4. 通知 requester 時，要不要**同時**在 General 或該 instance 的 topic 發一則給人看？我建議先只通知 requester（agent）。
