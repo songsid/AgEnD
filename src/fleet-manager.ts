@@ -8424,6 +8424,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return reactionForm(resolved.platform, resolved.received);
   }
 
+  private reactClassicReceived(instanceName: string, adapter: ChannelAdapter, msg: InboundMessage): Promise<void> {
+    const emoji = this.receivedReactionFor(instanceName, adapter, msg.adapterId);
+    // Classic's system receipt is status-owned too. An ordinary react call
+    // would label it as an agent/other reaction and suppress later statuses.
+    if (adapter instanceof TelegramAdapter) {
+      return adapter.reactDeliveryStatus(msg.chatId, msg.messageId, emoji, msg.timestamp.getTime()).then(() => {});
+    }
+    return adapter.react(msg.threadId ?? msg.chatId, msg.messageId, emoji);
+  }
+
   /**
    * The stamp for an inbound photo / file a classic bot saved (#1080): the
    * instance's `status_emojis.photo|attachment`, then its connection's, then
@@ -11911,7 +11921,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       const classicAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter;
       const collabReactChatId = msg.threadId ?? msg.chatId;
       if (classicAdapter && collabReactChatId && msg.messageId) {
-        classicAdapter.react(collabReactChatId, msg.messageId, this.receivedReactionFor(instanceName, classicAdapter, msg.adapterId))
+        this.reactClassicReceived(instanceName, classicAdapter, msg)
           .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
       }
 
@@ -12013,7 +12023,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
     if (msg.chatId && msg.messageId) {
       const reactChatId = msg.threadId ?? msg.chatId;
-      classicMsgAdapter.react(reactChatId, msg.messageId, this.receivedReactionFor(instanceName, classicMsgAdapter, msg.adapterId))
+      this.reactClassicReceived(instanceName, classicMsgAdapter, msg)
         .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
       if (saved) {
         const savedEmoji = this.savedAttachmentReactionFor(instanceName, classicMsgAdapter, msg.adapterId, saved.kind);

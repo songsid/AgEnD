@@ -9,6 +9,7 @@ import { AccessManager } from "../src/channel/access-manager.js";
 import { DiscordAdapter } from "../src/channel/adapters/discord.js";
 import { TelegramAdapter } from "../src/channel/adapters/telegram.js";
 import { routeToolCall } from "../src/channel/tool-router.js";
+import { ClassicChannelManager } from "../src/classic-channel-manager.js";
 import type { ChannelAdapter, InboundMessage } from "../src/channel/types.js";
 import type { CliBackend } from "../src/backend/types.js";
 import type { InstanceConfig } from "../src/types.js";
@@ -98,6 +99,24 @@ function agentReact(adapter: ChannelAdapter, emoji: string, messageId = "42") {
 }
 
 describe("#959 real ingress → daemon status → bound adapter", () => {
+  it("Classic system receipt owns the slot and permits later status until an agent replaces it", async () => {
+    const tg = telegram();
+    const { fm, daemon, msg } = setup(tg.adapter);
+    vi.spyOn(ClassicChannelManager, "logMessage").mockImplementation(() => {});
+    vi.spyOn(fm as any, "getRecentChatLog").mockReturnValue("");
+    const classicMsg = { ...msg, chatId: "-200", threadId: "-200", text: "/chat hello" };
+    await (fm as any).handleClassicChannelMessage("worker", classicMsg);
+    await drain(fm);
+    daemon.emit("message_failed", { chatId: "-200", messageId: "42", threadId: "-200" });
+    await drain(fm);
+    expect(tg.calls).toEqual([["👀"], ["👎"]]);
+    await tg.adapter.react("-200", "42", "👍");
+    daemon.emit("message_confirmed", { chatId: "-200", messageId: "42", threadId: "-200" });
+    await drain(fm);
+    expect(tg.shared.slot).toEqual(["👍"]);
+    expect(tg.calls).toEqual([["👀"], ["👎"], ["👍"]]);
+  });
+
   it("native Discord General topic routing keeps its channel without normalization stubs", async () => {
     const put = vi.fn().mockResolvedValue(undefined);
     const adapter = Object.create(DiscordAdapter.prototype) as DiscordAdapter;

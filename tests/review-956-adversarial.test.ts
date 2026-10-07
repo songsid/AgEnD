@@ -61,11 +61,15 @@ describe("review #956 adversarial status transitions", () => {
     // the Bot API or clear the last accepted reaction.
     const gate = deferred(); let visible: string[] = [];
     const adapter = Object.create(TelegramAdapter.prototype) as TelegramAdapter;
-    Object.assign(adapter, { id: "tg", bot: { api: { setMessageReaction: async (_c: number, _m: number, values: any[]) => {
+    Object.assign(adapter, { id: "tg", reactionTrackingStartedAt: 0, bot: { api: { setMessageReaction: async (_c: number, _m: number, values: any[]) => {
+      expect(values.length).toBeLessThanOrEqual(1);
       if (values[0]?.emoji === "👀") await gate.promise;
       visible = values.map(v => v.emoji);
     } } } });
     const { fleet } = makeFleet(adapter);
+    // #959: model the real ingress receipt before later delivery events.
+    // The original endpoint/emoji assertions below are unchanged.
+    fleet.reactMessageStatus("inst", "100", "42", "received", undefined, Date.now());
     fleet.reactMessageStatus("inst", "100", "42", "processing");
     fleet.reactMessageStatus("inst", "100", "42", "delivered");
     await flush(); gate.resolve(); await flush();
@@ -139,8 +143,13 @@ describe("review #956 adapter contracts", () => {
   it("routes daemon Telegram forum status to the supergroup, not topic id", async () => {
     const setMessageReaction = vi.fn(async () => true);
     const adapter = Object.create(TelegramAdapter.prototype) as TelegramAdapter;
-    Object.assign(adapter, { id: "telegram", bot: { api: { setMessageReaction } } });
+    Object.assign(adapter, { id: "telegram", reactionTrackingStartedAt: 0, bot: { api: { setMessageReaction } } });
     const { fleet, dir } = makeFleet(adapter);
+    // A supported custom receipt proves status ownership. Clear its API call
+    // and use a different emoji so only the daemon's processing event can
+    // satisfy the original supergroup-route assertion (no dedup masking).
+    await adapter.reactDeliveryStatus("-1001234567890", "42", "👍", Date.now());
+    setMessageReaction.mockClear();
     const daemon = new Daemon("inst", {
       working_directory: dir,
       restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
@@ -167,13 +176,17 @@ describe("review #956 adapter contracts", () => {
     expect(allowed.has("👎")).toBe(true);
     let visible: string[] = []; const rejected: string[] = [];
     const adapter = Object.create(TelegramAdapter.prototype) as TelegramAdapter;
-    Object.assign(adapter, { id: "telegram", bot: { api: { setMessageReaction: async (_c: number, _m: number, values: any[]) => {
+    Object.assign(adapter, { id: "telegram", reactionTrackingStartedAt: 0, bot: { api: { setMessageReaction: async (_c: number, _m: number, values: any[]) => {
+      expect(values.length).toBeLessThanOrEqual(1);
       for (const { emoji } of values) if (!allowed.has(emoji)) {
         rejected.push(emoji); throw new Error("400: REACTION_INVALID");
       }
       visible = values.map(v => v.emoji);
     } } } });
     const { fleet } = makeFleet(adapter);
+    // #959: model the real ingress receipt before later delivery events.
+    // The original endpoint/emoji assertions below are unchanged.
+    fleet.reactMessageStatus("inst", "100", "42", "received", undefined, Date.now());
     fleet.reactMessageStatus("inst", "100", "42", "processing");
     fleet.finishDeliveryStatus("inst", "100", "42", "delivered");
     fleet.finishDeliveryStatus("inst", "100", "42", "failed");
