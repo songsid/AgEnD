@@ -39,6 +39,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   pictures is not cut short.
 
 ### Fixed
+- **Delivery reactions leave agent reactions alone on Telegram (#959).** Status updates now track ownership of the bot's one reaction slot and share a per-message queue with agent reactions. A late status skips when ownership is unknown (including after adapter replacement or an ambiguous API failure), even if the agent chose the same emoji as the old status. General fallback delivery also retains the original chat/thread metadata; Discord topic routing remains unchanged.
 - **No more false memory alerts on macOS (#1257).** On a Mac, AgEnD no longer posts the "Host memory pressure"
   notice and no longer slows or holds agent starts for memory. Its free-memory and swap figures are not a pressure
   signal there: macOS adds swap files as it needs them, so a nearly full swap is normal, and a 16 GB Mac with 2.8 GB

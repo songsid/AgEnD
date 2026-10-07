@@ -753,6 +753,11 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   }
 
   async stop(): Promise<void> {
+    // Invalidate queued status work before any await. Re-created adapters must
+    // not inherit proof from this object's pending requests.
+    this.reactionGeneration = (this.reactionGeneration ?? 0) + 1;
+    this.telegramReactions?.clear();
+    this.reactionTrackingStartedAt = Date.now();
     if (this.cleanupTimer) clearInterval(this.cleanupTimer);
     this.queue.stop();
     await this.bot.stop();
@@ -918,15 +923,14 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
 
   // threadId is ignored: Telegram reactions key on the supergroup chat_id, not
   // the forum topic thread (reacting on a thread id silently fails).
-  /**
-   * The bot's current reaction per message, as last set through this adapter.
-   * setMessageReaction replaces the whole list, and Telegram bots can use only
-   * one reaction per message. Remembering that one slot lets unreact avoid
-   * clearing a newer unrelated reaction when an older status is retired.
-   * Best effort: a restart or an outside client can desync this memory.
-   */
-  // Lazily created: prototype-spawned test doubles skip field initialisers.
-  private telegramReactions: Map<string, string[]> | undefined;
+  // Ownership is local to this adapter generation. A missing/evicted record or
+  // an ambiguous API failure is unknown, so late delivery statuses must skip.
+  // Ordinary react calls (including agent tools) own the single slot even when
+  // their emoji happens to equal the previous delivery marker.
+  private telegramReactions: Map<string, { emojis: string[]; owner: "status" | "other" | "unknown" }> | undefined;
+  private reactionChains: Map<string, Promise<void>> | undefined;
+  private reactionGeneration = 0;
+  private reactionTrackingStartedAt = Date.now();
   private static readonly REACTION_TRACK_CAP = 1000;
 
   private toReactionList(emojis: string[]): { type: "emoji"; emoji: import("grammy/types").ReactionTypeEmoji["emoji"] }[] {
@@ -936,36 +940,74 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     }));
   }
 
-  private trackedReactions(chatId: string, messageId: string): string[] {
-    return this.telegramReactions?.get(`${chatId}:${messageId}`) ?? [];
-  }
-
-  private rememberReactions(chatId: string, messageId: string, emojis: string[]): void {
+  private rememberReactions(chatId: string, messageId: string, emojis: string[], owner: "status" | "other" | "unknown"): void {
     const key = `${chatId}:${messageId}`;
-    this.telegramReactions ??= new Map<string, string[]>();
+    this.telegramReactions ??= new Map();
     this.telegramReactions.delete(key);
-    this.telegramReactions.set(key, emojis);
+    this.telegramReactions.set(key, { emojis, owner });
     if (this.telegramReactions.size > TelegramAdapter.REACTION_TRACK_CAP) {
       const oldest = this.telegramReactions.keys().next();
       if (!oldest.done) this.telegramReactions.delete(oldest.value);
     }
   }
 
+  private queueReaction<T>(chatId: string, messageId: string, apply: () => Promise<T>): Promise<T> {
+    const key = `${chatId}:${messageId}`;
+    this.reactionChains ??= new Map();
+    const generation = this.reactionGeneration ?? 0;
+    const run = (this.reactionChains.get(key) ?? Promise.resolve()).then(() => {
+      if (generation !== (this.reactionGeneration ?? 0)) throw new Error("Reaction cancelled by adapter stop");
+      return apply();
+    });
+    // Recover the tail without hiding failure from this call's caller.
+    const tail = run.then(() => {}, () => {});
+    this.reactionChains.set(key, tail);
+    void tail.then(() => {
+      if (this.reactionChains?.get(key) === tail) this.reactionChains.delete(key);
+    });
+    return run;
+  }
+
+  private async setTrackedReaction(chatId: string, messageId: string, emojis: string[], owner: "status" | "other"): Promise<void> {
+    // A timeout/error can happen after Telegram has applied the request. Never
+    // retain the old status-owned proof across an unacknowledged mutation.
+    const generation = this.reactionGeneration ?? 0;
+    this.rememberReactions(chatId, messageId, [], "unknown");
+    await this.bot.api.setMessageReaction(Number(chatId), Number(messageId), this.toReactionList(emojis));
+    if (generation === (this.reactionGeneration ?? 0)) this.rememberReactions(chatId, messageId, emojis, owner);
+  }
+
+  /**
+   * Conditional delivery mutation, serialized with ordinary agent reactions.
+   * Only a fresh inbound receipt can establish ownership of an unknown slot.
+   * Telegram dates have second precision: a message from the adapter's first
+   * partial second may conservatively get no marker. Old/backlogged messages
+   * cannot establish ownership after adapter re-creation.
+   */
+  reactDeliveryStatus(chatId: string, messageId: string, emoji: string | null, receivedAt?: number): Promise<boolean> {
+    return this.queueReaction(chatId, messageId, async () => {
+      const current = this.telegramReactions?.get(`${chatId}:${messageId}`);
+      const freshReceipt = !current && receivedAt !== undefined && Number.isFinite(receivedAt)
+        && receivedAt >= (this.reactionTrackingStartedAt ??= Date.now());
+      if (current?.owner !== "status" && !freshReceipt) return false;
+      const next = emoji == null ? [] : [emoji];
+      if (current?.emojis.length === next.length && current.emojis.every((e, i) => e === next[i])) return true;
+      await this.setTrackedReaction(chatId, messageId, next, "status");
+      return true;
+    });
+  }
+
   async react(chatId: string, messageId: string, emoji: string, _threadId?: string): Promise<void> {
-    // Telegram allows one bot reaction per message; this replaces the prior
-    // one, matching the Bot API's setMessageReaction semantics.
-    const next = [emoji];
-    await this.bot.api.setMessageReaction(Number(chatId), Number(messageId), this.toReactionList(next));
-    this.rememberReactions(chatId, messageId, next);
+    await this.queueReaction(chatId, messageId, () => this.setTrackedReaction(chatId, messageId, [emoji], "other"));
   }
 
   async unreact(chatId: string, messageId: string, emoji: string, _threadId?: string): Promise<void> {
-    // setMessageReaction clears the whole slot. Only clear when the reaction
-    // being retired is still current; otherwise it may be a newer user-facing
-    // reaction (for example 👍 replacing the delivery marker 👀).
-    if (!this.trackedReactions(chatId, messageId).includes(emoji)) return;
-    await this.bot.api.setMessageReaction(Number(chatId), Number(messageId), []);
-    this.rememberReactions(chatId, messageId, []);
+    await this.queueReaction(chatId, messageId, async () => {
+      // An explicit ordinary removal may clear its own current emoji. Status
+      // cleanup uses reactDeliveryStatus(null), which also checks ownership.
+      if (!this.telegramReactions?.get(`${chatId}:${messageId}`)?.emojis.includes(emoji)) return;
+      await this.setTrackedReaction(chatId, messageId, [], "other");
+    });
   }
 
   // ── Approval ─────────────────────────────────────────────────────────────
