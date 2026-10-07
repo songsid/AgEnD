@@ -18,6 +18,7 @@ import { FleetManager } from "../src/fleet-manager.js";
 import { CreateInstanceArgs } from "../src/outbound-schemas.js";
 import { TopicCommands } from "../src/topic-commands.js";
 import { displayInstanceName, uniqueInstanceName } from "../src/topic-commands.js";
+import { outboundHandlers } from "../src/outbound-handlers.js";
 
 const dirs: string[] = [];
 function makeTempDir(prefix: string): string {
@@ -165,6 +166,65 @@ describe("create_instance naming (#1301)", () => {
     expect(result).toMatchObject({ success: true, old_name: oldName, new_name: oldName });
     expect(fm.fleetConfig!.instances[oldName]).toBeDefined();
     expect(Object.keys(fm.fleetConfig!.instances)).toHaveLength(1);
+  });
+});
+
+describe("visibility posts and Mirror line (#1301)", () => {
+  const SENDER = `leader-t${LONG_ID}`;
+  const TARGET = `blog-t${LONG_ID}`;
+
+  async function sendTask(senderDisplay?: string, targetDisplay?: string) {
+    const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const sendText = vi.fn(async () => {});
+    const mirror: string[] = [];
+    const instances: Record<string, { working_directory: string; topic_id: string; display_name?: string }> = {
+      [SENDER]: { working_directory: "/tmp/s", topic_id: "111" },
+      [TARGET]: { working_directory: "/tmp/t", topic_id: "222" },
+    };
+    if (senderDisplay !== undefined) instances[SENDER]!.display_name = senderDisplay;
+    if (targetDisplay !== undefined) instances[TARGET]!.display_name = targetDisplay;
+    const ctx = {
+      logger,
+      fleetConfig: { defaults: {}, instances, channel: { group_id: "999" } },
+      adapter: { sendText },
+      sessionRegistry: new Map<string, string>(),
+      instanceIpcClients: new Map<string, unknown>([[TARGET, { deliverMessage: async () => ({}) }]]),
+      lifecycle: { daemons: new Map([[SENDER, {}], [TARGET, {}]]), isPaused: () => false },
+      deliverToInstance: vi.fn(async () => {}),
+      queueMirrorMessage: (line: string) => { mirror.push(line); },
+    };
+    let receipt: unknown;
+    await outboundHandlers.get("send_to_instance")!(
+      ctx as never,
+      { instance_name: TARGET, message: "please review", request_kind: "task" },
+      (value) => { receipt = value; },
+      { instanceName: SENDER } as never,
+    );
+    expect(receipt).toMatchObject({ sent: true });
+    return { sendText, mirror };
+  }
+
+  it("target-topic and sender-topic posts use display_name when set", async () => {
+    const { sendText } = await sendTask("Leader", "Blog");
+    expect(sendText).toHaveBeenCalledTimes(2);
+    for (const call of sendText.mock.calls) {
+      expect(String(call[1])).toContain("Leader → Blog");
+    }
+    const texts = sendText.mock.calls.map((c) => String(c[1])).join("\n");
+    expect(texts).not.toContain(LONG_ID);
+  });
+
+  it("falls back to the shortened -t… form and covers the Mirror line", async () => {
+    const { sendText, mirror } = await sendTask();
+    expect(sendText).toHaveBeenCalledTimes(2);
+    const label = `leader-t${last6} → blog-t${last6}`;
+    for (const call of sendText.mock.calls) {
+      expect(String(call[1])).toContain(label);
+      expect(String(call[1])).not.toContain(LONG_ID);
+    }
+    expect(mirror).toHaveLength(1);
+    expect(mirror[0]).toContain(`${label}:`);
+    expect(mirror[0]).not.toContain(LONG_ID);
   });
 });
 
