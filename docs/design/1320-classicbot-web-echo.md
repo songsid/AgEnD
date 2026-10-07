@@ -94,28 +94,33 @@ exactly this. `allowedMentions` suppression alone does not help either,
 because AgEnD's own text match fires regardless of what Discord renders.
 The implementable rule has three parts, all echo-side:
 
-1. **Neutralise every mention syntax** in the echoed preview AND in
-   attachment names before posting: Discord `<@…>`, `<@!…>`, `<@&…>`,
-   `@everyone`/`@here`; Telegram `@username` and bot commands shaped
-   `/cmd@bot` (plus bare leading-slash commands). Implementation: the shared
-   `neutralizeWebEchoText` (`src/web-channel-echo.ts`, sol's PR #1325)
-   converts `@`/`/` to full width and strips injectable frame/control chars.
-   Blanket `/` conversion mangles URLs/paths in the *display* copy — an
-   accepted, documented readability trade-off; the text actually delivered
-   to the agent is unchanged. "The format contains no mention of our own
-   bot" is necessary but explicitly insufficient — the rule covers *any*
-   bot's mention syntax.
-2. **Code-owned echo provenance** that every AgEnD adapter recognises and
-   drops on ingress: reuse sol's shared helper directly —
-   `formatWebChannelEcho(user, preview)` /
-   `isWebChannelEcho(text, fromBot)` (`src/web-channel-echo.ts`, PR #1325),
-   with the pinned frame `WEB_ECHO_FRAME = "\u2063\u2060\u2063\u2060\u2060\u2063"`
-   (six code points, literal-regression-pinned; do not re-spell the frame).
-   The check runs
-   before trigger evaluation in `handleClassicChannelMessage` and the
-   fleet-topic ingress, on both platforms, bot-authored only. This also
-   covers stale or replayed echoes. The frame marks provenance, never
-   authentication.
+1. **Neutralise every mention syntax with visible ASCII replacement
+   only** — no zero-width joiners, Markdown escapes, or full-width
+   lookalikes (a normalising client or parser can strip invisible/format
+   characters and restore a live mention; visible text survives NFKC and
+   format-character removal). Exact forms, implemented once in the shared
+   `neutralizeWebEchoText` (`src/web-channel-echo.ts`, sol's PR #1325),
+   applied to the echoed preview AND to attachment names:
+   `<@200>`/`<@!200>` → `[mention: 200]`, `<@&300>` → `[role: 300]`,
+   `@everyone`/`@here` → `[at: everyone]`/`[at: here]`,
+   `@user` → `[at: user]`, `/cmd@bot` → `[command: cmd at bot]`.
+   `@user` and `/cmd@bot` match at a word boundary only — never after
+   `://`, never inside an email local part — so URLs and addresses survive
+   intact. "The format contains no mention of our own bot" is necessary but
+   explicitly insufficient — the rule covers *any* bot's mention syntax.
+2. **Echo provenance is author identity, not a cache.** An inbound message
+   is an echo, dropped before any trigger evaluation, iff its author is one
+   of this fleet's own bot accounts (the bot user ids known for every
+   configured adapter/world, from config/getMe — restart-proof, nothing to
+   evict) **and** its text starts with the fixed echo prefix
+   (`formatWebChannelEcho` frame, `src/web-channel-echo.ts`, PR #1325; do
+   not re-spell it). A human copying the prefix doesn't match — their author
+   id is not a fleet bot — so their message flows normally; a non-fleet bot
+   posting the prefix is treated like any other bot message under the
+   existing collab rules. Every adapter applies this in the common ingress
+   helper regardless of its own `web_echo` flag. No recent-ID registry is
+   required (keep one only as optional telemetry). Pre-ACK arrival is covered
+   automatically: the author id is known at ingress.
 3. **Delivery-layer suppression** as defence in depth:
    `allowedMentions: { parse: [] }` on Discord sends, no mention entities on
    Telegram sends — so other clients/bots also see no ping.
@@ -143,10 +148,15 @@ A channel with bot A opted in and bot B not must show exactly one echo.
 - Discord guild channel opted in → echo lands; no re-entry via the
   in-adapter self-drop (fake `messageCreate` from self).
 - **A→B cross-bot regression** (real inbound + Classic collab): A opted in,
-  B with `web_echo` **off** and collab on; A's echo carries a direct
-  `<@B>` mention, an attachment named `<@B>.png`, and a replayed older echo.
-  B's agent receives nothing in all three cases; the channel shows exactly
-  one neutralised echo.
+  B with `web_echo` **off** and collab on; A's echo is rendered after NFKC
+  plus format-character removal and still carries no live mention — direct
+  `<@B>` → `[mention: B]`, an attachment named `<@B>.png` → `[mention:
+  B].png`, and a post-restart replayed echo dropped by author identity.
+  B's agent receives nothing in all cases; the channel shows exactly one
+  echo.
+- **Provenance controls**: A→B echo after a restart → dropped; before the
+  send ACK → dropped; a human pasting the `🌐 web · …` prefix → delivered
+  normally; a non-fleet bot posting the prefix → existing collab rules.
 - Multi-bot channel: A opted in, B not → one echo, addressed from A's
   adapter entry; B's agent receives nothing.
 - Classic instance in part-A path: no fallback post to the primary group
