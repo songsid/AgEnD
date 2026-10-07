@@ -11,11 +11,16 @@
  * guessed at. Observation only: it changes nothing about scheduling.
  */
 import { slowSyncWorkSince } from "./sync-work-attribution.js";
-import { performance, monitorEventLoopDelay } from "node:perf_hooks";
+import { performance, monitorEventLoopDelay, PerformanceObserver } from "node:perf_hooks";
 
 /** A stall at least this long (of Discord's 3000 ms acknowledgement window) is logged. */
 export const EVENT_LOOP_STALL_MS = 1_000;
 export const EVENT_LOOP_CHECK_MS = 30_000;
+export const GC_PAUSE_WARN_MS = 200;
+
+interface GcEntry { startTime: number; duration: number; detail?: { kind?: number }; }
+interface GcObserver { observe(options: { entryTypes: string[] }): void; takeRecords(): GcEntry[]; disconnect(): void; }
+interface GcPause { kind: number | "unknown"; durationMs: number; startedAt: number; endedAt: number; }
 
 /** The part of perf_hooks' IntervalHistogram this uses (values in nanoseconds). */
 export interface LoopDelayHistogram {
@@ -38,13 +43,33 @@ export function startEventLoopWatch(opts: {
   intervalMs?: number;
   thresholdMs?: number;
   histogram?: LoopDelayHistogram;
+  /** Test seam; production observes V8 GC without a polling timer. */
+  gcObserver?: (receive: (entries: GcEntry[]) => void) => GcObserver;
 }): EventLoopWatch {
   const thresholdMs = opts.thresholdMs ?? EVENT_LOOP_STALL_MS;
   const histogram = opts.histogram ?? monitorEventLoopDelay({ resolution: 20 });
   histogram.enable();
+  const gcPauses: GcPause[] = [];
+  let stopped = false;
+  const receiveGc = (entries: GcEntry[]): void => {
+    if (stopped) return;
+    for (const entry of entries) {
+      if (!Number.isFinite(entry.duration) || !Number.isFinite(entry.startTime) || entry.duration < GC_PAUSE_WARN_MS) continue;
+      const pause: GcPause = { kind: entry.detail?.kind ?? "unknown", durationMs: Math.round(entry.duration),
+        startedAt: entry.startTime, endedAt: entry.startTime + entry.duration };
+      gcPauses.push(pause);
+      if (gcPauses.length > 64) gcPauses.shift();
+      opts.logger.warn({ gcPause: pause }, `GC paused for ${pause.durationMs}ms (kind ${pause.kind})`);
+    }
+  };
+  const gcObserver = opts.gcObserver?.(receiveGc) ?? new PerformanceObserver(list => receiveGc(list.getEntries()));
+  gcObserver.observe({ entryTypes: ["gc"] });
   let lastCheckAt = performance.now();
   const check = (): number => {
     const now = performance.now();
+    // Flush entries whose asynchronous observer callback has not run yet.
+    receiveGc(gcObserver.takeRecords());
+    const gcWork = gcPauses.filter(entry => entry.endedAt > lastCheckAt && entry.startedAt <= now).map(entry => ({ ...entry }));
     const syncWork = slowSyncWorkSince(lastCheckAt, now);
     lastCheckAt = now;
     const maxMs = Math.round(histogram.max / 1e6);
@@ -52,9 +77,10 @@ export function startEventLoopWatch(opts: {
       opts.logger.warn({
         maxMs,
         syncWork,
+        gcPauses: gcWork,
         p99Ms: Math.round(histogram.percentile(99) / 1e6),
         meanMs: Math.round(histogram.mean / 1e6),
-      }, `Event loop stalled for ${maxMs}ms — Discord slash commands (3s to acknowledge) and gateway heartbeats arriving then could be missed${syncWork.length ? `; slow sync work: ${syncWork.map(entry => `${entry.caller}=${entry.durationMs}ms`).join(", ")}` : "; slow sync work: unknown"}`);
+      }, `Event loop stalled for ${maxMs}ms — Discord slash commands (3s to acknowledge) and gateway heartbeats arriving then could be missed${syncWork.length ? `; slow sync work: ${syncWork.map(entry => `${entry.caller}=${entry.durationMs}ms`).join(", ")}` : "; slow sync work: unknown"}${gcWork.length ? `; GC pauses: ${gcWork.map(entry => `kind ${entry.kind}=${entry.durationMs}ms`).join(", ")}` : ""}`);
     }
     histogram.reset();
     return maxMs;
@@ -63,6 +89,6 @@ export function startEventLoopWatch(opts: {
   timer.unref?.();
   return {
     check,
-    stop: () => { clearInterval(timer); histogram.disable(); },
+    stop: () => { stopped = true; clearInterval(timer); gcObserver.disconnect(); histogram.disable(); },
   };
 }

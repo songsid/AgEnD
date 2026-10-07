@@ -11232,10 +11232,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         try {
           if (this.activeInstall?.session === session) this.activeInstall = null;
           // Hold the claim through asynchronous install verification.
-          if (cleanupFailed) {
-            await chat.adapter.sendText(chat.chatId, t("login.web_cleanup_failed", backend), { threadId: chat.threadId }).catch(() => {});
-          }
           if (!ok) {
+            this.loginWindow.release(claim);
+            if (cleanupFailed) {
+              await chat.adapter.sendText(chat.chatId, t("login.web_cleanup_failed", backend), { threadId: chat.threadId }).catch(() => {});
+            }
             // A cancel is user-initiated — the cancel command's own reply already
             // said so; a second message here would be a duplicate.
             if (detail !== "cancelled") {
@@ -11248,6 +11249,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           // fresh login shell sees that, the fleet process's PATH may not.
           const installedAt = await this.locateBinaryOnLoginShell(info.binary) ?? this.locateInInstallerBinDirs(info);
           if (handoff.cancelled || this.installHandoff !== handoff || !this.loginWindow.isCurrent(claim)) return;
+          this.loginWindow.release(claim);
+          // Adapter notifications must not hold the launch claim. Keep the
+          // original notice ordering, then recheck cancel/shutdown after it.
+          if (cleanupFailed) {
+            await chat.adapter.sendText(chat.chatId, t("login.web_cleanup_failed", backend), { threadId: chat.threadId }).catch(() => {});
+          }
+          if (handoff.cancelled || this.installHandoff !== handoff || this.loginWindow.isClosed) return;
           if (!installedAt) {
             this.loginWindow.release(claim);
             await chat.adapter.sendText(chat.chatId, t("install.verify_failed", backend, info.binary),
@@ -11276,7 +11284,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           await chat.adapter.sendText(chat.chatId, t("install.success", backend, info.binary),
             { threadId: chat.threadId }).catch(err => this.logger.warn({ err, backend },
               "Failed to send durable install success notification"));
-          if (handoff.cancelled || this.installHandoff !== handoff) return;
+          if (handoff.cancelled || this.installHandoff !== handoff || this.loginWindow.isClosed) return;
           this.installHandoff = null;
           // The user asked `/login` for a working CLI: sign in straight away
           // (#1131). The login has its own confirmation, so nothing starts

@@ -7,7 +7,7 @@ import { homedir } from "node:os";
 /** argv-only discovery; bounded child execution never blocks the fleet loop. */
 export function discoveryOutput(binary: string, args: string[], timeout: number): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile(binary, args, { encoding: "utf8", timeout, killSignal: "SIGKILL", maxBuffer: 128 * 1024 },
+    execFile(binary, args, { encoding: "utf8", timeout, killSignal: "SIGKILL", maxBuffer: 1024 * 1024 },
       (err, stdout) => err ? reject(err) : resolve(stdout));
   });
 }

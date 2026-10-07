@@ -2,10 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { performance } from "node:perf_hooks";
+import * as fsAsync from "node:fs/promises";
 import { join, dirname } from "node:path";
 const io = vi.hoisted(() => ({ execFile: vi.fn(), sync: vi.fn(() => { throw new Error("synchronous child forbidden"); }) }));
 vi.mock("node:child_process", async original => ({ ...await original<typeof import("node:child_process")>(), execFile: io.execFile,
   execFileSync: io.sync, execSync: io.sync, spawnSync: io.sync, spawn: io.sync, exec: io.sync, fork: io.sync }));
+vi.mock("node:fs/promises", async original => ({ ...await original<typeof import("node:fs/promises")>() }));
 const sessions: Array<any> = [];
 vi.mock("../src/login-manager.js", async original => ({ ...await original<typeof import("../src/login-manager.js")>(),
   LoginSession: class { state = "starting"; constructor(_flow: unknown, _tmux: unknown, public events: any) { sessions.push(this); } async start() {} async cancel() {} },
@@ -40,7 +42,7 @@ describe("async fleet binary/launch discovery", () => {
   it("uses bounded argv-only which and ordered executable fallback, never Sync", async () => {
     io.execFile.mockImplementation(respond("/private/bin/kiro-cli\n"));
     expect(await resolveBinaryAsync("kiro-cli")).toBe("/private/bin/kiro-cli");
-    expect(io.execFile).toHaveBeenCalledWith("which", ["kiro-cli"], expect.objectContaining({ timeout: 2000, killSignal: "SIGKILL", maxBuffer: 128 * 1024 }), expect.any(Function));
+    expect(io.execFile).toHaveBeenCalledWith("which", ["kiro-cli"], expect.objectContaining({ timeout: 2000, killSignal: "SIGKILL", maxBuffer: 1024 * 1024 }), expect.any(Function));
     io.execFile.mockImplementation(respond("", new Error("missing")));
     const first = join(dir, "first"); const second = join(dir, "second"); executable(join(first, "grok")); executable(join(second, "grok"));
     expect(await resolveBinaryAsync("grok", [first, second])).toBe(join(first, "grok"));
@@ -72,6 +74,23 @@ describe("async fleet binary/launch discovery", () => {
     await a.prepareLaunch!(); expect(io.execFile.mock.calls.filter(c => c[1][0] === "--version")).toHaveLength(1);
     writeFileSync(binary, "changed binary generation"); await a.prepareLaunch!();
     expect(io.execFile.mock.calls.filter(c => c[1][0] === "--version")).toHaveLength(2);
+  });
+  it("joins an in-flight Kiro probe before either caller can populate the cache", async () => {
+    const stats = vi.spyOn(fsAsync, "stat").mockResolvedValue({ dev: 1, ino: 2, size: 3, mtimeMs: 4 } as any);
+    const replies: Function[] = [];
+    io.execFile.mockImplementation((_exe, _args, _opts, cb) => { replies.push(cb); });
+    const a = new KiroBackend(dir, undefined, binary); const b = new KiroBackend(dir, undefined, binary);
+    const flights = [a.prepareLaunch(), b.prepareLaunch()];
+    try {
+      // Both stat awaits are already resolved; drain their continuations while
+      // the version callback stays pending, so a warm cache cannot hide duplication.
+      for (let i = 0; i < 8; i++) await Promise.resolve();
+      expect(stats).toHaveBeenCalledTimes(2);
+      expect(io.execFile).toHaveBeenCalledTimes(1);
+    } finally {
+      for (const reply of replies) reply(null, "kiro-cli 2.26.0", "");
+      await Promise.all(flights);
+    }
   });
   it.each(["legacy", "tui", "v3"])("unknown/missing Kiro compatibility still refuses %s launch, no blind engine default", async kiroUi => {
     io.execFile.mockImplementation(respond("", new Error("timeout")));
@@ -150,6 +169,19 @@ describe("async fleet binary/launch discovery", () => {
     release(null, binary, ""); await done;
     expect(adopt).not.toHaveBeenCalled(); expect(signIn).not.toHaveBeenCalled(); expect(chat.adapter.sendText).not.toHaveBeenCalled();
     expect(fm.installHandoff).toBeNull();
+  });
+  it("a slow install-cleanup notice does not hold the claim or outlive shutdown into PATH adoption", async () => {
+    vi.mocked(TmuxManager.ensureSession).mockResolvedValue(undefined);
+    io.execFile.mockImplementation(respond("", new Error("not installed")));
+    const fm: any = new FleetManager(join(dir, "fleet")); let finishNotice!: Function;
+    const chat = { adapter: { sendText: vi.fn(() => new Promise(resolve => { finishNotice = resolve; })) }, adapterId: "tg", chatId: "chat" };
+    const signIn = vi.spyOn(fm, "launchSignIn").mockResolvedValue("signing in"); const adopt = vi.spyOn(fm, "adoptBinaryDirectory");
+    await fm.startInstallSession("grok", chat); io.execFile.mockImplementation(respond(binary));
+    const done = sessions[0]!.events.onDone({ ok: true, detail: "clean exit", cleanupFailed: true });
+    await vi.waitFor(() => expect(chat.adapter.sendText).toHaveBeenCalledOnce());
+    const otherClaim = fm.loginWindow.tryClaim("login", "kiro-cli"); expect(otherClaim).not.toBeNull(); fm.loginWindow.release(otherClaim);
+    await fm.shutdownLoginWindows(); finishNotice({ messageId: "m" }); await done;
+    expect(adopt).not.toHaveBeenCalled(); expect(signIn).not.toHaveBeenCalled(); expect(fm.installHandoff).toBeNull();
   });
 
 });

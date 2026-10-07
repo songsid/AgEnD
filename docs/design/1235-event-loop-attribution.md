@@ -60,7 +60,7 @@ no spawn happened. The low hit rate does **not** support calling spawn probes th
 | `backend/types.ts:commonBinaryDirs` | PATH miss, up to 2 npm prefix calls per fleet-topic start | Prior #1231 idle ~90ms ×2; existing timeout ceiling 3s each | Async npm; same ordered nvm/common/custom-prefix/executable fallback |
 | `backend/kiro.ts:cachedKiroCliCompatibility` | New binary generation / unknown result older than 60s; wake/restart/crash reuse calls buildCommand | No production per-call measurement; up to two CLI children, **5s each ceiling** | Async, generation-keyed single-flight in prepareLaunch; command build cache-only on fleet backends; existing daemon launch fence retained |
 | `fleet-manager.ts:locateBinaryOnLoginShell` | Installer completion, once | No typical measurement; **10s ceiling**, not “10s measured” | Async bash -lc, executable-file checks; claim/cancel/shutdown fenced before PATH adoption/sign-in |
-| `statusline-watcher.ts:watch` | Every 10s ×N | Private warm 2KiB fixture, 100 rounds: p50 0.0072ms, p95 0.0123ms; ×39 ≈0.28ms nominal | Async reads, four physical reads max, one pending/registration; old stopped/restarted results dropped |
+| `statusline-watcher.ts:watch` | Every 10s ×N | Leader host measurement: real 1.4KiB/ext4 ~0.005ms/read, ×40/10s ≈0.02ms loop time/s. Private warm 2KiB fixture: p50 0.0072ms, p95 0.0123ms (100 rounds); **not a stall cause at normal FS latency** | Async as disk-stall insurance; four physical reads max, one pending/registration; old stopped/restarted results dropped |
 | `codex-metadata.ts:readCodexEffortLevels` (remaining) | Every UI snapshot (10s ×K×B, and API enrichment) | Private warm 5MiB fixture, 30 rounds: p50 10.51ms, p95 12.31ms ×K×B; fixture is near the existing size bound, **not production row size** | Slow-sync attribution tag; unchanged policy/output |
 | `transcript-sources.ts:KiroSessionSource.newestDbRow` | Every 2s ×Kiro monitors | Private warm 26.8MB row, 100 rounds: octet_length p50 0.0036ms, p95 0.0054ms | Already header-only (#1048), not a new fix |
 | `transcript-sources.ts:readKiroConversationStatus` (remaining) | Forged-envelope inspection; reads history on demand | Private 26.8MB metadata length(TEXT) fixture: p50 16.67ms, p95 21.75ms, 30 rounds; real includeHistory=true also parses history, **not measured here** | Slow-sync tag; no SQLite worker or policy change |
@@ -86,7 +86,11 @@ stall WARN appends entries from its observation window, or says unknown. Nested 
 Tags cover retained binary/Kiro sync compatibility paths, lifecycle process identity, authoritative pane
 scrape/tmux version, statusline getters, Codex effort metadata, Kiro transcript/status reads, UI snapshots,
 Classic config reload and bundled skill publication. This is bounded partial attribution, not instrumentation
-of every fs syscall or SQLite write in the codebase. Slow code outside these tags can still report unknown.
+of every fs syscall or SQLite write in the codebase. Slow code outside these tags can still report unknown: unwrapped better-sqlite3 calls, JSON parsing, long regex scans and other JS work are not individually attributed.
+
+A timer-free PerformanceObserver also records GC pauses >=200ms (kind + duration), with a bounded 64-entry ring. Each such pause is logged, and pauses overlapping the histogram observation window are appended to the same stall WARN. Observer records are drained before each check and the observer disconnects on shutdown.
+
+On-demand inspector CPU profiling is split into **#1338**: off by default, a local admin-only start trigger, monotonic duration cap, bounded/rotated `.cpuprofile` artifacts under `~/.agend/profiles/`, and stub-inspector cap/default/mutation tests. That sampler can identify unwrapped JS/native frames, unlike the caller ring; it is not part of this PR.
 
 ## Safety, limits and rollback
 
