@@ -16,7 +16,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AntigravityBackend, agyTrustDialogState } from "../src/backend/antigravity.js";
 import type { RuntimeDialog } from "../src/backend/types.js";
-import { Daemon } from "../src/daemon.js";
+import { Daemon, PaneStateMachine } from "../src/daemon.js";
 import type { InstanceConfig } from "../src/types.js";
 
 const FIX = join(import.meta.dirname, "fixtures");
@@ -41,19 +41,74 @@ describe("busy: the braille working row", () => {
     expect(busy().test(fixture(name))).toBe(false);
   });
 
-  it("every spinner frame and the rolled-up thought; the shape only, never prose", () => {
+  // The live working frame with its spinner row replaced: the row in the CLI's own place, right above the composer.
+  const LIVE = fixture("agy-1.3.1-busy-generating-blank-footer.pane.txt");
+  const aboveComposer = (row: string) => LIVE.replace(/^[\u2800-\u28FF][^\n]*$/mu, row);
+
+  it("every spinner frame and the rolled-up thought, in the CLI's row above the composer → busy", () => {
+    expect(aboveComposer("X")).not.toBe(LIVE);
     for (const glyph of ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷", "⠋", "⠙"]) {
-      expect(busy().test(`> ask\n${glyph}  Generating...\n`), glyph).toBe(true);
+      expect(busy().test(aboveComposer(`${glyph}  Generating...`)), glyph).toBe(true);
     }
-    expect(busy().test('⣟  The request is to print numbers 1 through 40. The constraint "no other text...\n')).toBe(true);
-    expect(busy().test("⣯  Generating… 12s\n")).toBe(true);
-    // not the working row: no ellipsis, quoted mid-line, ellipsis not at the end, braille art, ordinary prose
-    expect(busy().test("⣯  Generating the report now\n")).toBe(false);
-    expect(busy().test("The spinner shows ⣯  Generating... while it works\n")).toBe(false);
-    expect(busy().test("The spinner reads ⣯  Generating...\n")).toBe(false);
-    expect(busy().test("⣟  Step one... then step two\n")).toBe(false);
-    expect(busy().test("⣿⣿⣿⣿⣿⣿⣿⣿\n")).toBe(false);
-    expect(busy().test("Done... the numbers are below\n")).toBe(false);
+    expect(busy().test(aboveComposer('⣟  The request is to print numbers 1 through 40. The constraint "no other text...'))).toBe(true);
+    expect(busy().test(aboveComposer("⣯  Generating… 12s"))).toBe(true);
+    expect(busy().test(fixture("agy-1.3.1-busy-generating.pane.txt").replace(/\n/g, "\r\n"))).toBe(true);
+  });
+
+  it("in that row, but not the working row's shape → not busy", () => {
+    // The row needs the whole composer box below it (separator, input row, separator), not just a separator.
+    const sep = "─".repeat(60);
+    expect(busy().test(`  reply\n⣯  Generating...\n${sep}\n`)).toBe(false);
+    expect(busy().test(`  reply\n⣯  Generating...\n${sep}\nstatus text\n`)).toBe(false);
+    expect(busy().test(`  reply\n⣯  Generating...\n${sep}\n>\n${sep}\n`)).toBe(true);
+    for (const row of ["⣯  Generating the report now", "⣟  Step one... then step two", "⣿⣿⣿⣿⣿⣿⣿⣿", "Done... the numbers are below", "  ⣯  Generating..."]) {
+      expect(busy().test(aboveComposer(row)), row).toBe(false);
+    }
+  });
+
+  // Prism #1329 r2: the reply quotes the spinner row, and the turn is over (the ready composer is back).
+  const IDLE = fixture("agy-1.3.1-idle-after-reply-blank-footer.pane.txt");
+  const replyQuoting = (row: string) => IDLE.replace(/^  40$/m, row);
+  const QUOTES = [
+    ["the reply's last line, indented like every reply line", replyQuoting("  ⣯  Generating...")],
+    ["a reply line at column 0, but with reply rows below it", IDLE.replace(/^  20$/m, "⣯  Generating...")],
+    ["a column-0 row above a separator that is not the live composer's", IDLE.replace(/^  20$/m, "⣯  Generating...\n" + "─".repeat(40))],
+    ["an earlier working frame in the scrollback (capture with history), the finished turn below it", `${LIVE.trimEnd()}\n${IDLE}`],
+  ] as const;
+
+  it.each(QUOTES)("quoted — %s → not busy, ready", (_label, pane) => {
+    expect(pane).not.toBe(IDLE);
+    expect(pane).toMatch(/⣯  Generating\.\.\./);
+    expect(busy().test(pane)).toBe(false);
+    expect(backend().getReadyPattern().test(pane)).toBe(true);
+  });
+
+  it("a draft in the composer that quotes it → not busy (and not ready: a draft never is)", () => {
+    const draft = IDLE.replace(/^>[ \t]*$/m, "> ⣯  Generating...");
+    expect(draft).not.toBe(IDLE);
+    expect(busy().test(draft)).toBe(false);
+  });
+
+  it("the state machine: the quoting pane stays idle for a minute (never working, never stuck); the live frame is working", () => {
+    const b = backend();
+    const quoted = new PaneStateMachine(b.getReadyPattern(), 15_000, 0, b.getBusyPattern());
+    for (const at of [0, 1_000, 15_000, 60_000]) expect(quoted.observe(QUOTES[0][1], at).state, String(at)).toBe("idle");
+    const live = new PaneStateMachine(b.getReadyPattern(), 15_000, 0, b.getBusyPattern());
+    expect(live.observe(LIVE, 0).state).toBe("working");
+  });
+
+  it("the delivery gate (Daemon.paneAuthoritativelyIdle): the quoting pane is idle, the live frame is not", () => {
+    const dir = mkdtempSync(join(tmpdir(), "agy-1328-gate-"));
+    try {
+      const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), level: "info" };
+      const daemon = new Daemon("agy-1328", {
+        working_directory: "/tmp", backend: "antigravity",
+        restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 }, log_level: "silent",
+      } as unknown as InstanceConfig, dir, false, new AntigravityBackend(dir, dir, dir), undefined, { child: () => logger } as never) as any;
+      for (const [label, pane] of QUOTES) expect(daemon.paneAuthoritativelyIdle(pane), label).toBe(true);
+      expect(daemon.paneAuthoritativelyIdle(LIVE)).toBe(false);
+      expect(daemon.paneAuthoritativelyIdle(fixture("agy-1.3.1-busy-generating.pane.txt"))).toBe(false);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 });
 

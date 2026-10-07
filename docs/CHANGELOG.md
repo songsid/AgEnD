@@ -122,7 +122,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   signed-in agy 1.3.1:
   - agy's working row is a braille spinner, a verb and an ellipsis (`⣯  Generating...`), with no timer and no
     `(esc to cancel)`. AgEnD's pattern never matched it, so a working agy always looked idle. That row now counts as
-    busy, and so does the rolled-up thought agy shows in its place.
+    busy, and so does the rolled-up thought agy shows in its place, but only in agy's own spot: at the left edge,
+    right above the input box. A reply that quotes the row leaves a finished turn idle.
   - The trust prompt ("Do you trust the contents of this project?" / "> Yes, I trust this folder" / "No, exit") gets
     one Enter, and only while the cursor is on "Yes". With the cursor anywhere else, or the prompt still up after
     that Enter, it is held, with deliveries blocked, for a human. A copy of the prompt quoted in the conversation is

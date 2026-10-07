@@ -56,6 +56,18 @@ export function agyLoginScreenActive(pane: string): boolean {
   return options >= 2 && (rest.length === 0 || (rest.length === 1 && /navigate/i.test(rest[0]!) && /select/i.test(rest[0]!)));
 }
 
+/** The reconstructed (#415-era incident) busy row: star/dot glyph, verb, ellipsis, and a timer or "(esc to cancel)". */
+const AGY_LEGACY_BUSY_ROW = /^[ \t]*[·✢✶✻✽][ \t]+\p{L}[^\n]*(?:…|\.\.\.)[^\n]*(?:\b\d+(?:\.\d+)?s\b|\(esc to cancel\))/mu;
+/**
+ * #1328, agy 1.3.1's live working row (see getBusyPattern): a braille frame at column 0 + verb + ellipsis, directly
+ * above the live composer box (separator, 1–8 input rows, separator), then at most 3 footer rows and the pane's end.
+ */
+const AGY_WORKING_ROW_ABOVE_COMPOSER = new RegExp(
+  "^[\\u2800-\\u28FF][ \\t]+\\p{L}[^\\n]*?(?:…|\\.\\.\\.)[ \\t]*(?:\\(esc to cancel\\)|\\d+(?:\\.\\d+)?s)?[ \\t]*\\r?\\n"
+  + "(?:[ \\t]*\\r?\\n)*─{20,}[ \\t]*\\r?\\n(?:[^\\n]*\\r?\\n){1,8}?─{20,}[ \\t]*(?:\\r?\\n[^\\n]*){0,3}?\\s*(?![\\s\\S])",
+  "mu",
+);
+
 /**
  * agy's trust prompt, bottom-anchored (captured live, 1.3.1):
  *
@@ -368,11 +380,16 @@ node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{t
    * working row is a BRAILLE spinner frame, a verb and an ellipsis, and nothing else — `⣯  Generating...` — with no
    * timer and no `(esc to cancel)` on it, so the first alternative never matched and agy was always seen as idle.
    * Under AgEnD's own statusLine the footer is blank while working (no `esc to cancel` hint either), so this row is
-   * the one signal. It is gone once the reply is written. Line-anchored at both ends, so prose quoting it mid-line, or
-   * a list item that happens to end in "...", does not count.
+   * the one signal. It is gone once the reply is written.
+   *
+   * Only the CLI's own row counts, by where it is: in all 84 captured working frames it starts at column 0 (agy
+   * indents the reply two columns, `  40`) and is the last row above the live composer box — separator, input
+   * row(s), separator, at most a footer, then the end of the pane. The same text quoted in a reply (indented), in
+   * the scrollback, or anywhere but right above the composer does not count, so a finished turn that talks about the
+   * spinner is still idle.
    */
   getBusyPattern(): RegExp {
-    return /^[ \t]*[·✢✶✻✽][ \t]+\p{L}[^\n]*(?:…|\.\.\.)[^\n]*(?:\b\d+(?:\.\d+)?s\b|\(esc to cancel\))|^[ \t]*[\u2800-\u28FF][ \t]+\p{L}[^\n]*?(?:…|\.\.\.)[ \t]*(?:\(esc to cancel\)|\d+(?:\.\d+)?s)?[ \t]*$/mu;
+    return new RegExp(`${AGY_LEGACY_BUSY_ROW.source}|${AGY_WORKING_ROW_ABOVE_COMPOSER.source}`, "mu");
   }
 
   // agy periodically reruns and repaints its statusLine hook even when the
