@@ -15,6 +15,7 @@
 - **Web 聊天：看得到訊息送到哪一步、看得到 agent 正在處理，也能中止它。** 從 web 聊天送出的每則訊息都有送達勾，和 Telegram 訊息上的表情回應是同一套流程：◷ 排在前一則之後、✓ 已交給 agent、✓✓ agent 已收到、! 未送達（每個都有給螢幕閱讀器的標籤，重新整理後仍保留）。目前開著的聊天，其 agent 正在處理時，輸入框上方會顯示「*名稱* 處理中…」與 **中止** 按鈕，作用和 Telegram 的取消按鈕與 `/cancel` 相同：對 CLI 送 Esc，並取消還在排隊的訊息——它們的勾會變成 ⊘。（中止是 `POST /ui/cancel/<instance>`，和 dashboard 其他寫入一樣需要 session 與 CSRF 檢查；它不是 instance 的 Stop，後者會結束整個程序。）Web 訊息的送達回報也不再拿一個從來不是 Telegram 訊息的 id 去 Telegram 上加表情。
 - **Web 聊天：可以在 dashboard 上回答 fleet 的提示。** instance 看起來卡住、自行結束，或卡在互動式提示時，Telegram 上的按鈕（*強制重啟* / *繼續等待*、*重啟* / *忽略*、*確認* / *取消*）也會出現在該 instance 的 web 聊天中。兩邊是同一個提示，不是複製品：只算一次回答，哪一邊先按就算哪一邊；另一邊的按鈕會收成結果；過期也是兩邊同時。只有這幾種與 instance 健康有關的提示會出現在 web——`/clear` 確認、登入、Classic 群組核准、tips 與 `/model` / `/effort` 選單仍只留在原本發問的地方。從 dashboard 回答需要已登入的 session 與它的 CSRF token、必須指明 instance，而且必須是該提示自己的按鈕之一。
 - **沒有設定任何聊天平台的 fleet，只靠 web dashboard 也能運作。** 沒有設定 `channel` / `channels` 時，agent 的回覆現在會送到 web 聊天（並告訴 agent 已送出），不再永遠被「Channel adapters are not ready — retry shortly」拒絕。
+- **Web 聊天：表格、巢狀清單、程式碼上色（#1269）。** agent 回覆裡的 Markdown 表格會以表格顯示（標題列、`:--`/`--:`/`:-:` 對齊，儲存格裡的粗體、連結、`code` 照常生效；儲存格內的直線請寫 `\|`）；清單會依縮排巢狀（項目符號與數字可混用，最多六層）；js/ts/json/python/sh 的程式碼區塊會上色。沒有用任何外部函式庫、也不從 CDN 載入：仍是先跳脫再套格式的同一個 renderer，只多了固定的標籤與 class，訊息內容依然無法產生自己的標記。
 
 ### 安全 (Security)
 - **三個網頁面板共用同一條導覽列與 Session 選單，`/` 直接開 dashboard。** `/ui`、`/view`、`/settings` 都有相同的「Dashboard · View · Settings」連結與 Session 按鈕：顯示目前以哪個瀏覽器登入、session 何時結束、其他已登入的裝置（各自可登出）以及「全部登出」。只是一支小 script 與樣式表（`/assets/shell.js`、`/assets/shell.css`），不是重寫面板。

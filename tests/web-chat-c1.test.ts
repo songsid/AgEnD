@@ -56,9 +56,13 @@ describe.each([["a classic script", asScript], ["a CommonJS module", asModule]])
     });
 
     it("every tag in any output is one of the renderer's own", () => {
-      const nasty = ["<svg/onload=alert(1)>", "```\n<script>x</script>\n```", "`<b>`", "**<i>x</i>**", "> <iframe>", "- <style>", "# <h1>", "[<b>](https://a.example)", "\u0000 0 \u0000"].join("\n");
+      const nasty = ["<svg/onload=alert(1)>", "```\n<script>x</script>\n```", "`<b>`", "**<i>x</i>**", "> <iframe>", "- <style>", "# <h1>", "[<b>](https://a.example)", "\u0000 0 \u0000",
+        "| <img src=x onerror=alert(1)> | b |", "|---|---|", "| <script> | `<b>` |", "  - <svg>", "```js\nconst s = \"<script>alert(1)</script>\"; // <b>\n```"].join("\n");
       const tags = [...md(nasty).matchAll(/<\/?([a-z0-9]+)/g)].map(m => m[1]);
-      for (const tag of tags) expect(["p", "br", "pre", "code", "a", "strong", "em", "del", "ul", "ol", "li", "blockquote", "h3", "h4", "h5", "h6", "hr"]).toContain(tag);
+      for (const tag of tags) expect(["p", "br", "pre", "code", "a", "strong", "em", "del", "ul", "ol", "li", "blockquote", "h3", "h4", "h5", "h6", "hr", "div", "table", "thead", "tbody", "tr", "th", "td", "span"]).toContain(tag);
+      // The only attributes ever written are the renderer's own fixed ones.
+      const attrs = [...md(nasty).matchAll(/<[a-z0-9]+ ([^>]*)>/g)].map(m => m[1]!.replace(/="[^"]*"/g, "")).join(" ").split(/\s+/).filter(Boolean);
+      for (const a of attrs) expect(["href", "target", "rel", "class", "data-lang"]).toContain(a);
     });
 
     it("the placeholder character cannot be used to pull in another link's markup", () => {
@@ -88,9 +92,9 @@ describe.each([["a classic script", asScript], ["a CommonJS module", asModule]])
       expect(md(input)).toBe(html);
     });
 
-    it("a fenced code block is verbatim and escaped, its language kept as data", () => {
-      expect(md("before\n```ts\nconst a = 1 < 2 && **x**;\n```\nafter")).toBe(
-        '<p>before</p><pre data-lang="ts"><code>const a = 1 &lt; 2 &amp;&amp; **x**;</code></pre><p>after</p>');
+    it("a fenced code block is verbatim and escaped, its language kept as data (a language it does not highlight)", () => {
+      expect(md("before\n```rust\nconst a = 1 < 2 && **x**;\n```\nafter")).toBe(
+        '<p>before</p><pre data-lang="rust"><code>const a = 1 &lt; 2 &amp;&amp; **x**;</code></pre><p>after</p>');
     });
 
     it("an unclosed fence still renders the rest as code (a reply cut mid-block)", () => {
@@ -115,6 +119,100 @@ describe.each([["a classic script", asScript], ["a CommonJS module", asModule]])
         expect(a).toContain('target="_blank"');
         expect(a).toContain('rel="noopener noreferrer"');
       }
+    });
+
+    it("nested lists: deeper items open a list inside the item; shallower ones close back; - and 1. mix", () => {
+      expect(md("- one\n  - two\n    1. three\n- four")).toBe(
+        "<ul><li>one<ul><li>two<ol><li>three</li></ol></li></ul></li><li>four</li></ul>");
+      expect(md("1. a\n   - b\n   - c\n2. d")).toBe("<ol><li>a<ul><li>b</li><li>c</li></ul></li><li>d</li></ol>");
+      expect(md("- a\n\t- tab-indented")).toBe("<ul><li>a<ul><li>tab-indented</li></ul></li></ul>");
+      expect(md("- a\n- b\n1. c")).toBe("<ul><li>a</li><li>b</li></ul><ol><li>c</li></ol>");
+      expect(md("- **bold** item\n  - [link](https://a.example)")).toBe(
+        '<ul><li><strong>bold</strong> item<ul><li><a href="https://a.example" target="_blank" rel="noopener noreferrer">link</a></li></ul></li></ul>');
+    });
+
+    it("nesting is capped: an item deeper than six levels stays at the sixth, and every list is closed", () => {
+      const deep = Array.from({ length: 12 }, (_, i) => `${" ".repeat(i * 2)}- l${i}`).join("\n");
+      const html = md(deep);
+      expect((html.match(/<ul>/g) ?? []).length).toBe(6);
+      expect((html.match(/<ul>/g) ?? []).length).toBe((html.match(/<\/ul>/g) ?? []).length);
+      expect((html.match(/<li>/g) ?? []).length).toBe((html.match(/<\/li>/g) ?? []).length);
+    });
+
+    it("tables: header, alignment as fixed classes, cells through the inline Markdown, ragged rows evened out", () => {
+      // As on GitHub, a pipe inside `code` still splits the row unless it is escaped (\\|).
+      expect(md("| Name | Qty | Note |\n|:-----|----:|:----:|\n| **a** | 2 | `x\\|y` |\n| b |")).toBe(
+        '<div class="tbl"><table><thead><tr><th class="al-l">Name</th><th class="al-r">Qty</th><th class="al-c">Note</th></tr></thead><tbody>' +
+        '<tr><td class="al-l"><strong>a</strong></td><td class="al-r">2</td><td class="al-c"><code>x|y</code></td></tr>' +
+        '<tr><td class="al-l">b</td><td class="al-r"></td><td class="al-c"></td></tr></tbody></table></div>');
+      expect(md("a | b\n--|--\n1 | 2")).toBe('<div class="tbl"><table><thead><tr><th>a</th><th>b</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr></tbody></table></div>');
+      expect(md("| a \\| b |\n|---|\n| c |")).toBe('<div class="tbl"><table><thead><tr><th>a | b</th></tr></thead><tbody><tr><td>c</td></tr></tbody></table></div>');
+    });
+
+    it("not a table: no separator, a separator with another column count, or more than 20 columns — those stay text", () => {
+      expect(md("a | b\nc | d")).toBe("<p>a | b<br>c | d</p>");
+      expect(md("| a | b |\n|---|")).toBe("<p>| a | b |<br>|---|</p>");
+      const wide = Array.from({ length: 21 }, (_, i) => `c${i}`).join(" | ");
+      expect(md(`${wide}\n${Array.from({ length: 21 }, () => "-").join("|")}`)).not.toContain("<table>");
+      // A table ends at the first line without a pipe.
+      expect(md("before\n| a |\n|---|\n| 1 |\nafter")).toBe('<p>before</p><div class="tbl"><table><thead><tr><th>a</th></tr></thead><tbody><tr><td>1</td></tr></tbody></table></div><p>after</p>');
+    });
+
+    it("a crafted separator row or unclosed strings render in bounded time, up to the 16,000-character message cap (#1287 review)", () => {
+      const inputs = [
+        "h|h\n" + " ".repeat(1600) + "-" + " ".repeat(1600) + "x",             // the reviewed repro: seconds before
+        "h|h\n" + " ".repeat(7990) + "-" + " ".repeat(7990) + "x",             // near the cap: never finished before
+        "h|h\n" + "| - ".repeat(3990) + "x",
+        "```js\n" + '"a '.repeat(5300) + "\n```",                               // thousands of unclosed quotes
+        "```js\n/*" + " /*".repeat(5300) + "\n```",                              // thousands of unclosed comments
+        "```py\n'''" + "a\n".repeat(7990) + "```",
+        "```js\n`" + "a\n".repeat(7990) + "```",
+      ];
+      for (const input of inputs) {
+        expect(input.length).toBeLessThanOrEqual(16_000);
+        const t0 = performance.now();
+        md(input);
+        expect(performance.now() - t0, input.slice(0, 24)).toBeLessThan(250);
+      }
+      // …and the bad separator is still not a table.
+      expect(md(inputs[0]!)).not.toContain("<table>");
+    });
+
+    it("the tokenizer scales linearly: 16k characters of unclosed comments cost about 4x 4k, not 16x (#1287 review)", () => {
+      // Unclosed block comments were the quadratic case (each `/*` re-scanned to the end): ~60 ms at the cap, 16x per 4x.
+      const input = (chars: number) => "```js\n" + "/*\n".repeat(Math.floor(chars / 3)) + "```";
+      const best = (s: string) => { let b = Infinity; for (let i = 0; i < 5; i++) { const t = performance.now(); md(s); b = Math.min(b, performance.now() - t); } return b; };
+      const small = best(input(4_000)), large = best(input(16_000));
+      // Under 2 ms there is nothing to measure (timer noise); above it the growth must look linear, not quadratic.
+      if (large >= 2) expect(large / Math.max(small, 0.01), `${small.toFixed(2)} ms → ${large.toFixed(2)} ms`).toBeLessThan(8);
+      expect(md(input(16_000))).toContain('<span class="tk-c">/*');
+    });
+
+    it("separator rows: only dashes with optional colons per cell; anything else is not a table", () => {
+      for (const sep of ["| -- | x |", "|--|-- -|", "| : |---|", "|---|:-:x|", "--- ---"]) {
+        expect(md(`| a | b |\n${sep}`), sep).not.toContain("<table>");
+      }
+      expect(md("| a | b |\n|  :---  |  ---:  |")).toContain('<th class="al-l">a</th><th class="al-r">b</th>');
+    });
+
+    it("code highlighting: keywords, strings, numbers and comments in fixed classes; everything escaped", () => {
+      expect(md('```js\nconst s = "<b>"; // 1 < 2\nreturn 42\n```')).toBe(
+        '<pre data-lang="js"><code><span class="tk-k">const</span> s = <span class="tk-s">&quot;&lt;b&gt;&quot;</span>; <span class="tk-c">// 1 &lt; 2</span>\n<span class="tk-k">return</span> <span class="tk-n">42</span></code></pre>');
+      expect(md("```python\ndef f(): # x\n    return 'y'\n```")).toBe(
+        '<pre data-lang="python"><code><span class="tk-k">def</span> f(): <span class="tk-c"># x</span>\n    <span class="tk-k">return</span> <span class="tk-s">&#39;y&#39;</span></code></pre>');
+      expect(md('```json\n{"a": true, "n": -1.5}\n```')).toBe(
+        '<pre data-lang="json"><code>{<span class="tk-s">&quot;a&quot;</span>: <span class="tk-k">true</span>, <span class="tk-s">&quot;n&quot;</span>: <span class="tk-n">-1.5</span>}</code></pre>');
+      expect(md("```bash\necho \"$HOME\" # x\n```")).toContain('<span class="tk-k">echo</span>');
+      // Markup between two tokens, and after the last one, is escaped too.
+      expect(md("```js\nx <img src=y onerror=z> w <\n```")).toBe('<pre data-lang="js"><code>x &lt;img src=y onerror=z&gt; w &lt;</code></pre>');
+    });
+
+    it("an unknown, hostile or prototype-named language is not highlighted — escaped text as before", () => {
+      for (const lang of ["", "brainfuck", "constructor", "__proto__", "toString"]) {
+        expect(md("```" + lang + "\nconst <b>\n```")).toContain("<code>const &lt;b&gt;</code>");
+      }
+      // A string that never closes cannot swallow the rest of the block into one span.
+      expect(md('```js\nconst a = "open\nlet b = 2\n```')).toContain('<span class="tk-k">let</span>');
     });
 
     it("empty and missing text render as nothing", () => {
