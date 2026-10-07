@@ -3,7 +3,7 @@
 **Status:** design for review (🔒 Prism), **r2** — no code yet. Milestone 2.2.1, branch `feature/2.2-web`.
 **Inputs:** the leader's decision on #1306 (2026-10-07, delegated by the user, to be adjusted after testing) and
 claude-fable's *AgEnD web chat design study*, section 3. Every claim about today's code was re-read at
-`feature/2.2-web` **9112eeec** (after #1313/#1316/#1317); external references (CVEs, specs) are the study's or the
+`feature/2.2-web` **4ed04167** (after #1313/#1316/#1317 and #1300's style nonces); external references (CVEs, specs) are the study's or the
 review's and are cited, not re-verified. r2 answers Prism's review of r1 (8e3a846e) with the leader's decision-owner
 calls on it (2026-10-07; the user delegated web decisions): §11 maps each finding.
 
@@ -50,7 +50,7 @@ Decided (realised here, not re-opened):
 7. When the dashboard is reached through a tunnel/gateway exposing one port and no `web.preview_origin` is set,
    preview is **disabled** — Source and Download only.
 
-## 2. Today (verified at 9112eeec)
+## 2. Today (verified at 4ed04167)
 
 | Fact | Where |
 |---|---|
@@ -63,12 +63,12 @@ Decided (realised here, not re-opened):
 | `renderMarkdown` escapes everything first; fenced code becomes `<pre><code>` (highlighted only for known languages, `html` is not one). The fence regex also accepts an **unterminated** fence (`(?:```\|$)`), which is what a 16,000-character cut produces. | `src/ui/chat-render.js:1-8`, `:225-228`, `:246-262` (regex `:250`) |
 | Since #1313 the chat is **keyed**: one node per message, key `boot-id`. `renderMsgs` appends new nodes, **replaces** a node whose HTML string changed (`replaceWith`), **re-inserts** a node whose position changed (`insertBefore`), removes nodes that left the list, and starts over (`textContent = ""`) when the `#messages` element changes (another instance). `msgNode` builds a node from `msgHtml` through a `<template>`, then `decorateCode` wraps each `pre` with DOM nodes. | `src/ui/dashboard.html:871-879`, `:884-890`, `:892-897`, `:900-917`, `:918-953` |
 | The R6 prompt cards are built from DOM nodes with `textContent` — the pattern the HTML card follows. | `src/ui/dashboard.html:1038-1061` |
-| Every response from the web listener gets `X-Frame-Options: DENY` and a CSP with **no `frame-src`** (so frames fall back to `default-src 'self'`) and `frame-ancestors 'none'`. Panels add a per-response script nonce. | `src/web-host-guard.ts:65-76` (`:75`), `:112-121` (`:116`), `:124-138` |
+| Every response from the web listener gets `X-Frame-Options: DENY` and a CSP with **no `frame-src`** (so frames fall back to `default-src 'self'`) and `frame-ancestors 'none'`. Panels add a per-response nonce for scripts **and styles** (#1300): no inline style attribute applies. | `src/web-host-guard.ts:67-78` (`:77`), `:114-123` (`:118`), `:126-130`, `:137-142` |
 | `/ui` is served by `sendPanelHtml`. | `src/web-api.ts:252-258` |
 | Session cookie `agend_session` / `__Host-agend_session`, `HttpOnly; SameSite=Strict`; `Secure` is decided from `X-Forwarded-Proto`. | `src/web-auth.ts:24-25`, `:194`, `:198`, `:178` |
 | A request whose `Origin` does not match `Host` is refused — including the opaque `null` a sandboxed frame sends. A cookie write also needs `Origin`, `Sec-Fetch-Site: same-origin` (when sent) and `X-Agend-CSRF`. | `src/web-auth.ts:160-172`, `:243-248` |
 | Any script on the dashboard origin can obtain the CSRF value (`/auth/session`). HttpOnly protects the cookie's value, not its authority. | `src/ui/shared/agend-auth.js:29-39` |
-| The web listener binds **127.0.0.1** only (default port 19280). Remote use goes through a proxy/tunnel whose name must be `hostname` or in `web.allowed_hosts`; loopback names are `localhost`, `127.0.0.1`, `[::1]`. | `src/fleet-manager.ts:4795`, `:16021`, `:16029`; `src/web-host-guard.ts:23`, `:84-95` |
+| The web listener binds **127.0.0.1** only (default port 19280). Remote use goes through a proxy/tunnel whose name must be `hostname` or in `web.allowed_hosts`; loopback names are `localhost`, `127.0.0.1`, `[::1]`. | `src/fleet-manager.ts:4795`, `:16021`, `:16029`; `src/web-host-guard.ts:23`, `:86-97` |
 | `WebConfig` has no preview settings today. | `src/types.ts:325-344` |
 | A `.html` file is not in `MIME_BY_EXT` → `application/octet-stream`; `/ui/file/<id>` serves anything but four image types as an attachment with `sandbox` CSP. Upload cap 10 MiB per file. | `src/web-upload.ts:129-133`, `:290`, `:18-25`; `src/web-api.ts:416-432` |
 | A loopback side listener already exists as a precedent (`127.0.0.1:0` per web-terminal session). | `src/web-terminal-http.ts:2-4` |
@@ -141,7 +141,7 @@ disables preview for the page load and says why. This catches the case Prism rai
 rewrites the upstream `Host` to `127.0.0.1:19280`. The server then believes it is local and would offer
 `http://127.0.0.1:19281`, but the browser is really at `https://fleet.example.net`.
 - **Deployment requirement (documented):** a proxy must pass the external `Host` through unchanged. Today that is
-  already what `web.allowed_hosts` assumes (`web-host-guard.ts:84-95`).
+  already what `web.allowed_hosts` assumes (`web-host-guard.ts:86-97`).
 - **What a Host-rewriting proxy loses:** Preview, with a visible reason, and nothing else.
 
 **Frame identity.** The parent sends `render` only after a `ready` from that frame carrying
@@ -252,8 +252,12 @@ Cache-Control: no-store
 
 `panelContentSecurityPolicy` gains one directive **for `/ui`, and only when the server chose a preview origin for
 this load** (§3.2): `frame-src <preview origin>/frame`. It is path-scoped, so no other route of that origin can be
-framed or navigated to. Nothing else changes: `X-Frame-Options: DENY`, `frame-ancestors 'none'`, the nonce and
-`connect-src 'self'` stay. `/view`, `/settings` and sign-in are untouched. With preview disabled, `/ui` has no
+framed or navigated to. Nothing else changes: `X-Frame-Options: DENY`, `frame-ancestors 'none'`, the script and
+style nonces and `connect-src 'self'` stay.
+
+Because styles are nonce-only since #1300, the card and the frame never get a `style` attribute or
+`setAttribute("style", …)`. The height from `resize` is applied through the CSSOM (`iframe.style.height = …px`),
+which CSP does not restrict, and every other look comes from classes in the nonce'd stylesheet. `/view`, `/settings` and sign-in are untouched. With preview disabled, `/ui` has no
 `frame-src` and keeps today's `default-src 'self'` fallback.
 
 ### 5.3 The iframe
