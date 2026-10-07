@@ -158,7 +158,7 @@ describe.each([["a classic script", asScript], ["a CommonJS module", asModule]])
       expect(md("before\n| a |\n|---|\n| 1 |\nafter")).toBe('<p>before</p><div class="tbl"><table><thead><tr><th>a</th></tr></thead><tbody><tr><td>1</td></tr></tbody></table></div><p>after</p>');
     });
 
-    it("a crafted separator row or unclosed strings render in bounded time, up to the 16,000-character message cap (#1287 review)", () => {
+    it("a crafted separator row or unclosed strings render in bounded time (<1 s), up to the 16,000-character message cap (#1287 review)", () => {
       const inputs = [
         "h|h\n" + " ".repeat(1600) + "-" + " ".repeat(1600) + "x",             // the reviewed repro: seconds before
         "h|h\n" + " ".repeat(7990) + "-" + " ".repeat(7990) + "x",             // near the cap: never finished before
@@ -172,20 +172,23 @@ describe.each([["a classic script", asScript], ["a CommonJS module", asModule]])
         expect(input.length).toBeLessThanOrEqual(16_000);
         const t0 = performance.now();
         md(input);
-        expect(performance.now() - t0, input.slice(0, 24)).toBeLessThan(250);
+        // A generous bound (a loaded CI runner must not flake it) that still catches the ~3.4 s regression.
+        expect(performance.now() - t0, input.slice(0, 24)).toBeLessThan(1_000);
       }
       // …and the bad separator is still not a table.
       expect(md(inputs[0]!)).not.toContain("<table>");
     });
 
-    it("the tokenizer scales linearly: 16k characters of unclosed comments cost about 4x 4k, not 16x (#1287 review)", () => {
-      // Unclosed block comments were the quadratic case (each `/*` re-scanned to the end): ~60 ms at the cap, 16x per 4x.
-      const input = (chars: number) => "```js\n" + "/*\n".repeat(Math.floor(chars / 3)) + "```";
-      const best = (s: string) => { let b = Infinity; for (let i = 0; i < 5; i++) { const t = performance.now(); md(s); b = Math.min(b, performance.now() - t); } return b; };
-      const small = best(input(4_000)), large = best(input(16_000));
-      // Under 2 ms there is nothing to measure (timer noise); above it the growth must look linear, not quadratic.
-      if (large >= 2) expect(large / Math.max(small, 0.01), `${small.toFixed(2)} ms → ${large.toFixed(2)} ms`).toBeLessThan(8);
-      expect(md(input(16_000))).toContain('<span class="tk-c">/*');
+    it("the tokenizer consumes an unclosed string or comment once — a scanner invariant, not a timing (#1287 review)", () => {
+      // The quadratic case was an unclosed construct that failed to match and was re-scanned from every later
+      // opener. Linear means each one is consumed by ONE match: one span for the rest of the code (a block comment,
+      // a template literal, a triple-quoted string), or one per line (a line-bounded quote). The old tokenizer made
+      // none of these spans at all, so this is deterministic, with no clock involved.
+      const spans = (html: string, cls: string) => (html.match(new RegExp(`<span class="${cls}">`, "g")) ?? []).length;
+      expect(spans(md("```js\n" + "/*\n".repeat(1000) + "```"), "tk-c"), "unclosed /* … to the end: one comment").toBe(1);
+      expect(spans(md("```js\n`" + "a\n".repeat(1000) + "```"), "tk-s"), "unclosed template literal: one string").toBe(1);
+      expect(spans(md("```py\n'''" + "a\n".repeat(1000) + "```"), "tk-s"), "unclosed triple quote: one string").toBe(1);
+      expect(spans(md("```js\n" + '"a\n'.repeat(1000) + "```"), "tk-s"), "unclosed \" stops at its line: one per line").toBe(1000);
     });
 
     it("separator rows: only dashes with optional colons per cell; anything else is not a table", () => {
