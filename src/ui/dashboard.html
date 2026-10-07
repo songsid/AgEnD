@@ -815,7 +815,7 @@ function renderInstanceMain(main) {
     const sc = document.getElementById("scroller");
     sc.addEventListener("scroll", onThreadScroll, { passive: true });
     const inp = document.getElementById("msgIn");
-    inp.value = drafts[cur] || ""; growComposer(inp);
+    setComposer(inp, drafts[cur] || "");
     inp.addEventListener("keydown", e => { if (AgendChatRender.composerKey(e) === "send") { e.preventDefault(); sendMsg(); } });
     inp.addEventListener("input", () => { drafts[cur] = inp.value; growComposer(inp); renderComposerButtons(); });
     // Files: the 📎 button, a paste with files in it, or a drop onto the chat.
@@ -1154,13 +1154,20 @@ async function cancelReply(target, button) {
   else toast(r && r.error ? r.error : tr("disconnected"), false);
 }
 function growComposer(inp) { inp.style.height = "auto"; inp.style.height = Math.min(inp.scrollHeight, 240) + "px"; }
+// Every change the page itself makes to the composer's text (not typing) goes through here, so the kept draft, the
+// height and the Send / Stop buttons follow it at once (#1313 review: text given back after a failed send, or put
+// back, must bring Send back without waiting for a keystroke or a status frame).
+function setComposer(inp, value, target = cur) {
+  inp.value = value; drafts[target] = value; growComposer(inp);
+  renderComposerButtons();
+}
 async function sendMsg() {
   const inp = document.getElementById("msgIn"), txt = inp.value.trim();
   const target = cur;                                  // the chat this message belongs to, whatever is on screen later
   const files = (pendingFiles[target] || []).slice();
   if ((!txt && !files.length) || !target || sending[target]) return;
   sending[target] = true;
-  inp.value = ""; drafts[target] = ""; growComposer(inp);
+  setComposer(inp, "", target);
   pendingFiles[target] = []; inFlightFiles[target] = files; renderPendingFiles();
   if (target === cur) jumpLatest();          // your own message: the view goes to it
   let r;
@@ -1184,7 +1191,7 @@ async function sendMsg() {
   if (txt) {
     const now = document.getElementById("msgIn");
     if (AgendChatRender.settleFailedSend(target, cur, !!now, now ? now.value : "") === "restore") {
-      now.value = txt; drafts[target] = txt; growComposer(now);
+      setComposer(now, txt, target);
     } else {
       failedSends[target] = failedSends[target] ? failedSends[target] + "\n" + txt : txt;
       if (target === cur) renderFailedSend();
@@ -1232,8 +1239,8 @@ function renderPendingFiles() {
       back.onclick = () => {
         const inp = document.getElementById("msgIn"); if (!inp) return;
         pendingFiles[cur].splice(i, 1);
-        inp.value = inp.value ? `${inp.value}\n${pastedTexts.get(f)}` : pastedTexts.get(f);
-        drafts[cur] = inp.value; growComposer(inp); renderPendingFiles(); inp.focus();
+        setComposer(inp, inp.value ? `${inp.value}\n${pastedTexts.get(f)}` : pastedTexts.get(f));
+        renderPendingFiles(); inp.focus();
       };
       chip.append(back);
     }
@@ -1262,7 +1269,7 @@ function renderFailedSend() {
   const back = document.createElement("button"); back.className = "btn btn-accent"; back.textContent = tr("putBack");
   back.onclick = () => {
     const inp = document.getElementById("msgIn"); if (!inp) return;
-    inp.value = AgendChatRender.putBack(kept, inp.value); drafts[cur] = inp.value; growComposer(inp);
+    setComposer(inp, AgendChatRender.putBack(kept, inp.value));
     delete failedSends[cur]; renderFailedSend(); inp.focus();
   };
   const drop = document.createElement("button"); drop.className = "btn"; drop.textContent = tr("discard");
