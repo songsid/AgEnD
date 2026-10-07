@@ -18,17 +18,26 @@ describe("usage collection is bounded and fails soft", () => {
     setUsageProvidersForTests(null);
     setUsageFetcherForTests(null);
     vi.useRealTimers();
+    vi.unstubAllGlobals(); // clean up any global stubs set during tests
   });
 
   it("returns within the deadline even when a provider never settles", async () => {
     setUsageProviderDeadlineForTests(150);
+    // #1224: stub the provider list so no real network call is ever attempted.
+    // The test exercises the deadline/bounded-call mechanism — not a specific
+    // vendor — so a single hanging stub is sufficient and more honest.
+    setUsageProvidersForTests([{
+      id: "noop", name: "Noop",
+      fetch: async () => { await new Promise(() => {}); return { status: "ok", metrics: [] } as any; },
+    }]);
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy); // network guard: intercepts any accidental real fetch
     const started = Date.now();
     const snapshot = await fetchAllUsage();
     const elapsed = Date.now() - started;
-    // Real providers here have no credentials on a test machine and answer
-    // immediately; the point is that the call is bounded regardless.
     expect(elapsed).toBeLessThan(5_000);
     expect(snapshot.fetchedAt).toBeTruthy();
+    expect(fetchSpy, "network guard: zero outbound fetch attempts").not.toHaveBeenCalled();
   });
 
   it("a hanging provider yields an unreachable row while the others still answer", async () => {
