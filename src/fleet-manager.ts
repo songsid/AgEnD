@@ -25,7 +25,7 @@ import { formatUpdateProgress } from "./update-progress.js";
 import { sdNotify, sdNotifyBlocking } from "./sd-notify.js";
 import { readFleetMemory, type FleetMemory } from "./process-memory.js";
 import { MemoryPressure, type MemoryPressureSnapshot } from "./memory-pressure.js";
-import { ReplyDeduper } from "./reply-dedup.js";
+import { replyDedupText, ReplyDeduper } from "./reply-dedup.js";
 import { isMap, isScalar, parseDocument } from "yaml";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -6485,11 +6485,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // Stickers (#1226) are checked before anything is sent: a refused one is the reply's error, not a gap.
       const stickerProblem = await this.replyStickerProblem(outAdapter, args, threadId, contextAdapterId ?? this.getInstanceAdapterId(senderInstanceName ?? instanceName));
       if (stickerProblem) { respond(null, stickerProblem); return; }
-      const stickers = Array.isArray(args.stickers) ? (args.stickers as string[]) : [];
       const ticket = this.replyDeduper.begin(
         instanceName,
-        // A reply with stickers is not the same reply as its text alone.
-        stickers.length ? `${String(args.text ?? "")}\u0000stickers:${stickers.join(",")}` : String(args.text ?? ""),
+        replyDedupText(args),
         Array.isArray(args.files) ? args.files as string[] : [],
       );
       if (ticket.duplicate) {

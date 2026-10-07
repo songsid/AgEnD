@@ -449,6 +449,25 @@ describe("the reply path: a refused sticker is the reply's error, and nothing is
     expect(answers[1].error).toBeUndefined();
     expect(sent).toEqual([["-100", ["333333333333333331"], expect.objectContaining({ text: "hi", threadId: "42" })]]);
   });
+
+  it("a reply with stickers is not joined to the same text in flight without them (the dedup key has the stickers)", async () => {
+    const { any } = await fleet("telegram");
+    const releases: Array<() => void> = [];
+    const pending = (value: unknown) => new Promise(resolve => releases.push(() => resolve(value)));
+    const adapter = any.worlds.get("telegram").adapter;
+    const texts: unknown[] = []; const stickerSends: unknown[] = [];
+    adapter.sendText = (...a: unknown[]) => { texts.push(a); return pending({ messageId: "t", chatId: "-100" }); };
+    adapter.sendStickers = (...a: unknown[]) => { stickerSends.push(a); return pending({ messageId: "s", chatId: "-100" }); };
+    const answers: any[] = [];
+    any.instanceIpcClients.set("w", { send: (m: unknown) => { answers.push(m); return true; } });
+    any.getInstanceIdle = () => true; any.clearCancelButton = () => {}; any.reactDone = () => {};
+    await any.handleOutboundFromInstance("w", { tool: "reply", args: { text: "x", chat_id: "-100" }, fleetRequestId: "r1" });
+    await any.handleOutboundFromInstance("w", { tool: "reply", args: { text: "x", stickers: ["CAACAgIAAxkBAAEstatic01"], chat_id: "-100" }, fleetRequestId: "r2" });
+    await vi.waitFor(() => expect(stickerSends).toHaveLength(1));
+    expect(texts).toHaveLength(1);
+    releases.splice(0).forEach(release => release());
+    await vi.waitFor(() => expect(answers).toHaveLength(2));
+  });
 });
 
 describe("list_emojis: lighter by default (#1226)", () => {
