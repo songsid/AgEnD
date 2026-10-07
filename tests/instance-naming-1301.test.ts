@@ -56,6 +56,30 @@ describe("uniqueInstanceName (#1301)", () => {
   it("reuses the full form when the same topic was created before (retry path)", () => {
     expect(uniqueInstanceName("blog", LONG_ID, (n) => n === `blog-t${LONG_ID}`))
       .toBe(`blog-t${LONG_ID}`);
+    // Same, with an explicit same-topic proof.
+    expect(uniqueInstanceName("blog", LONG_ID, (n) => n === `blog-t${LONG_ID}`, () => true))
+      .toBe(`blog-t${LONG_ID}`);
+  });
+
+  it("never reuses a short suffix that is another topic's full id (#1305 P1)", () => {
+    // Discord topic …125123456 owns blog-t123456; Telegram topic 123456 arrives.
+    const taken = new Set(["blog-t123456"]);
+    const sameTopic = (n: string) => n === "blog-t1503381916525123456";
+    expect(uniqueInstanceName("blog", "123456", (n) => taken.has(n), sameTopic))
+      .toBe("blog-t123456-2");
+    // Control: a genuine same-topic retry still reuses the full form.
+    expect(uniqueInstanceName("blog", "1503381916525123456",
+      (n) => n === "blog-t1503381916525123456",
+      (n) => n === "blog-t1503381916525123456"))
+      .toBe("blog-t1503381916525123456");
+  });
+
+  it("treats an unproven full-form collision as a different topic (#1305 P1)", () => {
+    // The full form is taken but nothing proves it is this topic (dir-only,
+    // no config entry): it must not be reused — fall back to the short form.
+    const taken = new Set([`blog-t${LONG_ID}`]);
+    expect(uniqueInstanceName("blog", LONG_ID, (n) => taken.has(n), () => false))
+      .toBe(`blog-t${last6}`);
   });
 
   it("sanitizes the base", () => {
@@ -84,6 +108,19 @@ describe("displayInstanceName (#1301)", () => {
   it("orphan detection recognises both the short and the long form", () => {
     expect(/-t\d+$/.test(`blog-t${last6}`)).toBe(true);
     expect(/-t\d+$/.test(`blog-t${LONG_ID}`)).toBe(true);
+  });
+
+  it("keeps allocator-lengthened suffixes whole so same-tail names stay distinct (#1305 P2)", () => {
+    // Prism's pair: 1503381916525793300 vs 9999999999999793300.
+    const idA = "1503381916525793300";
+    const idB = "9999999999999793300";
+    const nameA = uniqueInstanceName("blog", idA, () => false);
+    expect(nameA).toBe("blog-t793300");
+    const nameB = uniqueInstanceName("blog", idB, (n) => n === nameA);
+    expect(nameB).toBe("blog-t9793300");
+    expect(displayInstanceName(nameA)).toBe("blog-t793300");
+    expect(displayInstanceName(nameB)).toBe("blog-t9793300");
+    expect(displayInstanceName(nameA)).not.toBe(displayInstanceName(nameB));
   });
 });
 
@@ -150,6 +187,23 @@ describe("create_instance naming (#1301)", () => {
     expect(after[oldName]).toEqual({ working_directory: "/tmp/w", topic_id: LONG_ID });
     // Still addressable by the full name: the daemon dir resolves under it.
     expect(fm.getInstanceDir(oldName)).toContain(oldName);
+  });
+
+  it("never overwrites another topic's entry on cross-topic suffix collision (#1305 P1)", async () => {
+    const { fm, configPath } = makeFleet();
+    const discordTopic = "1503381916525123456"; // last6 = 123456
+    const projectDir = makeTempDir("agend-1301-project-");
+    const first = await create(fm, discordTopic, "blog", projectDir);
+    expect(first.name).toBe("blog-t123456");
+    // Telegram topic 123456, same base: its full form equals the taken short name.
+    const projectDir2 = makeTempDir("agend-1301-project2-");
+    const second = await create(fm, "123456", "blog", projectDir2);
+    expect(second.name).toBe("blog-t123456-2");
+    const after = readInstances(configPath);
+    // The original entry is untouched — no working_directory/topic_id overwrite.
+    expect(after["blog-t123456"]).toMatchObject({ topic_id: discordTopic });
+    expect(after["blog-t123456-2"]).toMatchObject({ topic_id: "123456" });
+    expect(Object.keys(after).sort()).toEqual(["blog-t123456", "blog-t123456-2"]);
   });
 
   it("replace keeps the old long name instead of renaming to a short one", async () => {
@@ -229,6 +283,49 @@ describe("visibility posts and Mirror line (#1301)", () => {
   });
 });
 
+describe("bindAndStart naming (#1305 P1)", () => {
+  it("never overwrites another topic's entry on cross-topic suffix collision", async () => {
+    const dir = makeTempDir("agend-1305-bind-");
+    const instances: Record<string, { working_directory: string; topic_id: string }> = {
+      "blog-t123456": { working_directory: "/tmp/orig", topic_id: "1503381916525123456" },
+    };
+    const routing = new Map<string, unknown>();
+    const tc = new TopicCommands({
+      dataDir: dir,
+      fleetConfig: { defaults: {}, instances },
+      getInstanceDir: (name: string) => join(dir, name),
+      saveFleetConfig: () => {},
+      routingTable: { set: (k: string, v: unknown) => { routing.set(k, v); } },
+      startInstance: async () => {},
+      logger: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} },
+    } as never);
+    const name = await tc.bindAndStart("/projects/blog", "123456");
+    expect(name).toBe("blog-t123456-2");
+    expect(instances["blog-t123456"]).toEqual({ working_directory: "/tmp/orig", topic_id: "1503381916525123456" });
+    expect(instances["blog-t123456-2"]).toMatchObject({ working_directory: "/projects/blog", topic_id: "123456" });
+  });
+
+  it("reuses the name on a genuine same-topic rebind", async () => {
+    const dir = makeTempDir("agend-1305-rebind-");
+    const instances: Record<string, { working_directory: string; topic_id: string }> = {
+      "blog-t123456": { working_directory: "/tmp/orig", topic_id: "123456" },
+    };
+    const routing = new Map<string, unknown>();
+    const tc = new TopicCommands({
+      dataDir: dir,
+      fleetConfig: { defaults: {}, instances },
+      getInstanceDir: (name: string) => join(dir, name),
+      saveFleetConfig: () => {},
+      routingTable: { set: (k: string, v: unknown) => { routing.set(k, v); } },
+      startInstance: async () => {},
+      logger: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} },
+    } as never);
+    const name = await tc.bindAndStart("/projects/blog", "123456");
+    expect(name).toBe("blog-t123456");
+    expect(Object.keys(instances)).toEqual(["blog-t123456"]);
+  });
+});
+
 describe("/status display (#1301)", () => {
   function statusCommands(extra: Record<string, { display_name?: string; working_directory: string }>) {
     const dir = makeTempDir("agend-1301-status-");
@@ -251,5 +348,16 @@ describe("/status display (#1301)", () => {
     expect(text).toContain(`blog-t${last6}`);
     expect(text).toContain("Shop");
     expect(text).not.toContain(LONG_ID);
+  });
+
+  it("keeps two same base/tail instances distinguishable in the renderer (#1305 P2)", async () => {
+    const dir = makeTempDir("agend-1301-status-p2-");
+    const commands = statusCommands({
+      "blog-t793300": { working_directory: dir },
+      "blog-t9793300": { working_directory: dir },
+    });
+    const text = await commands.getStatusText();
+    expect(text).toContain("blog-t793300");
+    expect(text).toContain("blog-t9793300");
   });
 });

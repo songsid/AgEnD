@@ -49,7 +49,7 @@
 - **`list_emojis` 變輕了（#1226）。** 伺服器 emoji 預設不再附圖片網址（要的話設 `with_image_urls`；想看圖用 `preview_emojis`），並可用 `name`、`limit`、`primary_only` 縮小清單——在 emoji 很多的伺服器上，一次呼叫原本要花約 1 萬字的 context，而 agent 只需要一個 emoji。emoji 與貼圖工具的呼叫改用共用的 30 秒時限，不再是固定 10 秒，一次下載多張圖的預覽不會被中途切掉。
 
 ### 修正 (Fixed)
-- **新實例用短的唯一名稱；使用者看到的地方不再有 19 位數字 id（#1301）。** 新實例一律是 `<base>-t<topic 尾 6 碼>`（撞名就加長，最長到完整 id），fleet.yaml、實例目錄、tmux 視窗都一樣；既有實例完全不動、不改名不遷移。顯示標籤優先用 `display_name`，否則把長的 `-t<數字>` 字尾縮到剩尾 6 碼（通知、Mirror、廣播、`/status`、`agend ls` 表格）；agent 用的名稱（`[from:…]`、log、查詢、`list_instances`、`--json`/`--names-only`）維持全名。孤兒偵測兩種格式都認得。
+- **新實例用短的唯一名稱；使用者看到的地方不再有 19 位數字 id（#1301）。** 新實例一律是 `<base>-t<topic 尾 6 碼>`（撞名就加長，最長到完整 id），fleet.yaml、實例目錄、tmux 視窗都一樣；既有實例完全不動、不改名不遷移。重用已被佔用的名稱時，必須證明它屬於同一個 topic（完整 `topic_id` 字串相等，有記錄時再加 adapter/world 比對）；屬於不同 topic 的名稱絕不覆寫——分配器先加長，不行就改用 `<完整名>-2`、`<完整名>-3`……只有目錄、沒有設定的碰撞永遠不算同 topic。顯示標籤優先用 `display_name`，否則只把 19 碼以上的 `-t<數字>` 字尾縮到剩尾 6 碼（通知、Mirror、廣播、`/status`、`agend ls` 表格）；撞名加長的 7–18 碼字尾完整顯示，同尾碼的實例仍可區分；agent 用的名稱（`[from:…]`、log、查詢、`list_instances`、`--json`/`--names-only`）維持全名。孤兒偵測兩種格式都認得。
 - **Telegram 的投遞狀態不再覆蓋 agent 主動加的反應（#959）。** 系統會記錄 bot 唯一反應欄位的擁有者，並讓狀態與 agent 反應共用每則訊息的佇列。無法確認擁有者時（包括 adapter 被重建、或 API 回應不明），晚到的狀態就跳過；agent 選了跟舊狀態一樣的 emoji 也會保留。General fallback 投遞亦保留原始 chat/thread 資料，Discord topic 路由不變。
 - **修正 `checkout_repo` 與 `get_usage` 工具描述（#1296）。** `checkout_repo` 的描述說「唯讀 worktree」及「接受 instance 名稱或絕對路徑」；實際上 handler（`daemon.ts`）拒絕非路徑的 source，且建立的是 detached HEAD worktree，並非強制唯讀掛載。`get_usage` 的描述只列了 Claude/Codex/Grok/Kiro，漏掉了 Muse 與 Antigravity。兩者已更正。讀取工具描述來決定用法的 agent 會看到錯誤資訊。
 - **設定了 `context_guardian.max_age_hours` 或 `grace_period_ms` 時，現在會發出警告（#1296）。** 上下文自動輪換已移除；這兩個欄位保留在 schema 中以維持相容性，但沒有任何效果。設定其中一個現在會觸發驗證警告：「無效果；上下文輪換已移除」。

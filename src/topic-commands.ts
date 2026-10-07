@@ -52,41 +52,65 @@ export const INSTANCE_NAME_SUFFIX_DIGITS = 6;
  * is free, N starts at 6 and lengthens on collision, up to the full id.
  * `exists` must cover fleet.yaml keys and instance dirs (a stale tmux window
  * with no config or dir is an orphan that startup cleanup kills — the
- * `-t<digits>` shape is what its matcher recognises). A taken full form
- * means the same topic was created before, so it is returned as-is: retry
- * keeps the deterministic old path instead of opening a second entry.
+ * `-t<digits>` shape is what its matcher recognises).
+ *
+ * A taken full form is reused as-is ONLY when `isSameTopic` proves the
+ * existing entry belongs to this same topic (retry/rebind of a partially
+ * created instance keeps the deterministic old path instead of opening a
+ * second entry). A name owned by a *different* topic — including a short
+ * suffix that happens to equal another topic's full id (e.g. Discord
+ * `blog-t123456` vs Telegram topic `123456`) — is never reused: the
+ * allocator lengthens, then falls back to `<full>-2`, `<full>-3`, …, and
+ * throws past the cap, so one topic's bind can never overwrite another
+ * topic's `working_directory`/`topic_id` (#1305 P1). When `isSameTopic` is
+ * omitted the legacy rule applies (a taken full form is reused); production
+ * callers always pass it. A dir-only collision (no config) can never prove
+ * same-topic, so callers must report it as a different topic.
  */
 export function uniqueInstanceName(
   base: string,
   topicId: number | string,
   exists: (name: string) => boolean,
+  isSameTopic?: (name: string) => boolean,
 ): string {
   const clean = sanitizeInstanceName(base);
   const id = String(topicId);
   const full = `${clean}-t${id}`;
-  // The full form already taken means this topic was (partially) created
-  // before — retry, rebind or replace: keep the deterministic old path
-  // instead of opening a second entry for the same topic.
-  if (exists(full)) return full;
+  // Same-topic retry/rebind: keep the deterministic old path.
+  if (exists(full) && (isSameTopic?.(full) ?? true)) return full;
+  // NOTE: a taken full form owned by another topic falls through — never
+  // reuse it. Prefer the short suffix, lengthening on collision.
   for (let n = Math.min(INSTANCE_NAME_SUFFIX_DIGITS, id.length); n < id.length; n++) {
     const name = `${clean}-t${id.slice(-n)}`;
     if (!exists(name)) return name;
   }
-  return full;
+  if (!exists(full)) return full;
+  // Every truncation and the full form are owned by other topics: append a
+  // counter instead of overwriting. Fail closed (throw) past the cap.
+  for (let i = 2; i < 1000; i++) {
+    const alt = `${full}-${i}`;
+    if (!exists(alt)) return alt;
+  }
+  throw new Error(`No free instance name for base "${clean}" topic "${id}"`);
 }
 
 /**
  * User-facing label for an instance name (#1301): an explicit display_name
- * wins; otherwise a long `-t<digits>` suffix (7+ digits, the pre-2.1.12
- * 19-digit form) is shortened to its last 6, keeping the `-t` shape so it
- * stays recognisable and unique. Short (new-style) suffixes and bare names
- * are shown whole. Agent-facing uses (the `[from:…]` header, logs, lookups)
- * keep the real name — agents address by it.
+ * wins; otherwise only a full snowflake-length `-t<digits>` suffix (19+
+ * digits, the pre-2.1.12 form) is shortened to its last 6, keeping the `-t`
+ * shape. Allocator-lengthened suffixes (7–18 digits, #1301 collision path)
+ * are shown whole: shortening them back to 6 would erase exactly the digits
+ * the allocator added to keep same-tail instances apart (#1305 P2).
+ * Agent-facing uses (the `[from:…]` header, logs, lookups) keep the real
+ * name — agents address by it. Residual: two different 19-digit ids sharing
+ * tail6 still shorten to the same label (needs 13+ same-tail instances to
+ * arise via the allocator; pre-2.1.12 names can collide) — set display_name
+ * to disambiguate; agent-facing names are unaffected.
  */
 export function displayInstanceName(name: string, displayName?: string | null): string {
   const dn = displayName?.trim();
   if (dn) return dn;
-  return name.replace(/-t(\d{7,})$/, (_, digits: string) => `-t${digits.slice(-6)}`);
+  return name.replace(/-t(\d{19,})$/, (_, digits: string) => `-t${digits.slice(-6)}`);
 }
 
 /** Allowed filename for /save and /load (no path separators, no shell/inject chars). */
@@ -1139,10 +1163,11 @@ export class TopicCommands {
     await adapter.sendText(msg.chatId, text, { threadId: msg.threadId });
   }
 
-  /** Compact label for status/sysinfo tables: display_name first, else a long
-   * `-t<digits>` suffix shortened to its last 6 (#1301 — never a 19-digit id,
-   * but same-base instances stay distinguishable). Keeps rows short so a
-   * large fleet's table fits Discord's 2000-char limit. The FULL name is
+  /** Compact label for status/sysinfo tables: display_name first, else a
+   * 19+-digit `-t<digits>` suffix shortened to its last 6 (#1301 — never a
+   * 19-digit id); allocator-lengthened 7–18-digit suffixes are shown whole
+   * so same-base instances stay distinguishable (#1305 P2). Keeps rows short
+   * so a large fleet's table fits Discord's 2000-char limit. The FULL name is
    * still used for all lookups — only the displayed label changes. */
   private shortInstanceName(name: string): string {
     return displayInstanceName(name, this.ctx.fleetConfig?.instances[name]?.display_name);
@@ -1441,10 +1466,19 @@ export class TopicCommands {
   async bindAndStart(dirPath: string, topicId: number | string): Promise<string> {
     if (!this.ctx.fleetConfig) throw new Error("Fleet config not loaded");
 
-    // Short unique suffix (#1301), same rule as create_instance.
+    // Short unique suffix (#1301), same rule as create_instance. Reuse of a
+    // taken name requires proof it belongs to this same topic (#1305 P1):
+    // full topic_id string equality; a dir-only collision (no config entry)
+    // can never prove that, so it counts as a different topic.
+    const instances = this.ctx.fleetConfig?.instances ?? {};
+    const wanted = String(topicId);
     const instanceName = uniqueInstanceName(basename(dirPath), topicId, (candidate) =>
-      candidate in (this.ctx.fleetConfig?.instances ?? {})
-      || existsSync(this.ctx.getInstanceDir(candidate)));
+      candidate in instances
+      || existsSync(this.ctx.getInstanceDir(candidate)),
+    (candidate) => {
+      const owner = (instances as Record<string, { topic_id?: unknown }>)[candidate];
+      return owner != null && String(owner.topic_id) === wanted;
+    });
 
     this.ctx.fleetConfig.instances[instanceName] = {
       working_directory: dirPath,

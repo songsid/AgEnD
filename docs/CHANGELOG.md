@@ -106,9 +106,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **New instances get short unique names; user-facing labels never show a 19-digit id (#1301).**
   A new instance is now `<base>-t<last 6 topic digits>` (lengthened on collision, up to the full id), across
   fleet.yaml keys, instance dirs and tmux windows — existing instances are untouched, never renamed or migrated.
-  Display labels prefer `display_name`, else shorten a long `-t<digits>` suffix to its last 6 (visibility posts,
-  Mirror Topic, broadcasts, `/status`, the `agend ls` table); agent-facing names (`[from:…]`, logs, lookups,
-  `list_instances`, `--json`/`--names-only`) keep the real name. Orphan detection recognises both forms.
+  Reusing a taken name requires proof it belongs to the same topic (full `topic_id` string equality, plus the
+  adapter/world check when recorded); a name owned by a different topic is never overwritten — the allocator
+  lengthens, then falls back to `<full>-2`, `<full>-3`, … A dir-only collision without a config entry never
+  counts as same-topic. Display labels prefer `display_name`, else shorten only a 19+-digit `-t<digits>`
+  suffix to its last 6 (visibility posts, Mirror Topic, broadcasts, `/status`, the `agend ls` table);
+  allocator-lengthened 7–18-digit suffixes are shown whole so same-tail instances stay distinguishable.
+  Agent-facing names (`[from:…]`, logs, lookups, `list_instances`, `--json`/`--names-only`) keep the real
+  name. Orphan detection recognises both forms.
 - **Delivery reactions leave agent reactions alone on Telegram (#959).** Status updates now track ownership of the bot's one reaction slot and share a per-message queue with agent reactions. A late status skips when ownership is unknown (including after adapter replacement or an ambiguous API failure), even if the agent chose the same emoji as the old status. General fallback delivery also retains the original chat/thread metadata; Discord topic routing remains unchanged.
 - **Corrected `checkout_repo` and `get_usage` tool descriptions (#1296).** The `checkout_repo` description said "read-only worktree" and "instance name or absolute path"; the handler (`daemon.ts`) rejects non-path sources and creates a detached-HEAD worktree, not an enforced read-only mount. The `get_usage` description listed only Claude/Codex/Grok/Kiro; Muse and Antigravity were missing. Both are now accurate. Agents that read tool descriptions to decide how to use them saw wrong information.
 - **Config now warns when `context_guardian.max_age_hours` or `grace_period_ms` is set (#1296).** Context rotation was removed; these keys are retained for backwards compatibility but have no effect. Setting either one now produces a validator warning: "no effect; context rotation was removed".

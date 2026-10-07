@@ -2152,9 +2152,23 @@ export class InstanceLifecycle {
       const nameBase = explicitTopicName ?? (worktreePath ? topicName! : (directory ? basename(workDir) : topicName!));
       // Short unique suffix (#1301): last 6 topic digits, lengthened on
       // collision. Existing instances are untouched — only new names go here.
-      newInstanceName = uniqueInstanceName(nameBase, createdTopicId!, (candidate) =>
-        candidate in (this.ctx.fleetConfig?.instances ?? {})
-        || existsSync(this.ctx.getInstanceDir(candidate)));
+      // Reuse of a taken name requires proof it belongs to this same topic
+      // (#1305 P1): full topic_id string equality, plus the adapter/world
+      // check when the existing entry records one (channel_id). A dir-only
+      // collision (no config entry) can never prove that.
+      {
+        const instances = this.ctx.fleetConfig?.instances ?? {};
+        const wanted = String(createdTopicId!);
+        newInstanceName = uniqueInstanceName(nameBase, createdTopicId!, (candidate) =>
+          candidate in instances
+          || existsSync(this.ctx.getInstanceDir(candidate)),
+        (candidate) => {
+          const owner = (instances as Record<string, { topic_id?: unknown; channel_id?: unknown }>)[candidate];
+          if (owner == null || String(owner.topic_id) !== wanted) return false;
+          if (adapterId != null && owner.channel_id != null && owner.channel_id !== adapterId) return false;
+          return true;
+        });
+      }
       // A recycled name must never inherit a stale pause marker.
       clearPausedMarker(this.ctx.getInstanceDir(newInstanceName));
 
