@@ -14,6 +14,8 @@ This guide keeps user-facing text, documentation, and configuration references c
 | General | General | General | General | The coordinator instance for a Fleet. Treat it as a product role and retain the capitalized name. |
 | Working | working | 工作中 | 工作中 | The instance is actively processing work. |
 | Idle | idle | 閒置 | 閒置 | The instance is ready and not actively processing work. |
+| Stuck | stuck | 卡住 | `stuck` | An internal execution state: the CLI is not ready and its pane has remained unchanged past the stuck timeout. |
+| Awaiting input | awaiting input | 等待輸入 | `awaiting_input` | A presentation label for a confirmed, fresh interaction waiting for input; it is not an additional execution state. |
 
 ## Writing guidance
 
@@ -31,3 +33,15 @@ This guide keeps user-facing text, documentation, and configuration references c
 - **Working is not running**. A running instance may be either 工作中 or 閒置. “Running” describes process availability; “working” describes current activity.
 - A **session** or exported conversation record is not Context. A session is persisted conversation history; Context is what the model can currently retain and use.
 - Generic uses of the English word “context” do not always mean model Context. Use capitalized `Context` only for the AgEnD/model concept; translate ordinary meanings according to the sentence.
+
+The internal execution states are `idle`, `working` and `stuck`; `paused` is a
+lifecycle status. Status surfaces may present `awaiting_input` when the interaction
+is confirmed as `waiting`, is fresh and is not merely suspected. They retain the
+underlying `execution_state` and separate `interaction` metadata so callers can
+distinguish activity from a prompt waiting for input.
+
+An interaction observation becomes stale after 15 seconds without fresh evidence
+and is presented as `unverified`; it no longer projects `awaiting_input`. This
+freshness TTL does not clear a runtime dialog's input hold. The hold is tracked
+separately from presentation and is updated by pane observations; stale telemetry
+does not authorize delivery into a dialog or approve the requested operation.

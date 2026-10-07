@@ -103,6 +103,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   pictures is not cut short.
 
 ### Fixed
+- **Updated configuration and operational documentation (#1278).** English and Traditional Chinese now describe native backend instruction files, startup decision snapshots, credential-profile differences, current defaults/tool counts and monitoring-only context guardian settings. Corrected macOS advisory memory behavior, diagnostics, test/build isolation, interaction terminology and hang controls; repaired the Chinese CLI templates link. Documentation only; runtime behavior is unchanged.
 - **Muse session discovery no longer reads whole session logs (#1228).** Finding the workspace's session used to
   `readFileSync` all of every candidate `session.jsonl` before slicing the 64KB head that names the working
   directory — slow when sessions grow long. Both `MuseBackend.getSessionId` and the detection-seam `museFingerprint`
