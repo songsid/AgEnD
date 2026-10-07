@@ -760,6 +760,7 @@ export function handleSettingsRequest(
         "context_lines",
         "tool_progress",
         "reply_completion_guard",
+        "web_echo",
       ]);
       const unknown = Object.keys(body).filter(field => !allowed.has(field));
       if (unknown.length) return json(res, 400, { error: `unsupported fields: ${unknown.join(", ")}` });
@@ -782,6 +783,9 @@ export function handleSettingsRequest(
       if (body.reply_completion_guard !== undefined && body.reply_completion_guard !== null
         && typeof body.reply_completion_guard !== "boolean") {
         return json(res, 400, { error: "reply_completion_guard must be a boolean" });
+      }
+      if (body.web_echo !== undefined && typeof body.web_echo !== "boolean") {
+        return json(res, 400, { error: "web_echo must be a boolean" });
       }
 
       let classic: Record<string, unknown>;

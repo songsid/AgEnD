@@ -463,6 +463,9 @@ export function validateClassicBotConfig(config: unknown): ValidationResult {
       if (channel.reply_completion_guard !== undefined && typeof channel.reply_completion_guard !== "boolean") {
         err(`channels.${key}.reply_completion_guard`, "must be a boolean");
       }
+      if (channel.web_echo !== undefined && typeof channel.web_echo !== "boolean") {
+        err(`channels.${key}.web_echo`, "must be a boolean");
+      }
     }
   }
 
