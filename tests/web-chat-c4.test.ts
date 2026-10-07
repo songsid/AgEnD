@@ -192,6 +192,72 @@ describe("FleetManager.clickWebPrompt", () => {
 
 // ── C-3: a fleet with no chat platform ─────────────────────────────────────────────────────────────────────
 
+describe("instance-health prompts on a web-only fleet (#1307 item 6)", () => {
+  // No chat platform: the dashboard is the only place to ask. Same nonce, same claim, same handlers.
+  async function webOnlyFleet(instances: Record<string, unknown> = { w: { working_directory: "/tmp" } }) {
+    const f = await fleet();
+    f.any.fleetConfig = { instances };
+    f.any.setTopicIcon = () => {};
+    f.any.notifyInstanceTopic = () => {};
+    return f;
+  }
+  const offered = (events: Array<{ event: string; data: any }>) => events.filter(e => e.event === "prompt").map(e => e.data);
+
+  it("a hang is asked on the dashboard, and Keep waiting / Force restart answer it there", async () => {
+    const { fm, any, events } = await webOnlyFleet();
+    const restarted: string[] = [];
+    any.restartSingleInstance = async (n: string) => { restarted.push(n); };
+    await fm.sendHangNotification("w", 20 * 60_000);
+    const [p] = offered(events);
+    expect(p).toMatchObject({ instance: "w", actions: [{ id: "restart" }, { id: "wait" }] });
+    expect(p.text).toContain("w");
+    expect(fm.listWebPrompts()).toHaveLength(1);
+    expect(await fm.clickWebPrompt("w", p.nonce, "restart")).toEqual({ status: 200 });
+    expect(restarted).toEqual(["w"]);
+    expect(events.filter(e => e.event === "prompt_resolved").at(-1)!.data).toMatchObject({ instance: "w", nonce: p.nonce, outcome: expect.any(String) });
+    expect(fm.listWebPrompts()).toEqual([]);
+  });
+
+  it("a clean exit offers Restart / Ignore there, with no General needed", async () => {
+    const { fm, any, events } = await webOnlyFleet();
+    const restarted: string[] = [];
+    any.restartSingleInstance = async (n: string) => { restarted.push(n); };
+    await fm.notifyNormalExit("w");
+    const [p] = offered(events);
+    expect(p.actions.map((a: { id: string }) => a.id)).toEqual(["restart", "ignore"]);
+    expect(await fm.clickWebPrompt("w", p.nonce, "restart")).toEqual({ status: 200 });
+    expect(restarted).toEqual(["w"]);
+  });
+
+  it("an interactive prompt is offered when there is a General to help; Confirm asks it", async () => {
+    const { fm, any, events } = await webOnlyFleet({ w: { working_directory: "/tmp" }, g: { working_directory: "/tmp", general_topic: true } });
+    any.daemons.set("g", {});
+    const delivered: Array<[string, any]> = [];
+    any.deliverToInstance = async (n: string, m: unknown) => { delivered.push([n, m]); return true; };
+    await fm.notifyInteractivePrompt("w", "permission");
+    const [p] = offered(events);
+    expect(p.actions.map((a: { id: string }) => a.id)).toEqual(["confirm", "cancel"]);
+    expect(await fm.clickWebPrompt("w", p.nonce, "confirm")).toEqual({ status: 200 });
+    expect(delivered.map(d => d[0])).toEqual(["g"]);
+    expect(delivered[0]![1].meta).toMatchObject({ chat_id: "web", adapter_id: "web", source: "web" });
+  });
+
+  it("an interactive prompt with no General to help is not offered (nobody could act on Confirm)", async () => {
+    const { fm, events } = await webOnlyFleet();
+    await fm.notifyInteractivePrompt("w", "permission");
+    expect(offered(events)).toEqual([]);
+  });
+
+  it("a fleet that has a chat platform configured is untouched: no adapter for it, no prompt anywhere", async () => {
+    const { fm, any, events } = await fleet();
+    any.fleetConfig = { channel: { type: "telegram", bot_token_env: "X", group_id: 1 }, instances: { w: { working_directory: "/tmp" } } };
+    any.setTopicIcon = () => {}; any.notifyInstanceTopic = () => {};
+    await fm.sendHangNotification("w");
+    await fm.notifyNormalExit("w");
+    expect(offered(events)).toEqual([]);
+  });
+});
+
 describe("replies on a web-only fleet", () => {
   async function outbound(fleetConfig: unknown, msg: Record<string, unknown>) {
     const { fm, any, events } = await fleet();

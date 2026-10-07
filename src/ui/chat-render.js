@@ -340,6 +340,18 @@
     return Number(scrollHeight) - Number(scrollTop) - Number(clientHeight) <= (slack == null ? 48 : slack);
   }
 
+  /** A paste longer than this many characters becomes a text file instead of filling the composer (#1307). */
+  var LONG_PASTE_CHARS = 10000;
+  function isLongPaste(text) { return typeof text === "string" && text.length > LONG_PASTE_CHARS; }
+
+  /** How long a turn has run, as m:ss (h:mm:ss past an hour); never negative. */
+  function formatElapsed(ms) {
+    var t = Math.max(0, Math.floor((Number(ms) || 0) / 1000));
+    var h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sec = t % 60;
+    var two = function (n) { return (n < 10 ? "0" : "") + n; };
+    return h ? h + ":" + two(m) + ":" + two(sec) : m + ":" + two(sec);
+  }
+
   /** A code block longer than this many lines is folded until it is opened. */
   var CODE_FOLD_LINES = 30;
   /** Lines in a block of code (a trailing newline does not start another). */
@@ -428,5 +440,6 @@
     FILE_LIMITS: FILE_LIMITS, formatSize: formatSize, checkFiles: checkFiles, attachmentsHtml: attachmentsHtml,
     nextDeliveryState: nextDeliveryState, applyDelivery: applyDelivery, deliveryHtml: deliveryHtml, isBusy: isBusy,
     isNearBottom: isNearBottom, CODE_FOLD_LINES: CODE_FOLD_LINES, lineCount: lineCount,
+    LONG_PASTE_CHARS: LONG_PASTE_CHARS, isLongPaste: isLongPaste, formatElapsed: formatElapsed,
   };
 });

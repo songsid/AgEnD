@@ -431,7 +431,8 @@ describe("the dashboard (the real page script)", () => {
     const p = page();
     p.sse.activity!({ data: JSON.stringify({ instance: "w", state: "working" }) });
     expect(bar(p).className).toBe("work-bar on");
-    expect(bar(p).children.map((k: any) => k.textContent)).toEqual(["", "w is working…"]);
+    expect(bar(p).children.map((k: any) => k.textContent)).toEqual(["", "w is working…", "0:00"]);
+    expect(bar(p).children[2].attrs["aria-hidden"], "the ticking time is not read out every second").toBe("true");
     expect([button(p).hidden, p.nodes.sendBtn.hidden], "an empty composer: Send becomes Stop").toEqual([false, true]);
     p.nodes.msgIn.value = "next, please";
     p.read("renderComposerButtons()");
@@ -457,12 +458,17 @@ describe("the dashboard (the real page script)", () => {
     expect(p.read("activity.other")).toBeNull();
   });
 
-  it("a status that presents awaiting_input (#1212) still shows the agent working: the bar follows the execution state", () => {
+  it("a status that presents awaiting_input (#1212) keeps the agent's turn — the line stays, Stop stays — and says it waits on you (#1307)", () => {
     const p = page();
     p.sse.activity!({ data: JSON.stringify({ instance: "w", state: "working" }) });
-    p.sse.status!({ data: JSON.stringify({ uptime: 1, instances: [{ name: "w", state: "awaiting_input", execution_state: "working" }] }) });
-    expect(bar(p).className).toBe("work-bar on");
+    p.sse.status!({ data: JSON.stringify({ uptime: 1, instances: [{ name: "w", state: "awaiting_input", execution_state: "working", interaction_summary: "Permission prompt for 12s" }] }) });
+    expect(bar(p).className).toBe("work-bar on awaiting");
+    expect(bar(p).children.map((k: any) => k.textContent)).toEqual(["", "w is waiting for your input", "Permission prompt for 12s"]);
+    expect(button(p).hidden, "Stop stays").toBe(false);
     expect(p.read("activity.w")).toBe("working");
+    // Answered: back to working.
+    p.sse.status!({ data: JSON.stringify({ uptime: 1, instances: [{ name: "w", state: "working", execution_state: "working" }] }) });
+    expect(bar(p).className).toBe("work-bar on");
     // An older status without execution_state still works from `state`.
     p.sse.status!({ data: JSON.stringify({ uptime: 1, instances: [{ name: "w", state: "idle" }] }) });
     expect(bar(p).className).toBe("work-bar");
@@ -498,6 +504,25 @@ describe("the dashboard (the real page script)", () => {
     await p.read('cancelReply("a/b")');
     expect(calls.at(-1)).toEqual(["POST", "/ui/cancel/a%2Fb"]);
     expect(p.toasts.at(-1)).toEqual(["a/b is not running", false]);
+  });
+
+  it("after Stop: 'Stopping…' until the agent goes idle; a Stop that failed changes nothing (#1307)", async () => {
+    const p = page();
+    p.read('api = async (m, path) => path.endsWith("/w") ? { cancelled: "w" } : { error: "x is not running" }');
+    p.sse.activity!({ data: JSON.stringify({ instance: "w", state: "working" }) });
+    (p.c as any).stopNode = button(p);
+    await p.read("ACTIONS.stopReply(stopNode)");
+    expect(bar(p).className).toBe("work-bar on stopping");
+    expect(bar(p).children[1].textContent).toBe("Stopping w…");
+    p.sse.status!({ data: JSON.stringify({ uptime: 1, instances: [{ name: "w", state: "working" }] }) });
+    expect(bar(p).className, "still stopping while it works").toBe("work-bar on stopping");
+    p.sse.activity!({ data: JSON.stringify({ instance: "w", state: "idle" }) });
+    expect(bar(p).className).toBe("work-bar");
+    p.sse.activity!({ data: JSON.stringify({ instance: "w", state: "working" }) });
+    expect(bar(p).className, "the next turn starts fresh").toBe("work-bar on");
+    p.read('cur = "x"; activity.x = "working"');
+    await p.read('cancelReply("x")');
+    expect(p.read("stopping.x")).toBeUndefined();
   });
 
   it("a `delivery` event puts the ticks on that message", () => {

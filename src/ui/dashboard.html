@@ -174,8 +174,9 @@
   .btn-sm { padding: 4px 8px; }
 
   /* ── Toast ───────────────────────────────────────────── */
+  .toasts { position: fixed; bottom: 24px; right: 24px; z-index: 100; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; pointer-events: none; }
   .toast {
-    position: fixed; bottom: 24px; right: 24px; padding: 10px 16px; max-width: min(420px, calc(100vw - 32px));
+    padding: 10px 16px; max-width: min(420px, calc(100vw - 32px));
     border-radius: 10px; font-size: 13px; font-weight: 500; z-index: 100; color: #fff; box-shadow: var(--shadow);
     animation: toastIn 0.25s ease-out;
   }
@@ -242,7 +243,19 @@
   .work-bar.on { display: flex; gap: 8px; align-items: center; margin: 0 4px 8px; font-size: 12px; color: var(--text-sec); }
   .work-bar .lbl { flex: 1; }
   .work-bar .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--success); animation: agendPulse 1.2s ease-in-out infinite; }
-  .work-bar.stuck .pulse { background: var(--warn); animation: none; }
+  .work-bar.stuck .pulse, .work-bar.awaiting .pulse { background: var(--warn); animation: none; }
+  .work-bar.stopping .pulse { background: var(--text-muted); }
+  .work-bar .elapsed { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-muted); }
+  .work-bar.awaiting { color: var(--text); }
+  .work-bar .note { color: var(--text-muted); font-size: 11px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .badge-await { flex-shrink: 0; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 999px; background: var(--warn-bg); color: var(--warn); border: 1px solid var(--warn-line); }
+  .drop-overlay { display: none; }
+  .chat-view.dragging .drop-overlay {
+    display: flex; position: absolute; inset: 8px; z-index: 20; align-items: center; justify-content: center; pointer-events: none;
+    border: 2px dashed var(--accent); border-radius: 16px; background: color-mix(in srgb, var(--bg) 82%, transparent);
+  }
+  .drop-card { display: flex; flex-direction: column; align-items: center; gap: 8px; color: var(--accent); font-weight: 600; font-size: 15px; }
+  .drop-card svg { width: 32px; height: 32px; }
   @keyframes agendPulse { 0%, 100% { opacity: .3; } 50% { opacity: 1; } }
   @media (prefers-reduced-motion: reduce) { .work-bar .pulse { animation: none; } .toast { animation: none; } }
   .tick { margin-left: 4px; font-size: 11px; }
@@ -253,11 +266,14 @@
   .failed-send .txt { flex: 1; white-space: pre-wrap; word-break: break-word; max-height: 4.5em; overflow: hidden; }
   .pending-files { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 0 8px; }
   .pending-files:empty { display: none; }
-  .file-chip { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); max-width: 260px; }
+  .file-chip { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 4px 8px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); max-width: 320px; }
   .file-chip img { width: 28px; height: 28px; object-fit: cover; border-radius: 4px; }
-  .file-chip .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-chip .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .file-chip .sz { color: var(--text-muted); flex-shrink: 0; }
+  .file-chip .ic { display: inline-flex; color: var(--text-sec); }
+  .file-chip .as-text { white-space: nowrap; flex-shrink: 0; background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--text-sec); cursor: pointer; font: inherit; font-size: 11px; padding: 1px 6px; }
+  .file-chip .as-text:hover { color: var(--text); border-color: var(--border-strong); }
   .file-chip button { background: none; border: 0; color: var(--text-muted); cursor: pointer; font-size: 13px; }
-  .chat-view.dragging .scroller { outline: 2px dashed var(--accent); outline-offset: -8px; }
   .msg .atts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
   .msg.user .atts { justify-content: flex-end; }
   .msg .att-img img { max-width: 260px; max-height: 220px; border-radius: 8px; display: block; border: 1px solid var(--border); }
@@ -376,6 +392,7 @@
     .composer-wrap { padding: 0 10px 10px; }
     .msg.user { max-width: 88%; }
     .detail-view, .task-view { padding: 16px 12px; }
+    .toasts { top: 60px; bottom: auto; left: 12px; right: 12px; align-items: stretch; }
   }
   @media (prefers-reduced-motion: reduce) { .sidebar { transition: none; } }
 </style>
@@ -427,6 +444,8 @@
 const UI_LANG = localStorage.getItem("agend_lang") || (navigator.language?.toLowerCase().startsWith("zh") ? "zh-TW" : "en");
 const UI_TEXT = {
   en: {
+    stopping: "Stopping {0}…", awaiting: "{0} is waiting for your input", approxNote: "Read from the terminal, so approximate", elapsedTitle: "Time since this page saw it start (approximate)", needsYou: "needs you",
+    dropHere: "Drop files to attach them", asText: "As text", pasteAttached: "A long paste ({0} characters) was attached as a text file", pasteKeptAsText: "No room for another attachment: the long paste stays as text",
     send: "Send", composerPlaceholder: "Send a message…", composerHint: "Enter to send · Shift+Enter for a new line", attachTitle: "Attach files (images, PDF, text — or paste / drop them)",
     copy: "Copy", copyMessage: "Copy this reply", copied: "Copied", copyFailed: "Copy failed", wrap: "Wrap", showAll: "Show all {0} lines", showLess: "Show less", jumpLatest: "↓ Latest", newBelow: "↓ {0} new",
     disconnected: "disconnected", tick_queued: "Waiting behind another message", tick_processing: "Handed to the agent", tick_delivered: "The agent has it", tick_failed: "Not delivered", tick_cancelled: "Dropped by Stop",
@@ -441,6 +460,8 @@ const UI_TEXT = {
     teamCreated: "Team created", teamDeleted: "Team deleted", configSaved: "Config saved", configRestart: " (restart Fleet to apply channel changes)",
   },
   "zh-TW": {
+    stopping: "正在中止 {0}…", awaiting: "{0} 正在等你回應", approxNote: "從終端畫面判讀，僅供參考", elapsedTitle: "從這個頁面看到它開始工作起算（約略）", needsYou: "等你回應",
+    dropHere: "放開即可附加檔案", asText: "改為文字", pasteAttached: "貼上的長文字（{0} 個字元）已改為文字檔附加", pasteKeptAsText: "附件已滿，貼上的長文字保留為一般文字",
     send: "送出", composerPlaceholder: "輸入訊息…", composerHint: "Enter 送出 · Shift+Enter 換行", attachTitle: "附加檔案（圖片、PDF、文字檔，也可以貼上或拖曳）",
     copy: "複製", copyMessage: "複製這則回覆", copied: "已複製", copyFailed: "複製失敗", wrap: "換行", showAll: "展開全部 {0} 行", showLess: "收合", jumpLatest: "↓ 最新", newBelow: "↓ {0} 則新訊息",
     disconnected: "已斷線", tick_queued: "排在前一則訊息之後", tick_processing: "已交給 agent", tick_delivered: "agent 已收到", tick_failed: "未送達", tick_cancelled: "已被中止取消",
@@ -472,6 +493,17 @@ const activity = {};
 // Fleet prompts open for an instance (hang / clean exit / interactive prompt), by nonce: the same buttons the
 // platform shows, answerable here. A resolved one keeps its outcome line for a minute, without buttons.
 const prompts = {};
+// The turn (#1307), as near as a terminal lets the page tell: when this page saw the agent start working (its own
+// monotonic clock, so the elapsed time is approximate), a Stop on its way, and an instance waiting on a terminal prompt.
+const workingSince = {}, stopping = {}, awaiting = {};
+const monoNow = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
+let elapsedTimer = null, elapsedEl = null;
+function noteActivity(name, state) {
+  const was = AgendChatRender.isBusy(activity[name]), now = AgendChatRender.isBusy(state);
+  activity[name] = state;
+  if (now && !was) workingSince[name] = monoNow();
+  if (!now) { delete workingSince[name]; delete stopping[name]; }
+}
 // This browser's choices (#1307), kept like agend_lang: wrapped code lines, a hidden sidebar. Theme: /assets/theme.js.
 const stored = key => { try { return localStorage.getItem(key); } catch { return null; } };
 let codeWrap = stored("agend_code_wrap") === "1";
@@ -505,9 +537,12 @@ function esc(s) { return escAttr(s); }
 // Escapes & " ' < >: safe for text and inside a quoted attribute. esc() is this same function; attribute sites name it.
 function escAttr(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/'/g, "&#39;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 function fmtUp(s) { return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s/60)}m` : `${Math.floor(s/3600)}h ${Math.floor((s%3600)/60)}m`; }
+// Toasts stack in one corner (on a phone, under the top bar) instead of piling up on the composer.
 function toast(msg, ok=true) {
+  let box = document.getElementById("toasts");
+  if (!box) { box = document.createElement("div"); box.id = "toasts"; box.className = "toasts"; document.body.appendChild(box); }
   const el = document.createElement("div"); el.className = `toast ${ok?"ok":"err"}`; el.textContent = msg;
-  document.body.appendChild(el); setTimeout(() => el.remove(), 3000);
+  box.appendChild(el); setTimeout(() => el.remove(), 3000);
 }
 
 // Live updates arrive over SSE. Some paths cannot carry it (Cloudflare Quick Tunnels do not), and a proxy
@@ -518,7 +553,11 @@ function applyStatus(d) {
   instances = d.instances;
   // The raw execution state, the same thing the "activity" events carry; `state` may be the presentation
   // "awaiting_input" (#1212), which must not hide the working line and Stop between two events.
-  for (const i of instances) activity[i.name] = (i.execution_state !== undefined ? i.execution_state : i.state) ?? null;
+  for (const i of instances) {
+    noteActivity(i.name, (i.execution_state !== undefined ? i.execution_state : i.state) ?? null);
+    // Waiting on a terminal prompt (a permission, a login, a dialog): read from the pane, so approximate.
+    awaiting[i.name] = i.state === "awaiting_input" ? (typeof i.interaction_summary === "string" ? i.interaction_summary : "") : null;
+  }
   document.getElementById("uptime").textContent = fmtUp(d.uptime);
   renderList();
   if (cur) { const i = instances.find(x => x.name === cur); const a = document.getElementById("actions"); if (i && a) renderActions(i); }
@@ -607,7 +646,7 @@ sse.addEventListener("prompt_resolved", e => {
 sse.addEventListener("activity", e => {
   sseAlive();
   const d = JSON.parse(e.data);
-  activity[d.instance] = d.state ?? null;
+  noteActivity(d.instance, d.state ?? null);
   if (d.instance === cur) renderWorkBar();
 });
 // What was said before this page loaded (a reload no longer starts from an empty chat).
@@ -644,7 +683,7 @@ function renderList() {
     return `<div class="instance-item${i.name===cur&&mode==="instance"?" active":""}" data-n="${esc(i.name)}" title="${esc(tip)}">
     <div class="dot ${escAttr(i.status)}" title="${escAttr(i.status)}"></div><div class="inst-identity">
     <div class="inst-name">${esc(i.name)}</div>${alias ? `<div class="inst-alias">${esc(alias)}</div>` : ""}
-    </div><div class="inst-meta">${i.cost>0?`$${i.cost.toFixed(2)}`:""}${ctxMeta}</div></div>`;
+    </div>${awaiting[i.name] != null ? `<span class="badge-await" title="${escAttr(awaiting[i.name] || tr("approxNote"))}">${tr("needsYou")}</span>` : ""}<div class="inst-meta">${i.cost>0?`$${i.cost.toFixed(2)}`:""}${ctxMeta}</div></div>`;
   }).join("");
   el.querySelectorAll(".instance-item").forEach(x => x.addEventListener("click", () => sel(x.dataset.n)));
 }
@@ -690,6 +729,7 @@ function renderInstanceMain(main) {
   main.innerHTML = `
     <div class="chat-view${codeWrap ? " wrap-code" : ""}" id="chatView"${curTab==="chat"?"":" hidden"}>
       <div class="scroller" id="scroller"><div class="thread" id="messages"></div></div>
+      <div class="drop-overlay" aria-hidden="true"><div class="drop-card">${ICON_CLIP}<span>${tr("dropHere")}</span></div></div>
       <div class="composer-wrap"><div class="composer-col">
         <button type="button" class="jump-latest" id="jumpLatest" data-act="jumpLatest" hidden></button>
         <div id="prompts" class="prompts" aria-live="polite"></div>
@@ -719,14 +759,16 @@ function renderInstanceMain(main) {
     const fileIn = document.getElementById("fileIn");
     document.getElementById("attachBtn").addEventListener("click", () => fileIn.click());
     fileIn.addEventListener("change", () => { addFiles(fileIn.files); fileIn.value = ""; });
-    inp.addEventListener("paste", e => {
-      const files = e.clipboardData && e.clipboardData.files;
-      if (files && files.length) { addFiles(files); if (!e.clipboardData.getData("text")) e.preventDefault(); }
-    });
+    inp.addEventListener("paste", onComposerPaste);
+    // A file dragged over the chat shows where it will go; leaving or dropping clears it (counted, so moving over
+    // the messages inside does not flicker it).
     const view = document.getElementById("chatView");
-    view.addEventListener("dragover", e => { if (e.dataTransfer && [...e.dataTransfer.types].includes("Files")) { e.preventDefault(); view.classList.add("dragging"); } });
-    view.addEventListener("dragleave", () => view.classList.remove("dragging"));
-    view.addEventListener("drop", e => { if (e.dataTransfer && e.dataTransfer.files.length) { e.preventDefault(); addFiles(e.dataTransfer.files); } view.classList.remove("dragging"); });
+    let dragDepth = 0;
+    const hasFiles = e => !!(e.dataTransfer && [...e.dataTransfer.types].includes("Files"));
+    view.addEventListener("dragenter", e => { if (hasFiles(e)) { dragDepth++; view.classList.add("dragging"); } });
+    view.addEventListener("dragover", e => { if (hasFiles(e)) e.preventDefault(); });
+    view.addEventListener("dragleave", e => { if (hasFiles(e) && --dragDepth <= 0) { dragDepth = 0; view.classList.remove("dragging"); } });
+    view.addEventListener("drop", e => { dragDepth = 0; view.classList.remove("dragging"); if (e.dataTransfer && e.dataTransfer.files.length) { e.preventDefault(); addFiles(e.dataTransfer.files); } });
     renderPendingFiles();
     renderFailedSend();
     renderWorkBar();
@@ -772,6 +814,7 @@ const scrollMemo = {};               // per chat: where the reader left it (null
 let unseen = 0;                      // messages that arrived below a reader who scrolled up
 function msgKey(x) { return `${x.boot}-${x.id}`; }
 const ICON_CLIP = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>';
+const ICON_FILE = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
 const ICON_COPY = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
 function isUserMsg(x) { return x.sender==="web-user"||(!x.sender.startsWith("agend")&&x.sender!==cur&&x.sender!=="general"); }
 function msgHtml(x) {
@@ -975,18 +1018,42 @@ const TICK_LABELS = () => ({ queued: tr("tick_queued"), processing: tr("tick_pro
 // "<name> is working…" and a Stop for the reply under way — built from nodes: the name is text, never markup.
 function renderWorkBar() {
   const bar = document.getElementById("workBar"); if (!bar) return;
-  const state = AgendChatRender.isBusy(activity[cur]) ? activity[cur] : "";
   renderComposerButtons();
-  // Every status frame comes through here: rebuild only on a change.
-  const shown = `${cur}\u0000${state}`;
-  if (bar.dataset.shown === shown) return;
-  bar.dataset.shown = shown;
-  bar.textContent = "";
-  if (!cur || !state) { bar.className = "work-bar"; return; }
-  bar.className = `work-bar on${state === "stuck" ? " stuck" : ""}`;
-  const dot = document.createElement("span"); dot.className = "pulse"; dot.setAttribute("aria-hidden", "true");
-  const label = document.createElement("span"); label.className = "lbl"; label.textContent = trf(state === "stuck" ? "stuck" : "working", cur);
-  bar.append(dot, label);
+  const busy = AgendChatRender.isBusy(activity[cur]) ? activity[cur] : "";
+  const wait = cur && awaiting[cur] != null ? awaiting[cur] : null;
+  const kind = !cur ? "" : wait != null ? "awaiting" : stopping[cur] && busy ? "stopping" : busy;
+  // Every status frame comes through here: rebuild only on a change; the elapsed time ticks in place.
+  const shown = `${cur}\u0000${kind}\u0000${wait ?? ""}`;
+  if (bar.dataset.shown !== shown) {
+    bar.dataset.shown = shown;
+    bar.textContent = ""; elapsedEl = null;
+    if (!kind) { bar.className = "work-bar"; }
+    else {
+      bar.className = kind === "working" ? "work-bar on" : `work-bar on ${kind}`;
+      const dot = document.createElement("span"); dot.className = "pulse"; dot.setAttribute("aria-hidden", "true");
+      const label = document.createElement("span"); label.className = "lbl";
+      label.textContent = trf(kind === "stuck" ? "stuck" : kind === "stopping" ? "stopping" : kind === "awaiting" ? "awaiting" : "working", cur);
+      bar.append(dot, label);
+      if (kind === "awaiting") {
+        // What kind of prompt, in the fleet's words, and that it is read from the terminal.
+        const note = document.createElement("span"); note.className = "note"; note.textContent = wait || tr("approxNote");
+        note.title = tr("approxNote"); bar.append(note);
+      } else {
+        // Ticks every second inside a polite live region: hidden from screen readers, or it would be read out each tick.
+        const t = document.createElement("span"); t.className = "elapsed"; t.title = tr("elapsedTitle"); t.setAttribute("aria-hidden", "true");
+        bar.append(t); elapsedEl = t;
+      }
+    }
+  }
+  tickElapsed();
+  const run = !!kind && kind !== "awaiting";
+  if (run && !elapsedTimer) elapsedTimer = setInterval(tickElapsed, 1000);
+  if (!run && elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; }
+}
+function tickElapsed() {
+  const t = elapsedEl; if (!t) return;
+  const since = workingSince[cur];
+  t.textContent = since == null ? "" : AgendChatRender.formatElapsed(monoNow() - since);
 }
 // The composer's buttons (#1307): while the agent works, Stop is there; Send shows beside it only when there is something
 // to send (a message sent while it works waits its turn, as on Telegram). Shown and hidden, never rebuilt, so a
@@ -1006,7 +1073,15 @@ async function cancelReply(target, button) {
   try { r = await api("POST", `/ui/cancel/${encodeURIComponent(target)}`); }
   catch (err) { r = { error: err && err.message ? err.message : tr("disconnected") }; }
   if (button) button.disabled = false;
-  if (r && !r.error) toast(`${target}: ${tr("stopSent")}`);
+  if (r && !r.error) {
+    // "Stopping…" until the agent goes idle (or a minute passes: the edge can be missed by a dropped stream).
+    if (AgendChatRender.isBusy(activity[target])) {
+      stopping[target] = true;
+      setTimeout(() => { if (stopping[target]) { delete stopping[target]; if (target === cur) renderWorkBar(); } }, 60000);
+      if (target === cur) renderWorkBar();
+    }
+    toast(`${target}: ${tr("stopSent")}`);
+  }
   else toast(r && r.error ? r.error : tr("disconnected"), false);
 }
 function growComposer(inp) { inp.style.height = "auto"; inp.style.height = Math.min(inp.scrollHeight, 240) + "px"; }
@@ -1085,11 +1160,49 @@ function renderPendingFiles() {
     if (/^image\//.test(f.type) && typeof URL.createObjectURL === "function") {
       const img = document.createElement("img"); img.alt = ""; img.src = URL.createObjectURL(f); img.onload = () => URL.revokeObjectURL(img.src); chip.append(img);
     }
-    const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = `${f.name} · ${AgendChatRender.formatSize(f.size)}`;
-    const x = document.createElement("button"); x.type = "button"; x.title = tr("removeFile"); x.textContent = "✕";
+    else { const ic = document.createElement("span"); ic.className = "ic"; ic.setAttribute("aria-hidden", "true"); ic.innerHTML = ICON_FILE; chip.append(ic); }
+    const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = f.name;
+    const sz = document.createElement("span"); sz.className = "sz"; sz.textContent = AgendChatRender.formatSize(f.size);
+    chip.append(nm, sz);
+    if (pastedTexts.has(f)) {
+      // A long paste that became a file: it can go back into the composer as text.
+      const back = document.createElement("button"); back.type = "button"; back.className = "as-text"; back.textContent = tr("asText");
+      back.onclick = () => {
+        const inp = document.getElementById("msgIn"); if (!inp) return;
+        pendingFiles[cur].splice(i, 1);
+        setComposer(inp, inp.value ? `${inp.value}\n${pastedTexts.get(f)}` : pastedTexts.get(f));
+        renderPendingFiles(); inp.focus();
+      };
+      chip.append(back);
+    }
+    const x = document.createElement("button"); x.type = "button"; x.title = tr("removeFile"); x.setAttribute("aria-label", `${tr("removeFile")} ${f.name}`); x.textContent = "✕";
     x.onclick = () => { pendingFiles[cur].splice(i, 1); renderPendingFiles(); };
-    chip.append(nm, x); box.append(chip);
+    chip.append(x); box.append(chip);
   });
+}
+// Files in a paste are attached; a very long text paste goes as a text file instead of filling the composer (it can
+// go back in as text). The browser's own paste is stopped only once that file is really attached (#1316 review): when
+// it cannot be — five files already, 25 MB used, or the text itself over 10 MB — the text is pasted as usual.
+function onComposerPaste(e) {
+  const files = e.clipboardData && e.clipboardData.files;
+  const text = e.clipboardData ? e.clipboardData.getData("text") : "";
+  if (files && files.length) { addFiles(files); if (!text) e.preventDefault(); return; }
+  if (AgendChatRender.isLongPaste(text) && attachPastedText(text)) e.preventDefault();
+}
+// Long pastes turned into files, and their text (to put back on request).
+const pastedTexts = new WeakMap();
+/** Attach `text` as a .txt file when it fits beside what is already attached; true when it was. */
+function attachPastedText(text) {
+  if (!cur) return false;
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "");
+  const f = new File([text], `pasted-${stamp}.txt`, { type: "text/plain" });
+  // Checked first, quietly: a paste that does not fit is a paste, not a refused file.
+  const taken = (inFlightFiles[cur] || []).concat(pendingFiles[cur] || []);
+  if (AgendChatRender.checkFiles(taken, [f]).rejected.length) { toast(tr("pasteKeptAsText")); return false; }
+  pastedTexts.set(f, text);
+  addFiles([f]);
+  toast(trf("pasteAttached", text.length.toLocaleString()));
+  return true;
 }
 function renderFailedSend() {
   const box = document.getElementById("failedSend"); if (!box) return;
