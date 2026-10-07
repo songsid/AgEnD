@@ -23,3 +23,30 @@ export async function readNewLines(path: string, fromOffset: number): Promise<{ 
     await fh.close();
   }
 }
+
+const BOUNDARY_CHUNK = 64 * 1024;
+
+/**
+ * Where the last complete record at or before `size` ends: just after the last LF, or 0 when there is none
+ * (#1250). A baseline or checkpoint taken while the CLI is mid-write must not land inside that record — the
+ * next read would start with its tail, skip it as malformed, and the record would be lost. Anchoring at the
+ * line boundary keeps the invariant readNewLines holds (an offset is always a record boundary), so the
+ * in-progress record is read once it is complete. Scans backwards from `size` (default: the current size).
+ */
+export async function lastLineBoundary(path: string, size?: number): Promise<number> {
+  const fh = await open(path, "r");
+  try {
+    let position = size ?? (await fh.stat()).size;
+    while (position > 0) {
+      const length = Math.min(BOUNDARY_CHUNK, position);
+      const buffer = Buffer.alloc(length);
+      const { bytesRead } = await fh.read(buffer, 0, length, position - length);
+      const at = buffer.subarray(0, bytesRead).lastIndexOf(0x0a);
+      if (at >= 0) return position - length + at + 1;
+      position -= length;
+    }
+    return 0;
+  } finally {
+    await fh.close();
+  }
+}

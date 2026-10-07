@@ -39,6 +39,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   pictures is not cut short.
 
 ### Fixed
+- **A tool step being written when AgEnD starts watching is no longer lost (#1250).** #1221 made AgEnD read a CLI's
+  transcript only up to the last complete line. The point it starts from still went to the file's current size. If
+  the CLI was half-way through writing an entry at that moment (a first attach, an instance restart, a delivery
+  checkpoint), the rest of that entry was skipped as unreadable and its tool progress never showed. Every such
+  starting point is now the last complete line, for Claude, Codex and Kiro alike.
 - **No more false memory alerts on macOS (#1257).** On a Mac, AgEnD no longer posts the "Host memory pressure"
   notice and no longer slows or holds agent starts for memory. Its free-memory and swap figures are not a pressure
   signal there: macOS adds swap files as it needs them, so a nearly full swap is normal, and a 16 GB Mac with 2.8 GB

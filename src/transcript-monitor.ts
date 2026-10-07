@@ -1,10 +1,9 @@
 import { EventEmitter } from "node:events";
-import { stat } from "node:fs/promises";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Logger } from "./logger.js";
 import type { TranscriptCheckpoint, TranscriptSource } from "./transcript-sources.js";
-import { readNewLines } from "./transcript-jsonl.js";
+import { lastLineBoundary, readNewLines } from "./transcript-jsonl.js";
 
 /**
  * Emits tool_use / tool_result / assistant_text events off the CLI's own
@@ -80,8 +79,8 @@ export class TranscriptMonitor extends EventEmitter {
     const path = await this.resolveTranscriptPath();
     if (!path) return null;
     try {
-      const current = await stat(path);
-      return { path, offset: current.size, sessionId: path };
+      // A line boundary, not the size: a record being written now is read once complete (#1250).
+      return { path, offset: await lastLineBoundary(path), sessionId: path };
     } catch {
       return null;
     }
@@ -130,9 +129,10 @@ export class TranscriptMonitor extends EventEmitter {
         this.byteOffset = 0;
         this.saveOffset();
       } else {
-        // First-ever attach: baseline to EOF so history does not replay.
+        // First-ever attach: baseline to EOF so history does not replay — to its last line boundary, so a
+        // record being written right now is read once complete rather than lost (#1250).
         try {
-          this.byteOffset = (await stat(current)).size;
+          this.byteOffset = await lastLineBoundary(current);
         } catch {
           this.byteOffset = 0;
         }
