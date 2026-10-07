@@ -288,6 +288,17 @@ export class SchedulerDb {
     this.db.prepare("DELETE FROM schedule_runs WHERE triggered_at < datetime('now', '-' || ? || ' days')").run(days);
   }
 
+  /**
+   * #1335: Prune done/cancelled tasks older than `days`. Open, claimed and
+   * blocked tasks are never pruned regardless of age.
+   */
+  pruneOldTasks(days = 30): number {
+    const result = this.db.prepare(
+      "DELETE FROM tasks WHERE status IN ('done','cancelled') AND updated_at < datetime('now', '-' || ? || ' days')",
+    ).run(days);
+    return result.changes;
+  }
+
   // ── Tips ───────────────────────────────────────────────────
 
   dismissTip(userId: string, tipId: string): void {

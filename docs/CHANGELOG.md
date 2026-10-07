@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     `agend backend trust`, which only pre-trusted Gemini CLI folders, is removed.
 
 ### Added
+- **Retention for delivery-outbox.db and the Task Board (#1335).** Both stores grew without bound: `delivery-outbox.db` was accumulating ~2.5 MB/day and the Task Board had 1,099 rows going back to April. Terminal deliveries (`delivered`/`failed`) and `done`/`cancelled` tasks older than `defaults.retention_days` (default 30) are now pruned once at fleet startup and daily after that. `uncertain` rows and non-terminal deliveries are never pruned. Pruning runs in chunks of at most 500 rows and yields between chunks so it never stalls the event loop. When a `delivery_status` query returns no results for a `delivery_id`, the fleet now checks whether the row was pruned and responds with "older than the retention window; record pruned" rather than "Delivery not found", preserving the protocol invariant that "not found" means "never delivered". The unfiltered `task list` is now capped at 100 rows (most recently updated first) with a note about how many were omitted; filtered lists are uncapped.
 - **How much of a bot-to-bot message is posted in the topics: full, summary or hidden (#1302).** Cross-instance
   messages are posted in the instance topics so people can follow along, and in a busy fleet they bury the
   conversation. `cross_instance_visibility` now sets it: `full` (the default, exactly as before), `summary` (the same

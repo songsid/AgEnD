@@ -892,6 +892,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** Injectable only to keep the chat→CLI reload hand-off deterministic in tests. */
   private fullRestartLauncher: () => Promise<FullRestartHelperHandle> = launchFullRestartHelper;
   private eventLogPruneTimer: ReturnType<typeof setInterval> | null = null;
+  private outboxPruneTimer: ReturnType<typeof setInterval> | null = null;
   private logRotateTimer: ReturnType<typeof setInterval> | null = null;
   private discordPresenceTimer: ReturnType<typeof setInterval> | null = null;
   private discordPresenceEagerTimer: ReturnType<typeof setTimeout> | null = null;
@@ -4559,6 +4560,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.eventLogPruneTimer = setInterval(() => this.pruneEventLog(), 24 * 60 * 60_000);
     this.eventLogPruneTimer.unref?.();
 
+    // #1335: delivery-outbox.db and Task Board retention. Same once-at-startup
+    // + daily-timer pattern; chunked DELETEs so one run cannot hold the loop.
+    void this.pruneOutboxAndTasks();
+    this.outboxPruneTimer = setInterval(() => { void this.pruneOutboxAndTasks(); }, 24 * 60 * 60_000);
+    this.outboxPruneTimer.unref?.();
+
     // Same shape for logs, and for the same reason: the only sweep that
     // covered them lived inside the daily-summary callback, so it did not run at
     // all when summaries were off.
@@ -7289,12 +7296,27 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             created_by: meta.instance_name || instanceName,
           });
           break;
-        case "list":
-          result = db.listTasks({
-            assignee: payload.filter_assignee as string | undefined,
-            status: payload.filter_status as string | undefined,
-          });
+        case "list": {
+          const filterAssignee = payload.filter_assignee as string | undefined;
+          const filterStatus = payload.filter_status as string | undefined;
+          const tasks = db.listTasks({ assignee: filterAssignee, status: filterStatus });
+          // #1335: cap unfiltered list at 100 rows (most recently updated first).
+          const isFiltered = filterAssignee !== undefined || filterStatus !== undefined;
+          const TASK_LIST_CAP = 100;
+          if (!isFiltered && tasks.length > TASK_LIST_CAP) {
+            const omitted = tasks.length - TASK_LIST_CAP;
+            // Sort most-recently-updated first and take the first CAP.
+            tasks.sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+            result = {
+              tasks: tasks.slice(0, TASK_LIST_CAP),
+              omitted,
+              hint: `${omitted} older task(s) omitted — use filter_assignee or filter_status to narrow results`,
+            };
+          } else {
+            result = tasks;
+          }
           break;
+        }
         case "claim":
           result = db.claimTask(payload.id as string, meta.instance_name || instanceName);
           break;
@@ -8728,6 +8750,43 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     } catch (err) {
       this.logger.warn({ err }, "Event log prune failed");
     }
+  }
+
+  /** #1335: Prune delivery-outbox.db and Task Board in chunked async passes. */
+  private async pruneOutboxAndTasks(): Promise<void> {
+    const days = this.fleetConfig?.defaults?.retention_days ?? 30;
+    // Outbox prune
+    const outbox = this.deliveryOutbox;
+    if (outbox?.isOpen) {
+      try {
+        const { pruned, durationMs } = await outbox.prune(days);
+        if (pruned > 0) {
+          this.logger.info({ pruned, durationMs: Math.round(durationMs) }, "Delivery outbox pruned");
+        }
+      } catch (err) {
+        this.logger.warn({ err }, "Delivery outbox prune failed");
+      }
+    }
+    // Task Board prune
+    if (this.scheduler?.db) {
+      try {
+        const pruned = this.scheduler.db.pruneOldTasks(days);
+        if (pruned > 0) {
+          this.logger.info({ pruned }, "Task board pruned");
+        }
+      } catch (err) {
+        this.logger.warn({ err }, "Task board prune failed");
+      }
+    }
+  }
+
+  /**
+   * #1335: True when the delivery_id was in the outbox and was pruned by
+   * retention (vs. never having been admitted). Used by delivery_status to
+   * return "expired" rather than "Delivery not found" for pruned rows.
+   */
+  wasDeliveryIdPruned(deliveryId: string): boolean {
+    return this.deliveryOutbox?.wasDeliveryIdPruned(deliveryId) ?? false;
   }
 
   private openEventLog(): EventLog | null {
@@ -13607,6 +13666,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     this.dailyTipScheduler = null;
     if (this.updateCheckTimer) { clearTimeout(this.updateCheckTimer as any); clearInterval(this.updateCheckTimer as any); this.updateCheckTimer = null; }
     if (this.eventLogPruneTimer) { clearInterval(this.eventLogPruneTimer); this.eventLogPruneTimer = null; }
+    if (this.outboxPruneTimer) { clearInterval(this.outboxPruneTimer); this.outboxPruneTimer = null; }
     if (this.replyObligationTimer) { clearInterval(this.replyObligationTimer); this.replyObligationTimer = null; }
     this.wakeCoordinator?.stop();
     if (this.logRotateTimer) { clearInterval(this.logRotateTimer); this.logRotateTimer = null; }

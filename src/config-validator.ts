@@ -391,6 +391,10 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     if (overdue !== undefined && (typeof overdue !== "number" || !Number.isFinite(overdue) || overdue < 0)) {
       err("defaults.reply_overdue_minutes", "must be a non-negative number of minutes (0 turns the overdue notice off)");
     }
+    const retentionDays = config.defaults.retention_days;
+    if (retentionDays !== undefined && (!Number.isInteger(retentionDays) || (retentionDays as number) < 1)) {
+      err("defaults.retention_days", "must be a positive integer (days to keep terminal deliveries and done/cancelled tasks; default 30)");
+    }
     validateInstanceOptions(config.defaults, "defaults");
     // Merged into every instance, so it applies on every configured platform.
     validateStatusEmojis(config.defaults.status_emojis, "defaults.status_emojis", [...channelTypes.values()]);

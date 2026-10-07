@@ -558,6 +558,16 @@ export class DeliveryOutbox extends EventEmitter {
     this.db.exec("CREATE INDEX IF NOT EXISTS idx_delivery_message_id ON deliveries(message_id)");
     this.backfillMessageEvidence();
     this.db.pragma("user_version = 4");
+    // #1335: watermark for retention. pruned_ids records the delivery_ids that
+    // were pruned so delivery_status can distinguish "expired" (pruned) from
+    // "Delivery not found" (never existed). Gets self-pruned after 2× the
+    // retention window so it stays bounded.
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS pruned_ids (
+        delivery_id TEXT PRIMARY KEY,
+        pruned_at   TEXT NOT NULL
+      )
+    `);
   }
 
   /**
@@ -1396,6 +1406,84 @@ export class DeliveryOutbox extends EventEmitter {
   /** False once the database connection is closed: callers on timers check it before reading. */
   get isOpen(): boolean {
     return this.db.open;
+  }
+
+  /**
+   * #1335: Prune terminal deliveries (delivered/failed) older than `days`.
+   * `uncertain` and all non-terminal states are NEVER pruned.
+   * Deletes in chunks of 500 rows; yields between chunks via `setImmediate`
+   * so the event loop stays live. Durations use `performance.now`.
+   * Records pruned delivery_ids in `pruned_ids` so `delivery_status` can
+   * return "expired" instead of "Delivery not found" for pruned rows.
+   */
+  async prune(days: number): Promise<{ pruned: number; durationMs: number }> {
+    const { performance } = await import("node:perf_hooks");
+    const t0 = performance.now();
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60_000).toISOString();
+    const now = new Date().toISOString();
+    // Prunable states: only terminal rows the retry logic will never revisit.
+    const PRUNABLE = "('delivered','failed')";
+    const CHUNK = 500;
+    let total = 0;
+
+    for (;;) {
+      if (!this.db.open) break;
+      // Fetch one chunk of prunable delivery_ids.
+      const rows = this.db.prepare(`
+        SELECT delivery_id
+        FROM deliveries
+        WHERE state IN ${PRUNABLE}
+          AND COALESCE(finished_at, updated_at) < ?
+        ORDER BY created_seq
+        LIMIT ${CHUNK}
+      `).all(cutoff) as Array<{ delivery_id: string }>;
+
+      if (rows.length === 0) break;
+
+      const ids = rows.map(r => r.delivery_id);
+      const placeholders = ids.map(() => "?").join(",");
+
+      this.db.transaction(() => {
+        // Record pruned ids before deleting (so delivery_status can say "expired").
+        const insertPruned = this.db.prepare(
+          "INSERT OR IGNORE INTO pruned_ids(delivery_id, pruned_at) VALUES (?, ?)",
+        );
+        for (const id of ids) insertPruned.run(id, now);
+
+        // Delete child rows first.
+        this.db.prepare(`DELETE FROM delivery_attempts WHERE delivery_id IN (${placeholders})`).run(...ids);
+        // Only closed reply_obligations (answered) — open ones imply non-terminal parent.
+        if (hasTable(this.db, "reply_obligations")) {
+          this.db.prepare(`
+            DELETE FROM reply_obligations
+            WHERE request_delivery_id IN (${placeholders}) AND state = 'answered'
+          `).run(...ids);
+        }
+        this.db.prepare(`DELETE FROM outcome_notices WHERE notice_delivery_id IN (${placeholders})`).run(...ids);
+        this.db.prepare(`DELETE FROM failure_notices WHERE parent_delivery_id IN (${placeholders}) OR notice_delivery_id IN (${placeholders})`).run(...ids, ...ids);
+        this.db.prepare(`DELETE FROM deliveries WHERE delivery_id IN (${placeholders})`).run(...ids);
+      })();
+
+      total += rows.length;
+      if (rows.length < CHUNK) break;
+      // Yield between chunks so the event loop can turn.
+      await new Promise<void>(resolve => setImmediate(resolve));
+    }
+
+    // Self-prune pruned_ids after 2× the retention window to keep the table bounded.
+    if (this.db.open) {
+      const oldCutoff = new Date(Date.now() - 2 * days * 24 * 60 * 60_000).toISOString();
+      this.db.prepare("DELETE FROM pruned_ids WHERE pruned_at < ?").run(oldCutoff);
+    }
+
+    return { pruned: total, durationMs: performance.now() - t0 };
+  }
+
+  /** #1335: True if this delivery_id was pruned by retention (vs never existing). */
+  wasDeliveryIdPruned(deliveryId: string): boolean {
+    if (!this.db.open) return false;
+    const row = this.db.prepare("SELECT 1 FROM pruned_ids WHERE delivery_id = ?").get(deliveryId) as unknown;
+    return row != null;
   }
 
   /** Must be called inside the same SQLite transaction as the terminal transition. */
