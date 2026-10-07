@@ -44,6 +44,8 @@
 
 ### 修正 (Fixed)
 - **Telegram 的投遞狀態不再覆蓋 agent 主動加的反應（#959）。** 系統會記錄 bot 唯一反應欄位的擁有者，並讓狀態與 agent 反應共用每則訊息的佇列。無法確認擁有者時（包括 adapter 被重建、或 API 回應不明），晚到的狀態就跳過；agent 選了跟舊狀態一樣的 emoji 也會保留。General fallback 投遞亦保留原始 chat/thread 資料，Discord topic 路由不變。
+- **修正 `checkout_repo` 與 `get_usage` 工具描述（#1296）。** `checkout_repo` 的描述說「唯讀 worktree」及「接受 instance 名稱或絕對路徑」；實際上 handler（`daemon.ts`）拒絕非路徑的 source，且建立的是 detached HEAD worktree，並非強制唯讀掛載。`get_usage` 的描述只列了 Claude/Codex/Grok/Kiro，漏掉了 Muse 與 Antigravity。兩者已更正。讀取工具描述來決定用法的 agent 會看到錯誤資訊。
+- **設定了 `context_guardian.max_age_hours` 或 `grace_period_ms` 時，現在會發出警告（#1296）。** 上下文自動輪換已移除；這兩個欄位保留在 schema 中以維持相容性，但沒有任何效果。設定其中一個現在會觸發驗證警告：「無效果；上下文輪換已移除」。
 - **AgEnD 開始監看時剛好寫到一半的工具步驟不再遺失（#1250）。** #1221 讓 AgEnD 只讀到 CLI transcript 的最後一個完整行，但開始讀的位置仍然直接用檔案當下的大小。如果那一刻 CLI 正寫到一半（第一次接上、instance 重啟、投遞的 checkpoint），那筆記錄剩下的部分會被當成無法解析而跳過，它的工具進度也就不會出現。現在 Claude、Codex、Kiro 的這些起始位置都改為最後一個完整行。
 - **Kiro 斷線 picker 通知恢復具體文字、interaction IPC 安靜了、死 gate 移除（#1219）。** 一般 `dialog` 種類的對話框（例如 Kiro 模型斷線 picker）通知恢復帶 code-owned 描述——「model unavailable、去選替代模型」——而不是籠統的「等你輸入」；特定種類（permission、login 等）維持分類文字。`publishInteraction` 不再每次觀察都重送沒變的 snapshot（按 phase/kind/reason/episode/stale/suspected 比對，時鐘欄位排除，最終狀態不會丟）。probe 前永遠到不了的 `delivery_idle_gate` 過期檢查刪除；probe 後真正會觸發的那道保留。
 - **macOS 不再誤報記憶體警報（#1257）。** 在 Mac 上，AgEnD 不再發「主機記憶體吃緊」通知，也不再因記憶體而放慢或暫停啟動 agent。那裡的可用記憶體與 swap 數字不是記憶體壓力的訊號：macOS 會依需要增加 swap 檔，swap 接近用滿是正常的；一台 16 GB、還有 2.8 GB 可用的 Mac 卻被要求一次只啟動一個 agent。採樣數值仍會寫進 log。改用 macOS 自己的記憶體壓力等級記在 #1256。Linux 不變。
