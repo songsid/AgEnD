@@ -1176,8 +1176,8 @@ function renderPendingFiles() {
       back.onclick = () => {
         const inp = document.getElementById("msgIn"); if (!inp) return;
         pendingFiles[cur].splice(i, 1);
-        inp.value = inp.value ? `${inp.value}\n${pastedTexts.get(f)}` : pastedTexts.get(f);
-        drafts[cur] = inp.value; growComposer(inp); renderPendingFiles(); inp.focus();
+        setComposer(inp, inp.value ? `${inp.value}\n${pastedTexts.get(f)}` : pastedTexts.get(f));
+        renderPendingFiles(); inp.focus();
       };
       chip.append(back);
     }
