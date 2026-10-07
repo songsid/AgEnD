@@ -194,7 +194,11 @@ describe("Kiro model-unavailable picker", () => {
       expect(parked).toEqual([expect.objectContaining({ holdOnly: true })]);
       expect(notifyFleetError).toHaveBeenCalledOnce();
       expect(notifyFleetError.mock.calls[0][0]).toContain("Kiro");
+      // #1219(1): the outage picker's actionable text survives the notice
+      // (kind === "dialog" is the no-specific-kind default, not a category).
+      expect(notifyFleetError.mock.calls[0][0]).toContain("model unavailable");
       expect(notifyInstanceTopic).toHaveBeenCalledOnce();
+      expect(notifyInstanceTopic.mock.calls[0][1]).toContain("model unavailable");
       expect(errors).toEqual([]); // generic "having trouble" is not a pty-error/churn path
       expect(tmux.sendSpecialKey).not.toHaveBeenCalled();
       expect(tmux.pasteText).not.toHaveBeenCalled();
