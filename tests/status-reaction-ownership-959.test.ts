@@ -91,6 +91,38 @@ async function drain(fm: FleetManager) {
     await Promise.all([...(fm as any).deliveryStatusChains.values()]);
 }
 
+function classicAttachment(kind: "document" | "photo", collab: boolean) {
+  const tg = telegram();
+  const state = setup(tg.adapter);
+  const { fm, msg, paneWriter } = state;
+  vi.spyOn(ClassicChannelManager, "logMessage").mockImplementation(() => {});
+  vi.spyOn(fm as any, "getRecentChatLog").mockReturnValue("");
+  Object.assign(fm, { classicChannels: {
+    isCollab: () => collab,
+    getAdapterIdByInstance: () => "bot",
+    getChannelIdByInstance: () => "-200",
+    getContextLines: () => 5,
+    getAll: () => [],
+  } });
+  Object.assign(fm.worlds.get("bot")!, { botUserId: "4242" });
+  const path = join((fm as any).dataDir, "inbox", kind === "photo" ? "image.png" : "report.pdf");
+  vi.spyOn(fm as any, "saveClassicAttachment").mockResolvedValue({ path, paths: [path], kind });
+  vi.spyOn(tg.adapter, "downloadAttachment").mockRejectedValue(new Error("unexpected real download"));
+  // Drive the real Classic handler → real delivery metadata → real daemon
+  // status binding, with storage, platform API and the pane writer stubbed.
+  paneWriter.mockResolvedValue(false);
+  const classicMsg: InboundMessage = { ...msg, chatId: "-200", threadId: "-200",
+    text: collab ? "<@4242> read this" : "/chat read this",
+    attachments: [{ kind, fileId: "fixture", filename: kind === "photo" ? "image.png" : "report.pdf" }] };
+  const settle = async () => {
+    while ((fm as any).deliveryStatusChains.size || (tg.adapter as any).reactionChains?.size) {
+      await drain(fm);
+      await Promise.all([...(tg.adapter as any).reactionChains?.values() ?? []]);
+    }
+  };
+  return { ...state, tg, classicMsg, settle };
+}
+
 function agentReact(adapter: ChannelAdapter, emoji: string, messageId = "42") {
   return new Promise<void>((resolve, reject) => {
     expect(routeToolCall(adapter, "react", { chat_id: "-100", message_id: messageId, emoji }, "30",
@@ -99,6 +131,78 @@ function agentReact(adapter: ChannelAdapter, emoji: string, messageId = "42") {
 }
 
 describe("#959 real ingress → daemon status → bound adapter", () => {
+  it.each([false, true])("Classic forwarded document (collab=%s) remains system-owned through failure", async collab => {
+    const { fm, daemon, paneWriter, tg, classicMsg, settle } = classicAttachment("document", collab);
+    await (fm as any).handleClassicChannelMessage("worker", classicMsg);
+    await settle();
+    expect(paneWriter).toHaveBeenCalledOnce();
+    expect(paneWriter.mock.calls[0][0]).toContain("report.pdf");
+    expect(tg.calls).toEqual([["👀"], ["👍"]]);
+    daemon.emit("message_failed", { chatId: "-200", messageId: "42", threadId: "-200" });
+    await settle();
+    expect(tg.shared.slot).toEqual(["👎"]);
+    expect(tg.calls).toEqual([["👀"], ["👍"], ["👎"]]);
+    expect(tg.api.mock.calls.every(c => c[0] === -200 && c[1] === 42)).toBe(true);
+  });
+
+  it.each([false, true])("Classic forwarded image (collab=%s) permits processing and failed statuses", async collab => {
+    const { fm, daemon, paneWriter, tg, classicMsg, settle } = classicAttachment("photo", collab);
+    await (fm as any).handleClassicChannelMessage("worker", classicMsg);
+    await settle();
+    expect(paneWriter).toHaveBeenCalledOnce();
+    expect(tg.calls).toEqual([["👀"], ["👌"]]);
+    daemon.emit("message_delivered", { chatId: "-200", messageId: "42", threadId: "-200" });
+    await settle();
+    expect(tg.shared.slot).toEqual(["👀"]);
+    daemon.emit("message_failed", { chatId: "-200", messageId: "42", threadId: "-200" });
+    await settle();
+    expect(tg.calls).toEqual([["👀"], ["👌"], ["👀"], ["👎"]]);
+  });
+
+  it.each([false, true])("an agent override after a forwarded attachment stamp (collab=%s) remains untouched", async collab => {
+    const { fm, daemon, tg, classicMsg, settle } = classicAttachment("document", collab);
+    await (fm as any).handleClassicChannelMessage("worker", classicMsg);
+    await settle();
+    // The same emoji is still a deliberate agent replacement of our stamp.
+    await tg.adapter.react("-200", "42", "👍");
+    daemon.emit("message_failed", { chatId: "-200", messageId: "42", threadId: "-200" });
+    await settle();
+    expect(tg.shared.slot).toEqual(["👍"]);
+    expect(tg.calls).toEqual([["👀"], ["👍"], ["👍"]]);
+  });
+
+  it.each([false, true])("a forwarded attachment (collab=%s) cannot replace an earlier agent reaction", async collab => {
+    const { fm, daemon, paneWriter, tg, classicMsg, settle } = classicAttachment("document", collab);
+    await tg.adapter.react("-200", "42", "🔥");
+    await (fm as any).handleClassicChannelMessage("worker", classicMsg);
+    await settle();
+    expect(paneWriter).toHaveBeenCalledOnce();
+    daemon.emit("message_failed", { chatId: "-200", messageId: "42", threadId: "-200" });
+    await settle();
+    expect(tg.calls).toEqual([["🔥"]]);
+    expect(tg.shared.slot).toEqual(["🔥"]);
+  });
+
+  it("a forwarded attachment stamp cannot bootstrap an unknown slot without a receipt", async () => {
+    const { fm, tg, classicMsg, settle } = classicAttachment("document", false);
+    await (fm as any).reactClassicForwardedAttachment("worker", tg.adapter, classicMsg, "document");
+    await settle();
+    expect(tg.api).not.toHaveBeenCalled();
+    expect((tg.adapter as any).telegramReactions?.size ?? 0).toBe(0);
+  });
+
+  it.each([false, true])("a save-only Classic attachment (collab=%s) never acquires delivery ownership", async collab => {
+    const { fm, daemon, paneWriter, tg, classicMsg, settle } = classicAttachment("document", collab);
+    await (fm as any).handleClassicChannelMessage("worker", { ...classicMsg, text: "just saving" });
+    await settle();
+    expect(paneWriter).not.toHaveBeenCalled();
+    expect(tg.calls).toEqual([["👍"]]);
+    daemon.emit("message_failed", { chatId: "-200", messageId: "42", threadId: "-200" });
+    await settle();
+    expect(tg.calls).toEqual([["👍"]]);
+    expect(tg.shared.slot).toEqual(["👍"]);
+  });
+
   it("Classic system receipt owns the slot and permits later status until an agent replaces it", async () => {
     const tg = telegram();
     const { fm, daemon, msg } = setup(tg.adapter);
