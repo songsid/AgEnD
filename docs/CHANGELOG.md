@@ -32,6 +32,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   pictures is not cut short.
 
 ### Fixed
+- **No more false memory alerts on macOS (#1257).** On a Mac, AgEnD no longer posts the "Host memory pressure"
+  notice and no longer slows or holds agent starts for memory. Its free-memory and swap figures are not a pressure
+  signal there: macOS adds swap files as it needs them, so a nearly full swap is normal, and a 16 GB Mac with 2.8 GB
+  available was being told to start agents one at a time. The samples are still written to the log. Using macOS's own
+  memory-pressure level instead is tracked in #1256. Linux is unchanged.
 - **`agend-agent reply … --sticker` follows the same rules as the MCP reply (#1254).** For an agent on
   `agent_mode: cli`, a sticker this channel cannot send is checked before anything goes out and comes back as the
   reply's error: another server's sticker on Discord, or something that is not a Telegram sticker id. Before, the

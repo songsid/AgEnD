@@ -1345,7 +1345,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger.debug({ hostMemory: snapshot }, "Host memory sample");
     }
     const changed = snapshot.level !== this.memoryLogLevel;
-    if (this.memoryPressure.allowsUnknown(snapshot)) {
+    if (this.memoryPressure.advisoryOnly()) {
+      // macOS (#1256): the sample is kept in the log for calibration, but nothing is sent to a channel.
+      if (changed) this.logger.info({ hostMemory: snapshot }, "Host memory sample (macOS: logged only — no notice, no spawn throttling)");
       this.memoryLogLevel = snapshot.level;
       return;
     }
@@ -4975,7 +4977,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     const problems: string[] = [];
     const hostMemory = this.memoryPressure.snapshot();
-    if (hostMemory.level === "critical" || hostMemory.level === "elevated") {
+    if (!this.memoryPressure.advisoryOnly() && (hostMemory.level === "critical" || hostMemory.level === "elevated")) {
       problems.push(`host memory pressure is ${hostMemory.level}`);
     }
     if (this.adapterState.size > 0 && connected === 0) problems.push("no channel adapter is connected");
