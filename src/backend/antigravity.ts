@@ -57,6 +57,34 @@ export function agyLoginScreenActive(pane: string): boolean {
 }
 
 /**
+ * agy's trust prompt, bottom-anchored (captured live, 1.3.1):
+ *
+ *   Do you trust the contents of this project?
+ *   Antigravity CLI requires permission to read, edit, and execute files here.
+ *   > Yes, I trust this folder
+ *     No, exit
+ *     ↑/↓ Navigate · enter Confirm
+ *                                                   Gemini 3.8 Flash · high
+ *
+ * "yes": the prompt is the live screen and the one cursor is on "Yes, I trust this folder"; "other": it is the live
+ * screen but the cursor is elsewhere, missing or doubled; null: not the live screen (not present, or something other
+ * than its own hint/status rows follows the options — a quoted copy in a conversation).
+ */
+export function agyTrustDialogState(pane: string): "yes" | "other" | null {
+  const rows = pane.replace(/\r/g, "").split("\n").map(row => row.replace(/\s+$/, "")).filter(row => row.trim() !== "");
+  let title = -1;
+  for (let i = rows.length - 1; i >= 0; i--) if (/^[ \t]*Do you trust the contents of this project\?$/.test(rows[i]!)) { title = i; break; }
+  if (title < 0) return null;
+  const below = rows.slice(title + 1);
+  const yes = below.findIndex(row => /^[ \t]*(?:\S[ \t]+)?Yes, I trust this folder$/.test(row));
+  if (yes < 0 || yes > 2 || !/^[ \t]*(?:\S[ \t]+)?No, exit$/.test(below[yes + 1] ?? "")) return null;
+  const tail = below.slice(yes + 2);
+  if (tail.length > 2 || !tail.every(row => /Navigate|Confirm|·/.test(row))) return null;
+  const cursorOn = (row: string) => /^[ \t]*[>❯›][ \t]/.test(row);
+  return cursorOn(below[yes]!) && !cursorOn(below[yes + 1]!) ? "yes" : "other";
+}
+
+/**
  * The levels on the `--effort` row of `agy --help`, in AgEnD's canonical order, or null when the row or its
  * `(a|b|…)` list is absent. 1.3.1: "--effort   Reasoning effort for the current CLI session (low|medium|high|xhigh|max)";
  * 1.0.10 has no --effort at all. Unknown names are dropped.
@@ -334,19 +362,17 @@ node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{t
    * "thinking" verb, and a live seconds timer, e.g. `✢ Thinking… 12s` /
    * `· Reasoning... (esc to cancel)`.
    *
-   * IMPORTANT CAVEAT, deliberately on the record: unlike claude-code (#415) and
-   * grok (#430), this pattern is NOT derived from a pane I captured myself.
-   * There is no antigravity instance in this fleet and no agy pipe-pane
-   * recording on this machine (the closest candidates turned out to be kiro's
-   * TUI). The shape comes from the incident observation plus the same
-   * asymmetric-cost rules as the other backends: anchored to a line-leading
-   * glyph that does not occur in prose, requiring a verb AND a live marker
-   * (seconds timer or the esc-to-cancel suffix). A miss falls back to today's
-   * behaviour; a false positive on a stable pane would pin `working`, so
-   * narrow wins. Verify against a real pane when an agy instance next exists.
+   * The first alternative was reconstructed from that incident report, never captured.
+   *
+   * #1328, captured live from a signed-in agy 1.3.1 (tests/fixtures/agy-1.3.1-busy-generating*.pane.txt): the
+   * working row is a BRAILLE spinner frame, a verb and an ellipsis, and nothing else — `⣯  Generating...` — with no
+   * timer and no `(esc to cancel)` on it, so the first alternative never matched and agy was always seen as idle.
+   * Under AgEnD's own statusLine the footer is blank while working (no `esc to cancel` hint either), so this row is
+   * the one signal. It is gone once the reply is written. Line-anchored at both ends, so prose quoting it mid-line, or
+   * a list item that happens to end in "...", does not count.
    */
   getBusyPattern(): RegExp {
-    return /^[ \t]*[·✢✶✻✽][ \t]+\p{L}[^\n]*(?:…|\.\.\.)[^\n]*(?:\b\d+(?:\.\d+)?s\b|\(esc to cancel\))/mu;
+    return /^[ \t]*[·✢✶✻✽][ \t]+\p{L}[^\n]*(?:…|\.\.\.)[^\n]*(?:\b\d+(?:\.\d+)?s\b|\(esc to cancel\))|^[ \t]*[\u2800-\u28FF][ \t]+\p{L}[^\n]*?(?:…|\.\.\.)[ \t]*(?:\(esc to cancel\)|\d+(?:\.\d+)?s)?[ \t]*$/mu;
   }
 
   // agy periodically reruns and repaints its statusLine hook even when the
@@ -457,10 +483,34 @@ node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{t
 
   getStartupDialogs(): StartupDialog[] {
     return [
-      // The title is "Do you trust the contents of this project?" and the option "Yes, I trust this folder" (both in
-      // the agy 1.0.10 and 1.3.1 binaries; "…folder" was never the title). Either one identifies the prompt.
-      { pattern: /Do you trust the contents of this project|Do you trust.*folder|Yes, I trust/i, keys: ["Enter"], description: "Trust folder prompt" },
+      // #1328, captured live from agy 1.3.1 (tests/fixtures/agy-1.3.1-trust-dialog.pane.txt): the title is "Do you
+      // trust the contents of this project?", then "> Yes, I trust this folder" / "  No, exit". Enter confirms the
+      // row under the cursor, so it is sent once, and only when the cursor is verified on "Yes"; a prompt still up
+      // after that, or one with the cursor anywhere else, is held for a human (the hold that follows).
+      {
+        pattern: /Yes, I trust this folder/,
+        isActive: pane => agyTrustDialogState(pane) === "yes",
+        keys: ["Enter"],
+        description: "Trust folder prompt",
+        blocksDelivery: true,
+        inputBlocked: true,
+        autoResolutionKey: "antigravity-folder-trust",
+      },
+      this.trustHoldDialog(),
     ];
+  }
+
+  /** Any live agy trust prompt that is not being answered: never keyed, deliveries held (startup and runtime). */
+  private trustHoldDialog(): RuntimeDialog {
+    return {
+      pattern: /Do you trust the contents of this project/,
+      isActive: pane => agyTrustDialogState(pane) !== null,
+      keys: [],
+      holdOnly: true,
+      blocksDelivery: true,
+      inputBlocked: true,
+      description: "Antigravity folder trust needs human confirmation",
+    };
   }
 
   getRuntimeDialogs(): RuntimeDialog[] {
@@ -472,6 +522,7 @@ node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{t
         keys: ["0"],
         description: "Antigravity feedback survey — skip",
       },
+      this.trustHoldDialog(),
     ];
   }
 }

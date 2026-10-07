@@ -128,16 +128,14 @@ describe("muse 1.4.3: the logged-out menu holds startup instead of passing as re
 
 describe("agy: the trust prompt by its real title", () => {
   // Binary strings (agy 1.3.1 ce1bdaed…, 1.0.10 3c9d8806…): "Do you trust the contents of this project?\n\n" is the
-  // only "Do you trust" string; the option is "Yes, I trust this folder". The panes are synthetic (the prompt only
-  // shows after sign-in), built from those strings.
-  const trust = () => new AntigravityBackend(scratch()).getStartupDialogs().find(d => /trust/i.test(d.description))!;
+  // only "Do you trust" string; the option is "Yes, I trust this folder". Either one pre-filters the prompt; what is
+  // answered is decided on the live-captured layout (tests/agy-live-busy-trust-1328.test.ts).
+  const patterns = () => new AntigravityBackend(scratch()).getStartupDialogs().filter(d => /trust/i.test(d.description)).map(d => d.pattern);
   it.each([
-    ["the title alone", "Do you trust the contents of this project?\n"],
-    ["title and options", "Do you trust the contents of this project?\n\n> Yes, I trust this folder\n  No, exit\n"],
-    ["the option alone (unchanged)", "> Yes, I trust this folder\n"],
-  ])("%s → Enter", (_label, pane) => {
-    expect(trust().pattern.test(pane)).toBe(true);
-    expect(trust().keys).toEqual(["Enter"]);
+    ["the title", "Do you trust the contents of this project?\n"],
+    ["the option", "> Yes, I trust this folder\n"],
+  ])("%s → recognised", (_label, pane) => {
+    expect(patterns().some(p => p.test(pane))).toBe(true);
   });
 });
 

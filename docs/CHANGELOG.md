@@ -118,6 +118,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     with deliveries blocked, until someone logs in.
   - agy's trust prompt is also matched by its real title, "Do you trust the contents of this project?".
   - agy's effort levels come from its own `--help` (1.3.1 offers xhigh and max), falling back to low/medium/high.
+- **A working agy is seen as working; its trust prompt is answered only on a verified cursor (#1328).** From a
+  signed-in agy 1.3.1:
+  - agy's working row is a braille spinner, a verb and an ellipsis (`⣯  Generating...`), with no timer and no
+    `(esc to cancel)`. AgEnD's pattern never matched it, so a working agy always looked idle. That row now counts as
+    busy, and so does the rolled-up thought agy shows in its place.
+  - The trust prompt ("Do you trust the contents of this project?" / "> Yes, I trust this folder" / "No, exit") gets
+    one Enter, and only while the cursor is on "Yes". With the cursor anywhere else, or the prompt still up after
+    that Enter, it is held, with deliveries blocked, for a human. A copy of the prompt quoted in the conversation is
+    not answered.
 - **A relative `systemPrompt` / `workflow` `file:` path means the instance's working directory (#1314).** It was
   read against the fleet process's current directory: `~/.agend` under the installed service, the shell's directory
   after a manual `agend fleet start`. So one fleet.yaml could load another file, or none, depending on how the fleet
