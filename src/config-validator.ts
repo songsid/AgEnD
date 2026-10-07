@@ -3,6 +3,8 @@ import { DELIVERY_WORKER_MODES } from "./types.js";
 import { credentialHomeSpec, resolveCredentialProfile } from "./backend/credential-profile.js";
 import { STATUS_EMOJI_CONFIG_KEYS, statusEmojiProblem, type StatusEmojiKey } from "./status-emojis.js";
 import { hostnameOf } from "./web-host-guard.js";
+import { existsSync } from "node:fs";
+import { isUnsupportedHomeRef, resolveFileRefPath, systemPromptParts } from "./prompt-file-ref.js";
 import { isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
 import { CROSS_INSTANCE_VISIBILITY_MODES, isCrossInstanceVisibility } from "./cross-instance-notice.js";
 
@@ -59,6 +61,35 @@ export function validateFleetConfig(config: unknown): ValidationResult {
   const warnings: ValidationIssue[] = [];
   const err = (path: string, message: string) => errors.push({ path, message });
   const warn = (path: string, message: string) => warnings.push({ path, message });
+
+  /**
+   * #1314: a `file:` ref in systemPrompt/workflow that names no file under the instance's working directory. A
+   * warning, not an error: the file may be created later. Only paths are named, never contents.
+   */
+  const warnUnresolvedPromptFiles = (inst: Record<string, unknown>, path: string, defaults: Record<string, unknown>): void => {
+    if (typeof inst.working_directory !== "string" || !inst.working_directory) return;
+    // The effective value: the instance's own wins, else the fleet default — what the daemon is given after merge.
+    const effective = (key: "systemPrompt" | "workflow") =>
+      inst[key] !== undefined ? { value: inst[key], inherited: false } : { value: defaults[key], inherited: defaults[key] !== undefined };
+    const refs: Array<[string, string, boolean]> = [];
+    const sp = effective("systemPrompt");
+    if (typeof sp.value === "string") {
+      for (const part of systemPromptParts(sp.value)) if (part.startsWith("file:")) refs.push(["systemPrompt", part.slice(5), sp.inherited]);
+    }
+    const wf = effective("workflow");
+    if (typeof wf.value === "string" && wf.value.startsWith("file:")) refs.push(["workflow", wf.value.slice(5), wf.inherited]);
+    for (const [field, ref, inherited] of refs) {
+      const from = inherited ? " (from defaults)" : "";
+      if (isUnsupportedHomeRef(ref)) {
+        warn(`${path}.${field}`, `file: "${ref.trim()}"${from} — ~user paths are not supported; use ~/ or an absolute path`);
+        continue;
+      }
+      const resolved = resolveFileRefPath(ref, inst.working_directory);
+      if (!existsSync(resolved)) {
+        warn(`${path}.${field}`, `file: "${ref.trim()}"${from} is not at ${resolved} — a relative path is under the instance's working_directory (until 2.2, AgEnD still falls back to the fleet's directory)`);
+      }
+    }
+  };
   const validateAutoPause = (value: unknown, path: string) => {
     if (value !== undefined && (typeof value !== "number" || !Number.isFinite(value) || value < 0)) {
       err(path, "must be a non-negative finite number of minutes (0 disables auto-pause)");
@@ -410,6 +441,7 @@ export function validateFleetConfig(config: unknown): ValidationResult {
       validateAutoPause(inst.auto_pause_after, `instances.${name}.auto_pause_after`);
       validateDeliveryWorker(inst.delivery_worker, `instances.${name}.delivery_worker`);
       validateInstanceOptions(inst, `instances.${name}`);
+      warnUnresolvedPromptFiles(inst, `instances.${name}`, isObj(config.defaults) ? config.defaults : {});
     }
   }
   if (generalCount === 0) {

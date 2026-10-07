@@ -231,8 +231,8 @@ All fields from `instances.<name>` can be set here as shared defaults. Additiona
 | `mcp_proxy_reply` | boolean | `false` | Opt-in: when the MCP server is dead at end of turn and no reply was sent, the daemon relays the pane's final text to the channel (marked ⚠️ as proxy reply). Off by default — raw pane text can leak content redaction doesn't catch. |
 | `reply_completion_guard` | boolean | `true` | Bounded recovery when a human turn ends without a delivered reply. Requires backend support: Claude Code and successfully built Kiro legacy/TUI launches; not Kiro v3 or other backends. Also configurable in Classic defaults/per-channel entries. |
 | `lightweight` | boolean | `false` | Skip non-essential subsystems |
-| `systemPrompt` | string | — | Additional instructions, inline or `file:path`, delivered through the native route below. Relative file paths currently resolve from the fleet process's working directory; use absolute paths for predictable loading. |
-| `workflow` | string \| false | `"builtin"` | Workflow template: `"builtin"`, `"file:path"`, inline, or `false` |
+| `systemPrompt` | string | — | Additional instructions, inline or `file:path`, delivered through the native route below. A relative file path resolves under the instance's `working_directory`; several parts are joined with commas — see [features](features.md#systemprompt-file-paths). |
+| `workflow` | string \| false | `"builtin"` | Workflow template: `"builtin"`, `"file:path"` (relative to the instance's `working_directory`), inline, or `false` |
 | `skipPermissions` | boolean | effectively `true` unless `false` | Permission bypass uses backend-specific flags; see [security boundaries](SECURITY.md). OpenCode: launched with `--auto` when its `--help` lists it (explicit `deny` rules still apply); an older OpenCode gets no launch switch and its prompts are answered "Allow once" at runtime |
 | `pre_task_command` | string | — | Raw command pasted before each user message |
 | `startup_timeout_ms` | number | `25000` | CLI startup timeout (ms) |
@@ -352,8 +352,9 @@ Set `workflow` in `defaults.workflow` or `instances.<name>.workflow`, **not at t
 root of `fleet.yaml`**. The default is `"builtin"`; inline content, `file:path`
 and `false` are supported. `systemPrompt` uses the same native routes whether
 inline or loaded from a file; it is not delivered solely through MCP. Relative
-`workflow` and `systemPrompt` file paths currently use the fleet process's working
-directory, rather than the instance's; prefer absolute paths.
+`workflow` and `systemPrompt` file paths resolve under the instance's
+`working_directory` (#1314; until 2.2 a file found only at the old fleet-directory
+location is still used, with a warning).
 
 ### Active Decisions
 

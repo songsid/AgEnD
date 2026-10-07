@@ -110,6 +110,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   pictures is not cut short.
 
 ### Fixed
+- **A relative `systemPrompt` / `workflow` `file:` path means the instance's working directory (#1314).** It was
+  read against the fleet process's current directory: `~/.agend` under the installed service, the shell's directory
+  after a manual `agend fleet start`. So one fleet.yaml could load another file, or none, depending on how the fleet
+  was started, and a missing file silently dropped the instructions. Now:
+  - `~/` and absolute paths are used as given; anything else is relative to the instance's `working_directory`.
+  - For one release, a file found only at the old location is still used, with a warning naming both paths and one
+    notice in the instance's topic.
+  - A file that is missing, unreadable, over 256 KiB, or not a regular file (a FIFO or device, opened without
+    blocking) is logged with its path and error, never its contents. `~name/` (another user's home) is refused.
+  - Config validation warns about a reference that names no file.
+  - `systemPrompt` is split on commas only when a part is a `file:` reference: an inline prompt such as "You are Kuro,
+    a careful reviewer" stays one paragraph (it used to become two).
 - **New instances get short unique names; user-facing labels never show a 19-digit id (#1301).**
   A new instance is now `<base>-t<last 6 topic digits>` (lengthened on collision, up to the full id), across
   fleet.yaml keys, instance dirs and tmux windows — existing instances are untouched, never renamed or migrated.

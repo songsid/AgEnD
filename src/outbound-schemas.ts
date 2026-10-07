@@ -323,7 +323,7 @@ export const CreateInstanceArgs = z.object({
     "Custom path for the git worktree. Defaults to sibling directory of the repo.",
   ),
   systemPrompt: z.string().optional().describe(
-    "Custom system prompt. Supports comma-separated file: paths for modularization (e.g. 'file:prompts/role.md, file:prompts/rules.md'). Injected after fleet context.",
+    "Custom system prompt. Supports comma-separated file: paths for modularization (e.g. 'file:prompts/role.md, file:prompts/rules.md'); a relative path is relative to the new instance's working directory. Injected after fleet context.",
   ),
   tags: z.array(z.string()).optional().describe("Tags for categorization and filtering."),
   workflow: z.string().optional().describe(
