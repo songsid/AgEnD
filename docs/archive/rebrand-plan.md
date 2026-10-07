@@ -1,3 +1,5 @@
+> **Historical — superseded.** The CCD → AgEnD rebrand is done, see [terminology.md](../terminology.md) for current naming.
+
 # AgEnD Rebrand Plan
 
 ## Naming

@@ -1,3 +1,5 @@
+> **Historical — superseded.** The Claude Code permission relay this analysis describes no longer exists in AgEnD, see [permissions.md](../permissions.md).
+
 # Permission System Analysis
 
 Analysis of how the permission system works after migrating to Claude Code's native permission relay (2026-03-25). Replaces the old hook-based approval system (2026-03-23).

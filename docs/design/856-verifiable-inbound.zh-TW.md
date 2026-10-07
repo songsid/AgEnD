@@ -1,6 +1,6 @@
 # #856（改題）：接收端可驗證「這則同伴訊息真的是 fleet 投遞的」
 
-狀態：設計稿，待 leader review；本輪不寫 code。
+狀態：**已實作**（CHANGELOG 2.1.7，#856 已關閉）。每則投遞帶 `message_id`（`src/cross-instance-envelope.ts`）與 payload 的 SHA-256 digest（`deliveryContentDigest()`，`src/delivery-outbox.ts`），`delivery_status` 接受 `message_id` 查詢（`src/outbound-schemas.ts` 的 `DeliveryStatusArgs`）。下文保留設計當時的寫法。
 相關：#856（原題「投遞層改壞 SHA」，前提已推翻）、#929 durable outbox、`delivery_status`（#929 Phase 2.3）。
 
 ## 1. 根因（2026-09-29 調查）
