@@ -80,6 +80,8 @@ appended via `ClassicChannelManager.logMessage` (`src/classic-channel-manager.ts
 under username `web-user`, matching how bot replies are logged as `"bot"`
 (`src/fleet-manager.ts:6744`).
 
+The optional third formatter argument is `fullTextNote`; Classic passes `t("web.echo_full_text")` for the localised full-text note.
+
 ## 4. Never re-enter the agent
 
 Correction to the r1 draft: the "three independent guards" claim does NOT
@@ -129,6 +131,8 @@ The implementable rule has three parts, all echo-side:
 3. **Delivery-layer suppression** as defence in depth:
    `allowedMentions: { parse: [] }` on Discord sends, no mention entities on
    Telegram sends — so other clients/bots also see no ping.
+
+The formatter caps the complete echo at 1,800 UTF-16 units with a Unicode-safe cut, keeping the echo and its provenance prefix in a single Discord message.
 
 A unit test pins the rendered echo for hostile inputs: a `<@other-bot>`
 mention, `@everyone`, an attachment literally named `<@200>.png`, and a
