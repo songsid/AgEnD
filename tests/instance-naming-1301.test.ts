@@ -207,11 +207,11 @@ describe("visibility posts and Mirror line (#1301)", () => {
   it("target-topic and sender-topic posts use display_name when set", async () => {
     const { sendText } = await sendTask("Leader", "Blog");
     expect(sendText).toHaveBeenCalledTimes(2);
-    for (const call of sendText.mock.calls) {
-      expect(String(call[1])).toContain("Leader → Blog");
+    const texts = sendText.mock.calls.map((call) => String((call as unknown[])[1]));
+    for (const text of texts) {
+      expect(text).toContain("Leader → Blog");
     }
-    const texts = sendText.mock.calls.map((c) => String(c[1])).join("\n");
-    expect(texts).not.toContain(LONG_ID);
+    expect(texts.join("\n")).not.toContain(LONG_ID);
   });
 
   it("falls back to the shortened -t… form and covers the Mirror line", async () => {
@@ -219,8 +219,9 @@ describe("visibility posts and Mirror line (#1301)", () => {
     expect(sendText).toHaveBeenCalledTimes(2);
     const label = `leader-t${last6} → blog-t${last6}`;
     for (const call of sendText.mock.calls) {
-      expect(String(call[1])).toContain(label);
-      expect(String(call[1])).not.toContain(LONG_ID);
+      const text = String((call as unknown[])[1]);
+      expect(text).toContain(label);
+      expect(text).not.toContain(LONG_ID);
     }
     expect(mirror).toHaveLength(1);
     expect(mirror[0]).toContain(`${label}:`);
