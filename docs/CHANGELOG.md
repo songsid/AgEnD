@@ -110,6 +110,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   pictures is not cut short.
 
 ### Fixed
+- **Corrected security, permissions and access documentation (#1275).** Removed the nonexistent IPC secret handshake and generated Bash denylist; documented default permission bypass, persisted access precedence, platform-specific command roles, and the actual dashboard/public View/Host/agent-token boundaries. Documentation only; runtime behavior is unchanged.
 - **kiro-cli 2.28.0's "Classic is being deprecated" prompt no longer blocks a legacy instance at launch (#1308).**
   2.28.0 asks before every Classic session, even one launched with AgEnD's pinned `--legacy-ui --agent-engine=v1`:
   "Switch to 3.0 and upgrade my agent configs" or "Remind me later". AgEnD did not recognise it, so the instance sat
