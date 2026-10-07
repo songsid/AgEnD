@@ -79,8 +79,8 @@ export const DEFAULT_INSTANCE_CONFIG: Omit<InstanceConfig, "working_directory"> 
     reset_after: 300,
   },
   context_guardian: {
-    grace_period_ms: 600_000,
-    max_age_hours: 0, // 0 = disabled; Claude Code auto-compact handles context limits
+    // max_age_hours and grace_period_ms were removed: context rotation is gone.
+    // ContextGuardian only monitors; no restart trigger reads these values.
   },
   log_level: "info",
 };

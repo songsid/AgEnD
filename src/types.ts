@@ -146,8 +146,10 @@ export interface InstanceConfig {
     health_check_interval_ms?: number;
   };
   context_guardian: {
-    grace_period_ms: number;
-    max_age_hours: number;
+    /** Retained for backwards compat but has no effect; context rotation was removed. */
+    grace_period_ms?: number;
+    /** Retained for backwards compat but has no effect; context rotation was removed. */
+    max_age_hours?: number;
   };
   log_level: "trace" | "debug" | "info" | "warn" | "error";
   /** CLI backend to use. Default: "claude-code" */

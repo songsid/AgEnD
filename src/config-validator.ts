@@ -160,16 +160,15 @@ export function validateFleetConfig(config: unknown): ValidationResult {
 
     // #1296: context rotation was removed. max_age_hours and grace_period_ms
     // are retained in the schema for backwards compatibility but have no effect.
-    // Guard on non-default values only: loadFleetConfig fills max_age_hours:0
-    // and grace_period_ms:600_000 into every instance, so warning on those
-    // defaults would fire for every instance on every Settings save even when
-    // the user never touched the key.
+    // They are no longer in DEFAULT_INSTANCE_CONFIG, so loadFleetConfig never
+    // fills them into a normalized config — they only appear when the user
+    // explicitly writes them.
     if (isObj(value.context_guardian)) {
       const cg = value.context_guardian as Record<string, unknown>;
-      if (typeof cg.max_age_hours === "number" && cg.max_age_hours !== 0) {
+      if (cg.max_age_hours !== undefined) {
         warn(`${path}.context_guardian.max_age_hours`, "no effect; context rotation was removed");
       }
-      if (typeof cg.grace_period_ms === "number" && cg.grace_period_ms !== 600_000) {
+      if (cg.grace_period_ms !== undefined) {
         warn(`${path}.context_guardian.grace_period_ms`, "no effect; context rotation was removed");
       }
     }

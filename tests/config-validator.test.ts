@@ -183,18 +183,17 @@ describe("validateFleetConfig context_guardian no-op fields (#1296)", () => {
     instances: { worker: { working_directory: "/tmp/worker" } },
   };
 
-  it("warns on a non-zero max_age_hours and non-default grace_period_ms under defaults", () => {
-    // Use a non-default grace_period_ms (300_000 ≠ 600_000) so both warnings fire.
+  it("warns on max_age_hours and grace_period_ms under defaults (raw user config)", () => {
     const result = validateFleetConfig({
       ...base,
-      defaults: { context_guardian: { max_age_hours: 4, grace_period_ms: 300_000 } },
+      defaults: { context_guardian: { max_age_hours: 4, grace_period_ms: 600_000 } },
     });
     expect(result.errors).toEqual([]);
     expect(result.warnings.some(w => w.path === "defaults.context_guardian.max_age_hours")).toBe(true);
     expect(result.warnings.some(w => w.path === "defaults.context_guardian.grace_period_ms")).toBe(true);
   });
 
-  it("warns when max_age_hours is set on an instance", () => {
+  it("warns when max_age_hours is set on an instance (raw user config)", () => {
     const result = validateFleetConfig({
       defaults: {},
       instances: {
@@ -210,20 +209,32 @@ describe("validateFleetConfig context_guardian no-op fields (#1296)", () => {
     expect(result.warnings.some(w => w.path.includes("context_guardian"))).toBe(false);
   });
 
-  it("does not warn on the loadFleetConfig-filled defaults (max_age_hours:0, grace_period_ms:600_000)", () => {
-    // loadFleetConfig merges DEFAULT_INSTANCE_CONFIG.context_guardian into every
-    // instance. Settings validates ctx.fleetConfig (already expanded), so an
-    // unrelated log_level save must not produce spurious context_guardian warnings.
-    const expanded = {
-      defaults: { context_guardian: { max_age_hours: 0, grace_period_ms: 600_000 } },
-      instances: {
-        worker: {
-          working_directory: "/tmp/worker",
-          context_guardian: { max_age_hours: 0, grace_period_ms: 600_000 },
-        },
-      },
-    };
-    const result = validateFleetConfig(expanded);
-    expect(result.warnings.some(w => w.path.includes("context_guardian"))).toBe(false);
+  it("loadFleetConfig expansion + Settings save path: no spurious context_guardian warnings", async () => {
+    // Regression for P2: Settings validates ctx.fleetConfig (already expanded by
+    // loadFleetConfig). An unrelated log_level edit must produce zero context_guardian
+    // warnings even though every instance has context_guardian:{} in defaults.
+    const { loadFleetConfig } = await import("../src/config.js");
+    const { writeFileSync, mkdirSync, rmSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const { tmpdir } = await import("node:os");
+
+    const dir = join(tmpdir(), `agend-cg-regression-${Date.now()}`);
+    mkdirSync(dir, { recursive: true });
+    try {
+      // A minimal fleet.yaml — no context_guardian keys anywhere.
+      writeFileSync(join(dir, "fleet.yaml"),
+        "defaults:\n  log_level: info\ninstances:\n  w:\n    working_directory: /tmp\n",
+      );
+      const expanded = loadFleetConfig(join(dir, "fleet.yaml"));
+
+      // Simulate a Settings PUT /defaults with only log_level changed.
+      const before = validateFleetConfig(expanded);
+      const after = validateFleetConfig({ ...expanded, defaults: { ...expanded.defaults, log_level: "warn" as const } });
+
+      expect(before.warnings.some(w => w.path.includes("context_guardian")), "before: no spurious warning").toBe(false);
+      expect(after.warnings.some(w => w.path.includes("context_guardian")), "after: no spurious warning on log_level edit").toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
