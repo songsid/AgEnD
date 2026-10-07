@@ -2262,7 +2262,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * Fleet instances without channel_id and legacy Classic entries both belong
    * to channels[0]. Runtime bindings remain available for external sessions.
    */
-  private getInstanceAdapterId(name: string): string | undefined {
+  getInstanceAdapterId(name: string): string | undefined {
     const cfg = this.fleetConfig?.instances[name];
     if (cfg) return cfg.channel_id ?? this.getPrimaryAdapterId();
 
@@ -6108,6 +6108,30 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * the message came from — its own world's group_id. Two Telegram fleet
    * worlds can number topics alike; a coincidence is dropped, never delivered.
    */
+  /**
+   * #1346: whether this copy may claim the shared dedup key for
+   * command-like text. Fleet topics resolve an owning adapter and only its
+   * copy proceeds; anything else (classic targets, unknown routing, no
+   * identity) passes through to the existing handling.
+   */
+  private isOwnerCommandCopy(msg: InboundMessage, threadId: string | undefined): boolean {
+    if (!msg.adapterId || threadId === undefined) return true;
+    const target = this.resolveInboundTarget(msg, threadId);
+    if (!target || target.kind === "classic") return true;
+    const owner = this.getInstanceAdapterId(target.name);
+    if (owner && msg.adapterId !== owner) return false;
+    // #1346 6b: /cmd@otherbot is addressed elsewhere — ignore it even on the
+    // owner's copy. An unknown username can't be judged: let it through (the
+    // receiver gate above still applies). Same case-insensitive rule as the
+    // Telegram classic branch.
+    const suffix = msg.text?.trim().match(/^\/\w+@(\S+)/)?.[1];
+    if (suffix && owner) {
+      const ownerUser = this.worlds.get(owner)?.botUsername;
+      if (ownerUser && suffix.toLowerCase() !== ownerUser.toLowerCase()) return false;
+    }
+    return true;
+  }
+
   private resolveInboundTarget(msg: InboundMessage, threadId: string): RouteTarget | undefined {
     if (msg.source !== "telegram") return this.routing.resolve(threadId);
     return this.routing.resolveAll(threadId).find(target => {
@@ -6202,6 +6226,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // EXCEPTION — classic channels with same-channel multi-bot: two bots may own
     // separate agents in one channel, so each bot must process its OWN copy of
     // the message (the @mention filter downstream decides who actually forwards).
+    // #1346: a non-owner adapter's copy of command-like text must not burn
+    // the shared dedup key — the owner's copy still has to run the command.
+    // (Non-command input keeps first-wins delivery.) Classic channels keep
+    // per-adapter keys — first-/start-contact onboarding needs every copy
+    // to flow — so only fleet targets are judged here; the in-handler gates
+    // (owner entry check, Discord ignore) cover classic instead.
+    if (msg.messageId && /^\/\w/.test(msg.text?.trim() ?? "") && !this.isOwnerCommandCopy(msg, threadId)) {
+      this.logger.debug({ adapterId: msg.adapterId, threadId }, "Non-owner command copy — skipping before dedup claim");
+      return;
+    }
+
     // Key the dedup per-adapter there so a sibling bot's copy isn't dropped.
     if (msg.messageId) {
       const classicCid = threadId || msg.chatId;
@@ -6543,10 +6578,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         return;
       }
 
-      // General topic: check /ctx /compact /collab first, then admin commands
+      // General topic: Discord /xxx gets the system note first (never a
+      // command); other sources fall through to the handlers below.
       const generalInstance = this.findGeneralInstance(msg.adapterId);
+      if (generalInstance && await this.replyDiscordNotACommand(msg, generalInstance)) return;
       if (generalInstance && await this.topicCommands.handleInstanceCommand(msg, generalInstance)) return;
-      if (await this.topicCommands.handleGeneralCommand(msg)) return;
+      if (generalInstance && await this.topicCommands.handleGeneralCommand(msg, generalInstance)) return;
 
       // Forward to General Topic instance if configured
       if (generalInstance) {
@@ -6633,6 +6670,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     const instanceName = target.name;
 
+    // #1346: on Discord, plain-text /xxx runs no command — the owner posts
+    // the system note before the handlers below ever see the text.
+    if (await this.replyDiscordNotACommand(msg, instanceName)) {
+      return;
+    }
+
     // Intercept /ctx /compact /collab in ANY topic (including general)
     if (await this.topicCommands.handleInstanceCommand(msg, instanceName)) {
       return;
@@ -6640,7 +6683,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // Intercept admin commands (/status, /restart, /sysinfo) in general topics
     const instanceConfig = this.fleetConfig?.instances[instanceName];
-    if (instanceConfig?.general_topic && await this.topicCommands.handleGeneralCommand(msg)) {
+    if (instanceConfig?.general_topic && await this.topicCommands.handleGeneralCommand(msg, instanceName)) {
       return;
     }
 
@@ -12518,14 +12561,43 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
   // ── Classic Channel Methods ──────────────────────────────────────────
 
+  /**
+   * #1346: on Discord, plain-text /xxx is never a command — the slash menu
+   * is. Both fleet call sites run this BEFORE the command handlers, so even
+   * the owning adapter's copy never executes text. The owning adapter posts
+   * one system note and consumes the message so it never reaches the agent;
+   * other adapters' copies stay silent (and the shared dedup key means
+   * exactly one copy gets here). Telegram keeps text commands working —
+   * text is its command path — and other sources pass through untouched.
+   */
+  private async replyDiscordNotACommand(msg: InboundMessage, instanceName: string): Promise<boolean> {
+    if (msg.source !== "discord") return false;
+    if (!/^\/\w/.test(msg.text?.trim() ?? "")) return false;
+    const owner = this.getInstanceAdapterId(instanceName);
+    if (msg.adapterId && owner && msg.adapterId !== owner) return false;
+    const adapter = this.worlds.get(owner ?? msg.adapterId ?? "")?.adapter ?? this.adapter;
+    if (!adapter) return false;
+    await adapter.sendText(msg.chatId, t("cmd.not_a_command"), { threadId: msg.threadId });
+    return true;
+  }
+
   /** Handle a message in a classic channel: log it, forward only /chat messages */
   private async handleClassicChannelMessage(instanceName: string, msg: InboundMessage): Promise<void> {
     const text = msg.text ?? "";
     const channelId = msg.threadId ?? msg.chatId;
     const isCollabMode = this.classicChannels?.isCollab(channelId, msg.adapterId) ?? false;
 
-    // Handle /ctx in classic mode — always, regardless of collab mode
+    // #1346: Discord ClassicBot channels ignore plain-text /xxx silently —
+    // no warning (multi-bot groups must not all warn), no command, and no
+    // /chat forward either. Telegram keeps working (text is its command
+    // path there).
+    if (msg.source === "discord" && /^\/\w/.test(text.trim())) return;
+
+    // Handle /ctx in classic mode — always, regardless of collab mode.
+    // Only the adapter that owns an entry in this channel answers; the
+    // per-adapter dedup key already scopes copies, this guards the rest.
     if (text === "/ctx" || text.startsWith("/ctx@")) {
+      if (!this.classicChannels?.getInstanceByChannel(channelId, msg.adapterId)) return;
       const reply = await this.topicCommands.getCtxText(instanceName);
       const classicAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter;
       if (classicAdapter) await classicAdapter.sendText(msg.threadId ?? msg.chatId, reply, { threadId: msg.threadId });
