@@ -43,34 +43,40 @@ describe("SpawnGate memory resilience", () => {
     held.resolve(); await Promise.all(runs);
   });
 
-  it("clears macOS critical hold and old ramp as soon as a sample becomes unknown", async () => {
-    let value = memory(100);
-    const pressure = new MemoryPressure({ platform: "darwin", read: () => value });
+  it("macOS (#1256): a critical sample never holds a spawn, and admission does not even read one", async () => {
+    const read = vi.fn(() => memory(100, 0));
+    const pressure = new MemoryPressure({ platform: "darwin", read });
     const gate = own(new SpawnGate({ storm: new StormWindow(), memoryPressure: pressure, concurrency: () => 2, staggerMs: () => 0 }));
     const held = deferred(); const operation = vi.fn(() => held.promise);
     const a = gate.run(task("a"), operation); const b = gate.run(task("b"), operation);
-    expect(operation).not.toHaveBeenCalled();
-    value = { ...memory(), availableBytes: null, availableKind: "unknown" };
-    pressure.sample();
     expect(operation).toHaveBeenCalledTimes(2);
-    expect(pressure.snapshot().recovering).toBe(false);
+    expect(read).not.toHaveBeenCalled();
     expect((gate as any).pressureHeld).toBe(false);
     expect(vi.getTimerCount()).toBe(0);
+    expect(pressure.sample().level).toBe("critical");   // still sampled, for the log
     held.resolve(); await Promise.all([a, b]);
   });
 
-  it("unknown removes a critical hold even while an earlier physical callback still runs", async () => {
-    let value = memory();
-    const pressure = new MemoryPressure({ platform: "darwin", read: () => value });
+  it("macOS: the reported Mac's elevated sample (16 GB, 2845 MiB available, swap nearly full) neither limits nor staggers", async () => {
+    const reported: HostMemory = { totalBytes: 16_000 * MiB, availableBytes: 2_845 * MiB, availableKind: "available", swapTotalBytes: 6_000 * MiB, swapFreeBytes: 274 * MiB };
+    const pressure = new MemoryPressure({ platform: "darwin", read: () => reported });
+    pressure.sample();
+    expect(pressure.snapshot().level).toBe("elevated");
+    const gate = own(new SpawnGate({ storm: new StormWindow(), memoryPressure: pressure, concurrency: () => 3, staggerMs: () => 0 }));
+    const held = deferred(); const operation = vi.fn(() => held.promise);
+    const runs = [gate.run(task("a"), operation), gate.run(task("b"), operation), gate.run(task("c"), operation)];
+    expect(operation).toHaveBeenCalledTimes(3);
+    expect(vi.getTimerCount()).toBe(0);
+    held.resolve(); await Promise.all(runs);
+  });
+
+  it("Linux is unchanged: the same critical sample holds the spawn", async () => {
+    const pressure = new MemoryPressure({ platform: "linux", read: () => memory(100, 0) });
     const gate = own(new SpawnGate({ storm: new StormWindow(), memoryPressure: pressure, concurrency: () => 2, staggerMs: () => 0 }));
-    const blocked = deferred(); const operation = vi.fn(() => blocked.promise);
-    const a = gate.run(task("a"), operation); expect(operation).toHaveBeenCalledOnce();
-    value = memory(100); const b = gate.run(task("b"), operation); expect(operation).toHaveBeenCalledOnce();
-    value = { ...memory(), availableBytes: null, availableKind: "unknown" }; pressure.sample();
-    expect(operation).toHaveBeenCalledTimes(2);
-    expect((gate as any).pressureHeld).toBe(false);
-    expect(pressure.snapshot().recovering).toBe(false);
-    blocked.resolve(); await Promise.all([a, b]);
+    const operation = vi.fn(async () => 1);
+    void gate.run(task("a"), operation);
+    expect(operation).not.toHaveBeenCalled();
+    expect((gate as any).pressureHeld).toBe(true);
   });
 
   it("holds the very first spawn and backs off 5/10/20/40/60 seconds without retrying operations", async () => {

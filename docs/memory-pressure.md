@@ -55,6 +55,18 @@ revert; there is no persisted-state or configuration migration.
 
 ## macOS
 
+**Since #1257, macOS is sampled for the log only.** No memory-pressure channel
+notice is sent, spawns are never slowed or held for memory, admission does not
+wait for a sample, and fleet health does not report host memory pressure. Linux
+is unchanged. On macOS the free-memory and swap figures turned out not to be a
+pressure signal. Swap files are added on demand, so a nearly full swap is normal.
+A 16 GB Mac with 2845 MiB available read as elevated only because 274 MiB of its
+swap was free. The samples are still logged (debug every 30 seconds, info when
+the computed level changes) for calibration. Using the kernel's own pressure
+level (`kern.memorystatus_vm_pressure_level`) as the signal is tracked in #1256.
+
+The reader below still runs; its levels are logged, not acted on.
+
 macOS free pages do not include much of the reclaimable cache. Darwin never uses
 `os.freemem()` as available RAM. The async reader runs `/usr/bin/vm_stat` and
 `/usr/sbin/sysctl vm.swapusage` with literal argv, `LC_ALL=C`, a 32 KiB output
@@ -79,7 +91,7 @@ while cleanup is unconfirmed. Stop cancels the logical flight and kills children
 invalidates cache, and fences late results; restarting retains old physical
 reservations. No native subprocess runs synchronously on the fleet event loop.
 
-When Darwin availability cannot be measured, memory restrictions are removed:
+Before #1257 the levels below applied on macOS. When Darwin availability cannot be measured, memory restrictions are removed:
 no pressure warning, no notification cooldown consumed, no five-second memory
 stagger or concurrency reduction, and no retained critical hold/recovery ramp.
 Configured/storm/workspace limits still apply. This deliberate fail-open policy

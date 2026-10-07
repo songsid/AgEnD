@@ -136,22 +136,23 @@ describe("native sampler and real SpawnGate", () => {
     const run = (name: string) => { const promise = gate.run({ instanceName: name, workingDirectory: `/${name}`, reason: "wake" }, operation); void promise.catch(() => {}); runs.push(promise); };
     return { ...h, pressure, gate, operation, run, runs, blocked };
   }
-  it("first admission waits asynchronously, healthy cache admits concurrent work and health never probes", async () => {
+  it("admission never waits for the native probe (#1256): work starts at once, the background sample still runs", async () => {
     const h = make(); h.pressure.start(); h.run("a"); h.run("b"); h.run("c");
-    await vi.advanceTimersByTimeAsync(0); expect(h.run).toBeTypeOf("function"); expect(h.commands).toHaveLength(2); expect(h.operation).not.toHaveBeenCalled();
+    expect(h.operation).toHaveBeenCalledTimes(3);   // synchronously: admission did not wait
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.commands).toHaveLength(2);           // the one background flight from start(), none for admission
     h.complete(); await vi.advanceTimersByTimeAsync(0);
-    expect(h.operation).toHaveBeenCalledTimes(3); expect(h.pressure.snapshot().level).toBe("normal");
+    expect(h.pressure.snapshot().level).toBe("normal");
     for (let i = 0; i < 100; i++) h.pressure.snapshot(); expect(h.commands).toHaveLength(2);
     h.blocked.resolve(); await Promise.all(h.runs);
   });
-  it("timeout is cached unknown and releases an old critical hold without a slow ramp", async () => {
-    const h = make(); h.pressure.start(); h.run("a"); h.run("b");
-    await vi.advanceTimersByTimeAsync(0);
+  it("a critical native sample is recorded but never holds work", async () => {
+    const h = make(); h.pressure.start(); await vi.advanceTimersByTimeAsync(0);
     const critical = healthy.replace("13765", "0").replace("180253", "0").replace("1509", "0").replace("5770", "0");
-    h.complete(0, critical); await vi.advanceTimersByTimeAsync(0); expect(h.operation).not.toHaveBeenCalled();
-    await vi.advanceTimersByTimeAsync(30_000); expect(h.commands).toHaveLength(4);
-    await vi.advanceTimersByTimeAsync(2_000); expect(h.operation).toHaveBeenCalledTimes(2);
-    expect(h.pressure.snapshot()).toMatchObject({ level: "unknown", recovering: false });
+    h.complete(0, critical); await vi.advanceTimersByTimeAsync(0);
+    expect(h.pressure.snapshot().level).toBe("critical");
+    h.run("a"); h.run("b");
+    expect(h.operation).toHaveBeenCalledTimes(2);
     expect((h.gate as any).pressureHeld).toBe(false);
     h.blocked.resolve(); await Promise.all(h.runs);
   });
@@ -182,15 +183,14 @@ describe("native sampler and real SpawnGate", () => {
     const pressure = new MemoryPressure({ platform: "linux", darwinProbe: native });
     vi.spyOn(pressure as any, "read").mockImplementation(() => { throw new Error("missing procfs"); });
     expect(pressure.sampleForAdmission()).toMatchObject({ level: "unknown" });
-    expect(pressure.allowsUnknown()).toBe(false); expect(native.read).not.toHaveBeenCalled();
+    expect(pressure.advisoryOnly()).toBe(false); expect(native.read).not.toHaveBeenCalled();
     pressure.stop(); expect(native.stop).not.toHaveBeenCalled();
   });
 
-  it("sampler stop and gate shutdown reject work without publishing a late sample or notice", async () => {
-    const h = make(); const notice = vi.fn(); h.pressure.onUpdate(notice); h.pressure.start(); h.run("a");
+  it("sampler stop does not publish a late sample or notice", async () => {
+    const h = make(); const notice = vi.fn(); h.pressure.onUpdate(notice); h.pressure.start();
     await vi.advanceTimersByTimeAsync(0); const snapshot = h.pressure.snapshot();
-    h.pressure.stop(); h.gate.shutdown(); h.complete(); await vi.advanceTimersByTimeAsync(0);
-    expect(h.pressure.snapshot()).toEqual(snapshot); expect(notice).not.toHaveBeenCalled(); expect(h.operation).not.toHaveBeenCalled();
-    await expect(h.runs[0]).rejects.toThrow("shut down");
+    h.pressure.stop(); h.complete(); await vi.advanceTimersByTimeAsync(0);
+    expect(h.pressure.snapshot()).toEqual(snapshot); expect(notice).not.toHaveBeenCalled();
   });
 });

@@ -76,7 +76,7 @@ export class MemoryPressure {
 
   /** Sampling may detect recovery before a long admission backoff expires. */
   startRecoveryWindow(): MemoryPressureSnapshot {
-    if (this.allowsUnknown()) return this.snapshot();
+    if (this.advisoryOnly()) return this.snapshot();
     this.recoveryUntil = this.now() + MEMORY_RECOVERY_MS;
     this.current = { ...this.current, recovering: true,
       level: this.current.level === "normal" ? "elevated" : this.current.level };
@@ -88,9 +88,15 @@ export class MemoryPressure {
     return { ...this.current, memory: this.current.memory && { ...this.current.memory }, trend: this.current.trend && { ...this.current.trend } };
   }
 
-  /** Only macOS opts out of memory restrictions when no reliable sample exists. */
-  allowsUnknown(snapshot: MemoryPressureSnapshot = this.current): boolean {
-    return this.platform === "darwin" && snapshot.level === "unknown";
+  /**
+   * macOS is sampled for the log only (#1256): nothing here slows or defers a spawn there, and no notice is sent.
+   * Its numbers are not a pressure signal. Swap files are added on demand, so a small free share of them is normal,
+   * and cache and the compressor hold memory that vm_stat does not count as available. The levels computed from them
+   * alerted on Macs with plenty of memory. The kernel's own pressure level is the follow-up. Linux is unchanged:
+   * there a sample restricts, an unknown one included.
+   */
+  advisoryOnly(): boolean {
+    return this.platform === "darwin";
   }
 
   onUpdate(listener: (snapshot: MemoryPressureSnapshot) => void): () => void {
