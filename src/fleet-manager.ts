@@ -2693,6 +2693,31 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * included). Expiry drops unstarted copies and releases replies. An adapter
    * request already in flight may land late, but cannot retain the ordering lane.
    */
+  /**
+   * Post an owner web-chat echo to every ClassicBot channel entry opted in
+   * for `instance` (#1320 part B). Per entry: the channel's own adapter, no
+   * thread, mention suppression on. Returns the number of channels posted
+   * to. Failures are per-entry warn-and-continue — a failed echo never fails
+   * the web send. Entries without `web_echo: true` are never touched.
+   */
+  async sendClassicWebEcho(instance: string, text: string): Promise<number> {
+    const entries = this.classicChannels?.getAll()
+      .filter(entry => entry.instanceName === instance && entry.webEcho === true) ?? [];
+    let posted = 0;
+    for (const entry of entries) {
+      const adapter = (entry.adapterId ? this.worlds.get(entry.adapterId)?.adapter : undefined) ?? this.adapter;
+      try {
+        if (!adapter?.sendText) continue;
+        await adapter.sendText(entry.channelId, text, { format: "text", allowedMentions: { parse: [] } });
+        ClassicChannelManager.logMessage(instance, "web-user", text, new Date());
+        posted++;
+      } catch (err) {
+        this.logger.warn({ err, instance, channelId: entry.channelId }, "Classic web echo failed");
+      }
+    }
+    return posted;
+  }
+
   reserveWebChannelEcho(instanceName: string, sendEcho: () => Promise<unknown>): (accepted: boolean) => void {
     const epoch = this.getDeliveryEpoch(instanceName);
     const deadlineAt = performance.now() + 5_000;

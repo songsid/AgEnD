@@ -60,6 +60,12 @@ export interface ClassicChannel {
   toolProgress?: InstanceConfig["tool_progress"];
   replyCompletionGuard?: boolean;
   /**
+   * Echo owner web-chat messages into this channel (#1320 part B).
+   * Default off; only an explicit `true` opts in. Load/save preserve it;
+   * anything non-boolean in YAML reads as off (the validator rejects it).
+   */
+  webEcho?: boolean;
+  /**
    * Per-backend options, as in fleet.yaml (#1220). Only `credential_profile`
    * is read today: it puts this channel's agent on a second subscription.
    */
@@ -100,6 +106,7 @@ interface ClassicBotYaml {
     tool_progress?: InstanceConfig["tool_progress"];
     reply_completion_guard?: boolean;
     backend_options?: unknown;
+    web_echo?: unknown;
     collab?: boolean;
     pre_task_command?: string;
     createdBy?: string;
@@ -312,6 +319,7 @@ export class ClassicChannelManager {
               contextLines: val.context_lines,
               toolProgress: val.tool_progress,
               replyCompletionGuard: val.reply_completion_guard,
+              webEcho: val.web_echo === true,
               backendOptions: this.readBackendOptions(val.backend_options, key),
               createdAt: val.createdAt ?? "",
               createdBy: val.createdBy ?? "",
@@ -425,6 +433,7 @@ export class ClassicChannelManager {
       if (ch.contextLines) entry.context_lines = ch.contextLines;
       if (ch.toolProgress !== undefined) entry.tool_progress = ch.toolProgress;
       if (ch.replyCompletionGuard !== undefined) entry.reply_completion_guard = ch.replyCompletionGuard;
+      if (ch.webEcho) entry.web_echo = true;
       if (ch.backendOptions && Object.keys(ch.backendOptions).length > 0) entry.backend_options = ch.backendOptions;
       if (ch.collab) entry.collab = ch.collab;
       if (ch.preTaskCommand) entry.pre_task_command = ch.preTaskCommand;

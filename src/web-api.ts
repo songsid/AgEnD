@@ -164,6 +164,12 @@ export interface WebApiContext {
   getInstanceStatus(name: string): "running" | "paused" | "stopped" | "crashed";
   /** A ClassicBot room (registered in classicBot.yaml, not fleet.yaml) — shown on the dashboard like any instance. */
   isClassicInstance?(name: string): boolean;
+  /**
+   * Post an owner web-chat echo to `instance`'s opted-in ClassicBot channels
+   * (#1320 part B). Resolves the entries and adapters itself; returns how
+   * many channels were posted to. Never rejects the web send on failure.
+   */
+  sendClassicWebEcho?(instance: string, text: string): Promise<number>;
   /** false: definitely not delivered (the instance's IPC is gone, or it was restarted meanwhile). */
   deliverToInstance(instanceName: string, payload: Record<string, unknown>): Promise<boolean | void>;
   getUiStatus(): unknown;
@@ -901,6 +907,12 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
         && !ctx.isClassicInstance?.(instance) && syncAdapter && groupId && topicId != null;
       // Add no runtime credentials or local attachment paths to the display copy.
       const preview = webEchoPreview(message, files.map(f => f.name));
+      // ClassicBot echo (#1320 part B): same ordering lane, per-entry
+      // opt-in resolved at send time inside sendClassicWebEcho.
+      const canClassicEcho = ctx.isClassicInstance?.(instance) === true && !!ctx.sendClassicWebEcho;
+      const settleClassicEcho = canClassicEcho ? ctx.reserveWebChannelEcho?.(instance, async () => {
+        await ctx.sendClassicWebEcho!(instance, formatWebChannelEcho("web-user", preview, t("web.echo_full_text")));
+      }) : undefined;
       const settleEcho = canEcho ? ctx.reserveWebChannelEcho?.(instance, async () => {
         // A replacement adapter or edited binding is not the route we reserved.
         if ((ctx.getAdapterForInstance ? ctx.getAdapterForInstance(instance) : ctx.adapter) !== syncAdapter
@@ -934,12 +946,14 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       }
       if (delivered === false) {
         settleEcho?.(false);
+        settleClassicEcho?.(false);
         ctx.webFiles?.release(files);
         ctx.logger.error({ instance }, "Web message not delivered (the instance went away or restarted)");
         json(res, 503, { error: "Instance delivery failed" });
         return;
       }
       settleEcho?.(true);
+      settleClassicEcho?.(true);
       ctx.webFiles?.commit(files);
       ctx.lastInboundUser.set(instance, "web-user");
       ctx.eventLog?.logActivity("message", "web-user", (message || `[${files.length} file(s)]`).slice(0, 200), instance);
