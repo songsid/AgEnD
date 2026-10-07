@@ -233,6 +233,7 @@ teams:
 | `model` | string | — | 模型。Claude：`sonnet`、`opus`、`haiku`、`opusplan`。Codex：`gpt-4o`。Kiro：`auto`、`claude-sonnet-4.5`、`claude-haiku-4.5` |
 | `model_failover` | string[] | — | 被限速時的備用模型（例：`["opus", "sonnet"]`）。5 分鐘冷卻期，防止同一時間窗口內重複 failover |
 | `tool_set` | string | `"worker"` | 工具組：`worker`（預設 —— 對話、查詢、做事，沒有管理 fleet 的動詞）、`coordinator`（worker 再加上建立／刪除／重啟 instance、deploy、team、schedule 等）、`full`（全部）、`standard`（26 個）、`minimal`（7 個）。`general` 不可手設：它由 `general_topic` 指派，手寫會驗證失敗。 |
+| `cross_instance_visibility` | `"full"` \| `"summary"` \| `"hidden"` | `"full"` | Agent 之間（跨 instance）的訊息在此 instance 主題中顯示多少，不論它是發送方還是接收方：`full` 完整訊息（與以往相同）、`summary` 一行、`hidden` 不顯示。在 `defaults` 設定整個 fleet（也可用 `/visibility`），在這裡為單一 instance 覆寫；Settings 兩者都有。立即生效，不需重啟。訊息送達與 Mirror Topic 一律不受影響 —— 見 [features](features.zh-TW.md#agent-之間的訊息顯示-bot-to-bot-message-visibility)。 |
 | `systemPrompt` | string | — | 自訂指令，透過 MCP server instructions 注入。內嵌字串或 `file:./path.md` 從外部檔案載入（路徑相對於 `working_directory`）。不會修改 CLI 的內建 system prompt。範例：`systemPrompt: "file:./prompts/role.md"` |
 | `skipPermissions` | boolean | `true` | 跳過 CLI 權限檢查。設 `false` 啟用。OpenCode：其 `--help` 有列 `--auto` 時以 `--auto` 啟動（明確的 `deny` 規則仍然有效）；舊版沒有啟動開關，prompt 由執行期回答「Allow once」 |
 | `lightweight` | boolean | `false` | 跳過 transcript monitor、context guardian 等非必要子系統 |

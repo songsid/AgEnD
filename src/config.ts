@@ -95,6 +95,8 @@ export function getEffectiveInstanceDefaults(
   const {
     tips: _tips,
     max_cross_instance_message_bytes: _maxCrossInstanceMessageBytes,
+    // #1302: read by the fleet when it posts a notice, so changing the default never touches a daemon's config.
+    cross_instance_visibility: _crossInstanceVisibility,
     ...instanceDefaults
   } = fleetDefaults as FleetDefaults;
   return deepMergeGeneric(

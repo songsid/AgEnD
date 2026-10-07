@@ -919,7 +919,7 @@ export function handleSettingsRequest(
 
   // ── Instances (create / patch / delete) ──
   const validName = (n: string) => !!n && /^[^\\/\x00]+$/.test(n);
-  const nullableInstanceOverrides = new Set(["model", "auto_pause_after", "hang_detector", "agent_mode", "tool_set", "tool_progress", "reply_completion_guard", "log_level", "lightweight", "model_failover", "display_name", "status_emojis"]);
+  const nullableInstanceOverrides = new Set(["model", "auto_pause_after", "hang_detector", "agent_mode", "tool_set", "tool_progress", "reply_completion_guard", "log_level", "lightweight", "model_failover", "display_name", "status_emojis", "cross_instance_visibility"]);
   const removesInstanceOverride = (key: string, value: unknown): boolean =>
     nullableInstanceOverrides.has(key)
     && (value === null || (key === "model" && typeof value === "string" && value.trim() === ""));

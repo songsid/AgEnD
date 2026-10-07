@@ -50,6 +50,7 @@ import { downloadStickerImage } from "../sticker-download.js";
 import type { AccessManager } from "../access-manager.js";
 import { MessageQueue } from "../message-queue.js";
 import { splitTextFenceAware, truncatePreview, fenceBlock } from "../markdown-chunk.js";
+import { CROSS_INSTANCE_VISIBILITY_MODES } from "../../cross-instance-notice.js";
 
 const DISCORD_MAX_LENGTH = 2000;
 const GATEWAY_WATCHDOG_INTERVAL_MS = 30_000;
@@ -1099,6 +1100,14 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
           },
           { name: "update", description: slashLock("update") + t("slash.update") },
           { name: "doctor", description: slashLock("doctor") + t("slash.doctor") },
+          {
+            name: "visibility", description: slashLock("visibility") + t("slash.visibility"),
+            options: [{
+              name: "mode", description: t("slash.option.visibility_mode"),
+              type: ApplicationCommandOptionType.String, required: false,
+              choices: CROSS_INSTANCE_VISIBILITY_MODES.map(mode => ({ name: mode, value: mode })),
+            }],
+          },
           { name: "usage", description: slashLock("usage") + t("slash.usage") },
           {
             name: "tips", description: slashLock("tips") + t("slash.tips"),

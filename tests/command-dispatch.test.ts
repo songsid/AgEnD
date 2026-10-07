@@ -95,6 +95,7 @@ const EXPECTED: Record<string, Row> = {
   update: everywhere(FLEET_ADMIN),
   doctor: everywhere(FLEET_ADMIN),
   dashboard: everywhere(FLEET_ADMIN),
+  visibility: everywhere(FLEET_ADMIN),
   sysinfo: everywhere(ALL),
   usage: everywhere(ALL),
   tips: everywhere(ALL),
@@ -177,6 +178,7 @@ async function rig(opts: { primaryMode?: "open" | "locked"; ownerGone?: boolean;
   anyFm.handleRestartSlash = marks("restart");
   anyFm.handleUpdateSlash = marks("update");
   anyFm.handleTipsSlash = marks("tips");
+  anyFm.handleVisibilitySlash = marks("visibility");
   anyFm.runBackendDoctor = async () => { reached.push("doctor"); return "ok:doctor"; };
   anyFm.cancelInstance = () => { reached.push("cancel"); return true; };
   anyFm.toggleFleetCollab = (name: string) => { reached.push("collab"); collab.fleet.push(name); return true; };
@@ -367,7 +369,7 @@ describe("the lock emoji is generated from the table", () => {
   it("is on exactly the commands that ask for more than 'anyone' somewhere", () => {
     const locked = COMMANDS.filter(isLocked).map(c => c.name).sort();
     expect(locked).toEqual(
-      ["clear", "collab", "compact", "dashboard", "doctor", "effort", "load", "login", "model", "pause", "restart", "save", "status", "stop", "update", "wake"].sort(),
+      ["clear", "collab", "compact", "dashboard", "doctor", "effort", "load", "login", "model", "pause", "restart", "save", "status", "stop", "update", "visibility", "wake"].sort(),
     );
     for (const spec of COMMANDS) expect(slashLock(spec.name), spec.name).toBe(isLocked(spec) ? "🔒 " : "");
     expect(slashLock("not-a-command")).toBe("");
