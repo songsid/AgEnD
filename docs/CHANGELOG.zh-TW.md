@@ -43,6 +43,7 @@
 - **`list_emojis` 變輕了（#1226）。** 伺服器 emoji 預設不再附圖片網址（要的話設 `with_image_urls`；想看圖用 `preview_emojis`），並可用 `name`、`limit`、`primary_only` 縮小清單——在 emoji 很多的伺服器上，一次呼叫原本要花約 1 萬字的 context，而 agent 只需要一個 emoji。emoji 與貼圖工具的呼叫改用共用的 30 秒時限，不再是固定 10 秒，一次下載多張圖的預覽不會被中途切掉。
 
 ### 修正 (Fixed)
+- **kiro-cli 2.28.0 的「Classic is being deprecated」提示不再讓 legacy instance 卡在啟動（#1308）。** 2.28.0 在每次 Classic session 開始前都會詢問，即使是用 AgEnD 固定的 `--legacy-ui --agent-engine=v1` 啟動：「Switch to 3.0 and upgrade my agent configs」或「Remind me later」。AgEnD 以前認不得它，instance 就停在那裡。現在會回答「Remind me later」：先從「Switch to 3.0」往下移一格並確認游標真的移到了，只有看到游標停在「Remind me later」才按 Enter；其他情況都留給人處理並回報。絕不選「Switch to 3.0」：它會把 3.0 設成整台機器的預設並在 3.0 重新執行 session，是單向的。kiro 的 7 天暫緩期過後會再問。kiro-cli 2.27.x 沒有這個提示。
 - **修正 `checkout_repo` 與 `get_usage` 工具描述（#1296）。** `checkout_repo` 的描述說「唯讀 worktree」及「接受 instance 名稱或絕對路徑」；實際上 handler（`daemon.ts`）拒絕非路徑的 source，且建立的是 detached HEAD worktree，並非強制唯讀掛載。`get_usage` 的描述只列了 Claude/Codex/Grok/Kiro，漏掉了 Muse 與 Antigravity。兩者已更正。讀取工具描述來決定用法的 agent 會看到錯誤資訊。
 - **設定了 `context_guardian.max_age_hours` 或 `grace_period_ms` 時，現在會發出警告（#1296）。** 上下文自動輪換已移除；這兩個欄位保留在 schema 中以維持相容性，但沒有任何效果。設定其中一個現在會觸發驗證警告：「無效果；上下文輪換已移除」。
 - **AgEnD 開始監看時剛好寫到一半的工具步驟不再遺失（#1250）。** #1221 讓 AgEnD 只讀到 CLI transcript 的最後一個完整行，但開始讀的位置仍然直接用檔案當下的大小。如果那一刻 CLI 正寫到一半（第一次接上、instance 重啟、投遞的 checkpoint），那筆記錄剩下的部分會被當成無法解析而跳過，它的工具進度也就不會出現。現在 Claude、Codex、Kiro 的這些起始位置都改為最後一個完整行。

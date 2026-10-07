@@ -91,6 +91,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   pictures is not cut short.
 
 ### Fixed
+- **kiro-cli 2.28.0's "Classic is being deprecated" prompt no longer blocks a legacy instance at launch (#1308).**
+  2.28.0 asks before every Classic session, even one launched with AgEnD's pinned `--legacy-ui --agent-engine=v1`:
+  "Switch to 3.0 and upgrade my agent configs" or "Remind me later". AgEnD did not recognise it, so the instance sat
+  on it. It now answers "Remind me later", moving one verified step off "Switch to 3.0" and pressing Enter only once
+  the cursor is seen on "Remind me later". Anything else is held for a human and reported. "Switch to 3.0" is never
+  chosen: it makes 3.0 the machine-wide default and reruns the session there, a one-way move. kiro asks again after
+  its 7-day snooze. kiro-cli 2.27.x does not show this prompt.
 - **Corrected `checkout_repo` and `get_usage` tool descriptions (#1296).** The `checkout_repo` description said "read-only worktree" and "instance name or absolute path"; the handler (`daemon.ts`) rejects non-path sources and creates a detached-HEAD worktree, not an enforced read-only mount. The `get_usage` description listed only Claude/Codex/Grok/Kiro; Muse and Antigravity were missing. Both are now accurate. Agents that read tool descriptions to decide how to use them saw wrong information.
 - **Config now warns when `context_guardian.max_age_hours` or `grace_period_ms` is set (#1296).** Context rotation was removed; these keys are retained for backwards compatibility but have no effect. Setting either one now produces a validator warning: "no effect; context rotation was removed".
 - **A tool step being written when AgEnD starts watching is no longer lost (#1250).** #1221 made AgEnD read a CLI's
