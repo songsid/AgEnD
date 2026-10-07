@@ -6,7 +6,7 @@
  * Private temp directories only. The fleet's cwd is injected (a parameter, or a stubbed `process.cwd`), never
  * changed with chdir; no fleet, CLI or tmux (bd0c88aa).
  */
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -230,18 +230,22 @@ describe("the fleet tells the instance's topic about the fallback", () => {
 });
 
 describe("Prism #1321 review", () => {
-  it.skipIf(process.platform === "win32")("a FIFO with no writer is refused at once (ENOTREG); it never blocks the event loop", () => {
-    // In a child with a hard timeout: a regression that blocks in open() would otherwise freeze this test worker.
-    const dir = scratch();
-    execFileSync("mkfifo", [join(dir, "pipe.md")]);
-    const script = `import(${JSON.stringify(new URL("../src/prompt-file-ref.ts", import.meta.url).href)}).then(m => {
-      const w = []; const r = m.readFileRef("pipe.md", "systemPrompt", { workingDirectory: ${JSON.stringify(dir)}, fleetCwd: ${JSON.stringify(dir)}, onWarning: x => w.push(x) });
-      process.stdout.write(JSON.stringify({ r, w }));
-    })`;
-    const child = spawnSync(process.execPath, ["--import", "tsx", "-e", script], { timeout: 10_000, killSignal: "SIGKILL", encoding: "utf-8" });
-    expect(child.error, "the read blocked (timed out)").toBeUndefined();
-    expect(child.status, child.stderr).toBe(0);
-    expect(JSON.parse(child.stdout)).toEqual({ r: "", w: [{ field: "systemPrompt", path: join(dir, "pipe.md"), problem: "unreadable", code: "ENOTREG" }] });
+  it.skipIf(process.platform === "win32")("a FIFO with no writer is refused at once (ENOTREG); open() never waits for a writer", () => {
+    // A writer appears only after 1.5 s. A blocking open() would wait for it (and forever without one), so a
+    // regression shows up as a slow read here instead of a frozen test worker. The fixed open returns at once.
+    const { ctx, warnings, workingDirectory } = layout();
+    const fifo = join(workingDirectory, "pipe.md");
+    execFileSync("mkfifo", [fifo]);
+    const writer = spawn("sh", ["-c", 'sleep 1.5; exec 3>"$1"; sleep 1', "sh", fifo], { stdio: "ignore" });
+    try {
+      const started = performance.now();
+      const text = readFileRef("pipe.md", "systemPrompt", ctx);
+      expect(performance.now() - started).toBeLessThan(1_000);
+      expect(text).toBe("");
+      expect(warnings).toEqual([{ field: "systemPrompt", path: fifo, problem: "unreadable", code: "ENOTREG" }]);
+    } finally {
+      writer.kill("SIGKILL");
+    }
   });
 
   it.skipIf(process.platform === "win32")("a device is refused without being read (ENOTREG)", () => {
