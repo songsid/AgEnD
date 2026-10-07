@@ -226,6 +226,39 @@ describe("readTailLines regression (#1225)", () => {
     expect(r.text).toContain(cjk);          // char is present and intact in the tail
   });
 
+  // R2b — kills the char-slice mutant on the partial-fallback branch:
+  //   `raw.subarray(raw.length - TAIL_CHUNK_BYTES).toString("utf-8")` bounds by
+  //   *bytes*; replacing it with `text.slice(-TAIL_CHUNK_BYTES)` bounds by *chars*.
+  //   With ASCII fixtures bytes === chars, so the mutant survives. This CJK fixture
+  //   has 3 bytes per char, so the char-slice mutant returns ~3× more bytes.
+  it("R2b: partial-fallback byte slice, not char slice — CJK line past the cap", async () => {
+    // File: "中" × N + "\n", where 3N + 1 > TAIL_BYTE_CAP.
+    // The scan reads the last TAIL_BYTE_CAP bytes (stopEarly = true), so
+    // reachedStart = false. After decoding and head-cut the only remaining
+    // part is [""], so the partial fallback fires.
+    // The fallback slices raw by bytes: raw.subarray(raw.length - TAIL_CHUNK_BYTES).
+    // Char-slice mutant: text.slice(-TAIL_CHUNK_BYTES) returns TAIL_CHUNK_BYTES
+    // *characters* — each "中" is 3 bytes, so Buffer.byteLength ≈ 3 × 65 KiB.
+    const CJK = "\u4e2d"; // 中: 3 UTF-8 bytes each
+    const N = Math.ceil(TAIL_BYTE_CAP / 3) + 1; // 3N+1 just past the byte cap
+    const content = CJK.repeat(N) + "\n";
+    expect(Buffer.byteLength(content)).toBeGreaterThan(TAIL_BYTE_CAP); // self-check
+
+    const r = await readTailLines(tmpFile(content), 50);
+    expect(r.partial).toBe(true);   // fallback was entered
+    expect(r.truncated).toBe(true);
+    expect(r.text.length).toBeGreaterThan(0);
+    // Key assertion: byte-bounded slice, not char-bounded.
+    // The char-slice mutant yields ~3 × TAIL_CHUNK_BYTES bytes here.
+    expect(Buffer.byteLength(r.text, "utf-8")).toBeLessThanOrEqual(TAIL_CHUNK_BYTES);
+    // End-anchored: the file's last character "\n" is present.
+    expect(r.text.endsWith("\n")).toBe(true);
+    // A byte cut may split one char at the very start; at most one U+FFFD and
+    // only there (per the code comment in output-log-tail.ts).
+    const stripped = r.text.startsWith("\uFFFD") ? r.text.slice(1) : r.text;
+    expect(stripped).not.toContain("\uFFFD");
+  });
+
   // R3 — kills the !reachedStart guard mutant: removing `!reachedStart &&`
   //   from the partial-fallback condition makes a fully-scanned small file with
   //   only blank lines enter the partial branch (partial: true); the guard
