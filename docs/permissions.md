@@ -1,158 +1,121 @@
 # Permissions Matrix
 
-This document details every permission check in AgEnD across platforms and modes.
+AgEnD checks chat admission, command roles, AgEnD tool profiles and HTTP credentials separately. None of these is a sandbox for the coding CLI. See [Security Considerations](SECURITY.md) ([繁體中文](SECURITY.zh-TW.md)) for the host and credential boundaries.
 
-## Permission Sources
+## Permission sources
 
-| Source | File | Fields |
-|--------|------|--------|
-| Fleet access | `fleet.yaml` | `channel.access.mode` (locked/open/pairing), `channel.access.allowed_users` |
-| ClassicBot admin | `classicBot.yaml` | `defaults.admin_users` |
-| ClassicBot guilds | `classicBot.yaml` | `defaults.allowed_guilds` (Discord servers) |
-| ClassicBot groups | `classicBot.yaml` | `defaults.allowed_groups` (Telegram groups) |
-| ClassicBot users | `classicBot.yaml` | `defaults.allowed_users` (Telegram private chat) |
+| Source | Configuration/state | Meaning |
+|--------|---------------------|---------|
+| Fleet chat admission | `channels[].access` (or legacy `channel.access`) + per-adapter access state | Effective mode and allowed users |
+| Fleet admin (**F**) | Invoking adapter's YAML `access.allowed_users` | Explicit fleet management authority |
+| ClassicBot admin (**C**) | `classicBot.yaml`: `defaults.admin_users` | ClassicBot management authority |
+| ClassicBot server/group/user admission | `defaults.allowed_guilds`, `allowed_groups`, `allowed_users` | Discord servers, Telegram groups, Telegram private users respectively |
+| AgEnD tool profile | Instance `tool_set` | Server-side permission to invoke AgEnD tools |
+| Dashboard / agent HTTP | `web.token` / per-instance `agent.token` | Separate bearer credentials, not chat roles |
 
----
+**Open chat access and approved pairing do not make a fleet admin.** F is an explicit entry in the invoking adapter's YAML list; an empty list grants nobody F. ClassicBot's empty admin list likewise grants nobody C. Its guild/group/private-user lists are different: omitted, empty or non-array lists allow all.
 
-## Topic Mode (Fleet Instances)
+## Fleet chat admission and persisted access
 
-Commands available in forum topics (Telegram) or forum channels (Discord).
+Omitting the whole `access` block supplies an **open** fallback. With a configured block, set its mode, `allowed_users` array and pairing limits explicitly; there is no field-by-field runtime initializer that turns an incomplete block into the documented defaults.
 
-### Telegram Topic Mode
+- Saved mode takes precedence over YAML mode. Saved allowed users and YAML `allowed_users` are unioned, string-normalized and deduplicated; pairing approval adds a saved grant.
+- The primary adapter uses `<dataDir>/access/access.json`; additional adapters use `access/access-<adapterId>.json`. `dataDir` defaults to `~/.agend`, or `AGEND_HOME` when set.
+- In locked/pairing mode, removing an ID from YAML alone may leave a saved grant. Removing only its saved grant can let YAML restore it at reconstruction. Remove both grants to revoke allowlist admission; open mode admits all users regardless of that list.
+- Typed fleet messages use the target instance's **owning world** access policy. An identified owner whose adapter/world is unavailable is refused; a sibling's policy cannot substitute for it.
+- Discord slash commands first require a guild and an allowed source context: the receiving bot's main guild, a registered Classic channel, or an allowed `/start`. DMs are refused. Fleet slash admission accepts the owning policy's users **or an explicit invoking F**, but still refuses an unavailable owning world. A command's role check follows this ingress check.
+- Registered Classic channels bypass the fleet user gate and use ClassicBot registration/allowlist/admin rules. F and C remain separate command roles.
 
-| Command | Permission Check | Who Can Use |
-|---------|-----------------|-------------|
-| Send message to topic | `accessManager.isAllowed(userId)` | `allowed_users` (locked), all (open) |
-| `/status` | fleet access | Allowed users |
-| `/restart` | fleet access | Allowed users |
-| `/sysinfo` | fleet access | Allowed users |
-| `/ctx` | fleet access | Allowed users |
-| `/update` | explicit `allowed_users` check | Allowed users only |
-| `/raw <cmd>` | fleet access | Allowed users |
-| `/pair` | pairing mode only | Anyone (pairing mode) |
+See the [access configuration](configuration.md#channelaccess) ([繁體中文](configuration.zh-TW.md#channelaccess)).
 
-### Discord Topic Mode
+## Command matrix
 
-| Command | Permission Check | Who Can Use |
-|---------|-----------------|-------------|
-| Send message to topic | `accessManager.isAllowed(userId)` | `allowed_users` (locked), all (open) |
-| `/status` | fleet access | Allowed users |
-| `/restart` | fleet access | Allowed users |
-| `/sysinfo` | fleet access | Allowed users |
-| `/ctx` | fleet access | Allowed users |
-| `/update` | explicit `allowed_users` check | Allowed users only |
-| `/raw <cmd>` | fleet access | Allowed users |
+**A** means a caller already admitted by the applicable ingress rules, including the explicit Discord fleet-admin admission above. It is not unrestricted access from any server, DM or bot.
 
----
+**—** means no AgEnD command handler in that scope, not permission to perform that action. Text forwarding still depends on the normal route: a private chat may send it to the agent, while a Classic group still needs a separate mention. A command suffix alone does not replace that mention for an unsupported command.
 
-## ClassicBot Mode
+These are command role requirements; an applicable instance, backend capability and current lifecycle state are still needed.
 
-Commands available in regular channels/groups/private chats.
+| Commands | Discord General / instance | Discord Classic | Telegram General | Telegram instance topic | Telegram Classic |
+|----------|----------------------------|-----------------|------------------|-------------------------|------------------|
+| `/status`, `/restart`, `/login`, `/update`, `/doctor`, `/dashboard` | F | F | F | — | — |
+| `/model`, `/clear` | F | F or C | F | F | F or C |
+| `/effort` | F | F or C | F | F | — |
+| `/pause`, `/wake` | F | F or C | F | F | C |
+| `/compact`, `/save` | F | F or C | A | A | C |
+| `/collab` | F | F or C | A | A | — |
+| `/cancel`, `/ctx`, `/steer`, `/btw` | A | A | A | A | A |
+| `/sysinfo`, `/usage` | A | A | A | — | — |
 
-### Discord ClassicBot (Slash Commands)
+Discord's fleet-wide commands can also run in an admitted guild channel without an agent, requiring F; per-agent commands there refuse. Telegram's fleet-wide handlers are General-only. `/tips` is informational: Discord exposes it across admitted contexts and Telegram in General/instance topics; settings-changing arguments require the handler's admin check (F on both platforms).
 
-| Command | Permission Check | Who Can Use |
-|---------|-----------------|-------------|
-| `/start` | `isGuildAllowed(guildId)` | All users in allowed guilds |
-| `/stop` | `isAdmin(userId)` | ClassicBot admins only (same as Telegram) |
-| `/chat <msg>` | None (beyond active agent) | All users |
-| `/ctx` | None | All users |
-| `/compact` | `isModelAdmin` | Fleet admin or ClassicBot admin |
-| `/save <file>` | `isModelAdmin` | Fleet admin or ClassicBot admin |
-| `/load <file>` | `isAdmin(userId)` | ClassicBot admins only |
-| `/collab` | `isModelAdmin` | Fleet admin or ClassicBot admin |
-| `/pause`, `/wake` | `isModelAdmin` | Fleet admin or ClassicBot admin (Telegram: ClassicBot admin only) |
-| `@mention` (collab) | None | All users (when collab enabled) |
+The implementation matrix is [`src/command-table.ts`](../src/command-table.ts). Discord enforces it after ingress; Telegram has its own handlers and explicit matrix cells, so Discord's roles must not be copied into Telegram's column.
 
-### Telegram ClassicBot — Private Chat
+## ClassicBot lifecycle and addressing
 
-| Command | Permission Check | Who Can Use |
-|---------|-----------------|-------------|
-| `/start` | `isUserAllowed(userId)` | Allowed users (empty = all) |
-| `/stop` | `isAdmin(userId)` | Admin only |
-| `/compact`, `/save`, `/pause`, `/wake` | `isAdmin(userId)` | ClassicBot admin only (a fleet admin alone is refused) |
-| `/model`, `/clear` | `isModelAdmin` | Fleet admin or ClassicBot admin |
-| Direct message | None (after /start) | All users |
+| Command/input | Discord Classic | Telegram private | Telegram Classic group |
+|---------------|-----------------|------------------|------------------------|
+| `/start` | Allowed guild; no admin requirement; no agent already active | Classic user allowlist | `/start@OurBot`, allowed group **and C** |
+| `/stop` | C; registered Classic channel | C | `/stop@OurBot` and C |
+| `/load` | C; registered Classic channel | No AgEnD handler | No AgEnD handler |
+| `/chat` / normal chat | A; `/chat` needs an active Classic agent | Active agent; private routing | `@OurBot` in chat; active agent (a command suffix alone is insufficient) |
+| Collab input | This bot's mention triggers forwarding | Normal private routing | This bot's mention triggers forwarding |
 
-### Telegram ClassicBot — Group Chat
+In Telegram Classic groups, slash commands must target the bot as `/command@OurBot`. **Bare slash commands, including `/start`, are silently ignored.** A suffix for another bot is ignored too. Private chats accept bare commands. These checks apply after Telegram delivers the update; platform delivery settings are a separate prerequisite.
 
-| Command | Permission Check | Who Can Use |
-|---------|-----------------|-------------|
-| `/start` | `isGroupAllowed(chatId)` + `isAdmin(userId)` | Admin in allowed group |
-| `/stop` | `isAdmin(userId)` | Admin only |
-| `@bot <message>` | None (after /start) | All users |
-| `@bot /raw <cmd>` | `isAdmin(userId)` | Admin only |
+Discord `/start` uses the Classic guild allowlist, not the Classic admin list. `/stop` requires C on both platforms; being F alone is insufficient. Allowlists admitting a chat do not grant its users admin authority.
 
----
+## Bot and webhook messages
 
-## Access Control Flow
+Bot traffic has additional ingress filters before chat policy:
 
-### Inbound Message Processing (`handleInboundMessage`)
+- Fleet topics accept only the owning adapter's bot/webhook copy. The early filter passes when that receiving owner adapter explicitly has **YAML `access.mode: open`**, or instance collab is enabled. The owning world's effective access policy still runs afterward; collab does not bypass locked/pairing admission, so the bot ID must be allowed there.
+- The early filter reads YAML mode. Omitting `access` gives open human admission but does not itself pass this bot filter. Conversely, YAML open plus a saved locked mode still faces the saved allowlist.
+- Discord Classic bot input needs that receiving bot's registered agent and collab setting. The exact mention of that bot is additionally required to forward a turn.
+- Telegram no-thread bot input has a separate filter: explicit YAML open or an `@OurBot` mention. Registered Classic-group forwarding still requires a mention.
 
-```
-Message arrives
-  │
-  ├─ isBotMessage? → only collab classic channels pass
-  │
-  ├─ accessManager.isAllowed(userId)?
-  │   ├─ YES → continue
-  │   └─ NO → is TG classic candidate?
-  │       ├─ YES → bypass (classic has own permission system)
-  │       └─ NO → is classic channel target? → if not, REJECT
-  │
-  ├─ threadId == null (TG classic mode)?
-  │   ├─ /command@other_bot → IGNORE entirely
-  │   ├─ /start → isGroupAllowed + isAdmin (group) / isUserAllowed (private)
-  │   ├─ /stop → isAdmin
-  │   ├─ @mention /raw → isAdmin
-  │   └─ @mention (chat) → ALLOW ALL
-  │
-  └─ threadId set (topic mode)?
-      └─ Route to instance (already passed access control above)
-```
+## AgEnD tool permissions
 
----
+`tool_set` filters the MCP tool menu **and is enforced on the server** for outbound IPC, typed IPC and agent HTTP/CLI operations. Asking for an omitted tool by name cannot bypass the profile. Profile selection uses an explicit recognized `tool_set`, otherwise the General role for General, otherwise worker.
 
-## Known Issues & Notes
+These checks govern AgEnD tools, independently of chat admission/admin roles. They do not constrain a backend's own Bash, file or network tools, and filesystem IPC permissions do not isolate processes sharing the fleet's OS user.
 
-1. **Discord `/start` has no admin check** — any user in an allowed guild can start an agent. By design (guild whitelist = trust boundary). `/stop` is different: it needs a ClassicBot admin on both Discord and Telegram. The per-platform gates are listed in `src/command-table.ts` (the `telegram` column) and pinned by `tests/command-gates-by-platform.test.ts`.
+## HTTP credentials
 
-2. **TG `/start@other_bot` isolation** — commands with `@suffix` targeting a different bot are ignored entirely (v0.0.22-beta.3+).
+All listener requests first pass the Host allowlist; that header check is not client authentication.
 
-3. **`allowed_guilds: {}` (non-array)** — treated as "allow all" (v0.0.22-beta.2+ defensive fix).
+| Entry point | Credential boundary |
+|-------------|---------------------|
+| Dashboard-gated routes | Current `web.token` in `X-Agend-Token`, or its derived session cookie; GET/HEAD URL token exchanges for a cookie |
+| GET `/health`, enabled GET `/api/ai-usage`, `/view` and its GET data (including `/api/pane/*`) | Public reads, subject to listener reachability and Host check; no dashboard credential |
+| View profile/avatar/sort writes | `web.token` in query or header; not the dashboard cookie or its Origin gate |
+| POST `/agent` | Claimed instance's `X-Agend-Instance-Token`, plus that instance's AgEnD tool profile |
+| Temporary `/login` terminal | Separate per-login credential, not a dashboard credential |
 
-4. **Fleet access `mode: open`** — bypasses `allowed_users` check for topic mode. ClassicBot has separate permission system.
+`web.token` persists and can be rotated without a fleet restart. Instance agent tokens are replaced on CLI spawn. Cookies are token-derived, with a 12-hour browser Max-Age, not independent server-side age enforcement. See [Security Considerations](SECURITY.md#dashboard-token-and-browser-session) for exceptions, connection lifetime and secret handling.
 
-5. **TG Group Privacy** — Bot must have Group Privacy disabled in BotFather OR be group admin to receive @mention messages. Platform requirement.
+## Configuration example
 
-6. **`defaults.admin_users` empty** — no one is admin (secure default). Must explicitly add user IDs.
+A fleet access excerpt with one explicit administrator; complete the channel's other fields for your platform:
 
-7. **TG private chat `/stop`** — requires admin (same as group). If `admin_users` is empty, no one can `/stop` in private chat. Add yourself to `admin_users` to manage agents.
-
----
-
-## Configuration Examples
-
-### Locked fleet + open classicBot (recommended)
 ```yaml
 # fleet.yaml
-channel:
-  access:
-    mode: locked
-    allowed_users: ["987654321"]
+channels:
+  - id: tg
+    type: telegram
+    mode: topic
+    bot_token_env: AGEND_BOT_TOKEN
+    group_id: "-1001234567890"
+    access:
+      mode: locked
+      allowed_users: ["987654321"]
+      max_pending_codes: 5
+      code_expiry_minutes: 10
 
-# classicBot.yaml
-defaults:
-  admin_users: ["987654321", "123456789012345678"]
-  # allowed_guilds/groups/users: omitted = allow all
-```
-
-### Restricted classicBot
-```yaml
-# classicBot.yaml
+# classicBot.yaml (separate file)
 defaults:
   admin_users: ["987654321"]
-  allowed_guilds: ["234567890123456789"]  # Discord servers
-  allowed_groups: ["-1001234567890"]      # Telegram groups
-  allowed_users: ["987654321"]            # TG private chat
+  allowed_guilds: ["234567890123456789"]
+  allowed_groups: ["-1001234567890"]
+  allowed_users: ["987654321"]
 ```

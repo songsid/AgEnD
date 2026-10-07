@@ -98,19 +98,30 @@ Each entry configures a platform adapter (Telegram or Discord).
 | `mode` | string | **yes** | — | Must be `"topic"` |
 | `bot_token_env` | string | **yes** | — | Environment variable name containing the bot token |
 | `group_id` | number \| string | no | — | Telegram forum group ID or Discord guild ID |
-| `access` | AccessConfig | **yes** | — | Access control settings (see below) |
+| `access` | AccessConfig | no | open fallback when the whole block is omitted | Access control settings; persisted state can override (see below) |
 | `options` | object | no | — | Platform-specific options (e.g. `general_channel_id` for Discord) |
 | `telegram_api_root` | string | no | `"https://api.telegram.org"` | Override Telegram Bot API URL |
 | `mirror_topic_id` | number \| string | no | — | Topic ID for cross-instance message mirroring |
 
 #### channel.access
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `mode` | `"locked"` \| `"pairing"` \| `"open"` | `"locked"` | `locked` = whitelist only. `pairing` = self-register via /pair. `open` = all users + bots allowed (bot messages reach fleet topics directly) |
-| `allowed_users` | (number\|string)[] | `[]` | Whitelisted user IDs |
-| `max_pending_codes` | number | `3` | Max simultaneous pairing codes |
-| `code_expiry_minutes` | number | `10` | Pairing code TTL |
+`access` is optional. **Omitting the entire block uses an `open` runtime fallback**, not `locked`; an existing persisted mode can still override it. To restrict chat access, explicitly set `mode: locked` and `allowed_users`.
+
+The fallback values below apply only when the whole block is omitted; an explicit block is not filled field by field. Set `mode`, an `allowed_users` array and, for pairing, the pairing limits explicitly.
+
+| Field | Type | Whole-block fallback | Description |
+|-------|------|----------------------|-------------|
+| `mode` | `"locked"` \| `"pairing"` \| `"open"` | `"open"` | `locked`/`pairing` admit the effective allowlist; `pairing` also accepts `/pair` requests. `open` admits all users; bots have separate ingress filters, see [permissions](permissions.md#bot-and-webhook-messages) |
+| `allowed_users` | (number\|string)[] | `[]` | Unioned with the persisted list; IDs compare as strings |
+| `max_pending_codes` | number | `0` | Max distinct users with pending pairing codes; set a positive limit for pairing |
+| `code_expiry_minutes` | number | `0` | Pairing code TTL in minutes; set a positive duration for pairing |
+
+**Persisted state and administration:**
+
+- The primary adapter uses `<dataDir>/access/access.json`; additional adapters use `access/access-<adapterId>.json`. `dataDir` defaults to `~/.agend`, or `AGEND_HOME` when set.
+- A saved mode takes precedence over YAML. Saved users and YAML `allowed_users` are unioned and deduplicated; approved pairing adds to the saved list.
+- Under `locked`/`pairing`, revocation must remove the grant from both lists; changing only one can leave access enabled. `open` does not restrict users in the first place.
+- Fleet admin commands separately require an entry in the **invoking adapter's YAML `access.allowed_users`**. Open access or approved pairing alone does not grant fleet admin; an empty YAML list grants nobody that role. ClassicBot has separate `defaults.admin_users`; see [permissions](permissions.md).
 
 #### channel.options (Discord)
 
