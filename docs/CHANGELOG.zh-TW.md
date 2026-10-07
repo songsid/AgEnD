@@ -43,6 +43,7 @@
 - **`list_emojis` 變輕了（#1226）。** 伺服器 emoji 預設不再附圖片網址（要的話設 `with_image_urls`；想看圖用 `preview_emojis`），並可用 `name`、`limit`、`primary_only` 縮小清單——在 emoji 很多的伺服器上，一次呼叫原本要花約 1 萬字的 context，而 agent 只需要一個 emoji。emoji 與貼圖工具的呼叫改用共用的 30 秒時限，不再是固定 10 秒，一次下載多張圖的預覽不會被中途切掉。
 
 ### 修正 (Fixed)
+- **Kiro 斷線 picker 通知恢復具體文字、interaction IPC 安靜了、死 gate 移除（#1219）。** 一般 `dialog` 種類的對話框（例如 Kiro 模型斷線 picker）通知恢復帶 code-owned 描述——「model unavailable、去選替代模型」——而不是籠統的「等你輸入」；特定種類（permission、login 等）維持分類文字。`publishInteraction` 不再每次觀察都重送沒變的 snapshot（按 phase/kind/reason/episode/stale/suspected 比對，時鐘欄位排除，最終狀態不會丟）。probe 前永遠到不了的 `delivery_idle_gate` 過期檢查刪除；probe 後真正會觸發的那道保留。
 - **macOS 不再誤報記憶體警報（#1257）。** 在 Mac 上，AgEnD 不再發「主機記憶體吃緊」通知，也不再因記憶體而放慢或暫停啟動 agent。那裡的可用記憶體與 swap 數字不是記憶體壓力的訊號：macOS 會依需要增加 swap 檔，swap 接近用滿是正常的；一台 16 GB、還有 2.8 GB 可用的 Mac 卻被要求一次只啟動一個 agent。採樣數值仍會寫進 log。改用 macOS 自己的記憶體壓力等級記在 #1256。Linux 不變。
 - **`agend-agent reply … --sticker` 與 MCP 的 reply 規則一致（#1254）。** `agent_mode: cli` 的 agent 若帶了此頻道送不出的貼圖（Discord 上別的伺服器的貼圖、或不是 Telegram 貼圖 id 的東西），現在會在送出任何東西之前先檢查，並以該則回覆的錯誤回報。以前是直接交給 adapter。另外，帶貼圖的回覆不再被當成同一段文字（不帶貼圖、仍在送出中）的重複回覆。兩條路徑現在用同一套方式判斷是否重複。
 - **補回覆不再因為太早觸發而造成重複回覆（#1241）。** claude-code 上，回覆完成防線以前會在 agent 還在寫第一則回覆時、看到 pane 像閒置就觸發，把一則 `[system:reply-required]` 提示貼進 CLI，agent 之後又回答一次、變成回覆兩次。現在要回合「證明自己真的結束了」才會補救：第一次的閒置邊緣只會啟動 60 秒確認窗（之後又看到工作、有回覆送達、或取消都會解除），要閒置持續超過整個窗口、且一直沒有回覆，才會送出提示。從回合開始後完全沒觀察到工作、就出現的閒置邊緣，會直接按住不理。真的漏回還是會補（#750），最多晚一分鐘——而且補救提示現在會說：如果已經回過了，就什麼都不必做。
