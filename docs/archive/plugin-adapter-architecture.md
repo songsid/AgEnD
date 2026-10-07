@@ -1,3 +1,5 @@
+> **Historical — superseded.** A ccd-era draft; Discord is now built into core rather than an external plugin, see [plugin-development.md](../plugin-development.md).
+
 # Plugin Adapter Architecture
 
 Design specification for external channel adapters in CCD.

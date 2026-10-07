@@ -1,6 +1,6 @@
 # 一個 fleet 同時用 Amazon Q 訂閱與 Kiro 訂閱：可行性與 spec
 
-狀態：**階段 1（機制核心）已實作**，見 `src/backend/credential-profile.ts`；其餘階段（General 可操作、profile-aware usage、session 處理）未實作。原始調查內容如下，所有結論對本機實際安裝的 `kiro-cli 2.22.0` 實測。
+狀態：**已實作**（CHANGELOG 2.1.6，#795–#798）。機制核心見 `src/backend/credential-profile.ts`（`CREDENTIAL_HOMES` 目前含 `kiro-cli` 與 `codex`）；General 可經 `update_instance_config` 的 `backend_options.<backend>.credential_profile` 建立或搬移 agent（`src/outbound-schemas.ts`）；`/usage` 與 `get_usage` 逐訂閱分列（`src/usage/providers.ts`）；換訂閱時不 resume、改帶交接摘要並回報 `conversation_carried_over: false`（`src/outbound-handlers.ts`、`src/instance-lifecycle.ts`）。原始調查內容如下，所有結論對本機實際安裝的 `kiro-cli 2.22.0` 實測。
 
 原始狀態：**調查回報，未實作**。所有結論對本機實際安裝的 `kiro-cli 2.22.0`（`~/.local/bin/kiro-cli`）實測，未修改任何既有登入狀態（每次實測都比對過真實 DB 的 mtime/size 未變）。
 
