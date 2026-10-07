@@ -37,6 +37,7 @@
  */
 
 import { claudeLoginScreenActive } from "./backend/claude-code.js";
+import { agyLoginScreenActive } from "./backend/antigravity.js";
 
 export interface AuthCheck {
   /** argv of a cheap, LLM-token-free status probe (5s timeout). */
@@ -276,7 +277,10 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
     backend: "antigravity",
     command: "agy",
     authCheck: { argv: ["agy", "models"] },
-    loginScreenPattern: /not logged into Antigravity|https:\/\/\S*google\.com\/device/i,
+    loginScreenPattern: /You are currently not signed in|not logged into Antigravity|https:\/\/\S*google\.com\/device/i,
+    // The screen itself (1.0.10 and 1.3.1): the bare pattern's old wording is only in agy's log file, so a
+    // logged-out agy was never reported (CLI audit, 2026-10-07).
+    loginScreenActive: agyLoginScreenActive,
     codePattern: STANDALONE_DEVICE_CODE,
     // agy has no terminal success line — reaching the normal TUI ready screen
     // (same markers as the backend's ready pattern) means auth completed.

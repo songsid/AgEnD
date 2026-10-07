@@ -1,3 +1,4 @@
+import { measureSyncWork } from "./sync-work-attribution.js";
 import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync, readdirSync, renameSync, copyFileSync, chmodSync, statSync, accessSync, constants as fsConstants, type Dirent } from "node:fs";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
@@ -54,7 +55,7 @@ import { createAdapter } from "./channel/factory.js";
 import { TelegramAdapter } from "./channel/adapters/telegram.js";
 import { createBackend } from "./backend/factory.js";
 import { readEffortMetadata } from "./backend/effort-metadata.js";
-import { isModelCompatible, SYSINFO_BACKEND_IDS, UnsupportedCliError, type BackendCliVersionSnapshot } from "./backend/types.js";
+import { CLI_ENV_TTL_MS, isModelCompatible, SYSINFO_BACKEND_IDS, UnsupportedCliError, type BackendCliVersionSnapshot } from "./backend/types.js";
 import { createLogger, rotateLogIfNeeded, type Logger } from "./logger.js";
 import { processAttachments } from "./channel/attachment-handler.js";
 import { routeToolCall } from "./channel/tool-router.js";
@@ -597,7 +598,6 @@ const NONCE_BUTTON_TIMEOUT_MS = 15 * 60_000;
 const TIP_BUTTON_TIMEOUT_MS = 24 * 60 * 60_000;
 /** How long shutdown will spend retiring still-armed button prompts. */
 const NONCE_RETIRE_BUDGET_MS = 5_000;
-const CLI_ENV_TTL_MS = 24 * 60 * 60 * 1000; // hard validity bound for the cached CLI env
 /**
  * How old the cached CLI env may be before `/model` re-probes it live.
  *
@@ -3162,7 +3162,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         oldToolProgress.set(ch.instanceName, this.classicChannels.getToolProgress(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.tool_progress));
         oldReplyGuard.set(ch.instanceName, this.classicChannels.getReplyCompletionGuard(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.reply_completion_guard));
       }
-      if (!this.classicChannels.checkReload()) return;
+      if (!measureSyncWork("fleet.classicConfigReload", () => this.classicChannels!.checkReload())) return;
       // A reload can introduce a bad id (hand edit) or clear one; the
       // throttle keeps a repeated report from flooding the topic.
       this.reportClassicUnrecoverableIds();
@@ -3269,7 +3269,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // managed independently from fleet-topic workers.
       try {
         const skillsWorkDir = this.resolveKnowledgeWorkDir(config.working_directory, backend, name);
-        this.syncRoleSkills(skillsWorkDir, backend, "worker");
+        measureSyncWork("fleet.workerSkills", () => this.syncRoleSkills(skillsWorkDir, backend, "worker"));
       } catch (err) {
         // Skill publishing is additive. A read-only or temporarily unavailable
         // workspace must not turn an otherwise valid worker startup into a
@@ -11402,8 +11402,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * definition or a function name, neither of which a spawn could run.
    */
   private locateBinaryOnLoginShell(binary: string): string | null {
+    return measureSyncWork("fleet.installLookup", () => this.locateBinaryOnLoginShellSync(binary));
+  }
+  private locateBinaryOnLoginShellSync(binary: string): string | null {
     try {
-      const result = spawnSync("bash", ["-lc", `command -v ${binary}`], { timeout: 10_000, stdio: "pipe", encoding: "utf8" });
+      const result = measureSyncWork("fleet.installLoginShell", () => spawnSync("bash", ["-lc", `command -v ${binary}`], { timeout: 10_000, stdio: "pipe", encoding: "utf8" }));
       if (result.status !== 0) return null;
       const path = String(result.stdout ?? "").trim().split("\n").pop()?.trim() ?? "";
       if (!isAbsolute(path)) return null;
@@ -11657,6 +11660,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
   /** Ensure the general instance has its project instructions file + knowledge */
   private ensureGeneralInstructions(workDir: string, backendName?: string, instanceName?: string): void {
+    measureSyncWork("fleet.generalInstructions", () => this.ensureGeneralInstructionsSync(workDir, backendName, instanceName));
+  }
+  private ensureGeneralInstructionsSync(workDir: string, backendName?: string, instanceName?: string): void {
     const backend = backendName ?? "claude-code";
     workDir = this.resolveKnowledgeWorkDir(workDir, backend, instanceName);
     const filename = FleetManager.INSTRUCTIONS_FILENAME[backend] ?? "CLAUDE.md";
@@ -12503,6 +12509,15 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (!env.apiModels?.length) {
       const previous = this.readCliEnv(backend);
       if (previous?.apiModels?.length) env.apiModels = previous.apiModels;
+    }
+    // Effort levels read from --help (#1328) are a capability of one binary. A help that could not be read (absent)
+    // keeps the cached levels only for that same binary: both versions known and equal, cache still valid. A help
+    // that was read and lists none ([]) is an answer and is written as is, so the fallback applies.
+    if (env.effortLevels === undefined) {
+      const previous = this.readCliEnv(backend);
+      if (previous?.effortLevels && previous.version && env.version && previous.version === env.version) {
+        env.effortLevels = previous.effortLevels;
+      }
     }
     const path = this.cliEnvPath(backend);
     mkdirSync(dirname(path), { recursive: true });
@@ -15877,6 +15892,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   }
 
   getUiStatus(): unknown {
+    return measureSyncWork("fleet.uiStatus", () => this.getUiStatusSync());
+  }
+  private getUiStatusSync(): unknown {
     const fleetNames = Object.keys(this.fleetConfig?.instances ?? {});
     // Classic rooms live only in classicBot.yaml — /api/profiles merges them into
     // the View roster, but previously getUiStatus skipped them so context_pct was

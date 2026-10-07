@@ -1,3 +1,4 @@
+import { measureSyncWork } from "./sync-work-attribution.js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { CostGuard } from "./cost-guard.js";
@@ -34,7 +35,7 @@ export class StatuslineWatcher {
     const statusFile = join(this.ctx.getInstanceDir(name), "statusline.json");
     const timer = setInterval(() => {
       try {
-        const data = JSON.parse(readFileSync(statusFile, "utf-8"));
+        const data = measureSyncWork("statusline.read", () => JSON.parse(readFileSync(statusFile, "utf-8")));
 
         // Cost tracking
         if (data.cost?.total_cost_usd != null) {
