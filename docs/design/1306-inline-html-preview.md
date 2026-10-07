@@ -32,7 +32,7 @@ approve prompts).
     revision 0d3c97b1).
   - **Navigation** can carry data too (§4.3).
   - **So Preview is off by default in every browser.** One explicit per-device opt-in enables it (§7), and every
-    preview then carries the banner "Previews run the agent's HTML in an isolated frame. It cannot use your login, but it may be able to send data out. Only preview content you trust."
+    preview then carries the banner "Previews run the agent's HTML in an isolated frame. It cannot use your login, but it may be able to send data out. Only preview content you trust. A preview can slow or freeze this tab."
 - **Not promised:**
   - The HTML is **not** assumed to be harmless or public. Agent output can contain private data, and a preview runs
     code the agent wrote, inside the person's browser, without a guarantee that it cannot send that data out.
@@ -158,7 +158,7 @@ and it is also any other process answering on 19281.
 
 The shim is one static HTML document with one inline script, served from the preview listener. It knows nothing
 about chats, users or instances; the HTML arrives over `postMessage` (the web.dev "shim" pattern), so the listener
-stays stateless and never receives content in a URL or log.
+stays stateless: AgEnD does not put HTML in the transport URL, and the listener logs nothing.
 
 ### 4.1 Messages
 
@@ -238,7 +238,7 @@ appear in that proxy's access log. AgEnD itself never puts content in a URL: the
 - **Preview is off by default on every browser**, with Source and Download only.
 - **Opt-in:** **one explicit per-device opt-in** enables it. It is stored in `localStorage`, revocable, and also a
   toggle in the dashboard's settings. It is off by default and never silent: it asks once and states the consequence.
-- **Banner:** every preview carries the banner "Previews run the agent's HTML in an isolated frame. It cannot use your login, but it may be able to send data out. Only preview content you trust."
+- **Banner:** every preview carries the banner "Previews run the agent's HTML in an isolated frame. It cannot use your login, but it may be able to send data out. Only preview content you trust. A preview can slow or freeze this tab."
 - **Controls stay best effort:** the CSP, `frame-src`, sandbox, origin and boot checks all still apply.
 
 ## 5. Content Security Policy
@@ -508,7 +508,7 @@ no-network claim. G1's rows (cookie, parent, `/ui` writes) are the ones that mus
 
 | Finding | r3 |
 |---|---|
-| G2's premise is false: Chromium does not parse CSP `webrtc` (its RTC gate reads `Connection-Allowlist`); a no-candidate/throw/timeout probe is not a capability proof (RFC 8828 modes 3/4, slow gathering, unrelated errors) | **The no-network guarantee is withdrawn everywhere** (§1). The §4.3 restrictions are described as best effort, and WebRTC/STUN/TURN and navigation are named as bypasses. **The probe is removed** (no `rtc`, nothing gated). Preview is **off by default on every browser**, with one per-device opt-in (localStorage, revocable, plus a dashboard settings toggle) and the banner "Previews run the agent's HTML in an isolated frame. It cannot use your login, but it may be able to send data out. Only preview content you trust." The negative cases are documented in §4.3 and recorded in §10.2 as the reason there is no probe gate. |
+| G2's premise is false: Chromium does not parse CSP `webrtc` (its RTC gate reads `Connection-Allowlist`); a no-candidate/throw/timeout probe is not a capability proof (RFC 8828 modes 3/4, slow gathering, unrelated errors) | **The no-network guarantee is withdrawn everywhere** (§1). The §4.3 restrictions are described as best effort, and WebRTC/STUN/TURN and navigation are named as bypasses. **The probe is removed** (no `rtc`, nothing gated). Preview is **off by default on every browser**, with one per-device opt-in (localStorage, revocable, plus a dashboard settings toggle) and the banner "Previews run the agent's HTML in an isolated frame. It cannot use your login, but it may be able to send data out. Only preview content you trust. A preview can slow or freeze this tab." The negative cases are documented in §4.3 and recorded in §10.2 as the reason there is no probe gate. |
 | The `preview_origin` mode contradicts an unconditional no-network claim (`/frame?…` reaches the proxy log) | No claim to contradict. §4.3 documents that the shim URL, or a content-made `/frame?…`, may appear in proxy logs, and that AgEnD never puts content in any URL: HTML travels only by `postMessage`, and a test mutation pins it. Q9 is closed. |
 
 The account boundary — G1: the opaque sandbox, Origin+CSRF, the server-set role, the boot fence and the origin
@@ -535,7 +535,7 @@ Decided (decision owner via the leader, 2026-10-07):
   probe gate.
 - **r2 Q11, freezing:** the same-process freeze and memory risk is accepted. Preview is not disabled on a probe
   result, and the banner adds "A preview can slow or freeze this tab".
-- **Q9, `preview_origin` logging:** closed. Content never travels in a URL, and the URL itself may be logged.
+- **Q9, `preview_origin` logging:** closed. AgEnD does not put HTML in the transport URL; the URL itself may be logged.
 - **r1 Q5:** new tab is deferred.
 
 The remaining questions above do not block approval of the design.

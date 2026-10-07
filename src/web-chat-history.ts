@@ -40,6 +40,9 @@ export function nextDeliveryState(prev: WebDeliveryState | undefined, next: WebD
   return DELIVERY_RANK[next] > DELIVERY_RANK[prev] ? next : prev;
 }
 
+export type WebChatRole = "agent" | "user" | "status";
+const ROLES: ReadonlySet<string> = new Set(["agent", "user", "status"]);
+
 export interface WebChatMessage {
   /** Files shown with the message (absent when none). */
   attachments?: WebChatAttachment[];
@@ -51,6 +54,12 @@ export interface WebChatMessage {
   instance: string;
   /** The `message_id` the agent was given for a web user's message — what delivery reports name it by. */
   messageId?: string;
+  /**
+   * Who the server says wrote it (#1306), set by the code path that emitted it — never read from the text or the
+   * sender name: `agent` (a delivered reply), `user` (a person, on any surface; the default), `status` (a daemon
+   * status line on a web-only fleet). Only `agent` messages may get HTML preview cards.
+   */
+  role: WebChatRole;
   sender: string;
   text: string;
   ts: string;
@@ -102,11 +111,13 @@ export class WebChatHistory {
   get lastId(): number { return this.nextId - 1; }
 
   /** Record one message; returns it with its id. Text beyond WEB_CHAT_TEXT_MAX is cut. */
-  record(msg: { instance: string; sender: string; text: string; ts: string; attachments?: WebChatAttachment[]; messageId?: string }): WebChatMessage {
+  record(msg: { instance: string; sender: string; text: string; ts: string; attachments?: WebChatAttachment[]; messageId?: string; role?: string }): WebChatMessage {
     const entry: WebChatMessage = {
       boot: this.boot,
       id: this.nextId++,
       instance: String(msg.instance),
+      // Anything not one of the three — or absent — is a person's message.
+      role: typeof msg.role === "string" && ROLES.has(msg.role) ? msg.role as WebChatRole : "user",
       sender: String(msg.sender),
       text: String(msg.text ?? "").slice(0, WEB_CHAT_TEXT_MAX),
       ts: String(msg.ts),

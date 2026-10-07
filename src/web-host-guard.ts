@@ -59,8 +59,8 @@ export function hostnameOf(value: string): string | null {
  * `frame-ancestors` are closed. Styles are the same (#1300): `style-src 'self'`, and a
  * panel's own `<style>` block carries the response's nonce. No panel has a `style="…"`
  * attribute — what a script colours or sizes at run time goes through the style object
- * (CSSOM), which the policy does not govern — so injected markup cannot restyle the page
- * (overlay a fake prompt, hide a warning) any more than it can run script.
+ * (CSSOM), which the policy does not govern — so injected markup cannot add inline styles of its
+ * own (it can still carry the page's existing class names).
  *
  * Fonts, scripts and styles are all served from here; nothing loads from a CDN.
  */
@@ -122,11 +122,17 @@ export function applyWebSecurityHeaders(res: ServerResponse): void {
   res.setHeader("Cache-Control", "no-store");
 }
 
-/** The panel policy for one response: WEB_CONTENT_SECURITY_POLICY with this response's nonce for scripts and styles. */
-export function panelContentSecurityPolicy(nonce: string): string {
-  return WEB_CONTENT_SECURITY_POLICY
+/**
+ * The panel policy for one response: WEB_CONTENT_SECURITY_POLICY with this response's nonce for scripts and styles,
+ * and — for /ui only, when a preview origin was chosen for this load (#1306) — `frame-src <preview origin>/frame`:
+ * path-scoped, so nothing else of that origin can be framed or navigated to. Without it, frames fall back to
+ * default-src 'self'.
+ */
+export function panelContentSecurityPolicy(nonce: string, opts: { frameSrc?: string } = {}): string {
+  const policy = WEB_CONTENT_SECURITY_POLICY
     .replace("script-src 'self'", `script-src 'self' 'nonce-${nonce}'`)
     .replace("style-src 'self'", `style-src 'self' 'nonce-${nonce}'`);
+  return opts.frameSrc ? `${policy}; frame-src ${opts.frameSrc}` : policy;
 }
 
 /**
@@ -134,9 +140,9 @@ export function panelContentSecurityPolicy(nonce: string): string {
  * fresh nonce, and the response's CSP names that nonce and nothing else inline (#1268, #1300): a script or a style
  * that was not in the file as served — anything injected into the page — has no nonce and does not apply.
  */
-export function sendPanelHtml(res: ServerResponse, html: string, status = 200, headers: Record<string, string> = {}): void {
+export function sendPanelHtml(res: ServerResponse, html: string, status = 200, headers: Record<string, string> = {}, csp: { frameSrc?: string } = {}): void {
   const nonce = randomBytes(18).toString("base64");
-  res.setHeader("Content-Security-Policy", panelContentSecurityPolicy(nonce));
+  res.setHeader("Content-Security-Policy", panelContentSecurityPolicy(nonce, csp));
   res.writeHead(status, { "Content-Type": "text/html; charset=utf-8", ...headers });
   res.end(html.replace(/<script>/g, `<script nonce="${nonce}">`).replace(/<style>/g, `<style nonce="${nonce}">`));
 }
