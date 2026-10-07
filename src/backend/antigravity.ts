@@ -444,12 +444,13 @@ node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{t
       currentModel = models.find(model => model.label === currentModel)?.id ?? currentModel;
     }
     // The effort levels this binary takes, from its own --help (#1328). Runs here, in the probe worker, never on a
-    // tool path; a failed or list-less help leaves them out and readers keep the previous value or the fallback.
+    // tool path. A help that lists none gives [] (the fallback applies); one that could not be read leaves them out,
+    // and the cache keeps the previous levels only for the same version (persistCliEnvProbeResult).
     let effortLevels: string[] | undefined;
     try {
       const help = execFileSync(this.binaryPath, ["--help"], { encoding: "utf-8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] });
-      effortLevels = parseAgyEffortLevels(help) ?? undefined;
-    } catch { /* no help → previous value or the fallback */ }
+      effortLevels = parseAgyEffortLevels(help) ?? [];
+    } catch { /* no help → previous value for the same version, else the fallback */ }
     return { version: probeCliVersion(this.binaryPath), models, currentModel, ...(effortLevels ? { effortLevels } : {}) };
   }
 

@@ -154,41 +154,102 @@ describe("agy: effort levels from the binary's own --help", () => {
     expect(agyEffortLevels()).toEqual(["low", "medium", "high"]);                       // no probe yet
     mkdirSync(join(home, "cli-env"), { recursive: true });
     const write = (env: unknown) => writeFileSync(join(home, "cli-env", "antigravity.json"), JSON.stringify(env));
-    write({ backend: "antigravity", probedAt: 1, models: [], effortLevels: ["max", "low", "nonsense", "xhigh"] });
+    write({ backend: "antigravity", probedAt: Date.now(), models: [], effortLevels: ["max", "low", "nonsense", "xhigh"] });
     expect(agyEffortLevels()).toEqual(["low", "xhigh", "max"]);                         // canonical order, filtered
     expect(readEffortMetadata("antigravity", scratch())).toEqual({ strategy: "runtime", levels: ["low", "xhigh", "max"] });
     expect(new AntigravityBackend(scratch()).getEffortLevels()).toEqual(["low", "xhigh", "max"]);
-    write({ backend: "antigravity", probedAt: 1, models: [], effortLevels: [] });
-    expect(agyEffortLevels()).toEqual(["low", "medium", "high"]);
+    write({ backend: "antigravity", probedAt: Date.now(), models: [], effortLevels: [] });
+    expect(agyEffortLevels()).toEqual(["low", "medium", "high"]);                       // help read, lists none
+    write({ backend: "antigravity", models: [], effortLevels: ["low", "max"] });
+    expect(agyEffortLevels()).toEqual(["low", "medium", "high"]);                       // no probedAt: not valid
     writeFileSync(join(home, "cli-env", "antigravity.json"), "{not json");
     expect(agyEffortLevels()).toEqual(["low", "medium", "high"]);
   });
 
-  it("the CLI env probe reads them from --help (a scratch script stands in for agy)", async () => {
-    const dir = scratch();
+  // A scratch shell script stands in for agy: `--help` prints the given help file (or fails), `--version` the version.
+  const fakeAgy = (dir: string, help: string | null, version: string | null) => {
     const fake = join(dir, "agy");
-    writeFileSync(fake, `#!/bin/sh\ncase "$1" in\n  --help) cat '${join(FIX, "agy-help", "agy-help-1.3.1.txt")}' ;;\n  --version) echo 'agy 1.3.1' ;;\n  *) exit 1 ;;\nesac\n`);
+    writeFileSync(fake, `#!/bin/sh\ncase "$1" in\n  --help) ${help ? `cat '${join(FIX, "agy-help", help)}'` : "exit 1"} ;;\n`
+      + `  --version) ${version ? `echo 'agy ${version}'` : "exit 1"} ;;\n  *) exit 1 ;;\nesac\n`);
     chmodSync(fake, 0o755);
     const be = new AntigravityBackend(dir, dir, dir);
     (be as unknown as { binaryPath: string }).binaryPath = fake;
-    const env = await be.probeCLIEnv();
-    expect(env.effortLevels).toEqual(["low", "medium", "high", "xhigh", "max"]);
-    writeFileSync(fake, "#!/bin/sh\nexit 1\n");                                         // no help → left out
-    expect((await be.probeCLIEnv()).effortLevels).toBeUndefined();
+    return be;
+  };
+
+  it("the CLI env probe reads them from --help: a list, [] for a help that lists none, absent for no help", async () => {
+    const dir = scratch();
+    expect((await fakeAgy(dir, "agy-help-1.3.1.txt", "1.3.1").probeCLIEnv()).effortLevels).toEqual(["low", "medium", "high", "xhigh", "max"]);
+    expect((await fakeAgy(dir, "agy-help-1.0.10.txt", "1.0.10").probeCLIEnv()).effortLevels).toEqual([]);
+    expect((await fakeAgy(dir, null, "1.3.1").probeCLIEnv()).effortLevels).toBeUndefined();
   });
 
-  it("a probe without levels keeps the ones already cached", async () => {
-    const home = scratch();
-    vi.stubEnv("AGEND_HOME", home);
-    const { FleetManager } = await import("../src/fleet-manager.js");
-    const fm = new FleetManager(scratch()) as any;
-    try {
-      fm.persistCliEnvProbeResult("antigravity", { models: [], effortLevels: ["low", "medium", "high", "xhigh", "max"] });
-      fm.persistCliEnvProbeResult("antigravity", { models: [] });
-      expect(agyEffortLevels()).toEqual(["low", "medium", "high", "xhigh", "max"]);
-    } finally {
-      fm.stormWindow.shutdown(); fm.spawnGate.shutdown(); fm.memoryPressure.stop();
-    }
+  describe("probe → cache → reader (the exact chain, scratch AGEND_HOME)", () => {
+    const fleet = async () => {
+      const { FleetManager } = await import("../src/fleet-manager.js");
+      const fm = new FleetManager(scratch()) as any;
+      fms.push(fm);
+      return async (be: AntigravityBackend) => fm.persistCliEnvProbeResult("antigravity", await be.probeCLIEnv());
+    };
+    const fms: any[] = [];
+    afterEach(() => {
+      for (const fm of fms.splice(0)) { fm.stormWindow.shutdown(); fm.spawnGate.shutdown(); fm.memoryPressure.stop(); }
+      vi.useRealTimers();
+    });
+    const FIVE = ["low", "medium", "high", "xhigh", "max"];
+    const THREE = ["low", "medium", "high"];
+
+    it("same version, help failed this time → the cached levels stay", async () => {
+      vi.stubEnv("AGEND_HOME", scratch());
+      const probe = await fleet(), dir = scratch();
+      await probe(fakeAgy(dir, "agy-help-1.3.1.txt", "1.3.1"));
+      await probe(fakeAgy(dir, null, "1.3.1"));
+      expect(agyEffortLevels()).toEqual(FIVE);
+    });
+
+    it("same version, help read and listing none → that answer is written (three), not the cached five", async () => {
+      vi.stubEnv("AGEND_HOME", scratch());
+      const probe = await fleet(), dir = scratch();
+      await probe(fakeAgy(dir, "agy-help-1.3.1.txt", "1.3.1"));
+      await probe(fakeAgy(dir, "agy-help-1.0.10.txt", "1.3.1"));
+      expect(agyEffortLevels()).toEqual(THREE);
+    });
+
+    it("a new binary whose help lists none (1.3.1 → 1.0.10) → three, not the old five", async () => {
+      vi.stubEnv("AGEND_HOME", scratch());
+      const probe = await fleet(), dir = scratch();
+      await probe(fakeAgy(dir, "agy-help-1.3.1.txt", "1.3.1"));
+      const env = await probe(fakeAgy(dir, "agy-help-1.0.10.txt", "1.0.10"));
+      expect(env.version).toContain("1.0.10");
+      expect(agyEffortLevels()).toEqual(THREE);
+      expect(new AntigravityBackend(scratch()).getEffortLevels()).toEqual(THREE);
+    });
+
+    it("help failed and the version changed, or is unknown → the old levels are not carried", async () => {
+      for (const next of ["1.4.0", null]) {
+        vi.stubEnv("AGEND_HOME", scratch());
+        const probe = await fleet(), dir = scratch();
+        await probe(fakeAgy(dir, "agy-help-1.3.1.txt", "1.3.1"));
+        await probe(fakeAgy(dir, null, next));
+        expect(agyEffortLevels(), String(next)).toEqual(THREE);
+      }
+    });
+
+    it("past the CLI env TTL the cache is not read, and a later failed help does not revive it", async () => {
+      const { CLI_ENV_TTL_MS } = await import("../src/backend/types.js");
+      vi.stubEnv("AGEND_HOME", scratch());
+      vi.useFakeTimers({ toFake: ["Date"] });
+      const t0 = Date.UTC(2026, 9, 7);
+      vi.setSystemTime(t0);
+      const probe = await fleet(), dir = scratch();
+      await probe(fakeAgy(dir, "agy-help-1.3.1.txt", "1.3.1"));
+      vi.setSystemTime(t0 + CLI_ENV_TTL_MS - 1);
+      expect(agyEffortLevels()).toEqual(FIVE);
+      vi.setSystemTime(t0 + CLI_ENV_TTL_MS);
+      expect(agyEffortLevels()).toEqual(THREE);
+      await probe(fakeAgy(dir, null, "1.3.1"));                                         // same version, but stale
+      expect(agyEffortLevels()).toEqual(THREE);
+    });
   });
 });
 

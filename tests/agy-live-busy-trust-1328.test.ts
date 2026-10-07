@@ -10,11 +10,14 @@
  *
  * No CLI, fleet or tmux runs here (bd0c88aa).
  */
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { AntigravityBackend, agyTrustDialogState } from "../src/backend/antigravity.js";
 import type { RuntimeDialog } from "../src/backend/types.js";
+import { Daemon } from "../src/daemon.js";
+import type { InstanceConfig } from "../src/types.js";
 
 const FIX = join(import.meta.dirname, "fixtures");
 const fixture = (name: string) => readFileSync(join(FIX, name), "utf-8");
@@ -96,5 +99,72 @@ describe("trust: one Enter, only on a verified 'Yes' cursor; otherwise held", ()
     expect(agyTrustDialogState(idle)).toBeNull();
     expect(startup(idle)).toBeUndefined();
     expect(runtime(idle)).toEqual([]);
+  });
+});
+
+describe("trust on the real startup scan (tmux stubbed, no CLI)", () => {
+  const TRUST = fixture("agy-1.3.1-trust-dialog.pane.txt");
+  const IDLE = fixture("agy-1.3.1-idle-after-reply.pane.txt");
+  const dirs: string[] = [];
+  afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
+
+  // Each capture returns the next pane; the last one repeats. Keys sent are recorded.
+  const scan = async (panes: string[], budgetMs = 800) => {
+    const dir = mkdtempSync(join(tmpdir(), "agy-1328-scan-"));
+    dirs.push(dir);
+    writeFileSync(join(dir, "window-id"), "@1");
+    const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), level: "info" };
+    const daemon = new Daemon("agy-1328", {
+      working_directory: "/tmp", backend: "antigravity",
+      restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 }, log_level: "silent",
+    } as unknown as InstanceConfig, dir, false, new AntigravityBackend(dir, dir, dir), undefined, { child: () => logger } as never) as any;
+    const keys: string[] = [];
+    let i = 0;
+    daemon.tmux = {
+      capturePane: vi.fn(async () => panes[Math.min(i++, panes.length - 1)]),
+      isWindowAlive: async () => true,
+      sendSpecialKey: vi.fn(async (k: string) => { keys.push(k); return true; }),
+      sendKeys: vi.fn(async (k: string) => { keys.push(k); return true; }),
+    };
+    daemon.controlClient = { waitForIdle: async () => {} };
+    await daemon.dismissDialogsUntilReady(budgetMs, 0);
+    return { keys, daemon };
+  };
+  // A conversation that quotes the title (or the whole prompt) above agy's ready composer, with or without a draft.
+  const [head, composer] = [IDLE.slice(0, IDLE.indexOf("────")), IDLE.slice(IDLE.indexOf("────"))];
+  const quoting = (quote: string, draft = "") => `${head.trimEnd()}\n${quote}\n${draft ? composer.replace(/^>[ \t]*$/m, `> ${draft}`) : composer}`;
+
+  it.each([
+    ["the title quoted, ready composer", quoting("Do you trust the contents of this project?")],
+    ["the title quoted, a draft in the composer", quoting("Do you trust the contents of this project?", "hello from the queue")],
+    ["the whole prompt quoted, ready composer", quoting(TRUST.trim())],
+    ["the whole prompt quoted, a draft in the composer", quoting(TRUST.trim(), "hello from the queue")],
+  ])("%s → zero keys", async (_label, pane) => {
+    expect(pane).toMatch(/Do you trust the contents of this project\?/);
+    expect((await scan([pane])).keys).toEqual([]);
+  });
+
+  it("the live prompt, then the ready screen → exactly one Enter", async () => {
+    expect((await scan([TRUST, TRUST, IDLE])).keys).toEqual(["Enter"]);
+  });
+
+  it("the live prompt that stays up → one Enter, then held: no second key, deliveries blocked", async () => {
+    const { keys, daemon } = await scan([TRUST]);
+    expect(keys).toEqual(["Enter"]);
+    const probed = await daemon.probeBlockingDialog();
+    expect(probed.state).toBe("dialog");
+    expect(probed.dialog.holdOnly).toBe(true);
+  });
+
+  it("the cursor on 'No, exit' → zero keys, held", async () => {
+    const onNo = TRUST.replace("> Yes, I trust this folder", "  Yes, I trust this folder").replace("  No, exit", "> No, exit");
+    const { keys, daemon } = await scan([onNo]);
+    expect(keys).toEqual([]);
+    expect((await daemon.probeBlockingDialog()).state).toBe("dialog");
+  });
+
+  it("the cursor moves off 'Yes' between the scan and the key (write-lock re-check) → zero keys", async () => {
+    const onNo = TRUST.replace("> Yes, I trust this folder", "  Yes, I trust this folder").replace("  No, exit", "> No, exit");
+    expect((await scan([TRUST, onNo])).keys).toEqual([]);
   });
 });
