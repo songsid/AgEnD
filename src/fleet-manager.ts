@@ -1,3 +1,4 @@
+import { measureSyncWork } from "./sync-work-attribution.js";
 import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync, readdirSync, renameSync, copyFileSync, chmodSync, statSync, accessSync, realpathSync, constants as fsConstants, type Dirent } from "node:fs";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
@@ -55,13 +56,14 @@ import { isWebChannelEcho, WEB_ECHO_PREFIX } from "./web-channel-echo.js";
 import { TelegramAdapter } from "./channel/adapters/telegram.js";
 import { createBackend } from "./backend/factory.js";
 import { readEffortMetadata } from "./backend/effort-metadata.js";
-import { isModelCompatible, SYSINFO_BACKEND_IDS, UnsupportedCliError, type BackendCliVersionSnapshot } from "./backend/types.js";
+import { CLI_ENV_TTL_MS, isModelCompatible, SYSINFO_BACKEND_IDS, UnsupportedCliError, type BackendCliVersionSnapshot } from "./backend/types.js";
 import { createLogger, rotateLogIfNeeded, type Logger } from "./logger.js";
 import { processAttachments } from "./channel/attachment-handler.js";
 import { routeToolCall } from "./channel/tool-router.js";
 import { Scheduler } from "./scheduler/index.js";
 import type { Schedule, SchedulerConfig } from "./scheduler/index.js";
 import { DEFAULT_SCHEDULER_CONFIG } from "./scheduler/index.js";
+import type { Task } from "./scheduler/types.js";
 import type { FleetContext } from "./fleet-context.js";
 import { TopicCommands, saveCommandForBackend, parseSaveFilename, parsePauseWakeCommand, parseCompactCommand, SAVE_FILENAME_RE, resolveInstanceContext, forgetInstanceContext, readStatuslineModel } from "./topic-commands.js";
 import type { HangDetector } from "./hang-detector.js";
@@ -89,6 +91,31 @@ import { DeliveryOutbox, type ClaimedOutboxDelivery, type OutboxDelivery, type D
 // active manager/target generation pair owns the lane until the daemon reports
 // a state transition or that generation is replaced.
 export const DURABLE_DELIVERY_LANE_ALERT_MS = 35 * 60_000;
+
+/**
+ * #1335: Cap an unfiltered task list at 100 rows (most recently updated first).
+ * Exported so the production branch can be tested directly without starting a fleet.
+ * Filtered calls pass-through unchanged. Empty strings count as "not set" (P3).
+ */
+export const TASK_LIST_CAP = 100;
+export function applyTaskListCap(
+  tasks: Task[],
+  filterAssignee: string | undefined,
+  filterStatus: string | undefined,
+): { tasks: Task[]; omitted: number; hint: string } | Task[] {
+  // Empty strings are treated as "not filtered" (same as undefined).
+  const isFiltered = !!filterAssignee || !!filterStatus;
+  if (!isFiltered && tasks.length > TASK_LIST_CAP) {
+    const omitted = tasks.length - TASK_LIST_CAP;
+    tasks.sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+    return {
+      tasks: tasks.slice(0, TASK_LIST_CAP),
+      omitted,
+      hint: `${omitted} older task(s) omitted — use filter_assignee or filter_status to narrow results`,
+    };
+  }
+  return tasks;
+}
 import { handleWebRequest, broadcastSseEvent, SSE_HEARTBEAT_MS } from "./web-api.js";
 import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, type WebChatAttachment } from "./web-chat-history.js";
 import { publicAttachment, sweepOrphanedUploads, WebFileLedger } from "./web-upload.js";
@@ -99,6 +126,7 @@ import { LoginSession } from "./login-manager.js";
 import { tightenInstanceDirs } from "./private-dir.js";
 import { decideSlash, type SlashFacts, type SlashScope, type SlashSpeaker } from "./slash-authz.js";
 import { commandSpec, decideCommand, type CommandScope } from "./command-table.js";
+import { runVisibilityCommand } from "./cross-instance-notice.js";
 import { UPDATE_COMMAND, installedChannel, isPrereleaseVersion, updateNoticeKey } from "./update-check.js";
 import { LoginController, LOGIN_TOKEN_RESEND_PREFIX, POST_LOGIN_RECOVERY_DEADLINE_MS, type PostLoginRecovery } from "./login-controller.js";
 import { runBeforeDeadline } from "./deadline.js";
@@ -111,6 +139,7 @@ import { handleAgentRequest, ToolNotPermittedError, type AgentEndpointContext } 
 import { ClassicChannelManager, getClassicBackendChoices, isSelectableClassicBackend, readClassicLastActivityAt } from "./classic-channel-manager.js";
 import { assertExplicitInstanceRemoval, type ExplicitInstanceRemoval } from "./instance-removal.js";
 import { validateFleetConfig } from "./config-validator.js";
+import { isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
 import { presentationState, interactionSummary } from "./interaction-observation.js";
 import type { InstanceState, InstanceStateSnapshot, InteractionSnapshot } from "./backend/types.js";
 import { readLastInboundAt } from "./daemon.js";
@@ -268,6 +297,17 @@ export function selectLruEvictions(
     && opts.isIdle(name));
   candidates.sort((a, b) => opts.lastInboundAt(a) - opts.lastInboundAt(b));
   return candidates.slice(0, warm.length - cap);
+}
+
+/**
+ * Window-name shape this fleet recognises as an instance window: the
+ * `-t<digits>` form every allocator emits, plus legacy `classic-` windows.
+ * Startup cleanup reaps windows matching this that are no longer in
+ * fleet.yaml. Keep in sync with `uniqueInstanceName` — every name it emits
+ * must match here, or a deleted instance's CLI is left running (#1305 P2-3).
+ */
+export function isOrphanInstanceWindowName(name: string): boolean {
+  return /-t\d+$/.test(name) || /^classic-/.test(name);
 }
 
 /** Retry cadence for retiring a cancel button whose delete failed (e.g. a DC
@@ -605,7 +645,6 @@ const NONCE_BUTTON_TIMEOUT_MS = 15 * 60_000;
 const TIP_BUTTON_TIMEOUT_MS = 24 * 60 * 60_000;
 /** How long shutdown will spend retiring still-armed button prompts. */
 const NONCE_RETIRE_BUDGET_MS = 5_000;
-const CLI_ENV_TTL_MS = 24 * 60 * 60 * 1000; // hard validity bound for the cached CLI env
 /**
  * How old the cached CLI env may be before `/model` re-probes it live.
  *
@@ -950,6 +989,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** Injectable only to keep the chat→CLI reload hand-off deterministic in tests. */
   private fullRestartLauncher: () => Promise<FullRestartHelperHandle> = launchFullRestartHelper;
   private eventLogPruneTimer: ReturnType<typeof setInterval> | null = null;
+  private outboxPruneTimer: ReturnType<typeof setInterval> | null = null;
   private logRotateTimer: ReturnType<typeof setInterval> | null = null;
   private discordPresenceTimer: ReturnType<typeof setInterval> | null = null;
   private discordPresenceEagerTimer: ReturnType<typeof setTimeout> | null = null;
@@ -2010,6 +2050,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     await this.requestFullRestart(adapter, chatId, data.channelId, messageId);
   }
 
+  /** #1302: `/visibility [mode]`. The dispatcher has already applied the command table's fleet-admin gate. */
+  private async handleVisibilitySlash(data: ClassicStartSlashData): Promise<void> {
+    if (!this.fleetConfig) return;
+    const mode = typeof data.options?.mode === "string" ? data.options.mode : "";
+    await data.respond(runVisibilityCommand(this.fleetConfig, mode, () => this.saveFleetConfig()));
+  }
+
   private async handleTipsSlash(data: ClassicStartSlashData, adapterId: string): Promise<void> {
     if (!this.fleetConfig) return;
     const mode = typeof data.options?.mode === "string" ? data.options.mode : "";
@@ -3024,6 +3071,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await this.handleUpdateSlash(data, adapterId);
     } else if (data.command === "doctor") {
       await data.respond(await this.runBackendDoctor());
+    } else if (data.command === "visibility") {
+      await this.handleVisibilitySlash(data);
     } else if (data.command === "usage") {
       // Same permission level as /ctx (none). The reply is still ephemeral —
       // the adapter defers non-chat commands that way — so it never spams the
@@ -3341,7 +3390,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         oldToolProgress.set(ch.instanceName, this.classicChannels.getToolProgress(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.tool_progress));
         oldReplyGuard.set(ch.instanceName, this.classicChannels.getReplyCompletionGuard(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.reply_completion_guard));
       }
-      if (!this.classicChannels.checkReload()) return;
+      if (!measureSyncWork("fleet.classicConfigReload", () => this.classicChannels!.checkReload())) return;
       // A reload can introduce a bad id (hand edit) or clear one; the
       // throttle keeps a repeated report from flooding the topic.
       this.reportClassicUnrecoverableIds();
@@ -3448,7 +3497,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // managed independently from fleet-topic workers.
       try {
         const skillsWorkDir = this.resolveKnowledgeWorkDir(config.working_directory, backend, name);
-        this.syncRoleSkills(skillsWorkDir, backend, "worker");
+        measureSyncWork("fleet.workerSkills", () => this.syncRoleSkills(skillsWorkDir, backend, "worker"));
       } catch (err) {
         // Skill publishing is additive. A read-only or temporarily unavailable
         // workspace must not turn an otherwise valid worker startup into a
@@ -4494,7 +4543,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // Also kill orphaned windows: any window with a topic ID suffix (name-tNNNNN)
         // that isn't in the current config — these are leftovers from deleted instances
         const isKnownInstance = agendNames.has(w.name);
-        const isOrphanedInstance = !isKnownInstance && (/-t\d+$/.test(w.name) || /^classic-/.test(w.name));
+        const isOrphanedInstance = !isKnownInstance && isOrphanInstanceWindowName(w.name);
         if (isKnownInstance || isOrphanedInstance) {
           if (isOrphanedInstance) this.logger.info({ window: w.name }, "Cleaning up orphaned tmux window");
           const tm = new TmuxManager(getTmuxSession(), w.id);
@@ -4814,6 +4863,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.pruneEventLog();
     this.eventLogPruneTimer = setInterval(() => this.pruneEventLog(), 24 * 60 * 60_000);
     this.eventLogPruneTimer.unref?.();
+
+    // #1335: delivery-outbox.db and Task Board retention. Same once-at-startup
+    // + daily-timer pattern; chunked DELETEs so one run cannot hold the loop.
+    void this.pruneOutboxAndTasks();
+    this.outboxPruneTimer = setInterval(() => { void this.pruneOutboxAndTasks(); }, 24 * 60 * 60_000);
+    this.outboxPruneTimer.unref?.();
 
     // Same shape for logs, and for the same reason: the only sweep that
     // covered them lived inside the daily-summary callback, so it did not run at
@@ -6471,10 +6526,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const inboundAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter!;
 
         // React immediately — before any other API calls — through the status
-        // path, so a later delivery status replaces (not stacks onto) this
-        // acknowledgement.
+        // path, which tracks Telegram slot ownership and Discord status adds.
         if (msg.chatId && msg.messageId) {
-          this.reactMessageStatus(generalInstance, msg.chatId, msg.messageId, "received", msg.threadId || undefined);
+          this.reactMessageStatus(generalInstance, msg.chatId, msg.messageId, "received", msg.threadId || undefined, msg.timestamp.getTime());
         }
 
         this.warnIfRateLimited(generalInstance, msg);
@@ -6491,7 +6545,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
               user: msg.username,
               user_id: msg.userId,
               ts: msg.timestamp.toISOString(),
-              thread_id: "",
+              thread_id: msg.threadId ?? "",
               // Fleet instances have an authoritative adapter binding. Multiple
               // bots in one guild can observe the same inbound message, so the
               // adapter whose event wins dedup is not necessarily the bot that
@@ -6568,10 +6622,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const inboundAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter!;
 
     // React immediately — before any other Discord API calls — through the
-    // status path, so a later delivery status replaces (not stacks onto) this
-    // acknowledgement. Same bound-adapter routing as the status path itself.
+    // status path, which tracks Telegram slot ownership and Discord status adds.
+    // Same bound-adapter routing as the status path itself.
     if (msg.chatId && msg.messageId) {
-      this.reactMessageStatus(instanceName, msg.chatId, msg.messageId, "received", msg.threadId || undefined);
+      this.reactMessageStatus(instanceName, msg.chatId, msg.messageId, "received", msg.threadId || undefined, msg.timestamp.getTime());
     }
 
     // These may hit Discord API (topic icon, archive) — do after react
@@ -7637,12 +7691,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             created_by: meta.instance_name || instanceName,
           });
           break;
-        case "list":
-          result = db.listTasks({
-            assignee: payload.filter_assignee as string | undefined,
-            status: payload.filter_status as string | undefined,
-          });
+        case "list": {
+          // P3: normalize empty strings to undefined — SchedulerDb.listTasks
+          // ignores them but the cap logic must treat them as "not filtered".
+          const filterAssignee = (payload.filter_assignee as string | undefined) || undefined;
+          const filterStatus = (payload.filter_status as string | undefined) || undefined;
+          const tasks = db.listTasks({ assignee: filterAssignee, status: filterStatus });
+          // #1335: cap unfiltered list at 100 rows via the exported helper.
+          result = applyTaskListCap(tasks, filterAssignee, filterStatus);
           break;
+        }
         case "claim":
           result = db.claimTask(payload.id as string, meta.instance_name || instanceName);
           break;
@@ -7689,13 +7747,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return adapter.createTopic(topicName);
   }
 
-  async deleteForumTopic(topicId: number | string): Promise<void> {
+  async deleteForumTopic(topicId: number | string, adapterId?: string): Promise<void> {
     try {
-      if (!this.adapter?.deleteTopic) return;
-      await this.adapter.deleteTopic(topicId);
+      const adapter = (adapterId ? this.worlds.get(adapterId)?.adapter : undefined) ?? this.adapter;
+      if (!adapter?.deleteTopic) return;
+      await adapter.deleteTopic(topicId);
     } catch (err) {
       this.logger.warn({ err, topicId }, "Failed to delete forum topic during rollback");
     }
+  }
+
+  getForumTopicDeleter(adapterId?: string): ((topicId: number | string) => Promise<void>) | null {
+    const adapter = (adapterId ? this.worlds.get(adapterId)?.adapter : undefined) ?? this.adapter;
+    if (!adapter?.deleteTopic) return null;
+    return (topicId) => adapter.deleteTopic!(topicId);
   }
 
   private topicCleanupTimer: ReturnType<typeof setInterval> | null = null;
@@ -8798,6 +8863,29 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return reactionForm(resolved.platform, resolved.received);
   }
 
+  private reactClassicReceived(instanceName: string, adapter: ChannelAdapter, msg: InboundMessage): Promise<void> {
+    const emoji = this.receivedReactionFor(instanceName, adapter, msg.adapterId);
+    // Classic's system receipt is status-owned too. An ordinary react call
+    // would label it as an agent/other reaction and suppress later statuses.
+    if (adapter instanceof TelegramAdapter) {
+      return adapter.reactDeliveryStatus(msg.chatId, msg.messageId, emoji, msg.timestamp.getTime()).then(() => {});
+    }
+    return adapter.react(msg.threadId ?? msg.chatId, msg.messageId, emoji);
+  }
+
+  private reactClassicForwardedAttachment(
+    instanceName: string, adapter: ChannelAdapter, msg: InboundMessage, kind: string,
+  ): Promise<void> {
+    const emoji = this.savedAttachmentReactionFor(instanceName, adapter, msg.adapterId, kind);
+    // A forwarded attachment's saved stamp is ours, so later delivery statuses
+    // may replace it. The receipt queued first establishes ownership; this
+    // stamp cannot bootstrap an unknown slot or replace an agent's reaction.
+    if (adapter instanceof TelegramAdapter) {
+      return adapter.reactDeliveryStatus(msg.chatId, msg.messageId, emoji).then(() => {});
+    }
+    return adapter.react(msg.threadId ?? msg.chatId, msg.messageId, emoji);
+  }
+
   /**
    * The stamp for an inbound photo / file a classic bot saved (#1080): the
    * instance's `status_emojis.photo|attachment`, then its connection's, then
@@ -8812,7 +8900,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   reactMessageStatus(
-    instanceName: string, chatId: string, messageId: string, status: DeliveryStatus, threadId?: string,
+    instanceName: string, chatId: string, messageId: string, status: DeliveryStatus, threadId?: string, receivedAt?: number,
   ): void {
     // A message the web user sent is no message on any platform: there is nothing to react on, and an id
     // like web-… would only fail there. Its ticks are the dashboard's (web track C3).
@@ -8835,7 +8923,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const adapterId = typeof (adapter as { id?: unknown }).id === "string"
       ? (adapter as unknown as { id: string }).id : "?";
     const key = `${adapterId}:${chatId}:${threadId ?? ""}:${messageId}`;
-    this.queueDeliveryStatusReaction(adapter, key, chatId, messageId, statusEmoji, threadId, status);
+    this.queueDeliveryStatusReaction(adapter, key, chatId, messageId, statusEmoji, threadId, status, status === "received" ? receivedAt : undefined);
   }
 
   /** One delivery report for a web user's message: recorded with it, and sent to the pages when it moved. */
@@ -8857,10 +8945,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private queueDeliveryStatusReaction(
     adapter: ChannelAdapter, key: string, chatId: string, messageId: string, emoji: string | null, threadId?: string,
-    status?: DeliveryStatus,
+    status?: DeliveryStatus, receivedAt?: number,
   ): void {
     const prev = this.deliveryStatusChains.get(key) ?? Promise.resolve();
-    const run = prev.then(() => this.applyDeliveryStatusReaction(adapter, key, chatId, messageId, emoji, threadId, status));
+    const run = prev.then(() => this.applyDeliveryStatusReaction(adapter, key, chatId, messageId, emoji, threadId, status, receivedAt));
     this.deliveryStatusChains.set(key, run);
     void run.then(
       () => { if (this.deliveryStatusChains.get(key) === run) this.deliveryStatusChains.delete(key); },
@@ -8870,12 +8958,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private async applyDeliveryStatusReaction(
     adapter: ChannelAdapter, key: string,
-    chatId: string, messageId: string, emoji: string | null, threadId?: string, status?: DeliveryStatus,
+    chatId: string, messageId: string, emoji: string | null, threadId?: string, status?: DeliveryStatus, receivedAt?: number,
   ): Promise<void> {
     try {
       const target = adapter instanceof TelegramAdapter ? chatId : (threadId ?? chatId);
       const last = this.lastStatusEmoji.get(key);
       const prev = last?.emoji;
+      if (adapter instanceof TelegramAdapter) {
+        // The adapter owns the one-reaction slot and serializes this check
+        // with agent react calls. The fleet's last emoji is not ownership.
+        if (await adapter.reactDeliveryStatus(chatId, messageId, emoji, receivedAt)) {
+          if (emoji == null) this.lastStatusEmoji.delete(key);
+          else this.lastStatusEmoji.set(key, { emoji, status });
+        }
+        return;
+      }
       if (emoji == null) {
         if (prev && adapter.unreact) {
           await adapter.unreact(target, messageId, prev, threadId);
@@ -8883,9 +8980,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         }
         return;
       }
-      // A Telegram status may map multiple lifecycle states to the same
-      // reaction. Avoid resending it: an agent may have replaced the one
-      // reaction slot with its own 👍 between delivered and confirmed.
+      // Discord adds reactions rather than replacing a single slot.
       if (prev === emoji) return;
       // Thread-aware adapters (Discord) react where the thread is; Telegram
       // addresses the supergroup chat and ignores the thread part.
@@ -9053,6 +9148,42 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     } catch (err) {
       this.logger.warn({ err }, "Event log prune failed");
     }
+  }
+
+  /** #1335: Prune delivery-outbox.db and Task Board in chunked async passes. */
+  private async pruneOutboxAndTasks(): Promise<void> {
+    const days = this.fleetConfig?.defaults?.retention_days ?? 30;
+    // Outbox prune
+    const outbox = this.deliveryOutbox;
+    if (outbox?.isOpen) {
+      try {
+        const { pruned, durationMs } = await outbox.prune(days);
+        if (pruned > 0) {
+          this.logger.info({ pruned, durationMs: Math.round(durationMs) }, "Delivery outbox pruned");
+        }
+      } catch (err) {
+        this.logger.warn({ err }, "Delivery outbox prune failed");
+      }
+    }
+    // Task Board prune
+    if (this.scheduler?.db) {
+      try {
+        const pruned = await this.scheduler.db.pruneOldTasks(days);
+        if (pruned > 0) {
+          this.logger.info({ pruned }, "Task board pruned");
+        }
+      } catch (err) {
+        this.logger.warn({ err }, "Task board prune failed");
+      }
+    }
+  }
+
+  /**
+   * #1335: True when the delivery_id was in the outbox, was pruned by
+   * retention, and the caller is the original source or target (#1340 P2 🔒).
+   */
+  wasDeliveryIdPrunedForCaller(deliveryId: string, callerInstance: string): boolean {
+    return this.deliveryOutbox?.wasDeliveryIdPrunedForCaller(deliveryId, callerInstance) ?? false;
   }
 
   private openEventLog(): EventLog | null {
@@ -11156,9 +11287,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const installed = this.probeInstalledBackends();
     // One entry point for "get this CLI working" (#1131): a backend that is
     // not installed is offered too, and the click installs it first, then
-    // signs in (startLoginSession routes it). gemini-cli is not recommended,
-    // as before; `/login gemini-cli` still installs it.
-    const installable = new Set(Object.keys(BACKEND_INSTALLATION_INFO).filter(backend => backend !== "gemini-cli"));
+    // signs in (startLoginSession routes it).
+    const installable = new Set(Object.keys(BACKEND_INSTALLATION_INFO));
     const candidates = new Set<string>([...installed, ...configured, ...installable]);
     const unsupported: Array<{ backend: string; flow?: LoginFlow; status: string[] }> = [];
     const choices = [...candidates].sort().flatMap(backend => {
@@ -11181,7 +11311,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return [];
     });
     if (unsupported.length) {
-      const guidance = unsupported.map(({ backend, flow, status }) => `${backend} · ${status.join(" · ")} — ${!installed.has(backend)
+      const guidance = unsupported.map(({ backend, flow, status }) => `${backend} · ${status.join(" · ")} — ${isRemovedBackend(backend)
+        ? removedBackendMessage(backend)
+        : !installed.has(backend)
         ? (BACKEND_INSTALLATION_INFO[backend] ? t("login.install_by_name", backend) : t("login.install_on_host", backend))
         : flow?.remoteLogin === "unsupported"
         ? t("login.remote_unsupported_agent_cli", backend, flow.command)
@@ -11363,6 +11495,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // went missing meanwhile must not start an installer from a "go" button.
     if (opts.skipAuthCheck) return this.launchSignIn(backendArg, chat, opts);
     const wanted = LOGIN_BACKEND_ALIASES[backendArg.toLowerCase()] ?? backendArg.toLowerCase();
+    // A removed backend (#1280) is neither installed nor signed into: say what replaces it.
+    if (isRemovedBackend(wanted)) return removedBackendMessage(wanted);
     if (BACKEND_INSTALLATION_INFO[wanted] && !this.isCliInstalled(wanted)) {
       const flow = LOGIN_FLOWS[wanted];
       this.recordLoginFlow(wanted, flow && flow.remoteLogin !== "unsupported" ? "install_then_login" : "install_only", chat.userId);
@@ -11731,8 +11865,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * definition or a function name, neither of which a spawn could run.
    */
   private locateBinaryOnLoginShell(binary: string): string | null {
+    return measureSyncWork("fleet.installLookup", () => this.locateBinaryOnLoginShellSync(binary));
+  }
+  private locateBinaryOnLoginShellSync(binary: string): string | null {
     try {
-      const result = spawnSync("bash", ["-lc", `command -v ${binary}`], { timeout: 10_000, stdio: "pipe", encoding: "utf8" });
+      const result = measureSyncWork("fleet.installLoginShell", () => spawnSync("bash", ["-lc", `command -v ${binary}`], { timeout: 10_000, stdio: "pipe", encoding: "utf8" }));
       if (result.status !== 0) return null;
       const path = String(result.stdout ?? "").trim().split("\n").pop()?.trim() ?? "";
       if (!isAbsolute(path)) return null;
@@ -11956,7 +12093,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private static INSTRUCTIONS_FILENAME: Record<string, string> = {
     "claude-code": "CLAUDE.md",
     "codex": "AGENTS.md",
-    "gemini-cli": "GEMINI.md",
     "opencode": "AGENTS.md",
     "kiro-cli": ".kiro/steering/project.md",
     // Grok reads AGENTS.md project docs; agy reads .agents/agents.md — the
@@ -12001,6 +12137,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
   /** Ensure the general instance has its project instructions file + knowledge */
   private ensureGeneralInstructions(workDir: string, backendName?: string, instanceName?: string): void {
+    measureSyncWork("fleet.generalInstructions", () => this.ensureGeneralInstructionsSync(workDir, backendName, instanceName));
+  }
+  private ensureGeneralInstructionsSync(workDir: string, backendName?: string, instanceName?: string): void {
     const backend = backendName ?? "claude-code";
     workDir = this.resolveKnowledgeWorkDir(workDir, backend, instanceName);
     const filename = FleetManager.INSTRUCTIONS_FILENAME[backend] ?? "CLAUDE.md";
@@ -12029,7 +12168,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   /**
    * Where each backend natively loads on-demand skills from, relative to the
    * workspace. Backends without a native skill mechanism (opencode, grok,
-   * antigravity, gemini-cli) are deliberately absent: dropping files a CLI
+   * antigravity) are deliberately absent: dropping files a CLI
    * never reads is clutter, not capability. Unknown directories are ignored
    * by older CLI versions, so publishing is fail-open across upgrades.
    */
@@ -12382,7 +12521,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       const classicAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter;
       const collabReactChatId = msg.threadId ?? msg.chatId;
       if (classicAdapter && collabReactChatId && msg.messageId) {
-        classicAdapter.react(collabReactChatId, msg.messageId, this.receivedReactionFor(instanceName, classicAdapter, msg.adapterId))
+        this.reactClassicReceived(instanceName, classicAdapter, msg)
           .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
       }
 
@@ -12392,8 +12531,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
       // Attachments already saved at the top of the collab block.
       if (saved && classicAdapter && collabReactChatId && msg.messageId) {
-        const emoji = this.savedAttachmentReactionFor(instanceName, classicAdapter, msg.adapterId, saved.kind);
-        classicAdapter.react(collabReactChatId, msg.messageId, emoji)
+        this.reactClassicForwardedAttachment(instanceName, classicAdapter, msg, saved.kind)
           .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
       }
       // Strip saved attachment to avoid double download
@@ -12483,12 +12621,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     }
 
     if (msg.chatId && msg.messageId) {
-      const reactChatId = msg.threadId ?? msg.chatId;
-      classicMsgAdapter.react(reactChatId, msg.messageId, this.receivedReactionFor(instanceName, classicMsgAdapter, msg.adapterId))
+      this.reactClassicReceived(instanceName, classicMsgAdapter, msg)
         .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
       if (saved) {
-        const savedEmoji = this.savedAttachmentReactionFor(instanceName, classicMsgAdapter, msg.adapterId, saved.kind);
-        classicMsgAdapter.react(reactChatId, msg.messageId, savedEmoji)
+        this.reactClassicForwardedAttachment(instanceName, classicMsgAdapter, msg, saved.kind)
           .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
       }
     }
@@ -12850,6 +12986,15 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (!env.apiModels?.length) {
       const previous = this.readCliEnv(backend);
       if (previous?.apiModels?.length) env.apiModels = previous.apiModels;
+    }
+    // Effort levels read from --help (#1328) are a capability of one binary. A help that could not be read (absent)
+    // keeps the cached levels only for that same binary: both versions known and equal, cache still valid. A help
+    // that was read and lists none ([]) is an answer and is written as is, so the fallback applies.
+    if (env.effortLevels === undefined) {
+      const previous = this.readCliEnv(backend);
+      if (previous?.effortLevels && previous.version && env.version && previous.version === env.version) {
+        env.effortLevels = previous.effortLevels;
+      }
     }
     const path = this.cliEnvPath(backend);
     mkdirSync(dirname(path), { recursive: true });
@@ -14027,6 +14172,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     this.dailyTipScheduler = null;
     if (this.updateCheckTimer) { clearTimeout(this.updateCheckTimer as any); clearInterval(this.updateCheckTimer as any); this.updateCheckTimer = null; }
     if (this.eventLogPruneTimer) { clearInterval(this.eventLogPruneTimer); this.eventLogPruneTimer = null; }
+    if (this.outboxPruneTimer) { clearInterval(this.outboxPruneTimer); this.outboxPruneTimer = null; }
     if (this.replyObligationTimer) { clearInterval(this.replyObligationTimer); this.replyObligationTimer = null; }
     this.wakeCoordinator?.stop();
     if (this.logRotateTimer) { clearInterval(this.logRotateTimer); this.logRotateTimer = null; }
@@ -16302,6 +16448,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   }
 
   getUiStatus(): unknown {
+    return measureSyncWork("fleet.uiStatus", () => this.getUiStatusSync());
+  }
+  private getUiStatusSync(): unknown {
     const fleetNames = Object.keys(this.fleetConfig?.instances ?? {});
     // Classic rooms live only in classicBot.yaml — /api/profiles merges them into
     // the View roster, but previously getUiStatus skipped them so context_pct was

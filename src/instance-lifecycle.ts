@@ -1,3 +1,5 @@
+import { measureSyncWork } from "./sync-work-attribution.js";
+import { REMOVED_BACKENDS, isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
 import { existsSync, readFileSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { ensureInstanceDir } from "./private-dir.js";
 import { execFileSync } from "node:child_process";
@@ -6,7 +8,7 @@ import { access, unlink } from "node:fs/promises";
 import { getAgendHome, ensureWorkspaceGit } from "./paths.js";
 import type { InstanceConfig, FleetConfig } from "./types.js";
 import { DEFAULT_INSTANCE_CONFIG, getTmuxSession } from "./config.js";
-import { readStatuslineModel, sanitizeInstanceName } from "./topic-commands.js";
+import { readStatuslineModel, uniqueInstanceName } from "./topic-commands.js";
 import { isModelCompatible } from "./backend/types.js";
 import { RoutingEngine } from "./routing-engine.js";
 import { safeHandler } from "./safe-async.js";
@@ -64,7 +66,6 @@ const localBin = (home: string) => join(home, ".local", "bin");
 /** Shared CLI metadata used by startup validation and ClassicBot onboarding. */
 export const BACKEND_INSTALLATION_INFO: Readonly<Record<string, BackendInstallationInfo>> = {
   "claude-code": { binary: "claude", install: "curl -fsSL https://claude.ai/install.sh | bash", binDirs: (_env, home) => [localBin(home)] },
-  "gemini-cli": { binary: "gemini", install: "npm i -g @google/gemini-cli" },
   // The curl installer serves Linux and macOS (verified: 200, text/x-shellscript);
   // the previous `brew install --cask` form only worked on macOS.
   "kiro-cli": { binary: "kiro-cli", install: "curl -fsSL https://cli.kiro.dev/install | bash", binDirs: (_env, home) => [localBin(home)] },
@@ -95,6 +96,9 @@ export const BACKEND_INSTALLATION_INFO: Readonly<Record<string, BackendInstallat
 
 /** Check one executable using the same PATH visible to the fleet process. */
 export function checkBinaryInstalled(binary: string): boolean {
+  return measureSyncWork("lifecycle.checkBinaryInstalled", () => checkBinaryInstalledSync(binary));
+}
+function checkBinaryInstalledSync(binary: string): boolean {
   try {
     execFileSync("which", [binary], { stdio: "pipe", timeout: 2000 });
     return true;
@@ -104,6 +108,9 @@ export function checkBinaryInstalled(binary: string): boolean {
 }
 
 function readProcessCommandLine(pid: number): string {
+  return measureSyncWork("lifecycle.processIdentity", () => readProcessCommandLineSync(pid));
+}
+function readProcessCommandLineSync(pid: number): string {
   try {
     return readFileSync(`/proc/${pid}/cmdline`, "utf8").replace(/\0/g, " ").trim();
   } catch {
@@ -181,7 +188,15 @@ export interface LifecycleContext {
   restartSingleInstance(name: string, opts?: { freshStart?: boolean }): Promise<void>;
   connectIpcToInstance(name: string): Promise<void>;
   createForumTopic(topicName: string, adapterId?: string): Promise<number | string>;
-  deleteForumTopic(topicId: number | string): Promise<void>;
+  /** adapterId selects the world, mirroring createForumTopic (rollback must delete where it created). */
+  deleteForumTopic(topicId: number | string, adapterId?: string): Promise<void>;
+  /**
+   * A bound delete for the world `adapterId` selects, captured by the caller
+   * BEFORE awaiting createForumTopic. Rollback must use exactly this — never
+   * re-resolve afterwards, or a world removed mid-await substitutes the
+   * primary. Null when no channel adapter can delete (fail closed).
+   */
+  getForumTopicDeleter(adapterId?: string): ((topicId: number | string) => Promise<void>) | null;
   setTopicIcon(name: string, state: "green" | "blue" | "red" | "remove"): void;
   /** Remove instance with full cleanup (scheduler, IPC, routing, config). */
   removeInstance(name: string, authorization: ExplicitInstanceRemoval): Promise<void>;
@@ -793,6 +808,11 @@ export class InstanceLifecycle {
       }
     }, this.ctx.logger, `daemon.crash_respawn[${name}]`));
 
+    // #1314: a relative `file:` ref still read from the fleet directory (one-release fallback): tell the topic once.
+    daemon.on("prompt_file_fallback", safeHandler((data: { field: string; path: string; legacyPath: string }) => {
+      this.ctx.notifyInstanceTopic(name, t("prompt_file.fleet_dir_fallback", data.field, data.legacyPath, data.path));
+    }, this.ctx.logger, `daemon.prompt_file_fallback[${name}]`));
+
     daemon.on("startup_backend_unreachable", safeHandler(async (data: { name: string; backend: string }) => {
       // The daemon's crash-respawn hit the backend outage and paused itself.
       // Stop it cleanly (session kept) and let the fleet's delayed retry bring
@@ -1046,7 +1066,16 @@ export class InstanceLifecycle {
       this.ctx.eventLog?.insert(name, "dialog_parked", { description: data.description, holdOnly: data.holdOnly });
       this.ctx.logger.warn({ name, description: data.description, holdOnly: data.holdOnly }, "Instance is parked on a CLI dialog — not auto-answering");
       if (this.ctx.isPlannedRestart()) return;
-      const category = data.kind ? interactionCategory(data.kind, data.backend) : null;
+      // kind === "dialog" is the default bucket for dialogs without a specific
+      // interactionKind — it says no more than no kind at all, so the
+      // code-owned description stays in the notice instead of the generic
+      // "waiting for your input". That keeps the kiro outage picker's
+      // actionable "model unavailable — choose a replacement" text (#1219).
+      // Specific kinds (permission, login, …) keep their category text.
+      // (Kept `description` for kind === "dialog" rather than a dedicated
+      // kiro interactionKind: a new union member would flow into the category
+      // labels, summaries and every exhaustive match for one picker's text.)
+      const category = data.kind && data.kind !== "dialog" ? interactionCategory(data.kind, data.backend) : null;
       const text = category ? t("inst.interaction_parked", name, category) : data.holdOnly
         ? t("inst.dialog_parked_hold", name, data.description)
         : t("inst.dialog_parked_stuck", name, data.description);
@@ -1457,6 +1486,15 @@ export class InstanceLifecycle {
     const { createBackend } = await import("./backend/factory.js");
 
     const backendName = config.backend ?? this.ctx.fleetConfig?.defaults?.backend ?? "claude-code";
+
+    // A removed backend (#1280): this instance refuses to start, says why and what to use instead, and the rest of
+    // the fleet is unaffected. Never a fallback to another backend.
+    if (isRemovedBackend(backendName)) {
+      const message = removedBackendMessage(backendName, name);
+      this.ctx.logger.error({ name, backend: backendName }, `Not starting: ${message}`);
+      this.ctx.notifyInstanceTopic(name, t("inst.backend_removed", name, backendName, REMOVED_BACKENDS[backendName]!.replacement));
+      return;
+    }
 
     // Verify backend binary is in PATH before spawning
     const installation = BACKEND_INSTALLATION_INFO[backendName];
@@ -2125,6 +2163,11 @@ export class InstanceLifecycle {
     // Sequential steps with rollback
     let createdTopicId: number | string | undefined;
     let newInstanceName: string | undefined;
+    // Capture the creating world's delete capability BEFORE the create await:
+    // rollback must use exactly this adapter even if the world is removed or
+    // replaced while creating. Never re-resolve (that would substitute the
+    // primary or a new world). Null means fail closed at rollback.
+    const topicDeleter = this.ctx.getForumTopicDeleter?.(adapterId) ?? null;
 
     try {
       createdTopicId = await this.ctx.createForumTopic(topicName!, adapterId);
@@ -2132,7 +2175,25 @@ export class InstanceLifecycle {
       // Use explicit topic_name as name base when provided; fall back to directory basename
       const explicitTopicName = args.topic_name;
       const nameBase = explicitTopicName ?? (worktreePath ? topicName! : (directory ? basename(workDir) : topicName!));
-      newInstanceName = `${sanitizeInstanceName(nameBase)}-t${createdTopicId}`;
+      // Short unique suffix (#1301): last 6 topic digits, lengthened on
+      // collision. Existing instances are untouched — only new names go here.
+      // Reuse of a taken name requires proof it belongs to this same topic
+      // (#1305 P1): full topic_id string equality, plus the adapter/world
+      // check when the existing entry records one (channel_id). A dir-only
+      // collision (no config entry) can never prove that.
+      {
+        const instances = this.ctx.fleetConfig?.instances ?? {};
+        const wanted = String(createdTopicId!);
+        newInstanceName = uniqueInstanceName(nameBase, createdTopicId!, (candidate) =>
+          candidate in instances
+          || existsSync(this.ctx.getInstanceDir(candidate)),
+        (candidate) => {
+          const owner = (instances as Record<string, { topic_id?: unknown; channel_id?: unknown }>)[candidate];
+          if (owner == null || String(owner.topic_id) !== wanted) return false;
+          if (adapterId != null && owner.channel_id != null && owner.channel_id !== adapterId) return false;
+          return true;
+        });
+      }
       // A recycled name must never inherit a stale pause marker.
       clearPausedMarker(this.ctx.getInstanceDir(newInstanceName));
 
@@ -2194,7 +2255,18 @@ export class InstanceLifecycle {
         this.ctx.saveFleetConfig();
       }
       if (createdTopicId) {
-        await this.ctx.deleteForumTopic(createdTopicId);
+        // Delete through the captured creating adapter only (#1305 P2-4/r4).
+        // If the world went away, fail closed: log and leave the topic for
+        // manual cleanup rather than deleting through a substituted adapter.
+        if (topicDeleter) {
+          try {
+            await topicDeleter(createdTopicId);
+          } catch (e) {
+            this.ctx.logger.warn({ err: e, topicId: createdTopicId }, "Failed to delete forum topic during rollback");
+          }
+        } else {
+          this.ctx.logger.warn({ topicId: createdTopicId }, "Creating world has no delete capability; leaving topic for manual cleanup");
+        }
       }
       if (worktreePath) {
         try {
@@ -2288,8 +2360,10 @@ export class InstanceLifecycle {
       await rm(instanceDir, { recursive: true, force: true });
     } catch { /* best effort */ }
 
-    // 6. Create new instance with same config, reusing topic
-    const newName = `${instanceName.replace(/-t\d+$/, "")}-t${topicId}`;
+    // 6. Create new instance with same config, reusing topic AND name: a
+    // respawn is not a rename, so an old long name keeps its long form and
+    // only genuinely new instances get short names (#1301).
+    const newName = instanceName;
     const instanceConfig = { ...savedConfig } as InstanceConfig;
     try {
       this.ctx.fleetConfig!.instances[newName] = instanceConfig;

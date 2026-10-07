@@ -54,7 +54,9 @@ AgEnD (**Agent Engineering Daemon**) turns your Telegram or Discord into a comma
 
 🛑 **Cancel Button** — Interrupt agent generation with a single tap. Inline button appears on every message; works across TG and Discord.
 
-📬 **Delivery Status** — See message delivery progress: 👀 received → ⏳ processing → ✅ done (or ❌ failed).
+📬 **Delivery Status** — Each message you send gets a reaction that tracks it: on Discord 👀 received → ⏳ queued → 👀 with the agent → ✅ delivered, or ❌ if delivery failed. Telegram only accepts its own reaction set, so there it is 👀 throughout and 👎 on failure.
+
+🎨 **Configurable Status Emoji** — Every delivery-status emoji can be changed per channel or per instance with `status_emojis`, including Discord server emoji. See [Configuration](docs/configuration.md#channeloptionsstatus_emojis-discord-and-telegram).
 
 🖥️ **Web Dashboard** — Live fleet monitoring in the browser with SSE updates and integrated chat UI.
 
@@ -63,6 +65,18 @@ AgEnD (**Agent Engineering Daemon**) turns your Telegram or Discord into a comma
 👥 **Teams & Task Board** — Named groups for targeted broadcasting. Shared task board for multi-step work tracking across instances.
 
 📋 **Fleet Templates** — Define reusable fleet configurations. Deploy multi-instance setups with one command, each with its own git worktree.
+
+😀 **Stickers & Persona Emoji** — Agents can send stickers on Discord and Telegram, and each agent can pick its own emoji so you can tell bots apart in a shared channel.
+
+📊 **Subscription Usage** — `/usage` (also the dashboard and the `get_usage` tool) shows the remaining quota of your Claude, Codex, Kiro, Grok, Muse and Antigravity subscriptions, one row per subscription.
+
+🔑 **Credential Profiles** — Run instances, or ClassicBot channels, on a second subscription of the same backend with `backend_options.<backend>.credential_profile` (kiro-cli and Codex today). See [Configuration](docs/configuration.md#credential-profiles-multiple-subscriptions-of-one-backend).
+
+🌐 **Sign In From Your Phone** — `/login` (fleet admins) signs a CLI in without SSH: device-code logins such as Codex and Grok post their link and code in the chat, and a sign-in that needs a terminal gets a time-limited, token-protected browser terminal on the host. For kiro-cli and Claude Code it can also open a temporary public link through a Cloudflare Quick Tunnel after you confirm; AgEnD downloads `cloudflared` if it is missing. Turn it off with `web_terminal.tunnel.allow_public: false`. See [Configuration](docs/configuration.md#finishing-a-login-away-from-the-machine-public-link).
+
+💤 **Auto-Pause & Wake** — With `auto_pause_after` (minutes, off by default) an idle instance is paused and wakes by itself when a message arrives. `/pause` and `/wake` do the same by hand.
+
+🧠 **Memory Pressure Guard** — On Linux the fleet watches host memory: under pressure it slows new CLI starts, holds them while memory is critical, and posts a notice. On macOS the readings are only logged.
 
 ## Use Cases
 
@@ -180,11 +194,16 @@ The quickstart will set up both `fleet.yaml` and `classicBot.yaml`. Run `agend q
 
 ### Usage
 
-| Command | Description |
-|---------|-------------|
-| `/start` | Start an agent in the current channel |
-| `/chat <message>` | Send a message to the agent |
-| `/stop` | Stop the agent in the current channel |
+| Command | Who | Description |
+|---------|-----|-------------|
+| `/start <backend>` | see below | Start an agent in the current channel |
+| `/chat <message>` | anyone | Send a message to the agent |
+| `/steer`, `/btw`, `/cancel`, `/ctx` | anyone | Interject into the current task, ask a side question, interrupt, show context usage |
+| `/pause`, `/wake`, `/compact`, `/clear`, `/model`, `/save` | admin | Pause or wake the agent, compact or clear its context, switch model, save the conversation |
+| `/effort`, `/collab` | admin | Discord only: reasoning effort, collab mode |
+| `/stop`, `/load` | ClassicBot admin | Stop the agent in the current channel; load a saved conversation (`/load` is Discord only) |
+
+"Admin" is a fleet admin or a ClassicBot admin (`admin_users`) on Discord. On Telegram, `/pause`, `/wake`, `/compact` and `/save` take a ClassicBot admin. Fleet-wide commands such as `/usage` and `/status` also work in a ClassicBot channel on Discord. Who may `/start`: on Discord, anyone in an allowed server; on Telegram, a user in `allowed_users` in a private chat, or a ClassicBot admin in an allowed group (`/start@yourbot`).
 
 On Discord, `/start` turns on collab mode: @-mention the bot to talk to it. See [Use Cases](docs/use-cases.md) for examples.
 
@@ -202,7 +221,8 @@ defaults:
 
 - **Empty or omitted** `allowed_guilds` → all servers allowed (default)
 - **Primary guild** (fleet.yaml `group_id`) → full access (topic mode + ClassicBot)
-- **Whitelisted guilds** → ClassicBot only (`/start`, `/chat`, `/stop`)
+- **Whitelisted guilds** → ClassicBot channels only
+- **A `/start` from a server that is not listed** posts an approval request with buttons to the General topic
 - **Hot reload** — changes detected every 30 seconds, no restart needed
 
 ### Per-Channel Backend
@@ -220,11 +240,37 @@ channels:
 
 Backend fallback: channel → `defaults.backend` → `fleet.yaml` defaults → `claude-code`
 
+### Access Lists
+
+```yaml
+defaults:
+  allowed_guilds: ["123456789012345678"]   # Discord servers (empty = all)
+  allowed_groups: ["-1001234567890"]       # Telegram groups (empty = all)
+  allowed_users: ["123456789"]             # Telegram users who may /start in a private chat (empty = all)
+  admin_users: ["123456789"]               # ClassicBot admins (empty = nobody)
+```
+
+Quote the ids: a Discord id is too long to survive as a YAML number. With no `admin_users`, nobody can `/stop` a ClassicBot agent and nobody can start one in a Telegram group.
+
+### Second Subscription per Channel
+
+A channel can run on a different login of the same backend, as a fleet instance can:
+
+```yaml
+channels:
+  "1234567890":
+    backend: kiro-cli
+    backend_options:
+      kiro-cli:
+        credential_profile: work   # "" = back to the shared login
+```
+
+The channel's `backend_options` are merged over the fleet.yaml defaults'. Profiles work for kiro-cli and Codex; an invalid profile name keeps the agent from starting rather than running it on the wrong account, and a change restarts a running agent. Log the profile in first: see [Credential profiles](docs/configuration.md#credential-profiles-multiple-subscriptions-of-one-backend). Every other `classicBot.yaml` key is in the [Configuration reference](docs/configuration.md#classicbotyaml).
+
 ## Known Limitations
 
 - macOS (launchd) and Linux (systemd) supported; on Windows, run it inside WSL ([Windows install guide](https://songsid.github.io/AgEnD/install-windows/)). Native Windows is not supported
 - Official Telegram plugin in global `enabledPlugins` causes 409 polling conflicts
-- OpenCode and Kiro CLI do not read MCP server `instructions` field — fleet context and workflow templates are not injected into these backends' system prompts. Awaiting upstream fix.
 
 ## License
 

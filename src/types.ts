@@ -115,7 +115,7 @@ export interface InstanceConfig {
    */
   warm_overflow?: number;
   /**
-   * Phase 2 delivery owner for this target (docs/design/phase2-submit-contract.md):
+   * Phase 2 delivery owner for this target (docs/design/929-durable-outbox.md):
    * `off` keeps the outbox pump alone, `wake_only` (default since #1129) adds
    * the wake coordinator (2b), `on` hands claim/submit to the per-target
    * worker (2c). Read from `defaults.delivery_worker` with a per-instance
@@ -145,9 +145,12 @@ export interface InstanceConfig {
     /** Health check polling interval in ms. Default: 30000 */
     health_check_interval_ms?: number;
   };
-  context_guardian: {
-    grace_period_ms: number;
-    max_age_hours: number;
+  /** Retained for backwards compat; context rotation was removed (#1296). */
+  context_guardian?: {
+    /** Retained for backwards compat but has no effect; context rotation was removed. */
+    grace_period_ms?: number;
+    /** Retained for backwards compat but has no effect; context rotation was removed. */
+    max_age_hours?: number;
   };
   log_level: "trace" | "debug" | "info" | "warn" | "error";
   /** CLI backend to use. Default: "claude-code" */
@@ -167,6 +170,12 @@ export interface InstanceConfig {
    * Defaults to "off" so upgrades do not start broadcasting tool activity.
    */
   tool_progress?: "off" | "standard" | "verbose";
+  /**
+   * #1302: how much of a cross-instance (bot-to-bot) message is posted in this instance's topic, whether it sent the
+   * message or received it: "full" (the whole message), "summary" (one line), "hidden" (nothing). Delivery and the
+   * Mirror Topic are unaffected. Unset inherits `defaults.cross_instance_visibility`, else "full".
+   */
+  cross_instance_visibility?: "full" | "summary" | "hidden";
   /**
    * Detect a human-channel turn that ended without a delivered reply and ask
    * the agent to send one bounded recovery reply. Only capable backends use
@@ -250,6 +259,10 @@ export interface FleetDefaults extends Partial<InstanceConfig> {
     retry_count?: number;
     retry_interval_ms?: number;
   };
+  /** #1335: retention for delivery-outbox.db and Task Board. Days to keep terminal
+   * deliveries (delivered/failed) and done/cancelled tasks. Default: 30.
+   * Uncertain and non-terminal rows are never pruned. */
+  retention_days?: number;
   startup?: {
     concurrency?: number;
     stagger_delay_ms?: number;

@@ -31,13 +31,15 @@ When a CLI process crashes, the daemon's health check detects the dead tmux wind
 4. **Fallback** — if resume fails, spawns a fresh session and injects the snapshot as context
 5. **Backoff** — exponential backoff on repeated crashes; 3+ crashes in a 5-minute sliding window pauses respawn
 
-### Fleet-level circuit breaker
+### Fleet-level circuit breaker (storm window)
 
-When the tmux server itself crashes (not just a single window), all instances lose their windows simultaneously. The fleet-level circuit breaker detects this:
+When the tmux server itself dies or is replaced (not just a single window), every instance loses its window at once. The fleet treats that as one incident, a **storm window**, instead of N independent crashes:
 
-- 2+ tmux server crashes in 5 minutes → pauses all instance respawns for 30 seconds
-- Prevents thundering herd where all instances try to respawn at once
-- Auto-recovers after the pause period
+- **Opens on the first server crash.** A death is counted once per observed alive → dead transition (or a changed server PID), not once per instance that reports it.
+- **Backoff:** instance respawns are held for 30 seconds after the first crash, 2 minutes after a second, and 10 minutes from the third on. The level resets once the fleet has stayed calm for 10 minutes after the window closed.
+- **Delivery is gated too:** while the window is backing off, no message is pasted into any instance; during recovery, a message to an affected instance waits until that instance has recovered.
+- **Recovery:** after the backoff, instances respawn; the window closes when every affected instance has recovered, or after 10 minutes. Per-instance incident notices (crash respawn, MCP died, hang, …) are suppressed while it is open and reported as one incident.
+- **`window_loss`:** when the server is fine but 4 or more instances lose their windows within 60 seconds, that is also one event (a host- or tmux-level problem). Spawning is not held, but the recoveries run at the storm rate and are reported once.
 
 ### MCP server orphan prevention
 
@@ -58,27 +60,28 @@ When an instance's context is polluted or it's stuck in a loop, use `replace_ins
 
 ## Instance warmup
 
-When a new instance spawns, the daemon automatically triggers context loading before any user message arrives. This ensures steering files and skills are loaded immediately — no first-message delay.
+When an instance spawns, the daemon compares the fleet instructions it just built with the ones the agent was last told about (kept in `prev-instructions` in the instance directory). **The warmup only runs when the instructions changed** — an unchanged restart sends nothing, which saves 10–30 s of agent time on every restart.
 
-1. Instance spawns (tmux pane + CLI backend starts)
-2. Daemon sends a system prompt to trigger `.kiro/steering/` and skill loading
-3. Daemon waits for instance to reach idle state
-4. Instance is marked ready
+- First spawn (nothing recorded yet): the instructions are recorded and nothing is sent.
+- Claude Code re-reads its instructions on resume, so it is never told.
+- Every other backend gets a one-line notice to reload its own instruction file (`AGENTS.md`, `.kiro/steering/agend-<name>.md`, `.agents/agents.md`, …). If no message is waiting, the notice is deferred to the next real message rather than provoking an unsolicited reply; if a delivery is already queued, the daemon waits for idle and pastes the notice first.
 
-Warmup is always-on with no configuration needed. During warmup, `agend ls` shows the instance as "Busy".
+No configuration is needed.
 
 ## Instance status indicators
 
-`agend ls` shows real-time status for each instance:
+`agend ls` (columns Name, Backend, Status, Team, Src, Ctx, Mem, Activity) and the `/status` chat command show one state per instance. The state comes from the daemon's execution state (idle / working / stuck / paused) combined with the lifecycle (running / paused / stopped / crashed):
 
-```
-🟢 proj-a    Idle    ctx 42%  $3.20
-🔵 proj-b    Busy    ctx 67%  $8.50
-💀 proj-c    Crashed
-⏹ proj-d    Stopped
-```
+| State | `agend ls` | `/status` |
+|---|---|---|
+| Idle | green ● `Idle` | 🟢 |
+| Working | blue ● `Working` | 🔵 |
+| Stuck | red ● `Stuck` | 🔴 |
+| Crashed | red ● `Crashed` | 🔴 |
+| Paused | dim yellow ○ `Paused` | ⏸ |
+| Stopped | grey ✗ `Stopped` | ✗ |
 
-Status is determined by tmux pane output activity — "Busy" when the CLI is producing output, "Idle" after 2 seconds of silence.
+When the fleet API cannot be reached, `agend ls` falls back to `Busy` / `Idle` from pane activity. In `/status` a running instance with no execution snapshot yet shows 🟢 Running.
 
 ## Fleet /collab
 
@@ -88,28 +91,31 @@ In fleet `open` mode, bot messages bypass the filter automatically (no `/collab`
 
 ## Cancel button
 
-Every message sent to an agent shows an inline cancel button (🛑). Tapping it interrupts the current generation:
+After a message is delivered to an agent, a "🛑 Cancel" button is posted in its topic or channel. Tapping it interrupts the current generation:
 
-- **Telegram**: inline keyboard button below the 👀 reaction message
-- **Discord**: button component on the status message
-- **`/cancel` command**: also available as a slash command
+- **Telegram**: an inline keyboard button
+- **Discord**: a button component
+- **`/cancel` command**: does the same, typed or as a Discord slash command
 
-The cancel sends the appropriate interrupt key to the CLI backend (Escape for Claude Code/Codex, Ctrl+C for Kiro CLI). The button is removed once the agent finishes responding (✅) or is cancelled.
+The cancel sends the backend's own interrupt key: Ctrl+C for Kiro CLI and Grok Build, Escape for every other backend. A button is retired when the agent replies, when it is used, when a newer button replaces it, or when the instance goes idle.
 
 Cancel also works for cross-instance messages and scheduled triggers.
 
+The button message doubles as the progress bubble: after 30 seconds it shows how long the agent has been working and, when the backend reports it, what it is doing now.
+
 ## Delivery status
 
-Message delivery progress is shown visually:
+Delivery progress is shown as a reaction on the user's own message, replaced as the message moves along:
 
-| Stage | Indicator | Meaning |
-|-------|-----------|---------|
-| Received | 👀 | Message seen by daemon |
-| Processing | ⏳ | Pasted to CLI, awaiting response |
-| Done | ✅ | Agent finished responding |
-| Failed | ❌ | Delivery or processing error |
+| Status | Discord (built-in) | Telegram (built-in) | Meaning |
+|--------|--------------------|---------------------|---------|
+| `received` | 👀 | 👀 | The fleet has the message |
+| `queued` | ⏳ | 👀 | Waiting to be handed to the CLI (behind another message, or the CLI is busy or still starting) |
+| `processing` | 👀 | 👀 | The agent has the message |
+| `delivered` | ✅ | 👀 | The agent started on it |
+| `failed` | ❌ | 👎 | Delivery failed (for example the window was gone and retries ran out) |
 
-The status message is posted immediately on receipt and updated as the agent processes. On completion, the cancel button is removed and ✅ is shown.
+Telegram only accepts a fixed set of reactions, and ⏳, ✅ and ❌ are not in it, which is why its built-ins differ.
 
 The emojis are configurable per channel and per instance with `status_emojis` (see [configuration](configuration.md#channeloptionsstatus_emojis-discord-and-telegram)), including `photo` and `attachment`, the stamps a ClassicBot puts on a photo or file it saved.
 
@@ -134,6 +140,28 @@ Agents can send stickers on Discord and Telegram (2.1.12). The tools look the sa
 
 Uploading stickers or creating sticker sets is not supported.
 
+## Tool progress (`tool_progress`)
+
+`tool_progress` adds the agent's tool activity to the progress bubble, as a running list for the turn:
+
+| Value | Shows |
+|---|---|
+| `off` (default) | Nothing beyond the elapsed time |
+| `standard` | Semantic labels (for example `npm test` shows as `🧪 執行測試`, "run tests"), never shell arguments |
+| `verbose` | The same labels plus a truncated command preview |
+
+It is opt-in because the bubble broadcasts activity into the channel; credentials (API keys, tokens, bearer headers, `password=` assignments, …) are redacted before anything is posted. When the bubble is retired, the list stays behind as a read-only tool history. Set it per instance, in `defaults`, or per ClassicBot channel.
+
+## Reply completion guard (`reply_completion_guard`)
+
+A human message has to be answered through the `reply` (or `react`) tool; text the agent only prints in its terminal never reaches the chat. On Claude Code, the reply completion guard notices a human-facing turn that ended without a delivered reply:
+
+- It waits until the instance has actually worked on the turn and then stayed idle for 60 seconds, so a pause mid-turn is not mistaken for the end.
+- It then asks the agent, once, to send its conclusion with `reply` or `react` — without redoing the work.
+- If a reply was attempted but its result is unknown (it may have been applied and then timed out), it does not retry, so you never get the answer twice; a short notice in the chat says the reply could not be confirmed.
+
+It is on by default (`reply_completion_guard: true`); set `false` per instance, in `defaults`, or per ClassicBot channel to turn it off. Other backends do not have it.
+
 ## Peer-to-peer agent collaboration
 
 Every instance is an equal peer that can discover, wake, create, and message other instances. No dispatcher needed — collaboration emerges from the tools available to each agent.
@@ -147,6 +175,8 @@ Every instance is an equal peer that can discover, wake, create, and message oth
 - `delete_instance` — remove an instance and its topic
 - `replace_instance` — replace an instance with a fresh one (handover + delete + create)
 - `describe_instance` — get detailed info about a specific instance (description, model, last activity)
+- `set_display_name` — set the name shown in messages, activity logs and other agents' views
+- `set_description` — set the role description injected into the agent's system prompt; it takes effect on the next session restart
 
 **High-level collaboration tools** (prefer these over raw `send_to_instance`):
 
@@ -166,6 +196,16 @@ When an instance sends to another, a notification appears in the target's topic:
 
 If you `send_to_instance` a stopped instance, the error tells you to use `start_instance()` first — agents self-correct without human intervention.
 
+### Delivery tracking (`delivery_status`)
+
+A cross-instance send returns as soon as the fleet has accepted it (`{ sent, queued }`, with an `operation_id` / `delivery_id`); the fleet owns delivery from there, through a durable outbox. `delivery_status` reads where a delivery got to, by exactly one of `delivery_id`, `operation_id`, `correlation_id` or `message_id` (paged with `limit` up to 100 and `cursor`). A row moves through `queued`, `delivering`, `submission_started`, `reconciliation_pending`, `retry_wait` to `delivered`, `failed`, `uncertain` or `cancelled`. `uncertain` means it may have arrived: do not resend blindly.
+
+An instance only sees rows it sent or received (its identity comes from its own socket or token, never from an argument). Looking up an inbound message's `message_id` is how an agent checks that a peer message really came through the fleet: "Delivery not found" means it did not. Every tool profile has `delivery_status`, `minimal` included.
+
+### `awaiting_input`
+
+`list_instances` and `describe_instance` report an `instance_state`. Besides the execution states (`idle`, `working`, `stuck`, `paused`) it can be `awaiting_input`: the CLI is showing a prompt that waits for a person — a permission request, a dangerous-command confirmation, a login screen or another dialog — and the observation is fresh (under 15 seconds old) and confirmed rather than suspected. The separate `execution_state`, `interaction` and `interaction_summary` fields carry the detail. It is presentation only: it never feeds the fleet's own state or its gates.
+
 ### Fleet context system prompt
 
 On startup, each instance automatically receives a fleet context system prompt that tells it:
@@ -175,6 +215,28 @@ On startup, each instance automatically receives a fleet context system prompt t
 - Collaboration rules: how to handle `from_instance` messages, when to echo `correlation_id`, scope awareness (never assume direct file access to another instance's repo)
 
 This means instances understand their role in the fleet from the first message, without any manual configuration.
+
+## Task board
+
+A fleet-wide task list, kept in the fleet's SQLite database, through one `task` tool:
+
+- `task(action: "create")` — a new task with `title`, optional `description`, `priority` (`low` / `normal` / `high` / `urgent`), `assignee` and `depends_on` (task IDs).
+- `task(action: "claim")` — assign an `open` task to yourself. A task whose dependencies are not all `done` cannot be claimed.
+- `task(action: "done")` — mark a task you claimed as done, with an optional `result`. Only a `claimed` task can be completed.
+- `task(action: "update")` — change `status` (`open` / `claimed` / `done` / `blocked` / `cancelled`), `priority`, `assignee` or `result`.
+- `task(action: "list")` — every task, most urgent first; narrow it with `filter_assignee` and `filter_status`.
+
+Creating, claiming and completing a task are written to the activity log. Every tool profile except `minimal` has `task`.
+
+## Decisions
+
+Decisions are rules and conventions that outlive a conversation. `post_decision` records one with a `title` and `content`, optional `tags`, a `ttl_days` after which it is archived (default: permanent), and `supersedes` to replace an older one. `scope: "project"` (the default) makes it visible to instances working in the same directory; `scope: "fleet"` to every instance. `list_decisions` returns the active ones (`include_archived`, `tags` to filter), and `update_decision` changes or archives one — a coordinator verb, since it edits what somebody else recorded.
+
+Active decisions are injected into each instance's instructions at spawn. A fleet-scoped decision still has to be relevant: global (no project), or from the same project or one of its worktrees/checkouts. General instances get every fleet-scoped decision, since they route work across projects.
+
+## Repo checkout (`checkout_repo`)
+
+`checkout_repo(source, branch?)` mounts another repository as a detached git worktree under the instance's own directory (`<instance dir>/repos/<repo>-<branch>`) and returns its `path`, `branch`, `source` and short `commit`, so an agent can read another project without touching that instance's working tree (it is a separate worktree; nothing enforces read-only). `source` must be an absolute or `~`-prefixed path to a git repository (use `describe_instance` to find a repo's `working_directory`); `branch` defaults to `HEAD` and must be a plain ref name. `release_repo(path)` removes a worktree created this way, and only one under the instance's `repos/` directory. Both are worker tools.
 
 ## General Topic instance
 
@@ -210,9 +272,9 @@ The daemon automatically isolates external sessions from internal ones using env
 |---|---|---|
 | Internal (daemon-managed) | `AGEND_INSTANCE_NAME` via tmux env | `ccplugin` |
 | External (custom name) | `AGEND_SESSION_NAME` in `.mcp.json` env | `dev` |
-| External (zero-config) | `external-<basename(cwd)>` fallback | `external-myproject` |
+| External (zero-config) | `external-<basename(cwd)>-<pid>` fallback | `external-myproject-48213` |
 
-Internal sessions get `AGEND_INSTANCE_NAME` injected by the daemon into the tmux shell environment. External sessions don't have this, so they fall through to `AGEND_SESSION_NAME` (if set) or an auto-generated name based on the working directory. This means the same `.mcp.json` produces different identities for internal vs external sessions — no configuration conflicts.
+Internal sessions get `AGEND_INSTANCE_NAME` injected by the daemon into the tmux shell environment. External sessions don't have this, so they fall through to `AGEND_SESSION_NAME` (if set) or an auto-generated name from the working directory plus the MCP server's PID, so two sessions in the same project do not collide. This means the same `.mcp.json` produces different identities for internal vs external sessions — no configuration conflicts.
 
 External sessions appear in `list_instances` and can be targeted by `send_to_instance`.
 
@@ -223,11 +285,11 @@ fleet rather than by what the model was shown. Three profiles matter:
 
 | profile | how you get it | what it is |
 |---|---|---|
-| `worker` | **the default** | Talk to people and to peers, read the fleet, do the work. `reply`, `send_to_instance`, `report_result`, `request_information`, `delegate_task`, `task`, `checkout_repo`, and every read-only query — including `list_schedules` and `list_deployments`, so it can see what exists without being able to change it. Since 2.1.6 it may also create and change schedules that target itself (#896), and it can list, preview and set its own persona emoji. 35 tools. |
+| `worker` | **the default** | Talk to people and to peers, read the fleet, do the work. `reply`, `send_to_instance`, `broadcast`, `report_result`, `request_information`, `delegate_task`, `delivery_status`, `task`, `post_decision`, `checkout_repo` / `release_repo`, and every read-only query — including `list_schedules` and `list_deployments`, so it can see what exists without being able to change it. Since 2.1.6 it may also create and change schedules that target itself (#896), and it can list, preview and set its own persona emoji and list and preview stickers. 38 tools. |
 | `coordinator` | `tool_set: coordinator` | Everything a worker has, plus the verbs that run the fleet: create/delete/replace/start/stop/restart/wake instances, deploy and tear down templates, team CRUD, creating and changing schedules, `update_instance_config`, `update_fleet_defaults`, `update_decision`. |
 | `full` | `tool_set: full` | Every tool AgEnD has. |
 
-**`coordinator` and `full` are the same 51 tools today** — the difference is what
+**`coordinator` and `full` are the same 54 tools today** — the difference is what
 they mean, not what they contain. `coordinator` says "this agent runs the fleet",
 and will be narrowed if a verb turns out not to belong there; `full` says "give
 this one everything regardless", and is the name the old default had. If you want
@@ -314,7 +376,17 @@ Use `/status` in the General topic to see a live overview. It is a table with on
 | Instance | Backend | Model | Ctx | Effort | Cost | State |
 ```
 
-State combines paused, stopped or crashed with the execution state, and Model is the live model, the same one `/ctx` reports. `agend ls` uses the same State icons. (The IPC column was removed in 2.1.9.)
+State combines paused, stopped or crashed with the execution state (see [Instance status indicators](#instance-status-indicators)), and Model is the live model, the same one `/ctx` reports. `/status` is for fleet admins. (The IPC column was removed in 2.1.9.)
+
+## Diagnostics and per-agent chat commands
+
+Besides `/status`, these work from chat (on Discord as slash commands; on Telegram the fleet-wide ones are answered in the General topic). See [commands](commands.md) for who may use each.
+
+- **`/usage`** (anyone) — AI subscription usage for the CLIs logged in on this machine: Claude, Codex, Muse, Grok, Kiro and Antigravity. A backend with [credential profiles](#credential-profiles-and-a-second-subscription) gets one row per subscription. Agents read the same data with `get_usage`.
+- **`/doctor`** (fleet admin) — health diagnostics in six sections: Prerequisites, Service, Fleet, Channel gateways, MCP IPC and Resources, each check `ok`, `warn` or `error`.
+- **`/sysinfo`** (anyone) — fleet uptime and memory, instance counts, system memory, and each backend CLI's version.
+- **`/model`** (channel admin) — switch the instance's model from a menu (on Telegram also `/model <name>`).
+- **`/effort`** (channel admin) — set the reasoning effort (`low` / `medium` / `high` / `xhigh` / `max`, clamped to what the backend accepts). Claude Code, Grok, Antigravity and Muse change it at runtime; Kiro CLI and Codex restart the instance to apply it; OpenCode has no effort setting. Agents read it with `get_effort`.
 
 ## Daily summary
 
@@ -373,12 +445,24 @@ Telegram system events (topic rename, pin, member join, etc.) are filtered out b
 
 ## Health endpoint
 
-A lightweight HTTP endpoint for external monitoring tools:
+An HTTP endpoint for external monitoring tools, on the fleet's web server:
 
 ```
-GET /health  → { status: "ok", instances: 3, uptime: 86400 }
-GET /status  → { instances: [{ name, status, context_pct, cost_today }] }
+GET /health  → { status, uptime, instances: { configured, running, crashed, paused, stopped },
+                 adapters: { total, connected, states, details }, startupComplete,
+                 memory, hostMemory, problems: [ ... ] }
+GET /status  → { instances: [{ name, status, context_pct, cost }] }
 ```
+
+`/health` needs no token. Its `status` is:
+
+- `ok` — every check passed: at least one channel adapter connected, nothing crashed, startup complete (and, on Linux, no host memory pressure);
+- `degraded` — reachable, but something needs a look (an adapter retrying, a crashed instance, startup not finished, memory pressure); `problems` says what;
+- `down` — adapters are configured and none is connected, so no message can arrive or be answered.
+
+Anything but `ok` answers **HTTP 503**, so a plain HTTP monitor sees it. (It used to answer 200 `ok` with a count of configured instances whatever their state.)
+
+`/status` needs the web token (the `X-Agend-Token` header or the dashboard session cookie). `cost` is the instance's `cost.total_cost_usd` from its statusline (Claude Code writes one; other backends report 0).
 
 Configure in `fleet.yaml`:
 
@@ -408,7 +492,7 @@ Connect your fleet to Discord instead of (or alongside) Telegram.
 - **Topic mode**: one text channel per instance under an "AgEnD Agents" category (rename with `options.category_name`), plus a General channel.
 - **ClassicBot**: `/start` in any text channel turns it into an agent channel; `/stop` removes it. Collab mode (on by default after `/start`) triggers the agent only when the bot is @-mentioned.
 - **Several bots in one server**: each bot is its own `channels[]` entry; a bot answers only messages that mention it and never answers for another bot.
-- **Slash commands**: about 30, including `/chat`, `/steer`, `/btw`, `/cancel`, `/ctx`, `/compact`, `/model`, `/effort`, `/dashboard`, `/usage`; admin-only ones are marked.
+- **Slash commands**: 25, including `/chat`, `/steer`, `/btw`, `/cancel`, `/ctx`, `/compact`, `/model`, `/effort`, `/dashboard`, `/usage`, `/login`; the ones that need an admin are marked 🔒 (the mark is generated from the same table that enforces it).
 - **Buttons and menus**: permission approval (Allow / Always / Deny), backend picker, cancel, and hang / model / effort pickers.
 - **Reactions**: reactions on the bot's messages (including other bots') reach the agent; delivery-status stamps are configurable per instance or channel; persona emoji can use server emoji.
 - **Attachments**: images, files and audio are downloaded; forwarded messages keep their images; replying to an image includes it.
@@ -425,17 +509,16 @@ Discord support is built into the core package — no extra install needed.
    - Generate an invite URL with `bot` scope and `Send Messages`, `Read Message History`, `Manage Channels` permissions
    - Invite the bot to your server
 
-2. **Run the quickstart** (recommended for Discord):
+2. **Run the quickstart** (or the 9-step `agend init`; both ask Telegram or Discord):
    ```bash
    agend quickstart    # Select "Discord" when prompted
    ```
-   > **Note:** `agend init` (advanced wizard) currently supports Telegram only. Use `agend quickstart` for Discord setup.
 
 3. **Or configure manually** in `fleet.yaml`:
    ```yaml
    channel:
      type: discord
-     mode: topic           # Required — omitting this silently prevents bot startup
+     mode: topic           # Optional — topic is the default
      bot_token_env: AGEND_DISCORD_TOKEN
      group_id: "123456789012345678"   # Quote Discord snowflake IDs to prevent precision loss
      access:
@@ -451,7 +534,6 @@ Discord support is built into the core package — no extra install needed.
 
 ### Troubleshooting
 
-- **Bot doesn't come online:** Ensure `mode: topic` is set in `fleet.yaml`. Without it, the adapter silently never starts.
 - **Messages are empty:** Enable **Message Content Intent** in Discord Developer Portal → Bot → Privileged Gateway Intents.
 - **ID precision loss:** Always quote Discord IDs (guild ID, user ID) in YAML — they are 64-bit snowflakes that exceed JavaScript integer precision.
 - **Slow startup with MCP:** If backend CLI times out during startup due to MCP server connections, increase the timeout in `fleet.yaml`:
@@ -470,7 +552,7 @@ Community adapters can be installed via npm and loaded automatically:
 npm install agend-plugin-slack
 ```
 
-The daemon discovers adapters matching the `agend-plugin-*` or `agend-adapter-*` naming convention. Channel types are exported from the package entry point for adapter authors.
+For a `channel.type` that is not built in, the daemon does not scan for adapters: it tries to import, in order, `@songsid/agend-plugin-<type>`, `@suzuke/agend-plugin-<type>`, `agend-plugin-<type>`, `agend-adapter-<type>`, then the bare `<type>` (`src/channel/factory.ts`). Channel types are exported from the package entry point for adapter authors.
 
 ## Kiro CLI backend
 
@@ -487,6 +569,12 @@ Kiro's `--resume` needs a round trip to its backend before it paints anything, s
 
 The resume budget, resume retry and outage short-circuit are kiro-only (they are backend capabilities). The delayed automatic startup retry applies to **every** backend and every unattended start path (fleet startup incl. General, full restart, config reconcile): a failed start that stayed `stopped` forever was never kiro-specific. Explicit `agend start` / API starts still report their error synchronously. An auto-paused kiro instance's wake uses the same 60s resume budget.
 
+### UI and engine pinning (`kiro_ui`, `kiro_engine_status`)
+
+`kiro_ui` picks how a kiro instance is launched: `legacy` (the default) runs kiro's legacy UI on its v1 agent engine (`--legacy-ui --agent-engine=v1`), `tui` its terminal UI on the v2 engine (`--tui --agent-engine=v2`). Both are pinned on every launch, so a kiro-cli default or saved setting cannot move an instance to another engine — its conversation would not come along. When the installed kiro-cli can no longer run what an instance is pinned to, AgEnD refuses to start it and says why rather than letting kiro pick (#1109). `kiro_ui: v3` is refused by validation until kiro's v3 interface can run unattended (#849).
+
+`kiro_engine_status` (a read-only tool every profile except `minimal` has) shows, for each kiro instance and ClassicBot channel, its `kiro_ui`, the engine flags its next launch would use or why kiro-cli would refuse it, its recorded launches (kiro-cli and AgEnD versions per change), its V3 session and its credential profile. It reads what AgEnD recorded at the last launch and never runs kiro-cli itself.
+
 ## agend quickstart
 
 Simplified 4-question setup wizard for new users. Auto-detects installed backends, auto-discovers Telegram group ID via `getUpdates` polling, and generates a minimal `fleet.yaml` with sensible defaults. Replaces the 9-step `agend init` as the recommended onboarding path.
@@ -494,6 +582,37 @@ Simplified 4-question setup wizard for new users. Auto-detects installed backend
 ## Web Dashboard
 
 `agend web` launches a browser-based dashboard with live fleet monitoring via Server-Sent Events (SSE). Includes an integrated chat UI with bidirectional sync to Telegram — messages sent from the Web UI appear in Telegram and vice versa.
+
+## Remote CLI sign-in (`/login`)
+
+`/login [backend]` (fleet admin; Telegram General topic, or Discord) signs a backend CLI in — and installs it first when it is missing — without SSH. With no argument it shows a picker of every installed or installable backend. Each login runs in a temporary tmux window of its own (instance panes are untouched), times out after 10 minutes, and can be stopped with `/login cancel`.
+
+- **Device code** — `codex` and `grok`: the URL and code are posted in the chat.
+- **Browser terminal** — `claude-code` and `kiro-cli`: AgEnD opens a one-time web terminal on the login command where you finish the sign-in (and paste a code back). The link works on this machine by default (SSH forwarding, tailscale, your own proxy).
+- **Install only** — `opencode` and `muse` have no sign-in flow here. Remote sign-in for `antigravity` is declined, because `agy` has no separate login command.
+
+**Public link.** For a phone that cannot reach the machine, a `claude-code` or `kiro-cli` login offers a temporary public https link through a Cloudflare Quick Tunnel: the confirmation has **I understand (temporary public link)**, **I understand (local network)** and **Cancel**, and the first button is the consent, once per login. A `cloudflared` on `PATH` is used if there is one; otherwise AgEnD downloads Cloudflare's build into `~/.agend/bin/` once, pinned and checked against a SHA256 it ships with. The link and the access token are sent to you as two private messages, never in the channel, and the tunnel is stopped when the login ends in any way. Cloudflare terminates TLS, so it can see that terminal. `web_terminal.tunnel.allow_public: false` turns the option off for the host. Details: [configuration](configuration.md#finishing-a-login-away-from-the-machine-public-link).
+
+After a successful login, the backend's running instances are restarted to pick up the new credential. `/install-cli` is a leftover typed alias: it still works, says it moved, and runs `/login` with the same argument; it is in no command menu.
+
+## Credential profiles and a second subscription
+
+A CLI keeps its login in one place, so by default every instance of a backend shares one account. `credential_profile` gives an instance a named, separate login for **`kiro-cli`** and **`codex`**:
+
+```yaml
+instances:
+  work-agent:
+    backend: kiro-cli
+    backend_options:
+      kiro-cli:
+        credential_profile: work
+```
+
+Profiles live in `~/.agend/credential-profiles/<backend>/<profile>`, under the fleet, so several agents can point at one subscription. An instance without a profile is unaffected. Only the login is separated: kiro's large runtime caches are linked back to the shared copy, and for Codex only `auth.json` differs. Switching profiles is a config change plus a restart (`update_instance_config` does both); switching to a profile that was never logged in is refused with the command to log it in. On kiro a switch starts a new conversation, because kiro keeps conversations in the same store as its login (AgEnD hands the recent context over); on Codex the conversation stays.
+
+**ClassicBot channels (#1220).** A channel in `classicBot.yaml` takes the same `backend_options.<backend>.credential_profile`, over any profile inherited from the fleet defaults (an empty or `null` value means the shared login). Its agent launches on that profile, `/usage` counts it under that subscription's row (for example `Codex (personal)`), and `kiro_engine_status` reports it. An unusable profile name stops that channel's agent from starting rather than running it on another login. Changing the profile restarts the channel's agent.
+
+`/usage`, `get_usage` and the dashboard show one row per subscription, never added together. Full reference: [configuration](configuration.md#credential-profiles-multiple-subscriptions-of-one-backend).
 
 ## Built-in workflow template
 
@@ -543,6 +662,20 @@ When an instance is deleted via `delete_instance`, it is automatically removed f
 
 `agend export-chat` exports fleet activity as a self-contained HTML file. Supports `--from` and `--to` date filters and `-o` for output path. The exported file includes all messages, tool calls, and cross-instance communications in a readable chat format.
 
+## Bot-to-bot message visibility
+
+When one instance sends another a message (`send_to_instance`, `delegate_task`, `report_result`, …), AgEnD also posts it in the instance topics so people can follow along: the whole message in the sender's topic, and in the target's topic the whole message for a task or query, a short summary for any other kind, nothing for a report or update. In a busy fleet that can bury the conversation with people. `cross_instance_visibility` sets how much is posted (#1302):
+
+| Mode | Instance topics |
+|------|-----------------|
+| `full` (default) | As described above — unchanged from earlier versions |
+| `summary` | The same posts, each one line: `sender → target: ` plus the sender's task summary, or the opening of the message |
+| `hidden` | Nothing |
+
+Each topic follows its own instance: `instances.<name>.cross_instance_visibility`, else `defaults.cross_instance_visibility`, else `full`. A fleet admin sets the fleet default with `/visibility full|summary|hidden` (Telegram General topic, or Discord), which saves it to `fleet.yaml`; `/visibility` alone shows the current setting and the instances that have their own. Settings has the fleet default (Defaults) and a per-agent override (agent → Advanced). A change applies at once, with no restart.
+
+Only these topic posts change. Messages are delivered exactly as before, the [Mirror Topic](#mirror-topic) still receives every message, and General topics never show these posts in any mode.
+
 ## Mirror Topic
 
 Configure `mirror_topic_id` in `fleet.yaml` to designate a Telegram topic for observing cross-instance communication. All `send_to_instance` messages are mirrored to this topic in real time. This is a daemon-level hook with zero changes to agent behavior — agents don't know they're being observed.
@@ -559,6 +692,24 @@ Each Codex instance resumes **its own** conversation. At launch AgEnD reads Code
 | Session database unreadable, no other Codex instance in the repo | `codex resume --last`, plus a notice |
 
 AgEnD never writes Codex state and moves no session files; sessions and locks stay in the shared `~/.codex`, so `codex resume` in a terminal still lists every instance's conversations. If Codex shows "This conversation is open in another app" or its "Working directory · resume" picker, AgEnD holds delivery and tells the operator instead of pressing a key. Also detects "You've hit your usage limit" as a pause-triggering error.
+
+**Where `~/.codex` is.** Everywhere above, the shared Codex home is `$CODEX_HOME` when that is set in the fleet's environment, and `~/.codex` otherwise. Each instance itself runs with a private `CODEX_HOME` under `~/.agend/cx/<hash>/`: its own `config.toml` (your settings without other instances' AgEnD MCP entries, plus its own), with the login, sessions and caches linked back to the shared home.
+
+## Codex custom provider
+
+A Codex instance can run on a model provider defined in your Codex config instead of the default:
+
+```yaml
+instances:
+  glm-agent:
+    backend: codex
+    model: <a model the provider serves>
+    backend_options:
+      codex:
+        provider: glm
+```
+
+The instance is launched with `-c model_provider="glm"`. The provider itself (`[model_providers.glm]`, its base URL and key variable) is defined in the shared Codex `config.toml`, which each instance's private config copies. The name may only contain letters, digits, `_` and `-`. `create_instance` takes the same `backend_options.codex.provider`, and `list_models` with `instance_name` reads the model list through that instance's own config, since a custom provider can offer a different set than the account.
 
 ## Rate limit failover cooldown
 
@@ -579,13 +730,15 @@ Values in `~/.agend/.env` now properly override inherited shell environment vari
 When auto-creating the General topic instance, AgEnD writes the correct instruction file based on the configured backend:
 
 - Claude Code → `CLAUDE.md`
-- Codex → `AGENTS.md`
+- Codex, OpenCode, Grok Build, Meta Muse Code → `AGENTS.md`
 - Kiro CLI → `.kiro/steering/project.md`
-- OpenCode → uses MCP instructions directly
+- Antigravity CLI → `.agents/agents.md`
+
+An existing file is left alone.
 
 ## Builtin text standardization
 
-All system-generated text (schedule notifications, voice message labels, general instructions, fleet notifications) is now in English. Previously some messages were in Chinese.
+All system-generated text (schedule notifications, voice message labels, general instructions, fleet notifications) is now in English. Previously some messages were in Chinese. One exception remains: the progress bubble (`處理中…`, the retired `🧾 工具歷程` history and the `tool_progress` labels) is still hard-coded in Chinese.
 
 ## AGEND_HOME — configurable data directory
 
@@ -603,10 +756,11 @@ Define reusable fleet configurations in `fleet.yaml` under the `templates` secti
 
 Fleet instructions are injected additively — they don't override the CLI's built-in system prompt. Each backend uses its native mechanism:
 
-- Claude Code: `--append-system-prompt-file`
-- Kiro CLI: `.kiro/steering/` directory
-- Codex: `AGENTS.md` in working directory
-- OpenCode: MCP instructions
+- Claude Code: `--append-system-prompt-file` (the file is `fleet-instructions.md` in the instance directory)
+- Kiro CLI: its own steering file, `.kiro/steering/agend-<instance>.md`
+- Codex, Grok Build, Meta Muse Code: a marked block in `AGENTS.md` in the working directory
+- Antigravity CLI: a marked block in `.agents/agents.md` in the working directory
+- OpenCode: `fleet-instructions.md` in the instance directory, added to the `instructions` list of `opencode.json` in the working directory
 
 ## Auto-dismiss interactive prompts
 
@@ -643,7 +797,9 @@ instances:
     systemPrompt: "file:prompts/role.md"
 ```
 
-The file path is resolved relative to the working directory. If the file doesn't exist, the prompt is treated as empty.
+A relative path is resolved against the **instance's `working_directory`** (#1314); `~/` and absolute paths are used as given. That directory is where a relative path *starts*, not a boundary: `../` and symlinks can lead out of it, just as an absolute path can name any file the fleet's user can read. `~name/` (another user's home) is not supported; it is refused with a warning, never read as a directory called `~name`. Before 2.1.13 it was the fleet process's current directory (`~/.agend` under the installed service, the shell's directory after a manual `agend fleet start`). For one release, a relative path whose file is missing under the working directory still falls back to the old fleet-directory file: the log names both paths and the instance's topic is told once. The fallback is removed in 2.2.
+
+Several parts can be combined with commas (`"file:a.md, file:b.md"`, inline text allowed between them); they are joined with blank lines. The value is split on commas **only when at least one part is a `file:` reference**, so an inline prompt such as `"You are Kuro, a careful reviewer"` stays one paragraph. A file that cannot be read, is larger than 256 KiB, or is not a regular file (a FIFO or a device — opened without blocking) contributes nothing; the log names its path and the error (never its contents), and config validation warns about a reference that names no file. The `workflow: "file:…"` setting reads its file the same way.
 
 ## Staggered startup
 
@@ -671,7 +827,7 @@ instances:
 
 ### Workspace handling
 
-Agy rejects working directories under hidden paths (dot-prefixed ancestors like `~/.agend/`). When the workspace is under a hidden path, AgEnD creates a real directory at `~/agend-workspaces/<instanceName>/` and uses it as the CWD. Instructions are written to `.agents/agents.md` inside this directory.
+agy 1.1.0 and later accept working directories under hidden paths such as `~/.agend/workspaces/`, so an instance runs in its configured working directory like any other backend (the old redirect to `~/agend-workspaces/<instanceName>/` is gone). Fleet instructions are written as a marked block in `.agents/agents.md` inside that directory.
 
 ### Trust prompt
 
@@ -715,6 +871,8 @@ In headless environments (SSH, Docker), the URL must be opened manually on anoth
 - **Context display** — shows `used / total` tokens (e.g. `12K / 500K`); AgEnD's `/ctx` and `agend ls` parse this to a percentage
 - **Cancel key** — Ctrl+C (interrupts generation; verified against the live CLI)
 - **Session resume** — `--resume <session-id>` (auto-managed: AgEnD persists the id per working directory). `--continue` is deliberately NOT used — it exits when there is no prior session
+- **Tool approval** — launched with `--always-approve` unless `skipPermissions` is false; a runtime-dialog rule approves the prompt as a fallback
+- **Session isolation** — grok stores sessions per working directory (`~/.grok/sessions/<encoded cwd>/`), so instances with different working directories never pick up each other's session
 
 ### Slash commands
 
@@ -732,7 +890,24 @@ In headless environments (SSH, Docker), the URL must be opened manually on anoth
 - Login requires device flow — headless environments need manual browser access
 - Upgrade prompts are non-blocking but occupy TUI space
 - Context shows token count (e.g., "12K tokens") rather than percentage — `agend ls` parser handles this
-- `ctrl+q` quits (not Escape) — AgEnD uses Escape for cancel, not quit
+- `ctrl+q` quits; AgEnD cancels with Ctrl+C and never sends Ctrl+Q for a cancel
+
+## OpenCode backend
+
+OpenCode (`backend: opencode`) is configured like any other backend.
+
+```yaml
+instances:
+  my-opencode:
+    backend: opencode
+    model: provider/model   # as `opencode models` lists them
+```
+
+- **Config and instructions.** OpenCode reads `opencode.json` from the working directory. AgEnD merges into that file rather than replacing it: it adds this instance's MCP server under its own key (`<server>-<instance>`, so several instances can share a directory) and appends `fleet-instructions.md` from the instance directory to the `instructions` list. Your own entries stay.
+- **Permissions.** With `skipPermissions` (the default), OpenCode is launched with `--auto` when its `--help` lists the flag; explicit `deny` rules in your config still apply. An older OpenCode gets no launch switch, and its "Permission required" prompts are answered "Allow once" at runtime.
+- **Session resume.** Only the session AgEnD recorded for this instance is resumed (`--session <id>`). OpenCode's `--continue` is never used: it is global and could pick up another directory's session.
+- **Controls.** Cancel is Escape (Ctrl+C would exit OpenCode); `/compact` and `/clear` are passed through. Reasoning effort is not supported. `list_models` reads `opencode models`.
+- **Sign-in.** `/login opencode` installs the CLI if it is missing but has no sign-in flow: sign in on the host with OpenCode itself (AgEnD checks the result with `opencode auth list`).
 
 ## Auto-Pause & Wake
 
@@ -766,7 +941,7 @@ Also configurable via the Settings web page: **Runtime & Resources → auto_paus
 
 ### Status visibility
 
-- `agend ls` → Status column shows "Paused" with ⏸ icon
+- `agend ls` → Status column shows "Paused" with a dim yellow ○
 - `/status` → ⏸ icon next to paused instances
 - Settings page → "Wake" button (instead of "Start") for paused instances
 - MCP `list_instances` → `status: "paused"`
@@ -836,7 +1011,7 @@ Both mechanisms are suppressed during intentional shutdown (`agend stop` / fleet
 
 ## Parallel instance stop
 
-Instance shutdown uses concurrency of 5 to speed up `agend fleet stop` and `agend stop`. The systemd timeout is extended accordingly to prevent premature kill during large fleet shutdowns.
+Fleet shutdown (`agend fleet stop`, `agend stop`) stops instances in parallel batches whose size scales with the fleet: 5 at a time for fewer than 10 instances, 10 for 10–30, and 15 for more than 30. The systemd unit bounds the whole stop with `TimeoutStopSec=60`.
 
 Since 2.1.9 the systemd unit uses `KillMode=mixed`: systemd signals only the fleet, which then quits each CLI in turn. Before this, every CLI got SIGTERM at the same moment, and on WSL kiro-cli aborted into a core dump of about 1 GB each time (#908). `agend restart` adds the line to an older unit; see [CLI reference](cli.md#setup--installation).
 
@@ -866,3 +1041,13 @@ of their own version.
 ## PSS memory reporting
 
 `agend ls` reports memory using PSS (Proportional Set Size) from `/proc/<pid>/smaps_rollup` instead of RSS. This avoids double-counting shared library pages across the process tree, giving a more accurate picture of actual memory consumption. Falls back to RSS on non-Linux systems.
+
+## Host memory pressure
+
+One fleet-wide sampler reads host memory every 30 seconds and before every spawn admission (startup, wake, restart and recovery). On **Linux** it throttles new CLIs, and never touches running ones:
+
+- available RAM below `max(300 MiB, 2% of RAM)`, or below `max(2 × that, 5% of RAM)` with swap at most 5% free → **critical**: no new CLI starts; the request waits and is retried after 5, 10, 20, 40 and then every 60 seconds;
+- RAM below that second threshold, or swap at most 5% free → **elevated**: one start at a time, at least 5 seconds apart (an unreadable sample is treated the same way, never as zero RAM);
+- after a critical hold clears, starts ramp back up slowly for 30 seconds.
+
+`/health` always carries a `hostMemory` block (level, RAM and swap, trend); on Linux, pressure also marks it degraded, and a fleet notice is sent with a 10-minute cooldown (an escalation to critical is sent at once). On **macOS** the sample is written to the log only since #1257: nothing is slowed or held, no notice is sent, and `/health` does not report pressure, because macOS's free-memory and swap numbers alerted on machines with plenty of memory. Details: [memory-pressure.md](memory-pressure.md).

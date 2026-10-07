@@ -1,6 +1,6 @@
 import { EFFORT_CAPABILITIES } from "./effort-metadata.js";
 import { join, resolve } from "node:path";
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync, chmodSync, lstatSync, readlinkSync, symlinkSync, renameSync, unlinkSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, statSync, writeFileSync, chmodSync, lstatSync, readlinkSync, symlinkSync, renameSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { createHash, randomBytes } from "node:crypto";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type InputDraft, type ModelOption, type RuntimeDialog, type StartupDialog, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
@@ -12,14 +12,59 @@ const SESSION_ID_RE = /^[0-9a-fA-F-]{8,}$/;
 /**
  * Enough of a session log to reach the `route_facts` record that names the
  * working directory. Measured on a live session: `"cwd"` landed at byte 3899 of
- * a 450KB log, at sequence 4. 64KiB is ~16x that headroom and keeps the scan
- * cheap even with dozens of sessions on disk.
+ * a 450KB log, at sequence 4. 65,536 decoded characters is ~16x that headroom
+ * and keeps the scan cheap even with dozens of sessions on disk.
  */
-const SESSION_HEAD_BYTES = 65_536;
+const SESSION_HEAD_CHARS = 65_536;
 
 /** Read the workspace a session was started in, without reading the whole log. */
 export function museSessionCwd(head: string): string | null {
   return head.match(/"cwd":"((?:[^"\\]|\\.)*)"/)?.[1]?.replace(/\\(.)/g, "$1") ?? null;
+}
+
+/**
+ * Bounded head read: the first `maxChars` UTF-16 code units of a file,
+ * decoded as UTF-8, without reading the whole file (#1228: session logs grow
+ * past hundreds of KB while discovery only needs the `route_facts` head).
+ * The bound is decoded characters, not bytes — exactly what the old
+ * readFileSync-then-slice produced, so a log whose head is mostly multibyte
+ * text stays discoverable. Bytes are pulled in 64KB chunks and decoded with a
+ * streaming decoder (a character split across a chunk boundary still decodes
+ * intact); the byte budget is bounded by ~64KB per 16K ASCII chars and at most
+ * ~320KB for a head of pure 4-byte characters. Returns null when the file
+ * cannot be opened or read. Synchronous blocking I/O like the other store
+ * readers — never on the fleet event loop.
+ */
+export function readFileHeadSync(filePath: string, maxChars: number): string | null {
+  if (!(maxChars >= 1)) return "";
+  let fd: number | undefined;
+  try {
+    fd = openSync(filePath, "r");
+    // ignoreBOM: the old Buffer.toString kept a leading U+FEFF, so the
+    // equivalence with full-read-then-slice holds for BOM files too (#1281).
+    const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
+    const chunk = Buffer.alloc(65_536);
+    let head = "";
+    for (;;) {
+      if (head.length >= maxChars) break;
+      let nread: number;
+      try {
+        nread = readSync(fd, chunk, 0, chunk.length, null);
+      } catch {
+        return null;
+      }
+      if (nread <= 0) {
+        head += decoder.decode(); // EOF: flush any buffered partial character
+        break;
+      }
+      head += decoder.decode(chunk.subarray(0, nread), { stream: true });
+    }
+    return head.slice(0, maxChars);
+  } catch {
+    return null;
+  } finally {
+    if (fd !== undefined) { try { closeSync(fd); } catch { /* already closed */ } }
+  }
 }
 
 const MUSE_SEPARATOR = /^─{10,}\s*$/;
@@ -143,6 +188,34 @@ export function museDraftShows(rows: readonly string[], width: number, text: str
   }
   return i === rows.length;
 }
+
+/**
+ * muse's logged-out menu (1.4.3): the two choices, then the key hint, as the last rows of the pane, with any cursor
+ * glyph allowed in front of a choice.
+ */
+export function museLoginScreenActive(pane: string): boolean {
+  const rows = pane.replace(/\r/g, "").split("\n").map(row => row.replace(/\s+$/, "")).filter(row => row.trim() !== "");
+  if (rows.length < 3) return false;
+  const [browser, apiKey, hint] = rows.slice(-3) as [string, string, string];
+  const choice = (row: string, label: string) => new RegExp(`^[ \\t]*(?:[❯›>▸][ \\t]*)?${label}\\b`).test(row);
+  return choice(browser, "Log in with browser") && choice(apiKey, "Set an API key") && /to select\b.*\bEsc to quit$/.test(hint);
+}
+
+/**
+ * The logged-out menu as a dialog (#1328): 1.4.3 paints "Log in with browser · Enter to choose" / "Set an API key" /
+ * "↓↑ to select · Esc to quit". The older login wording matches none of it, and the ready pattern (`Muse Code \d`)
+ * matched the header, so a logged-out muse passed as ready. Held — a human has to log in — with deliveries blocked,
+ * in the startup scan and at runtime; the parked-dialog report tells them. Bottom-anchored (museLoginScreenActive).
+ */
+const MUSE_LOGIN_MENU: RuntimeDialog = {
+  pattern: /Log in with browser|Set an API key/,
+  isActive: museLoginScreenActive,
+  keys: [],
+  holdOnly: true,
+  blocksDelivery: true,
+  inputBlocked: true,
+  description: "Muse login menu — waiting for a human to log in (never answered)",
+};
 
 /**
  * Meta Muse Code — the `muse` CLI (v1.3.0 verified).
@@ -544,11 +617,13 @@ export class MuseBackend implements CliBackend {
         keys: [],
         description: "Muse login — wait for the user to authenticate (no auto-dismiss)",
       },
+      MUSE_LOGIN_MENU,
     ];
   }
 
   getRuntimeDialogs(): RuntimeDialog[] {
     return [
+      MUSE_LOGIN_MENU,
       // Net for a tool-approval prompt arriving despite --disable-approval (an
       // enterprise policy can pin approval on). Muse's menus are numbered with
       // the first option preselected, same shape as the trust dialog.
@@ -587,11 +662,8 @@ export class MuseBackend implements CliBackend {
       for (const sessionDir of museSessionDirs(root)) {
         const name = sessionDir.slice(sessionDir.lastIndexOf("/") + 1);
         if (!SESSION_ID_RE.test(name)) continue;
-        let head: string;
-        try {
-          const fd = readFileSync(join(sessionDir, "session.jsonl"), { encoding: "utf-8", flag: "r" });
-          head = fd.slice(0, SESSION_HEAD_BYTES);
-        } catch { continue; }
+        const head = readFileHeadSync(join(sessionDir, "session.jsonl"), SESSION_HEAD_CHARS);
+        if (head === null) continue;
         if (museSessionCwd(head) !== this.workingDirectory) continue;
         // Activity = latest inner-file mtime. The directory's own mtime does not
         // move when a log is appended, and is misleadingly recent for a session

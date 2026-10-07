@@ -8,7 +8,7 @@ Registered via `setMyCommands` with `scope: chat` and `scope: chat_administrator
 
 | Command | Description | Permission |
 |---------|-------------|------------|
-| `/sysinfo` | System diagnostics, including each backend CLI's version | All |
+| `/sysinfo` | System diagnostics, including each backend CLI's version (also `/sys-info`, `/sys_info` when typed) | All |
 | `/ctx` | Show agent context usage | All |
 | `/usage` | Show AI subscription usage | All |
 | `/compact [instructions]` | Compact agent context; the optional text steers the summary (Claude Code only — other backends compact without it and say so) | All |
@@ -23,14 +23,15 @@ Registered via `setMyCommands` with `scope: chat` and `scope: chat_administrator
 | 🔒 `/restart [full]` | Restart all instances in-process; `full` reloads the entire Fleet process and adapters, independent of version | Admin |
 | 🔒 `/update` | Update AgEnD to latest | Admin |
 | 🔒 `/doctor` | Run health diagnostics | Admin |
-| 🔒 `/login [backend\|cancel]` | **(beta)** Remote CLI sign-in — and install — without SSH. Away from the machine, a `kiro-cli` or `claude-code` sign-in can open a one-tap temporary public link (AgEnD fetches a pinned, checksum-verified cloudflared if needed) — see [configuration](configuration.md#finishing-a-login-away-from-the-machine-public-link). One entry point: a CLI that is not installed yet is installed first (the backend's official install script in a temporary tmux window, verified on PATH), then signed in. `/install-cli` is a typed alias for 2.1.10 only (removed in 2.1.11). Sign-in covers `codex`, `grok`, `kiro`, `claude`, `antigravity`; `opencode` and `muse` install only (no sign-in flow). No arg shows a backend picker of every installed or installable backend, each labelled with what a click does; device-code backends (codex, grok) post a URL and code in the chat; the others (claude, kiro) open a browser terminal where you finish the sign-in (and can paste the code back). Opens a temporary tmux window (instance panes untouched), warns if auth is already valid, 10-minute timeout, `/login cancel` anytime. Credentials are per-backend shared — one login fixes every instance on that backend, and running instances restart afterward to pick up the new credential. Also on Discord (`/login backend:… cancel:…`); not on TG Classic. | Admin |
+| 🔒 `/login [backend\|cancel]` | **(beta)** Remote CLI sign-in — and install — without SSH. Away from the machine, a `kiro-cli` or `claude-code` sign-in can open a one-tap temporary public link (AgEnD fetches a pinned, checksum-verified cloudflared if needed) — see [configuration](configuration.md#finishing-a-login-away-from-the-machine-public-link). One entry point: a CLI that is not installed yet is installed first (the backend's official install script in a temporary tmux window, verified on PATH), then signed in. The old `/install-cli` (`/install_cli`) still works when typed but only redirects to `/login` with a "moved" notice — it is in no menu. No arg shows a backend picker of every installed or installable backend, each labelled with what a click does; device-code backends (codex, grok) post a URL and code in the chat; the others (claude, kiro) open a browser terminal where you finish the sign-in (and can paste the code back). Sign-in covers `codex`, `grok`, `kiro` and `claude`; `opencode` and `muse` are install-only (no sign-in flow); `antigravity` is refused outright — bare `agy` is the full agent CLI with no isolated login sub-command (user decision v2.1.5, `remoteLogin: "unsupported"` in `src/login-flows.ts`). Opens a temporary tmux window (instance panes untouched), warns if auth is already valid, 10-minute timeout, `/login cancel` anytime. Credentials are per-backend shared — one login fixes every instance on that backend, and running instances restart afterward to pick up the new credential. Also on Discord (`/login backend:… cancel:…`); not on TG Classic. | Admin |
 | `/collab` | Toggle bot/webhook message reception | All |
 | 🔒 `/dashboard` | Show the sign-in page and a one-time login code (`/dashboard revoke` — on Discord the `action: revoke` option — signs every browser out) | Admin |
-| 🔒 `/model` | Change backend model (inline keyboard). On `claude-code`, a two-tier menu: 6 quick-select aliases, plus a "📋 更多模型…" (more models) button that fetches the live model catalog from the API (24h cache, falls back to the alias list on failure). | Admin |
-| 🔒 `/effort` | Adjust AI reasoning effort (low/medium/high/xhigh/max) | Admin |
-| 🔒 `/clear` | Full conversation reset (destructive) — asks for Confirm/Cancel before running. Sends each backend's own reset command (`/clear` for most, `/new` for grok); unsupported on `gemini-cli`. | Admin |
+| 🔒 `/model` | Change backend model (inline keyboard). A typed name applies directly (`/model sonnet`); with no arg the menu opens. On `claude-code`, a two-tier menu: 6 quick-select aliases, plus a "📋 更多模型…" (more models) button that fetches the live model catalog from the API (24h cache, falls back to the alias list on failure). | Admin |
+| 🔒 `/effort` | Adjust AI reasoning effort (low/medium/high/xhigh/max). A typed level applies directly; with no arg the menu opens | Admin |
+| 🔒 `/clear` | Full conversation reset (destructive) — asks for Confirm/Cancel before running. Sends each backend's own reset command (`/clear` for most, `/new` for grok). | Admin |
 | 🔒 `/tips on\|off` | Toggle the daily auto-sent tip to the General topic | Admin |
 | 🔒 `/tips advanced on` | Fleet-wide manual unlock of the advanced tips tier (independent of the per-user dismiss-count unlock). Currently has no visible effect while the beginner-only rollout stage is active — see the `/tips` row above. | Admin |
+| 🔒 `/visibility [full\|summary\|hidden]` | How bot-to-bot (cross-instance) messages appear in instance topics: `full` posts the whole message (the default, as before), `summary` one line per message, `hidden` nothing. With a mode it sets the fleet default and saves it to `fleet.yaml` (`defaults.cross_instance_visibility`); with none it shows the current setting and which instances have their own. Delivery and the Mirror Topic are never affected. General topic only. See [features](features.md#bot-to-bot-message-visibility). | Admin |
 
 ## Telegram — ClassicBot (Private Chats + Groups)
 
@@ -57,6 +58,8 @@ These are handled but not shown in the bot menu:
 |---------|------------|-------|
 | `@bot /raw <text>` | Admin | Send raw text directly to CLI |
 | `@bot <message>` | All users | Normal conversation trigger via @mention |
+| `/cancel` | All users | Interrupt generation; handled when typed, not in the menu |
+| `/save <filename>` | Admin | Save session; handled when typed, not in the menu |
 
 ---
 
@@ -83,14 +86,15 @@ Registered globally via `client.application.commands.set()`.
 | 🔒 `/restart [mode:full]` | Restart all instances in-process; `mode:full` reloads the entire Fleet process and adapters | Admin |
 | 🔒 `/update` | Update AgEnD to latest version | Admin |
 | 🔒 `/doctor` | Run health diagnostics | Admin |
-| 🔒 `/login [backend] [cancel]` | **(beta)** Remote CLI sign-in, installing the CLI first when it is missing (sign-in: `claude-code`/`codex`/`kiro-cli`/`grok`/`antigravity`; install only: `opencode`, `muse`) | Admin |
+| 🔒 `/visibility [mode]` | Show, or set (`mode: full\|summary\|hidden`), how bot-to-bot messages appear in instance channels; saved to `fleet.yaml` | Admin |
+| 🔒 `/login [backend] [cancel]` | **(beta)** Remote CLI sign-in, installing the CLI first when it is missing (sign-in: `claude-code`/`codex`/`kiro-cli`/`grok`; install only: `opencode`, `muse`; `antigravity` refused outright — no isolated login sub-command) | Admin |
 | 🔒 `/compact [instructions]` | Compact agent context; the optional text steers the summary (Claude Code only — other backends compact without it and say so) | Admin |
 | 🔒 `/collab` | Toggle collaboration mode | Admin |
 | 🔒 `/model` | Change backend model (select menu) | Admin |
 | 🔒 `/effort` | Adjust AI reasoning effort (select menu) | Admin |
 | 🔒 `/save <filename>` | Save the agent's conversation | Admin |
 | 🔒 `/load <filename>` | Load a saved conversation | Admin |
-| 🔒 `/clear` | Full conversation reset (destructive, Confirm/Cancel required); sends `/new` on grok, unsupported on `gemini-cli` | Admin |
+| 🔒 `/clear` | Full conversation reset (destructive, Confirm/Cancel required); sends `/new` on grok | Admin |
 
 ---
 
@@ -99,7 +103,7 @@ Registered globally via `client.application.commands.set()`.
 ### Fleet Admin (`fleet.yaml` → `channel.access.allowed_users`)
 
 Fleet-level commands — requires fleet admin:
-- `/status`, `/restart`, `/update`, `/doctor`, `/pause`, `/wake`, `/model`, `/effort`, `/clear`, `/login`
+- `/status`, `/restart`, `/update`, `/doctor`, `/visibility`, `/pause`, `/wake`, `/model`, `/effort`, `/clear`, `/login`
 
 ### ClassicBot Admin (`classicBot.yaml` → `defaults.admin_users`)
 
@@ -137,7 +141,6 @@ All three commands route through a backend-name lookup rather than being univers
 | `opencode` | ❌ unverified | ❌ "not supported" | `/clear` |
 | `antigravity` | ❌ unverified | ❌ "not supported" | `/clear` |
 | `muse` | ✅ (verified live on muse 1.3.0) | ❌ "not supported" | `/clear` |
-| `gemini-cli` (⚠️ deprecated) | ❌ | ❌ "not supported" | ❌ "not supported" |
 
 A `/steer` or `/btw` on an unsupported backend gets an honest error instead of silently falling back to a normal queued message (which would look the same to the user but behave differently). `/btw` rides the same paste path as `/steer` but is Claude Code-only — it exists because Claude Code's *native* `/btw` opens a side-fork that never reaches the channel, so AgEnD substitutes a labelled inbound message instead.
 
@@ -150,7 +153,7 @@ A `/steer` or `/btw` on an unsupported backend gets an honest error instead of s
 | `agend start` | Start the fleet daemon |
 | `agend stop` | Stop the fleet daemon |
 | `agend ls` | List instances with status (Idle/Busy/Crashed/Stopped/Paused) |
-| `agend update [--beta\|--stable]` | Update AgEnD on the installed channel (a beta stays on beta); `--stable` switches to the stable release |
+| `agend update [--alpha\|--beta\|--stable]` | Update AgEnD on the installed channel (an alpha stays on alpha, a beta on beta); `--stable` switches to the stable release |
 | `agend doctor` | Run backend health diagnostics |
 | `agend doctor mcp` | Fleet-wide MCP health check (IPC, config paths, duplicates, binary PATH) |
 | `agend web` | Launch Web UI dashboard (`--code` prints a one-time sign-in code instead) |

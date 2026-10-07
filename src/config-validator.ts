@@ -4,6 +4,10 @@ import { credentialHomeSpec, resolveCredentialProfile } from "./backend/credenti
 import { STATUS_EMOJI_CONFIG_KEYS, statusEmojiProblem, type StatusEmojiKey } from "./status-emojis.js";
 import { hostnameOf } from "./web-host-guard.js";
 import { previewOriginProblem } from "./web-preview.js";
+import { existsSync } from "node:fs";
+import { isUnsupportedHomeRef, resolveFileRefPath, systemPromptParts } from "./prompt-file-ref.js";
+import { isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
+import { CROSS_INSTANCE_VISIBILITY_MODES, isCrossInstanceVisibility } from "./cross-instance-notice.js";
 
 /**
  * Shared config validation for fleet.yaml and classicBot.yaml.
@@ -25,7 +29,20 @@ export interface ValidationResult {
 }
 
 /** Backends the factory can instantiate (keep in sync with backend/factory.ts). */
-export const KNOWN_BACKENDS = ["claude-code", "gemini-cli", "codex", "opencode", "kiro-cli", "antigravity", "grok", "muse", "mock"];
+export const KNOWN_BACKENDS = ["claude-code", "codex", "opencode", "kiro-cli", "antigravity", "grok", "muse", "mock"];
+
+/**
+ * The error for a backend field: a removed backend names its replacement (#1280); anything else unknown lists the
+ * known ones. `inheritsWhenEmpty`: ClassicBot reads its backends with `||` (ClassicChannelManager.getBackend), so
+ * an empty string or null there means "inherit", not an unknown backend.
+ */
+function backendProblem(value: unknown, instance?: string, inheritsWhenEmpty = false): string | null {
+  if (value === undefined) return null;
+  if (inheritsWhenEmpty && (value === null || value === "")) return null;
+  if (typeof value === "string" && isRemovedBackend(value)) return removedBackendMessage(value, instance);
+  if (typeof value !== "string" || !KNOWN_BACKENDS.includes(value)) return `unknown backend "${String(value)}" (known: ${KNOWN_BACKENDS.join(", ")})`;
+  return null;
+}
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
@@ -45,6 +62,35 @@ export function validateFleetConfig(config: unknown): ValidationResult {
   const warnings: ValidationIssue[] = [];
   const err = (path: string, message: string) => errors.push({ path, message });
   const warn = (path: string, message: string) => warnings.push({ path, message });
+
+  /**
+   * #1314: a `file:` ref in systemPrompt/workflow that names no file under the instance's working directory. A
+   * warning, not an error: the file may be created later. Only paths are named, never contents.
+   */
+  const warnUnresolvedPromptFiles = (inst: Record<string, unknown>, path: string, defaults: Record<string, unknown>): void => {
+    if (typeof inst.working_directory !== "string" || !inst.working_directory) return;
+    // The effective value: the instance's own wins, else the fleet default — what the daemon is given after merge.
+    const effective = (key: "systemPrompt" | "workflow") =>
+      inst[key] !== undefined ? { value: inst[key], inherited: false } : { value: defaults[key], inherited: defaults[key] !== undefined };
+    const refs: Array<[string, string, boolean]> = [];
+    const sp = effective("systemPrompt");
+    if (typeof sp.value === "string") {
+      for (const part of systemPromptParts(sp.value)) if (part.startsWith("file:")) refs.push(["systemPrompt", part.slice(5), sp.inherited]);
+    }
+    const wf = effective("workflow");
+    if (typeof wf.value === "string" && wf.value.startsWith("file:")) refs.push(["workflow", wf.value.slice(5), wf.inherited]);
+    for (const [field, ref, inherited] of refs) {
+      const from = inherited ? " (from defaults)" : "";
+      if (isUnsupportedHomeRef(ref)) {
+        warn(`${path}.${field}`, `file: "${ref.trim()}"${from} — ~user paths are not supported; use ~/ or an absolute path`);
+        continue;
+      }
+      const resolved = resolveFileRefPath(ref, inst.working_directory);
+      if (!existsSync(resolved)) {
+        warn(`${path}.${field}`, `file: "${ref.trim()}"${from} is not at ${resolved} — a relative path is under the instance's working_directory (until 2.2, AgEnD still falls back to the fleet's directory)`);
+      }
+    }
+  };
   const validateAutoPause = (value: unknown, path: string) => {
     if (value !== undefined && (typeof value !== "number" || !Number.isFinite(value) || value < 0)) {
       err(path, "must be a non-negative finite number of minutes (0 disables auto-pause)");
@@ -157,6 +203,24 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     }
     if (value.reply_completion_guard !== undefined && typeof value.reply_completion_guard !== "boolean") {
       err(`${path}.reply_completion_guard`, "must be a boolean");
+    }
+    if (value.cross_instance_visibility !== undefined && !isCrossInstanceVisibility(value.cross_instance_visibility)) {
+      err(`${path}.cross_instance_visibility`, `must be one of: ${CROSS_INSTANCE_VISIBILITY_MODES.join(", ")}`);
+    }
+
+    // #1296: context rotation was removed. max_age_hours and grace_period_ms
+    // are retained in the schema for backwards compatibility but have no effect.
+    // They are no longer in DEFAULT_INSTANCE_CONFIG, so loadFleetConfig never
+    // fills them into a normalized config — they only appear when the user
+    // explicitly writes them.
+    if (isObj(value.context_guardian)) {
+      const cg = value.context_guardian as Record<string, unknown>;
+      if (cg.max_age_hours !== undefined) {
+        warn(`${path}.context_guardian.max_age_hours`, "no effect; context rotation was removed");
+      }
+      if (cg.grace_period_ms !== undefined) {
+        warn(`${path}.context_guardian.grace_period_ms`, "no effect; context rotation was removed");
+      }
     }
 
     if (value.effort !== undefined) {
@@ -338,9 +402,8 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     err("defaults", "must be a mapping");
   } else if (isObj(config.defaults)) {
     const b = config.defaults.backend;
-    if (b !== undefined && (typeof b !== "string" || !KNOWN_BACKENDS.includes(b))) {
-      err("defaults.backend", `unknown backend "${String(b)}" (known: ${KNOWN_BACKENDS.join(", ")})`);
-    }
+    const problem = backendProblem(b);
+    if (problem) err("defaults.backend", problem);
     validateAutoPause(config.defaults.auto_pause_after, "defaults.auto_pause_after");
     validateDeliveryWorker(config.defaults.delivery_worker, "defaults.delivery_worker");
     if (config.defaults.warm_overflow !== undefined && (!Number.isInteger(config.defaults.warm_overflow) || (config.defaults.warm_overflow as number) < 0)) {
@@ -352,6 +415,10 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     const overdue = config.defaults.reply_overdue_minutes;
     if (overdue !== undefined && (typeof overdue !== "number" || !Number.isFinite(overdue) || overdue < 0)) {
       err("defaults.reply_overdue_minutes", "must be a non-negative number of minutes (0 turns the overdue notice off)");
+    }
+    const retentionDays = config.defaults.retention_days;
+    if (retentionDays !== undefined && (!Number.isInteger(retentionDays) || (retentionDays as number) < 1)) {
+      err("defaults.retention_days", "must be a positive integer (days to keep terminal deliveries and done/cancelled tasks; default 30)");
     }
     validateInstanceOptions(config.defaults, "defaults");
     // Merged into every instance, so it applies on every configured platform.
@@ -395,15 +462,15 @@ export function validateFleetConfig(config: unknown): ValidationResult {
         ? channelTypes.get(String(inst.channel_id)) : channelTypes.values().next().value;
       validateStatusEmojis(inst.status_emojis, `instances.${name}.status_emojis`, [boundTo]);
       const b = inst.backend;
-      if (b !== undefined && (typeof b !== "string" || !KNOWN_BACKENDS.includes(b))) {
-        err(`instances.${name}.backend`, `unknown backend "${String(b)}" (known: ${KNOWN_BACKENDS.join(", ")})`);
-      }
+      const problem = backendProblem(b, name);
+      if (problem) err(`instances.${name}.backend`, problem);
       if (inst.working_directory !== undefined && typeof inst.working_directory !== "string") {
         err(`instances.${name}.working_directory`, "must be a string path");
       }
       validateAutoPause(inst.auto_pause_after, `instances.${name}.auto_pause_after`);
       validateDeliveryWorker(inst.delivery_worker, `instances.${name}.delivery_worker`);
       validateInstanceOptions(inst, `instances.${name}`);
+      warnUnresolvedPromptFiles(inst, `instances.${name}`, isObj(config.defaults) ? config.defaults : {});
     }
   }
   if (generalCount === 0) {
@@ -434,9 +501,8 @@ export function validateClassicBotConfig(config: unknown): ValidationResult {
   } else if (isObj(config.defaults)) {
     const d = config.defaults;
     const b = d.backend;
-    if (b !== undefined && (typeof b !== "string" || !KNOWN_BACKENDS.includes(b))) {
-      err("defaults.backend", `unknown backend "${String(b)}" (known: ${KNOWN_BACKENDS.join(", ")})`);
-    }
+    const problem = backendProblem(b, undefined, true);
+    if (problem) err("defaults.backend", problem);
     validateAutoPause(d.auto_pause_after, "defaults.auto_pause_after");
     if (d.tool_progress !== undefined && !["off", "standard", "verbose"].includes(String(d.tool_progress))) {
       err("defaults.tool_progress", "must be off, standard, or verbose");
@@ -456,6 +522,8 @@ export function validateClassicBotConfig(config: unknown): ValidationResult {
   } else if (isObj(config.channels)) {
     for (const [key, channel] of Object.entries(config.channels)) {
       if (!isObj(channel)) { err(`channels.${key}`, "must be a mapping"); continue; }
+      const backendIssue = backendProblem(channel.backend, typeof channel.instanceName === "string" ? channel.instanceName : typeof channel.name === "string" ? channel.name : key, true);
+      if (backendIssue) err(`channels.${key}.backend`, backendIssue);
       validateAutoPause(channel.auto_pause_after, `channels.${key}.auto_pause_after`);
       if (channel.tool_progress !== undefined && !["off", "standard", "verbose"].includes(String(channel.tool_progress))) {
         err(`channels.${key}.tool_progress`, "must be off, standard, or verbose");

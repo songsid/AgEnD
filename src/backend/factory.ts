@@ -1,6 +1,6 @@
+import { isRemovedBackend, removedBackendMessage } from "./removed.js";
 import type { CliBackend } from "./types.js";
 import { ClaudeCodeBackend } from "./claude-code.js";
-import { GeminiCliBackend } from "./gemini-cli.js";
 import { CodexBackend } from "./codex.js";
 import { OpenCodeBackend } from "./opencode.js";
 import { KiroBackend } from "./kiro.js";
@@ -13,9 +13,6 @@ export function createBackend(name: string, instanceDir: string): CliBackend {
   switch (name) {
     case "claude-code":
       return new ClaudeCodeBackend(instanceDir);
-    case "gemini-cli":
-      console.warn("⚠️  gemini-cli is deprecated (stops 2026-06-18). Consider switching to backend: antigravity");
-      return new GeminiCliBackend(instanceDir);
     case "codex":
       return new CodexBackend(instanceDir);
     case "opencode":
@@ -31,6 +28,8 @@ export function createBackend(name: string, instanceDir: string): CliBackend {
     case "mock":
       return new MockBackend(instanceDir);
     default:
-      throw new Error(`Unknown backend: ${name}. Available: claude-code, gemini-cli, codex, opencode, kiro-cli, antigravity, grok, muse, mock`);
+      // A removed backend says so and names its replacement (#1280); it is never swapped for another silently.
+      if (isRemovedBackend(name)) throw new Error(removedBackendMessage(name));
+      throw new Error(`Unknown backend: ${name}. Available: claude-code, codex, opencode, kiro-cli, antigravity, grok, muse, mock`);
   }
 }

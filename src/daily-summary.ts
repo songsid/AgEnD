@@ -45,13 +45,11 @@ export class DailySummary {
 
     for (const name of instances) {
       const instanceEvents = todayEvents.filter(e => e.instance_name === name);
-      const restarts = instanceEvents.filter(e => e.event_type === "context_restart").length;
       const hangs = instanceEvents.filter(e => e.event_type === "hang_detected").length;
       const deferred = instanceEvents.filter(e => e.event_type === "schedule_deferred").length;
       const costCents = costCentsMap.get(name) ?? 0;
 
       let line = `${name}: ${formatCents(costCents)}`;
-      if (restarts > 0) line += `, ${restarts} restart${restarts > 1 ? "s" : ""}`;
       if (deferred > 0) line += `, ${deferred} deferred`;
 
       const anomalies: string[] = [];

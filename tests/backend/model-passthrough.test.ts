@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import { AntigravityBackend } from "../../src/backend/antigravity.js";
 import { ClaudeCodeBackend } from "../../src/backend/claude-code.js";
 import { CodexBackend } from "../../src/backend/codex.js";
-import { GeminiCliBackend } from "../../src/backend/gemini-cli.js";
 import { GrokBackend } from "../../src/backend/grok.js";
 import { KiroBackend } from "../../src/backend/kiro.js";
 import { OpenCodeBackend } from "../../src/backend/opencode.js";
@@ -46,12 +45,6 @@ const cases: Array<{
     name: "codex",
     backend: () => new CodexBackend(INSTANCE_DIR),
     expected: `-c 'model="${UNKNOWN_MODEL}"'`,
-    warns: true,
-  },
-  {
-    name: "gemini-cli",
-    backend: () => new GeminiCliBackend(INSTANCE_DIR),
-    expected: `--model '${UNKNOWN_MODEL}'`,
     warns: true,
   },
   {

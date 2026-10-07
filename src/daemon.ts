@@ -18,6 +18,8 @@ import { resolveToolSet } from "./tool-permissions.js";
 import { getAgendHome } from "./paths.js";
 import { LOGIN_FLOWS } from "./login-flows.js";
 import { ProgressAccumulator, summarizeProgress } from "./tool-progress.js";
+import { assembleSystemPrompt, resolveWorkflowText, type PromptFileContext } from "./prompt-file-ref.js";
+import { isCrossInstanceVisibility } from "./cross-instance-notice.js";
 import { ContextGuardian } from "./context-guardian.js";
 import { IpcServer } from "./channel/ipc-bridge.js";
 import { daemonBudgetMs } from "./channel/ipc-timeouts.js";
@@ -101,9 +103,7 @@ export function buildInstructionReloadNotice(binaryName: string, instanceName: s
       ? `.kiro/steering/agend-${instanceName}.md`
       : binaryName === "agy"
         ? ".agents/agents.md"
-        : binaryName === "gemini"
-          ? "GEMINI.md"
-          : join(instanceDir, "fleet-instructions.md");
+        : join(instanceDir, "fleet-instructions.md");
   return `[system] Your AgEnD instructions have been updated. Reload only ${source}; do not scan other instruction directories. Do not reply to this message.`;
 }
 
@@ -1203,6 +1203,8 @@ const FLEET_RESPONSE_TYPES = new Set([
 ]);
 
 export class Daemon extends EventEmitter {
+  /** #1314: fleet-directory fallbacks already reported to the topic (once per daemon, per field and path). */
+  private readonly promptFileFallbackNoticed = new Set<string>();
   /** Identity of this live Daemon object; changes on object stop/restart. */
   readonly bootId = randomUUID();
   private deliveryOutbox?: DaemonDeliveryPort;
@@ -2338,7 +2340,7 @@ export class Daemon extends EventEmitter {
 
       // 8. Context guardian
       const statusFile = join(this.instanceDir, "statusline.json");
-      this.guardian = new ContextGuardian(this.config.context_guardian, this.logger, statusFile);
+      this.guardian = new ContextGuardian(this.config.context_guardian ?? {}, this.logger, statusFile);
       this.guardian.startWatching();
 
       this.guardian.on("status_update", () => {
@@ -4209,8 +4211,20 @@ export class Daemon extends EventEmitter {
     return this.interactionObservation.snapshot(this.interactionOwner());
   }
 
+  /** Key of the last interaction snapshot actually emitted + broadcast (#1219). */
+  private lastPublishedInteractionKey: string | null = null;
+
   private publishInteraction(): void {
     const interaction = this.getInteractionSnapshot();
+    // The runtime monitor and every state capture observe the same unchanged
+    // dialog for minutes; re-emitting an identical snapshot each time is
+    // needless IPC traffic. Skip only exact duplicates — any change in the
+    // presentation-relevant fields publishes, so the final state is never
+    // lost (clocks like ageMs are excluded on purpose: they always change).
+    const key = JSON.stringify([interaction.phase, interaction.kind, interaction.reason,
+      interaction.episode, interaction.stale, interaction.suspected]);
+    if (key === this.lastPublishedInteractionKey) return;
+    this.lastPublishedInteractionKey = key;
     // Presentation telemetry must not interrupt the execution-state/hold path.
     try {
       this.emit("instance_interaction", { name: this.name, interaction });
@@ -5335,15 +5349,14 @@ export class Daemon extends EventEmitter {
       const pane = reason === "interaction_confirmation"
         ? await this.tmux.capturePane(1_000) : await this.tmux.capturePane();
       if (!currentDeliveryCapture() || !sameInteractionOwner(interactionOwner, this.interactionOwner())) return;
-      // An old capture must not retire a new launch's transient guard either.
-      if (reason === "delivery_idle_gate" && !currentDeliveryCapture()) {
-        this.resetFooterFallback();
-        return;
-      }
       // Delivery's unknown-footer proof also awaits the TTY mode. Validate
       // output and launch freshness AFTER both awaits, before accepting it.
       const deliveryCandidate = reason === "delivery_idle_gate"
         ? await this.probeDeliveryIdleFallback(pane) : null;
+      // An old capture must not retire a new launch's transient guard either.
+      // This check is only live here, after the probe's await: the identical
+      // check before the probe was dead (no await in between, so the early
+      // return above had already settled it) and is gone (#1219).
       if (reason === "delivery_idle_gate" && !currentDeliveryCapture()) {
         this.resetFooterFallback();
         return;
@@ -5831,6 +5844,8 @@ export class Daemon extends EventEmitter {
     }
     if (Array.isArray(update.tags) && update.tags.every(tag => typeof tag === "string")) this.config.tags = [...update.tags] as string[];
     else if (update.tags === null) delete this.config.tags;
+    if (isCrossInstanceVisibility(update.cross_instance_visibility)) this.config.cross_instance_visibility = update.cross_instance_visibility;
+    else if (update.cross_instance_visibility === null) delete this.config.cross_instance_visibility;
     if (["trace", "debug", "info", "warn", "error"].includes(String(update.log_level))) {
       const level = update.log_level as InstanceConfig["log_level"];
       if (this.config.log_level !== level) {
@@ -8757,6 +8772,29 @@ export class Daemon extends EventEmitter {
     }
   }
 
+  /** Where this instance's `file:` refs resolve, and what a problem with one reports — never the file's contents. */
+  private promptFileContext(): PromptFileContext {
+    return {
+      workingDirectory: this.config.working_directory,
+      // The only reader of the fleet's cwd: the one-release fallback to where these refs used to resolve.
+      fleetCwd: process.cwd(),
+      onWarning: (warning) => {
+        if (warning.problem === "fleet_dir_fallback") {
+          this.logger.warn({ field: warning.field, path: warning.path, legacyPath: warning.legacyPath },
+            `${warning.field} file: ref is not under the instance's working directory (${warning.path}); read ${warning.legacyPath} from the fleet directory instead — make the path absolute or move the file. The fallback is removed in 2.2.`);
+          const key = `${warning.field}:${warning.path}`;
+          if (!this.promptFileFallbackNoticed.has(key)) {
+            this.promptFileFallbackNoticed.add(key);
+            this.emit("prompt_file_fallback", { name: this.name, field: warning.field, path: warning.path, legacyPath: warning.legacyPath });
+          }
+          return;
+        }
+        this.logger.warn({ field: warning.field, path: warning.path, problem: warning.problem, code: warning.code },
+          `${warning.field} file: ref gives nothing (${warning.problem}${warning.code ? ` ${warning.code}` : ""}): ${warning.path}`);
+      },
+    };
+  }
+
   /** Build config object for the CLI backend */
   private buildBackendConfig(): CliBackendConfig {
     // Antigravity 1.1.17 has no per-workspace MCP config, but its global MCP
@@ -8770,33 +8808,18 @@ export class Daemon extends EventEmitter {
     }
 
     // ── Resolve workflow and systemPrompt once, share between MCP env and instructions ──
+    // #1314: `file:` refs are relative to this instance's working directory (src/prompt-file-ref.ts).
+    const promptFiles = this.promptFileContext();
     let resolvedWorkflow: string | false | undefined;
     if (this.config.workflow === false) {
       resolvedWorkflow = false;
     } else {
       const wf = this.config.workflow ?? "builtin";
-      if (wf !== "builtin") {
-        let content = wf;
-        if (content.startsWith("file:")) {
-          try { content = readFileSync(content.slice(5), "utf-8"); } catch { content = ""; }
-        }
-        resolvedWorkflow = content || undefined;
-      }
+      if (wf !== "builtin") resolvedWorkflow = resolveWorkflowText(wf, promptFiles) || undefined;
     }
 
-    let resolvedCustomPrompt: string | undefined;
-    if (this.config.systemPrompt) {
-      // Support comma-separated file: paths for prompt modularization:
-      //   systemPrompt: "file:prompts/role.md, file:prompts/rules.md, file:prompts/context.md"
-      const parts = this.config.systemPrompt.split(",").map((s: string) => s.trim());
-      const resolved = parts.map((part: string) => {
-        if (part.startsWith("file:")) {
-          try { return readFileSync(part.slice(5), "utf-8"); } catch { return ""; }
-        }
-        return part;
-      }).filter(Boolean);
-      if (resolved.length > 0) resolvedCustomPrompt = resolved.join("\n\n");
-    }
+    // Comma-separated parts (`file:role.md, file:rules.md`) only when a part is a file ref; otherwise one inline prompt.
+    const resolvedCustomPrompt = this.config.systemPrompt ? assembleSystemPrompt(this.config.systemPrompt, promptFiles) : undefined;
 
     let decisions: { title: string; content: string }[] | undefined;
     if (process.env.AGEND_DECISIONS) {
@@ -9594,8 +9617,8 @@ export class Daemon extends EventEmitter {
         this.warmupNeeded = !!backendConfig.instructions && prev !== backendConfig.instructions;
       }
 
-      // For backends that don't re-read instructions on resume (kiro/codex/
-      // gemini), also notify the agent on next message instead of forcing a new
+      // For backends that don't re-read instructions on resume (kiro/codex),
+      // also notify the agent on next message instead of forcing a new
       // session. Resume is preserved so context isn't lost.
       if (!backendConfig.skipResume && backendNeedsPaneReloadNotice(this.backend!) && this.warmupNeeded) {
         if (prev) {

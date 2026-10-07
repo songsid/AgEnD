@@ -1,6 +1,8 @@
 # AgEnD MCP Token Overhead 測試報告
 
 > 日期：2026-04-04 | 測試者：agend-t5033 + agend-reviewer-t9177
+>
+> **已過時（2026-10-07，#1277）。** 下面的數字是用 Full **30** / Standard **11** / Minimal **4** 個工具、在 2026 年 4 月的 Claude Code 上測的。目前的工具組是 Full **54** / Standard **29** / Minimal **9**（已對 `src/channel/mcp-tools.ts` 與 `src/tool-permissions.ts` 核過），還多了當時沒有的三個 profile（`worker`、`coordinator`、`general`）——所以絕對 token 數與金額已不適用。測量方法與 `scripts/measure-token-overhead.sh` 保留，供重新測量用。
 
 ## 目的
 

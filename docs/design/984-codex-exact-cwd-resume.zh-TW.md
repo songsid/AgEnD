@@ -1,6 +1,6 @@
 # #984 F3：Codex 以精確 CWD 解析 session 再 resume（窄版 #913）
 
-狀態：設計稿，待 review。這一輪不實作。
+狀態：**已完成**（CHANGELOG 2.1.7，#984 已關閉）。精確 CWD 查詢與 resume 決策見 `src/backend/codex-session-lookup.ts`（`findExactCwdCodexSession()`、`planCodexResume()`），由 `src/backend/codex.ts` 在啟動時呼叫。下文保留設計當時的寫法。
 相關：#984（本案）、#913 / PR #924（explicit-session resume，9/25 revert 於 8f4ee6ce）、#953（短 CODEX_HOME 遷移）、#506（sessions 必須與 terminal CLI 共用）、#978（未知畫面導致投遞判斷錯誤）、PR #985（F1 lock / 目錄選擇器 hold）。
 
 ## 1. 問題與證據

@@ -28,7 +28,7 @@ export function readClassicLastActivityAt(dataDir: string, instanceName: string)
 /** Backends offered by ClassicBot onboarding. `mock` is test-only. */
 export function getClassicBackendChoices(): Choice[] {
   return KNOWN_BACKENDS
-    .filter(backend => backend !== "mock" && backend !== "gemini-cli")
+    .filter(backend => backend !== "mock")
     .map(backend => ({ id: backend, label: backend }));
 }
 
@@ -128,7 +128,7 @@ interface LoadedClassicChannel {
 }
 
 const YAML_HEADER = `# ClassicBot Configuration
-# Available backends: claude-code, gemini-cli, codex, opencode, kiro-cli, antigravity, grok
+# Available backends: claude-code, codex, opencode, kiro-cli, antigravity, grok, muse
 `;
 
 /**

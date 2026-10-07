@@ -17,8 +17,9 @@ import { t } from "./locale.js";
 import type { InteractionSnapshot } from "./backend/types.js";
 import { presentationState, interactionSummary } from "./interaction-observation.js";
 import { truncatePreview } from "./channel/markdown-chunk.js";
+import { crossInstanceVisibility, senderTopicNotice, targetTopicNotice } from "./cross-instance-notice.js";
 import { backendSupportsSteer } from "./steer-capability.js";
-import { readStatuslineModel } from "./topic-commands.js";
+import { assignDisplayLabels, displayInstanceName, readStatuslineModel } from "./topic-commands.js";
 import { credentialProfileLogin, credentialSwitchStartsFresh, instanceCredentialProfile } from "./backend/credential-profile.js";
 import { kiroEngineCandidates, kiroEngineStatus } from "./kiro-engine-status.js";
 import {
@@ -113,6 +114,8 @@ export interface OutboundContext {
   }): { deliveryId: string; state: string; duplicate: boolean };
   /** Read-only status query scoped to a server-authenticated source/target. */
   queryDurableDeliveryStatus?(callerInstance: string, selector: DeliveryStatusSelector): DeliveryStatusPage;
+  /** #1335: True when the delivery_id was pruned AND the caller is the source or target. */
+  wasDeliveryIdPrunedForCaller?(deliveryId: string, callerInstance: string): boolean;
   /** Current Daemon generation for authenticated HTTP/CLI ingress. */
   getDaemonBootId?(instanceName: string): string | undefined;
   /** True for the bounded stop/spawn window of an already planned replacement. */
@@ -508,40 +511,46 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
 
   // Cross-instance topic notifications for visibility.
   // general_topic instances are always skipped (keep General clean).
-  // Target topic: task/query → full message; report/update → silent; other → short summary.
-  // Sender topic: always show full outbound message (so users can see what the agent sent).
+  // #1302: each topic follows its own instance's cross_instance_visibility (full / summary / hidden); the texts and
+  // which kinds post where are in cross-instance-notice.ts. Delivery and the Mirror Topic below never read it.
   const requestKind = ipcMeta.request_kind;
   const groupId = ctx.fleetConfig?.channel?.group_id;
+  // User-facing labels (#1301, unique across the fleet per #1305 P2-1):
+  // display_name first, else a long -t<digits> suffix shortened — lengthened
+  // while the label stays unique. Used by topic posts and the Mirror Topic
+  // below. Agent-facing uses (headers, logs, lookups) keep the real names.
+  const fleetLabels = assignDisplayLabels(Object.keys(ctx.fleetConfig?.instances ?? {}).map((name) => ({
+    name,
+    displayName: ctx.fleetConfig?.instances[name]?.display_name,
+  })));
+  const displayLabel = (name: string) =>
+    fleetLabels.get(name) ?? displayInstanceName(name, ctx.fleetConfig?.instances[name]?.display_name);
   if (groupId && ctx.adapter) {
     const instances = ctx.fleetConfig?.instances ?? {};
-    const notificationLabel = `${senderLabel} → ${targetName}`;
+    const notificationLabel = `${displayLabel(senderLabel)} → ${displayLabel(targetName)}`;
+    const notice = { label: notificationLabel, message, requestKind, taskSummary: ipcMeta.task_summary };
 
     // ── Target topic notification ──
-    const skipTargetNotification = requestKind === "report" || requestKind === "update";
-    if (!skipTargetNotification) {
-      const targetInstance = instances[targetInstanceName];
-      const targetTopicId = targetInstance?.topic_id;
-      const targetIsGeneral = targetInstance?.general_topic === true;
-      if (targetTopicId && !targetIsGeneral && !ctx.sessionRegistry.has(targetName)) {
-        const targetAdapter = ctx.getAdapterForInstance?.(targetInstanceName) ?? ctx.adapter;
-        const targetGroupId = ctx.getGroupIdForInstance?.(targetInstanceName) ?? String(groupId);
-        const showFull = requestKind === "task" || requestKind === "query";
-        const text = showFull
-          ? `${notificationLabel}:\n${message}`
-          : `${notificationLabel}: ${ipcMeta.task_summary ?? truncatePreview(message, 100)}`;
-        targetAdapter!.sendText(String(targetGroupId), text, { threadId: String(targetTopicId) })
-          .catch(e => ctx.logger.warn({ err: e }, "Failed to post target topic notification"));
-      }
+    const targetInstance = instances[targetInstanceName];
+    const targetTopicId = targetInstance?.topic_id;
+    const targetIsGeneral = targetInstance?.general_topic === true;
+    const targetText = targetTopicNotice(crossInstanceVisibility(ctx.fleetConfig, targetInstanceName), notice);
+    if (targetText !== null && targetTopicId && !targetIsGeneral && !ctx.sessionRegistry.has(targetName)) {
+      const targetAdapter = ctx.getAdapterForInstance?.(targetInstanceName) ?? ctx.adapter;
+      const targetGroupId = ctx.getGroupIdForInstance?.(targetInstanceName) ?? String(groupId);
+      targetAdapter!.sendText(String(targetGroupId), targetText, { threadId: String(targetTopicId) })
+        .catch(e => ctx.logger.warn({ err: e }, "Failed to post target topic notification"));
     }
 
     // ── Sender topic notification ──
     const senderInstance = instances[meta.instanceName];
     const senderTopicId = senderInstance?.topic_id;
     const senderIsGeneral = senderInstance?.general_topic === true;
-    if (senderTopicId && !senderIsGeneral) {
+    const senderText = senderTopicNotice(crossInstanceVisibility(ctx.fleetConfig, meta.instanceName), notice);
+    if (senderText !== null && senderTopicId && !senderIsGeneral) {
       const senderAdapter = ctx.getAdapterForInstance?.(meta.instanceName) ?? ctx.adapter;
       const senderGroupId = ctx.getGroupIdForInstance?.(meta.instanceName) ?? String(groupId);
-      senderAdapter!.sendText(senderGroupId, `${notificationLabel}:\n${message}`, { threadId: String(senderTopicId) })
+      senderAdapter!.sendText(senderGroupId, senderText, { threadId: String(senderTopicId) })
         .catch(e => ctx.logger.warn({ err: e }, "Failed to post sender topic notification"));
     }
   }
@@ -552,7 +561,7 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   ctx.logger.info(`✉ ${senderLabel} → ${targetName}: ${(message ?? "").slice(0, 100)} [msg=${ipcMeta.message_id} sha=${deliveryContentDigest(message ?? "").slice(0, 12)}]`);
   const taskSummary = ipcMeta.task_summary || (message ?? "").slice(0, 200);
   ctx.eventLog?.logActivity("message", senderLabel, taskSummary, targetName, ipcMeta.request_kind);
-  ctx.queueMirrorMessage?.(`${senderLabel} → ${targetName}: ${truncatePreview(message ?? "", 500)}`);
+  ctx.queueMirrorMessage?.(`${displayLabel(senderLabel)} → ${displayLabel(targetName)}: ${truncatePreview(message ?? "", 500)}`);
   const targetDaemon = ctx.lifecycle.daemons.get(targetInstanceName);
   const targetStateWarning = targetDaemon?.isErrorState
     ? targetDaemon.isCrashLoop
@@ -1543,7 +1552,15 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
   for (const target of sentTo) {
     ctx.eventLog?.logActivity("message", senderLabel, summary, target);
   }
-  ctx.queueMirrorMessage?.(`📢 ${senderLabel} → [${sentTo.join(", ")}]: ${truncatePreview(message, 500)}`);
+  // Mirror Topic is user-facing: display labels, never long ids (#1301),
+  // unique across the fleet (#1305 P2-1).
+  const bLabels = assignDisplayLabels(Object.keys(ctx.fleetConfig?.instances ?? {}).map((name) => ({
+    name,
+    displayName: ctx.fleetConfig?.instances[name]?.display_name,
+  })));
+  const bDisplay = (name: string) =>
+    bLabels.get(name) ?? displayInstanceName(name, ctx.fleetConfig?.instances[name]?.display_name);
+  ctx.queueMirrorMessage?.(`📢 ${bDisplay(senderLabel)} → [${sentTo.map(bDisplay).join(", ")}]: ${truncatePreview(message, 500)}`);
   respond({
     sent_to: sentTo,
     failed,
@@ -1880,6 +1897,14 @@ const deliveryStatus: Handler = (ctx, rawArgs, respond, meta) => {
     // token. Ignore any identity-like argument; the schema is strict as well.
     const page = ctx.queryDurableDeliveryStatus(meta.instanceName, selector);
     if (page.items.length === 0) {
+      // #1335: distinguish "never existed" from "pruned by retention".
+      // Only delivery_id lookups can use the pruned_ids index; operation_id /
+      // correlation_id / message_id queries fall back to "not found".
+      // Ownership-gated: only the original source or target sees "expired".
+      if (v.data.delivery_id && ctx.wasDeliveryIdPrunedForCaller?.(v.data.delivery_id, meta.instanceName)) {
+        respond(null, t("delivery.retention_expired"));
+        return;
+      }
       respond(null, t("delivery.not_found"));
       return;
     }

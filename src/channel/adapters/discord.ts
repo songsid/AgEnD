@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 import { createWriteStream } from "node:fs";
+import { Agent as UndiciAgent } from "undici";
 import {
   Client,
   GatewayIntentBits,
@@ -50,6 +51,7 @@ import { downloadStickerImage } from "../sticker-download.js";
 import type { AccessManager } from "../access-manager.js";
 import { MessageQueue } from "../message-queue.js";
 import { splitTextFenceAware, truncatePreview, fenceBlock } from "../markdown-chunk.js";
+import { CROSS_INSTANCE_VISIBILITY_MODES } from "../../cross-instance-notice.js";
 
 const DISCORD_MAX_LENGTH = 2000;
 const GATEWAY_WATCHDOG_INTERVAL_MS = 30_000;
@@ -134,6 +136,39 @@ function privateNotice(interaction: { followUp(options: { content: string; flags
 
 /** #1231: a slash command acknowledged this late (of Discord's 3000 ms) gets a log line saying where the time went. */
 const SLASH_ACK_SLOW_MS = 1_500;
+
+/**
+ * #1235 part 2: the discord.js REST connection survives idle gaps.
+ * undici's default keepAliveTimeout is 4 s, so the first deferReply after any
+ * pause pays a fresh TLS handshake to discord.com. 60 s keeps one socket
+ * warm across typical human command gaps. Best effort, not a ceiling:
+ * keepAliveTimeout is the fallback when the server sends no Keep-Alive hint;
+ * a hinted idle timeout overrides it (observed: timeout=120 → effective
+ * 118 s). keepAliveMaxTimeout stays at undici's default — a maximum
+ * server-hinted idle timeout, not a socket-age cap — so no new pinning
+ * policy is introduced here. Scoped to this adapter's own REST manager
+ * only; the global dispatcher is untouched.
+ */
+export const DISCORD_REST_KEEP_ALIVE_MS = 60_000;
+
+/**
+ * #1235 part 2 R5 (leader decision): one process-lifetime REST dispatcher,
+ * shared by every Discord adapter, never closed. Per-adapter teardown was
+ * removed deliberately: in locked undici 6.24.1 no public primitive tears
+ * down a mid-response-wedged socket (verified: close hangs, destroy and
+ * request timeouts settle the request but leave the socket server-visible),
+ * so per-adapter close/destroy accounting could never prove what Prism
+ * asked. Never closing is no worse than the pre-PR baseline, where the
+ * global dispatcher was likewise never closed on stop; idle sockets age
+ * out by keep-alive and in-flight requests finish or time out as before.
+ */
+let sharedRestAgent: UndiciAgent | null = null;
+function discordRestAgent(): UndiciAgent {
+  if (!sharedRestAgent) {
+    sharedRestAgent = new UndiciAgent({ keepAliveTimeout: DISCORD_REST_KEEP_ALIVE_MS });
+  }
+  return sharedRestAgent;
+}
 
 /**
  * A nonce-armed prompt button (`postNonceButtonPrompt`): `<prefix>:<32 hex>:<action>`.
@@ -245,6 +280,8 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       ],
       // Events for messages/reactions created before this process started are partial.
       partials: [Partials.Message, Partials.Reaction, Partials.User],
+      // #1235 part 2: the shared process-lifetime dispatcher.
+      rest: { agent: discordRestAgent() },
     });
   }
 
@@ -990,6 +1027,11 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     const done = this.now();
     const ageAtReceipt = receivedAt - interaction.createdTimestamp;
     const deferMs = done - receivedAt;
+    // #1235 part 2: every acknowledgement reports its split at debug level,
+    // so cold (fresh TLS) vs reused-connection latency can be compared even
+    // when the total stays under the slow warn threshold below.
+    console.debug(`[discord:${this.id}] /${interaction.commandName} acknowledged ${done - interaction.createdTimestamp}ms after it was sent `
+      + `(${ageAtReceipt}ms before AgEnD saw it, ${deferMs}ms to acknowledge)`);
     if (done - interaction.createdTimestamp >= SLASH_ACK_SLOW_MS) {
       console.warn(`[discord:${this.id}] /${interaction.commandName} acknowledged ${done - interaction.createdTimestamp}ms after it was sent `
         + `(${ageAtReceipt}ms before AgEnD saw it, ${deferMs}ms to acknowledge) — Discord allows 3000ms`);
@@ -1106,6 +1148,14 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
           },
           { name: "update", description: slashLock("update") + t("slash.update") },
           { name: "doctor", description: slashLock("doctor") + t("slash.doctor") },
+          {
+            name: "visibility", description: slashLock("visibility") + t("slash.visibility"),
+            options: [{
+              name: "mode", description: t("slash.option.visibility_mode"),
+              type: ApplicationCommandOptionType.String, required: false,
+              choices: CROSS_INSTANCE_VISIBILITY_MODES.map(mode => ({ name: mode, value: mode })),
+            }],
+          },
           { name: "usage", description: slashLock("usage") + t("slash.usage") },
           {
             name: "tips", description: slashLock("tips") + t("slash.tips"),

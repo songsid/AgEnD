@@ -146,12 +146,6 @@ agend doctor mcp
 agend backend doctor claude-code
 ```
 
-預先信任工作目錄，讓 CLI 自己的信任對話框不會卡住啟動：
-
-```bash
-agend backend trust claude-code
-```
-
 啟動任何東西之前先驗證設定：
 
 ```bash

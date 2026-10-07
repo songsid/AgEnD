@@ -1,3 +1,4 @@
+import { measureSyncWork } from "./sync-work-attribution.js";
 /**
  * Per-backend tool-event sources for the transcript monitor.
  *
@@ -27,12 +28,11 @@
  */
 
 import { closeSync, existsSync, openSync, readdirSync, readFileSync, readSync, realpathSync, statSync } from "node:fs";
-import { stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { sharedRolloutIndex, type RolloutIndex } from "./rollout-index.js";
 import Database from "better-sqlite3";
-import { readNewLines } from "./transcript-jsonl.js";
+import { lastLineBoundary, readNewLines } from "./transcript-jsonl.js";
 
 export interface ToolUseEvent { name: string; input: unknown }
 
@@ -110,10 +110,11 @@ export class CodexRolloutSource implements TranscriptSource {
     const active = this.candidateFiles(true).find(file => this.fileBelongsToUs(file.path));
     if (!active) return null;
     try {
-      const current = await stat(active.path);
+      // A line boundary, not the size: a record being written now is read once complete (#1250).
+      const offset = await lastLineBoundary(active.path);
       this.currentFile = active.path;
-      this.byteOffset = current.size;
-      return { path: active.path, offset: current.size, sessionId: active.path };
+      this.byteOffset = offset;
+      return { path: active.path, offset, sessionId: active.path };
     } catch {
       return null;
     }
@@ -176,11 +177,19 @@ export class CodexRolloutSource implements TranscriptSource {
     if (!active) return EMPTY;
 
     if (active.path !== this.currentFile) {
-      this.currentFile = active.path;
       // Existing rollout: continue at the EOF captured when the source was
       // created. New rollout: read from the start. Using current mtime here is
       // wrong because appending to a resumed rollout makes an old file look new.
-      this.byteOffset = this.initialOffsets.get(active.path) ?? 0;
+      // The captured size is anchored to its last line boundary (#1250): a record mid-write at creation is kept.
+      // Only an anchor that succeeded is committed (#1283 review): if the boundary cannot be read now, nothing is
+      // adopted and the next poll tries again from the same captured size — never the raw size, mid-record.
+      const captured = this.initialOffsets.get(active.path);
+      let offset = 0;
+      if (captured !== undefined) {
+        try { offset = await lastLineBoundary(active.path, captured); } catch { return EMPTY; }
+      }
+      this.currentFile = active.path;
+      this.byteOffset = offset;
     }
 
     const { lines, newOffset } = await readNewLines(this.currentFile, this.byteOffset);
@@ -260,6 +269,14 @@ export type KiroConversationRead =
   | { status: "error"; reason: string };
 
 export function readKiroConversationStatus(
+  dbPath: string,
+  workingDirectory: string,
+  /** False = metadata only (no value read, no JSON parse): the poll fast path. */
+  includeHistory = true,
+): KiroConversationRead {
+  return measureSyncWork("kiro.conversationStatus", () => readKiroConversationStatusSync(dbPath, workingDirectory, includeHistory));
+}
+function readKiroConversationStatusSync(
   dbPath: string,
   workingDirectory: string,
   /** False = metadata only (no value read, no JSON parse): the poll fast path. */
@@ -473,6 +490,9 @@ export class KiroSessionSource implements TranscriptSource {
   }
 
   private pollDb(): TranscriptEvents | null {
+    return measureSyncWork("kiro.transcriptPollDb", () => this.pollDbSync());
+  }
+  private pollDbSync(): TranscriptEvents | null {
     try {
       const db = this.openDb();
       if (!db) return null;
@@ -568,11 +588,16 @@ export class KiroSessionSource implements TranscriptSource {
     if (!active) return EMPTY;
 
     if (active.jsonlPath !== this.currentFile) {
-      this.currentFile = active.jsonlPath;
       if (active.createdAtMs >= this.createdAt) {
+        this.currentFile = active.jsonlPath;
         this.byteOffset = 0; // our own fresh session — observable from the start
       } else {
-        try { this.byteOffset = (await stat(active.jsonlPath)).size; } catch { this.byteOffset = 0; }
+        // An older session is attached at its last line boundary. If that cannot be read now, nothing is adopted
+        // and the next poll tries again (#1283 review) — never offset 0, which would replay the whole session.
+        let offset: number;
+        try { offset = await lastLineBoundary(active.jsonlPath); } catch { return EMPTY; }
+        this.currentFile = active.jsonlPath;
+        this.byteOffset = offset;
         return EMPTY;
       }
     }
@@ -742,7 +767,7 @@ export class OpenCodeDbSource implements TranscriptSource {
 /**
  * Source for a backend, or null for backends handled elsewhere (claude-code
  * lives inside TranscriptMonitor) and backends with no known source
- * (antigravity, gemini-cli — nothing usable found on disk; grok has
+ * (antigravity — nothing usable found on disk; grok has
  * events.jsonl with tool names only and can be added later).
  */
 export function createTranscriptSource(

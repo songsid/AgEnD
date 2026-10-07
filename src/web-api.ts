@@ -67,7 +67,7 @@ const ConfigUpdateSchema = z.object({
     access: z.record(z.string(), z.unknown()).optional(),
   }).strict().optional(),
   defaults: z.object({
-    backend: z.enum(["claude-code", "gemini-cli", "codex", "opencode", "kiro-cli", "antigravity", "grok", "muse"]).optional(),
+    backend: z.enum(["claude-code", "codex", "opencode", "kiro-cli", "antigravity", "grok", "muse"]).optional(),
     model: z.string().max(128).optional(),
   }).strict().optional(),
   project_roots: z.array(z.string().min(1).max(1024)).max(64).optional(),
@@ -305,7 +305,6 @@ export function handleWebRequest(
     const BACKENDS: Array<{ name: string; binary: string; deprecated?: boolean }> = [
       { name: "claude-code", binary: "claude" },
       { name: "codex", binary: "codex" },
-      { name: "gemini-cli", binary: "gemini", deprecated: true },
       { name: "opencode", binary: "opencode" },
       { name: "kiro-cli", binary: "kiro-cli" },
       { name: "antigravity", binary: "agy" },

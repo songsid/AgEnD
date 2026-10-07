@@ -9,7 +9,7 @@ const __dirname = dirname(__filename);
 /**
  * Mock backend for E2E testing.
  *
- * Instead of spawning a real CLI (claude, gemini, etc.), it launches a small
+ * Instead of spawning a real CLI (claude, codex, etc.), it launches a small
  * Node.js script (`mock-claude.mjs`) that:
  * - Starts the real agend MCP server (connects to daemon IPC)
  * - Writes periodic statusline.json updates
