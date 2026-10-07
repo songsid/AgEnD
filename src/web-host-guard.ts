@@ -144,5 +144,9 @@ export function sendPanelHtml(res: ServerResponse, html: string, status = 200, h
   const nonce = randomBytes(18).toString("base64");
   res.setHeader("Content-Security-Policy", panelContentSecurityPolicy(nonce, csp));
   res.writeHead(status, { "Content-Type": "text/html; charset=utf-8", ...headers });
-  res.end(html.replace(/<script>/g, `<script nonce="${nonce}">`).replace(/<style>/g, `<style nonce="${nonce}">`));
+  // Exactly the page's own bare `<script>` / `<style>` tags, as written in our files, get the nonce: a plain string
+  // match, not a tag filter. Any other spelling (`<SCRIPT>`, `<script src=…>`, `<script type=module>`) is left as is
+  // and so has no nonce: inline it is blocked, `src=` scripts load by 'self'. Widening the match would hand the
+  // nonce to more spellings; nothing here sanitises input.
+  res.end(html.split("<script>").join(`<script nonce="${nonce}">`).split("<style>").join(`<style nonce="${nonce}">`));
 }

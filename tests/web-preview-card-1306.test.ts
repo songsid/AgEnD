@@ -62,7 +62,12 @@ describe("mountPreview is the one frame (§5.3)", () => {
   it("nothing else in src/ui creates an iframe or writes sandbox", () => {
     const hits = uiFiles().flatMap(f => {
       // Code only: comments may name these words.
-      const src = readFileSync(f, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`])\/\/[^\n]*/g, "$1").replace(/<!--[\s\S]*?-->/g, "");
+      // Strip until nothing changes, so a comment that removal joins up is stripped too.
+      let src = readFileSync(f, "utf8"), before;
+      do {
+        before = src;
+        src = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`])\/\/[^\n]*/g, "$1").replace(/<!--[\s\S]*?-->/g, "");
+      } while (src !== before);
       return [...src.matchAll(/createElement\(\s*["'`]iframe["'`]\s*\)|<iframe\b|["'`]sandbox["'`]|\.sandbox\b/gi)].map(m => `${f.slice(UI.length + 1)}: ${m[0]}`);
     });
     expect(hits).toEqual(['preview.js: createElement("iframe")', 'preview.js: "sandbox"']);

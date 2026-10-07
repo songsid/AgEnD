@@ -78,6 +78,8 @@ const frameNow = () => page.frames().find((x: any) => x !== page.mainFrame());
 const BASE_HTML = "<p id=ok>rendered</p>";
 let f = await preview(BASE_HTML);
 const ev = (expr: string) => f.evaluate(expr);
+/** A JS string literal for an evaluated expression: JSON, with `<`, `>`, U+2028 and U+2029 escaped too. */
+const lit = (v: unknown) => JSON.stringify(v).replace(/[<>\u2028\u2029]/g, c => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
 const quiet = async (fn: () => Promise<unknown>) => { const before = dashLog.length; await fn(); await sleep(400); return dashLog.slice(before).filter(l => !/^GET \/ui\/(events|poll)/.test(l)); };
 
 // ── G1: the account boundary ──
@@ -89,31 +91,31 @@ const topHref = await ev(`(() => { try { return "read " + top.location.href; } c
 rec("top.location.href (read)", "throws", String(topHref), /throws/.test(String(topHref)));
 await ev(`(() => { try { top.location = "https://example.org/"; } catch (e) {} })()`); await sleep(600);
 rec("top.location = … (write)", "blocked (dashboard stays)", page.url(), page.url() === `${base}/ui`);
-let sent = await quiet(() => ev(`fetch(${JSON.stringify(base + "/ui/send")}, { method: "POST", body: "{}" }).then(r => "status " + r.status, e => "rejected " + e.name)`).then((x: string) => rows.push({ row: "fetch(\"/ui/send\", POST) to the dashboard", expected: "blocked by CSP", result: x, pass: /rejected/.test(x) })));
-rows.at(-1)!.notes = `dashboard received: ${JSON.stringify(sent)}`; if (sent.length) rows.at(-1)!.pass = false;
+let sent = await quiet(() => ev(`fetch(${lit(base + "/ui/send")}, { method: "POST", body: "{}" }).then(r => "status " + r.status, e => "rejected " + e.name)`).then((x: string) => rows.push({ row: "fetch(\"/ui/send\", POST) to the dashboard", expected: "blocked by CSP", result: x, pass: /rejected/.test(x) })));
+rows.at(-1)!.notes = `dashboard received: ${lit(sent)}`; if (sent.length) rows.at(-1)!.pass = false;
 
 // ── Best-effort network restrictions (recorded; none of these is a promise) ──
 const prevOrigin = MODE === "origin" ? `http://preview.test:${PP}` : `http://127.0.0.1:${PP}`;
 const pre = prevLog.length;
 for (const [row, expr] of [
-  ["fetch to the preview origin", `fetch(${JSON.stringify(prevOrigin + "/frame?probe")}).then(r => "status " + r.status, e => "rejected " + e.name)`],
-  ["navigator.sendBeacon to the dashboard", `(() => { try { return "returned " + navigator.sendBeacon(${JSON.stringify(base + "/ui/send")}, "x"); } catch (e) { return "throws " + e.name; } })()`],
-  ["new WebSocket to the dashboard", `new Promise(r => { try { const w = new WebSocket(${JSON.stringify(base.replace("http", "ws") + "/ui/events")}); w.onerror = () => r("error event"); w.onopen = () => r("OPEN"); setTimeout(() => r("no open in 1.5s"), 1500); } catch (e) { r("throws " + e.name); } })`],
-  ["new EventSource to the dashboard", `new Promise(r => { try { const s = new EventSource(${JSON.stringify(base + "/ui/events")}); s.onerror = () => { s.close(); r("error event"); }; s.onopen = () => r("OPEN"); setTimeout(() => r("no open in 1.5s"), 1500); } catch (e) { r("throws " + e.name); } })`],
-  ["<img src> to the dashboard", `new Promise(r => { const i = new Image(); i.onload = () => r("LOADED"); i.onerror = () => r("error event"); i.src = ${JSON.stringify(base + "/health?img")}; setTimeout(() => r("no load in 1.5s"), 1500); })`],
-  ["CSS url() to the dashboard", `new Promise(r => { const d = document.createElement("div"); d.style.backgroundImage = "url(${base}/health?css)"; d.textContent = "x"; document.body.append(d); getComputedStyle(d).backgroundImage; setTimeout(() => r("styled; requests checked server-side"), 1200); })`],
-  ["<link rel=prefetch> to the dashboard", `new Promise(r => { const l = document.createElement("link"); l.rel = "prefetch"; l.href = ${JSON.stringify(base + "/health?prefetch")}; l.onload = () => r("LOADED"); l.onerror = () => r("error event"); document.head.append(l); setTimeout(() => r("no load in 1.5s"), 1500); })`],
-  ["form submit to the dashboard", `new Promise(r => { const fm = document.createElement("form"); fm.method = "POST"; fm.action = ${JSON.stringify(base + "/ui/send")}; document.body.append(fm); try { fm.submit(); r("submitted (sandbox decides)"); } catch (e) { r("throws " + e.name); } })`],
+  ["fetch to the preview origin", `fetch(${lit(prevOrigin + "/frame?probe")}).then(r => "status " + r.status, e => "rejected " + e.name)`],
+  ["navigator.sendBeacon to the dashboard", `(() => { try { return "returned " + navigator.sendBeacon(${lit(base + "/ui/send")}, "x"); } catch (e) { return "throws " + e.name; } })()`],
+  ["new WebSocket to the dashboard", `new Promise(r => { try { const w = new WebSocket(${lit(base.replace("http", "ws") + "/ui/events")}); w.onerror = () => r("error event"); w.onopen = () => r("OPEN"); setTimeout(() => r("no open in 1.5s"), 1500); } catch (e) { r("throws " + e.name); } })`],
+  ["new EventSource to the dashboard", `new Promise(r => { try { const s = new EventSource(${lit(base + "/ui/events")}); s.onerror = () => { s.close(); r("error event"); }; s.onopen = () => r("OPEN"); setTimeout(() => r("no open in 1.5s"), 1500); } catch (e) { r("throws " + e.name); } })`],
+  ["<img src> to the dashboard", `new Promise(r => { const i = new Image(); i.onload = () => r("LOADED"); i.onerror = () => r("error event"); i.src = ${lit(base + "/health?img")}; setTimeout(() => r("no load in 1.5s"), 1500); })`],
+  ["CSS url() to the dashboard", `new Promise(r => { const d = document.createElement("div"); d.style.backgroundImage = ${lit(`url(${base}/health?css)`)}; d.textContent = "x"; document.body.append(d); getComputedStyle(d).backgroundImage; setTimeout(() => r("styled; requests checked server-side"), 1200); })`],
+  ["<link rel=prefetch> to the dashboard", `new Promise(r => { const l = document.createElement("link"); l.rel = "prefetch"; l.href = ${lit(base + "/health?prefetch")}; l.onload = () => r("LOADED"); l.onerror = () => r("error event"); document.head.append(l); setTimeout(() => r("no load in 1.5s"), 1500); })`],
+  ["form submit to the dashboard", `new Promise(r => { const fm = document.createElement("form"); fm.method = "POST"; fm.action = ${lit(base + "/ui/send")}; document.body.append(fm); try { fm.submit(); r("submitted (sandbox decides)"); } catch (e) { r("throws " + e.name); } })`],
   ["window.open", `(() => { try { return "returned " + window.open("https://example.org/"); } catch (e) { return "throws " + e.name; } })()`],
   ["alert", `(() => { try { alert("x"); return "returned"; } catch (e) { return "throws " + e.name; } })()`],
 ] as Array<[string, string]>) {
   const got = await quiet(async () => { const r = await ev(expr).catch((e: Error) => "harness: " + e.message.split("\n")[0]); rows.push({ row, expected: "blocked / nothing sent", result: String(r), pass: null }); });
   const last = rows.at(-1)!;
-  last.notes = `dashboard received: ${JSON.stringify(got)}`;
+  last.notes = `dashboard received: ${lit(got)}`;
   last.pass = got.length === 0 && !/OPEN|LOADED/.test(last.result);
 }
 await sleep(500);
-rows.find(r => r.row === "fetch to the preview origin")!.notes += `; preview listener received: ${JSON.stringify(prevLog.slice(pre))}`;
+rows.find(r => r.row === "fetch to the preview origin")!.notes += `; preview listener received: ${lit(prevLog.slice(pre))}`;
 rows.find(r => r.row === "fetch to the preview origin")!.pass = !prevLog.slice(pre).some(l => l.includes("probe")) && rows.find(r => r.row === "fetch to the preview origin")!.pass!;
 rows.find(r => r.row === "window.open")!.pass &&= popups.length === 0;
 rows.find(r => r.row === "alert")!.pass &&= dialogs.filter(d => d.startsWith("alert")).length === 0;
@@ -135,7 +137,7 @@ async function nav(row: string, expr: string, expectStays = true, target = "") {
   rows.push({ row, expected: expectStays ? "blocked: the target never loads" : "allowed by frame-src (path match): reaches only the preview listener",
     result: `frame at ${url}; original content ${stillOk ? "still there" : "gone"}`,
     pass: expectStays ? (!loaded && reached.length === 0 && prevLog.length === prevBefore) : /\/frame\?x$/.test(url),
-    notes: `requests issued: ${JSON.stringify(issued)}; preview listener received: ${JSON.stringify(prevLog.slice(prevBefore))}` });
+    notes: `requests issued: ${lit(issued)}; preview listener received: ${lit(prevLog.slice(prevBefore))}` });
 }
 await nav("self-navigation: location = \"https://example.org/?x\"", `location = "https://example.org/?x"`, true, "https://example.org");
 await nav("self-navigation: <meta http-equiv=refresh>", `(() => { const m = document.createElement("meta"); m.httpEquiv = "refresh"; m.content = "0;url=https://example.org/"; document.head.append(m); })()`, true, "https://example.org");

@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import vm from "node:vm";
 import { FleetManager } from "../src/fleet-manager.js";
-import { WEB_CONTENT_SECURITY_POLICY, panelContentSecurityPolicy } from "../src/web-host-guard.js";
+import { WEB_CONTENT_SECURITY_POLICY, panelContentSecurityPolicy, sendPanelHtml } from "../src/web-host-guard.js";
 
 const UI = join(process.cwd(), "src", "ui");
 const PANELS = ["dashboard.html", "view.html", "settings.html", "signin.html", join("web-terminal", "terminal.html")];
@@ -88,7 +88,8 @@ describe("every panel as served", () => {
           const csp = String(res.headers["content-security-policy"]);
           const m = /'nonce-([A-Za-z0-9+/=]+)'/.exec(scriptSrc(csp));
           expect(scriptSrc(csp), path).not.toMatch(/unsafe-inline/);
-          const scripts = [...res.body.matchAll(/<script\b([^>]*)>/g)].map(x => x[1]!);
+          // Every opening script tag the page carries, in any case.
+          const scripts = [...res.body.matchAll(/<script\b([^>]*)>/gi)].map(x => x[1]!);
           const inline = scripts.filter(a => !/\ssrc=/.test(a));
           if (inline.length) {
             expect(m, `${path} has inline script, so its CSP needs a nonce`).not.toBeNull();
@@ -219,6 +220,29 @@ describe("hostile names and config values stay inside their attribute (#1303 rev
       const ctx = vm.createContext({ escAttr: (s: unknown) => String(s ?? "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/'/g, "&#39;").replace(/</g, "&lt;").replace(/>/g, "&gt;") });
       const esc = vm.runInContext(`(() => { ${m![0]}; return esc; })()`, ctx) as (s: string) => string;
       expect(esc(`a"b'c<d>&`), file).toBe("a&quot;b&#39;c&lt;d&gt;&amp;");
+    }
+  });
+});
+
+describe("sendPanelHtml stamps the nonce on the page's own bare tags only (#1262 CodeQL)", () => {
+  const serve = (html: string) => {
+    const headers: Record<string, string> = {};
+    let body = "";
+    const res = { setHeader: (k: string, v: string) => { headers[k] = v; }, writeHead: () => {}, end: (b: string) => { body = b; } };
+    sendPanelHtml(res as never, html);
+    const nonce = /'nonce-([A-Za-z0-9+/=]+)'/.exec(headers["Content-Security-Policy"]!)![1]!;
+    return { body, nonce };
+  };
+
+  it("every bare <script> and <style> gets this response's nonce", () => {
+    const { body, nonce } = serve("<head><style>a{}</style></head><body><script>1</script><script>2</script></body>");
+    expect(body).toBe(`<head><style nonce="${nonce}">a{}</style></head><body><script nonce="${nonce}">1</script><script nonce="${nonce}">2</script></body>`);
+  });
+
+  it("any other spelling is left without a nonce, so CSP blocks it inline", () => {
+    for (const tag of ["<SCRIPT>", "<Script>", "<script type=\"module\">", "<script src=\"/x.js\">", "<script >", "<STYLE>", "<style media=\"all\">"]) {
+      const { body } = serve(`<body>${tag}x</body>`);
+      expect(body, tag).toBe(`<body>${tag}x</body>`);
     }
   });
 });
