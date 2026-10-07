@@ -110,6 +110,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   pictures is not cut short.
 
 ### Fixed
+- **A relative `systemPrompt` / `workflow` `file:` path means the instance's working directory (#1314).** It was
+  read against the fleet process's current directory: `~/.agend` under the installed service, the shell's directory
+  after a manual `agend fleet start`. So one fleet.yaml could load another file, or none, depending on how the fleet
+  was started, and a missing file silently dropped the instructions. Now:
+  - `~/` and absolute paths are used as given; anything else is relative to the instance's `working_directory`.
+  - For one release, a file found only at the old location is still used, with a warning naming both paths and one
+    notice in the instance's topic.
+  - A file that is missing, unreadable or over 256 KiB is logged with its path and error, never its contents.
+  - Config validation warns about a reference that names no file.
+  - `systemPrompt` is split on commas only when a part is a `file:` reference: an inline prompt such as "You are Kuro,
+    a careful reviewer" stays one paragraph (it used to become two).
 - **Corrected security, permissions and access documentation (#1275).** Removed the nonexistent IPC secret handshake and generated Bash denylist; documented default permission bypass, persisted access precedence, platform-specific command roles, and the actual dashboard/public View/Host/agent-token boundaries. Documentation only; runtime behavior is unchanged.
 - **kiro-cli 2.28.0's "Classic is being deprecated" prompt no longer blocks a legacy instance at launch (#1308).**
   2.28.0 asks before every Classic session, even one launched with AgEnD's pinned `--legacy-ui --agent-engine=v1`:

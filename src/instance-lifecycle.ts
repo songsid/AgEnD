@@ -793,6 +793,11 @@ export class InstanceLifecycle {
       }
     }, this.ctx.logger, `daemon.crash_respawn[${name}]`));
 
+    // #1314: a relative `file:` ref still read from the fleet directory (one-release fallback): tell the topic once.
+    daemon.on("prompt_file_fallback", safeHandler((data: { field: string; path: string; legacyPath: string }) => {
+      this.ctx.notifyInstanceTopic(name, t("prompt_file.fleet_dir_fallback", data.field, data.legacyPath, data.path));
+    }, this.ctx.logger, `daemon.prompt_file_fallback[${name}]`));
+
     daemon.on("startup_backend_unreachable", safeHandler(async (data: { name: string; backend: string }) => {
       // The daemon's crash-respawn hit the backend outage and paused itself.
       // Stop it cleanly (session kept) and let the fleet's delayed retry bring

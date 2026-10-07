@@ -18,6 +18,7 @@ import { resolveToolSet } from "./tool-permissions.js";
 import { getAgendHome } from "./paths.js";
 import { LOGIN_FLOWS } from "./login-flows.js";
 import { ProgressAccumulator, summarizeProgress } from "./tool-progress.js";
+import { assembleSystemPrompt, resolveWorkflowText, type PromptFileContext } from "./prompt-file-ref.js";
 import { isCrossInstanceVisibility } from "./cross-instance-notice.js";
 import { ContextGuardian } from "./context-guardian.js";
 import { IpcServer } from "./channel/ipc-bridge.js";
@@ -1199,6 +1200,8 @@ const FLEET_RESPONSE_TYPES = new Set([
 ]);
 
 export class Daemon extends EventEmitter {
+  /** #1314: fleet-directory fallbacks already reported to the topic (once per daemon, per field and path). */
+  private readonly promptFileFallbackNoticed = new Set<string>();
   /** Identity of this live Daemon object; changes on object stop/restart. */
   readonly bootId = randomUUID();
   private deliveryOutbox?: DaemonDeliveryPort;
@@ -8766,6 +8769,29 @@ export class Daemon extends EventEmitter {
     }
   }
 
+  /** Where this instance's `file:` refs resolve, and what a problem with one reports — never the file's contents. */
+  private promptFileContext(): PromptFileContext {
+    return {
+      workingDirectory: this.config.working_directory,
+      // The only reader of the fleet's cwd: the one-release fallback to where these refs used to resolve.
+      fleetCwd: process.cwd(),
+      onWarning: (warning) => {
+        if (warning.problem === "fleet_dir_fallback") {
+          this.logger.warn({ field: warning.field, path: warning.path, legacyPath: warning.legacyPath },
+            `${warning.field} file: ref is not under the instance's working directory (${warning.path}); read ${warning.legacyPath} from the fleet directory instead — make the path absolute or move the file. The fallback is removed in 2.2.`);
+          const key = `${warning.field}:${warning.path}`;
+          if (!this.promptFileFallbackNoticed.has(key)) {
+            this.promptFileFallbackNoticed.add(key);
+            this.emit("prompt_file_fallback", { name: this.name, field: warning.field, path: warning.path, legacyPath: warning.legacyPath });
+          }
+          return;
+        }
+        this.logger.warn({ field: warning.field, path: warning.path, problem: warning.problem, code: warning.code },
+          `${warning.field} file: ref gives nothing (${warning.problem}${warning.code ? ` ${warning.code}` : ""}): ${warning.path}`);
+      },
+    };
+  }
+
   /** Build config object for the CLI backend */
   private buildBackendConfig(): CliBackendConfig {
     // Antigravity 1.1.17 has no per-workspace MCP config, but its global MCP
@@ -8779,33 +8805,18 @@ export class Daemon extends EventEmitter {
     }
 
     // ── Resolve workflow and systemPrompt once, share between MCP env and instructions ──
+    // #1314: `file:` refs are relative to this instance's working directory (src/prompt-file-ref.ts).
+    const promptFiles = this.promptFileContext();
     let resolvedWorkflow: string | false | undefined;
     if (this.config.workflow === false) {
       resolvedWorkflow = false;
     } else {
       const wf = this.config.workflow ?? "builtin";
-      if (wf !== "builtin") {
-        let content = wf;
-        if (content.startsWith("file:")) {
-          try { content = readFileSync(content.slice(5), "utf-8"); } catch { content = ""; }
-        }
-        resolvedWorkflow = content || undefined;
-      }
+      if (wf !== "builtin") resolvedWorkflow = resolveWorkflowText(wf, promptFiles) || undefined;
     }
 
-    let resolvedCustomPrompt: string | undefined;
-    if (this.config.systemPrompt) {
-      // Support comma-separated file: paths for prompt modularization:
-      //   systemPrompt: "file:prompts/role.md, file:prompts/rules.md, file:prompts/context.md"
-      const parts = this.config.systemPrompt.split(",").map((s: string) => s.trim());
-      const resolved = parts.map((part: string) => {
-        if (part.startsWith("file:")) {
-          try { return readFileSync(part.slice(5), "utf-8"); } catch { return ""; }
-        }
-        return part;
-      }).filter(Boolean);
-      if (resolved.length > 0) resolvedCustomPrompt = resolved.join("\n\n");
-    }
+    // Comma-separated parts (`file:role.md, file:rules.md`) only when a part is a file ref; otherwise one inline prompt.
+    const resolvedCustomPrompt = this.config.systemPrompt ? assembleSystemPrompt(this.config.systemPrompt, promptFiles) : undefined;
 
     let decisions: { title: string; content: string }[] | undefined;
     if (process.env.AGEND_DECISIONS) {

@@ -3,6 +3,8 @@ import { DELIVERY_WORKER_MODES } from "./types.js";
 import { credentialHomeSpec, resolveCredentialProfile } from "./backend/credential-profile.js";
 import { STATUS_EMOJI_CONFIG_KEYS, statusEmojiProblem, type StatusEmojiKey } from "./status-emojis.js";
 import { hostnameOf } from "./web-host-guard.js";
+import { existsSync } from "node:fs";
+import { resolveFileRefPath, systemPromptParts } from "./prompt-file-ref.js";
 import { isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
 import { CROSS_INSTANCE_VISIBILITY_MODES, isCrossInstanceVisibility } from "./cross-instance-notice.js";
 
@@ -59,6 +61,25 @@ export function validateFleetConfig(config: unknown): ValidationResult {
   const warnings: ValidationIssue[] = [];
   const err = (path: string, message: string) => errors.push({ path, message });
   const warn = (path: string, message: string) => warnings.push({ path, message });
+
+  /**
+   * #1314: a `file:` ref in systemPrompt/workflow that names no file under the instance's working directory. A
+   * warning, not an error: the file may be created later. Only paths are named, never contents.
+   */
+  const warnUnresolvedPromptFiles = (inst: Record<string, unknown>, path: string): void => {
+    if (typeof inst.working_directory !== "string" || !inst.working_directory) return;
+    const refs: Array<[string, string]> = [];
+    if (typeof inst.systemPrompt === "string") {
+      for (const part of systemPromptParts(inst.systemPrompt)) if (part.startsWith("file:")) refs.push(["systemPrompt", part.slice(5)]);
+    }
+    if (typeof inst.workflow === "string" && inst.workflow.startsWith("file:")) refs.push(["workflow", inst.workflow.slice(5)]);
+    for (const [field, ref] of refs) {
+      const resolved = resolveFileRefPath(ref, inst.working_directory);
+      if (!existsSync(resolved)) {
+        warn(`${path}.${field}`, `file: "${ref.trim()}" is not at ${resolved} — a relative path is under the instance's working_directory (until 2.2, AgEnD still falls back to the fleet's directory)`);
+      }
+    }
+  };
   const validateAutoPause = (value: unknown, path: string) => {
     if (value !== undefined && (typeof value !== "number" || !Number.isFinite(value) || value < 0)) {
       err(path, "must be a non-negative finite number of minutes (0 disables auto-pause)");
@@ -410,6 +431,7 @@ export function validateFleetConfig(config: unknown): ValidationResult {
       validateAutoPause(inst.auto_pause_after, `instances.${name}.auto_pause_after`);
       validateDeliveryWorker(inst.delivery_worker, `instances.${name}.delivery_worker`);
       validateInstanceOptions(inst, `instances.${name}`);
+      warnUnresolvedPromptFiles(inst, `instances.${name}`);
     }
   }
   if (generalCount === 0) {

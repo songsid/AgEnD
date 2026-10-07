@@ -770,7 +770,9 @@ instances:
     systemPrompt: "file:prompts/role.md"
 ```
 
-相對路徑是以 **fleet 程序的目前目錄**為基準（在 systemd 服務下，就是 unit 的 `WorkingDirectory`），而不是 instance 的工作目錄，所以建議使用絕對路徑。可以用逗號串接多個部分（`"file:a.md, file:b.md"`，中間也可以夾行內文字），各部分之間以空行連接。讀不到的檔案不會貢獻任何內容。`workflow: "file:…"` 設定也用同樣的方式讀檔。
+相對路徑以 **instance 的 `working_directory`** 為基準（#1314）；`~/` 與絕對路徑照原樣使用。2.1.13 之前是以 fleet 程序的目前目錄為基準（安裝的服務下是 `~/.agend`，手動執行 `agend fleet start` 時是 shell 所在目錄）。保留一個版本的相容：相對路徑在 working_directory 下找不到檔案、但舊的 fleet 目錄下有時，仍會改用舊檔案，log 會列出兩個路徑，並在該 instance 的主題通知一次。這個退回機制會在 2.2 移除。
+
+可以用逗號串接多個部分（`"file:a.md, file:b.md"`，中間也可以夾行內文字），各部分之間以空行連接。**只有至少一個部分是 `file:` 參照時**才會以逗號切分，所以像 `"You are Kuro, a careful reviewer"` 這樣的行內提示會維持一段。讀不到或超過 256 KiB 的檔案不會貢獻任何內容；log 會列出它的路徑與錯誤（絕不列出內容），設定驗證也會對找不到檔案的參照發出警告。`workflow: "file:…"` 設定也用同樣的方式讀檔。
 
 ## 分批錯開啟動 (Staggered startup)
 

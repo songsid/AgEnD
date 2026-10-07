@@ -228,8 +228,8 @@ All fields from `instances.<name>` can be set here as shared defaults. Additiona
 | `mcp_auto_restart` | boolean | `true` | Restart the instance (idle-gated, session resumed) when its MCP server dies, or never connects within 90 seconds of the CLI starting. `false` = notify only. |
 | `mcp_proxy_reply` | boolean | `false` | Opt-in: when the MCP server is dead at end of turn and no reply was sent, the daemon relays the pane's final text to the channel (marked ⚠️ as proxy reply). Off by default — raw pane text can leak content redaction doesn't catch. |
 | `lightweight` | boolean | `false` | Skip non-essential subsystems |
-| `systemPrompt` | string | — | Custom system prompt (supports `file:path` syntax) |
-| `workflow` | string \| false | `"builtin"` | Workflow template: `"builtin"`, `"file:path"`, inline, or `false` |
+| `systemPrompt` | string | — | Custom system prompt. Inline text, or `file:path` (relative to the instance's `working_directory`; several joined with commas — see [features](features.md#systemprompt-file-paths)) |
+| `workflow` | string \| false | `"builtin"` | Workflow template: `"builtin"`, `"file:path"` (relative to the instance's `working_directory`), inline, or `false` |
 | `skipPermissions` | boolean | — | Skip CLI permission checks. OpenCode: launched with `--auto` when its `--help` lists it (explicit `deny` rules still apply); an older OpenCode gets no launch switch and its prompts are answered "Allow once" at runtime |
 | `pre_task_command` | string | — | Raw command pasted before each user message |
 | `startup_timeout_ms` | number | `25000` | CLI startup timeout (ms) |

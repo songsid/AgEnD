@@ -50,6 +50,7 @@
 - **`list_emojis` 變輕了（#1226）。** 伺服器 emoji 預設不再附圖片網址（要的話設 `with_image_urls`；想看圖用 `preview_emojis`），並可用 `name`、`limit`、`primary_only` 縮小清單——在 emoji 很多的伺服器上，一次呼叫原本要花約 1 萬字的 context，而 agent 只需要一個 emoji。emoji 與貼圖工具的呼叫改用共用的 30 秒時限，不再是固定 10 秒，一次下載多張圖的預覽不會被中途切掉。
 
 ### 修正 (Fixed)
+- **相對的 `systemPrompt`／`workflow` `file:` 路徑以 instance 的工作目錄為準（#1314）。** 以前是以 fleet 程序的目前目錄為基準：安裝的服務下是 `~/.agend`，手動執行 `agend fleet start` 時是 shell 所在目錄。所以同一份 fleet.yaml 可能依啟動方式讀到別的檔案或讀不到，而找不到檔案時指令會被悄悄丟掉。現在：`~/` 與絕對路徑照原樣使用，其餘以 instance 的 `working_directory` 為基準。保留一個版本的相容：只在舊位置找得到的檔案仍會使用，並發出列出兩個路徑的警告，且在該 instance 的主題通知一次。找不到、讀不到或超過 256 KiB 的檔案會記錄路徑與錯誤，絕不記錄內容。設定驗證會對找不到檔案的參照發出警告。`systemPrompt` 只有在某個部分是 `file:` 參照時才以逗號切分：像「You are Kuro, a careful reviewer」這樣的行內提示會維持一段（以前會被拆成兩段）。
 - **修正安全、權限與存取文件（#1275）。** 移除不存在的 IPC 共享金鑰握手與 Bash 拒絕名單，說明預設權限 bypass、持久化 access 優先序、分平台的指令管理員要求，以及 dashboard／公開 View／Host／agent token 的實際邊界。純文件，沒有修改執行行為。
 - **kiro-cli 2.28.0 的「Classic is being deprecated」提示不再讓 legacy instance 卡在啟動（#1308）。** 2.28.0 在每次 Classic session 開始前都會詢問，即使是用 AgEnD 固定的 `--legacy-ui --agent-engine=v1` 啟動：「Switch to 3.0 and upgrade my agent configs」或「Remind me later」。AgEnD 以前認不得它，instance 就停在那裡。現在會回答「Remind me later」：先從「Switch to 3.0」往下移一格並確認游標真的移到了，只有看到游標停在「Remind me later」才按 Enter；其他情況都留給人處理並回報。絕不選「Switch to 3.0」：它會把 3.0 設成整台機器的預設並在 3.0 重新執行 session，是單向的。kiro 的 7 天暫緩期過後會再問。kiro-cli 2.27.x 沒有這個提示。
 - **找 muse session 只讀前面的字、不再整檔讀進來（#1228）。** `MuseBackend.getSessionId` 與偵測 seam 的 `museFingerprint` 現在都走共用的 `readFileHeadSync`（開檔、串流解出前 65536 個字元、關檔），結果與整檔讀相同（算的是解出的字元數、不是 byte，多位元組開頭一樣找得到）。
