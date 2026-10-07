@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import { slashLock } from "../../command-table.js";
 import { randomBytes } from "node:crypto";
+import { isWebChannelEcho } from "../../web-channel-echo.js";
 import { t } from "../../locale.js";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -386,6 +387,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     client.on("messageCreate", async (msg: Message) => {
       try {
       if (!this.isCurrentClient(client, generation)) return;
+      if (isWebChannelEcho(msg.content, msg.author.bot || !!msg.webhookId)) return;
       if (msg.author.id === client.user?.id) return; // Ignore own messages
       if (!msg.guildId) return;
       if (msg.guildId !== this.guildId) {
@@ -1283,8 +1285,8 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     // so the reply tool could return success for a silently truncated message.
     let first: Awaited<ReturnType<typeof channel.send>> | undefined;
     for (const chunk of chunks) {
-      const sent = await channel.send(opts?.disablePreview
-        ? { content: chunk, flags: MessageFlags.SuppressEmbeds }
+      const sent = await channel.send(opts?.disablePreview || opts?.allowedMentions
+        ? { content: chunk, ...(opts?.disablePreview ? { flags: MessageFlags.SuppressEmbeds } : {}), ...(opts?.allowedMentions ? { allowedMentions: opts.allowedMentions } : {}) }
         : chunk);
       first ??= sent;
     }

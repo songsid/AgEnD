@@ -818,6 +818,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private instanceProgress = new Map<string, string>();
   /** instanceName → tail of deliveries waiting for its IPC to come back. */
   private ipcWaitTails = new Map<string, Promise<void>>();
+  private webChannelEchoTails = new Map<string, Promise<void>>();
   /** instanceName → restart currently executing; concurrent callers join it. */
   private restartsInFlight = new Map<string, Promise<void>>();
   /**
@@ -2678,6 +2679,30 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
       await new Promise(resolve => setTimeout(resolve, IPC_RECONNECT_POLL_MS));
     }
+  }
+
+  /**
+   * Reserve the display echo before IPC handoff: a fast reply cannot overtake
+   * it. The web request settles admission without awaiting the platform POST.
+   * Only accepted messages send an echo; failures release replies normally.
+   * Existing adapter request timeouts bound the platform operation. We don't
+   * release on a separate timer and allow a late echo to overtake a reply.
+   */
+  reserveWebChannelEcho(instanceName: string, sendEcho: () => Promise<unknown>): (accepted: boolean) => void {
+    const epoch = this.getDeliveryEpoch(instanceName);
+    let decide!: (accepted: boolean) => void;
+    const admission = new Promise<boolean>(resolve => { decide = resolve; });
+    const previous = this.webChannelEchoTails.get(instanceName) ?? Promise.resolve();
+    const tail = previous.then(() => admission).then(async accepted => {
+      if (!accepted || !this.isDeliveryEpochCurrent(instanceName, epoch)) return;
+      try { await sendEcho(); }
+      catch (err) { this.logger.warn({ err, instanceName }, "Web channel echo failed"); }
+    });
+    this.webChannelEchoTails.set(instanceName, tail);
+    void tail.then(() => {
+      if (this.webChannelEchoTails.get(instanceName) === tail) this.webChannelEchoTails.delete(instanceName);
+    });
+    return decide;
   }
 
   /** Whether this target already has an ordinary non-user delivery in its FIFO. */
@@ -6628,6 +6653,27 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // still in flight and about to succeed. One real send, everyone gets its
     // outcome; a genuinely failed send clears the entry so a retry passes.
     if (tool === "reply") {
+      // Registered synchronously before a web message is handed to this CLI.
+      // This waits only on display ordering, never on the web delivery itself.
+      const echoTail = this.webChannelEchoTails.get(instanceName);
+      if (echoTail) {
+        const replyClient = this.instanceIpcClients.get(instanceName);
+        const bindingName = senderInstanceName ?? instanceName;
+        const binding = this.getAdapterForInstance(bindingName);
+        const bindingGroup = this.getGroupIdForInstance(bindingName);
+        const bindingTopic = this.fleetConfig?.instances[bindingName]?.topic_id;
+        await echoTail;
+        // A replacement daemon must not receive this old tool's response or
+        // publish its reply after the new async ordering boundary.
+        if (this.instanceIpcClients.get(instanceName) !== replyClient) return;
+        if (this.getAdapterForInstance(bindingName) !== binding
+          || this.getGroupIdForInstance(bindingName) !== bindingGroup
+          || this.fleetConfig?.instances[bindingName]?.topic_id !== bindingTopic
+          || (contextAdapterId && this.worlds.get(contextAdapterId)?.adapter !== outAdapter)) {
+          respond(null, "Channel binding changed while waiting for the web echo");
+          return;
+        }
+      }
       // Stickers (#1226) are checked before anything is sent: a refused one is the reply's error, not a gap.
       const stickerProblem = await this.replyStickerProblem(outAdapter, args, threadId, contextAdapterId ?? this.getInstanceAdapterId(senderInstanceName ?? instanceName));
       if (stickerProblem) { respond(null, stickerProblem); return; }

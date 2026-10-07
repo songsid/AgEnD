@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [2.2.0] - unreleased (web line, `feature/2.2-web`)
 
 ### Added
+- **Web chat → fleet topic echo (#1320 part A).** Successful web sends are copied to the owning Telegram or Discord topic before agent replies. `web.echo_to_channel` defaults to true and is editable in Settings without persisting untouched defaults. Echo failures do not block web delivery; own-bot ingress cannot start a turn. ClassicBot and web-only fleets are excluded.
 - (Web line, temporary) CI and gitleaks also run for pushes and pull requests to `feature/2.2-web`, so every reland
   segment gets the full suite; whether to keep this is decided when the line is rebased into main.
 - **Web chat: Markdown, several lines, and history that survives a reload.** Messages in the dashboard's chat now render

@@ -11,6 +11,7 @@ import type { ChannelAdapter, ApprovalHandle, SendOpts, SentMessage, PermissionP
 import { downloadStickerImage } from "../sticker-download.js";
 import type { AccessManager } from "../access-manager.js";
 import { MessageQueue } from "../message-queue.js";
+import { isWebChannelEcho } from "../../web-channel-echo.js";
 import { t } from "../../locale.js";
 
 const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"]);
@@ -423,6 +424,17 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   }
 
   private _registerHandlers(): void {
+    // A display-only web echo must never become inbound work, even if a
+    // transport replays our own message. Peer bots still follow fleet policy.
+    // Put this ahead of rich-message middleware as well as ordinary messages.
+    this.bot.use(async (ctx, next) => {
+      const message = (ctx.update as any)?.message;
+      const text = message?.text ?? message?.caption ?? (message?.rich_message ? extractRichText(message.rich_message.blocks ?? []) : "");
+      if (isWebChannelEcho(text, message?.from?.is_bot === true)) return;
+      const sender = message?.from?.id;
+      if (sender != null && sender === this.bot.botInfo?.id) return;
+      return next();
+    });
     // Middleware: catch Rich Message updates that grammy doesn't route to bot.on("message")
     this.bot.use(async (ctx, next) => {
       const rawMsg = (ctx.update as any)?.message;

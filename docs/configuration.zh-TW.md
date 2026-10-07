@@ -395,3 +395,9 @@ channels:
 | `instances/<name>/channel.sock` | IPC Unix socket |
 | `instances/<name>/statusline.json` | 最新 CLI 狀態 |
 | `instances/<name>/rotation-state.json` | Context rotation snapshot（重啟時消耗） |
+
+### Web chat 主題同步（2.2 web 線）
+
+fleet-topic instance 預設會將 web chat 訊息同步至自己綁定的 Telegram 或 Discord 主題。可設定 `web.echo_to_channel: false` 關閉，或在 **Settings → 一般設定 → Web chat** 切換。同步文字使用 `🌐 web · web-user: …`，附件只顯示檔名，長文字會附上請看 web chat 的提示。這只是顯示副本：bot 自己的訊息不會觸發 Agent 新回合。純 web fleet 與 ClassicBot 群組不做同步。同步失敗只記錄日誌，不會使 web 投遞失敗或延遲。Agent 回覆會等待副本的平台請求結束，成功的副本會先於回覆；若平台結果不明，無法證明副本是否出現，也不自動重送。
+
+同步本文與附件名稱的 `@`、`/` 改用全形 `＠`、`／`，避免 mention 或 bot command 觸發其他 bot。Discord 另設定 `allowedMentions: { parse: [] }`；Telegram 傳送不含 mention entities 的純文字。兩種 AgEnD adapter 都在 admission 前辨識穩定的不可見 frame，包含 sibling bot 與重播副本。frame 只標示顯示來源，不是登入憑證。

@@ -491,3 +491,9 @@ nothing breaks, it simply does not continue.
 Implemented for `kiro-cli` and `codex`. Other backends keep their logins behind
 their own variables; adding one is a new entry in `CREDENTIAL_HOMES`, not a new
 mechanism.
+
+### Web chat channel echo (2.2 web line)
+
+Web chat echoes are enabled by default for fleet-topic instances. Set `web.echo_to_channel: false` to disable them, or use **Settings → General → Web chat**. The copy goes to the instance's own Telegram or Discord topic as `🌐 web · web-user: …`, with attachment names and a note pointing to web chat for long text. It is display only: echoes never become a new agent turn. Web-only fleets and ClassicBot rooms are excluded. A failed echo is logged without failing or delaying web message delivery. Replies wait for the echo's platform request to settle, so a successful echo precedes the reply; an ambiguous platform failure cannot prove whether the copy appeared. No echo retry is attempted.
+
+Echo text and attachment names use fullwidth `＠` and `／`, so mentions and bot commands remain display text. Discord also sends with `allowedMentions: { parse: [] }`; Telegram sends plain text without mention entities. A stable, invisible frame is recognised before admission by both AgEnD adapters, including sibling bots and replayed copies. The frame identifies display provenance, not a login credential.

@@ -7,6 +7,7 @@
 ## [2.2.0] - 未發佈（web 線，`feature/2.2-web`）
 
 ### 新增 (Added)
+- **Web chat → fleet 主題同步（#1320 part A）。** 成功的 web 訊息會先於 Agent 回覆顯示在綁定的 Telegram 或 Discord 主題。`web.echo_to_channel` 預設開啟，可在 Settings 切換，未變更的選項不寫入設定。同步失敗不阻擋 web 投遞，bot 自己的訊息不會觸發新回合；不包含 ClassicBot 或純 web fleet。
 - （web 線，暫時性）CI 與 gitleaks 也會對 `feature/2.2-web` 的 push 與 pull request 執行，讓每一段 reland 都跑全套測試；整條線 rebase 回 main 時再決定是否保留。
 - **Web 聊天：Markdown、多行輸入、重新整理不再清空。** 儀表板聊天的訊息現在會渲染 Markdown（粗體、斜體、`code`、程式碼區塊、清單、引用、連結——只接受 http/https/mailto、在新分頁開啟），
   而訊息內容無法產生任何自己的標記（先跳脫整段文字再套格式）。輸入框可多行（Enter 送出、Shift+Enter 換行），送出失敗會把文字還給你。重新整理不再清空聊天：fleet 會保留每個 instance 最近的訊息
