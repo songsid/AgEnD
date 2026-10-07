@@ -101,9 +101,7 @@ export function buildInstructionReloadNotice(binaryName: string, instanceName: s
       ? `.kiro/steering/agend-${instanceName}.md`
       : binaryName === "agy"
         ? ".agents/agents.md"
-        : binaryName === "gemini"
-          ? "GEMINI.md"
-          : join(instanceDir, "fleet-instructions.md");
+        : join(instanceDir, "fleet-instructions.md");
   return `[system] Your AgEnD instructions have been updated. Reload only ${source}; do not scan other instruction directories. Do not reply to this message.`;
 }
 
@@ -9602,8 +9600,8 @@ export class Daemon extends EventEmitter {
         this.warmupNeeded = !!backendConfig.instructions && prev !== backendConfig.instructions;
       }
 
-      // For backends that don't re-read instructions on resume (kiro/codex/
-      // gemini), also notify the agent on next message instead of forcing a new
+      // For backends that don't re-read instructions on resume (kiro/codex),
+      // also notify the agent on next message instead of forcing a new
       // session. Resume is preserved so context isn't lost.
       if (!backendConfig.skipResume && backendNeedsPaneReloadNotice(this.backend!) && this.warmupNeeded) {
         if (prev) {
