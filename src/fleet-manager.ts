@@ -96,6 +96,7 @@ import { LoginSession } from "./login-manager.js";
 import { tightenInstanceDirs } from "./private-dir.js";
 import { decideSlash, type SlashFacts, type SlashScope, type SlashSpeaker } from "./slash-authz.js";
 import { commandSpec, decideCommand, type CommandScope } from "./command-table.js";
+import { runVisibilityCommand } from "./cross-instance-notice.js";
 import { UPDATE_COMMAND, installedChannel, isPrereleaseVersion, updateNoticeKey } from "./update-check.js";
 import { LoginController, LOGIN_TOKEN_RESEND_PREFIX, POST_LOGIN_RECOVERY_DEADLINE_MS, type PostLoginRecovery } from "./login-controller.js";
 import { runBeforeDeadline } from "./deadline.js";
@@ -1939,6 +1940,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     await this.requestFullRestart(adapter, chatId, data.channelId, messageId);
   }
 
+  /** #1302: `/visibility [mode]`. The dispatcher has already applied the command table's fleet-admin gate. */
+  private async handleVisibilitySlash(data: ClassicStartSlashData): Promise<void> {
+    if (!this.fleetConfig) return;
+    const mode = typeof data.options?.mode === "string" ? data.options.mode : "";
+    await data.respond(runVisibilityCommand(this.fleetConfig, mode, () => this.saveFleetConfig()));
+  }
+
   private async handleTipsSlash(data: ClassicStartSlashData, adapterId: string): Promise<void> {
     if (!this.fleetConfig) return;
     const mode = typeof data.options?.mode === "string" ? data.options.mode : "";
@@ -2816,6 +2824,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await this.handleUpdateSlash(data, adapterId);
     } else if (data.command === "doctor") {
       await data.respond(await this.runBackendDoctor());
+    } else if (data.command === "visibility") {
+      await this.handleVisibilitySlash(data);
     } else if (data.command === "usage") {
       // Same permission level as /ctx (none). The reply is still ephemeral —
       // the adapter defers non-chat commands that way — so it never spams the

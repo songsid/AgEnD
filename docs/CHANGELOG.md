@@ -19,6 +19,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     `agend backend trust`, which only pre-trusted Gemini CLI folders, is removed.
 
 ### Added
+- **How much of a bot-to-bot message is posted in the topics: full, summary or hidden (#1302).** Cross-instance
+  messages are posted in the instance topics so people can follow along, and in a busy fleet they bury the
+  conversation. `cross_instance_visibility` now sets it: `full` (the default, exactly as before), `summary` (the same
+  posts, one line each: who sent it to whom and the task summary or the opening words) or `hidden` (none). Set it for
+  the fleet under `defaults`, with the new fleet-admin `/visibility full|summary|hidden` (Telegram General topic and
+  Discord, saved to `fleet.yaml`), or in Settings, which also has a per-agent override. Each topic follows its own
+  instance; a change applies at once. Delivery, the Mirror Topic and General are not affected in any mode.
 - **An alpha channel, separate from beta and stable (#1259).** A `vX.Y.Z-alpha.N` tag now publishes to npm `@alpha`.
   Before, every tag without `-beta` went to `@latest`, so the first 2.2 alpha would have reached every stable user.
   The publish workflow now maps tags strictly: `vX.Y.Z` → `@latest`, `-beta.N` → `@beta`, `-alpha.N` → `@alpha`.
@@ -118,6 +125,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `/status` and the `agend ls` table. Rollback deletes a created topic through the same adapter/world that
   created it. Agent-facing names (`[from:…]`, logs, lookups, `list_instances`, `--json`/`--names-only`) keep
   the real name. Orphan detection recognises both forms.
+- **kiro-cli 2.28.0's "Classic is being deprecated" prompt no longer blocks a legacy instance at launch (#1308).**
+  2.28.0 asks before every Classic session, even one launched with AgEnD's pinned `--legacy-ui --agent-engine=v1`:
+  "Switch to 3.0 and upgrade my agent configs" or "Remind me later". AgEnD did not recognise it, so the instance sat
+  on it. It now answers "Remind me later", moving one verified step off "Switch to 3.0" and pressing Enter only once
+  the cursor is seen on "Remind me later". Anything else is held for a human and reported. "Switch to 3.0" is never
+  chosen: it makes 3.0 the machine-wide default and reruns the session there, a one-way move. kiro asks again after
+  its 7-day snooze. kiro-cli 2.27.x does not show this prompt.
 - **Muse session discovery no longer reads whole session logs (#1228).** Finding the workspace's session used to
   `readFileSync` all of every candidate `session.jsonl` before slicing the 64KB head that names the working
   directory — slow when sessions grow long. Both `MuseBackend.getSessionId` and the detection-seam `museFingerprint`

@@ -17,6 +17,7 @@ import { t } from "./locale.js";
 import type { InteractionSnapshot } from "./backend/types.js";
 import { presentationState, interactionSummary } from "./interaction-observation.js";
 import { truncatePreview } from "./channel/markdown-chunk.js";
+import { crossInstanceVisibility, senderTopicNotice, targetTopicNotice } from "./cross-instance-notice.js";
 import { backendSupportsSteer } from "./steer-capability.js";
 import { assignDisplayLabels, displayInstanceName, readStatuslineModel } from "./topic-commands.js";
 import { credentialProfileLogin, credentialSwitchStartsFresh, instanceCredentialProfile } from "./backend/credential-profile.js";
@@ -508,8 +509,8 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
 
   // Cross-instance topic notifications for visibility.
   // general_topic instances are always skipped (keep General clean).
-  // Target topic: task/query → full message; report/update → silent; other → short summary.
-  // Sender topic: always show full outbound message (so users can see what the agent sent).
+  // #1302: each topic follows its own instance's cross_instance_visibility (full / summary / hidden); the texts and
+  // which kinds post where are in cross-instance-notice.ts. Delivery and the Mirror Topic below never read it.
   const requestKind = ipcMeta.request_kind;
   const groupId = ctx.fleetConfig?.channel?.group_id;
   // User-facing labels (#1301, unique across the fleet per #1305 P2-1):
@@ -525,33 +526,29 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   if (groupId && ctx.adapter) {
     const instances = ctx.fleetConfig?.instances ?? {};
     const notificationLabel = `${displayLabel(senderLabel)} → ${displayLabel(targetName)}`;
+    const notice = { label: notificationLabel, message, requestKind, taskSummary: ipcMeta.task_summary };
 
     // ── Target topic notification ──
-    const skipTargetNotification = requestKind === "report" || requestKind === "update";
-    if (!skipTargetNotification) {
-      const targetInstance = instances[targetInstanceName];
-      const targetTopicId = targetInstance?.topic_id;
-      const targetIsGeneral = targetInstance?.general_topic === true;
-      if (targetTopicId && !targetIsGeneral && !ctx.sessionRegistry.has(targetName)) {
-        const targetAdapter = ctx.getAdapterForInstance?.(targetInstanceName) ?? ctx.adapter;
-        const targetGroupId = ctx.getGroupIdForInstance?.(targetInstanceName) ?? String(groupId);
-        const showFull = requestKind === "task" || requestKind === "query";
-        const text = showFull
-          ? `${notificationLabel}:\n${message}`
-          : `${notificationLabel}: ${ipcMeta.task_summary ?? truncatePreview(message, 100)}`;
-        targetAdapter!.sendText(String(targetGroupId), text, { threadId: String(targetTopicId) })
-          .catch(e => ctx.logger.warn({ err: e }, "Failed to post target topic notification"));
-      }
+    const targetInstance = instances[targetInstanceName];
+    const targetTopicId = targetInstance?.topic_id;
+    const targetIsGeneral = targetInstance?.general_topic === true;
+    const targetText = targetTopicNotice(crossInstanceVisibility(ctx.fleetConfig, targetInstanceName), notice);
+    if (targetText !== null && targetTopicId && !targetIsGeneral && !ctx.sessionRegistry.has(targetName)) {
+      const targetAdapter = ctx.getAdapterForInstance?.(targetInstanceName) ?? ctx.adapter;
+      const targetGroupId = ctx.getGroupIdForInstance?.(targetInstanceName) ?? String(groupId);
+      targetAdapter!.sendText(String(targetGroupId), targetText, { threadId: String(targetTopicId) })
+        .catch(e => ctx.logger.warn({ err: e }, "Failed to post target topic notification"));
     }
 
     // ── Sender topic notification ──
     const senderInstance = instances[meta.instanceName];
     const senderTopicId = senderInstance?.topic_id;
     const senderIsGeneral = senderInstance?.general_topic === true;
-    if (senderTopicId && !senderIsGeneral) {
+    const senderText = senderTopicNotice(crossInstanceVisibility(ctx.fleetConfig, meta.instanceName), notice);
+    if (senderText !== null && senderTopicId && !senderIsGeneral) {
       const senderAdapter = ctx.getAdapterForInstance?.(meta.instanceName) ?? ctx.adapter;
       const senderGroupId = ctx.getGroupIdForInstance?.(meta.instanceName) ?? String(groupId);
-      senderAdapter!.sendText(senderGroupId, `${notificationLabel}:\n${message}`, { threadId: String(senderTopicId) })
+      senderAdapter!.sendText(senderGroupId, senderText, { threadId: String(senderTopicId) })
         .catch(e => ctx.logger.warn({ err: e }, "Failed to post sender topic notification"));
     }
   }

@@ -156,6 +156,8 @@ export const COMMANDS: readonly CommandSpec[] = [
   { name: "update", slash: true, denied: NOT_AUTHORIZED, disabled: ["update.disabled"], scopes: everywhere("fleet-admin"), telegram: tgGeneralOnly(FLEET_ADMIN) },
   { name: "doctor", slash: true, denied: NOT_AUTHORIZED, scopes: everywhere("fleet-admin"), telegram: tgGeneralOnly(FLEET_ADMIN) },
   { name: "dashboard", slash: true, denied: NOT_AUTHORIZED, disabled: ["dashboard.disabled"], scopes: everywhere("fleet-admin"), telegram: tgGeneralOnly(FLEET_ADMIN) },
+  // #1302: a fleet setting, so a fleet admin even to read it — the same as /doctor.
+  { name: "visibility", slash: true, denied: NOT_AUTHORIZED, scopes: everywhere("fleet-admin"), telegram: tgGeneralOnly(FLEET_ADMIN) },
   // Informational. `/tips on|off|advanced on` change settings and are gated by the handler on that argument.
   { name: "sysinfo", slash: true, denied: NOT_AUTHORIZED, scopes: everywhere("anyone"), telegram: tgGeneralOnly(ANYONE) },
   { name: "usage", slash: true, denied: NOT_AUTHORIZED, scopes: everywhere("anyone"), telegram: tgGeneralOnly(ANYONE) },
@@ -191,7 +193,7 @@ export function slashLock(name: string): string {
 }
 
 /** What a menu entry says after its description, as a locale key: the argument a command takes (#1145). */
-const TELEGRAM_ARG_HINTS: Readonly<Record<string, string>> = { compact: "slash.compact_arg" };
+const TELEGRAM_ARG_HINTS: Readonly<Record<string, string>> = { compact: "slash.compact_arg", visibility: "slash.visibility_arg" };
 
 /**
  * The two Telegram command menus (`setMyCommands`), in menu order. Which commands a menu lists is picked by hand —
@@ -204,7 +206,7 @@ export const TELEGRAM_MENUS = {
   fleet: {
     scopes: ["general", "fleet"],
     names: ["status", "sysinfo", "dashboard", "ctx", "compact", "steer", "btw", "clear", "model", "effort",
-      "pause", "wake", "restart", "collab", "update", "doctor", "login", "usage", "tips"],
+      "pause", "wake", "restart", "collab", "update", "doctor", "login", "usage", "tips", "visibility"],
   },
   /**
    * Every other chat (`default` and `all_group_chats`): ClassicBot private chats and groups, the ones with an agent and
