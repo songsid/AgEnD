@@ -82,7 +82,7 @@ Fix all errors before `agend reload`; warnings are advisory.
 - Missing `channel.mode` field → error on start
 - Wrong indentation (YAML is indent-sensitive)
 - `topic_id` as string vs number (both work, but be consistent)
-- `backend` typo (valid: `claude-code`, `gemini-cli`, `codex`, `opencode`, `kiro-cli`, `antigravity`, `grok`)
+- `backend` typo (valid: `claude-code`, `codex`, `opencode`, `kiro-cli`, `antigravity`, `grok`, `muse`); `gemini-cli` was removed in 2.1.12 — use `antigravity`
 - `model` using wrong format for the backend
 
 **Common classicBot.yaml mistakes:**
