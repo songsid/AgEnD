@@ -1,6 +1,6 @@
 # #1306: interactive inline HTML in the web chat
 
-**Status:** design for review (🔒 Prism), **r2** — no code yet. Milestone 2.2.1, branch `feature/2.2-web`.
+**Status:** design for review (🔒 Prism), **r3** — no code yet. Milestone 2.2.1, branch `feature/2.2-web`.
 **Inputs:** the leader's decision on #1306 (2026-10-07, delegated by the user, to be adjusted after testing) and
 claude-fable's *AgEnD web chat design study*, section 3. Every claim about today's code was re-read at
 `feature/2.2-web` **4ed04167** (after #1313/#1316/#1317 and #1300's style nonces); external references (CVEs, specs) are the study's or the
@@ -20,14 +20,23 @@ approve prompts).
 - **G1 — account boundary (all supported browsers):** the preview cannot act as the signed-in person. It has no
   dashboard origin, no cookie-bearing request it can read, no CSRF value, and its messages reach nothing but a
   resize/heartbeat handler.
-- **G2 — no network, only where the browser enforces it:** in a browser that enforces every control in §4.3 —
-  today the Chromium family, which enforces CSP `webrtc 'block'` — the preview opens no network connection. A
-  capability check runs before anything renders (§4.3). A browser that fails it is not sniffed by user agent; it
-  fails the check. That is Firefox today, which does not implement CSP `webrtc`
-  ([bug 1783489](https://bugzilla.mozilla.org/show_bug.cgi?id=1783489)). There, Preview is **disabled by
-  default** (Source and Download only). One explicit **per-device opt-in** enables it with the banner "This
-  browser can't fully block network access from the preview; content may be able to send data out" (§7). G2 does
-  not hold for an opted-in device.
+- **G2 — no network, only where a blocking mechanism is positively verified:** G2 holds only for a combination of
+  browser, version and preview mode listed in `VERIFIED_NO_NETWORK` (§4.3), and nothing is added to that list
+  without a recorded §10.2 run.
+  - **Every channel must be covered**, WebRTC included. For WebRTC, no shipping browser offers a verified page-level
+    block today:
+    - Firefox does not implement CSP `webrtc` ([bug 1783489](https://bugzilla.mozilla.org/show_bug.cgi?id=1783489)).
+    - Chromium's CSP parser does not recognise `webrtc` at all; its RTCPeerConnection gate reads a different,
+      experimental header (`Connection-Allowlist`)
+      ([CSP parser](https://chromium.googlesource.com/chromium/src/+/0d3c97b1914dbf780413c8ab904f2ca736af61c3/services/network/public/cpp/content_security_policy/content_security_policy.cc),
+      [RTC gate](https://chromium.googlesource.com/chromium/src/+/0d3c97b1914dbf780413c8ab904f2ca736af61c3/third_party/blink/renderer/modules/peerconnection/rtc_peer_connection.cc),
+      at revision 0d3c97b1).
+    - So **in v1 the list is empty**, and G2 holds nowhere.
+  - **The `web.preview_origin` mode is excluded from G2:** a self-navigation to `/frame?…` reaches that proxy's
+    access log (§4.3).
+  - **Where G2 does not hold, Preview is off by default** (Source and Download only), per the decided policy. One
+    explicit **per-device opt-in** enables it with the banner "This browser can't fully block network access from
+    the preview; content may be able to send data out" (§7).
 - **Not promised:**
   - The HTML is **not** assumed to be harmless or public. Agent output can contain private data. A preview shows it
     to code the agent wrote, inside the person's browser; G2 is what keeps that code from sending it anywhere.
@@ -39,8 +48,8 @@ Decided (realised here, not re-opened):
 
 1. A dedicated **preview listener on a separate port**, loopback by default; optional `web.preview_origin` (a
    separate hostname) for the strongest isolation. Never a same-origin `/ui/preview` route.
-2. **No network** in the preview in v1; libraries must be inlined. (r2: enforced where the browser can; elsewhere
-   off by default with a per-device opt-in, G2.)
+2. **No network** in the preview in v1; libraries must be inlined. (r3: claimed only where a blocking mechanism is
+   verified, which in v1 is nowhere; elsewhere Preview is off by default with a per-device opt-in, G2.)
 3. **Source:** only ` ```html ` fences (and `.html` attachments, Q4) in messages the **server** marks
    `role: "agent"`. HTML from users (web, Telegram, Discord, other members) is never rendered.
 4. **Limits:** 1 MiB of HTML, 4000 px height cap, rate-limited resize, 10 s watchdog (best effort).
@@ -86,7 +95,7 @@ keep for anything not explicitly opted in.
  │  chat card ── click Preview ──────────────────┼──────────────────▶│  CSP sandbox allow-scripts;  │
  │  <iframe sandbox="allow-scripts" allow=""     │                   │  default-src 'none' …        │
  │          referrerpolicy="no-referrer">        │◀── postMessage ───│  frame-ancestors <dashboard> │
- │  listener: ready/resize/heartbeat only        │  ready{boot,rtc}  │                              │
+ │  listener: ready/resize/heartbeat only        │  ready{boot}      │                              │
  │  ── postMessage {render, html} ──────────────▶│                   │ everything else → 404        │
  └───────────────────────────────────────────────┘                   └──────────────────────────────┘
 ```
@@ -145,7 +154,7 @@ rewrites the upstream `Host` to `127.0.0.1:19280`. The server then believes it i
 - **What a Host-rewriting proxy loses:** Preview, with a visible reason, and nothing else.
 
 **Frame identity.** The parent sends `render` only after a `ready` from that frame carrying
-`boot === data-preview-boot`, and `rtc === "blocked"` unless the device opted in (§4.3). With no valid `ready` within 3 s, the card unloads
+`boot === data-preview-boot`, and only when G2 holds for this page load or the device opted in (§4.3). With no valid `ready` within 3 s, the card unloads
 the frame and shows "Preview unavailable from this browser". That is the SSH case where only 19280 is forwarded,
 and it is also any other process answering on 19281.
 
@@ -160,13 +169,13 @@ stays stateless and never receives content in a URL or log.
 **Frame → parent** — the only accepted shapes:
 
 ```js
-{ v: 1, type: "ready",     ch: null, boot: "<listener boot id>", rtc: "blocked" | "open" | "error" }
+{ v: 1, type: "ready",     ch: null, boot: "<listener boot id>" }
 { v: 1, type: "resize",    ch: "<id>", height: <integer> }
 { v: 1, type: "heartbeat", ch: "<id>" }
 ```
 
-**Parent → frame** — exactly one message, sent only after a valid `ready`: boot matches, and either
-`rtc === "blocked"`, or this device has opted in (§4.3):
+**Parent → frame** — exactly one message, sent only after a valid `ready` (boot matches), and only when G2 holds or
+this device has opted in (§4.3):
 
 ```js
 { v: 1, type: "render", ch: "<per-frame random id>", html: "<the HTML, ≤ 1 MiB>" }
@@ -178,7 +187,7 @@ stays stateless and never receives content in a URL or log.
 - `ch` lets the parent tell its own frames apart; it is **not** authentication (the content can read it).
 
 **Shim.**
-1. On load, it runs the network probe (§4.3), then posts `ready`.
+1. On load, it posts `ready`.
 2. It accepts **one** `render` that passes all of these:
    - `event.source === window.parent`;
    - `event.origin` is in the exact allow-list of dashboard origins it was built with; never `"null"`;
@@ -194,8 +203,8 @@ One `window` `message` listener for all cards:
 | Rule | |
 |---|---|
 | Source | `event.source === card.iframe.contentWindow` for a live card; otherwise dropped silently. `event.origin` must be `"null"` (the opaque sandbox), checked *in addition*, never instead. |
-| Shape | A plain object with exactly the keys above, `v === 1`, `type` in the set, `ch` equal to the card's (for `resize`/`heartbeat`), `height` a finite integer, `boot`/`rtc` strings. Anything else is dropped. |
-| Effect | `ready` → validate boot and rtc (§4.3), then send `render` once (or unload with a reason). `resize` → set the height (rules below). `heartbeat` → reset the watchdog. **Nothing else**: the listener has no reference to `api()`, `sendMsg`, `answerPrompt`, the composer, navigation or storage, and the test plan asserts it (the Open WebUI CVE-2026-54007 class). |
+| Shape | A plain object with exactly the keys above, `v === 1`, `type` in the set, `ch` equal to the card's (for `resize`/`heartbeat`), `height` a finite integer, `boot` a string. Anything else is dropped. |
+| Effect | `ready` → validate the boot id and the G2/opt-in state (§4.3), then send `render` once (or unload with a reason). `resize` → set the height (rules below). `heartbeat` → reset the watchdog. **Nothing else**: the listener has no reference to `api()`, `sendMsg`, `answerPrompt`, the composer, navigation or storage, and the test plan asserts it (the Open WebUI CVE-2026-54007 class). |
 | Height | Clamp to [40, 4000] px; at most once per animation frame and 10 times per second; ignore changes < 2 px; after 5 consecutive increases within 2 s, freeze the height and let the frame scroll. |
 | Watchdog | Best effort, §8. |
 
@@ -207,17 +216,33 @@ One `window` `message` listener for all cards:
 | Forms | `form-action 'none'` + no `allow-forms` | Browser matrix |
 | Popups, new windows, top navigation | No `allow-popups*`, no `allow-top-navigation*` | Browser matrix |
 | **Self-navigation** of the frame (`location =`, `<meta refresh>`, link click, `data:`/`blob:`/`javascript:` URLs) | The **dashboard's** `frame-src <preview origin>/frame` governs every navigation of the nested frame, including one the frame starts itself. Any other URL, `data:` and `blob:` are refused, and the listener answers anything but `/frame` with an empty 404 and never redirects. Residual: a navigation to `<preview origin>/frame?…` is allowed. With a loopback preview it reaches only our listener, which logs nothing. With a `preview_origin`, the query reaches that proxy's access log (Q9). | Browser matrix: every transition named here, in every supported browser |
-| **WebRTC** (RTCPeerConnection / ICE / STUN) | 1. CSP `webrtc 'block'` (not implemented by Firefox, bug 1783489). 2. **Probe gate:** before `ready`, the shim creates an `RTCPeerConnection` with no ICE servers and a data channel, sets a local offer, and waits ≤ 1.5 s for candidates. It reports `rtc: "blocked"` only if construction throws, the API is absent, or no candidate is produced; otherwise `"open"`. This is the **capability check**: no user-agent sniffing. The parent renders on `"blocked"`. On `"open"` (or `"error"`), it renders only if this device has opted in; otherwise the card shows "Preview is off in this browser: it cannot stop a preview from sending data out", plus Source and Download. 3. Defence in depth: after the probe, the shim deletes `RTCPeerConnection`, `webkitRTCPeerConnection`, `RTCDataChannel`, `RTCIceTransport` and `RTCSctpTransport` from its realm before writing content. No other realm is reachable (`frame-src 'none'`, `worker-src 'none'`, no popups). | Browser matrix: the probe's verdict per browser, and an adversarial page that tries to open a data channel to a loopback STUN/TURN listener on the test host |
+| **WebRTC** (RTCPeerConnection / ICE / STUN / TURN) | **No verified page-level block exists in v1.** CSP `webrtc 'block'` stays in the header for a browser that may honour it one day, but nothing relies on it: Firefox does not implement it, and Chromium does not parse it (§1). A runtime probe is **not** a capability proof, so r2's probe gate is withdrawn. Zero ICE candidates within a timeout also happens when a browser withholds host candidates (RFC 8828 modes 3/4, mDNS) while STUN/TURN still work, when gathering is slower than the timeout, or after an unrelated exception. Every such result is *unknown*, never *blocked*. Defence in depth only: before writing content, the shim deletes `RTCPeerConnection`, `webkitRTCPeerConnection`, `RTCDataChannel`, `RTCIceTransport` and `RTCSctpTransport` from its realm. No other realm is reachable (`frame-src 'none'`, `worker-src 'none'`, no popups). This is not counted toward G2. | §10.2 negative cases: zero candidates but TURN reachable, delayed gathering, a non-policy exception — all must leave Preview behind the opt-in |
 
-**Decided (leader, 2026-10-07):**
-- **Chromium family:** Preview is on, with the no-network claim. The §10.2 adversarial matrix backs it: fetch, img,
-  form, WebSocket, RTCPeerConnection/STUN, and self-navigation through `data:`/`blob:`/`javascript:`.
-- **A browser whose probe says `"open"`:** Preview is off by default.
-- **Opt-in:** **one** explicit **per-device opt-in** in the card's menu, stored in `localStorage` and revocable.
-  It is off by default and never silent: it asks once, with the consequence spelled out. Every opted-in preview
-  carries the banner "This browser can't fully block network access from the preview; content may be able to send
-  data out".
-- **The other controls still apply on an opted-in device:** the CSP, `frame-src`, sandbox and boot checks.
+**`VERIFIED_NO_NETWORK`.** A committed list of entries `{ engine, minVersion, mode: "loopback", mechanism,
+recordedRun }`. An entry may be added only when:
+- it names a positive blocking mechanism for every channel in this table (for WebRTC: a header the browser is shown
+  to enforce, such as a future, shipped `Connection-Allowlist`);
+- and a recorded §10.2 run for that engine, version and mode shows every adversarial row blocked.
+
+In v1 the list is **empty**.
+- **Browser identification:** matching the browser to an entry must use `navigator.userAgentData` brands and
+  versions, or the UA string where those are absent. No page-observable signal proves enforcement, so this is the
+  unavoidable case of browser identification. It fails closed: an unknown or unparseable browser is not verified.
+- **`web.preview_origin`:** this mode is never in the list in v1. A `/frame?<data>` self-navigation reaches the
+  proxy's access log. A future entry would need a verified deployment condition: the proxy drops or does not log
+  queries for that host, and serves nothing but `/frame`.
+
+**Decided policy (decision owner via the leader, 2026-10-07), applied to the corrected facts:**
+- **Where G2 holds**, Preview is on, with the no-network claim. In v1 that is nowhere.
+- **Everywhere else, Preview is off by default**, with Source and Download only. One explicit **per-device opt-in**
+  in the card's menu (stored in `localStorage`, revocable, off by default, never silent: it asks once, with the
+  consequence spelled out) enables it.
+  - **Banner:** every opted-in preview carries "This browser can't fully block network access from the preview;
+    content may be able to send data out".
+  - **The other controls still apply:** the CSP, `frame-src`, sandbox, origin and boot checks. They still block
+    fetch, img, forms, websockets, popups and self-navigation; only the *claim* is withheld.
+- **r2's premise is withdrawn:** "the Chromium family enforces CSP `webrtc`, so Preview is on there" is not true
+  (§1). The policy is unchanged, but its result in v1 is opt-in everywhere until an entry is verified (Q12).
 
 ## 5. Content Security Policy
 
@@ -241,6 +266,7 @@ Cache-Control: no-store
 ```
 
 - `default-src 'none'` is required: directives without their own fetch directive fall back to it (CSP3 §8.6).
+- `webrtc 'block'` is forward-looking only: no browser is relied on to enforce it (§4.3).
 - `img-src data: blob:` lets content show inlined images. A navigation to `data:`/`blob:` is a different check,
   governed by the parent's `frame-src` (§4.3).
 - `sandbox allow-scripts` in the **header** makes the document opaque-origin even if it is ever loaded without the
@@ -323,15 +349,15 @@ Built with DOM nodes; labels via `textContent`.
 | Control | Behaviour |
 |---|---|
 | **Source** (default) | The existing code block. |
-| **Preview** | Runs the checks in §3.2 and the capability check (§4.3), then creates the iframe (§5.3). One running preview per page: starting another stops the first. A parent-drawn banner. Where G2 holds: "Untrusted preview — it cannot use your account or reach the network. It shows what the agent wrote, which may be private. A preview can slow or freeze this tab." On an opted-in device whose browser failed the check: "Untrusted preview — it cannot use your account, but **this browser can't fully block network access from the preview; content may be able to send data out**. A preview can slow or freeze this tab." |
+| **Preview** | Runs the checks in §3.2 and the G2/opt-in check (§4.3), then creates the iframe (§5.3). One running preview per page: starting another stops the first. A parent-drawn banner. Where G2 holds: "Untrusted preview — it cannot use your account or reach the network. It shows what the agent wrote, which may be private. A preview can slow or freeze this tab." On an opted-in device (where G2 does not hold — everywhere in v1): "Untrusted preview — it cannot use your account, but **this browser can't fully block network access from the preview; content may be able to send data out**. A preview can slow or freeze this tab." |
 | **Stop** | Removes the iframe. |
 | **Download** | A `Blob` of the source text with type `application/octet-stream`, saved through `<a download="reply.html">`, URL revoked at once. The `blob:` URL belongs to the dashboard origin, so it is **only** ever used for a download — never navigated to, never opened in a tab. |
 
 A per-browser **kill switch** ("Never preview HTML on this device", in `sessionStorage`) hides Preview on every card.
 **Click to run is always required**; there is no auto-run setting.
 
-A per-device **opt-in** ("Allow previews in this browser even though it cannot block outgoing data", in
-`localStorage`, shown only where the capability check failed) and its revocation sit in the same menu.
+A per-device **opt-in** ("Allow previews in this browser even though it cannot fully block outgoing data", in
+`localStorage`, offered wherever G2 does not hold) and its revocation sit in the same menu.
 
 ## 8. Limits and availability (best effort)
 
@@ -340,7 +366,7 @@ A per-device **opt-in** ("Allow previews in this browser even though it cannot b
 | HTML size | 1 MiB (UTF-8 bytes) | Parent before `render`; the shim refuses a larger one. Fences are also bounded by the 16,000-character message cut. |
 | Height | 40–4000 px, then scroll | Parent (§4.2) |
 | Resize rate | ≤ 1 per animation frame, ≤ 10/s, Δ ≥ 2 px, growth freeze | Parent |
-| Ready | 3 s, with a matching boot id and an `rtc` the device accepts, else unavailable | Parent |
+| Ready | 3 s, with a matching boot id, else unavailable | Parent |
 | Watchdog | 10 s without heartbeat while visible → unload | Parent: **best effort** |
 | Concurrency | one running preview per page | Parent |
 
@@ -374,9 +400,9 @@ So this design:
 | CSRF write from the frame to `/ui/*` | — | `connect-src 'none'`, `form-action 'none'`, no `allow-forms`, and parent `frame-src` refuses navigations to the dashboard. Independently, today's checks refuse `Origin: null` and need `X-Agend-CSRF` the frame cannot read (`web-auth.ts:160-172`, `:243-248`). |
 | Reading open GET endpoints (`/view` reads, `/api/activity` with `ACAO: *`) | — | `connect-src 'none'`; images only `data:`/`blob:`. (`ACAO: *` at `fleet-manager.ts:15824`/`:15856` is a separate clean-up — Q6.) |
 | Exfiltration of **private** content by request (fetch, img, beacon, websocket, prefetch, CSS) | Image-markdown exfiltration in Bard/M365 Copilot; sandbox without CSP escapes via `data:` navigation (Willison) | Header CSP `default-src 'none'` and friends; meta CSP is not relied on. Proven per browser (§10.2). |
-| Exfiltration by **self-navigation** (`location`, meta refresh, link, `data:`/`blob:`/`javascript:`) | `navigate-to` never shipped | Parent `frame-src <preview origin>/frame` refuses every other navigation target; the listener 404s everything else and never redirects. Residual with `preview_origin`: a `/frame?…` query reaches that proxy's log (Q9). Proven per browser. |
-| Exfiltration by **WebRTC** | Firefox has no CSP `webrtc` (bug 1783489) | Capability check: content goes by default only to a frame whose browser produced no ICE candidate, and the WebRTC globals are removed before content runs. Where the check fails, Preview is off by default. A per-device opt-in accepts the risk, behind the banner "This browser can't fully block network access from the preview; content may be able to send data out" (G2). |
-| The HTML itself is private (an agent wrote a secret into it) | Pluto: agents published env values in 10/85 runs | Not assumed away: agent output can contain private data. G2 keeps the preview from sending it where the browser enforces the controls; an opted-in device is warned that it may. Click-to-run is consent, **not** a confidentiality check; Source view lets a person look first. |
+| Exfiltration by **self-navigation** (`location`, meta refresh, link, `data:`/`blob:`/`javascript:`) | `navigate-to` never shipped | Parent `frame-src <preview origin>/frame` refuses every other navigation target; the listener 404s everything else and never redirects. Residual with `preview_origin`: a `/frame?…` query reaches that proxy's log, so that mode is excluded from G2 (§4.3, Q9). Proven per browser. |
+| Exfiltration by **WebRTC** | Firefox has no CSP `webrtc` (bug 1783489); Chromium does not parse it (rev 0d3c97b1); a no-candidate probe can pass while TURN works (RFC 8828) | Not blocked in v1, and not claimed: Preview is off by default and the opt-in banner says data may be sent out. WebRTC globals are removed from the shim's realm as defence in depth only. G2 waits for a verified mechanism in `VERIFIED_NO_NETWORK` (§4.3). |
+| The HTML itself is private (an agent wrote a secret into it) | Pluto: agents published env values in 10/85 runs | Not assumed away: agent output can contain private data. G2 would keep the preview from sending it, but G2 holds nowhere in v1, so Preview is behind an opt-in whose banner says it may send data out. Click-to-run is consent, **not** a confidentiality check; Source view lets a person look first. |
 | Content delivered to the wrong frame (another process on the preview port; a Host-rewriting proxy) | — | `location.origin === data-dashboard-origin`; the `ready` must carry this fleet's boot id; mismatch → unavailable (§3.2). |
 | Phishing UI inside the frame | Open WebUI GHSA-9wj4-mcm3-ppj6 | Parent-drawn banner and border; no `allow-modals`, no fullscreen; a separate hostname keeps password managers from offering dashboard credentials. |
 | Top navigation, popups, tabnabbing | — | Flags not granted; content stays in the sandboxed frame; no new-tab feature in v1 (§13). |
@@ -423,9 +449,11 @@ These prove wiring, headers and the parent's logic. They do **not** prove what a
 7. **postMessage (parent and shim, both directions):**
    - ignored: the wrong `source`, wrong `ch`, wrong boot, extra keys, unknown `type`, a non-integer, negative or huge
      `height`, string payloads;
-   - capability: `rtc: "open"`/`"error"` → no `render` and the "Preview is off in this browser" card, unless the
-     device opted in. Then `render` is sent with the "can't fully block network access" banner. Revoking the opt-in
-     stops it again;
+   - G2/opt-in: with `VERIFIED_NO_NETWORK` empty (v1), no `render` happens and the "Preview is off in this browser"
+     card shows until the device opts in. Then `render` is sent with the "can't fully block network access" banner.
+     Revoking the opt-in stops it again. A test-only entry for the running engine/version/loopback mode lifts the
+     opt-in requirement and shows the no-network banner. The `preview_origin` mode never qualifies. An unknown or
+     unparseable browser is never verified;
    - the shim refuses `render` from `"null"`, from a non-listed origin, and over 1 MiB;
    - heights are clamped, with the rate limit and growth freeze;
    - the listener module references no API helper (static assertion);
@@ -437,7 +465,8 @@ These prove wiring, headers and the parent's logic. They do **not** prove what a
      replaced or moved alive.
 9. **Mutations:**
     - adding `allow-same-origin`;
-    - dropping the `source`, boot or rtc check, or rendering on `rtc: "open"` without the opt-in;
+    - dropping the `source` or boot check, rendering without G2 or the opt-in, or letting `preview_origin` count
+      toward G2;
     - accepting `role` from the client, or letting `user` messages get cards;
     - removing the Host gate or the `location.origin` check;
     - adding XFO to `/frame`;
@@ -452,12 +481,9 @@ CI has no browser, so the gate is a **recorded manual run** (decided). It record
 mode (same-host port / `preview_origin`), then pass/fail per row with notes, and is attached to the implementation
 PR. Implementation is not approved without it.
 
-Targets:
-- **Chromium family** (current Chrome and Edge on desktop, Chrome on Android): expected to pass every row, with
-  Preview on.
-- **Safari (macOS and iOS) and Firefox:** run the same rows. The capability check decides; it is not assumed.
-  - Firefox is expected to report `rtc: "open"`, so Preview is off by default.
-  - The opted-in run is also recorded: the banner is shown and the other controls hold.
+Targets: current Chrome and Edge (desktop), Chrome on Android, Safari (macOS, iOS) and Firefox, each in loopback
+mode and in `preview_origin` mode. Every run is recorded, including the opted-in runs (banner shown, other controls
+holding). A browser enters `VERIFIED_NO_NETWORK` only through such a run, and none does in v1.
 
 | Check, inside the preview | Expected |
 |---|---|
@@ -467,19 +493,26 @@ Targets:
 | `<img src="http://127.0.0.1:19280/…">`, CSS `url()`, `<link rel=prefetch>` | blocked |
 | form submit, `window.open`, `alert` | nothing sent / null / no modal |
 | self-navigation: `location = "https://example.org/?x"`, `<meta http-equiv=refresh>`, link click, `location = "data:…"`, `"blob:…"`, `"javascript:…"`, `location = "/other"` | blocked (frame stays on `/frame`); `/frame?x` loads the 404-free shim only |
-| WebRTC: the shim's probe verdict; an adversarial page that tries a data channel to a loopback STUN/TURN listener | `blocked` → content renders and the connection never reaches the listener; `open` → no content without the opt-in; with it, the banner shows (the connection may succeed; recorded) |
+| WebRTC, adversarial, each of: a data channel to a loopback STUN/TURN listener on the test host; a browser configured to withhold host candidates (RFC 8828 mode 3/4) with TURN reachable; gathering delayed beyond any timeout; a constructor that throws a non-policy error | v1: whatever the outcome, Preview stays behind the opt-in (none of these counts as *blocked*). For a candidate `VERIFIED_NO_NETWORK` entry, every case must be blocked by the named mechanism, recorded |
 | Busy loop and memory growth (§8) | record whether the parent's Stop and timers respond within 1 s, per mode (the residual risk is accepted; the record is for revisiting it) |
 
 ## 11. Review r1 → r2 (Prism, 8e3a846e; decisions by the leader, 2026-10-07)
 
 | Finding | r2 |
 |---|---|
-| P1 "no network / no secret" unsupported (Firefox `webrtc`, self-navigation; agent HTML can be private) | Dropped "no secret" entirely (§1, §9). G2 holds in a browser that enforces the controls — the Chromium family today — with an adversarial matrix (§10.2: fetch, img, form, WebSocket, RTCPeerConnection/STUN, self-navigation via `data:`/`blob:`/`javascript:`). A browser that fails the **capability check** (Firefox today) gets Preview off by default, plus a per-device opt-in that carries the banner "This browser can't fully block network access from the preview; content may be able to send data out" (§4.3, §7). Click-to-run is consent, not confidentiality. |
+| P1 "no network / no secret" unsupported (Firefox `webrtc`, self-navigation; agent HTML can be private) | Dropped "no secret" entirely (§1, §9). G2 holds in a browser that enforces the controls — the Chromium family today — with an adversarial matrix (§10.2: fetch, img, form, WebSocket, RTCPeerConnection/STUN, self-navigation via `data:`/`blob:`/`javascript:`). A browser that fails the **capability check** (Firefox today) gets Preview off by default, plus a per-device opt-in that carries the banner "This browser can't fully block network access from the preview; content may be able to send data out" (§4.3, §7). Click-to-run is consent, not confidentiality. *(Superseded in r3: the Chromium premise was false; see r2 → r3.)* |
 | P2 new-tab handshake impossible (opaque `/open`, `frame-ancestors`, `null` origin) | **Removed from v1** (§13), along with the `/open` route and every wrapper exception in the CSP. A future design needs a trusted static wrapper and a bounded one-time transport. |
 | P2 Host-only availability fails behind a Host-rewriting proxy; timeout ≠ identity | §3.2: the page compares `location.origin` with the server's `data-dashboard-origin` before creating a frame or sending HTML, and a mismatch disables Preview. `X-Forwarded-Host` is never trusted. A preserved external Host is a deployment requirement. The boot id must come back in `ready`. The proxy case is in §10.1.3. |
 | P2 watchdog is not containment; memory unbounded | §8: best effort, with a responsive-parent probe recorded per browser and mode. The residual same-process CPU and memory risk is **accepted**, mitigated by click-to-run, Stop and the 1 MiB cap. No containment claim. |
 | P2 fragment transport (confidentiality, decoding) | Gone with the new-tab feature (§13). |
 | P3 post-#1313 renderer; browser-only acceptance | §6.2 is written against the keyed renderer, with an outcome for each `renderMsgs` operation. §10.2 makes the recorded manual browser run the gate before implementation approval (CI has no browser). An opaque `document.cookie` may throw `SecurityError`. |
+
+### r2 → r3 (Prism, d7d5834)
+
+| Finding | r3 |
+|---|---|
+| G2's premise is false: Chromium does not parse CSP `webrtc` (its RTC gate reads `Connection-Allowlist`); a no-candidate/throw/timeout probe is not a capability proof (RFC 8828 modes 3/4, slow gathering, unrelated errors) | §1 and §4.3: Chromium claim withdrawn; probe gate removed, every such result is *unknown*. G2 needs a positive mechanism, recorded per engine/version/mode in `VERIFIED_NO_NETWORK`, which is empty in v1, so Preview is off by default with the opt-in everywhere. §10.2 negative cases added: zero candidates but TURN reachable, delayed gathering, non-policy exception. |
+| G2 must exclude the `preview_origin` mode (`/frame?…` reaches the proxy log) | §1 and §4.3: `preview_origin` never counts toward G2 in v1; a future entry needs a verified no-query-log deployment condition. |
 
 ## 12. Open questions
 
@@ -492,13 +525,16 @@ Targets:
 5. **Q6 — `Access-Control-Allow-Origin: *`** on `/api/activity` and the roster: remove here or separately?
 6. **Q8 — numbers.** 1 MiB, 4000 px, 10 s, 3 s, 1.5 s, 10/s are inferences; adjust after the user's testing.
 7. **Q9 — `preview_origin` and query logging.** A self-navigation to `/frame?…` reaches the proxy's access log.
-   Accept, document a proxy rule that drops queries for that host, or require one?
+   That mode is excluded from G2 in r3. Should a future entry accept a declared proxy rule that drops queries, or
+   require a verified one?
+8. **Q12 — a WebRTC block to verify.** Track Chromium's `Connection-Allowlist` (experimental; the header its RTC
+   gate reads) and any engine that ships CSP `webrtc`. Who owns re-running §10.2 when one ships?
 
 Decided in r2 (decision owner via the leader, 2026-10-07):
 - **r1 Q7:** the browser gate is a recorded manual run.
-- **r2 Q10, Firefox:** keep "no network" by gating on the WebRTC probe. Browsers that fail it get Preview off by
-  default (Source and Download), plus one explicit per-device opt-in with the "can't fully block network access"
-  banner.
+- **r2 Q10, browsers that can't block outgoing data:** Preview is off by default (Source and Download), plus one
+  explicit per-device opt-in with the "can't fully block network access" banner. r3 applies this to every
+  browser and mode not in `VERIFIED_NO_NETWORK`, which in v1 means all of them (the probe-gate premise was false).
 - **r2 Q11, freezing:** the same-process freeze and memory risk is accepted. Preview is not disabled on a probe
   result, and the banner says a preview can slow or freeze the tab.
 - **r1 Q5:** new tab is deferred.
