@@ -596,7 +596,7 @@ describe("dashboard sendMsg with files (the real page script)", () => {
     const toasts: string[] = [];
     const c = vm.createContext({
       localStorage: { getItem: () => null }, navigator: { language: "en" },
-      document: { addEventListener() {}, getElementById: (n: string) => nodes[n] ?? null, createElement: () => ({ style: {}, remove() {}, append() {} }), body: { appendChild() {} } },
+      document: { addEventListener() {}, getElementById: (n: string) => nodes[n] ?? null, createElement: () => ({ style: {}, remove() {}, append() {}, setAttribute() {} }), body: { appendChild() {} } },
       setTimeout: () => 0, clearTimeout() {}, setInterval: () => 0, clearInterval() {},
       fetch: async () => ({ ok: true, json: async () => ({}) }), URL: { createObjectURL: () => "blob:x", revokeObjectURL() {} },
       EventSource: class { addEventListener() {} },

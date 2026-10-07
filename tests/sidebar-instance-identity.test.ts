@@ -19,7 +19,7 @@ function sourceBetween(html: string, startMarker: string, endMarker: string): st
   return html.slice(start, end).trim();
 }
 
-function renderDashboardSidebar(instances: Array<Record<string, unknown>>): string {
+function renderDashboardSidebar(instances: Array<Record<string, unknown>>, awaiting: Record<string, string | null> = {}): string {
   const list = {
     innerHTML: "",
     querySelectorAll: () => [],
@@ -31,6 +31,8 @@ function renderDashboardSidebar(instances: Array<Record<string, unknown>>): stri
     mode: "fleet",
     esc: (value: unknown) => String(value),
     escAttr: (value: unknown) => String(value),
+    awaiting,
+    tr: (key: string) => key,
     document: {
       getElementById: (id: string) => id === "instanceList" ? list : fleetEntry,
     },
@@ -105,6 +107,15 @@ describe("sidebar instance identity", () => {
     expect(html).toContain('<div class="inst-name">classic-rd1web-miraculous-agent</div>');
     expect(html).toContain('<div class="inst-alias">Mira｜奇蹟網頁企劃</div>');
     expect(html.indexOf("classic-rd1web-miraculous-agent")).toBeLessThan(html.indexOf("Mira｜奇蹟網頁企劃"));
+  });
+
+  it("an instance waiting on a terminal prompt gets a 'needs you' badge, its summary as the tooltip (#1307)", () => {
+    const name = dashboardPayload.name as string;
+    const html = renderDashboardSidebar([dashboardPayload], { [name]: "Permission prompt for 12s" });
+    expect(html).toContain('<span class="badge-await" title="Permission prompt for 12s">needsYou</span>');
+    expect(renderDashboardSidebar([dashboardPayload], { [name]: "" }), "no summary: the generic note").toContain('title="approxNote"');
+    expect(renderDashboardSidebar([dashboardPayload], { [name]: null })).not.toContain("badge-await");
+    expect(renderDashboardSidebar([dashboardPayload])).not.toContain("badge-await");
   });
 
   it("renders no dashboard subtitle when display_name is empty or equals the raw identity", () => {

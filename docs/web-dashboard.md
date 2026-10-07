@@ -79,7 +79,8 @@ Pick an instance on the left to talk to it. The web chat is **the same conversat
 - Reloading the page keeps the conversation: the fleet keeps each instance's recent messages.
 
 ### Files and images
-- Attach with **📎**, by pasting, or by dropping files onto the chat.
+- Attach with **📎**, by pasting, or by dropping files onto the chat (it shows where they will go while you drag). Each file waits above the composer as a chip with its name and size, and **✕** removes it.
+- A paste longer than **10,000 characters** is attached as a text file instead of filling the composer. **As text** on its chip puts it back into the composer.
 - Limits: up to **5 files per message**, **10 MB each**, **25 MB together**.
 - Types: **PNG, JPEG, GIF, WebP, PDF and text files**. The type is read from the file itself, not from its name.
 - The agent receives files exactly as from Telegram: the file lands in the instance's workspace inbox (`<AGEND_HOME>/workspaces/<instance>/inbox`), with an `[📷 Image: …]` / `[📎 File: …]` line.
@@ -102,12 +103,15 @@ Each message you send shows how far it got, the same steps Telegram shows as rea
 While the open chat's agent is working, a line above the composer says so, and the composer's **Send** becomes **Stop**. Type something and **Send** comes back beside it: a message sent while the agent works waits its turn.
 - Stop does what Telegram's cancel button and `/cancel` do: it interrupts the agent's current reply (Esc), and the messages still waiting are dropped. Their ticks turn to ⊘.
 - Stop does **not** stop the instance's process. The instance's own Stop in its actions does that.
+- The line shows how long the agent has been working, counted from when this page saw it start. After Stop it reads "Stopping *name*…" until the agent is idle.
+- When the agent is waiting on its terminal (a permission question, a login, a dialog), the line says "*name* is waiting for your input", and the instance gets a **needs you** badge in the sidebar. This is read from the terminal screen, so take it as approximate. Answer it from the prompt buttons below, or on the host.
 
 ### Answering the fleet's prompts
 When an instance looks hung, exits on its own, or is stuck on an interactive prompt, the buttons Telegram/Discord show also appear in that instance's chat: *Force restart* / *Keep waiting*, *Restart* / *Ignore*, *Confirm* / *Cancel*.
 - It is the **same prompt**: the first answer counts, from either place. The other side's buttons then show the outcome, and the prompt expires everywhere at once.
 - Only these instance-health prompts come to the web. A `/clear` confirmation, login, ClassicBot approvals, tips and the `/model` / `/effort` menus stay where they were asked.
 - A prompt raised while the page was not connected appears as soon as it reconnects. One answered elsewhere meanwhile shows as answered.
+- **No chat platform?** On a dashboard-only fleet these prompts are asked here, in the instance's chat. An interactive-prompt *Confirm* asks your General instance for help, so that one is offered only when the fleet has a General.
 
 ## `/view`
 

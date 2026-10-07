@@ -12,7 +12,10 @@ import vm from "node:vm";
 const UI = join(process.cwd(), "src", "ui");
 const DASHBOARD = readFileSync(join(UI, "dashboard.html"), "utf8");
 const THEME = readFileSync(join(UI, "shared", "theme.js"), "utf8");
-type Render = { isNearBottom(t: number, c: number, h: number, slack?: number): boolean; lineCount(s: unknown): number; CODE_FOLD_LINES: number };
+type Render = {
+  isNearBottom(t: number, c: number, h: number, slack?: number): boolean; lineCount(s: unknown): number; CODE_FOLD_LINES: number;
+  isLongPaste(s: unknown): boolean; LONG_PASTE_CHARS: number; formatElapsed(ms: unknown): string;
+};
 const render = (): Render => { const c = vm.createContext({}); vm.runInContext(readFileSync(join(UI, "chat-render.js"), "utf8"), c); return (c as { AgendChatRender: Render }).AgendChatRender; };
 
 describe("theme.js: system by default, this browser's choice when it made one", () => {
@@ -114,5 +117,20 @@ describe("chat-render: at the bottom, and how long a code block is", () => {
     const r = render();
     expect([r.lineCount("a"), r.lineCount("a\nb"), r.lineCount("a\nb\n"), r.lineCount(""), r.lineCount(null), r.lineCount("\n")]).toEqual([1, 2, 2, 0, 0, 0]);
     expect(r.CODE_FOLD_LINES).toBe(30);
+  });
+});
+
+describe("chat-render: the turn's elapsed time and a long paste (segment 2)", () => {
+  it("elapsed is m:ss, h:mm:ss past an hour, never negative", () => {
+    const r = render();
+    expect([0, 999, 1000, 59_999, 60_000, 754_000, 3_599_999, 3_600_000, 3_723_000].map(r.formatElapsed))
+      .toEqual(["0:00", "0:00", "0:01", "0:59", "1:00", "12:34", "59:59", "1:00:00", "1:02:03"]);
+    expect([-5000, NaN, undefined, "x"].map(r.formatElapsed)).toEqual(["0:00", "0:00", "0:00", "0:00"]);
+  });
+
+  it("a paste over 10,000 characters is long; 10,000 is not", () => {
+    const r = render();
+    expect(r.LONG_PASTE_CHARS).toBe(10_000);
+    expect([r.isLongPaste("a".repeat(10_000)), r.isLongPaste("a".repeat(10_001)), r.isLongPaste(""), r.isLongPaste(null)]).toEqual([false, true, false, false]);
   });
 });
