@@ -432,6 +432,7 @@ describe("the dashboard (the real page script)", () => {
     p.sse.activity!({ data: JSON.stringify({ instance: "w", state: "working" }) });
     expect(bar(p).className).toBe("work-bar on");
     expect(bar(p).children.map((k: any) => k.textContent)).toEqual(["", "w is working…", "0:00"]);
+    expect(bar(p).children[2].attrs["aria-hidden"], "the ticking time is not read out every second").toBe("true");
     expect([button(p).hidden, p.nodes.sendBtn.hidden], "an empty composer: Send becomes Stop").toEqual([false, true]);
     p.nodes.msgIn.value = "next, please";
     p.read("renderComposerButtons()");

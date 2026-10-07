@@ -1045,7 +1045,8 @@ function renderWorkBar() {
         const note = document.createElement("span"); note.className = "note"; note.textContent = wait || tr("approxNote");
         note.title = tr("approxNote"); bar.append(note);
       } else {
-        const t = document.createElement("span"); t.className = "elapsed"; t.title = tr("elapsedTitle");
+        // Ticks every second inside a polite live region: hidden from screen readers, or it would be read out each tick.
+        const t = document.createElement("span"); t.className = "elapsed"; t.title = tr("elapsedTitle"); t.setAttribute("aria-hidden", "true");
         bar.append(t); elapsedEl = t;
       }
     }
