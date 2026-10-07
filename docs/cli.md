@@ -1,15 +1,30 @@
 # CLI Reference
 
-## Telegram commands (General topic)
+## Chat commands (Telegram fleet menu / Discord slash)
 
-| Command | Description |
-|---------|-------------|
-| `/status` | Fleet table with Backend, Model, Ctx, Effort, Cost and State columns (admin only) |
-| `/restart` | In-process restart all instances (no process exit) |
-| `/update` | Update AgEnD to the latest version (admin only) |
-| `/sysinfo` | Show detailed system diagnostics (version, load, IPC status, each backend CLI's version) |
-| `/pause` | Manually pause an instance (admin only) |
-| `/wake` | Wake a paused instance (admin only) |
+The Telegram fleet menu (General topic and instance topics, `setMyCommands`) lists 19 commands; Discord registers 25 slash commands globally — the same 19 plus `/start`, `/stop`, `/chat`, `/save`, `/load` and `/cancel`. `/cancel` and `/save` are handled when typed on Telegram but intentionally kept out of its menu. 🔒 needs a fleet admin; the lock prefix in each menu is generated from `src/command-table.ts`, never typed. See [commands.md](commands.md) for the per-platform permission details.
+
+| Command | Description | Options / args | Permission |
+|---------|-------------|----------------|------------|
+| `/status` | Fleet table with Backend, Model, Ctx, Effort, Cost and State columns | — | 🔒 admin |
+| `/sysinfo` | Show detailed system diagnostics (version, load, IPC status, each backend CLI's version); also `/sys-info`, `/sys_info` on Telegram | — | All |
+| `/dashboard` | Show View/Settings/WebUI URLs (token-bearing URLs spoilered on Telegram, ephemeral on Discord) | — | 🔒 admin |
+| `/ctx` | Show agent context usage | — | All |
+| `/compact` | Compact agent context | `[instructions]` — steers the summary, Claude Code only | All in fleet topics |
+| `/steer` | Interject into the agent's current turn instead of queueing for idle | `<message>` required; `claude-code`/`codex`/`grok` only | All |
+| `/btw` | Side question without interrupting the current task | `<message>` required; `claude-code` only | All |
+| `/clear` | Full conversation reset (destructive — asks Confirm/Cancel) | — | 🔒 admin |
+| `/model` | Switch backend model | Name or inline keyboard/select menu | 🔒 admin |
+| `/effort` | Adjust AI reasoning effort | `low\|medium\|high\|xhigh\|max`, or menu with no arg | 🔒 admin |
+| `/pause` | Manually pause an idle instance | `[instance]` — required in General | 🔒 admin |
+| `/wake` | Wake a paused instance | `[instance]` — required in General | 🔒 admin |
+| `/restart` | Restart all instances in-process (no process exit) | `[full]` / `mode: full` reloads the entire fleet process and adapters | 🔒 admin |
+| `/collab` | Toggle bot/webhook message reception | — | All in fleet topics (not a command in ClassicBot chats) |
+| `/update` | Update AgEnD to the latest version on the installed channel | — | 🔒 admin |
+| `/doctor` | Run fleet health diagnostics | — | 🔒 admin |
+| `/login` | (beta) Remote CLI sign-in, installing the CLI first when missing | `[backend] [cancel]`; `/login cancel` anytime | 🔒 admin |
+| `/usage` | Show AI subscription usage | — | All |
+| `/tips` | Draw a random usage tip where you ran it | `[mode]` — `on\|off` toggles the daily auto-send, `advanced on` unlocks the advanced tier (both admin) | All for a draw |
 
 All other operations (create/delete/start instances, delegate tasks) are handled by the General instance through natural language.
 
@@ -306,7 +321,7 @@ agend schedule delete <id>      # Delete a schedule
 agend schedule enable <id>      # Enable a schedule
 agend schedule disable <id>     # Disable a schedule
 agend schedule history <id>     # Show schedule run history (--limit <n>)
-agend schedule trigger <id>     # Manually trigger a schedule
+agend schedule trigger <id>     # Prints how to trigger: the CLI cannot fire a schedule itself — use the Telegram interface with the fleet manager running
 ```
 
 ## Template deployments
@@ -317,7 +332,7 @@ Template deployment is managed via MCP tools (used by agents), not CLI commands:
 - `teardown_deployment` — stop and delete all instances from a deployment
 - `list_deployments` — list active deployments with status
 
-See [configuration.md](configuration.md#templatesname) for template definition syntax.
+See [configuration.md](configuration.md#templates) for template definition syntax.
 
 ## Topic bindings
 

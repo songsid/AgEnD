@@ -10,91 +10,6 @@
 - **新增 alpha 頻道，與 beta、穩定版分開（#1259）。** `vX.Y.Z-alpha.N` tag 現在發布到 npm `@alpha`。以前所有不含 `-beta` 的 tag 都進 `@latest`，第一個 2.2 alpha 會被所有穩定版使用者裝到。發布 workflow 現在嚴格對應：`vX.Y.Z` → `@latest`、`-beta.N` → `@beta`、`-alpha.N` → `@alpha`。其他 tag 會在建置前就失敗，`@latest` 也不會往回移。客戶端的 `agend update`（以及聊天的 `/update`）會讓 alpha 安裝留在 `@alpha`。新增 `agend update --alpha`。「有新版本」通知會告訴 alpha 較新的 alpha 與穩定版，不會提到 beta。beta 與穩定版的行為不變。舊的手動 `scripts/publish.sh` 已移除：發版就是推 tag。
 - **額度重置券最快到期的日期，顯示在券那一行（#1232、#1244）。** Codex 的「額度重置券: 2 可用」現在會標出這些券中最早到期的那張——「額度重置券: 2 可用 · 🎫 最近過期：10/22（16d6h 後）」——`/usage`、View 用量面板與 `get_usage` 的文字都有，資料取自 Codex 自己的券清單（該 metric 的 `expiresAt`）。沒有到期日的券不計；全都沒有時，照舊只顯示張數。這是到期、不是重置：沒用掉的券就沒了。（2.1.12-beta.2 在 #1232 加的每個 backend 一行「⏳ 下次重置」是誤解了需求，已移除，`nextResetAt` 也一併拿掉；各 window 仍各自顯示「X 後重置」。）
 - **Agent 可以在 Discord 與 Telegram 傳貼圖（#1226）。** 三個工具，兩個平台用法相同：`list_stickers`（每張 `{ id, name, emoji_or_tags, format }`，不附圖片網址）、`preview_stickers`（最多 8 張，下載給 agent 讀圖；沒有靜態圖的動畫貼圖標 `preview_unavailable`），以及 `reply` 新增的 `stickers` 欄位（最多 3 張；有貼圖時 `text` 可省略）。底層依平台各自處理：Discord 只列 instance 自己頻道所在伺服器的貼圖（別的伺服器的傳不出去），並跟文字放在同一則訊息送出；Telegram 列出貼圖包——在呼叫時指定，或用連線設定的 `options.sticker_sets`——先送文字，再依序送每張貼圖。所有貼圖都在送出任何東西之前檢查，傳不出去的會回錯誤，不會變成一則悄悄少了貼圖的回覆。agent CLI 也有：`agend-agent stickers`、`sticker-preview`，以及 `reply … --sticker <id>`。
-
-### 變更 (Changed)
-- **`list_emojis` 變輕了（#1226）。** 伺服器 emoji 預設不再附圖片網址（要的話設 `with_image_urls`；想看圖用 `preview_emojis`），並可用 `name`、`limit`、`primary_only` 縮小清單——在 emoji 很多的伺服器上，一次呼叫原本要花約 1 萬字的 context，而 agent 只需要一個 emoji。emoji 與貼圖工具的呼叫改用共用的 30 秒時限，不再是固定 10 秒，一次下載多張圖的預覽不會被中途切掉。
-
-### 修復 (Fixed)
-- **Kiro 斷線 picker 通知恢復具體文字、interaction IPC 安靜了、死 gate 移除（#1219）。** 一般 `dialog` 種類的對話框（例如 Kiro 模型斷線 picker）通知恢復帶 code-owned 描述——「model unavailable、去選替代模型」——而不是籠統的「等你輸入」；特定種類（permission、login 等）維持分類文字。`publishInteraction` 不再每次觀察都重送沒變的 snapshot（按 phase/kind/reason/episode/stale/suspected 比對，時鐘欄位排除，最終狀態不會丟）。probe 前永遠到不了的 `delivery_idle_gate` 過期檢查刪除；probe 後真正會觸發的那道保留。
-- **macOS 不再誤報記憶體警報（#1257）。** 在 Mac 上，AgEnD 不再發「主機記憶體吃緊」通知，也不再因記憶體而放慢或暫停啟動 agent。那裡的可用記憶體與 swap 數字不是記憶體壓力的訊號：macOS 會依需要增加 swap 檔，swap 接近用滿是正常的；一台 16 GB、還有 2.8 GB 可用的 Mac 卻被要求一次只啟動一個 agent。採樣數值仍會寫進 log。改用 macOS 自己的記憶體壓力等級記在 #1256。Linux 不變。
-- **`agend-agent reply … --sticker` 與 MCP 的 reply 規則一致（#1254）。** `agent_mode: cli` 的 agent 若帶了此頻道送不出的貼圖（Discord 上別的伺服器的貼圖、或不是 Telegram 貼圖 id 的東西），現在會在送出任何東西之前先檢查，並以該則回覆的錯誤回報。以前是直接交給 adapter。另外，帶貼圖的回覆不再被當成同一段文字（不帶貼圖、仍在送出中）的重複回覆。兩條路徑現在用同一套方式判斷是否重複。
-- **補回覆不再因為太早觸發而造成重複回覆（#1241）。** claude-code 上，回覆完成防線以前會在 agent 還在寫第一則回覆時、看到 pane 像閒置就觸發，把一則 `[system:reply-required]` 提示貼進 CLI，agent 之後又回答一次、變成回覆兩次。現在要回合「證明自己真的結束了」才會補救：第一次的閒置邊緣只會啟動 60 秒確認窗（之後又看到工作、有回覆送達、或取消都會解除），要閒置持續超過整個窗口、且一直沒有回覆，才會送出提示。從回合開始後完全沒觀察到工作、就出現的閒置邊緣，會直接按住不理。真的漏回還是會補（#750），最多晚一分鐘——而且補救提示現在會說：如果已經回過了，就什麼都不必做。
-- **又看得到 Claude 的 API 重試了（#1239）。** Claude Code 重試失敗的請求時（`✻ 429 … · Retrying in 4s · attempt 4/10`），AgEnD 會發通知，並把這個回合當成仍在進行。從 #1101 起，這只在沒有 status line 的畫面上有效。有 status line 時（AgEnD 一律會設），Claude 不會在 footer 印 `esc to interrupt`，而判斷正是靠這行提示。所以進行中的重試被當成閒置、沒有通知，等很久的重試還可能在回合中途把取消按鈕收掉。現在改看那一列的位置：它在 spinner 的位置，緊貼在輸入框正上方。已結束、被中斷或被引用的那一列仍算歷史，最後的錯誤列（`Request rejected (429)`、重複 529、設定的金鑰無效）照舊認得。另外，工作目錄很長、讓 Claude 自己的 Bash 權限提示第二個選項換成兩行時，現在也會正確停住等人處理。
-- **網頁登入頁的登入碼輸入框在 100% 縮放下就看得到（#1242）。** `/login` 開的網頁終端機，會在「Sign-in code」那一列出現之前先決定終端機大小，之後一直沿用：
-  終端機最下面幾行（包括 CLI 的 `Paste code here` 提示）延伸到那一列底下並蓋住它。輸入框其實在，但看不到也點不到，要改變縮放、讓終端機重新調整大小才會出現。
-  現在終端機自己的區域一有變化就重新調整，也不會畫出自己的區域，所以任何視窗大小下提示和輸入框都看得到。
-- **切換 instance 的 backend 後不再啟動不了（#1217）。** session id 現在屬於產生它的 backend（旁邊記一個 `session-id.backend`）。換成另一個 backend 後第一次啟動時，舊 id 會被放到一旁（跟以前一樣是 `session-id.abandoned-<ts>`），新的 CLI 全新開始，而不是被要求去 resume 一段它從沒有過的對話。`update_instance_config` 改了 `backend` 時，執行中的 instance 現在會被重啟並全新開始。以前只會存下設定，舊 CLI 繼續跑，直到其他事情讓它重啟。另外三個讓這種失敗變成永久的缺口也一併補上：
-  - 每個 backend 各自指定「session 已經不存在」的字樣，例如 muse 的「retained session not found」；
-  - 未經證實的 resume 失敗次數改存在 instance 目錄裡、以 session id 為鍵。每次啟動都會建一個新的 Daemon，所以以前永遠停在「attempt 1/3」，到不了三次後的全新啟動；
-  - 認得 Claude 的「Background work is running」退出提示。訊息投遞會等它結束；stop 與 pause 會用 Escape 取消它並停止程序，絕不選它的任何選項。
-- **Discord slash 指令：較少出現「應用程式沒有回應」，而且不再靜默（#1231）。** slash 指令現在第一件事就是回應（acknowledge），
-  其他讀取都在之後。回應失敗時不執行該指令（你已看到「沒有回應」，重試時若照樣執行會做兩次），並且會告訴你——私下回覆，或發在頻道。
-  若同一個 bot 的另一個連線已經回應，這邊就保持安靜。超過 1.5 秒才回應時，log 會記下時間花在哪（送達 vs 回應本身）；fleet 會記錄每次
-  1 秒以上的 event loop 卡住；設定驗證會在兩個連線共用同一個 bot token 時警告。調查結果（包括哪些不是原因：presence 更新、單純的訊息量）：
-  `docs/design/1231-discord-slash-ack.md`。
-- **等候輸入不再隱形（#812）。** `describe_instance`、`list_instances` 與狀態 API 會顯示確認過的 `awaiting_input`、原本的執行狀態及固定互動類別；第二次新 capture 才確認，超過 15 秒明確標成目前無法確認，不解除安全 hold。原生四選項 Claude Bash 權限視窗只保留給人處理，不送任何按鍵。弱終端提示仍只算疑似，不宣稱涵蓋 editor；500ms／15s 是 sandbox 驗過的策略值，尚非實機時序保證。
-- **取消也會停止補回覆（#1199）。** 取消按鈕與 `/cancel` 現在會在中斷 CLI 前標記目前的人類對話回合，使用者主動停止後不再跳出漏回覆警告，也不會要求 agent 再補一個結論。已在送出的回覆仍正常結算，新訊息仍有自己的回覆防線；取消後才回報失敗的補救或成功的舊 paste 都不會重新啟動該回合。
-- **重啟後不再重送已經送達的 Claude Code 訊息（#1205）。** 重啟後 daemon 會到 CLI 的 transcript 找每個進行中投遞的 marker，而且只有出現在 user 條目最開頭的 marker 才算。Claude Code 會把每則貼上的訊息存成 `<pasted_content id="…">` 加上原文，所以 marker 從來不在開頭、也從來找不到：已送達的訊息被當成「transcript 完整、沒有 marker」，舊 CLI 又已不在，於是被重試——同一則訊息送了兩次。現在在 marker 前面只接受 CLI 自己的這個 wrapper（確切格式、僅限 Claude Code），marker 在 wrapper 之後仍必須領頭；任何其他前綴、引用、或其他 backend 的條目仍不算。
-- **Codex 0.159.2 與 0.160.0 的「Selected model is at capacity」重新能被偵測（#1208）。** 這兩個版本把該拒絕訊息印成 `■ Selected model is at capacity. Please try a different model.`，但偵測規則是照 `⚠` 寫的，所以容量通知從沒出現、「繼續」提示也沒武裝，回合只是落到一般的「沒回覆」流程。現在行首只要是任一個狀態符號（`■`、`⚠`、`⚠️`…）都算；項目符號、破折號、引用符號、數字仍不行，而且整句仍必須獨佔一行、從第 0 欄開始，所以提到模型容量的一般文字不會觸發。只改偵測——比對成功之後的行為不變。
-- **送進閒置 Claude / Grok / Muse instance 的訊息，不再只因為 pane 有輸出就記成 `delivered`（#758）。** 這些 CLI 沒有可讀的輸入列，過去只要 Enter 之後 pane 有任何輸出就算送出——而把 paste 洗掉的重繪也會產生輸出，outbox 因此對一則根本沒到的訊息記下 `delivered`。✅ 不變，但該列現在由 CLI 自己的 transcript 收尾：找到這則投遞的 marker → `delivered`（`transcript-marker`；CLI 只是排進佇列則為 `transcript-marker-queued`）；最後一次讀取成功、整整 10 秒 transcript 仍沒有 marker → `uncertain`（`unverifiable-no-transcript-marker`，會有 ⚠️ 與 `[system:delivery-outcome]`；不會重貼，訊息仍可能送達）；transcript 讀不到、或該 backend 沒有（Grok、Muse、Gemini…）→ 維持今天的 `delivered`，並標示 `output-edge-only; submission-unverifiable`。等待在 pane lock 放開後進行，但 fleet lane 與共用的 pump budget 會被 held 到結算（成功約一秒內收尾；真的掉失的 paste 至多佔 lane 約 10 秒）。steer、native-queue、Codex、Kiro 與 raw paste 不受影響。
-- **讀 instance log 不再整檔讀進記憶體（#1206）。** `get_instance_logs` 過去會把 `output.log` 整檔同步讀進來才取尾段，多 MB 的 pipe-pane log 會卡住 event loop、可能撐爆 30 秒 IPC 上限。現在改成從檔尾往回 bounded chunk 讀（最多掃 1 MB、非同步），log 再大 I/O 也不會跟著長。在範圍內的 log 行數照樣精確；超過範圍的只回尾段、行數標 unknown 並附註說明。掃描窗口內完全沒有換行時回尾段並標 partial、不會回空。啟動時 pipe-pane 接不上去，現在會 warn、不再無聲消失。
-
-### 安全 (Security)
-- **Discord slash 指令現在遵循同一張指令表（#1148）。** 指令適用於哪些頻道、誰能使用，改由一個地方宣告（`src/command-table.ts`），不再散在兩份複製的 handler 裡；
-  選單描述上的 🔒 由這張表產生，標籤不會再和規則不一致。它位於先前加入的授權關卡「後面」，只會收窄關卡放行的範圍。授權級別為：*任何人*、
-  *頻道管理員*（fleet 頻道＝fleet admin；ClassicBot 頻道＝fleet admin **或** ClassicBot admin）、*fleet admin*、*ClassicBot admin*。行為變更：
-  - ClassicBot 頻道的 **`/stop`** 在 Discord 上現在需要 ClassicBot admin，與 Telegram 一向相同。原本 Discord 上任何人都能用；只是 fleet admin、
-    但不是 ClassicBot admin 的人，現在在 Discord 上不能再停止 ClassicBot 頻道（在 Telegram 上本來就不行）。
-  - Discord 的 **`/compact`** 需要頻道管理員（原本標了 🔒，但在 Discord 上沒有任何檢查）。Telegram 不受此變更影響：ClassicBot 聊天仍要 ClassicBot admin，
-    fleet topic 內則沒有檢查。
-  - **`/save`** 需要「該頻道類型」的管理員（原本連 fleet 頻道也要求 ClassicBot admin，導致 fleet admin 被拒、ClassicBot admin 反而能貼進 fleet instance）。
-  - ClassicBot 頻道的 **`/pause`、`/wake`、`/collab`** 在 Discord 上現在也接受 fleet admin（原本只收 ClassicBot admin）。Telegram 不變：ClassicBot 的
-    `/pause`、`/wake` 仍需 ClassicBot admin。
-  - **`/start`** 兩個平台都沒有變，表中也不再寫成「任何人」：Discord 只看 guild allowlist；Telegram 私聊看使用者 allowlist，群組則要群組 allowlist **加上**
-    ClassicBot admin。表中把它標為由 handler 自行判斷。
-  - 表中新增 Telegram 欄，記錄 Telegram handler 與 Discord 不同的格子，並有測試（`tests/command-gates-by-platform.test.ts`）以真實 Telegram handler 對照。
-  - **`/stop` 與 `/dashboard` 現在會顯示 🔒**；`/model`、`/effort`、`/clear` 與各 admin 指令，對原本能用的人沒有變化。
-  - 在不適用的地方輸入的指令（例如沒有 agent 的頻道輸入 `/ctx`）會在執行任何東西之前，用一行說明拒絕；已不存在的指令會得到回覆，而不是「應用程式沒有回應」。
-  文字輸入的 `/指令`（相對於 slash 指令）由後續變更處理。
-
-### 安全 (Security)
-- **Discord slash 指令現在要先過授權關卡（#1148）。** AgEnD 的 slash 指令是全域註冊的，所以 bot 所在的每個 guild、每個 DM 看到的選單都一樣，
-  描述裡的 🔒 只是標籤。過去 slash 指令會略過保護「同樣文字訊息」的 allowlist，也不看來自哪個 guild 或 DM（只有 `/start` 會看）：
-  只要和 bot 同在任一伺服器，就能對 fleet instance 下 `/steer`、`/compact`、`/cancel`，或讀 `/sysinfo`。現在在任何指令執行前：
-  **DM 一律拒絕**；來自**其他 guild** 的指令只對已註冊的 ClassicBot 頻道與 `/start`（仍檢查 `allowed_guilds`）有效；在 fleet 頻道裡，呼叫者必須是
-  **文字訊息路徑也會理會的人**——該頻道 instance 所屬 adapter 的存取政策（明列的 fleet admin 一律可以）。ClassicBot 頻道維持對所有人開放。
-- **`/update`、`/doctor`、`/dashboard` 與 fleet 頻道裡的 `/collab` 現在要求「指令所經 adapter」的 fleet admin，且空的 `allowed_users` 代表沒有人。**
-  它們過去讀的是*主要*頻道的清單（`channels[0]`，不是實際使用的 adapter），而且 `/update`、`/doctor`、`/collab` 把空清單當成「所有人」——
-  所以沒設清單的 fleet 上，任何能輸入 slash 指令的人都能在主機上執行 `agend update`；但文字版 `/update` 卻把空清單當成「停用」。現在 slash 與文字一致。
-  **若你依賴這些指令，請把自己列進該 adapter 的 `access.allowed_users`。**
-
-### 安全 (Security)
-- **instance 目錄改為 0700（既有的在啟動時一次性修正）。** `<data dir>/instances/<name>` 裡有 `agent.token` 與 IPC socket，
-  卻是用行程 umask 建立的 —— 通常是 0775，也就是群組可寫、本機所有使用者都能穿越（裡面的檔案本來就是 0600，開著的是目錄這道門）。
-  新建的 instance 目錄一律 0700；啟動時 fleet 會把 `instances` 目錄與其下每個 instance 目錄一次性收成 0700，只記一行 log，
-  且不動裡面的任何東西（你放進去的檔案維持原權限）。symlink 與他人擁有的目錄不會被動，並會在警告中點名。
-  過去每次啟動 instance 都出現、卻從沒人處理的「IPC socket parent directory is world-accessible」警告，現在只會在仍然開放且
-  無法修正的目錄上、每個目錄報一次。**若有其他使用者或服務原本靠群組權限讀取 instance 目錄，請改為明確授權 —— 群組不再有權限。**（#1118）
-
-### 升級注意事項 (Upgrade Notes)
-- **[行為變更] Codex「model is at capacity」現在改成叫它「繼續」，不再重啟（#905）。** 舊做法是 30 / 60 / 120 秒後重啟 instance，但重啟後的 Codex 停在空白 prompt，沒有人重送失敗的那一回合——「重試中」的通知承諾了從未發生的事，工作就卡在那裡。現在照舊通知使用者，約一分鐘後 AgEnD 對 agent 說「繼續」（keep going）：它的 context 還在、不用重讀、也不換模型。每次擁擠錯誤只送一次，而且只在畫面自上次起完全沒變時才送：畫面動了、有人在輸入、agent 自己開始做事、有訊息排隊、instance 被停止／暫停／重生或使用者取消，都會取消這次 nudge。計時用 monotonic clock（系統時間被調整不受影響）。nudge 之後又出現擁擠算新的一次。30 分鐘內最多送 3 次 nudge；之後再出現擁擠（第 4 次）才像以前一樣暫停。
-- **[行為變更] `agend update` 會讓安裝留在原本的頻道；beta 版不會在沒有要求的情況下被換到穩定線。** 以前不帶旗標的 `agend update` 不管裝的是什麼都會安裝 `@latest`，所以 beta 版可能被裝回較舊的穩定版 —— 而 AgEnD 自己的更新通知還請 beta 使用者執行這個指令。現在它依照已安裝的版本決定：prerelease（`x.y.z-beta.N`，或任何 `x.y.z-<pre>`）從 `@beta` 更新，正式版從 `@latest` 更新。聊天裡的 `/update` 不再自己判斷（它讀的是自己程式旁邊的版本，source checkout 會讀到 `1.22.0`，只有包含「beta」字樣時才加 `--beta`）：現在一律執行 `agend update`，由已安裝的 CLI 決定。會回到較舊版本的更新會被拒絕，除非用 `--stable`、`--version` 或 `--force` 明確要求。新增 `agend update --stable`，可以把 beta 版切換到穩定版。beta 使用者收到「有較新的穩定版」通知時，會提示改用 `--stable`。更新會安裝它檢查過的那個確切版本（例如 `@songsid/agend@2.1.11-beta.3`，而不是中途可能被改指的 `@beta` tag）；`agend update --version <v>` 現在也能用了——以前它會被當成 `agend --version`，只印出版本、什麼都不安裝。
-- **[行為變更] OpenCode instance 現在和其他 backend 一樣，啟動時不再跳權限確認。** OpenCode 在讀專案目錄以外的路徑（`Access external directory /tmp`）、讀 `.env`，或遇到你自己 config 設的 `ask` 時會先問；其他 backend 本來就有 skip-permissions 開關，所以 OpenCode instance 去讀 `/tmp/image.jpg` 會一直停在確認畫面等人按。AgEnD 現在啟動 OpenCode 時：該 binary 的 `--help` 有列 `--auto`（OpenCode 1.17 以後）就用它（每個 ask 自動回「once」，**你 config 裡明確的 `deny` 仍然有效**）；沒有的舊版**不加任何啟動開關**——它唯一的形式 `OPENCODE_PERMISSION` env 會蓋掉你自己的 `deny` 規則——改由執行期回答提示。**畫面上的 prompt 一律回「Allow once」**（只按一次 Enter、不留下任何記憶）；以前是按 Right+Enter＝「Allow always」。若已走到「Always allow」確認頁，按 Esc 取消回到 prompt。prompt 在畫面上時，該 pane 不接收投遞、也不會被當成卡住；agent 文字、輸入框草稿或 transcript 只是引用這個畫面，也不會再被送任何鍵。`skipPermissions: false` 可關掉啟動開關（執行期回答仍然啟用）。啟動準備中收到 stop 現在會取消該次啟動。
-- **[行為變更] 移除舊的聊天室轉傳式 `/login` 模式（#1139）。** `login.mode: relay` 是 2.1.6 以前的登入方式（AgEnD 在 tmux 視窗裡操作登入 CLI，再把它的選單、授權連結與文字提示透過聊天室轉傳）；自 2.1.5 起 `/login` 預設就在有 token 保護的瀏覽器終端機進行，`/login code` 自 #1137 起也已沒有入口。**fleet.yaml 裡仍設有 `login.mode: relay` 時照常載入**——設定會被忽略，log 裡留一則警告，請移除。`/login` 的其他行為（瀏覽器終端機、device-code、公開連結）與安裝 CLI 都不變。升級前留在聊天室的登入方式選單按鈕，升級後點擊會回應「已過期」。
-- **[行為變更] 一鍵開啟 `/login` 公開連結——AgEnD 會自己取得 cloudflared（#1137）。** kiro-cli 與 claude-code 的登入確認現在不需任何設定就會提供 **我了解（外網臨時連結）**、**我了解（內網）**、**取消**：不必再設定 `web_terminal.tunnel.allow_public`，而 `allow_public: false` 改為這台主機關閉公開連結的開關（不顯示按鈕、不下載任何東西）。按下公開連結按鈕仍是每次登入的同意，同意文字也會警告：在登入結束前，任何拿到連結和 token 的人都能使用這個登入終端。如果 `PATH` 上沒有 `cloudflared`，AgEnD 會把 Cloudflare 官方版本下載到 `~/.agend/bin`（不需要 sudo，不安裝到系統）：固定版本、比對固定的 SHA256，每次使用前再檢查；不符就刪除、什麼都不執行。支援 Linux（x86-64、arm64、arm、x86）與 macOS。取得不到 cloudflared 時不會開啟任何東西，仍可使用內網連結。公開連結的其餘部分不變：連結與 token 分兩則私訊、失敗即關閉、有時間限制、不寫入 log。Discord 與 Telegram 都一樣。
-- **[行為變更] `/install-cli` 已移除：`/login` 會先安裝缺少的 CLI，再接著登入（#1131）。** 「讓這個 CLI 能用」只需要一個指令，所以有多個 AgEnD bot 的 guild 每個 bot 只顯示一個入口，也不會再打錯（`/install`、`/login-cli`）。`/login` 的選單會列出 fleet 可以安裝或登入的每個 backend，並標明點下去會做什麼：已安裝的 CLI 直接登入；未安裝的會先安裝（執行官方安裝腳本並確認在 PATH 上），完成後自動接著登入。`/login <backend>` 也一樣；`/login cancel` 也能停止安裝——只有這兩種用法（`/login code` 與短暫存在過的 `reinstall` 都已移除，#1137）。`opencode` 與 `muse` 可以安裝，但沒有登入流程；選單不列出 Gemini CLI，但 `/login gemini-cli` 仍可安裝它。Discord 的 slash 指令與 Telegram 選單中的 `/install_cli` 都已移除。在 2.1.10 直接輸入 `/install-cli`（或 `/install_cli`）仍可使用——它會說明指令已併入 `/login`，並執行 `/login <backend>`——這個別名會在 2.1.11 移除。
-- **[行為變更] grok 改為在聊天室給代碼登入；claude-code 也可以使用公開連結（#1137）。** `grok login` 是裝置代碼登入（grok 1.0.46 只會顯示網址和代碼，然後等待），所以 `/login grok` 現在會像 codex 一樣把網址和代碼貼在聊天室，不再開瀏覽器終端。grok 1.0.46 回報的「Signed in as …」也重新能被辨識為登入成功。claude-code 的登入需要把代碼貼回它的終端，所以要從手機完成就得能連到那個終端：公開連結（`web_terminal.tunnel.allow_public`）現在除了 kiro-cli 也提供給 claude-code。
-- **[行為變更] 暫停中的 instance 收到其他 instance 傳來的工作時，會自己醒來（#1129）。** `delivery_worker` 的預設值從 `off` 改為 `wake_only`。在 `off` 下，委派給一個跨 fleet 重啟仍保持暫停的 instance 的工作，會一直等到有人執行 `/wake`，而且看不出它卡住了。現在 wake coordinator 會用跟 `/wake` 相同的方式喚醒它：失敗會退避重試、連續三次失敗會通知，並且不會喚醒因登入失敗而暫停的 instance。設了 `warm_cap` 時，為了排隊工作而喚醒最多可超出上限 `warm_overflow`（預設 2）個；上限加超出額度都滿、又沒有閒置的 instance 可以暫停時，對暫停中 instance 的 `/wake` 或訊息會被拒絕，而不是超出上限。明確設定 `delivery_worker: off` 會維持原本的行為。
-- **[行為變更] crash dump 只會很小，而且 fleet 一直失敗時 systemd 不再無限重啟（#1113）。** WSL 會把所有 crash 交給 WSL 的 crash collector，它不理會 `LimitCORE`，所以 kiro-cli 和 fleet 本身都在 `%TEMP%\wsl-crashes` 留下約 1GB 和 450MB 的 core dump。現在 systemd unit 設定 `CoredumpFilter=0`，dump 只有幾 KB；這個設定會被 tmux server 以及 fleet 啟動的每個 CLI 繼承。`LimitCORE=0` 適用於直接寫 core 檔的系統。`TimeoutStartSec` 從不設上限改為 15 分鐘。`StartLimitIntervalSec=30min` 和 `StartLimitBurst=4` 讓 fleet 在 30 分鐘內失敗 4 次後，systemd 就不再自動重啟；以前一次啟動要好幾分鐘，原本「10 秒內 5 次」的限制永遠不會觸發，主機記憶體耗盡時就會一直「watchdog 殺掉 → systemd 重啟」。**直接執行 `systemctl --user restart com.agend.fleet` 會計入這個次數；`agend restart` 會先執行 `reset-failed`，不受影響。** `agend restart`（`agend update` 也會執行它）會替舊的 unit 補上這些設定、重新載入 systemd，並確認已載入 `CoredumpFilter=0`，否則拒絕重啟；systemd 246 以前不認得這個設定，只會提出警告。你自己設定的值不會被更動。
-- **[行為變更] kiro instance 每次啟動都會鎖定自己的 engine；做不到時會拒絕啟動，而不是換掉 engine（#1109）。** kiro-cli 3.0（2026 年 10 月）會棄用 classic UI，而且可能預設改用 V3 engine；kiro 還會跳出「切換到 3.0」的提示，答案會存成整台機器共用的設定。instance 的對話存在它所屬 engine 的資料庫裡，換 engine 會單向分叉。現在 AgEnD 會以 `--legacy-ui --agent-engine=v1` 啟動 `kiro_ui: legacy`、以 `--tui --agent-engine=v2` 啟動 `kiro_ui: tui`（啟動參數優先於已存的設定）。每個 kiro-cli 能接受哪些值，依版本判斷；比 2.27 更新的版本則讀它自己的 `chat --help`（2.3 的 `--agent-engine` 只接受 `rust|kas`，所以只帶 `--legacy-ui`）。若 kiro-cli 已無法讓 instance 跑在原本的 engine 上，就不會啟動：會發一則說明原因的通知，且不自動重試。執行中的 instance 若 kiro-cli 被就地換掉，會在下次重啟時被擋下。`--help` 裡少了選擇器，絕不會被當成「這是舊版」的證據。「切換到 3.0」和「升級 agent 設定」這兩個啟動提示，會選擇不做任何變更的選項：一次只按一個鍵，而且只在確認游標確實停在該選項時才按；其他狀態（游標無法辨識、停在「Don't ask again」、按了鍵游標卻沒動）都會停下來等人處理，期間暫停傳送訊息。kiro-cli 比 2.21 舊或比 2.27 新時會通知一次，但仍會啟動。
-- **[行為變更] 一個壞掉的 MCP server 不會再讓所有 kiro instance 起不來（#1111）。** AgEnD 以前啟動 kiro-cli 時會帶 `--require-mcp-startup`，只要「任何一個」啟用中的 MCP server 啟動失敗，kiro 就會直接結束（exit code 3）——包括你自己在 `~/.kiro/settings/mcp.json` 設定的 server。因此某個第三方 server 在 kiro-cli 2.27 上壞掉時，所有 kiro instance 都無法啟動。現在 kiro 跟 claude、codex 一樣：你自己的 server 失敗只會少掉它自己的工具（kiro 會在 pane 裡顯示 `✗`）。AgEnD 自己的 fleet server 有沒有連上，改由 daemon 檢查，而且適用所有 backend：CLI 啟動 90 秒後 AgEnD 的 MCP server 仍未連上時，instance 會回報它沒有 agend 工具，並在 `mcp_auto_restart`（預設開啟）下等閒置後重啟再試。server 若之後才連上，該回報會被撤回。
-- **[行為變更] tunnel 改走 http2 並最多等一分鐘。** cloudflared provider 現在預設傳 `--protocol http2`（QUIC/UDP 7844 在很多公司網路與 VM 被擋，
-  cloudflared 否則要花很久才 failover 或根本連不上），就緒檢查改為先經 Cloudflare 公共解析器（1.1.1.1 / 1.0.0.1）、系統解析器當後備；啟動預算由 30 秒
-  改為 60 秒。`agend setup --tunnel` 同樣適用。若要沿用 cloudflared 自己的選擇，可設 `web_terminal.tunnel.protocol: quic`（或 `auto`）。
-- **[行為變更] `/login` 的瀏覽器終端採用同一套 `Host` 規則。** 每次 `/login` 會開一個自己的短命 listener。它只檢查 `Origin` 等於 `Host` — 這一點 DNS rebinding 頁面天生就會滿足 — 而且對任何 `Host` 都回應。現在凡是不是 `localhost`/`127.0.0.1`/`[::1]`、fleet 的 `hostname:`、或 `web.allowed_hosts` 項目（dashboard 已在用的同一個設定）的名稱，任何路徑與 WebSocket upgrade 都一律回相同的 403。**如果你是透過反向代理或區網位址開啟終端連結，請把該名稱加進 `web.allowed_hosts`。** 這個 listener 也可以被告知「再多放行一個精確名稱」，並依該名稱（而非 `X-Forwarded-Proto`）決定 cookie 是否 `Secure`；目前沒有任何功能使用它（這是日後讓登入終端經由 tunnel 對外的前置工作）。
-- **[行為變更] dashboard 現在會拒絕 `Host` 不認得的請求。** health/dashboard server 雖然只綁 127.0.0.1，但這擋不住 DNS rebinding：網頁可以把自己的網域解析到 127.0.0.1，再用 script 讀取不需要 cookie 的路由，包含 `/view` 的即時終端畫面（`/api/pane/*`）。這種網頁唯一改不了的是瀏覽器送出的 `Host`，所以所有路由（含 `/health`、`/agent`）現在只有在 `Host` 是 `localhost`、`127.0.0.1`、`[::1]`、fleet 的 `hostname:`，或新增的 `web.allowed_hosts` 列出的名稱時才回應，其餘一律 403（不比對 port）。**如果你是透過反向代理或 port forward、且它呈現的是別的名稱，請把該名稱加進 `web.allowed_hosts`**；每個被拒的名稱第一次出現時，`fleet.log` 會記一行並附上這個提示。CLI、`agend web`、`/dashboard` 與內部呼叫都用 loopback 名稱，不受影響。
-
-### 新增 (Added)
 - **Codex capacity 偵測硬化：不怕 glyph 換、不吃 scrollback（#1215）。** capacity 那行必須是 live transcript item（composer 上方最後一則、之後沒有更新的）——arm 跟 accept 都檢查；引用或 scrollback 只通知使用者、不注入。capacity pattern 不再接受 box-drawing chrome（`│ …` popup／表格列也是 `So`）；quota、rate-limit、auth 共用一個 `CODEX_STATUS_GLYPH` 常數，下次 glyph 再變不會像 #1208 那樣靜默壞掉；occurrence counting 合成同一個。nudge 改說「沒做完才繼續」。pane 仍是 capacity 權威；session-store seam 仍只觀測。
 - **被打斷的回合在 CLI 自己沒接手時會跨重啟續接（#1209）。** channel 回合 armed 時 daemon 寫一次性 `in-flight-turn.json`
   marker（含 TurnFingerprint checkpoint）；重啟後還留著的，by construction 就是被打斷的回合。開機＋CLI spawn 後純 gate 只判一次：
@@ -121,21 +36,55 @@
   會讓該頻道的 agent 不啟動，而不是改用其他登入跑。只有 `codex` 與 `kiro-cli` 支援 profile，其他 backend 會提出警告並忽略。
   不論在 `classicBot.yaml` 或它繼承的 fleet defaults 改了 profile（下次輪詢或 reload 時），都會重啟該頻道的 agent——kiro 會開新對話
   （另一組訂閱有另一套對話），跟 fleet instance 相同。
+
+### 變更 (Changed)
+- **文件：已發佈的 2.1.10 與 2.1.11 有了自己的 CHANGELOG 段落（#1295）。** 這些條目原本一直留在「未發佈」；現在每一條都歸到第一個包含其新增 commit 的版本 tag 底下，升級注意事項一併搬移，`docs/development.md` 也把切出版本段落列為發版步驟。
+- **文件：退役 `wiki/`，`docs/` 成為唯一來源（#1279）。** 仍有用的頁面依目前程式碼改寫後，併入 `docs/development.md`（發佈與 CI、發佈說明寫法）與 `docs/design/` 的四份新文件（頻道投遞、ClassicBot 回覆路由、指令權限、記憶分層）；其餘刪除，保留在 git 歷史。五份已被取代的文件移到 `docs/archive/`，開頭註明由哪份文件取代；`docs/design/` 各份筆記的狀態列也已更新為實際上線的狀況。
+- **`list_emojis` 變輕了（#1226）。** 伺服器 emoji 預設不再附圖片網址（要的話設 `with_image_urls`；想看圖用 `preview_emojis`），並可用 `name`、`limit`、`primary_only` 縮小清單——在 emoji 很多的伺服器上，一次呼叫原本要花約 1 萬字的 context，而 agent 只需要一個 emoji。emoji 與貼圖工具的呼叫改用共用的 30 秒時限，不再是固定 10 秒，一次下載多張圖的預覽不會被中途切掉。
+
+### 修正 (Fixed)
+- **Kiro 斷線 picker 通知恢復具體文字、interaction IPC 安靜了、死 gate 移除（#1219）。** 一般 `dialog` 種類的對話框（例如 Kiro 模型斷線 picker）通知恢復帶 code-owned 描述——「model unavailable、去選替代模型」——而不是籠統的「等你輸入」；特定種類（permission、login 等）維持分類文字。`publishInteraction` 不再每次觀察都重送沒變的 snapshot（按 phase/kind/reason/episode/stale/suspected 比對，時鐘欄位排除，最終狀態不會丟）。probe 前永遠到不了的 `delivery_idle_gate` 過期檢查刪除；probe 後真正會觸發的那道保留。
+- **macOS 不再誤報記憶體警報（#1257）。** 在 Mac 上，AgEnD 不再發「主機記憶體吃緊」通知，也不再因記憶體而放慢或暫停啟動 agent。那裡的可用記憶體與 swap 數字不是記憶體壓力的訊號：macOS 會依需要增加 swap 檔，swap 接近用滿是正常的；一台 16 GB、還有 2.8 GB 可用的 Mac 卻被要求一次只啟動一個 agent。採樣數值仍會寫進 log。改用 macOS 自己的記憶體壓力等級記在 #1256。Linux 不變。
+- **`agend-agent reply … --sticker` 與 MCP 的 reply 規則一致（#1254）。** `agent_mode: cli` 的 agent 若帶了此頻道送不出的貼圖（Discord 上別的伺服器的貼圖、或不是 Telegram 貼圖 id 的東西），現在會在送出任何東西之前先檢查，並以該則回覆的錯誤回報。以前是直接交給 adapter。另外，帶貼圖的回覆不再被當成同一段文字（不帶貼圖、仍在送出中）的重複回覆。兩條路徑現在用同一套方式判斷是否重複。
+- **補回覆不再因為太早觸發而造成重複回覆（#1241）。** claude-code 上，回覆完成防線以前會在 agent 還在寫第一則回覆時、看到 pane 像閒置就觸發，把一則 `[system:reply-required]` 提示貼進 CLI，agent 之後又回答一次、變成回覆兩次。現在要回合「證明自己真的結束了」才會補救：第一次的閒置邊緣只會啟動 60 秒確認窗（之後又看到工作、有回覆送達、或取消都會解除），要閒置持續超過整個窗口、且一直沒有回覆，才會送出提示。從回合開始後完全沒觀察到工作、就出現的閒置邊緣，會直接按住不理。真的漏回還是會補（#750），最多晚一分鐘——而且補救提示現在會說：如果已經回過了，就什麼都不必做。
+- **又看得到 Claude 的 API 重試了（#1239）。** Claude Code 重試失敗的請求時（`✻ 429 … · Retrying in 4s · attempt 4/10`），AgEnD 會發通知，並把這個回合當成仍在進行。從 #1101 起，這只在沒有 status line 的畫面上有效。有 status line 時（AgEnD 一律會設），Claude 不會在 footer 印 `esc to interrupt`，而判斷正是靠這行提示。所以進行中的重試被當成閒置、沒有通知，等很久的重試還可能在回合中途把取消按鈕收掉。現在改看那一列的位置：它在 spinner 的位置，緊貼在輸入框正上方。已結束、被中斷或被引用的那一列仍算歷史，最後的錯誤列（`Request rejected (429)`、重複 529、設定的金鑰無效）照舊認得。另外，工作目錄很長、讓 Claude 自己的 Bash 權限提示第二個選項換成兩行時，現在也會正確停住等人處理。
+- **網頁登入頁的登入碼輸入框在 100% 縮放下就看得到（#1242）。** `/login` 開的網頁終端機，會在「Sign-in code」那一列出現之前先決定終端機大小，之後一直沿用：
+  終端機最下面幾行（包括 CLI 的 `Paste code here` 提示）延伸到那一列底下並蓋住它。輸入框其實在，但看不到也點不到，要改變縮放、讓終端機重新調整大小才會出現。
+  現在終端機自己的區域一有變化就重新調整，也不會畫出自己的區域，所以任何視窗大小下提示和輸入框都看得到。
+- **切換 instance 的 backend 後不再啟動不了（#1217）。** session id 現在屬於產生它的 backend（旁邊記一個 `session-id.backend`）。換成另一個 backend 後第一次啟動時，舊 id 會被放到一旁（跟以前一樣是 `session-id.abandoned-<ts>`），新的 CLI 全新開始，而不是被要求去 resume 一段它從沒有過的對話。`update_instance_config` 改了 `backend` 時，執行中的 instance 現在會被重啟並全新開始。以前只會存下設定，舊 CLI 繼續跑，直到其他事情讓它重啟。另外三個讓這種失敗變成永久的缺口也一併補上：
+  - 每個 backend 各自指定「session 已經不存在」的字樣，例如 muse 的「retained session not found」；
+  - 未經證實的 resume 失敗次數改存在 instance 目錄裡、以 session id 為鍵。每次啟動都會建一個新的 Daemon，所以以前永遠停在「attempt 1/3」，到不了三次後的全新啟動；
+  - 認得 Claude 的「Background work is running」退出提示。訊息投遞會等它結束；stop 與 pause 會用 Escape 取消它並停止程序，絕不選它的任何選項。
+- **Discord slash 指令：較少出現「應用程式沒有回應」，而且不再靜默（#1231）。** slash 指令現在第一件事就是回應（acknowledge），
+  其他讀取都在之後。回應失敗時不執行該指令（你已看到「沒有回應」，重試時若照樣執行會做兩次），並且會告訴你——私下回覆，或發在頻道。
+  若同一個 bot 的另一個連線已經回應，這邊就保持安靜。超過 1.5 秒才回應時，log 會記下時間花在哪（送達 vs 回應本身）；fleet 會記錄每次
+  1 秒以上的 event loop 卡住；設定驗證會在兩個連線共用同一個 bot token 時警告。調查結果（包括哪些不是原因：presence 更新、單純的訊息量）：
+  `docs/design/1231-discord-slash-ack.md`。
+- **等候輸入不再隱形（#812）。** `describe_instance`、`list_instances` 與狀態 API 會顯示確認過的 `awaiting_input`、原本的執行狀態及固定互動類別；第二次新 capture 才確認，超過 15 秒明確標成目前無法確認，不解除安全 hold。原生四選項 Claude Bash 權限視窗只保留給人處理，不送任何按鍵。弱終端提示仍只算疑似，不宣稱涵蓋 editor；500ms／15s 是 sandbox 驗過的策略值，尚非實機時序保證。
+- **送進閒置 Claude / Grok / Muse instance 的訊息，不再只因為 pane 有輸出就記成 `delivered`（#758）。** 這些 CLI 沒有可讀的輸入列，過去只要 Enter 之後 pane 有任何輸出就算送出——而把 paste 洗掉的重繪也會產生輸出，outbox 因此對一則根本沒到的訊息記下 `delivered`。✅ 不變，但該列現在由 CLI 自己的 transcript 收尾：找到這則投遞的 marker → `delivered`（`transcript-marker`；CLI 只是排進佇列則為 `transcript-marker-queued`）；最後一次讀取成功、整整 10 秒 transcript 仍沒有 marker → `uncertain`（`unverifiable-no-transcript-marker`，會有 ⚠️ 與 `[system:delivery-outcome]`；不會重貼，訊息仍可能送達）；transcript 讀不到、或該 backend 沒有（Grok、Muse、Gemini…）→ 維持今天的 `delivered`，並標示 `output-edge-only; submission-unverifiable`。等待在 pane lock 放開後進行，但 fleet lane 與共用的 pump budget 會被 held 到結算（成功約一秒內收尾；真的掉失的 paste 至多佔 lane 約 10 秒）。steer、native-queue、Codex、Kiro 與 raw paste 不受影響。
+- **讀 instance log 不再整檔讀進記憶體（#1206）。** `get_instance_logs` 過去會把 `output.log` 整檔同步讀進來才取尾段，多 MB 的 pipe-pane log 會卡住 event loop、可能撐爆 30 秒 IPC 上限。現在改成從檔尾往回 bounded chunk 讀（最多掃 1 MB、非同步），log 再大 I/O 也不會跟著長。在範圍內的 log 行數照樣精確；超過範圍的只回尾段、行數標 unknown 並附註說明。掃描窗口內完全沒有換行時回尾段並標 partial、不會回空。啟動時 pipe-pane 接不上去，現在會 warn、不再無聲消失。
+- **Claude 分段寫入的 transcript 事件不再漏掉（#1221）。** 工具進度與活動紀錄會等該筆資料的結尾換行寫完，才推進讀取位置。跨次 poll 寫完的資料只讀一次，monitor 重啟後也能補讀；已完整換行的最後一筆仍立即顯示。Codex／Kiro 共用的 JSONL reader 使用同一個 byte 邊界，跨次寫入的 UTF-8 文字也保留完整。
+
+## [2.1.11] - 2026-10-05
+
+### 升級注意事項 (Upgrade Notes)
+- **[行為變更] Codex「model is at capacity」現在改成叫它「繼續」，不再重啟（#905）。** 舊做法是 30 / 60 / 120 秒後重啟 instance，但重啟後的 Codex 停在空白 prompt，沒有人重送失敗的那一回合——「重試中」的通知承諾了從未發生的事，工作就卡在那裡。現在照舊通知使用者，約一分鐘後 AgEnD 對 agent 說「繼續」（keep going）：它的 context 還在、不用重讀、也不換模型。每次擁擠錯誤只送一次，而且只在畫面自上次起完全沒變時才送：畫面動了、有人在輸入、agent 自己開始做事、有訊息排隊、instance 被停止／暫停／重生或使用者取消，都會取消這次 nudge。計時用 monotonic clock（系統時間被調整不受影響）。nudge 之後又出現擁擠算新的一次。30 分鐘內最多送 3 次 nudge；之後再出現擁擠（第 4 次）才像以前一樣暫停。
+- **[行為變更] `agend update` 會讓安裝留在原本的頻道；beta 版不會在沒有要求的情況下被換到穩定線。** 以前不帶旗標的 `agend update` 不管裝的是什麼都會安裝 `@latest`，所以 beta 版可能被裝回較舊的穩定版 —— 而 AgEnD 自己的更新通知還請 beta 使用者執行這個指令。現在它依照已安裝的版本決定：prerelease（`x.y.z-beta.N`，或任何 `x.y.z-<pre>`）從 `@beta` 更新，正式版從 `@latest` 更新。聊天裡的 `/update` 不再自己判斷（它讀的是自己程式旁邊的版本，source checkout 會讀到 `1.22.0`，只有包含「beta」字樣時才加 `--beta`）：現在一律執行 `agend update`，由已安裝的 CLI 決定。會回到較舊版本的更新會被拒絕，除非用 `--stable`、`--version` 或 `--force` 明確要求。新增 `agend update --stable`，可以把 beta 版切換到穩定版。beta 使用者收到「有較新的穩定版」通知時，會提示改用 `--stable`。更新會安裝它檢查過的那個確切版本（例如 `@songsid/agend@2.1.11-beta.3`，而不是中途可能被改指的 `@beta` tag）；`agend update --version <v>` 現在也能用了——以前它會被當成 `agend --version`，只印出版本、什麼都不安裝。
+- **[行為變更] OpenCode instance 現在和其他 backend 一樣，啟動時不再跳權限確認。** OpenCode 在讀專案目錄以外的路徑（`Access external directory /tmp`）、讀 `.env`，或遇到你自己 config 設的 `ask` 時會先問；其他 backend 本來就有 skip-permissions 開關，所以 OpenCode instance 去讀 `/tmp/image.jpg` 會一直停在確認畫面等人按。AgEnD 現在啟動 OpenCode 時：該 binary 的 `--help` 有列 `--auto`（OpenCode 1.17 以後）就用它（每個 ask 自動回「once」，**你 config 裡明確的 `deny` 仍然有效**）；沒有的舊版**不加任何啟動開關**——它唯一的形式 `OPENCODE_PERMISSION` env 會蓋掉你自己的 `deny` 規則——改由執行期回答提示。**畫面上的 prompt 一律回「Allow once」**（只按一次 Enter、不留下任何記憶）；以前是按 Right+Enter＝「Allow always」。若已走到「Always allow」確認頁，按 Esc 取消回到 prompt。prompt 在畫面上時，該 pane 不接收投遞、也不會被當成卡住；agent 文字、輸入框草稿或 transcript 只是引用這個畫面，也不會再被送任何鍵。`skipPermissions: false` 可關掉啟動開關（執行期回答仍然啟用）。啟動準備中收到 stop 現在會取消該次啟動。
+- **[行為變更] 移除舊的聊天室轉傳式 `/login` 模式（#1139）。** `login.mode: relay` 是 2.1.6 以前的登入方式（AgEnD 在 tmux 視窗裡操作登入 CLI，再把它的選單、授權連結與文字提示透過聊天室轉傳）；自 2.1.5 起 `/login` 預設就在有 token 保護的瀏覽器終端機進行，`/login code` 自 #1137 起也已沒有入口。**fleet.yaml 裡仍設有 `login.mode: relay` 時照常載入**——設定會被忽略，log 裡留一則警告，請移除。`/login` 的其他行為（瀏覽器終端機、device-code、公開連結）與安裝 CLI 都不變。升級前留在聊天室的登入方式選單按鈕，升級後點擊會回應「已過期」。
+
+### 新增 (Added)
 - **CLI 對話框不理會 AgEnD 的自動回答時，現在約 15 秒內就會通報，所有 backend 都適用。** AgEnD 回答執行期對話框（權限提示、信任提示、選單）的方式是按它的鍵；若按完鍵後**同一個**對話框（逐字完全相同的請求——OpenCode 由 prompt 區塊辨識請求，所以周圍跳動的狀態列不影響；其他 CLI 比對整個畫面；任何無法解釋的差異都不算證據）仍在畫面上，連續三次，就對該 instance 的 topic 與 fleet 通報一次（「不接受 AgEnD 的自動回答……請手動回答」，若同時保留了投遞會註明）。以前會保留投遞的對話框要等一分鐘才通報，不保留投遞的（kiro trust、muse/grok 工具核准、agy 問卷）則完全不通報、只是每 5 秒重答一次直到永遠。通知只含對話框的固定描述和次數，絕不含 pane 內容，且每個「事件」只發一次（對話框消失後又有新的忽略才會再發）。被回答後又出現的新提示（連續的工具提示，或下一個內容不同的排隊請求）不算卡住，也會重置一分鐘的 parked 計時，而不是沿用舊的。限制：兩個長得完全一樣、前後相接的請求，光看畫面無法區分，會被當成「回答被忽略」；CLI 無法指認請求、畫面又自己在變（例如跳動的計時器）時，兩個方向都不構成證據：這項檢查不通報，而會保留投遞的對話框原有的一分鐘 parked 通報照常計時（只有對話框消失、或 CLI 明確指出是不同請求，才會重設該計時）。通報之後 AgEnD 不會停止回答：同一個請求只會每 30 秒回答一次（原本每 5 秒）——長得像的排隊請求仍會逐一被回答，只是變慢；真的被忽略的對話框則被按得少很多；不同的請求、對話框消失或 instance 重生就恢復正常速度並重新計數。
 - **kiro-cli 無法再執行某個 kiro instance 時，General 會收到通知。** 已安裝的 kiro-cli 拒絕照設定執行 kiro instance（#1109）時 —— 不論是啟動時，或 kiro-cli 自我更新後的 respawn —— 每個 General 現在都會以 agent 身分收到 `[system:kiro-incompat]`：哪些 instance 停了、kiro 的原因、它們的對話都還在，並請它載入新的 `kiro-engine-migration` skill。ClassicBot 的 kiro instance 也算在內。這則通知會在 delivery outbox 保存最多 14 天，直到每個 General 收下為止（同一個 kiro-cli 可能也讓 General 停了；一般訊息維持 24 小時），同一種拒絕每天只送一次。給操作者的純文字通知不變。
 - **`kiro_engine_status` 工具**（唯讀；worker、standard、general profile 皆可用）：每個 kiro instance（含 ClassicBot）的 `kiro_ui` 與 credential profile、下次啟動會用的 engine 參數或 kiro 拒絕的原因、AgEnD 為它準備過的啟動（每次變更的 kiro-cli 與 AgEnD 版本，取自 engine 帳本），以及它的 V3 session。它不會執行任何程序：只讀取上一次 kiro 啟動時探測到的 kiro-cli 相容資訊，並註明是何時探測的。
 - **給 General 的 `kiro-engine-migration` skill：** kiro 不相容代表什麼、停下的 instance 對話完好、該怎麼跟使用者說明，以及絕不能做的事（重啟它來「再試一次」、改 `kiro_ui`、自己執行 kiro-cli、動 `~/.kiro`）。遷移本身目前還不能用，skill 也會如實說明。
 - **kiro engine 帳本：之後 V1 → V3 遷移的基線。** 每次啟動 kiro 都會記進 `<data dir>/kiro-engine-ledger.json`（僅擁有者可讀寫）：instance 的工作目錄與 credential profile、kiro-cli 版本、AgEnD 版本、UI 與 AgEnD 鎖定的 engine 參數 —— 保留最近一次啟動，外加每次變更一筆歷史。它放在 instance 目錄之外，所以 `replace_instance` 不會把它清掉。它絕不會擋下啟動：寫不進去就略過。
 - **V3 的 kiro instance 只會依 id 接回自己擁有的 V3 session。** kiro 在 V3 上的 `--resume` 會從任何 engine 挑該目錄最新的對話，碰到 classic 對話就每次啟動都轉出一份新的 V3 副本。現在 V3 instance 會先全新開始，下一次啟動才接手那次全新啟動建立的 session —— 而且只在確定時才接手：建立時間晚於全新開始、沒有人擁有（擁有權是 `<data dir>/kiro-v3/` 底下的獨占 claim）、同一目錄也沒有其他 V3 instance 在等著接手自己的 session。之後在仍持有 claim 時依 id 接回那個 session；略過 resume 會放棄它。全新開始會在啟動前先記錄下來，記錄不了就拒絕這次啟動，免得之後又接回已放棄的 session。任何不確定的情況都會再全新開始，所以共用工作目錄的兩個 V3 instance 會各自全新開始。classic 對話只會經由明確的遷移進入 V3。`kiro_ui: v3` 本身在 V3 能無人值守之前仍會被設定驗證拒絕（#849）。
-- **`/login` 會標明屬於哪個 fleet。** 同一個 Discord guild 裡每個 AgEnD bot 都會註冊自己的 `/login`，所以 slash 選單列出一模一樣的指令，選單也可能來自你不想操作的那個 fleet。現在指令說明的結尾會帶著 fleet 標籤，backend 選單也會顯示 `🖥 Fleet：<標籤>`。標籤取自 fleet.yaml 的 `fleet_label`，預設為主機名稱（AgEnD home 不是 `~/.agend` 時再加上該目錄名稱）。
-- **用手機完成 `kiro-cli` 的 `/login`：選用的公開連結（`web_terminal.tunnel.allow_public`，預設關閉）。** 啟用後，登入確認會在
-  **只用本機連結** 旁多一個 **開啟公開連結**；按下就是這次登入的同意。Cloudflare Quick Tunnel 只代理那一次登入的終端；公開連結與存取 token
-  以兩則私訊傳給發起人（絕不進頻道）；私訊送不到、tunnel 起不來或中途斷線、取消、逾時、關閉 fleet，都會在下一次登入之前先關掉 tunnel，
-  無法確認已停止的 tunnel 會被公告並封鎖後續 tunnel。tunnel 的公開名稱不會寫進 log。需要 `PATH` 上有 `cloudflared`。
-  見 `docs/configuration.zh-TW.md`「人不在機器旁完成 /login」。
 
 ### 修正 (Fixed)
-- **Claude 分段寫入的 transcript 事件不再漏掉（#1221）。** 工具進度與活動紀錄會等該筆資料的結尾換行寫完，才推進讀取位置。跨次 poll 寫完的資料只讀一次，monitor 重啟後也能補讀；已完整換行的最後一筆仍立即顯示。Codex／Kiro 共用的 JSONL reader 使用同一個 byte 邊界，跨次寫入的 UTF-8 文字也保留完整。
+- **取消也會停止補回覆（#1199）。** 取消按鈕與 `/cancel` 現在會在中斷 CLI 前標記目前的人類對話回合，使用者主動停止後不再跳出漏回覆警告，也不會要求 agent 再補一個結論。已在送出的回覆仍正常結算，新訊息仍有自己的回覆防線；取消後才回報失敗的補救或成功的舊 paste 都不會重新啟動該回合。
+- **重啟後不再重送已經送達的 Claude Code 訊息（#1205）。** 重啟後 daemon 會到 CLI 的 transcript 找每個進行中投遞的 marker，而且只有出現在 user 條目最開頭的 marker 才算。Claude Code 會把每則貼上的訊息存成 `<pasted_content id="…">` 加上原文，所以 marker 從來不在開頭、也從來找不到：已送達的訊息被當成「transcript 完整、沒有 marker」，舊 CLI 又已不在，於是被重試——同一則訊息送了兩次。現在在 marker 前面只接受 CLI 自己的這個 wrapper（確切格式、僅限 Claude Code），marker 在 wrapper 之後仍必須領頭；任何其他前綴、引用、或其他 backend 的條目仍不算。
+- **Codex 0.159.2 與 0.160.0 的「Selected model is at capacity」重新能被偵測（#1208）。** 這兩個版本把該拒絕訊息印成 `■ Selected model is at capacity. Please try a different model.`，但偵測規則是照 `⚠` 寫的，所以容量通知從沒出現、「繼續」提示也沒武裝，回合只是落到一般的「沒回覆」流程。現在行首只要是任一個狀態符號（`■`、`⚠`、`⚠️`…）都算；項目符號、破折號、引用符號、數字仍不行，而且整句仍必須獨佔一行、從第 0 欄開始，所以提到模型容量的一般文字不會觸發。只改偵測——比對成功之後的行為不變。
 - **Telegram ClassicBot 的 `/start` 回覆改成請你 @bot 對話（#1196）。** 「Agent 已啟動」與「已有活動中的 Agent」原本以 `/chat` 開頭，那是 Discord 的用法；在 Telegram 上是 @ClassicBot 來對話，回覆現在照實說。Discord 的回覆不變，送到 agent 的內容也不變。
 - **送進忙碌中 Claude / Grok / Muse instance 的 steer 現在是 `delivered`，不再是 `uncertain`（#1197）。** 這些 CLI 沒有可讀的輸入列，而證明一般送出的「閒置→忙碌」邊緣在本來就忙碌的 pane 上不可能出現，所以每個 durable steer 都落在 `uncertain`——操作者看到 ⚠️、寄件者收到 `[system:delivery-outcome]`，但 steer 其實已送達（不是 IPC 逾時：`send_to_instance` 立刻回傳，沒有任何東西在等）。現在 steer 只要在成功的 Enter 之後，pane 上出現它自己可信的 `message_id`（次數多於貼上前）、沒有對話框、spawn 與視窗都沒變，就是 `delivered`，證據為 `steer-accepted-marker-on-pane; input-row-unreadable`：已進入進行中回合的輸入，不代表模型已讀（`delivery_status` 本來就顯示 `delivery_mode: steer`）。證據不足仍是 `uncertain`。另外：steer 的橫幅現在放在 delivery marker 之後而不是之前，重啟後可以從 CLI transcript 證明 steer。
 - **Codex 長時間執行、畫面沒有新內容的回合，不再被誤判為卡住（#1188）。** 即時狀態列自己的經過時間計數（`• Working (5m 51s • esc to interrupt)`）現在算作存活證明：只要計數自上次檢查後有前進，不論畫面其他部分多久沒變，該回合都維持「工作中」。以前 10 分鐘卡住判斷會把「畫面變了」蓋上最後一次輸出事件的時間——已經是幾分鐘前——於是健康的長回合被標成卡住（hang 通知，接著重啟嘗試，而原本的 process 其實還活著、重啟「逾時」）。計數整個 stuck 逾時都停住的畫面仍會被判為卡住。另外：daemon 的「最後變動」時間不會倒退，卡住 deadline 改依最近的存活跡象，不會立刻重複觸發。
@@ -155,12 +104,73 @@
 - **`/login` 瀏覽器終端機不會再因為複製而中斷登入，並提示 code 要貼在哪。** 以前按 Ctrl+C 想複製連結，會送出中斷、結束 `claude auth login`（exit 130），之後的貼上與 Enter 都打在已結束的 session 上。
   現在所有 web 終端機在「有選取文字」時 Ctrl+C 是複製；登入頁在沒有選取時 Ctrl+C（與 Ctrl-C 按鈕）直接停用——取消仍用 Stop；安裝終端機保留 Ctrl+C。CLI 不會回顯你貼上的 code，看起來像沒反應：
   登入頁現在有一個 code 輸入框，一次送出 code 與 Enter 並告訴你已送出（code 不會被記錄）。伺服器拒絕的 code 會結束指令；頁面現在會說「code 被拒（過期、已用過、重複貼上或來自另一次嘗試）」並請你重新 `/login`，而不是只顯示「exited with code 1」。
+
+### 安全 (Security)
+- **Discord slash 指令現在遵循同一張指令表（#1148）。** 指令適用於哪些頻道、誰能使用，改由一個地方宣告（`src/command-table.ts`），不再散在兩份複製的 handler 裡；
+  選單描述上的 🔒 由這張表產生，標籤不會再和規則不一致。它位於先前加入的授權關卡「後面」，只會收窄關卡放行的範圍。授權級別為：*任何人*、
+  *頻道管理員*（fleet 頻道＝fleet admin；ClassicBot 頻道＝fleet admin **或** ClassicBot admin）、*fleet admin*、*ClassicBot admin*。行為變更：
+  - ClassicBot 頻道的 **`/stop`** 在 Discord 上現在需要 ClassicBot admin，與 Telegram 一向相同。原本 Discord 上任何人都能用；只是 fleet admin、
+    但不是 ClassicBot admin 的人，現在在 Discord 上不能再停止 ClassicBot 頻道（在 Telegram 上本來就不行）。
+  - Discord 的 **`/compact`** 需要頻道管理員（原本標了 🔒，但在 Discord 上沒有任何檢查）。Telegram 不受此變更影響：ClassicBot 聊天仍要 ClassicBot admin，
+    fleet topic 內則沒有檢查。
+  - **`/save`** 需要「該頻道類型」的管理員（原本連 fleet 頻道也要求 ClassicBot admin，導致 fleet admin 被拒、ClassicBot admin 反而能貼進 fleet instance）。
+  - ClassicBot 頻道的 **`/pause`、`/wake`、`/collab`** 在 Discord 上現在也接受 fleet admin（原本只收 ClassicBot admin）。Telegram 不變：ClassicBot 的
+    `/pause`、`/wake` 仍需 ClassicBot admin。
+  - **`/start`** 兩個平台都沒有變，表中也不再寫成「任何人」：Discord 只看 guild allowlist；Telegram 私聊看使用者 allowlist，群組則要群組 allowlist **加上**
+    ClassicBot admin。表中把它標為由 handler 自行判斷。
+  - 表中新增 Telegram 欄，記錄 Telegram handler 與 Discord 不同的格子，並有測試（`tests/command-gates-by-platform.test.ts`）以真實 Telegram handler 對照。
+  - **`/stop` 與 `/dashboard` 現在會顯示 🔒**；`/model`、`/effort`、`/clear` 與各 admin 指令，對原本能用的人沒有變化。
+  - 在不適用的地方輸入的指令（例如沒有 agent 的頻道輸入 `/ctx`）會在執行任何東西之前，用一行說明拒絕；已不存在的指令會得到回覆，而不是「應用程式沒有回應」。
+  文字輸入的 `/指令`（相對於 slash 指令）由後續變更處理。
+- **Discord slash 指令現在要先過授權關卡（#1148）。** AgEnD 的 slash 指令是全域註冊的，所以 bot 所在的每個 guild、每個 DM 看到的選單都一樣，
+  描述裡的 🔒 只是標籤。過去 slash 指令會略過保護「同樣文字訊息」的 allowlist，也不看來自哪個 guild 或 DM（只有 `/start` 會看）：
+  只要和 bot 同在任一伺服器，就能對 fleet instance 下 `/steer`、`/compact`、`/cancel`，或讀 `/sysinfo`。現在在任何指令執行前：
+  **DM 一律拒絕**；來自**其他 guild** 的指令只對已註冊的 ClassicBot 頻道與 `/start`（仍檢查 `allowed_guilds`）有效；在 fleet 頻道裡，呼叫者必須是
+  **文字訊息路徑也會理會的人**——該頻道 instance 所屬 adapter 的存取政策（明列的 fleet admin 一律可以）。ClassicBot 頻道維持對所有人開放。
+- **`/update`、`/doctor`、`/dashboard` 與 fleet 頻道裡的 `/collab` 現在要求「指令所經 adapter」的 fleet admin，且空的 `allowed_users` 代表沒有人。**
+  它們過去讀的是*主要*頻道的清單（`channels[0]`，不是實際使用的 adapter），而且 `/update`、`/doctor`、`/collab` 把空清單當成「所有人」——
+  所以沒設清單的 fleet 上，任何能輸入 slash 指令的人都能在主機上執行 `agend update`；但文字版 `/update` 卻把空清單當成「停用」。現在 slash 與文字一致。
+  **若你依賴這些指令，請把自己列進該 adapter 的 `access.allowed_users`。**
+
+## [2.1.10] - 2026-10-03
+
+### 升級注意事項 (Upgrade Notes)
+- **[行為變更] 一鍵開啟 `/login` 公開連結——AgEnD 會自己取得 cloudflared（#1137）。** kiro-cli 與 claude-code 的登入確認現在不需任何設定就會提供 **我了解（外網臨時連結）**、**我了解（內網）**、**取消**：不必再設定 `web_terminal.tunnel.allow_public`，而 `allow_public: false` 改為這台主機關閉公開連結的開關（不顯示按鈕、不下載任何東西）。按下公開連結按鈕仍是每次登入的同意，同意文字也會警告：在登入結束前，任何拿到連結和 token 的人都能使用這個登入終端。如果 `PATH` 上沒有 `cloudflared`，AgEnD 會把 Cloudflare 官方版本下載到 `~/.agend/bin`（不需要 sudo，不安裝到系統）：固定版本、比對固定的 SHA256，每次使用前再檢查；不符就刪除、什麼都不執行。支援 Linux（x86-64、arm64、arm、x86）與 macOS。取得不到 cloudflared 時不會開啟任何東西，仍可使用內網連結。公開連結的其餘部分不變：連結與 token 分兩則私訊、失敗即關閉、有時間限制、不寫入 log。Discord 與 Telegram 都一樣。
+- **[行為變更] `/install-cli` 已移除：`/login` 會先安裝缺少的 CLI，再接著登入（#1131）。** 「讓這個 CLI 能用」只需要一個指令，所以有多個 AgEnD bot 的 guild 每個 bot 只顯示一個入口，也不會再打錯（`/install`、`/login-cli`）。`/login` 的選單會列出 fleet 可以安裝或登入的每個 backend，並標明點下去會做什麼：已安裝的 CLI 直接登入；未安裝的會先安裝（執行官方安裝腳本並確認在 PATH 上），完成後自動接著登入。`/login <backend>` 也一樣；`/login cancel` 也能停止安裝——只有這兩種用法（`/login code` 與短暫存在過的 `reinstall` 都已移除，#1137）。`opencode` 與 `muse` 可以安裝，但沒有登入流程；選單不列出 Gemini CLI，但 `/login gemini-cli` 仍可安裝它。Discord 的 slash 指令與 Telegram 選單中的 `/install_cli` 都已移除。在 2.1.10 直接輸入 `/install-cli`（或 `/install_cli`）仍可使用——它會說明指令已併入 `/login`，並執行 `/login <backend>`——這個別名會在 2.1.11 移除。
+- **[行為變更] grok 改為在聊天室給代碼登入；claude-code 也可以使用公開連結（#1137）。** `grok login` 是裝置代碼登入（grok 1.0.46 只會顯示網址和代碼，然後等待），所以 `/login grok` 現在會像 codex 一樣把網址和代碼貼在聊天室，不再開瀏覽器終端。grok 1.0.46 回報的「Signed in as …」也重新能被辨識為登入成功。claude-code 的登入需要把代碼貼回它的終端，所以要從手機完成就得能連到那個終端：公開連結（`web_terminal.tunnel.allow_public`）現在除了 kiro-cli 也提供給 claude-code。
+- **[行為變更] 暫停中的 instance 收到其他 instance 傳來的工作時，會自己醒來（#1129）。** `delivery_worker` 的預設值從 `off` 改為 `wake_only`。在 `off` 下，委派給一個跨 fleet 重啟仍保持暫停的 instance 的工作，會一直等到有人執行 `/wake`，而且看不出它卡住了。現在 wake coordinator 會用跟 `/wake` 相同的方式喚醒它：失敗會退避重試、連續三次失敗會通知，並且不會喚醒因登入失敗而暫停的 instance。設了 `warm_cap` 時，為了排隊工作而喚醒最多可超出上限 `warm_overflow`（預設 2）個；上限加超出額度都滿、又沒有閒置的 instance 可以暫停時，對暫停中 instance 的 `/wake` 或訊息會被拒絕，而不是超出上限。明確設定 `delivery_worker: off` 會維持原本的行為。
+- **[行為變更] crash dump 只會很小，而且 fleet 一直失敗時 systemd 不再無限重啟（#1113）。** WSL 會把所有 crash 交給 WSL 的 crash collector，它不理會 `LimitCORE`，所以 kiro-cli 和 fleet 本身都在 `%TEMP%\wsl-crashes` 留下約 1GB 和 450MB 的 core dump。現在 systemd unit 設定 `CoredumpFilter=0`，dump 只有幾 KB；這個設定會被 tmux server 以及 fleet 啟動的每個 CLI 繼承。`LimitCORE=0` 適用於直接寫 core 檔的系統。`TimeoutStartSec` 從不設上限改為 15 分鐘。`StartLimitIntervalSec=30min` 和 `StartLimitBurst=4` 讓 fleet 在 30 分鐘內失敗 4 次後，systemd 就不再自動重啟；以前一次啟動要好幾分鐘，原本「10 秒內 5 次」的限制永遠不會觸發，主機記憶體耗盡時就會一直「watchdog 殺掉 → systemd 重啟」。**直接執行 `systemctl --user restart com.agend.fleet` 會計入這個次數；`agend restart` 會先執行 `reset-failed`，不受影響。** `agend restart`（`agend update` 也會執行它）會替舊的 unit 補上這些設定、重新載入 systemd，並確認已載入 `CoredumpFilter=0`，否則拒絕重啟；systemd 246 以前不認得這個設定，只會提出警告。你自己設定的值不會被更動。
+- **[行為變更] kiro instance 每次啟動都會鎖定自己的 engine；做不到時會拒絕啟動，而不是換掉 engine（#1109）。** kiro-cli 3.0（2026 年 10 月）會棄用 classic UI，而且可能預設改用 V3 engine；kiro 還會跳出「切換到 3.0」的提示，答案會存成整台機器共用的設定。instance 的對話存在它所屬 engine 的資料庫裡，換 engine 會單向分叉。現在 AgEnD 會以 `--legacy-ui --agent-engine=v1` 啟動 `kiro_ui: legacy`、以 `--tui --agent-engine=v2` 啟動 `kiro_ui: tui`（啟動參數優先於已存的設定）。每個 kiro-cli 能接受哪些值，依版本判斷；比 2.27 更新的版本則讀它自己的 `chat --help`（2.3 的 `--agent-engine` 只接受 `rust|kas`，所以只帶 `--legacy-ui`）。若 kiro-cli 已無法讓 instance 跑在原本的 engine 上，就不會啟動：會發一則說明原因的通知，且不自動重試。執行中的 instance 若 kiro-cli 被就地換掉，會在下次重啟時被擋下。`--help` 裡少了選擇器，絕不會被當成「這是舊版」的證據。「切換到 3.0」和「升級 agent 設定」這兩個啟動提示，會選擇不做任何變更的選項：一次只按一個鍵，而且只在確認游標確實停在該選項時才按；其他狀態（游標無法辨識、停在「Don't ask again」、按了鍵游標卻沒動）都會停下來等人處理，期間暫停傳送訊息。kiro-cli 比 2.21 舊或比 2.27 新時會通知一次，但仍會啟動。
+- **[行為變更] 一個壞掉的 MCP server 不會再讓所有 kiro instance 起不來（#1111）。** AgEnD 以前啟動 kiro-cli 時會帶 `--require-mcp-startup`，只要「任何一個」啟用中的 MCP server 啟動失敗，kiro 就會直接結束（exit code 3）——包括你自己在 `~/.kiro/settings/mcp.json` 設定的 server。因此某個第三方 server 在 kiro-cli 2.27 上壞掉時，所有 kiro instance 都無法啟動。現在 kiro 跟 claude、codex 一樣：你自己的 server 失敗只會少掉它自己的工具（kiro 會在 pane 裡顯示 `✗`）。AgEnD 自己的 fleet server 有沒有連上，改由 daemon 檢查，而且適用所有 backend：CLI 啟動 90 秒後 AgEnD 的 MCP server 仍未連上時，instance 會回報它沒有 agend 工具，並在 `mcp_auto_restart`（預設開啟）下等閒置後重啟再試。server 若之後才連上，該回報會被撤回。
+- **[行為變更] tunnel 改走 http2 並最多等一分鐘。** cloudflared provider 現在預設傳 `--protocol http2`（QUIC/UDP 7844 在很多公司網路與 VM 被擋，
+  cloudflared 否則要花很久才 failover 或根本連不上），就緒檢查改為先經 Cloudflare 公共解析器（1.1.1.1 / 1.0.0.1）、系統解析器當後備；啟動預算由 30 秒
+  改為 60 秒。`agend setup --tunnel` 同樣適用。若要沿用 cloudflared 自己的選擇，可設 `web_terminal.tunnel.protocol: quic`（或 `auto`）。
+- **[行為變更] `/login` 的瀏覽器終端採用同一套 `Host` 規則。** 每次 `/login` 會開一個自己的短命 listener。它只檢查 `Origin` 等於 `Host` — 這一點 DNS rebinding 頁面天生就會滿足 — 而且對任何 `Host` 都回應。現在凡是不是 `localhost`/`127.0.0.1`/`[::1]`、fleet 的 `hostname:`、或 `web.allowed_hosts` 項目（dashboard 已在用的同一個設定）的名稱，任何路徑與 WebSocket upgrade 都一律回相同的 403。**如果你是透過反向代理或區網位址開啟終端連結，請把該名稱加進 `web.allowed_hosts`。** 這個 listener 也可以被告知「再多放行一個精確名稱」，並依該名稱（而非 `X-Forwarded-Proto`）決定 cookie 是否 `Secure`；目前沒有任何功能使用它（這是日後讓登入終端經由 tunnel 對外的前置工作）。
+- **[行為變更] dashboard 現在會拒絕 `Host` 不認得的請求。** health/dashboard server 雖然只綁 127.0.0.1，但這擋不住 DNS rebinding：網頁可以把自己的網域解析到 127.0.0.1，再用 script 讀取不需要 cookie 的路由，包含 `/view` 的即時終端畫面（`/api/pane/*`）。這種網頁唯一改不了的是瀏覽器送出的 `Host`，所以所有路由（含 `/health`、`/agent`）現在只有在 `Host` 是 `localhost`、`127.0.0.1`、`[::1]`、fleet 的 `hostname:`，或新增的 `web.allowed_hosts` 列出的名稱時才回應，其餘一律 403（不比對 port）。**如果你是透過反向代理或 port forward、且它呈現的是別的名稱，請把該名稱加進 `web.allowed_hosts`**；每個被拒的名稱第一次出現時，`fleet.log` 會記一行並附上這個提示。CLI、`agend web`、`/dashboard` 與內部呼叫都用 loopback 名稱，不受影響。
+
+### 新增 (Added)
+- **`/login` 會標明屬於哪個 fleet。** 同一個 Discord guild 裡每個 AgEnD bot 都會註冊自己的 `/login`，所以 slash 選單列出一模一樣的指令，選單也可能來自你不想操作的那個 fleet。現在指令說明的結尾會帶著 fleet 標籤，backend 選單也會顯示 `🖥 Fleet：<標籤>`。標籤取自 fleet.yaml 的 `fleet_label`，預設為主機名稱（AgEnD home 不是 `~/.agend` 時再加上該目錄名稱）。
+- **用手機完成 `kiro-cli` 的 `/login`：選用的公開連結（`web_terminal.tunnel.allow_public`，預設關閉）。** 啟用後，登入確認會在
+  **只用本機連結** 旁多一個 **開啟公開連結**；按下就是這次登入的同意。Cloudflare Quick Tunnel 只代理那一次登入的終端；公開連結與存取 token
+  以兩則私訊傳給發起人（絕不進頻道）；私訊送不到、tunnel 起不來或中途斷線、取消、逾時、關閉 fleet，都會在下一次登入之前先關掉 tunnel，
+  無法確認已停止的 tunnel 會被公告並封鎖後續 tunnel。tunnel 的公開名稱不會寫進 log。需要 `PATH` 上有 `cloudflared`。
+  見 `docs/configuration.zh-TW.md`「人不在機器旁完成 /login」。
+
+### 修正 (Fixed)
 - **Discord 拒絕 slash 指令註冊時會回報（#1131）。** 以前註冊失敗不會留下任何記錄，而 Discord 拒絕時會保留先前的指令清單，所以新增或變更的指令可能就這樣默默不出現。現在 fleet 會記錄每次註冊的結果（指令數量，或 Discord 的錯誤代碼與訊息），被拒絕時也會在 General 通知一次。
 - **按鈕提示不會再無聲失敗（#1133）。** 在 Discord 上，超過五個 backend 的選單根本貼不出來：Discord 一列最多五個按鈕，而它們全放在同一列。現在按鈕會每五個一列排好。無法貼出的選單或確認提示會直接說明，不再回報「已送出選單」或停在「正在啟動…」。無法執行的點擊——提示已逾時、不是你的提示、或你不是 fleet 管理員——現在會私下告訴你原因（Discord 用只有你看得到的訊息，Telegram 用按鈕的回應）。Telegram 改為在 fleet 做出決定後才回應點擊，所以回應失敗不會再讓點擊遺失。結果無法寫回提示時，會改以訊息送出；沒有人處理的點擊會留下記錄。
 - **Discord：`/login` 的 backend 按鈕按了會有反應（#1131）。** 原生 slash 指令貼出的選單綁定的是頻道，但 Discord 回報每次按鈕點擊時用的是 guild 加頻道，所以每次點擊都被判定為不相符而被丟掉，按了沒有任何反應。現在按鈕帶的位址和點擊回報的一致。在 bot 主要伺服器以外的頻道（那裡也接受 slash 指令）貼出的選單現在也能點；那類頻道的其他按鈕仍會被忽略，但會留下記錄，不再默默丟掉。slash 回覆也改用 `flags`，取代 discord.js 已棄用的 `ephemeral` 選項，client 改為監聽 `clientReady`。
 - **在 systemd 主機上用 `agend update` / `/update` 升到 2.1.10-beta.2 會失敗（「fleet restart failed」），而且舊的 fleet 會繼續執行（#1113 hotfix）。** systemd 249 會默默忽略 unit 檔裡的 `CoredumpFilter=`，所以 beta.2「確認 systemd 已載入 `CoredumpFilter=0`」的檢查會拒絕每一次 `agend restart`。這個檢查已移除（載入值不是 0 時只會提示）。在 Linux 上，fleet 現在會在啟動時把自己的 `/proc/self/coredump_filter` 設成 0，每次啟動 CLI 時也會先在 pane 的 shell 裡設好——所以不論 systemd 版本、即使 tmux server 不是這個 fleet 起的，crash dump 都只有幾 KB。`AGEND_KEEP_COREDUMP_FILTER=1` 可關閉這個行為（行程改用繼承來的 mask，不一定是完整 dump）。另外，`agend update` 遇到比已安裝版本更早啟動的 fleet 時會補做重啟，不再只顯示「已是最新」——但只限依命令列確認確實是 fleet 的行程；`fleet.pid` 若指向其他行程，一律不重啟也不送訊號——所以因 restart 失敗而停在舊版的 fleet 也能跟上。
 - **用暫時的 `HOME` 啟動的 fleet 不會再連上真正 fleet 的 tmux server（#1126）。** 只有使用者真實的 `~/.agend`（依帳號資料，而不是 `$HOME`）會使用 tmux 的預設 socket（讀不到帳號資料時，沒有任何 home 算預設）。以前，把 `HOME` 和 `AGEND_HOME` 都指向暫存目錄來啟動 fleet，也會被當成「預設」，因而連上執行中的 `agend` server，它的啟動清理會把真正 fleet 的視窗當成孤兒殺掉。`AGEND_HOME` 未設定、設成你真實的 `~/.agend`，或其他自訂值，行為都不變，各自沿用原本的 socket。
 - **dashboard 的回應不會再被 iframe 嵌入、被猜測型別或被快取。** dashboard/health server 的每個回應現在都帶 `X-Frame-Options: DENY`、`Content-Security-Policy: frame-ancestors 'none'`（這些頁面有重啟 instance 的按鈕，被嵌入就可能被誘導點擊）、`X-Content-Type-Options: nosniff` 與 `Cache-Control: no-store`（自己設定 Cache-Control 的路由，例如 SSE 與頭像，維持原樣）。
+
+### 安全 (Security)
+- **instance 目錄改為 0700（既有的在啟動時一次性修正）。** `<data dir>/instances/<name>` 裡有 `agent.token` 與 IPC socket，
+  卻是用行程 umask 建立的 —— 通常是 0775，也就是群組可寫、本機所有使用者都能穿越（裡面的檔案本來就是 0600，開著的是目錄這道門）。
+  新建的 instance 目錄一律 0700；啟動時 fleet 會把 `instances` 目錄與其下每個 instance 目錄一次性收成 0700，只記一行 log，
+  且不動裡面的任何東西（你放進去的檔案維持原權限）。symlink 與他人擁有的目錄不會被動，並會在警告中點名。
+  過去每次啟動 instance 都出現、卻從沒人處理的「IPC socket parent directory is world-accessible」警告，現在只會在仍然開放且
+  無法修正的目錄上、每個目錄報一次。**若有其他使用者或服務原本靠群組權限讀取 instance 目錄，請改為明確授權 —— 群組不再有權限。**（#1118）
 
 ## [2.1.9] - 2026-10-02
 

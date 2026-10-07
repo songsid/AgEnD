@@ -46,6 +46,8 @@ v2 嘗試讓 Claude 完成一個 meta-task（自我報告狀態），但這個�
 
 ## 3. v3 設計
 
+> **已被取代（v4）。** 主動 rotation 的狀態機、觸發條件與重啟流程都已移除，`ContextGuardian` 只做監看（`src/context-guardian.ts`）；§3.4 snapshot 與 §3.5 注入（2000 字元上限）仍保留，但只用於 crash respawn 且 resume 失敗時（`Daemon.writeRotationSnapshot("crash")`／`buildSnapshotPrompt()`，`src/daemon.ts`）。
+
 ### 3.1 狀態機
 
 ```
@@ -145,6 +147,8 @@ Snapshot 注入預算：**≤ 2000 字元**。超過則依此優先順序截斷�
 
 ## 4. 設定
 
+> **已被取代（v4）。** `restart_threshold_pct` 已不存在；`max_age_hours` 預設 0 且程式不再讀取（`src/config.ts`），context 交給各 CLI 的 auto-compact。
+
 ```yaml
 context_guardian:
   restart_threshold_pct: 80    # v3 新欄位
@@ -161,6 +165,8 @@ context_guardian:
 ---
 
 ## 5. 觀測性
+
+> **已被取代（v4）。** 程式不再發出 `restart_requested`／`restart_complete`（`src/` 內無任何發送點）。
 
 ### 事件
 
@@ -183,6 +189,8 @@ proj-c: $0.00 ⚠️ 1 hang
 
 ## 6. 風險與緩解
 
+> **已被取代（v4）。** 本表針對 v3 的 idle barrier 與循環重啟；v4 沒有主動重啟，跨 instance 交接改由 `replace_instance` 處理。
+
 | 風險 | 緩解 |
 |------|------|
 | 5 秒 idle barrier 仍是 best-effort | 接受。比 v2 的 5 分鐘 idle 等待 + 60 秒 handover 簡單得多 |
@@ -193,6 +201,8 @@ proj-c: $0.00 ⚠️ 1 hang
 ---
 
 ## 7. 成功指標
+
+> **已被取代（v4）。** 這些是 v3 的驗收項目，保留作為歷史紀錄。
 
 - [x] 不再出現 `handover_status: empty/timeout/complete`
 - [x] 重啟邏輯從日誌就能完整理解

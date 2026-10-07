@@ -1,6 +1,12 @@
 # AgEnD MCP Token Overhead Report
 
 > Date: 2026-04-04 | Tested by: agend-t5033 + agend-reviewer-t9177
+>
+> **SUPERSEDED (2026-10-07, #1277).** The figures below were measured with Full **30** / Standard **11** /
+> Minimal **4** tools on the April 2026 Claude Code. The current tool sets are Full **54** / Standard **29** /
+> Minimal **9** (verified against `src/channel/mcp-tools.ts` and `src/tool-permissions.ts`), plus three profiles
+> that did not exist then (`worker`, `coordinator`, `general`) — so the absolute token and cost figures no longer
+> apply. The methodology and `scripts/measure-token-overhead.sh` are retained for a fresh measurement.
 
 ## Purpose
 
