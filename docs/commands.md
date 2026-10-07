@@ -96,6 +96,18 @@ Registered globally via `client.application.commands.set()`.
 | 🔒 `/load <filename>` | Load a saved conversation | Admin |
 | 🔒 `/clear` | Full conversation reset (destructive, Confirm/Cancel required); sends `/new` on grok | Admin |
 
+## Text Commands by Platform
+
+Typed (non-slash-menu) text behaves differently per platform:
+
+- **Discord fleet topics:** a typed `/xxx` never runs a command — use the `/` slash menu instead. The adapter that owns the topic posts one system note saying so and consumes the message; every other bot stays silent. A `/xxx@otherbot` suffix is ignored silently.
+- **Discord ClassicBot channels:** a typed `/xxx` is ignored silently by every bot — no warning (so multi-bot groups don't all reply), no command, and it is not forwarded as `/chat` either. Slash commands (`/chat`, `/ctx`, …) are unaffected.
+- **Telegram fleet topics:** a bare `/cmd` runs, but only through the adapter that owns the topic — other adapters say nothing. `/cmd@otherbot` is ignored; `/cmd@ourbot` runs.
+- **Telegram ClassicBot groups:** a bare `/cmd` is ignored; only `/cmd@ourbot` runs.
+- **Telegram private chats:** unchanged — a bare `/cmd` runs.
+
+On every platform, only the topic/entry owner ever answers, so a `/cmd` typed in a multi-bot group never gets two replies.
+
 ---
 
 ## Permission Model
