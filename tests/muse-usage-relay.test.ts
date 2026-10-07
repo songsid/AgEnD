@@ -81,12 +81,16 @@ describe("Muse usage relay protocol", () => {
   it("binds loopback only and exposes a base URL before Muse starts", async () => {
     const dir = mkdtempSync(join(tmpdir(), "agend-muse-relay-"));
     dirs.push(dir);
-    const relay = new MuseUsageRelay({ instanceDir: dir });
+    // #1224: pass a stub request so no upstream connection to api.meta.ai is
+    // ever attempted — the loopback test seam requires both options together.
+    const noUpstream = vi.fn();
+    const relay = new MuseUsageRelay({ instanceDir: dir, upstreamOrigin: "http://127.0.0.1:9", request: noUpstream });
     const base = await relay.start();
     expect(base).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
     expect((relay as unknown as { server: { address: () => { address: string } } }).server.address().address).toBe("127.0.0.1");
     await relay.stop();
     expect(relay.baseUrl).toBeNull();
+    expect(noUpstream, "network guard: zero outbound relay attempts").not.toHaveBeenCalled();
   });
 
   it("rejects a non-code-owned upstream outside the loopback test seam", () => {
@@ -180,7 +184,9 @@ describe("Muse usage relay protocol", () => {
     const dir = mkdtempSync(join(tmpdir(), "agend-muse-relay-"));
     dirs.push(dir);
     const onUnavailable = vi.fn();
-    const relay = new MuseUsageRelay({ instanceDir: dir, onUnavailable });
+    // #1224: stub request so no upstream connection to api.meta.ai is attempted.
+    const noUpstream = vi.fn();
+    const relay = new MuseUsageRelay({ instanceDir: dir, onUnavailable, upstreamOrigin: "http://127.0.0.1:9", request: noUpstream });
     await relay.start();
     writeMuseUsageSnapshot(dir, {
       observedAt: Date.now(),
@@ -194,24 +200,30 @@ describe("Muse usage relay protocol", () => {
     expect(onUnavailable).toHaveBeenCalledTimes(1);
     expect(readMuseUsageSnapshot(dir)).toBeNull();
     await relay.stop();
+    expect(noUpstream, "network guard: zero outbound relay attempts").not.toHaveBeenCalled();
   });
 
   it("reclaims its original port after an unexpected listener close", async () => {
     const dir = mkdtempSync(join(tmpdir(), "agend-muse-relay-"));
     dirs.push(dir);
-    const relay = new MuseUsageRelay({ instanceDir: dir });
+    // #1224: stub request so no upstream connection to api.meta.ai is attempted.
+    const noUpstream = vi.fn();
+    const relay = new MuseUsageRelay({ instanceDir: dir, upstreamOrigin: "http://127.0.0.1:9", request: noUpstream });
     const base = await relay.start();
     const port = Number(new URL(base).port);
     (relay as unknown as { server: { close: () => void } }).server.close();
     for (let i = 0; i < 20 && relay.port !== port; i++) await new Promise(resolve => setTimeout(resolve, 10));
     expect(relay.port).toBe(port);
     await relay.stop();
+    expect(noUpstream, "network guard: zero outbound relay attempts").not.toHaveBeenCalled();
   });
 
   it("retries a transient EADDRINUSE while reclaiming the baked-in port", async () => {
     const dir = mkdtempSync(join(tmpdir(), "agend-muse-relay-"));
     dirs.push(dir);
-    const relay = new MuseUsageRelay({ instanceDir: dir });
+    // #1224: stub request so no upstream connection to api.meta.ai is attempted.
+    const noUpstream = vi.fn();
+    const relay = new MuseUsageRelay({ instanceDir: dir, upstreamOrigin: "http://127.0.0.1:9", request: noUpstream });
     const originalListen = (relay as unknown as { listen: (port: number) => Promise<void> }).listen;
     let attempts = 0;
     (relay as unknown as { listen: (port: number) => Promise<void> }).listen = async function(port: number) {
@@ -229,6 +241,7 @@ describe("Muse usage relay protocol", () => {
     expect(attempts).toBeGreaterThanOrEqual(3);
     expect(relay.port).toBe(port);
     await relay.stop();
+    expect(noUpstream, "network guard: zero outbound relay attempts").not.toHaveBeenCalled();
   });
 
   it("passes streamed bytes and authorization through while parsing a side channel", async () => {
