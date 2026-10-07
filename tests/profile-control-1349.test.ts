@@ -70,7 +70,8 @@ describe("same-user local-only operator transport", () => {
     let done!: (value: ProfileResult) => void;
     h.start.mockImplementation(async seconds => { begin(); return { seconds, done: new Promise(r => { done = r; }) }; });
     await h.server.listen(); const client = requestCpuProfile(h.directory, 60, {}); const assertion = expect(client).rejects.toThrow("disconnected");
-    await started; await h.server.close(); await assertion;
+    expect(await Promise.race([started.then(() => "started"), assertion.then(() => "closed")])).toBe("started");
+    await h.server.close(); await assertion;
     done({ path: "/private/result", bytes: 1 }); await Promise.resolve(); expect(h.start).toHaveBeenCalledTimes(1);
   });
 });
