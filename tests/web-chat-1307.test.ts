@@ -145,6 +145,28 @@ describe("phones and assistive tech (segment 3)", () => {
     for (const inset of ["top", "bottom", "left", "right"]) expect(style, inset).toContain(`env(safe-area-inset-${inset})`);
   });
 
+  // #1317 review: the cascade, not the presence of env(): at phone width every padding rule the top bar ends up with
+  // keeps the notch insets — no later shorthand resets them to plain pixels.
+  it("at phone width the top bar's padding still honours the top and side insets (the last rule that sets it wins)", () => {
+    const rules = [...narrow.matchAll(/\.topbar \{([^}]*)\}/g)].map(m => m[1]!);
+    expect(rules.length).toBeGreaterThan(0);
+    const last = rules.filter(r => /padding/.test(r)).at(-1)!;
+    // Split the shorthand on spaces outside parentheses: max(6px, env(…)) is one value.
+    const value = /padding:\s*([^;]+);/.exec(last)![1]!;
+    const shorthand: string[] = [];
+    let depth = 0, part = "";
+    for (const ch of value) {
+      if (ch === "(") depth++; else if (ch === ")") depth--;
+      if (ch === " " && depth === 0) { if (part) shorthand.push(part); part = ""; } else part += ch;
+    }
+    if (part) shorthand.push(part);
+    expect(shorthand, "top right bottom left").toHaveLength(4);
+    expect(shorthand[0]).toContain("env(safe-area-inset-top)");
+    expect(shorthand[1]).toContain("env(safe-area-inset-right)");
+    expect(shorthand[3]).toContain("env(safe-area-inset-left)");
+    expect(narrow).toMatch(/\.toasts \{ top: calc\(60px \+ env\(safe-area-inset-top\)\)/);
+  });
+
   it("on a phone the composer's text is 16px (smaller, and iOS zooms the page on focus)", () => {
     expect(narrow).toMatch(/\.composer textarea \{ font-size: 16px; \}/);
   });

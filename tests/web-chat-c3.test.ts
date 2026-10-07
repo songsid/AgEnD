@@ -552,6 +552,56 @@ describe("the dashboard (the real page script)", () => {
     expect(calls).toHaveLength(1);
   });
 
+  // #1317 review: a Stop on its way blocks a second one at once — before its answer arrives, not after.
+  function heldCancel() {
+    const p = page();
+    const calls: string[] = [];
+    const answers: Array<(v: unknown) => void> = [];
+    (p.c as any).recordCall = (x: string) => calls.push(x);
+    (p.c as any).hold = () => new Promise(r => answers.push(r));
+    p.read('api = (m, path) => { recordCall(path); return hold(); }');
+    const esc = (repeat = false) => { let prevented = false; p.doc.keydown!({ key: "Escape", repeat, isComposing: false, preventDefault: () => { prevented = true; } }); return prevented; };
+    const settle = async (v: unknown) => { answers.shift()!(v); await new Promise(r => setImmediate(r)); };
+    return { p, calls, esc, settle };
+  }
+
+  it("two Esc (a held key repeating) while the first Stop's answer is pending: one request", async () => {
+    const { p, calls, esc, settle } = heldCancel();
+    p.sse.activity!({ data: JSON.stringify({ instance: "w", state: "working" }) });
+    expect(esc()).toBe(true);
+    expect(esc(true), "pending: nothing more").toBe(false);
+    expect(esc(true)).toBe(false);
+    p.read('cancelReply("w", null)');                                     // nor a click on Stop
+    expect(calls).toEqual(["/ui/cancel/w"]);
+    await settle({ cancelled: "w" });
+    expect(p.read("stopping.w"), "answered: the stopping gate takes over").toBe(true);
+    expect(esc()).toBe(false);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("a Stop that failed can be tried again", async () => {
+    const { p, calls, esc, settle } = heldCancel();
+    p.sse.activity!({ data: JSON.stringify({ instance: "w", state: "working" }) });
+    esc();
+    await settle({ error: "socket closed" });
+    expect(p.read("stopping.w")).toBeUndefined();
+    expect(esc(), "after a refusal Esc works again").toBe(true);
+    expect(calls).toEqual(["/ui/cancel/w", "/ui/cancel/w"]);
+  });
+
+  it("switching chats while a Stop is pending: the other chat can be stopped, and the answer lands on the first", async () => {
+    const { p, calls, esc, settle } = heldCancel();
+    p.sse.activity!({ data: JSON.stringify({ instance: "w", state: "working" }) });
+    esc();
+    p.read('cur = "x"');
+    p.sse.activity!({ data: JSON.stringify({ instance: "x", state: "working" }) });
+    expect(esc(), "x has no Stop pending").toBe(true);
+    expect(calls).toEqual(["/ui/cancel/w", "/ui/cancel/x"]);
+    await settle({ cancelled: "w" });
+    expect([p.read("stopping.w"), p.read("cancelling.w")]).toEqual([true, undefined]);
+    expect(p.read("cancelling.x"), "x still pending").toBe(true);
+  });
+
   it("a polite status line says the coarse things only: started, finished, replied, waits on you", () => {
     const p = page();
     p.nodes.announcer = { textContent: "" };

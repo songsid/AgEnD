@@ -393,13 +393,14 @@
     body.sb-open .scrim { display: block; position: fixed; inset: 0; background: var(--scrim); z-index: 39; }
     .topbar .sb-open { display: inline-flex; }
     .sidebar-header .icon-btn { display: none; }
-    .topbar { gap: 6px; padding: 6px 8px; }
+    /* The notch insets stay in force at phone width too (#1317 review): a plain shorthand here would undo them. */
+    .topbar { gap: 6px; padding: max(6px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) 6px max(8px, env(safe-area-inset-left)); }
     .thread { padding: 16px 12px 8px; }
     .composer-wrap { padding: 0 max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left)); }
     .composer textarea { font-size: 16px; }          /* under 16px, iOS Safari zooms the page on focus */
     .msg.user { max-width: 88%; }
     .detail-view, .task-view { padding: 16px 12px; }
-    .toasts { top: 60px; bottom: auto; left: 12px; right: 12px; align-items: stretch; }
+    .toasts { top: calc(60px + env(safe-area-inset-top)); bottom: auto; left: max(12px, env(safe-area-inset-left)); right: max(12px, env(safe-area-inset-right)); align-items: stretch; }
   }
   @media (prefers-reduced-motion: reduce) { .sidebar { transition: none; } }
 </style>
@@ -655,7 +656,7 @@ document.addEventListener("keydown", e => {
 // Esc stops the agent's reply (as Esc in its terminal would) — from the chat, while it works, and only when nothing
 // else on the page is open that Esc would close first (a form, the Session menu).
 function stopOnEscape(active) {
-  if (mode !== "instance" || curTab !== "chat" || !cur || !AgendChatRender.isBusy(activity[cur]) || stopping[cur]) return false;
+  if (mode !== "instance" || curTab !== "chat" || !cur || !AgendChatRender.isBusy(activity[cur]) || stopping[cur] || cancelling[cur]) return false;
   if (document.querySelector(".form-overlay") || document.querySelector(".agend-pop:not([hidden])")) return false;
   const view = document.getElementById("chatView");
   return !active || active === document.body || !!(view && view.contains(active));
@@ -1129,12 +1130,17 @@ function renderComposerButtons() {
   stop.hidden = !busy;
   send.hidden = busy && !content;
 }
+// A Stop on its way, per instance: set before the request goes, so a second Esc (a held key repeats it) or a click
+// while the first answer is pending sends nothing more (#1317 review). Cleared when the answer comes, whatever it is.
+const cancelling = {};
 async function cancelReply(target, button) {
-  if (!target) return;
+  if (!target || cancelling[target]) return;
+  cancelling[target] = true;
   if (button) button.disabled = true;
   let r;
   try { r = await api("POST", `/ui/cancel/${encodeURIComponent(target)}`); }
   catch (err) { r = { error: err && err.message ? err.message : tr("disconnected") }; }
+  delete cancelling[target];
   if (button) button.disabled = false;
   if (r && !r.error) {
     // "Stopping…" until the agent goes idle (or a minute passes: the edge can be missed by a dropped stream).
