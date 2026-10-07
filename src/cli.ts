@@ -51,6 +51,7 @@ import { loadRawFleetConfig } from "./config.js";
 import { setLocale, t } from "./locale.js";
 import { DeliveryOutbox, deliveryStatusSelector, type DeliveryStatusSelector } from "./delivery-outbox.js";
 import { DeliveryStatusArgs } from "./outbound-schemas.js";
+import { startCpuProfileFromEnvironment, type CpuProfile } from "./cpu-profile.js";
 
 /** Prefix tmux args with -L when socket isolation is active. */
 function tmuxArgs(args: string[]): string[] {
@@ -174,6 +175,7 @@ fleet
 
     const { FleetManager } = await import("./fleet-manager.js");
     const fm = new FleetManager(DATA_DIR);
+    let cpuProfile: CpuProfile | null = null;
 
     // Register crash/signal handlers BEFORE startAll(). Startup routinely takes
     // minutes (sequential general spawn, staggered instances, warmup waits), and
@@ -185,6 +187,7 @@ fleet
       if (stopping) return; // SIGINT and SIGTERM share this, and crash paths call stopAll too
       stopping = true;
       console.log("\nStopping fleet...");
+      await cpuProfile?.stop("fleet shutdown");
       await fm.stopAll().catch(err => console.error("Shutdown error:", err));
       process.exit(0);
     };
@@ -201,7 +204,8 @@ fleet
       console.error("Uncaught exception:", err);
       if (stopping) return;
       stopping = true;
-      fm.stopAll().catch(() => {}).finally(() => process.exit(1));
+      Promise.resolve(cpuProfile?.stop("uncaught exception")).catch(() => {})
+        .then(() => fm.stopAll()).catch(() => {}).finally(() => process.exit(1));
     });
 
     process.on("unhandledRejection", (err) => {
@@ -230,6 +234,11 @@ fleet
         console.error("Failed to report unhandled rejection:", notifyErr);
       }
     });
+
+    cpuProfile = await startCpuProfileFromEnvironment({
+      dataDir: DATA_DIR, logger: { info: message => console.log(message), warn: message => console.warn(message) },
+    });
+    if (stopping) { await cpuProfile?.stop("startup superseded by shutdown"); return; }
 
     if (instance) {
       const config = fm.loadConfig(FLEET_CONFIG_PATH);

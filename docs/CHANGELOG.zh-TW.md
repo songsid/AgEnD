@@ -6,6 +6,9 @@
 
 ## [未發佈] (Unreleased)
 
+### 2.1.13 — 新增 (Added)
+- **選擇性錄製 fleet CPU profile，追查尚未歸因的 event-loop 阻塞（#1338，#1235 的一部分）。** 主機操作者可在冷啟動 `agend fleet start` 時設定 `AGEND_CPU_PROFILE_SECONDS=60`，省略即關閉。行程內以 100 Hz 錄製，最長 30 分鐘後停止（主執行緒能處理期限時），不開 inspector 監聽埠。`AGEND_HOME/profiles` 下的私有檔案每份最多 20 MiB、保留五份；檔案上限不等於 V8 錄製記憶體上限。Agent session 不能透過繼承的環境啟用；未增加聊天、web 或 MCP 觸發入口。
+
 ### 升級注意事項 (Upgrade Notes)
 - **[移除] `gemini-cli` backend（#1280）。** 它先前已標為 deprecated，警告上寫的停用日期也已經過了。改用 `backend: antigravity`：同樣是 Google 登入，透過 agy。仍寫著 `gemini-cli` 的設定現在會被拒絕、不會照跑，不論是寫在 instance、fleet 預設值，還是 ClassicBot 的頻道或預設值：
   - **`agend validate`** 與 Settings 會報錯，指出是哪個 instance，並說明請設定 `backend: antigravity`。仍含有它的 fleet.yaml 重新載入會整份被拒絕，並附上這則訊息。

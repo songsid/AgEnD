@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2.1.13 — Added
+- **Opt-in fleet CPU profiles for unexplained event-loop stalls (#1338, part of #1235).** The local operator can set `AGEND_CPU_PROFILE_SECONDS=60` for a cold `agend fleet start`; omitted means off. In-process 100 Hz recording stops after at most 30 minutes (when the main thread can service the deadline), with no inspector listening port. Private files under `AGEND_HOME/profiles` are capped at 20 MiB and rotated to five; the file cap does not cap V8's recording memory. Agent sessions cannot enable it through their inherited environment; no chat/web/MCP trigger is added.
+
 ### Upgrade Notes
 - **[Removed] The `gemini-cli` backend (#1280).** It had been deprecated, and the date its warning named has passed.
   `backend: antigravity` replaces it: the same Google sign-in, through agy. A config that still names `gemini-cli` is
