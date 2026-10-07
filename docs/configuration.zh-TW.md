@@ -109,19 +109,30 @@ Cloudflare 的公共解析器（1.1.1.1 / 1.0.0.1）解析 tunnel 名稱，再�
 | `bot_token_env` | string | **必填** | 存放 bot token 的環境變數名稱 |
 | `id` | string | 由平台型別推算 | 多連線模式中可明確命名的 adapter ID |
 | `group_id` | number \| string | — | Telegram 群組 ID（負數）或 Discord guild ID；大型 ID 請加引號，避免數值精度損失 |
-| `access` | object | **必填** | 存取控制 |
+| `access` | object | 省略整段時為 open fallback | 存取控制（持久化狀態仍可能覆蓋） |
 | `mirror_topic_id` | number \| string | — | 鏡像跨 instance 通訊的 Telegram topic ID。所有 `send_to_instance` 訊息都會出現在此 |
 | `options` | object | — | 平台特定選項（Discord：`category_name`、`general_channel_id`；Telegram：`topic_probe`，`on-demand`（預設，只在真實投遞回報 topic 不存在時才確認，不做定期送刪訊息）或 `periodic`（每 5 分鐘對每個 topic 送刪一則空白訊息確認存在）；`sticker_sets`（Telegram：agent 沒指定時 `list_stickers` 列出的貼圖包名稱清單，即 `t.me/addstickers/<name>` 的 `<name>`，最多取 10 個）；兩者皆可設 `status_emojis`，見 instance 的 `status_emojis`） |
 | `telegram_api_root` | string | `"https://api.telegram.org"` | 自訂 Telegram Bot API URL |
 
 ### channel.access
 
-| 欄位 | 型別 | 預設 | 說明 |
-|------|------|------|------|
-| `mode` | `"locked"` \| `"pairing"` \| `"open"` | `"locked"` | `locked` = 僅白名單。`pairing` = 使用者可透過 `/pair` 指令申請存取。`open` = 允許所有使用者，無需白名單 |
-| `allowed_users` | (number\|string)[] | `[]` | 白名單使用者 ID。支援 number 和 string（跨平台） |
-| `max_pending_codes` | number | `3` | 同時可有的配對碼數量上限（pairing 模式） |
-| `code_expiry_minutes` | number | `10` | 配對碼過期時間 |
+`access` 可省略。**省略整個區塊時，執行時使用 `open` fallback**，不是 `locked`；既有持久化模式仍可能覆蓋它。若要限制聊天存取，請明確設定 `mode: locked` 與 `allowed_users`。
+
+下表的 fallback 值只適用於整段省略時；明確提供的區塊不會逐欄補上這些值。請填寫 `mode`、`allowed_users` 陣列，以及使用 pairing 時的配對限制。
+
+| 欄位 | 型別 | 整段省略時的 fallback | 說明 |
+|------|------|----------------------|------|
+| `mode` | `"locked"` \| `"pairing"` \| `"open"` | `"open"` | `locked`／`pairing` 僅允許有效名單中的使用者；`pairing` 另可用 `/pair` 申請。`open` 允許所有使用者；bot 另有入口篩選，見[權限表](permissions.md#bot-and-webhook-messages) |
+| `allowed_users` | (number\|string)[] | `[]` | 與持久化名單取聯集；ID 以字串比較 |
+| `max_pending_codes` | number | `0` | 同時持有配對碼的不同使用者數量上限；pairing 請設定正數 |
+| `code_expiry_minutes` | number | `0` | 配對碼有效分鐘數；pairing 請設定正數 |
+
+**持久化狀態與管理權限：**
+
+- 主 adapter 使用 `<dataDir>/access/access.json`；額外 adapter 使用 `access/access-<adapterId>.json`。`dataDir` 預設為 `~/.agend`，可由 `AGEND_HOME` 指定。
+- 已儲存的 mode 優先於 YAML。已儲存的使用者與 YAML `allowed_users` 合併、去重；配對核准會加入持久化名單。
+- `locked`／`pairing` 下，撤銷使用者必須讓持久化與 YAML 兩份名單都不再授權；只改其中一份可能仍允許存取。`open` 本來就不限制使用者。
+- Fleet 管理指令另看**呼叫所經 adapter 的 YAML `access.allowed_users`**。Open 存取或已核准配對本身不授予 fleet admin，YAML 名單空白時沒有人有此權限。ClassicBot 有獨立的 `defaults.admin_users`；見[權限表](permissions.md)。
 
 ---
 
