@@ -1,0 +1,11 @@
+# kiro-cli 2.28.0: the Classic nudge's text, copied byte for byte from the binary (#1308).
+# tarball  https://prod.download.cli.kiro.dev/stable/2.28.0/kirocli-x86_64-linux.tar.xz
+# tarball-sha256 f48ef68df4cc7e83c942ce17e15d2a2c4316d08c6eba8829c4a7b277eba7be5b  (= the stable manifest's sha256 for that file)
+# kiro-cli-chat-sha256 ae5e172a905bd0078e9d2faded43837d05bd684615572af9917702fc349bbd4d
+# BUILD_VERSION 2.28.0  BUILD_HASH 877b466eda188c6dc44136df230f7e193a4edbfa
+# chat-help-2.28.0.txt-sha256 144d0b6b2a54901b0f21aac8d65f9b55e27896c41968363e2f7f9d1ad137c35b  (byte-identical to this binary's `kiro-cli chat --help` and `kiro-cli-chat chat --help`)
+# Rust string literals are stored back to back, so each boundary is the neighbouring literal named after it.
+# Columns: kind<TAB>offset in kiro-cli-chat<TAB>text<TAB>boundary
+description	0x5eefc96	Classic is being deprecated with the Kiro CLI 3.0 release in October. 3.0 runs in the terminal UI and also brings cloud sessions, tangents, specs, global hooks, and more.	ends where `event crates/chat-cli/src/launch/classic_nudge.rs:269` begins
+option	0x5eef97f	Switch to 3.0 and upgrade my agent configs	follows `KIRO_CLASSIC_NUDGE_RELAUNCHED--agent-engine`, ends where `3.0 is saved as your default` begins
+option	0x5eef303	Remind me later	one literal, shared with the V3 ease-in (`…upgrade my configs` before it, `Don't ask again` after)
