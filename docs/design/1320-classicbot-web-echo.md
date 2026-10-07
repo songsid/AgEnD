@@ -68,9 +68,10 @@ substitute: they gate who may talk *to* the bot, not who may *read* the echo.
 
 ## 3. Echo format
 
-Same as part A for consistency (`src/web-api.ts:921-928`): `🌐 web-user:
-<preview>`, 500-char preview with ` [...]`, attachments appended as
-`[📎 N files: a, b]`. Delivery: the channel's own adapter
+Same frame as part A, produced only through the shared
+`formatWebChannelEcho(user, preview)` (`src/web-channel-echo.ts`, PR #1325):
+`🌐 web · <user>: <preview>`, 500-char preview with ` [...]`, attachments
+appended as `[📎 N files: a, b]` (names already neutralised per §4.1). Delivery: the channel's own adapter
 (`worlds.get(adapterId)?.adapter`, cf. `src/fleet-manager.ts:12119`,
 `12265`), `sendText(channelId, …)` — ClassicBot channels have no thread to
 target. Failures are swallowed with a debug log like part A; a failed echo
