@@ -6,6 +6,7 @@
  * Private temp directories only. The fleet's cwd is injected (a parameter, or a stubbed `process.cwd`), never
  * changed with chdir; no fleet, CLI or tmux (bd0c88aa).
  */
+import { execFileSync, spawnSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -16,6 +17,7 @@ import {
   assembleSystemPrompt,
   readFileRef,
   resolveFileRefPath,
+  isUnsupportedHomeRef,
   resolveWorkflowText,
   systemPromptParts,
   type PromptFileWarning,
@@ -224,5 +226,69 @@ describe("the fleet tells the instance's topic about the fallback", () => {
     const [, text] = notifyInstanceTopic.mock.calls[0]! as unknown as [string, string];
     expect(text).toContain("/proj/prompts/role.md");
     expect(text).toContain("/home/u/.agend/prompts/role.md");
+  });
+});
+
+describe("Prism #1321 review", () => {
+  it.skipIf(process.platform === "win32")("a FIFO with no writer is refused at once (ENOTREG); it never blocks the event loop", () => {
+    // In a child with a hard timeout: a regression that blocks in open() would otherwise freeze this test worker.
+    const dir = scratch();
+    execFileSync("mkfifo", [join(dir, "pipe.md")]);
+    const script = `import(${JSON.stringify(new URL("../src/prompt-file-ref.ts", import.meta.url).href)}).then(m => {
+      const w = []; const r = m.readFileRef("pipe.md", "systemPrompt", { workingDirectory: ${JSON.stringify(dir)}, fleetCwd: ${JSON.stringify(dir)}, onWarning: x => w.push(x) });
+      process.stdout.write(JSON.stringify({ r, w }));
+    })`;
+    const child = spawnSync(process.execPath, ["--import", "tsx", "-e", script], { timeout: 10_000, killSignal: "SIGKILL", encoding: "utf-8" });
+    expect(child.error, "the read blocked (timed out)").toBeUndefined();
+    expect(child.status, child.stderr).toBe(0);
+    expect(JSON.parse(child.stdout)).toEqual({ r: "", w: [{ field: "systemPrompt", path: join(dir, "pipe.md"), problem: "unreadable", code: "ENOTREG" }] });
+  });
+
+  it.skipIf(process.platform === "win32")("a device is refused without being read (ENOTREG)", () => {
+    const { ctx, warnings } = layout();
+    expect(readFileRef("/dev/zero", "workflow", ctx)).toBe("");
+    expect(warnings).toEqual([{ field: "workflow", path: "/dev/zero", problem: "unreadable", code: "ENOTREG" }]);
+  });
+
+  it("~user/… is refused (ENOTSUP), never read as a directory literally named ~user — nor via the fleet fallback", () => {
+    const { ctx, warnings, workingDirectory, fleetCwd } = layout();
+    put(workingDirectory, "~other/role.md", "WRONG-WD");
+    put(fleetCwd, "~other/role.md", "WRONG-FLEET");
+    expect(isUnsupportedHomeRef("~other/role.md")).toBe(true);
+    expect(isUnsupportedHomeRef("~/role.md")).toBe(false);
+    expect(isUnsupportedHomeRef("~")).toBe(false);
+    expect(assembleSystemPrompt("file:~other/role.md", ctx)).toBeUndefined();
+    expect(warnings).toEqual([{ field: "systemPrompt", path: "~other/role.md", problem: "unsupported", code: "ENOTSUP" }]);
+  });
+
+  describe("the validator checks each instance's EFFECTIVE refs (defaults inherited, instance overrides win)", () => {
+    const check = (defaults: Record<string, unknown>, instance: Record<string, unknown>) =>
+      validateFleetConfig({ channel: { type: "telegram", group_id: 1, bot_token_env: "T" }, defaults, instances: { a: instance } } as never)
+        .warnings.filter(w => w.path.startsWith("instances.a."));
+
+    it("refs only in defaults are checked against the instance's working directory", () => {
+      const wd = scratch();
+      const warnings = check({ systemPrompt: "file:no-such-prompt", workflow: "file:no-such-workflow" }, { working_directory: wd });
+      expect(warnings.map(w => w.path)).toEqual(["instances.a.systemPrompt", "instances.a.workflow"]);
+      expect(warnings[0]!.message).toContain("(from defaults)");
+      expect(warnings[0]!.message).toContain(join(wd, "no-such-prompt"));
+    });
+
+    it("an instance override wins: inline, false/builtin, or a file that exists → no warning for that field", () => {
+      const wd = scratch();
+      put(wd, "own.md", "OWN");
+      const defaults = { systemPrompt: "file:no-such-prompt", workflow: "file:no-such-workflow" };
+      expect(check(defaults, { working_directory: wd, systemPrompt: "Inline, with commas", workflow: false })).toEqual([]);
+      expect(check(defaults, { working_directory: wd, systemPrompt: "file:own.md", workflow: "builtin" })).toEqual([]);
+      expect(check(defaults, { working_directory: wd, systemPrompt: "file:missing.md" }).map(w => [w.path, w.message.includes("(from defaults)")]))
+        .toEqual([["instances.a.systemPrompt", false], ["instances.a.workflow", true]]);
+    });
+
+    it("a defaults ref that exists under the instance's working directory is silent; ~user is warned", () => {
+      const wd = scratch();
+      put(wd, "prompts/role.md", "R");
+      expect(check({ systemPrompt: "file:prompts/role.md" }, { working_directory: wd })).toEqual([]);
+      expect(check({}, { working_directory: wd, systemPrompt: "file:~other/x.md" })[0]!.message).toMatch(/~user paths are not supported/);
+    });
   });
 });

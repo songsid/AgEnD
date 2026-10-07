@@ -11,7 +11,7 @@
  *
  * Nothing here logs or returns a file's contents in a diagnostic: only the resolved path and an errno code.
  */
-import { closeSync, fstatSync, openSync, readSync } from "node:fs";
+import { closeSync, constants as fsConstants, fstatSync, openSync, readSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, resolve } from "node:path";
 
@@ -24,9 +24,9 @@ export interface PromptFileWarning {
   field: PromptFileField;
   /** The path the reference resolves to (the instance file). */
   path: string;
-  /** missing | unreadable | too_large | fleet_dir_fallback */
-  problem: "missing" | "unreadable" | "too_large" | "fleet_dir_fallback";
-  /** errno code for missing/unreadable (ENOENT, EACCES, EISDIR, …). */
+  /** missing | unreadable | too_large | unsupported | fleet_dir_fallback */
+  problem: "missing" | "unreadable" | "too_large" | "unsupported" | "fleet_dir_fallback";
+  /** errno-style code: ENOENT, EACCES, EISDIR, ENOTREG (a FIFO, socket or device), ENOTSUP (`~user/…`). */
   code?: string;
   /** For fleet_dir_fallback: the old, fleet-directory file that was read instead. */
   legacyPath?: string;
@@ -45,6 +45,14 @@ export interface PromptFileContext {
 const expandHome = (path: string, home: string): string =>
   path === "~" ? home : path.startsWith("~/") ? resolve(home, path.slice(2)) : path;
 
+/**
+ * `~name/…` (another user's home) is not supported. It is refused with a diagnostic rather than read as a directory
+ * literally named `~name` under the working directory, which would silently load some other file.
+ */
+export function isUnsupportedHomeRef(ref: string): boolean {
+  return /^~[^/]/.test(ref.trim());
+}
+
 /** The path a `file:` reference names: `~/` and absolute as given, anything else under the working directory. */
 export function resolveFileRefPath(ref: string, workingDirectory: string, home: string = homedir()): string {
   const target = expandHome(ref.trim(), home);
@@ -54,12 +62,19 @@ export function resolveFileRefPath(ref: string, workingDirectory: string, home: 
 
 type ReadOutcome = { ok: true; text: string } | { ok: false; problem: "missing" | "unreadable" | "too_large"; code?: string };
 
+/**
+ * Opened non-blocking: a FIFO with no writer (or a device) would otherwise block `open` itself — on the fleet's
+ * event loop — before any check could run. The type and size are then judged on the opened fd, so a file swapped
+ * after a path check cannot slip through. O_NOCTTY: naming a terminal never makes it the fleet's controlling tty.
+ */
+const OPEN_FLAGS = fsConstants.O_RDONLY | (fsConstants.O_NONBLOCK ?? 0) | (fsConstants.O_NOCTTY ?? 0);
+
 function readBounded(path: string): ReadOutcome {
   let fd: number | undefined;
   try {
-    fd = openSync(path, "r");
+    fd = openSync(path, OPEN_FLAGS);
     const st = fstatSync(fd);
-    if (!st.isFile()) return { ok: false, problem: "unreadable", code: "EISDIR" };
+    if (!st.isFile()) return { ok: false, problem: "unreadable", code: st.isDirectory() ? "EISDIR" : "ENOTREG" };
     if (st.size > PROMPT_FILE_MAX_BYTES) return { ok: false, problem: "too_large" };
     const buf = Buffer.alloc(st.size);
     let read = 0;
@@ -79,6 +94,10 @@ function readBounded(path: string): ReadOutcome {
 
 /** The text a `file:` reference (without the prefix) loads, or "" — with a warning for anything but a clean read. */
 export function readFileRef(ref: string, field: PromptFileField, ctx: PromptFileContext): string {
+  if (isUnsupportedHomeRef(ref)) {
+    ctx.onWarning?.({ field, path: ref.trim(), problem: "unsupported", code: "ENOTSUP" });
+    return "";
+  }
   const home = ctx.home ?? homedir();
   const path = resolveFileRefPath(ref, ctx.workingDirectory, home);
   const own = readBounded(path);
