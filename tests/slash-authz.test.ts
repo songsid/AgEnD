@@ -313,6 +313,7 @@ describe("/update /doctor /dashboard /collab: the invoking adapter's fleet admin
     expect(await slash(r, "discord", { command: "update", userId: "member" })).toEqual([t("update.disabled")]);
     expect(await slash(r, "discord", { command: "doctor", userId: "member" })).toEqual([t("not_authorized")]);
     expect(await slash(r, "discord", { command: "visibility", userId: "member", options: { mode: "hidden" } })).toEqual([t("not_authorized")]);
+    expect(r.fm.fleetConfig!.defaults).not.toHaveProperty("cross_instance_visibility");
     expect(await slash(r, "discord", { command: "dashboard", userId: "member" })).toEqual([t("dashboard.disabled")]);
     expect(await slash(r, "discord", { command: "collab", userId: "member" })).toEqual([t("not_authorized")]);
     expect(r.doctor).not.toHaveBeenCalled();
@@ -333,6 +334,8 @@ describe("/update /doctor /dashboard /collab: the invoking adapter's fleet admin
     expect(await slash(r, "discord", { command: "doctor", userId: "admin" })).toEqual(["doctor-output"]);
     expect((await slash(r, "discord", { command: "dashboard", userId: "admin" }))[0]).not.toBe(t("not_authorized"));
     expect((await slash(r, "discord", { command: "visibility", userId: "admin" }))[0]).toContain(t("visibility.current", "full"));
+    expect((await slash(r, "discord", { command: "visibility", userId: "admin", options: { mode: "summary" } }))[0]).toContain(t("visibility.set", "summary"));
+    expect(r.fm.fleetConfig!.defaults.cross_instance_visibility).toBe("summary");
     const update = await slash(r, "discord", { command: "update", userId: "admin" });
     expect(update).toEqual([t("update.progress.preparing", 0)]);
     expect(spawned).toHaveLength(1);                         // the stubbed spawn: nothing real ran
