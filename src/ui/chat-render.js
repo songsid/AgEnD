@@ -128,10 +128,16 @@
     return cells;
   }
 
-  /** The alignments of a separator row (`|---|:--:|--:|`), or null when the line is not one. */
+  /**
+   * The alignments of a separator row (`|---|:--:|--:|`), or null when the line is not one. Checked cell by cell
+   * with linear tests only (#1287 review: one regex with adjacent optional whitespace backtracked for seconds on a
+   * few KB of spaces with a bad tail, blocking the page).
+   */
   function tableAligns(line) {
-    if (line.indexOf("-") === -1 || !/^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/.test(line)) return null;
-    return tableCells(line).map(function (c) {
+    if (line.indexOf("-") === -1 || !/^[\s|:-]*$/.test(line)) return null;
+    var cells = tableCells(line);
+    for (var i = 0; i < cells.length; i++) if (!/^:?-+:?$/.test(cells[i])) return null;
+    return cells.map(function (c) {
       var l = c.charAt(0) === ":", r = c.charAt(c.length - 1) === ":";
       return l && r ? "c" : r ? "r" : l ? "l" : "";
     });
@@ -206,10 +212,12 @@
   KEYWORDS.ts = KEYWORDS.js + " interface type enum implements private public protected readonly declare namespace keyof as";
   var LANG_ALIAS = { javascript: "js", jsx: "js", mjs: "js", cjs: "js", typescript: "ts", tsx: "ts", python: "py", bash: "sh", shell: "sh", zsh: "sh", console: "sh" };
   var TOKEN_RE = {
-    js: /(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|("(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`)|(\b\d+(?:\.\d+)?\b)|([A-Za-z_$][\w$]*)/g,
-    py: /(#[^\n]*)|("""[\s\S]*?"""|'''[\s\S]*?'''|"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*')|(\b\d+(?:\.\d+)?\b)|([A-Za-z_]\w*)/g,
-    sh: /(#[^\n]*)|("(?:[^"\\]|\\.)*"|'[^']*')|(\b\d+\b)|([A-Za-z_][\w-]*)/g,
-    json: /(\u0001)|("(?:[^"\\\n]|\\.)*")|(-?\b\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b)|([A-Za-z_]\w*)/g
+    // An unclosed string or comment runs to the end of its line (or of the code): it matches once instead of
+    // failing and being re-scanned from every later quote, which made a run of unclosed quotes quadratic.
+    js: /(\/\/[^\n]*|\/\*[\s\S]*?(?:\*\/|$))|("(?:[^"\\\n]|\\.)*"?|'(?:[^'\\\n]|\\.)*'?|`(?:[^`\\]|\\.)*`?)|(\b\d+(?:\.\d+)?\b)|([A-Za-z_$][\w$]*)/g,
+    py: /(#[^\n]*)|("""[\s\S]*?(?:"""|$)|'''[\s\S]*?(?:'''|$)|"(?:[^"\\\n]|\\.)*"?|'(?:[^'\\\n]|\\.)*'?)|(\b\d+(?:\.\d+)?\b)|([A-Za-z_]\w*)/g,
+    sh: /(#[^\n]*)|("(?:[^"\\]|\\.)*"?|'[^']*'?)|(\b\d+\b)|([A-Za-z_][\w-]*)/g,
+    json: /(\u0001)|("(?:[^"\\\n]|\\.)*"?)|(-?\b\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b)|([A-Za-z_]\w*)/g
   };
   TOKEN_RE.ts = TOKEN_RE.js;
 

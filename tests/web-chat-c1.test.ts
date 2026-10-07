@@ -158,6 +158,33 @@ describe.each([["a classic script", asScript], ["a CommonJS module", asModule]])
       expect(md("before\n| a |\n|---|\n| 1 |\nafter")).toBe('<p>before</p><div class="tbl"><table><thead><tr><th>a</th></tr></thead><tbody><tr><td>1</td></tr></tbody></table></div><p>after</p>');
     });
 
+    it("a crafted separator row or unclosed strings render in bounded time, up to the 16,000-character message cap (#1287 review)", () => {
+      const inputs = [
+        "h|h\n" + " ".repeat(1600) + "-" + " ".repeat(1600) + "x",             // the reviewed repro: seconds before
+        "h|h\n" + " ".repeat(7990) + "-" + " ".repeat(7990) + "x",             // near the cap: never finished before
+        "h|h\n" + "| - ".repeat(3990) + "x",
+        "```js\n" + '"a '.repeat(5300) + "\n```",                               // thousands of unclosed quotes
+        "```js\n/*" + " /*".repeat(5300) + "\n```",                              // thousands of unclosed comments
+        "```py\n'''" + "a\n".repeat(7990) + "```",
+        "```js\n`" + "a\n".repeat(7990) + "```",
+      ];
+      for (const input of inputs) {
+        expect(input.length).toBeLessThanOrEqual(16_000);
+        const t0 = performance.now();
+        md(input);
+        expect(performance.now() - t0, input.slice(0, 24)).toBeLessThan(250);
+      }
+      // …and the bad separator is still not a table.
+      expect(md(inputs[0]!)).not.toContain("<table>");
+    });
+
+    it("separator rows: only dashes with optional colons per cell; anything else is not a table", () => {
+      for (const sep of ["| -- | x |", "|--|-- -|", "| : |---|", "|---|:-:x|", "--- ---"]) {
+        expect(md(`| a | b |\n${sep}`), sep).not.toContain("<table>");
+      }
+      expect(md("| a | b |\n|  :---  |  ---:  |")).toContain('<th class="al-l">a</th><th class="al-r">b</th>');
+    });
+
     it("code highlighting: keywords, strings, numbers and comments in fixed classes; everything escaped", () => {
       expect(md('```js\nconst s = "<b>"; // 1 < 2\nreturn 42\n```')).toBe(
         '<pre data-lang="js"><code><span class="tk-k">const</span> s = <span class="tk-s">&quot;&lt;b&gt;&quot;</span>; <span class="tk-c">// 1 &lt; 2</span>\n<span class="tk-k">return</span> <span class="tk-n">42</span></code></pre>');
