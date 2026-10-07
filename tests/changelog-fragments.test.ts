@@ -395,6 +395,27 @@ describe("changelog-guard (ci.yml's step, on a scratch repository)", () => {
     expect(r.guard(r.base, head).status).toBe(0);
   });
 
+  it("a long-lived line that edited the CHANGELOG all along lands once it moved its entries into fragments and put the files back to main's", () => {
+    const r = gitRepo();
+    r.commit("web: entry 1", { "docs/CHANGELOG.md": EN.replace("### Added\n", "### Added\n- **web 1.** w\n"), "src/w.ts": "1\n" });
+    r.commit("web: entry 2", { "docs/CHANGELOG.zh-TW.md": ZH.replace("### 新增 (Added)\n", "### 新增 (Added)\n- **web 1。** w\n") });
+    r.git("checkout", "-q", "main");
+    const mainTip = r.commit("main: an assembled entry\n\nChangelog: assemble", { "docs/CHANGELOG.md": EN.replace("### Fixed\n", "### Fixed\n- **main (#12).** m\n") });
+    r.git("checkout", "-q", "pr");
+    expect(r.guard(mainTip, r.git("rev-parse", "HEAD")).status).toBe(1);               // as it stands: refused
+    r.git("merge", "-q", "--no-commit", "main");                                       // 1. merge-sync (resolve: main's)
+    r.git("checkout", "main", "--", "docs/CHANGELOG.md", "docs/CHANGELOG.zh-TW.md");
+    r.git("commit", "-q", "--no-edit");
+    r.commit("move the web line's entries into fragments", {                          // 2.
+      "changes/1262-web-1.md": frag("Added", "- **web 1.** w"), "changes/1262-web-1.zh-TW.md": frag("Added", "- **web 1。** w"),
+    });
+    const head = r.git("rev-parse", "HEAD");
+    expect(r.git("diff", "--name-only", `${mainTip}...${head}`, "--", "docs")).toBe(""); // 3. the files are main's
+    expect(r.guard(mainTip, head).status).toBe(0);
+    const check = spawnSync(process.execPath, [join(r.dir, "scripts", "changelog-assemble.mjs"), "--check"], { cwd: r.dir, encoding: "utf8" });
+    expect(check.status, check.stderr).toBe(0);                                        // 4.
+  });
+
   it("missing or malformed SHAs, or ones git does not know → exit 2", () => {
     const r = gitRepo();
     expect(r.guard("", r.base).status).toBe(2);

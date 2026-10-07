@@ -178,6 +178,27 @@ node scripts/changelog-assemble.mjs --check                         # validate o
   merge-sync from `main` does not count. The exception is a PR whose every
   commit editing them carries the `Changelog: assemble` trailer.
 
+#### A long-lived line landing on `main`
+
+A feature line that kept its own CHANGELOG section, such as
+`feature/2.2-web` and its `## [2.2.0] - unreleased (web line, …)`, gets no
+exemption from the guard. The PR that lands it on `main` converts that
+section into fragments:
+
+1. Merge-sync the line with `main` first.
+2. For each entry the line added, add `changes/<issue>.md` and
+   `changes/<issue>.zh-TW.md` with the same text and the section it was
+   under. An entry without an issue number uses the landing PR's number with
+   a slug, for example `changes/1262-web-chat-markdown.md`. Drop entries that
+   only concerned the line itself, such as its temporary CI.
+3. Put both CHANGELOGs back to `main`'s version, so the PR no longer changes
+   them:
+   `git checkout origin/main -- docs/CHANGELOG.md docs/CHANGELOG.zh-TW.md`.
+4. `node scripts/changelog-assemble.mjs --check` and commit.
+
+The guard counts from the merge-base, so the line's old commits that edited
+the CHANGELOG no longer matter once the files equal `main`'s.
+
 ### Cut the CHANGELOG section before tagging
 
 Entries collect under `## [Unreleased]` in both
