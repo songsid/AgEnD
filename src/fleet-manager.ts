@@ -7886,6 +7886,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.statuslineWatcher.watch(name);
   }
 
+  getStatuslineOwner(name: string): string | null {
+    const daemon = this.daemons.get(name);
+    if (!daemon || daemon.isPaused || this.shuttingDown || this.stopsInFlight.has(name) || this.restartsInFlight.has(name)) return null;
+    const owner = daemon.getInteractionSnapshot().owner;
+    return `${this.lifecycle.epochOf(name)}:${owner.bootId}:${owner.spawnGeneration}:${owner.launchAttempt}:${owner.launchFenceEpoch}`;
+  }
+
   stopStatuslineWatcher(name: string): void {
     // Pausing stops I/O but retains the last observed limits for status views.
     this.statuslineWatcher.unwatch(name, true);

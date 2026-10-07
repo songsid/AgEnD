@@ -8,7 +8,7 @@ let ctx: any;
 const data = (cost: number, five: number, seven: number) => JSON.stringify({ cost: { total_cost_usd: cost }, rate_limits: { five_hour: { used_percentage: five }, seven_day: { used_percentage: seven } } });
 beforeEach(() => {
   vi.useFakeTimers(); io.read.mockReset(); io.sync.mockClear();
-  ctx = { getInstanceDir: (n: string) => `/private/${n}`, logger: { info: vi.fn() }, costGuard: { updateCost: vi.fn() }, notifyInstanceTopic: vi.fn(), checkModelFailover: vi.fn() };
+  ctx = { getInstanceDir: (n: string) => `/private/${n}`, getStatuslineOwner: () => "current", logger: { info: vi.fn() }, costGuard: { updateCost: vi.fn() }, notifyInstanceTopic: vi.fn(), checkModelFailover: vi.fn() };
   watcher = new StatuslineWatcher(ctx);
 });
 afterEach(() => { watcher.stopAll(); vi.useRealTimers(); expect(io.sync).not.toHaveBeenCalled(); });

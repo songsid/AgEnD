@@ -8,6 +8,8 @@ export interface StatuslineWatcherContext {
   readonly logger: Logger;
   readonly costGuard: CostGuard | null;
   getInstanceDir(name: string): string;
+  /** Pure lifecycle/daemon generation token; null while unavailable or stopping. */
+  getStatuslineOwner(name: string): string | null;
   notifyInstanceTopic(name: string, text: string): void;
   checkModelFailover(name: string, fiveHourPct: number): void;
 }
@@ -49,9 +51,11 @@ export class StatuslineWatcher {
 
   private async poll(name: string, registration: WatchRegistration): Promise<void> {
     try {
+      const owner = this.ctx.getStatuslineOwner(name);
+      if (owner === null) return;
       const raw = await readFile(join(this.ctx.getInstanceDir(name), "statusline.json"), "utf8");
       // An unwatch/rewatch is a new instance generation even under the same name.
-      if (this.watchers.get(name) !== registration) return;
+      if (this.watchers.get(name) !== registration || this.ctx.getStatuslineOwner(name) !== owner) return;
       const data = JSON.parse(raw);
       if (data.cost?.total_cost_usd != null) this.ctx.costGuard?.updateCost(name, data.cost.total_cost_usd);
       const rl = data.rate_limits;

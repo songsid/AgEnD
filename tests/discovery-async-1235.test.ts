@@ -139,6 +139,29 @@ describe("async fleet binary/launch discovery", () => {
     expect(io.execFile).toHaveBeenCalledTimes(3);
     expect(backend.buildCommand({ kiroUi: "legacy", instanceName: "a", instanceDir: dir, workingDirectory: dir, skipResume: true } as any)).toContain("--agent-engine=v1");
   });
+  it.each(["stop", "restart", "replacement", "respawn", "pause", "shutdown"])("real fleet statusline fence discards a pending read after %s without relying on re-registration", async action => {
+    vi.useFakeTimers(); const fm: any = new FleetManager(join(dir, "fleet")); let release!: (value: string) => void;
+    const owner = { bootId: "boot", spawnGeneration: 1, launchAttempt: 1, launchFenceEpoch: 0 };
+    const daemon: any = { isPaused: false, getInteractionSnapshot: () => ({ owner }) };
+    fm.daemons.set("a", daemon);
+    vi.spyOn(fsAsync, "readFile").mockImplementation(() => new Promise<string>(resolve => { release = resolve; }) as any);
+    const failover = vi.spyOn(fm, "checkModelFailover").mockImplementation(io.sync);
+    const notice = vi.spyOn(fm, "notifyInstanceTopic").mockImplementation(io.sync);
+    const updateCost = vi.fn(); fm.costGuard = { updateCost };
+    try {
+      fm.startStatuslineWatcher("a"); await vi.advanceTimersByTimeAsync(10_000);
+      expect(release).toBeTypeOf("function");
+      if (action === "stop" || action === "restart") fm.lifecycle.invalidate("a");
+      else if (action === "replacement") fm.daemons.set("a", { ...daemon, getInteractionSnapshot: () => ({ owner: { ...owner, bootId: "new-boot" } }) });
+      else if (action === "respawn") owner.launchFenceEpoch++;
+      else if (action === "pause") daemon.isPaused = true;
+      else fm.shuttingDown = true;
+      release(JSON.stringify({ cost: { total_cost_usd: 999 }, rate_limits: { five_hour: { used_percentage: 100 }, seven_day: { used_percentage: 0 } } }));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fm.statuslineWatcher.getRateLimits("a")).toBeUndefined(); expect(updateCost).not.toHaveBeenCalled();
+      expect(failover).not.toHaveBeenCalled(); expect(notice).not.toHaveBeenCalled();
+    } finally { fm.statuslineWatcher.stopAll(); vi.useRealTimers(); }
+  });
   it("real Daemon launch fence drops an async Kiro probe after stop", async () => {
     let release!: Function;
     io.execFile.mockImplementation((_exe, _args, _opts, cb) => { release = cb; });
