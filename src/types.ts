@@ -259,6 +259,10 @@ export interface FleetDefaults extends Partial<InstanceConfig> {
     retry_count?: number;
     retry_interval_ms?: number;
   };
+  /** #1335: retention for delivery-outbox.db and Task Board. Days to keep terminal
+   * deliveries (delivered/failed) and done/cancelled tasks. Default: 30.
+   * Uncertain and non-terminal rows are never pruned. */
+  retention_days?: number;
   startup?: {
     concurrency?: number;
     stagger_delay_ms?: number;
