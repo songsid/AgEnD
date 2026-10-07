@@ -6124,7 +6124,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // owner's copy. An unknown username can't be judged: let it through (the
     // receiver gate above still applies). Same case-insensitive rule as the
     // Telegram classic branch.
-    const suffix = msg.text?.trim().match(/^\/\w+@(\S+)/)?.[1];
+    // Hyphenated aliases count too (e.g. /install-cli): Telegram command
+    // names cannot contain "-", but typed aliases can.
+    const suffix = msg.text?.trim().match(/^\/[\w-]+@(\S+)/)?.[1];
     if (suffix && owner) {
       const ownerUser = this.worlds.get(owner)?.botUsername;
       if (ownerUser && suffix.toLowerCase() !== ownerUser.toLowerCase()) return false;

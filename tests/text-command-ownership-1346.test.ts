@@ -429,6 +429,99 @@ describe("Telegram fleet topics: owner gate + @bot suffix (6b)", () => {
   });
 });
 
+// ── General topic: hyphenated aliases obey the @suffix gate too ─────────────
+// Prism's repro: /install-cli@OtherBot slipped past \w+ and ran login.
+
+function tgGeneralSetup() {
+  const dir = mkdtempSync(join(tmpdir(), "text-ownership-tg-general-"));
+  const fm = new FleetManager(dir) as any;
+  const ownerSent: string[] = [];
+  const sibSent: string[] = [];
+  const mk = (store: string[]) => ({
+    sendText: vi.fn(async (_c: string, text: string) => { store.push(text); }),
+  });
+  const adminAccess = { ...OPEN, allowed_users: ["111"] };
+  const cfg = (id: string) => ({ id, type: "telegram", mode: "topic", group_id: "g1", access: adminAccess });
+  fm.fleetConfig = {
+    defaults: {},
+    channels: [cfg(TG_OWNER), cfg(TG_SIBLING)],
+    instances: { general: { working_directory: dir, topic_id: "gen-1", general_topic: true } },
+  } as any;
+  fm.daemons.set("general", {});
+  fm.adapter = mk(ownerSent);
+  fm.worlds.set(TG_OWNER, { adapterId: TG_OWNER, adapter: mk(ownerSent), channelConfig: cfg(TG_OWNER),
+    botUsername: "OwnerBot", accessManager: new AccessManager(OPEN, join(dir, "a1.json")) });
+  fm.worlds.set(TG_SIBLING, { adapterId: TG_SIBLING, adapter: mk(sibSent), channelConfig: cfg(TG_SIBLING),
+    botUsername: "SibBot", accessManager: new AccessManager(OPEN, join(dir, "a2.json")) });
+  fm.routing.rebuild(fm.fleetConfig);
+  const startLogin = vi.spyOn(fm, "startLoginSession").mockResolvedValue("LOGIN-STARTED");
+  const deliver = vi.spyOn(fm, "deliverToInstance").mockResolvedValue(undefined);
+  return { fm, dir, deliver, ownerSent, sibSent, startLogin };
+}
+
+const tgGenCopy = (text: string, adapterId: string, messageId: string) => ({
+  source: "telegram", adapterId, chatId: "g1", threadId: "gen-1", messageId,
+  userId: 111, userName: "user", text, isBotMessage: false, timestamp: new Date(),
+});
+
+describe("General topic: hyphenated aliases obey the @suffix gate", () => {
+  it("/install-cli@otherbot is ignored — no login, no notice, key unconsumed", async () => {
+    const { fm, dir, deliver, ownerSent, sibSent, startLogin } = tgGeneralSetup();
+    try {
+      await fm.handleInboundMessage(tgGenCopy("/install-cli@SibBot claude", TG_OWNER, "g-1"));
+      expect(ownerSent, "no migration notice").toHaveLength(0);
+      expect(sibSent).toHaveLength(0);
+      expect(startLogin, "login never starts").not.toHaveBeenCalled();
+      expect(deliver).not.toHaveBeenCalled();
+      expect(fm.recentMessageIds.size, "key unconsumed").toBe(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("/install_cli@otherbot stays ignored (underscore control)", async () => {
+    const { fm, dir, deliver, ownerSent, startLogin } = tgGeneralSetup();
+    try {
+      await fm.handleInboundMessage(tgGenCopy("/install_cli@SibBot claude", TG_OWNER, "g-2"));
+      expect(ownerSent).toHaveLength(0);
+      expect(startLogin).not.toHaveBeenCalled();
+      expect(deliver).not.toHaveBeenCalled();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("/install-cli@ownerbot (any case) still runs login through the owner", async () => {
+    const { fm, dir, deliver, ownerSent, sibSent, startLogin } = tgGeneralSetup();
+    try {
+      await fm.handleInboundMessage(tgGenCopy("/install-cli@oWnErBoT claude", TG_OWNER, "g-3"));
+      expect(ownerSent.length, "migration notice posted").toBeGreaterThan(0);
+      expect(startLogin, "login starts for claude").toHaveBeenCalledTimes(1);
+      expect(startLogin.mock.calls[0]![0]).toBe("claude");
+      expect(sibSent).toHaveLength(0);
+      expect(deliver).not.toHaveBeenCalled();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("a non-owner copy of a bare hyphenated alias leaves the key for the owner", async () => {
+    const { fm, dir, deliver, ownerSent, sibSent, startLogin } = tgGeneralSetup();
+    try {
+      await fm.handleInboundMessage(tgGenCopy("/install-cli claude", TG_SIBLING, "g-4"));
+      expect(sibSent).toHaveLength(0);
+      expect(startLogin).not.toHaveBeenCalled();
+      expect(fm.recentMessageIds.size, "key unconsumed").toBe(0);
+      await fm.handleInboundMessage(tgGenCopy("/install-cli claude", TG_OWNER, "g-4"));
+      expect(startLogin).toHaveBeenCalledTimes(1);
+      expect(ownerSent.length).toBeGreaterThan(0);
+      expect(deliver).not.toHaveBeenCalled();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 // ── Telegram ClassicBot groups (6a) and private chats (6c) ──────────────────
 
 function tgClassicSetup() {
