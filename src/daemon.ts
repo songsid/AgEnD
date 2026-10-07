@@ -4206,8 +4206,20 @@ export class Daemon extends EventEmitter {
     return this.interactionObservation.snapshot(this.interactionOwner());
   }
 
+  /** Key of the last interaction snapshot actually emitted + broadcast (#1219). */
+  private lastPublishedInteractionKey: string | null = null;
+
   private publishInteraction(): void {
     const interaction = this.getInteractionSnapshot();
+    // The runtime monitor and every state capture observe the same unchanged
+    // dialog for minutes; re-emitting an identical snapshot each time is
+    // needless IPC traffic. Skip only exact duplicates — any change in the
+    // presentation-relevant fields publishes, so the final state is never
+    // lost (clocks like ageMs are excluded on purpose: they always change).
+    const key = JSON.stringify([interaction.phase, interaction.kind, interaction.reason,
+      interaction.episode, interaction.stale, interaction.suspected]);
+    if (key === this.lastPublishedInteractionKey) return;
+    this.lastPublishedInteractionKey = key;
     // Presentation telemetry must not interrupt the execution-state/hold path.
     try {
       this.emit("instance_interaction", { name: this.name, interaction });
@@ -5332,15 +5344,14 @@ export class Daemon extends EventEmitter {
       const pane = reason === "interaction_confirmation"
         ? await this.tmux.capturePane(1_000) : await this.tmux.capturePane();
       if (!currentDeliveryCapture() || !sameInteractionOwner(interactionOwner, this.interactionOwner())) return;
-      // An old capture must not retire a new launch's transient guard either.
-      if (reason === "delivery_idle_gate" && !currentDeliveryCapture()) {
-        this.resetFooterFallback();
-        return;
-      }
       // Delivery's unknown-footer proof also awaits the TTY mode. Validate
       // output and launch freshness AFTER both awaits, before accepting it.
       const deliveryCandidate = reason === "delivery_idle_gate"
         ? await this.probeDeliveryIdleFallback(pane) : null;
+      // An old capture must not retire a new launch's transient guard either.
+      // This check is only live here, after the probe's await: the identical
+      // check before the probe was dead (no await in between, so the early
+      // return above had already settled it) and is gone (#1219).
       if (reason === "delivery_idle_gate" && !currentDeliveryCapture()) {
         this.resetFooterFallback();
         return;
