@@ -599,7 +599,7 @@ describe("dashboard sendMsg with files (the real page script)", () => {
       document: { addEventListener() {}, getElementById: (n: string) => nodes[n] ?? null, createElement: () => ({ style: {}, remove() {}, append() {}, setAttribute() {} }), body: { appendChild() {} } },
       setTimeout: () => 0, clearTimeout() {}, setInterval: () => 0, clearInterval() {},
       fetch: async () => ({ ok: true, json: async () => ({}) }), URL: { createObjectURL: () => "blob:x", revokeObjectURL() {} },
-      EventSource: class { addEventListener() {} },
+      EventSource: class { addEventListener() {} }, File,
     });
     vm.runInContext(RENDER, c);
     vm.runInContext(PAGE, c);
@@ -674,6 +674,59 @@ describe("dashboard sendMsg with files (the real page script)", () => {
     fail();
     await again;
     expect(p.read("pendingFiles.w.map(f => f.name)")).toEqual(["a", "b"]);
+  });
+
+  // #1316 review: a long paste becomes a file only when that file fits; otherwise the browser pastes the text as usual.
+  function paste(p: ReturnType<typeof page>, text: string) {
+    let prevented = false;
+    p.read("onComposerPaste")({ clipboardData: { files: [], getData: () => text }, preventDefault: () => { prevented = true; } });
+    return prevented;
+  }
+  const LONG = "x".repeat(10_001);
+  const MB = 1024 * 1024;
+
+  it("a long paste that fits is attached as a text file (the browser's paste stopped), and As text puts it back", () => {
+    const p = page();
+    const made: any[] = [];
+    (p.c as any).makeEl = () => { const n: any = { style: {}, dataset: {}, remove() {}, append() {}, setAttribute() {} }; made.push(n); return n; };
+    p.read("document.createElement = () => makeEl()");
+    expect(paste(p, LONG)).toBe(true);
+    expect(p.read("pendingFiles.w.map(f => [f.name.replace(/\\d+/, 'T'), f.size])")).toEqual([["pasted-T.txt", 10_001]]);
+    expect(p.toasts).toEqual(["A long paste (10,001 characters) was attached as a text file"]);
+    made.find(n => n.textContent === "As text")!.onclick();
+    expect(p.nodes.msgIn.value).toBe(LONG);
+    expect(p.read("pendingFiles.w")).toEqual([]);
+  });
+
+  it.each([
+    ["five files are already attached", () => [1, 2, 3, 4, 5].map(i => ({ name: `${i}.png`, size: 10 }))],
+    ["25 MB is already taken", () => [{ name: "a.pdf", size: 10 * MB }, { name: "b.pdf", size: 10 * MB }, { name: "c.pdf", size: 5 * MB - 5_000 }]],
+  ])("no room — %s: nothing is attached, the browser pastes the text as usual", (_why, pending) => {
+    const p = page();
+    (p.c as any).pendingSeed = pending();
+    p.read("pendingFiles.w = pendingSeed.slice()");
+    const before = p.read("pendingFiles.w.map(f => f.name)");
+    expect(paste(p, LONG), "not prevented: the text lands in the composer").toBe(false);
+    expect(p.read("pendingFiles.w.map(f => f.name)")).toEqual(before);
+    expect(p.toasts).toEqual(["No room for another attachment: the long paste stays as text"]);
+  });
+
+  it("a paste over 10 MB is never a file: the browser pastes it as text", () => {
+    const p = page();
+    expect(paste(p, "y".repeat(10 * MB + 1))).toBe(false);
+    expect(p.read("pendingFiles.w || []")).toEqual([]);
+  });
+
+  it("files sent along a send still in flight count too: no room beside them, the text pastes as usual", () => {
+    const p = page();
+    p.read('inFlightFiles.w = [1, 2, 3, 4, 5].map(i => ({ name: i + ".png", size: 10 }))');
+    expect(paste(p, LONG)).toBe(false);
+  });
+
+  it("a short paste is just a paste", () => {
+    const p = page();
+    expect(paste(p, "x".repeat(10_000))).toBe(false);
+    expect(p.toasts).toEqual([]);
   });
 
   it("addFiles refuses what does not fit and says why", () => {
