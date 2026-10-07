@@ -175,8 +175,8 @@ All fields from `instances.<name>` can be set here as shared defaults. Additiona
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `startup.concurrency` | number | `10` | Max instances starting simultaneously |
-| `startup.stagger_delay_ms` | number | `500` | Delay between startup groups (ms) |
+| `startup.concurrency` | number | derived, `2`–`10` | Shared spawn-gate concurrency, based on free RAM and CPU count when omitted. An explicit value must be `1`–`20`. |
+| `startup.stagger_delay_ms` | number | `500` | Minimum spacing between spawn admissions (ms), across startup, wake, recovery and restart; not a delay between groups. Valid range: `0`–`30000`. |
 | `cost_guard.daily_limit_usd` | number | `0` (disabled) | Fleet-wide daily cost limit |
 | `cost_guard.warn_at_percentage` | number | `80` | Warn threshold (% of limit) |
 | `cost_guard.timezone` | string | system TZ | IANA timezone for daily reset |
@@ -185,16 +185,18 @@ All fields from `instances.<name>` can be set here as shared defaults. Additiona
 | `daily_summary.enabled` | boolean | `true` | Enable daily cost/status report |
 | `daily_summary.hour` | number | `21` | Report hour (local time) |
 | `daily_summary.minute` | number | `0` | Report minute |
-| `scheduler.max_schedules` | number | — | Max cron schedules |
-| `scheduler.default_timezone` | string | — | Default timezone for schedules |
-| `scheduler.retry_count` | number | — | Schedule retry count |
-| `scheduler.retry_interval_ms` | number | — | Schedule retry interval |
-| `webhooks` | WebhookConfig[] | — | Outbound webhook notifications |
-| `warm_cap` | number | `0` (unlimited) | Fleet-wide cap on simultaneously warm (running) instances. When the running count exceeds it, the least-recently-active idle instance is auto-paused. `general` instances are never evicted. Complementary to `auto_pause_after` (time-based). |
+| `scheduler.max_schedules` | number | `100` | Max schedules |
+| `scheduler.default_timezone` | string | `"Asia/Taipei"` | Default timezone for schedules |
+| `scheduler.retry_count` | number | `3` | Retries after the initial delivery attempt |
+| `scheduler.retry_interval_ms` | number | `30000` | Schedule retry interval (ms) |
+| `webhooks` | WebhookConfig[] | `[]` | Outbound webhook notifications |
+| `warm_cap` | number | `0` (unlimited) | Fleet-wide cap on simultaneously warm (running) instances. When the running count exceeds it, the least-recently-active idle instance is auto-paused; General and instances with work leases are spared. Complementary to `auto_pause_after` (time-based). |
 | `warm_overflow` | number | `2` | With `delivery_worker` set to `wake_only` (the default) or `on`, how far `warm_cap` may be exceeded to wake a target that has queued work. No effect when `warm_cap` is `0` |
 | `delivery_worker` | `"off"` \| `"wake_only"` \| `"on"` | `"wake_only"` | Phase 2 delivery owner (2.1.9; default `wake_only` since #1129). `wake_only` wakes a paused target when cross-instance work is queued for it. `off` never does: work for an instance paused across a fleet restart waits for a manual `/wake`. `on` (canary) also hands that target's delivery lane to a per-instance worker. Can be overridden per instance (`instances.<name>.delivery_worker`) |
 | `progress_min_elapsed` | number | `30` | Seconds before the live-progress line / cancel button starts showing elapsed time. |
 | `max_cross_instance_message_bytes` | number | `12288` | Maximum UTF-8 byte size of a cross-instance message body. Oversized messages are rejected with guidance to shorten them or send a file path. |
+| `reply_overdue_minutes` | number | `15` | Minutes since the last ask/reminder before notifying the requester once that a `requires_reply` request is unanswered and its owner is not working. `0` disables requester notices, not owner reminders. |
+| `tips` | boolean | `true` | Daily General-topic tips and update-completion tips. Independent of `daily_summary.enabled`. |
 | `locale` | `"en"` \| `"zh-TW"` | auto-detects from timezone | UI/notification language for user-facing text. |
 
 ---
@@ -217,20 +219,21 @@ All fields from `instances.<name>` can be set here as shared defaults. Additiona
 | `model_failover` | string[] | — | Ordered fallback models on rate limit |
 | `auto_pause_after` | number | `0` (disabled) | Minutes idle before auto-pause. 0 = disabled. |
 | `agent_mode` | `"mcp"` \| `"cli"` | `"mcp"` | Communication mode. `"mcp"` is the default for every backend, Antigravity included; `"cli"` opts into `agend-agent` HTTP commands |
-| `tool_set` | string | `"worker"` | Tool profile: `"worker"` (the default — talk, read, do the work), `"coordinator"` (worker plus the verbs that run the fleet: create/delete/restart instances, teams, schedules), `"full"` (every tool), `"standard"` (26), `"minimal"` (7). Not user-settable: `"general"` (dispatcher profile) is assigned internally to General instances only — setting it by hand fails validation. |
+| `tool_set` | string | `"worker"` | Tool profile: `"worker"` (the default — talk, read, do the work), `"coordinator"` (worker plus the verbs that run the fleet: create/delete/restart instances, teams, schedules), `"full"` (every tool), `"standard"` (29), `"minimal"` (9). Not user-settable: `"general"` (dispatcher profile) is assigned internally to General instances only — setting it by hand fails validation. |
 | `tool_progress` | `"off"` \| `"standard"` \| `"verbose"` | `"off"` | Tool-activity detail shown in the channel's processing bubble. `standard` shows semantic labels with no shell arguments; `verbose` adds truncated command previews. Opt-in — the bubble broadcasts activity into the channel. |
 | `cross_instance_visibility` | `"full"` \| `"summary"` \| `"hidden"` | `"full"` | How much of a bot-to-bot (cross-instance) message is posted in this instance's topic, on whichever side it is: `full` the whole message (as before), `summary` one line, `hidden` nothing. Set under `defaults` for the fleet (also with `/visibility`), here to override it for one instance; Settings has both. Applies at once, without a restart. Delivery and the Mirror Topic are never affected — see [features](features.md#bot-to-bot-message-visibility). |
 | `effort` | string | — | Default reasoning effort for this instance (`low`/`medium`/`high`/`xhigh`/`max`, clamped per backend). Runtime override via the `/effort` command — see [commands.md](./commands.md). |
 | `backend_options` | object | — | Per-backend options keyed by backend name, e.g. `{ codex: { provider: "glm" } }`. See **Credential profiles** below for `credential_profile`. |
 | `terminal.enabled` | boolean | `true` | Logical terminal size feature toggle. `false` pins the window to tmux's historical 80x24 for compatibility. |
-| `terminal.columns` | number | `120` | Terminal width when `terminal.enabled` is `true`. |
-| `terminal.rows` | number | `36` | Terminal height when `terminal.enabled` is `true`. |
-| `mcp_auto_restart` | boolean | `true` | Restart the instance (idle-gated, session resumed) when its MCP server dies, or never connects within 90 seconds of the CLI starting. `false` = notify only. |
+| `terminal.columns` | number | `120` | Terminal width when enabled; integer `80`–`300`. |
+| `terminal.rows` | number | `36` | Terminal height when enabled; integer `24`–`120`. |
+| `mcp_auto_restart` | boolean | `true` | Restart/resume when MCP dies or never connects within 90 seconds of CLI startup. Normally waits for idle, with a 30-minute forced-restart backstop; unresolved auth trouble suppresses automatic restart. `false` = notify only. |
 | `mcp_proxy_reply` | boolean | `false` | Opt-in: when the MCP server is dead at end of turn and no reply was sent, the daemon relays the pane's final text to the channel (marked ⚠️ as proxy reply). Off by default — raw pane text can leak content redaction doesn't catch. |
+| `reply_completion_guard` | boolean | `true` | Bounded recovery when a human turn ends without a delivered reply. Requires backend support: Claude Code and successfully built Kiro legacy/TUI launches; not Kiro v3 or other backends. Also configurable in Classic defaults/per-channel entries. |
 | `lightweight` | boolean | `false` | Skip non-essential subsystems |
-| `systemPrompt` | string | — | Custom system prompt. Inline text, or `file:path` (relative to the instance's `working_directory`; several joined with commas — see [features](features.md#systemprompt-file-paths)) |
+| `systemPrompt` | string | — | Additional instructions, inline or `file:path`, delivered through the native route below. A relative file path resolves under the instance's `working_directory`; several parts are joined with commas — see [features](features.md#systemprompt-file-paths). |
 | `workflow` | string \| false | `"builtin"` | Workflow template: `"builtin"`, `"file:path"` (relative to the instance's `working_directory`), inline, or `false` |
-| `skipPermissions` | boolean | — | Skip CLI permission checks. OpenCode: launched with `--auto` when its `--help` lists it (explicit `deny` rules still apply); an older OpenCode gets no launch switch and its prompts are answered "Allow once" at runtime |
+| `skipPermissions` | boolean | effectively `true` unless `false` | Permission bypass uses backend-specific flags; see [security boundaries](SECURITY.md). OpenCode: launched with `--auto` when its `--help` lists it (explicit `deny` rules still apply); an older OpenCode gets no launch switch and its prompts are answered "Allow once" at runtime |
 | `pre_task_command` | string | — | Raw command pasted before each user message |
 | `startup_timeout_ms` | number | `25000` | CLI startup timeout (ms) |
 | `log_level` | string | `"info"` | `"debug"`, `"info"`, `"warn"`, `"error"` |
@@ -240,8 +243,13 @@ All fields from `instances.<name>` can be set here as shared defaults. Additiona
 | `restart_policy.backoff` | string | `"exponential"` | `"exponential"` or `"linear"` |
 | `restart_policy.reset_after` | number | `300` | Seconds of uptime before retry count resets |
 | `restart_policy.health_check_interval_ms` | number | `30000` | Health check polling interval |
-| `context_guardian.grace_period_ms` | number | `600000` | Grace period before context rotation (ms) |
-| `context_guardian.max_age_hours` | number | `0` (disabled) | Force rotation after N hours |
+| `context_guardian.grace_period_ms` | number | — | Deprecated compatibility field: ignored, with a validation warning. |
+| `context_guardian.max_age_hours` | number | — | Deprecated compatibility field: ignored, with a validation warning. |
+
+The context guardian monitors CLI status for the dashboard and logs. It does not
+rotate or restart sessions based on context usage or session age; context limits
+are handled by each CLI's own compaction. The legacy fields above have no built-in
+defaults and no effect.
 
 ---
 
@@ -281,7 +289,7 @@ templates:
 |-------|------|-------------|
 | `description` | string | Template description |
 | `team` | boolean | Auto-create team from deployed instances |
-| `instances` | object | Instance definitions (same fields as InstanceConfig) |
+| `instances` | object | Template definitions: `description`, `backend`, `model`, `model_failover`, `tool_set`, `systemPrompt`, `skipPermissions`, `lightweight`, `workflow`, `tags`, and optional `profile`. |
 
 ---
 
@@ -307,10 +315,63 @@ profiles:
 defaults:
   webhooks:
     - url: https://example.com/hook
-      events: [instance.started, instance.stopped]
+      events: [cost_warning, hang]
       headers:
         Authorization: "Bearer token"
 ```
+
+Emitted events are `hang`, `mcp_died`, `pty_error`, `pty_recovered`,
+`cost_warning`, `cost_limit`, `schedule_deferred`, `model_failover` and
+`model_recovered`. Use `events: ["*"]` to subscribe to all emitted events.
+`instance.started`, `instance.stopped`, `rotation` and `crash_loop` are not emitted.
+
+---
+
+## Fleet instructions and session context
+
+MCP server instructions provide a compact identity, reply and cross-instance
+messaging contract. Full fleet guidance — role, workflow, selected decisions and
+`systemPrompt` — uses each backend's native instruction route:
+
+| Backend | Full instruction route |
+|---------|------------------------|
+| Claude Code | Instance `fleet-instructions.md`, loaded with additive `--append-system-prompt-file` |
+| Codex | Managed AgEnD marker block in the workspace's `AGENTS.md` |
+| Kiro CLI | Workspace `.kiro/steering/agend-<instance>.md` |
+| OpenCode | Instance `fleet-instructions.md` appended to the project's `opencode.json` `instructions` array |
+| Antigravity | Managed marker block in workspace `.agents/agents.md` |
+| Grok / Muse | Managed marker block in workspace `AGENTS.md` |
+
+Normal updates of complete managed marker blocks preserve surrounding content.
+Cleanup of a malformed block with no END marker can remove BEGIN through EOF.
+OpenCode and Kiro
+do not depend on reading MCP's `instructions` field for full fleet context.
+Codex's project-document size limit can still truncate a large `AGENTS.md`.
+
+Set `workflow` in `defaults.workflow` or `instances.<name>.workflow`, **not at the
+root of `fleet.yaml`**. The default is `"builtin"`; inline content, `file:path`
+and `false` are supported. `systemPrompt` uses the same native routes whether
+inline or loaded from a file; it is not delivered solely through MCP. Relative
+`workflow` and `systemPrompt` file paths resolve under the instance's
+`working_directory` (#1314; until 2.2 a file found only at the old fleet-directory
+location is still used, with a warning).
+
+### Active Decisions
+
+Fleet startup snapshots up to 20 active decisions, with each content capped at
+200 characters. Each daemon selects relevant decisions; its instructions show up
+to 15 summaries, each capped at 120 characters, and point to `list_decisions` for
+more. This is a startup snapshot, not a live feed: use `list_decisions` for current
+full decisions, including ones posted after startup.
+
+### Session snapshots
+
+Crash recovery can write `rotation-state.json`; the historical filename does not
+mean context-based rotation is enabled. On a later launch the daemon consumes
+the snapshot and attempts to send it as background context prefixed
+`[system:session-snapshot]`. It is not embedded in the instruction files. Reading
+marks it consumed for that startup and attempts to delete the file, normally
+preventing replay on later restarts.
 
 ---
 
@@ -324,20 +385,25 @@ Located at `~/.agend/classicBot.yaml`. Manages ClassicBot channels (auto-created
 |-------|------|---------|-------------|
 | `backend` | string | `"claude-code"` | Default backend for all classic channels |
 | `model` | string | — | Default model for all classic channels |
-| `context_lines` | number | `50` | Chat history lines injected before each message (0 = disable) |
+| `context_lines` | number | `5` | Chat history lines injected before each message (0 = disable) |
 | `allowed_guilds` | string[] | `[]` | Discord server IDs allowed to use ClassicBot (empty = all) |
 | `allowed_groups` | string[] | `[]` | Telegram group IDs allowed |
 | `allowed_users` | string[] | `[]` | User IDs allowed to interact |
-| `admin_users` | string[] | `[]` | User IDs with admin access (/start, /stop, /raw, /compact, /save, /load, /collab) |
+| `admin_users` | string[] | `[]` | Classic admin user IDs. Command gates differ by platform; see the [permissions matrix](permissions.md). `/raw` is not a supported command. |
+| `reply_completion_guard` | boolean | inherited | Per-channel → Classic defaults → fleet defaults → `true`; requires the backend capability described above. |
 
 ### channels.\<channelId\>
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `name` | string | — | Channel display name |
+| `channelId` | string | entry key | Actual channel/chat ID when different from the YAML key |
+| `adapterId` | string | inferred | Owning bot connection; non-primary connections add an adapter suffix to generated instance names |
+| `instanceName` | string | generated | Persisted explicit instance name, when present, wins over generated naming |
 | `backend` | string | defaults.backend | Backend override |
 | `model` | string | defaults.model | Model override |
 | `context_lines` | number | defaults.context_lines | Chat history lines override |
+| `reply_completion_guard` | boolean | inherited | Override the human reply guard for this Classic channel |
 | `collab` | boolean | `false` | Collaboration mode (@mention trigger) |
 | `pre_task_command` | string | — | Raw command pasted before each message |
 | `createdBy` | string | — | User ID who created this channel |
@@ -347,9 +413,9 @@ Located at `~/.agend/classicBot.yaml`. Manages ClassicBot channels (auto-created
 
 - **Backend fallback**: channel → `defaults.backend` → `fleet.yaml` defaults → `claude-code`
 - **Hot reload**: changes detected every 30 seconds
-- **Instance naming**: `classic-<sanitized-channel-name>-<last4-of-channelId>`
-- **DC auto-collab**: Discord `/start` auto-enables collab mode (bot messages visible without @mention)
-- **Fleet /collab**: per-instance in-memory toggle (non-persistent, resets on fleet restart). Allows bot/webhook messages to reach a fleet topic instance.
+- **Instance naming**: `classic-<sanitized-channel-name>-<last4-of-channelId>`, plus a sanitized adapter suffix on non-primary connections. A persisted `instanceName` wins; otherwise the display `name` (or channel ID), rather than an arbitrary YAML key, supplies the name.
+- **DC auto-collab**: Discord `/start` auto-enables collab mode. Messages are logged for context; triggering a turn still requires mentioning the bot.
+- **Fleet /collab**: per-instance in-memory toggle (non-persistent, resets on fleet restart). Lets bot/webhook messages pass the fleet topic's bot prefilter; it does not replace access control.
 
 ### Telegram ClassicBot commands
 
@@ -372,8 +438,10 @@ bot being online alone does not establish which layer lost the command.
 
 ## Credential profiles (multiple subscriptions of one backend)
 
-A CLI backend keeps its login in one place, so every instance in a fleet shares
-one account. `credential_profile` gives a named, separate copy of that place:
+For Kiro CLI and Codex, `backend_options.<backend>.credential_profile` selects a
+named login isolated from the default shared login. Other backends warn that the
+option is ignored. Names must match `[A-Za-z0-9][A-Za-z0-9._-]{0,63}`. Set it under
+an instance or shared defaults:
 
 ```yaml
 instances:
@@ -389,117 +457,78 @@ instances:
         credential_profile: personal
 ```
 
-Instances naming the same profile share a login; instances naming different
-profiles have different ones. **An instance with no `credential_profile` is
-unaffected** — nothing is added to its launch and no directory is created for
-it, so this feature cannot change the behaviour of a fleet that does not use it.
+Instances naming the same effective profile share a login; different names
+isolate their stores. With no effective profile after defaults inheritance, the
+ordinary shared login is unchanged and no profile directory is created. Profiles
+live in `~/.agend/credential-profiles/<backend>/<profile>`, shared across instances
+that name the same profile.
 
-A profile lives in `~/.agend/credential-profiles/<backend>/<profile>` — under the
-fleet rather than under an instance, so several agents can point at one
-subscription. Log a profile in once from the host:
+### Kiro
+
+Log the profile in once on the host:
 
 ```bash
 XDG_DATA_HOME=~/.agend/credential-profiles/kiro-cli/work kiro-cli login
 ```
 
-Only the login is duplicated. The multi-gigabyte runtimes kiro downloads (`kas`,
-`node`, `bun`, `cli-checkouts`) are symlinked back to the shared copy, so a
-second profile costs megabytes rather than gigabytes. The store itself is never
-a symlink — SQLite follows a linked database to its target, which would leave
-the profile sharing the very login it exists to separate.
+Kiro's login/conversation database remains a private file, never a symlink back
+to the shared login. Large runtime caches (`kas`, `node`, `bun`, `cli-checkouts`)
+link to the shared copy. A new profile starts empty apart from these caches;
+`knowledge_bases`, shell `history` and other private entries belong to it. Copy
+those across yourself if needed.
 
-**A profile starts empty apart from those caches.** Anything the backend keeps
-beside its login and that is not a shared cache — kiro's `knowledge_bases`, its
-shell `history` — belongs to the profile, so an agent moved to a new profile
-starts with none of it. Its conversations are inside the login database itself
-(see [Switching is a new conversation](#switching-is-a-new-conversation)). That is the point of the
-isolation, but `knowledge_bases` disappearing is the part people do not expect;
-copy it across by hand if you want it in both.
-
-Switching an existing agent is a config change plus a restart:
+To switch an existing instance:
 
 ```
 update_instance_config(name: "research-a",
   config: { backend_options: { "kiro-cli": { credential_profile: "personal" } } })
 ```
 
-The credentials are read when the CLI launches, so AgEnD restarts the instance
-for you and says `restarted: true`. A paused or stopped agent is not started:
-its new profile applies when it next comes up. Send `credential_profile: null`
-to put an agent back on the default login. Ask General in plain language — "move
-research-a to the personal subscription" — and it will do this.
+A changed launch option restarts a running instance; the reply says whether that
+restart succeeded. Paused, stopped or crashed instances remain inactive and read
+the new option at their next start. `credential_profile: null` clears the instance
+override and inherits the fleet default; this uses the shared login only when no
+named profile is inherited.
 
-**Switching to a profile that has never been logged in is refused**, and the
-error carries the command to log it in. kiro-cli does not start a signed-out
-session: it stops at `Welcome to Kiro CLI, let's get you signed in!` and waits
-for a keypress, so an agent pointed at an empty profile would sit on a login
-screen until its startup budget expired, then restart into the same screen.
-Going *back* to the default login is never refused — that is the way out of a
-bad switch.
+When `update_instance_config` changes the effective profile name to a different
+named profile, it checks for a recognized stored login and refuses the switch
+with a login command if absent. This is not a check of token freshness or a
+promise about startup from manually edited YAML. Returning to the shared login
+bypasses this named-profile check.
 
-### Switching is a new conversation
+**Switching a running Kiro instance starts a fresh conversation.** Login and
+conversations share one `data.sqlite3`; a different profile has a different set
+of conversations. AgEnD skips resume for that fresh launch and attempts to hand
+over recent messages/activity from daemon buffers, rather than copying the CLI
+store. A successful restart reports `conversation_carried_over: false` and
+`handover_chars`; the latter counts context sent through IPC, not confirmed
+processing, and may be zero. The inactive-instance update path does not run this
+handover or return those fields.
 
-kiro keeps its conversations in the same `data.sqlite3` as its login, keyed by
-working directory. A different subscription is therefore a different set of
-conversations, and there is nothing to resume — the store the agent was talking
-into is the one being left behind. AgEnD does not try: the first launch after a
-switch skips resume outright, rather than spending the resume startup budget
-waiting for a conversation that is not there.
-
-What does carry across is the *intent*. AgEnD takes the outgoing session's
-context from the daemon (recent messages, recent activity — not from the CLI's
-own store) and delivers it to the new session as a handover, saying which
-subscription it came from and that the conversation did not come with it. The
-reply reports `conversation_carried_over: false` and `handover_chars`.
-
-This is a property of kiro, not a design choice: auth and conversations are
-tables in one file, and a table cannot be symlinked back to the shared store.
-
-### Seeing both quotas
-
-`/usage`, `get_usage` and the dashboard show **one row per subscription**, not
-one per backend: a fleet with a `work` and a `personal` kiro profile gets
-`Kiro (work)` and `Kiro (personal)`, each read from its own store. A backend
-with no profiles keeps its single row, reading the shared login.
-
-A profile that is configured but never logged in keeps its row too, reading
-`Signed out — run kiro-cli to log in`: when you are setting up a second
-subscription, the one still to be logged in is exactly the row you need to see.
-A row only disappears when the CLI itself is absent from the machine.
-
-The rows are never added together. Two subscriptions have two quotas, and a
-combined number would be true of neither — which is also the quickest way to see
-whether two logins really are separate billing accounts: spend against one and
-watch only that row move.
-
-### Codex, and why it behaves differently
-
-Codex has profiles too, and switching one **keeps the conversation** — the
-opposite of kiro, for a reason that is nobody's choice. Kiro stores its
-conversations in the same `data.sqlite3` as its login, so a different
-subscription is a different set of them. Codex stores its login in one file,
-`auth.json`, beside conversation stores (`sessions/` and the thread/state/memory
-databases) that carry no account at all. Swapping the file swaps the account and
-leaves the history where it is — which also means **both subscriptions see the
-same history**.
-
-Log a codex profile in with its own variable:
+### Codex
 
 ```bash
 CODEX_HOME=~/.agend/credential-profiles/codex/work codex login
 ```
 
-AgEnD does not move `CODEX_HOME` for a profile: every instance already has its
-own codex home so its `config.toml` stays private, and a profile only changes
-where that home's `auth.json` points. Everything else — sessions, the databases,
-the caches — still comes from the shared home.
+A Codex profile changes **only the source of `auth.json`**. The instance keeps its
+own CODEX_HOME and private `config.toml`; conversation and thread/state/memory
+stores remain shared. A profile switch does not deliberately force a fresh
+conversation, and both accounts can see the same history stores.
 
-Two things about codex are **not yet verified**, because they need a second
-billing account: whether the two subscriptions really meter separately, and
-whether codex will reopen a conversation that was recorded under the other
-account. If it will not, the agent starts a fresh conversation and carries on;
-nothing breaks, it simply does not continue.
+Reopening a conversation recorded under another account and separate metering
+have not been verified with a second billing account. Shared history is not a
+guarantee that cross-account resume will succeed.
 
-Implemented for `kiro-cli` and `codex`. Other backends keep their logins behind
-their own variables; adding one is a new entry in `CREDENTIAL_HOMES`, not a new
-mechanism.
+### Seeing both quotas
+
+`/usage`, `get_usage` and the dashboard show separate rows for effective
+backend/profile bindings of running or paused instances. Active Kiro `work` and
+`personal` profiles appear as `Kiro (work)` and `Kiro (personal)`; a shared-login
+binding uses the default row. Sources used only by stopped or crashed instances
+are filtered out.
+
+An active Kiro profile without a readable login retains a signed-out hint.
+Visibility also depends on the provider: Codex rows without OAuth usage
+credentials, including API-key-only profiles, are omitted. Rows are not combined,
+and different profile names do not guarantee different billing accounts.
