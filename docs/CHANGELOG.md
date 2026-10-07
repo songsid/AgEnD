@@ -117,7 +117,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - `~/` and absolute paths are used as given; anything else is relative to the instance's `working_directory`.
   - For one release, a file found only at the old location is still used, with a warning naming both paths and one
     notice in the instance's topic.
-  - A file that is missing, unreadable or over 256 KiB is logged with its path and error, never its contents.
+  - A file that is missing, unreadable, over 256 KiB, or not a regular file (a FIFO or device, opened without
+    blocking) is logged with its path and error, never its contents. `~name/` (another user's home) is refused.
   - Config validation warns about a reference that names no file.
   - `systemPrompt` is split on commas only when a part is a `file:` reference: an inline prompt such as "You are Kuro,
     a careful reviewer" stays one paragraph (it used to become two).
