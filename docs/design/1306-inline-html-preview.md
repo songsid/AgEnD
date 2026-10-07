@@ -1,11 +1,12 @@
 # #1306: interactive inline HTML in the web chat
 
-**Status:** design for review (🔒 Prism) — no code yet. Milestone 2.2.1, branch `feature/2.2-web`.
+**Status:** design for review (🔒 Prism), **r2** — no code yet. Milestone 2.2.1, branch `feature/2.2-web`.
 **Inputs:** the leader's decision on #1306 (2026-10-07, delegated by the user, to be adjusted after testing) and
-claude-fable's *AgEnD web chat design study*, section 3. Every claim about today's code below was re-read at
-`feature/2.2-web` **fcc7e7ec**; external references (CVEs, specs) are the study's and are cited, not re-verified.
+claude-fable's *AgEnD web chat design study*, section 3. Every claim about today's code was re-read at
+`feature/2.2-web` **9112eeec** (after #1313/#1316/#1317); external references (CVEs, specs) are the study's or the
+review's and are cited, not re-verified. r2 answers Prism's review of r1 (8e3a846e): §11 maps each finding.
 
-## 1. What we are building
+## 1. What we are building — and what we promise
 
 When an agent's reply contains a fenced ` ```html ` block — or attaches a `.html` file — the web chat shows a card
 under it. Nothing runs until the person clicks **Preview**. The preview runs in a sandboxed frame served by a
@@ -13,43 +14,57 @@ under it. Nothing runs until the person clicks **Preview**. The preview runs in 
 session cookie, can read the CSRF value, and fronts every write (stop, restart, delete instances, config, send,
 approve prompts).
 
-Decided (not up for review here, only their realisation):
+**The guarantee, stated narrowly.**
+
+- **G1 — account boundary (all supported browsers):** the preview cannot act as the signed-in person. It has no
+  dashboard origin, no cookie-bearing request it can read, no CSRF value, and its messages reach nothing but a
+  resize/heartbeat handler.
+- **G2 — no network, only where enforced:** in v1 the preview opens no network connection. The browser checks
+  this before anything renders (§4.3), and Preview is **unavailable** in a browser that cannot enforce it. Today
+  Firefox does not implement the CSP `webrtc` directive ([bug 1783489](https://bugzilla.mozilla.org/show_bug.cgi?id=1783489)).
+- **Not promised:**
+  - The HTML is **not** assumed to be harmless or public. Agent output can contain private data. A preview shows it
+    to code the agent wrote, inside the person's browser; G2 is what keeps that code from sending it anywhere.
+  - Click-to-run is a consent step, not proof that the source is non-confidential.
+  - Availability (a preview that freezes the tab) is best effort (§8).
+
+Decided (realised here, not re-opened):
 
 1. A dedicated **preview listener on a separate port**, loopback by default; optional `web.preview_origin` (a
    separate hostname) for the strongest isolation. Never a same-origin `/ui/preview` route.
-2. **No network** in the preview in v1 (`connect-src 'none'`); libraries must be inlined.
-3. **Source:** only ` ```html ` fences in messages the **server** marks `role: "agent"`. HTML from users (web,
-   Telegram, Discord, other members) is never rendered.
-4. **Limits:** 1 MiB of HTML, 4000 px height cap, rate-limited resize, 10 s watchdog.
+2. **No network** in the preview in v1; libraries must be inlined. (r2: enforced or unavailable, G2.)
+3. **Source:** only ` ```html ` fences (and `.html` attachments, Q4) in messages the **server** marks
+   `role: "agent"`. HTML from users (web, Telegram, Discord, other members) is never rendered.
+4. **Limits:** 1 MiB of HTML, 4000 px height cap, rate-limited resize, 10 s watchdog (best effort).
 5. **Click to run**, always. Controls: Preview / Source / Download; Open in new tab only with `web.preview_origin`.
-6. **postMessage:** accept only `event.source === iframe.contentWindow`, one fixed resize shape; the listener is
-   connected to nothing that sends, approves or calls an API.
+6. **postMessage:** accept only `event.source === iframe.contentWindow`, fixed shapes; the listener is connected to
+   nothing that sends, approves or calls an API.
 7. When the dashboard is reached through a tunnel/gateway exposing one port and no `web.preview_origin` is set,
    preview is **disabled** — Source and Download only.
 
-## 2. Today (verified at fcc7e7ec)
+## 2. Today (verified at 9112eeec)
 
 | Fact | Where |
 |---|---|
 | `reply.format` is `"text" \| "markdown"`; there is no HTML format. | `src/outbound-schemas.ts:14`, `:25` |
-| An agent reply reaches the web chat only through `afterReplyRouted`, which emits `message` with `instance, sender, text, ts, attachments` — no format, no role. Text is cut at `WEB_CHAT_TEXT_MAX`. | `src/fleet-manager.ts:6694`, `:6717-6722` |
-| `WEB_CHAT_TEXT_MAX` is 16,000 characters; the history cuts again on record. | `src/web-chat-history.ts:70`, `:105-111` |
-| The same `message` event carries **people's** messages: a platform user to an instance (`sender: msg.username`), the same for General, and the dashboard's own sends (`sender: "web-user"`). A daemon status line on a web-only fleet also arrives as `message` with the instance as sender. | `src/fleet-manager.ts:6437-6440`, `:6321-6324`; `src/web-api.ts:915`; `src/fleet-manager.ts:6652-6655` |
-| `emitSseEvent("message")` records a fixed field list (`instance, sender, text, ts, attachments, messageId`) and broadcasts the *recorded* copy, so a new field is dropped unless `record()` copies it. | `src/fleet-manager.ts:11594-11607`; `src/web-chat-history.ts:105-115` |
-| The dashboard decides "user or agent" from `sender` by heuristic (`web-user`, starts with `agend`, equals the instance, `general`). A platform user can pick any username, so this decides styling only and is **not** a trust boundary. | `src/ui/dashboard.html:635` |
+| An agent reply reaches the web chat only through `afterReplyRouted`, which emits `message` with `instance, sender, text, ts, attachments` — no format, no role. Text is cut at `WEB_CHAT_TEXT_MAX`. | `src/fleet-manager.ts:6712`, `:6735-6740` |
+| `WEB_CHAT_TEXT_MAX` is 16,000 characters; the history cuts again on record. | `src/web-chat-history.ts:70`, `:105-115` |
+| The same `message` event carries **people's** messages: a platform user to an instance (`sender: msg.username`), the same for General, and the dashboard's own sends (`sender: "web-user"`). A daemon status line on a web-only fleet also arrives as `message` with the instance as sender. | `src/fleet-manager.ts:6450-6453`, `:6334-6337`; `src/web-api.ts:915`; `src/fleet-manager.ts:6665-6668` |
+| `emitSseEvent("message")` records a fixed field list (`instance, sender, text, ts, attachments, messageId`) and broadcasts the *recorded* copy, so a new field is dropped unless `record()` copies it. | `src/fleet-manager.ts:11617-11630`; `src/web-chat-history.ts:105-115` |
+| The dashboard decides "user or agent" from `sender` by heuristic (`isUserMsg`: `web-user`, starts with `agend`, equals the instance, `general`). A platform user can pick any username, so this decides styling only and is **not** a trust boundary. | `src/ui/dashboard.html:883` |
 | `renderMarkdown` escapes everything first; fenced code becomes `<pre><code>` (highlighted only for known languages, `html` is not one). The fence regex also accepts an **unterminated** fence (`(?:```\|$)`), which is what a 16,000-character cut produces. | `src/ui/chat-render.js:1-8`, `:225-228`, `:246-262` (regex `:250`) |
-| `renderMsgs` rebuilds the whole list with `innerHTML` on every change, so any live element inside a message (an iframe) would be destroyed and re-created each time a message arrives. | `src/ui/dashboard.html:630-641` |
-| The R6 prompt cards are built from DOM nodes with `textContent` — the pattern the HTML card follows. | `src/ui/dashboard.html:669-692` |
+| Since #1313 the chat is **keyed**: one node per message, key `boot-id`. `renderMsgs` appends new nodes, **replaces** a node whose HTML string changed (`replaceWith`), **re-inserts** a node whose position changed (`insertBefore`), removes nodes that left the list, and starts over (`textContent = ""`) when the `#messages` element changes (another instance). `msgNode` builds a node from `msgHtml` through a `<template>`, then `decorateCode` wraps each `pre` with DOM nodes. | `src/ui/dashboard.html:871-879`, `:884-890`, `:892-897`, `:900-917`, `:918-953` |
+| The R6 prompt cards are built from DOM nodes with `textContent` — the pattern the HTML card follows. | `src/ui/dashboard.html:1038-1061` |
 | Every response from the web listener gets `X-Frame-Options: DENY` and a CSP with **no `frame-src`** (so frames fall back to `default-src 'self'`) and `frame-ancestors 'none'`. Panels add a per-response script nonce. | `src/web-host-guard.ts:65-76` (`:75`), `:112-121` (`:116`), `:124-138` |
 | `/ui` is served by `sendPanelHtml`. | `src/web-api.ts:252-258` |
-| Session cookie `agend_session` / `__Host-agend_session`, `HttpOnly; SameSite=Strict`. | `src/web-auth.ts:24-25`, `:194`, `:198` |
-| A request whose `Origin` does not match `Host` is refused — including the opaque `null` a sandboxed frame sends. A cookie write also needs `Origin`, `Sec-Fetch-Site: same-origin` (when sent) and `X-Agend-CSRF`. | `src/web-auth.ts:160-172`, `:244-249` |
+| Session cookie `agend_session` / `__Host-agend_session`, `HttpOnly; SameSite=Strict`; `Secure` is decided from `X-Forwarded-Proto`. | `src/web-auth.ts:24-25`, `:194`, `:198`, `:178` |
+| A request whose `Origin` does not match `Host` is refused — including the opaque `null` a sandboxed frame sends. A cookie write also needs `Origin`, `Sec-Fetch-Site: same-origin` (when sent) and `X-Agend-CSRF`. | `src/web-auth.ts:160-172`, `:243-248` |
 | Any script on the dashboard origin can obtain the CSRF value (`/auth/session`). HttpOnly protects the cookie's value, not its authority. | `src/ui/shared/agend-auth.js:29-39` |
-| The web listener binds **127.0.0.1** only (default port 19280). Remote use goes through a proxy/tunnel whose name must be `hostname` or in `web.allowed_hosts`; loopback names are `localhost`, `127.0.0.1`, `[::1]`. | `src/fleet-manager.ts:4782`, `:15995`, `:16003`; `src/web-host-guard.ts:23`, `:84-95` |
+| The web listener binds **127.0.0.1** only (default port 19280). Remote use goes through a proxy/tunnel whose name must be `hostname` or in `web.allowed_hosts`; loopback names are `localhost`, `127.0.0.1`, `[::1]`. | `src/fleet-manager.ts:4795`, `:16021`, `:16029`; `src/web-host-guard.ts:23`, `:84-95` |
 | `WebConfig` has no preview settings today. | `src/types.ts:325-344` |
 | A `.html` file is not in `MIME_BY_EXT` → `application/octet-stream`; `/ui/file/<id>` serves anything but four image types as an attachment with `sandbox` CSP. Upload cap 10 MiB per file. | `src/web-upload.ts:129-133`, `:290`, `:18-25`; `src/web-api.ts:416-432` |
 | A loopback side listener already exists as a precedent (`127.0.0.1:0` per web-terminal session). | `src/web-terminal-http.ts:2-4` |
-| `/api/activity` and the roster answer with `Access-Control-Allow-Origin: *`; `/view` reads bypass the gate unless `web.view_access: session`. | `src/fleet-manager.ts:15798`, `:15830`; `src/auth-api.ts:95` |
+| `/api/activity` and the roster answer with `Access-Control-Allow-Origin: *`; `/view` reads bypass the gate unless `web.view_access: session`. | `src/fleet-manager.ts:15824`, `:15856`; `src/auth-api.ts:95` |
 
 So today an agent's HTML is shown as escaped text and runs nowhere. That is the baseline every change below must
 keep for anything not explicitly opted in.
@@ -59,57 +74,75 @@ keep for anything not explicitly opted in.
 ```
  dashboard origin (http://127.0.0.1:19280, or the tunnel host)        preview origin (separate port or host)
  ┌───────────────────────────────────────────────┐                   ┌──────────────────────────────┐
- │ /ui  CSP …; frame-src <preview origin>        │  iframe src=      │ GET /frame  → static shim    │
+ │ /ui  CSP …; frame-src <preview origin>/frame  │  iframe src=      │ GET /frame  → static shim    │
  │  chat card ── click Preview ──────────────────┼──────────────────▶│  CSP sandbox allow-scripts;  │
  │  <iframe sandbox="allow-scripts" allow=""     │                   │  default-src 'none' …        │
  │          referrerpolicy="no-referrer">        │◀── postMessage ───│  frame-ancestors <dashboard> │
- │  message listener: resize/heartbeat only      │  {resize,height}  │ GET /open   (preview_origin  │
- │  ── postMessage {render, html} ──────────────▶│                   │              only)           │
- └───────────────────────────────────────────────┘                   │ everything else → 404        │
+ │  listener: ready/resize/heartbeat only        │  ready{boot,rtc}  │                              │
+ │  ── postMessage {render, html} ──────────────▶│                   │ GET /open   (preview_origin  │
+ └───────────────────────────────────────────────┘                   │  only): trusted wrapper, §7  │
+                                                                      │ everything else → 404        │
                                                                       └──────────────────────────────┘
 ```
 
 ### 3.1 The preview listener
 
 - A second `http.Server`, created with the web listener and closed with it. It serves **only**:
-  - `GET /frame` — the shim page (§4): built once from config at start (it embeds the dashboard origins, §4), then identical for every request;
-  - `GET /open` — the new-tab shim, only when `web.preview_origin` is set (§7);
-  - everything else, every other method: `404`, empty body.
+  - `GET /frame` — the shim (§4), built once at start from config (it embeds the dashboard origins and the
+    listener's boot id), then identical for every request;
+  - `GET /open` — the new-tab wrapper, only when `web.preview_origin` is set (§7);
+  - everything else, every other method, any query string: `404`, empty body. It never redirects.
 - No `/ui`, `/api`, `/auth`, `/assets` routes; no session lookup; it never parses, logs or reflects `Cookie`,
-  `Authorization` or any query string. Because cookies are not isolated by port (RFC 6265 §8.5), a same-host preview
-  port **will** receive `agend_session`; ignoring it is a requirement, and the test plan checks it.
+  `Authorization`, the request target or any header. Because cookies are not isolated by port (RFC 6265 §8.5), a
+  same-host preview port **will** receive `agend_session`; ignoring it is a requirement, and the test plan checks it.
 - Its own `Host` allow-list: the loopback names, plus the `web.preview_origin` host when set. Anything else → 403.
 - It does **not** call `applyWebSecurityHeaders` (that sets `X-Frame-Options: DENY` and `frame-ancestors 'none'`,
   which would make the shim unframeable). It sets its own headers (§5.1).
+- **Boot id.** A random 128-bit value generated per fleet start. The shim embeds it and reports it in `ready`, and
+  the `/ui` page receives it from the server. The parent sends HTML only to a frame that reports this exact id, so
+  another process that happens to answer on the preview port is never given content (§3.2). It is not a secret
+  from the content (content runs after `ready`), only proof of which listener served the shim.
 - **Address.** Proposed new config, all optional:
 
   | key | default | meaning |
   |---|---|---|
   | `web.preview` | `true` | Master switch. `false`: no listener, cards show Source/Download only. |
-  | `web.preview_port` | `health_port + 1` (19281) | Port of the preview listener; bound to `127.0.0.1`. A fixed default (not `:0`) so an SSH user can forward it alongside the dashboard (open question Q2). |
-  | `web.preview_origin` | — | Full origin (`https://preview.example.net`) of a **separate hostname** that a proxy maps to the preview listener. Must be https when the dashboard is reached over https (mixed content), must not equal any dashboard origin, and must not share the dashboard's registrable domain unless the user accepts same-site (Q3). |
+  | `web.preview_port` | `health_port + 1` (19281) | Port of the preview listener; bound to `127.0.0.1`. A fixed default (not `:0`) so an SSH user can forward it alongside the dashboard (Q2). |
+  | `web.preview_origin` | — | Full origin (`https://preview.example.net`) of a **separate hostname** that a proxy maps to the preview listener. Must be https when the dashboard is reached over https (mixed content), must not equal any dashboard origin, and must not share the dashboard's registrable domain unless the owner accepts same-site (Q3). |
 
   The validator rejects a `preview_origin` with a path, query, credentials or wildcard, and one whose host is in the
   dashboard's allowed names (`allowedHostNames`) — that would be a same-origin preview by another name.
 
 ### 3.2 When preview is available
 
-Decided per **page load** by the server, from the request that loads `/ui`, and handed to the page with the panel
-(e.g. a `data-preview-origin` attribute on `<body>`, empty when disabled):
+Two checks, one on the server and one in the page. Both must pass.
 
-| Dashboard `Host` | `web.preview_origin` | Preview |
+**Server, per `/ui` load.** From the request's `Host` (and the scheme already used for the cookie's `Secure`,
+`X-Forwarded-Proto`, `web-auth.ts:178`), the server computes the **dashboard origin** it believes it is serving
+and picks the preview origin:
+
+| Dashboard `Host` | `web.preview_origin` | Preview origin |
 |---|---|---|
 | loopback name | not set | `http://<same loopback name>:<preview_port>` |
 | any | set | `web.preview_origin` |
-| not loopback (tunnel, proxy, `hostname`, `allowed_hosts`) | not set | **disabled**: only one port is reachable; Source + Download only, with a one-line note saying why |
+| not loopback (tunnel, proxy, `hostname`, `allowed_hosts`) | not set | none — **disabled** |
 
-This is exactly decision 7: a remote browser can only reach the preview listener through a separately configured
-origin. The same value builds the `/ui` response's `frame-src` (§5.2), so the page cannot frame anything the server
-did not choose.
+It hands the page `data-dashboard-origin`, `data-preview-origin` (empty when disabled) and `data-preview-boot`,
+and builds the `/ui` response's `frame-src` from the same preview origin (§5.2). `X-Forwarded-Host` is **never**
+read for this.
 
-A loopback `Host` does not prove the preview port is reachable: an SSH tunnel may forward only 19280 (Q2). The card
-therefore treats "no `ready` from the shim within 3 s" as **unreachable**, removes the frame and shows Source/Download
-with "Preview unavailable from this browser".
+**Page, before creating any frame.** `location.origin` must equal `data-dashboard-origin` exactly. A mismatch
+disables preview for the page load and says why. This catches the case Prism raised: a reverse proxy that
+rewrites the upstream `Host` to `127.0.0.1:19280`. The server then believes it is local and would offer
+`http://127.0.0.1:19281`, but the browser is really at `https://fleet.example.net`.
+- **Deployment requirement (documented):** a proxy must pass the external `Host` through unchanged. Today that is
+  already what `web.allowed_hosts` assumes (`web-host-guard.ts:84-95`).
+- **What a Host-rewriting proxy loses:** Preview, with a visible reason, and nothing else.
+
+**Frame identity.** The parent sends `render` only after a `ready` from that frame carrying
+`boot === data-preview-boot` and `rtc === "blocked"` (§4.3). With no valid `ready` within 3 s, the card unloads
+the frame and shows "Preview unavailable from this browser". That is the SSH case where only 19280 is forwarded,
+and it is also any other process answering on 19281.
 
 ## 4. The shim and the postMessage protocol
 
@@ -117,43 +150,66 @@ The shim is one static HTML document with one inline script, served from the pre
 about chats, users or instances; the HTML arrives over `postMessage` (the web.dev "shim" pattern), so the listener
 stays stateless and never receives content in a URL or log.
 
-**Parent → frame** — exactly one message, sent after the frame says `ready`:
+### 4.1 Messages
+
+**Frame → parent** — the only accepted shapes:
+
+```js
+{ v: 1, type: "ready",     ch: null, boot: "<listener boot id>", rtc: "blocked" | "open" | "error" }
+{ v: 1, type: "resize",    ch: "<id>", height: <integer> }
+{ v: 1, type: "heartbeat", ch: "<id>" }
+```
+
+**Parent → frame** — exactly one message, sent only after a valid `ready` (boot matches, `rtc === "blocked"`):
 
 ```js
 { v: 1, type: "render", ch: "<per-frame random id>", html: "<the HTML, ≤ 1 MiB>" }
 ```
 
-- `targetOrigin` is `"*"`: the sandboxed shim has an opaque origin, so no other value can address it. The message
-  carries only the HTML itself — no ids, tokens, user names or CSRF — so "anyone could read it" costs nothing.
+- `targetOrigin` is `"*"`: the sandboxed shim has an opaque origin, so no other value can address it. The frame
+  was checked by window identity, boot id and the `frame-src` that pins what it can be (§5.2); the message holds
+  only the HTML (no ids, tokens, names or CSRF). The HTML itself may be private — see G2.
 - `ch` lets the parent tell its own frames apart; it is **not** authentication (the content can read it).
 
-**Shim, on load:** posts `{v:1, type:"ready", ch:null}` to `parent`; then accepts **one** `render` message whose
-`event.source === window.parent` and whose `event.origin` is one of the configured dashboard origins (the server
-writes that list into the shim's `frame-ancestors`; the shim reads it from a `<meta>` it was served with). It then
-`document.open()`s, writes a prologue (heartbeat + height reporter) followed by the HTML, and `close()`s. Later
-`render` messages are ignored.
+**Shim.**
+1. On load, it runs the network probe (§4.3), then posts `ready`.
+2. It accepts **one** `render` that passes all of these:
+   - `event.source === window.parent`;
+   - `event.origin` is in the exact allow-list it was built with: the dashboard origins, plus the preview origin
+     itself for the §7 wrapper; never `"null"`;
+   - `html` is a string of ≤ 1 MiB (UTF-8).
+3. It neuters the WebRTC entry points in its own realm (defence in depth, §4.3).
+4. It `document.open()`s, writes a prologue (heartbeat and height reporter) and then the HTML, and `close()`s.
+5. Any later `render` is ignored.
 
-**Frame → parent** — the only accepted shapes:
+### 4.2 Parent listener
 
-```js
-{ v: 1, type: "ready",     ch: null }
-{ v: 1, type: "resize",    ch: "<id>", height: <integer> }
-{ v: 1, type: "heartbeat", ch: "<id>" }
-```
-
-**Parent listener** (one `window` `message` listener for all cards):
+One `window` `message` listener for all cards:
 
 | Rule | |
 |---|---|
-| Source | `event.source === card.iframe.contentWindow` for a live card; otherwise dropped silently. `event.origin` must be `"null"` (the opaque sandbox) — checked *in addition*, never instead: any sandboxed or `data:` frame says `"null"`. |
-| Shape | A plain object with exactly the keys above, `v === 1`, `type` in the set, `ch` equal to the card's (for `resize`/`heartbeat`), `height` a finite integer. Anything else — extra keys, other types, strings — is dropped. |
-| Effect | `ready` → send `render` once. `resize` → set the frame's height (rules below). `heartbeat` → reset the watchdog. **Nothing else**: the listener has no reference to `api()`, `sendMsg`, `answerPrompt`, the composer, navigation or storage, and the test plan asserts it (the Open WebUI CVE-2026-54007 class: a message type that reaches a privileged handler). |
-| Height | Clamp to [40, 4000] px; apply at most once per animation frame and at most 10 times per second; ignore changes < 2 px; after 5 consecutive increases within 2 s, freeze the height and let the frame scroll (breaks the `100vh` grow loop). |
-| Watchdog | The prologue posts `heartbeat` every 1 s. If the card is on screen (IntersectionObserver) and no heartbeat arrived for **10 s**, the iframe is removed: "Preview stopped: it stopped responding". Off-screen frames are throttled by browsers, so the watchdog pauses while the card is not visible and asks for a fresh height when it returns. A busy-looping page cannot post heartbeats, so it is unloaded; content that fakes heartbeats can only keep alive a frame that is still yielding. |
+| Source | `event.source === card.iframe.contentWindow` for a live card; otherwise dropped silently. `event.origin` must be `"null"` (the opaque sandbox), checked *in addition*, never instead. |
+| Shape | A plain object with exactly the keys above, `v === 1`, `type` in the set, `ch` equal to the card's (for `resize`/`heartbeat`), `height` a finite integer, `boot`/`rtc` strings. Anything else is dropped. |
+| Effect | `ready` → validate boot and rtc, then send `render` once (or unload with a reason). `resize` → set the height (rules below). `heartbeat` → reset the watchdog. **Nothing else**: the listener has no reference to `api()`, `sendMsg`, `answerPrompt`, the composer, navigation or storage, and the test plan asserts it (the Open WebUI CVE-2026-54007 class). |
+| Height | Clamp to [40, 4000] px; at most once per animation frame and 10 times per second; ignore changes < 2 px; after 5 consecutive increases within 2 s, freeze the height and let the frame scroll. |
+| Watchdog | Best effort, §8. |
+
+### 4.3 Enforcing "no network" (G2)
+
+| Channel | Control | Proven by |
+|---|---|---|
+| fetch, XHR, beacon, WebSocket, EventSource, img/script/style/font/media/prefetch | Preview header CSP `default-src 'none'` + per-type directives (§5.1) | Browser matrix (§10.2) |
+| Forms | `form-action 'none'` + no `allow-forms` | Browser matrix |
+| Popups, new windows, top navigation | No `allow-popups*`, no `allow-top-navigation*` | Browser matrix |
+| **Self-navigation** of the frame (`location =`, `<meta refresh>`, link click, `data:`/`blob:`/`javascript:` URLs) | The **dashboard's** `frame-src <preview origin>/frame` governs every navigation of the nested frame, including one the frame starts itself. Any other URL, `data:` and `blob:` are refused, and the listener answers anything but `/frame` with an empty 404 and never redirects. Residual: a navigation to `<preview origin>/frame?…` is allowed. With a loopback preview it reaches only our listener, which logs nothing. With a `preview_origin`, the query reaches that proxy's access log (Q9). | Browser matrix: every transition named here, in every supported browser |
+| **WebRTC** (RTCPeerConnection / ICE / STUN) | 1. CSP `webrtc 'block'` (not implemented by Firefox, bug 1783489). 2. **Probe gate:** before `ready`, the shim creates an `RTCPeerConnection` with no ICE servers and a data channel, sets a local offer, and waits ≤ 1.5 s for candidates. It reports `rtc: "blocked"` only if construction throws, the API is absent, or no candidate is produced; otherwise `"open"`. The parent renders only on `"blocked"`, so a browser that does not enforce the block never gets content. 3. Defence in depth: after the probe, the shim deletes `RTCPeerConnection`, `webkitRTCPeerConnection`, `RTCDataChannel`, `RTCIceTransport` and `RTCSctpTransport` from its realm before writing content. No other realm is reachable (`frame-src 'none'`, `worker-src 'none'`, no popups). | Browser matrix: the probe's verdict per browser, and an adversarial page that tries to open a data channel to a loopback STUN/TURN listener on the test host |
+
+If the owner instead accepts a narrower guarantee (Preview in Firefox with WebRTC open), the banner text and the
+threat model change accordingly (Q10). This design recommends the probe gate.
 
 ## 5. Content Security Policy
 
-### 5.1 The preview listener (header CSP on `/frame` and `/open`)
+### 5.1 The preview listener — `/frame`
 
 ```
 Content-Security-Policy:
@@ -162,7 +218,7 @@ Content-Security-Policy:
   connect-src 'none'; worker-src 'none'; frame-src 'none'; child-src 'none';
   form-action 'none'; base-uri 'none'; manifest-src 'none'; object-src 'none';
   webrtc 'block';
-  frame-ancestors <every dashboard origin: http://localhost:19280 http://127.0.0.1:19280 http://[::1]:19280 + configured https origins>;
+  frame-ancestors <each dashboard origin> [<preview_origin>, for the §7 wrapper];
   sandbox allow-scripts
 Permissions-Policy: camera=(), microphone=(), geolocation=(), clipboard-read=(), clipboard-write=(), usb=(), serial=(), hid=(), bluetooth=(), payment=(), display-capture=(), fullscreen=()
 Referrer-Policy: no-referrer
@@ -172,21 +228,22 @@ Cache-Control: no-store
 (no X-Frame-Options)
 ```
 
-- `default-src 'none'` is required, not decoration: directives without their own fetch directive (prefetch and the
-  like) fall back to it (CSP3 §8.6). `webrtc 'block'` because WebRTC is outside `connect-src`. `worker-src 'none'`
-  so a page cannot move work off the main thread where the watchdog can see it.
+- `default-src 'none'` is required: directives without their own fetch directive fall back to it (CSP3 §8.6).
+- `img-src data: blob:` lets content show inlined images. A navigation to `data:`/`blob:` is a different check,
+  governed by the parent's `frame-src` (§4.3).
 - `sandbox allow-scripts` in the **header** makes the document opaque-origin even if it is ever loaded without the
-  iframe attribute (opened directly, or by a future bug) — the iframe attribute and the header are two independent
-  layers.
-- `/open` gets `frame-ancestors 'none'` (it is a top-level page) and `frame-src 'self'` for its nested frame (§7).
+  iframe attribute — two independent layers.
+- `frame-ancestors` lists exact origins (scheme, host, port): `http://localhost:19280 http://127.0.0.1:19280
+  http://[::1]:19280` plus each configured https dashboard origin, and the preview origin itself only when the
+  wrapper exists. Never `'self'` on an opaque document, never `*`.
 
 ### 5.2 The dashboard (`/ui` only)
 
-`panelContentSecurityPolicy` gains one directive **for `/ui`, and only when preview is available on this page
-load**: `frame-src <the preview origin chosen in §3.2>`. Nothing else changes: `X-Frame-Options: DENY`,
-`frame-ancestors 'none'`, the nonce, `connect-src 'self'` stay. Other panels (`/view`, `/settings`, sign-in) are
-untouched. With preview disabled, `/ui` has no `frame-src` and keeps today's `default-src 'self'` fallback — which
-already forbids a frame to any other origin.
+`panelContentSecurityPolicy` gains one directive **for `/ui`, and only when the server chose a preview origin for
+this load** (§3.2): `frame-src <preview origin>/frame`. It is path-scoped, so no other route of that origin can be
+framed or navigated to. Nothing else changes: `X-Frame-Options: DENY`, `frame-ancestors 'none'`, the nonce and
+`connect-src 'self'` stay. `/view`, `/settings` and sign-in are untouched. With preview disabled, `/ui` has no
+`frame-src` and keeps today's `default-src 'self'` fallback.
 
 ### 5.3 The iframe
 
@@ -197,31 +254,52 @@ already forbids a frame to any other origin.
 
 Never `allow-same-origin`, `allow-top-navigation*`, `allow-popups*`, `allow-forms`, `allow-modals`,
 `allow-downloads`, `allow-pointer-lock`, `allow-presentation`. Created by **one** function (`mountPreview`), the only
-place in `src/ui/` that writes `sandbox`; a test fails if any other code creates an `iframe` or writes `sandbox`.
+place in `src/ui/` that creates an iframe or writes `sandbox`; a test fails if any other code does.
 
-## 6. Where the HTML comes from: `role: "agent"`
+## 6. Where the HTML comes from, and where the card lives
 
-**Server.** `afterReplyRouted` — the one place an agent's delivered `reply` reaches the chat — adds
-`role: "agent"` to its `message`. The other emitters set `role: "user"` (platform and web users) or
-`role: "status"` (the web-only status line). `WebChatHistory.record()` copies `role` (it already drops unknown
-fields, `web-chat-history.ts:105-115`), and messages recorded without one (none after this change; a guard for
-replayed old shapes) are treated as `user`. The role is set by the code path, never read from message text,
-`sender`, or anything an agent or user supplies.
+### 6.1 `role: "agent"`, set by the server
 
-**Client.** `renderMarkdown(text, { htmlCards: true })` is called only for `role === "agent"`. With the option,
-the fence loop (`chat-render.js:250-262`) emits, for a fence whose language is exactly `html` (case-insensitive)
-**and that is terminated**, the same escaped `<pre><code>` as today plus an empty placeholder
-`<div class="html-card" data-card="<n>"></div>`. No HTML text goes into an attribute. An unterminated fence (the
-16,000-character cut) gets no card, and a note: "Truncated — ask the agent to send it as a .html file".
+`afterReplyRouted` is the one place an agent's delivered `reply` reaches the chat, and it adds `role: "agent"` to
+its `message`.
+- **Other emitters:** platform and web users get `role: "user"`; the web-only status line gets `role: "status"`.
+- **History:** `WebChatHistory.record()` copies `role` (today it drops unknown fields). A recorded message without
+  one is treated as `user`.
+- **Trust:** the role comes from the code path. It is never read from message text, `sender`, or anything an agent
+  or user supplies. `isUserMsg` (`dashboard.html:883`) keeps deciding styling only.
 
-`.html` / `.htm` **attachments** on a `role:"agent"` message get the same card. Preview fetches
-`/ui/file/<id>` (same-origin, authenticated, already served as an attachment with `sandbox` CSP), reads it as
-text, and refuses beyond 1 MiB. Nothing about how `/ui/file` serves the file changes.
+`renderMarkdown(text, { htmlCards: true })` is called only for `role === "agent"`. With that option, the fence loop
+(`chat-render.js:250-262`) emits two things for a fence whose language is exactly `html` (case-insensitive) **and
+that is terminated**:
+- the same escaped `<pre><code>` as today;
+- an empty placeholder `<div class="html-card" data-card="<n>"></div>`.
 
-**Rendering must stop destroying frames.** `renderMsgs` rebuilds the list with `innerHTML`
-(`dashboard.html:630-641`), and moving an iframe in the DOM reloads it. The implementation changes `renderMsgs` to
-append new messages and re-render a message only when it changed, keyed by `boot:id`, and to mount cards into the
-placeholders with DOM nodes (`textContent`, as `renderPrompts` does). Switching instance unloads every preview.
+No HTML text goes into an attribute. An unterminated fence (the 16,000-character cut) gets no card, only a note:
+"Truncated — ask the agent to send it as a .html file". `.html`/`.htm` **attachments** on a `role: "agent"`
+message get the same card (Q4). For an attachment, Preview fetches `/ui/file/<id>` (same-origin and
+authenticated), reads it as text, and refuses anything over 1 MiB.
+
+### 6.2 Cards in the keyed renderer (#1313)
+
+- **Card key:** `<boot>-<id>:f<n>` for a fence, `<boot>-<id>:a<attachmentId>` for an attachment. It lives in the
+  message node's own key space, so it is stable across renders.
+- **Mounting:** `msgNode` already builds every message node once and decorates it with DOM (`decorateCode`).
+  `decorateHtmlCards(node)` runs after it and fills each placeholder with a card built from nodes (`textContent`),
+  in the **Source** state. Building a card creates no iframe.
+- **What keeps a running preview alive:** a live frame is recorded in `livePreviews: Map<cardKey, {iframe, …}>`.
+  `renderMsgs` touches the node of a message only in four cases, and each one has an explicit outcome:
+
+  | `renderMsgs` would… (`dashboard.html:918-953`) | When it happens | Outcome for a live preview in that message |
+  |---|---|---|
+  | leave the node in place | every other update: new messages appended, other messages' ticks or status, prompts, the turn row | untouched (the common case) |
+  | **replace** it (`replaceWith`): its `msgHtml` string changed | agent messages carry no ticks, so this happens only if the message itself changes | stop first, then replace; the new card shows "Preview stopped — the message changed. Preview again" |
+  | **move** it (`insertBefore` of an existing node) | the list's order changed under it, for example a history merge that interleaves | stop first, then move. Moving an iframe reloads it, so it is never moved alive |
+  | **remove** it, or **start over** (another instance, `textContent = ""`) | message trimmed by the cap, or the instance switched | stop |
+
+  "Stop" removes the iframe and clears its watchdog. A preview is never re-parented or reloaded silently. These
+  rules are a small addition to `renderMsgs`: before `replaceWith`, `insertBefore` or `remove` on a node, call
+  `stopPreviewsIn(node)`. No other renderer replacement is planned.
+- **Not preserved:** the folded/unfolded state of the Source view's code block follows `decorateCode` as today.
 
 ## 7. The card
 
@@ -230,96 +308,199 @@ Built with DOM nodes; labels via `textContent`.
 | Control | Behaviour |
 |---|---|
 | **Source** (default) | The existing code block. |
-| **Preview** | Creates the iframe (§5.3). One running preview per page: starting another stops the first. A frame banner drawn by the **parent**: "Untrusted preview — it cannot reach your account or instances, and has no network." |
+| **Preview** | Runs the checks in §3.2, then creates the iframe (§5.3). One running preview per page: starting another stops the first. A parent-drawn banner: "Untrusted preview — it cannot use your account or reach the network. It can still show what the agent wrote." |
 | **Stop** | Removes the iframe. |
 | **Download** | A `Blob` of the source text with type `application/octet-stream`, saved through `<a download="reply.html">`, URL revoked at once. The `blob:` URL belongs to the dashboard origin, so it is **only** ever used for a download — never navigated to, never opened in a tab. |
-| **Open in new tab** | Only when `web.preview_origin` is set. Opens `<preview_origin>/open` with `noopener,noreferrer`. `/open` is a top-level shim with a fixed warning bar and the content in a **nested** `sandbox="allow-scripts"` frame of the same shim, so the content never owns the top document. The HTML travels in the URL **fragment** (never sent to the server). Above a fragment budget (Q5) the button is disabled with a reason. Without a separate origin there is no safe new-tab: a `blob:` or same-port page would carry the dashboard's or same-site context. |
+| **Open in new tab** | Only with `web.preview_origin` (a separate hostname). Flow below. |
 
 A per-browser **kill switch** ("Never preview HTML on this device", in `sessionStorage`) hides Preview on every card.
 **Click to run is always required**; there is no auto-run setting.
 
-## 8. Limits
+**Open in new tab (r2: a trusted wrapper; no URL transport).**
+
+1. **Open.** The dashboard calls `w = window.open("<preview_origin>/open", "_blank")`. It does not pass
+   `noopener`, because it needs `w` for the handshake (step 5 clears the opener).
+2. **The wrapper is our code.** `/open` is a static page of ours, **not** sandboxed, on the preview origin.
+   - Its own headers: `Content-Security-Policy: default-src 'none'; script-src 'sha256-<its one script>';
+     style-src 'sha256-<its one style>'; frame-src <preview_origin>/frame; connect-src 'none'; form-action 'none';
+     base-uri 'none'; frame-ancestors 'none'`, plus `X-Frame-Options: DENY`, the Permissions-Policy above,
+     `Referrer-Policy: no-referrer` and `Cache-Control: no-store`.
+   - Its origin is the real preview origin. That host holds no dashboard cookie or authority, because it is a
+     different hostname.
+3. **Wrapper ready.** The wrapper posts `{v:1, type:"open-ready", boot}` to `window.opener`, once per allowed
+   dashboard origin as an exact `targetOrigin`, so only the real opener receives it.
+4. **Dashboard sends the HTML.** The dashboard accepts it only if `event.source === w`,
+   `event.origin === <preview_origin>` exactly, and `boot` matches. It then sends `{v:1, type:"render", html}` to
+   `w` with `targetOrigin` = the preview origin, exact (not `"*"`, because the wrapper is not opaque).
+5. **Wrapper accepts once.** It requires `event.source === window.opener` and `event.origin` in its dashboard
+   allow-list, and the HTML must be ≤ 1 MiB. It then sets `window.opener = null`. It never inserts the HTML into its
+   own DOM.
+6. **Content runs nested.** The wrapper draws a fixed warning bar and creates the same
+   `<iframe sandbox="allow-scripts" src="/frame">`. The child's `frame-ancestors` admits the preview origin. The
+   child accepts `render` from `event.origin === <preview_origin>`: an exact, non-`null` origin and the trusted
+   wrapper as `parent`. After a valid `ready` (boot, rtc), the wrapper relays the HTML, then drops its own copy.
+7. **Failures.** No handshake within 10 s → "Open this from the dashboard". No transport stores the HTML in the
+   URL, history, bookmarks or sync, and a reload of `/open` shows the message again rather than the content.
+   (r1's fragment transport is withdrawn.)
+
+## 8. Limits and availability (best effort)
 
 | Limit | Value | Enforced |
 |---|---|---|
-| HTML size | 1 MiB (UTF-8 bytes) | Parent before `render`; the shim drops a larger `render`. Fences are additionally bounded by the 16,000-character message cut. |
-| Height | 40–4000 px, then scroll | Parent (§4) |
+| HTML size | 1 MiB (UTF-8 bytes) | Parent before `render`; shim and wrapper refuse a larger one. Fences are also bounded by the 16,000-character message cut. |
+| Height | 40–4000 px, then scroll | Parent (§4.2) |
 | Resize rate | ≤ 1 per animation frame, ≤ 10/s, Δ ≥ 2 px, growth freeze | Parent |
-| Watchdog | 10 s without heartbeat while visible → unload | Parent |
-| Ready timeout | 3 s → "unavailable", unload | Parent |
+| Ready | 3 s, and boot plus rtc must match, else unavailable | Parent |
+| Watchdog | 10 s without heartbeat while visible → unload | Parent: **best effort** |
 | Concurrency | one running preview per page | Parent |
-| Network | none (`connect-src 'none'`, `webrtc 'block'`, no forms) | Preview CSP + sandbox |
+
+**The watchdog does not guarantee containment.**
+- **Freezing:** if the preview frame shares a renderer process with the dashboard, a busy page also freezes the
+  parent, including the watchdog timer and the Stop button. That happens for a same-site port, in any browser that
+  does not isolate opaque frames.
+- **Memory:** a 1 MiB input can still allocate without bound.
+- **What a separate origin buys:** a separate hostname (`web.preview_origin`) gets cross-site process isolation
+  where the browser provides it. A separate port, or even an origin-keyed agent cluster, does not promise a
+  separate process.
+
+So this design:
+- **requires a responsive-parent probe** in the browser matrix (§10.2). Load a busy-looping page and an
+  allocating page, then measure whether the dashboard's Stop button and timers still run within 1 s, per supported
+  browser and per preview mode (same-host port vs. `preview_origin`). Record the results.
+- **asks the owner to accept the residual risk explicitly (Q11).** On a browser and mode without isolation, a
+  hostile preview can freeze or crash the dashboard tab until it is closed. The mitigations are click-to-run, one
+  preview at a time, and recommending `web.preview_origin`. The alternative is to disable Preview where the probe
+  shows the parent freezing.
 
 ## 9. Threat model
 
 | Threat | Precedent | Mitigation here |
 |---|---|---|
-| Preview runs with dashboard authority: reads the CSRF value and calls writes | Open WebUI file preview CVE-2026-70486 and port preview CVE-2026-87995: same-origin content plus `allow-same-origin` | Content is never served by the dashboard listener; no `/ui/preview` route; never `allow-same-origin`; header `sandbox` as a second layer; single `mountPreview` with a test that pins the attribute set. |
-| CSRF write from the frame to `/ui/*` | — | `connect-src 'none'`, `form-action 'none'`, no `allow-forms`; and independently, today's checks refuse `Origin: null` and need `X-Agend-CSRF` the frame cannot read (`web-auth.ts:160-172`, `:244-249`). |
-| Reading open GET endpoints (`/view` reads, `/api/activity` with `ACAO: *`) | — | `connect-src 'none'`; images only `data:`/`blob:`. (`ACAO: *` at `fleet-manager.ts:15798`/`:15830` is a separate clean-up — Q6.) |
-| Exfiltration by request (fetch, img, beacon, websocket, prefetch, WebRTC, CSS) | Image-markdown exfiltration in Bard/M365 Copilot; sandbox without CSP escapes via `data:` navigation (Willison) | Header CSP `default-src 'none'`, `img-src data: blob:`, `webrtc 'block'`; meta CSP is not relied on. |
-| Exfiltration by navigation (frame navigates itself, or a click) | `navigate-to` never shipped | Not preventable by CSP. The frame holds **no secret**: only the HTML, which the agent wrote. Click-to-run means a human looked first; no `allow-top-navigation*`/`allow-popups*`. |
-| Agent writes a secret into the HTML | Pluto: agents published env values in 10/85 runs | Click-to-run + Source view; nothing in the preview can reach the network to send it. |
-| Phishing UI inside the frame | Open WebUI GHSA-9wj4-mcm3-ppj6 | Parent-drawn banner and frame border; no `allow-modals`, no fullscreen; separate hostname keeps password managers from offering dashboard credentials. |
-| Top navigation, popups, tabnabbing | — | Flags not granted; new tab only on a separate origin with `noopener`, content nested. |
-| CPU / memory exhaustion, mining | No resource quota for sandboxes; process isolation only for cross-site or (desktop Chromium ≥ 127) opaque frames | Click-to-run, one running preview, 10 s watchdog, unload off-instance, no network for a pool, no workers. Same-host-port previews are same-site (no cross-site process isolation) — Q3. |
-| Resize loop / layout bomb | Open WebUI's uncapped height | §4 clamps, rate limit, hysteresis, freeze. |
-| postMessage type confusion driving a privileged action | Open WebUI CVE-2026-54007 (`input:prompt` → `action:submit`) | Three shapes, one effect each; the listener holds no reference to any API/send/approve function; source check by window identity. |
-| Card XSS (fence language, file name, the HTML) | #1306 acceptance | The fence still goes through `escapeHtml`; the card is DOM + `textContent`; HTML only ever travels by `postMessage`. |
-| Preview listener receives the session cookie | Cookies are not port-isolated | Listener never parses/logs cookies or reflects anything; static responses; `web.preview_origin` removes it. |
-| Cross-user injection (a Telegram/Discord user or shared-group member posts HTML) | Their messages reach the web chat (`fleet-manager.ts:6437-6440`, `:6321-6324`) | Only server-marked `role:"agent"` is ever rendered; the `sender` heuristic is not used for trust. |
-| A future regression frames the dashboard itself | — | Dashboard keeps `X-Frame-Options: DENY` + `frame-ancestors 'none'`; only the preview listener omits XFO. |
+| Preview runs with dashboard authority: reads the CSRF value and calls writes | Open WebUI file preview CVE-2026-70486 and port preview CVE-2026-87995: same-origin content plus `allow-same-origin` | Content is never served by the dashboard listener; no `/ui/preview` route; never `allow-same-origin`; header `sandbox` as a second layer; single `mountPreview` with a test that pins the attribute set. (G1) |
+| CSRF write from the frame to `/ui/*` | — | `connect-src 'none'`, `form-action 'none'`, no `allow-forms`, and parent `frame-src` refuses navigations to the dashboard. Independently, today's checks refuse `Origin: null` and need `X-Agend-CSRF` the frame cannot read (`web-auth.ts:160-172`, `:243-248`). |
+| Reading open GET endpoints (`/view` reads, `/api/activity` with `ACAO: *`) | — | `connect-src 'none'`; images only `data:`/`blob:`. (`ACAO: *` at `fleet-manager.ts:15824`/`:15856` is a separate clean-up — Q6.) |
+| Exfiltration of **private** content by request (fetch, img, beacon, websocket, prefetch, CSS) | Image-markdown exfiltration in Bard/M365 Copilot; sandbox without CSP escapes via `data:` navigation (Willison) | Header CSP `default-src 'none'` and friends; meta CSP is not relied on. Proven per browser (§10.2). |
+| Exfiltration by **self-navigation** (`location`, meta refresh, link, `data:`/`blob:`/`javascript:`) | `navigate-to` never shipped | Parent `frame-src <preview origin>/frame` refuses every other navigation target; the listener 404s everything else and never redirects. Residual with `preview_origin`: a `/frame?…` query reaches that proxy's log (Q9). Proven per browser. |
+| Exfiltration by **WebRTC** | Firefox has no CSP `webrtc` (bug 1783489) | Probe gate: content is sent only to a frame whose browser produced no ICE candidate; WebRTC globals removed before content runs. Preview unavailable otherwise (G2, Q10). |
+| The HTML itself is private (an agent wrote a secret into it) | Pluto: agents published env values in 10/85 runs | Not assumed away: G2 keeps the preview from sending it; Source view and click-to-run let a person look first; the banner says the preview can show what the agent wrote. |
+| Content delivered to the wrong frame (another process on the preview port; a Host-rewriting proxy) | — | `location.origin === data-dashboard-origin`; the `ready` must carry this fleet's boot id; mismatch → unavailable (§3.2). |
+| Phishing UI inside the frame | Open WebUI GHSA-9wj4-mcm3-ppj6 | Parent-drawn banner and border (and the wrapper's fixed bar); no `allow-modals`, no fullscreen; a separate hostname keeps password managers from offering dashboard credentials. |
+| Top navigation, popups, tabnabbing (including via the new tab) | — | Flags not granted; the wrapper clears `opener` before any content exists; content stays nested and sandboxed. |
+| CPU / memory exhaustion, freezing the dashboard | No resource quota for sandboxes; process isolation is browser- and site-dependent | Best effort only (§8): click-to-run, one running preview, watchdog where the parent stays responsive, recommended `preview_origin`; residual risk accepted or Preview disabled per probe (Q11). |
+| Resize loop / layout bomb | Open WebUI's uncapped height | §4.2 clamps, rate limit, hysteresis, freeze. |
+| postMessage type confusion driving a privileged action | Open WebUI CVE-2026-54007 (`input:prompt` → `action:submit`) | Fixed shapes, one effect each; the listener holds no reference to any API/send/approve function; source checked by window identity, origin and boot. |
+| Card XSS (fence language, file name, the HTML) | #1306 acceptance | The fence still goes through `escapeHtml`; the card is DOM + `textContent`; HTML only travels by `postMessage`. |
+| Preview listener receives the session cookie | Cookies are not port-isolated | Listener never parses/logs cookies or anything else; static responses; `web.preview_origin` removes it. |
+| Cross-user injection (a Telegram/Discord user or shared-group member posts HTML) | Their messages reach the web chat (`fleet-manager.ts:6450-6453`, `:6334-6337`) | Only server-marked `role:"agent"` is rendered; the `sender` heuristic is not used for trust. |
+| A future regression frames the dashboard itself | — | Dashboard keeps `X-Frame-Options: DENY` + `frame-ancestors 'none'`; only the preview listener's `/frame` omits XFO. |
 
 ## 10. Test plan
 
-No real fleet, CLI, tmux or browser network (bd0c88aa). Headers and routing in Node; the page code in a vm with a
-minimal DOM (as the Settings tests do); browser-only facts (sandbox behaviour, CSP enforcement) with a headless
-browser against a scratch listener on loopback, if the CI image has one (open question Q7) — otherwise documented
-manual checks.
+No real fleet, CLI or tmux, and never the live fleet (bd0c88aa).
 
-1. **Preview listener:** only `GET /frame` (and `/open` with `preview_origin`) answer; every other path/method 404;
-   foreign `Host` 403; exact header set (§5.1), **no** `X-Frame-Options`; a request carrying `Cookie:
-   agend_session=…` gets byte-identical output and the cookie appears in no log; bound to 127.0.0.1.
-2. **Dashboard CSP:** `/ui` has `frame-src <origin>` iff preview is available for that `Host`; `/view`, `/settings`,
-   sign-in unchanged; XFO DENY and `frame-ancestors 'none'` still on every dashboard response.
-3. **Availability (§3.2):** loopback Host → same-host preview port; non-loopback Host without `preview_origin` →
-   disabled (no `frame-src`, cards without Preview); `preview_origin` set → used; validator rejects a
-   `preview_origin` equal to/under a dashboard host, with a path, or http behind https.
-4. **Role:** `afterReplyRouted` emits `role:"agent"`; platform users, General, `/ui/send` emit `user`; the web-only
-   status line emits `status`; `record()` keeps `role` through `/ui/history` and SSE replay; a platform user named
-   like the instance (or `agend-*`) still gets `user`.
-5. **Detection:** cards only for `role:"agent"` + terminated ` ```html `; not for `HTML5`, `xhtml`, ` ```htm `,
-   user messages, or an unterminated fence; `.html` attachment only on agent messages; XSS probes in the language
+### 10.1 Automated (Node, and the page code in a vm with a minimal DOM)
+
+These prove wiring, headers and the parent's logic. They do **not** prove what a browser enforces.
+
+1. **Preview listener:**
+   - only `GET /frame` (and `/open` with `preview_origin`) answer; every other path, method or query gets an empty
+     404 with no redirect; a foreign `Host` gets 403;
+   - exact header sets (§5.1, §7), and **no** `X-Frame-Options` on `/frame`;
+   - a request carrying `Cookie: agend_session=…` gets byte-identical output, and nothing is logged;
+   - it binds 127.0.0.1;
+   - the shim embeds the boot id and the exact origin allow-lists.
+2. **Dashboard CSP:** `/ui` has `frame-src <origin>/frame` iff a preview origin was chosen for that `Host`; `/view`,
+   `/settings` and sign-in are unchanged; XFO DENY and `frame-ancestors 'none'` stay on every dashboard response.
+3. **Availability (§3.2):**
+   - a loopback Host gets the same-host port; a non-loopback Host without `preview_origin` is disabled; a set
+     `preview_origin` is used;
+   - `X-Forwarded-Host` is ignored;
+   - **the Host-rewriting proxy case:** the server is told `Host: 127.0.0.1:19280`, the page runs at
+     `https://fleet.example.net`, and the page disables Preview with its reason;
+   - the validator rejects a `preview_origin` equal to or under a dashboard host, with a path, or http behind https.
+4. **Role:** `afterReplyRouted` emits `role:"agent"`; platform users, General and `/ui/send` emit `user`; the
+   web-only status line emits `status`; `record()` keeps `role` through `/ui/history` and SSE replay; a platform
+   user named like the instance (or `agend-*`) still gets `user`.
+5. **Detection:** cards only for `role:"agent"` plus a terminated ` ```html `; not for `html5`, `xhtml`, ` ```htm `,
+   user messages, or an unterminated fence; `.html` attachments only on agent messages; XSS probes in the language
    tag, file name and body render as text.
-6. **Sandbox (`mountPreview`):** the only iframe creator in `src/ui/`; attribute set exactly `allow-scripts`;
-   `allow=""`; `referrerpolicy="no-referrer"`; no code path adds `allow-same-origin`.
-7. **postMessage:** wrong `source`, wrong `ch`, extra keys, unknown `type`, non-integer/negative/huge `height`,
-   string payloads → ignored; heights clamped; rate limit and growth freeze; the listener module imports/references
-   no API helper (static assertion); `render` sent once and only after `ready`.
-8. **Watchdog / ready:** no heartbeat for 10 s while visible → unloaded; off-screen pauses; no `ready` in 3 s →
-   "unavailable".
-9. **Browser (if available):** inside the frame `document.cookie === ""`, `parent.document` throws,
-   `fetch("/ui/send", {method:"POST"})` and an `<img src="http://127.0.0.1:19280/…">` are blocked by CSP, a
-   `<form>` submit sends nothing, `window.open` returns null, `top.location =` throws.
-10. **Rendering stability:** a new message arriving does not recreate a running preview's iframe.
-11. **Mutations:** adding `allow-same-origin`; dropping the `source` check; accepting `role` from the client; letting
-    `user` messages get cards; removing `frame-src` gating by Host; adding XFO to the preview listener — each red.
+6. **`mountPreview`:** the only iframe creator in `src/ui/`; the attribute set is exactly `allow-scripts`, with
+   `allow=""` and `referrerpolicy="no-referrer"`.
+7. **postMessage (parent and shim, both directions):**
+   - ignored: the wrong `source`, wrong `ch`, wrong boot, `rtc !== "blocked"`, extra keys, unknown `type`, a
+     non-integer, negative or huge `height`, string payloads;
+   - the shim refuses `render` from `"null"`, from a non-listed origin, and over 1 MiB;
+   - heights are clamped, with the rate limit and growth freeze;
+   - the listener module references no API helper (static assertion);
+   - `render` is sent once, only after a valid `ready`.
+8. **Keyed renderer (§6.2):**
+   - with a live preview, a new message, a tick/status change on another message, or a prompt leaves the same
+     iframe element in place;
+   - a changed own message, a reorder, a trim and an instance switch each **stop** the preview first; it is never
+     replaced or moved alive.
+9. **New tab (§7):**
+   - handshake ordering; exact `targetOrigin`s; `opener` cleared before the child exists;
+   - nothing in the URL; reloading `/open` shows no content;
+   - a 10 s handshake timeout;
+   - the child accepts the wrapper's origin and refuses `"null"`.
+10. **Mutations:**
+    - adding `allow-same-origin`;
+    - dropping the `source`, boot or rtc check;
+    - accepting `role` from the client, or letting `user` messages get cards;
+    - removing the Host gate or the `location.origin` check;
+    - adding XFO to `/frame`;
+    - accepting `"null"` in the shim;
+    - moving a live node in `renderMsgs`.
 
-## 11. Open questions
+    Each one must turn a test red.
 
-1. **Q1 — user HTML ever?** Decided no for v1. Revisit only with a separate opt-in per message?
-2. **Q2 — SSH forwards.** A loopback dashboard reached via an SSH forward of only 19280 cannot load the preview; the
-   3 s ready-timeout degrades it. Is the fixed `health_port + 1` default right, so the docs can say "also forward
-   19281"?
-3. **Q3 — same-site.** A same-host port is same-site: cookies are sent (ignored), and there is no cross-site process
-   isolation in browsers other than desktop Chromium ≥ 127 for opaque frames. Is that acceptable as the default, with
-   `web.preview_origin` as the hardened mode? Should `preview_origin` refuse a host under the dashboard's
-   registrable domain?
-4. **Q4 — `.html` attachments in v1** (§6), or fences only first?
-5. **Q5 — new-tab transport.** URL fragments are limited (browser-dependent); measure, and pick a budget, or use a
-   one-time `postMessage` handshake with `opener` cleared — which reopens the opener question.
-6. **Q6 — `Access-Control-Allow-Origin: *`** on `/api/activity` and the roster: remove in this work or separately?
-   The preview cannot read it (no network), but a separate origin makes the cleanup cheaper now.
-7. **Q7 — browser tests.** Is a headless browser acceptable in CI for §10.9, or are those manual checks for review?
-8. **Q8 — numbers.** 1 MiB, 4000 px, 10 s, 3 s, 10/s are the study's inferences; no vendor publishes inline-preview
-   limits. Adjust after the user's testing.
+### 10.2 Browser acceptance (required before implementation approval)
+
+A headless browser in CI if available (Q7). Otherwise a **recorded manual run**: browser, version, OS, preview
+mode (same-host port / `preview_origin`), then pass/fail per row with notes. It is attached to the implementation
+PR and is the gate for it. Supported targets to start: current Chrome, Edge and Safari (desktop), plus Chrome on
+Android and Safari on iOS. Firefox is checked too; it is expected to fail the WebRTC probe and so show "Preview
+unavailable".
+
+| Check, inside the preview | Expected |
+|---|---|
+| `document.cookie` | throws `SecurityError` or returns `""`; never the session |
+| `parent.document`, `top.location.href` (read), `top.location = …` | throws / blocked |
+| `fetch("/ui/send", {method:"POST"})`, `fetch` to the preview origin, `navigator.sendBeacon`, `new WebSocket`, `new EventSource` | blocked by CSP |
+| `<img src="http://127.0.0.1:19280/…">`, CSS `url()`, `<link rel=prefetch>` | blocked |
+| form submit, `window.open`, `alert` | nothing sent / null / no modal |
+| self-navigation: `location = "https://example.org/?x"`, `<meta http-equiv=refresh>`, link click, `location = "data:…"`, `"blob:…"`, `"javascript:…"`, `location = "/other"` | blocked (frame stays on `/frame`); `/frame?x` loads the 404-free shim only |
+| WebRTC: the shim's probe verdict; an adversarial page that tries a data channel to a loopback STUN/TURN listener | `blocked` → content renders and the connection never reaches the listener; `open` → no content rendered |
+| Busy loop and memory growth (§8) | parent Stop and timers respond within 1 s (record per mode); otherwise noted for Q11 |
+| New tab (§7) with `preview_origin` | content runs nested; `window.opener` null in the wrapper; the dashboard tab cannot be navigated from the new tab |
+
+## 11. Review r1 → r2 (Prism, 8e3a846e)
+
+| Finding | r2 |
+|---|---|
+| P1 "no network / no secret" unsupported (Firefox `webrtc`, self-navigation; agent HTML can be private) | §1 narrowed guarantee (G1/G2) and dropped "no secret"; §4.3 enforcement table: parent `frame-src` for self-navigation, probe-gated WebRTC with defence-in-depth; §10.2 adversarial browser matrix; Q10 for the owner if a narrower guarantee is preferred; banner and threat model updated. |
+| P2 new-tab handshake impossible (opaque `/open`, `frame-ancestors`, `null` origin) | §7: `/open` is a trusted, non-sandboxed static wrapper on the preview origin with its own CSP; exact-origin handshake; child admits the wrapper's real origin; `null` never accepted; §10.1.9 and §10.2 pin the flow. |
+| P2 Host-only availability fails behind a Host-rewriting proxy; timeout ≠ identity | §3.2: page compares `location.origin` with the server's `data-dashboard-origin`; `X-Forwarded-Host` never trusted; preserved Host documented as a deployment requirement; boot id in `ready`; §10.1.3 proxy case. |
+| P2 watchdog is not containment; memory unbounded | §8: best effort, responsive-parent probe per browser and mode, explicit owner acceptance (Q11) or disable. |
+| P2 fragment transport | Withdrawn; replaced by the bounded one-time postMessage handshake (§7). |
+| P3 post-#1313 renderer; browser-only acceptance | §6.2 against the keyed renderer with an outcome per `renderMsgs` operation; §10.2 recorded browser gate; `document.cookie` may throw. |
+
+## 12. Open questions
+
+1. **Q1 — user HTML ever?** Decided no for v1.
+2. **Q2 — SSH forwards.** Is the fixed `health_port + 1` default right, so the docs can say "also forward 19281"?
+3. **Q3 — same-site.** A same-host port is same-site: cookies are sent (ignored), and process isolation is not
+   promised. Default as proposed, with `preview_origin` as the hardened mode? Should `preview_origin` refuse a host
+   under the dashboard's registrable domain?
+4. **Q4 — `.html` attachments in v1**, or fences only first?
+5. **Q6 — `Access-Control-Allow-Origin: *`** on `/api/activity` and the roster: remove here or separately?
+6. **Q7 — browser tests in CI**, or the recorded manual gate of §10.2?
+7. **Q8 — numbers.** 1 MiB, 4000 px, 10 s, 3 s, 1.5 s, 10/s are inferences; adjust after the user's testing.
+8. **Q9 — `preview_origin` and query logging.** A self-navigation to `/frame?…` reaches the proxy's access log.
+   Accept, document a proxy rule that drops queries for that host, or require one?
+9. **Q10 — Firefox.** Probe-gated (Preview unavailable until Firefox enforces `webrtc`) as recommended, or Preview
+   allowed with a narrower guarantee and banner?
+10. **Q11 — freezing.** Accept that a hostile preview can freeze the dashboard tab where the browser does not
+    isolate it, or disable Preview where the §10.2 probe shows the parent freezing?
+
+(Q5 of r1 — the fragment budget — is gone with the fragment transport.)
