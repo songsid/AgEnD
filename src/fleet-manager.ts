@@ -61,6 +61,7 @@ import { routeToolCall } from "./channel/tool-router.js";
 import { Scheduler } from "./scheduler/index.js";
 import type { Schedule, SchedulerConfig } from "./scheduler/index.js";
 import { DEFAULT_SCHEDULER_CONFIG } from "./scheduler/index.js";
+import type { Task } from "./scheduler/types.js";
 import type { FleetContext } from "./fleet-context.js";
 import { TopicCommands, saveCommandForBackend, parseSaveFilename, parsePauseWakeCommand, parseCompactCommand, SAVE_FILENAME_RE, resolveInstanceContext, forgetInstanceContext, readStatuslineModel } from "./topic-commands.js";
 import type { HangDetector } from "./hang-detector.js";
@@ -88,6 +89,31 @@ import { DeliveryOutbox, type ClaimedOutboxDelivery, type OutboxDelivery, type D
 // active manager/target generation pair owns the lane until the daemon reports
 // a state transition or that generation is replaced.
 export const DURABLE_DELIVERY_LANE_ALERT_MS = 35 * 60_000;
+
+/**
+ * #1335: Cap an unfiltered task list at 100 rows (most recently updated first).
+ * Exported so the production branch can be tested directly without starting a fleet.
+ * Filtered calls pass-through unchanged. Empty strings count as "not set" (P3).
+ */
+export const TASK_LIST_CAP = 100;
+export function applyTaskListCap(
+  tasks: Task[],
+  filterAssignee: string | undefined,
+  filterStatus: string | undefined,
+): { tasks: Task[]; omitted: number; hint: string } | Task[] {
+  // Empty strings are treated as "not filtered" (same as undefined).
+  const isFiltered = !!filterAssignee || !!filterStatus;
+  if (!isFiltered && tasks.length > TASK_LIST_CAP) {
+    const omitted = tasks.length - TASK_LIST_CAP;
+    tasks.sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+    return {
+      tasks: tasks.slice(0, TASK_LIST_CAP),
+      omitted,
+      hint: `${omitted} older task(s) omitted — use filter_assignee or filter_status to narrow results`,
+    };
+  }
+  return tasks;
+}
 import { handleWebRequest, broadcastSseEvent } from "./web-api.js";
 import { handleViewRequest, isViewPath } from "./view-api.js";
 import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, usageProviderIdForBackend } from "./usage/usage-api.js";
@@ -7297,24 +7323,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           });
           break;
         case "list": {
-          const filterAssignee = payload.filter_assignee as string | undefined;
-          const filterStatus = payload.filter_status as string | undefined;
+          // P3: normalize empty strings to undefined — SchedulerDb.listTasks
+          // ignores them but the cap logic must treat them as "not filtered".
+          const filterAssignee = (payload.filter_assignee as string | undefined) || undefined;
+          const filterStatus = (payload.filter_status as string | undefined) || undefined;
           const tasks = db.listTasks({ assignee: filterAssignee, status: filterStatus });
-          // #1335: cap unfiltered list at 100 rows (most recently updated first).
-          const isFiltered = filterAssignee !== undefined || filterStatus !== undefined;
-          const TASK_LIST_CAP = 100;
-          if (!isFiltered && tasks.length > TASK_LIST_CAP) {
-            const omitted = tasks.length - TASK_LIST_CAP;
-            // Sort most-recently-updated first and take the first CAP.
-            tasks.sort((a, b) => b.updated_at.localeCompare(a.updated_at));
-            result = {
-              tasks: tasks.slice(0, TASK_LIST_CAP),
-              omitted,
-              hint: `${omitted} older task(s) omitted — use filter_assignee or filter_status to narrow results`,
-            };
-          } else {
-            result = tasks;
-          }
+          // #1335: cap unfiltered list at 100 rows via the exported helper.
+          result = applyTaskListCap(tasks, filterAssignee, filterStatus);
           break;
         }
         case "claim":
@@ -8770,7 +8785,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Task Board prune
     if (this.scheduler?.db) {
       try {
-        const pruned = this.scheduler.db.pruneOldTasks(days);
+        const pruned = await this.scheduler.db.pruneOldTasks(days);
         if (pruned > 0) {
           this.logger.info({ pruned }, "Task board pruned");
         }
@@ -8781,12 +8796,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /**
-   * #1335: True when the delivery_id was in the outbox and was pruned by
-   * retention (vs. never having been admitted). Used by delivery_status to
-   * return "expired" rather than "Delivery not found" for pruned rows.
+   * #1335: True when the delivery_id was in the outbox, was pruned by
+   * retention, and the caller is the original source or target (#1340 P2 🔒).
    */
-  wasDeliveryIdPruned(deliveryId: string): boolean {
-    return this.deliveryOutbox?.wasDeliveryIdPruned(deliveryId) ?? false;
+  wasDeliveryIdPrunedForCaller(deliveryId: string, callerInstance: string): boolean {
+    return this.deliveryOutbox?.wasDeliveryIdPrunedForCaller(deliveryId, callerInstance) ?? false;
   }
 
   private openEventLog(): EventLog | null {
