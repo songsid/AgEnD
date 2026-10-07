@@ -1,6 +1,6 @@
 # Settings 網頁改版：以 quickstart 引導為核心
 
-設計提案（**尚未實作、不改動 production 行為**）。供使用者審查；審過再拆實作 ticket。
+狀態：**已實作**（CHANGELOG 2.1.6，#785–#792）。票 0–5 皆已落地：guided wizard 的伺服器端在 `src/quickstart-api.ts`（由 `src/settings-api.ts` 與 pre-fleet 的 `src/setup-host.ts` 共用），前端入口為 `src/ui/settings.html` 的「Setup wizard」按鈕；apply job 見 `src/apply-job.ts`，`agend web-token rotate` 見 `src/cli.ts`。下文為原設計提案，保留作為審查紀錄。
 關聯：#192→#647（Settings 現況）、#577（hot/cold reconcile）、#623（逃生艙）、#769（adapter↔core 解耦 + Web UI 控制面 epic）。
 
 本文所有「現況」敘述都附了程式碼位置，方便審查者自行驗證，而不是只看結論。

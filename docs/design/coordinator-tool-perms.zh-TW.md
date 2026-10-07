@@ -1,6 +1,6 @@
 # #804 把 orchestration 收回 coordinator：查證與分階段計畫
 
-狀態：**查證 + 設計 + 一個月真實用量掃描，尚未實作。** 針對回報的真問題——codex worker 自己創 instance 當 subagent。
+狀態：**已強制執行**（CHANGELOG 2.1.6，#804 已關閉）。四條路（MCP tool list、`tools/call`、直寫 socket、`POST /agent`）都經伺服器端同一張權限表：`FleetManager.checkToolPermission()`（`src/fleet-manager.ts`），未設定 `tool_set` 的一般 instance 預設為 `worker`（`resolveToolSet()`，`src/tool-permissions.ts`）。下文為當時的查證與設計，針對回報的真問題——codex worker 自己創 instance 當 subagent。
 
 裁示已折入。掃描數據在 §2，**它推翻了第一版移／留清單裡最大的一項**；fable 的碼審在 §3，**它推翻了第一版的核心前提**——「MCP 面靠不揭露」不是控制。
 

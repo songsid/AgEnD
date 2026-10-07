@@ -1,3 +1,5 @@
+> **Historical — superseded.** A 2026-03 roadmap snapshot, see [ROADMAP.md](../ROADMAP.md).
+
 # Feature Roadmap
 
 Prioritized feature list with implementation plans. Updated 2026-03-28.

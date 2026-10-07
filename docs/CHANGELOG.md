@@ -42,8 +42,60 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `options.sticker_sets` — and sends the text first, then each sticker in order. Every sticker is checked before
   anything is sent, so one that cannot be sent is an error, not a reply that silently arrives without it. Also on the
   agent CLI: `agend-agent stickers`, `sticker-preview`, and `reply … --sticker <id>`.
+- **Codex capacity detection hardened against glyph changes and scrollback (#1215).** The capacity row must be the
+  live transcript item (last item above the composer, nothing newer) both when the "keep going" nudge is armed and
+  when it is accepted — a quotation or scrollback line still notifies the user but never injects. The capacity
+  pattern no longer accepts box-drawing chrome (`│ …` popup/table rows are `So` too); quota, rate-limit and auth
+  patterns share one `CODEX_STATUS_GLYPH` constant so the next glyph change cannot break them the way #1208 broke
+  capacity, and occurrence counting is unified into one counter. The nudge now says to continue only if the last
+  request is unfinished. Pane stays the capacity authority; the session-store seam stays observation-only.
+- **Interrupted turns resume across restarts when the CLI itself stayed idle (#1209).** When a channel turn is
+  armed, the daemon writes a one-shot `in-flight-turn.json` marker (with a TurnFingerprint checkpoint); whatever
+  survives a restart is, by construction, an interrupted turn. After boot and CLI spawn, a pure gate decides once:
+  crash-loop boots stay clean (#835), cancelled turns never resume (cancel deletes the marker, #1199), a delivery
+  still owned by the durable outbox is left to that path, and the seam verdict rules out double-driving — CLI
+  re-engaged or conversation switched means skip, unknown holds through the flush grace (one bounded wait, then
+  deny), and only a quiet seam outside the grace injects one bounded continuation tied to the original correlation
+  (never a re-paste). The marker is consumed before gating, so a second boot never repeats; completion paths clear
+  it through the reply guard, a delivered reply clears it even before the idle edge, and a resumed continuation
+  never re-arms (truly episode-once). A cancel, stop, pause or respawn during the grace hold stales the gate, so
+  nothing is injected after the user already stopped it. Backends without a seam reader resolve to unknown and
+  never continue.
+- **Unified detection-signal seam for cross-restart turn questions (#1209, #1217a, #1210, #1215).** A new read-only
+  observation layer (`src/backend/session-signals.ts`): per-backend `TurnFingerprint` readers that discover the
+  workspace's session in the CLI's own store — claude-code (newest project transcript plus its newest timestamped
+  tail entry; the tail itself is usually timestamp-less bookkeeping), codex (exact-cwd thread from `state_5.sqlite`
+  opened read-only plus the rollout tail) and muse (cwd-matched session plus `recorded_at`) — with a
+  backend-agnostic `compareFingerprints` checkpoint diff answering `reengaged` / `quiet` / `unknown`. Only a TURN
+  counts: turn-kind filtering keeps bookkeeping writes (cost-state tails, token-count frames,
+  workspace-branch observations, bare mtime touches) from reading as re-engagement. Daemon-caused writes are
+  excluded on both the mtime and the tail path (plus a 2 s tail skew for entry-ts vs flush-mtime reorder), a
+  changed session id counts as reengaged, and a 10 s flush grace withholds `quiet` as `unknown` right after the
+  daemon's own write (a CLI that re-engaged but has not flushed yet briefly looks quiet). `readinessFromStore`
+  always returns `unknown`: the pane stays the idle/busy authority and existing detection is untouched.
+  kiro-classic schema coverage is deferred. Reads are synchronous — resolve fingerprints off the fleet event loop,
+  never inside a tool handler. Residual, by design and bounded: an engagement that flushes after a compare is
+  caught by the next checkpoint compare, never fabricated by this one.
+- **A ClassicBot channel can run on a second subscription (#1220).** A channel in `classicBot.yaml` now takes
+  `backend_options.<backend>.credential_profile`, as a `fleet.yaml` instance does — e.g. a classic codex bot on
+  `credential_profile: personal`. Its agent is launched on that profile, `get_usage` / `/usage` count it under that
+  subscription's row (`Codex (personal)`), and `kiro_engine_status` reports it. Before, the key was silently dropped
+  and every classic channel was counted on the shared login. An empty or `null` value is the shared login, also over a
+  profile inherited from the fleet defaults. A profile name AgEnD cannot use stops that channel's agent from starting
+  rather than running it on another login. Only `codex` and `kiro-cli` have profiles; on another backend the profile
+  is reported and ignored. Changing it — in `classicBot.yaml` or in the fleet defaults it inherits, on the next poll or
+  a reload — restarts that channel's agent: fresh for kiro, whose other subscription holds other conversations, as for
+  a fleet instance.
 
 ### Changed
+- **Docs: the shipped 2.1.10 and 2.1.11 entries have their own CHANGELOG sections (#1295).** They had stayed under
+  `[Unreleased]`; each entry now sits under the first release whose tag contains the commit that added it, Upgrade Notes
+  included, and `docs/development.md` lists cutting the section as a release step.
+- **Docs: the `wiki/` directory is retired; `docs/` is the single source (#1279).** Its still-useful pages were rewritten
+  against the current code and moved into `docs/development.md` (Releases and CI, Release notes style) and four new pages
+  in `docs/design/` (channel delivery, ClassicBot reply routing, command permissions, memory layering); the rest was
+  deleted and stays in git history. Five superseded docs moved to `docs/archive/` with a header saying what replaced them,
+  and the status lines of the `docs/design/` notes now match what shipped.
 - **`list_emojis` is lighter (#1226).** Server emojis no longer come with image URLs unless `with_image_urls` is set
   (`preview_emojis` shows the ones an agent wants to look at), and `name`, `limit` and `primary_only` narrow the list —
   on a busy server one call used to cost ~10k characters of context for an agent that needed one emoji. The emoji and
@@ -104,18 +156,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   more, and the config validator warns when two connections share one bot token. Findings, including what is not a
   cause (presence updates, message volume on its own): `docs/design/1231-discord-slash-ack.md`.
 - **Waiting for input is visible (#812).** `describe_instance`, `list_instances`, and status APIs expose a confirmed `awaiting_input` presentation alongside the unchanged execution state and a static interaction category. A second fresh capture confirms a prompt; observations older than 15 seconds are explicitly unverified without releasing safety holds. Claude's captured four-option Bash permission menu is held for a human with no keys sent. Generic terminal hints remain suspected, and editor coverage is not claimed. The 500ms confirmation and 15s freshness values are sandbox-tested policies, not live CLI guarantees.
-- **Cancel stops reply recovery too (#1199).** The cancel button and `/cancel` now mark the current human turn before interrupting the CLI, so an intentional stop no longer triggers the missing-reply warning or asks the agent to produce another conclusion. Replies already being delivered still settle normally; new messages retain their own reply guard. A cancelled recovery's late failure and a cancelled paste's late success cannot restart that turn.
-- **A restart no longer re-sends a Claude Code message that was already delivered (#1205).** After a restart the daemon looks for
-  each in-flight delivery's marker in the CLI's transcript, and only a marker at the very start of a user entry counted. Claude Code
-  stores every pasted message as `<pasted_content id="…">` + the text, so the marker was never at the start and was never found:
-  a delivered message looked like "complete transcript, no marker" and, with the old CLI gone, was retried — the same message
-  delivered twice. The CLI's own wrapper, in exactly that shape and for Claude Code only, is now accepted in front of the marker,
-  which must still lead the body inside it; any other prefix, a quote, or another backend's entry still does not count.
-- **Codex's "Selected model is at capacity" is detected on 0.159.2 and 0.160.0 again (#1208).** Those versions print the rejection as
-  `■ Selected model is at capacity. Please try a different model.`, but the detector was written against `⚠`, so the capacity notice never
-  came, the "keep going" nudge never armed, and the turn just ended in the generic missing-reply path. Any one status symbol (`■`, `⚠`,
-  `⚠️`, …) may now open the line; a bullet, dash, quote marker or number still may not, and the sentence must still be the whole line
-  from column 0, so prose that mentions model capacity triggers nothing. Detection only — what happens after a match is unchanged.
 - **An idle delivery to a Claude / Grok / Muse instance is no longer recorded `delivered` just because the pane printed something (#758).**
   Those CLIs have no readable input row, so an ordinary submission was confirmed by any output after Enter — which a redraw that
   wiped the paste produces too, and the outbox said `delivered` for a message that never arrived. The ✅ is unchanged, but the
@@ -133,62 +173,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   so. A tail with no line break in the scanned window returns its last segment flagged partial instead of an empty answer.
   A failed pipe-pane attach at startup now warns instead of vanishing silently.
 
-### Security
-- **Discord slash commands now follow one command table (#1148).** Where a command applies and who may use it is
-  declared in one place (`src/command-table.ts`) instead of in two copied handlers; the 🔒 in a command's menu
-  description is generated from it, so the label can no longer disagree with the rule. It sits behind the
-  authorization door added earlier and can only narrow what the door allowed. The levels are *anyone*,
-  *channel admin* (in a fleet channel a fleet admin; in a ClassicBot channel a fleet admin **or** a ClassicBot
-  admin), *fleet admin* and *ClassicBot admin*. Behaviour changes:
-  - **`/stop`** in a ClassicBot channel needs a ClassicBot admin on Discord, as it always did on Telegram. On Discord it
-    was open to everyone; a fleet admin who is not also a ClassicBot admin can no longer stop a ClassicBot channel
-    there, and never could on Telegram.
-  - **`/compact`** on Discord needs a channel admin (it was labelled 🔒 but had no check on Discord). Telegram is not
-    changed by this: it still needs a ClassicBot admin in a ClassicBot chat, and has no check in a fleet topic.
-  - **`/save`** needs the admin of the channel's own kind (it asked for a ClassicBot admin even in fleet channels,
-    so a fleet admin was refused there and a ClassicBot admin could paste into a fleet instance).
-  - **`/pause`, `/wake` and `/collab`** in a ClassicBot channel now also accept a fleet admin on Discord (they accepted
-    only a ClassicBot admin). Telegram is not changed: its ClassicBot `/pause` and `/wake` still need a ClassicBot admin.
-  - **`/start`** is not changed on either platform, and the table now says so instead of "anyone": Discord checks the
-    guild allowlist and nothing else; Telegram checks the user allowlist in a private chat, and the group allowlist
-    **and** a ClassicBot admin in a group. The table marks it as decided by its handler.
-  - The table has a Telegram column for the cells where Telegram's handlers differ from Discord's, and a test
-    (`tests/command-gates-by-platform.test.ts`) drives the real Telegram handlers against it.
-  - **`/stop` and `/dashboard` now show the 🔒** they always deserved; `/model`, `/effort`, `/clear` and the
-    admin-only commands are unchanged for everyone who could use them.
-  - A command that does not apply where it was typed (for example `/ctx` in a channel with no agent) is refused with
-    one line saying so, before anything runs; a command that is no longer registered gets an answer instead of
-    "the application did not respond".
-  Typed `/commands` (as opposed to slash commands) are covered by a follow-up change.
-
-### Security
-- **Discord slash commands now go through an authorization door (#1148).** AgEnD registers its slash commands
-  globally, so every guild the bot is in — and every DM with it — shows the same menu, and the lock emoji in a
-  description is only a label. Until now a slash command skipped the allowlist that guards the same words typed
-  as a message and never looked at which guild or DM it came from (only `/start` did): anyone who shared any
-  server with the bot could `/steer`, `/compact` or `/cancel` a fleet instance or read `/sysinfo`. Now, before
-  any command runs: a **DM is refused**; a command from **another guild** is honoured only for a registered
-  ClassicBot channel or `/start` (which still checks `allowed_guilds`); and in a fleet channel the caller must be
-  someone the **typed-message path would also hear** — the access policy of the adapter that owns the channel's
-  instance (an explicit fleet admin always speaks). ClassicBot channels stay open to everyone, as before.
-- **`/update`, `/doctor`, `/dashboard` and `/collab` (in a fleet channel) now require a fleet admin of the adapter
-  the command came through, and an empty `allowed_users` means nobody.** They used to read the *primary* channel's
-  list (`channels[0]`, not the adapter in use) and, for `/update`, `/doctor` and `/collab`, treat an empty list as
-  "everyone" — so on a fleet without one, anyone able to type a slash command could run `agend update` on the
-  host — while the typed `/update` treated empty as "disabled". Slash and typed now agree. **If you rely on these
-  commands, list yourself under that adapter's `access.allowed_users`.**
-
-### Security
-- **Instance directories are now 0700 (and existing ones are fixed at startup).** `<data dir>/instances/<name>`
-  holds `agent.token` and the IPC socket, but was created with the process umask — typically 0775, so
-  group-writable and traversable by every user on the machine (the files inside were already 0600, the
-  directory was the open door). New instance directories are created 0700; on start the fleet makes the
-  `instances` directory and each instance directory under it 0700 once, logs a single line saying so, and
-  never touches anything inside them (a file you put there keeps its mode). Symlinks and directories owned by
-  someone else are left alone and named in a warning. The "IPC socket parent directory is world-accessible"
-  warning, which fired on every instance start and was never acted on, now fires only for a directory that is
-  still open and could not be fixed, once per directory. **If another user or service relied on reading an
-  instance directory through group access, give it access explicitly — the group no longer has it.** (#1118)
+## [2.1.11] - 2026-10-05
 
 ### Upgrade Notes
 - **[Behaviour change] A Codex "model is at capacity" error is now answered with "keep going", not a restart (#905).**
@@ -232,6 +217,178 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   loading** — the setting is ignored, with one warning in the log; remove it. Nothing else changes for `/login`
   (web terminal, device-code, public link) or for installing a CLI. A provider-picker button from before the
   upgrade now answers "expired" when tapped.
+
+### Added
+- **A CLI dialog that ignores AgEnD's answer is now reported within about 15 seconds, for every backend.** AgEnD
+  answers a runtime dialog (a permission prompt, a trust prompt, a picker) by pressing its keys; when the SAME
+  dialog — the very same request, character for character (OpenCode names the request from its prompt block, so a
+  ticking status line around it does not matter; other CLIs are compared whole-screen) — is still up right after
+  the keys, three answers in a row, the instance's topic and the fleet are
+  told once ("not taking AgEnD's answer… answer it by hand", with a note when deliveries are held). Before, a
+  dialog that held deliveries was reported only after a minute, and one that did not (kiro trust, muse/grok tool
+  approval, agy survey) was never reported and was simply re-answered every 5 s forever. The notice names the
+  dialog by its fixed description and a count, never anything from the pane, and is sent once per episode (again
+  only after the dialog went away and a new one ignores the answer). A prompt that was answered and replaced by a
+  fresh one (a burst of tool prompts, or the next queued request of a different target) is not "stuck", and now also
+  restarts the one-minute parked clock instead of inheriting it. Limits: two requests that look exactly alike, one
+  right after the other, cannot be told apart from the screen and read as an ignored answer; and a screen that
+  changes by itself where the CLI cannot name the request (a ticking timer) is never proof either way: it is not
+  reported by this check, and the one-minute "parked" report of a dialog that holds deliveries keeps running as
+  before (only a dialog that is gone, or a request the CLI positively names as different, restarts that clock).
+  After the report AgEnD does not stop answering: it answers the SAME request only every 30 seconds instead of every 5
+  (queued requests that merely look alike each still get their answer, just slowly — a truly ignored dialog is pressed
+  far less), and a different request, the dialog going away, or a respawn restores the normal pace with a fresh count.
+- **General hears when kiro-cli can no longer run a kiro instance.** When the installed kiro-cli refuses a kiro
+  instance as configured (#1109) — at start, or at a respawn after kiro-cli replaced itself — every General now
+  also gets `[system:kiro-incompat]` as an agent: which instances stopped, kiro's reason, that their
+  conversations are intact, and to load the new `kiro-engine-migration` skill. ClassicBot kiro instances count
+  too. It is held in the delivery outbox for up to 14 days until each General takes it (the same kiro-cli may
+  have stopped General too; ordinary deliveries keep their 24 hours), and sent once per day per refusal. The
+  operator's plain notice is unchanged.
+- **`kiro_engine_status` tool** (read-only; worker, standard and general profiles): each kiro instance's
+  (ClassicBot ones included) `kiro_ui` and credential profile, the engine flags its next launch would use or
+  kiro's reason for refusing it, its prepared launches (kiro-cli and AgEnD version per change, from the engine
+  ledger) and its V3 session. It runs no process: it reads the kiro-cli compatibility the last kiro launch
+  probed, and says when that was.
+- **`kiro-engine-migration` skill for General:** what a kiro incompatibility means, that a stopped instance's
+  conversation is intact, what to tell the user, and what never to do (restart it to "try again", change
+  `kiro_ui`, run kiro-cli, touch `~/.kiro`). The migration itself is not available yet, and the skill says so.
+- **A kiro engine ledger, the baseline for the coming V1 → V3 move.** Every kiro launch is recorded in
+  `<data dir>/kiro-engine-ledger.json` (owner-only): the instance's working directory and credential profile,
+  the kiro-cli version, the AgEnD version, the UI and the engine flags AgEnD pinned — the last launch plus one
+  history row per change. It sits outside the instance directory so `replace_instance` does not erase it. It
+  never stops a launch: a ledger that cannot be written is skipped.
+- **A V3 kiro instance resumes only the V3 session it owns, by id.** kiro's `--resume` on V3 takes the
+  newest conversation in the directory from any engine and converts a classic one into a new V3 copy on every
+  launch. A V3 instance now starts fresh, and its next launch takes up the session that fresh launch made —
+  only when that is certain: created after the fresh start, owned by nobody (ownership is an exclusive claim
+  under `<data dir>/kiro-v3/`), and with no other V3 instance in the same directory waiting for its own. After
+  that it resumes that session by id while its claim is held; a skipped resume gives it up. A fresh start
+  is recorded before the launch, and one that cannot be recorded refuses the launch rather than risk resuming
+  the session it gave up later. Anything less certain starts fresh again,
+  so two V3 instances sharing a working directory each start fresh. A classic conversation reaches V3 only
+  through an explicit migration. `kiro_ui: v3` itself is still refused by validation until V3 runs unattended
+  (#849).
+
+### Fixed
+- **Cancel stops reply recovery too (#1199).** The cancel button and `/cancel` now mark the current human turn before interrupting the CLI, so an intentional stop no longer triggers the missing-reply warning or asks the agent to produce another conclusion. Replies already being delivered still settle normally; new messages retain their own reply guard. A cancelled recovery's late failure and a cancelled paste's late success cannot restart that turn.
+- **A restart no longer re-sends a Claude Code message that was already delivered (#1205).** After a restart the daemon looks for
+  each in-flight delivery's marker in the CLI's transcript, and only a marker at the very start of a user entry counted. Claude Code
+  stores every pasted message as `<pasted_content id="…">` + the text, so the marker was never at the start and was never found:
+  a delivered message looked like "complete transcript, no marker" and, with the old CLI gone, was retried — the same message
+  delivered twice. The CLI's own wrapper, in exactly that shape and for Claude Code only, is now accepted in front of the marker,
+  which must still lead the body inside it; any other prefix, a quote, or another backend's entry still does not count.
+- **Codex's "Selected model is at capacity" is detected on 0.159.2 and 0.160.0 again (#1208).** Those versions print the rejection as
+  `■ Selected model is at capacity. Please try a different model.`, but the detector was written against `⚠`, so the capacity notice never
+  came, the "keep going" nudge never armed, and the turn just ended in the generic missing-reply path. Any one status symbol (`■`, `⚠`,
+  `⚠️`, …) may now open the line; a bullet, dash, quote marker or number still may not, and the sentence must still be the whole line
+  from column 0, so prose that mentions model capacity triggers nothing. Detection only — what happens after a match is unchanged.
+- **Telegram ClassicBot's `/start` reply says to @mention the bot (#1196).** "Agent started" and "already has an active
+  agent" led with `/chat`, the Discord way; on Telegram you talk to a ClassicBot by @mentioning it, and the reply now
+  says so. Discord's replies are unchanged, and so is what reaches the agent.
+- **A steer into a busy Claude / Grok / Muse instance is `delivered`, not `uncertain` (#1197).** Those CLIs have no readable input
+  row, and the idle→busy edge that proves an ordinary submission cannot exist in a pane that is already busy, so every durable
+  steer used to end `uncertain` — a ⚠️ for the operator and a `[system:delivery-outcome]` for the sender, for a steer that had
+  landed (it was not an IPC timeout: `send_to_instance` returns at once and nothing waits). Now a steer whose own trusted
+  `message_id` is on the pane after its successful Enter — more often than before the paste, no dialog, same spawn and window — is
+  `delivered`, with the evidence `steer-accepted-marker-on-pane; input-row-unreadable`: accepted into the live turn's input,
+  not proof the model has read it (`delivery_status` already shows `delivery_mode: steer`). Anything less stays `uncertain`.
+  Also: the steer banner now follows the delivery marker instead of preceding it, so a steer can be proved from the CLI
+  transcript after a restart.
+- **A Codex turn that runs long with nothing new on screen is no longer declared stuck (#1188).** The live status row's
+  own elapsed counter (`• Working (5m 51s • esc to interrupt)`) now counts as proof of life: a counter that moved since
+  the last look keeps the turn "working", however long the rest of the pane stayed the same. Before, the 10-minute
+  stuck check stamped "the pane changed" with the time of the last output event — minutes old — so a healthy long turn
+  was flagged (hang notice, then a restart attempt that "timed out" while the original process kept running). A pane
+  whose counter stands still for the stuck timeout is still declared stuck. Also: the daemon's "last change" time never
+  moves backwards, and the stuck deadline follows the latest sign of life instead of re-firing at once.
+- **The #978 idle escape hatch no longer treats a quoted "esc to interrupt" as a running turn (#991).** It now uses the
+  same precise live-status-row match as the rest of the daemon (any title, whole row, column zero): a real status row
+  still blocks it, an indented quote or a prose mention in a reply does not.
+- **Crash-loop recovery now honours the request to start without resuming (#835).**
+  The daemon reads recovery intent before clearing it; failed or superseded starts
+  that never reach the reader preserve it. Normal starts keep resuming as before.
+- **A Codex footer with the native `Goal achieved (…)` status is recognised again (#1190).** Codex 0.159.2 paints its Goal
+  status between the context item and the warnings (`Context 32% left    Goal achieved (1h 6m)    ⚠ 1 warning · f2 to
+  view`); the "Context first" footer grammar had no place for it, so the idle composer could not be proved, stranded-input
+  recovery ran out and deliveries to that instance failed (`Idle footer not recognised` / `retries exhausted`). Anything
+  after the context item that is set apart by a column gap is now footer chrome, whatever Codex calls it or in whatever
+  language (`Goal achieved (1h 6m)`, `Goal usage: 90 seconds.`, `Goal complete; time used: 90 seconds.`, `Goal 사용량: 45초.`,
+  a field it has not shipped yet), and a Goal field is recognised even set off by a single space — no `session-id`
+  status item needed. The same rule applies to a `tui.status_line` you configured (`model · Context 46% left    Goal …`),
+  and its readiness pattern is built from the same grammar. A draft or a transcript line
+  that merely starts with "Context 32% left" is still not a footer.
+- **muse: a message after a cancel is no longer glued to the cancelled one (#829).** Cancelling a muse turn puts the
+  interrupted prompt back into muse's input box, and the next delivery was pasted after it, so both were sent as one
+  message and the cancelled work ran again. Before pasting, AgEnD now reads muse's input box and empties it with
+  muse's own delete keys, one line at a time, checking the screen after each. It clears only a draft that is exactly
+  one of AgEnD's own recent pastes to that same CLI process, drawn the way muse wraps it; looking like an AgEnD message
+  is not enough, and a collapsed `[Pasted Content N chars]` (whose content cannot be seen) is never cleared. Anything
+  else is left alone and stops the clearing, and so does a box that will not empty or a screen that cannot be read:
+  the delivery fails and can be retried, and nothing is pasted onto the text. A stop, cancel or respawn while it clears ends the attempt with nothing sent. Other backends send no
+  extra keys.
+- **macOS no longer mistakes low free RAM for memory pressure.** Native, bounded async
+  `vm_stat`/`sysctl` probes estimate reclaimable RAM and read swap; first/stale starts
+  wait at most two seconds, with a 30-second shared cache. Unavailable Mac measurements
+  now show unknown and neither warn nor slow starts; Linux behaviour is unchanged.
+  The estimate can undercount reclaimable RAM, and failed Mac probes temporarily leave
+  memory-pressure protection unavailable. Fixture-tested on Linux; live macOS user validation
+  is pending. The native-probe commit can be reverted while keeping the unknown policy.
+- **The `/login` browser terminal no longer kills the sign-in when you copy, and shows where the code goes.** Pressing
+  Ctrl+C to copy the link sent an interrupt that ended `claude auth login` (exit 130); the paste and Enter that followed hit a
+  dead session. Now Ctrl+C with text selected copies in every web terminal, and on the login page a Ctrl+C with nothing
+  selected (and the Ctrl-C button) is off — Stop still cancels; the installer terminal keeps its Ctrl+C. The CLI echoes
+  nothing of the code you paste, so it looked as if nothing had happened: the login page now has a code box that sends the
+  code and Enter once and says so (the code is never logged). A code the server refuses ends the command; the page now
+  says the code was rejected (expired, already used, pasted twice, or from another attempt) and to start `/login` again,
+  instead of "exited with code 1".
+
+### Security
+- **Discord slash commands now follow one command table (#1148).** Where a command applies and who may use it is
+  declared in one place (`src/command-table.ts`) instead of in two copied handlers; the 🔒 in a command's menu
+  description is generated from it, so the label can no longer disagree with the rule. It sits behind the
+  authorization door added earlier and can only narrow what the door allowed. The levels are *anyone*,
+  *channel admin* (in a fleet channel a fleet admin; in a ClassicBot channel a fleet admin **or** a ClassicBot
+  admin), *fleet admin* and *ClassicBot admin*. Behaviour changes:
+  - **`/stop`** in a ClassicBot channel needs a ClassicBot admin on Discord, as it always did on Telegram. On Discord it
+    was open to everyone; a fleet admin who is not also a ClassicBot admin can no longer stop a ClassicBot channel
+    there, and never could on Telegram.
+  - **`/compact`** on Discord needs a channel admin (it was labelled 🔒 but had no check on Discord). Telegram is not
+    changed by this: it still needs a ClassicBot admin in a ClassicBot chat, and has no check in a fleet topic.
+  - **`/save`** needs the admin of the channel's own kind (it asked for a ClassicBot admin even in fleet channels,
+    so a fleet admin was refused there and a ClassicBot admin could paste into a fleet instance).
+  - **`/pause`, `/wake` and `/collab`** in a ClassicBot channel now also accept a fleet admin on Discord (they accepted
+    only a ClassicBot admin). Telegram is not changed: its ClassicBot `/pause` and `/wake` still need a ClassicBot admin.
+  - **`/start`** is not changed on either platform, and the table now says so instead of "anyone": Discord checks the
+    guild allowlist and nothing else; Telegram checks the user allowlist in a private chat, and the group allowlist
+    **and** a ClassicBot admin in a group. The table marks it as decided by its handler.
+  - The table has a Telegram column for the cells where Telegram's handlers differ from Discord's, and a test
+    (`tests/command-gates-by-platform.test.ts`) drives the real Telegram handlers against it.
+  - **`/stop` and `/dashboard` now show the 🔒** they always deserved; `/model`, `/effort`, `/clear` and the
+    admin-only commands are unchanged for everyone who could use them.
+  - A command that does not apply where it was typed (for example `/ctx` in a channel with no agent) is refused with
+    one line saying so, before anything runs; a command that is no longer registered gets an answer instead of
+    "the application did not respond".
+  Typed `/commands` (as opposed to slash commands) are covered by a follow-up change.
+- **Discord slash commands now go through an authorization door (#1148).** AgEnD registers its slash commands
+  globally, so every guild the bot is in — and every DM with it — shows the same menu, and the lock emoji in a
+  description is only a label. Until now a slash command skipped the allowlist that guards the same words typed
+  as a message and never looked at which guild or DM it came from (only `/start` did): anyone who shared any
+  server with the bot could `/steer`, `/compact` or `/cancel` a fleet instance or read `/sysinfo`. Now, before
+  any command runs: a **DM is refused**; a command from **another guild** is honoured only for a registered
+  ClassicBot channel or `/start` (which still checks `allowed_guilds`); and in a fleet channel the caller must be
+  someone the **typed-message path would also hear** — the access policy of the adapter that owns the channel's
+  instance (an explicit fleet admin always speaks). ClassicBot channels stay open to everyone, as before.
+- **`/update`, `/doctor`, `/dashboard` and `/collab` (in a fleet channel) now require a fleet admin of the adapter
+  the command came through, and an empty `allowed_users` means nobody.** They used to read the *primary* channel's
+  list (`channels[0]`, not the adapter in use) and, for `/update`, `/doctor` and `/collab`, treat an empty list as
+  "everyone" — so on a fleet without one, anyone able to type a slash command could run `agend update` on the
+  host — while the typed `/update` treated empty as "disabled". Slash and typed now agree. **If you rely on these
+  commands, list yourself under that adapter's `access.allowed_users`.**
+
+## [2.1.10] - 2026-10-03
+
+### Upgrade Notes
 - **[Behaviour change] One tap for a public `/login` link — AgEnD gets cloudflared itself (#1137).**
   The kiro-cli and claude-code login confirmation now offers **I understand (temporary public link)**,
   **I understand (local network)** and **Cancel** without any configuration: `web_terminal.tunnel.allow_public`
@@ -345,100 +502,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   are unaffected.
 
 ### Added
-- **Codex capacity detection hardened against glyph changes and scrollback (#1215).** The capacity row must be the
-  live transcript item (last item above the composer, nothing newer) both when the "keep going" nudge is armed and
-  when it is accepted — a quotation or scrollback line still notifies the user but never injects. The capacity
-  pattern no longer accepts box-drawing chrome (`│ …` popup/table rows are `So` too); quota, rate-limit and auth
-  patterns share one `CODEX_STATUS_GLYPH` constant so the next glyph change cannot break them the way #1208 broke
-  capacity, and occurrence counting is unified into one counter. The nudge now says to continue only if the last
-  request is unfinished. Pane stays the capacity authority; the session-store seam stays observation-only.
-- **Interrupted turns resume across restarts when the CLI itself stayed idle (#1209).** When a channel turn is
-  armed, the daemon writes a one-shot `in-flight-turn.json` marker (with a TurnFingerprint checkpoint); whatever
-  survives a restart is, by construction, an interrupted turn. After boot and CLI spawn, a pure gate decides once:
-  crash-loop boots stay clean (#835), cancelled turns never resume (cancel deletes the marker, #1199), a delivery
-  still owned by the durable outbox is left to that path, and the seam verdict rules out double-driving — CLI
-  re-engaged or conversation switched means skip, unknown holds through the flush grace (one bounded wait, then
-  deny), and only a quiet seam outside the grace injects one bounded continuation tied to the original correlation
-  (never a re-paste). The marker is consumed before gating, so a second boot never repeats; completion paths clear
-  it through the reply guard, a delivered reply clears it even before the idle edge, and a resumed continuation
-  never re-arms (truly episode-once). A cancel, stop, pause or respawn during the grace hold stales the gate, so
-  nothing is injected after the user already stopped it. Backends without a seam reader resolve to unknown and
-  never continue.
-- **Unified detection-signal seam for cross-restart turn questions (#1209, #1217a, #1210, #1215).** A new read-only
-  observation layer (`src/backend/session-signals.ts`): per-backend `TurnFingerprint` readers that discover the
-  workspace's session in the CLI's own store — claude-code (newest project transcript plus its newest timestamped
-  tail entry; the tail itself is usually timestamp-less bookkeeping), codex (exact-cwd thread from `state_5.sqlite`
-  opened read-only plus the rollout tail) and muse (cwd-matched session plus `recorded_at`) — with a
-  backend-agnostic `compareFingerprints` checkpoint diff answering `reengaged` / `quiet` / `unknown`. Only a TURN
-  counts: turn-kind filtering keeps bookkeeping writes (cost-state tails, token-count frames,
-  workspace-branch observations, bare mtime touches) from reading as re-engagement. Daemon-caused writes are
-  excluded on both the mtime and the tail path (plus a 2 s tail skew for entry-ts vs flush-mtime reorder), a
-  changed session id counts as reengaged, and a 10 s flush grace withholds `quiet` as `unknown` right after the
-  daemon's own write (a CLI that re-engaged but has not flushed yet briefly looks quiet). `readinessFromStore`
-  always returns `unknown`: the pane stays the idle/busy authority and existing detection is untouched.
-  kiro-classic schema coverage is deferred. Reads are synchronous — resolve fingerprints off the fleet event loop,
-  never inside a tool handler. Residual, by design and bounded: an engagement that flushes after a compare is
-  caught by the next checkpoint compare, never fabricated by this one.
-- **A ClassicBot channel can run on a second subscription (#1220).** A channel in `classicBot.yaml` now takes
-  `backend_options.<backend>.credential_profile`, as a `fleet.yaml` instance does — e.g. a classic codex bot on
-  `credential_profile: personal`. Its agent is launched on that profile, `get_usage` / `/usage` count it under that
-  subscription's row (`Codex (personal)`), and `kiro_engine_status` reports it. Before, the key was silently dropped
-  and every classic channel was counted on the shared login. An empty or `null` value is the shared login, also over a
-  profile inherited from the fleet defaults. A profile name AgEnD cannot use stops that channel's agent from starting
-  rather than running it on another login. Only `codex` and `kiro-cli` have profiles; on another backend the profile
-  is reported and ignored. Changing it — in `classicBot.yaml` or in the fleet defaults it inherits, on the next poll or
-  a reload — restarts that channel's agent: fresh for kiro, whose other subscription holds other conversations, as for
-  a fleet instance.
-- **A CLI dialog that ignores AgEnD's answer is now reported within about 15 seconds, for every backend.** AgEnD
-  answers a runtime dialog (a permission prompt, a trust prompt, a picker) by pressing its keys; when the SAME
-  dialog — the very same request, character for character (OpenCode names the request from its prompt block, so a
-  ticking status line around it does not matter; other CLIs are compared whole-screen) — is still up right after
-  the keys, three answers in a row, the instance's topic and the fleet are
-  told once ("not taking AgEnD's answer… answer it by hand", with a note when deliveries are held). Before, a
-  dialog that held deliveries was reported only after a minute, and one that did not (kiro trust, muse/grok tool
-  approval, agy survey) was never reported and was simply re-answered every 5 s forever. The notice names the
-  dialog by its fixed description and a count, never anything from the pane, and is sent once per episode (again
-  only after the dialog went away and a new one ignores the answer). A prompt that was answered and replaced by a
-  fresh one (a burst of tool prompts, or the next queued request of a different target) is not "stuck", and now also
-  restarts the one-minute parked clock instead of inheriting it. Limits: two requests that look exactly alike, one
-  right after the other, cannot be told apart from the screen and read as an ignored answer; and a screen that
-  changes by itself where the CLI cannot name the request (a ticking timer) is never proof either way: it is not
-  reported by this check, and the one-minute "parked" report of a dialog that holds deliveries keeps running as
-  before (only a dialog that is gone, or a request the CLI positively names as different, restarts that clock).
-  After the report AgEnD does not stop answering: it answers the SAME request only every 30 seconds instead of every 5
-  (queued requests that merely look alike each still get their answer, just slowly — a truly ignored dialog is pressed
-  far less), and a different request, the dialog going away, or a respawn restores the normal pace with a fresh count.
-- **General hears when kiro-cli can no longer run a kiro instance.** When the installed kiro-cli refuses a kiro
-  instance as configured (#1109) — at start, or at a respawn after kiro-cli replaced itself — every General now
-  also gets `[system:kiro-incompat]` as an agent: which instances stopped, kiro's reason, that their
-  conversations are intact, and to load the new `kiro-engine-migration` skill. ClassicBot kiro instances count
-  too. It is held in the delivery outbox for up to 14 days until each General takes it (the same kiro-cli may
-  have stopped General too; ordinary deliveries keep their 24 hours), and sent once per day per refusal. The
-  operator's plain notice is unchanged.
-- **`kiro_engine_status` tool** (read-only; worker, standard and general profiles): each kiro instance's
-  (ClassicBot ones included) `kiro_ui` and credential profile, the engine flags its next launch would use or
-  kiro's reason for refusing it, its prepared launches (kiro-cli and AgEnD version per change, from the engine
-  ledger) and its V3 session. It runs no process: it reads the kiro-cli compatibility the last kiro launch
-  probed, and says when that was.
-- **`kiro-engine-migration` skill for General:** what a kiro incompatibility means, that a stopped instance's
-  conversation is intact, what to tell the user, and what never to do (restart it to "try again", change
-  `kiro_ui`, run kiro-cli, touch `~/.kiro`). The migration itself is not available yet, and the skill says so.
-- **A kiro engine ledger, the baseline for the coming V1 → V3 move.** Every kiro launch is recorded in
-  `<data dir>/kiro-engine-ledger.json` (owner-only): the instance's working directory and credential profile,
-  the kiro-cli version, the AgEnD version, the UI and the engine flags AgEnD pinned — the last launch plus one
-  history row per change. It sits outside the instance directory so `replace_instance` does not erase it. It
-  never stops a launch: a ledger that cannot be written is skipped.
-- **A V3 kiro instance resumes only the V3 session it owns, by id.** kiro's `--resume` on V3 takes the
-  newest conversation in the directory from any engine and converts a classic one into a new V3 copy on every
-  launch. A V3 instance now starts fresh, and its next launch takes up the session that fresh launch made —
-  only when that is certain: created after the fresh start, owned by nobody (ownership is an exclusive claim
-  under `<data dir>/kiro-v3/`), and with no other V3 instance in the same directory waiting for its own. After
-  that it resumes that session by id while its claim is held; a skipped resume gives it up. A fresh start
-  is recorded before the launch, and one that cannot be recorded refuses the launch rather than risk resuming
-  the session it gave up later. Anything less certain starts fresh again,
-  so two V3 instances sharing a working directory each start fresh. A classic conversation reaches V3 only
-  through an explicit migration. `kiro_ui: v3` itself is still refused by validation until V3 runs unattended
-  (#849).
 - **`/login` says which fleet it belongs to.** Every AgEnD bot in a Discord guild registers its own
   `/login`, so the slash menu listed identical commands and a picker could come from another fleet
   than the one you meant. Its description now ends with the fleet's label, and the backend picker
@@ -454,65 +517,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `cloudflared` on `PATH`. See "Finishing a /login away from the machine" in `docs/configuration.md`.
 
 ### Fixed
-- **Telegram ClassicBot's `/start` reply says to @mention the bot (#1196).** "Agent started" and "already has an active
-  agent" led with `/chat`, the Discord way; on Telegram you talk to a ClassicBot by @mentioning it, and the reply now
-  says so. Discord's replies are unchanged, and so is what reaches the agent.
-- **A steer into a busy Claude / Grok / Muse instance is `delivered`, not `uncertain` (#1197).** Those CLIs have no readable input
-  row, and the idle→busy edge that proves an ordinary submission cannot exist in a pane that is already busy, so every durable
-  steer used to end `uncertain` — a ⚠️ for the operator and a `[system:delivery-outcome]` for the sender, for a steer that had
-  landed (it was not an IPC timeout: `send_to_instance` returns at once and nothing waits). Now a steer whose own trusted
-  `message_id` is on the pane after its successful Enter — more often than before the paste, no dialog, same spawn and window — is
-  `delivered`, with the evidence `steer-accepted-marker-on-pane; input-row-unreadable`: accepted into the live turn's input,
-  not proof the model has read it (`delivery_status` already shows `delivery_mode: steer`). Anything less stays `uncertain`.
-  Also: the steer banner now follows the delivery marker instead of preceding it, so a steer can be proved from the CLI
-  transcript after a restart.
-- **A Codex turn that runs long with nothing new on screen is no longer declared stuck (#1188).** The live status row's
-  own elapsed counter (`• Working (5m 51s • esc to interrupt)`) now counts as proof of life: a counter that moved since
-  the last look keeps the turn "working", however long the rest of the pane stayed the same. Before, the 10-minute
-  stuck check stamped "the pane changed" with the time of the last output event — minutes old — so a healthy long turn
-  was flagged (hang notice, then a restart attempt that "timed out" while the original process kept running). A pane
-  whose counter stands still for the stuck timeout is still declared stuck. Also: the daemon's "last change" time never
-  moves backwards, and the stuck deadline follows the latest sign of life instead of re-firing at once.
-- **The #978 idle escape hatch no longer treats a quoted "esc to interrupt" as a running turn (#991).** It now uses the
-  same precise live-status-row match as the rest of the daemon (any title, whole row, column zero): a real status row
-  still blocks it, an indented quote or a prose mention in a reply does not.
-- **Crash-loop recovery now honours the request to start without resuming (#835).**
-  The daemon reads recovery intent before clearing it; failed or superseded starts
-  that never reach the reader preserve it. Normal starts keep resuming as before.
-- **A Codex footer with the native `Goal achieved (…)` status is recognised again (#1190).** Codex 0.159.2 paints its Goal
-  status between the context item and the warnings (`Context 32% left    Goal achieved (1h 6m)    ⚠ 1 warning · f2 to
-  view`); the "Context first" footer grammar had no place for it, so the idle composer could not be proved, stranded-input
-  recovery ran out and deliveries to that instance failed (`Idle footer not recognised` / `retries exhausted`). Anything
-  after the context item that is set apart by a column gap is now footer chrome, whatever Codex calls it or in whatever
-  language (`Goal achieved (1h 6m)`, `Goal usage: 90 seconds.`, `Goal complete; time used: 90 seconds.`, `Goal 사용량: 45초.`,
-  a field it has not shipped yet), and a Goal field is recognised even set off by a single space — no `session-id`
-  status item needed. The same rule applies to a `tui.status_line` you configured (`model · Context 46% left    Goal …`),
-  and its readiness pattern is built from the same grammar. A draft or a transcript line
-  that merely starts with "Context 32% left" is still not a footer.
-- **muse: a message after a cancel is no longer glued to the cancelled one (#829).** Cancelling a muse turn puts the
-  interrupted prompt back into muse's input box, and the next delivery was pasted after it, so both were sent as one
-  message and the cancelled work ran again. Before pasting, AgEnD now reads muse's input box and empties it with
-  muse's own delete keys, one line at a time, checking the screen after each. It clears only a draft that is exactly
-  one of AgEnD's own recent pastes to that same CLI process, drawn the way muse wraps it; looking like an AgEnD message
-  is not enough, and a collapsed `[Pasted Content N chars]` (whose content cannot be seen) is never cleared. Anything
-  else is left alone and stops the clearing, and so does a box that will not empty or a screen that cannot be read:
-  the delivery fails and can be retried, and nothing is pasted onto the text. A stop, cancel or respawn while it clears ends the attempt with nothing sent. Other backends send no
-  extra keys.
-- **macOS no longer mistakes low free RAM for memory pressure.** Native, bounded async
-  `vm_stat`/`sysctl` probes estimate reclaimable RAM and read swap; first/stale starts
-  wait at most two seconds, with a 30-second shared cache. Unavailable Mac measurements
-  now show unknown and neither warn nor slow starts; Linux behaviour is unchanged.
-  The estimate can undercount reclaimable RAM, and failed Mac probes temporarily leave
-  memory-pressure protection unavailable. Fixture-tested on Linux; live macOS user validation
-  is pending. The native-probe commit can be reverted while keeping the unknown policy.
-- **The `/login` browser terminal no longer kills the sign-in when you copy, and shows where the code goes.** Pressing
-  Ctrl+C to copy the link sent an interrupt that ended `claude auth login` (exit 130); the paste and Enter that followed hit a
-  dead session. Now Ctrl+C with text selected copies in every web terminal, and on the login page a Ctrl+C with nothing
-  selected (and the Ctrl-C button) is off — Stop still cancels; the installer terminal keeps its Ctrl+C. The CLI echoes
-  nothing of the code you paste, so it looked as if nothing had happened: the login page now has a code box that sends the
-  code and Enter once and says so (the code is never logged). A code the server refuses ends the command; the page now
-  says the code was rejected (expired, already used, pasted twice, or from another attempt) and to start `/login` again,
-  instead of "exited with code 1".
 - **A rejected Discord slash command registration is reported (#1131).** It was swallowed without a
   log line, and Discord keeps the previous command list when it rejects one, so a new or changed
   command could silently never appear. The fleet now logs every registration (the command
@@ -556,6 +560,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   restart instances, so a framed page could be clicked through),
   `X-Content-Type-Options: nosniff` and `Cache-Control: no-store` (routes that set
   their own Cache-Control, such as the SSE stream and avatars, keep it).
+
+### Security
+- **Instance directories are now 0700 (and existing ones are fixed at startup).** `<data dir>/instances/<name>`
+  holds `agent.token` and the IPC socket, but was created with the process umask — typically 0775, so
+  group-writable and traversable by every user on the machine (the files inside were already 0600, the
+  directory was the open door). New instance directories are created 0700; on start the fleet makes the
+  `instances` directory and each instance directory under it 0700 once, logs a single line saying so, and
+  never touches anything inside them (a file you put there keeps its mode). Symlinks and directories owned by
+  someone else are left alone and named in a warning. The "IPC socket parent directory is world-accessible"
+  warning, which fired on every instance start and was never acted on, now fires only for a directory that is
+  still open and could not be fixed, once per directory. **If another user or service relied on reading an
+  instance directory through group access, give it access explicitly — the group no longer has it.** (#1118)
 
 ## [2.1.9] - 2026-10-02
 
