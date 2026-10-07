@@ -268,7 +268,7 @@
       se_unicode: "Emoji", se_telegramOnly: "Telegram allows only these reactions", se_serverEmojis: "Server emojis", se_noServerEmojis: "No custom emojis on this server.", se_primaryServer: "primary", se_externalEmojiHint: "Another server's emoji needs the bot's Use External Emojis permission in the channel it reacts in.", se_unavailable: "unavailable",
       se_hint: "Empty keeps the default. The preview is resolved by AgEnD exactly as the bot will react.",
       detection: "Detection", startup: "Startup", backendSection: "Backend", advancedSection: "Advanced & Access", hangEnabled: "Hang detector enabled", hangTimeout: "Stuck timeout", agentMode: "Agent mode", toolSet: "Tool set", toolProgress: "Tool progress", crossInstanceVisibility: "Bot-to-bot messages in topics", crossInstanceVisibilityHint: "full: the whole message · summary: one line · hidden: nothing. Messages are always delivered; the Mirror Topic still shows them.", replyCompletionGuard: "Require a delivered reply", replyGuardSupported: "Available for Claude Code and Kiro legacy/TUI in MCP mode.", replyGuardUnsupported: "Stored but inactive: {0} in {1} mode does not support reply-drop recovery.", logLevel: "Log level", concurrency: "Startup concurrency", staggerDelay: "Stagger delay", lightweight: "Lightweight mode", modelFailover: "Fallback model", displayName: "Display name", pause: "Pause", wake: "Wake", accessMode: "Access mode", affected: "Affected instances",
-      language: "Language (bot replies)", defaultBackend: "Default backend", defaultModel: "Default model", allowedUsers: "Allowed users (primary bot)",
+      language: "Language (bot replies)", defaultBackend: "Default backend", defaultModel: "Default model", allowedUsers: "Allowed users (primary bot)", localeAuto: "Auto (follow system)",
       classicAdmins: "ClassicBot admins", allowedGuilds: "Allowed guilds", type: "Type", adapterId: "Adapter id",
       tokenEnv: "Bot token env var", groupId: "Group / guild id", nameField: "Name",
       envHint: "Put the actual token in ~/.agend/.env under this env var, then Reload Fleet.",
@@ -327,7 +327,7 @@
       description: "描述", systemPrompt: "System prompt", tags: "標籤", generalTopicField: "General topic（fleet 分派器）",
       runtimeResources: "執行環境與資源", autoPause: "閒置後自動暫停", minutes: "分鐘", inheritDefault: "沿用全域預設值",
       detection: "偵測", startup: "啟動", backendSection: "後端", advancedSection: "進階與存取", hangEnabled: "啟用卡住偵測", hangTimeout: "卡住逾時", agentMode: "Agent 模式", toolSet: "工具集", toolProgress: "工具進度", crossInstanceVisibility: "Agent 之間的訊息在主題中", crossInstanceVisibilityHint: "full：完整訊息 · summary：一行摘要 · hidden：不顯示。訊息一律照常送達，Mirror Topic 也照常顯示。", replyCompletionGuard: "要求送出回覆", replyGuardSupported: "Claude Code 與 Kiro legacy/TUI 的 MCP 模式可用。", replyGuardUnsupported: "設定會保留，但不會生效：{0} 的 {1} 模式不支援回覆遺失補救。", logLevel: "Log 等級", concurrency: "啟動併發數", staggerDelay: "錯開延遲", lightweight: "輕量模式", modelFailover: "備援模型", displayName: "顯示名稱", pause: "暫停", wake: "喚醒", accessMode: "存取模式", affected: "受影響 instances",
-      language: "語言（bot 回覆）", defaultBackend: "預設後端", defaultModel: "預設模型", allowedUsers: "允許使用者（主 bot）",
+      language: "語言（bot 回覆）", defaultBackend: "預設後端", defaultModel: "預設模型", allowedUsers: "允許使用者（主 bot）", localeAuto: "自動（跟隨系統）",
       classicAdmins: "ClassicBot 管理員", allowedGuilds: "允許的伺服器", type: "類型", adapterId: "Adapter id",
       tokenEnv: "Bot token 環境變數", groupId: "群組 / guild id", nameField: "名稱",
       envHint: "把實際 token 放到 ~/.agend/.env 的這個環境變數下，然後點重新載入。",
@@ -480,6 +480,27 @@
    */
   function backendSelect(value) {
     return select(value, BACKENDS.includes(value) ? BACKENDS : [{ value, label: tf("backendUnavailable", value) }, ...BACKENDS]);
+  }
+  const LOCALES = [["en", "English"], ["zh-TW", "繁體中文 (zh-TW)"]];
+  /**
+   * The locale picker adds an explicit "Auto (follow system)" option for unset (#1310):
+   * without it the select falls to its first option (en) and any unrelated defaults
+   * save writes locale: en, pinning the language and disabling timezone auto-detect.
+   * Like backendSelect, it also keeps a value it does not offer until the user picks another.
+   */
+  function localeSelect(value) {
+    const s = el("select");
+    const auto = el("option", {}, t("localeAuto")); auto.value = "";
+    if (!value) auto.selected = true;
+    s.append(auto);
+    if (value && !LOCALES.some(([v]) => v === value)) {
+      const unknown = el("option", {}, value); unknown.value = value; unknown.selected = true;
+      s.append(unknown);
+    }
+    for (const [v, lbl] of LOCALES) {
+      const o = el("option", {}, lbl); o.value = v; if (v === value) o.selected = true; s.append(o);
+    }
+    return s;
   }
   function select(value, options) { const s = el("select"); for (const o of options) { const val = typeof o === "string" ? o : o.value; const label = typeof o === "string" ? o : o.label; const opt = el("option", {}, label); opt.value = val; if (val === value) opt.selected = true; s.append(opt); } return s; }
   const impactText = (kind) => t(kind === "now" ? "impactNow" : kind === "fleet" ? "impactFleet" : "impactAgent");
@@ -1867,13 +1888,12 @@
     const fClassicReplyGuard = overrideControl(c, "reply_completion_guard", fClassicReplyInput, d.reply_completion_guard ?? true, "classic_defaults.reply_completion_guard");
     const fAccessMode = select(originalPrimaryAccess.mode || "locked", ["locked", "open", "pairing"]);
     const fLogLevel = select(d.log_level || "info", ["trace", "debug", "info", "warn", "error"]);
-    const fLocale = el("select");
+    const fLocale = localeSelect(d.locale || "");
     const fAutoPause = el("input", { type: "number", min: "0", step: "1", value: d.auto_pause_after ?? 0, placeholder: "0 = disabled" });
     const fHangEnabled = el("input", { type: "checkbox" }); fHangEnabled.checked = hang.enabled !== false;
     const fHangTimeout = el("input", { type: "number", min: "0.1", step: "0.5", value: hang.timeout_minutes ?? 15 });
     const fConcurrency = el("input", { type: "number", min: "1", max: "20", step: "1", value: startup.concurrency ?? 10 });
     const fStagger = el("input", { type: "number", min: "0", max: "30000", step: "100", value: startup.stagger_delay_ms ?? 500 });
-    [["en", "English"], ["zh-TW", "繁體中文 (zh-TW)"]].forEach(([v, lbl]) => { const o = el("option", {}, lbl); o.value = v; if ((d.locale || "") === v) o.selected = true; fLocale.append(o); });
     const msg = el("span", { class: "msg" });
     const autoFeedback = el("div", { class: "feedback" });
     const hangFeedback = el("div", { class: "feedback" });
@@ -1913,7 +1933,7 @@
       const nextDefaults = {
         backend: fBackend.value,
         model: fModel.value || undefined,
-        locale: fLocale.value,
+        locale: fLocale.value || null,
         auto_pause_after: Number(fAutoPause.value),
         agent_mode: fAgentMode.value,
         tool_set: fToolSet.value,
@@ -1927,7 +1947,7 @@
       const defaultsPatch = changedFields(nextDefaults, {
         backend: d.backend || "claude-code",
         model: d.model || undefined,
-        locale: d.locale || "",
+        locale: d.locale || null,
         auto_pause_after: d.auto_pause_after ?? 0,
         agent_mode: d.agent_mode || "mcp",
         tool_set: d.tool_set || "full",
