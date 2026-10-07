@@ -110,6 +110,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   pictures is not cut short.
 
 ### Fixed
+- **Logged-out agy and muse are recognised; agy's trust prompt and effort levels match the binary (#1328).** Found by
+  the 2026-10-07 CLI audit (agy 1.3.1, muse 1.4.3):
+  - A logged-out agy is now reported as a sign-in incident. Its screen ("You are currently not signed in. / Select
+    login method:") was never matched; the old wording only appears in agy's log file.
+  - A logged-out muse 1.4.3 ("Log in with browser / Set an API key") no longer passes as ready. Its menu is held,
+    with deliveries blocked, until someone logs in.
+  - agy's trust prompt is also matched by its real title, "Do you trust the contents of this project?".
+  - agy's effort levels come from its own `--help` (1.3.1 offers xhigh and max), falling back to low/medium/high.
 - **A relative `systemPrompt` / `workflow` `file:` path means the instance's working directory (#1314).** It was
   read against the fleet process's current directory: `~/.agend` under the installed service, the shell's directory
   after a manual `agend fleet start`. So one fleet.yaml could load another file, or none, depending on how the fleet
