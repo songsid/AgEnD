@@ -37,7 +37,7 @@ afterEach(() => {
     const s = fm as any;
     for (const key of ["sessionPruneTimer", "replyObligationTimer"]) clearInterval(s[key]);
   }
-  vi.restoreAllMocks(); vi.unstubAllEnvs(); setLocale("en");
+  vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllEnvs(); setLocale("en");
   dirs.splice(0).forEach(dir => rmSync(dir, { recursive: true, force: true }));
 });
 
@@ -103,8 +103,8 @@ async function harness(type: "telegram" | "discord", botId = "777") {
   vi.spyOn(adapter, "sendText").mockImplementation((...args) => { if (failEcho === "throw" && args[1].startsWith(WEB_ECHO_PREFIX)) throw new Error("sync failure"); return realSend(...args); });
   return { fm, s, adapter, primary, sent, received, ingress, api, chatId, topic, discordPayloads, telegramPayloads,
     feed: async (...args: Parameters<typeof feed>) => { await feed(...args); await Promise.all(inbound.splice(0)); },
-    hold: (promise: Promise<void>) => { holdEcho = promise; }, fail: (how: "throw" | "reject") => { failEcho = how; },
-    reply: () => s.handleOutboundFromInstance("worker", { requestId: 9, tool: "reply", args: { text: "done", chat_id: chatId } }),
+    hold: (promise?: Promise<void>) => { holdEcho = promise; }, fail: (how: "throw" | "reject") => { failEcho = how; },
+    reply: (text = "done") => s.handleOutboundFromInstance("worker", { requestId: 9, tool: "reply", args: { text, chat_id: chatId } }),
   };
 }
 function send(fm: FleetManager, message = "hello", attachments: string[] = []) {
@@ -115,6 +115,126 @@ function send(fm: FleetManager, message = "hello", attachments: string[] = []) {
   req.emit("data", Buffer.from(JSON.stringify({ instance: "worker", message, attachments }))); req.emit("end");
   return done.promise;
 }
+
+function orderingClock() {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  let now = 100;
+  vi.spyOn(performance, "now").mockImplementation(() => now);
+  return {
+    jump: (ms: number) => { now += ms; },
+    advance: async (ms: number) => { now += ms; await vi.advanceTimersByTimeAsync(ms); await flush(); },
+  };
+}
+
+describe("web echo review boundaries (#1325 r2)", () => {
+  for (const type of ["telegram", "discord"] as const) {
+    it(`${type}: never-settling echo releases the real reply at the 5s total budget`, async () => {
+      const h = await harness(type), clock = orderingClock();
+      h.hold(new Promise<void>(() => {}));
+      expect((await send(h.fm)).status).toBe(200); await flush();
+      const reply = h.reply(); await flush();
+      await clock.advance(4999); expect(h.sent).toEqual([]);
+      await clock.advance(1);
+      expect(h.sent.map(m => m.text)).toEqual(["done"]); await reply;
+      expect(h.s.webChannelEchoTails.size).toBe(0);
+      expect(h.s.logger.warn).toHaveBeenCalledWith({ instanceName: "worker", inFlight: true }, "Web channel echo ordering timed out");
+      expect(vi.getTimerCount()).toBe(0);
+    });
+    it(`${type}: a long rate-limit wait may finish late without retaining reply ordering`, async () => {
+      const h = await harness(type), clock = orderingClock();
+      h.hold(new Promise<void>(resolve => setTimeout(resolve, 60_000)));
+      await send(h.fm); await flush(); const reply = h.reply();
+      await clock.advance(5000);
+      expect(h.sent.map(m => m.text)).toEqual(["done"]); await reply;
+      await clock.advance(55_000);
+      expect(h.sent.map(m => m.text)).toEqual(["done", formatWebChannelEcho("web-user", "hello")]);
+      expect(h.s.logger.warn).toHaveBeenCalledWith({ instanceName: "worker" }, "Web channel echo completed late after ordering timeout");
+      expect(h.s.webChannelEchoTails.size).toBe(0); expect(vi.getTimerCount()).toBe(0);
+    });
+    it(`${type}: timeout drops queued echoes; a subsequent echo and reply still run in order`, async () => {
+      const h = await harness(type), clock = orderingClock(), first = deferred(), next = deferred();
+      h.hold(first.promise); await send(h.fm, "first"); await flush();
+      await clock.advance(1000); await send(h.fm, "drop this queued copy"); await flush();
+      const reply = h.reply(); await clock.advance(4000);
+      expect(h.api.mock.calls.map(call => call[2])).toEqual([formatWebChannelEcho("web-user", "first"), "done"]); await reply;
+      expect(h.s.logger.warn).toHaveBeenCalledWith({ instanceName: "worker" }, "Queued web channel echo dropped after ordering timeout");
+      h.hold(next.promise); await send(h.fm, "next"); await flush();
+      const nextReply = h.reply("next done"); await flush();
+      // An old physical ACK cannot clear the new queue or release its reply.
+      first.resolve(); await flush(); expect(h.s.webChannelEchoTails.size).toBe(1);
+      expect(h.sent.map(m => m.text)).toEqual(["done", formatWebChannelEcho("web-user", "first")]);
+      next.resolve(); await nextReply; await flush();
+      expect(h.sent.map(m => m.text)).toEqual(["done", formatWebChannelEcho("web-user", "first"), formatWebChannelEcho("web-user", "next"), "next done"]);
+      expect(h.api.mock.calls.map(call => call[2])).not.toContain(formatWebChannelEcho("web-user", "drop this queued copy"));
+      expect(vi.getTimerCount()).toBe(0);
+    });
+    it(`${type}: unknown configured identity quarantines bot echoes before trigger evaluation, then uses exact identity`, async () => {
+      const h = await harness(type, "888"), echo = formatWebChannelEcho("web-user", "@other_bot /chat");
+      h.primary.getBotUserId = () => undefined;
+      expect(h.s.worlds.get("primary").botUserId).toBeUndefined();
+      await h.feed(echo, "peer");
+      expect(h.received).toEqual([]);
+      expect(h.s.topicCommands.handleInstanceCommand).not.toHaveBeenCalled();
+      expect(h.s.topicCommands.handleGeneralCommand).not.toHaveBeenCalled();
+      expect(h.s.logger.debug).toHaveBeenCalledWith({ source: type, adapterId: "owner" }, "Web echo candidate quarantined while bot identities are pending");
+      await h.feed(echo, "human"); expect(h.received).toHaveLength(1);
+      await h.feed("ordinary peer input", "peer"); expect(h.received).toHaveLength(2);
+      h.primary.getBotUserId = () => "777";
+      await h.feed(echo, "peer"); expect(h.received).toHaveLength(2);
+      await h.feed(echo, "external"); expect(h.received).toHaveLength(3);
+      h.s.fleetConfig.channels[1].access = { ...OPEN, mode: "locked" };
+      await h.feed(echo, "external"); expect(h.received).toHaveLength(3);
+    });
+    it(`${type}: an unregistered configured world also quarantines replays, without crossing platforms`, async () => {
+      const h = await harness(type, "888"), echo = formatWebChannelEcho("web-user", "replayed");
+      h.s.fleetConfig.channels.push({ id: "not-started", type, group_id: "absent", access: OPEN });
+      await h.feed(echo, "external"); expect(h.received).toEqual([]);
+      await h.feed(echo, "human"); expect(h.received).toHaveLength(1);
+      h.s.worlds.set("not-started", { adapter: { type, getBotUserId: () => "333" } });
+      await h.feed(echo, "external"); expect(h.received).toHaveLength(2);
+      h.s.fleetConfig.channels.push({ id: "foreign-unknown", type: type === "telegram" ? "discord" : "telegram" });
+      await h.feed(echo, "external"); expect(h.received).toHaveLength(3);
+    });
+  }
+  it("the budget includes unresolved admission and cannot resurrect a timed-out reservation", async () => {
+    const h = await harness("telegram"), clock = orderingClock(), echo = vi.fn(async () => {});
+    const decide = h.fm.reserveWebChannelEcho("worker", echo), reply = h.reply();
+    await clock.advance(5000);
+    expect(h.sent.map(m => m.text)).toEqual(["done"]); await reply; expect(echo).not.toHaveBeenCalled();
+    decide(true); await flush(); expect(echo).not.toHaveBeenCalled(); expect(h.s.webChannelEchoTails.size).toBe(0);
+  });
+  it("a queued copy cannot start after its monotonic deadline before the timer callback runs", async () => {
+    const h = await harness("telegram"), clock = orderingClock(), echo = vi.fn(async () => {});
+    const decide = h.fm.reserveWebChannelEcho("worker", echo);
+    clock.jump(5000); decide(true); await flush();
+    expect(echo).not.toHaveBeenCalled(); expect(h.s.webChannelEchoTails.size).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it("an early timer rechecks monotonic time and a late rejection is consumed and tagged", async () => {
+    const h = await harness("telegram"), clock = orderingClock();
+    let reject!: (reason: Error) => void;
+    h.hold(new Promise<void>((_resolve, r) => { reject = r; })); await send(h.fm); await flush();
+    const reply = h.reply();
+    await vi.advanceTimersByTimeAsync(5000); await flush(); // monotonic clock has not advanced
+    expect(h.sent).toEqual([]);
+    await clock.advance(5000);
+    expect(h.sent.map(m => m.text)).toEqual(["done"]); await reply; reject(new Error("late rate-limit failure")); await flush();
+    expect(h.s.logger.warn).toHaveBeenCalledWith(expect.objectContaining({ instanceName: "worker", err: expect.any(Error) }), "Web channel echo failed late after ordering timeout");
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it.each(["ipc", "adapter", "group", "topic"])("timeout still respects the reply %s fence", async kind => {
+    const h = await harness("telegram"), clock = orderingClock(); h.hold(new Promise<void>(() => {}));
+    await send(h.fm); await flush(); const reply = h.reply(); await flush();
+    const replacement = { connected: true, send: vi.fn(() => true) };
+    if (kind === "ipc") h.s.instanceIpcClients.set("worker", replacement);
+    if (kind === "adapter") h.s.worlds.get("owner").adapter = h.primary;
+    if (kind === "group") h.s.worlds.get("owner").groupId = "-100333";
+    if (kind === "topic") h.s.fleetConfig.instances.worker.topic_id = "99";
+    await clock.advance(5000); await reply;
+    expect(h.sent).toEqual([]); expect(replacement.send).not.toHaveBeenCalled();
+    if (kind !== "ipc") expect(h.received.at(-1).error).toContain("Channel binding changed");
+  });
+});
 
 describe("fleet-topic web echo (#1320 A)", () => {
   for (const type of ["telegram", "discord"] as const) {

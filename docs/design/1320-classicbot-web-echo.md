@@ -126,13 +126,20 @@ The implementable rule has three parts, all echo-side:
    is treated like any other bot message under the existing collab rules.
    Every adapter applies `isWebChannelEcho` in the common ingress helper,
    first, regardless of `is_bot`, ACK state, or its own `web_echo` flag.
-   Pre-ACK arrival is covered automatically: the author id is known at
-   ingress.
+   During startup/rebuild, while any configured world on the same platform
+   has an unknown bot identity (including a world not yet registered), the
+   common ingress also quarantines bot-flagged prefix candidates before
+   trigger evaluation with a debug log. Human copies still flow. Once all
+   identities are known, the exact author-id rule applies again and non-fleet
+   bots return to the existing collab policy; no unknown author is classified
+   as a fleet bot. This also covers pre-ACK and post-restart replays.
 3. **Delivery-layer suppression** as defence in depth:
    `allowedMentions: { parse: [] }` on Discord sends, no mention entities on
    Telegram sends — so other clients/bots also see no ping.
 
 The formatter caps the complete echo at 1,800 UTF-16 units with a Unicode-safe cut, keeping the echo and its provenance prefix in a single Discord message.
+
+Part A's shared ordering reservation has a five-second total monotonic budget, including queue and admission waits. On expiry replies proceed, queued copies are dropped with a warning, and an already in-flight copy may land late with a logged outcome. No copy is retried.
 
 A unit test pins the rendered echo for hostile inputs: a `<@other-bot>`
 mention, `@everyone`, an attachment literally named `<@200>.png`, and a
