@@ -51,7 +51,14 @@ type Script = "complete" | "hold" | "throwAfterBegin" | "notSent" | "gated";
 
 const dirs: string[] = [];
 const fleets: FleetManager[] = [];
-afterEach(() => {
+// #1204: the mock's 5ms setTimeout can fire after afterEach closes the DB.
+// Track each handle so afterEach can cancel any that are still pending before
+// closing the outbox, preventing a "database is closed" crash on teardown.
+const pendingCompleteTimers = new Set<ReturnType<typeof setTimeout>>();
+afterEach(async () => {
+  // Cancel any complete timers that haven't fired yet before the DB closes.
+  for (const t of pendingCompleteTimers) clearTimeout(t);
+  pendingCompleteTimers.clear();
   for (const fm of fleets.splice(0)) {
     fm.wakeCoordinator?.stop();
     const timer = (fm as any).replyObligationTimer; if (timer) clearInterval(timer);
@@ -104,7 +111,13 @@ async function fleet(mode: "off" | "wake_only" | "on", perInstance: Record<strin
     const row = outbox.get(deliveryId);
     outbox.begin(deliveryId, row.targetDaemonBootId, attempt);
     if (script === "throwAfterBegin") throw new Error("IPC socket closed");
-    if (script === "complete") setTimeout(() => outbox.complete(deliveryId, row.targetDaemonBootId, attempt, "delivered"), 5);
+    if (script === "complete") {
+      const handle = setTimeout(() => {
+        pendingCompleteTimers.delete(handle);
+        outbox.complete(deliveryId, row.targetDaemonBootId, attempt, "delivered");
+      }, 5);
+      pendingCompleteTimers.add(handle);
+    }
     if (script === "gated") await handoffGate.promise;
     return true;
   });
