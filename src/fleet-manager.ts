@@ -51,6 +51,7 @@ import { AccessManager } from "./channel/access-manager.js";
 import { IpcClient } from "./channel/ipc-bridge.js";
 import type { AdapterHealthSnapshot, AlertData, ChannelAdapter, InboundMessage, InboundReaction, Choice, TopicPresence, StickerInfo, StickerList, StickerPreview, StickerTarget } from "./channel/types.js";
 import { createAdapter } from "./channel/factory.js";
+import { isWebChannelEcho, WEB_ECHO_PREFIX } from "./web-channel-echo.js";
 import { TelegramAdapter } from "./channel/adapters/telegram.js";
 import { createBackend } from "./backend/factory.js";
 import { readEffortMetadata } from "./backend/effort-metadata.js";
@@ -819,6 +820,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private instanceProgress = new Map<string, string>();
   /** instanceName → tail of deliveries waiting for its IPC to come back. */
   private ipcWaitTails = new Map<string, Promise<void>>();
+  private webChannelEchoTails = new Map<string, {
+    tail: Promise<void>;
+    pending: Set<{ started: boolean; drop: () => void }>;
+  }>();
   /** instanceName → restart currently executing; concurrent callers join it. */
   private restartsInFlight = new Map<string, Promise<void>>();
   /**
@@ -2685,6 +2690,81 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
       await new Promise(resolve => setTimeout(resolve, IPC_RECONNECT_POLL_MS));
     }
+  }
+
+  /**
+   * Reserve the display echo before IPC handoff: a fast reply cannot overtake
+   * it. The web request settles admission without awaiting the platform POST.
+   * Only accepted messages send an echo; failures release replies normally.
+   * Each reservation has a 5s total monotonic ordering budget (queue/admission
+   * included). Expiry drops unstarted copies and releases replies. An adapter
+   * request already in flight may land late, but cannot retain the ordering lane.
+   */
+  reserveWebChannelEcho(instanceName: string, sendEcho: () => Promise<unknown>): (accepted: boolean) => void {
+    const epoch = this.getDeliveryEpoch(instanceName);
+    const deadlineAt = performance.now() + 5_000;
+    let decide!: (accepted: boolean) => void;
+    const admission = new Promise<boolean>(resolve => { decide = resolve; });
+    const queue = this.webChannelEchoTails.get(instanceName)
+      ?? { tail: Promise.resolve(), pending: new Set<{ started: boolean; drop: () => void }>() };
+    const previous = queue.tail;
+    let resolveDone!: () => void;
+    const tail = new Promise<void>(resolve => { resolveDone = resolve; });
+    let done = false, expired = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      queue.pending.delete(entry);
+      resolveDone();
+    };
+    const entry = { started: false, drop: () => {
+      this.logger.warn({ instanceName }, "Queued web channel echo dropped after ordering timeout");
+      finish();
+    } };
+    const expire = () => {
+      if (done) return;
+      expired = true;
+      this.logger.warn({ instanceName, inFlight: entry.started }, "Web channel echo ordering timed out");
+      finish();
+      // Do not post copies that were queued behind an ambiguous platform send.
+      for (const pending of queue.pending) if (!pending.started) pending.drop();
+    };
+    const checkDeadline = () => {
+      if (done) return;
+      const remaining = deadlineAt - performance.now();
+      if (remaining <= 0) expire();
+      else timer = setTimeout(checkDeadline, Math.ceil(remaining));
+    };
+    queue.pending.add(entry);
+    queue.tail = tail;
+    this.webChannelEchoTails.set(instanceName, queue);
+    checkDeadline();
+    void Promise.all([previous, admission]).then(([, accepted]) => {
+      if (done) return;
+      if (!accepted || !this.isDeliveryEpochCurrent(instanceName, epoch)) { finish(); return; }
+      // A delayed timer callback must not admit an already expired copy.
+      if (performance.now() >= deadlineAt) { expire(); return; }
+      entry.started = true;
+      let request: Promise<unknown>;
+      try { request = Promise.resolve(sendEcho()); }
+      catch (err) { request = Promise.reject(err); }
+      void request.then(() => {
+        if (expired) this.logger.warn({ instanceName }, "Web channel echo completed late after ordering timeout");
+        finish();
+      }, err => {
+        this.logger.warn({ err, instanceName }, expired
+          ? "Web channel echo failed late after ordering timeout" : "Web channel echo failed");
+        finish();
+      });
+    });
+    void tail.then(() => {
+      if (this.webChannelEchoTails.get(instanceName) === queue && queue.tail === tail && queue.pending.size === 0) {
+        this.webChannelEchoTails.delete(instanceName);
+      }
+    });
+    return decide;
   }
 
   /** Whether this target already has an ordinary non-user delivery in its FIFO. */
@@ -5887,6 +5967,28 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private async handleInboundMessage(msg: InboundMessage): Promise<void> {
+    // Platform author identity is the authority. This runs before routing,
+    // collab/commands/access/dedup and does not depend on any echo setting/ACK.
+    const fleetBotIds = new Set<string>();
+    for (const world of this.worlds.values()) {
+      if (world.adapter.type !== msg.source) continue;
+      const id = world.adapter.getBotUserId?.() ?? world.botUserId;
+      if (id) fleetBotIds.add(id);
+    }
+    if (isWebChannelEcho(msg.text ?? "", msg.userId, fleetBotIds)) return;
+    const configured = this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
+    const identitiesPending = configured.some(channel => {
+      if (channel.type !== msg.source) return false;
+      const world = this.worlds.get(channel.id ?? channel.type);
+      return !(world?.adapter.getBotUserId?.() ?? world?.botUserId);
+    });
+    // Startup/rebuild can receive a replay before another configured world's
+    // authenticated ID is ready. Quarantine only bot-flagged prefix candidates;
+    // humans keep flowing, and no unknown author is labelled a fleet account.
+    if (identitiesPending && msg.isBotMessage === true && (msg.text ?? "").startsWith(WEB_ECHO_PREFIX)) {
+      this.logger.debug({ source: msg.source, adapterId: msg.adapterId }, "Web echo candidate quarantined while bot identities are pending");
+      return;
+    }
     const threadId = this.inboundRouteThreadId(msg);
 
     this.logger.debug({ source: msg.source, chatId: msg.chatId, threadId, userId: msg.userId, isBotMessage: msg.isBotMessage, textLen: (msg.text ?? "").length, text: (msg.text ?? "").slice(0, 80) }, "handleInboundMessage entry");
@@ -6635,6 +6737,27 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // still in flight and about to succeed. One real send, everyone gets its
     // outcome; a genuinely failed send clears the entry so a retry passes.
     if (tool === "reply") {
+      // Registered synchronously before a web message is handed to this CLI.
+      // This waits only on display ordering, never on the web delivery itself.
+      const echoTail = this.webChannelEchoTails.get(instanceName)?.tail;
+      if (echoTail) {
+        const replyClient = this.instanceIpcClients.get(instanceName);
+        const bindingName = senderInstanceName ?? instanceName;
+        const binding = this.getAdapterForInstance(bindingName);
+        const bindingGroup = this.getGroupIdForInstance(bindingName);
+        const bindingTopic = this.fleetConfig?.instances[bindingName]?.topic_id;
+        await echoTail;
+        // A replacement daemon must not receive this old tool's response or
+        // publish its reply after the new async ordering boundary.
+        if (this.instanceIpcClients.get(instanceName) !== replyClient) return;
+        if (this.getAdapterForInstance(bindingName) !== binding
+          || this.getGroupIdForInstance(bindingName) !== bindingGroup
+          || this.fleetConfig?.instances[bindingName]?.topic_id !== bindingTopic
+          || (contextAdapterId && this.worlds.get(contextAdapterId)?.adapter !== outAdapter)) {
+          respond(null, "Channel binding changed while waiting for the web echo");
+          return;
+        }
+      }
       // Stickers (#1226) are checked before anything is sent: a refused one is the reply's error, not a gap.
       const stickerProblem = await this.replyStickerProblem(outAdapter, args, threadId, contextAdapterId ?? this.getInstanceAdapterId(senderInstanceName ?? instanceName));
       if (stickerProblem) { respond(null, stickerProblem); return; }

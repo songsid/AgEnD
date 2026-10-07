@@ -323,6 +323,8 @@ export interface FleetTemplate {
 
 /** Web UI feature toggles (fleet.yaml `web:` section). */
 export interface WebConfig {
+  /** Echo web chat to the owning fleet topic (default true); never ClassicBot rooms. */
+  echo_to_channel?: boolean;
   /** Show the AI subscription usage panel on /view and serve /api/ai-usage (default true). */
   usage_panel?: boolean;
   /** Expose provider API-key verify/apply endpoints (default false until dark-shipped). */
