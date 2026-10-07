@@ -105,13 +105,32 @@ export const TASK_LIST_CAP = 100;
  */
 export const LIVE_TASK_STATUSES: string[] = ["open", "claimed", "blocked"];
 
+/**
+ * #1336 P2: shared normalization for filter_status across both task handlers
+ * and the cap helper. Trims whitespace before dropping empties, so
+ * " \t " and [" ", "\t"] both normalize to undefined (not treated as explicit
+ * filters). The same result drives the live-only default and the cap decision.
+ */
+export function normalizeStatusFilter(v: unknown): string | string[] | undefined {
+  if (typeof v === "string") {
+    const s = v.trim();
+    return s || undefined;
+  }
+  if (Array.isArray(v) && v.every(x => typeof x === "string")) {
+    const arr = [...new Set((v as string[]).map(s => s.trim()).filter(s => s.length > 0))];
+    return arr.length > 0 ? arr : undefined;
+  }
+  return undefined;
+}
+
 export function applyTaskListCap<T extends { updated_at: string }>(
   tasks: T[],
   filterAssignee: string | undefined,
   filterStatus: string | string[] | undefined,
 ): { tasks: T[]; omitted: number; hint: string } | T[] {
-  // Empty strings / empty arrays are treated as "not filtered" (same as undefined).
-  const hasStatusFilter = Array.isArray(filterStatus) ? filterStatus.length > 0 : !!filterStatus;
+  // Use the shared normalizer so " \t " is treated identically to undefined.
+  const normalized = normalizeStatusFilter(filterStatus);
+  const hasStatusFilter = Array.isArray(normalized) ? normalized.length > 0 : !!normalized;
   const isFiltered = !!filterAssignee || hasStatusFilter;
   if (!isFiltered && tasks.length > TASK_LIST_CAP) {
     const omitted = tasks.length - TASK_LIST_CAP;
@@ -7208,15 +7227,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const asStatus = (v: unknown): "open" | "claimed" | "done" | "blocked" | "cancelled" | undefined => {
       return (v === "open" || v === "claimed" || v === "done" || v === "blocked" || v === "cancelled") ? v : undefined;
     };
-    // #1336: a status filter is either a single string or an array of strings.
-    const asStatusFilter = (v: unknown): string | string[] | undefined => {
-      if (typeof v === "string") return v || undefined;
-      if (Array.isArray(v) && v.every(x => typeof x === "string")) {
-        const arr = (v as string[]).filter(s => s.length > 0);
-        return arr.length > 0 ? arr : undefined;
-      }
-      return undefined;
-    };
+    // #1336 P2: use the shared normalizer — trims whitespace AND drops empties,
+    // so " \t " / [" ","\t"] are treated identically to undefined.
+    const asStatusFilter = normalizeStatusFilter;
     // #1336: small write ack — identifying fields only.
     const ack = (t: Task) => ({ id: t.id, status: t.status, updated_at: t.updated_at });
     try {
@@ -7350,15 +7363,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     const db = this.scheduler.db;
     const action = payload.action as string;
-    // #1336: a status filter is a single string or an array of strings.
-    const asStatusFilter = (v: unknown): string | string[] | undefined => {
-      if (typeof v === "string") return v || undefined;
-      if (Array.isArray(v) && v.every(x => typeof x === "string")) {
-        const arr = (v as string[]).filter(s => s.length > 0);
-        return arr.length > 0 ? arr : undefined;
-      }
-      return undefined;
-    };
+    // #1336 P2: use the shared normalizer — trims whitespace AND drops empties,
+    // so " \t " / [" ","\t"] are treated identically to undefined.
+    const asStatusFilter = normalizeStatusFilter;
     const ack = (t: Task) => ({ id: t.id, status: t.status, updated_at: t.updated_at });
 
     try {

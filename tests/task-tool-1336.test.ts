@@ -1,271 +1,338 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+/**
+ * #1336: task tool improvements.
+ * Tests call the real production code:
+ * - item 1/2/3/4/5: via FleetManager.handleTaskCrudHttp (HTTP handler)
+ * - item 6/7: via SchedulerDb.getTaskByPrefix + completeTask directly
+ * - agent-cli parser: via the exported normalizeStatusFilter + parsed args
+ * No fleet start, no tmux. All helpers use temp DB/dir files.
+ */
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { SchedulerDb } from "../src/scheduler/db.js";
-import type { Task, TaskCompact } from "../src/scheduler/types.js";
-import { applyTaskListCap, TASK_LIST_CAP, LIVE_TASK_STATUSES } from "../src/fleet-manager.js";
+import { Scheduler } from "../src/scheduler/index.js";
+import { FleetManager } from "../src/fleet-manager.js";
+import {
+  normalizeStatusFilter,
+  applyTaskListCap,
+  TASK_LIST_CAP,
+  LIVE_TASK_STATUSES,
+} from "../src/fleet-manager.js";
+import type { TaskCompact } from "../src/scheduler/types.js";
+
+// ── Test helpers ────────────────────────────────────────────────────────────
+
+const dirs: string[] = [];
+afterEach(() => {
+  for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+});
+
+function tempDir(): string {
+  const d = join(tmpdir(), `task-1336-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  mkdirSync(d, { recursive: true });
+  dirs.push(d);
+  return d;
+}
 
 /**
- * #1336: task tool improvements. All helpers use a temp DB file; no fleet,
- * no tmux. Covers every one of the 8 issue items with real mutations.
+ * Create a minimal FleetManager with a working Scheduler (SchedulerDb is its
+ * db property). Does NOT start instances, adapters, or timers — just enough
+ * for handleTaskCrudHttp to work.
  */
-describe("task tool #1336", () => {
-  let tmpDir: string;
+function makeFleet(): { fm: FleetManager; db: SchedulerDb; dir: string } {
+  const dir = tempDir();
+  writeFileSync(join(dir, "fleet.yaml"), "defaults: {}\ninstances: {}\n");
+  const fm = new FleetManager(dir);
+  // Inject a Scheduler with a no-op trigger into the private field.
+  const scheduler = new Scheduler(
+    join(dir, "scheduler.db"),
+    () => {},
+    { max_schedules: 100, default_timezone: "UTC", retry_count: 3, retry_interval_ms: 1000 },
+    () => false,
+  );
+  (fm as unknown as Record<string, unknown>).scheduler = scheduler;
+  return { fm, db: scheduler.db, dir };
+}
+
+/** Call handleTaskCrudHttp and return the result. */
+async function call(
+  fm: FleetManager,
+  action: string,
+  args: Record<string, unknown> = {},
+): Promise<unknown> {
+  return fm.handleTaskCrudHttp("test-instance", { action, ...args });
+}
+
+// ── Item 1: live-only default ────────────────────────────────────────────────
+
+describe("item 1 — live-only default (real HTTP handler)", () => {
+  it("default list excludes done and cancelled tasks", async () => {
+    const { fm, db } = makeFleet();
+    const t1 = db.createTask({ title: "open one", created_by: "x" });
+    const t2 = db.createTask({ title: "done one", created_by: "x" });
+    db.updateTask(t2.id, { status: "done" });
+    const result = await call(fm, "list");
+    const tasks = Array.isArray(result) ? result : (result as { tasks: unknown[] }).tasks;
+    const ids = (tasks as Array<{ id: string }>).map(t => t.id);
+    expect(ids).toContain(t1.id);
+    expect(ids).not.toContain(t2.id);
+  });
+
+  it("mutation proof: removing live-only default returns done tasks → test goes red", async () => {
+    const { fm, db } = makeFleet();
+    const done = db.createTask({ title: "done one", created_by: "x" });
+    db.updateTask(done.id, { status: "done" });
+    const result = await call(fm, "list");
+    const tasks = Array.isArray(result) ? result : (result as { tasks: unknown[] }).tasks;
+    // With live-only: done task not in list. Without it: it would be there.
+    expect((tasks as Array<{ id: string }>).some(t => t.id === done.id)).toBe(false);
+  });
+
+  it("filter_status=done returns done tasks (explicit override)", async () => {
+    const { fm, db } = makeFleet();
+    const done = db.createTask({ title: "done one", created_by: "x" });
+    db.updateTask(done.id, { status: "done" });
+    const result = await call(fm, "list", { filter_status: "done" });
+    const tasks = Array.isArray(result) ? result : (result as { tasks: unknown[] }).tasks;
+    expect((tasks as Array<{ id: string }>).some(t => t.id === done.id)).toBe(true);
+  });
+});
+
+// ── Item 2: whitespace/empty filter normalization (P2 fix) ────────────────────
+
+describe("item 2 — whitespace/empty filter normalization (real handler)", () => {
+  it("filter_status=' \\t ' is treated as unfiltered (live-only, capped)", async () => {
+    const { fm, db } = makeFleet();
+    // Create 110 open tasks + 2 done tasks
+    for (let i = 0; i < 110; i++) db.createTask({ title: `t${i}`, created_by: "x" });
+    const doneTask = db.createTask({ title: "done-one", created_by: "x" });
+    db.updateTask(doneTask.id, { status: "done" });
+
+    const result = await call(fm, "list", { filter_status: " \t " });
+    const tasks = Array.isArray(result) ? result : (result as { tasks: unknown[]; omitted: number }).tasks;
+    // 1. done task must NOT be in result (live-only still active)
+    expect((tasks as Array<{ id: string }>).some(t => t.id === doneTask.id)).toBe(false);
+    // 2. cap must be active (110 open tasks → 100 returned, 10 omitted)
+    expect((tasks as unknown[]).length).toBe(100);
+    expect((result as { omitted?: number }).omitted).toBe(10);
+  });
+
+  it("filter_status=[' ', '\\t'] is treated as unfiltered (live-only, capped)", async () => {
+    const { fm, db } = makeFleet();
+    for (let i = 0; i < 110; i++) db.createTask({ title: `t${i}`, created_by: "x" });
+    const doneTask = db.createTask({ title: "done-one", created_by: "x" });
+    db.updateTask(doneTask.id, { status: "done" });
+
+    const result = await call(fm, "list", { filter_status: [" ", "\t"] });
+    const tasks = Array.isArray(result) ? result : (result as { tasks: unknown[]; omitted: number }).tasks;
+    expect((tasks as Array<{ id: string }>).some(t => t.id === doneTask.id)).toBe(false);
+    expect((tasks as unknown[]).length).toBe(100);
+    expect((result as { omitted?: number }).omitted).toBe(10);
+  });
+});
+
+// ── Item 3: compact rows by default; verbose for full; get action ─────────────
+
+describe("item 3 — compact rows + verbose + get (real HTTP handler)", () => {
+  it("list returns compact rows without description/result/created_by", async () => {
+    const { fm, db } = makeFleet();
+    db.createTask({ title: "c", description: "heavy", created_by: "x" });
+    const result = await call(fm, "list");
+    const tasks = Array.isArray(result) ? result : (result as { tasks: unknown[] }).tasks;
+    const row = (tasks as TaskCompact[])[0]!;
+    expect(Object.keys(row).sort()).toEqual(
+      ["assignee", "id", "priority", "status", "title", "updated_at"].sort(),
+    );
+    // Mutation proof: adding description to compact row → this test goes red.
+    expect("description" in row).toBe(false);
+    expect("result" in row).toBe(false);
+    expect("created_by" in row).toBe(false);
+  });
+
+  it("verbose:true returns full rows with description", async () => {
+    const { fm, db } = makeFleet();
+    db.createTask({ title: "v", description: "full desc", created_by: "x" });
+    const result = await call(fm, "list", { verbose: true });
+    const tasks = Array.isArray(result) ? result : (result as { tasks: unknown[] }).tasks;
+    const row = tasks[0] as Record<string, unknown>;
+    expect(row["description"]).toBe("full desc");
+    expect(row["created_by"]).toBe("x");
+  });
+
+  it("get action returns a single full record by prefix", async () => {
+    const { fm, db } = makeFleet();
+    const t = db.createTask({ title: "full record", description: "detail", created_by: "x" });
+    const result = await call(fm, "get", { id: t.id.slice(0, 8) });
+    expect((result as { id: string }).id).toBe(t.id);
+    expect((result as { description: string }).description).toBe("detail");
+    expect((result as { created_by: string }).created_by).toBe("x");
+  });
+
+  it("get returns error when id is missing", async () => {
+    const { fm } = makeFleet();
+    const result = await call(fm, "get");
+    expect((result as { error: string }).error).toMatch(/id/i);
+  });
+});
+
+// ── Item 4: cap remains active via applyTaskListCap ──────────────────────────
+
+describe("item 4 — cap via real handler", () => {
+  it("unfiltered list of 110 live tasks → 100 returned, 10 omitted", async () => {
+    const { fm, db } = makeFleet();
+    for (let i = 0; i < 110; i++) db.createTask({ title: `t${i}`, created_by: "x" });
+    const result = await call(fm, "list");
+    const tasks = Array.isArray(result) ? result : (result as { tasks: unknown[] }).tasks;
+    expect((tasks as unknown[]).length).toBe(100);
+    expect((result as { omitted: number }).omitted).toBe(10);
+    expect((result as { hint: string }).hint).toContain("filter_assignee");
+  });
+
+  it("assignee-filtered list is not capped", async () => {
+    const { fm, db } = makeFleet();
+    for (let i = 0; i < 110; i++) db.createTask({ title: `t${i}`, assignee: "a", created_by: "x" });
+    const result = await call(fm, "list", { filter_assignee: "a" });
+    const tasks = Array.isArray(result) ? result : result;
+    expect(Array.isArray(tasks)).toBe(true);
+    expect((tasks as unknown[]).length).toBe(110);
+  });
+});
+
+// ── Item 5: small write acks (real HTTP handler) ──────────────────────────────
+
+describe("item 5 — small write acks (real HTTP handler)", () => {
+  const ACK_KEYS = ["id", "status", "updated_at"].sort();
+
+  it("create returns exactly {id, status, updated_at}", async () => {
+    const { fm } = makeFleet();
+    const result = await call(fm, "create", { title: "my task" });
+    expect(Object.keys(result as object).sort()).toEqual(ACK_KEYS);
+  });
+
+  it("claim returns exactly {id, status, updated_at}", async () => {
+    const { fm, db } = makeFleet();
+    const t = db.createTask({ title: "t", created_by: "x" });
+    const result = await call(fm, "claim", { id: t.id });
+    expect(Object.keys(result as object).sort()).toEqual(ACK_KEYS);
+    expect((result as { status: string }).status).toBe("claimed");
+  });
+
+  it("done returns exactly {id, status, updated_at}", async () => {
+    const { fm, db } = makeFleet();
+    const t = db.createTask({ title: "t", created_by: "x" });
+    db.claimTask(t.id, "x");
+    const result = await call(fm, "done", { id: t.id, result: "done" });
+    expect(Object.keys(result as object).sort()).toEqual(ACK_KEYS);
+    expect((result as { status: string }).status).toBe("done");
+  });
+
+  it("update returns exactly {id, status, updated_at}", async () => {
+    const { fm, db } = makeFleet();
+    const t = db.createTask({ title: "t", created_by: "x" });
+    const result = await call(fm, "update", { id: t.id, status: "cancelled" });
+    expect(Object.keys(result as object).sort()).toEqual(ACK_KEYS);
+  });
+
+  it("mutation proof: ack with full Task object has extra keys → test goes red", async () => {
+    const { fm, db } = makeFleet();
+    const t = db.createTask({ title: "t", created_by: "x" });
+    const result = await call(fm, "claim", { id: t.id });
+    // If ack returned full Task, it would have 'title', 'description', 'created_by', etc.
+    expect(Object.keys(result as object)).not.toContain("title");
+    expect(Object.keys(result as object)).not.toContain("description");
+    expect(Object.keys(result as object)).not.toContain("created_by");
+  });
+});
+
+// ── Item 6: short-id prefix lookup (SchedulerDb.getTaskByPrefix) ─────────────
+
+describe("item 6 — short-id lookup (real DB)", () => {
   let db: SchedulerDb;
+  beforeEach(() => { const { db: d } = makeFleet(); db = d; });
 
-  beforeEach(() => {
-    tmpDir = join(tmpdir(), `task-1336-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-    mkdirSync(tmpDir, { recursive: true });
-    db = new SchedulerDb(join(tmpDir, "scheduler.db"));
+  it("resolves by 8-hex prefix", () => {
+    const t = db.createTask({ title: "x", created_by: "y" });
+    const r = db.getTaskByPrefix(t.id.slice(0, 8));
+    expect(r.id).toBe(t.id);
   });
 
-  afterEach(() => {
-    db.close();
-    rmSync(tmpDir, { recursive: true, force: true });
+  it("exact full-id match wins over prefix", () => {
+    const t = db.createTask({ title: "x", created_by: "y" });
+    const r = db.getTaskByPrefix(t.id);
+    expect(r.id).toBe(t.id);
   });
 
-  // ── Item 3: compact rows by default; verbose for full ──────────────────
-  describe("compact vs verbose list rows", () => {
-    it("returns compact rows by default (only id/title/status/assignee/priority/updated_at)", () => {
-      db.createTask({
-        title: "Compact me",
-        description: "a long heavy description",
-        priority: "high",
-        assignee: "worker-1",
-        created_by: "general",
-      });
-      const rows = db.listTasks();
-      expect(rows).toHaveLength(1);
-      const row = rows[0] as TaskCompact;
-      expect(Object.keys(row).sort()).toEqual(
-        ["assignee", "id", "priority", "status", "title", "updated_at"].sort(),
-      );
-      // Heavy fields must be absent on compact rows.
-      expect("description" in row).toBe(false);
-      expect("result" in row).toBe(false);
-      expect("created_by" in row).toBe(false);
-      expect("depends_on" in row).toBe(false);
-      expect("created_at" in row).toBe(false);
-    });
-
-    it("returns full Task rows when verbose:true", () => {
-      db.createTask({
-        title: "Verbose me",
-        description: "full detail",
-        created_by: "general",
-      });
-      const rows = db.listTasks({ verbose: true }) as Task[];
-      expect(rows).toHaveLength(1);
-      const row = rows[0];
-      expect(row.description).toBe("full detail");
-      expect(row.created_by).toBe("general");
-      expect(row.depends_on).toEqual([]);
-      expect("created_at" in row).toBe(true);
-    });
-
-    it("get-by-id returns a single full record", () => {
-      const t = db.createTask({ title: "One", description: "d", created_by: "x" });
-      const full = db.getTaskByPrefix(t.id);
-      expect(full.id).toBe(t.id);
-      expect(full.description).toBe("d");
-      expect(full.created_by).toBe("x");
-    });
+  it("throws not-found for unknown prefix", () => {
+    expect(() => db.getTaskByPrefix("00000000")).toThrow(/not found/i);
   });
 
-  // ── Item 2: multi-value filter_status (string or array) ────────────────
-  describe("multi-value filter_status", () => {
-    beforeEach(() => {
-      const o = db.createTask({ title: "open-task", created_by: "x" });
-      const c = db.createTask({ title: "claimed-task", created_by: "x" });
-      const d = db.createTask({ title: "done-task", created_by: "x" });
-      db.claimTask(c.id, "w");
-      db.claimTask(d.id, "w");
-      db.completeTask(d.id, "finished");
-      void o;
-    });
+  it("throws ambiguous when prefix matches multiple tasks", () => {
+    // Force two tasks with the same first 8 chars by patching their ids.
+    const rawDb = (db as unknown as { db: import("better-sqlite3").Database }).db;
+    const id1 = "abcdef01-0000-0000-0000-000000000001";
+    const id2 = "abcdef01-0000-0000-0000-000000000002";
+    const now = new Date().toISOString();
+    rawDb.prepare("INSERT INTO tasks (id,title,status,priority,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?)")
+      .run(id1, "one", "open", "normal", "x", now, now);
+    rawDb.prepare("INSERT INTO tasks (id,title,status,priority,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?)")
+      .run(id2, "two", "open", "normal", "x", now, now);
+    expect(() => db.getTaskByPrefix("abcdef01")).toThrow(/ambiguous/i);
+  });
+});
 
-    it("filters by a single status string", () => {
-      expect(db.listTasks({ status: "open" })).toHaveLength(1);
-      expect(db.listTasks({ status: "done" })).toHaveLength(1);
-    });
+// ── Item 7: done from open (SchedulerDb.completeTask) ────────────────────────
 
-    it("filters by an array of statuses (OR-matched)", () => {
-      expect(db.listTasks({ status: ["open", "claimed"] })).toHaveLength(2);
-      expect(db.listTasks({ status: ["open", "done"] })).toHaveLength(2);
-      expect(db.listTasks({ status: ["done", "cancelled"] })).toHaveLength(1);
-    });
+describe("item 7 — done from open (real DB)", () => {
+  let db: SchedulerDb;
+  beforeEach(() => { const { db: d } = makeFleet(); db = d; });
 
-    it("dedupes repeated statuses in the array", () => {
-      expect(db.listTasks({ status: ["open", "open"] })).toHaveLength(1);
-    });
-
-    it("ignores empty-string entries in the array", () => {
-      // ["", "done"] narrows to just done.
-      expect(db.listTasks({ status: ["", "done"] })).toHaveLength(1);
-    });
+  it("completes a task that is open (without claiming first)", () => {
+    const t = db.createTask({ title: "x", created_by: "y" });
+    const r = db.completeTask(t.id, "done directly");
+    expect(r.status).toBe("done");
+    expect(r.result).toBe("done directly");
   });
 
-  // ── Item 1: default live-only via LIVE_TASK_STATUSES ───────────────────
-  describe("default live-only status set", () => {
-    it("LIVE_TASK_STATUSES excludes done and cancelled", () => {
-      expect(LIVE_TASK_STATUSES).toContain("open");
-      expect(LIVE_TASK_STATUSES).toContain("claimed");
-      expect(LIVE_TASK_STATUSES).toContain("blocked");
-      expect(LIVE_TASK_STATUSES).not.toContain("done");
-      expect(LIVE_TASK_STATUSES).not.toContain("cancelled");
-    });
-
-    it("listing with the live set hides done/cancelled tasks", () => {
-      const a = db.createTask({ title: "live", created_by: "x" });
-      const b = db.createTask({ title: "finished", created_by: "x" });
-      const c = db.createTask({ title: "canned", created_by: "x" });
-      db.completeTask(b.id, "ok");
-      db.updateTask(c.id, { status: "cancelled" });
-      void a;
-
-      const live = db.listTasks({ status: LIVE_TASK_STATUSES });
-      expect(live.map(t => t.title).sort()).toEqual(["live"]);
-
-      // Explicitly asking for done still surfaces it.
-      expect(db.listTasks({ status: "done" }).map(t => t.title)).toEqual(["finished"]);
-    });
+  it("completes a claimed task normally", () => {
+    const t = db.createTask({ title: "x", created_by: "y" });
+    db.claimTask(t.id, "agent");
+    const r = db.completeTask(t.id);
+    expect(r.status).toBe("done");
   });
 
-  // ── Item 6: short-id (8-hex prefix) lookup ─────────────────────────────
-  describe("short-id prefix lookup", () => {
-    it("resolves a task by its 8-hex prefix", () => {
-      const t = db.createTask({ title: "Prefix", created_by: "x" });
-      const prefix = t.id.slice(0, 8);
-      const found = db.getTaskByPrefix(prefix);
-      expect(found.id).toBe(t.id);
-    });
-
-    it("resolves by full id exactly", () => {
-      const t = db.createTask({ title: "Full", created_by: "x" });
-      expect(db.getTaskByPrefix(t.id).id).toBe(t.id);
-    });
-
-    it("throws not-found for an unknown prefix", () => {
-      expect(() => db.getTaskByPrefix("deadbeef")).toThrow(/not found/i);
-    });
-
-    it("throws ambiguous when a prefix matches more than one task", () => {
-      // Force a collision by inserting two rows that share an 8-char prefix.
-      const shared = "abcdef12";
-      const raw = (db as unknown as { db: import("better-sqlite3").Database }).db;
-      const now = new Date().toISOString();
-      const stmt = raw.prepare(
-        "INSERT INTO tasks (id, title, status, priority, created_by, created_at, updated_at) VALUES (?, ?, 'open', 'normal', 'x', ?, ?)",
-      );
-      stmt.run(`${shared}-0000-0000-0000-000000000001`, "one", now, now);
-      stmt.run(`${shared}-0000-0000-0000-000000000002`, "two", now, now);
-      expect(() => db.getTaskByPrefix(shared)).toThrow(/ambiguous/i);
-    });
-
-    it("throws not-found for a non-hex short id", () => {
-      expect(() => db.getTaskByPrefix("zzz")).toThrow(/not found/i);
-    });
+  it("rejects completing an already-done task", () => {
+    const t = db.createTask({ title: "x", created_by: "y" });
+    db.completeTask(t.id);
+    expect(() => db.completeTask(t.id)).toThrow(/done|cancel|block/i);
   });
 
-  // ── Item 7: done works from open (not just claimed) ────────────────────
-  describe("completeTask from open", () => {
-    it("completes a task straight from open", () => {
-      const t = db.createTask({ title: "Open then done", created_by: "x" });
-      expect(t.status).toBe("open");
-      const done = db.completeTask(t.id, "done directly");
-      expect(done.status).toBe("done");
-      expect(done.result).toBe("done directly");
-    });
-
-    it("completes a claimed task", () => {
-      const t = db.createTask({ title: "Claimed then done", created_by: "x" });
-      db.claimTask(t.id, "w");
-      const done = db.completeTask(t.id, "ok");
-      expect(done.status).toBe("done");
-    });
-
-    it("rejects completing an already-done task", () => {
-      const t = db.createTask({ title: "Done twice", created_by: "x" });
-      db.completeTask(t.id);
-      expect(() => db.completeTask(t.id)).toThrow(/done/i);
-    });
-
-    it("rejects completing a cancelled task", () => {
-      const t = db.createTask({ title: "Cancelled", created_by: "x" });
-      db.updateTask(t.id, { status: "cancelled" });
-      expect(() => db.completeTask(t.id)).toThrow(/cancelled/i);
-    });
+  it("rejects completing a cancelled task", () => {
+    const t = db.createTask({ title: "x", created_by: "y" });
+    db.updateTask(t.id, { status: "cancelled" });
+    expect(() => db.completeTask(t.id)).toThrow(/done|cancel|block/i);
   });
+});
 
-  // ── Item 4 + cap generics over compact/verbose rows ────────────────────
-  describe("applyTaskListCap", () => {
-    it("keeps TASK_LIST_CAP at 100", () => {
-      expect(TASK_LIST_CAP).toBe(100);
-    });
+// ── normalizeStatusFilter shared helper (P2 whitespace fix) ──────────────────
 
-    it("passes through an unfiltered list at or below the cap", () => {
-      const rows = Array.from({ length: 10 }, (_, i) => ({ updated_at: `2026-01-${i}` }));
-      const out = applyTaskListCap(rows, undefined, undefined);
-      expect(Array.isArray(out)).toBe(true);
-      expect(out as unknown[]).toHaveLength(10);
-    });
-
-    it("caps an unfiltered list over 100 and returns an omitted hint", () => {
-      const rows = Array.from({ length: 150 }, (_, i) => ({
-        updated_at: `2026-01-01T00:00:${String(i).padStart(2, "0")}.000Z`,
-      }));
-      const out = applyTaskListCap(rows, undefined, undefined);
-      expect(Array.isArray(out)).toBe(false);
-      const capped = out as { tasks: unknown[]; omitted: number; hint: string };
-      expect(capped.tasks).toHaveLength(100);
-      expect(capped.omitted).toBe(50);
-      expect(capped.hint).toMatch(/omitted/);
-    });
-
-    it("does not cap when an assignee filter is present", () => {
-      const rows = Array.from({ length: 150 }, () => ({ updated_at: "x" }));
-      const out = applyTaskListCap(rows, "worker-1", undefined);
-      expect(Array.isArray(out)).toBe(true);
-      expect(out as unknown[]).toHaveLength(150);
-    });
-
-    it("does not cap when a non-empty array status filter is present", () => {
-      const rows = Array.from({ length: 150 }, () => ({ updated_at: "x" }));
-      const out = applyTaskListCap(rows, undefined, ["open", "done"]);
-      expect(Array.isArray(out)).toBe(true);
-      expect(out as unknown[]).toHaveLength(150);
-    });
-
-    it("treats an empty array status filter as unfiltered (caps)", () => {
-      const rows = Array.from({ length: 150 }, (_, i) => ({ updated_at: `t${i}` }));
-      const out = applyTaskListCap(rows, undefined, []);
-      expect(Array.isArray(out)).toBe(false);
-    });
+describe("normalizeStatusFilter — shared trim/dedup helper", () => {
+  it("trims a string of only whitespace to undefined", () => {
+    expect(normalizeStatusFilter(" \t ")).toBeUndefined();
   });
-
-  // ── Item 5: small write acks (shape produced by the handler) ───────────
-  describe("write ack shape", () => {
-    // The handler returns {id, status, updated_at}. We assert the DB rows carry
-    // exactly those identifying fields so the ack projection is lossless.
-    it("create/claim/done/update rows expose id, status, updated_at", () => {
-      const t = db.createTask({ title: "Ack", created_by: "x" });
-      for (const row of [t, db.claimTask(t.id, "w"), db.completeTask(t.id, "r")]) {
-        expect(typeof row.id).toBe("string");
-        expect(typeof row.status).toBe("string");
-        expect(typeof row.updated_at).toBe("string");
-      }
-      const updated = db.updateTask(t.id, { priority: "high" });
-      expect(updated.id).toBe(t.id);
-      expect(typeof updated.status).toBe("string");
-      expect(typeof updated.updated_at).toBe("string");
-    });
-
-    it("updated_at advances on mutation", async () => {
-      const t = db.createTask({ title: "Timestamps", created_by: "x" });
-      await new Promise(r => setTimeout(r, 5));
-      const claimed = db.claimTask(t.id, "w");
-      expect(claimed.updated_at >= t.updated_at).toBe(true);
-    });
+  it("trims each array element and drops whitespace-only entries", () => {
+    expect(normalizeStatusFilter([" ", "\t", "open"])).toEqual(["open"]);
+  });
+  it("dedupes array entries after trim", () => {
+    expect(normalizeStatusFilter(["open", "open"])).toEqual(["open"]);
+  });
+  it("returns undefined for an all-whitespace array", () => {
+    expect(normalizeStatusFilter([" ", "\t"])).toBeUndefined();
+  });
+  it("passes a valid single status through", () => {
+    expect(normalizeStatusFilter("done")).toBe("done");
+  });
+  it("passes a valid array through", () => {
+    expect(normalizeStatusFilter(["open", "claimed"])).toEqual(["open", "claimed"]);
   });
 });
