@@ -378,3 +378,143 @@ describe("the dashboard policy gains frame-src only when asked (§5.2)", () => {
     expect(panelContentSecurityPolicy("n", { frameSrc: "http://127.0.0.1:19281/frame" })).toMatch(/; frame-src http:\/\/127\.0\.0\.1:19281\/frame$/);
   });
 });
+
+// ── #1327 review ──
+
+describe("a config reload adopts preview changes, hot (#1327 review P2-1)", () => {
+  async function fleetFromFile(yaml: string) {
+    const dir = mkdtempSync(join(tmpdir(), "agend-1306r-")); tempDirs.push(dir);
+    const { writeFileSync } = await import("node:fs");
+    const path = join(dir, "fleet.yaml");
+    writeFileSync(path, yaml);
+    const fm = new FleetManager(dir);
+    const quiet = () => {};
+    fm.logger = { info: quiet, warn: quiet, error: quiet, debug: quiet, trace: quiet, fatal: quiet, child: () => fm.logger } as unknown as typeof fm.logger;
+    vi.spyOn(fm, "notifyFleetError").mockImplementation(() => true);
+    const any = fm as unknown as Record<string, any>;
+    // A reconcile starts and stops instances — which would launch real CLIs in tmux. No instances here, and
+    // anything that tries anyway fails the test instead.
+    const refuse = (what: string) => async () => { throw new Error(`test must not ${what}`); };
+    any.startInstance = refuse("start an instance"); any.stopInstance = refuse("stop an instance");
+    any.loadConfig(path);
+    any.initializeWebAuthTokens();
+    any.startHealthServer(0);
+    await vi.waitFor(() => expect(any.previewListening).toBe(true));
+    servers.push(any.healthServer);
+    const write = (y: string) => writeFileSync(path, y);
+    const ui = () => any.previewForUi(`127.0.0.1:${(any.healthServer.address() as { port: number }).port}`, false);
+    return { fm, any, write, ui };
+  }
+  const BASE = "instances: {}\n";
+
+  it("web.preview: false through reconcile — the listener stops, /ui is offered nothing, and no restart is asked for", async () => {
+    const h = await fleetFromFile(BASE);
+    const before = h.ui();
+    expect(before.previewOrigin).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+    const oldServer = h.any.previewListener.server as Server;
+    h.write(BASE + "web:\n  preview: false\n");
+    const observed: string[] = [];
+    await h.any.reconcileInstances((target: string, _k: string, state: string) => observed.push(`${target}:${state}`));
+    expect(h.ui()).toMatchObject({ previewOrigin: null, boot: null, reason: expect.stringMatching(/web\.preview: false/) });
+    expect(oldServer.listening).toBe(false);
+    expect(observed.filter(o => o.includes("restart-required"))).toEqual([]);
+    // …and back on: a new listener, a new boot id.
+    h.write(BASE);
+    await h.any.reconcileInstances();
+    await vi.waitFor(() => expect(h.any.previewListening).toBe(true));
+    expect(h.ui().boot).not.toBe(before.boot);
+    expect(h.ui().previewOrigin).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+    h.any.previewListener?.close();
+  });
+
+  it("preview_port and preview_origin changes rebuild it on the new port / for the new origin", async () => {
+    const h = await fleetFromFile(BASE);
+    h.write(BASE + "web:\n  preview_port: 47395\n");
+    await h.any.reconcileInstances();
+    await vi.waitFor(() => expect(h.any.previewListening).toBe(true));
+    expect((h.any.previewListener.server.address() as { port: number }).port).toBe(47395);
+    expect(h.ui().previewOrigin).toBe("http://127.0.0.1:47395");
+    h.write(BASE + "web:\n  preview_port: 47396\n  preview_origin: https://preview.example.net\n");
+    await h.any.reconcileInstances();
+    await vi.waitFor(() => expect(h.any.previewListening).toBe(true));
+    expect((h.any.previewListener.server.address() as { port: number }).port).toBe(47396);
+    expect(h.ui().previewOrigin).toBe("https://preview.example.net");
+    // Only the origin changes (same port): rebuilt all the same — the shim's Host list and frame-ancestors follow it.
+    const boot = h.ui().boot;
+    h.write(BASE + "web:\n  preview_port: 47396\n  preview_origin: https://preview2.example.net\n");
+    await h.any.reconcileInstances();
+    await vi.waitFor(() => expect(h.any.previewListening).toBe(true));
+    expect([h.ui().previewOrigin, h.ui().boot === boot]).toEqual(["https://preview2.example.net", false]);
+    h.any.previewListener?.close();
+  });
+
+  it("an unrelated reload leaves the listener — and its boot id — alone", async () => {
+    const h = await fleetFromFile(BASE);
+    const boot = h.ui().boot, server = h.any.previewListener.server;
+    h.write(BASE + "fleet_label: renamed\n");
+    await h.any.reconcileInstances();
+    expect([h.ui().boot, h.any.previewListener.server]).toEqual([boot, server]);
+    h.any.previewListener?.close();
+  });
+});
+
+describe("an optional listener never takes the fleet down (#1327 review P2-2)", () => {
+  it("health_port 65535 and no preview_port: no default port — previews off, nothing thrown; the validator warns", () => {
+    expect(previewSettings(undefined, 65535).port).toBeNull();
+    expect(previewAvailability(previewSettings(undefined, 65535), "127.0.0.1:65535", false)).toMatchObject({ previewOrigin: null, reason: expect.stringMatching(/preview_port/) });
+    const dir = mkdtempSync(join(tmpdir(), "agend-1306p-")); tempDirs.push(dir);
+    const fm = new FleetManager(dir);
+    const warns: unknown[] = [];
+    fm.logger = { info() {}, warn: (o: unknown) => warns.push(o), error() {}, debug() {}, trace() {}, fatal() {}, child: () => fm.logger } as unknown as typeof fm.logger;
+    const any = fm as unknown as Record<string, any>;
+    any.fleetConfig = { instances: {} };
+    expect(() => any.startPreviewListener(65535, 65535)).not.toThrow();
+    expect([any.previewListener, any.previewListening, warns.length]).toEqual([null, false, 1]);
+    const w = validateFleetConfig({ instances: {}, health_port: 65535 }).warnings.map(x => x.path);
+    expect(w).toContain("web.preview_port");
+    expect(validateFleetConfig({ instances: {}, health_port: 65535, web: { preview_port: 65534 } }).warnings.map(x => x.path)).not.toContain("web.preview_port");
+  });
+
+  it("a port Node refuses synchronously (ERR_SOCKET_BAD_PORT) is caught: previews off, the fleet goes on", () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-1306p-")); tempDirs.push(dir);
+    const fm = new FleetManager(dir);
+    const warns: unknown[] = [];
+    fm.logger = { info() {}, warn: (o: unknown) => warns.push(o), error() {}, debug() {}, trace() {}, fatal() {}, child: () => fm.logger } as unknown as typeof fm.logger;
+    const any = fm as unknown as Record<string, any>;
+    any.fleetConfig = { instances: {}, web: { preview_port: 70000 } };
+    expect(() => any.startPreviewListener(19280, 19280)).not.toThrow();
+    expect([any.previewListener, any.previewListening]).toEqual([null, false]);
+    expect(JSON.stringify(warns)).toMatch(/70000/);
+  });
+});
+
+describe("the page's origin and the shim's allow-list are the same exact strings (#1327 review P3)", () => {
+  it("a default port is not part of an origin; an allowed_hosts entry keeps its port", () => {
+    expect(dashboardOrigins({ enabled: true, port: 81, origin: null }, 80, null)).toEqual(["http://localhost", "http://127.0.0.1", "http://[::1]"]);
+    expect(dashboardOrigins({ enabled: true, port: 19281, origin: "https://p.example.net" }, 19280, { hostname: "dash.lan:9443", web: { allowed_hosts: ["fleet.example.net:8443", "other.example.net", "FLEET2.example.net:443"] } }))
+      .toEqual(["http://localhost:19280", "http://127.0.0.1:19280", "http://[::1]:19280", "https://dash.lan:9443", "https://fleet.example.net:8443", "https://other.example.net", "https://fleet2.example.net"]);
+  });
+  it("availability offers a preview only when the page's origin is in that list — never by a wildcard", () => {
+    const s: PreviewSettings = { enabled: true, port: 19281, origin: "https://p.example.net" };
+    const list = dashboardOrigins(s, 19280, { web: { allowed_hosts: ["fleet.example.net:8443"] } });
+    expect(previewAvailability(s, "fleet.example.net:8443", true, list).previewOrigin).toBe("https://p.example.net");
+    expect(previewAvailability(s, "fleet.example.net", true, list)).toMatchObject({ dashboardOrigin: "https://fleet.example.net", previewOrigin: null, reason: expect.stringMatching(/with its port/) });
+    expect(previewAvailability({ ...s, origin: null }, "127.0.0.1:80", false, dashboardOrigins({ ...s, origin: null }, 80, null)).dashboardOrigin).toBe("http://127.0.0.1");
+    expect(previewAvailability({ ...s, origin: null }, "127.0.0.1:80", false, dashboardOrigins({ ...s, origin: null }, 80, null)).previewOrigin).toBe("http://127.0.0.1:19281");
+  });
+  it("through the real listener: an https proxy on :8443 gets the preview, and the shim takes HTML from exactly that origin", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-1306o-")); tempDirs.push(dir);
+    const fm = new FleetManager(dir);
+    const quiet = () => {};
+    fm.logger = { info: quiet, warn: quiet, error: quiet, debug: quiet, trace: quiet, fatal: quiet, child: () => fm.logger } as unknown as typeof fm.logger;
+    const any = fm as unknown as Record<string, any>;
+    any.fleetConfig = { instances: {}, web: { allowed_hosts: ["fleet.example.net:8443"], preview_origin: "https://preview.example.net" } };
+    any.initializeWebAuthTokens(); any.startHealthServer(0);
+    await vi.waitFor(() => expect(any.previewListening).toBe(true));
+    servers.push(any.healthServer);
+    const p = any.previewForUi("fleet.example.net:8443", true);
+    expect([p.dashboardOrigin, p.previewOrigin]).toEqual(["https://fleet.example.net:8443", "https://preview.example.net"]);
+    expect(any.previewListener.origins).toContain(p.dashboardOrigin);
+    any.previewListener.close();
+  });
+});

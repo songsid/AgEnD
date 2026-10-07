@@ -28,8 +28,8 @@ export interface PreviewWebConfig {
 export interface PreviewSettings {
   /** `web.preview` (default true): false means no listener, and cards show Source / Download only. */
   enabled: boolean;
-  /** The preview listener's port, on 127.0.0.1. */
-  port: number;
+  /** The preview listener's port, on 127.0.0.1; null when there is no valid one (health_port 65535 and no preview_port). */
+  port: number | null;
   /** `web.preview_origin`, normalised to scheme://host[:port], or null. */
   origin: string | null;
 }
@@ -38,7 +38,8 @@ export interface PreviewSettings {
 export function previewSettings(web: PreviewWebConfig | null | undefined, healthPort: number): PreviewSettings {
   // An ephemeral web listener (port 0: tests, harnesses) gets an ephemeral preview listener; its real port is filled
   // in once it listens (createPreviewListener). Otherwise the fixed default, so an SSH user can forward it too.
-  const port = typeof web?.preview_port === "number" && Number.isInteger(web.preview_port) ? web.preview_port : healthPort === 0 ? 0 : healthPort + 1;
+  const port = typeof web?.preview_port === "number" && Number.isInteger(web.preview_port) ? web.preview_port
+    : healthPort === 0 ? 0 : healthPort + 1 <= 65535 ? healthPort + 1 : null;
   const origin = typeof web?.preview_origin === "string" ? normalizeOrigin(web.preview_origin) : null;
   return { enabled: web?.preview !== false, port, origin };
 }
@@ -95,11 +96,15 @@ export function dashboardOriginFor(hostHeader: string | undefined, secure: boole
  * preview_origin set → that; anything else (a tunnel, a proxy, `hostname`, `allowed_hosts`) → disabled.
  * Only Host is read; X-Forwarded-Host never is.
  */
-export function previewAvailability(settings: PreviewSettings | null, hostHeader: string | undefined, secure: boolean): PreviewAvailability {
+export function previewAvailability(settings: PreviewSettings | null, hostHeader: string | undefined, secure: boolean, accepted?: readonly string[]): PreviewAvailability {
   const dashboardOrigin = dashboardOriginFor(hostHeader, secure);
   const off = (reason: string): PreviewAvailability => ({ dashboardOrigin, previewOrigin: null, reason });
   if (!settings || !settings.enabled) return off("Previews are turned off for this fleet (web.preview: false).");
   if (!dashboardOrigin) return off("This address cannot be checked.");
+  if (settings.port === null && !settings.origin) return off("Previews have no port: set web.preview_port (health_port is the highest port).");
+  // The page must be at an origin the shim takes HTML from (and that may frame it) — exactly, or a frame would never
+  // render. A name in web.allowed_hosts served on a non-default port must be listed with that port.
+  if (accepted && !accepted.includes(dashboardOrigin)) return off(`Previews are not offered at ${dashboardOrigin}: list this address (with its port) in web.allowed_hosts, and set web.preview_origin.`);
   let preview: string;
   if (settings.origin) preview = settings.origin;
   else {
@@ -119,9 +124,19 @@ export function previewAvailability(settings: PreviewSettings | null, hostHeader
  * besides loopback (`hostname`, `web.allowed_hosts`). Never 'self', never *.
  */
 export function dashboardOrigins(settings: PreviewSettings, healthPort: number, config: HostGuardConfig | null | undefined): string[] {
-  const out = LOOPBACK_HOST_NAMES.map(h => `http://${h}:${healthPort}`);
+  // As the browser writes location.origin: a default port is dropped (http://127.0.0.1:80 → http://127.0.0.1).
+  const origin = (u: string): string | null => { try { return new URL(u).origin; } catch { return null; } };
+  const out = LOOPBACK_HOST_NAMES.map(h => origin(`http://${h}:${healthPort}`)).filter((o): o is string => !!o);
   if (settings.origin) {
-    for (const name of allowedHostNames(config)) if (!LOOPBACK_HOST_NAMES.includes(name)) out.push(`https://${name}`);
+    // Each extra dashboard name as written — with its port when it has one (fleet.example.net:8443).
+    const extra = [config?.hostname, ...(Array.isArray(config?.web?.allowed_hosts) ? config!.web!.allowed_hosts as unknown[] : [])];
+    for (const entry of extra) {
+      if (typeof entry !== "string") continue;
+      const name = hostnameOf(entry);
+      if (!name || LOOPBACK_HOST_NAMES.includes(name)) continue;
+      const o = origin(`https://${entry.trim().toLowerCase()}`);
+      if (o) out.push(o);
+    }
   }
   return [...new Set(out)];
 }

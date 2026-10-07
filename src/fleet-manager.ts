@@ -926,6 +926,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** #1306: the preview listener (health_port + 1 by default), and whether it is listening. */
   private previewListener: PreviewListener | null = null;
   private previewListening = false;
+  /** The ports the preview listener was started for, and the inputs it was built from (a reload compares them). */
+  private previewPorts: { requested: number; bound: number } | null = null;
+  private previewInputs = "";
   private healthPortRetried = false;
   private updateCheckTimer: ReturnType<typeof setTimeout> | ReturnType<typeof setInterval> | null = null;
   private updateProgressTimer: ReturnType<typeof setInterval> | null = null;
@@ -14158,6 +14161,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     this.routing.rebuild(this.fleetConfig!);
     this.reregisterClassicChannels();
     this.scheduler?.reload();
+    this.reconcilePreviewListener();
 
     const newInstances = this.fleetConfig!.instances;
     const topicMode = this.fleetConfig?.channel?.mode === "topic";
@@ -16046,8 +16050,14 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    */
   private startPreviewListener(requestedPort: number, boundPort: number): void {
     this.stopPreviewListener();
+    this.previewPorts = { requested: requestedPort, bound: boundPort };
+    this.previewInputs = this.previewInputsSignature();
     const settings = previewSettings(this.fleetConfig?.web, requestedPort);
     if (!settings.enabled) return;
+    if (settings.port === null) {
+      this.logger.warn({ health_port: requestedPort }, "No port for the HTML preview listener (health_port is the highest port) — set web.preview_port; previews are off");
+      return;
+    }
     const listener = createPreviewListener({ settings, healthPort: boundPort, config: this.fleetConfig });
     this.previewListener = listener;
     listener.server.on("error", (err: NodeJS.ErrnoException) => {
@@ -16056,7 +16066,31 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       this.previewListening = false;
       this.previewListener = null;
     });
-    listener.server.listen(settings.port, "127.0.0.1", () => { if (this.previewListener === listener) this.previewListening = true; });
+    // An optional listener never takes the fleet down: a port Node refuses outright throws here, synchronously.
+    try {
+      listener.server.listen(settings.port, "127.0.0.1", () => { if (this.previewListener === listener) this.previewListening = true; });
+    } catch (err) {
+      this.logger.warn({ err: (err as Error).message, port: settings.port }, "Preview listener cannot listen; HTML previews are off");
+      this.previewListening = false;
+      this.previewListener = null;
+    }
+  }
+
+  /** What the preview listener is built from: web.preview / preview_port / preview_origin, and the dashboard names. */
+  private previewInputsSignature(): string {
+    const c = this.fleetConfig;
+    return JSON.stringify({ p: c?.web?.preview ?? null, pp: c?.web?.preview_port ?? null, po: c?.web?.preview_origin ?? null, h: c?.hostname ?? null, a: c?.web?.allowed_hosts ?? null });
+  }
+
+  /**
+   * After a config reload: the preview settings are read where they are used, so a change is adopted here, hot —
+   * the listener is rebuilt (a new boot id) or stopped (web.preview: false). Pages loaded before keep their old boot
+   * id and get "unavailable" from a rebuilt listener until they reload.
+   */
+  private reconcilePreviewListener(): void {
+    if (!this.previewPorts || this.previewInputsSignature() === this.previewInputs) return;
+    this.logger.info({}, "HTML preview settings changed — rebuilding the preview listener");
+    this.startPreviewListener(this.previewPorts.requested, this.previewPorts.bound);
   }
 
   private stopPreviewListener(): void {
@@ -16068,7 +16102,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   /** For one /ui load: the preview origin it may frame, and the listener's boot id (see web-preview.ts). */
   previewForUi(hostHeader: string | undefined, secure: boolean): PreviewAvailability & { boot: string | null } {
     const listener = this.previewListening ? this.previewListener : null;
-    const decided = previewAvailability(listener ? listener.settings : null, hostHeader, secure);
+    const decided = previewAvailability(listener ? listener.settings : null, hostHeader, secure, listener ? listener.origins : undefined);
     if (!listener && this.fleetConfig?.web?.preview !== false) decided.reason = "Previews are not available on this fleet right now.";
     return { ...decided, boot: listener ? listener.bootId : null };
   }
