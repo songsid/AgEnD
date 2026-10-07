@@ -1506,7 +1506,7 @@ describe("FleetManager", () => {
   it("builds ClassicBot backend choices without deprecated or test-only backends", () => {
     const choices = getClassicBackendChoices();
     expect(choices.map(choice => choice.id)).toEqual(
-      KNOWN_BACKENDS.filter(backend => backend !== "mock" && backend !== "gemini-cli"),
+      KNOWN_BACKENDS.filter(backend => backend !== "mock"),
     );
     // Grok is no longer marked experimental — Discord dropped the marker but
     // ClassicBot kept its own EXPERIMENTAL_BACKENDS set, so the two platforms

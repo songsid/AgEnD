@@ -25,6 +25,7 @@ import { Daemon } from "../src/daemon.js";
 import { dispatchAgentOperation } from "../src/agent-endpoint.js";
 import { TOOLS } from "../src/channel/mcp-tools.js";
 import { mayUseTool, toolsFor } from "../src/tool-permissions.js";
+import { TELEGRAM_REACTION_EMOJIS } from "../src/status-emojis.js";
 import type { ChannelAdapter } from "../src/channel/types.js";
 import type { Logger } from "../src/logger.js";
 
@@ -682,14 +683,23 @@ describe("the four saved-attachment stamps read the configured emoji (#1080)", (
   });
 
   it.each(SITES.map(s => [s.name, s] as const))("%s: on Telegram the stamp stays 👌 / 👍 unless a valid reaction is configured; an invalid one falls back", async (_n, site) => {
-    // The shared fixture's tg adapter is a plain stub; make it a real TelegramAdapter so the platform resolves to telegram.
+    // Exercise real reaction methods, recording the Bot API boundary. Forwarded
+    // stamps use the status-owned FIFO; save-only stamps use ordinary react.
     const { TelegramAdapter } = await import("../src/channel/adapters/telegram.js");
     vi.spyOn(ClassicChannelManager, "logMessage").mockImplementation(() => {});
     const go = async (kind: "photo" | "document", options?: Record<string, unknown>) => {
       const { fm } = fleet();
       const tgWorld = fm.worlds.get("tg")!;
-      const react = vi.fn(async (..._a: unknown[]) => {});
-      const adapter = Object.assign(Object.create(TelegramAdapter.prototype), { id: "tg", react, unreact: vi.fn(async () => {}) });
+      const setMessageReaction = vi.fn(async (_chatId: number, _messageId: number, reactions: Array<{ type: string; emoji: string }>) => {
+        expect(reactions.length).toBeLessThanOrEqual(1);
+        for (const reaction of reactions) {
+          expect(reaction.type).toBe("emoji");
+          expect(TELEGRAM_REACTION_EMOJIS.has(reaction.emoji)).toBe(true);
+        }
+      });
+      const adapter = Object.assign(Object.create(TelegramAdapter.prototype), {
+        id: "tg", reactionTrackingStartedAt: 0, bot: { api: { setMessageReaction } },
+      });
       (tgWorld as any).adapter = adapter;
       tgWorld.botUserId = "BOT";
       if (options) (tgWorld.channelConfig as any).options = { status_emojis: options };
@@ -698,10 +708,16 @@ describe("the four saved-attachment stamps read the configured emoji (#1080)", (
       internals.saveClassicAttachment = vi.fn(async () => ({ path: "/i/f", paths: ["/i/f"], kind }));
       internals.forwardToClassicInstance = vi.fn(async () => {});
       await internals.handleClassicChannelMessage("classic-room", {
-        source: "telegram", adapterId: "tg", chatId: "-100", threadId: "7", messageId: "m-1", userId: "u", username: "han",
+        source: "telegram", adapterId: "tg", chatId: "-100", threadId: "-100", messageId: "42", userId: "u", username: "han",
         text: site.text, timestamp: new Date(), attachments: [{ kind, fileId: "f1", filename: "x" }],
       });
-      return react.mock.calls.map(c => c[2] as string);
+      while (adapter.reactionChains?.size) await Promise.all([...adapter.reactionChains.values()]);
+      expect(setMessageReaction).toHaveBeenCalled();
+      for (const [chatId, messageId] of setMessageReaction.mock.calls) {
+        expect(chatId).toBe(-100);
+        expect(messageId).toBe(42);
+      }
+      return setMessageReaction.mock.calls.flatMap(c => c[2].map(r => r.emoji));
     };
     const photoDefault = await go("photo");
     const fileDefault = await go("document");

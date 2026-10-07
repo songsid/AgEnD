@@ -47,7 +47,8 @@ function telegramRecorder(id: string) {
   Object.assign(adapter, {
     id,
     telegramReactions: new Map(),
-    bot: { api: { setMessageReaction: async (_c: number, _m: number, values: Array<{ emoji: string }>) => { visible = values.map(v => v.emoji); } } },
+    reactionTrackingStartedAt: 0,
+    bot: { api: { setMessageReaction: async (_c: number, _m: number, values: Array<{ emoji: string }>) => { expect(values.length).toBeLessThanOrEqual(1); visible = values.map(v => v.emoji); } } },
   });
   return { adapter: adapter as unknown as ChannelAdapter, visible: () => visible };
 }
@@ -157,12 +158,15 @@ describe("the status path reacts with the resolved value (#1005)", () => {
   it("telegram: an invalid value warns once and falls back; a valid one is used, spelled as Telegram spells it", async () => {
     const t = telegramRecorder("telegram");
     const { fleet, warn } = makeFleet([{ id: "telegram", type: "telegram", adapter: t.adapter, options: { status_emojis: { delivered: "✅", failed: "❤️" } } }], { alpha: {} });
+    fleet.reactMessageStatus("alpha", "100", "1", "received", undefined, Date.now());
     fleet.finishDeliveryStatus("alpha", "100", "1", "delivered");
     await flush();
     expect(t.visible()).toEqual(["👀"]); // built-in Telegram delivered
+    fleet.reactMessageStatus("alpha", "100", "2", "received", undefined, Date.now());
     fleet.finishDeliveryStatus("alpha", "100", "2", "delivered");
     await flush();
     expect(warn.mock.calls.filter(c => String(c[1]).includes("status_emojis.delivered"))).toHaveLength(1);
+    fleet.reactMessageStatus("alpha", "100", "3", "received", undefined, Date.now());
     fleet.finishDeliveryStatus("alpha", "100", "3", "failed");
     await flush();
     expect(t.visible()).toEqual(["❤"]);

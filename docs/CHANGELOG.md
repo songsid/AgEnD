@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Upgrade Notes
+- **[Removed] The `gemini-cli` backend (#1280).** It had been deprecated, and the date its warning named has passed.
+  `backend: antigravity` replaces it: the same Google sign-in, through agy. A config that still names `gemini-cli` is
+  now refused rather than run, at the instance level, the fleet default, or a ClassicBot channel or default:
+  - **`agend validate`** and Settings report it as an error that names the instance and says to set
+    `backend: antigravity`. A fleet.yaml reload that still contains it is refused as a whole, with that message.
+  - **After `agend update`** the fleet starts as usual. That one instance does not start: its topic gets a notice
+    saying why and what to set, and it is not retried. Every other instance comes up normally. AgEnD never swaps in
+    another backend by itself: changing which CLI and which account an instance runs on is your call.
+  - `/login gemini-cli` and `agend backend doctor gemini-cli` say the same instead of installing or checking it.
+    `agend backend trust`, which only pre-trusted Gemini CLI folders, is removed.
+
 ### Added
 - **An alpha channel, separate from beta and stable (#1259).** A `vX.Y.Z-alpha.N` tag now publishes to npm `@alpha`.
   Before, every tag without `-beta` went to `@latest`, so the first 2.2 alpha would have reached every stable user.
@@ -98,6 +110,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the cursor is seen on "Remind me later". Anything else is held for a human and reported. "Switch to 3.0" is never
   chosen: it makes 3.0 the machine-wide default and reruns the session there, a one-way move. kiro asks again after
   its 7-day snooze. kiro-cli 2.27.x does not show this prompt.
+- **Delivery reactions leave agent reactions alone on Telegram (#959).** Status updates now track ownership of the bot's one reaction slot and share a per-message queue with agent reactions. A late status skips when ownership is unknown (including after adapter replacement or an ambiguous API failure), even if the agent chose the same emoji as the old status. General fallback delivery also retains the original chat/thread metadata; Discord topic routing remains unchanged.
 - **Corrected `checkout_repo` and `get_usage` tool descriptions (#1296).** The `checkout_repo` description said "read-only worktree" and "instance name or absolute path"; the handler (`daemon.ts`) rejects non-path sources and creates a detached-HEAD worktree, not an enforced read-only mount. The `get_usage` description listed only Claude/Codex/Grok/Kiro; Muse and Antigravity were missing. Both are now accurate. Agents that read tool descriptions to decide how to use them saw wrong information.
 - **Config now warns when `context_guardian.max_age_hours` or `grace_period_ms` is set (#1296).** Context rotation was removed; these keys are retained for backwards compatibility but have no effect. Setting either one now produces a validator warning: "no effect; context rotation was removed".
 - **A tool step being written when AgEnD starts watching is no longer lost (#1250).** #1221 made AgEnD read a CLI's
