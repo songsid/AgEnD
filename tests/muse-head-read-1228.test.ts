@@ -39,7 +39,7 @@ vi.mock("node:os", async (importOriginal) => {
   return { ...actual, homedir: () => fakeHome.dir };
 });
 
-import { MuseBackend, readFileHeadSync } from "../src/backend/muse.js";
+import { MuseBackend, museSessionCwd, readFileHeadSync } from "../src/backend/muse.js";
 import { museFingerprint } from "../src/backend/session-signals.js";
 
 const dirs: string[] = [];
@@ -94,6 +94,35 @@ describe("readFileHeadSync (#1228)", () => {
     // Oracle: the old full-read-then-slice behavior on ASCII content
     // (byte head == char head, no multibyte boundary split).
     expect(readFileHeadSync(path, HEAD_BYTES)).toBe(content.slice(0, HEAD_BYTES));
+  });
+
+  it("preserves discovery coverage when the head is mostly multibyte text (#1281)", () => {
+    // Prism's probe: 23,000 CJK chars before route_facts is only ~23K code
+    // units but ~69KB bytes. A byte-truncating head loses the cwd; the
+    // character-bounded head must match the old full decode + slice exactly.
+    const root = tempDir();
+    const content = JSON.stringify({ retained_frame: "session_permission_transaction",
+      detail: "中".repeat(23_000) }) + "\n"
+      + JSON.stringify({ schema_version: 1, route_facts: { cwd: "/w" } }) + "\n";
+    expect(content.length).toBeLessThan(HEAD_BYTES);
+    expect(Buffer.byteLength(content, "utf-8")).toBeGreaterThan(HEAD_BYTES);
+    const path = join(root, "session.jsonl");
+    writeFileSync(path, content);
+    expect(readFileHeadSync(path, HEAD_BYTES)).toBe(content.slice(0, HEAD_BYTES));
+    expect(museSessionCwd(readFileHeadSync(path, HEAD_BYTES)!)).toBe("/w");
+  });
+
+  it("decodes a multibyte character split across a chunk boundary intact (#1281)", () => {
+    // A 3-byte char straddling byte 65,536: byte truncation yields U+FFFD,
+    // the old full decode (and the streaming head) keeps the intact char.
+    const root = tempDir();
+    const content = "a".repeat(HEAD_BYTES - 1) + "中" + "b".repeat(100);
+    const path = join(root, "session.jsonl");
+    writeFileSync(path, content);
+    const head = readFileHeadSync(path, HEAD_BYTES)!;
+    expect(head).toBe(content.slice(0, HEAD_BYTES));
+    expect(head.endsWith("中")).toBe(true);
+    expect(head).not.toContain("�");
   });
 
   it("returns null for a missing file instead of throwing", () => {

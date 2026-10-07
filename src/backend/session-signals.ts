@@ -430,7 +430,7 @@ export interface MuseRoots {
 const MUSE_SESSION_ID_RE = /^[0-9a-fA-F-]{8,}$/;
 
 /** Log head scanned for the workspace marker, mirroring muse.ts. */
-const MUSE_SESSION_HEAD_BYTES = 65_536;
+const MUSE_SESSION_HEAD_CHARS = 65_536;
 
 /**
  * The most recently active session started in this working directory,
@@ -447,7 +447,7 @@ export function museFingerprint(r: MuseRoots): TurnFingerprint | null {
   for (const sessionDir of museSessionDirs(r.sessionsRoot)) {
     const name = sessionDir.slice(sessionDir.lastIndexOf("/") + 1);
     if (!MUSE_SESSION_ID_RE.test(name)) continue;
-    const head = readFileHeadSync(join(sessionDir, "session.jsonl"), MUSE_SESSION_HEAD_BYTES);
+    const head = readFileHeadSync(join(sessionDir, "session.jsonl"), MUSE_SESSION_HEAD_CHARS);
     if (head === null) continue;
     if (museSessionCwd(head) !== r.cwd) continue;
     let activity = -1;

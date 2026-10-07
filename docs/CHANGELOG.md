@@ -42,7 +42,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Muse session discovery no longer reads whole session logs (#1228).** Finding the workspace's session used to
   `readFileSync` all of every candidate `session.jsonl` before slicing the 64KB head that names the working
   directory — slow when sessions grow long. Both `MuseBackend.getSessionId` and the detection-seam `museFingerprint`
-  now go through a shared bounded `readFileHeadSync` (open + read at most 64KB + close) with identical results.
+  now go through a shared bounded `readFileHeadSync` (open + stream-decode the first 65,536 characters + close)
+  with results identical to the old full read (the bound is decoded characters, not bytes, so multibyte heads
+  stay discoverable).
 - **No more false memory alerts on macOS (#1257).** On a Mac, AgEnD no longer posts the "Host memory pressure"
   notice and no longer slows or holds agent starts for memory. Its free-memory and swap figures are not a pressure
   signal there: macOS adds swap files as it needs them, so a nearly full swap is normal, and a 16 GB Mac with 2.8 GB
