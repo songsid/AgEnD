@@ -171,6 +171,26 @@ describe("#959 real ingress → daemon status → bound adapter", () => {
     expect(tg.calls).toEqual([["👀"], ["👍"], ["👍"]]);
   });
 
+  it.each([
+    [false, "photo", "🔥", "🔥"], [true, "photo", "🔥", "🔥"],
+    [false, "document", "🎉", "🎉"], [true, "document", "🎉", "🎉"],
+    [false, "photo", "📸", "👌"], [true, "photo", "📸", "👌"],
+    [false, "document", "📎", "👍"], [true, "document", "📎", "👍"],
+  ] as const)("forwarded stamp keeps its configured emoji/fallback (collab=%s, kind=%s, override=%s)", async (collab, kind, configured, expected) => {
+    const { fm, daemon, tg, classicMsg, settle } = classicAttachment(kind, collab);
+    Object.assign(fm.fleetConfig!.instances.worker, {
+      status_emojis: { [kind === "photo" ? "photo" : "attachment"]: configured },
+    });
+    await (fm as any).handleClassicChannelMessage("worker", classicMsg);
+    await settle();
+    expect(tg.calls).toEqual([["👀"], [expected]]);
+    expect(tg.shared.slot).toEqual([expected]);
+    daemon.emit("message_failed", { chatId: "-200", messageId: "42", threadId: "-200" });
+    await settle();
+    expect(tg.shared.slot).toEqual(["👎"]);
+    expect(tg.calls).toEqual([["👀"], [expected], ["👎"]]);
+  });
+
   it.each([false, true])("a forwarded attachment (collab=%s) cannot replace an earlier agent reaction", async collab => {
     const { fm, daemon, paneWriter, tg, classicMsg, settle } = classicAttachment("document", collab);
     await tg.adapter.react("-200", "42", "🔥");
