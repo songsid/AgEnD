@@ -103,7 +103,7 @@ async function general(defaults: Record<string, unknown>) {
   const host = new FakeEl("div");
   const { box, staged, sent } = makeSandbox({
     $: (id: string) => (id === "general" ? host : new FakeEl("div")),
-    state: { fleet: { defaults, instances: {}, channels: [] }, classic: { defaults: {} } },
+    state: { fleet: { defaults, instances: {}, channels: [] }, classic: { defaults: {} }, pending: new Map() },
     channels: () => [],
   });
   vm.runInNewContext(

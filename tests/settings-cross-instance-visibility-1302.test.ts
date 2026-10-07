@@ -124,7 +124,7 @@ async function general(visibilityDefaults: Record<string, unknown>) {
   const host = new FakeEl("div");
   const { box, staged, sent } = sandbox({
     $: (id: string) => (id === "general" ? host : new FakeEl("div")),
-    state: { fleet: { defaults, instances: {}, channels: [] }, classic: { defaults: {} } },
+    state: { fleet: { defaults, instances: {}, channels: [] }, classic: { defaults: {} }, pending: new Map() },
     channels: () => [],
   });
   vm.runInNewContext([...PAGE_HELPERS(), slice("  function renderGeneral() {", "\n  // ── What's New ──"), "this.renderGeneral = renderGeneral;"].join("\n"), box);

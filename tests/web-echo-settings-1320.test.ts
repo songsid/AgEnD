@@ -58,7 +58,11 @@ function panel(web?: Record<string, unknown>) {
   const slice = (start: string, end: string) => html.slice(html.indexOf(start), html.indexOf(end, html.indexOf(start)));
   const sandbox: any = {
     state, structuredClone, $: () => host, el, channels: () => [], BACKENDS: ["claude-code", "codex"],
-    select: (value: string) => el("select", { value }), t: (key: string) => key, tf: (key: string) => key,
+    // main's page helpers next to select() (#1294 backendSelect, #1310 localeSelect, #1302 visibility), stubbed alike.
+    select: (value: string) => el("select", { value }), backendSelect: (value: string) => el("select", { value }),
+    localeSelect: (value: string) => el("select", { value }),
+    VISIBILITY_MODES: ["full", "summary", "hidden"], visibilityDefault: (d: any) => d?.cross_instance_visibility ?? "full",
+    t: (key: string) => key, tf: (key: string) => key,
     impact: () => el("span"), impactOf: () => "now", batchImpact: () => "now", esc: (v: string) => v,
     chipList: () => el("div"), drawer: (_t: string, ...kids: any[]) => el("div", {}, ...kids), setValidation: () => true,
     updatePendingBar: () => {},
