@@ -23,9 +23,9 @@ function rig(platform: "telegram" | "discord" = "discord") {
     worker: { working_directory: directory, topic_id: "T1", channel_id: "owner" },
   } } as never;
   fm.routing.rebuild(fm.fleetConfig!); any.adapter = adapter; any.adapters.set("owner", adapter);
-  any.worlds.set("owner", { adapter, groupId: "G", channelConfig: owner, accessManager: { isAllowed: () => true }, stop: async () => {} });
+  any.worlds.set("owner", { adapter, groupId: "G", channelConfig: owner, botUsername: "fleetbot", botUserId: "fleetbot-id", accessManager: { isAllowed: () => true }, stop: async () => {} });
   any.worlds.set("other", { adapter, groupId: "OTHER", channelConfig: other, accessManager: { isAllowed: () => true }, stop: async () => {} });
-  any.classicChannels = { isClassicChannel: () => false };
+  any.classicChannels = { isClassicChannel: () => false, hasChannel: () => false };
   const start = vi.spyOn(fm, "startCpuProfile");
   let finish!: (result: ProfileResult) => void, fail!: (err: Error) => void;
   const done = new Promise<ProfileResult>((yes, no) => { finish = yes; fail = no; });
@@ -97,6 +97,17 @@ describe("real General dispatcher and shared profile handler, all runtime effect
     await h.fm.stopAll(); expect(order).toEqual(["profile.stop", "control.close"]);
     await expect(h.fm.startCpuProfile()).rejects.toThrow("stopping");
     expect(h.any.runtimeCpuProfiler.start).not.toHaveBeenCalled();
+  });
+  it("real Telegram ingress starts the General recording without a delivery to an agent", async () => {
+    const h = rig("telegram"); h.any.deliverToInstance = vi.fn(); h.any.touchActivity = vi.fn(); h.any.reactMessageStatus = vi.fn();
+    await h.any.handleInboundMessage({ source: "telegram", adapterId: "owner", chatId: "G", threadId: "T0", userId: "admin", username: "admin", messageId: "profile-real-ingress", text: "/profile 5", timestamp: new Date() });
+    expect(h.start).toHaveBeenCalledExactlyOnceWith(5); expect(h.any.deliverToInstance).not.toHaveBeenCalled();
+    h.finish({ path: "/private/capture", bytes: 4 }); await flush(); expect(h.sent.at(-1)?.text).toContain("/private/capture");
+  });
+  it("real Discord text ingress consumes /profile with the native-menu notice, never starts or delivers", async () => {
+    const h = rig(); h.any.deliverToInstance = vi.fn(); h.any.touchActivity = vi.fn(); h.any.reactMessageStatus = vi.fn();
+    await h.any.handleInboundMessage({ source: "discord", adapterId: "owner", chatId: "G", threadId: "T0", userId: "admin", username: "admin", messageId: "profile-text-ingress", text: "/profile 5", timestamp: new Date() });
+    expect(h.start).not.toHaveBeenCalled(); expect(h.any.deliverToInstance).not.toHaveBeenCalled(); expect(h.sent.at(-1)?.text).toBe(t("cmd.not_a_command"));
   });
   it("new profile messages have matching English and Traditional Chinese keys", () => {
     for (const locale of ["en", "zh-TW"] as const) { setLocale(locale); for (const key of ["profile.started", "profile.saved", "profile.busy", "profile.disabled", "profile.general_only", "profile.failed", "slash.profile", "slash.option.profile_seconds"]) expect(t(key), locale).not.toBe(key); }
