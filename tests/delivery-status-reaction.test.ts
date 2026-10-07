@@ -114,6 +114,7 @@ describe("delivery-status reaction replaces the previous status", () => {
     const adapter = Object.create(TelegramAdapter.prototype) as TelegramAdapter;
     Object.assign(adapter, {
       id: "telegram-main",
+      reactionTrackingStartedAt: 0,
       bot: { api: { setMessageReaction: async (_chat: number, _message: number, reactions: { emoji: string }[]) => {
         if (reactions.length > 1) throw new Error("REACTIONS_TOO_MANY");
         sets.push(reactions.map(reaction => reaction.emoji));
@@ -121,7 +122,7 @@ describe("delivery-status reaction replaces the previous status", () => {
     });
     const fleet = makeFleet(adapter);
 
-    fleet.reactMessageStatus("inst", "100", "42", "processing");
+    fleet.reactMessageStatus("inst", "100", "42", "received", undefined, Date.now());
     fleet.finishDeliveryStatus("inst", "100", "42", "delivered");
     fleet.finishDeliveryStatus("inst", "100", "42", "failed");
     fleet.finishDeliveryStatus("inst", "100", "42", "delivered");
@@ -135,6 +136,7 @@ describe("delivery-status reaction replaces the previous status", () => {
     const adapter = Object.create(TelegramAdapter.prototype) as TelegramAdapter;
     Object.assign(adapter, {
       id: "telegram-main",
+      reactionTrackingStartedAt: 0,
       bot: { api: { setMessageReaction: async (_chat: number, _message: number, reactions: { emoji: string }[]) => {
         if (reactions.length > 1) throw new Error("REACTIONS_TOO_MANY");
         sets.push(reactions.map(reaction => reaction.emoji));
@@ -142,7 +144,7 @@ describe("delivery-status reaction replaces the previous status", () => {
     });
     const fleet = makeFleet(adapter);
 
-    fleet.reactMessageStatus("inst", "100", "42", "processing");
+    fleet.reactMessageStatus("inst", "100", "42", "received", undefined, Date.now());
     await vi.waitFor(() => expect(sets).toHaveLength(1));
     // Telegram's single slot means the ordinary reaction replaces 👀. Since
     // success maps to the already tracked 👀 state, the status update is a
