@@ -19,7 +19,7 @@ import { presentationState, interactionSummary } from "./interaction-observation
 import { truncatePreview } from "./channel/markdown-chunk.js";
 import { crossInstanceVisibility, senderTopicNotice, targetTopicNotice } from "./cross-instance-notice.js";
 import { backendSupportsSteer } from "./steer-capability.js";
-import { readStatuslineModel } from "./topic-commands.js";
+import { assignDisplayLabels, displayInstanceName, readStatuslineModel } from "./topic-commands.js";
 import { credentialProfileLogin, credentialSwitchStartsFresh, instanceCredentialProfile } from "./backend/credential-profile.js";
 import { kiroEngineCandidates, kiroEngineStatus } from "./kiro-engine-status.js";
 import {
@@ -513,9 +513,19 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   // which kinds post where are in cross-instance-notice.ts. Delivery and the Mirror Topic below never read it.
   const requestKind = ipcMeta.request_kind;
   const groupId = ctx.fleetConfig?.channel?.group_id;
+  // User-facing labels (#1301, unique across the fleet per #1305 P2-1):
+  // display_name first, else a long -t<digits> suffix shortened — lengthened
+  // while the label stays unique. Used by topic posts and the Mirror Topic
+  // below. Agent-facing uses (headers, logs, lookups) keep the real names.
+  const fleetLabels = assignDisplayLabels(Object.keys(ctx.fleetConfig?.instances ?? {}).map((name) => ({
+    name,
+    displayName: ctx.fleetConfig?.instances[name]?.display_name,
+  })));
+  const displayLabel = (name: string) =>
+    fleetLabels.get(name) ?? displayInstanceName(name, ctx.fleetConfig?.instances[name]?.display_name);
   if (groupId && ctx.adapter) {
     const instances = ctx.fleetConfig?.instances ?? {};
-    const notificationLabel = `${senderLabel} → ${targetName}`;
+    const notificationLabel = `${displayLabel(senderLabel)} → ${displayLabel(targetName)}`;
     const notice = { label: notificationLabel, message, requestKind, taskSummary: ipcMeta.task_summary };
 
     // ── Target topic notification ──
@@ -549,7 +559,7 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   ctx.logger.info(`✉ ${senderLabel} → ${targetName}: ${(message ?? "").slice(0, 100)} [msg=${ipcMeta.message_id} sha=${deliveryContentDigest(message ?? "").slice(0, 12)}]`);
   const taskSummary = ipcMeta.task_summary || (message ?? "").slice(0, 200);
   ctx.eventLog?.logActivity("message", senderLabel, taskSummary, targetName, ipcMeta.request_kind);
-  ctx.queueMirrorMessage?.(`${senderLabel} → ${targetName}: ${truncatePreview(message ?? "", 500)}`);
+  ctx.queueMirrorMessage?.(`${displayLabel(senderLabel)} → ${displayLabel(targetName)}: ${truncatePreview(message ?? "", 500)}`);
   const targetDaemon = ctx.lifecycle.daemons.get(targetInstanceName);
   const targetStateWarning = targetDaemon?.isErrorState
     ? targetDaemon.isCrashLoop
@@ -1540,7 +1550,15 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
   for (const target of sentTo) {
     ctx.eventLog?.logActivity("message", senderLabel, summary, target);
   }
-  ctx.queueMirrorMessage?.(`📢 ${senderLabel} → [${sentTo.join(", ")}]: ${truncatePreview(message, 500)}`);
+  // Mirror Topic is user-facing: display labels, never long ids (#1301),
+  // unique across the fleet (#1305 P2-1).
+  const bLabels = assignDisplayLabels(Object.keys(ctx.fleetConfig?.instances ?? {}).map((name) => ({
+    name,
+    displayName: ctx.fleetConfig?.instances[name]?.display_name,
+  })));
+  const bDisplay = (name: string) =>
+    bLabels.get(name) ?? displayInstanceName(name, ctx.fleetConfig?.instances[name]?.display_name);
+  ctx.queueMirrorMessage?.(`📢 ${bDisplay(senderLabel)} → [${sentTo.map(bDisplay).join(", ")}]: ${truncatePreview(message, 500)}`);
   respond({
     sent_to: sentTo,
     failed,
