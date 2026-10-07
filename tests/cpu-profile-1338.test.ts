@@ -128,7 +128,7 @@ describe("local opt-in CPU recording, inspector fully stubbed", () => {
     const recorder = await startCpuProfileFromEnvironment(o); const pending = recorder!.stop();
     await Promise.resolve(); await Promise.resolve(); expect(signal?.aborted).toBe(false);
     clock = 5000; await vi.advanceTimersByTimeAsync(5000);
-    expect(await pending).toBeNull(); expect(signal?.aborted).toBe(true); expect(native.disconnect).toHaveBeenCalledTimes(1);
+    expect(signal?.aborted).toBe(true); expect(await pending).toBeNull(); expect(native.disconnect).toHaveBeenCalledTimes(1);
     expect(o.logger.info.mock.calls.flat().join(" ")).not.toContain("saved"); expect(vi.getTimerCount()).toBe(0);
   });
 });
