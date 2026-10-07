@@ -28,7 +28,7 @@ Registered via `setMyCommands` with `scope: chat` and `scope: chat_administrator
 | 🔒 `/dashboard` | Show View/Settings/WebUI URLs (token-bearing URLs wrapped in a spoiler so they are not shown in the clear) | Admin |
 | 🔒 `/model` | Change backend model (inline keyboard). A typed name applies directly (`/model sonnet`); with no arg the menu opens. On `claude-code`, a two-tier menu: 6 quick-select aliases, plus a "📋 更多模型…" (more models) button that fetches the live model catalog from the API (24h cache, falls back to the alias list on failure). | Admin |
 | 🔒 `/effort` | Adjust AI reasoning effort (low/medium/high/xhigh/max). A typed level applies directly; with no arg the menu opens | Admin |
-| 🔒 `/clear` | Full conversation reset (destructive) — asks for Confirm/Cancel before running. Sends each backend's own reset command (`/clear` for most, `/new` for grok); unsupported on `gemini-cli`. | Admin |
+| 🔒 `/clear` | Full conversation reset (destructive) — asks for Confirm/Cancel before running. Sends each backend's own reset command (`/clear` for most, `/new` for grok). | Admin |
 | 🔒 `/tips on\|off` | Toggle the daily auto-sent tip to the General topic | Admin |
 | 🔒 `/tips advanced on` | Fleet-wide manual unlock of the advanced tips tier (independent of the per-user dismiss-count unlock). Currently has no visible effect while the beginner-only rollout stage is active — see the `/tips` row above. | Admin |
 
@@ -92,7 +92,7 @@ Registered globally via `client.application.commands.set()`.
 | 🔒 `/effort` | Adjust AI reasoning effort (select menu) | Admin |
 | 🔒 `/save <filename>` | Save the agent's conversation | Admin |
 | 🔒 `/load <filename>` | Load a saved conversation | Admin |
-| 🔒 `/clear` | Full conversation reset (destructive, Confirm/Cancel required); sends `/new` on grok, unsupported on `gemini-cli` | Admin |
+| 🔒 `/clear` | Full conversation reset (destructive, Confirm/Cancel required); sends `/new` on grok | Admin |
 
 ---
 
@@ -139,7 +139,6 @@ All three commands route through a backend-name lookup rather than being univers
 | `opencode` | ❌ unverified | ❌ "not supported" | `/clear` |
 | `antigravity` | ❌ unverified | ❌ "not supported" | `/clear` |
 | `muse` | ✅ (verified live on muse 1.3.0) | ❌ "not supported" | `/clear` |
-| `gemini-cli` (⚠️ deprecated) | ❌ | ❌ "not supported" | ❌ "not supported" |
 
 A `/steer` or `/btw` on an unsupported backend gets an honest error instead of silently falling back to a normal queued message (which would look the same to the user but behave differently). `/btw` rides the same paste path as `/steer` but is Claude Code-only — it exists because Claude Code's *native* `/btw` opens a side-fork that never reaches the channel, so AgEnD substitutes a labelled inbound message instead.
 

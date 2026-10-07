@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Upgrade Notes
+- **[Removed] The `gemini-cli` backend (#1280).** It had been deprecated, and the date its warning named has passed.
+  `backend: antigravity` replaces it: the same Google sign-in, through agy. A config that still names `gemini-cli` is
+  now refused rather than run, at the instance level, the fleet default, or a ClassicBot channel or default:
+  - **`agend validate`** and Settings report it as an error that names the instance and says to set
+    `backend: antigravity`. A fleet.yaml reload that still contains it is refused as a whole, with that message.
+  - **After `agend update`** the fleet starts as usual. That one instance does not start: its topic gets a notice
+    saying why and what to set, and it is not retried. Every other instance comes up normally. AgEnD never swaps in
+    another backend by itself: changing which CLI and which account an instance runs on is your call.
+  - `/login gemini-cli` and `agend backend doctor gemini-cli` say the same instead of installing or checking it.
+    `agend backend trust`, which only pre-trusted Gemini CLI folders, is removed.
+
 ### Added
 - **An alpha channel, separate from beta and stable (#1259).** A `vX.Y.Z-alpha.N` tag now publishes to npm `@alpha`.
   Before, every tag without `-beta` went to `@latest`, so the first 2.2 alpha would have reached every stable user.
