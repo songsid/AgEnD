@@ -6,6 +6,11 @@
 
 ## [未發佈] (Unreleased)
 
+### 2.1.13 — 修正 (Fixed)
+- **Fleet 的 stall 警告會列出慢同步 caller 與 GC 停頓（#1235，PR-A）。** 用 monotonic 時間、固定容量
+  記錄已包裝呼叫中至少 50ms 的工作，以及同一觀測窗口內至少 200ms 的 GC 停頓。不改排程或投遞行為；
+  未觀測到的原因仍標為 unknown。
+
 ### 升級注意事項 (Upgrade Notes)
 - **[移除] `gemini-cli` backend（#1280）。** 它先前已標為 deprecated，警告上寫的停用日期也已經過了。改用 `backend: antigravity`：同樣是 Google 登入，透過 agy。仍寫著 `gemini-cli` 的設定現在會被拒絕、不會照跑，不論是寫在 instance、fleet 預設值，還是 ClassicBot 的頻道或預設值：
   - **`agend validate`** 與 Settings 會報錯，指出是哪個 instance，並說明請設定 `backend: antigravity`。仍含有它的 fleet.yaml 重新載入會整份被拒絕，並附上這則訊息。

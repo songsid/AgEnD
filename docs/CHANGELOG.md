@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2.1.13 — Fixed
+- **Fleet stall warnings now show slow synchronous callers and GC pauses (#1235, PR-A).** Bounded,
+  monotonic records name instrumented calls taking at least 50ms and GC pauses of at least 200ms in the
+  same observation window. Scheduling and delivery behavior are unchanged; unobserved causes remain unknown.
+
 ### Upgrade Notes
 - **[Removed] The `gemini-cli` backend (#1280).** It had been deprecated, and the date its warning named has passed.
   `backend: antigravity` replaces it: the same Google sign-in, through agy. A config that still names `gemini-cli` is
