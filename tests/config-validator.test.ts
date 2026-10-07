@@ -183,10 +183,11 @@ describe("validateFleetConfig context_guardian no-op fields (#1296)", () => {
     instances: { worker: { working_directory: "/tmp/worker" } },
   };
 
-  it("warns when max_age_hours is set under defaults", () => {
+  it("warns on a non-zero max_age_hours and non-default grace_period_ms under defaults", () => {
+    // Use a non-default grace_period_ms (300_000 ≠ 600_000) so both warnings fire.
     const result = validateFleetConfig({
       ...base,
-      defaults: { context_guardian: { max_age_hours: 4, grace_period_ms: 600_000 } },
+      defaults: { context_guardian: { max_age_hours: 4, grace_period_ms: 300_000 } },
     });
     expect(result.errors).toEqual([]);
     expect(result.warnings.some(w => w.path === "defaults.context_guardian.max_age_hours")).toBe(true);
@@ -206,6 +207,23 @@ describe("validateFleetConfig context_guardian no-op fields (#1296)", () => {
 
   it("does not warn when context_guardian is absent", () => {
     const result = validateFleetConfig(base);
+    expect(result.warnings.some(w => w.path.includes("context_guardian"))).toBe(false);
+  });
+
+  it("does not warn on the loadFleetConfig-filled defaults (max_age_hours:0, grace_period_ms:600_000)", () => {
+    // loadFleetConfig merges DEFAULT_INSTANCE_CONFIG.context_guardian into every
+    // instance. Settings validates ctx.fleetConfig (already expanded), so an
+    // unrelated log_level save must not produce spurious context_guardian warnings.
+    const expanded = {
+      defaults: { context_guardian: { max_age_hours: 0, grace_period_ms: 600_000 } },
+      instances: {
+        worker: {
+          working_directory: "/tmp/worker",
+          context_guardian: { max_age_hours: 0, grace_period_ms: 600_000 },
+        },
+      },
+    };
+    const result = validateFleetConfig(expanded);
     expect(result.warnings.some(w => w.path.includes("context_guardian"))).toBe(false);
   });
 });
