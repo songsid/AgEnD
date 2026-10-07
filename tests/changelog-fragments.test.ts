@@ -225,6 +225,53 @@ describe("changelog-assemble: an entry is already there only as a whole (Prism #
   });
 });
 
+describe("changelog-assemble: every line the parser accepts takes part in the comparison (Prism #1333 r2)", () => {
+  it("an unindented continuation (Markdown lazy continuation) is part of the entry: the new explanation is not dropped", () => {
+    const r = repo(PAIR("64", "Fixed", "- Added safe mode.\nThe existing installations must opt in manually.", "- 新增安全模式。\n既有安裝需要手動啟用。"));
+    writeFileSync(join(r.root, "docs", "CHANGELOG.md"), EN.replace("### Fixed\n", "### Fixed\n- Added safe mode.\n"));
+    writeFileSync(join(r.root, "docs", "CHANGELOG.zh-TW.md"), ZH.replace("### 修正 (Fixed)\n", "### 修正 (Fixed)\n- 新增安全模式。\n"));
+    expect(r.run("--check").status).toBe(0);
+    expect(r.run().status).toBe(0);
+    const { en, zh, changes } = r.read();
+    expect(en).toContain("### Fixed\n- Added safe mode.\nThe existing installations must opt in manually.\n- Added safe mode.\n");
+    expect(zh).toContain("### 修正 (Fixed)\n- 新增安全模式。\n既有安裝需要手動啟用。\n- 新增安全模式。\n");
+    expect(changes).toEqual([]);
+  });
+
+  it("the CHANGELOG's own lazy-continued entry is compared whole: its first line alone is a different entry", () => {
+    const r = repo(PAIR("65", "Fixed", "- Added safe mode."));
+    writeFileSync(join(r.root, "docs", "CHANGELOG.md"), EN.replace("### Fixed\n", "### Fixed\n- Added safe mode.\nOpt in manually.\n"));
+    expect(r.run().status).toBe(0);
+    expect(r.read().en).toContain("### Fixed\n- Added safe mode.\n- Added safe mode.\nOpt in manually.\n");
+    // …and the same lazy entry, already there in full → skipped.
+    const r2 = repo(PAIR("66", "Fixed", "- Added safe mode.\nOpt in manually."));
+    writeFileSync(join(r2.root, "docs", "CHANGELOG.md"), EN.replace("### Fixed\n", "### Fixed\n- Added safe mode.\nOpt in manually.\n"));
+    expect(r2.run().status).toBe(0);
+    expect(r2.read().en.split("- Added safe mode.\nOpt in manually.")).toHaveLength(2);
+  });
+
+  it.each([
+    ["text after a blank line, not indented", "- Added safe mode.\n\nThe existing installations must opt in manually."],
+    ["a second paragraph, not indented, after an indented one", "- A.\n  more\n\nloose text"],
+  ])("a line outside the list item (%s) → refused by --check and by assemble, nothing written", (_label, body) => {
+    const r = repo(PAIR("67", "Fixed", body));
+    const before = r.read();
+    for (const args of [["--check"], []]) {
+      const res = r.run(...args);
+      expect(res.status, args.join(" ")).toBe(1);
+      expect(res.stderr).toContain("outside its list item");
+    }
+    expect(r.read()).toEqual(before);
+  });
+
+  it("indented continuations and blank lines between indented paragraphs stay valid", () => {
+    const r = repo(PAIR("68", "Fixed", "- **A (#68).** a\n  b\n\n  c\n  - nested"));
+    expect(r.run("--check").status).toBe(0);
+    expect(r.run().status).toBe(0);
+    expect(r.read().en).toContain("### Fixed\n- **A (#68).** a\n  b\n\n  c\n  - nested\n");
+  });
+});
+
 describe("changelog-assemble: an interrupted cleanup is finished by running it again (Prism #1333 r1)", () => {
   // Simulate the failure: assemble succeeded in writing both CHANGELOGs, then deleting one half failed.
   it.each([["the zh-TW half", "3.zh-TW.md"], ["the en half", "3.md"]])("%s left behind → a rerun removes it and adds nothing", (_label, left) => {

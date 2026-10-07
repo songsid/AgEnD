@@ -148,7 +148,9 @@ section: Fixed
   `Security`, and both languages name the same one. There is no other key.
 - The body is one or more list items, written exactly as they should appear,
   following [CHANGELOG entries](#changelog-entries). No headings: the
-  subsection comes from `section`.
+  subsection comes from `section`. Indent the lines that continue an item.
+  Text after a blank line that is neither indented nor a new `- ` item is
+  refused, because it would land outside the list.
 
 [`scripts/changelog-assemble.mjs`](../scripts/changelog-assemble.mjs) moves
 them:

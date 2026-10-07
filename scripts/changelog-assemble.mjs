@@ -62,12 +62,19 @@ export function parseFragment(text) {
   if (body === "") return { error: "the entry is empty" };
   if (!body.startsWith("- ")) return { error: "the entry must be a list item starting with `- `" };
   if (/^#{1,6}[ \t]/m.test(body)) return { error: "the entry contains a heading line; headings come from `section`" };
+  // Every line must belong to an entry as entryBlocks reads it, so whole-entry comparison sees all of it. Text after
+  // a blank line that is neither a new `- ` item nor indented is outside the list: it would land in the CHANGELOG as
+  // a stray paragraph and take no part in the comparison.
+  const covered = entryBlocks(body.split("\n")).join("\n").split("\n").filter(l => l.trim() !== "").length;
+  const stray = body.split("\n").filter(l => l.trim() !== "").length - covered;
+  if (stray > 0) return { error: "a line of the entry is outside its list item: indent the lines that continue it" };
   return { section: fields.section, body };
 }
 
 /**
- * The complete entries in some lines: a top-level `- ` line plus the indented or blank lines that follow it, up to the
- * next top-level line; trailing blank lines dropped. An entry is "already there" only when one of these equals it.
+ * The complete entries in some lines: a top-level `- ` line plus what continues it, up to the next top-level line —
+ * indented or blank lines, and (Markdown's lazy continuation) unindented text directly under a non-blank line of the
+ * entry; trailing blank lines dropped. An entry is "already there" only when one of these equals it.
  */
 export function entryBlocks(lines) {
   const blocks = [];
@@ -76,6 +83,7 @@ export function entryBlocks(lines) {
   for (const line of lines) {
     if (line.startsWith("- ")) { close(); cur = [line]; }
     else if (cur && (line.trim() === "" || /^[ \t]/.test(line))) cur.push(line);
+    else if (cur && cur[cur.length - 1].trim() !== "" && !/^#/.test(line)) cur.push(line);   // lazy continuation
     else close();
   }
   close();
