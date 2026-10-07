@@ -59,10 +59,14 @@ Pick an instance on the left to talk to it. The web chat is **the same conversat
 - A message you send from the web is echoed into the topic as `🌐 web-user: …`.
 - The agent's reply goes to Telegram/Discord as usual and also appears here.
 - You can switch between the web and your phone mid-conversation.
+- **No chat platform at all?** With no `channel` / `channels` in `fleet.yaml`, the dashboard alone is enough: an agent's replies come to the web chat.
 
 ### Writing
 - **Enter** sends; **Shift+Enter** adds a line. If sending fails, your text is given back.
-- Messages render **Markdown**: headings, **bold**, *italics*, ~~strike-through~~, `code`, code blocks, lists, quotes, rules and links.
+- Messages render **Markdown**: headings, **bold**, *italics*, ~~strike-through~~, `code`, code blocks, lists, quotes, rules and links. Also:
+  - **Tables** (`| a | b |` with a `|---|---|` row under the header, and `:--` / `--:` / `:-:` for alignment). Write `\|` for a pipe inside a cell.
+  - **Nested lists**, by indentation, up to six levels.
+  - **Highlighted code** in fenced blocks marked `js`, `ts`, `json`, `python` or `sh`. Other languages show plain.
   - Links open in a new tab, and only `http(s)` / `mailto` links are links.
   - Nothing in a message, yours or the agent's, can add HTML of its own.
 - Reloading the page keeps the conversation: the fleet keeps each instance's recent messages.
@@ -90,6 +94,12 @@ Each message you send shows how far it got, the same steps Telegram shows as rea
 While the open chat's agent is working, a line above the composer says so, with a **Stop** button.
 - Stop does what Telegram's cancel button and `/cancel` do: it interrupts the agent's current reply (Esc), and the messages still waiting are dropped. Their ticks turn to ⊘.
 - Stop does **not** stop the instance's process. The instance's own Stop in its actions does that.
+
+### Answering the fleet's prompts
+When an instance looks hung, exits on its own, or is stuck on an interactive prompt, the buttons Telegram/Discord show also appear in that instance's chat: *Force restart* / *Keep waiting*, *Restart* / *Ignore*, *Confirm* / *Cancel*.
+- It is the **same prompt**: the first answer counts, from either place. The other side's buttons then show the outcome, and the prompt expires everywhere at once.
+- Only these instance-health prompts come to the web. A `/clear` confirmation, login, ClassicBot approvals, tips and the `/model` / `/effort` menus stay where they were asked.
+- A prompt raised while the page was not connected appears as soon as it reconnects. One answered elsewhere meanwhile shows as answered.
 
 ## `/view`
 
