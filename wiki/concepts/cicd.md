@@ -22,9 +22,9 @@ updated: 2026-06-21
 2. `tsc --noEmit` (typecheck)
 3. `npm run build`
 4. 從 tag 取版本（`v2.0.3` → `2.0.3`）
-5. 判斷 npm tag：含 `beta` → `@beta`，否則 `@latest`
+5. 判斷 npm tag（`scripts/npm-dist-tag.mjs`，#1259）：`X.Y.Z` → `@latest`、`X.Y.Z-beta.N` → `@beta`、`X.Y.Z-alpha.N` → `@alpha`；其他 tag 讓 job 失敗，`@latest` 不會往回移
 6. 寫入版本號（package name 已固定為 @songsid/agend）
-7. `npm publish --access public --tag [latest|beta]`
+7. `npm publish --access public --tag [latest|beta|alpha]`
 8. Build + publish Discord plugin（同步 swap name）
 9. `gh release create`（如已存在會 422，不影響 publish）
 
@@ -35,6 +35,7 @@ updated: 2026-06-21
 
 ## 版本通道
 
+- **Alpha**: tag `v2.x.y-alpha.N` → `npm install @songsid/agend@alpha`
 - **Beta**: tag `v2.x.y-beta.N` → `npm install @songsid/agend@beta`
 - **Stable**: tag `v2.x.y` → `npm install @songsid/agend@latest`
 

@@ -96,7 +96,7 @@ import { LoginSession } from "./login-manager.js";
 import { tightenInstanceDirs } from "./private-dir.js";
 import { decideSlash, type SlashFacts, type SlashScope, type SlashSpeaker } from "./slash-authz.js";
 import { commandSpec, decideCommand, type CommandScope } from "./command-table.js";
-import { UPDATE_COMMAND, isPrereleaseVersion, updateNoticeKey } from "./update-check.js";
+import { UPDATE_COMMAND, installedChannel, isPrereleaseVersion, updateNoticeKey } from "./update-check.js";
 import { LoginController, LOGIN_TOKEN_RESEND_PREFIX, POST_LOGIN_RECOVERY_DEADLINE_MS, type PostLoginRecovery } from "./login-controller.js";
 import { runBeforeDeadline } from "./deadline.js";
 import { LoginWindowLock } from "./login-window-lock.js";
@@ -15293,16 +15293,17 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       const currentVersion = JSON.parse(readFileSync(pkgPath, "utf-8")).version ?? "0.0.0";
       const latest = await npmVersion("@songsid/agend");
       let target = latest;
-      // The same channel rule as `agend update` (any SemVer prerelease is on @beta): rc and alpha too.
-      if (isPrereleaseVersion(currentVersion)) {
-        // Beta users track the @beta channel (never fall back to @latest, which is
-        // older), but should also hear when a newer STABLE ships — pick whichever
-        // of beta/latest is the newest.
-        let beta = "";
+      // The same channel rule as `agend update` (#1259): an alpha follows @alpha, any other prerelease @beta.
+      const channel = installedChannel(currentVersion);
+      if (channel !== "latest") {
+        // Prerelease users track their own channel (never fall back to @latest,
+        // which is older, and an alpha is never offered @beta), but should also
+        // hear when a newer STABLE ships — pick whichever is the newest.
+        let pre = "";
         try {
-          beta = await npmVersion("@songsid/agend@beta");
-        } catch { /* no beta tag */ }
-        target = beta || latest;
+          pre = await npmVersion(`@songsid/agend@${channel}`);
+        } catch { /* no such tag */ }
+        target = pre || latest;
         if (latest && this.semverGt(latest, target)) target = latest;
       }
       // A beta already at/ahead of its matching stable must NOT be told to

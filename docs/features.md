@@ -840,21 +840,28 @@ Instance shutdown uses concurrency of 5 to speed up `agend fleet stop` and `agen
 
 Since 2.1.9 the systemd unit uses `KillMode=mixed`: systemd signals only the fleet, which then quits each CLI in turn. Before this, every CLI got SIGTERM at the same moment, and on WSL kiro-cli aborted into a core dump of about 1 GB each time (#908). `agend restart` adds the line to an older unit; see [CLI reference](cli.md#setup--installation).
 
-## Beta update channel
+## Beta and alpha update channels
 
-Install pre-release versions with:
+Three npm dist-tags, one per line: `@latest` (stable), `@beta` (the next patch) and `@alpha` (previews of the
+next minor, e.g. 2.2.0-alpha.N while 2.1.x is current). Install pre-release versions with:
 
 ```bash
-agend update            # Stay on the installed channel: a beta install updates from @beta, a stable one from @latest
+agend update            # Stay on the installed channel: an alpha from @alpha, a beta from @beta, a stable from @latest
+agend update --alpha    # Install from the @alpha npm dist-tag
 agend update --beta     # Install from the @beta npm dist-tag
-agend update --stable   # Install from @latest, even from a beta install
+agend update --stable   # Install from @latest, even from a beta or alpha install
 ```
 
-`/update` in chat does the same as `agend update`: a beta install stays on beta. An update that would go back
-to an older version (say a beta whose channel now points at an older release) is refused; `--stable`,
-`--version` or `--force` say that is what you want.
+`/update` in chat does the same as `agend update`: an install stays on its channel. An update that would go
+back to an older version (say an alpha asking for @beta) is refused; `--stable`, `--version` or `--force` say
+that is what you want. The "update available" notice follows the same channel. An alpha install is told about
+a newer alpha or a newer stable, never about a beta.
 
-The CI pipeline automatically publishes with `--tag beta` when the git tag contains `-beta` (e.g., `v1.24.0-beta.1`).
+A release is a pushed `v*` tag. The publish workflow maps it strictly: `vX.Y.Z` → `@latest`, `vX.Y.Z-beta.N`
+→ `@beta`, `vX.Y.Z-alpha.N` → `@alpha`. Any other tag (an `-rc.N`, a typo) fails the job before anything is
+built, and a stable older than the current `@latest` is refused. When a minor goes stable (2.2.0), point
+`@alpha` at it too (`npm dist-tag add @songsid/agend@2.2.0 alpha`): alpha installs are not told about a stable
+of their own version.
 
 ## PSS memory reporting
 
