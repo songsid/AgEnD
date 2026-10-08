@@ -1,3 +1,4 @@
+import { validPublicLinkPatch } from "./public-web-link.js";
 import { validateProvider } from "./backend/types.js";
 import { DELIVERY_WORKER_MODES } from "./types.js";
 import { credentialHomeSpec, resolveCredentialProfile } from "./backend/credential-profile.js";
@@ -358,6 +359,7 @@ export function validateFleetConfig(config: unknown): ValidationResult {
   if (config.web !== undefined && !isObj(config.web)) {
     err("web", "must be a mapping");
   } else if (isObj(config.web)) {
+    if (config.web.public_link !== undefined && !validPublicLinkPatch(config.web.public_link)) err("web.public_link", "expected allow_public boolean, ttl_minutes integer 1..480, protocol http2/quic/auto");
     if (config.web.echo_to_channel !== undefined && typeof config.web.echo_to_channel !== "boolean") {
       err("web.echo_to_channel", "must be a boolean");
     }

@@ -1,3 +1,11 @@
+import { performance } from "node:perf_hooks";
+import { gatewayRequestContext } from "./web-request-context.js";
+import { createPublicWebGateway } from "./public-web-gateway.js";
+import { PublicWebLink, publicLinkSettings } from "./public-web-link.js";
+import { TunnelPurposeLane } from "./tunnel/purpose-lane.js";
+import { ManagedTunnel } from "./tunnel/manager.js";
+import { withinBudget } from "./monotonic-budget.js";
+import type { LoginCodeOwner } from "./web-login.js";
 import { measureSyncWork } from "./sync-work-attribution.js";
 import { RuntimeCpuProfiler, ProfileBusyError, profileDuration, type ProfileTicket } from "./runtime-cpu-profile.js";
 import { ProfileControlServer } from "./profile-control.js";
@@ -514,6 +522,9 @@ export interface ModelCatalog {
  * a bounded per-prompt timeout, consumed exactly once.
  */
 interface NonceButtonEntry {
+  requesterUserId?: string;
+  publicExposureId?: string;
+  dashboardOwner?: LoginCodeOwner;
   /** Callback prefix including the colon, e.g. "exit-restart:". */
   prefix: string;
   instanceName: string;
@@ -568,6 +579,7 @@ interface AdapterCallbackData {
    * adapter honours the first call only.
    */
   ack?: (notice?: string) => void;
+  respondPrivate?: (text: string, choices?: Choice[]) => Promise<import("./channel/types.js").SentMessage>;
 }
 
 /** The prefix of a button's callback data, for logs (never the nonce). */
@@ -588,6 +600,7 @@ interface ClassicStartSlashData {
   respond: (text: string) => Promise<string | undefined>;
   /** Remove Discord's deferred ephemeral acknowledgement after a command posts publicly. */
   dismissResponse?: () => Promise<void>;
+  respondButtons?: (text: string, choices: Choice[]) => Promise<string | undefined>;
   respondChoices?: (text: string, choices: Choice[]) => Promise<string | undefined>;
 }
 
@@ -3221,16 +3234,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // Slash commands are Discord-only; use plain lines (no markdown table)
       await this.topicCommands.sendSysInfo(text => data.respond(text), { platform: "discord" });
     } else if (data.command === "dashboard") {
-      // The reply is ephemeral (the adapter defers non-chat commands ephemerally): the sign-in link and its
-      // one-time code are seen only by the caller. Who may call it is decided before this point (fleet admins
-      // of the invoking adapter). `action: revoke` is the typed `/dashboard revoke` — the one every new-sign-in
-      // notice tells the operator to send (#1260): sign every browser out, and say so honestly if it could not
-      // be saved.
       if (String(data.options?.action ?? "").trim().toLowerCase() === "revoke") {
         const result = this.revokeWebSessions();
         await data.respond(result.durable ? t("dashboard.revoked", result.count) : t("dashboard.revoked_not_durable", result.count));
       } else {
-        await data.respond(this.topicCommands.getDashboardText());
+        const owner = this.dashboardOwner(data.userId, adapterId, data.channelId);
+        if (!owner) { await this.sendLocalDashboard(data, adapterId); return; }
+        await this.showDashboardMenu(owner, data.respondButtons);
       }
     } else if (data.command === "restart") {
       await this.handleRestartSlash(data, adapterId);
@@ -4371,9 +4381,187 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return { display: issued.display, expiresAt: issued.expiresAt, ttlMinutes: Math.round(LOGIN_CODE_TTL_MS / 60_000) };
   }
 
+  private tunnelPurposeLane: TunnelPurposeLane | null = null;
+  private publicWebLink: PublicWebLink | null = null;
+  private getTunnelLane(): TunnelPurposeLane {
+    return this.tunnelPurposeLane ??= new TunnelPurposeLane(new ManagedTunnel({ dataDir: this.dataDir,
+      log: () => this.logger.warn("Managed tunnel cleanup requires attention") }));
+  }
+  private publicOwnerCurrent(owner: LoginCodeOwner): boolean {
+    if (this.shuttingDown || !this.hasFleetAdmins(owner.adapterId) || !this.isFleetAdmin(owner.userId, owner.adapterId)) return false;
+    const configured = (this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : [])).find(ch => (ch.id ?? ch.type) === owner.adapterId);
+    if (!configured || String(configured.group_id ?? "") !== owner.chatId) return false;
+    const world = this.worlds.get(owner.adapterId);
+    if (!world || !owner.binding || world.adapter !== owner.binding || this.adapters.get(owner.adapterId) !== owner.binding) return false;
+    return Object.entries(this.fleetConfig?.instances ?? {}).some(([name, cfg]) => cfg.general_topic
+      && this.getInstanceAdapterId(name) === owner.adapterId && String(this.getGroupIdForInstance(name) ?? "") === owner.chatId
+      && cfg.topic_id?.toString() === owner.threadId);
+  }
+  /** Exact owning General. No primary-adapter or name fallback participates in authorization. */
+  private dashboardOwner(userId: string, adapterId: string, address: string, threadId?: string): LoginCodeOwner | null {
+    const world = this.worlds.get(adapterId);
+    if (!world || !this.hasFleetAdmins(adapterId) || !this.isFleetAdmin(userId, adapterId)) return null;
+    for (const [name, cfg] of Object.entries(this.fleetConfig?.instances ?? {})) {
+      if (!cfg.general_topic || this.getInstanceAdapterId(name) !== adapterId) continue;
+      const group = String(this.getGroupIdForInstance(name) ?? "");
+      const topic = cfg.topic_id?.toString();
+      if (!topic) continue;
+      const dc = world.adapter.id === adapterId && world.channelConfig.type === "discord";
+      const matched = dc ? topic === address || (group === address && topic === threadId)
+        : group === address && ((topic === "1" && (threadId === undefined || threadId === "1")) || topic === threadId);
+      if (group && matched) return { userId, adapterId, chatId: group, threadId: topic, binding: world.adapter };
+    }
+    return null;
+  }
+  private getPublicWebLink(): PublicWebLink {
+    this.initializeWebSessions();
+    return this.publicWebLink ??= new PublicWebLink({
+      dataDir: this.dataDir, web: () => this.fleetConfig?.web,
+      permitted: owner => this.publicOwnerCurrent(owner),
+      reserve: id => this.getTunnelLane().reserve("dashboard", id),
+      createGateway: (exposureId, current, open, failed) => createPublicWebGateway({ exposureId, isCurrent: current, isOpen: open, onError: failed,
+        dispatch: (req, res) => this.dispatchWebHttp(req, res, this.fleetConfig?.health_port ?? 19280) }),
+      revoke: id => {
+        this.webLoginCodes?.revokeAudience(id);
+        const result = this.webSessions?.revokeExposure(id);
+        if (result && !result.durable) this.logger.warn("Public session revocation could not be saved; exposure remains closed");
+      },
+      log: (event, exposureId) => this.logger.info({ event, exposureId }, "Public web link"),
+      onCleanupUnconfirmed: (result, owner) => {
+        this.logger.warn({ pid: result.confirmed ? null : result.pid }, "Public web access closed; tunnel cleanup unconfirmed");
+        const world = this.worlds.get(owner.adapterId);
+        if (world && world.adapter === owner.binding) void world.adapter.sendText(owner.chatId, t("dashboard.public_cleanup"), { threadId: owner.threadId }).catch(() => {});
+      },
+    });
+  }
+  getPublicWebStatus(): { state: string; expiresAt?: number; remainingSeconds?: number } {
+    return this.publicWebLink?.status() ?? { state: "closed" };
+  }
+  async confirmPublicWebLogin(info: { label: string; handle: string; owner: LoginCodeOwner }, current: () => boolean): Promise<void> {
+    if (!current() || !this.publicOwnerCurrent(info.owner)) throw new Error("public owner unavailable");
+    const adapter = info.owner.binding as ChannelAdapter;
+    await adapter.sendText(info.owner.chatId, t("web.public_login_notice", info.label, info.handle.slice(0, 8)), { threadId: info.owner.threadId, allowedMentions: { parse: [] } });
+    if (!current() || !this.publicOwnerCurrent(info.owner)) throw new Error("public owner changed");
+  }
+  /** Telegram's typed command enters through the same strict owner and nonce path as Discord. */
+  async dashboardMenu(msg: InboundMessage): Promise<void> {
+    const id = msg.adapterId;
+    const owner = id ? this.dashboardOwner(msg.userId, id, msg.chatId, msg.threadId) : null;
+    if (!owner) {
+      const adapter = id ? this.adapters.get(id) : undefined;
+      await adapter?.sendText(msg.chatId, t("dashboard.public_general"), { threadId: msg.threadId }); return;
+    }
+    await this.showDashboardMenu(owner);
+  }
+  private async sendLocalDashboard(data: ClassicStartSlashData, adapterId: string): Promise<void> {
+    if (this.shuttingDown || !this.hasFleetAdmins(adapterId) || !this.isFleetAdmin(data.userId, adapterId)) return;
+    const text = this.topicCommands.getDashboardText();
+    const adapter = this.adapters.get(adapterId);
+    const token = this.webToken;
+    if (!adapter || !token) { await data.respond(text); return; }
+    this.initializeWebSessions();
+    const login = this.webLoginCodes!.issue({ epoch: tokenEpoch(token) });
+    const current = (): boolean => !this.shuttingDown && this.adapters.get(adapterId) === adapter
+      && this.webToken === token && this.hasFleetAdmins(adapterId) && this.isFleetAdmin(data.userId, adapterId);
+    const privateText = `${text}\n${t("dashboard.code", login.display, Math.round(LOGIN_CODE_TTL_MS / 60_000))}`;
+    const deadline = performance.now() + 10_000;
+    let deliveredByDm = false;
+    try {
+      try {
+        if (!adapter.sendDirect) throw new Error("DM unavailable");
+        await withinBudget(adapter.sendDirect(data.userId, privateText, { disablePreview: true }), Math.min(deadline, performance.now() + 5_000));
+        deliveredByDm = true;
+      } catch {
+        if (!current()) throw new Error("owner changed");
+        const id = await withinBudget(data.respond(privateText), deadline); // native slash response is already ephemeral
+        if (!id) throw new Error("private delivery unconfirmed");
+      }
+      if (!current()) throw new Error("owner changed");
+      if (deliveredByDm) await withinBudget(data.respond(t("dashboard.private_sent")), deadline);
+    } catch { this.webLoginCodes!.revokeIfCurrent(login.issuanceId); }
+
+  }
+  private async showDashboardMenu(owner: LoginCodeOwner, respondButtons?: ClassicStartSlashData["respondButtons"]): Promise<void> {
+    if (!this.publicOwnerCurrent(owner)) return;
+    const adapter = owner.binding as ChannelAdapter;
+    const status = this.getPublicWebStatus();
+    const publicAllowed = publicLinkSettings(this.fleetConfig?.web).allowed;
+    const menuText = this.topicCommands.getDashboardText(false, !publicAllowed)
+      + (publicAllowed ? "\n\n" + t("dashboard.public_risk") : "")
+      + "\n" + t("dashboard.public_status", status.state, status.remainingSeconds ?? 0);
+    const choices = [{ action: "local", label: t("dashboard.local") },
+      ...(publicLinkSettings(this.fleetConfig?.web).allowed ? [{ action: "public", label: t("dashboard.public_open") }] : []),
+      ...(status.state !== "closed" ? [{ action: "close", label: t("dashboard.public_close") }] : [])];
+    await this.postNonceButtonPromptOrThrow({
+      prefix: "dashboard:", alertType: "login", instanceName: "dashboard", adapter, adapterId: owner.adapterId,
+      chatId: owner.chatId, threadId: owner.threadId, timeoutMs: 5 * 60_000,
+      message: menuText,
+      choices, expiredText: t("buttons.stale"), extra: { requesterUserId: owner.userId, dashboardOwner: owner, publicExposureId: this.publicWebLink?.exposureId },
+      ...(respondButtons ? { deliver: async (c: Choice[]) => {
+        const messageId = await respondButtons(menuText, c);
+        if (!messageId) throw new Error("menu refused");
+        return { chatId: owner.chatId, threadId: owner.threadId, messageId };
+      } } : {}),
+    });
+  }
+  private async handleDashboardCallback(data: AdapterCallbackData, adapterId: string, adapter?: ChannelAdapter): Promise<boolean> {
+    const claimed = this.consumeNonceCallback("dashboard:", /^dashboard:([0-9a-f]{32}):(local|public|close)$/, data, adapterId, adapter);
+    if (claimed === null) return false;
+    if (claimed === "consumed") return true;
+    const { entry, action } = claimed;
+    const owner = entry.dashboardOwner;
+    if (!owner || !this.publicOwnerCurrent(owner)) { data.ack?.(t("not_authorized")); return true; }
+    if (action === "close") {
+      if (!entry.publicExposureId) return true;
+      const result = await this.publicWebLink?.close("admin close", entry.publicExposureId);
+      if (result?.confirmed === false) data.ack?.(t("dashboard.public_cleanup"));
+      await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, t("dashboard.public_closed")); return true;
+    }
+    const send = async (url: string, exposureId?: string, expiresAt?: number, current: () => boolean = () => this.publicOwnerCurrent(owner)): Promise<boolean> => {
+      const token = this.webToken;
+      if (!token || !current()) return false;
+      this.initializeWebSessions();
+      const issued = this.webLoginCodes!.issue({ epoch: tokenEpoch(token), audience: exposureId, owner });
+      const text = t("dashboard.private_link", url, issued.display, Math.round(LOGIN_CODE_TTL_MS / 60_000), expiresAt ? new Date(expiresAt).toISOString() : t("dashboard.local"));
+      const deadline = performance.now() + 10_000;
+      const direct = owner.binding as ChannelAdapter;
+      try {
+        const deliver = async (c: Choice[] = []): Promise<import("./channel/types.js").SentMessage> => {
+          try {
+            if (!direct.sendDirect) throw new Error("DM unavailable");
+            return await withinBudget(direct.sendDirect(owner.userId, text, { disablePreview: true, choices: c }), Math.min(deadline, performance.now() + 5_000));
+          } catch {
+            if (direct.type !== "discord" || !data.respondPrivate || !current()) throw new Error("private delivery unavailable");
+            const sent = await withinBudget(data.respondPrivate(text, c), deadline);
+            return { ...sent, chatId: owner.chatId, threadId: owner.threadId };
+          }
+        };
+        if (exposureId) await withinBudget(this.postNonceButtonPromptOrThrow({
+          prefix: "dashboard:", alertType: "login", instanceName: "dashboard", adapter: direct, adapterId,
+          chatId: owner.userId, message: t("dashboard.public_close"), choices: [{ action: "close", label: t("dashboard.public_close") }],
+          expiredText: t("buttons.stale"), timeoutMs: 5 * 60_000, extra: { requesterUserId: owner.userId, publicExposureId: exposureId, dashboardOwner: owner }, deliver,
+        }), deadline);
+        else await deliver();
+        if (!current() || this.webToken !== token) throw new Error("owner changed");
+        return true;
+      } catch {
+        this.webLoginCodes!.revokeIfCurrent(issued.issuanceId);
+        this.logger.info("Dashboard private delivery was not confirmed");
+        return false;
+      }
+    };
+    const ok = action === "public"
+      ? await this.getPublicWebLink().deliver(owner, link => send(link.url, link.exposureId, link.expiresAt, link.isCurrent))
+      : await send(`http://${this.fleetConfig?.hostname || "localhost"}:${this.fleetConfig?.health_port ?? 19280}/signin`);
+    // Only safe, static words enter General; never link, code or platform error text.
+    await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, t(ok ? "dashboard.private_sent" : "dashboard.private_failed"));
+    return true;
+  }
+
   /** `/dashboard revoke`: sign out every browser and withdraw any unused code. */
   revokeWebSessions(): { count: number; durable: boolean } {
     this.initializeWebSessions();
+    void this.publicWebLink?.close("dashboard revoke");
     this.webLoginCodes!.revoke();
     const result = this.webSessions!.revokeAll();
     if (result.durable) this.logger.info({ count: result.count }, "Web sessions revoked (all)");
@@ -8298,6 +8486,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * non-identity instance leaves are canonicalized to inheritance afterward.
    */
   saveFleetConfig(explicitPatches: RawConfigPatch[] = []): void {
+    this.publicWebLink?.refresh();
     if (!this.fleetConfig || !this.configPath) return;
 
     if (!this.savedFleetConfigSnapshot) this.savedFleetConfigSnapshot = structuredClone(this.fleetConfig);
@@ -9703,7 +9892,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     message: string;
     choices: Array<{ action: string; label: string }>;
     expiredText: string;
-    extra?: Pick<NonceButtonEntry, "generalName" | "promptKind" | "authChannelId" | "allowAnyUser" | "tipId" | "classicGroupId" | "classicUserId" | "classicScope">;
+    deliver?: (choices: Choice[]) => Promise<import("./channel/types.js").SentMessage>;
+    extra?: Pick<NonceButtonEntry, "requesterUserId" | "publicExposureId" | "dashboardOwner" | "generalName" | "promptKind" | "authChannelId" | "allowAnyUser" | "tipId" | "classicGroupId" | "classicUserId" | "classicScope">;
     timeoutMs?: number;
   }): Promise<string> {
     // 16 bytes = the 128-bit capability the design claims. Telegram's 64-byte
@@ -9746,11 +9936,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.pendingNonceButtons.set(nonce, entry);
 
     try {
-      const sent = await opts.adapter.notifyAlert(opts.chatId, {
+      const choices = opts.choices.map(c => ({ id: `${opts.prefix}${nonce}:${c.action}`, label: c.label }));
+      const sent = opts.deliver ? await opts.deliver(choices) : await opts.adapter.notifyAlert(opts.chatId, {
         type: opts.alertType,
         instanceName: opts.instanceName,
         message: opts.message,
-        choices: opts.choices.map(c => ({ id: `${opts.prefix}${nonce}:${c.action}`, label: c.label })),
+        choices,
       }, opts.threadId ? { threadId: opts.threadId } : undefined);
       // Bind the nonce to the provider's canonical delivery address, not the
       // logical routing input. Telegram, for example, represents General as
@@ -9861,6 +10052,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (pending.threadId != null && data.threadId !== pending.threadId) mismatchedFields.push("threadId");
     if (pending.messageId != null && data.messageId !== pending.messageId) mismatchedFields.push("messageId");
     if (!isAuthorized) mismatchedFields.push("authorization");
+    if (pending.requesterUserId && pending.requesterUserId !== data.userId) mismatchedFields.push("requester");
     if (mismatchedFields.length > 0) {
       // Deliberately does NOT consume the nonce: the real admin can still click.
       this.logger.warn({
@@ -9934,6 +10126,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (await this.handleTipDismiss(data, adapterId, adapter)) return true;
     if (await this.handleTipUnlock(data, adapterId, adapter)) return true;
     if (await this.handleLoginBackendSelect(data, adapterId, adapter)) return true;
+    if (await this.handleDashboardCallback(data, adapterId, adapter)) return true;
     if (await this.handleClassicApproval(data, adapterId, adapter)) return true;
     if (this.handleRetiredPromptButton(data, adapterId, adapter)) return true;
     if (await this.handleLoginConfirm(data, adapterId, adapter)) return true;
@@ -11493,6 +11686,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         isClaimCurrent: claim => this.loginWindow.isCurrent(claim),
         windowBusyMessage: () => this.loginWindow.busyMessage(),
         tunnelDataDir: () => this.dataDir,
+        reserveTunnel: owner => this.getTunnelLane().reserve("login", owner),
         // Throws when the prompt cannot be posted: the controller tells the
         // user so instead of leaving "Starting…" as the last word (#1133).
         postButtons: async ({ prefix, instanceName, chat, message, choices, expiredText }) => {
@@ -14408,6 +14602,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // because we asked it to. Set synchronously — doStopAll runs to its first
     // await in the same tick as the signal handler, so no event can slip in.
     this.shuttingDown = true;
+    const publicStopped = this.publicWebLink?.close("fleet shutdown");
     const profileStopped = this.runtimeCpuProfiler?.shutdown("fleet shutdown");
     this.ipcStoppingInstances.add("__fleet_stopping__");
     // Release held delivery promises before awaiting daemon shutdown, then
@@ -14432,6 +14627,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // A login/install window is a dedicated tmux server with its own TTL
     // timer and HTTP listener living in THIS process: without an explicit
     // shutdown it would outlive us as an owner-less login CLI (sol B3).
+    await publicStopped;
     await profileStopped;
     await this.cpuProfileControl?.close();
     this.cpuProfileControl = null;
@@ -14773,6 +14969,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     this.reregisterClassicChannels();
     this.scheduler?.reload();
     this.reconcilePreviewListener();
+    this.publicWebLink?.refresh();
 
     const newInstances = this.fleetConfig!.instances;
     const topicMode = this.fleetConfig?.channel?.mode === "topic";
@@ -16282,14 +16479,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     this.logger.warn({ host: name }, "Web request refused: Host is not allowed (add it to web.allowed_hosts if this is a proxy you run)");
   }
 
-  private startHealthServer(port: number): void {
-    this.startedAt = Date.now();
-    this.healthServerListening = false;
-    this.healthPortRetried = false;
-    // Defensive for direct/unit callers; normal startup initializes these before adapters.
-    if (!this.webToken || !this.webSessions) this.initializeWebAuthTokens();
-
-    this.healthServer = createServer((req, res) => {
+  /** Shared handler dispatcher; gateway admission is enforced by its separate listener. */
+  private dispatchWebHttp(req: import("node:http").IncomingMessage, res: import("node:http").ServerResponse, port: number): void {
+    try {
       res.setHeader("Content-Type", "application/json");
       // No Referer to a tunnel host, an upstream proxy, or any page linked from
       // the panel — the dashboard URL is itself a credential-bearing address.
@@ -16302,7 +16494,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       // Before any route, /health and /agent included: loopback binding does not
       // stop DNS rebinding, and the Host the browser sends is the one thing a
       // rebinding page cannot change.
-      if (!isHostAllowed(req.headers.host, allowedHostNames(this.fleetConfig))) {
+      if (!gatewayRequestContext(req) && !isHostAllowed(req.headers.host, allowedHostNames(this.fleetConfig))) {
         this.noteRejectedHost(req.headers.host);
         res.writeHead(403);
         res.end(JSON.stringify({ error: WEB_HOST_REJECTED_MESSAGE }));
@@ -16322,7 +16514,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
       // Public: the health probe, /agent (instance-token auth of its own), the
       // sign-in surface, and /view's reads unless web.view_access says otherwise.
-      if (bypassesWebGate(req, requestPath, this.fleetConfig, p => isViewPath(p) || isUsagePath(p))) {
+      if (bypassesWebGate(req, requestPath, this.fleetConfig, p => !gatewayRequestContext(req) && (isViewPath(p) || isUsagePath(p)))) {
         // fall through to the handlers below
       } else {
         // All other endpoints require a session cookie or an X-Agend-Token
@@ -16444,12 +16636,13 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
               ...this.instancePresentation(inst.name),
             };
           });
-          res.setHeader("Access-Control-Allow-Origin", "*");
+          if (!gatewayRequestContext(req)) res.setHeader("Access-Control-Allow-Origin", "*");
           res.writeHead(200);
           res.end(JSON.stringify({
             ...sysInfo,
             version: this.currentVersion,
             instances: enriched,
+            publicLink: this.getPublicWebStatus(),
           }));
         } catch (err) {
           this.logger.error({ err }, "/api/fleet failed");
@@ -16476,7 +16669,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         }
 
         const rows = this.eventLog?.listActivity({ since: sinceIso, limit: parseInt(limitParam, 10) }) ?? [];
-        res.setHeader("Access-Control-Allow-Origin", "*");
+        if (!gatewayRequestContext(req)) res.setHeader("Access-Control-Allow-Origin", "*");
         res.writeHead(200);
         res.end(JSON.stringify(rows));
         return;
@@ -16587,7 +16780,17 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
       res.writeHead(404);
       res.end(JSON.stringify({ error: "not found" }));
-    });
+    } catch { if (!res.headersSent) { res.writeHead(400); res.end(JSON.stringify({ error: "invalid request" })); } else res.destroy(); }
+  }
+
+  private startHealthServer(port: number): void {
+    this.startedAt = Date.now();
+    this.healthServerListening = false;
+    this.healthPortRetried = false;
+    // Defensive for direct/unit callers; normal startup initializes these before adapters.
+    if (!this.webToken || !this.webSessions) this.initializeWebAuthTokens();
+
+    this.healthServer = createServer((req, res) => this.dispatchWebHttp(req, res, port));
 
     const markListening = (afterTakeover = false): void => {
       this.healthServerListening = true;
@@ -16792,6 +16995,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     });
     return {
       instances,
+      publicLink: this.getPublicWebStatus(),
       uptime: Math.floor((Date.now() - this.startedAt) / 1000),
     };
   }

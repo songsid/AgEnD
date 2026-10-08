@@ -1,3 +1,4 @@
+import type { TunnelReservation } from "./tunnel/purpose-lane.js";
 /**
  * Remote `/login` in the web terminal (v2.1.5, design docs/design/login-relay-v2).
  *
@@ -191,6 +192,7 @@ export interface LoginControllerDeps {
    * Where the fleet-wide tunnel lease lives. Without it (and without `createTunnel`) a public
    * link is never offered, whatever the config says.
    */
+  reserveTunnel?: (owner: string) => TunnelReservation | null;
   tunnelDataDir?: () => string;
   /** Test seam: replaces ManagedTunnel + CloudflaredProvider. */
   createTunnel?: (cfg: FleetConfig | null) => LoginTunnelPort;
@@ -205,6 +207,7 @@ export interface LoginControllerDeps {
 
 interface ActiveLogin {
   claim: LoginWindowClaim;
+  tunnelReservation?: TunnelReservation;
   session: WebTerminalSession;
   http: WebTerminalHttpServer | null;
   backend: string;
@@ -308,10 +311,13 @@ export class LoginController {
     const claim = this.deps.claimWindow(backend);
     if (!claim) return this.deps.windowBusyMessage();
     let transferred = false;
+    // Reserve before installer/probe awaits; another purpose may not join this start.
+    const tunnelReservation = opts.tunnel && opts.skipAuthCheck ? this.deps.reserveTunnel?.(`login:${claim.id}`) : undefined;
+    if (tunnelReservation === null) { this.deps.releaseWindow(claim); return t("login.tunnel_not_allowed", backend); }
     try {
-      return await this.startClaimed(flow, backend, chat, opts, cfg, claim, generation, () => { transferred = true; });
+      return await this.startClaimed(flow, backend, chat, opts, cfg, claim, generation, () => { transferred = true; }, tunnelReservation);
     } finally {
-      if (!transferred) this.deps.releaseWindow(claim);
+      if (!transferred) { this.deps.releaseWindow(claim); tunnelReservation?.releaseUnused(); }
     }
   }
 
@@ -322,7 +328,7 @@ export class LoginController {
 
   private async startClaimed(
     flow: LoginFlow, backend: string, chat: LoginChat, opts: LoginStartOptions, cfg: FleetConfig | null,
-    claim: LoginWindowClaim, generation: number, markTransferred: () => void,
+    claim: LoginWindowClaim, generation: number, markTransferred: () => void, tunnelReservation?: TunnelReservation,
   ): Promise<string | null> {
     if (!opts.skipAuthCheck) {
       // First pass: find out whether the CLI still holds a token, then ask for
@@ -427,7 +433,7 @@ export class LoginController {
 
     const logger = this.deps.logger;
     const entry: ActiveLogin = {
-      claim, session: null as unknown as WebTerminalSession, http: null, backend, chat,
+      claim, tunnelReservation, session: null as unknown as WebTerminalSession, http: null, backend, chat,
       requesterUserId: userId, url: "", tokenDelivered: false, silent: false, tunnel: null, cloudflaredPath,
     };
     const events: WebTerminalEvents = {
@@ -586,6 +592,7 @@ export class LoginController {
   private releaseEntry(entry: ActiveLogin): void {
     if (this.active === entry) this.active = null;          // identity guard: never clear a newer owner
     this.deps.releaseWindow(entry.claim);
+    entry.tunnelReservation?.releaseUnused();
   }
 
   /** Startup/delivery failure: end the session quietly and hand the caller the one report. */
@@ -654,7 +661,10 @@ export class LoginController {
     entry: ActiveLogin, http: WebTerminalHttpServer, port: number, cfg: FleetConfig | null, ttlMs: number,
   ): Promise<string | null> {
     const abort = new AbortController();
-    const tunnel = { port: this.tunnelPort(cfg, entry.cloudflaredPath), abort, starting: null as Promise<ManagedStartResult> | null, handle: null as TunnelHandle | null, closing: null as Promise<void> | null };
+    const tunnel = { port: entry.tunnelReservation ? {
+      start: (ctx: TunnelStartContext) => entry.tunnelReservation!.start(new CloudflaredProvider({ protocol: cfg?.web_terminal?.tunnel?.protocol, binaryName: entry.cloudflaredPath }), ctx),
+      stop: (reason: string) => entry.tunnelReservation!.stop(reason),
+    } : this.tunnelPort(cfg, entry.cloudflaredPath), abort, starting: null as Promise<ManagedStartResult> | null, handle: null as TunnelHandle | null, closing: null as Promise<void> | null };
     entry.tunnel = tunnel;
     this.audit("tunnel_requested", { backend: entry.backend, requester: entry.requesterUserId });
     tunnel.starting = tunnel.port.start({

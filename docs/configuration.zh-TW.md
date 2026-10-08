@@ -64,6 +64,10 @@ health_port: 19280
 ---
 
 
+### 臨時公開 dashboard 連結
+
+`web.public_link.allow_public` 預設 `true`（僅提供選項，必須由 General 管理員主動點選）、`ttl_minutes` 預設 `120`（1–480，從同意起固定期限）、`protocol` 預設 `http2`（也接受 `quic`／`auto`）。Settings 修改時不因無關編輯寫入預設值；停用會關現有入口。公開 Host 不持久化，該入口的 `/view` 需登入且不開 preview。私送、session 隔離與風險見 [web dashboard](web-dashboard.zh-TW.md#手機使用臨時公開連結)。
+
 ### 同一個 Discord guild 裡有多個 fleet
 
 每個 AgEnD bot 都會註冊自己的 `/login`，而且只控制執行該 bot 的 fleet。Discord 會把它們並排列出，所以每個指令說明的結尾都帶著它的 fleet 標籤（`fleet_label`，預設為主機名稱），每個 backend 選單也會顯示 `🖥 Fleet：<標籤>`。請選標籤是你要操作的那個 fleet 的指令。

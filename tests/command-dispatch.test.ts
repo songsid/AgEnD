@@ -211,6 +211,7 @@ async function rig(opts: { primaryMode?: "open" | "locked"; ownerGone?: boolean;
       options: { message: "go", filename: "f.json", instructions: "", instance: "worker" }, text: "go",
       respond: async (text: string) => { replies.push(text); return "m1"; },
       respondChoices: async (text: string) => { replies.push(text); return "m2"; },
+      respondButtons: async (text: string) => { replies.push(text); return "m3"; },
     });
     await vi.waitFor(() => expect(replies.length).toBeGreaterThan(0), { timeout: 2000 });
     await new Promise<void>(res => setImmediate(res));
