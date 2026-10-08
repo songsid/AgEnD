@@ -19,7 +19,8 @@
  *     open by design, in any guild the operator allowed) or the command is `/start` (which validates its own
  *     guild against `allowed_guilds`) — and a command that needs a fleet admin needs the fleet's own guild even
  *     from a ClassicBot channel;
- *  3. whoever speaks must be someone the text path would also hear: a fleet channel applies the access policy
+ *  3. a fleet channel is answered by the bot that owns its instance; another bot refuses (#754);
+ *  4. whoever speaks must be someone the text path would also hear: a fleet channel applies the access policy
  *     of the adapter that owns its instance, anywhere else the invoking adapter's. ClassicBot channels stay
  *     open, exactly as they are for typed messages.
  *
@@ -49,9 +50,15 @@ export interface SlashFacts {
    * (#754 audit) — otherwise any guild that hosts a ClassicBot channel is a place to run /update or /restart from.
    */
   fleetAdminCommand?: boolean;
+  /**
+   * The channel's instance (or General) belongs to another bot of this fleet (#754). That bot answers there; this
+   * one refuses, as it already stays silent on typed commands there (#1346) — so every admin check a command makes
+   * below is about the bot that owns what it acts on.
+   */
+  otherBotOwns?: boolean;
 }
 
-export type SlashDenial = "dm" | "wrong-guild" | "not-allowed" | "owner-not-running";
+export type SlashDenial = "dm" | "wrong-guild" | "other-bot" | "not-allowed" | "owner-not-running";
 
 export type SlashDecision = { allow: true } | { allow: false; reason: SlashDenial };
 
@@ -63,6 +70,8 @@ export function decideSlash(f: SlashFacts): SlashDecision {
     return { allow: false, reason: "wrong-guild" };
   }
   if (!inOwnGuild && f.fleetAdminCommand) return { allow: false, reason: "wrong-guild" };
+  // A channel whose owning bot is not running keeps its own refusal below: there is no other bot to point at.
+  if (f.scope === "fleet" && f.otherBotOwns && f.speaker !== "owner-not-running") return { allow: false, reason: "other-bot" };
 
   // Typed messages in a ClassicBot channel are open to everyone there, and so are its slash commands.
   if (f.scope === "classic") return { allow: true };

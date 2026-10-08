@@ -117,6 +117,15 @@ On every platform, only the topic/entry owner ever answers, so a `/cmd` typed in
 
 ### Fleet Admin (`fleet.yaml` → `channel.access.allowed_users`)
 
+**Who counts as a fleet admin, everywhere:**
+- **The owning bot's list:** an explicit entry in the `allowed_users` of the bot that owns what the command acts on (the instance's, or the General's).
+- **Not the bot the command arrived on:** in a fleet channel owned by another bot of the same fleet, a slash command is refused ("This channel belongs to another bot…"), just as typed commands there are left to the owning bot.
+- **An empty list means nobody:** admin commands are off for that bot.
+- **A bot id that matches no configured channel means nobody:** it never falls back to the first channel's list.
+- **Paired or open-mode users are not fleet admins.**
+
+**One table for both platforms:** Telegram typed commands and Discord slash commands are decided by the same command table (`src/command-table.ts`), so a command needs the same level on both. On Telegram the table judges only the forms a command actually runs in (for example `/status` or `/status@yourbot`, `/restart` in any case, `/pause <instance>`); any other text that starts with a slash, such as `/status report` or `/STATUS`, is a message to the agent, as before.
+
 Fleet-level commands — requires fleet admin:
 - `/status`, `/restart`, `/update`, `/doctor`, `/visibility`, `/pause`, `/wake`, `/model`, `/effort`, `/clear`, `/login`
 - In fleet topics and channels also `/collab`, `/compact`, `/save` (both platforms), and Telegram `/raw`
@@ -125,17 +134,19 @@ Fleet-level commands — requires fleet admin:
 
 ### ClassicBot Admin (`classicBot.yaml` → `defaults.admin_users`)
 
-ClassicBot management commands:
-- TG: `/start` (groups), `/stop`, `/raw`, `/pause` and `/wake` and `/compact` and `/save` (in a ClassicBot chat)
+ClassicBot management commands, ClassicBot admin only:
+- TG: `/start` (groups), `/stop`, `/raw`
 - DC: `/stop`, `/load`
+
+In a ClassicBot chat or channel, `/pause`, `/wake`, `/compact`, `/save`, `/model` and `/clear` accept a ClassicBot admin **or** a fleet admin of that chat's bot, on both platforms.
 
 `defaults.admin_users` is **one list for every bot**: there is one `classicBot.yaml`, and a ClassicBot admin is an admin in the ClassicBot channels of every bot (Telegram and Discord), whichever bot the channel belongs to. It is not per bot. Keep that in mind when several bots share a fleet: give ClassicBot admin only to someone you would trust on all of them.
 
 ### Context-dependent
 
 Permission varies by platform/mode:
-- `/compact` — TG Classic: ClassicBot admin. TG fleet topic: fleet admin. DC: fleet admin in a fleet channel, fleet admin or ClassicBot admin in a ClassicBot channel.
-- `/pause`, `/wake` — TG Classic: ClassicBot admin only. DC Classic: fleet admin or ClassicBot admin. Fleet topics: fleet admin.
+- `/compact` — Fleet topic/channel: fleet admin. ClassicBot chat/channel: fleet admin or ClassicBot admin (both platforms).
+- `/pause`, `/wake` — Fleet topics: fleet admin. ClassicBot chat/channel: fleet admin or ClassicBot admin (both platforms).
 - `/ctx` — all users (both platforms)
 - `/collab` — DC: fleet admin in a fleet channel; fleet admin or ClassicBot admin in a ClassicBot channel. TG: fleet admin in a fleet topic; in a ClassicBot chat it is not a command (the text goes to the agent).
 - `/tips` — drawing a tip is all-users, posted wherever it was invoked; `/tips on`/`off`/`advanced on` require fleet admin. Not registered on TG Classic at all.
