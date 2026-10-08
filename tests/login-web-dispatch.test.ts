@@ -5,6 +5,48 @@ import { tmpdir } from "node:os";
 
 // Install sessions must never touch a real tmux server in unit tests.
 const installSessions: Array<{ flow: any; cancelled: string[]; events?: any }> = [];
+// #1361: same leak as install-cli.test.ts — TmuxManager.socketName is null
+// until setSocketName, so ensureSession went to the live default server.
+// Pin a private socket AND stub tmux behind an -L guard.
+const TMUX_SOCKET = "agend-test-login-web";
+const tmuxGuard = vi.hoisted(() => ({ withoutL: [] as string[][] }));
+vi.mock("node:child_process", async (importOriginal) => {
+  const real = await importOriginal<typeof import("node:child_process")>();
+  const sessions = new Set<string>();
+  const fakeChild = { stdin: { on() {}, end() {} } };
+  const fakeExecFile = (file: string, args: unknown, opts: unknown, cb: unknown) => {
+    const callback = (typeof opts === "function" ? opts : cb) as ((...a: any[]) => void) | undefined;
+    if (file !== "tmux") return (real.execFile as any)(file, args, opts, cb);
+    const argv: string[] = Array.isArray(args) ? args : [];
+    if (argv[0] !== "-L" || typeof argv[1] !== "string" || argv[1].length === 0) {
+      tmuxGuard.withoutL.push(argv);
+      const err = new Error(`tmux without socket isolation: tmux ${argv.join(" ")}`);
+      if (callback) { queueMicrotask(() => callback(err)); return fakeChild; }
+      throw err;
+    }
+    const rest = argv.slice(2);
+    const flag = (name: string) => { const i = rest.indexOf(name); return i === -1 ? undefined : rest[i + 1]; };
+    const done = () => {
+      if (!callback) return;
+      const sub = rest[0];
+      if (sub === "has-session") {
+        const name = flag("-t") ?? "";
+        if (sessions.has(name)) { callback(null, "", ""); return; }
+        const err = Object.assign(new Error(`can't find session: ${name}`),
+          { code: 1, stdout: "", stderr: `can't find session: ${name}` });
+        callback(err);
+        return;
+      }
+      if (sub === "new-session") { const name = flag("-s"); if (name) sessions.add(name); callback(null, "", ""); return; }
+      if (sub === "kill-session") { const name = flag("-t"); if (name) sessions.delete(name); callback(null, "", ""); return; }
+      if (sub === "kill-server") { sessions.clear(); callback(null, "", ""); return; }
+      callback(null, "", "");
+    };
+    queueMicrotask(done);
+    return fakeChild;
+  };
+  return { ...real, execFile: fakeExecFile };
+});
 let onInstallStart: (() => Promise<void>) | null = null;
 vi.mock("../src/login-manager.js", async (importOriginal) => {
   const real = await importOriginal<typeof import("../src/login-manager.js")>();
@@ -38,9 +80,13 @@ describe("/login dispatch and exclusivity", () => {
     mkdirSync(tmpDir, { recursive: true });
     installSessions.length = 0;
     onInstallStart = null;
+    tmuxGuard.withoutL.length = 0;
+    TmuxManager.setSocketName(TMUX_SOCKET);
     setAuthCheckRunnerForTests(async () => ({ code: 1, output: "logged out" }));   // pre-check: invalid → straight to login
   });
   afterEach(() => {
+    expect(tmuxGuard.withoutL, "tmux without -L socket isolation").toEqual([]);
+    TmuxManager.setSocketName(null);
     setAuthCheckRunnerForTests(null);
     vi.restoreAllMocks();
     rmSync(tmpDir, { recursive: true, force: true });
