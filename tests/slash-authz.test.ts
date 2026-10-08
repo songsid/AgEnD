@@ -293,7 +293,9 @@ describe("a slash command is refused before it does anything", () => {
   it("the policy that applies is the owning adapter's, not the one the command arrived on", async () => {
     // The instance belongs to "second" (locked, only ops); the command arrives on "discord" (open to everyone).
     const r = await rig({ primary: OPEN, second: LOCKED, instanceChannel: "second" });
-    expect(await slash(r, "discord", { command: "ctx", userId: "member" })).toEqual([t("not_authorized")]);
+    // #754: arriving on "discord" in a channel "second" owns, the command is refused outright — "discord"'s open
+    // policy can never decide it.
+    expect(await slash(r, "discord", { command: "ctx", userId: "member" })).toEqual([t("slash.other_bot")]);
     expect(r.ctx).not.toHaveBeenCalled();
   });
 

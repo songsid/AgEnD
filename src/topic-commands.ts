@@ -17,7 +17,7 @@ import { truncateDisplay, MODEL_DISPLAY_WIDTH_MAX } from "./ls-rows.js";
 import { detectPlatform } from "./service-installer.js";
 import { getTmuxSocketName, getTmuxSessionName } from "./paths.js";
 import { t, getLocale } from "./locale.js";
-import { telegramMenu, type TelegramMenu } from "./command-table.js";
+import { commandSpec, decideCommand, telegramMenu, type TelegramMenu } from "./command-table.js";
 import { runVisibilityCommand } from "./cross-instance-notice.js";
 import type { ChannelConfig } from "./types.js";
 import {
@@ -511,10 +511,90 @@ export function resolveInstanceContext(
   return hit ? { context: hit.context, tokenRatio: hit.tokenRatio } : { context: null, tokenRatio: null };
 }
 
+const PROFILE_RE = /^\/profile(?:@\w+)?(?:\s+([\s\S]*))?$/;
+const RESTART_RE = /^\/restart(?:@[A-Za-z0-9_]*)?(?:\s+(.*))?$/i;
+const LEGACY_INSTALL_RE = /^\/install[-_]cli(?:@\S+)?(?:\s+([\s\S]*))?$/;
+const VISIBILITY_RE = /^\/visibility(?:@\S+)?(?:\s+([\s\S]*))?$/i;
+/** `/name` or `/name@bot`. */
+const bare = (name: string) => (text: string) => text === `/${name}` || text.startsWith(`/${name}@`);
+/** `/name`, `/name@bot`, or `/name <args>`. */
+const withArgs = (name: string) => (text: string) => bare(name)(text) || text.startsWith(`/${name} `);
+type TypedForms = ReadonlyArray<readonly [string, (text: string, source: string | undefined) => boolean]>;
+
+/**
+ * The typed forms each dispatcher runs, in its order. The one recognizer for both the command-table gate and the
+ * dispatch (#1399 review): a form no handler runs (`/STATUS`, `/status report`, `/pause one two`) is text for the
+ * agent, and the table never answers it either.
+ */
+const GENERAL_FORMS: TypedForms = [
+  ["profile", (text, source) => source === "telegram" && PROFILE_RE.test(text)],
+  ["status", bare("status")],
+  ["restart", text => RESTART_RE.test(text)],
+  ["sysinfo", text => bare("sysinfo")(text) || text === "/sys-info" || text === "/sys_info"],
+  ["doctor", bare("doctor")],
+  ["usage", bare("usage")],
+  ["tips", withArgs("tips")],
+  ["login", withArgs("login")],
+  ["install-cli", text => LEGACY_INSTALL_RE.test(text)],
+  ["update", bare("update")],
+  ["dashboard", withArgs("dashboard")],
+  ["visibility", text => VISIBILITY_RE.test(text)],
+];
+const INSTANCE_FORMS: TypedForms = [
+  ["tips", withArgs("tips")],
+  ["pause", text => parsePauseWakeCommand(text)?.action === "pause"],
+  ["wake", text => parsePauseWakeCommand(text)?.action === "wake"],
+  ["collab", bare("collab")],
+  ["effort", withArgs("effort")],
+  ["model", withArgs("model")],
+  ["compact", text => parseCompactCommand(text) !== null],
+  ["steer", withArgs("steer")],
+  ["btw", withArgs("btw")],
+  ["clear", bare("clear")],
+  ["cancel", bare("cancel")],
+  ["save", withArgs("save")],
+  ["raw", text => text === "/raw" || text.startsWith("/raw ")],
+  ["ctx", bare("ctx")],
+];
+const typedCommand = (forms: TypedForms, text: string, source: string | undefined): string | undefined =>
+  forms.find(([, matches]) => matches(text, source))?.[0];
+/** A typed name that is another spelling of a command-table entry. */
+const TELEGRAM_COMMAND_ALIASES: Readonly<Record<string, string>> = { "install-cli": "login" };
+
 export class TopicCommands {
   constructor(private ctx: ExecutionFleetContext) {}
 
   /** Get the adapter that should reply to a given inbound message */
+  /**
+   * #754: who may run a typed Telegram command is decided by the command table — the same rule a Discord slash
+   * command goes through (`decideCommand`), here with its Telegram column — before any handler runs. `msg.adapterId`
+   * is the topic's owning adapter (ownedCopy), so the admin it asks about is that bot's. A command the table does not
+   * know (`/raw`) or does not handle here (a passthrough cell) is left to the handlers below. `command` is what the
+   * dispatcher recognized (GENERAL_FORMS / INSTANCE_FORMS), so the table judges exactly what would run.
+   *
+   * Synchronous on purpose (#1399 review): the decision, the handler's own checks and the command's effect run in one
+   * stretch, so the instance cannot be rebound to another bot between the check and the act. The refusal, if any.
+   */
+  private tableRefusal(msg: InboundMessage, command: string | undefined, scope: "general" | "fleet"): [string, ...unknown[]] | null {
+    const spec = command ? commandSpec(TELEGRAM_COMMAND_ALIASES[command] ?? command) : undefined;
+    if (!spec) return null;
+    const fleetAdmin = (): "ok" | "disabled" | "denied" => this.ctx.isFleetAdmin(msg.userId, msg.adapterId) ? "ok"
+      : this.ctx.hasFleetAdmins && !this.ctx.hasFleetAdmins(msg.adapterId) ? "disabled" : "denied";
+    const decision = decideCommand(spec, scope, {
+      fleetAdmin,
+      // In a fleet topic the channel's own admin IS the owning bot's fleet admin.
+      channelAdmin: () => fleetAdmin() === "ok",
+      classicAdmin: () => false,
+    }, "telegram");
+    if (decision.allow || "passthrough" in decision) return null;
+    return decision.reply as [string, ...unknown[]];
+  }
+
+  private async sendRefusal(msg: InboundMessage, [key, ...args]: [string, ...unknown[]]): Promise<void> {
+    const adapter = this.getReplyAdapter(msg);
+    if (adapter) await adapter.sendText(msg.chatId, t(key, ...(args as never[])), { threadId: msg.threadId }).catch(() => {});
+  }
+
   private getReplyAdapter(msg: InboundMessage): ChannelAdapter | null {
     if (msg.adapterId && this.ctx.adapters) {
       return this.ctx.adapters.get(msg.adapterId) ?? this.ctx.adapter;
@@ -548,47 +628,47 @@ export class TopicCommands {
     msg = owned;
     const text = msg.text?.trim();
     if (!text) return false;
+    const command = typedCommand(GENERAL_FORMS, text, msg.source);
+    const refusal = this.tableRefusal(msg, command, "general");
+    if (refusal) { await this.sendRefusal(msg, refusal); return true; }
 
-    const profile = msg.source === "telegram" ? text.match(/^\/profile(?:@\w+)?(?:\s+([\s\S]*))?$/) : null;
-    if (profile) {
-      await this.ctx.runProfileCommand?.(msg, profile[1]?.trim());
+    if (command === "profile") {
+      await this.ctx.runProfileCommand?.(msg, text.match(PROFILE_RE)![1]?.trim());
       return true;
     }
 
-    if (text === "/status" || text === "/status@" || text.startsWith("/status@")) {
+    if (command === "status") {
       await this.handleStatusCommand(msg);
       return true;
     }
 
-    const restart = text.match(/^\/restart(?:@[A-Za-z0-9_]*)?(?:\s+(.*))?$/i);
-    if (restart) {
-      const mode = restart[1]?.trim().toLowerCase();
+    if (command === "restart") {
+      const mode = text.match(RESTART_RE)![1]?.trim().toLowerCase();
       await this.handleRestartCommand(msg, mode);
       return true;
     }
 
-    if (text === "/sysinfo" || text === "/sysinfo@" || text.startsWith("/sysinfo@")
-        || text === "/sys-info" || text === "/sys_info") {
+    if (command === "sysinfo") {
       await this.handleSysInfoCommand(msg);
       return true;
     }
 
-    if (text === "/doctor" || text.startsWith("/doctor@")) {
+    if (command === "doctor") {
       await this.handleDoctorCommand(msg);
       return true;
     }
 
-    if (text === "/usage" || text.startsWith("/usage@")) {
+    if (command === "usage") {
       await this.handleUsageCommand(msg);
       return true;
     }
 
-    if (text === "/tips" || text.startsWith("/tips ") || text.startsWith("/tips@")) {
+    if (command === "tips") {
       await this.handleTipsCommand(msg);
       return true;
     }
 
-    if (text === "/login" || text.startsWith("/login ") || text.startsWith("/login@")) {
+    if (command === "login") {
       await this.handleLoginCommand(msg);
       return true;
     }
@@ -596,8 +676,8 @@ export class TopicCommands {
     // `/install-cli` became part of `/login` (#1131). Typed, it still works for
     // one release (2.1.10) — with a line saying where it went — and is in no
     // command menu. Both spellings: Telegram command names cannot contain "-".
-    const legacyInstall = text.match(/^\/install[-_]cli(?:@\S+)?(?:\s+([\s\S]*))?$/);
-    if (legacyInstall) {
+    if (command === "install-cli") {
+      const legacyInstall = text.match(LEGACY_INSTALL_RE)!;
       const adapter = this.getReplyAdapter(msg);
       if (adapter) await adapter.sendText(msg.chatId, t("login.install_cli_moved"), { threadId: msg.threadId }).catch(() => {});
       const rest = (legacyInstall[1] ?? "").trim();
@@ -607,19 +687,18 @@ export class TopicCommands {
     }
 
 
-    if (text === "/update" || text.startsWith("/update@")) {
+    if (command === "update") {
       await this.handleUpdateCommand(msg);
       return true;
     }
 
-    if (text === "/dashboard" || text.startsWith("/dashboard@") || text.startsWith("/dashboard ")) {
+    if (command === "dashboard") {
       await this.handleDashboardCommand(msg);
       return true;
     }
 
-    const visibility = text.match(/^\/visibility(?:@\S+)?(?:\s+([\s\S]*))?$/i);
-    if (visibility) {
-      await this.handleVisibilityCommand(msg, visibility[1] ?? "");
+    if (command === "visibility") {
+      await this.handleVisibilityCommand(msg, text.match(VISIBILITY_RE)![1] ?? "");
       return true;
     }
 
@@ -683,17 +762,20 @@ export class TopicCommands {
     msg = owned;
     const text = msg.text?.trim();
     if (!text) return false;
+    const command = typedCommand(INSTANCE_FORMS, text, msg.source);
+    const refusal = this.tableRefusal(msg, command, this.ctx.fleetConfig?.instances[instanceName]?.general_topic ? "general" : "fleet");
+    if (refusal) { await this.sendRefusal(msg, refusal); return true; }
 
     // Tips are informational and should appear where requested, including a
     // worker topic. This also keeps Telegram text commands aligned with
     // Discord's channel-local slash-command behavior.
-    if (text === "/tips" || text.startsWith("/tips ") || text.startsWith("/tips@")) {
+    if (command === "tips") {
       await this.handleTipsCommand(msg);
       return true;
     }
 
-    const pauseWake = parsePauseWakeCommand(text);
-    if (pauseWake) {
+    if (command === "pause" || command === "wake") {
+      const pauseWake = parsePauseWakeCommand(text)!;
       const adapter = this.getReplyAdapter(msg);
       if (!adapter) return false;
       if (!this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) {
@@ -724,7 +806,7 @@ export class TopicCommands {
       return true;
     }
 
-    if (text === "/collab" || text.startsWith("/collab@")) {
+    if (command === "collab") {
       const adapter = this.getReplyAdapter(msg);
       if (!adapter) return false;
       // Channel-admin, as the Discord slash command (#754 audit): it changes how the instance is reached.
@@ -740,7 +822,7 @@ export class TopicCommands {
       return true;
     }
 
-    if (text === "/effort" || text.startsWith("/effort ") || text.startsWith("/effort@")) {
+    if (command === "effort") {
       const adapter = this.getReplyAdapter(msg);
       if (!adapter) return false;
       if (!this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) {
@@ -762,7 +844,7 @@ export class TopicCommands {
       return true;
     }
 
-    if (text === "/model" || text.startsWith("/model ") || text.startsWith("/model@")) {
+    if (command === "model") {
       const adapter = this.getReplyAdapter(msg);
       if (!adapter) return false;
       if (!this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) {
@@ -785,8 +867,8 @@ export class TopicCommands {
       return true;
     }
 
-    const compact = parseCompactCommand(text);
-    if (compact) {
+    if (command === "compact") {
+      const compact = parseCompactCommand(text)!;
       const adapter = this.getReplyAdapter(msg);
       if (!adapter) return false;
       // Channel-admin, as the Discord slash command (#754 audit): it rewrites the instance's context.
@@ -799,7 +881,7 @@ export class TopicCommands {
       return true;
     }
 
-    if (text === "/steer" || text.startsWith("/steer ") || text.startsWith("/steer@")) {
+    if (command === "steer") {
       const adapter = this.getReplyAdapter(msg);
       if (!adapter) return false;
       // Deliberately NOT admin-gated: anyone who can speak in this topic can
@@ -816,7 +898,7 @@ export class TopicCommands {
       return true;
     }
 
-    if (text === "/btw" || text.startsWith("/btw ") || text.startsWith("/btw@")) {
+    if (command === "btw") {
       const adapter = this.getReplyAdapter(msg);
       if (!adapter) return false;
       // Like /steer, /btw is not admin-gated: anyone who can send the agent a
@@ -832,7 +914,7 @@ export class TopicCommands {
       return true;
     }
 
-    if (text === "/clear" || text.startsWith("/clear@")) {
+    if (command === "clear") {
       const adapter = this.getReplyAdapter(msg);
       if (!adapter) return false;
       if (!this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) {
@@ -854,7 +936,7 @@ export class TopicCommands {
       return true;
     }
 
-    if (text === "/cancel" || text.startsWith("/cancel@")) {
+    if (command === "cancel") {
       const adapter = this.getReplyAdapter(msg);
       if (!adapter) return false;
       const ok = this.ctx.cancelInstance(instanceName);
@@ -862,7 +944,7 @@ export class TopicCommands {
       return true;
     }
 
-    if (text === "/save" || text.startsWith("/save ") || text.startsWith("/save@")) {
+    if (command === "save") {
       const adapter = this.getReplyAdapter(msg);
       if (!adapter) return false;
       // Channel-admin, as the Discord slash command (#754 audit): it writes a file in the instance's directory.
@@ -886,14 +968,14 @@ export class TopicCommands {
 
     // `/raw <text>` is pasted into the CLI as typed, with no [user:] envelope (daemon.ts): it is CLI input, so only
     // the owning bot's fleet admin may send it (#754 audit). An admin's falls through to delivery unchanged.
-    if (text === "/raw" || text.startsWith("/raw ")) {
+    if (command === "raw") {
       if (this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) return false;
       const adapter = this.getReplyAdapter(msg);
       if (adapter) await adapter.sendText(msg.chatId, t("permission.denied"), { threadId: msg.threadId });
       return true;
     }
 
-    if (text !== "/ctx" && !text.startsWith("/ctx@")) return false;
+    if (command !== "ctx") return false;
 
     const adapter = this.getReplyAdapter(msg);
     if (!adapter) return false;

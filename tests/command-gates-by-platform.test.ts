@@ -207,13 +207,14 @@ const TG_EXPECTED: Array<{ name: string; text: string; label: string; general: T
   { name: "load", text: "/load f.json", label: "load", general: PASS_, fleet: PASS_, classic: PASS_, none: "pass" },
   // fleet topic: NO check; ClassicBot chat: a ClassicBot admin only (a fleet admin alone is refused)
   // #754 audit: channel-admin on Telegram too, as the Discord slash command (was: anyone who may speak).
-  { name: "compact", text: "/compact", label: "compact", general: FA_ONLY, fleet: FA_ONLY, classic: CA_ONLY, none: "refuse" },
-  { name: "save", text: "/save f.json", label: "save", general: FA_ONLY, fleet: FA_ONLY, classic: CA_ONLY, none: "refuse" },
+  // #754: a fleet admin of the bot is a ClassicBot admin here too, as on Discord (channel-admin).
+  { name: "compact", text: "/compact", label: "compact", general: FA_ONLY, fleet: FA_ONLY, classic: FA_OR_CA, none: "refuse" },
+  { name: "save", text: "/save f.json", label: "save", general: FA_ONLY, fleet: FA_ONLY, classic: FA_OR_CA, none: "refuse" },
   // fleet topic: NO check; ClassicBot chat: not a command
   { name: "collab", text: "/collab", label: "collab", general: FA_ONLY, fleet: FA_ONLY, classic: PASS_, none: "pass" },
   // fleet admin in a fleet topic; ClassicBot admin ONLY in a ClassicBot chat
-  { name: "pause", text: "/pause", label: "pause", general: "pause-needs-instance" as never, fleet: FA_ONLY, classic: CA_ONLY, none: "refuse" },
-  { name: "wake", text: "/wake", label: "wake", general: "pause-needs-instance" as never, fleet: FA_ONLY, classic: CA_ONLY, none: "refuse" },
+  { name: "pause", text: "/pause", label: "pause", general: "pause-needs-instance" as never, fleet: FA_ONLY, classic: FA_OR_CA, none: "refuse" },
+  { name: "wake", text: "/wake", label: "wake", general: "pause-needs-instance" as never, fleet: FA_ONLY, classic: FA_OR_CA, none: "refuse" },
   // a fleet admin, or in a ClassicBot chat also a ClassicBot admin (`isModelAdmin`)
   { name: "model", text: "/model x", label: "model", general: FA_ONLY, fleet: FA_ONLY, classic: FA_OR_CA, none: "refuse" },
   { name: "clear", text: "/clear", label: "clear", general: FA_ONLY, fleet: FA_ONLY, classic: FA_OR_CA, none: "refuse" },

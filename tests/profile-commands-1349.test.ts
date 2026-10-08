@@ -62,13 +62,14 @@ describe("real General dispatcher and shared profile handler, all runtime effect
     expect(platform === "telegram" ? h.sent.at(-1)?.text : h.respond.mock.calls.at(-1)?.[0]).toBe(t("profile.disabled"));
   });
   it("requires the owner adapter's authority, not an admin of a sibling world", async () => {
+    // #754: a General owned by another bot is refused at the door, before /profile's own owner check.
     const h = rig(); await h.slash("other-admin", "T0", "other"); expect(h.start).not.toHaveBeenCalled();
-    expect(h.respond).toHaveBeenCalledWith(t("not_authorized"));
+    expect(h.respond).toHaveBeenCalledWith(t("slash.other_bot"));
   });
   it("a fleet admin on both worlds still cannot use a sibling adapter for General", async () => {
     const h = rig(); h.fm.fleetConfig!.channels![1].access!.allowed_users = ["admin"];
     await h.slash("admin", "T0", "other"); expect(h.start).not.toHaveBeenCalled();
-    expect(h.respond).toHaveBeenCalledWith(t("not_authorized"));
+    expect(h.respond).toHaveBeenCalledWith(t("slash.other_bot"));
   });
   it("Discord rejects non-General slash and ignores typed /profile", async () => {
     const h = rig(); await h.slash("admin", "T1");
