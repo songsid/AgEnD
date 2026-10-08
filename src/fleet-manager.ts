@@ -190,6 +190,8 @@ import { isFleetStartCommandLine, readProcessCommandLine, releaseProcessFleetLoc
 import { isSetupComplete, markSetupComplete } from "./setup-marker.js";
 import { manualCleanupMessage, reapStaleTunnel } from "./tunnel/lease.js";
 import { buildToolPermissionsNotice } from "./tool-permissions-notice.js";
+import { NeedsYouHub, type NeedsYouWorld, type WebNeedsItem } from "./needs-you-hub.js";
+import type { InstanceInput, PromptInput } from "./needs-you.js";
 import { WEB_CHAT_NOTICE, WEB_REMOTE_DOCS_URL, claimNotice, hasWebChat, releaseNotice, upgradeNoticesPath } from "./upgrade-notices.js";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import {
@@ -564,6 +566,10 @@ interface NonceButtonEntry {
    * nonce, the same single claim and the same expiry as the platform's buttons — whoever clicks first wins.
    */
   web?: { text: string; actions: Array<{ id: string; label: string }>; expiresAt: number };
+  /** When the prompt was offered (epoch ms): its age in "Needs you" (#1386). */
+  createdAt?: number;
+  /** interactive-assist only: the interaction wait it was raised for, so "Needs you" folds only the same wait (#1386 §3.2). */
+  assistFor?: { owner: string | null; episode: number | null };
 }
 
 
@@ -955,6 +961,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private pendingModelSelects = new Map<string, { instanceName: string; model: string; userId: string; channelId: string; timer: ReturnType<typeof setTimeout>; respond: (t: string) => Promise<string | undefined>; adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string; respondChoices?: (text: string, choices: { id: string; label: string }[]) => Promise<string | undefined>; }>();
   /** nonce → pending button prompt (hang restart, interactive assist, clean-exit restart). */
   private pendingNonceButtons = new Map<string, NonceButtonEntry>();
+  /** #1386 "Needs you": the list, its live chat messages and Acknowledge. Started with the fleet (finishStartup). */
+  private needsYou: NeedsYouHub | null = null;
+  /** When the fleet first saw an instance crashed, for its "Needs you" age; cleared when it is not. */
+  private readonly needsCrashedAt = new Map<string, number>();
   /**
    * Clicks that came from the web dashboard (clickWebPrompt). Only that method adds to it, so nothing an
    * adapter emits — whatever fields its payload carries — can claim a dashboard click's authority.
@@ -1134,6 +1144,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (event.deliveryId && event.state === "delivered") {
         const target = outbox.get(event.deliveryId)?.targetInstance;
         if (target) this.wakeCoordinator?.noteDelivered(target);
+      }
+      if (event.deliveryId && (event.state === "failed" || event.state === "uncertain" || event.state === "delivered")) {
+        this.needsYou?.poke();
       }
       if (event.deliveryId && (event.state === "failed" || event.state === "uncertain")) {
         const row = outbox.get(event.deliveryId);
@@ -1683,6 +1696,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private finishStartup(): void {
     this.startupComplete = true;
+    this.startNeedsYou();
     // Resolve whatever a previous run — or a setup host that crashed — left
     // behind. A tunnel nobody is tracking is a public entrance nobody is
     // watching, and the fleet starting is the moment there is finally a process
@@ -2578,6 +2592,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private cacheInstanceProcessStatus(name: string, status: unknown): void {
+    if (status === "crashed") { if (!this.needsCrashedAt.has(name)) this.needsCrashedAt.set(name, Date.now()); }
+    else this.needsCrashedAt.delete(name);
+    this.needsYou?.poke();
     if (status === "running") {
       this.instanceProcessStatus.delete(name);
       // A prior crash-loop marker is one-shot.  Successful respawn is the
@@ -9895,7 +9912,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     choices: Array<{ action: string; label: string }>;
     expiredText: string;
     deliver?: (choices: Choice[]) => Promise<import("./channel/types.js").SentMessage>;
-    extra?: Pick<NonceButtonEntry, "requesterUserId" | "publicExposureId" | "dashboardOwner" | "generalName" | "promptKind" | "authChannelId" | "allowAnyUser" | "tipId" | "classicGroupId" | "classicUserId" | "classicScope">;
+    extra?: Pick<NonceButtonEntry, "requesterUserId" | "publicExposureId" | "dashboardOwner" | "generalName" | "promptKind" | "authChannelId" | "allowAnyUser" | "tipId" | "classicGroupId" | "classicUserId" | "classicScope" | "assistFor">;
     timeoutMs?: number;
   }): Promise<string> {
     // 16 bytes = the 128-bit capability the design claims. Telegram's 64-byte
@@ -9917,6 +9934,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       chatId: opts.chatId,
       threadId: opts.threadId,
       expiredText: opts.expiredText,
+      createdAt: Date.now(),
       ...opts.extra,
     };
     entry.timer = setTimeout(() => {
@@ -10125,6 +10143,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     adapterId: string,
     adapter: ChannelAdapter | undefined,
   ): Promise<boolean> {
+    if (this.needsYou?.handleCallback(data, adapterId)) return true;
     if (await this.handleTipDismiss(data, adapterId, adapter)) return true;
     if (await this.handleTipUnlock(data, adapterId, adapter)) return true;
     if (await this.handleLoginBackendSelect(data, adapterId, adapter)) return true;
@@ -10154,6 +10173,119 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private webPromptGone(entry: NonceButtonEntry, outcome?: string): void {
     if (!entry.web || !entry.nonce) return;
     this.emitSseEvent("prompt_resolved", { instance: entry.instanceName, nonce: entry.nonce, ...(outcome ? { outcome } : {}) });
+  }
+
+  // ── #1386 "Needs you" ─────────────────────────────────────────────────────────────────────────────────
+
+  /** The interaction wait an instance is in now, as a comparable key: which daemon/spawn owns it, and its episode. */
+  private interactionWaitKey(name: string): { owner: string | null; episode: number | null } {
+    const snapshot = this.getInstanceInteraction(name);
+    if (!snapshot) return { owner: null, episode: null };
+    const o = snapshot.owner;
+    return { owner: o ? `${o.bootId}:${o.spawnGeneration}:${o.launchAttempt}:${o.launchFenceEpoch}` : null, episode: snapshot.episode };
+  }
+
+  /** The daemon's interaction observation changed (lifecycle relays `instance_interaction`): recompute now, not at the tick. */
+  onInstanceInteraction(_name: string): void {
+    this.needsYou?.poke();
+  }
+
+  /** The list for the web: every world's items, and those of instances with no world (#1386 §5.0). */
+  needsYouItems(): WebNeedsItem[] {
+    return this.needsYou?.webItems() ?? [];
+  }
+
+  /** The web's Acknowledge (any item; a signed-in session is fleet-admin level). */
+  acknowledgeNeedsItem(id: string, principal: string): { status: 200 | 400 | 404 | 409 | 500; message: string } {
+    if (!this.needsYou) return { status: 409, message: t("needs.ack_already") };
+    return this.needsYou.webAcknowledge(id, principal);
+  }
+
+  private needsYouInstances(): InstanceInput[] {
+    const names = new Set<string>(Object.keys(this.fleetConfig?.instances ?? {}));
+    for (const ch of this.classicChannels?.getAll() ?? []) names.add(ch.instanceName);
+    const out: InstanceInput[] = [];
+    for (const name of names) {
+      const p = this.instancePresentation(name);
+      const wait = p.interaction ? this.interactionWaitKey(name) : null;
+      let pauseReason: string | null = null, pausedAt: number | null = null;
+      if (this.lifecycle.isPaused(name)) {
+        const dir = this.getInstanceDir(name);
+        pauseReason = readPauseReason(dir);
+        pausedAt = readPausedAt(dir);
+      }
+      out.push({
+        name, state: p.state ?? undefined,
+        interaction: p.interaction ? { kind: p.interaction.kind, owner: wait?.owner ?? null, episode: p.interaction.episode, since: p.interaction.since } : null,
+        interactionSummary: p.interaction_summary ?? null,
+        pauseReason, pausedAt,
+        crashedAt: this.instanceProcessStatus.get(name) === "crashed" ? (this.needsCrashedAt.get(name) ?? null) : null,
+      });
+    }
+    return out;
+  }
+
+  private needsYouPrompts(): PromptInput[] {
+    const out: PromptInput[] = [];
+    for (const [nonce, e] of this.pendingNonceButtons) {
+      if (!e.web || !WEB_MIRRORED_PROMPT_PREFIXES.has(e.prefix)) continue;
+      out.push({
+        nonce, prefix: e.prefix, instance: e.instanceName, text: e.web.text, actions: e.web.actions,
+        createdAt: e.createdAt ?? Date.now(), adapterId: e.adapterId, chatId: e.chatId,
+        ...(e.threadId !== undefined ? { threadId: e.threadId } : {}), ...(e.messageId ? { messageId: e.messageId } : {}),
+        ...(e.assistFor ? { assistFor: e.assistFor } : {}),
+      });
+    }
+    return out;
+  }
+
+  private startNeedsYou(): void {
+    if (this.needsYou) return;
+    const ownerOf = (instance: string): string | undefined => {
+      const owner = this.getInstanceAdapterId(instance);
+      return owner !== undefined && this.worlds.has(owner) ? owner : undefined;
+    };
+    this.needsYou = new NeedsYouHub({
+      dataDir: this.dataDir,
+      now: () => Date.now(),
+      mono: () => performance.now(),
+      setTimer: (fn, ms) => { const h = setTimeout(fn, ms); h.unref?.(); return h; },
+      clearTimer: h => clearTimeout(h as ReturnType<typeof setTimeout>),
+      prompts: () => this.needsYouPrompts(),
+      instances: () => this.needsYouInstances(),
+      deliveries: since => (this.deliveryOutbox?.isOpen ? this.deliveryOutbox.needsAttention(since) : []).map(d => ({
+        deliveryId: d.deliveryId, state: d.state, source: d.sourceInstance, target: d.targetInstance, kind: d.kind,
+        finishedAt: Date.parse(d.finishedAt) || 0,
+      })),
+      ownerOf,
+      worlds: () => [...this.worlds.values()].map((w): NeedsYouWorld => ({
+        id: w.id, adapter: w.adapter, place: { type: w.type, ...(w.groupId ? { groupId: w.groupId } : {}) },
+      })),
+      noticeTarget: world => {
+        const target = this.fleetNoticeTarget(world);
+        return target ? { chatId: target.chatId, ...(target.opts.threadId !== undefined ? { threadId: String(target.opts.threadId) } : {}) } : null;
+      },
+      instanceTopic: instance => {
+        const topic = this.fleetConfig?.instances[instance]?.topic_id;
+        if (topic != null) return String(topic);
+        return this.classicChannels?.getChannelIdByInstance(instance) ?? undefined;
+      },
+      isFleetAdmin: (userId, world) => this.isFleetAdmin(userId, world),
+      fleetAdmins: world => (this.getChannelConfig(world)?.access?.allowed_users ?? []).map(String),
+      emitSse: (event, data) => this.emitSseEvent(event, data),
+      acknowledge: (deliveryId, by) => {
+        if (!this.deliveryOutbox?.isOpen) throw new Error("the delivery outbox is not open");
+        return this.deliveryOutbox.acknowledge(deliveryId, by);
+      },
+      settings: () => ({
+        liveMessage: this.fleetConfig?.needs_you?.live_message !== false,
+        dm: this.fleetConfig?.needs_you?.dm === true,
+      }),
+      stopping: () => this.shuttingDown,
+      t: (key, ...args) => t(key, ...args),
+      log: (level, message, extra) => this.logger[level](extra ?? {}, message),
+    });
+    this.needsYou.start();
   }
 
   /** The prompts open on the dashboard right now (a page that loads after one was posted asks for them). */
@@ -10787,7 +10919,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       message: t("interactive.general_notice", instanceName, label),
       choices: [{ action: "confirm", label: t("interactive.confirm") }, { action: "cancel", label: t("interactive.cancel") }],
       expiredText: t("interactive.expired", instanceName),
-      extra: { generalName, promptKind: kind },
+      extra: { generalName, promptKind: kind, assistFor: this.interactionWaitKey(instanceName) },
     };
     // No chat platform: the dashboard is where it is asked; Confirm still asks General to help.
     const web = this.webOnlyPromptPlace();
@@ -12382,6 +12514,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Push an SSE event to all connected Web UI clients. */
   emitSseEvent(event: string, data: unknown): void {
+    // #1386: a prompt opened or closed, or an instance's state moved — "Needs you" may have changed.
+    if (event === "prompt" || event === "prompt_resolved" || event === "activity") this.needsYou?.poke();
     const onError = (err: unknown) => this.logger.debug({ err }, "SSE client write failed; evicting");
     if (event === "message" && data && typeof data === "object") {
       // A chat message: record it, and send it WITH its id so a reconnecting stream can ask for what it missed.
@@ -14605,6 +14739,11 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // await in the same tick as the signal handler, so no event can slip in.
     this.shuttingDown = true;
     const publicStopped = this.publicWebLink?.close("fleet shutdown");
+    // #1386: every live "Needs you" message says the fleet stopped (capabilities revoked first) — while the
+    // adapters can still edit. Bounded: a platform that does not answer must not hold the shutdown.
+    const needsStopped = this.needsYou
+      ? Promise.race([this.needsYou.stop(), new Promise<void>(resolve => setTimeout(resolve, 5_000).unref?.())])
+      : undefined;
     const profileStopped = this.runtimeCpuProfiler?.shutdown("fleet shutdown");
     this.ipcStoppingInstances.add("__fleet_stopping__");
     // Release held delivery promises before awaiting daemon shutdown, then
@@ -14631,6 +14770,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // shutdown it would outlive us as an owner-less login CLI (sol B3).
     await publicStopped;
     await profileStopped;
+    await needsStopped;
     await this.cpuProfileControl?.close();
     this.cpuProfileControl = null;
     await this.shutdownLoginWindows();

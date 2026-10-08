@@ -65,6 +65,8 @@ export const RUNTIME_READ_FLEET_KEYS = [
   "hostname",
   "login",
   "web_terminal",
+  // #1386: read on every "Needs you" recompute.
+  "needs_you",
 ] as const;
 
 function pick(source: unknown, path: string): unknown {

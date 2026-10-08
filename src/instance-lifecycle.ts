@@ -210,6 +210,8 @@ export interface LifecycleContext {
   notifyInstanceTopic(name: string, text: string): boolean | void;
   /** Notify the blocked instance and offer an interactive assist action in General. */
   notifyInteractivePrompt(name: string, kind: string): Promise<void>;
+  /** #1386: the daemon's interaction observation changed ("Needs you" recomputes at once, not at its tick). */
+  onInstanceInteraction?(name: string): void;
   /**
    * Offer a one-tap re-login beside an auth alert. Optional: contexts without
    * it (tests, lightweight fleets) still get the alert's written remedy.
@@ -1094,6 +1096,8 @@ export class InstanceLifecycle {
       this.notifyIncident(name, "dialog_answer_ignored", text);
       this.ctx.notifyFleetError?.(t("fleet.dialog_answer_ignored", name, data.description, String(data.attempts)));
     }, this.ctx.logger, `daemon.dialog_answer_ignored[${name}]`));
+
+    daemon.on("instance_interaction", () => this.ctx.onInstanceInteraction?.(name));
 
     daemon.on("interactive_prompt", safeHandler(async (data: { name: string; kind: string; prompt: string }) => {
       this.ctx.eventLog?.insert(name, "interactive_prompt", { kind: data.kind });
