@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { randomUUID } from "node:crypto";
 import { SettingsExecution, SETTINGS_OPERATION_MS, settingsRevision, noteSettingsWrite, settingsUndo, undoSettingsPaths,
-  settingsFileResource, trySettingsLease, assertSettingsLease, settingsFingerprint } from "../src/settings-transaction.js";
+  settingsFileResource, trySettingsLease, assertSettingsLease, settingsFingerprint, mergeSettingsDelta } from "../src/settings-transaction.js";
 import { settingsChangeDiff, settingsDisplay } from "../src/settings-change.js";
 
 const path = () => `/agend-test-${randomUUID()}/fleet.yaml`;
@@ -114,4 +114,31 @@ describe("authoritative normalized diff (#1423)", () => {
     expect(() => settingsChangeDiff({}, { unknown: ["potential-secret"] }, { operation: "unknown" })).toThrow("unsupported_sensitive_effect");
     expect(() => settingsChangeDiff({}, { unknown: [{ field: "value" }] }, { operation: "unknown" })).toThrow("unsupported_sensitive_effect");
   });
+});
+
+
+it("compensation creates only own data paths, never a process prototype path", () => {
+  const descriptor = Object.getOwnPropertyDescriptor(Object.prototype, "settings1423Sentinel"), writes: unknown[] = [];
+  Object.defineProperty(Object.prototype, "settings1423Sentinel", { configurable: true, get: () => undefined, set: value => { writes.push(value); } });
+  try {
+    const result = undoSettingsPaths(path(), { channels: {} }, [{ path: ["channels", "__proto__", "settings1423Sentinel"], before: "restored", written: undefined, revision: 0 }]);
+    expect(writes).toEqual([]); expect(Object.hasOwn(result.value.channels, "__proto__")).toBe(true);
+    expect(result.value.channels.__proto__.settings1423Sentinel).toBe("restored");
+    expect(Object.getPrototypeOf(result.value.channels)).toBe(Object.prototype);
+  } finally {
+    if (descriptor) Object.defineProperty(Object.prototype, "settings1423Sentinel", descriptor);
+    else Reflect.deleteProperty(Object.prototype, "settings1423Sentinel");
+  }
+});
+it("a delta treats an own __proto__ key as data while preserving concurrent unrelated values", () => {
+  const next = mergeSettingsDelta({}, JSON.parse('{"__proto__":{"group_id":"200"}}'), { model: "newer" });
+  expect(Object.hasOwn(next, "__proto__")).toBe(true); expect(next.__proto__).toEqual({ group_id: "200" });
+  expect(next.model).toBe("newer"); expect(Object.getPrototypeOf(next)).toBe(Object.prototype);
+});
+
+
+it("rollback receipts ignore inherited fields absent from the persisted document", () => {
+  const before = { channel: Object.create({ group_id: "inherited" }) }, written = { channel: { group_id: "own" } };
+  const receipt = settingsUndo(path(), before, written, [["channel", "group_id"]]);
+  expect(receipt[0].before).toBeUndefined(); expect(receipt[0].written).toBe("own");
 });

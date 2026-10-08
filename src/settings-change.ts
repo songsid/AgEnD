@@ -90,7 +90,7 @@ export function settingsChangeDiff(before: unknown, after: unknown, options: {
         throw new SettingsConfirmationError(400, "unsupported_sensitive_effect");
       }
       const a = object(old) ? old : {}, b = object(next) ? next : {};
-      for (const child of new Set([...Object.keys(a), ...Object.keys(b)])) walk(a[child], b[child], [...path, child]);
+      for (const child of new Set([...Object.keys(a), ...Object.keys(b)])) walk(Object.hasOwn(a, child) ? a[child] : undefined, Object.hasOwn(b, child) ? b[child] : undefined, [...path, child]);
       return;
     }
     // Unknown nested structures cannot disappear into an ordinary PATCH or opaque count.

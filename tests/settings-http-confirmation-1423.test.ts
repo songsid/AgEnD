@@ -8,6 +8,7 @@ import { SettingsConfirmationStore } from "../src/settings-confirmation.js";
 import { SettingsHttpConfirmation } from "../src/settings-http-confirmation.js";
 import { SettingsBaselines } from "../src/settings-baseline.js";
 import { handleSettingsRequest, type SettingsApiContext } from "../src/settings-api.js";
+import { prepareSettingsEffect } from "../src/settings-effect.js";
 import { noteSettingsWrite } from "../src/settings-transaction.js";
 
 const roots: string[] = [], stores: SettingsConfirmationStore[] = [];
@@ -101,4 +102,45 @@ it("unsupported instance nulls cannot hide a credential/permission change in pro
   const h = harness(); h.config.defaults.skipPermissions = false; h.config.instances.worker = { working_directory: h.ctx.dataDir }; h.save();
   const response = await h.request("PATCH", "/api/settings/fleet/instances/worker", { skipPermissions: null });
   expect(response.status).toBe(400); expect(h.config.instances.worker).not.toHaveProperty("skipPermissions"); expect(h.save).toHaveBeenCalledOnce();
+});
+
+
+it("the real HTTP gate rejects inherited Classic targets without mutating their process prototypes", async () => {
+  const h = harness(), nativeAssign = Object.assign, targets: unknown[] = [];
+  const guard = vi.spyOn(Object, "assign").mockImplementation(((target: any, ...sources: any[]) => {
+    if (target === Object.prototype || target === Object || target === Object.prototype.toString) {
+      targets.push(target); return target; // Catch a mutant without actually polluting the process.
+    }
+    return nativeAssign(target, ...sources);
+  }) as typeof Object.assign);
+  try {
+    for (const name of ["__proto__", "constructor", "toString"]) {
+      const response = await h.request("PATCH", `/api/settings/classic/channels/${name}`, { model: "projection-must-stay-pure" }, true, `target-${name}`);
+      expect(response.status).toBe(404);
+    }
+    expect(targets).toEqual([]); expect(h.save).not.toHaveBeenCalled(); expect(h.store.list("session-a")).toEqual([]);
+  } finally { guard.mockRestore(); }
+});
+it("an own Classic channel remains writable and an inherited instance name becomes an explicit pending creation", async () => {
+  const h = harness(), classicPath = join(h.ctx.dataDir, "classicBot.yaml");
+  writeFileSync(classicPath, yaml.dump({ channels: { "-100:10": { model: "old" } } }));
+  expect((await h.request("PATCH", "/api/settings/classic/channels/-100:10", { model: "new" })).status).toBe(200);
+  expect((yaml.load(readFileSync(classicPath, "utf8")) as any).channels["-100:10"].model).toBe("new");
+  const pending = await h.request("POST", "/api/settings/fleet/instances", { name: "constructor", working_directory: h.ctx.dataDir }, true, "own-instance");
+  expect(pending.status).toBe(202); expect(Object.hasOwn(h.config.instances, "constructor")).toBe(false);
+  expect((await h.store.decide(pending.body.pending_change.id, "confirm", actor())).state).toBe("applied");
+  expect(Object.hasOwn(h.config.instances, "constructor")).toBe(true);
+  expect(h.config.instances.constructor).toEqual({ working_directory: h.ctx.dataDir });
+  expect(Object.getPrototypeOf(h.config.instances)).toBe(Object.prototype);
+});
+
+
+it("a Classic projection preserves an own __proto__ request field as visible data, never an inherited effect", () => {
+  const h = harness(), classic = { channels: { "-100:10": { model: "old" } } };
+  const body = JSON.parse('{"__proto__":{"token":"SECRET-PROJECTION-SENTINEL"}}');
+  const effect = prepareSettingsEffect("PATCH", "/api/settings/classic/channels/-100:10", body, { config: h.config, classic });
+  expect(effect.diff).not.toBeNull(); expect(effect.diff!.summary.join("\n")).toContain("fingerprint");
+  expect(JSON.stringify(effect.diff)).not.toContain("SECRET-PROJECTION-SENTINEL");
+  expect(classic.channels["-100:10"]).toEqual({ model: "old" });
+  expect(Object.getPrototypeOf(classic.channels["-100:10"])).toBe(Object.prototype);
 });

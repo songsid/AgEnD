@@ -817,7 +817,7 @@ export function handleSettingsRequest(
       catch (err) { return json(res, 409, { error: (err as Error).message }); }
       const channels = classic.channels;
       if (!channels || typeof channels !== "object" || Array.isArray(channels)) return json(res, 404, { error: "classic channel not found" });
-      const current = (channels as Record<string, unknown>)[key];
+      const current = Object.hasOwn(channels, key) ? (channels as Record<string, unknown>)[key] : undefined;
       if (!current || typeof current !== "object" || Array.isArray(current)) return json(res, 404, { error: "classic channel not found" });
       const previous = structuredClone(classic);
       const merged = { ...(current as Record<string, unknown>), ...body };
@@ -1006,7 +1006,7 @@ export function handleSettingsRequest(
     const after = validateFleetConfig({ ...cfg!, instances: { ...cfg!.instances, [name]: mergedInst } });
     if (rejectIfWorse(res, before, after)) return;
     settingsWrite(req, () => {
-      cfg!.instances[name] = mergedInst as unknown as FleetConfig["instances"][string];
+      Object.defineProperty(cfg!.instances, name, { value: mergedInst, writable: true, enumerable: true, configurable: true });
       if (!exists) clearPausedMarker(join(ctx.dataDir, "instances", name));
       ctx.saveFleetConfig(rawInstancePatches(name, patch));
     });
@@ -1023,7 +1023,7 @@ export function handleSettingsRequest(
       if (typeof body !== "object" || body === null || Array.isArray(body)) return json(res, 400, { error: "expected an object" });
       const name = typeof body.name === "string" ? body.name.trim() : "";
       if (!validName(name)) return json(res, 400, { error: "missing or invalid instance name (provide `name` in the body)" });
-      if (cfg.instances[name]) return json(res, 409, { error: "instance already exists" });
+      if (Object.hasOwn(cfg.instances, name)) return json(res, 409, { error: "instance already exists" });
       const { name: _n, ...instBody } = body;
       commitInstance(name, false, instBody);
     }).catch(() => json(res, 400, { error: "bad request" }));
@@ -1038,7 +1038,7 @@ export function handleSettingsRequest(
     if (!validName(name)) { json(res, 400, { error: "invalid instance name" }); return true; }
 
     if (method === "DELETE") {
-      if (!cfg.instances[name]) { json(res, 404, { error: "instance not found" }); return true; }
+      if (!Object.hasOwn(cfg.instances, name)) { json(res, 404, { error: "instance not found" }); return true; }
       // DELETE never blocks on validation; surface any resulting warnings.
       settingsWrite(req, () => {
         delete cfg.instances[name]; clearPausedMarker(join(ctx.dataDir, "instances", name)); ctx.saveFleetConfig();
@@ -1048,7 +1048,7 @@ export function handleSettingsRequest(
     }
 
     if (method === "POST" || method === "PATCH") {
-      const exists = !!cfg.instances[name];
+      const exists = Object.hasOwn(cfg.instances, name);
       if (method === "POST" && exists) { json(res, 409, { error: "instance already exists" }); return true; }
       if (method === "PATCH" && !exists) { json(res, 404, { error: "instance not found" }); return true; }
       readBody(req, 512 * 1024).then(buf => {

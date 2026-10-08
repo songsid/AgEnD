@@ -70,8 +70,9 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     for (const key of ["tool_progress", "reply_completion_guard"]) if (after.classic.defaults[key] === null) delete after.classic.defaults[key];
   } else if (path.startsWith("/api/settings/classic/channels/")) {
     const key = decodeURIComponent(path.split("/").at(-1)!); after.classic.channels ??= {};
-    if (!after.classic.channels[key]) throw new SettingsConfirmationError(404, "classic_channel_not_found");
-    Object.assign(after.classic.channels[key], record(body));
+    if (!Object.hasOwn(after.classic.channels, key) || !after.classic.channels[key] || typeof after.classic.channels[key] !== "object" || Array.isArray(after.classic.channels[key]))
+      throw new SettingsConfirmationError(404, "classic_channel_not_found");
+    after.classic.channels = { ...after.classic.channels, [key]: { ...after.classic.channels[key], ...record(body) } };
     for (const key2 of ["model", "auto_pause_after", "tool_progress", "reply_completion_guard"]) if (after.classic.channels[key][key2] === null) delete after.classic.channels[key][key2];
   } else if (path === "/ui/config") {
     if (!cfg) throw new SettingsConfirmationError(503, "fleet_unavailable");
@@ -108,15 +109,16 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     const payload = method === "DELETE" ? {} : record(body), pieces = path.split("/");
     const name = path === "/ui/instances" || path === "/api/settings/fleet/instances" ? payload.name : decodeURIComponent(path.startsWith("/ui/") ? pieces[3] : pieces.at(-1)!);
     if (typeof name !== "string" || !name) throw new SettingsConfirmationError(400, "invalid_instance_name");
+    const exists = Object.hasOwn(cfg.instances, name);
     if (method === "DELETE" || path.endsWith("/delete")) { delete after.fleet.instances[name]; force = true; }
     else {
       const patch = { ...payload }; delete patch.name;
       if (path === "/ui/instances") {
-        after.fleet.instances[name] = { ...(cfg.instances[name] ?? {}), working_directory: payload.working_directory, backend: payload.backend ?? cfg.defaults?.backend, model: payload.model };
+        after.fleet.instances = { ...after.fleet.instances, [name]: { ...(exists ? cfg.instances[name] : {}), working_directory: payload.working_directory, backend: payload.backend ?? cfg.defaults?.backend, model: payload.model } };
       } else {
-        after.fleet.instances[name] = normalizeSettingsInstancePatch(cfg.instances[name] ?? {}, patch);
+        after.fleet.instances = { ...after.fleet.instances, [name]: normalizeSettingsInstancePatch(exists ? cfg.instances[name] : {}, patch) };
       }
-      force = !cfg.instances[name];
+      force = !exists;
     }
   }
   if (after.fleet && !validateFleetConfig(after.fleet).valid && validateFleetConfig(before.fleet).valid) throw new SettingsConfirmationError(400, "invalid_settings_effect");

@@ -44,11 +44,16 @@ export function noteSettingsWrite(path: string, before: unknown, after: unknown)
 }
 export interface SettingsUndo { path: readonly string[]; before: unknown; written: unknown; revision: number }
 function getPath(value: any, path: readonly string[]): unknown {
-  for (const key of path) value = value?.[key]; return value;
+  for (const key of path) value = value != null && Object.hasOwn(value, key) ? value[key] : undefined; return value;
 }
 function setPath(value: any, path: readonly string[], next: unknown): void {
-  for (const key of path.slice(0, -1)) value = value[key] ??= {};
-  if (next === undefined) delete value[path.at(-1)!]; else value[path.at(-1)!] = structuredClone(next);
+  for (const key of path.slice(0, -1)) {
+    if (!Object.hasOwn(value, key) || !value[key] || typeof value[key] !== "object")
+      Object.defineProperty(value, key, { value: {}, writable: true, enumerable: true, configurable: true });
+    value = value[key];
+  }
+  if (next === undefined) delete value[path.at(-1)!];
+  else Object.defineProperty(value, path.at(-1)!, { value: structuredClone(next), writable: true, enumerable: true, configurable: true });
 }
 export function settingsUndo(path: string, before: unknown, written: unknown, fields: readonly (readonly string[])[]): SettingsUndo[] {
   return fields.map(field => ({ path: [...field], before: structuredClone(getPath(before, field)),
@@ -149,9 +154,11 @@ export function mergeSettingsDelta(before: any, after: any, current: any): any {
   if (!object(before) || !object(after)) return structuredClone(after);
   const next = object(current) ? structuredClone(current) : {};
   for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
-    if (settingsFingerprint(before[key]) === settingsFingerprint(after[key])) continue;
+    const old = Object.hasOwn(before, key) ? before[key] : undefined, written = Object.hasOwn(after, key) ? after[key] : undefined;
+    if (settingsFingerprint(old) === settingsFingerprint(written)) continue;
     if (!Object.hasOwn(after, key)) delete next[key];
-    else next[key] = mergeSettingsDelta(before[key], after[key], next[key]);
+    else Object.defineProperty(next, key, { value: mergeSettingsDelta(old, written, Object.hasOwn(next, key) ? next[key] : undefined),
+      writable: true, enumerable: true, configurable: true });
   }
   return next;
 }
