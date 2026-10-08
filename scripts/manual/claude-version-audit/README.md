@@ -30,14 +30,16 @@ python3 -I scripts/manual/claude-version-audit/predlits.py src/backend/claude-co
 python3 -I scripts/manual/claude-version-audit/dialogdiff.py $AUDIT_DIR/2.1.292 $AUDIT_DIR/2.1.294
 ```
 
+The passes run under `set -u`, so `lib.sh` treats every optional input as optional (`${WITHKEY:-}`, `gencmd`'s `${3:-}`). `tests/claude-version-audit-rig.test.ts` runs it with stub `tmux` and `npx` to hold that.
+
 Each `step`/`capb` captures both versions and writes `cap/diff-<label>.txt`, with version strings normalised.
 
 `pass1.sh` is the first pass as it was run, rebuilt from the session log with its paths parameterised. One deviation: step 7 built its `ky` home from a copy of the 2.1.291 audit's home in the same state. The script builds it from `k` instead.
 
 ## Binary checks
 
-- **`predlits.py`:** takes every string literal in `src/backend/claude-code.ts`, plus the literal runs inside its regexes, and counts each one in both binaries.
-  - 215 literals checked; 61 occur in the binaries (the rest are AgEnD's own text).
+- **`predlits.py`:** selects predicate-text fragments from `src/backend/claude-code.ts` and counts each one in both binaries. The fragments are string literals of 8–200 characters with prose in them, plus literal runs of at least 7 characters inside its regexes; both pass a length and vocabulary filter.
+  - 215 fragments selected; 61 occur in the binaries (the rest are AgEnD's own text).
   - Only 2 counts changed: `" and the "` and `"never ask"`. Both changes are in unrelated settings-documentation prose. No predicate text disappeared.
 - **`dialogdiff.py`:** lists literal strings present in only one version, filtered to dialog, permission and error words. Of the 2.1.294-only strings, the ones on AgEnD's path are:
   - `[permissions] bypass consent was accepted but user settings do not show it …, so bypass is not passed on`. Production records the consent in the settings it passes with `--settings`, and the production launch still shows `bypass permissions on` (pass1 step 19).

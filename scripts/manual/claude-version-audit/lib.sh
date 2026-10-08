@@ -14,7 +14,8 @@ start() {
   local name=$1 ver=$2 home=$3 cwd=$4; shift 4
   mkdir -p "$home" "$cwd"
   local envs="HOME=$home CLAUDE_CONFIG_DIR=$home/.claude XDG_CONFIG_HOME=$home/.config XDG_DATA_HOME=$home/.local/share XDG_CACHE_HOME=$home/.cache XDG_STATE_HOME=$home/.local/state DISABLE_AUTOUPDATER=1 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 DISABLE_TELEMETRY=1 DISABLE_ERROR_REPORTING=1 ANTHROPIC_BASE_URL=http://127.0.0.1:$PORT TERM=xterm-256color"
-  [ -n "$WITHKEY" ] && envs="$envs ANTHROPIC_API_KEY=$KEY"
+  # Optional under the callers' `set -u`: unset means no key (the onboarding and not-logged-in runs).
+  [ -n "${WITHKEY:-}" ] && envs="$envs ANTHROPIC_API_KEY=$KEY"
   t new-session -d -s "$name" -x 160 -y 50 -c "$cwd" "env -i PATH=/usr/bin:/bin $envs $A/$ver $* ; echo EXITED rc=\$?; sleep 3600"
 }
 cap() { t capture-pane -p -t "$1"; }
@@ -38,7 +39,7 @@ startcmd() {
 }
 gencmd() { # gencmd <v> <prefix> [resume]
   local v=$1 p=$2 H=$A/h/ky$1
-  (cd $REPO && HOME=$H CLAUDE_CONFIG_DIR=$H/.claude ANTHROPIC_API_KEY=$KEY ANTHROPIC_BASE_URL=http://127.0.0.1:$PORT npx tsx $HERE/gen-cmd.ts $A/inst/$p$v $A/w/$p$v $A/2.1.$v $3 2>/dev/null > $A/cmd-$p$v.txt)
+  (cd $REPO && HOME=$H CLAUDE_CONFIG_DIR=$H/.claude ANTHROPIC_API_KEY=$KEY ANTHROPIC_BASE_URL=http://127.0.0.1:$PORT npx tsx $HERE/gen-cmd.ts $A/inst/$p$v $A/w/$p$v $A/2.1.$v ${3:-} 2>/dev/null > $A/cmd-$p$v.txt)
 }
 # frames <prefix> <label> <count> <interval>: capture both versions repeatedly into cap/frames/<label>/<v>/NNN.txt
 frames() {
