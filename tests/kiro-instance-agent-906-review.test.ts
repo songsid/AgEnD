@@ -217,6 +217,53 @@ describe("#8 / R2#3 a failed adoption record is retried with exactly the convers
   });
 });
 
+describe("R3 a pending adoption is settled before anything else — never bypassed, never lost", () => {
+  const home = () => join(root, "agend");
+  const statePath = () => join(home(), "kiro-identity", "instances", stateName("a"));
+  afterEach(() => { inject.failPath = null; });
+  type Over = Partial<Parameters<typeof resolveKiroIdentity>[0]>;
+  const r = (store: KiroStoreRead, over: Over = {}) => resolveKiroIdentity({ instance: "a", engine: "v1", workingDirectory: join(root, "work"),
+    credentialProfile: null, agendHome: home(), readStore: () => store, launchedBefore: () => true, ...over });
+  const c1: KiroStoreRead = { kind: "ok", sessions: [{ id: "c1", updatedAt: 10 }], createdAt: () => 10 };
+  const empty: KiroStoreRead = { kind: "ok", sessions: [], createdAt: () => null };
+  function failAdoption() {
+    inject.failPath = statePath();
+    expect(() => r(c1)).toThrow(KiroIdentityError);
+    inject.failPath = null;
+  }
+
+  it("an explicit fresh start over a pending adoption gives c1 up for good", () => {
+    failAdoption();
+    expect(r(c1, { skipResume: true })).toEqual({ mode: "fresh" });
+    expect(readFileSync(join(home(), "kiro-identity", "claims", "v1", "c1"), "utf-8")).toBe("a\nabandoned\n");
+    expect(r(c1)).toEqual({ mode: "fresh" });
+  });
+
+  for (const [label, makeOther] of [
+    ["credential profile", (): Over => ({ credentialProfile: "work" })],
+    ["engine", (): Over => ({ engine: "v2" })],
+    ["working directory", (): Over => ({ workingDirectory: join(root, "elsewhere") })],
+  ] as const) {
+    it(`another key (${label}) written meanwhile, then back: exactly c1, and the other key's record kept`, () => {
+      const other = makeOther();
+      failAdoption();
+      expect(r(empty, { ...other, launchedBefore: () => false })).toEqual({ mode: "fresh" });
+      expect(r(empty)).toEqual({ mode: "resume", id: "c1", agentConfirmed: false });
+      expect(r(empty, other)).toEqual({ mode: "fresh" }); // its own record, still there (durably fresh)
+      expect(Object.keys(JSON.parse(readFileSync(statePath(), "utf-8")).keys)).toHaveLength(2);
+    });
+  }
+
+  it("the other key adopting too keeps both adoptions under way: each takes up its own", () => {
+    failAdoption();
+    inject.failPath = statePath();
+    expect(() => r({ kind: "ok", sessions: [{ id: "w1", updatedAt: 20 }], createdAt: () => 20 }, { credentialProfile: "work" })).toThrow(KiroIdentityError);
+    inject.failPath = null;
+    expect(r(empty)).toEqual({ mode: "resume", id: "c1", agentConfirmed: false });
+    expect(r(empty, { credentialProfile: "work" })).toEqual({ mode: "resume", id: "w1", agentConfirmed: false });
+  });
+});
+
 describe("R2#4 a creation time that cannot be read defers the take-up and keeps the mark", () => {
   it("unreadable at 3000, readable again later: new1 is still taken up", () => {
     const home = join(root, "agend");

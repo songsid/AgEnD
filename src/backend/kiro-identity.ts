@@ -232,16 +232,25 @@ function paths(agendHome: string, engine: RecordEngine, instance: string) {
   };
 }
 
-/** The adoption under way, or null; "unreadable" when it exists but cannot be read (never treated as none). */
-function readPending(path: string): { key: string; id: string } | null | "unreadable" {
+/** The adoptions under way, key → chosen id; "unreadable" when the file exists but cannot be read (never "none"). */
+function readPending(path: string): Record<string, string> | "unreadable" {
   let text: string;
   try { text = readFileSync(path, "utf-8"); } catch (err) {
-    return (err as NodeJS.ErrnoException).code === "ENOENT" ? null : "unreadable";
+    return (err as NodeJS.ErrnoException).code === "ENOENT" ? {} : "unreadable";
   }
   try {
     const v = JSON.parse(text) as Record<string, unknown>;
-    return typeof v.key === "string" && typeof v.id === "string" && SAFE_ID.test(v.id) ? { key: v.key, id: v.id } : "unreadable";
+    if (!v || typeof v !== "object" || Array.isArray(v)) return "unreadable";
+    const out: Record<string, string> = {};
+    for (const [k, id] of Object.entries(v)) { if (typeof id !== "string" || !SAFE_ID.test(id)) return "unreadable"; out[k] = id; }
+    return out;
   } catch { return "unreadable"; }
+}
+
+/** Record or settle one key's adoption, keeping the others'. Throws when it cannot be written. */
+function writePending(path: string, map: Record<string, string>): void {
+  if (Object.keys(map).length === 0) { rmSync(path, { force: true }); return; }
+  writeFileAtomic(path, JSON.stringify(map) + "\n");
 }
 
 type Claim = { owner: string; abandoned: boolean } | null | "incomplete";
@@ -308,10 +317,12 @@ export function resolveKiroIdentity(opts: ResolveKiroIdentityOptions): KiroIdent
     } catch { return false; }
   };
   /** Recorded first: until it is, the old record still says which conversation this instance holds. */
-  const startFresh = (store?: KiroStoreRead): KiroIdentityDecision => {
+  /** `alsoGivingUp`: a conversation held outside the record (a pending adoption's) given up with this fresh start. */
+  const startFresh = (store?: KiroStoreRead, alsoGivingUp?: string): KiroIdentityDecision => {
     const listed = store ?? opts.readStore();
     const abandoned = new Set(record?.abandoned ?? []);
     if (record?.id) abandoned.add(record.id);
+    if (alsoGivingUp) abandoned.add(alsoGivingUp);
     const next: KeyRecord = {
       engine, workingDirectory, credentialProfile, id: null, since: now(),
       known: listed.kind === "ok" ? listed.sessions.map(s => s.id) : [],
@@ -320,29 +331,47 @@ export function resolveKiroIdentity(opts: ResolveKiroIdentityOptions): KiroIdent
     if (!save(next)) throw new KiroIdentityError(`cannot write ${p.state}`);
     // Its claim is marked, not released: given up for good, by everyone.
     if (record?.id) abandonClaim(p.claims, record.id, instance);
+    if (alsoGivingUp) abandonClaim(p.claims, alsoGivingUp, instance);
     return { mode: "fresh" };
   };
+
+  // An adoption under way for THIS key (recorded before its claim; see below) is settled before anything else —
+  // whether there is no state file yet or other keys have been written since. It is never forgotten or bypassed:
+  //  - an explicit fresh start gives its conversation up for good (claim marked, id listed abandoned);
+  //  - an unreadable or malformed state file gives it up too (nothing can be recorded about it);
+  //  - otherwise it is taken up exactly — held or still claimable — or, someone else's by now, the key starts fresh.
+  const pendingMap = readPending(p.pending);
+  if (pendingMap === "unreadable") throw new KiroIdentityError(`cannot read ${p.pending}`);
+  const pendingId = Object.hasOwn(pendingMap, key) ? pendingMap[key]! : null;
+  /** Settled: this key's entry goes, the other keys' adoptions stay. */
+  const settlePending = () => {
+    const rest = { ...pendingMap };
+    delete rest[key];
+    try { writePending(p.pending, rest); } catch { /* the entry stays; recovering it again is idempotent */ }
+  };
+  if (pendingId && !record) {
+    if (opts.skipResume || read.kind === "bad") {
+      const fresh = startFresh(undefined, pendingId);
+      settlePending();
+      return fresh;
+    }
+    const c = claimOf(p.claims, pendingId);
+    if (heldBy(c, instance) || (c === null && claim(p.claims, pendingId, instance))) {
+      if (!save({ engine, workingDirectory, credentialProfile, id: pendingId, since: now(), known: [], abandoned: [], agentConfirmed: false })) {
+        throw new KiroIdentityError(`cannot write ${p.state}`);
+      }
+      settlePending();
+      return { mode: "resume", id: pendingId, agentConfirmed: false };
+    }
+    const fresh = startFresh();
+    settlePending();
+    return fresh;
+  }
 
   // Adoption: only with no state file at all, and only for an instance that ran here before (#906 §2). The chosen
   // conversation is recorded (pending) before it is claimed, so a retry after any failure takes up that exact
   // conversation — never whichever is newest by then.
   if (read.kind === "none") {
-    const pending = readPending(p.pending);
-    if (pending === "unreadable") throw new KiroIdentityError(`cannot read ${p.pending}`);
-    if (pending && pending.key === key) {
-      const c = claimOf(p.claims, pending.id);
-      if (heldBy(c, instance) || (c === null && claim(p.claims, pending.id, instance))) {
-        if (!save({ engine, workingDirectory, credentialProfile, id: pending.id, since: now(), known: [], abandoned: [], agentConfirmed: false })) {
-          throw new KiroIdentityError(`cannot write ${p.state}`);
-        }
-        rmSync(p.pending, { force: true });
-        return { mode: "resume", id: pending.id, agentConfirmed: false };
-      }
-      // Someone else's by now: this adoption is over — a fresh start, never a different conversation.
-      const fresh = startFresh();
-      rmSync(p.pending, { force: true });
-      return fresh;
-    }
     if (opts.skipResume || !opts.launchedBefore()) return startFresh();
     const store = opts.readStore();
     if (store.kind === "unreadable") return { mode: "legacy", reason: store.detail };
@@ -350,16 +379,16 @@ export function resolveKiroIdentity(opts: ResolveKiroIdentityOptions): KiroIdent
     if (!newest || claimOf(p.claims, newest.id) !== null) return startFresh(store);
     try {
       mkdirSync(p.instances, { recursive: true, mode: 0o700 });
-      writeFileAtomic(p.pending, JSON.stringify({ key, id: newest.id }) + "\n");
+      writePending(p.pending, { ...pendingMap, [key]: newest.id });
     } catch { throw new KiroIdentityError(`cannot write ${p.pending}`); }
     if (!claim(p.claims, newest.id, instance)) {
-      rmSync(p.pending, { force: true });
+      settlePending();
       return startFresh(store);
     }
     if (!save({ engine, workingDirectory, credentialProfile, id: newest.id, since: now(), known: [], abandoned: [], agentConfirmed: false })) {
-      throw new KiroIdentityError(`cannot write ${p.state}`); // the pending record and the claim stand: the retry takes this id
+      throw new KiroIdentityError(`cannot write ${p.state}`); // the pending entry and the claim stand: the retry takes this id
     }
-    rmSync(p.pending, { force: true });
+    settlePending();
     return { mode: "resume", id: newest.id, agentConfirmed: false };
   }
 
