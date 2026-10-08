@@ -149,23 +149,66 @@ describe("detect-changes: docs-only classification", () => {
 });
 
 describe("P3a regression: large diff does not fail-open via SIGPIPE", () => {
-  it("6 000 src/ files → docs-only=false (not a false positive from SIGPIPE)", () => {
-    // The old `git diff --name-only | grep -qvE` caused git to get SIGPIPE
-    // when grep found a non-matching line immediately and exited 0. With
-    // `pipefail` the shell saw git's exit 141 and the `if` took the else
-    // branch → docs-only=true. The fix collects the diff into a variable first.
+  it("5 000 src/ files (>64 KB pipe buffer) → docs-only=false (not a false positive from SIGPIPE)", () => {
+    // The old `git diff --name-only | grep -qvE` and the intermediate
+    // `echo "$diff_files" | grep -qvE` caused grep to exit early after
+    // finding the first non-matching line; echo got SIGPIPE (exit 141);
+    // with pipefail the if took the else-branch → docs-only=true.
+    //
+    // 200 short paths (~4 KB) fit inside the pipe buffer and never trigger
+    // the bug. This test uses 5 000 paths (~225 KB) to reliably overflow
+    // the buffer and expose the defect.
+    //
+    // The fix: write diff_files to a temp file and grep the file directly.
+    // When grep exits after a -q match it just stops reading; no echo
+    // process is left behind to receive SIGPIPE.
     const r = makeRepo();
     const initFiles: Record<string, string> = { "docs/a.md": "init\n" };
-    for (let i = 0; i < 200; i++) initFiles[`src/file${i}.ts`] = `// ${i}\n`;
+    for (let i = 0; i < 5000; i++) initFiles[`src/subdirectory/nested/file${String(i).padStart(5, "0")}.typescript`] = `// ${i}\n`;
     const base = r.commit("init", initFiles);
     r.git("checkout", "-q", "-b", "pr");
-    // Commit a large batch of src/ changes (simulating 200 files changed)
     const prFiles: Record<string, string> = {};
-    for (let i = 0; i < 200; i++) prFiles[`src/file${i}.ts`] = `// ${i} changed\n`;
+    for (let i = 0; i < 5000; i++) prFiles[`src/subdirectory/nested/file${String(i).padStart(5, "0")}.typescript`] = `// ${i} changed\n`;
     const head = r.commit("large-src-change", prFiles);
     const result = r.run(base, head);
-    expect(result.exitCode).toBe(0);
-    expect(result.docsOnly).toBe(false);
+    expect(result.exitCode, "script must not crash").toBe(0);
+    expect(result.docsOnly, "5000 src files must be docs-only=false").toBe(false);
+  });
+
+  it("P3a mutation: echo-pipe approach is red on large diff (documents the defect the fix closes)", () => {
+    // This test proves that the old echo | grep -q pattern IS broken for
+    // large diffs, confirming the fix is necessary. If this test starts
+    // passing, the mutation has regressed back to the broken approach.
+    const r = makeRepo();
+    const initFiles: Record<string, string> = {};
+    for (let i = 0; i < 5000; i++) initFiles[`src/subdirectory/nested/file${String(i).padStart(5, "0")}.typescript`] = `// ${i}\n`;
+    const base = r.commit("init", initFiles);
+    r.git("checkout", "-q", "-b", "pr");
+    const prFiles: Record<string, string> = {};
+    for (let i = 0; i < 5000; i++) prFiles[`src/subdirectory/nested/file${String(i).padStart(5, "0")}.typescript`] = `// ${i} changed\n`;
+    const head = r.commit("large", prFiles);
+    // Run the BROKEN echo-pipe variant directly to document the defect.
+    const { readFileSync, writeFileSync } = require("node:fs");
+    const githubOutput = require("node:path").join(r.dir, "github_output_broken.txt");
+    writeFileSync(githubOutput, "");
+    const brokenScript = `
+      set -euo pipefail
+      diff_files=$(git diff --name-only "${base}...${head}")
+      if echo "$diff_files" | grep -qvE '^(docs|changes)/|^[^/]+\\.md$'; then
+        echo "docs-only=false" >> "$GITHUB_OUTPUT"
+      else
+        echo "docs-only=true" >> "$GITHUB_OUTPUT"
+      fi
+    `;
+    const { spawnSync } = require("node:child_process");
+    spawnSync("bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", brokenScript], {
+      cwd: r.dir,
+      env: { ...process.env, GITHUB_OUTPUT: githubOutput, HOME: r.dir, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null" },
+      encoding: "utf8",
+    });
+    const out = readFileSync(githubOutput, "utf8");
+    // The broken approach produces docs-only=true for large src/ diffs.
+    expect(out.trim()).toBe("docs-only=true");
   });
 
   it("mixed docs + src → docs-only=false, not confused by early grep exit", () => {

@@ -56,13 +56,21 @@ jobs:
             echo "docs-only=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          # Write to a temp file and grep the file directly. When grep exits
+          # early after a -q match, it simply stops reading — no echo or printf
+          # process is left behind to receive SIGPIPE. A diff larger than the
+          # pipe buffer would cause echo "$diff_files" | grep -q to SIGPIPE
+          # and fail-open (docs-only=true) for any large src/ change.
+          _diff_f=$(mktemp)
+          trap 'rm -f "$_diff_f"' EXIT
+          printf '%s\n' "$diff_files" > "$_diff_f"
           # .github/** changes must always run the full suite.
-          if echo "$diff_files" | grep -qE '^\.github/'; then
+          if grep -qE '^\.github/' "$_diff_f"; then
             echo "docs-only=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           # Any file outside docs/, changes/, or a root *.md triggers full CI.
-          if echo "$diff_files" | grep -qvE '^(docs|changes)/|^[^/]+\.md$'; then
+          if grep -qvE '^(docs|changes)/|^[^/]+\.md$' "$_diff_f"; then
             echo "docs-only=false" >> "$GITHUB_OUTPUT"
           else
             echo "docs-only=true" >> "$GITHUB_OUTPUT"
