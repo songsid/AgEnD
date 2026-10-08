@@ -76,7 +76,7 @@ describe("real synchronous caller paths remain unchanged and gain attribution", 
       watcher.watch("a"); vi.advanceTimersByTime(10_000);
       expect(ctx.costGuard.updateCost).toHaveBeenCalledWith("a", 12);
       expect(ctx.checkModelFailover).toHaveBeenCalledWith("a", 80);
-      expect(watcher.getRateLimits("a")).toEqual({ five_hour_pct: 80, seven_day_pct: 100 }); expect(tags()).toContain("statusline.read");
+      expect(watcher.getRateLimits("a")).toEqual({ five_hour_pct: 80, seven_day_pct: 100, five_hour_resets_at_ms: null }); expect(tags()).toContain("statusline.read");
     } finally { watcher.stopAll(); }
   });
   it("names SQLite outbox reads/claim and event insert/query without opening a database", () => {

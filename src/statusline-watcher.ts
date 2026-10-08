@@ -3,10 +3,16 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { CostGuard } from "./cost-guard.js";
 import type { Logger } from "./logger.js";
+import { statuslineResetsAtMs } from "./usage/statusline-usage.js";
 
 export interface RateLimitData {
   five_hour_pct: number;
   seven_day_pct: number;
+  /**
+   * When the 5-hour window the percentage belongs to resets (epoch ms), or null when the file gave none. Past it, the
+   * percentage describes a window that no longer exists (#1426): claude-code rewrites the file only when it renders.
+   */
+  five_hour_resets_at_ms: number | null;
 }
 
 export interface StatuslineWatcherContext {
@@ -57,6 +63,7 @@ export class StatuslineWatcher {
           this.rateLimits.set(name, {
             five_hour_pct: rl.five_hour?.used_percentage ?? 0,
             seven_day_pct: newSevenDay,
+            five_hour_resets_at_ms: statuslineResetsAtMs(rl.five_hour?.resets_at),
           });
 
           this.ctx.checkModelFailover(name, rl.five_hour?.used_percentage ?? 0);

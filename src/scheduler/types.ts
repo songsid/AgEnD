@@ -19,6 +19,30 @@ export interface Schedule {
   last_status: string | null;
 }
 
+/**
+ * The one retry of an occurrence the 5h rate limit deferred (#1426), persisted so it survives a fleet restart. Times
+ * are wall clock (epoch ms): they must mean the same thing after a restart, and the cron occurrences they are compared
+ * with are wall-clock times too. The in-process wait to `due_at_ms` is a timer, i.e. monotonic.
+ */
+export interface ScheduleRetry {
+  schedule_id: string;
+  /** The deferred occurrence's stable run id (its scheduled instant): the retry delivers under the same id. */
+  run_id: string;
+  deferred_at_ms: number;
+  /** The 5h usage when it was deferred, for the label the agent sees. */
+  deferred_pct: number;
+  /** When the window that deferred it resets, when the statusline said; null = unknown (poll instead). */
+  resets_at_ms: number | null;
+  /** When the next attempt is due. */
+  due_at_ms: number;
+  /** It never runs at or after this: the next regular occurrence, or the wait cap when that comes first. */
+  deadline_ms: number;
+  /** Which of the two the deadline is. */
+  deadline_kind: "next_occurrence" | "cap";
+}
+
+export type ScheduleRetryDrop = "superseded" | "expired" | "deferred_again";
+
 export interface ScheduleRun {
   id: number;
   schedule_id: string;
