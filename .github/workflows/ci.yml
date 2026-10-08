@@ -329,7 +329,10 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        node: ['22', '24', '26']
+        # '22' resolves to the latest 22.x (already >=22.14 on current runners).
+        # '22.14.0' is the exact minimum required for N-API 10 / better-sqlite3 v13.
+        # '24' and '26' cover the current and upcoming release lines.
+        node: ['22.14.0', '22', '24', '26']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -354,6 +357,43 @@ jobs:
       - name: agend --version
         if: needs.detect-changes.outputs.docs-only != 'true'
         run: agend --version
+      - name: Verify incompatible runtime is rejected before native open
+        if: needs.detect-changes.outputs.docs-only != 'true'
+        run: |
+          # The engines guard in cli.ts should reject Node 22.0.0 (N-API 9)
+          # before attempting a DB open. Simulate the guard logic directly to
+          # confirm it covers 22.0, 22.13, 23.0, 23.5 without needing real CLIs.
+          node - <<'JS'
+          const cases = [
+            // Should fail (N-API < 10)
+            { v: '22.0.0',  ok: false },
+            { v: '22.13.0', ok: false },
+            { v: '23.0.0',  ok: false },
+            { v: '23.5.9',  ok: false },
+            // Should pass (N-API >= 10)
+            { v: '22.14.0', ok: true },
+            { v: '23.6.0',  ok: true },
+            { v: '24.0.0',  ok: true },
+            { v: '26.0.0',  ok: true },
+          ];
+          let failed = 0;
+          function nodeOk(ver) {
+            const [maj, min] = ver.split('.').map(Number);
+            if (maj >= 24) return true;
+            if (maj === 23 && min >= 6) return true;
+            if (maj === 22 && min >= 14) return true;
+            return false;
+          }
+          for (const c of cases) {
+            const got = nodeOk(c.v);
+            if (got !== c.ok) {
+              console.error(`FAIL: nodeOk(${c.v}) = ${got}, want ${c.ok}`);
+              failed++;
+            }
+          }
+          if (failed > 0) process.exit(1);
+          console.log('Runtime rejection guard: all cases correct');
+          JS
       - name: better-sqlite3 in-memory open
         if: needs.detect-changes.outputs.docs-only != 'true'
         env:

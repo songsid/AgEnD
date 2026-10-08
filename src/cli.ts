@@ -1349,6 +1349,23 @@ program
     }
     if (!gateFleetControl(DATA_DIR, "update", { yes: opts.yes })) process.exit(1);
     const { spawnSync } = await import("node:child_process");
+
+    // ── Runtime version guard ──
+    // better-sqlite3 v13 requires Node-API 10 (available from 22.14.0 / 23.6.0+).
+    // Reject early before a partially-applied update leaves the operator stuck.
+    const [nodeMaj, nodeMin] = process.versions.node.split(".").map(Number);
+    const nodeOk = nodeMaj >= 24
+      || (nodeMaj === 23 && nodeMin >= 6)
+      || (nodeMaj === 22 && nodeMin >= 14);
+    if (!nodeOk) {
+      console.error(
+        `  ✗ Node.js ${process.version} is not supported by this version of AgEnD.\n` +
+        `    better-sqlite3 v13 requires Node-API 10, available from:\n` +
+        `      Node 22.14.0 LTS or later,  Node 23.6.0 or later,  Node 24+.\n` +
+        `    Upgrade Node first (e.g. nvm install 22), then run agend update again.`,
+      );
+      process.exit(1);
+    }
     // The channel follows the version being replaced — this CLI's own package — so an alpha or beta stays on its channel.
     const tag = getUpdateSelector(opts, pkgVersion);
     const looked = lookupTargetVersion(tag);

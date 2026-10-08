@@ -92,18 +92,32 @@ elif command_exists pacman; then
   PKG_MGR="pacman"
 fi
 
-# ── Step 2: Node.js >= 20 ────────────────────────────────
+# ── Step 2: Node.js ^22.14.0 || ^23.6.0 || >=24 ─────────
+# better-sqlite3 v13 uses Node-API 10, available from 22.14.0 / 23.6.0+.
 
 step 2 "Checking Node.js"
 
 NODE_OK=false
+# node_version_ok: return 0 when the running Node meets the N-API 10 floor.
+node_version_ok() {
+  local maj min
+  maj=$(node -v 2>/dev/null | sed 's/v//' | cut -d. -f1)
+  min=$(node -v 2>/dev/null | sed 's/v//' | cut -d. -f2)
+  [ -z "$maj" ] && return 1
+  # 24+: all good
+  [ "$maj" -ge 24 ] && return 0
+  # 23.6+: good
+  [ "$maj" -eq 23 ] && [ "$min" -ge 6 ] && return 0
+  # 22.14+: good
+  [ "$maj" -eq 22 ] && [ "$min" -ge 14 ] && return 0
+  return 1
+}
 if command_exists node; then
-  NODE_VERSION=$(node -v | sed 's/v//' | cut -d. -f1)
-  if [ "$NODE_VERSION" -ge 20 ] 2>/dev/null; then
+  if node_version_ok; then
     info "Node.js $(node -v) found"
     NODE_OK=true
   else
-    warn "Node.js $(node -v) found but >= 20 required"
+    warn "Node.js $(node -v) found but ^22.14.0 || ^23.6.0 || >=24 required (N-API 10)"
   fi
 fi
 
