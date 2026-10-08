@@ -27,25 +27,17 @@ Daemon 透過 `~/.agend/instances/<name>/channel.sock` 與 AgEnD MCP bridge 通�
 
 ## Dashboard token 與瀏覽器 session
 
-Dashboard 使用 fleet 共用的 bearer token，存於 `~/.agend/web.token`，建立時權限為 `0600`，fleet 重啟後仍保留；既有 token 檔的權限收緊採盡力處理。`agend web-token rotate` 會替換它；後續授權檢查會拒絕舊 dashboard 網址、header token 與衍生的 session cookie。輪換不代表能撤回已獲授權的請求，或關閉所有既有連線。
+本機 CLI/header 憑證是 `~/.agend/web.token`（建立時 `0600`）。瀏覽器用五分鐘、一次性登入碼取得隨機 server-side session；舊 URL token 不能登入。Cookie 為 `HttpOnly`、`SameSite=Strict`，寫入需相符 Origin 與該 session 的 CSRF 值。本機 session 由 server 限制 12 小時／閒置兩小時。Token 輪換使後续請求失效，不能撤銷已授權開始的工作。
 
-對走 dashboard 授權閘門的路由：
+General 的 `/dashboard` 選單限管理員且不含憑證；連結與碼私送，Discord 可改用須確認送達的 ephemeral 回覆。Telegram 失敗時請使用者先私訊 bot 的 `/start`。本機腳本可用 `X-Agend-Token`；受管理的公開 gateway 拒絕該 header 以及本機 cookie／碼。公開憑證綁定當前入口，舊入口或未綁定的 gateway session 在更新活動前就拒絕。
 
-- GET/HEAD 的有效 `?token=` 會換成 `agend_session` cookie，並重新導向不含 token 的網址。寫入請求不能只靠 URL token 授權。
-- Cookie 放的是 token 的衍生值，屬性包含 `HttpOnly`、`SameSite=Strict` 與瀏覽器端 12 小時的 `Max-Age`；伺服器不會獨立強制執行 12 小時 cookie 到期。`X-Forwarded-Proto` 顯示 HTTPS 時才加上 `Secure`；遠端存取請使用 TLS。
-- 有效 cookie 或 `X-Agend-Token` header 可授權受保護路由。`Origin` 格式無效，或解析後的 host／port 與 `Host` 不同會被拒絕；不比對通訊協定。沒有 `Origin` 的呼叫者若憑證有效仍可通過。這是共用的操作員憑證，不是個別使用者帳號或角色系統。
+## 臨時公開 gateway 與本機讀取
 
-請把 dashboard 連結與 cookie 當成憑證保護：首次帶 token 的網址仍可能出現在瀏覽器歷史、代理日誌或終端輸出。`/dashboard` 需要 fleet 管理員，但任何取得有效憑證的人都能使用；HTTP 操作不會逐次重查聊天允許名單。
+所屬 adapter 的 General 管理員明確點選後，才開受管理的公開連結，預設兩小時（可設 1–480 分鐘，從同意起固定期限）。只用固定版本／checksum 驗證的 cloudflared，與 `/login` 共用單一 tunnel 名額。獨立 listener 使用程式指定的來源脈絡，不信任 proxy header。只接受當前完整 HTTPS Host 與核准面板路由，不在本機 Host 清單加 wildcard。即使本機讀取開放，公開 `/view` 與用量仍要登入；不暴露 health、agent、發碼、SSE、preview 或舊 restart API。
 
-## 公開讀取與 Host 檢查
+公開 cookie 為 Secure `__Host-`，綁定單次入口。每次公開登入都須在五秒內確認所屬 General 收到 🔐 公開通知，不受 `notify_login` 影響；確認前候選 session 不可用也不持久化。登入碼外洩仍可授予完整 web-admin 權限。Cloudflare 終止 TLS；光轉傳連結不會登入，但會暴露端點供猜碼、耗盡共用 breaker。完整 Origin 與 CSRF 保護瀏覽器寫入；Host 檢查不是身分認證。到期、停用、私送關閉、revoke、owner／binding 失效與 shutdown 都先關存取、撤回公開憑證，再清子行程；無法確認停止時封鎖下一條 tunnel。
 
-**Web token 並未保護所有 HTTP 讀取。** 任何能連到 listener 並帶允許 `Host` 的人，都能讀取 `/view` 及其 GET API，包括 `/api/pane/<instance>`、個人資料、頭像與排序。啟用時的 `/api/ai-usage` 也公開，GET `/health` 不需要 token。Pane 擷取可能包含指令、憑證與其他私人輸出。
-
-`/view` 的個人資料／頭像／排序寫入另有 token 檢查：需要以 `X-Agend-Token` 或 `?token=` 傳入 `web.token`，不接受 dashboard cookie。這些路由不經一般 dashboard 閘門及其 Origin 檢查，不能把閘門「URL token 在 GET／HEAD 換 cookie」的規則套到它們。
-
-Health/dashboard listener 綁定 `127.0.0.1`。所有請求，包括公開讀取與 `/agent`，都必須通過 `Host` 允許名單：`localhost`、`127.0.0.1`、`[::1]`、設定的 `hostname`，以及 `web.allowed_hosts` 中的名稱。缺少、格式錯誤或未列入的 Host 會收到 403。登入終端的 listener 也使用 Host 允許名單。
-
-這項檢查限制瀏覽器的 DNS rebinding，**不是身分認證**：一般 HTTP client 可以自行指定允許的 `Host`。若透過反向代理或 port forward 暴露 listener，請在該邊界保護公開讀取，並只加入確實要服務的主機名稱。`/login` 終端使用每次登入獨立的憑證；它的臨時公開 tunnel 不會代理 dashboard。見[登入設定](configuration.zh-TW.md#人不在機器旁完成-login公開連結)。
+本機 `/view` 讀取預設仍開放（`view_access: session` 關閉），終端畫面可能含機密。Profile／頭像／排序寫入需 session 或 header token。本機 listener 的 Host 清單為 localhost、loopback、設定的 hostname 與 `web.allowed_hosts`。自行設定的 proxy 或 port forward 不會自動獲得受管理 gateway 的規則；既有本機 session 不會變成公開憑證。見 [web dashboard](web-dashboard.zh-TW.md#手機使用臨時公開連結)。
 
 ## Agent HTTP token
 

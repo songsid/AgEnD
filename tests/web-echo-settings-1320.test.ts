@@ -71,10 +71,27 @@ function panel(web?: Record<string, unknown>) {
   };
   vm.runInNewContext(slice('  const hasOwn =', '  function setValidation(') + '\n' + slice('  function renderGeneral()', '  // ── What\'s New') + '\nrenderGeneral();', sandbox);
   const save = made.find(e => e.tag === "button" && e.onclick)!;
-  return { state, calls, made, toggle: made.find(e => e.id === "webEchoToChannel")!, save: () => save.onclick!(), apply: async () => { for (const change of state.pending.values()) await change.apply(); } };
+  return { state, calls, made, toggle: made.find(e => e.id === "webEchoToChannel")!, publicToggle: made.find(e => e.id === "publicWebLink")!, publicTtl: made.find(e => e.id === "publicWebTtl")!, save: () => save.onclick!(), apply: async () => { for (const change of state.pending.values()) await change.apply(); } };
 }
 
 describe("web echo config and Settings (#1320 A)", () => {
+  it("public-link controls display defaults without writing, then send only edited leaves (#1367)", async () => {
+    const h = panel(); expect(h.publicToggle.checked).toBe(true); expect(Number(h.publicTtl.value)).toBe(120);
+    h.save(); await h.apply(); expect(h.calls.some(c => c.path.endsWith("/web"))).toBe(false);
+    h.publicToggle.checked = false; h.publicTtl.value = "30"; h.save(); await h.apply();
+    expect(h.calls.filter(c => c.path.endsWith("/web"))).toEqual([{ path: "/api/settings/fleet/web", body: { public_link: { allow_public: false, ttl_minutes: 30 } } }]);
+  });
+  it("public-link Settings rejects invalid TTL before staging any unrelated edits (#1367)", async () => {
+    const h = panel(); h.publicTtl.value = "481"; const progress = h.made.find(e => e.tag === "select" && e.value === "off")!; progress.value = "standard";
+    h.save(); await h.apply(); expect(h.calls).toEqual([]); expect(h.state.pending.size).toBe(0);
+  });
+  it("public-link sparse settings preserve unknown/unrelated web fields and reject invalid patches (#1367)", async () => {
+    const h = context({ usage_panel: false, public_link: { protocol: "quic" } });
+    expect((await request(h.fm, "/api/settings/fleet/web", { public_link: { allow_public: false } })).status).toBe(200);
+    expect(h.raw().web).toEqual({ usage_panel: false, public_link: { protocol: "quic", allow_public: false } });
+    expect((await request(h.fm, "/api/settings/fleet/web", { public_link: { ttl_minutes: 481 } })).status).toBe(400);
+    expect(h.raw().web.public_link.ttl_minutes).toBeUndefined();
+  });
   it("validates boolean config and declares a hot impact", () => {
     for (const value of [true, false]) expect(validateFleetConfig({ instances: {}, web: { echo_to_channel: value } }).errors).toEqual([]);
     for (const value of ["false", null, 0, {}]) expect(validateFleetConfig({ instances: {}, web: { echo_to_channel: value } }).errors).toEqual(expect.arrayContaining([expect.objectContaining({ path: "web.echo_to_channel" })]));

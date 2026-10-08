@@ -647,11 +647,15 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
           }
           this.emitFromClient(client, generation, "callback_query", {
             callbackData: interaction.customId,
-            chatId: this.guildId,
-            threadId: interaction.channelId,
+            chatId: interaction.guildId ? this.guildId : interaction.channelId,
+            threadId: interaction.guildId ? interaction.channelId : undefined,
             messageId: interaction.message.id,
             userId: interaction.user.id,
             ack: privateNotice(interaction, this.id),
+            ...(interaction.customId.startsWith("dashboard:") ? { respondPrivate: async (text: string, choices?: Choice[]) => {
+              const sent = await interaction.followUp({ content: text, flags: MessageFlags.Ephemeral | MessageFlags.SuppressEmbeds, allowedMentions: { parse: [] }, components: choices ? buttonRows(choices) : [] });
+              return { chatId: interaction.channelId, messageId: sent.id };
+            } } : {}),
           });
           return;
         }
@@ -672,11 +676,15 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
           if (!callbackData) return;
           this.emitFromClient(client, generation, "callback_query", {
             callbackData,
-            chatId: this.guildId,
-            threadId: interaction.channelId,
+            chatId: interaction.guildId ? this.guildId : interaction.channelId,
+            threadId: interaction.guildId ? interaction.channelId : undefined,
             messageId: interaction.message.id,
             userId: interaction.user.id,
             ack: privateNotice(interaction, this.id),
+            ...(callbackData.startsWith("dashboard:") ? { respondPrivate: async (text: string, choices?: Choice[]) => {
+              const sent = await interaction.followUp({ content: text, flags: MessageFlags.Ephemeral | MessageFlags.SuppressEmbeds, allowedMentions: { parse: [] }, components: choices ? buttonRows(choices) : [] });
+              return { chatId: interaction.channelId, messageId: sent.id };
+            } } : {}),
           });
           return;
         }
@@ -736,6 +744,10 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
               respond: async (reply: string) => { try { return await this._editReplyLong(interaction, reply); } catch { return undefined; } },
               dismissResponse: async () => {
                 try { await interaction.deleteReply(); } catch { /* interaction may already be gone */ }
+              },
+              respondButtons: async (text: string, choices: Choice[]) => {
+                const sent = await interaction.editReply({ content: text, components: buttonRows(choices), allowedMentions: { parse: [] } });
+                return sent.id;
               },
               respondChoices: async (text: string, choices: Choice[]) => {
                 const select = new StringSelectMenuBuilder()
@@ -1322,7 +1334,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
   async sendDirect(userId: string, text: string, opts?: SendOpts): Promise<SentMessage> {
     const user = await this.client.users.fetch(userId);
     const dm = await user.createDM();
-    const sent = await dm.send(opts?.disablePreview ? { content: text, flags: MessageFlags.SuppressEmbeds } : text);
+    const sent = await dm.send({ content: text, ...(opts?.disablePreview ? { flags: MessageFlags.SuppressEmbeds } : {}), ...(opts?.choices ? { components: buttonRows(opts.choices) } : {}), allowedMentions: { parse: [] } });
     return { messageId: sent.id, chatId: dm.id };
   }
 

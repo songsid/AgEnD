@@ -804,6 +804,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
    */
   async sendDirect(userId: string, text: string, opts?: SendOpts): Promise<SentMessage> {
     const msg = await this.bot.api.sendMessage(Number(userId), text, {
+      ...(opts?.choices ? { reply_markup: { inline_keyboard: opts.choices.map(c => [{ text: c.label, callback_data: c.id }]) } } : {}),
       ...(opts?.format === "html" ? { parse_mode: "HTML" as const } : {}),
       ...(opts?.disablePreview ? { link_preview_options: { is_disabled: true } } : {}),
     });

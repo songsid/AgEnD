@@ -27,25 +27,17 @@ The daemon communicates with the AgEnD MCP bridge over `~/.agend/instances/<name
 
 ## Dashboard token and browser session
 
-The dashboard credential is a fleet-wide bearer token in `~/.agend/web.token` (created with mode `0600`). It persists across fleet restarts; permission tightening on an existing token file is best effort. `agend web-token rotate` replaces it; old dashboard URLs, header tokens and derived session cookies fail on subsequent authorization checks. Rotation is not a promise to retract an already authorized request or close every existing connection.
+The local CLI/header credential is `~/.agend/web.token` (created `0600`). Browsers use random, server-side sessions obtained with a five-minute, single-use code. Old URL tokens cannot sign in. Cookies are `HttpOnly` and `SameSite=Strict`; writes require a matching Origin and per-session CSRF value. Local cookies expire on the server at 12 hours / two hours idle. Token rotation invalidates subsequent requests, but cannot undo already admitted work.
 
-For routes behind the dashboard gate:
+The General `/dashboard` menu is admin-only and secret-free. Its link and code go by DM, with an awaited Discord ephemeral fallback; Telegram failures ask the user to `/start` the bot privately. Local scripts can use `X-Agend-Token`; the managed public gateway rejects that header and local cookies/codes. Public credentials are scoped to the current exposure; old or unbound gateway sessions fail closed before touching idle lifetime.
 
-- A matching URL `?token=` on GET/HEAD is exchanged for an `agend_session` cookie and a redirect without the token. A URL token alone is rejected for writes.
-- The cookie contains a derivation of the token, with `HttpOnly`, `SameSite=Strict` and a browser `Max-Age` of 12 hours. The server does not independently enforce a 12-hour cookie expiry. `Secure` is added when `X-Forwarded-Proto` reports HTTPS; use TLS for remote access.
-- A valid cookie or `X-Agend-Token` header authorizes the gated routes. An invalid `Origin`, or one whose parsed host/port differs from `Host`, is rejected; the scheme is not compared, and callers without `Origin` are accepted when their credential is valid. This is a shared operator credential, not a per-user account or role system.
+## Temporary public gateway and local reads
 
-Protect dashboard links and cookies as credentials: the initial token-bearing URL can still appear in browser history, proxy logs or terminal output. `/dashboard` requires a fleet admin, but anyone who obtains a valid credential can use it; chat allowlists are not rechecked for each HTTP action.
+An explicit owner-adapter General admin action may open the managed public link for two hours (configurable 1–480 minutes, fixed from consent). Only pinned/checksum-verified cloudflared is used, in the same one-tunnel lane as `/login`. The listener is separate and carries code-owned provenance, not a trusted proxy header. Only the current exact public HTTPS Host and reviewed panel routes are accepted; no wildcard is added to the local Host list. `/view` and usage reads require public sign-in even if local reads are open. Health, agent, issue-code, SSE, preview and legacy restart endpoints are not exposed.
 
-## Public reads and the Host guard
+Public cookies are Secure `__Host-` cookies and bind one exposure. Every public login needs a confirmed 🔐 public notice in the owning General within five seconds, regardless of `notify_login`; the candidate is neither usable nor persisted before confirmation. Code leakage can still grant full web-admin access. Cloudflare terminates TLS; forwarding a link alone does not sign in, but reveals the endpoint to guessing and shared-breaker denial of service. Exact Origin plus CSRF protects browser writes; Host checks are not authentication. Expiry, disable, private close, revoke, owner/binding loss and shutdown close access and withdraw public credentials before child cleanup. An unconfirmed child stop blocks another tunnel.
 
-**The web token does not protect all HTTP reads.** `/view` and its GET APIs, including `/api/pane/<instance>`, profiles, avatars and sort order, are public to anyone who can reach the listener with an allowed `Host`. `/api/ai-usage` is also public when enabled, and GET `/health` needs no token. Pane captures can contain commands, credentials and other private output.
-
-`/view` profile/avatar/sort-order writes have their own token check: they require `web.token` via `X-Agend-Token` or `?token=`, not the dashboard cookie. They bypass the general dashboard gate and its Origin check; its GET/HEAD URL-token exchange should not be assumed for these routes.
-
-The health/dashboard listener binds to `127.0.0.1`. Every request, including public reads and `/agent`, must pass the `Host` allowlist: `localhost`, `127.0.0.1`, `[::1]`, configured `hostname`, and names in `web.allowed_hosts`. Missing, malformed or unlisted hosts get 403. The login terminal listener also uses a Host allowlist.
-
-This check limits DNS rebinding from a browser. It is **not authentication**: an ordinary HTTP client can choose an allowed `Host`. If a proxy or port forward exposes the listener, protect public reads at that boundary and add only host names you intend to serve. A `/login` terminal has a separate per-login credential; its temporary public tunnel is not a tunnel to the dashboard. See [login configuration](configuration.md#finishing-a-login-away-from-the-machine-public-link).
+Local `/view` reads remain open by default (`view_access: session` closes them), including terminal captures that can contain secrets. Local profile/avatar/sort-order writes require a session or header token. The local listener's Host list is localhost, loopback, configured hostname and `web.allowed_hosts`. A proxy or port forward configured by the operator does not gain the managed gateway's rules automatically. Existing local sessions do not become public credentials. See [web dashboard](web-dashboard.md#temporary-public-link-from-a-phone).
 
 ## Agent HTTP token
 

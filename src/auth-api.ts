@@ -1,3 +1,7 @@
+import { readBoundedWebBody } from "./web-body.js";
+import { performance } from "node:perf_hooks";
+import { withinBudget } from "./monotonic-budget.js";
+import { gatewayRequestContext, isWebRequestCurrent } from "./web-request-context.js";
 /**
  * The sign-in surface: the page, the exchange, and session management.
  *
@@ -38,7 +42,7 @@ import {
   type WebGateRequest,
 } from "./web-auth.js";
 import { csrfTokenFor, labelFromUserAgent, sessionIdHash, tokenEpoch, type SessionTier, type WebSessionStore } from "./web-session.js";
-import type { WebLoginCodes } from "./web-login.js";
+import type { LoginCodeOwner, WebLoginCodes } from "./web-login.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -54,6 +58,7 @@ export interface AuthApiContext {
   readonly webLoginCodes: WebLoginCodes | null;
   readonly logger: Logger;
   /** Told after every successful sign-in, so the operator can be shown one they did not make. */
+  confirmPublicWebLogin?(info: { label: string; handle: string; owner: LoginCodeOwner }, isCurrent: () => boolean): Promise<void>;
   onWebLogin?(info: { label: string; surface: "local" | "gateway"; tier: SessionTier; handle: string }): void;
 }
 
@@ -111,25 +116,11 @@ export function serveSigninPage(res: ServerResponse, status = 200): void {
   }
 }
 
-function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown> | null> {
-  return new Promise(resolve => {
-    const chunks: Buffer[] = [];
-    let size = 0;
-    let done = false;
-    const finish = (value: Record<string, unknown> | null): void => { if (!done) { done = true; resolve(value); } };
-    req.on("data", (c: Buffer) => {
-      size += c.length;
-      if (size > MAX_LOGIN_BODY) { finish(null); req.destroy(); return; }
-      chunks.push(c);
-    });
-    req.on("end", () => {
-      try {
-        const parsed: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
-        finish(parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null);
-      } catch { finish(null); }
-    });
-    req.on("error", () => finish(null));
-  });
+async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown> | null> {
+  try {
+    const parsed: unknown = JSON.parse((await readBoundedWebBody(req, MAX_LOGIN_BODY)).toString("utf8") || "{}");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
+  } catch { return null; }
 }
 
 function isJsonRequest(req: IncomingMessage): boolean {
@@ -186,9 +177,12 @@ export function handleAuthRequest(
     if (!token || !ctx.webSessions || !ctx.webLoginCodes) { json(res, 401, { error: LOGIN_REFUSED_MESSAGE }); return true; }
     const sessions = ctx.webSessions;
     const codes = ctx.webLoginCodes;
-    void readJsonBody(req).then(body => {
+    void readJsonBody(req).then(async body => {
       if (!body || typeof body.code !== "string") { json(res, 400, { error: "expected {\"code\": \"XXXX-XXXX\"}" }); return; }
-      const result = codes.redeem(body.code, tokenEpoch(token));
+      const gateway = gatewayRequestContext(req);
+      const current = (): boolean => isWebRequestCurrent(req) && ctx.webToken === token;
+      if (!current()) { json(res, 401, { error: LOGIN_REFUSED_MESSAGE }); return; }
+      const result = codes.redeem(body.code, tokenEpoch(token), gateway?.exposureId ?? "local");
       if (result.kind === "paused") {
         json(res, 429, { error: LOGIN_PAUSED_MESSAGE }, { "Retry-After": String(Math.ceil(result.retryAfterMs / 1000)) });
         return;
@@ -202,15 +196,27 @@ export function handleAuthRequest(
       // gets to choose the value it will be authenticated by, and a cookie it
       // already had is retired rather than upgraded.
       const previous = readSessionCookie(gateReq);
-      if (previous) sessions.revokeById(previous);
+      if (previous && sessions.authenticate(previous, tokenEpoch(token), { touch: false, surface: gateway?.surface, exposureId: gateway?.exposureId })) sessions.revokeById(previous);
       const label = labelFromUserAgent(typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"] : undefined);
-      const { sessionId, record } = sessions.create({ tier: result.tier, surface: "local", label, tokenEpoch: tokenEpoch(token) });
+      const { sessionId, record } = sessions.create({ tier: result.tier, surface: gateway?.surface ?? "local", label, tokenEpoch: tokenEpoch(token), exposureId: gateway?.exposureId, pending: !!gateway });
+      if (gateway) {
+        try {
+          if (!result.owner || !ctx.confirmPublicWebLogin) throw new Error("public notice unavailable");
+          await withinBudget(ctx.confirmPublicWebLogin({ label, handle: record.handle, owner: result.owner }, current), performance.now() + 5_000);
+          if (!current() || !sessions.activate(sessionId)) throw new Error("public login closed");
+        } catch {
+          sessions.revokeById(sessionId);
+          ctx.logger.debug("Public sign-in could not be confirmed");
+          if (!res.destroyed) json(res, 503, { error: "Sign-in could not be confirmed. Ask for a new code and try again." });
+          return;
+        }
+      }
       ctx.logger.info({ handle: record.handle, label, tier: record.tier, surface: record.surface }, "Web sign-in");
-      try { ctx.onWebLogin?.({ label, surface: record.surface, tier: record.tier, handle: record.handle }); } catch (err) { ctx.logger.debug({ err }, "web sign-in notice failed"); }
+      try { if (!gateway) ctx.onWebLogin?.({ label, surface: record.surface, tier: record.tier, handle: record.handle }); } catch (err) { ctx.logger.debug({ err }, "web sign-in notice failed"); }
       json(res, 200, { ok: true, csrf: csrfTokenFor(sessionId), tier: record.tier, expiresAt: record.absoluteExpiry }, {
         "Set-Cookie": buildSessionCookie(sessionId, isSecureRequest(gateReq), (record.absoluteExpiry - record.created) / 1000),
       });
-    });
+    }).catch(() => { if (!res.destroyed && !res.headersSent) json(res, 500, { error: "sign-in failed" }); });
     return true;
   }
 
@@ -218,7 +224,7 @@ export function handleAuthRequest(
   if (path === "/auth/issue-code") {
     if (method !== "POST") { json(res, 405, { error: "method not allowed" }); return true; }
     const token = ctx.webToken;
-    if (!token || !ctx.webLoginCodes || !isSameOriginRequest(gateReq) || !hasValidHeaderToken(gateReq, token)) {
+    if (gatewayRequestContext(req) || !token || !ctx.webLoginCodes || !isSameOriginRequest(gateReq) || !hasValidHeaderToken(gateReq, token)) {
       json(res, 401, { error: "X-Agend-Token required" });
       return true;
     }

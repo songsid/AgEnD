@@ -75,15 +75,16 @@ describe("persistent dashboard token", () => {
     access.ready = true;
     const text = commands.getDashboardText();
     expect(text).toContain("http://fleet.example:19280/signin");
-    expect(text).toContain("ABCD-EF01");
+    expect(text).not.toContain("ABCD-EF01");
     // No link carries a credential any more, and the long-lived token is never in the message.
     expect(text).not.toContain("token=");
     expect(text).not.toContain(access.token);
-    // Each /dashboard asks for a fresh code.
-    expect(commands.getDashboardText()).toContain("ABCD-EF02");
+    // Rendering the shared menu never issues or retires a code. Private action tests cover issuance.
+    expect(commands.getDashboardText()).toBe(text);
+    expect(issued).toBe(0);
   });
 
-  it("wraps only the login code in a Telegram spoiler", () => {
+  it("never includes a login code in shared Telegram menu copy", () => {
     const commands = new TopicCommands({
       fleetConfig: { health_port: 19280 },
       getDashboardAccess: () => ({ ready: true, token: "a".repeat(48) }),
@@ -91,7 +92,8 @@ describe("persistent dashboard token", () => {
     } as any);
 
     const text = commands.getDashboardText(true);
-    expect(text).toContain("<tg-spoiler>ABCD-EFGH</tg-spoiler>");
+    expect(text).not.toContain("ABCD-EFGH");
+    expect(text).not.toContain("<tg-spoiler>");
     expect(text).toContain("http://localhost:19280/view");
     expect(text).not.toMatch(/<tg-spoiler>[^<]*http/);
   });

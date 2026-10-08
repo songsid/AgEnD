@@ -1,3 +1,4 @@
+import { gatewayRequestContext, isWebRequestCurrent } from "./web-request-context.js";
 import { chmodSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { join } from "node:path";
@@ -158,7 +159,9 @@ function headerValue(req: WebGateRequest, name: string): string | null {
  * caller, which is the same `X-Agend-Token` path the CLI uses.
  */
 export function isSameOriginRequest(req: WebGateRequest): boolean {
+  const gateway = gatewayRequestContext(req);
   const origin = headerValue(req, "origin");
+  if (gateway) return isWebRequestCurrent(req) && (!origin || origin === gateway.expectedOrigin);
   if (!origin) return true;
   const host = headerValue(req, "host");
   if (!host) return false;
@@ -176,6 +179,7 @@ export function isSameOriginRequest(req: WebGateRequest): boolean {
  * tunnel/proxy in front of it. A forged header can only make us set Secure on a
  * plain-HTTP response, which costs the forger their own cookie and nothing else. */
 export function isSecureRequest(req: WebGateRequest): boolean {
+  if (gatewayRequestContext(req)) return true;
   const proto = headerValue(req, "x-forwarded-proto");
   if (!proto) return false;
   return proto.split(",")[0]!.trim().toLowerCase() === "https";
@@ -213,10 +217,11 @@ export function buildClearedSessionCookies(): string[] {
 /** The presented session id, or undefined. A `__Host-` cookie wins: it cannot have been planted by a sibling site. */
 export function readSessionCookie(req: WebGateRequest): string | undefined {
   const jar = parseCookieHeader(headerValue(req, "cookie") ?? undefined);
-  return jar.get(WEB_SESSION_COOKIE_SECURE) ?? jar.get(WEB_SESSION_COOKIE);
+  return gatewayRequestContext(req) ? jar.get(WEB_SESSION_COOKIE_SECURE) : jar.get(WEB_SESSION_COOKIE_SECURE) ?? jar.get(WEB_SESSION_COOKIE);
 }
 
 export function hasValidHeaderToken(req: WebGateRequest, token: string): boolean {
+  if (gatewayRequestContext(req)) return false;
   const provided = headerValue(req, "x-agend-token");
   return !!provided && constantTimeEquals(provided, token);
 }
@@ -264,10 +269,10 @@ export function authorizeSession(
   sessions: WebSessionStore | null | undefined,
   opts: { touch?: boolean } = {},
 ): SessionAuthResult {
-  if (!token) return { kind: "reject", status: 401, message: WEB_TOKEN_INVALID_MESSAGE };
+  if (!token || !isWebRequestCurrent(req)) return { kind: "reject", status: 401, message: WEB_TOKEN_INVALID_MESSAGE };
   if (!isSameOriginRequest(req)) return { kind: "reject", status: 403, message: WEB_CROSS_SITE_MESSAGE };
   const cookie = readSessionCookie(req);
-  const session = sessions && cookie ? sessions.authenticate(cookie, tokenEpoch(token), { touch: opts.touch !== false }) : null;
+  const session = sessions && cookie ? sessions.authenticate(cookie, tokenEpoch(token), { touch: opts.touch !== false, surface: gatewayRequestContext(req)?.surface, exposureId: gatewayRequestContext(req)?.exposureId }) : null;
   if (!session || !cookie) {
     return { kind: "reject", status: 401, message: cookie ? WEB_SESSION_EXPIRED_MESSAGE : WEB_SESSION_REQUIRED_MESSAGE };
   }
@@ -292,7 +297,7 @@ function authorize(
 ): WebGateDecision {
   // No token on disk means the panel is closed, not open to everyone. Without
   // this, a null token compared against a missing credential authorizes.
-  if (!token) return { kind: "reject", status: 401, message: WEB_TOKEN_INVALID_MESSAGE, reason: "closed" };
+  if (!token || !isWebRequestCurrent(req)) return { kind: "reject", status: 401, message: WEB_TOKEN_INVALID_MESSAGE, reason: "closed" };
 
   if (!isSameOriginRequest(req)) {
     return { kind: "reject", status: 403, message: WEB_CROSS_SITE_MESSAGE, reason: "cross-site" };
@@ -307,7 +312,7 @@ function authorize(
 
   const cookie = readSessionCookie(req);
   if (sessions && cookie) {
-    const session = sessions.authenticate(cookie, tokenEpoch(token), { touch: opts.touch });
+    const session = sessions.authenticate(cookie, tokenEpoch(token), { touch: opts.touch, surface: gatewayRequestContext(req)?.surface, exposureId: gatewayRequestContext(req)?.exposureId });
     if (session) {
       if (!isSafeMethod(method) && !passesCookieWriteChecks(req, cookie)) {
         return { kind: "reject", status: 403, message: WEB_CSRF_MESSAGE, reason: "csrf" };

@@ -1,3 +1,6 @@
+import { readBoundedWebBody } from "./web-body.js";
+import { permitWebContinuation } from "./web-continuation.js";
+import { gatewayRequestContext } from "./web-request-context.js";
 /**
  * Web View (`/view`) — a terminal-streaming page plus editable instance
  * profiles. Separate from the operator Web UI (`/ui`):
@@ -129,17 +132,7 @@ function knownInstance(ctx: ViewApiContext, name: string): boolean {
 }
 
 function readBody(req: IncomingMessage, maxBytes: number): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    let size = 0;
-    req.on("data", (c: Buffer) => {
-      size += c.length;
-      if (size > maxBytes) { reject(new Error("payload too large")); req.destroy(); return; }
-      chunks.push(c);
-    });
-    req.on("end", () => resolve(Buffer.concat(chunks)));
-    req.on("error", reject);
-  });
+  return readBoundedWebBody(req, maxBytes);
 }
 
 /** tmux target for an instance's window, or null if it has no window yet. */
@@ -229,7 +222,7 @@ export function handleViewRequest(
   };
 
   // Reads: open unless the operator asked for a session (`web.view_access: session`).
-  if (isRead && ctx.fleetConfig?.web?.view_access === "session" && denied()) return true;
+  if (isRead && (gatewayRequestContext(req) || ctx.fleetConfig?.web?.view_access === "session") && denied()) return true;
   // Writes: always a credential. Checked once here rather than per route, so a route
   // added later cannot forget it.
   if (!isRead && denied()) return true;
@@ -332,6 +325,7 @@ export function handleViewRequest(
     }
     if (method === "POST") {
       readBody(req, 512 * 1024).then(buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
         let body: Array<{ item_type: string; item_name: string; sort_index: number; group_name?: string | null }>;
         try { body = JSON.parse(buf.toString("utf-8") || "[]"); } catch { json(res, 400, { error: "invalid JSON" }); return; }
         if (!Array.isArray(body)) { json(res, 400, { error: "expected an array" }); return; }
@@ -371,6 +365,7 @@ export function handleViewRequest(
 
     if (method === "POST") {
       readBody(req, 256 * 1024).then(buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
         let body: { display_name?: string; role?: string; description?: string };
         try { body = JSON.parse(buf.toString("utf-8") || "{}"); }
         catch { json(res, 400, { error: "invalid JSON" }); return; }
@@ -416,6 +411,7 @@ export function handleViewRequest(
       const ext = extForMime(String(req.headers["content-type"] ?? ""));
       if (!ext) { json(res, 400, { error: "unsupported image type (png/jpeg/gif/webp)" }); return true; }
       readBody(req, 4 * 1024 * 1024).then(buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
         if (buf.length === 0) { json(res, 400, { error: "empty body" }); return; }
         const dir = join(ctx.dataDir, "avatars");
         mkdirSync(dir, { recursive: true });

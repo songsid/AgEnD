@@ -26,6 +26,10 @@ Located at `~/.agend/fleet.yaml`. The primary configuration file for the fleet.
 ---
 
 
+### Temporary public dashboard link
+
+`web.public_link.allow_public` defaults to `true` (offer only; explicit General admin click required), `ttl_minutes` to `120` (1–480, fixed from consent), and `protocol` to `http2` (`quic`/`auto` also accepted). Settings edits these without writing defaults on unrelated changes. Disabling closes an active link. The public host is ephemeral, `/view` requires sign-in and previews are disabled there. See [web dashboard](web-dashboard.md#temporary-public-link-from-a-phone) for private delivery, session scope and risks.
+
 ### Several fleets in one Discord guild
 
 Each AgEnD bot registers its own `/login`, and each one controls only the fleet
