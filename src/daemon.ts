@@ -50,6 +50,7 @@ import { deliveryContentDigest, type DaemonDeliveryPort, type DeliveryAttemptEvi
 import { consumedWatches } from "./delivery-consumed-watch.js";
 import { queueResumePolicyForAttempt } from "./delivery-queue-evidence.js";
 import { scanTranscriptForDeliveryMarker, type TranscriptMarkerKind } from "./delivery-reconciliation.js";
+import { TranscriptDeltaReader } from "./transcript-delta-reader.js";
 import {
   buildResumeContinuation,
   clearInFlightTurnMarker,
@@ -598,7 +599,13 @@ interface SubmissionSignature {
    * scrolled away by the reply). Positive only: no marker proves nothing either way.
    */
   transcript?: {
-    backend: string; path: string; offset: number; deliveryId: string;
+    /** Bounded, incremental looks from the attempt's checkpoint (each ≤256 KiB, ≤250 ms). */
+    reader: TranscriptDeltaReader;
+    /**
+     * The write's fence: its spawn and launch, not stopping, and the caller's own fence. Asked after every await
+     * before a hit is used — a look that returns after a stop or respawn proves nothing for the replacement.
+     */
+    current: () => boolean;
     /** Set on the first hit (later looks reuse it); the write records it as its evidence. */
     provenBy?: TranscriptMarkerKind;
     onProof?: (kind: TranscriptMarkerKind) => void;
@@ -7826,10 +7833,8 @@ export class Daemon extends EventEmitter {
           // From here every proof of this write may also ask the CLI's transcript (the pane can lose the echo to the
           // reply, or still be painting the paste) — this delivery's exact marker only.
           if (["claude-code", "codex"].includes(attemptEvidence.backend)) {
-            signature.transcript = {
-              ...verdict.transcriptCheckpoint, deliveryId: durableAttempt.deliveryId,
-              onProof: kind => { verdict.transcriptProof = kind; },
-            };
+            signature.transcript = this.transcriptProofFor(verdict.transcriptCheckpoint, durableAttempt.deliveryId, spawnAtWrite,
+              stillCurrent, kind => { verdict.transcriptProof = kind; });
           }
         }
       }
@@ -8335,13 +8340,35 @@ export class Daemon extends EventEmitter {
    */
   private async transcriptShowsSubmission(signature: SubmissionSignature): Promise<boolean> {
     const t = signature.transcript;
-    if (!t) return false;
+    if (!t || !t.current()) return false;
     if (t.provenBy) return true;
-    const found = await scanTranscriptForDeliveryMarker(t.path, t.offset, t.backend, t.deliveryId);
+    const found = await t.reader.look();
+    // Asked again after the await, before the hit is kept or a guard retired: the write it belongs to may be over.
+    if (!t.current()) return false;
     if (found !== "user" && found !== "absorbed" && found !== "queued") return false;
     t.provenBy = found;
     t.onProof?.(found);
     return true;
+  }
+
+  /**
+   * A write's transcript proof: bounded looks from its checkpoint, fenced to the write — its spawn and launch, a stop,
+   * and the caller's own fence — so a look that lands after any of them is never used (#1380 review).
+   */
+  private transcriptProofFor(
+    checkpoint: { backend: string; path: string; offset: number },
+    deliveryId: string,
+    spawnAtWrite: number,
+    stillCurrent: (() => boolean) | undefined,
+    onProof: (kind: TranscriptMarkerKind) => void,
+  ): NonNullable<SubmissionSignature["transcript"]> {
+    const launchAtWrite = this.launchFenceEpoch;
+    return {
+      reader: new TranscriptDeltaReader(checkpoint.path, checkpoint.offset, checkpoint.backend, deliveryId),
+      current: () => !this.deliveryWritesStopping && this.spawnGeneration === spawnAtWrite
+        && this.launchFenceEpoch === launchAtWrite && (stillCurrent?.() ?? true),
+      onProof,
+    };
   }
 
   /** The CLI this daemon drives, for log lines shared by every backend ("claude-code", "codex", …). */
