@@ -112,6 +112,22 @@ describe("#1423 actual General nonce handler", () => {
     const h = harness(); proposal(h, { affected: ["primary"] }); await new Promise(resolve => setTimeout(resolve, 5));
     expect(h.adapter.notifyAlert).not.toHaveBeenCalled(); expect(h.fm.pendingNonceButtons.size).toBe(0);
   });
+  it.each(["affected", "unreachable"])("%s primary falls back to another world's General and its own F", async reason => {
+    const h = harness(), second = adapter("secondary");
+    h.fm.fleetConfig.channels.push({ ...h.fm.fleetConfig.channels[0], id: "secondary", group_id: "300", options: { general_channel_id: "400" }, access: { mode: "locked", allowed_users: ["other-F"] } });
+    h.fm.fleetConfig.instances.otherGeneral = { working_directory: h.dir, general_topic: true, topic_id: "400", channel_id: "secondary" };
+    h.fm.daemons.set("otherGeneral", new EventEmitter()); h.fm.adapters.set("secondary", second); h.fm.adapterState.set("secondary", { status: "connected" });
+    h.fm.getInstanceAdapterId = (name: string) => h.fm.fleetConfig.instances[name].channel_id;
+    h.fm.getAdapterForInstance = (name: string) => h.fm.adapters.get(h.fm.getInstanceAdapterId(name));
+    h.fm.getGroupIdForInstance = (name: string) => h.fm.fleetConfig.channels.find((channel: any) => channel.id === h.fm.getInstanceAdapterId(name)).group_id;
+    if (reason === "unreachable") h.adapter.notifyAlert.mockRejectedValue(new Error("inert platform unavailable"));
+    const p = proposal(h, reason === "affected" ? { affected: ["primary"] } : {});
+    await vi.waitFor(() => expect(second.notifyAlert).toHaveBeenCalledOnce());
+    const { data } = await promptData(h);
+    expect(data).toMatchObject({ chatId: "300", threadId: "400" }); expect(p.store.get(p.view.id, "browser")!.confirmation.kind).toBe("chat");
+    await h.fm.dispatchAdapterCallback({ ...data, userId: "admin" }, "secondary", second); expect(p.apply).not.toHaveBeenCalled();
+    await h.fm.dispatchAdapterCallback({ ...data, userId: "other-F" }, "secondary", second); expect(p.apply).toHaveBeenCalledOnce();
+  });
   it("a stopped, stopping or replaced General cannot approve an old prompt", async () => {
     const h = harness(), p = proposal(h), { data } = await promptData(h);
     h.fm.ipcStoppingInstances.add("general");
