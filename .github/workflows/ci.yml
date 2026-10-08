@@ -198,7 +198,10 @@ jobs:
           # case, and a channel that announces every one of them buries the
           # red ones it exists for.
           NOTIFY_ON: failure
-          STATUS: ${{ job.status }}
+          # In a multi-job workflow, job.status reflects only this aggregate
+          # job's exit, not the upstream failures. Use needs.*.result to
+          # collect the real outcome across all jobs.
+          STATUS: ${{ contains(needs.*.result, 'failure') && 'failure' || contains(needs.*.result, 'cancelled') && 'cancelled' || 'success' }}
           WORKFLOW: ${{ github.workflow }}
           REPO: ${{ github.repository }}
           REF_NAME: ${{ github.ref_name }}

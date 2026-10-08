@@ -368,7 +368,9 @@ describe("changelog-assemble: the repository's own files", () => {
 // ── The guard ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
 type CiStep = { name?: string; run?: string; if?: string; uses?: string; with?: Record<string, unknown>; env?: Record<string, string> };
-const ciSteps = (yaml.load(readFileSync(join(ROOT, ".github", "workflows", "ci.yml"), "utf8")) as { jobs: { build: { steps: CiStep[] } } }).jobs.build.steps;
+// In the refactored multi-job CI (post-#1391), changelog guards live in the
+// dedicated `changelog` job (no npm ci), not in the monolithic `build` job.
+const ciSteps = (yaml.load(readFileSync(join(ROOT, ".github", "workflows", "ci.yml"), "utf8")) as { jobs: { changelog: { steps: CiStep[] } } }).jobs.changelog.steps;
 
 function gitRepo() {
   const dir = scratch("agend-changelog-guard-");
@@ -407,9 +409,10 @@ describe("changelog-guard (ci.yml's step, on a scratch repository)", () => {
     const check = ciSteps.find(s => s.name === "CHANGELOG fragments are valid")!;
     expect(check.run).toContain("changelog-assemble.mjs --check");
     expect(check.if).toBeUndefined();
-    // Both run before npm ci: they need no dependencies, and fail fast.
-    const at = (name: string) => ciSteps.findIndex(s => s.name === name);
-    expect(at("CHANGELOG is assembled, not edited")).toBeLessThan(ciSteps.findIndex(s => s.run === "npm ci"));
+    // Post-#1391: the changelog guard lives in its own lightweight job that
+    // has no npm ci step at all (no dependencies needed), so no ordering
+    // relative to npm ci applies.  Verify there is no npm ci in this job.
+    expect(ciSteps.find(s => s.run === "npm ci")).toBeUndefined();
   });
 
   it("a PR that leaves the CHANGELOG alone (fragments only) → passes", () => {
