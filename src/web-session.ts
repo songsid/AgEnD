@@ -67,6 +67,7 @@ export interface SessionRecord {
   idleExpiry: number;
   readonly tier: SessionTier;
   readonly surface: SessionSurface;
+  readonly exposureId?: string;
   /** What the person sees in the device list. Display only, never an input to a decision. */
   readonly label: string;
   /** `sha256(web.token)` when the session was made; a mismatch means the token was rotated. */
@@ -163,11 +164,13 @@ function isRecord(value: unknown): value is SessionRecord {
     && typeof v.idleExpiry === "number" && Number.isFinite(v.idleExpiry)
     && (v.tier === "admin" || v.tier === "read")
     && (v.surface === "local" || v.surface === "gateway")
+    && (v.exposureId === undefined || (typeof v.exposureId === "string" && /^[0-9a-f]{32}$/.test(v.exposureId)))
     && typeof v.label === "string" && v.label.length <= LABEL_MAX
     && typeof v.tokenEpoch === "string" && HASH_PATTERN.test(v.tokenEpoch);
 }
 
 export class WebSessionStore {
+  private readonly pending = new Set<string>();
   private readonly byHash = new Map<string, SessionRecord>();
   private readonly now: () => number;
   private readonly policy: Record<SessionSurface, SessionPolicy>;
@@ -202,7 +205,7 @@ export class WebSessionStore {
    * Make a session. The id is returned once and never stored; the caller puts it
    * in a cookie and forgets it.
    */
-  create(input: { tier: SessionTier; surface: SessionSurface; label: string; tokenEpoch: string }): { sessionId: string; record: SessionRecord } {
+  create(input: { tier: SessionTier; surface: SessionSurface; label: string; tokenEpoch: string; exposureId?: string; pending?: boolean }): { sessionId: string; record: SessionRecord } {
     const now = this.now();
     this.purgeExpired(now);
     const sessionId = randomBytes(32).toString("hex");
@@ -217,10 +220,12 @@ export class WebSessionStore {
       idleExpiry: Math.min(now + policy.idleMs, absoluteExpiry),
       tier: input.tier,
       surface: input.surface,
+      ...(input.exposureId ? { exposureId: input.exposureId } : {}),
       label: sanitizeLabel(input.label),
       tokenEpoch: input.tokenEpoch,
     };
     this.byHash.set(record.idHash, record);
+    if (input.pending) this.pending.add(record.idHash);
     while (this.byHash.size > this.maxSessions) this.evictLeastRecentlyUsed();
     this.persistNow();
     return { sessionId, record };
@@ -237,10 +242,12 @@ export class WebSessionStore {
    * that as activity would keep an idle session alive for as long as a tab is
    * open.
    */
-  authenticate(sessionId: string | undefined, currentEpoch: string, opts: { touch?: boolean } = {}): SessionRecord | null {
+  authenticate(sessionId: string | undefined, currentEpoch: string, opts: { touch?: boolean; surface?: SessionSurface; exposureId?: string } = {}): SessionRecord | null {
     if (!sessionId || !SESSION_ID_PATTERN.test(sessionId)) return null;
     const record = this.byHash.get(sessionIdHash(sessionId));
-    if (!record) return null;
+    if (!record || this.pending.has(record.idHash)) return null;
+    if (record.surface !== (opts.surface ?? "local")
+      || (record.surface === "gateway" && (!opts.exposureId || record.exposureId !== opts.exposureId))) return null;
     const now = this.now();
     if (now >= record.absoluteExpiry || now >= record.idleExpiry || record.tokenEpoch !== currentEpoch) {
       this.byHash.delete(record.idHash);
@@ -256,10 +263,28 @@ export class WebSessionStore {
     return record;
   }
 
+  /** A candidate has no usable credential until the public notice and final fence passed. */
+  activate(sessionId: string): boolean {
+    const hash = sessionIdHash(sessionId);
+    if (!this.byHash.has(hash) || !this.pending.delete(hash)) return false;
+    this.persistNow();
+    return true;
+  }
+
+  revokeExposure(exposureId: string): { count: number; durable: boolean } {
+    let count = 0;
+    for (const [hash, record] of this.byHash) {
+      if (record.surface === "gateway" && record.exposureId === exposureId) {
+        this.byHash.delete(hash); this.pending.delete(hash); count++;
+      }
+    }
+    return { count, durable: this.persistNow() };
+  }
+
   /** Every live session, newest activity first. `currentIdHash` marks the caller's own. */
   list(currentIdHash?: string): SessionSummary[] {
     this.purgeExpired(this.now());
-    return [...this.byHash.values()]
+    return [...this.byHash.values()].filter(r => !this.pending.has(r.idHash))
       .sort((a, b) => b.lastSeen - a.lastSeen)
       .map(r => ({
         handle: r.handle,
@@ -285,6 +310,7 @@ export class WebSessionStore {
     for (const [hash, record] of this.byHash) {
       if (record.handle === handle) {
         this.byHash.delete(hash);
+        this.pending.delete(hash);
         return { found: true, durable: this.persistNow() };
       }
     }
@@ -293,7 +319,9 @@ export class WebSessionStore {
 
   revokeById(sessionId: string): { removed: boolean; durable: boolean } {
     if (!SESSION_ID_PATTERN.test(sessionId)) return { removed: false, durable: true };
-    const removed = this.byHash.delete(sessionIdHash(sessionId));
+    const hash = sessionIdHash(sessionId);
+    this.pending.delete(hash);
+    const removed = this.byHash.delete(hash);
     return { removed, durable: removed ? this.persistNow() : true };
   }
 
@@ -301,6 +329,7 @@ export class WebSessionStore {
   revokeAll(): { count: number; durable: boolean } {
     const count = this.byHash.size;
     this.byHash.clear();
+    this.pending.clear();
     return { count, durable: this.persistNow() };
   }
 
@@ -312,7 +341,7 @@ export class WebSessionStore {
   private purgeExpired(now: number): void {
     let removed = false;
     for (const [hash, record] of this.byHash) {
-      if (now >= record.absoluteExpiry || now >= record.idleExpiry) { this.byHash.delete(hash); removed = true; }
+      if (now >= record.absoluteExpiry || now >= record.idleExpiry) { this.byHash.delete(hash); this.pending.delete(hash); removed = true; }
     }
     if (removed) this.dirty = true;
   }
@@ -322,7 +351,7 @@ export class WebSessionStore {
     for (const record of this.byHash.values()) {
       if (!oldest || record.lastSeen < oldest.lastSeen) oldest = record;
     }
-    if (oldest) this.byHash.delete(oldest.idHash);
+    if (oldest) { this.byHash.delete(oldest.idHash); this.pending.delete(oldest.idHash); }
   }
 
   private persistIfDue(now: number): void {
@@ -350,11 +379,11 @@ export class WebSessionStore {
     const temp = `${this.path}.tmp-${process.pid}-${randomBytes(6).toString("hex")}`;
     try {
       mkdirSync(dir, { recursive: true });
-      const body = JSON.stringify({ version: 1, sessions: [...this.byHash.values()] });
+      const body = JSON.stringify({ version: 1, sessions: [...this.byHash.values()].filter(r => !this.pending.has(r.idHash)) });
       this.ops.writeFileSync(temp, body, { encoding: "utf8", mode: 0o600, flag: "wx" });
       this.ops.renameSync(temp, this.path);
       try { chmodSync(this.path, 0o600); } catch { /* best effort */ }
-      this.persisted = new Set(this.byHash.keys());
+      this.persisted = new Set([...this.byHash.keys()].filter(hash => !this.pending.has(hash)));
       this.dirty = false;
       return true;
     } catch (err) {
@@ -397,6 +426,6 @@ export class WebSessionStore {
       this.byHash.set(entry.idHash, { ...entry });
     }
     while (this.byHash.size > this.maxSessions) this.evictLeastRecentlyUsed();
-    this.persisted = new Set(this.byHash.keys());
+    this.persisted = new Set([...this.byHash.keys()].filter(hash => !this.pending.has(hash)));
   }
 }

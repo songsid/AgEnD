@@ -52,7 +52,7 @@ class El {
 /** Execute the shipped render/save callback, not a reconstruction of its diff logic. */
 function panel(web?: Record<string, unknown>) {
   const html = readFileSync(join(process.cwd(), "src/ui/settings.html"), "utf8");
-  const state: any = { fleet: { defaults: { locale: "en" }, ...(web ? { web } : {}) }, classic: { defaults: {} }, pending: new Map() };
+  const state: any = { fleet: { defaults: { locale: "en" }, ...(web ? { web } : {}) }, classic: { defaults: {} }, schema: buildSettingsImpactSchema(), pending: new Map() };
   const made: El[] = [], host = new El("div"), calls: Array<{ path: string; body: any }> = [];
   const el = (tag: string, attrs: any = {}, ...kids: any[]) => { const e = Object.assign(new El(tag), attrs); e.append(...kids); made.push(e); return e; };
   const slice = (start: string, end: string) => html.slice(html.indexOf(start), html.indexOf(end, html.indexOf(start)));
@@ -63,18 +63,47 @@ function panel(web?: Record<string, unknown>) {
     localeSelect: (value: string) => el("select", { value }),
     VISIBILITY_MODES: ["full", "summary", "hidden"], visibilityDefault: (d: any) => d?.cross_instance_visibility ?? "full",
     t: (key: string) => key, tf: (key: string) => key,
-    impact: () => el("span"), impactOf: () => "now", batchImpact: () => "now", esc: (v: string) => v,
+    esc: (v: string) => v,
     chipList: () => el("div"), drawer: (_t: string, ...kids: any[]) => el("div", {}, ...kids), setValidation: () => true,
     updatePendingBar: () => {},
     stageChange: (key: string, change: any) => state.pending.set(key, change),
     api: async (path: string, opts: any) => { calls.push({ path, body: JSON.parse(opts.body) }); },
   };
-  vm.runInNewContext(slice('  const hasOwn =', '  function setValidation(') + '\n' + slice('  function renderGeneral()', '  // ── What\'s New') + '\nrenderGeneral();', sandbox);
+  vm.runInNewContext(slice('  const impactText =', '  /** One expandable drawer.') + '\n' + slice('  const hasOwn =', '  function setValidation(') + '\n' + slice('  function renderGeneral()', '  // ── What\'s New') + '\nrenderGeneral();', sandbox);
   const save = made.find(e => e.tag === "button" && e.onclick)!;
-  return { state, calls, made, toggle: made.find(e => e.id === "webEchoToChannel")!, save: () => save.onclick!(), apply: async () => { for (const change of state.pending.values()) await change.apply(); } };
+  return { state, calls, made, toggle: made.find(e => e.id === "webEchoToChannel")!, publicToggle: made.find(e => e.id === "publicWebLink")!, publicTtl: made.find(e => e.id === "publicWebTtl")!, save: () => save.onclick!(), apply: async () => { for (const change of state.pending.values()) await change.apply(); } };
 }
 
 describe("web echo config and Settings (#1320 A)", () => {
+  it("public-link controls display defaults without writing, then send only edited leaves (#1367)", async () => {
+    const h = panel(); expect(h.publicToggle.checked).toBe(true); expect(Number(h.publicTtl.value)).toBe(120);
+    h.save(); await h.apply(); expect(h.calls.some(c => c.path.endsWith("/web"))).toBe(false);
+    h.publicToggle.checked = false; h.publicTtl.value = "30"; h.save(); await h.apply();
+    expect(h.calls.filter(c => c.path.endsWith("/web"))).toEqual([{ path: "/api/settings/fleet/web", body: { public_link: { allow_public: false, ttl_minutes: 30 } } }]);
+  });
+  it("the web batch derives changed-leaf impact from the server schema (#1367)", () => {
+    const h = panel(); h.state.schema.impacts["web.public_link.ttl_minutes"] = "fleet";
+    h.publicTtl.value = "30"; h.toggle.checked = false; h.save();
+    expect(h.state.pending.get("web:echo").impact).toBe("fleet");
+  });
+  it("public-link Settings rejects invalid TTL before staging any unrelated edits (#1367)", async () => {
+    const h = panel(); h.publicTtl.value = "481"; const progress = h.made.find(e => e.tag === "select" && e.value === "off")!; progress.value = "standard";
+    h.save(); await h.apply(); expect(h.calls).toEqual([]); expect(h.state.pending.size).toBe(0);
+  });
+  it("public-link sparse settings preserve unknown/unrelated web fields and reject invalid patches (#1367)", async () => {
+    const h = context({ usage_panel: false, public_link: { protocol: "quic" } });
+    expect((await request(h.fm, "/api/settings/fleet/web", { public_link: { allow_public: false } })).status).toBe(200);
+    expect(h.raw().web).toEqual({ usage_panel: false, public_link: { protocol: "quic", allow_public: false } });
+    expect((await request(h.fm, "/api/settings/fleet/web", { public_link: { ttl_minutes: 481 } })).status).toBe(400);
+    expect(h.raw().web.public_link.ttl_minutes).toBeUndefined();
+  });
+  it("real Settings handler refuses array protocol without writing (#1367 r2)", async () => {
+    const h = context({ public_link: { protocol: "http2" } });
+    expect((await request(h.fm, "/api/settings/fleet/web", { public_link: { protocol: ["quic"] } })).status).toBe(400);
+    expect(h.raw().web.public_link).toEqual({ protocol: "http2" });
+    expect((await request(h.fm, "/api/settings/fleet/web", { public_link: { protocol: "quic" } })).status).toBe(200);
+    expect(h.raw().web.public_link).toEqual({ protocol: "quic" });
+  });
   it("validates boolean config and declares a hot impact", () => {
     for (const value of [true, false]) expect(validateFleetConfig({ instances: {}, web: { echo_to_channel: value } }).errors).toEqual([]);
     for (const value of ["false", null, 0, {}]) expect(validateFleetConfig({ instances: {}, web: { echo_to_channel: value } }).errors).toEqual(expect.arrayContaining([expect.objectContaining({ path: "web.echo_to_channel" })]));

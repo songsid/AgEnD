@@ -336,6 +336,8 @@ export interface FleetTemplate {
 
 /** Web UI feature toggles (fleet.yaml `web:` section). */
 export interface WebConfig {
+  /** Only menu availability; every exposure requires explicit admin consent. */
+  public_link?: { allow_public?: boolean; ttl_minutes?: number; protocol?: "http2" | "quic" | "auto" };
   /** Echo web chat to the owning fleet topic (default true); never ClassicBot rooms. */
   echo_to_channel?: boolean;
   /** Show the AI subscription usage panel on /view and serve /api/ai-usage (default true). */

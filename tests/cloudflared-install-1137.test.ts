@@ -48,6 +48,12 @@ describe("the pinned assets", () => {
 });
 
 describe("ensureCloudflared", () => {
+  it("public web pinnedOnly ignores an executable on PATH and verifies the private copy (#1367)", async () => {
+    const dataDir = scratch(), bin = scratch(); writeFileSync(join(bin, "cloudflared"), BINARY); chmodSync(join(bin, "cloudflared"), 0o755);
+    const fetchImpl = fakeFetch(BINARY);
+    const got = await ensureCloudflared({ ...base(dataDir, { fetchImpl, pin: pinFor(BINARY) }), env: { PATH: bin }, pinnedOnly: true });
+    expect(got.path).toBe(join(dataDir, "bin", "cloudflared")); expect(got.source).toBe("downloaded"); expect(fetchImpl).toHaveBeenCalled();
+  });
   it("prefers the user's own cloudflared on PATH, and downloads nothing", async () => {
     const dataDir = scratch();
     const bin = scratch();

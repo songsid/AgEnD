@@ -1,3 +1,6 @@
+import { readBoundedWebBody } from "./web-body.js";
+import { validPublicLinkPatch } from "./public-web-link.js";
+import { permitWebContinuation } from "./web-continuation.js";
 /**
  * Settings Web API (`/settings`) — CRUD over fleet.yaml + classicBot.yaml.
  *
@@ -61,6 +64,8 @@ import {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export interface SettingsApiContext {
+  readonly webToken?: string | null;
+  readonly webSessions?: import("./web-session.js").WebSessionStore | null;
   fleetConfig: FleetConfig | null;
   configPath: string | null;
   dataDir: string;
@@ -155,17 +160,7 @@ function json(res: ServerResponse, code: number, body: unknown, noStore = false)
 }
 
 function readBody(req: IncomingMessage, maxBytes: number): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    let size = 0;
-    req.on("data", (c: Buffer) => {
-      size += c.length;
-      if (size > maxBytes) { reject(new Error("payload too large")); req.destroy(); return; }
-      chunks.push(c);
-    });
-    req.on("end", () => resolve(Buffer.concat(chunks)));
-    req.on("error", reject);
-  });
+  return readBoundedWebBody(req, maxBytes);
 }
 
 /**
@@ -308,6 +303,7 @@ export function handleSettingsRequest(
   }
   if (method === "POST" && path === "/api/settings/status-emojis/preview") {
     readBody(req, 64 * 1024).then(buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
       let body: Record<string, unknown>;
       try { body = JSON.parse(buf.toString("utf-8") || "{}"); } catch { return json(res, 400, { error: "invalid JSON" }); }
       if (!body || typeof body !== "object" || Array.isArray(body)) return json(res, 400, { error: "expected an object" });
@@ -388,6 +384,7 @@ export function handleSettingsRequest(
     if (!ctx.verifyProviderSecret) { json(res, 501, { error: "provider secret registry unavailable" }, true); return true; }
     const specId = decodeURIComponent(providerSecretVerifyMatch[1]!);
     readBody(req, 16 * 1024).then(async buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
       let body: Record<string, unknown>;
       try { body = JSON.parse(buf.toString("utf-8") || "{}") as Record<string, unknown>; }
       catch { return json(res, 400, { error: "invalid JSON" }, true); }
@@ -412,6 +409,7 @@ export function handleSettingsRequest(
     if (!ctx.startProviderSecretApply) { json(res, 501, { error: "provider secret registry unavailable" }, true); return true; }
     const specId = decodeURIComponent(providerSecretApplyMatch[1]!);
     readBody(req, 16 * 1024).then(buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
       let body: Record<string, unknown>;
       try { body = JSON.parse(buf.toString("utf-8") || "{}") as Record<string, unknown>; }
       catch { return json(res, 400, { error: "invalid JSON" }, true); }
@@ -444,6 +442,7 @@ export function handleSettingsRequest(
     if (!verifyConnectionSecret) { json(res, 501, { error: "connection secret verification unavailable" }); return true; }
     const connectionId = decodeURIComponent(secretVerifyMatch[1]!);
     readBody(req, 16 * 1024).then(async buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
       let body: Record<string, unknown>;
       try { body = JSON.parse(buf.toString("utf-8") || "{}") as Record<string, unknown>; }
       catch { return json(res, 400, { error: "invalid JSON" }); }
@@ -478,6 +477,7 @@ export function handleSettingsRequest(
     if (!ctx.startConnectionSecretApply) { json(res, 501, { error: "connection secret apply unavailable" }); return true; }
     const connectionId = decodeURIComponent(secretApplyMatch[1]!);
     readBody(req, 16 * 1024).then(buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
       let body: Record<string, unknown>;
       try { body = JSON.parse(buf.toString("utf-8") || "{}") as Record<string, unknown>; }
       catch { return json(res, 400, { error: "invalid JSON" }); }
@@ -524,6 +524,7 @@ export function handleSettingsRequest(
     if (!ctx.verifyConnectionBinding) { json(res, 501, { error: "connection binding verification unavailable" }); return true; }
     const connectionId = decodeURIComponent(bindingVerifyMatch[1]!);
     readBody(req, 16 * 1024).then(async buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
       let body: Record<string, unknown>;
       try { body = JSON.parse(buf.toString("utf-8") || "{}") as Record<string, unknown>; }
       catch { return json(res, 400, { error: "invalid JSON" }); }
@@ -559,6 +560,7 @@ export function handleSettingsRequest(
     if (!ctx.startConnectionBindingApply) { json(res, 501, { error: "connection binding apply unavailable" }); return true; }
     const connectionId = decodeURIComponent(bindingApplyMatch[1]!);
     readBody(req, 16 * 1024).then(buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
       let body: Record<string, unknown>;
       try { body = JSON.parse(buf.toString("utf-8") || "{}") as Record<string, unknown>; }
       catch { return json(res, 400, { error: "invalid JSON" }); }
@@ -608,19 +610,27 @@ export function handleSettingsRequest(
   if (method === "PUT" && path === "/api/settings/fleet/web") {
     if (!cfg) { json(res, 503, { error: "fleet not loaded" }); return true; }
     readBody(req, 4096).then(buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
       let body: unknown;
       try { body = JSON.parse(buf.toString("utf-8")); } catch { return json(res, 400, { error: "invalid JSON" }); }
       if (!body || typeof body !== "object" || Array.isArray(body)
-        || Object.keys(body).some(key => key !== "echo_to_channel")) return json(res, 400, { error: "expected echo_to_channel only" });
-      const patch = body as { echo_to_channel?: unknown };
-      if (!Object.hasOwn(patch, "echo_to_channel")) return json(res, 200, { ok: true });
-      if (typeof patch.echo_to_channel !== "boolean") return json(res, 400, { error: "echo_to_channel must be a boolean" });
-      const web = { ...cfg.web, echo_to_channel: patch.echo_to_channel };
+        || Object.keys(body).some(key => key !== "echo_to_channel" && key !== "public_link")) return json(res, 400, { error: "unknown web field" });
+      const patch = body as { echo_to_channel?: unknown; public_link?: unknown };
+      if (patch.echo_to_channel !== undefined && typeof patch.echo_to_channel !== "boolean") return json(res, 400, { error: "echo_to_channel must be a boolean" });
+      if (patch.public_link !== undefined && !validPublicLinkPatch(patch.public_link)) return json(res, 400, { error: "invalid public_link settings" });
+      const changes: RawConfigPatch[] = [];
+      const web = { ...cfg.web };
+      if (typeof patch.echo_to_channel === "boolean") { web.echo_to_channel = patch.echo_to_channel; changes.push({ path: ["web", "echo_to_channel"], value: patch.echo_to_channel }); }
+      if (validPublicLinkPatch(patch.public_link)) {
+        if (Object.keys(patch.public_link).length) web.public_link = { ...web.public_link, ...patch.public_link };
+        for (const [key, value] of Object.entries(patch.public_link)) changes.push({ path: ["web", "public_link", key], value });
+      }
+      if (!changes.length) return json(res, 200, { ok: true });
       const before = validateFleetConfig(cfg);
       const after = validateFleetConfig({ ...cfg, web });
       if (rejectIfWorse(res, before, after)) return;
       cfg.web = web;
-      ctx.saveFleetConfig([{ path: ["web", "echo_to_channel"], value: patch.echo_to_channel }]);
+      ctx.saveFleetConfig(changes);
       json(res, 200, { ok: true, warnings: saveWarnings(before, after) });
     }).catch(() => json(res, 400, { error: "bad request" }));
     return true;
@@ -630,6 +640,7 @@ export function handleSettingsRequest(
   if (method === "PUT" && path === "/api/settings/fleet/defaults") {
     if (!cfg) { json(res, 503, { error: "fleet not loaded" }); return true; }
     readBody(req, 512 * 1024).then(buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
       let body: Record<string, unknown>;
       try { body = JSON.parse(buf.toString("utf-8") || "{}"); } catch { return json(res, 400, { error: "invalid JSON" }); }
       if (typeof body !== "object" || body === null || Array.isArray(body)) return json(res, 400, { error: "expected an object" });
@@ -651,6 +662,7 @@ export function handleSettingsRequest(
   if (method === "PUT" && path === "/api/settings/fleet/channels") {
     if (!cfg) { json(res, 503, { error: "fleet not loaded" }); return true; }
     readBody(req, 512 * 1024).then(buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
       let body: unknown;
       try { body = JSON.parse(buf.toString("utf-8") || "[]"); } catch { return json(res, 400, { error: "invalid JSON" }); }
       if (!Array.isArray(body)) return json(res, 400, { error: "expected an array of channels" });
@@ -720,6 +732,7 @@ export function handleSettingsRequest(
   // ── Classic defaults ──
   if (method === "PUT" && path === "/api/settings/classic/defaults") {
     readBody(req, 512 * 1024).then(buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
       let body: Record<string, unknown>;
       try { body = JSON.parse(buf.toString("utf-8") || "{}"); } catch { return json(res, 400, { error: "invalid JSON" }); }
       if (typeof body !== "object" || body === null || Array.isArray(body)) return json(res, 400, { error: "expected an object" });
@@ -752,6 +765,7 @@ export function handleSettingsRequest(
     catch { json(res, 400, { error: "invalid channel key" }); return true; }
     if (!key || /[\\/\x00]/.test(key)) { json(res, 400, { error: "invalid channel key" }); return true; }
     readBody(req, 512 * 1024).then(async buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
       let body: Record<string, unknown>;
       try { body = JSON.parse(buf.toString("utf-8") || "{}"); } catch { return json(res, 400, { error: "invalid JSON" }); }
       if (typeof body !== "object" || body === null || Array.isArray(body)) return json(res, 400, { error: "expected an object" });
@@ -852,6 +866,7 @@ export function handleSettingsRequest(
   if (method === "POST" && path === "/api/settings/apply") {
     if (!ctx.startSettingsApply) { json(res, 501, { error: "apply jobs unavailable" }); return true; }
     readBody(req, 64 * 1024).then(buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
       let body: Record<string, unknown> = {};
       try { body = JSON.parse(buf.toString("utf-8") || "{}") as Record<string, unknown>; } catch { /* key may come from the header */ }
       // The client generates the key before its first attempt. A server-minted
@@ -895,6 +910,7 @@ export function handleSettingsRequest(
   if (method === "POST" && path === "/api/settings/restart-fleet") {
     if (!ctx.requestSettingsSelfRestart) { json(res, 501, { error: "self restart unavailable" }); return true; }
     readBody(req, 64 * 1024).then(async buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
       let body: Record<string, unknown> = {};
       try { body = JSON.parse(buf.toString("utf-8") || "{}") as Record<string, unknown>; } catch { /* reported below */ }
       const header = req.headers["idempotency-key"];
@@ -998,6 +1014,7 @@ export function handleSettingsRequest(
   if (method === "POST" && path === "/api/settings/fleet/instances") {
     if (!cfg) { json(res, 503, { error: "fleet not loaded" }); return true; }
     readBody(req, 512 * 1024).then(buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
       let body: Record<string, unknown>;
       try { body = JSON.parse(buf.toString("utf-8") || "{}"); } catch { return json(res, 400, { error: "invalid JSON" }); }
       if (typeof body !== "object" || body === null || Array.isArray(body)) return json(res, 400, { error: "expected an object" });
@@ -1032,6 +1049,7 @@ export function handleSettingsRequest(
       if (method === "POST" && exists) { json(res, 409, { error: "instance already exists" }); return true; }
       if (method === "PATCH" && !exists) { json(res, 404, { error: "instance not found" }); return true; }
       readBody(req, 512 * 1024).then(buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
         let body: Record<string, unknown>;
         try { body = JSON.parse(buf.toString("utf-8") || "{}"); } catch { return json(res, 400, { error: "invalid JSON" }); }
         commitInstance(name, exists, body);

@@ -227,6 +227,8 @@ export interface StickerList {
 export interface StickerPreview { bytes: Buffer; ext: "png" | "gif" | "webp" | "jpg" }
 
 export interface SendOpts {
+  /** Private dashboard controls; supported by sendDirect only. */
+  choices?: Choice[];
   /** Discord entity suppression for display-only echoes; text must also be neutralised. */
   allowedMentions?: { parse: Array<"roles" | "users" | "everyone"> };
   threadId?: string;
