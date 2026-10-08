@@ -9637,8 +9637,13 @@ export class Daemon extends EventEmitter {
   /** The whole agent switch after a resume, on the monotonic clock (#906 §3). */
   private static readonly AGENT_SWITCH_BUDGET_MS = 15_000;
   private static readonly AGENT_SWITCH_POLL_MS = 500;
-  /** The write is started only with this much budget left: the paste, its settle, the Enter. */
-  private static readonly AGENT_SWITCH_WRITE_RESERVE_MS = 3_000;
+  /** Each tmux call of the write (load, paste, Enter, take-back) is bounded by this. */
+  private static readonly AGENT_SWITCH_TMUX_OP_MS = 1_000;
+  /**
+   * The paste is started only with this much budget left, checked at the paste itself: the load and the paste, the
+   * settle, the Enter — each bounded by AGENT_SWITCH_TMUX_OP_MS — fit in it.
+   */
+  private static readonly AGENT_SWITCH_WRITE_RESERVE_MS = 4_000;
   /** Between the paste and its Enter, as tmux pastes elsewhere (pasteText). */
   private static readonly AGENT_SWITCH_PASTE_SETTLE_MS = 500;
 
@@ -9694,22 +9699,28 @@ export class Daemon extends EventEmitter {
         }
         if (wroteAt === null && active !== null && active !== sw.agent) {
           const wrote = await within(this.paneWriteLock.run(async () => {
-            if (!live() || deadline - performance.now() < Daemon.AGENT_SWITCH_WRITE_RESERVE_MS) return false;
+            // The whole write is one owned transaction under the lock. Every await is bounded; a take-back of a paste
+            // whose Enter would land past the deadline happens here, before the lock is released, so it can never
+            // edit a write admitted after this one.
+            if (!live()) return false;
             const readiness = await within(this.paneReadinessForDelivery(windowId));
             if (readiness !== "ready" || !live()) return false;
             const final = await capture();
             if (final === TIMEOUT || final === null || !live()) return false;
             const now = sw!.readActive(final);
             if (now === null || now === sw!.agent || this.inputTransientInPane(final) || !this.paneAuthoritativelyIdle(final)) return false;
-            const pasted = await within(tmux.pasteBuffer(sw!.command));
-            if (pasted !== true) return false;
-            await within(new Promise(r => setTimeout(r, Daemon.AGENT_SWITCH_PASTE_SETTLE_MS)));
-            if (!live()) {
-              // Same CLI, but no time left to see it through: take the command back out of its input row.
-              if (fenced()) await tmux.deleteBackward(sw!.command.length);
-              return false;
-            }
-            return tmux.sendSpecialKey("Enter");
+            // The reserve, at the paste boundary — after the final proof, which may have used some of the budget.
+            if (deadline - performance.now() < Daemon.AGENT_SWITCH_WRITE_RESERVE_MS) return false;
+            const op = Daemon.AGENT_SWITCH_TMUX_OP_MS;
+            // live() is asked before every tmux mutation inside the paste, so a stop, pause, respawn or the deadline
+            // between its load and its paste never reaches the pane.
+            const pasted = await tmux.pasteBuffer(sw!.command, { guard: live, timeoutMs: op });
+            if (!pasted) return false;
+            await new Promise(r => setTimeout(r, Daemon.AGENT_SWITCH_PASTE_SETTLE_MS));
+            if (live()) return tmux.sendSpecialKey("Enter", op);
+            // Same CLI, but no time left to see it through: take the command back out of its input row (bounded).
+            if (fenced()) await tmux.deleteBackward(sw!.command.length, op);
+            return false;
           }));
           if (wrote === true) {
             wroteAt = performance.now();

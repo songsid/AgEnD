@@ -42,7 +42,7 @@ function rig(opts: { panes: Array<string | null | Error>; alreadyConfirmed?: boo
     last = next;
     return next ?? "";
   });
-  const pasteBuffer = vi.fn(async () => true);
+  const pasteBuffer = vi.fn(async (_text: string, _opts?: { guard?: () => boolean; timeoutMs?: number }) => true);
   const sendSpecialKey = vi.fn(async () => true);
   const deleteBackward = vi.fn(async () => true);
   daemon.tmux = { getWindowId: () => "@1", capturePane, pasteBuffer, sendSpecialKey, deleteBackward };
@@ -78,8 +78,8 @@ describe("the agent switch after a resume", () => {
     const r = rig({ panes: [theirs, theirs, theirs, ours] });
     await run(r.daemon);
     expect(r.pasteText).toHaveBeenCalledOnce();
-    expect(r.pasteBuffer).toHaveBeenCalledWith(`/agent swap ${AGENT}`);
-    expect(r.sendSpecialKey).toHaveBeenCalledWith("Enter");
+    expect(r.pasteBuffer).toHaveBeenCalledWith(`/agent swap ${AGENT}`, expect.objectContaining({ timeoutMs: 1_000 }));
+    expect(r.sendSpecialKey).toHaveBeenCalledWith("Enter", 1_000);
     expect(r.confirm).toHaveBeenCalledOnce();
     expect(r.warnings).toEqual([]);
   });
@@ -194,21 +194,21 @@ describe("#1416 review: the final frame, the whole budget, the fences", () => {
     r.pasteBuffer.mockImplementation(() => new Promise(res => setTimeout(() => res(true), pasteMs)));
     return r;
   }
-  it("#3 the Enter would land past the deadline: the paste is taken back, no Enter", async () => {
-    const r = late(24, 2_600); // admitted at 12 s (3 s left), paste to 14.6 s, settle past 15 s
+  it("#3 the Enter would land past the deadline: the paste is taken back (bounded), no Enter", async () => {
+    const r = late(20, 4_600); // admitted at 10 s (5 s left), paste to 14.6 s, settle past 15 s
     await run(r.daemon);
     expect(r.pasteBuffer).toHaveBeenCalledOnce();
     expect(r.sendSpecialKey).not.toHaveBeenCalled();
-    expect(r.deleteBackward).toHaveBeenCalledWith(`/agent swap ${AGENT}`.length);
+    expect(r.deleteBackward).toHaveBeenCalledWith(`/agent swap ${AGENT}`.length, 1_000);
   });
   it("#3 control: the same write with time left gets its Enter", async () => {
-    const r = late(24, 2_000);
+    const r = late(20, 2_000);
     await run(r.daemon);
-    expect(r.sendSpecialKey).toHaveBeenCalledWith("Enter");
+    expect(r.sendSpecialKey).toHaveBeenCalledWith("Enter", 1_000);
     expect(r.deleteBackward).not.toHaveBeenCalled();
   });
   it("#3 too little budget left to see a write through: none is started", async () => {
-    const r = late(26, 100); // another agent first seen at 13 s: under the 3 s reserve
+    const r = late(24, 100); // another agent first seen at 12 s: under the 4 s reserve
     await run(r.daemon);
     expect(r.pasteBuffer).not.toHaveBeenCalled();
   });
@@ -243,5 +243,53 @@ describe("#1416 review: the final frame, the whole budget, the fences", () => {
     expect(r.deleteBackward).not.toHaveBeenCalled();
     expect(r.confirm).not.toHaveBeenCalled();
     expect(r.warnings).toEqual([]);
+  });
+});
+
+describe("#1416 review round 2: the reserve at the paste, the guarded paste, the bounded take-back", () => {
+  it("readiness held to 11.5 s uses up the reserve: no paste (control: a quick readiness pastes)", async () => {
+    const r = rig({ panes: [theirs] });
+    r.daemon.paneReadinessForDelivery = vi.fn(() => new Promise(res => setTimeout(() => res("ready"), 11_500)));
+    await run(r.daemon);
+    expect(r.pasteBuffer).not.toHaveBeenCalled();
+    const c = rig({ panes: [theirs, theirs, ours] });
+    await run(c.daemon);
+    expect(c.pasteBuffer).toHaveBeenCalledOnce();
+  });
+  it("the final capture held to 11.5 s uses up the reserve: no paste", async () => {
+    const r = rig({ panes: [theirs] });
+    let calls = 0;
+    r.capturePane.mockImplementation(() => ++calls === 2 ? new Promise(res => setTimeout(() => res(theirs), 11_500)) : Promise.resolve(theirs));
+    await run(r.daemon);
+    expect(r.pasteBuffer).not.toHaveBeenCalled();
+  });
+  it("the paste is guarded by the step's own liveness: false once stopped, paused, respawned or past the deadline", async () => {
+    for (const end of [(d: any) => { d.deliveryWritesStopping = true; }, (d: any) => { d.pauseWakeState = "pausing"; },
+      (d: any) => { d.spawnGeneration++; }, null]) {
+      const r = rig({ panes: [theirs, theirs, ours] });
+      let guard: (() => boolean) | undefined;
+      r.pasteBuffer.mockImplementation(async (_t: string, opts?: { guard?: () => boolean }) => {
+        guard = opts?.guard;
+        expect(guard!()).toBe(true); // live when the paste starts
+        if (end) end(r.daemon); else await new Promise(res => setTimeout(res, 16_000));
+        return false;
+      });
+      await run(r.daemon);
+      if (end) expect(guard!()).toBe(false); // what the helper asks before its pane write
+    }
+  });
+  it("the take-back is part of the write: the lock is released only after it, and a later writer then runs", async () => {
+    const r = rig({ panes: [...Array(20).fill("Thinking..."), theirs] });
+    r.pasteBuffer.mockImplementation(() => new Promise(res => setTimeout(() => res(true), 4_600)));
+    r.deleteBackward.mockImplementation(() => new Promise(res => setTimeout(() => res(true), 1_000))); // bounded by its timeout
+    const done = r.daemon.ensureBackendAgent();
+    await vi.advanceTimersByTimeAsync(15_050);
+    let next = false;
+    void r.daemon.paneWriteLock.run(async () => { next = true; });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(next).toBe(false); // the take-back still holds the lock
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(next).toBe(true);
+    await done;
   });
 });

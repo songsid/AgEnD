@@ -15,6 +15,9 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, unlinkSync } from "n
 import { basename, dirname, isAbsolute, join, normalize, resolve } from "node:path";
 import { writeFileAtomic } from "./kiro-engine-ledger.js";
 
+/** An MCP server name AgEnD writes: one plain path component (no separators, no `..`). */
+const SERVER_NAME = /^(?!.*\.\.)[A-Za-z0-9_][A-Za-z0-9_.-]{0,99}$/;
+
 /** Instance names written as they are; any other name is hashed under a different prefix, so the two never meet. */
 const PLAIN_NAME = /^[A-Za-z0-9._-]{1,100}$/;
 
@@ -84,6 +87,10 @@ export function isOwnKiroAgent(value: unknown, spec: KiroAgentSpec): boolean {
   return Object.entries(servers as Record<string, unknown>).every(([key, entry]) => {
     if (!key.endsWith(suffix) || key.length === suffix.length) return false;
     const server = key.slice(0, -suffix.length);
+    // A server name is one plain path component — no separator, no `..` — so its wrapper,
+    // `<instanceDir>/mcp-wrapper-<server>.sh`, is a direct child of THIS instance's directory. A key like
+    // `x/../../sibling/…` would otherwise aim it at another instance's wrapper (#1416 review).
+    if (!SERVER_NAME.test(server)) return false;
     const command = (entry as Record<string, unknown> | null)?.command;
     return samePath(command, kiroWrapperPath(spec.instanceDir, server));
   });

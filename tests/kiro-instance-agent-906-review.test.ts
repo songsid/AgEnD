@@ -4,6 +4,16 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// A write failure injected for one exact path (the identity state file), everything else written for real.
+const inject = vi.hoisted(() => ({ failPath: null as string | null }));
+vi.mock("../src/backend/kiro-engine-ledger.js", async original => {
+  const real = await original<typeof import("../src/backend/kiro-engine-ledger.js")>();
+  return { ...real, writeFileAtomic: (path: string, data: string) => {
+    if (inject.failPath && path === inject.failPath) throw new Error("injected write failure");
+    return real.writeFileAtomic(path, data);
+  } };
+});
+
 // No kiro-cli is ever run: the backend factory's compatibility probe (and any binary lookup) finds nothing.
 vi.mock("node:child_process", async original => ({
   ...await original<typeof import("node:child_process")>(),
@@ -175,17 +185,69 @@ describe("#7 a CJK instance name gets the feature, not the old shared identity",
   });
 });
 
-describe("#8 a failed adoption record is retried with the same conversation", () => {
-  it("claim made, state write failed, then the retry resumes c1 — never abandons it", () => {
+describe("#8 / R2#3 a failed adoption record is retried with exactly the conversation it chose", () => {
+  const home = () => join(root, "agend");
+  const statePath = () => join(home(), "kiro-identity", "instances", stateName("a"));
+  afterEach(() => { inject.failPath = null; });
+  const r = (store: KiroStoreRead) => resolveKiroIdentity({ instance: "a", engine: "v1", workingDirectory: join(root, "work"), credentialProfile: null,
+    agendHome: home(), readStore: () => store, launchedBefore: () => true });
+  const c1: KiroStoreRead = { kind: "ok", sessions: [{ id: "c1", updatedAt: 10 }], createdAt: () => 10 };
+  function failFirst() {
+    inject.failPath = statePath();
+    expect(() => r(c1)).toThrow(KiroIdentityError);
+    inject.failPath = null;
+    expect(readFileSync(join(home(), "kiro-identity", "claims", "v1", "c1"), "utf-8")).toBe("a\n");
+  }
+  it("the store unchanged: c1", () => { failFirst(); expect(r(c1)).toEqual({ mode: "resume", id: "c1", agentConfirmed: false }); });
+  it("c2 became newest meanwhile: still c1, and c2 is not claimed", () => {
+    failFirst();
+    expect(r({ kind: "ok", sessions: [{ id: "c1", updatedAt: 10 }, { id: "c2", updatedAt: 99 }], createdAt: () => 50 }))
+      .toEqual({ mode: "resume", id: "c1", agentConfirmed: false });
+    expect(existsSync(join(home(), "kiro-identity", "claims", "v1", "c2"))).toBe(false);
+  });
+  it("c2 newest and owned by B: still c1", () => {
+    failFirst();
+    writeFileSync(join(home(), "kiro-identity", "claims", "v1", "c2"), "b\n");
+    expect(r({ kind: "ok", sessions: [{ id: "c2", updatedAt: 99 }, { id: "c1", updatedAt: 10 }], createdAt: () => 50 }))
+      .toEqual({ mode: "resume", id: "c1", agentConfirmed: false });
+  });
+  it("the store unreadable at the retry: c1 all the same (no store read needed)", () => {
+    failFirst();
+    expect(r({ kind: "unreadable", detail: "locked" })).toEqual({ mode: "resume", id: "c1", agentConfirmed: false });
+  });
+});
+
+describe("R2#4 a creation time that cannot be read defers the take-up and keeps the mark", () => {
+  it("unreadable at 3000, readable again later: new1 is still taken up", () => {
     const home = join(root, "agend");
-    const store: KiroStoreRead = { kind: "ok", sessions: [{ id: "c1", updatedAt: 10 }], createdAt: () => 10 };
+    let now = 1_000;
+    let store: KiroStoreRead = { kind: "ok", sessions: [], createdAt: () => null };
     const r = () => resolveKiroIdentity({ instance: "a", engine: "v1", workingDirectory: join(root, "work"), credentialProfile: null,
-      agendHome: home, readStore: () => store, launchedBefore: () => true });
-    mkdirSync(join(home, "kiro-identity", "instances"), { recursive: true });
-    chmodSync(join(home, "kiro-identity", "instances"), 0o500);
-    try { expect(r).toThrow(KiroIdentityError); } finally { chmodSync(join(home, "kiro-identity", "instances"), 0o700); }
-    expect(readFileSync(join(home, "kiro-identity", "claims", "v1", "c1"), "utf-8")).toBe("a\n");
-    expect(r()).toEqual({ mode: "resume", id: "c1", agentConfirmed: false });
+      agendHome: home, readStore: () => store, launchedBefore: () => false, now: () => now });
+    expect(r()).toEqual({ mode: "fresh" }); // mark at 1000
+    const before = readFileSync(join(home, "kiro-identity", "instances", stateName("a")), "utf-8");
+    now = 3_000;
+    store = { kind: "ok", sessions: [{ id: "new1", updatedAt: 2_500 }], createdAt: () => "unreadable" };
+    expect(r()).toEqual({ mode: "fresh" });
+    expect(readFileSync(join(home, "kiro-identity", "instances", stateName("a")), "utf-8")).toBe(before); // mark kept
+    now = 4_000;
+    store = { kind: "ok", sessions: [{ id: "new1", updatedAt: 2_500 }], createdAt: () => 2_000 };
+    expect(r()).toEqual({ mode: "resume", id: "new1", agentConfirmed: true });
+  });
+  it("the v1 adapter reports a failed creation lookup as unreadable, not as absent", () => {
+    const dir = join(root, "xdg", "kiro-cli"); mkdirSync(dir, { recursive: true });
+    const dbPath = join(dir, "data.sqlite3");
+    const db = new Database(dbPath);
+    db.exec("CREATE TABLE conversations_v2 (key TEXT NOT NULL, conversation_id TEXT NOT NULL, value TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (key, conversation_id)); CREATE INDEX idx_conversations_v2_key_updated ON conversations_v2(key, updated_at DESC);");
+    db.prepare("INSERT INTO conversations_v2 VALUES (?, 'n1', '{}', 2000, 2500)").run(join(root, "work"));
+    db.close();
+    const read = listKiroV1Sessions(join(root, "work"), dbPath);
+    expect(read.kind).toBe("ok");
+    if (read.kind !== "ok") return;
+    expect(read.createdAt("n1")).toBe(2_000);
+    expect(read.createdAt("absent")).toBeNull();
+    rmSync(dbPath); writeFileSync(dbPath, "not a database any more");
+    expect(read.createdAt("n1")).toBe("unreadable");
   });
 });
 
@@ -226,6 +288,36 @@ describe("#10 delete/replace forgets V3 ownership too", () => {
     expect(existsSync(join(v3, "claims", "sess_1"))).toBe(false);
     expect(readFileSync(join(v3, "claims", "sess_2"), "utf-8")).toBe("other\n");
     expect(resolveKiroV3Resume("worker", join(root, "work"), null, { agendHome: home, env: { KIRO_HOME: join(root, "kiro-home") } })).toBeNull();
+  });
+});
+
+describe("R2#5 a crafted server key cannot aim the expected wrapper at a sibling", () => {
+  it("`x/../../sibling/mcp-wrapper-agend-worker` with the sibling's wrapper: not ours — refused on write, kept (and its .bak) on cleanup", () => {
+    const fleet = kiroFleetTag(join(root, "agend"));
+    const spec: KiroAgentSpec = { workingDirectory: join(root, "work"), instance: "worker", fleet, instanceDir: instanceDir(), serverNames: ["agend"] };
+    const crafted = {
+      name: kiroAgentName("worker", fleet), description: kiroAgentDescription(spec),
+      mcpServers: { "x/../../sibling/mcp-wrapper-agend-worker": { command: join(root, "agend", "instances", "sibling", "mcp-wrapper-agend.sh") } },
+    };
+    expect(isOwnKiroAgent(crafted, spec)).toBe(false);
+    mkdirSync(join(root, "work", ".kiro", "agents"), { recursive: true });
+    writeFileSync(agentFile(), JSON.stringify(crafted));
+    writeFileSync(`${agentFile()}.bak`, JSON.stringify(crafted));
+    expect(() => writeKiroAgent(spec, "x")).toThrow();
+    new KiroBackend(instanceDir(), COMPAT).cleanup(cfg());
+    expect(JSON.parse(readFileSync(agentFile(), "utf-8"))).toEqual(crafted);
+    expect(existsSync(`${agentFile()}.bak`)).toBe(true);
+  });
+  it("a key that stays inside this directory once normalized (`x/../y`) is still not a server name of ours", () => {
+    const spec: KiroAgentSpec = { workingDirectory: join(root, "work"), instance: "worker", fleet: "f", instanceDir: instanceDir(), serverNames: ["agend"] };
+    expect(isOwnKiroAgent({ name: kiroAgentName("worker", "f"), description: kiroAgentDescription(spec),
+      mcpServers: { "x/../y-worker": { command: join(instanceDir(), "y.sh") } } }, spec)).toBe(false); // join normalizes it to <dir>/y.sh
+  });
+  it("controls: the CLI empty map and the generated MCP agent stay ours", () => {
+    const spec: KiroAgentSpec = { workingDirectory: join(root, "work"), instance: "worker", fleet: "f", instanceDir: instanceDir(), serverNames: ["agend"] };
+    expect(isOwnKiroAgent({ name: kiroAgentName("worker", "f"), description: kiroAgentDescription(spec), mcpServers: {} }, spec)).toBe(true);
+    expect(isOwnKiroAgent({ name: kiroAgentName("worker", "f"), description: kiroAgentDescription(spec),
+      mcpServers: { "agend-worker": { command: join(instanceDir(), "mcp-wrapper-agend.sh"), args: [] } } }, spec)).toBe(true);
   });
 });
 

@@ -63,8 +63,12 @@ export type KiroStoreRead =
   | {
     kind: "ok";
     sessions: KiroStoreSession[];
-    /** When `id` was created (epoch ms), or null when that cannot be read. Asked only of take-up candidates. */
-    createdAt(id: string): number | null;
+    /**
+     * When `id` was created (epoch ms); null when the store has no such time for it; "unreadable" when the store could
+     * not be asked (a lock, an I/O error) — which defers a take-up rather than ruling the conversation out.
+     * Asked only of take-up candidates.
+     */
+    createdAt(id: string): number | null | "unreadable";
   }
   | { kind: "unreadable"; detail: string };
 
@@ -119,7 +123,7 @@ export function listKiroV1Sessions(workingDirectory: string, dbPath: string): Ki
             .get(a, b, c, id) as { at: unknown } | undefined;
           const at = Number(row?.at);
           return Number.isFinite(at) && at > 0 ? at : null;
-        } catch { return null; } finally { try { reader?.close(); } catch { /* closed */ } }
+        } catch { return "unreadable" as const; } finally { try { reader?.close(); } catch { /* closed */ } }
       },
     };
   } catch (err) {
@@ -217,10 +221,27 @@ function readState(path: string, instance?: string): StateRead {
 }
 
 const fileNameOf = (instance: string): string => `${createHash("sha256").update(instance).digest("hex").slice(0, 32)}.json`;
+const pendingNameOf = (instance: string): string => fileNameOf(instance).replace(/\.json$/, ".adopting.json");
 
 function paths(agendHome: string, engine: RecordEngine, instance: string) {
   const root = join(agendHome, "kiro-identity");
-  return { root, claims: join(root, "claims", engine), instances: join(root, "instances"), state: join(root, "instances", fileNameOf(instance)) };
+  return {
+    root, claims: join(root, "claims", engine), instances: join(root, "instances"), state: join(root, "instances", fileNameOf(instance)),
+    /** The adoption under way: the exact conversation chosen, recorded before it is claimed. */
+    pending: join(root, "instances", pendingNameOf(instance)),
+  };
+}
+
+/** The adoption under way, or null; "unreadable" when it exists but cannot be read (never treated as none). */
+function readPending(path: string): { key: string; id: string } | null | "unreadable" {
+  let text: string;
+  try { text = readFileSync(path, "utf-8"); } catch (err) {
+    return (err as NodeJS.ErrnoException).code === "ENOENT" ? null : "unreadable";
+  }
+  try {
+    const v = JSON.parse(text) as Record<string, unknown>;
+    return typeof v.key === "string" && typeof v.id === "string" && SAFE_ID.test(v.id) ? { key: v.key, id: v.id } : "unreadable";
+  } catch { return "unreadable"; }
 }
 
 type Claim = { owner: string; abandoned: boolean } | null | "incomplete";
@@ -302,20 +323,43 @@ export function resolveKiroIdentity(opts: ResolveKiroIdentityOptions): KiroIdent
     return { mode: "fresh" };
   };
 
-  // Adoption: only with no state file at all, and only for an instance that ran here before (#906 §2).
+  // Adoption: only with no state file at all, and only for an instance that ran here before (#906 §2). The chosen
+  // conversation is recorded (pending) before it is claimed, so a retry after any failure takes up that exact
+  // conversation — never whichever is newest by then.
   if (read.kind === "none") {
+    const pending = readPending(p.pending);
+    if (pending === "unreadable") throw new KiroIdentityError(`cannot read ${p.pending}`);
+    if (pending && pending.key === key) {
+      const c = claimOf(p.claims, pending.id);
+      if (heldBy(c, instance) || (c === null && claim(p.claims, pending.id, instance))) {
+        if (!save({ engine, workingDirectory, credentialProfile, id: pending.id, since: now(), known: [], abandoned: [], agentConfirmed: false })) {
+          throw new KiroIdentityError(`cannot write ${p.state}`);
+        }
+        rmSync(p.pending, { force: true });
+        return { mode: "resume", id: pending.id, agentConfirmed: false };
+      }
+      // Someone else's by now: this adoption is over — a fresh start, never a different conversation.
+      const fresh = startFresh();
+      rmSync(p.pending, { force: true });
+      return fresh;
+    }
     if (opts.skipResume || !opts.launchedBefore()) return startFresh();
     const store = opts.readStore();
     if (store.kind === "unreadable") return { mode: "legacy", reason: store.detail };
     const newest = store.sessions.filter(s => SAFE_ID.test(s.id)).sort((x, y) => y.updatedAt - x.updatedAt)[0];
-    if (!newest) return startFresh(store);
-    const current = claimOf(p.claims, newest.id);
-    // A claim this instance completed on an earlier attempt whose record could not be written: the same id again.
-    const ours = heldBy(current, instance) || (current === null && claim(p.claims, newest.id, instance));
-    if (!ours) return startFresh(store);
-    if (!save({ engine, workingDirectory, credentialProfile, id: newest.id, since: now(), known: [], abandoned: [], agentConfirmed: false })) {
-      throw new KiroIdentityError(`cannot write ${p.state}`);
+    if (!newest || claimOf(p.claims, newest.id) !== null) return startFresh(store);
+    try {
+      mkdirSync(p.instances, { recursive: true, mode: 0o700 });
+      writeFileAtomic(p.pending, JSON.stringify({ key, id: newest.id }) + "\n");
+    } catch { throw new KiroIdentityError(`cannot write ${p.pending}`); }
+    if (!claim(p.claims, newest.id, instance)) {
+      rmSync(p.pending, { force: true });
+      return startFresh(store);
     }
+    if (!save({ engine, workingDirectory, credentialProfile, id: newest.id, since: now(), known: [], abandoned: [], agentConfirmed: false })) {
+      throw new KiroIdentityError(`cannot write ${p.state}`); // the pending record and the claim stand: the retry takes this id
+    }
+    rmSync(p.pending, { force: true });
     return { mode: "resume", id: newest.id, agentConfirmed: false };
   }
 
@@ -333,20 +377,25 @@ export function resolveKiroIdentity(opts: ResolveKiroIdentityOptions): KiroIdent
   const store = opts.readStore();
   if (store.kind === "unreadable") return { mode: "fresh" }; // deferred, never guessed; the mark stays as it is
   const excluded = new Set([...record.known, ...record.abandoned]);
+  let creationUnreadable = false;
   const candidates = store.sessions.filter(s => {
     if (!SAFE_ID.test(s.id) || excluded.has(s.id) || s.updatedAt <= record.since) return false;
     const c = claimOf(p.claims, s.id);
     if (!(c === null || heldBy(c, instance))) return false;
     // New, not merely updated: created after the mark.
     const created = store.createdAt(s.id);
+    if (created === "unreadable") { creationUnreadable = true; return false; }
     return created !== null && created > record.since;
   });
+  // A creation time that could not be read is like an unreadable store: deferred, and the mark kept as it is — a new
+  // mark would list this very conversation as already existing and lose it for good.
+  if (creationUnreadable) return { mode: "fresh" };
   const canonical = kiroCanonicalDirectory(workingDirectory);
   const siblingWaiting = (() => {
     let names: string[];
     try { names = readdirSync(p.instances); } catch { return true; }
     return names.some(n => {
-      if (n === fileNameOf(instance) || !n.endsWith(".json")) return false;
+      if (n === fileNameOf(instance) || !n.endsWith(".json") || n.endsWith(".adopting.json")) return false;
       const other = readState(join(p.instances, n));
       if (other.kind !== "ok") return true; // not certain, so it counts
       // Waiting on the same store and directory: v1 stores are per credential profile, the v2 store is shared.
@@ -409,4 +458,5 @@ export function forgetKiroIdentity(agendHome: string, instance: string): void {
     }
   }
   rmSync(paths(agendHome, "v1", instance).state, { force: true });
+  rmSync(paths(agendHome, "v1", instance).pending, { force: true });
 }
