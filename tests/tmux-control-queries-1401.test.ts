@@ -329,7 +329,9 @@ describe("#1401 real daemon handlers and registration fences", () => {
   it("recovery result after launch change cannot rebind the manager", async () => {
     const { client, proc, manager } = opened(); const { d } = daemonFixture(manager, client);
     const result = d.recoverWindow(); d.launchFenceEpoch++;
-    answer(proc, "@2|||fixture\n"); expect(await result).toBeUndefined(); expect(d.tmux).toBe(manager);
+    answer(proc, "@2|||fixture\n"); await tick();
+    if (proc.stdin.write.mock.calls.length > 1) answer(proc, "%old\n");
+    expect(await result).toBeUndefined(); expect(d.tmux).toBe(manager);
   });
 
   it("health recheck cannot accept a new generation after its delay", async () => {
