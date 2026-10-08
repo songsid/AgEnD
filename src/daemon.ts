@@ -7293,17 +7293,21 @@ export class Daemon extends EventEmitter {
   }
 
   /**
-   * #1405: the composer's text is THIS delivery's paste — the start of its first line (kiro paints the first row; a
-   * long line wraps), not merely some text: another user's draft, or a paste of ours appended to one, is not it. A
-   * collapsed or otherwise unattributable form is not it either.
+   * #1405: the composer's text is THIS delivery's paste. kiro paints a multi-line paste's first line on the `›` row (live,
+   * 2.27.1 and 2.28.0, TUI v2 and v3); that row must show the payload's first line COMPLETE — for a durable steer that
+   * is its `[agend-delivery-id:<this attempt's id>]` marker, so a draft, someone else's paste, our paste appended to a
+   * draft, or a marker cut short (wrapped, collapsed, truncated) is never taken for it: not attributable, no Enter.
    */
   private steerPasteIsOurs(pane: string, formatted: string): boolean {
     const shown = this.backend?.readSteerComposerText?.(pane);
     if (!shown) return false;
     const norm = (t: string) => t.replace(/\s+/g, " ").trim();
-    const row = norm(shown).replace(/…$/u, "");
     const first = norm(formatted.split("\n").find(line => line.trim() !== "") ?? "");
-    return first !== "" && row.length >= Math.min(16, first.length) && first.startsWith(row);
+    if (first === "") return false;
+    const row = norm(shown);
+    // The marker line holds nothing but the marker: the row is exactly it.
+    if (/^\[agend-delivery-id:[^\]\s]+\]$/.test(first)) return row === first;
+    return row === first || row.startsWith(`${first} `);
   }
 
   /**

@@ -176,13 +176,13 @@ All three commands route through a backend-name lookup rather than being univers
 | `claude-code` | ✅ | ✅ | `/clear` |
 | `codex` | ✅ | ❌ "not supported" | `/clear` |
 | `grok` | ✅ | ❌ "not supported" | `/new` |
-| `kiro-cli` | ✅ with `kiro_ui: tui` on a verified version (2.27.1, v2 engine); ❌ on the legacy UI (it swallows the paste), on v3 and on other versions | ❌ "not supported" | `/clear` |
+| `kiro-cli` | ✅ on a version run live: 2.27.1 (`kiro_ui: tui` or `v3`), 2.28.0 (`tui`); ❌ on the legacy UI (it swallows the paste) and on other versions | ❌ "not supported" | `/clear` |
 | `opencode` | ❌ unverified | ❌ "not supported" | `/clear` |
 | `antigravity` | ❌ unverified | ❌ "not supported" | `/clear` |
 | `muse` | ✅ (verified live on muse 1.3.0) | ❌ "not supported" | `/clear` |
 
 kiro's TUI has its own interrupt mode, which the user switches with Ctrl+S: typed input either steers the running turn or waits for the turn to end. It cannot be set at launch without editing `~/.kiro`, so AgEnD reads it from kiro's input row before each steer, and never switches it.
-- AgEnD pastes only while the input row says `Type to steer`. It counts the steer as delivered once that row is empty again.
+- AgEnD pastes only while the input row says `Type to steer`, presses Enter only once the box shows this delivery's own message, and counts the steer as delivered once the box is empty again. kiro takes it in at the next tool boundary of the same turn; until then it shows as `◇ 1 message queued`.
 - If the row says `Type to queue`, the message goes in after the turn, like any other message.
 
 A `/steer` or `/btw` on an unsupported backend gets an honest error instead of silently falling back to a normal queued message (which would look the same to the user but behave differently). `/btw` rides the same paste path as `/steer` but is Claude Code-only — it exists because Claude Code's *native* `/btw` opens a side-fork that never reaches the channel, so AgEnD substitutes a labelled inbound message instead.

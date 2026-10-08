@@ -58,13 +58,14 @@ export const KIRO_TESTED_MAX = "2.27.0";
 /**
  * kiro-cli versions, per TUI front-end, whose mid-turn steering AgEnD drives (#1405). Only kiro's TUI steers — typed
  * input while a turn runs is injected into it ("steer", the default) or held for its end ("queue", Ctrl+S toggles); the
- * legacy UI swallows it. A version/front-end is listed once a real pane of it shows the composer row
- * readKiroSteerComposer reads (tests/fixtures/kiro-reply-guard: 2.27.1, `--tui --agent-engine=v2`). Any other version,
- * v3 until a pane of it is captured, the legacy UI and an undetected version all deliver a steer as an ordinary
- * message after the turn (the idle queue).
+ * legacy UI swallows it. A version/front-end is listed once a live run of it — a real account, a steer and a
+ * queued message mid-tool — has been captured (tests/fixtures/kiro-steer-1405, 2026-10-08: 2.27.1 `--tui
+ * --agent-engine=v2` and `--v3`, 2.28.0 `--tui --agent-engine=v2`; identical rows on all three). Any other version,
+ * 2.28.0's v3, the legacy UI and an undetected version all deliver a steer as an ordinary message after the turn.
  */
 export const KIRO_STEER_VERIFIED: Readonly<Record<string, ReadonlyArray<"tui" | "v3">>> = {
-  "2.27.1": ["tui"],
+  "2.27.1": ["tui", "v3"],
+  "2.28.0": ["tui"],
 };
 
 /**
@@ -87,8 +88,18 @@ function readKiroComposer(pane: string): { mode: SteerComposerMode; text: string
   const rows = pane.split("\n").map(row => row.replace(/\s+$/, ""));
   let i = rows.length - 1;
   while (i >= 0 && (rows[i] === "" || /^[ \t]{20,}\S/.test(rows[i]))) i--;
+  // Typed text of more than one line continues below the `›` row, each row indented two spaces (live, 2.27.1 and
+  // 2.28.0, TUI v2 and v3): the composer starts at the `›` row above them.
+  let continued = 0;
+  while (i >= 0 && /^ {2,19}\S/.test(rows[i]!)) { i--; continued++; }
   const row = rows[i];
   if (row === undefined || !/^›[ \t]+\S/.test(row)) return null;
+  // A placeholder is one row: with continuation rows below it, this is typed text — unless its first row is another
+  // mode's placeholder, which is then not ours to read.
+  if (continued > 0) {
+    if (/^›[ \t]+(?:Kiro is working\b|ask a question or describe a task\b|Goal (?:Active|Paused):|Editing queued message \d|Initializing\b|describe what "|running shell command\b)/.test(row)) return null;
+    return { mode: "text", text: row.replace(/^›[ \t]+/, "") };
+  }
   const working = String.raw`^›[ \t]+Kiro is working(?:[ \t]+·[ \t]+[^·]+?)?[ \t]+·[ \t]+`;
   const text = row.replace(/^›[ \t]+/, "");
   if (new RegExp(`${working}Type to steer[ \\t]+·[ \\t]+[^·]+?[ \\t]+to queue$`).test(row)) return { mode: "steer", text };

@@ -14,7 +14,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { KIRO_STEER_VERIFIED, KiroBackend, readKiroSteerComposer, type KiroCliCompatibility } from "../src/backend/kiro.js";
+import { KIRO_STEER_VERIFIED, KiroBackend, readKiroComposerText, readKiroSteerComposer, type KiroCliCompatibility } from "../src/backend/kiro.js";
 import type { CliBackendConfig } from "../src/backend/types.js";
 import { setLocale, t } from "../src/locale.js";
 import { outboundHandlers, setCrossInstanceRetryForTests } from "../src/outbound-handlers.js";
@@ -43,6 +43,45 @@ describe("readKiroSteerComposer — real panes", () => {
   it("the legacy UI has no such composer, busy or idle", () => {
     expect(readKiroSteerComposer(LEGACY_BUSY)).toBeNull();
     expect(readKiroSteerComposer(LEGACY_IDLE)).toBeNull();
+  });
+});
+
+describe("readKiroSteerComposer — the live run's panes (tests/fixtures/kiro-steer-1405, real account, 2026-10-08)", () => {
+  const live = (name: string) => readFileSync(join(import.meta.dirname, "fixtures", "kiro-steer-1405", `${name}.pane.txt`), "utf8");
+  it("steer, queue and idle on 2.27.1 TUI, 2.27.1 v3 and 2.28.0 TUI — busy, a pending tray above, the turn over", () => {
+    for (const v of ["2.27.1-tui", "2.27.1-v3", "2.28.0-tui"]) {
+      expect(readKiroSteerComposer(live(`${v}-busy-steer`)), v).toBe("steer");
+      expect(readKiroSteerComposer(live(`${v}-steer-pending`)), v).toBe("steer");      // `◇ 1 message queued` above it
+      expect(live(`${v}-steer-pending`)).toContain("◇ 1 message queued · ctrl+x expand");
+      expect(readKiroSteerComposer(live(`${v}-steer-injected`)), v).toBe("idle");
+    }
+    expect(readKiroSteerComposer(live("2.27.1-tui-busy-queue"))).toBe("queue");
+    expect(readKiroSteerComposer(live("2.28.0-tui-busy-queue"))).toBe("queue");
+    expect(readKiroSteerComposer(live("2.27.1-tui-queue-pending"))).toBe("queue");
+    expect(readKiroSteerComposer(live("2.27.1-tui-idle"))).toBe("idle");
+  });
+
+  it("a multi-line paste is the `›` row plus rows indented two spaces: text, its first line on the `›` row", () => {
+    for (const [name, id] of [["2.27.1-tui-steer-in-box", "d"], ["2.27.1-tui-steer-box-after-enter", "d"], ["2.27.1-v3-steer-in-box", "v"],
+      ["2.28.0-tui-steer-in-box", "k"], ["2.27.1-tui-queue-in-box", "c"]] as const) {
+      expect(readKiroSteerComposer(live(name)), name).toBe("text");
+      expect(readKiroComposerText(live(name)), name).toBe(`[agend-delivery-id:probe-1405-${id}]`);
+    }
+  });
+
+  it("the steer is injected into the same turn as a user message, and the reply carries no `[STEERING : …]` tag", () => {
+    const injected = live("2.27.1-tui-steer-injected");
+    expect(injected).toMatch(/SLEPT-D\n(?:[ \t]*\n)? {2}› \[agend-delivery-id:probe-1405-d\]/);
+    expect(injected).toContain("PROBE-D-DONE EGGPLANT");
+    for (const v of ["2.27.1-tui", "2.27.1-v3", "2.28.0-tui"]) expect(live(`${v}-steer-injected`)).not.toContain("[STEERING :");
+  });
+
+  it("the trust-all-tools warning has no composer, and AgEnD's startup table answers it", () => {
+    const pane = live("2.27.1-tui-trust-all-tools");
+    expect(readKiroSteerComposer(pane)).toBeNull();
+    const b = new KiroBackend("/tmp/agend-1405-trust", { version: "kiro-cli 2.27.1", supportsLegacyUi: true, supportsTui: true, supportsV3: true,
+      agentEngines: ["v1", "v2", "v3"], supportsEffortFlag: true, supportsInstanceAgent: false, source: "version" });
+    expect(b.getStartupDialogs().some(d => (d.isActive ? d.isActive(pane) : d.pattern.test(pane)))).toBe(true);
   });
 });
 
@@ -75,6 +114,12 @@ describe("readKiroSteerComposer — the placeholder's other outputs (TEMPLATE)",
       "›  Kiro is working · 3s · something new",
     ]) expect(readKiroSteerComposer(withComposer(row)), row).toBeNull();
     expect(readKiroSteerComposer(TUI_BUSY.replace(COMPOSER, "│ Allow this action? [y/n]"))).toBeNull();   // no composer row
+  });
+
+  it("a placeholder with an indented row below it is not typed text (a placeholder is one row)", () => {
+    expect(readKiroSteerComposer(withComposer("›  Kiro is working · 0s · Type to steer · Ctrl+S to queue\n  a stray indented row"))).toBeNull();
+    expect(readKiroSteerComposer(withComposer("›  ask a question or describe a task ↵\n  a stray indented row"))).toBeNull();
+    expect(readKiroSteerComposer(withComposer("› typed first line\n  typed second line"))).toBe("text");
   });
 
   it("only the composer's own row counts: an indented transcript row quoting it is not one", () => {
@@ -116,17 +161,20 @@ describe("KiroBackend.supportsSteer — the launch decides (production buildComm
     return b;
   };
 
-  it("the TUI on a verified version steers; it reads its composer", () => {
-    expect(KIRO_STEER_VERIFIED["2.27.1"]).toEqual(["tui"]);
-    const b = launched("kiro-cli 2.27.1", "tui");
-    expect(b.supportsSteer()).toBe(true);
-    expect(b.readSteerComposer(TUI_BUSY)).toBe("steer");
+  it("the front-ends a live run verified steer (2.27.1 TUI and v3, 2.28.0 TUI); they read their composer", () => {
+    expect(KIRO_STEER_VERIFIED).toEqual({ "2.27.1": ["tui", "v3"], "2.28.0": ["tui"] });
+    for (const [version, ui] of [["kiro-cli 2.27.1", "tui"], ["kiro-cli 2.27.1", "v3"], ["kiro-cli 2.28.0", "tui"]] as const) {
+      const b = launched(version, ui);
+      expect(b.supportsSteer(), `${version} ${ui}`).toBe(true);
+      expect(b.readSteerComposer(TUI_BUSY)).toBe("steer");
+    }
   });
 
-  it("the legacy UI, v3 (no pane yet), an unlisted version and an undetected one do not", () => {
+  it("the legacy UI, 2.28.0's v3 (not run live), an unlisted version and an undetected one do not", () => {
     expect(launched("kiro-cli 2.27.1", "legacy").supportsSteer()).toBe(false);
-    expect(launched("kiro-cli 2.27.1", "v3").supportsSteer()).toBe(false);
-    expect(launched("kiro-cli 2.28.0", "tui").supportsSteer()).toBe(false);
+    expect(launched("kiro-cli 2.28.0", "v3").supportsSteer()).toBe(false);
+    expect(launched("kiro-cli 2.29.0", "tui").supportsSteer()).toBe(false);
+    expect(launched("kiro-cli 2.21.0", "tui").supportsSteer()).toBe(false);
     expect(launched(undefined, "tui").supportsSteer()).toBe(false);
   });
 

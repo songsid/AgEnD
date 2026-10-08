@@ -107,7 +107,9 @@ async function steer(opts: Opts = {}) {
     }),
     pasteBuffer: vi.fn(async (text: string) => {
       s.pasted = true;
-      HOLDING = composer(`›  ${text.split("\n").find(l => l.trim()) ?? ""}`);
+      // as kiro paints a multi-line paste (live): its first line on the `›` row, the rest indented two spaces
+      const lines = text.split("\n").filter(l => l.trim() !== "");
+      HOLDING = composer([`› ${lines[0] ?? ""}`, ...lines.slice(1).map(l => `  ${l}`)].join("\n"));
       return true;
     }),
     sendSpecialKey: vi.fn(async () => { s.entered = true; return true; }),
@@ -330,7 +332,7 @@ describe("#1432 review: what is not proof, and what no longer belongs to this wr
   });
 
   it("a saved steer replayed to a launch that does not take one waits for the idle prompt (P3)", async () => {
-    const r = await steer({ version: "kiro-cli 2.28.0" });              // TUI, composer reads steer, version unverified
+    const r = await steer({ version: "kiro-cli 2.29.0" });              // TUI, composer reads steer, version unverified
     expect(r.waitIdle).toHaveBeenCalled();
     expect(r.tmux.pasteBuffer).not.toHaveBeenCalled();
     r.outbox.close();
@@ -339,7 +341,7 @@ describe("#1432 review: what is not proof, and what no longer belongs to this wr
   it("…and a launch replaced by an unverified one after the gate is sent back to the top, then down the idle path (P3)", async () => {
     const r = await steer({ pane: ({ captures, daemon }) => {
       // the gate (capture 1) saw a supported launch; by the pre-write re-check the instance runs an unverified version
-      if (captures === 1) (daemon.backend as any).compatibility = { ...COMPAT, version: "kiro-cli 2.28.0" };
+      if (captures === 1) (daemon.backend as any).compatibility = { ...COMPAT, version: "kiro-cli 2.29.0" };
       return BUSY;
     } });
     expect(r.tmux.pasteBuffer).not.toHaveBeenCalled();
@@ -396,7 +398,7 @@ describe("#1432 review: each guard on its own", () => {
   });
 
   it("a launch that stops taking a steer at the very last capture is not written to", async () => {
-    const r = await steer({ beforeBaseline: daemon => { (daemon.backend as any).compatibility = { ...COMPAT, version: "kiro-cli 2.28.0" }; } });
+    const r = await steer({ beforeBaseline: daemon => { (daemon.backend as any).compatibility = { ...COMPAT, version: "kiro-cli 2.29.0" }; } });
     expect(r.tmux.pasteBuffer).not.toHaveBeenCalled();
     r.outbox.close();
   });
@@ -432,15 +434,25 @@ describe("#1432 review r2: the text is this paste, and the Enter stays inside th
   });
 
   it("our paste appended to a draft is not ours either", async () => {
-    const r = await steer({ pane: ({ pasted, entered }) => (entered ? BUSY : pasted ? HOLDING.replace("›  ", "›  half a draft ") : BUSY) });
+    const r = await steer({ pane: ({ pasted, entered }) => (entered ? BUSY : pasted ? HOLDING.replace("› [", "› half a draft [") : BUSY) });
     expect(r.tmux.sendSpecialKey).not.toHaveBeenCalled();
     expect(r.attempt.evidence).toBe("steer-paste:box-not-this-paste");
     r.outbox.close();
   });
 
+  it("the marker's id-free header (cut short, wrapped or collapsed) is not this delivery: no Enter (r3)", async () => {
+    for (const row of ["› [agend-delivery-id:…", "› [agend-delivery-id:", "› [agend-delivery-id:some-other-delivery]"]) {
+      const r = await steer({ pane: ({ pasted, entered }) => (entered ? BUSY : pasted ? composer(row) : BUSY) });
+      expect(r.tmux.sendSpecialKey, row).not.toHaveBeenCalled();
+      expect(r.attempt.evidence, row).toBe("steer-paste:box-not-this-paste");
+      r.outbox.close();
+    }
+  });
+
   it("…while the box showing the start of this delivery's own payload is the control: delivered", async () => {
     const r = await steer();
-    expect(r.tmux.pasteBuffer.mock.calls[0]![0]).toMatch(/^\[agend-delivery-id:/);
+    expect(r.tmux.pasteBuffer.mock.calls[0]![0]).toMatch(/^\[agend-delivery-id:[0-9a-f-]{36}\]\n/);   // the complete marker, its real id
+    expect(HOLDING).toContain(`› ${(r.tmux.pasteBuffer.mock.calls[0]![0] as string).split("\n")[0]}\n`);
     expect(r.delivery.state).toBe("delivered");
     r.outbox.close();
   });
