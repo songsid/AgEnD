@@ -28,6 +28,7 @@ describe("native metric command boundary", () => {
     const child = Object.assign(new EventEmitter(), { kill: vi.fn(() => { throw new Error("kill failed"); }) }); let callback!: Function;
     mocks.execFile.mockImplementation((_file, _args, _options, cb) => { callback = cb; return child; });
     const command = runMemoryCommand("/usr/bin/vm_stat", []); const closed = vi.fn(); void command.stopped.then(closed);
+    expect(mocks.execFile).toHaveBeenCalledOnce();
     callback(new Error("timeout"), "partial"); expect(await command.result).toBeNull();
     expect(() => command.kill()).not.toThrow(); expect(closed).not.toHaveBeenCalled();
     child.emit("error", new Error("spawn/exit error")); expect(closed).not.toHaveBeenCalled();
@@ -36,6 +37,7 @@ describe("native metric command boundary", () => {
   it("synchronous constructor failure is a settled unknown with no live reservation", async () => {
     mocks.execFile.mockImplementation(() => { throw new Error("ENOENT"); });
     const command = runMemoryCommand("/usr/bin/vm_stat", []);
+    expect(mocks.execFile).toHaveBeenCalledOnce();
     expect(await command.result).toBeNull(); await command.stopped;
     expect(() => command.kill()).not.toThrow();
   });
