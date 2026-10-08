@@ -384,20 +384,92 @@ describe("catching up (#1425 review r3)", () => {
     s.close();
   });
 
-  it("too many live events to hold: they are applied, and the snapshot is read once more so nothing is lost", async () => {
+  it("too many live events to hold: the catch-up is not done until a read without that succeeds", async () => {
     const { createStream } = await import("/assets/app-stream.js") as { createStream(o: unknown): any };
     const h = heldEnv();
     const s = createStream({ mode: "full", env: h.env });
     let n = 0;
+    const states: string[] = [];
     s.on("delivery", () => { n++; });
+    s.on("hydration", (x: string) => states.push(x));
     s.start();
     const done = s.catchUp();
     for (let i = 0; i < 1200; i++) h.sources[0].listeners.delivery({ data: JSON.stringify({ i }) });
     h.reads[0]!.open(snap());
-    await expect(done).resolves.toBe(true);
-    await vi.waitFor(() => expect(h.reads).toHaveLength(2));   // the read again, itself ordered
+    await vi.waitFor(() => expect(h.reads).toHaveLength(2));   // read again, inside the catch-up
     expect(n).toBe(1000);
+    expect(s.hydration()).toBe("catching");                    // not "ok" yet
     h.reads[1]!.open(snap());
+    await expect(done).resolves.toBe(true);
+    expect(states).toEqual(["catching", "ok"]);
+    s.close();
+  });
+
+  it("dropped live events, then the recovery read fails: retried and shown, never taken for done; the next read restores what was dropped", async () => {
+    vi.useFakeTimers();
+    const { createStream } = await import("/assets/app-stream.js") as { createStream(o: unknown): any };
+    const h = heldEnv();
+    const s = createStream({ mode: "full", env: h.env });
+    const prompts: string[] = [];
+    const states: string[] = [];
+    s.on("prompt", (d: any) => prompts.push(`prompt:${d.nonce}`));
+    s.on("prompts", (d: any) => prompts.push(`prompts:${d.map((x: any) => x.nonce).join("+")}`));
+    s.on("hydration", (x: string) => states.push(x));
+    s.start();
+    const done = s.catchUp();                                  // read A, held
+    for (let i = 0; i < 1000; i++) h.sources[0].listeners.status({ data: "{}" });
+    h.sources[0].listeners.prompt({ data: JSON.stringify({ nonce: "P3" }) });   // event 1,001: dropped
+    h.reads[0]!.open(snap({ prompts: [] }));                  // A's snapshot predates P3
+    await vi.waitFor(() => expect(h.reads).toHaveLength(2));   // recovery read B
+    expect(s.hydration()).toBe("catching");
+    h.reads[1]!.fail(new Error("offline"));                    // B fails
+    await vi.waitFor(() => expect(s.hydration()).toBe("retrying"));
+    // The stream stays healthy meanwhile: heartbeats do not make it "done".
+    for (let i = 0; i < 3; i++) { h.sources[0].listeners.status({ data: "{}" }); await vi.advanceTimersByTimeAsync(300); }
+    expect(s.hydration()).toBe("retrying");
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(h.reads).toHaveLength(3);
+    h.reads[2]!.open(snap({ prompts: [{ nonce: "P3" }] }));
+    await expect(done).resolves.toBe(true);
+    expect(prompts.at(-1)).toBe("prompts:P3");
+    expect(prompts).not.toContain("prompt:P3");               // the dropped event never arrived on its own
+    expect(states).toEqual(["catching", "retrying", "ok"]);
+    expect(h.sources).toHaveLength(1);
+    s.close();
+  });
+
+  it("a stream that floods every read: the catch-up gives up as failed after 3 more reads (bounded), with Retry", async () => {
+    const { createStream } = await import("/assets/app-stream.js") as { createStream(o: unknown): any };
+    const h = heldEnv();
+    const s = createStream({ mode: "full", env: h.env });
+    s.start();
+    const done = s.catchUp();
+    for (let r = 0; r < 4; r++) {
+      await vi.waitFor(() => expect(h.reads).toHaveLength(r + 1));
+      for (let i = 0; i < 1001; i++) h.sources[0].listeners.status({ data: "{}" });
+      h.reads[r]!.open(snap());
+    }
+    await expect(done).resolves.toBe(false);
+    expect(s.hydration()).toBe("failed");
+    expect(h.reads).toHaveLength(4);
+    s.close();
+  });
+
+  it("dropped live events during a fallback read with no catch-up running start one (so its failures are retried and shown)", async () => {
+    vi.useFakeTimers();
+    const { createStream } = await import("/assets/app-stream.js") as { createStream(o: unknown): any };
+    const h = heldEnv();
+    const s = createStream({ mode: "full", env: h.env });
+    s.start();
+    h.sources[0].onerror();
+    await vi.advanceTimersByTimeAsync(5_000);                  // fallback read A, held
+    expect(h.reads).toHaveLength(1);
+    for (let i = 0; i < 1001; i++) h.sources[0].listeners.status({ data: "{}" });
+    h.reads[0]!.open(snap());
+    await vi.waitFor(() => expect(h.reads).toHaveLength(2));
+    expect(s.hydration()).toBe("catching");
+    h.reads[1]!.open(snap());
+    await vi.waitFor(() => expect(s.hydration()).toBe("ok"));
     s.close();
   });
 

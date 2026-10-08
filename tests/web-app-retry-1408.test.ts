@@ -150,6 +150,31 @@ describe("Retry after a failed first load of the chat", () => {
     expect(s.sources).toHaveLength(1);
   }, 25_000);
 
+  it("live events dropped during the catch-up read, then a failed recovery read: retried and shown, then P3 is there", async () => {
+    const h = held();
+    const s = await scenario([
+      h.answer,                                                     // A: held; its snapshot (P1) predates P3
+      async () => { throw new Error("offline"); },                  // B: the recovery read fails
+      answer({ ...SNAPSHOT, prompts: [prompt(P1, "still open"), prompt(P3, "posted meanwhile")] }),
+    ]);
+    s.retry();
+    await vi.waitFor(() => expect(s.polls()).toBe(1));
+    for (let i = 0; i < 1000; i++) s.send("status", STATUS);
+    s.send("prompt", prompt(P3, "posted meanwhile"));               // event 1,001: more than can be held
+    h.open();
+    await vi.waitFor(() => expect(s.conn()).toBe("Loading what is open now…"));
+    const { appStore } = await import("/assets/app-store.js");
+    expect(appStore.get().hydration).toBe("retrying");              // never "ok" while the dropped events are unrecovered
+    // A healthy stream meanwhile: heartbeats do not end it.
+    for (let i = 0; i < 3; i++) { s.send("status", STATUS); await settle(2); }
+    await vi.waitFor(() => expect(s.cards().map(c => c.text)).toEqual(["still open", "posted meanwhile"]), { timeout: 5000 });
+    expect(s.cards().find(c => c.text === "posted meanwhile")).toEqual({ text: "posted meanwhile", done: false, buttons: [true] });
+    expect(appStore.get().hydration).toBe("ok");
+    expect(s.conn()).toBeNull();
+    expect(s.polls()).toBe(3);
+    expect(s.sources).toHaveLength(1);
+  }, 20_000);
+
   it("a failed catch-up read (network, then bad JSON) is retried, says so meanwhile, then shows what is open", async () => {
     const s = await scenario([
       async () => { throw new Error("offline"); },

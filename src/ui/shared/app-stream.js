@@ -19,6 +19,7 @@ const EVENTS = ["status", "message", "delivery", "deliveries", "prompt", "prompt
 const MAX_HELD = 1000;                    // live events held during one catch-up read; more → read again afterwards
 const RETRY_DELAYS = [1000, 2000, 4000];  // after the first failed catch-up read; then it waits for Retry
 const POLL_LIMIT_MS = 10000;              // a poll that has not answered by then counts as failed
+const MAX_OVERFLOW_READS = 3;            // reads again after dropped live events, within one catch-up
 
 export function createStream(opts) {
   const env = opts.env || globalThis;
@@ -56,7 +57,8 @@ export function createStream(opts) {
   }
 
   /**
-   * One /ui/poll; true when it was read and applied.
+   * One /ui/poll; resolves { ok, overflow }: ok when it was read and applied, overflow when more live events arrived
+   * meanwhile than could be held (what was held is applied; the rest is recovered by reading again — see below).
    * - Ordered against the live stream, whatever asked for it (the fallback loop, a catch-up, a poll queued behind
    *   another): live events that arrive while it is in flight are held and replayed after its snapshot, so an older
    *   snapshot never lands on top of newer events (#1425 review).
@@ -86,13 +88,17 @@ export function createStream(opts) {
       } catch { return false; /* the next tick, or the catch-up's retry, tries again */ }
     })();
     const timedOut = new Promise((resolve) => { limit = env.setTimeout(() => { if (mine === pollSeq) pollSeq++; resolve(false); }, POLL_LIMIT_MS); });
-    polling = Promise.race([read, timedOut]).finally(() => {
+    polling = Promise.race([read, timedOut]).then((ok) => {
       env.clearTimeout(limit);
       if (mine === pollSeq) pollSeq++;               // whatever this read still does from here on is ignored
       polling = null;
-      if (closed) { held = null; return; }
-      if (release()) pollAgain = true;                // too much arrived to keep: what was kept is applied; read again
+      if (closed) { held = null; return { ok: false, overflow: false }; }
+      const overflow = release();
+      // Live events were dropped: what they changed is recovered by catching up — inside its lifecycle, so a failed
+      // recovery read is retried and shown, never taken for done (#1425 review). A catch-up awaiting this read loops.
+      if (overflow && !catching) catchUp();
       if (pollAgain) { pollAgain = false; pollOnce(); }
+      return { ok, overflow };
     });
     return polling;
   }
@@ -121,14 +127,21 @@ export function createStream(opts) {
     env.clearTimeout(retryTimer); retryTimer = null;
     setHydration("catching");
     catching = (async () => {
-      for (let attempt = 0; ; attempt++) {
+      let failures = 0, overflows = 0;
+      for (;;) {
         // A poll already on its way will do (its answer reaches the listener that just attached); nothing is queued.
-        const ok = await pollOnce({ join: true });
+        const { ok, overflow } = await pollOnce({ join: true });
         if (closed) return false;
-        if (ok) { catching = null; setHydration("ok"); return true; }
-        if (attempt >= RETRY_DELAYS.length) { catching = null; setHydration("failed"); return false; }
+        if (ok && !overflow) { catching = null; setHydration("ok"); return true; }
+        if (ok) {
+          // Read, but live events were dropped meanwhile: not done until a read without that succeeds. At once (nothing
+          // failed), and bounded: a stream that floods every read gives up as failed, with Retry.
+          if (++overflows > MAX_OVERFLOW_READS) { catching = null; setHydration("failed"); return false; }
+          continue;
+        }
+        if (failures >= RETRY_DELAYS.length) { catching = null; setHydration("failed"); return false; }
         setHydration("retrying");
-        await new Promise((resolve) => { retryTimer = env.setTimeout(resolve, RETRY_DELAYS[attempt]); });
+        await new Promise((resolve) => { retryTimer = env.setTimeout(resolve, RETRY_DELAYS[failures++]); });
         retryTimer = null;
         if (closed) return false;
       }
