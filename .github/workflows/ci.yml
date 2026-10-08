@@ -343,15 +343,13 @@ jobs:
         if: needs.detect-changes.outputs.docs-only != 'true'
         run: |
           npm ci
+          npm run build
           # Pack to a tarball so we test the published surface, not the dev tree.
           TGZ=$(npm pack --json | node -e "const d=require('fs').readFileSync('/dev/stdin','utf8'); console.log(JSON.parse(d)[0].filename)")
           # Install to an explicit prefix so the bin directory is predictable
           # regardless of nvm/brew/system npm prefix configuration.
           SMOKE_PREFIX="$RUNNER_TEMP/agend-smoke"
           npm install --global --prefix "$SMOKE_PREFIX" "./$TGZ"
-          echo "SMOKE_PREFIX=$SMOKE_PREFIX"
-          echo "Adding to PATH: $SMOKE_PREFIX/bin"
-          ls -la "$SMOKE_PREFIX/bin/" || echo "(bin not found)"
           echo "$SMOKE_PREFIX/bin" >> "$GITHUB_PATH"
       - name: agend --version
         if: needs.detect-changes.outputs.docs-only != 'true'
