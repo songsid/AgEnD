@@ -1,3 +1,8 @@
+import { SettingsBaselines } from "./settings-baseline.js";
+import { SettingsConfirmationStore, type SettingsPendingView } from "./settings-confirmation.js";
+import { SettingsHttpConfirmation } from "./settings-http-confirmation.js";
+import { SettingsControlServer } from "./settings-control.js";
+import { SettingsExecution, settingsRevision, noteSettingsWrite, settingsFileResource, assertSettingsLease, trySettingsLease, waitSettingsLease, settingsUndo, undoSettingsPaths, type SettingsUndo, type SettingsLease } from "./settings-transaction.js";
 import { performance } from "node:perf_hooks";
 import { gatewayRequestContext } from "./web-request-context.js";
 import { createPublicWebGateway } from "./public-web-gateway.js";
@@ -203,7 +208,7 @@ import {
   type ToolSetName,
   type ToolSink,
 } from "./tool-permissions.js";
-import { decideWebGate, loadOrCreateWebToken, readWebToken } from "./web-auth.js";
+import { authorizeSession, decideWebGate, loadOrCreateWebToken, readWebToken } from "./web-auth.js";
 import { bypassesWebGate, handleAuthRequest, serveSigninPage, type AuthApiContext } from "./auth-api.js";
 import { tokenEpoch, WebSessionStore } from "./web-session.js";
 import { WebLoginCodes, LOGIN_CODE_TTL_MS } from "./web-login.js";
@@ -524,6 +529,8 @@ export interface ModelCatalog {
  * a bounded per-prompt timeout, consumed exactly once.
  */
 interface NonceButtonEntry {
+  pendingChangeId?: string;
+  confirmationCurrent?: () => boolean;
   requesterUserId?: string;
   publicExposureId?: string;
   dashboardOwner?: LoginCodeOwner;
@@ -1085,6 +1092,156 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * web-token rotate` runs in a separate process, and a cached copy would keep
    * authorizing revoked links and cookies until the fleet restarted.
    */
+  private settingsGeneration = 0;
+  private settingsRuntimeRevision = 0;
+  private settingsConfirmation: SettingsHttpConfirmation | null = null;
+  private settingsControl: SettingsControlServer | null = null;
+  private settingsJobSettlements = new Map<string, Promise<void>>();
+
+  private queueSettingsOperation(job: SecretApplyJob | ProviderSecretApplyJob, resources: string[], execution: SettingsExecution | undefined,
+    run: (execution: SettingsExecution) => Promise<void>): void {
+    const generation = this.settingsGeneration;
+    const owned = execution ?? new SettingsExecution({ current: () => !this.shuttingDown && this.settingsGeneration === generation,
+      snapshot: () => [this.settingsRuntimeRevision, this.fleetConfig, settingsRevision(join(this.dataDir, ".env"))] });
+    const done = Promise.resolve().then(async () => {
+      let lease: SettingsLease | null = null;
+      try {
+        lease = await waitSettingsLease(resources, () => owned.current(), performance.now() + owned.remainingMs, owned.owner);
+        owned.assert(); await run(owned);
+        if (["applied", "applied_next_use", "reloaded"].includes(job.result) && !owned.completed) owned.complete();
+      } catch {
+        job.status = "done"; job.finishedAt = Date.now(); job.result = "rolled_back"; job.error = "operation was not admitted or became stale";
+      } finally {
+        lease?.release(); if (!execution) owned.close();
+        if ("envKey" in job) { if (this.providerSecretInFlight.get(job.envKey) === job.id) this.providerSecretInFlight.delete(job.envKey); }
+        else {
+          if (this.connectionSecretInFlight.get(job.connectionId) === job.id) this.connectionSecretInFlight.delete(job.connectionId);
+          if (this.connectionBindingInFlight.get(job.connectionId) === job.id) this.connectionBindingInFlight.delete(job.connectionId);
+        }
+      }
+    });
+    this.settingsJobSettlements ??= new Map();
+    this.settingsJobSettlements.set(job.id, done);
+    while (this.settingsJobSettlements.size > 128) {
+      const first = this.settingsJobSettlements.keys().next().value!;
+      const record = this.providerSecretJobs.get(first) ?? this.connectionSecretJobs.get(first) ?? this.connectionBindingJobs.get(first);
+      if (record?.status !== "done") break; this.settingsJobSettlements.delete(first);
+    }
+  }
+
+  private settingsGate(): SettingsHttpConfirmation {
+    if (this.settingsConfirmation) return this.settingsConfirmation;
+    const generation = this.settingsGeneration;
+    const current = (): boolean => !this.shuttingDown && this.settingsGeneration === generation;
+    const baselines = new SettingsBaselines({ dataDir: this.dataDir, configPath: () => this.configPath,
+      config: () => this.fleetConfig, current: () => [this.settingsGeneration, this.settingsRuntimeRevision, this.shuttingDown],
+      proof: (kind, target, id, binding, key) => {
+        const map = kind === "provider" ? this.providerSecretChallenges : kind === "binding" ? this.connectionBindingChallenges : this.connectionSecretChallenges;
+        const proof = map.get(id);
+        if (!proof || proof.sessionBinding !== binding || proof.idempotencyKey !== key
+          || ("specId" in proof ? proof.specId : proof.connectionId) !== target
+          || proof.generation !== ("envKey" in proof ? this.providerSecretGeneration(proof.envKey) : this.secureConnectionGeneration(target))) return null;
+        const remainingMs = proof.deadline === undefined ? proof.expiresAt - Date.now() : proof.deadline - performance.now();
+        if (remainingMs <= 0) return null;
+        const envKey = "envKey" in proof ? proof.envKey : this.secureConnectionChannel(target)?.bot_token_env ?? "";
+        return { key: envKey, secret: "secret" in proof ? proof.secret : "", previous: process.env[envKey], remainingMs,
+          ...( "binding" in proof ? { binding: proof.binding } : {} ),
+          discard: () => { if (map.get(id) === proof) map.delete(id); if ("secret" in proof) proof.secret = ""; } };
+      } });
+    const store: SettingsConfirmationStore = new SettingsConfirmationStore({
+      audit: (event, fields) => this.logger.info({ event: `settings_confirmation.${event}`, ...fields }, "Settings confirmation audit"),
+      notify: view => view.state === "pending" ? this.promptSettingsChange(store, view) : Promise.resolve(),
+    });
+    const gate = new SettingsHttpConfirmation(store, {
+      principal: req => {
+        const auth = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
+        if (auth.kind !== "ok" || !current()) return null;
+        const record = auth.session, sessions = this.webSessions, exposure = gatewayRequestContext(req);
+        return { id: record.idHash, label: record.label, source: exposure ? "public_link" : "web_session",
+          current: () => current() && sessions === this.webSessions && !!this.webToken
+            && sessions!.isCurrent(record, tokenEpoch(this.webToken!)) && (!exposure || exposure.isCurrent()) };
+      }, baseline: () => baselines.read(), snapshot: () => baselines.snapshot(),
+      job: async id => {
+        const settlement = this.settingsJobSettlements.get(id);
+        if (!settlement) return false;
+        await settlement;
+        const job = this.providerSecretJobs.get(id) ?? this.connectionSecretJobs.get(id) ?? this.connectionBindingJobs.get(id);
+        return !!job && ["applied", "applied_next_use", "reloaded"].includes(job.result);
+      },
+    });
+    this.settingsConfirmation = gate; return gate;
+  }
+
+  private async promptSettingsChange(store: SettingsConfirmationStore, view: SettingsPendingView): Promise<void> {
+    const generation = this.settingsGeneration;
+    const excluded = new Set(store.affectedConnections(view.id));
+    for (const [name, config] of Object.entries(this.fleetConfig?.instances ?? {})) {
+      if (!config.general_topic) continue;
+      const adapterId = this.getInstanceAdapterId(name), adapter = this.getAdapterForInstance(name);
+      if (!adapterId || !adapter || excluded.has(adapterId) || !this.hasFleetAdmins(adapterId)) continue;
+      const chatId = this.getGroupIdForInstance(name), topic = String(config.topic_id ?? "");
+      if (!chatId || !topic) continue;
+      let retired = false, attached = false;
+      const postingDeadline = performance.now() + Math.min(5000, view.remaining_ms);
+      const current = (): boolean => !retired && (attached || performance.now() < postingDeadline) && !this.shuttingDown && this.settingsGeneration === generation
+        && this.fleetConfig?.instances[name]?.general_topic === true
+        && this.getInstanceAdapterId(name) === adapterId && this.getAdapterForInstance(name) === adapter
+        && this.getGroupIdForInstance(name) === chatId && String(this.fleetConfig?.instances[name]?.topic_id ?? "") === topic
+        && this.hasFleetAdmins(adapterId);
+      if (!current()) continue;
+      try {
+        const posted = this.postNonceButtonPromptOrThrow({ prefix: "settings-confirm:", alertType: "clear_confirm",
+          instanceName: name, adapterId, adapter, chatId, threadId: topic,
+          message: `🔒 Settings change awaiting fleet-admin confirmation\nSource: ${view.source}\nRequester: ${view.requested_by}\n${view.summary.join("\n")}`,
+          choices: [{ action: "confirm", label: "Confirm" }, { action: "reject", label: "Reject" }],
+          expiredText: "Settings confirmation is no longer pending.", timeoutMs: view.remaining_ms,
+          extra: { pendingChangeId: view.id, confirmationCurrent: current },
+        });
+        void posted.then(nonce => {
+          if (!retired) return;
+          const entry = this.pendingNonceButtons.get(nonce);
+          if (entry?.pendingChangeId !== view.id) return;
+          this.pendingNonceButtons.delete(nonce); clearTimeout(entry.timer);
+          void this.retireNonceButtons(entry, entry.messageId ?? "", "Settings confirmation delivery expired.");
+        }, () => {});
+        const nonce = await withinBudget(posted, postingDeadline); attached = true;
+        const retire = (): void => {
+          const entry = this.pendingNonceButtons.get(nonce); if (!entry || entry.pendingChangeId !== view.id) return;
+          this.pendingNonceButtons.delete(nonce); clearTimeout(entry.timer);
+          void this.retireNonceButtons(entry, entry.messageId ?? "", "Settings confirmation is no longer pending.");
+        };
+        if (!current()) { retire(); continue; }
+        if (store.attachPrompt(view.id, retire)) return;
+      } catch { retired = true; this.logger.info({ id: view.id, adapterId }, "Settings confirmation prompt unavailable; trying another General or host CLI"); }
+    }
+    // No platform confirmation was reachable. Host inspection is still required.
+    this.logger.info({ id: view.id }, "Settings change requires local `agend settings confirm <id>`");
+  }
+
+  private async handleSettingsChangeCallback(data: AdapterCallbackData, adapterId: string, adapter?: ChannelAdapter): Promise<boolean> {
+    const result = this.consumeNonceCallback("settings-confirm:", /^settings-confirm:([0-9a-f]{32}):(confirm|reject)$/, data, adapterId, adapter);
+    if (!result) return false;
+    if (result === "consumed") return true;
+    const { entry, action } = result;
+    try {
+      const view = await this.settingsGate().store.decide(entry.pendingChangeId!, action as "confirm" | "reject", {
+        label: `fleet admin ${data.userId}`,
+        current: () => entry.confirmationCurrent?.() === true && this.getAdapterForInstance(entry.instanceName) === entry.adapter
+          && !!data.userId && this.isFleetAdmin(data.userId, entry.adapterId),
+      });
+      await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, view.outcome?.message ?? "Settings change is applying.");
+    } catch { await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, "Settings confirmation rejected or expired."); }
+    return true;
+  }
+
+  async startSettingsConfirmationControl(): Promise<void> {
+    if (this.shuttingDown || this.settingsControl) return;
+    const generation = this.settingsGeneration, control = new SettingsControlServer(this.dataDir, this.settingsGate().store,
+      () => !this.shuttingDown && this.settingsGeneration === generation);
+    this.settingsControl = control;
+    try { await control.listen(); } catch (err) { if (this.settingsControl === control) this.settingsControl = null; throw err; }
+  }
+
   private get webToken(): string | null { return readWebToken(this.dataDir); }
   /**
    * Server-side web sessions (see web-session.ts). Created with the token, not per
@@ -1872,6 +2029,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const loaded = loadFleetConfig(configPath);
     this.assertProviderSecretEnvKeys(loaded);
     this.rawFleetConfig = raw;
+    this.settingsRuntimeRevision++;
     this.fleetConfig = loaded;
     this.savedFleetConfigSnapshot = structuredClone(this.fleetConfig);
     this.warnAboutRemovedLoginMode(loaded);
@@ -3546,8 +3704,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     };
   }
 
+  /** A compensation receipt pins the original fleet generation. It cannot
+   * stop/start a later fleet when an old restart settles after shutdown. */
+  captureClassicSettingsRestoration(instanceName: string, changedFields: string[]): () => Promise<void> {
+    const generation = this.settingsGeneration;
+    return async () => {
+      const cleanup = new SettingsExecution({ current: () => !this.shuttingDown && this.settingsGeneration === generation, snapshot: () => null });
+      try { cleanup.assert(); await this.restartClassicInstanceFromSettings(instanceName, changedFields, cleanup); }
+      finally { cleanup.close(); }
+    };
+  }
+
   /** Apply a Settings edit to a ClassicBot channel without waiting for the poller. */
-  async restartClassicInstanceFromSettings(instanceName: string, changedFields: string[] = []): Promise<void> {
+  async restartClassicInstanceFromSettings(instanceName: string, changedFields: string[] = [], execution?: SettingsExecution): Promise<void> {
+    return this.lifecycle.runTransition(instanceName, transition => this.restartClassicSettingsOwned(instanceName, changedFields, execution, transition));
+  }
+
+  private async restartClassicSettingsOwned(instanceName: string, changedFields: string[], execution: SettingsExecution | undefined, transition: TransitionHandle): Promise<void> {
+    const generation = this.settingsGeneration;
+    const check = (): void => { execution?.assert(); if (this.shuttingDown || this.settingsGeneration !== generation) throw new Error("Classic restart superseded"); };
+    check();
     if (!this.classicChannels) throw new Error("Classic channel manager not initialized");
     const wasRunning = this.daemons.has(instanceName);
     this.classicChannels.reloadFromDisk();
@@ -3563,15 +3739,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger.info({ instanceName, fields: changedFields }, "Classic instance hot config reloaded");
       return;
     }
-    await this.stopInstance(instanceName);
-    await new Promise(resolve => setTimeout(resolve, 250));
+    await this.stopInstance(instanceName, transition); check();
+    const stoppedEpoch = this.lifecycle.epochOf(instanceName);
+    await new Promise(resolve => setTimeout(resolve, 250)); check();
+    if (this.lifecycle.epochOf(instanceName) !== stoppedEpoch) throw new Error("Classic restart superseded by stop");
     await this.startClassicInstance(
       instanceName,
       this.classicChannels.getBackendByInstance(instanceName, this.fleetConfig?.defaults?.backend),
       this.classicChannels.getPreTaskCommand(channel.channelId, channel.adapterId),
       this.classicChannels.getModel(channel.channelId, channel.adapterId, this.fleetConfig?.defaults?.model),
       this.classicChannels.getAutoPauseAfter(channel.channelId, channel.adapterId, this.fleetConfig?.defaults?.auto_pause_after),
+      transition, execution,
     );
+    check();
   }
 
   /** Reload classicBot.yaml once. Kept callable so the periodic production
@@ -3653,7 +3833,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     resumePaused = false,
     /** Phase 2a: the caller's transition, for a start made from inside a restart or wake. */
     transition?: TransitionHandle,
+    execution?: SettingsExecution,
   ): Promise<void> {
+    execution?.assert();
     // CLI single-instance cold starts bypass startAll. Start diagnostics before
     // any lifecycle/wake work; a shutdown must not revive the stopped sampler.
     if (!this.shuttingDown) this.memoryPressure?.start();
@@ -3712,7 +3894,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       kind,
       backend,
       model: this.resolveInstanceModel(name).display,
-    }, transition);
+    }, transition, execution);
+    execution?.assert();
     // Only clear a stale process status after a real start succeeded.  Clearing
     // it before lifecycle.start() can turn a crash-loop daemon's dead pane into
     // a falsely running instance when lifecycle.start() returns early.
@@ -3720,7 +3903,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Recovery intent belongs to Daemon.start. lifecycle.start can return
     // before reaching it, so an await here is not proof the marker was read.
     // Auto-connect IPC — daemon.start() ensures socket is ready before resolving
-    await this.connectIpcToInstance(name);
+    await this.connectIpcToInstance(name); execution?.assert();
     this.requestDiscordUsagePresenceRefresh();
   }
 
@@ -4390,9 +4573,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** Load .env file from data dir into process.env */
-  private loadEnvFile(): void {
+  private loadEnvFile(owner?: symbol): void {
     const envPath = join(this.dataDir, ".env");
     if (!existsSync(envPath)) return;
+    assertSettingsLease(settingsFileResource(envPath), owner);
     const content = readFileSync(envPath, "utf-8");
     for (const line of content.split("\n")) {
       const trimmed = line.trim();
@@ -4862,7 +5046,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // anything arriving during it is still part of the stop.
     this.shuttingDown = false;
     this.configPath = configPath;
-    this.loadEnvFile();
+    const settingsGeneration = this.settingsGeneration;
+    const envLease = await waitSettingsLease([settingsFileResource(join(this.dataDir, ".env"))],
+      () => !this.shuttingDown && this.settingsGeneration === settingsGeneration, performance.now() + 30_000);
+    try { this.loadEnvFile(envLease.owner); } finally { envLease.release(); }
     this.ensureDeliveryOutbox();
 
     this.rotateFleetLogs();
@@ -5739,11 +5926,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** Start the primary adapter (backward-compatible, sets this.adapter) */
-  private async startSingleAdapter(
+  private async startSingleAdapter(fleet: FleetConfig, channelConfig: ChannelConfig, onStarted?: () => void, operation?: Pick<SettingsExecution, "owner" | "assert">): Promise<void> {
+    const id = channelConfig.id ?? channelConfig.type;
+    const lease = trySettingsLease([`connection:${this.dataDir}:${id}`], operation?.owner);
+    if (!lease) throw new Error("connection operation is still running");
+    try { await this.startSingleAdapterOwned(fleet, channelConfig, onStarted, operation ?? { owner: lease.owner, assert: () => {} }); }
+    finally { lease.release(); }
+  }
+
+  private async startSingleAdapterOwned(
     fleet: FleetConfig,
     channelConfig: ChannelConfig,
     onStarted?: () => void,
+    operation?: Pick<SettingsExecution, "owner" | "assert">,
   ): Promise<void> {
+    const ownerId = channelConfig.id ?? channelConfig.type, generation = this.settingsGeneration;
+    const check = (): void => {
+      operation?.assert(); assertSettingsLease(`connection:${this.dataDir}:${ownerId}`, operation?.owner);
+      if (this.shuttingDown || this.settingsGeneration !== generation) throw new Error("adapter admission superseded");
+    };
+    check();
     const botToken = process.env[channelConfig.bot_token_env];
     if (!botToken) {
       this.logger.warn({ env: channelConfig.bot_token_env }, "Bot token env not set, skipping shared adapter");
@@ -5758,43 +5960,44 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       accessStatePath,
     );
     this.warnIfAccessModeOverridden(accessManager, accessStatePath);
-    this.accessManager = accessManager;
+
     const inboxDir = join(this.dataDir, "inbox");
     mkdirSync(inboxDir, { recursive: true });
 
     const adapterId = channelConfig.id ?? channelConfig.type;
-    this.adapter = await createAdapter(channelConfig, {
+    const adapter = await createAdapter(channelConfig, {
       id: adapterId,
       botToken,
       accessManager,
       inboxDir,
       fleetLabel: fleetLabel(this.fleetConfig),
     });
-    const adapter = this.adapter;
+    try { check(); } catch (err) { await adapter.stop().catch(() => {}); throw err; }
+    this.adapter = adapter; this.accessManager = accessManager;
     const world = new AdapterWorld(adapterId, adapter, accessManager, channelConfig);
     this.worlds.set(adapterId, world);
     (this.adapters as Map<string, ChannelAdapter>).set(adapterId, adapter);
     this.bindAdapterHealth(adapter, adapterId);
     const isCurrentAdapter = (): boolean => this.adapters.get(adapterId) === adapter;
 
-    this.adapter.on("message", safeHandler(async (msg: InboundMessage) => {
+    adapter.on("message", safeHandler(async (msg: InboundMessage) => {
       if (!isCurrentAdapter()) return;
       await this.handleInboundMessage(msg);
     }, this.logger, "adapter.message"));
 
-    this.adapter.on("reaction", safeHandler(async (r: InboundReaction) => {
+    adapter.on("reaction", safeHandler(async (r: InboundReaction) => {
       if (!isCurrentAdapter()) return;
       await this.handleInboundReaction(r);
     }, this.logger, "adapter.reaction"));
 
-    this.adapter.on("callback_query", safeHandler(async (data: AdapterCallbackData) => {
-      await this.receiveAdapterCallback(data, adapterId, this.adapter ?? undefined, isCurrentAdapter);
+    adapter.on("callback_query", safeHandler(async (data: AdapterCallbackData) => {
+      await this.receiveAdapterCallback(data, adapterId, adapter, isCurrentAdapter);
     }, this.logger, "adapter.callback_query"));
 
     this.bindTopicClosedHandler(adapter, adapterId, "adapter.topic_closed");
 
     // Handle classic bot slash commands (/start, /stop, /chat, /compact, /save, /load)
-    this.adapter.on("slash_command", safeHandler(async (data: ClassicStartSlashData) => {
+    adapter.on("slash_command", safeHandler(async (data: ClassicStartSlashData) => {
       if (!isCurrentAdapter()) return;
       await this.dispatchSlash(data, adapterId, adapter);
     }, this.logger, "adapter.slash_command"));
@@ -5806,7 +6009,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Non-blocking: /model & status views read the cache; never delays startup.
     this.probeCliEnvs();
 
-    this.adapter.on("started", safeHandler((username: string, userId?: string) => {
+    adapter.on("started", safeHandler((username: string, userId?: string) => {
       if (!isCurrentAdapter()) return;
       this.logger.info(`Bot @${username} polling started. Ensure no other service is polling this bot token.`);
       // Concurrent startup can insert a secondary world first. Update the
@@ -5819,19 +6022,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (userId) this.botUserId = userId;
       onStarted?.();
     }, this.logger, "adapter.started"));
-    this.adapter.on("polling_conflict", safeHandler(({ attempt, delay }: { attempt: number; delay: number }) => {
+    adapter.on("polling_conflict", safeHandler(({ attempt, delay }: { attempt: number; delay: number }) => {
       this.logger.warn(`409 Conflict (attempt ${attempt}), retry in ${delay / 1000}s`);
     }, this.logger, "adapter.polling_conflict"));
-    this.adapter.on("handler_error", safeHandler((err: unknown) => {
+    adapter.on("handler_error", safeHandler((err: unknown) => {
       this.logger.warn({ err: err instanceof Error ? err.message : String(err) }, "Adapter handler error");
     }, this.logger, "adapter.handler_error"));
-    this.adapter.on("error", (err: unknown) => {
+    adapter.on("error", (err: unknown) => {
       if (!isCurrentAdapter()) return;
       this.logger.error({ err }, "Primary adapter fatal error");
-      this.restartAdapter(this.adapter!, adapterId).catch(() => {});
+      this.restartAdapter(adapter, adapterId).catch(() => {});
     });
 
-    this.adapter.on("new_group_detected", safeHandler(async (data: { groupId: string; groupTitle: string; source: string }) => {
+    adapter.on("new_group_detected", safeHandler(async (data: { groupId: string; groupTitle: string; source: string }) => {
       if (!isCurrentAdapter()) return;
       const adminMsg = t("alert.bot_added", data.groupTitle, data.groupId, data.source);
       const generalId = this.findGeneralInstance();
@@ -5840,11 +6043,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }, this.logger, "adapter.new_group_detected"));
 
     // Start adapter AFTER all event listeners are registered (started event sets botUsername)
-    await this.adapter.start();
-    if (fleet.channel?.group_id) {
-      this.adapter.setChatId(String(fleet.channel.group_id));
+    try {
+      await adapter.start(); check();
+      if (!isCurrentAdapter()) throw new Error("adapter ownership changed during login");
+    } catch (err) { await this.disposeSettingsAdapter(adapterId, adapter); throw err; }
+    if (channelConfig.group_id) {
+      adapter.setChatId(String(channelConfig.group_id));
     }
-    if (this.discordPresenceTimer && this.adapter.type === "discord") {
+    if (this.discordPresenceTimer && adapter.type === "discord") {
       this.requestDiscordUsagePresenceRefresh();
     }
 
@@ -5868,12 +6074,27 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** Start an additional (non-primary) adapter */
-  private async startAdditionalAdapter(
+  private async startAdditionalAdapter(channelConfig: ChannelConfig, registerCommands = true, onStarted?: () => void, operation?: Pick<SettingsExecution, "owner" | "assert">): Promise<void> {
+    const id = channelConfig.id ?? channelConfig.type;
+    const lease = trySettingsLease([`connection:${this.dataDir}:${id}`], operation?.owner);
+    if (!lease) throw new Error("connection operation is still running");
+    try { await this.startAdditionalAdapterOwned(channelConfig, registerCommands, onStarted, operation ?? { owner: lease.owner, assert: () => {} }); }
+    finally { lease.release(); }
+  }
+
+  private async startAdditionalAdapterOwned(
     channelConfig: ChannelConfig,
     registerCommands = true,
     onStarted?: () => void,
+    operation?: Pick<SettingsExecution, "owner" | "assert">,
   ): Promise<void> {
     const adapterId = channelConfig.id ?? channelConfig.type;
+    const ownerId = channelConfig.id ?? channelConfig.type, generation = this.settingsGeneration;
+    const check = (): void => {
+      operation?.assert(); assertSettingsLease(`connection:${this.dataDir}:${ownerId}`, operation?.owner);
+      if (this.shuttingDown || this.settingsGeneration !== generation) throw new Error("adapter admission superseded");
+    };
+    check();
     const botToken = process.env[channelConfig.bot_token_env];
     if (!botToken) {
       this.logger.warn({ env: channelConfig.bot_token_env, adapterId }, "Bot token env not set, skipping adapter");
@@ -5899,6 +6120,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       registerCommands,
       fleetLabel: fleetLabel(this.fleetConfig),
     });
+    try { check(); } catch (err) { await adapter.stop().catch(() => {}); throw err; }
     const world = new AdapterWorld(adapterId, adapter, accessManager, channelConfig);
     this.worlds.set(adapterId, world);
     (this.adapters as Map<string, ChannelAdapter>).set(adapterId, adapter);
@@ -5956,7 +6178,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.registerTelegramCommandsFor(channelConfig);
 
     // Register lifecycle listeners before login; a fast ready/error must not be lost.
-    await adapter.start();
+    try {
+      await adapter.start(); check();
+      if (!isCurrentAdapter()) throw new Error("adapter ownership changed during login");
+    } catch (err) { await this.disposeSettingsAdapter(adapterId, adapter); throw err; }
     if (channelConfig.group_id) {
       adapter.setChatId(String(channelConfig.group_id));
     }
@@ -6182,9 +6407,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
+  private async disposeSettingsAdapter(id: string, adapter: ChannelAdapter): Promise<void> {
+    adapter.removeAllListeners(); await adapter.stop().catch(() => {});
+    if (this.adapters.get(id) === adapter) this.adapters.delete(id);
+    if (this.worlds.get(id)?.adapter === adapter) this.worlds.delete(id);
+    if (this.adapter === adapter) this.adapter = null;
+  }
+
   /** Restart a channel adapter after fatal error with infinite retry + 60s cap */
   private async restartAdapter(adapter: ChannelAdapter, id: string): Promise<void> {
-    if (this.adapterRestarting.has(id)) return;
+    if (this.adapterRestarting.has(id) || this.shuttingDown || this.adapters.get(id) !== adapter) return;
+    const generation = this.settingsGeneration;
+    const current = (): boolean => !this.shuttingDown && this.settingsGeneration === generation && this.adapters.get(id) === adapter;
+    let lease: SettingsLease | null = null;
     this.adapterRestarting.add(id);
     // Reflect reality in adapterState throughout. This loop used to leave the state
     // untouched, so getAdapterStates() — and therefore /health and the dashboard —
@@ -6195,17 +6430,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try {
       if (adapter.reconnectGateway) {
         try {
+          lease = trySettingsLease([`connection:${this.dataDir}:${id}`]);
+          if (!lease || !current()) return;
           // Discord requires a fresh Client after destroy(). Its adapter owns the
           // single-flight, generation fence and bounded IDENTIFY backoff, so all
           // watchdog/manual/error triggers must converge here instead of stop/start.
           await adapter.reconnectGateway(previous?.lastError ?? "fleet adapter restart");
+          if (!current()) return;
           this.adapterState.set(id, { status: "connected", retryCount: 0 });
           if (this.discordPresenceTimer && adapter.type === "discord") {
             this.requestDiscordUsagePresenceRefresh();
           }
           this.logger.info({ id }, "Adapter gateway rebuilt successfully");
         } catch (err) {
-          if (!this.ipcStoppingInstances.has("__fleet_stopping__")) {
+          if (current() && !this.ipcStoppingInstances.has("__fleet_stopping__")) {
             this.adapterState.set(id, {
               status: "failed",
               retryCount: previous?.retryCount ?? 0,
@@ -6216,13 +6454,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         return;
       }
       for (let attempt = 1; ; attempt++) {
-        if (this.ipcStoppingInstances.has("__fleet_stopping__")) return;
+        if (!current() || this.ipcStoppingInstances.has("__fleet_stopping__")) return;
         const delay = attempt <= 3 ? 5000 * Math.pow(2, attempt - 1) : 60_000; // 5s, 10s, 20s, then 60s
         await new Promise(r => setTimeout(r, delay));
-        if (this.ipcStoppingInstances.has("__fleet_stopping__")) return;
+        if (!current() || this.ipcStoppingInstances.has("__fleet_stopping__")) return;
+        lease = trySettingsLease([`connection:${this.dataDir}:${id}`]);
+        if (!lease) return;
         try {
-          await adapter.stop().catch(() => {});
-          await adapter.start();
+          await adapter.stop().catch(() => {}); if (!current()) return;
+          await adapter.start(); if (!current()) return;
           this.logger.info({ id, attempt }, "Adapter restarted successfully");
           this.adapterState.set(id, { status: "connected", retryCount: 0 });
           if (this.discordPresenceTimer && adapter.type === "discord") {
@@ -6230,18 +6470,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           }
           return;
         } catch (err) {
+          if (!current()) return;
           this.adapterState.set(id, {
             status: "retrying",
             retryCount: attempt,
             lastError: (err as Error)?.message ?? String(err),
           });
         }
+        lease.release(); lease = null;
         if (attempt % 10 === 0) {
           this.logger.warn({ id, attempt }, "Adapter restart still failing");
         }
       }
     } finally {
-      this.adapterRestarting.delete(id);
+      lease?.release(); this.adapterRestarting.delete(id);
     }
   }
 
@@ -8584,6 +8826,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
     }
 
+    noteSettingsWrite(this.configPath, this.savedFleetConfigSnapshot, this.fleetConfig);
     const output = String(this.rawFleetDocument);
     if (redundantPaths.length > 0) this.writeFleetConfigBackup(source);
     const tempPath = `${this.configPath}.tmp-${process.pid}`;
@@ -8638,9 +8881,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     before: unknown,
     after: unknown,
   ): void {
-    if (Object.is(before, after)) return;
+    if (Object.is(before, after) || JSON.stringify(before) === JSON.stringify(after)) return;
 
     if (Array.isArray(before) && Array.isArray(after)) {
+      // Connection deltas are indexed only while the stable identities still
+      // match. Never apply a stale manager's edit to a reordered world.
+      if (path.length === 1 && path[0] === "channels") {
+        const fresh = document.getIn(path)?.toJSON?.() ?? document.getIn(path);
+        const ids = (items: any[]) => items.map(item => item?.id ?? item?.type);
+        if (Array.isArray(fresh) && JSON.stringify(ids(fresh)) !== JSON.stringify(ids(before))) {
+          throw new Error("Connection order changed; reload before saving");
+        }
+      }
       const shared = Math.min(before.length, after.length);
       for (let i = 0; i < shared; i++) {
         this.patchFleetDocument(document, [...path, i], before[i], after[i]);
@@ -8692,8 +8944,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
-  async removeInstance(name: string, authorization: ExplicitInstanceRemoval): Promise<void> {
+  getSettingsConfigPath(): string { return this.configPath; }
+
+  async removeInstance(name: string, authorization: ExplicitInstanceRemoval, execution?: SettingsExecution): Promise<void> {
+    if (execution) return this.lifecycle.runTransition(name, transition => this.removeInstanceOwned(name, authorization, execution, transition));
+    return this.removeInstanceOwned(name, authorization);
+  }
+
+  private async removeInstanceOwned(name: string, authorization: ExplicitInstanceRemoval, execution?: SettingsExecution, transition?: TransitionHandle): Promise<void> {
+    execution?.assert();
     assertExplicitInstanceRemoval(authorization);
+    const beforeRemoval = (): void => {
     // Drop cached pane context — the map is keyed by instance name and nothing
     // else evicted deleted entries, so it grew for the life of the process.
     forgetInstanceContext(name);
@@ -8720,12 +8981,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
     }
 
+    };
+    if (execution) execution.mutate(beforeRemoval); else beforeRemoval();
     // Capture instance dir BEFORE lifecycle.remove, which deletes the instance
     // from fleetConfig. (The backend would be unresolvable afterwards.)
     const instanceDirToClean = this.getInstanceDir(name);
 
-    await this.lifecycle.remove(name, authorization);
+    if (execution) await this.lifecycle.remove(name, authorization, execution, transition);
+    else await this.lifecycle.remove(name, authorization);
+    // A later same-name registration owns its files and caches.
+    if (this.fleetConfig?.instances[name] || this.daemons.has(name)) return;
 
+    execution?.assert();
     // Clean up per-instance tracking maps so they don't grow unbounded
     // as instances are created and deleted over the lifetime of the fleet.
     this.lastActivity.delete(name);
@@ -8753,11 +9020,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // short home that would otherwise be inherited by a later same-name instance.
     try {
       const { CodexBackend } = await import("./backend/codex.js");
+      execution?.assert();
       const shortHome = CodexBackend.shortHomeFor(instanceDirToClean);
       if (existsSync(shortHome)) rmSync(shortHome, { recursive: true, force: true });
     } catch (err) {
       this.logger.debug({ err, name }, "Codex short home cleanup failed");
     }
+    execution?.complete();
   }
 
   startStatuslineWatcher(name: string): void {
@@ -9944,7 +10213,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     choices: Array<{ action: string; label: string }>;
     expiredText: string;
     deliver?: (choices: Choice[]) => Promise<import("./channel/types.js").SentMessage>;
-    extra?: Pick<NonceButtonEntry, "requesterUserId" | "publicExposureId" | "dashboardOwner" | "generalName" | "promptKind" | "authChannelId" | "allowAnyUser" | "tipId" | "classicGroupId" | "classicUserId" | "classicScope" | "classicReplyTo" | "assistFor">;
+    extra?: Pick<NonceButtonEntry, "pendingChangeId" | "confirmationCurrent" | "requesterUserId" | "publicExposureId" | "dashboardOwner" | "generalName" | "promptKind" | "authChannelId" | "allowAnyUser" | "tipId" | "classicGroupId" | "classicUserId" | "classicScope" | "classicReplyTo" | "assistFor">;
     timeoutMs?: number;
   }): Promise<string> {
     // 16 bytes = the 128-bit capability the design claims. Telegram's 64-byte
@@ -10179,6 +10448,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (await this.handleTipDismiss(data, adapterId, adapter)) return true;
     if (await this.handleTipUnlock(data, adapterId, adapter)) return true;
     if (await this.handleLoginBackendSelect(data, adapterId, adapter)) return true;
+    if (await this.handleSettingsChangeCallback(data, adapterId, adapter)) return true;
     if (await this.handleDashboardCallback(data, adapterId, adapter)) return true;
     if (await this.handleClassicApproval(data, adapterId, adapter)) return true;
     if (this.handleRetiredPromptButton(data, adapterId, adapter)) return true;
@@ -14783,7 +15053,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     model?: string,
     autoPauseAfter?: number,
     transition?: TransitionHandle,
+    execution?: SettingsExecution,
   ): Promise<void> {
+    execution?.assert();
     if (this.daemons.has(instanceName)) return;
     const workDir = join(getAgendHome(), "workspaces", instanceName);
     ensureWorkspaceGit(workDir);
@@ -14828,7 +15100,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         + "fix it in classicBot.yaml; it will not start on another login");
     }
     const topicMode = this.fleetConfig?.channel?.mode === "topic";
-    await this.startInstance(instanceName, config, topicMode, "classic", false, transition);
+    await this.startInstance(instanceName, config, topicMode, "classic", false, transition, execution);
   }
 
   /** Handle /start slash command — register classic channel */
@@ -14900,6 +15172,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // because we asked it to. Set synchronously — doStopAll runs to its first
     // await in the same tick as the signal handler, so no event can slip in.
     this.shuttingDown = true;
+    this.settingsGeneration++; this.settingsConfirmation?.store.close(); this.settingsConfirmation = null;
+    const settingsControl = this.settingsControl; this.settingsControl = null;
+    const settingsControlStopped = settingsControl?.close();
     const publicStopped = this.publicWebLink?.close("fleet shutdown");
     // #1386: every live "Needs you" message says the fleet stopped (capabilities revoked first) — while the
     // adapters can still edit. Bounded: a platform that does not answer must not hold the shutdown.
@@ -14931,6 +15206,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     await publicStopped;
     await profileStopped;
     await needsStopped;
+    await settingsControlStopped;
     await this.cpuProfileControl?.close();
     this.cpuProfileControl = null;
     await this.shutdownLoginWindows();
@@ -15719,7 +15995,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const challengeKey = `${input.sessionBinding}:api_key:${spec.id}:${spec.envKey}:${input.idempotencyKey}`;
     const existingId = this.providerSecretChallengesByKey.get(challengeKey);
     const existing = existingId ? this.providerSecretChallenges.get(existingId) : undefined;
-    if (existing && existing.expiresAt > Date.now()) {
+    if (existing && (existing.deadline === undefined ? existing.expiresAt > Date.now() : existing.deadline > performance.now())) {
       return { ok: true, verification_id: existing.id, expires_at: existing.expiresAt, spec_id: spec.id, activation: spec.activation };
     }
     if (existingId) this.providerSecretChallengesByKey.delete(challengeKey);
@@ -15741,7 +16017,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       generation: this.providerSecretGeneration(spec.envKey),
       operation: "provider-secret.apply",
       idempotencyKey: input.idempotencyKey,
-      expiresAt,
+      expiresAt, deadline: performance.now() + SECRET_CHALLENGE_TTL_MS,
       secret: input.secret,
     };
     this.providerSecretChallenges.set(challenge.id, challenge);
@@ -15765,6 +16041,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     verificationId: string;
     sessionBinding: string;
     idempotencyKey: string;
+    execution?: SettingsExecution;
   }): { job: ProviderSecretApplyJob; reused: boolean } | { busy: ProviderSecretApplyJob | null } | { error: string } {
     for (const [jobId, job] of this.providerSecretJobs) {
       if (job.specId === input.specId && job.idempotencyKey === input.idempotencyKey
@@ -15772,7 +16049,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     }
     const challenge = this.providerSecretChallenges.get(input.verificationId);
     const spec = providerSecretSpec(input.specId);
-    if (!challenge || challenge.expiresAt <= Date.now()) {
+    if (!challenge || (challenge.deadline === undefined ? challenge.expiresAt <= Date.now() : challenge.deadline <= performance.now())) {
       if (challenge) this.providerSecretChallenges.delete(input.verificationId);
       return { error: "verification expired; verify the secret again" };
     }
@@ -15797,7 +16074,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     this.providerSecretJobs.set(job.id, job);
     this.providerSecretJobSession.set(job.id, input.sessionBinding);
     this.providerSecretInFlight.set(spec.envKey, job.id);
-    queueMicrotask(() => void this.runProviderSecretApply(job, challenge.secret));
+    this.queueSettingsOperation(job, [settingsFileResource(join(this.dataDir, ".env"))], input.execution, execution => this.runProviderSecretApply(job, challenge.secret, execution));
     return { job, reused: false };
   }
 
@@ -15814,7 +16091,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     return this.getProviderSecretApply(jobId, sessionBinding);
   }
 
-  private async runProviderSecretApply(job: ProviderSecretApplyJob, secret: string): Promise<void> {
+  private async runProviderSecretApply(job: ProviderSecretApplyJob, secret: string, execution?: SettingsExecution): Promise<void> {
     const spec = providerSecretSpec(job.specId);
     const allowed = new Set([
       ...PROVIDER_SECRET_SPECS.map(item => item.envKey),
@@ -15828,25 +16105,34 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       if (!spec || !this.providerSecretEnvAllowed(job.envKey)) throw new Error("provider secret is not configured");
       // Construct inside the transaction: symlink/permission refusal must
       // settle the job as a safe failure, not escape the queued microtask.
-      store = new SecretStore(join(this.dataDir, ".env"), allowed);
-      before = store.write(job.envKey, secret);
-      wrote = true;
-      process.env[job.envKey] = secret;
+      store = new SecretStore(join(this.dataDir, ".env"), allowed, { owner: execution?.owner });
+      const write = (): void => { before = store!.write(job.envKey, secret); wrote = true; process.env[job.envKey] = secret; };
+      if (execution) execution.mutate(write); else write();
       if (spec.activation === "reload_hook" && spec.reloadHookId) {
         await this.runProviderSecretReloadHook(spec.reloadHookId, secret, previousProcessValue);
+        execution?.assert();
         job.result = "reloaded";
       } else {
         job.result = "applied_next_use";
       }
-      this.providerSecretGenerations.set(job.envKey, this.providerSecretGeneration(job.envKey) + 1);
+      const commit = (): void => { this.providerSecretGenerations.set(job.envKey, this.providerSecretGeneration(job.envKey) + 1); };
+      if (execution) execution.commit(commit); else commit();
       job.status = "done";
       job.finishedAt = Date.now();
     } catch (err) {
       const safe = safeSecretError(err, secret);
       this.logger.warn({ specId: job.specId, reason: safe }, "Provider API-key apply failed");
       try {
-        if (wrote && before && store) store.restore(before);
-        if (previousProcessValue === undefined) delete process.env[job.envKey]; else process.env[job.envKey] = previousProcessValue;
+        // Memory and disk have separate receipts: a host-edited file must
+        // remain, but cannot strand our owned process value or hook snapshot.
+        if (wrote && process.env[job.envKey] === secret) {
+          if (previousProcessValue === undefined) delete process.env[job.envKey]; else process.env[job.envKey] = previousProcessValue;
+        }
+        if (spec?.reloadHookId && this.providerSecretHotSnapshots.get(spec.reloadHookId) === secret) {
+          if (previousProcessValue === undefined) this.providerSecretHotSnapshots.delete(spec.reloadHookId);
+          else this.providerSecretHotSnapshots.set(spec.reloadHookId, previousProcessValue);
+        }
+        if (wrote && before && store) store.restoreIfCurrent(before);
         // SecretStore.write is itself transactional; when it fails before a
         // snapshot is returned there is no new value to roll back. Report the
         // truthful no-op rather than claiming rollback_failed.
@@ -15860,7 +16146,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       job.status = "done";
       job.finishedAt = Date.now();
     } finally {
-      this.providerSecretInFlight.delete(job.envKey);
+      if (this.providerSecretInFlight.get(job.envKey) === job.id) this.providerSecretInFlight.delete(job.envKey);
       secret = "";
     }
   }
@@ -15877,8 +16163,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     try {
       if (hook) await hook(_next, before);
     } catch (err) {
-      if (before === undefined) this.providerSecretHotSnapshots.delete(hookId);
-      else this.providerSecretHotSnapshots.set(hookId, before);
+      if (this.providerSecretHotSnapshots.get(hookId) === _next) {
+        if (before === undefined) this.providerSecretHotSnapshots.delete(hookId);
+        else this.providerSecretHotSnapshots.set(hookId, before);
+      }
       throw err;
     }
   }
@@ -15935,7 +16223,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const key = `${input.sessionBinding}:${input.connectionId}:${input.idempotencyKey}`;
     const existingId = this.connectionBindingChallengesByKey.get(key);
     const existing = existingId ? this.connectionBindingChallenges.get(existingId) : undefined;
-    if (existing && existing.expiresAt > Date.now()) {
+    if (existing && (existing.deadline === undefined ? existing.expiresAt > Date.now() : existing.deadline > performance.now())) {
       return { ok: true, verification_id: existing.id, expires_at: existing.expiresAt, binding: existing.binding, probe: existing.probe };
     }
     if (existingId) this.connectionBindingChallengesByKey.delete(key);
@@ -15963,7 +16251,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       generation: afterGeneration,
       operation: "binding.apply",
       idempotencyKey: input.idempotencyKey,
-      expiresAt,
+      expiresAt, deadline: performance.now() + SECRET_CHALLENGE_TTL_MS,
       binding,
       probe,
     };
@@ -15983,13 +16271,14 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     verificationId: string;
     sessionBinding: string;
     idempotencyKey: string;
+    execution?: SettingsExecution;
   }): { job: SecretApplyJob; reused: boolean } | { busy: SecretApplyJob | null } | { error: string } {
     for (const [jobId, job] of this.connectionBindingJobs) {
       if (job.connectionId === input.connectionId && job.idempotencyKey === input.idempotencyKey
         && this.connectionBindingJobSession.get(jobId) === input.sessionBinding) return { job, reused: true };
     }
     const challenge = this.connectionBindingChallenges.get(input.verificationId);
-    if (!challenge || challenge.expiresAt <= Date.now()) {
+    if (!challenge || (challenge.deadline === undefined ? challenge.expiresAt <= Date.now() : challenge.deadline <= performance.now())) {
       this.connectionBindingChallenges.delete(input.verificationId);
       return { error: "binding verification expired; verify the binding again" };
     }
@@ -16013,7 +16302,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     this.connectionBindingJobs.set(job.id, job);
     this.connectionBindingJobSession.set(job.id, input.sessionBinding);
     this.connectionBindingInFlight.set(input.connectionId, job.id);
-    queueMicrotask(() => void this.runConnectionBindingApply(job, challenge.binding));
+    this.queueSettingsOperation(job, [`connection:${this.dataDir}:${job.connectionId}`], input.execution, execution => this.runConnectionBindingApply(job, challenge.binding, execution));
     return { job, reused: false };
   }
 
@@ -16022,9 +16311,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     return this.connectionBindingJobs.get(jobId) ?? null;
   }
 
-  private async runConnectionBindingApply(job: SecretApplyJob, binding: ConnectionBinding): Promise<void> {
+  private async runConnectionBindingApply(job: SecretApplyJob, binding: ConnectionBinding, execution?: SettingsExecution): Promise<void> {
     try {
-      await this.rebuildAdapterForBinding(job.connectionId, binding);
+      await this.rebuildAdapterForBinding(job.connectionId, binding, execution);
       job.result = "applied";
     } catch (err) {
       const reason = safeSecretError(err);
@@ -16036,12 +16325,16 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     } finally {
       job.status = "done";
       job.finishedAt = Date.now();
-      this.connectionBindingInFlight.delete(job.connectionId);
+      if (this.connectionBindingInFlight.get(job.connectionId) === job.id) this.connectionBindingInFlight.delete(job.connectionId);
     }
   }
 
   /** Stop, rebuild and wait for a new adapter before committing YAML binding. */
-  private async rebuildAdapterForBinding(connectionId: string, binding: ConnectionBinding): Promise<void> {
+  private async rebuildAdapterForBinding(connectionId: string, binding: ConnectionBinding, execution?: SettingsExecution): Promise<void> {
+    const generation = this.settingsGeneration;
+    const current = (): boolean => !this.shuttingDown && this.settingsGeneration === generation;
+    const check = (): void => { execution?.assert(); if (!current()) throw new Error("adapter operation superseded"); };
+    check();
     const channel = this.secureConnectionChannel(connectionId);
     if (!channel || !this.fleetConfig) throw new Error("connection not found");
     const candidate = this.connectionBindingChannelConfig(channel, binding);
@@ -16050,17 +16343,22 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const oldPrimary = this.adapter;
     const oldAccess = this.accessManager;
     const oldState = this.adapterState.get(connectionId);
-    const oldChannel = structuredClone(channel);
+    const beforeBinding = structuredClone(this.fleetConfig);
+    const bindingPath = this.fleetConfig.channels
+      ? ["channels", String(this.fleetConfig.channels.indexOf(channel))] : ["channel"];
+    const bindingFields = [[...bindingPath, "group_id"],
+      ...(binding.general_channel_id !== undefined ? [[...bindingPath, "options", "general_channel_id"]] : [])];
+    let bindingUndo: SettingsUndo[] = [];
     const primary = this.getPrimaryAdapterId() === connectionId;
     if (primary && this.sessionPruneTimer) { clearInterval(this.sessionPruneTimer); this.sessionPruneTimer = null; }
 
     let fresh: ChannelAdapter | undefined;
-    let persistedBinding = false;
+
     try {
       this.adapterState.set(connectionId, { status: "retrying", retryCount: oldState?.retryCount ?? 0 });
       if (oldAdapter) {
         oldAdapter.removeAllListeners();
-        await oldAdapter.stop().catch(() => {});
+        await oldAdapter.stop().catch(() => {}); check();
         if (this.adapters.get(connectionId) === oldAdapter) this.adapters.delete(connectionId);
         if (this.worlds.get(connectionId)?.adapter === oldAdapter) this.worlds.delete(connectionId);
         if (primary && this.adapter === oldAdapter) this.adapter = null;
@@ -16068,23 +16366,24 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       let startedResolve: (() => void) | null = null;
       const started = new Promise<void>(resolve => { startedResolve = resolve; });
       const onStarted = (): void => { startedResolve?.(); };
-      if (primary) await this.startSingleAdapter(this.fleetConfig, candidate, onStarted);
-      else await this.startAdditionalAdapter(candidate, true, onStarted);
+      if (primary) await this.startSingleAdapter(this.fleetConfig, candidate, onStarted, execution);
+      else await this.startAdditionalAdapter(candidate, true, onStarted, execution);
+      check();
       fresh = this.adapters.get(connectionId);
       if (!fresh) throw new Error("new adapter did not start");
-      const deadline = Date.now() + 15_000;
+      const deadline = performance.now() + 15_000;
       if (!fresh.getHealthSnapshot) {
         let timer: ReturnType<typeof setTimeout> | undefined;
         const timeout = new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new Error("new adapter did not become ready")), Math.max(1, deadline - Date.now()));
+          timer = setTimeout(() => reject(new Error("new adapter did not become ready")), Math.max(1, deadline - performance.now()));
           timer.unref?.();
         });
-        try { await Promise.race([started, timeout]); } finally { if (timer) clearTimeout(timer); }
+        try { await Promise.race([started, timeout]); check(); } finally { if (timer) clearTimeout(timer); }
       } else {
-        while (Date.now() < deadline) {
+        while (performance.now() < deadline) {
           const health = fresh.getHealthSnapshot?.();
           if (health?.status === "connected" || this.adapterState.get(connectionId)?.status === "connected") break;
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise(resolve => setTimeout(resolve, 100)); check();
         }
         const health = fresh.getHealthSnapshot?.();
         if (health && health.status !== "connected" && this.adapterState.get(connectionId)?.status !== "connected") {
@@ -16094,6 +16393,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       if (fresh.setChatId) fresh.setChatId(String(candidate.group_id));
       // Commit only after the replacement adapter is ready. No allowlist,
       // topic, instance or schedule fields are touched here.
+      const commit = (): void => {
       channel.group_id = String(binding.group_id);
       if (binding.general_channel_id !== undefined) {
         const options = { ...(channel.options ?? {}) };
@@ -16102,44 +16402,48 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         if (Object.keys(options).length === 0) delete channel.options;
         else channel.options = options;
       }
-      this.saveFleetConfig();
-      persistedBinding = true;
-      this.routing.rebuild(this.fleetConfig);
+      try { this.saveFleetConfig(); }
+      finally { bindingUndo = settingsUndo(this.configPath, beforeBinding, this.fleetConfig, bindingFields); }
+      this.routing.rebuild(this.fleetConfig!);
       this.reregisterClassicChannels();
       this.adapterState.set(connectionId, { status: "connected", retryCount: 0 });
+      };
+      if (execution) execution.commit(commit); else { check(); commit(); }
+
     } catch (err) {
-      if (fresh && fresh !== oldAdapter) await fresh.stop().catch(() => {});
-      // Restore only the binding object in memory; unrelated connection and
-      // instance state remains exactly as it was before the attempt.
-      for (const key of Object.keys(channel) as Array<keyof ChannelConfig>) {
-        if (!(key in oldChannel)) delete (channel as any)[key];
-      }
-      Object.assign(channel, oldChannel);
-      this.adapters.delete(connectionId);
-      this.worlds.delete(connectionId);
-      this.adapterState.delete(connectionId);
-      if (oldAdapter) {
-        try {
-          const onStarted = (): void => {};
-          if (primary) await this.startSingleAdapter(this.fleetConfig, oldChannel, onStarted);
-          else await this.startAdditionalAdapter(oldChannel, true, onStarted);
-          this.adapterState.set(connectionId, oldState ?? { status: "connected", retryCount: 0 });
-        } catch (restoreErr) {
-          throw new Error(`binding rollback failed: ${safeSecretError(restoreErr)}`);
+      let rollbackError: unknown;
+      try {
+        if (bindingUndo.length) {
+          const disk = undoSettingsPaths(this.configPath, loadRawFleetConfig(this.configPath), bindingUndo);
+          const runtime = undoSettingsPaths(this.configPath, this.fleetConfig, bindingUndo);
+          if (disk.conflicts || runtime.conflicts) throw new Error("binding rollback conflict; newer configuration retained");
+          noteSettingsWrite(this.configPath, this.fleetConfig, runtime.value);
+          this.fleetConfig = runtime.value;
+          this.saveFleetConfig(bindingFields.map(path => {
+            let value: any = disk.value; for (const key of path) value = value?.[key];
+            return { path, value, ...(value === undefined ? { remove: true } : {}) };
+          }));
         }
-      } else {
-        if (primary) this.adapter = oldPrimary;
-        if (oldWorld) this.worlds.set(connectionId, oldWorld);
-        if (oldAdapter) this.adapters.set(connectionId, oldAdapter);
-        this.accessManager = oldAccess;
+      } catch (restoreErr) { rollbackError = restoreErr; }
+      if (fresh && fresh !== oldAdapter) await fresh.stop().catch(() => {});
+      if (this.adapters.get(connectionId) === fresh || this.adapters.get(connectionId) === oldAdapter) {
+        this.adapters.delete(connectionId);
+        if (this.worlds.get(connectionId)?.adapter === fresh || this.worlds.get(connectionId)?.adapter === oldAdapter) this.worlds.delete(connectionId);
+        if (primary && (this.adapter === fresh || this.adapter === oldAdapter)) this.adapter = null;
       }
-      // The binding is committed to YAML before routing is rebuilt.  If the
-      // post-commit rebuild fails, restore the durable document as well as the
-      // in-memory channel; otherwise a reload would resurrect the failed
-      // binding that the running fleet just rolled back.
-      if (persistedBinding) this.saveFleetConfig();
-      this.routing.rebuild(this.fleetConfig);
-      this.reregisterClassicChannels();
+      if (current()) {
+        const retained = this.secureConnectionChannel(connectionId);
+        if (retained) {
+          const cleanup = { owner: execution?.owner ?? Symbol("adapter-cleanup"), assert: () => { if (!current()) throw new Error("cleanup superseded"); } };
+          try {
+            if (primary) await this.startSingleAdapter(this.fleetConfig!, retained, () => {}, cleanup);
+            else await this.startAdditionalAdapter(retained, true, () => {}, cleanup);
+            if (!current()) throw new Error("cleanup superseded");
+            this.routing.rebuild(this.fleetConfig!); this.reregisterClassicChannels();
+          } catch (restoreErr) { throw new Error(`binding rollback failed: ${safeSecretError(restoreErr)}`); }
+        }
+      }
+      if (rollbackError) throw new Error(`binding rollback failed: ${safeSecretError(rollbackError)}`);
       throw err;
     }
   }
@@ -16160,7 +16464,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const challengeKey = `${input.sessionBinding}:${input.connectionId}:${input.idempotencyKey}`;
     const existingId = this.connectionSecretChallengesByKey.get(challengeKey);
     const existing = existingId ? this.connectionSecretChallenges.get(existingId) : undefined;
-    if (existing && existing.expiresAt > Date.now()) {
+    if (existing && (existing.deadline === undefined ? existing.expiresAt > Date.now() : existing.deadline > performance.now())) {
       return { ok: true, verification_id: existing.id, expires_at: existing.expiresAt };
     }
     if (existingId) this.connectionSecretChallengesByKey.delete(challengeKey);
@@ -16183,7 +16487,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       generation: this.secureConnectionGeneration(input.connectionId),
       operation: "secret.apply",
       idempotencyKey: input.idempotencyKey,
-      expiresAt,
+      expiresAt, deadline: performance.now() + SECRET_CHALLENGE_TTL_MS,
       secret: input.secret,
     };
     this.connectionSecretChallenges.set(challenge.id, challenge);
@@ -16209,6 +16513,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     verificationId: string;
     sessionBinding: string;
     idempotencyKey: string;
+    execution?: SettingsExecution;
   }): { job: SecretApplyJob; reused: boolean } | { busy: SecretApplyJob | null } | { error: string } {
     for (const [jobId, job] of this.connectionSecretJobs) {
       if (job.connectionId === input.connectionId
@@ -16218,7 +16523,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       }
     }
     const challenge = this.connectionSecretChallenges.get(input.verificationId);
-    if (!challenge || challenge.expiresAt <= Date.now()) {
+    if (!challenge || (challenge.deadline === undefined ? challenge.expiresAt <= Date.now() : challenge.deadline <= performance.now())) {
       this.connectionSecretChallenges.delete(input.verificationId);
       return { error: "verification expired; verify the secret again" };
     }
@@ -16251,7 +16556,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     this.connectionSecretJobs.set(job.id, job);
     this.connectionSecretJobSession.set(job.id, input.sessionBinding);
     this.connectionSecretInFlight.set(input.connectionId, job.id);
-    queueMicrotask(() => void this.runConnectionSecretApply(job, challenge.secret));
+    this.queueSettingsOperation(job, [settingsFileResource(join(this.dataDir, ".env")), `connection:${this.dataDir}:${job.connectionId}`], input.execution, execution => this.runConnectionSecretApply(job, challenge.secret, execution));
     return { job, reused: false };
   }
 
@@ -16260,7 +16565,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     return this.connectionSecretJobs.get(jobId) ?? null;
   }
 
-  private async runConnectionSecretApply(job: SecretApplyJob, secret: string): Promise<void> {
+  private async runConnectionSecretApply(job: SecretApplyJob, secret: string, execution?: SettingsExecution): Promise<void> {
     const channel = this.secureConnectionChannel(job.connectionId);
     const envKey = channel?.bot_token_env;
     const allowed = new Set((this.fleetConfig?.channels
@@ -16268,6 +16573,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       .map(item => item.bot_token_env));
     let before: import("./secret-store.js").SecretSnapshot | null = null;
     let oldToken: string | undefined;
+    let store: SecretStore | undefined;
+    const generation = this.settingsGeneration;
     let replaced = false;
     try {
       if (!channel || !envKey || !allowed.has(envKey)) throw new Error("connection is not configured for secret rotation");
@@ -16275,14 +16582,14 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []))
         .filter(item => item.bot_token_env === envKey);
       if (owners.length !== 1) throw new Error("secret key is shared by multiple connections");
-      const store = new SecretStore(join(this.dataDir, ".env"), allowed);
-      before = store.write(envKey, secret);
-      replaced = true;
-      oldToken = process.env[envKey];
-      process.env[envKey] = secret;
-      const generation = this.secureConnectionGeneration(job.connectionId) + 1;
-      this.connectionSecretGenerations.set(job.connectionId, generation);
-      const applied = await this.rebuildAdapterForSecret(job.connectionId, channel);
+      store = new SecretStore(join(this.dataDir, ".env"), allowed, { owner: execution?.owner });
+      const write = (): void => {
+        before = store!.write(envKey, secret); replaced = true; oldToken = process.env[envKey]; process.env[envKey] = secret;
+        this.connectionSecretGenerations.set(job.connectionId, this.secureConnectionGeneration(job.connectionId) + 1);
+      };
+      if (execution) execution.mutate(write); else write();
+      const applied = await this.rebuildAdapterForSecret(job.connectionId, channel, false, execution);
+      execution?.assert();
       if (!applied) {
         job.result = "restart_required";
         job.status = "done";
@@ -16300,13 +16607,15 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         job.error = "secret was not applied";
       } else {
         try {
-          const store = new SecretStore(join(this.dataDir, ".env"), new Set([envKey]));
-          store.restore(before);
-          if (oldToken === undefined) delete process.env[envKey]; else process.env[envKey] = oldToken;
+          store!.restoreIfCurrent(before);
+          if (process.env[envKey] === secret) { if (oldToken === undefined) delete process.env[envKey]; else process.env[envKey] = oldToken; }
           // Build a fresh adapter from the restored token. If the old adapter
           // was stopped already, this is the only safe way to return to the
           // previous runtime without claiming a disk-only rollback succeeded.
-          const restored = await this.rebuildAdapterForSecret(job.connectionId, channel!, true);
+          const cleanup = { owner: execution?.owner ?? Symbol("secret-cleanup"), assert: () => {
+            if (this.shuttingDown || this.settingsGeneration !== generation) throw new Error("secret cleanup superseded");
+          } };
+          const restored = await this.rebuildAdapterForSecret(job.connectionId, this.secureConnectionChannel(job.connectionId) ?? channel!, true, cleanup);
           if (!restored) throw new Error("adapter rollback did not become connected");
           job.result = "rolled_back";
         } catch (rollbackErr) {
@@ -16318,14 +16627,18 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       job.status = "done";
       job.finishedAt = Date.now();
     } finally {
-      this.connectionSecretInFlight.delete(job.connectionId);
+      if (this.connectionSecretInFlight.get(job.connectionId) === job.id) this.connectionSecretInFlight.delete(job.connectionId);
       // Do not retain the token after the apply (success or rollback).
       secret = "";
     }
   }
 
   /** Stop the old provider client and construct a new one from process.env. */
-  private async rebuildAdapterForSecret(connectionId: string, channel: ChannelConfig, force = false): Promise<boolean> {
+  private async rebuildAdapterForSecret(connectionId: string, channel: ChannelConfig, force = false, execution?: Pick<SettingsExecution, "owner" | "assert">): Promise<boolean> {
+    const generation = this.settingsGeneration;
+    const current = (): boolean => !this.shuttingDown && this.settingsGeneration === generation;
+    const check = (): void => { execution?.assert(); if (!current()) throw new Error("adapter operation superseded"); };
+    check();
     const old = this.adapters.get(connectionId);
     if (!old && !force) return false; // The secret is valid on disk; the next start adopts it.
     const primary = this.getPrimaryAdapterId() === connectionId;
@@ -16334,7 +16647,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (primary && this.sessionPruneTimer) { clearInterval(this.sessionPruneTimer); this.sessionPruneTimer = null; }
     if (old) {
       old.removeAllListeners();
-      await old.stop().catch(() => {});
+      await old.stop().catch(() => {}); check();
       if (this.adapters.get(connectionId) === old) this.adapters.delete(connectionId);
       if (this.worlds.get(connectionId)?.adapter === old) this.worlds.delete(connectionId);
       if (primary && this.adapter === old) this.adapter = null;
@@ -16342,11 +16655,12 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     let startedResolve: (() => void) | null = null;
     const started = new Promise<void>(resolve => { startedResolve = resolve; });
     const onStarted = (): void => { startedResolve?.(); };
-    if (primary) await this.startSingleAdapter(this.fleetConfig!, channel, onStarted);
-    else await this.startAdditionalAdapter(channel, true, onStarted);
+    if (primary) await this.startSingleAdapter(this.fleetConfig!, channel, onStarted, execution);
+    else await this.startAdditionalAdapter(channel, true, onStarted, execution);
+    check();
     const fresh = this.adapters.get(connectionId);
     if (!fresh) throw new Error("new adapter did not start");
-    const deadline = Date.now() + 15_000;
+    const deadline = performance.now() + 15_000;
     // Telegram has no gateway health snapshot. Its start() method launches the
     // grammY polling loop in the background, so completion of start() is not a
     // connected signal. The adapter's `started` event is emitted only after the
@@ -16354,21 +16668,21 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (!fresh.getHealthSnapshot) {
       let timer: ReturnType<typeof setTimeout> | undefined;
       const timeout = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error("new adapter did not emit started before deadline")), Math.max(1, deadline - Date.now()));
+        timer = setTimeout(() => reject(new Error("new adapter did not emit started before deadline")), Math.max(1, deadline - performance.now()));
         timer.unref?.();
       });
       try {
-        await Promise.race([started, timeout]);
+        await Promise.race([started, timeout]); check();
       } finally {
         if (timer) clearTimeout(timer);
       }
       this.adapterState.set(connectionId, { status: "connected", retryCount: 0 });
       return true;
     }
-    while (Date.now() < deadline) {
+    while (performance.now() < deadline) {
       const health = fresh.getHealthSnapshot?.();
       if (health?.status === "connected" || this.adapterState.get(connectionId)?.status === "connected") return true;
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 100)); check();
     }
     throw new Error("new adapter did not become connected");
   }
@@ -17071,8 +17385,11 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         if (handleAuthRequest(req, res, url, this as unknown as AuthApiContext)) return;
         if (handleViewRequest(req, res, url, this as unknown as import("./view-api.js").ViewApiContext)) return;
         if (handleUsageRequest(req, res, url, this as unknown as import("./usage/usage-api.js").UsageApiContext)) return;
-        if (handleSettingsRequest(req, res, url, this as unknown as import("./settings-api.js").SettingsApiContext)) return;
-        if (handleWebRequest(req, res, url, this as unknown as import("./web-api.js").WebApiContext)) return;
+        const settingsNext = (request: import("node:http").IncomingMessage, response: import("node:http").ServerResponse, address: URL): boolean =>
+          handleSettingsRequest(request, response, address, this as unknown as import("./settings-api.js").SettingsApiContext)
+          || handleWebRequest(request, response, address, this as unknown as import("./web-api.js").WebApiContext);
+        if (this.settingsGate().handle(req, res, url, settingsNext)) return;
+        if (settingsNext(req, res, url)) return;
       } catch (err) {
         this.logger.error({ err: (err as Error)?.message, path: url.pathname }, "Web request handler threw");
         if (!res.headersSent) { res.writeHead(500); res.end(JSON.stringify({ error: "internal error" })); }

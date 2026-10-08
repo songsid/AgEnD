@@ -1,3 +1,4 @@
+import { mergeSettingsDelta, noteSettingsWrite } from "./settings-transaction.js";
 import { existsSync, readFileSync, writeFileSync, mkdirSync, appendFileSync, copyFileSync, readdirSync, unlinkSync, statSync } from "node:fs";
 import { join } from "node:path";
 import yaml from "js-yaml";
@@ -174,6 +175,8 @@ export class ClassicChannelManager {
   private defaults: ClassicDefaults = {};
   private readonly configPath: string;
   private lastMtime = 0;
+  private savedProjection: ClassicBotYaml = { defaults: {}, channels: {} };
+  private sourceDocument: ClassicBotYaml = { defaults: {}, channels: {} };
   /** The primary (channels[0]) adapter id. It names without a suffix. */
   private primaryAdapterId?: string;
   /** Config-order adapter identities, used to migrate legacy rows by platform. */
@@ -280,6 +283,7 @@ export class ClassicChannelManager {
     try {
       const raw = yaml.load(readFileSync(this.configPath, "utf-8")) as ClassicBotYaml | null;
       if (!raw) return false;
+      this.sourceDocument = structuredClone(raw);
       this.defaults = raw.defaults ?? {};
       this.reportUnquotedIds();
       this.channels.clear();
@@ -405,6 +409,7 @@ export class ClassicChannelManager {
       }
       this.rebuildChannelIds();
       this.lastMtime = statSync(this.configPath).mtimeMs;
+      this.savedProjection = structuredClone(repaired ? raw : this.document());
       this.logger.info({ count: this.channels.size }, "Loaded classic channels");
       return repaired;
     } catch (err) {
@@ -413,17 +418,18 @@ export class ClassicChannelManager {
     }
   }
 
-  private save(): void {
-    mkdirSync(this.dataDir, { recursive: true });
-    const obj: ClassicBotYaml = { defaults: this.defaults, channels: {} };
+  private document(): ClassicBotYaml {
+    const obj: ClassicBotYaml = { ...this.sourceDocument, defaults: this.defaults, channels: {} };
     for (const ch of this.channels.values()) {
       const entry: Record<string, unknown> = {
+        ...this.sourceDocument.channels?.[this.compositeKey(ch.channelId, ch.adapterId)],
         channelId: ch.channelId,
         instanceName: ch.instanceName,
         name: ch.name,
         createdBy: ch.createdBy,
         createdAt: ch.createdAt,
       };
+      for (const key of ["adapterId", "backend", "model", "display_name", "description", "auto_pause_after", "context_lines", "tool_progress", "reply_completion_guard", "web_echo", "backend_options", "collab", "pre_task_command"]) delete entry[key];
       if (ch.adapterId) entry.adapterId = ch.adapterId;
       if (ch.backend) entry.backend = ch.backend;
       if (ch.model) entry.model = ch.model;
@@ -439,7 +445,19 @@ export class ClassicChannelManager {
       if (ch.preTaskCommand) entry.pre_task_command = ch.preTaskCommand;
       obj.channels![this.compositeKey(ch.channelId, ch.adapterId)] = entry as any;
     }
-    writeFileSync(this.configPath, YAML_HEADER + yaml.dump(obj, { lineWidth: -1 }));
+    return obj;
+  }
+
+  private save(): void {
+    mkdirSync(this.dataDir, { recursive: true });
+    const projected = this.document();
+    const fresh = existsSync(this.configPath) ? yaml.load(readFileSync(this.configPath, "utf8")) as ClassicBotYaml : { defaults: {}, channels: {} };
+    if (fresh !== null && (typeof fresh !== "object" || Array.isArray(fresh))) throw new Error("invalid Classic configuration");
+    const next = mergeSettingsDelta(this.savedProjection, projected, fresh ?? {});
+    noteSettingsWrite(this.configPath, this.savedProjection, projected);
+    writeFileSync(this.configPath, YAML_HEADER + yaml.dump(next, { lineWidth: -1 }));
+    this.savedProjection = structuredClone(projected);
+    this.sourceDocument = structuredClone(next);
     this.lastMtime = existsSync(this.configPath) ? statSync(this.configPath).mtimeMs : 0;
   }
 
@@ -525,6 +543,11 @@ export class ClassicChannelManager {
     field: "allowed_guilds" | "allowed_groups" | "allowed_users" | "admin_users",
     id: string,
   ): "added" | "already" {
+    // Additive chat grants must start from current disk, not an old manager's
+    // array projection (a confirmed Settings edit may have added another ID).
+    const fresh = existsSync(this.configPath) ? yaml.load(readFileSync(this.configPath, "utf8")) as ClassicBotYaml : null;
+    if (fresh?.defaults && Object.hasOwn(fresh.defaults, field)) this.defaults[field] = structuredClone(fresh.defaults[field]);
+    else delete this.defaults[field];
     const value = String(id);
     const list = this.defaults[field];
     // A truncated entry can never equal the real id, so this comparison will

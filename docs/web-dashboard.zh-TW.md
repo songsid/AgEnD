@@ -209,3 +209,11 @@ server 只回應 `127.0.0.1`。要從別的裝置使用 dashboard，你需要開
 | 「登入已結束」 | 閒置 2 小時、登入已滿 12 小時，或有人執行了 revoke：重新登入即可。 |
 | dashboard 短暫顯示「disconnected」之後又繼續更新 | 你這條連線傳不了即時串流，已改成每 5 秒輪詢：不需要處理。 |
 | `/dashboard` 回覆「disabled」 | 這個 bot 沒有設定任何 fleet admin：把你的使用者加進它的 `allowed_users`。 |
+
+### 確認敏感變更
+
+變更存取／F／C 名單、secret、connection 目的地／順序、公開曝光或控制類 instance 設定會回傳 `202 pending_confirmation`。請求人可用 `GET /api/settings/pending[/:id]` 列出或輪詢，並用 `DELETE /api/settings/pending/:id` 撤回尚未被認領的請求；其他 session 會得到 404。輪詢屬被動讀取，不延長登入有效期；`remaining_ms` 用來倒數，顯示的時間戳不是授權期限。
+
+Fleet admin 在 General 核對遮蔽 secret 的 diff 後確認。Chat 不可用時執行本機命令 `agend settings confirm <id>`；Reject、到期或 session 撤銷都不套用變更。Apply 重試須沿用相同的 `Idempotency-Key` 與 body，回到同一個請求。終態失敗後應重新檢查並用新 key 提出；secret 必須重新輸入。Settings shell 的等待狀態顯示由 #1408 另外處理。
+
+首次 Setup 同樣回傳 pending 請求。在 host 確認後，還要明確按 **Start AgEnD**。Pending 回應、舊的成功 commit 或已改動的設定，都不能將 setup listener 交給 fleet。

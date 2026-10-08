@@ -1,3 +1,4 @@
+import { admitSetupFinish, confirmedSetup } from "./helpers/setup-confirmation-1423.js";
 import { createServer } from "node:http";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { request, type IncomingHttpHeaders } from "node:http";
@@ -254,7 +255,8 @@ describe("finishing: revoke, close, prove, then hand over", () => {
     // different function from the one asserted on.
     spawnFleet.mockImplementation(() => { order.push("fleet spawned"); });
     const cookie = await signIn(port, path, code);
-
+    await confirmedSetup(dir, port, path, cookie);
+    expect((await call(port, "POST", `${path}setup/finish`, { headers: { cookie } })).status).toBe(202);
     await host.shutdown(true, "finished");
 
     // The listener is gone before the tunnel is asked to stop, so the public
@@ -267,7 +269,7 @@ describe("finishing: revoke, close, prove, then hand over", () => {
 
   it("revokes the credentials before anything else, so a request in flight is too late", async () => {
     const source = readFileSync(new URL("../src/setup-host.ts", import.meta.url), "utf8");
-    const shutdown = source.slice(source.indexOf("async shutdown("));
+    const shutdown = source.slice(source.indexOf("private async performShutdown("));
     const revokeAt = shutdown.indexOf("this.credentials.revoke()");
     const closeAt = shutdown.indexOf("closeAllConnections");
     const stopAt = shutdown.indexOf("this.managedTunnel.stop(");
@@ -302,6 +304,7 @@ describe("an unconfirmed tunnel death", () => {
       dataDir: dir, tunnel: true, port: 0,
       tunnelProvider: fakeProvider({ stop: unconfirmed }), ...over,
     });
+    await admitSetupFinish(started.dir, started.port, started.path, started.code);
     await started.host.shutdown(true, "finished");
     return started;
   }
@@ -349,9 +352,9 @@ describe("an unconfirmed tunnel death", () => {
 
 describe("what the page says when it is done", () => {
   it("tells a tunnelled session to use the channel, not to watch this URL", async () => {
-    const { port, path, code } = await startHost({ tunnel: true, tunnelProvider: fakeProvider() });
+    const { dir, port, path, code } = await startHost({ tunnel: true, tunnelProvider: fakeProvider() });
     const cookie = await signIn(port, path, code);
-
+    await confirmedSetup(dir, port, path, cookie);
     const res = await call(port, "POST", `${path}setup/finish`, { headers: { cookie } });
 
     // `watch: false` is the page's cue that neither this URL nor a dashboard
@@ -364,9 +367,9 @@ describe("what the page says when it is done", () => {
   });
 
   it("still lets a local session watch the port change hands", async () => {
-    const { port, path, code } = await startHost({ tunnelProvider: fakeProvider() });
+    const { dir, port, path, code } = await startHost({ tunnelProvider: fakeProvider() });
     const cookie = await signIn(port, path, code);
-
+    await confirmedSetup(dir, port, path, cookie);
     const res = await call(port, "POST", `${path}setup/finish`, { headers: { cookie } });
 
     expect(JSON.parse(res.body)).toMatchObject({ watch: true });
@@ -540,11 +543,12 @@ describe("finishing while the tunnel is dying", () => {
     // finish time, that shutdown returns having written the config, told the
     // page "starting", and started nothing.
     let fireExit: (() => void) | null = null;
-    const { host, port, path, code, spawnFleet } = await startHost({
+    const { host, dir, port, path, code, spawnFleet } = await startHost({
       tunnel: true, tunnelProvider: fakeProvider({ onExit: fire => { fireExit = fire; } }),
     });
     const cookie = await signIn(port, path, code);
 
+    await confirmedSetup(dir, port, path, cookie);
     const finish = await call(port, "POST", `${path}setup/finish`, { headers: { cookie } });
     expect(finish.status).toBe(202);
     fireExit!();

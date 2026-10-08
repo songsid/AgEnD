@@ -2189,7 +2189,14 @@ export class Daemon extends EventEmitter {
     });
   }
 
-  async start(): Promise<void> {
+  private startupAdmission: (() => void) | undefined;
+  async start(admission?: () => void): Promise<void> {
+    this.startupAdmission = admission;
+    try { admission?.(); await this.startAdmitted(); admission?.(); }
+    finally { this.startupAdmission = undefined; }
+  }
+
+  private async startAdmitted(): Promise<void> {
     ensureInstanceDir(this.instanceDir);
     writeFileSync(join(this.instanceDir, "daemon.pid"), String(process.pid));
     this.logger.info(`Starting ${this.name}`);
@@ -2241,7 +2248,7 @@ export class Daemon extends EventEmitter {
       this.logger.error({ err, name: this.name }, "IPC server error");
       this.emit("error", err);
     });
-    await this.ipcServer.listen();
+    await this.ipcServer.listen(); this.startupAdmission?.();
     ipcListening = true;
 
     // Permanent IPC dispatcher: routes responses to pending requests by type+id key
@@ -2305,7 +2312,7 @@ export class Daemon extends EventEmitter {
     });
 
     // 2. Tmux — ensure session, create window if not alive
-    await TmuxManager.ensureSession(this.tmuxSessionName);
+    await TmuxManager.ensureSession(this.tmuxSessionName); this.startupAdmission?.();
     this.tmux = new TmuxManager(
       this.tmuxSessionName,
       "",
@@ -2321,17 +2328,18 @@ export class Daemon extends EventEmitter {
       if (savedId) {
         const oldTmux = new TmuxManager(this.tmuxSessionName, savedId);
         if (await oldTmux.isWindowAlive()) {
-          await this.checkpointSessionId();
-          await oldTmux.killWindow();
+          this.startupAdmission?.();
+          await this.checkpointSessionId(); this.startupAdmission?.();
+          await oldTmux.killWindow(); this.startupAdmission?.();
           this.logger.info({ savedId }, "Killed old tmux window for fresh start");
         }
       }
     }
 
-    const resumed = await this.spawnClaudeWindow();
+    const resumed = await this.spawnClaudeWindow(); this.startupAdmission?.();
     this.isNewSession = !resumed;
     if (!resumed) {
-      await this.injectSnapshotMessage();
+      await this.injectSnapshotMessage(); this.startupAdmission?.();
     } else {
       // Clean up stale snapshot file — resume restored full context, snapshot not needed
       try { unlinkSync(join(this.instanceDir, "rotation-state.json")); } catch { /* may not exist */ }
@@ -2353,7 +2361,7 @@ export class Daemon extends EventEmitter {
       // previous stuck splash (hundreds of MB of ANSI frames) is truncated before
       // we attach — pipe-pane uses `cat >>` on the same inode, so copytruncate
       // keeps the writer attached after size resets.
-      await this.attachPipePaneLog();
+      await this.attachPipePaneLog(); this.startupAdmission?.();
 
       // 4. Transcript monitor. claude-code is handled inside the monitor
       // (statusline transcript); codex/kiro/opencode read their CLI's own
@@ -2372,7 +2380,7 @@ export class Daemon extends EventEmitter {
       const transcriptFence = this.launchFenceEpoch;
       // Baseline in the isolate before this daemon accepts new work. A
       // stopped/replaced launch may never re-arm polling after this await.
-      await transcriptMonitor.initialize();
+      await transcriptMonitor.initialize(); this.startupAdmission?.();
       if (this.startupAborted || this.launchFenceEpoch !== transcriptFence || this.transcriptMonitor !== transcriptMonitor) {
         transcriptMonitor.stop();
         return;
@@ -9540,12 +9548,13 @@ export class Daemon extends EventEmitter {
     // Fresh start or not: the owner is recorded below once this CLI is up, so an
     // id it does not own must be out of the way first, or it would be recorded
     // as this backend's and resumed by the next start.
-    this.setAsideForeignSession();
+    this.startupAdmission?.(); this.setAsideForeignSession();
     const attemptedResume = !this.skipResume;
     // A resume launch may get a longer budget than a fresh one (kiro: the
     // conversation must come back from the backend before anything paints).
     const resumeBudget = attemptedResume ? this.startupBudgetFor(true) : undefined;
     let alive = await this.trySpawn(false, resumeBudget);
+      this.startupAdmission?.();
 
     if (!alive && attemptedResume) {
       // Resume failed. Before abandoning the session:
@@ -9557,15 +9566,22 @@ export class Daemon extends EventEmitter {
       //  2. Otherwise, for backends that ask for it, retry resume ONCE — the
       //     first miss is usually slowness, not a broken session.
       await this.noteStartupPaneForBackendOutage();
+      this.startupAdmission?.();
       await this.failStartupIfBackendUnreachable();
+      this.startupAdmission?.();
       if (this.backend.retriesResumeOnStartupFailure?.() !== false) {
         this.logger.warn("Resume startup failed — retrying resume once before abandoning the session");
         await this.killProcessTree("SIGTERM", "spawn: clearing the previous CLI process");
+      this.startupAdmission?.();
         await this.tmux!.killWindow();
+      this.startupAdmission?.();
         alive = await this.trySpawn(false, resumeBudget);
+      this.startupAdmission?.();
         if (!alive) {
           await this.noteStartupPaneForBackendOutage();
+      this.startupAdmission?.();
           await this.failStartupIfBackendUnreachable();
+      this.startupAdmission?.();
         }
       }
     }
@@ -9585,7 +9601,9 @@ export class Daemon extends EventEmitter {
           // Keep the session and fail this attempt; the fleet retries with
           // backoff, which is also how the backend-outage path behaves.
           await this.killProcessTree("SIGTERM", "spawn: clearing the previous CLI process");
+      this.startupAdmission?.();
           await this.tmux!.killWindow();
+      this.startupAdmission?.();
           throw new Error(
             `CLI startup failed with a session to resume (attempt ${failures}/${Daemon.MAX_UNPROVEN_RESUME_FAILURES}) `
             + "— session kept, will retry",
@@ -9607,12 +9625,17 @@ export class Daemon extends EventEmitter {
       // a session: nothing about a failed fresh launch says the stored
       // conversation is unusable.
       await this.killProcessTree("SIGTERM", "spawn: clearing the previous CLI process");
+      this.startupAdmission?.();
       await this.tmux!.killWindow();
+      this.startupAdmission?.();
 
       const retryAlive = await this.trySpawn(false, this.startupBudgetFor(false));
+      this.startupAdmission?.();
       if (!retryAlive) {
         await this.killProcessTree("SIGTERM", "spawn: clearing the previous CLI process");
+      this.startupAdmission?.();
         await this.tmux!.killWindow();
+      this.startupAdmission?.();
         throw new Error("CLI failed to start after retry");
       }
     } else if (attemptedResume) {
@@ -9673,7 +9696,7 @@ export class Daemon extends EventEmitter {
       && (phase === "active" || phase === "waking") && this.pauseWakeState === phase
       && spawn === this.spawnGeneration && fence === this.launchFenceEpoch && this.tmux === tmux;
     const deadline = performance.now() + Daemon.AGENT_SWITCH_BUDGET_MS;
-    const live = () => fenced() && performance.now() < deadline;
+    const live = () => { this.startupAdmission?.(); return fenced() && performance.now() < deadline; };
     if (!live()) return;
     const TIMEOUT = Symbol("deadline");
     const within = <T>(work: Promise<T>): Promise<T | typeof TIMEOUT> => {
@@ -9734,6 +9757,7 @@ export class Daemon extends EventEmitter {
       this.logger.warn({ agent: sw.agent, typed: wroteAt !== null }, "The resumed conversation did not switch to this instance's agent in time");
       this.emit("backend_launch_warning", { name: this.name, message: t("kiro.switch_timeout", Daemon.AGENT_SWITCH_BUDGET_MS / 1000) });
     } catch (err) {
+      this.startupAdmission?.();
       this.logger.warn({ err }, "The agent switch after resume failed — the shared entries stay; the next launch tries again");
     }
   }
@@ -9869,7 +9893,9 @@ export class Daemon extends EventEmitter {
     // #906: a resumed kiro conversation comes back as the agent it was saved under. Every launch path that reaches a
     // ready CLI (start, recovery, wake) switches it to this instance's own agent here, while the spawn still holds
     // deliveries — and outside the spawn gate, which it does not need.
+    this.startupAdmission?.();
     if (ready) await this.ensureBackendAgent();
+    this.startupAdmission?.();
     return ready;
   }
 
@@ -10060,6 +10086,7 @@ export class Daemon extends EventEmitter {
   }
 
   private async trySpawnInsideGate(reuseWindow = false, startupTimeoutMs?: number): Promise<boolean> {
+    this.startupAdmission?.();
     const launchFence = this.launchFenceEpoch;
     const backendConfig = this.buildBackendConfig();
 
@@ -10097,6 +10124,7 @@ export class Daemon extends EventEmitter {
     try { await this.backend!.prepareLaunch?.(); } catch { /* unknown capability → the backend's conservative form */ }
     // Thrown, not `false`: a false verdict reads as "the CLI failed to start" and sends the startup path
     // into its resume-retry / set-the-session-aside handling, for an instance somebody just stopped.
+    this.startupAdmission?.();
     if (launchFence !== this.launchFenceEpoch) throw new Error("Launch cancelled: the instance was stopped or paused while the launch was being prepared");
 
     this.backend!.writeConfig(backendConfig);
@@ -10156,6 +10184,7 @@ export class Daemon extends EventEmitter {
     // The CLI's own shell sets a zero coredump_filter first (#1113): this pane
     // may belong to a tmux server the fleet did not start, which would hand
     // the CLI its own (full) filter instead of the fleet's.
+    this.startupAdmission?.();
     const cmd = coredumpFilterLaunchPrefix() + `${envPrefix} ` + this.backend!.buildCommand(launchConfig);
     // Every launched command re-arms the passive-transient check, including a
     // retry inside the same spawn: its load is a new one.
@@ -10178,6 +10207,7 @@ export class Daemon extends EventEmitter {
     if (this.stormWindow?.observeServerAlive(await TmuxManager.getServerPid(this.tmuxSessionName))) {
       this.emit("tmux_server_crash", this.name);
     }
+    this.startupAdmission?.();
     let windowId: string;
     if (reuseWindow) {
       this.controlClient?.unregisterWindow(this.tmux!.getWindowId());
@@ -10190,6 +10220,7 @@ export class Daemon extends EventEmitter {
       windowId = await this.tmux!.createWindow(cmd, resolvedCwd, this.name);
       if (retired && retired !== windowId) this.controlClient?.unregisterWindow(retired);
     }
+    this.startupAdmission?.();
     writeFileSync(join(this.instanceDir, "window-id"), windowId);
 
     // Enable remain-on-exit to capture exit codes on crash
@@ -10299,8 +10330,8 @@ export class Daemon extends EventEmitter {
       { pattern: /Resume Session/i, keys: ["Escape"], description: "Resume session picker — start fresh" },
     ];
 
-    const deadline = Date.now() + budgetMs;
-    const remaining = () => deadline - Date.now();
+    const deadline = performance.now() + budgetMs;
+    const remaining = () => deadline - performance.now();
     const sleep = async () => { if (remaining() > 0) await new Promise(r => setTimeout(r, Math.min(pollMs, Math.max(remaining(), 0)))); };
     let cleanReadyPolls = 0;
     let lastDialog: StartupDialog | null = null;
@@ -10312,11 +10343,13 @@ export class Daemon extends EventEmitter {
     // instead of sending a second Enter into a possibly changed screen.
     const attemptedSafetyChoices = new Set<string>();
     do {
+      this.startupAdmission?.();
       attempts++;
       let pane: string;
       try {
-        pane = await this.tmux!.capturePane();
+        pane = await this.tmux!.capturePane(); this.startupAdmission?.();
       } catch (err) {
+        this.startupAdmission?.();
         // Transient tmux trouble is not evidence about the CLI. Returning false
         // here would clear the session; retry within the budget instead.
         captureFailures++;
@@ -10392,12 +10425,13 @@ export class Daemon extends EventEmitter {
             // delivery on `spawning`. Take the pane lock for the key sequence so a
             // queued message cannot be pasted into a half-dismissed trust dialog.
             const sent = await this.paneWriteLock.run(async () => {
+              this.startupAdmission?.();
               // The capture above may have gone stale while waiting for the
               // write lock. Trust/other safety prompts must still be the
               // CURRENT menu, with the same safe cursor, at the instant of
               // the key send. A changed pane falls through to the next scan.
               if (dialog.inputBlocked) {
-                const currentPane = await this.tmux!.capturePane();
+                const currentPane = await this.tmux!.capturePane(); this.startupAdmission?.();
                 if (!Daemon.dialogMatches(dialog, currentPane)) return false;
               }
               if (dialog.autoResolutionKey) {
@@ -10406,6 +10440,7 @@ export class Daemon extends EventEmitter {
                 this.autoResolvedDialogKey = dialog.autoResolutionKey;
               }
               for (const key of dialog.keys) {
+                this.startupAdmission?.();
                 if (key === "Up" || key === "Down" || key === "Enter" || key === "Escape") {
                   if (!await this.tmux!.sendSpecialKey(key)) return false;
                 } else {
@@ -10480,6 +10515,7 @@ export class Daemon extends EventEmitter {
         // like Kiro's "agent X not found, using default")
         if (/command not found|: not found$/m.test(pane)) return false;
       } catch (err) {
+        this.startupAdmission?.();
         // Key sends / isWindowAlive failing: same rule — log, retry within the budget.
         this.logger.warn({ err }, "startup dialog scan step failed — retrying");
         if ((await this.paneLiveness()) === "dead") return false;
@@ -10497,6 +10533,7 @@ export class Daemon extends EventEmitter {
       this.logger.warn({ attempts, budgetMs, captureFailures },
         "Startup scan exhausted without a ready prompt or a known dialog — assuming ready (unknown CLI screen)");
     }
+    this.startupAdmission?.();
     return true;
   }
 

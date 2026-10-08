@@ -1,6 +1,13 @@
+import { cachedSettingsBody, settingsRequestExecution } from "./settings-request-capability.js";
 import type { IncomingMessage } from "node:http";
 /** Byte-bounded, abort-aware reader. Socket/request deadlines belong to the listener. */
 export function readBoundedWebBody(req: IncomingMessage, maxBytes: number): Promise<Buffer> {
+  const cached = cachedSettingsBody(req);
+  if (cached) {
+    if (cached.length > maxBytes) return Promise.reject(new Error("payload too large"));
+    try { settingsRequestExecution(req)?.assert(); return Promise.resolve(cached); }
+    catch (err) { return Promise.reject(err); }
+  }
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0, settled = false;

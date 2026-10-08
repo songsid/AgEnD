@@ -228,3 +228,13 @@ agend import <file>             # 從匯出檔案匯入配置
 | `GROQ_API_KEY` | 語音轉文字的 Groq API key（選填） |
 | `AGEND_TMUX_SESSION` | 覆寫 tmux session 名（預設 `agend`） |
 | `AGEND_HOME` | 覆寫資料目錄（預設 `~/.agend`） |
+
+## `agend settings`
+
+```bash
+agend settings confirm <id>        # 列出來源／請求人／完整遮蔽 diff，再詢問 y/N
+agend settings confirm <id> --yes  # 無 TTY 時明確確認剛檢查的 diff
+agend settings reject <id>
+```
+
+在 host 上以 fleet 或 SetupHost 的相同使用者執行。它不會啟動 fleet；確認由私有本機 socket 負責。Agent session（存在 `AGEND_INSTANCE_NAME`）不能使用。套用前會再次核對 id、socket owner generation，以及檢查過的 effect／summary。過期或 stale 請求需重新提出；pending 不會跨重啟保存。

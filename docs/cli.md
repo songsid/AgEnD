@@ -421,3 +421,13 @@ The same migration also adds the #1113 settings to an older unit. `CoredumpFilte
 | `GROQ_API_KEY` | Groq API key for voice transcription (optional) |
 | `AGEND_TMUX_SESSION` | Override tmux session name (default: `agend`) |
 | `AGEND_HOME` | Override data directory (default: `~/.agend`) |
+
+## `agend settings`
+
+```bash
+agend settings confirm <id>        # Print source/requester/full redacted diff, then ask y/N
+agend settings confirm <id> --yes  # Explicitly confirm that inspected diff without a TTY
+agend settings reject <id>
+```
+
+Run on the host as the same user as the fleet or SetupHost. This never starts a fleet; a private local socket owns confirmation. Agent sessions (`AGEND_INSTANCE_NAME` present) cannot use it. The id, socket owner generation and inspected effect/summary are checked again before applying. A stale/expired request must be submitted again; pending requests are not persisted across restart.

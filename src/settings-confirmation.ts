@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { SettingsExecution, settingsFingerprint } from "./settings-transaction.js";
 import { performance } from "node:perf_hooks";
 
 export const SETTINGS_CONFIRMATION_TTL_MS = 5 * 60_000;
@@ -26,7 +27,8 @@ export interface SettingsPendingView {
   requested_by: string;
   expires_at: number;
   remaining_ms: number;
-  source: "web_session" | "public_link";
+  source: "web_session" | "public_link" | "setup_session";
+  execution?: { phase: "queued" | "running" | "cleanup"; job_id?: string; reason_code?: string };
   summary: readonly string[];
   confirmation: { kind: "chat" | "host_cli"; code?: string };
   can_withdraw: boolean;
@@ -42,12 +44,16 @@ export interface SettingsChangeProposal {
   summary: readonly string[];
   bytes: number;
   remainingMs?: number;
+  requestFingerprint?: string;
+  affectedConnections?: readonly string[];
   /** Session, token epoch, exposure and fleet lifecycle; never extends expiry. */
   current(): boolean;
   /** Recheck the original configuration before admitting the effect. */
   unchanged(): Promise<boolean>;
   /** The original handler, guarded at its asynchronous continuation edges. */
-  apply(current: () => boolean): Promise<unknown>;
+  apply(current: () => boolean, execution: SettingsExecution): Promise<unknown>;
+  /** Runtime state and persistence revisions, excluding the operation's private state. */
+  snapshot?(): unknown;
   discard?(): void;
 }
 interface RecordEntry {
@@ -55,11 +61,14 @@ interface RecordEntry {
   session: string;
   key: string;
   fingerprint: string;
+  requestFingerprint?: string;
+  snapshotFingerprint: string;
   deadline: number;
   finishedAt?: number;
   proposal?: SettingsChangeProposal;
   timer?: ReturnType<typeof setTimeout>;
   retire?: () => void;
+  execution?: SettingsExecution;
 }
 export class SettingsConfirmationError extends Error {
   constructor(readonly status: number, readonly code: string) { super(code); }
@@ -81,6 +90,8 @@ export class SettingsConfirmationStore {
   private audit(event: string, entry: RecordEntry, extra: Record<string, unknown> = {}): void {
     this.options.audit(event, { id: entry.view.id, section: entry.view.section, source: entry.view.source, ...extra });
   }
+  private display(label: string): string { return label.slice(0, 256).replace(/[\p{Cc}\p{Cf}]/gu,
+    char => `\\u{${char.codePointAt(0)!.toString(16)}}`).replace(/@/g, "[at]").replace(/[\\`*_~[\]()<>|]/g, char => "\\" + char); }
   private index(session: string, key: string): string { return JSON.stringify([session, key]); }
   private snapshot(entry: RecordEntry): SettingsPendingView {
     return structuredClone({ ...entry.view, remaining_ms: Math.max(0, Math.ceil(entry.deadline - this.now())),
@@ -132,13 +143,25 @@ export class SettingsConfirmationStore {
     const id = randomBytes(16).toString("hex");
     const requested = this.wall();
     const entry: RecordEntry = { session: proposal.session, key: proposal.key, fingerprint: proposal.fingerprint,
-      deadline: this.now() + ttl, proposal, view: { id, state: "pending", section: proposal.section,
-        requested_at: requested, requested_by: proposal.requestedBy, expires_at: requested + ttl,
+      snapshotFingerprint: settingsFingerprint(proposal.snapshot?.() ?? null),
+      deadline: this.now() + ttl, requestFingerprint: proposal.requestFingerprint, proposal, view: { id, state: "pending", section: proposal.section,
+        requested_at: requested, requested_by: this.display(proposal.requestedBy), expires_at: requested + ttl,
         source: proposal.source, summary: [...proposal.summary], confirmation: { kind: "host_cli", code: id }, outcome: null } };
     this.records.set(id, entry); this.keys.set(index, id); this.arm(entry); this.audit("requested", entry);
     // Notification may fail or arrive late. Neither admits a configuration write.
     void Promise.resolve().then(() => this.options.notify?.(this.snapshot(entry))).catch(() => this.audit("notification_failed", entry));
     return { view: this.snapshot(entry), reused: false };
+  }
+  findRequest(session: string, key: string, fingerprint: string): SettingsPendingView | null {
+    this.prune(); const id = this.keys.get(this.index(session, key)); const entry = id ? this.records.get(id) : undefined;
+    if (!entry) return null;
+    if (entry.requestFingerprint !== fingerprint) throw new SettingsConfirmationError(409, "idempotency_key_reused");
+    return this.snapshot(entry);
+  }
+  affectedConnections(id: string): readonly string[] { return this.records.get(id)?.proposal?.affectedConnections ?? []; }
+  inspectHost(id: string): { view: SettingsPendingView; fingerprint: string } | null {
+    this.prune(); const entry = this.records.get(id);
+    return entry && !this.closed ? { view: this.snapshot(entry), fingerprint: entry.fingerprint } : null;
   }
   get(id: string, session: string): SettingsPendingView | null {
     this.prune(); const entry = this.records.get(id);
@@ -170,31 +193,40 @@ export class SettingsConfirmationStore {
     if (decision === "reject") { this.finish(entry, "rejected", "rejected", "Change rejected.", actor.label); return this.snapshot(entry); }
     // Both surfaces claim before the first await, so neither can execute twice.
     entry.view.state = "applying"; clearTimeout(entry.timer); entry.retire?.(); entry.retire = undefined;
-    this.audit("confirmed", entry, { decided_by: actor.label });
+    this.audit("confirmed", entry, { decided_by: this.display(actor.label) });
     const current = (): boolean => !this.closed && entry.view.state === "applying"
       && this.now() < entry.deadline && actor.current() && proposal.current();
     try {
       const unchanged = await proposal.unchanged();
-      if (!current() || !unchanged) this.finish(entry, "stale", "settings_changed", "Settings changed since this request. Review and apply again.", actor.label);
+      if (!current() || !unchanged || entry.snapshotFingerprint !== settingsFingerprint(proposal.snapshot?.() ?? null)) this.finish(entry, "stale", "settings_changed", "Settings changed since this request. Review and apply again.", actor.label);
       else {
-        const result = await proposal.apply(current);
-        if (entry.view.state === "applying") this.finish(entry, "applied", "applied", "Change applied.", actor.label, result);
+        const execution = new SettingsExecution({ current, snapshot: () => proposal.snapshot?.() ?? null,
+          now: () => this.now(), expectedFingerprint: entry.snapshotFingerprint, progress: (phase, reason_code) => { entry.view.execution = { phase, ...(reason_code ? { reason_code } : {}) }; } });
+        entry.execution = execution;
+        try {
+          const result = await proposal.apply(() => execution.current(), execution);
+          if (!execution.completed) execution.complete();
+          this.finish(entry, "applied", "applied", "Change applied.", actor.label, result);
+        } finally { execution.close(); entry.execution = undefined; }
       }
     } catch {
-      if (entry.view.state === "applying") this.finish(entry, "failed", "apply_failed", "Change could not be applied. Review the configuration and try again.", actor.label);
+      if (entry.view.state === "applying") this.finish(entry, this.closed ? "stale" : this.now() >= entry.deadline ? "expired" : "failed", this.closed ? "fleet_stopped" : this.now() >= entry.deadline ? "expired" : "apply_failed", "Change could not be applied. Review the configuration and try again.", actor.label);
     }
     return this.snapshot(entry);
   }
   private finish(entry: RecordEntry, state: SettingsChangeState, reason: string, message: string, actor?: string, result?: unknown): void {
     clearTimeout(entry.timer); entry.retire?.(); entry.retire = undefined;
     entry.view.state = state; entry.finishedAt = this.now();
-    entry.view.outcome = { state, reason_code: reason, message, decided_at: this.wall(), ...(actor ? { decided_by_label: actor } : {}),
+    entry.view.outcome = { state, reason_code: reason, message, decided_at: this.wall(), ...(actor ? { decided_by_label: this.display(actor) } : {}),
       ...(result !== undefined ? { result } : {}) };
     entry.proposal?.discard?.(); entry.proposal = undefined;
     this.audit(state === "rejected" && reason === "withdrawn" ? "withdrawn" : state, entry);
   }
   close(): void {
     this.closed = true;
-    for (const entry of this.records.values()) if (entry.proposal) this.finish(entry, "stale", "fleet_stopped", "Fleet stopped. Review and apply again.");
+    for (const entry of this.records.values()) if (entry.proposal) {
+      if (entry.view.state === "applying") { entry.execution?.cancel(); entry.retire?.(); entry.retire = undefined; }
+      else this.finish(entry, "stale", "fleet_stopped", "Fleet stopped. Review and apply again.");
+    }
   }
 }

@@ -21,6 +21,8 @@ export function isPublicWebRoute(method: string, path: string): boolean {
   return isPublicSettingsRoute(method, path);
 }
 function isPublicSettingsRoute(method: string, path: string): boolean {
+  if (method === "GET" && /^\/api\/settings\/pending(?:\/[0-9a-f]{32})?$/.test(path)) return true;
+  if (method === "DELETE" && /^\/api\/settings\/pending\/[0-9a-f]{32}$/.test(path)) return true;
   if (method === "GET") return /^\/api\/settings\/(schema|fleet|fleet\/raw|classic|status-emojis|status-emojis\/guild-emojis|connections|provider-secrets|secrets|apply\/[^/]+|quickstart\/environment)$/.test(path)
     || /^\/api\/settings\/(provider-secrets|secrets)\/[^/]+\/apply\/[^/]+$/.test(path)
     || /^\/api\/settings\/connections\/[^/]+\/(secret|binding)\/apply\/[^/]+$/.test(path);

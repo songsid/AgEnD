@@ -114,3 +114,13 @@ describe("#1423 pending confirmation owner (no fleet or adapter)", () => {
     expect(JSON.stringify(audit.mock.calls)).not.toContain("immutable-operation-hash");
   });
 });
+
+it("the final CAS await cannot adopt a newer snapshot as its admission baseline", async () => {
+  let revision = 0; const apply = vi.fn(), store = new SettingsConfirmationStore({ audit: vi.fn() });
+  try {
+    const view = store.propose({ session: "s", key: "racy", bytes: 1, fingerprint: "effect", source: "web_session", section: "access", requestedBy: "browser", summary: ["add F ID 42"], current: () => true,
+      snapshot: () => revision, unchanged: async () => { queueMicrotask(() => { revision++; }); return true; }, apply }).view;
+    const outcome = await store.decide(view.id, "confirm", { label: "F", current: () => true });
+    expect(outcome.state).toBe("stale"); expect(apply).not.toHaveBeenCalled();
+  } finally { store.close(); }
+});

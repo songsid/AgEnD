@@ -1,3 +1,9 @@
+import { randomBytes } from "node:crypto";
+import { SettingsBaselines } from "./settings-baseline.js";
+import { SettingsConfirmationStore } from "./settings-confirmation.js";
+import { SettingsHttpConfirmation } from "./settings-http-confirmation.js";
+import { SettingsControlServer } from "./settings-control.js";
+import { settingsFingerprint, noteSettingsWrite } from "./settings-transaction.js";
 /**
  * The form that runs before there is a fleet.
  *
@@ -25,6 +31,7 @@
  * minted 256-bit secret rather than from that code, and every presented-and-
  * wrong credential spends one of five shared attempts.
  */
+import { performance } from "node:perf_hooks";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -48,7 +55,7 @@ import { leasePath } from "./tunnel/lease.js";
 import { CloudflaredProvider } from "./tunnel/cloudflared.js";
 import type { TunnelHandle, TunnelProvider } from "./tunnel/types.js";
 import yaml from "js-yaml";
-import { writeFileSync } from "node:fs";
+import { writeFileSync, renameSync, unlinkSync } from "node:fs";
 
 /** How long the form may stay open at all. */
 export const SETUP_HOST_TTL_MS = 15 * 60_000;
@@ -130,6 +137,8 @@ export class SetupHost {
 
   private managedTunnel: ManagedTunnel | null = null;
   private tunnelHandle: TunnelHandle | null = null;
+  private tunnelStartup: Promise<import("./tunnel/manager.js").ManagedStartResult> | null = null;
+  private tunnelAbort: AbortController | null = null;
   /** The exact host the tunnel answers on; nothing else is added to the set. */
   private externalHost: string | null = null;
   private tunnelStopResult: "confirmed" | "unconfirmed" | "none" = "none";
@@ -143,6 +152,57 @@ export class SetupHost {
    * "starting", and no fleet.
    */
   private handoverRequested = false;
+  private confirmation: SettingsHttpConfirmation | null = null;
+  private confirmationControl: SettingsControlServer | null = null;
+  private setupContext: QuickstartApiContext | null = null;
+  private committedFingerprint: string | null = null;
+  private startedAt = 0;
+  private admittedFinish = false;
+  private shutdownPromise: Promise<void> | null = null;
+
+  private confirmationGate(): SettingsHttpConfirmation {
+    if (this.confirmation) return this.confirmation;
+    const ctx = this.setupContext ??= this.context();
+    const baselines = new SettingsBaselines({ dataDir: this.opts.dataDir, configPath: () => this.opts.configPath,
+      config: () => ctx.fleetConfig, current: () => [this.stopping, this.credentials.sessionIdentity?.id ?? null] });
+    const store = new SettingsConfirmationStore({ audit: (event, fields) => this.log(`Settings confirmation ${event}: ${JSON.stringify(fields)}`) });
+    this.confirmation = new SettingsHttpConfirmation(store, {
+      principal: () => {
+        const owner = this.credentials.sessionIdentity;
+        if (!owner || this.stopping || this.admittedFinish) return null;
+        return { id: owner.id, label: "setup session", source: "setup_session", current: () => !this.stopping && !this.admittedFinish
+          && this.credentials.isSessionCurrent(owner) && (this.opts.now?.() ?? performance.now()) < this.startedAt + this.ttlMs };
+      }, baseline: () => baselines.read(), snapshot: () => baselines.snapshot(),
+      applied: async path => {
+        if (path === "/api/settings/quickstart/commit") {
+          const owner = this.credentials.sessionIdentity;
+          const fresh = await baselines.read();
+          if (!this.stopping && !this.admittedFinish && owner && this.credentials.isSessionCurrent(owner)) this.committedFingerprint = fresh.fingerprint;
+        }
+      },
+    });
+    return this.confirmation;
+  }
+
+  private async finishSetup(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const owner = this.credentials.sessionIdentity, gate = this.confirmationGate();
+    if (!owner || this.stopping || this.admittedFinish || !this.committedFingerprint || gate.store.list(owner.id).length) {
+      this.deny(res, 409, "Confirm the current setup change on the host before finishing."); return;
+    }
+    const ctx = this.setupContext!;
+    const baseline = new SettingsBaselines({ dataDir: this.opts.dataDir, configPath: () => this.opts.configPath,
+      config: () => ctx.fleetConfig, current: () => [this.stopping, this.credentials.sessionIdentity?.id ?? null] });
+    const fresh = await baseline.read();
+    if (req.aborted || res.destroyed || this.stopping || !this.credentials.isSessionCurrent(owner) || this.admittedFinish
+      || (this.opts.now?.() ?? performance.now()) >= this.startedAt + this.ttlMs || gate.store.list(owner.id).length
+      || fresh.fingerprint !== this.committedFingerprint) { this.deny(res, 409, "Setup changed; review and confirm again."); return; }
+    this.admittedFinish = true; this.handoverRequested = true;
+    gate.store.close();
+    res.setHeader("Content-Type", "application/json"); res.writeHead(202);
+    res.end(JSON.stringify({ starting: true, watch: this.externalHost === null }));
+    setTimeout(() => { void this.shutdown(true, "finished"); }, 10);
+  }
+
 
   private get ttlMs(): number { return this.opts.ttlMs ?? SETUP_HOST_TTL_MS; }
   private get idleMs(): number { return this.opts.idleMs ?? SETUP_HOST_IDLE_MS; }
@@ -163,7 +223,12 @@ export class SetupHost {
       // Nothing to preserve: before a fleet there are no comments and no hand
       // edits to keep, so a plain dump is the whole writer.
       saveFleetConfig: () => {
-        writeFileSync(this.opts.configPath, yaml.dump(config, { quotingType: '"', forceQuotes: false }), { mode: 0o600 });
+        noteSettingsWrite(this.opts.configPath, this.readConfig(), config);
+        const temp = `${this.opts.configPath}.${randomBytes(8).toString("hex")}.tmp`;
+        try {
+          writeFileSync(temp, yaml.dump(config, { quotingType: '"', forceQuotes: false }), { mode: 0o600, flag: "wx" });
+          renameSync(temp, this.opts.configPath);
+        } finally { try { unlinkSync(temp); } catch { /* renamed or not created */ } }
       },
       // No fleet, so nothing is polling any bot token.
     };
@@ -184,6 +249,10 @@ export class SetupHost {
     // Refuses while a fleet runs, and — since the record carries a role — is
     // equally refused to a fleet that starts while this host is up.
     this.lock = acquireFleetLock(this.opts.dataDir, { role: "setup-host", ...this.opts.lockProbe });
+    this.startedAt = this.opts.now?.() ?? performance.now();
+    const control = new SettingsControlServer(this.opts.dataDir, this.confirmationGate().store, () => !this.stopping && !this.admittedFinish);
+    this.confirmationControl = control;
+    try { await control.listen(); if (this.stopping) throw new Error("setup startup cancelled"); } catch (err) { await this.shutdown(false, "confirmation unavailable"); throw err; }
 
     const server = createServer((req, res) => this.handle(req, res));
     this.server = server;
@@ -191,10 +260,13 @@ export class SetupHost {
     // the only thing that decides, so a flag or a config value cannot put a
     // fixed port behind a tunnel.
     const bindPort = this.opts.tunnel ? 0 : this.opts.port;
-    await new Promise<void>((resolve, reject) => {
-      server.once("error", reject);
-      server.listen(bindPort, "127.0.0.1", () => { server.removeListener("error", reject); resolve(); });
-    });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(bindPort, "127.0.0.1", () => { server.removeListener("error", reject); resolve(); });
+      });
+      if (this.stopping) throw new Error("setup startup cancelled");
+    } catch (err) { await this.shutdown(false, "listener unavailable"); throw err; }
     this.ttlTimer = setTimeout(() => { void this.shutdown(false, "ttl"); }, this.ttlMs);
     this.ttlTimer.unref?.();
     this.boundPort = (server.address() as { port: number }).port;
@@ -213,23 +285,30 @@ export class SetupHost {
    * we cannot see may still be exposing it.
    */
   private async openTunnel(): Promise<string | null> {
+    if (this.stopping) throw new Error("Setup host stopped before tunnel startup");
+    const abort = new AbortController(); this.tunnelAbort = abort;
     const managed = new ManagedTunnel({ dataDir: this.opts.dataDir, log: m => this.log(m) });
     this.managedTunnel = managed;
     const provider = this.opts.tunnelProvider ?? new CloudflaredProvider();
-    const result = await managed.start(provider, {
+    const startup = managed.start(provider, {
       sid: this.sid,
       origin: new URL(`http://127.0.0.1:${this.boundPort}`),
       pagePath: this.basePath,
       readinessMarker: this.credentials.readinessMarker,
       expiresAt: (this.opts.now ?? Date.now)() + this.ttlMs,
-      signal: new AbortController().signal,
+      signal: abort.signal,
       // The provider's own readiness probe arrives here under the public
       // hostname, so it has to be on the list before that probe runs. Exactly
       // the one host the validator just accepted — the alternative shortcuts,
       // accepting any Host during startup or any `*.trycloudflare.com`, are
       // each a hole that outlives the ten seconds they would save.
-      onCandidateHost: host => { this.externalHost = host; },
+      onCandidateHost: host => { if (!this.stopping && !abort.signal.aborted) this.externalHost = host; },
     });
+    this.tunnelStartup = startup;
+    let result: import("./tunnel/manager.js").ManagedStartResult;
+    try { result = await startup; }
+    finally { if (this.tunnelStartup === startup) this.tunnelStartup = null; }
+    if (this.stopping || abort.signal.aborted) throw new Error("Setup host stopped during tunnel startup");
 
     if (result.ok) {
       this.tunnelHandle = result.handle;
@@ -389,7 +468,7 @@ export class SetupHost {
 
     // Only now: an authorized request is the only kind that should be able to
     // keep this page alive.
-    this.touch();
+    if (!(req.method === "GET" && /^\/api\/settings\/pending(?:\/[0-9a-f]{32})?$/.test(rest))) this.touch();
 
     if (req.method === "GET" && rest === "/setup/status") {
       res.setHeader("Content-Type", "application/json");
@@ -398,25 +477,14 @@ export class SetupHost {
       return;
     }
     if (req.method === "POST" && rest === "/setup/finish") {
-      res.setHeader("Content-Type", "application/json");
-      res.writeHead(202);
-      // `watch` is false behind a tunnel: this page is about to stop existing
-      // along with the hostname it is served on, so polling would only produce
-      // a false alarm. The dashboard is not an answer either — it binds
-      // loopback, so a link to it would be one a phone cannot open.
-      res.end(JSON.stringify({ starting: true, watch: this.externalHost === null }));
-      // Recorded before the timer, not inside it: the tunnel can die in
-      // between, and whichever shutdown runs first has to know a handover was
-      // asked for.
-      this.handoverRequested = true;
-      // After the response, so the browser has its answer before the port goes.
-      setTimeout(() => { void this.shutdown(true, "finished"); }, 10);
-      return;
+      void this.finishSetup(req, res).catch(() => this.deny(res, 409, "Setup confirmation unavailable.")); return;
     }
     // The wizard API is mounted under the sid too, so its paths are rewritten
     // rather than exposed at the root where a scanner could reach them.
     const inner = new URL(rest + url.search, "http://127.0.0.1");
-    if (handleQuickstartRequest(req, res, inner, this.context())) return;
+    const next = (request: IncomingMessage, response: ServerResponse, address: URL): boolean =>
+      handleQuickstartRequest(request, response, address, this.setupContext ??= this.context());
+    if (this.confirmationGate().handle(req, res, inner, next) || next(req, res, inner)) return;
 
     this.notFound(res);
   }
@@ -458,12 +526,18 @@ export class SetupHost {
    * single open poll stops the close from ever completing — so the form would
    * hang at "starting…" and the fleet would never be spawned.
    */
-  async shutdown(spawnSuccessor: boolean, reason: string): Promise<void> {
-    if (this.stopping) return;
+  shutdown(spawnSuccessor: boolean, reason: string): Promise<void> {
+    return this.shutdownPromise ??= this.performShutdown(spawnSuccessor, reason);
+  }
+
+  private async performShutdown(spawnSuccessor: boolean, reason: string): Promise<void> {
     this.stopping = true;
+    this.tunnelAbort?.abort(); this.externalHost = null;
+    this.confirmation?.store.close();
+    const confirmationClosed = this.confirmationControl?.close();
     // A handover asked for by the wizard survives a shutdown that began for a
     // different reason.
-    const handOver = spawnSuccessor || this.handoverRequested;
+    const handOver = this.admittedFinish && (spawnSuccessor || this.handoverRequested);
     if (this.ttlTimer) clearTimeout(this.ttlTimer);
     if (this.idleTimer) clearTimeout(this.idleTimer);
 
@@ -482,7 +556,8 @@ export class SetupHost {
     }
 
     // 3. The tunnel, with proof.
-    if (this.managedTunnel && this.tunnelHandle) {
+    await this.tunnelStartup?.catch(() => {});
+    if (this.managedTunnel) {
       const stopped = await this.managedTunnel.stop(reason);
       this.tunnelStopResult = stopped.confirmed ? "confirmed" : "unconfirmed";
       if (!stopped.confirmed) {
@@ -495,6 +570,7 @@ export class SetupHost {
       }
     }
 
+    await confirmationClosed;
     releaseFleetLock(this.lock);
     this.lock = undefined;
 

@@ -1,3 +1,5 @@
+import { settingsRequestExecution, settingsWrite } from "./settings-request-capability.js";
+import { SettingsExecutionError, settingsFileResource, trySettingsLease } from "./settings-transaction.js";
 import { readBoundedWebBody } from "./web-body.js";
 import { permitWebContinuation } from "./web-continuation.js";
 /**
@@ -393,34 +395,34 @@ export function handleQuickstartRequest(
         return json(res, 400, { error: validation.errors.map(e => `${e.path}: ${e.message}`).join("; ") });
       }
 
-      const secret = writeQuickstartSecret(ctx.dataDir, body.token_env, body.token);
-      if (!secret.ok) {
-        return json(res, 500, { error: "secret could not be stored securely" });
-      }
-      const before = {
-        channels: cfg.channels,
-        channel: (cfg as { channel?: unknown }).channel,
-        instance: cfg.instances[body.instance_name],
-        hadInstance: Object.prototype.hasOwnProperty.call(cfg.instances, body.instance_name),
-      };
-      cfg.channels = draft.channels;
-      delete (cfg as { channel?: unknown }).channel;
-      cfg.instances[body.instance_name] = draft.instances[body.instance_name]!;
-      try { ctx.saveFleetConfig(); }
-      catch (err) {
-        // The file is the authority. If it did not take the change, the running
-        // config must not keep it either.
+      const execution = settingsRequestExecution(req), envPath = join(ctx.dataDir, ".env");
+      const lease = trySettingsLease([settingsFileResource(envPath)], execution?.owner);
+      if (!lease) return json(res, 409, { error: "another secret operation is still running" });
+      let stored = false, secretBefore: import("./secret-store.js").SecretSnapshot | undefined;
+      const before = { channels: cfg.channels, channel: cfg.channel, instance: cfg.instances[body.instance_name],
+        hadInstance: Object.hasOwn(cfg.instances, body.instance_name) };
+      let store: SecretStore | undefined;
+      try {
+        execution?.assert();
+        store = new SecretStore(envPath, new Set([body.token_env]), { owner: lease.owner });
+        settingsWrite(req, () => {
+          secretBefore = store!.write(body.token_env, body.token!); stored = true;
+          cfg.channels = draft.channels; delete cfg.channel; cfg.instances[body.instance_name] = draft.instances[body.instance_name]!;
+          ctx.saveFleetConfig();
+        });
+      } catch (err) {
         cfg.channels = before.channels;
-        if (before.channel !== undefined) (cfg as { channel?: unknown }).channel = before.channel;
-        if (before.hadInstance) cfg.instances[body.instance_name] = before.instance!;
-        else delete cfg.instances[body.instance_name];
-        return json(res, 500, { error: (err as Error).message });
-      }
+        if (before.channel !== undefined) cfg.channel = before.channel; else delete cfg.channel;
+        if (before.hadInstance) cfg.instances[body.instance_name] = before.instance!; else delete cfg.instances[body.instance_name];
+        try { if (stored && secretBefore) store!.restoreIfCurrent(secretBefore); }
+        catch { return json(res, 500, { error: "setup cleanup failed; inspect configuration on the host" }); }
+        return json(res, err instanceof SettingsExecutionError ? 409 : 500, { error: "setup was not committed" });
+      } finally { lease.release(); }
       ctx.logger.info({ instance: body.instance_name, platform: body.platform }, "settings: quickstart committed");
       // No apply here: the page starts the ordinary job so the wizard's last
       // step has the same progress, deadline and restart recovery as everything
       // else the panel applies.
-      json(res, 200, { ok: true, plan, secret_mode_ok: secret.ok, warnings: plan.warnings });
+      json(res, 200, { ok: true, plan, secret_mode_ok: true, warnings: plan.warnings });
     }).catch(() => json(res, 400, { error: "bad request" }));
     return true;
   }

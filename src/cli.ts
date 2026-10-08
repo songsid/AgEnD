@@ -53,6 +53,7 @@ import { DeliveryOutbox, deliveryStatusSelector, type DeliveryStatusSelector } f
 import { DeliveryStatusArgs } from "./outbound-schemas.js";
 import type { CpuProfile } from "./cpu-profile.js";
 import { requestCpuProfile } from "./profile-control.js";
+import { requestSettingsConfirmation, type SettingsInspection } from "./settings-control.js";
 
 /** Prefix tmux args with -L when socket isolation is active. */
 function tmuxArgs(args: string[]): string[] {
@@ -121,6 +122,33 @@ function signalFleetReload(): void {
 
 // === Fleet commands ===
 const fleet = program.command("fleet").description("Fleet management");
+
+const settingsCommand = program.command("settings").description("Confirm sensitive Settings changes on this host");
+settingsCommand.command("confirm <id>").option("--yes", "Explicit noninteractive confirmation after printing the authoritative diff")
+  .action(async (id: string, options: { yes?: boolean }) => {
+    try {
+      const inspected = await requestSettingsConfirmation(DATA_DIR, { action: "inspect", id }) as SettingsInspection;
+      console.log(`Source: ${inspected.pending_change.source}\nRequester: ${inspected.pending_change.requested_by}\n${inspected.pending_change.summary.join("\n")}`);
+      let confirmed = options.yes === true;
+      if (!confirmed) {
+        if (!process.stdin.isTTY) throw new Error("Interactive confirmation required; --yes explicitly confirms the printed diff.");
+        const { createInterface } = await import("node:readline/promises");
+        const input = createInterface({ input: process.stdin, output: process.stdout });
+        try { confirmed = (await input.question("Apply this exact change? [y/N] ")).trim().toLowerCase() === "y"; } finally { input.close(); }
+      }
+      const result = await requestSettingsConfirmation(DATA_DIR, { action: confirmed ? "confirm" : "reject", ticket: inspected.ticket });
+      console.log(result.pending_change.outcome?.message ?? result.pending_change.state);
+      if (result.pending_change.state !== "applied" && confirmed) process.exitCode = 1;
+    } catch (err) { console.error((err as Error).message); process.exitCode = 1; }
+  });
+settingsCommand.command("reject <id>").action(async (id: string) => {
+  try {
+    const inspected = await requestSettingsConfirmation(DATA_DIR, { action: "inspect", id }) as SettingsInspection;
+    console.log(`Source: ${inspected.pending_change.source}\nRequester: ${inspected.pending_change.requested_by}\n${inspected.pending_change.summary.join("\n")}`);
+    const result = await requestSettingsConfirmation(DATA_DIR, { action: "reject", ticket: inspected.ticket });
+    console.log(result.pending_change.outcome?.message ?? result.pending_change.state);
+  } catch (err) { console.error((err as Error).message); process.exitCode = 1; }
+});
 
 program.command("profile")
   .description("Record the running fleet's CPU profile (local operator only; no restart)")
@@ -248,6 +276,7 @@ fleet
     });
 
     await fm.startCpuProfileControl().catch(err => console.warn(`Local profile control unavailable: ${String(err)}`));
+    await fm.startSettingsConfirmationControl().catch(err => console.warn(`Local Settings confirmation unavailable: ${String(err)}`));
     if (stopping) return;
     cpuProfile = await fm.startEnvironmentCpuProfile();
     if (stopping) { await cpuProfile?.stop("startup superseded by shutdown"); return; }

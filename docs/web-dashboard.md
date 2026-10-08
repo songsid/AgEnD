@@ -209,3 +209,11 @@ Full reference: [configuration.md](configuration.md). CLI commands: [cli.md](cli
 | "Your session has ended" | 2 hours without use, 12 hours since sign-in, or someone revoked. Sign in again. |
 | The dashboard briefly says "disconnected", then keeps updating | The live stream is blocked on your path, so it switched to polling every 5 seconds. Nothing to do. |
 | `/dashboard` answers "disabled" | No fleet admins are configured for that bot: add your user to its `allowed_users`. |
+
+### Confirming sensitive changes
+
+Changing access/F/C lists, secrets, connection destinations/order, public exposure or control-bearing instance settings returns `202 pending_confirmation`. The requester can list/poll `GET /api/settings/pending[/:id]` and withdraw an unclaimed request with `DELETE /api/settings/pending/:id`. Other sessions receive 404. Polling is passive and does not extend sign-in lifetime; `remaining_ms` is the countdown, and the display timestamp is not an authorization deadline.
+
+Confirm the redacted diff in General as a fleet admin. If chat is unavailable, use the host command `agend settings confirm <id>`; Reject, expiry or session revocation does not apply the change. Apply retries must reuse the same `Idempotency-Key` and body, which returns the same request. After a terminal failure, review and submit a new key; secrets must be entered again. The Settings shell's waiting-state presentation is handled separately in #1408.
+
+First-time Setup also returns a pending request. Confirm it on the host, then explicitly choose **Start AgEnD**. A pending response, an old successful commit or a changed configuration cannot hand over the setup listener to the fleet.
