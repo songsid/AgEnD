@@ -328,7 +328,7 @@ describe("evidence that cannot be attributed is not ours (#1353 review)", () => 
 });
 
 describe("text in the box after an unreadable baseline is not proof either (#1353 review)", () => {
-  it("a system paste (no unique id) seen only IN the box, against a baseline whose box could not be read: never 'submitted' — the defensive second Enter still goes out", async () => {
+  it("a system paste (no unique id) seen only IN the box, against a baseline whose box could not be read: never 'submitted'", async () => {
     vi.useFakeTimers();
     const root = mkdtempSync(join(tmpdir(), "agend-1200-res-")); roots.push(root);
     const instanceDir = join(root, "instances", "worker");
@@ -350,10 +350,15 @@ describe("text in the box after an unreadable baseline is not proof either (#135
       sendSpecialKey: vi.fn(async (key: string) => { if (key === "Enter") s.enters++; return true; }),
       getWindowId: () => "@worker",
     };
+    const verdicts: string[] = [];
+    const judge = daemon.confirmSubmitted.bind(daemon);
+    daemon.confirmSubmitted = async (...args: unknown[]) => { const v = await judge(...args); verdicts.push(v); return v; };
     const done = daemon.submitSystemPaste(text, "notice");
     await vi.advanceTimersByTimeAsync(20_000);
     await done;
-    // "submitted" would have stopped at one Enter; unattributable evidence keeps the best-effort second Enter.
-    expect(s.enters).toBe(2);
+    expect(verdicts.length).toBeGreaterThan(0);
+    expect(verdicts).not.toContain("submitted");
+    // Claude queues its own input since #1169: no defensive second Enter (it could touch the queue).
+    expect(s.enters).toBe(1);
   });
 });
