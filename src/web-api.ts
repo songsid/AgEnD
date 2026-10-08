@@ -26,6 +26,7 @@ import { getAgendHome } from "./paths.js";
 import type { WebSessionStore } from "./web-session.js";
 import { authorizeExplicitInstanceRemoval } from "./instance-removal.js";
 import type { ExplicitInstanceRemoval } from "./instance-removal.js";
+import { measureSyncWork } from "./sync-work-attribution.js";
 
 // ── Strict public-facing schemas ────────────────────────────────────────────
 // web-api endpoints must reject unknown fields so the dashboard cannot inject
@@ -379,7 +380,8 @@ export function handleWebRequest(
         return;
       }
       try {
-        res.write(`event: status\ndata: ${JSON.stringify(ctx.getUiStatus())}\n\n`);
+        // Every open dashboard tab, every 10 s: the status of every instance, serialized on the fleet's loop (#1235).
+        res.write(measureSyncWork("web.sseStatus", () => `event: status\ndata: ${JSON.stringify(ctx.getUiStatus())}\n\n`));
       } catch {
         cleanup();
       }

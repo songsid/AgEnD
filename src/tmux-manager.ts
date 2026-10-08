@@ -1,8 +1,15 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { measureSyncWork } from "./sync-work-attribution.js";
 import type { TerminalConfig } from "./types.js";
 
-const exec = promisify(execFile);
+const execAsync = promisify(execFile);
+/**
+ * Every `tmux` call here. Starting the child process is synchronous on the fleet's loop (fork/exec of a large process),
+ * and a sweep starts one per instance in the same tick (the shared control client's 60 s safety sweep): the spawn is
+ * attributed so a stall made of N of them names itself (#1235). The promise itself is unchanged.
+ */
+const exec = ((...args: Parameters<typeof execAsync>) => measureSyncWork("tmux.spawn", () => execAsync(...args))) as typeof execAsync;
 /** Keys sendKeySequence may send: cursor moves and deletions inside an input line. */
 const EDITING_KEYS: ReadonlySet<string> = new Set(["C-a", "C-e", "C-u", "C-k", "BSpace", "DC", "Home", "End", "Left", "Right"]);
 
@@ -29,7 +36,7 @@ function isTransientLoadBufferError(err: unknown): boolean {
 /** Feed a tmux buffer through stdin so payload bytes never become an argv element. */
 function execTmuxWithInput(tmuxArgs: string[], input: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = execFile("tmux", tmuxArgs, (error, _stdout, stderr) => {
+    const child = measureSyncWork("tmux.spawn", () => execFile("tmux", tmuxArgs, (error, _stdout, stderr) => {
       if (!error) {
         resolve();
         return;
@@ -37,7 +44,7 @@ function execTmuxWithInput(tmuxArgs: string[], input: string): Promise<void> {
       const detail = String(stderr || "").trim();
       if (detail && !error.message.includes(detail)) error.message = `${error.message}: ${detail}`;
       reject(error);
-    });
+    }));
     child?.stdin?.on("error", reject);
     child?.stdin?.end(input);
   });

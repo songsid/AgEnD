@@ -50,6 +50,7 @@ import { deliveryContentDigest, type DaemonDeliveryPort, type DeliveryAttemptEvi
 import { consumedWatches } from "./delivery-consumed-watch.js";
 import { queueResumePolicyForAttempt } from "./delivery-queue-evidence.js";
 import { scanTranscriptForDeliveryMarker, type TranscriptMarkerKind } from "./delivery-reconciliation.js";
+import { measureSyncWork, noteSyncWork } from "./sync-work-attribution.js";
 import { TranscriptDeltaReader } from "./transcript-delta-reader.js";
 import {
   buildResumeContinuation,
@@ -2878,7 +2879,7 @@ export class Daemon extends EventEmitter {
           // Stop the loop permanently — otherwise every tick triggers a respawn, whose
           // writeRotationSnapshot fails with ENOENT and gets caught as "Failed to respawn",
           // spamming errors every ~30s forever.
-          if (!existsSync(this.instanceDir)) {
+          if (!measureSyncWork("daemon.healthCheck", () => existsSync(this.instanceDir))) {
             this.logger.warn({ instanceDir: this.instanceDir }, "Instance directory missing — stopping health check");
             this.healthCheckPaused = true;
             this.healthCheckTimer = null;
@@ -2890,7 +2891,7 @@ export class Daemon extends EventEmitter {
             return;
           }
           // The CLI owns the MCP server process, so the daemon can only observe it.
-          this.checkMcpServerAlive();
+          measureSyncWork("daemon.healthCheck", () => this.checkMcpServerAlive());
 
           // Human-readable backend label for logs (e.g. "claude", "kiro-cli")
           const cliLabel = this.backend?.binaryName ?? "CLI";
@@ -2911,7 +2912,7 @@ export class Daemon extends EventEmitter {
             // 10–100 MiB log runs off the event loop, and this tick must not wait for
             // it (#1161) — scheduleNext() below is not delayed by a rotation.
             if (!this.config.lightweight) {
-              void rotateLogIfNeededAsync(join(this.instanceDir, "output.log"));
+              void measureSyncWork("daemon.healthCheck", () => rotateLogIfNeededAsync(join(this.instanceDir, "output.log")));
             }
             scheduleNext();
             return;
@@ -3353,6 +3354,8 @@ export class Daemon extends EventEmitter {
       const captureMono = performance.now();
       const stale = (): boolean => pollSpawn !== this.spawnGeneration || pollFence !== this.launchFenceEpoch
         || !sameInteractionOwner(pollOwner, this.interactionOwner()) || this.runtimeMonitorsFrozen || this.spawning;
+      let scanStartedAt: number | null = null;
+      const endScan = () => { if (scanStartedAt !== null) noteSyncWork("daemon.errorMonitorScan", scanStartedAt); scanStartedAt = null; };
       try {
         const alive = await this.tmux.isWindowAlive();
         if (stale()) return;
@@ -3360,6 +3363,8 @@ export class Daemon extends EventEmitter {
 
         const captureAt = Date.now();
         const pane = await this.tmux.capturePane();
+        // The scan of this pane is synchronous until it answers a dialog (an await) or ends: attributed (#1235).
+        scanStartedAt = performance.now();
         if (stale()) return;
         if (this.instanceStateLastOutputAt > 0 && this.instanceStateLastOutputAt >= captureAt) {
           this.unverifyInteraction(captureMono, captureOrder);
@@ -3447,6 +3452,7 @@ export class Daemon extends EventEmitter {
           // (not queue) when the pane is busy: this poller runs every 5s, and the
           // dialog will still be on screen next tick.
           let resolved = false;
+          endScan();
           const dismissed = await this.paneWriteLock.tryRun(async () => {
             // Re-read under the lock: the first capture may have gone stale
             // while a delivery was finishing. A stale danger menu must never
@@ -3563,6 +3569,8 @@ export class Daemon extends EventEmitter {
       } catch {
         if (!stale()) this.unverifyInteraction(captureMono, captureOrder);
         // capturePane can fail if window is transitioning — ignore
+      } finally {
+        endScan();
       }
     }, 5_000); // Check every 5 seconds (runtime dialogs need fast response)
   }
@@ -5471,6 +5479,7 @@ export class Daemon extends EventEmitter {
       return;
     }
     this.statePollInFlight = true;
+    let evaluationStartedAt: number | null = null;
     const captureStartedAt = Date.now();
     const interactionCaptureAt = performance.now();
     const interactionCaptureOrder = ++this.interactionCaptureSerial;
@@ -5486,6 +5495,9 @@ export class Daemon extends EventEmitter {
       // output and launch freshness AFTER both awaits, before accepting it.
       const deliveryCandidate = reason === "delivery_idle_gate"
         ? await this.probeDeliveryIdleFallback(pane) : null;
+      // Everything from here to the finally is synchronous: the evaluation of this pane (#1235 attribution — a sweep
+      // runs it for every instance in a row).
+      evaluationStartedAt = performance.now();
       // An old capture must not retire a new launch's transient guard either.
       // This check is only live here, after the probe's await: the identical
       // check before the probe was dead (no await in between, so the early
@@ -5708,6 +5720,7 @@ export class Daemon extends EventEmitter {
       this.logger.debug({ err: (err as Error).message, reason }, "Instance state capture failed");
     } finally {
       this.statePollInFlight = false;
+      if (evaluationStartedAt !== null) noteSyncWork(`daemon.stateEvaluate:${reason}`, evaluationStartedAt);
     }
   }
 
