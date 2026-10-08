@@ -428,9 +428,9 @@ channels:
 |------|------|------|
 | `defaults.model` | string | 所有 classic channel 的預設模型 |
 | `defaults.context_lines` | number | 每次訊息前注入的聊天記錄行數（預設 5，設 0 停用） |
-| `defaults.allowed_guilds` | string[] | 允許使用 ClassicBot 的 Discord 伺服器 ID（空 = 全部允許） |
-| `defaults.allowed_groups` | string[] | 允許使用 ClassicBot 的 Telegram 群組 ID |
-| `defaults.allowed_users` | string[] | 允許互動的使用者 ID |
+| `defaults.allowed_guilds` | string[] | 獲准新啟動 ClassicBot 的 Discord 伺服器 ID（空白／省略會申請核准） |
+| `defaults.allowed_groups` | string[] | 獲准存取的 Telegram 群組 ID（空白／省略會申請核准） |
+| `defaults.allowed_users` | string[] | 獲准新啟動的 Telegram 私訊使用者 ID（空白／省略會申請核准） |
 | `defaults.admin_users` | string[] | Classic 管理者 ID；平台間的指令 gate 不同，見[權限矩陣](permissions.md)。`/raw` 不是支援的指令 |
 | `defaults.reply_completion_guard` | boolean | 個別 channel → Classic defaults → fleet defaults → `true`；仍需上述 backend capability |
 | `channels.<key>.channelId` | string | 真實 channel／chat ID；未填時使用 YAML key |
@@ -442,6 +442,8 @@ channels:
 | `channels.<key>.reply_completion_guard` | boolean | 個別 channel 的人類回覆 guard 覆寫 |
 | `channels.<key>.collab` | boolean | @mention 觸發的協作模式（預設 `false`） |
 | `channels.<key>.pre_task_command` | string | 每次訊息前貼入的原始命令 |
+
+新啟動時，ClassicBot 管理員（`admin_users`）可直接啟動；其他使用者須有明確的伺服器／私訊使用者授權，否則透過 General 的「允許／允許＋設為管理員／忽略」按鈕申請。Telegram 私訊核准加入 `allowed_users`。Telegram 群組仍須由 ClassicBot 管理員啟動；「允許」只授權群組，「允許＋設為管理員」另提升申請者。既有已註冊頻道繼續運作，Discord DM 仍不支援。核准不會自動啟動 Agent，請再次 `/start`（群組用 `/start@OurBot`）。
 
 ### 手動管理
 
