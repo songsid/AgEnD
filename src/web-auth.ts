@@ -337,12 +337,31 @@ function authorize(
 }
 
 /**
- * Requests a page makes on its own timer, with nobody at it: the dashboard's poll fallback (#1251 review). They are
- * authorized in full — session, expiry, revocation, token epoch — but never count as activity, or a tab left open
- * would keep its session alive past the idle limit forever. The stream's own heartbeat re-check is the same idea.
+ * Requests a page makes on its own timer, with nobody at it. They are authorized in full — session, expiry,
+ * revocation, token epoch — but never count as activity, or a tab left open would keep its session alive until the
+ * absolute cap and the idle limit would mean nothing (#1251 review; #1373 for /view and the stream).
+ *
+ * An explicit list of method + path, decided by the server. Never a header or a parameter the client sets: a page
+ * that could declare itself passive could also declare itself active.
+ *
+ * - `GET /ui/poll`: the dashboard's fallback poll, every 5 s while the stream is down.
+ * - `GET /ui/events`: the dashboard's live stream. The page opens it after it has loaded, and the browser reopens it
+ *   on its own whenever it drops; the page load that opened it already counted. (Its heartbeat re-check passes
+ *   `touch: false` itself.)
+ * - `GET /api/pane/<instance>`: `/view`'s terminal, every 0.8 s.
+ * - `GET /api/profiles`: `/view`'s roster, every 5 s.
+ * - `GET /api/ai-usage`: the usage panel, every minute while it is open.
+ *
+ * Everything else a session authorizes — a page load, a chat's history, any write — is the person, and slides the
+ * idle expiry. Only these matter when a session is required for them: `/view`'s reads and the usage panel are open by
+ * default and then touch nothing at all.
  */
+const PASSIVE_GET_PATHS: ReadonlySet<string> = new Set(["/ui/poll", "/ui/events", "/api/profiles", "/api/ai-usage"]);
+const PASSIVE_GET_PANE = /^\/api\/pane\/[^/]+$/;
+
 export function isPassiveWebRead(method: string | undefined, path: string): boolean {
-  return (method ?? "GET") === "GET" && path === "/ui/poll";
+  if ((method ?? "GET") !== "GET") return false;
+  return PASSIVE_GET_PATHS.has(path) || PASSIVE_GET_PANE.test(path);
 }
 
 /**
@@ -363,7 +382,8 @@ export function decideWebGate(
 /**
  * The decision, for a handler that needs to say *why* it refused (401 vs the 403
  * a cross-site or CSRF failure earns) rather than only whether. A `?token=` in the
- * URL is not a credential here either.
+ * URL is not a credential here either. Counts as activity exactly when the gate
+ * does (`isPassiveWebRead`), unless `touch` says otherwise.
  */
 export function evaluateWebRequest(
   req: WebGateRequest,
@@ -372,7 +392,8 @@ export function evaluateWebRequest(
   sessions?: WebSessionStore | null,
   opts: { touch?: boolean } = {},
 ): WebGateDecision {
-  return authorize(req, url, token, sessions, { touch: opts.touch !== false });
+  // A handler re-checking a request the gate already let through must not count it as activity when the gate did not.
+  return authorize(req, url, token, sessions, { touch: opts.touch ?? !isPassiveWebRead(req.method, url.pathname) });
 }
 
 /**
@@ -388,5 +409,5 @@ export function isWebRequestAuthorized(
   sessions?: WebSessionStore | null,
   opts: { touch?: boolean } = {},
 ): boolean {
-  return authorize(req, url, token, sessions, { touch: opts.touch !== false }).kind === "allow";
+  return authorize(req, url, token, sessions, { touch: opts.touch ?? !isPassiveWebRead(req.method, url.pathname) }).kind === "allow";
 }
