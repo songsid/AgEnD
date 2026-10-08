@@ -1058,3 +1058,4 @@ One fleet-wide sampler reads host memory every 30 seconds and before every spawn
 - after a critical hold clears, starts ramp back up slowly for 30 seconds.
 
 `/health` always carries a `hostMemory` block (level, RAM and swap, trend); on Linux, pressure also marks it degraded, and a fleet notice is sent with a 10-minute cooldown (an escalation to critical is sent at once). On **macOS** the sample is written to the log only since #1257: nothing is slowed or held, no notice is sent, and `/health` does not report pressure, because macOS's free-memory and swap numbers alerted on machines with plenty of memory. Details: [memory-pressure.md](memory-pressure.md).
+<!-- docs-only proof -->
