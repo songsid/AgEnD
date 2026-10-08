@@ -1923,11 +1923,14 @@ export class InstanceLifecycle {
     // This is needed even when daemon is not in memory — stop() only calls
     // backend.cleanup() when daemon object exists. Without this, stale MCP
     // entries remain in the working directory and crash new instances.
-    if (config.working_directory && config.backend) {
+    // By the effective backend: an instance on the fleet default backend (no per-instance `backend`) has the same
+    // files to clean up (#906 review: an inherited kiro left its agent, steering and shared entry behind).
+    const effectiveBackend = config.backend ?? this.ctx.fleetConfig?.defaults?.backend;
+    if (config.working_directory && effectiveBackend) {
       try {
         const { createBackend } = await import("./backend/factory.js");
         const instanceDir = this.ctx.getInstanceDir(name);
-        const backend = createBackend(config.backend, instanceDir);
+        const backend = createBackend(effectiveBackend, instanceDir);
         if (backend?.cleanup) {
           const backendConfig = {
             workingDirectory: config.working_directory,

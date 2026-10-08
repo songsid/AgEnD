@@ -481,6 +481,15 @@ export class TmuxManager {
     }
   }
 
+  /** Delete `count` characters before the cursor (a paste AgEnD must take back before submitting it). */
+  async deleteBackward(count: number): Promise<boolean> {
+    if (!Number.isInteger(count) || count <= 0) return true;
+    try {
+      await exec("tmux", TmuxManager.tmuxArgs(["send-keys", "-t", `${this.sessionName}:${this.windowId}`, "-N", String(count), "BSpace"]));
+      return true;
+    } catch { return false; }
+  }
+
   /** Diagnostic from the most recent failed sendSpecialKey call. */
   getLastSendSpecialKeyError(): string | null {
     return this.lastSendSpecialKeyError;

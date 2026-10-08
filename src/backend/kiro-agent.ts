@@ -12,7 +12,7 @@
  */
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, realpathSync, unlinkSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, normalize, resolve } from "node:path";
 import { writeFileAtomic } from "./kiro-engine-ledger.js";
 
 /** Instance names written as they are; any other name is hashed under a different prefix, so the two never meet. */
@@ -57,20 +57,36 @@ export function expectedKiroServers(spec: KiroAgentSpec): Record<string, string>
   return map;
 }
 
-const samePath = (a: unknown, b: string): boolean => typeof a === "string" && a.length > 0 && resolve(a) === resolve(b);
+/**
+ * The same file, compared as written: an absolute path, normalized. A relative command means whatever kiro's own
+ * working directory makes of it, which is never evidence that it is one of AgEnD's wrappers (#1416 review).
+ */
+const samePath = (a: unknown, b: string): boolean =>
+  typeof a === "string" && isAbsolute(a) && isAbsolute(b) && normalize(a) === normalize(b);
 
-/** Ours only on a positive, canonical match: our name, exactly our keys (never an empty map), our own wrappers. */
+/** The provenance line every agent file AgEnD writes carries: this fleet and this instance. */
+export const kiroAgentDescription = (spec: KiroAgentSpec): string =>
+  `AgEnD fleet instance ${spec.instance} (agend-fleet:${spec.fleet})`;
+
+/**
+ * Ours only on positive evidence, never on absence: our name, our provenance line, and every MCP server in it one of
+ * THIS instance's own wrapper scripts under its own key (`<server>-<instance>` → `<instanceDir>/mcp-wrapper-<server>.sh`,
+ * absolute). Which servers, and how many, may differ — an instance in CLI agent mode has none, and a mode switch
+ * changes the set — but a sibling's wrapper, a relative command or any other entry is never ours.
+ */
 export function isOwnKiroAgent(value: unknown, spec: KiroAgentSpec): boolean {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const v = value as Record<string, unknown>;
-  if (v.name !== kiroAgentName(spec.instance, spec.fleet)) return false;
+  if (v.name !== kiroAgentName(spec.instance, spec.fleet) || v.description !== kiroAgentDescription(spec)) return false;
   const servers = v.mcpServers;
   if (!servers || typeof servers !== "object" || Array.isArray(servers)) return false;
-  const expected = expectedKiroServers(spec);
-  const keys = Object.keys(servers as object);
-  const want = Object.keys(expected);
-  if (want.length === 0 || keys.length !== want.length || !want.every(k => keys.includes(k))) return false;
-  return want.every(k => samePath((servers as Record<string, Record<string, unknown> | null>)[k]?.command, expected[k]!));
+  const suffix = `-${spec.instance}`;
+  return Object.entries(servers as Record<string, unknown>).every(([key, entry]) => {
+    if (!key.endsWith(suffix) || key.length === suffix.length) return false;
+    const server = key.slice(0, -suffix.length);
+    const command = (entry as Record<string, unknown> | null)?.command;
+    return samePath(command, kiroWrapperPath(spec.instanceDir, server));
+  });
 }
 
 function readJson(path: string): { kind: "absent" } | { kind: "unreadable" } | { kind: "ok"; value: unknown } {
@@ -100,7 +116,7 @@ export function writeKiroAgent(spec: KiroAgentSpec, instructions: string | undef
   for (const [key, command] of Object.entries(expectedKiroServers(spec))) mcpServers[key] = { command, args: [] };
   const agent = {
     name: kiroAgentName(spec.instance, spec.fleet),
-    description: `AgEnD fleet instance ${spec.instance}`,
+    description: kiroAgentDescription(spec),
     prompt: instructions ?? null,
     mcpServers,
     tools: ["*"],
@@ -158,7 +174,7 @@ export function writeSharedKiroMcpEntries(spec: KiroAgentSpec): SharedFileOutcom
   let changed = false;
   let conflict = false;
   for (const [key, wrapper] of Object.entries(expectedKiroServers(spec))) {
-    const current = servers[key] as Record<string, unknown> | undefined;
+    const current = Object.hasOwn(servers, key) ? servers[key] as Record<string, unknown> | undefined : undefined;
     if (current === undefined) { servers[key] = { command: wrapper, args: [] }; changed = true; continue; }
     if (!samePath(current?.command, wrapper)) conflict = true;
   }
@@ -173,7 +189,7 @@ export function writeSharedKiroMcpEntries(spec: KiroAgentSpec): SharedFileOutcom
 
 /** A wrapper script of this fleet: `<instancesRoot>/<some instance>/mcp-wrapper-<server>.sh`. */
 function fleetWrapperInstanceDir(command: unknown, instancesRoot: string): string | null {
-  if (typeof command !== "string" || !command) return null;
+  if (typeof command !== "string" || !isAbsolute(command)) return null;
   if (!/^mcp-wrapper-[^/]+\.sh$/.test(basename(command))) return null;
   const dir = resolve(dirname(command));
   return resolve(dirname(dir)) === resolve(instancesRoot) ? dir : null;
@@ -199,7 +215,7 @@ export function removeSharedKiroMcpEntries(spec: KiroAgentSpec, instancesRoot: s
   let changed = false;
   for (const [key, value] of Object.entries(servers)) {
     const command = (value as Record<string, unknown> | null)?.command;
-    const mine = own && key in expected && samePath(command, expected[key]!);
+    const mine = own && Object.hasOwn(expected, key) && samePath(command, expected[key]!);
     const gone = (() => { const dir = fleetWrapperInstanceDir(command, instancesRoot); return dir !== null && !existsSync(dir); })();
     if (mine || gone) { delete servers[key]; changed = true; }
   }

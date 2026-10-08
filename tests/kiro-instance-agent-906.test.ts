@@ -9,9 +9,10 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Database from "better-sqlite3";
+import { createHash } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import {
   expectedKiroServers, isOwnKiroAgent, kiroAgentName, kiroAgentPath, kiroFleetTag, kiroSteeringPath, kiroSteeringTag,
   removeKiroAgent, removeSharedKiroMcpEntries, removeTaggedKiroSteering, writeKiroAgent, writeSharedKiroMcpEntries,
@@ -43,6 +44,7 @@ function spec(over: Partial<KiroAgentSpec> = {}): KiroAgentSpec {
   };
 }
 const readJson = (p: string) => JSON.parse(readFileSync(p, "utf-8"));
+const stateName = (instance: string) => `${createHash("sha256").update(instance).digest("hex").slice(0, 32)}.json`;
 const mcpPath = () => join(root, "work", ".kiro", "settings", "mcp.json");
 
 describe("§1 the agent: fleet-scoped name, canonical ownership", () => {
@@ -71,10 +73,11 @@ describe("§1 the agent: fleet-scoped name, canonical ownership", () => {
   });
 
   const notOurs: Array<[string, (a: Record<string, any>, s: KiroAgentSpec) => void]> = [
-    ["an empty mcpServers", a => { a.mcpServers = {}; }],
+    ["no provenance line (an empty map from someone else)", a => { a.mcpServers = {}; a.description = "my agent"; }],
+    ["a relative command naming our wrapper", (a, s) => { a.mcpServers["agend-worker"].command = relative(process.cwd(), join(s.instanceDir, "mcp-wrapper-agend.sh")); }],
     ["a sibling's wrapper", (a, s) => { a.mcpServers["agend-worker"].command = join(s.instanceDir, "..", "sibling", "mcp-wrapper-agend.sh"); }],
-    ["an extra key", (a, s) => { a.mcpServers.extra = { command: join(s.instanceDir, "mcp-wrapper-agend.sh") }; }],
-    ["a missing key", a => { delete a.mcpServers["agend-worker"]; a.mcpServers.other = { command: "x" }; }],
+    ["an extra entry that is not ours", (a, s) => { a.mcpServers.extra = { command: join(s.instanceDir, "mcp-wrapper-agend.sh") }; }],
+    ["another server in place of ours", a => { delete a.mcpServers["agend-worker"]; a.mcpServers.other = { command: "x" }; }],
     ["another name", a => { a.name = "agend-worker-ffffffff"; }],
   ];
   for (const [label, mutate] of notOurs) {
@@ -199,13 +202,13 @@ describe("§4 the shared files: written only where free, removed only by provena
 
 // ── §2 identity ──
 
-function v1Store(rows: Array<[string, string, number]>): string {
+function v1Store(rows: Array<[string, string, number, number?]>): string {
   const dir = join(root, "xdg", "kiro-cli");
   mkdirSync(dir, { recursive: true });
   const db = new Database(join(dir, "data.sqlite3"));
-  db.exec("CREATE TABLE IF NOT EXISTS conversations_v2 (key TEXT NOT NULL, conversation_id TEXT NOT NULL, value TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (key, conversation_id)); CREATE INDEX IF NOT EXISTS idx_k ON conversations_v2(key, updated_at DESC);");
+  db.exec("CREATE TABLE IF NOT EXISTS conversations_v2 (key TEXT NOT NULL, conversation_id TEXT NOT NULL, value TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (key, conversation_id)); CREATE INDEX IF NOT EXISTS idx_conversations_v2_key_updated ON conversations_v2(key, updated_at DESC);");
   const ins = db.prepare("INSERT OR REPLACE INTO conversations_v2 VALUES (?, ?, '{}', ?, ?)");
-  for (const [key, id, at] of rows) ins.run(key, id, at, at);
+  for (const [key, id, at, created] of rows) ins.run(key, id, created ?? at, at);
   db.close();
   return join(dir, "data.sqlite3");
 }
@@ -213,7 +216,7 @@ function v1Store(rows: Array<[string, string, number]>): string {
 describe("§2 store selectors", () => {
   it("v1: this directory's conversations from conversations_v2, newest by updated_at; a missing database is empty", () => {
     const cwd = join(root, "work");
-    expect(listKiroV1Sessions(cwd, join(root, "xdg", "kiro-cli", "data.sqlite3"))).toEqual({ kind: "ok", sessions: [] });
+    expect(listKiroV1Sessions(cwd, join(root, "xdg", "kiro-cli", "data.sqlite3"))).toMatchObject({ kind: "ok", sessions: [] });
     const db = v1Store([[cwd, "c-old", 100], [cwd, "c-new", 200], [join(root, "other"), "c-other", 300]]);
     const read = listKiroV1Sessions(cwd, db);
     expect(read.kind === "ok" && read.sessions.sort((a, b) => b.updatedAt - a.updatedAt).map(s => s.id)).toEqual(["c-new", "c-old"]);
@@ -233,7 +236,8 @@ describe("§2 store selectors", () => {
     file("s-sub", { cwd, session_created_reason: "subagent" });
     file("s-other", { cwd: join(root, "other") });
     writeFileSync(join(dir, "s-partial.json"), "{");
-    expect(listKiroV2Sessions(cwd, dir)).toEqual({ kind: "ok", sessions: [{ id: "s-mine", updatedAt: Date.parse("2026-10-08T12:00:00Z") }] });
+    const read = listKiroV2Sessions(cwd, dir);
+    expect(read).toMatchObject({ kind: "ok", sessions: [{ id: "s-mine", updatedAt: Date.parse("2026-10-08T12:00:00Z") }] });
     expect(listKiroV2Sessions(cwd, join(root, "nope")).kind).toBe("ok");
   });
 });
@@ -241,13 +245,17 @@ describe("§2 store selectors", () => {
 describe("§2 the conversation identity", () => {
   const home = () => join(root, "agend");
   let now = 1_000;
-  const store = { read: { kind: "ok", sessions: [] } as KiroStoreRead, reads: 0 };
-  beforeEach(() => { now = 1_000; store.read = { kind: "ok", sessions: [] }; store.reads = 0; });
+  const store = { read: { kind: "ok", sessions: [], createdAt: () => null } as KiroStoreRead, reads: 0 };
+  beforeEach(() => { now = 1_000; store.read = { kind: "ok", sessions: [], createdAt: () => null }; store.reads = 0; });
   const resolveAs = (instance: string, over: Partial<Parameters<typeof resolveKiroIdentity>[0]> = {}) => resolveKiroIdentity({
     instance, engine: "v1", workingDirectory: join(root, "work"), credentialProfile: null, agendHome: home(),
     readStore: () => { store.reads++; return store.read; }, launchedBefore: () => true, now: () => now, ...over,
   });
-  const ok = (...s: Array<[string, number]>): KiroStoreRead => ({ kind: "ok", sessions: s.map(([id, updatedAt]) => ({ id, updatedAt })) });
+  /** [id, updatedAt, createdAt (default: updatedAt — a conversation made then)] */
+  const ok = (...s: Array<[string, number, number?]>): KiroStoreRead => ({
+    kind: "ok", sessions: s.map(([id, updatedAt]) => ({ id, updatedAt })),
+    createdAt: (id: string) => { const row = s.find(r => r[0] === id); return row ? row[2] ?? row[1] : null; },
+  });
 
   it("adoption: a pre-#906 instance claims the newest conversation and resumes it, switch not yet confirmed", () => {
     store.read = ok(["c1", 10], ["c2", 20]);
@@ -263,7 +271,7 @@ describe("§2 the conversation identity", () => {
   it("adoption with an unreadable store is legacy mode: nothing recorded, the next launch adopts", () => {
     store.read = { kind: "unreadable", detail: "locked" };
     expect(resolveAs("a")).toEqual({ mode: "legacy", reason: "locked" });
-    expect(existsSync(join(home(), "kiro-identity", "instances", "a.json"))).toBe(false);
+    expect(existsSync(join(home(), "kiro-identity", "instances", stateName("a")))).toBe(false);
     store.read = ok(["c1", 10]);
     expect(resolveAs("a")).toMatchObject({ mode: "resume", id: "c1" });
   });
@@ -348,7 +356,7 @@ describe("§2 the conversation identity", () => {
 
   it("a malformed state file is not 'no state': this key starts fresh, never a selection", () => {
     mkdirSync(join(home(), "kiro-identity", "instances"), { recursive: true });
-    writeFileSync(join(home(), "kiro-identity", "instances", "a.json"), "{ nope");
+    writeFileSync(join(home(), "kiro-identity", "instances", stateName("a")), "{ nope");
     store.read = ok(["c1", 10]);
     expect(resolveAs("a")).toEqual({ mode: "fresh" });
   });

@@ -6,38 +6,44 @@
  * (probe, E9), so two instances in one directory could each come back as the other. Each instance resumes by
  * `--resume-id` the conversation it owns. The model is kiro-v3-identity.ts's, per engine store:
  *
- *   claims/<engine>/<id>   created exclusively ("wx") holding the owner's name and a newline, written last; only the
- *                          owner removes it, and it is kept for a conversation the owner gave up, so nobody takes
- *                          that one up again.
- *   instances/<name>.json  one record per key — engine, working directory, credential profile: the conversation the
- *                          instance owns, or a fresh-start mark (`id: null`, when, and which conversations existed),
- *                          the ids it gave up, and whether the conversation was switched to the instance's agent.
+ *   claims/<engine>/<id>   created exclusively ("wx"): the owner's name and a newline, written last. Only the owner
+ *                          rewrites or removes it. Giving the conversation up marks it (`<owner>\nabandoned\n`), so
+ *                          nobody — the owner included, even after losing its state — takes it up again.
+ *   instances/<hash>.json  the instance's records, one per key (engine, directory, credential profile): the
+ *                          conversation it owns, or a fresh-start mark (`id: null`, when, and which conversations
+ *                          existed), the ids it gave up, and whether its conversation was switched to its agent.
+ *                          Named by a hash of the instance name, so any instance name AgEnD allows (CJK included)
+ *                          has one; the name itself is inside.
  *
  *  - Adoption (no state file at all, and the engine ledger shows this instance launched here before #906): the
  *    newest conversation for the directory is claimed and recorded before the launch. An unreadable store then is
- *    legacy mode — the old command, not isolated, nothing recorded — and the next launch tries again.
- *  - A recorded conversation is resumed by id while its claim is held, without reading the store.
- *  - A fresh start never resumes; the conversation its launch made is taken up on a later launch only on evidence
- *    (absent from the mark's list, updated after it, unclaimed, the only one, no sibling waiting). An unreadable
- *    store defers that.
+ *    legacy mode — the old command, not isolated, nothing recorded — and the next launch tries again. A claim this
+ *    instance completed whose record could not be written is taken up again on the retry, never given up.
+ *  - A recorded conversation is resumed by id while its claim is held (and not abandoned), without reading the store.
+ *  - A fresh start never resumes. The conversation its launch made is taken up on a later launch only on evidence it
+ *    is new — CREATED after the mark (an update proves nothing), absent from the mark's list, not given up, unclaimed
+ *    or claimed by this very take-up, the only one — and with no sibling waiting on the same store and directory.
+ *    An unreadable store defers that.
  *  - A key with no record in an existing state file starts durably fresh (as V3 does on a changed key); the other
- *    keys' records are kept, so going back finds them as they were.
+ *    keys' records are kept. An unreadable or malformed state file is never "no state": this key starts fresh.
  *  - A fresh start that cannot be recorded refuses the launch: the next one would otherwise resume what it gave up.
+ *
+ * Directories are compared by one canonical identity (symlinks resolved), the same one the store selectors key on.
  */
 import Database from "better-sqlite3";
+import { createHash } from "node:crypto";
 import { closeSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { writeFileAtomic } from "./kiro-engine-ledger.js";
 
 export type KiroClassicEngine = "v1" | "v2";
-
-/** Ids and instance names become file names: only plain ones. */
-const SAFE_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,199}$/;
-/** Never a valid instance name (it fails SAFE_NAME), so never mistaken for one. */
-const INCOMPLETE = "\0incomplete";
-
 /** v3 has its own identity (kiro-v3-identity.ts); its records here only say whether it runs as the agent. */
 type RecordEngine = KiroClassicEngine | "v3";
+
+/** Conversation ids become file names: only plain ones. */
+const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,199}$/;
+/** An owner name is one line. */
+const OWNER_NAME = /^[^\n\r\0]{1,512}$/;
 
 interface KeyRecord {
   engine: RecordEngine;
@@ -50,10 +56,17 @@ interface KeyRecord {
   abandoned: string[];
   agentConfirmed: boolean;
 }
-interface StateFile { version: 1; keys: Record<string, KeyRecord>; }
+interface StateFile { version: 2; instance: string; keys: Record<string, KeyRecord>; }
 
 export interface KiroStoreSession { id: string; updatedAt: number; }
-export type KiroStoreRead = { kind: "ok"; sessions: KiroStoreSession[] } | { kind: "unreadable"; detail: string };
+export type KiroStoreRead =
+  | {
+    kind: "ok";
+    sessions: KiroStoreSession[];
+    /** When `id` was created (epoch ms), or null when that cannot be read. Asked only of take-up candidates. */
+    createdAt(id: string): number | null;
+  }
+  | { kind: "unreadable"; detail: string };
 
 /** The directory as kiro may have keyed it: as configured, resolved, and with symlinks resolved. */
 export function kiroDirectoryKeys(workingDirectory: string): string[] {
@@ -62,14 +75,25 @@ export function kiroDirectoryKeys(workingDirectory: string): string[] {
   return [...keys];
 }
 
+/** One identity per directory: symlinks resolved, else the absolute path. */
+export function kiroCanonicalDirectory(workingDirectory: string): string {
+  try { return realpathSync(workingDirectory); } catch { return resolve(workingDirectory); }
+}
+
+const EMPTY_STORE: KiroStoreRead = { kind: "ok", sessions: [], createdAt: () => null };
+
+/** The metadata index the v1 selector must use: `updated_at` comes from it, never from the row (#1048, #1416). */
+const V1_INDEX = "idx_conversations_v2_key_updated";
+
 /**
- * v1: `conversations_v2` in the store the instance launches with, read-only. Only the (key, updated_at) index and
- * `conversation_id`, which comes before `value` in the row, are read — never a conversation itself (#1048).
- * A missing database is an empty store (kiro has written nothing yet); any other failure is unreadable.
+ * v1: `conversations_v2` in the store the instance launches with, read-only, through the (key, updated_at) index —
+ * forced with INDEXED BY, so a missing index is an error (unreadable), never a silent scan of the table. The row
+ * itself is touched only for `conversation_id`, which precedes `value`. `created_at` follows `value`, so it is read
+ * only for the few take-up candidates. A missing database is an empty store.
  */
 export function listKiroV1Sessions(workingDirectory: string, dbPath: string): KiroStoreRead {
   try { statSync(dbPath); } catch (err) {
-    return (err as NodeJS.ErrnoException).code === "ENOENT" ? { kind: "ok", sessions: [] }
+    return (err as NodeJS.ErrnoException).code === "ENOENT" ? EMPTY_STORE
       : { kind: "unreadable", detail: `cannot stat ${dbPath}: ${(err as Error).message}` };
   }
   let db: Database.Database;
@@ -81,9 +105,23 @@ export function listKiroV1Sessions(workingDirectory: string, dbPath: string): Ki
   try {
     const keys = kiroDirectoryKeys(workingDirectory);
     const [a, b = a, c = b] = keys;
-    const rows = db.prepare("SELECT conversation_id AS id, updated_at AS at FROM conversations_v2 WHERE key IN (?, ?, ?)")
+    const rows = db.prepare(`SELECT conversation_id AS id, updated_at AS at FROM conversations_v2 INDEXED BY ${V1_INDEX} WHERE key IN (?, ?, ?)`)
       .all(a, b, c) as Array<{ id: unknown; at: unknown }>;
-    return { kind: "ok", sessions: rows.filter(r => typeof r.id === "string").map(r => ({ id: r.id as string, updatedAt: Number(r.at) || 0 })) };
+    const sessions = rows.filter(r => typeof r.id === "string").map(r => ({ id: r.id as string, updatedAt: Number(r.at) || 0 }));
+    return {
+      kind: "ok",
+      sessions,
+      createdAt: (id: string) => {
+        let reader: Database.Database | null = null;
+        try {
+          reader = new Database(dbPath, { readonly: true, fileMustExist: true });
+          const row = reader.prepare("SELECT created_at AS at FROM conversations_v2 WHERE key IN (?, ?, ?) AND conversation_id = ? LIMIT 1")
+            .get(a, b, c, id) as { at: unknown } | undefined;
+          const at = Number(row?.at);
+          return Number.isFinite(at) && at > 0 ? at : null;
+        } catch { return null; } finally { try { reader?.close(); } catch { /* closed */ } }
+      },
+    };
   } catch (err) {
     return { kind: "unreadable", detail: `cannot read ${dbPath}: ${(err as Error).message}` };
   } finally {
@@ -99,11 +137,12 @@ export function listKiroV1Sessions(workingDirectory: string, dbPath: string): Ki
 export function listKiroV2Sessions(workingDirectory: string, sessionsDir: string): KiroStoreRead {
   let names: string[];
   try { names = readdirSync(sessionsDir); } catch (err) {
-    return (err as NodeJS.ErrnoException).code === "ENOENT" ? { kind: "ok", sessions: [] }
+    return (err as NodeJS.ErrnoException).code === "ENOENT" ? EMPTY_STORE
       : { kind: "unreadable", detail: `cannot list ${sessionsDir}: ${(err as Error).message}` };
   }
   const keys = new Set(kiroDirectoryKeys(workingDirectory));
   const sessions: KiroStoreSession[] = [];
+  const created = new Map<string, number | null>();
   for (const name of names) {
     if (!name.endsWith(".json")) continue;
     try {
@@ -111,9 +150,11 @@ export function listKiroV2Sessions(workingDirectory: string, sessionsDir: string
       if (typeof meta.cwd !== "string" || !keys.has(meta.cwd) || meta.session_created_reason === "subagent") continue;
       const id = typeof meta.session_id === "string" ? meta.session_id : name.slice(0, -".json".length);
       sessions.push({ id, updatedAt: Date.parse(String(meta.updated_at ?? "")) || 0 });
+      const at = Date.parse(String(meta.created_at ?? ""));
+      created.set(id, Number.isFinite(at) ? at : null);
     } catch { /* partly written */ }
   }
-  return { kind: "ok", sessions };
+  return { kind: "ok", sessions, createdAt: (id: string) => created.get(id) ?? null };
 }
 
 export class KiroIdentityError extends Error {
@@ -144,14 +185,14 @@ export interface ResolveKiroIdentityOptions {
 }
 
 const keyOf = (engine: RecordEngine, cwd: string, profile: string | null): string =>
-  JSON.stringify([engine, resolve(cwd), profile ?? null]);
+  JSON.stringify([engine, kiroCanonicalDirectory(cwd), profile ?? null]);
 
 function isRecord(v: unknown): v is KeyRecord {
   if (!v || typeof v !== "object" || Array.isArray(v)) return false;
   const r = v as Record<string, unknown>;
   return (r.engine === "v1" || r.engine === "v2" || r.engine === "v3") && typeof r.workingDirectory === "string"
     && (r.credentialProfile === null || typeof r.credentialProfile === "string")
-    && (r.id === null || (typeof r.id === "string" && SAFE_NAME.test(r.id)))
+    && (r.id === null || (typeof r.id === "string" && SAFE_ID.test(r.id)))
     && typeof r.since === "number" && Number.isFinite(new Date(r.since).getTime())
     && Array.isArray(r.known) && r.known.every(k => typeof k === "string")
     && Array.isArray(r.abandoned) && r.abandoned.every(k => typeof k === "string")
@@ -160,33 +201,42 @@ function isRecord(v: unknown): v is KeyRecord {
 
 type StateRead = { kind: "none" } | { kind: "bad" } | { kind: "ok"; state: StateFile };
 
-function readState(path: string): StateRead {
+function readState(path: string, instance?: string): StateRead {
   let text: string;
   try { text = readFileSync(path, "utf-8"); } catch (err) {
     return (err as NodeJS.ErrnoException).code === "ENOENT" ? { kind: "none" } : { kind: "bad" };
   }
   try {
     const v = JSON.parse(text) as Record<string, unknown>;
-    if (v?.version !== 1 || !v.keys || typeof v.keys !== "object" || Array.isArray(v.keys)) return { kind: "bad" };
+    if (v?.version !== 2 || typeof v.instance !== "string" || (instance !== undefined && v.instance !== instance)) return { kind: "bad" };
+    if (!v.keys || typeof v.keys !== "object" || Array.isArray(v.keys)) return { kind: "bad" };
     const keys: Record<string, KeyRecord> = {};
     for (const [k, r] of Object.entries(v.keys as Record<string, unknown>)) { if (!isRecord(r)) return { kind: "bad" }; keys[k] = r; }
-    return { kind: "ok", state: { version: 1, keys } };
+    return { kind: "ok", state: { version: 2, instance: v.instance, keys } };
   } catch { return { kind: "bad" }; }
 }
 
+const fileNameOf = (instance: string): string => `${createHash("sha256").update(instance).digest("hex").slice(0, 32)}.json`;
+
 function paths(agendHome: string, engine: RecordEngine, instance: string) {
   const root = join(agendHome, "kiro-identity");
-  return { root, claims: join(root, "claims", engine), instances: join(root, "instances"), state: join(root, "instances", `${instance}.json`) };
+  return { root, claims: join(root, "claims", engine), instances: join(root, "instances"), state: join(root, "instances", fileNameOf(instance)) };
 }
 
-/** null: unclaimed. INCOMPLETE: being written or cut short — someone's, and not usable. */
-function ownerOf(claims: string, id: string): string | null {
+type Claim = { owner: string; abandoned: boolean } | null | "incomplete";
+
+/** null: unclaimed. "incomplete": being written or cut short — someone's, and not usable. */
+function claimOf(claims: string, id: string): Claim {
   let text: string;
   try { text = readFileSync(join(claims, id), "utf8"); } catch (err) {
-    return (err as NodeJS.ErrnoException).code === "ENOENT" ? null : INCOMPLETE;
+    return (err as NodeJS.ErrnoException).code === "ENOENT" ? null : "incomplete";
   }
-  return text.endsWith("\n") ? text.slice(0, -1) : INCOMPLETE;
+  if (!text.endsWith("\n")) return "incomplete";
+  const [owner, mark, ...rest] = text.slice(0, -1).split("\n");
+  if (!owner || rest.length > 0 || (mark !== undefined && mark !== "abandoned")) return "incomplete";
+  return { owner, abandoned: mark === "abandoned" };
 }
+const heldBy = (claim: Claim, instance: string): boolean => !!claim && claim !== "incomplete" && claim.owner === instance && !claim.abandoned;
 
 /** Claims an unclaimed conversation. True only once the whole owner line is on disk. */
 function claim(claims: string, id: string, instance: string): boolean {
@@ -213,20 +263,26 @@ function claim(claims: string, id: string, instance: string): boolean {
   return complete;
 }
 
+/** Mark a conversation this instance holds as given up. Its claim stays: nobody takes it up again. */
+function abandonClaim(claims: string, id: string, instance: string): void {
+  if (!SAFE_ID.test(id) || !heldBy(claimOf(claims, id), instance)) return;
+  try { writeFileAtomic(join(claims, id), `${instance}\nabandoned\n`); } catch { /* the state's abandoned list still holds it */ }
+}
+
 export function resolveKiroIdentity(opts: ResolveKiroIdentityOptions): KiroIdentityDecision {
   const { instance, engine, workingDirectory, credentialProfile } = opts;
-  if (!SAFE_NAME.test(instance)) return { mode: "legacy", reason: "the instance name cannot be a file name" };
+  if (!OWNER_NAME.test(instance)) return { mode: "legacy", reason: "the instance name cannot be recorded" };
   const now = opts.now ?? Date.now;
   const p = paths(opts.agendHome, engine, instance);
   const key = keyOf(engine, workingDirectory, credentialProfile);
-  const read = readState(p.state);
+  const read = readState(p.state, instance);
   const keys: Record<string, KeyRecord> = read.kind === "ok" ? { ...read.state.keys } : {};
   const record = keys[key];
 
   const save = (next: KeyRecord): boolean => {
     try {
       mkdirSync(p.instances, { recursive: true, mode: 0o700 });
-      writeFileAtomic(p.state, JSON.stringify({ version: 1, keys: { ...keys, [key]: next } } satisfies StateFile) + "\n");
+      writeFileAtomic(p.state, JSON.stringify({ version: 2, instance, keys: { ...keys, [key]: next } } satisfies StateFile) + "\n");
       return true;
     } catch { return false; }
   };
@@ -234,13 +290,15 @@ export function resolveKiroIdentity(opts: ResolveKiroIdentityOptions): KiroIdent
   const startFresh = (store?: KiroStoreRead): KiroIdentityDecision => {
     const listed = store ?? opts.readStore();
     const abandoned = new Set(record?.abandoned ?? []);
-    if (record?.id) abandoned.add(record.id); // its claim is kept: nobody takes a given-up conversation again
+    if (record?.id) abandoned.add(record.id);
     const next: KeyRecord = {
       engine, workingDirectory, credentialProfile, id: null, since: now(),
       known: listed.kind === "ok" ? listed.sessions.map(s => s.id) : [],
       abandoned: [...abandoned], agentConfirmed: true,
     };
     if (!save(next)) throw new KiroIdentityError(`cannot write ${p.state}`);
+    // Its claim is marked, not released: given up for good, by everyone.
+    if (record?.id) abandonClaim(p.claims, record.id, instance);
     return { mode: "fresh" };
   };
 
@@ -249,10 +307,13 @@ export function resolveKiroIdentity(opts: ResolveKiroIdentityOptions): KiroIdent
     if (opts.skipResume || !opts.launchedBefore()) return startFresh();
     const store = opts.readStore();
     if (store.kind === "unreadable") return { mode: "legacy", reason: store.detail };
-    const newest = store.sessions.filter(s => SAFE_NAME.test(s.id)).sort((a, b) => b.updatedAt - a.updatedAt)[0];
-    if (!newest || ownerOf(p.claims, newest.id) !== null || !claim(p.claims, newest.id, instance)) return startFresh(store);
+    const newest = store.sessions.filter(s => SAFE_ID.test(s.id)).sort((x, y) => y.updatedAt - x.updatedAt)[0];
+    if (!newest) return startFresh(store);
+    const current = claimOf(p.claims, newest.id);
+    // A claim this instance completed on an earlier attempt whose record could not be written: the same id again.
+    const ours = heldBy(current, instance) || (current === null && claim(p.claims, newest.id, instance));
+    if (!ours) return startFresh(store);
     if (!save({ engine, workingDirectory, credentialProfile, id: newest.id, since: now(), known: [], abandoned: [], agentConfirmed: false })) {
-      // The claim stands (it is ours); the next launch finds no state and adopts it again.
       throw new KiroIdentityError(`cannot write ${p.state}`);
     }
     return { mode: "resume", id: newest.id, agentConfirmed: false };
@@ -263,7 +324,7 @@ export function resolveKiroIdentity(opts: ResolveKiroIdentityOptions): KiroIdent
 
   if (record.id) {
     // Resumed only while the claim is really held: a state alone never re-creates one. No store read.
-    return ownerOf(p.claims, record.id) === instance
+    return heldBy(claimOf(p.claims, record.id), instance)
       ? { mode: "resume", id: record.id, agentConfirmed: record.agentConfirmed }
       : startFresh();
   }
@@ -272,21 +333,31 @@ export function resolveKiroIdentity(opts: ResolveKiroIdentityOptions): KiroIdent
   const store = opts.readStore();
   if (store.kind === "unreadable") return { mode: "fresh" }; // deferred, never guessed; the mark stays as it is
   const excluded = new Set([...record.known, ...record.abandoned]);
-  const candidates = store.sessions.filter(s => SAFE_NAME.test(s.id) && !excluded.has(s.id) && s.updatedAt > record.since
-    && (ownerOf(p.claims, s.id) ?? instance) === instance);
+  const candidates = store.sessions.filter(s => {
+    if (!SAFE_ID.test(s.id) || excluded.has(s.id) || s.updatedAt <= record.since) return false;
+    const c = claimOf(p.claims, s.id);
+    if (!(c === null || heldBy(c, instance))) return false;
+    // New, not merely updated: created after the mark.
+    const created = store.createdAt(s.id);
+    return created !== null && created > record.since;
+  });
+  const canonical = kiroCanonicalDirectory(workingDirectory);
   const siblingWaiting = (() => {
     let names: string[];
     try { names = readdirSync(p.instances); } catch { return true; }
     return names.some(n => {
-      if (n === `${instance}.json` || !n.endsWith(".json")) return false;
+      if (n === fileNameOf(instance) || !n.endsWith(".json")) return false;
       const other = readState(join(p.instances, n));
       if (other.kind !== "ok") return true; // not certain, so it counts
-      return Object.values(other.state.keys).some(r => r.engine === engine && resolve(r.workingDirectory) === resolve(workingDirectory) && r.id === null);
+      // Waiting on the same store and directory: v1 stores are per credential profile, the v2 store is shared.
+      return Object.values(other.state.keys).some(r => r.engine === engine && r.id === null
+        && kiroCanonicalDirectory(r.workingDirectory) === canonical
+        && (engine === "v2" || r.credentialProfile === credentialProfile));
     });
   })();
   if (candidates.length !== 1 || siblingWaiting) return startFresh(store);
   const pick = candidates[0]!.id;
-  if (ownerOf(p.claims, pick) !== instance && !claim(p.claims, pick, instance)) return startFresh(store);
+  if (!heldBy(claimOf(p.claims, pick), instance) && !claim(p.claims, pick, instance)) return startFresh(store);
   // A fresh launch carried --agent, so the conversation it made already runs as the instance's agent.
   save({ ...record, id: pick, agentConfirmed: true });
   return { mode: "resume", id: pick, agentConfirmed: true };
@@ -294,8 +365,8 @@ export function resolveKiroIdentity(opts: ResolveKiroIdentityOptions): KiroIdent
 
 /** Whether `id` is recorded as already running as the instance's agent. */
 export function kiroAgentConfirmed(agendHome: string, instance: string, engine: RecordEngine, workingDirectory: string, credentialProfile: string | null, id: string): boolean {
-  if (!SAFE_NAME.test(instance)) return false;
-  const read = readState(paths(agendHome, engine, instance).state);
+  if (!OWNER_NAME.test(instance)) return false;
+  const read = readState(paths(agendHome, engine, instance).state, instance);
   if (read.kind !== "ok") return false;
   const record = read.state.keys[keyOf(engine, workingDirectory, credentialProfile)];
   return !!record && record.id === id && record.agentConfirmed;
@@ -307,9 +378,9 @@ export function kiroAgentConfirmed(agendHome: string, instance: string, engine: 
  * unreadable state file is never overwritten: false.
  */
 export function confirmKiroAgentSwitch(agendHome: string, instance: string, engine: RecordEngine, workingDirectory: string, credentialProfile: string | null, id: string): boolean {
-  if (!SAFE_NAME.test(instance)) return false;
+  if (!OWNER_NAME.test(instance)) return false;
   const p = paths(agendHome, engine, instance);
-  const read = readState(p.state);
+  const read = readState(p.state, instance);
   if (read.kind === "bad") return false;
   const keys = read.kind === "ok" ? read.state.keys : {};
   const key = keyOf(engine, workingDirectory, credentialProfile);
@@ -320,19 +391,22 @@ export function confirmKiroAgentSwitch(agendHome: string, instance: string, engi
   else return false;
   try {
     mkdirSync(p.instances, { recursive: true, mode: 0o700 });
-    writeFileAtomic(p.state, JSON.stringify({ version: 1, keys: { ...keys, [key]: next } } satisfies StateFile) + "\n");
+    writeFileAtomic(p.state, JSON.stringify({ version: 2, instance, keys: { ...keys, [key]: next } } satisfies StateFile) + "\n");
     return true;
   } catch { return false; }
 }
 
-/** Delete or replace: drop the instance's records and release every claim it holds. Conversations stay in kiro. */
+/** Delete or replace: drop the instance's records and every claim it holds (active or given up). Conversations stay. */
 export function forgetKiroIdentity(agendHome: string, instance: string): void {
-  if (!SAFE_NAME.test(instance)) return;
+  if (!OWNER_NAME.test(instance)) return;
   for (const engine of ["v1", "v2"] as const) {
     const p = paths(agendHome, engine, instance);
     let ids: string[] = [];
     try { ids = readdirSync(p.claims); } catch { /* none */ }
-    for (const id of ids) if (ownerOf(p.claims, id) === instance) rmSync(join(p.claims, id), { force: true });
+    for (const id of ids) {
+      const c = claimOf(p.claims, id);
+      if (c && c !== "incomplete" && c.owner === instance) rmSync(join(p.claims, id), { force: true });
+    }
   }
   rmSync(paths(agendHome, "v1", instance).state, { force: true });
 }

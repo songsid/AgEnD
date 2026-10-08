@@ -26,7 +26,7 @@ import { PIE_CLASS } from "../tui-glyphs.js";
 import { KIRO_EXPIRED_LOGIN_SCREEN } from "../login-flows.js";
 import { t } from "../locale.js";
 import { recordKiroLaunch } from "./kiro-engine-ledger.js";
-import { resolveKiroV3Resume } from "./kiro-v3-identity.js";
+import { forgetKiroV3Identity, resolveKiroV3Resume } from "./kiro-v3-identity.js";
 
 // Kiro CLI feature gates. These are deliberately separate: the flags shipped
 // in different releases, so one broad "old Kiro" check would still crash some
@@ -524,6 +524,8 @@ const LEGACY_PROMPT_ROW = /^\s*(?:\[([^\]]+)\]\s*)?\d+%\s*(?:[^\s\d%!❯>]{1,2}\
 /** A TUI status row: `<agent> · <model> · …`. */
 const TUI_STATUS_ROW = /^\s*(\S+) · /;
 const RULE_ROW = /^[\s─━│┃╭╮╰╯┌┐└┘]*$/;
+/** The right-aligned hint under the TUI input row: far right, a slash command or two. */
+const TUI_HINT_ROW = /^\s{20,}\/[\w-]+(?: [\w-]+)*(?: · \/[\w-]+(?: [\w-]+)*)*$/;
 
 /**
  * The agent the live layout shows (#906 §3) — never a name quoted in the conversation above it:
@@ -541,6 +543,15 @@ export function readActiveKiroAgent(pane: string, ui: "legacy" | "tui" | "v3"): 
   }
   let input = -1;
   for (let i = rows.length - 1; i >= 0; i--) if (/^\s*›/.test(rows[i]!)) { input = i; break; }
+  if (input < 0) return null;
+  // The live bottom layout ends with the input row: below it only blank or rule rows and the right-aligned hint
+  // (`/copy to clipboard`, `/sessions to resume · …`). Anything else — a modal, a panel, output — means the pair
+  // above it is not the live one (#1416 review).
+  for (let i = input + 1; i < rows.length; i++) {
+    const row = rows[i]!;
+    if (row.trim() === "" || RULE_ROW.test(row) || TUI_HINT_ROW.test(row)) continue;
+    return null;
+  }
   for (let i = input - 1; i >= 0; i--) {
     if (RULE_ROW.test(rows[i]!)) continue;
     const m = TUI_STATUS_ROW.exec(rows[i]!);
@@ -908,7 +919,8 @@ export class KiroBackend implements CliBackend {
     }
     if (!warning) return;
     warnedVersionGateCacheKeys.add(key);
-    this.launchWarning = warning;
+    // Appended: the launch's isolation warnings (#906, recorded by writeConfig) must not be overwritten by this one.
+    this.addLaunchWarning(warning);
   }
 
   consumeLaunchWarning(): string | null {
@@ -1442,5 +1454,6 @@ export class KiroBackend implements CliBackend {
   /** Delete or replace: forget which conversations this instance owns (they stay in kiro's store). */
   forget(instanceName: string): void {
     try { forgetKiroIdentity(getAgendHome(), instanceName); } catch { /* best effort */ }
+    try { forgetKiroV3Identity(instanceName, getAgendHome()); } catch { /* best effort */ }
   }
 }

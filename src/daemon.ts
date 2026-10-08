@@ -9626,9 +9626,6 @@ export class Daemon extends EventEmitter {
     this.lastSpawnAt = Date.now();
     // #1217: whatever session this CLI writes from here on is this backend's.
     this.recordSessionOwner();
-    // #906: a resumed kiro conversation comes back as the agent it was saved under; switch it to this instance's
-    // own agent while deliveries are still held by this spawn.
-    await this.ensureBackendAgent();
     this.skipResume = false; // CLI started successfully — reset for next spawn
     this.backgroundSessionRecoveryAttempted = false;
     } finally {
@@ -9640,37 +9637,54 @@ export class Daemon extends EventEmitter {
   /** The whole agent switch after a resume, on the monotonic clock (#906 §3). */
   private static readonly AGENT_SWITCH_BUDGET_MS = 15_000;
   private static readonly AGENT_SWITCH_POLL_MS = 500;
+  /** The write is started only with this much budget left: the paste, its settle, the Enter. */
+  private static readonly AGENT_SWITCH_WRITE_RESERVE_MS = 3_000;
+  /** Between the paste and its Enter, as tmux pastes elsewhere (pasteText). */
+  private static readonly AGENT_SWITCH_PASTE_SETTLE_MS = 500;
 
   /**
    * #906 §3: after a resume, make the CLI run as this instance's own agent. Reads the agent off the live layout
-   * (backend.agentSwitch().readActive — never a name quoted in the conversation); when it is another one, types the
-   * switch command ONCE, under the pane-write lock, only into a pane the delivery path would call ready and whose
-   * fresh capture still shows another agent; then waits for a capture taken after the write to show ours, and
-   * confirms (the backend records it and removes the shared entries the transition kept).
+   * (backend.agentSwitch().readActive — the supported bottom layout only, never a name quoted in the conversation);
+   * when it is another one, types the switch command ONCE, under the pane-write lock, and only when ONE final capture
+   * taken there shows the live layout naming another agent AND an idle, input-ready pane (ready, not busy, no
+   * blocking dialog, no input transient) — after the delivery path's own readiness check. It confirms only on a
+   * later capture of the live layout naming ours.
    *
-   * Fenced like a delivery: after every await the spawn generation, launch fence, the same tmux window, and that
-   * writes are not stopping are checked again — a stop, pause or respawn ends it without confirming or removing
-   * anything. Not confirmed within the budget: the old setup stays, a launch warning says so, the next launch tries
-   * again. Never throws into the spawn.
+   * Fenced like a delivery, from entry on: the spawn generation, launch fence, the pause/wake phase it started in,
+   * the same tmux window, not aborted, writes not stopping — re-checked after every await, and between the paste and
+   * its Enter. The whole step, every await included, ends at one monotonic deadline: a late capture never confirms
+   * and a late admission never writes; a paste whose Enter would land past it is taken back. Not confirmed in time:
+   * the old setup stays, a launch warning says so, the next launch tries again. A stop, pause or respawn ends it
+   * silently, confirming and removing nothing. Never throws into the spawn.
    */
   private async ensureBackendAgent(): Promise<void> {
     let sw: ReturnType<NonNullable<CliBackend["agentSwitch"]>> | null = null;
     try { sw = this.backend?.agentSwitch?.() ?? null; } catch { sw = null; }
     const tmux = this.tmux;
-    if (!sw || !tmux) return;
+    if (!sw || !tmux || !this.backend) return;
     const windowId = tmux.getWindowId();
-    const spawn = this.spawnGeneration, fence = this.launchFenceEpoch;
-    const current = () => !this.deliveryWritesStopping && !this.fatalStartupBlocked
+    const spawn = this.spawnGeneration, fence = this.launchFenceEpoch, phase = this.pauseWakeState;
+    const fenced = () => !this.startupAborted && !this.deliveryWritesStopping && !this.fatalStartupBlocked
+      && (phase === "active" || phase === "waking") && this.pauseWakeState === phase
       && spawn === this.spawnGeneration && fence === this.launchFenceEpoch && this.tmux === tmux;
     const deadline = performance.now() + Daemon.AGENT_SWITCH_BUDGET_MS;
+    const live = () => fenced() && performance.now() < deadline;
+    if (!live()) return;
+    const TIMEOUT = Symbol("deadline");
+    const within = <T>(work: Promise<T>): Promise<T | typeof TIMEOUT> => {
+      const left = deadline - performance.now();
+      if (left <= 0) { work.catch(() => {}); return Promise.resolve(TIMEOUT); }
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      return Promise.race([work, new Promise<typeof TIMEOUT>(r => { timer = setTimeout(() => r(TIMEOUT), left); })])
+        .finally(() => clearTimeout(timer));
+    };
+    const capture = () => within(tmux.capturePane().catch(() => null));
     let wroteAt: number | null = null;
     try {
-      while (performance.now() < deadline) {
-        if (!current()) return;
+      while (live()) {
         const capturedAt = performance.now();
-        let pane: string | null;
-        try { pane = await tmux.capturePane(); } catch { pane = null; }
-        if (!current()) return;
+        const pane = await capture();
+        if (pane === TIMEOUT || !live()) break;
         const active = pane === null ? null : sw.readActive(pane);
         if (active === sw.agent && (wroteAt === null || capturedAt > wroteAt)) {
           if (sw.alreadyConfirmed && wroteAt === null) return; // already ours, already on record
@@ -9679,25 +9693,33 @@ export class Daemon extends EventEmitter {
           return;
         }
         if (wroteAt === null && active !== null && active !== sw.agent) {
-          const wrote = await this.paneWriteLock.run(async () => {
-            if (!current()) return false;
-            if ((await this.paneReadinessForDelivery(windowId)) !== "ready" || !current()) return false;
-            let fresh: string;
-            try { fresh = await tmux.capturePane(); } catch { return false; }
-            if (!current()) return false;
-            const now = sw!.readActive(fresh);
-            if (now === null || now === sw!.agent) return false;
-            return tmux.pasteText(sw!.command, { retryEnter: false });
-          });
-          // (A stop, pause or respawn during the write is caught by the fence at the top of the next round.)
-          if (wrote) {
+          const wrote = await within(this.paneWriteLock.run(async () => {
+            if (!live() || deadline - performance.now() < Daemon.AGENT_SWITCH_WRITE_RESERVE_MS) return false;
+            const readiness = await within(this.paneReadinessForDelivery(windowId));
+            if (readiness !== "ready" || !live()) return false;
+            const final = await capture();
+            if (final === TIMEOUT || final === null || !live()) return false;
+            const now = sw!.readActive(final);
+            if (now === null || now === sw!.agent || this.inputTransientInPane(final) || !this.paneAuthoritativelyIdle(final)) return false;
+            const pasted = await within(tmux.pasteBuffer(sw!.command));
+            if (pasted !== true) return false;
+            await within(new Promise(r => setTimeout(r, Daemon.AGENT_SWITCH_PASTE_SETTLE_MS)));
+            if (!live()) {
+              // Same CLI, but no time left to see it through: take the command back out of its input row.
+              if (fenced()) await tmux.deleteBackward(sw!.command.length);
+              return false;
+            }
+            return tmux.sendSpecialKey("Enter");
+          }));
+          if (wrote === true) {
             wroteAt = performance.now();
             this.logger.info({ agent: sw.agent, was: active }, "Switching the resumed conversation to this instance's agent");
           }
         }
-        await new Promise(r => setTimeout(r, Daemon.AGENT_SWITCH_POLL_MS));
+        if (!live()) break;
+        await within(new Promise(r => setTimeout(r, Math.min(Daemon.AGENT_SWITCH_POLL_MS, Math.max(0, deadline - performance.now())))));
       }
-      if (!current()) return;
+      if (!fenced()) return; // a stop, pause or respawn: nothing to say, nothing to do
       this.logger.warn({ agent: sw.agent, typed: wroteAt !== null }, "The resumed conversation did not switch to this instance's agent in time");
       this.emit("backend_launch_warning", { name: this.name, message: t("kiro.switch_timeout", Daemon.AGENT_SWITCH_BUDGET_MS / 1000) });
     } catch (err) {
@@ -9828,12 +9850,16 @@ export class Daemon extends EventEmitter {
    * Returns true if CLI is ready, false if it failed or got stuck.
    */
   private async trySpawn(reuseWindow = false, startupTimeoutMs?: number): Promise<boolean> {
-    if (!this.spawnGate) return this.trySpawnInsideGate(reuseWindow, startupTimeoutMs);
-    return this.spawnGate.run({
+    const ready = !this.spawnGate ? await this.trySpawnInsideGate(reuseWindow, startupTimeoutMs) : await this.spawnGate.run({
       instanceName: this.name,
       workingDirectory: this.config.working_directory,
       reason: reuseWindow ? "wake" : this.lastSpawnAt > 0 ? "recovery" : "startup",
     }, () => this.trySpawnInsideGate(reuseWindow, startupTimeoutMs));
+    // #906: a resumed kiro conversation comes back as the agent it was saved under. Every launch path that reaches a
+    // ready CLI (start, recovery, wake) switches it to this instance's own agent here, while the spawn still holds
+    // deliveries — and outside the spawn gate, which it does not need.
+    if (ready) await this.ensureBackendAgent();
+    return ready;
   }
 
   /**
