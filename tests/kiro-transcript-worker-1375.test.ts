@@ -63,7 +63,7 @@ describe("bounded physical transcript lane", () => {
     const lease = lane.acquire(); closers.push(() => lease.close()); const first = lease.read(input);
     now = KIRO_TRANSCRIPT_BUDGET_MS; worker.ack(); await first;
     const next = lease.read(input); now += KIRO_TRANSCRIPT_BUDGET_MS; worker.emit("exit", 0); await flush();
-    expect(await next).toBeNull(); expect(factory).toHaveBeenCalledTimes(1);
+    expect(factory).toHaveBeenCalledTimes(1); expect(await next).toBeNull();
   });
   it("a rejected terminate retains its physical slot while retries still have a deadline", async () => {
     vi.useFakeTimers(); let now = 0; const worker = new FakeWorker();
@@ -154,6 +154,7 @@ describe("real compiled/TS worker, explicit private SQLite only", () => {
       await source.initialize(); expect((await source.poll()).toolUses).toEqual([]);
       db.prepare("UPDATE conversations_v2 SET value=?,updated_at=2 WHERE key=?").run(JSON.stringify({ history: [history("old"), history("live")] }), dir);
       expect((await source.poll()).toolUses.map(x => x.name)).toEqual(["live"]);
+      expect((source as any).cursor.historyCursor).toBe(2);
       expect((await source.poll()).toolUses).toEqual([]); clearInterval(timer); expect(ticks).toBeGreaterThan(0); expect(mainSqlite).not.toHaveBeenCalled();
     } finally { clearInterval(timer); source?.close(); db.close(); rmSync(dir, { recursive: true, force: true }); }
   });
