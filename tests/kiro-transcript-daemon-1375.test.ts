@@ -96,7 +96,7 @@ async function wakeFixture() {
     startupAborted: false, launchFenceEpoch: 1, spawnGeneration: 1, spawnDepth: 0,
     runtimeMonitorsFrozen: true, healthCheckPaused: true, pauseWakeState: "paused", pauseWakeTransition: null,
     autoPauseController: controller, transcriptMonitor: monitor, instanceState: "idle",
-    turnReplyGuard: { reset: vi.fn() }, interactionObservation: { reset: vi.fn() }, interactionOwner: vi.fn(),
+    turnReplyGuard: { reset: vi.fn() }, interactionObservation: { reset: vi.fn() }, bootId: "fixture-boot", launchAttempt: 1,
     clearQuitRelaunchWatch: vi.fn(), clearReplyGuardConfirm: vi.fn(), clearInteractionConfirmation: vi.fn(),
     interactivePromptDetector: { reset: vi.fn() }, blockingProcessDetector: { reset: vi.fn() }, stopInstanceStateMonitor: vi.fn(),
     clearErrorRecoveryGate: vi.fn(), wakeBudgetMs: () => 1000, trySpawn: vi.fn(async () => true),
