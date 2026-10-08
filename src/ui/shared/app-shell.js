@@ -159,7 +159,12 @@ function BottomTabs({ route }) {
 }
 
 function ConnectionLine() {
-  const { connection } = useStore(appStore);
+  const { connection, hydration, retryHydration } = useStore(appStore);
+  // A late catch-up that is not done: the chat may be missing what was open before it loaded (#1425 review).
+  if (hydration === "retrying" || hydration === "failed") {
+    return html`<div class="conn" role="status">${hydration === "failed" ? t("app.hydrateFailed") : t("app.hydrating")}
+      ${hydration === "failed" && retryHydration ? html` <button type="button" class="btn btn-sm" onClick=${() => retryHydration()}>${t("app.retry")}</button>` : null}</div>`;
+  }
   if (connection === "live" || connection === "none") return null;
   const text = connection === "polling" ? t("app.connPolling") : connection === "down" ? t("app.connDown") : null;
   return text ? html`<div class="conn" role="status">${text}</div>` : null;

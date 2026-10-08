@@ -316,7 +316,10 @@ describe("the app's stream falls back to polling when it is silent, and stops wh
     return { env, fetched, sources, advance };
   }
 
-  it("a silent stream: nothing for 15 s, then a poll every 5 s from the empty cursor", () => {
+  // A poll's answer settles between timers in a browser; here the fake clock is synchronous, so let it settle.
+  const settled = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
+
+  it("a silent stream: nothing for 15 s, then a poll every 5 s from the empty cursor", async () => {
     const f = fakeEnv();
     const stream = createStream({ mode: "full", env: f.env });
     stream.start();
@@ -326,16 +329,18 @@ describe("the app's stream falls back to polling when it is silent, and stops wh
     f.advance(1);
     expect(f.fetched).toEqual(["/ui/poll?after="]);
     expect(stream.connection()).toBe("polling");
+    await settled();
     f.advance(5_000);
     expect(f.fetched).toHaveLength(2);
   });
 
-  it("a status frame stops the polling; the message's id is the poll cursor, and silence re-arms the poll with it", () => {
+  it("a status frame stops the polling; the message's id is the poll cursor, and silence re-arms the poll with it", async () => {
     const f = fakeEnv();
     const stream = createStream({ mode: "full", env: f.env });
     stream.start();
     f.advance(15_000);
     expect(f.fetched).toHaveLength(1);
+    await settled();
     f.sources[0]!.frame("status", { instances: [] });
     expect(stream.connection()).toBe("live");
     f.advance(12_000);

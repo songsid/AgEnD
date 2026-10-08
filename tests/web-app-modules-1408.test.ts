@@ -288,7 +288,153 @@ describe("the stream's modes (#1408 §3)", () => {
   it("the app opens the stream only after the chat's store is attached", () => {
     const app = readFileSync(join(process.cwd(), "src", "ui", "shared", "app.js"), "utf8");
     expect(app).toMatch(/const loadChat = retryable\(\(a\) => import\([^)]*\)\)\.then\(\(m\) => \{\n  m\.boot\(\{ stream, boot \}\);\n[\s\S]*?if \(stream\.started\(\)\) stream\.catchUp\(\);\n  return m;\n\}\)\);/);
-    expect(app).toMatch(/loadChat\(\)\.catch\(\(\) => \{\}\)\.finally\(\(\) => stream\.start\(\)\)/);
+    expect(app).toMatch(/const chatBoot = loadChat\(\);\nchatBoot\.catch\(\(\) => \{\}\)\.finally\(\(\) => stream\.start\(\)\)/);
     expect(app.indexOf("stream.start()")).toBeGreaterThan(app.indexOf("m.boot("));
+  });
+});
+
+describe("catching up (#1425 review r3)", () => {
+  function heldEnv() {
+    const sources: any[] = [];
+    const reads: Array<{ url: string; open: (body: unknown) => void; fail: (e: Error) => void }> = [];
+    class ES { url: string; listeners: Record<string, Function> = {}; onerror: Function | null = null;
+      constructor(url: string) { this.url = url; sources.push(this); } addEventListener(n: string, f: Function) { this.listeners[n] = f; } close() {} }
+    const env = {
+      EventSource: ES, setTimeout, clearTimeout, setInterval, clearInterval, console,
+      fetch: (u: string) => new Promise((resolve, reject) => reads.push({ url: u, open: (body) => resolve({ ok: true, json: async () => body }), fail: reject })),
+    };
+    return { env, sources, reads };
+  }
+  const snap = (over: Record<string, unknown> = {}) => ({ status: { instances: [] }, messages: [], cursor: "1-5", deliveries: [], prompts: [], needs: [], ...over });
+
+  it("live events held during the read are applied after its snapshot, in order, and the cursor ends at the newest", async () => {
+    const { createStream } = await import("/assets/app-stream.js") as { createStream(o: unknown): any };
+    const h = heldEnv();
+    const s = createStream({ mode: "full", env: h.env });
+    const seen: string[] = [];
+    for (const n of ["prompts", "prompt", "prompt_resolved", "message"]) s.on(n, (d: any) => seen.push(`${n}:${d.nonce ?? d.id ?? (Array.isArray(d) ? d.map((x: any) => x.nonce).join("+") : "")}`));
+    s.start();
+    const done = s.catchUp();
+    expect(h.reads.map(r => r.url)).toEqual(["/ui/poll?after="]);
+    h.sources[0].listeners.prompt_resolved({ data: JSON.stringify({ nonce: "P1" }) });
+    h.sources[0].listeners.prompt({ data: JSON.stringify({ nonce: "P3" }) });
+    h.sources[0].listeners.message({ data: JSON.stringify({ id: 9 }), lastEventId: "1-9" });
+    expect(seen).toEqual([]);                                  // held while the read is in flight
+    h.reads[0]!.open(snap({ prompts: [{ nonce: "P1" }] }));
+    await expect(done).resolves.toBe(true);
+    expect(seen).toEqual(["prompts:P1", "prompt_resolved:P1", "prompt:P3", "message:9"]);
+    expect(s.cursor()).toBe("1-9");
+    expect(s.hydration()).toBe("ok");
+    // Afterwards nothing is held.
+    h.sources[0].listeners.prompt({ data: JSON.stringify({ nonce: "P4" }) });
+    expect(seen.at(-1)).toBe("prompt:P4");
+    s.close();
+  });
+
+  it("closed while the read is in flight: nothing is emitted afterwards, and no retry runs", async () => {
+    vi.useFakeTimers();
+    const { createStream } = await import("/assets/app-stream.js") as { createStream(o: unknown): any };
+    const h = heldEnv();
+    const s = createStream({ mode: "full", env: h.env });
+    const seen: unknown[] = [];
+    s.on("prompts", (d: unknown) => seen.push(d)); s.on("prompt", (d: unknown) => seen.push(d));
+    s.start();
+    const done = s.catchUp();
+    h.sources[0].listeners.prompt({ data: JSON.stringify({ nonce: "P3" }) });
+    s.close();
+    h.reads[0]!.open(snap({ prompts: [{ nonce: "P1" }] }));
+    await expect(done).resolves.toBe(false);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(seen).toEqual([]);
+    expect(h.reads).toHaveLength(1);
+  });
+
+  it("a failed read retries 3 times with a growing delay, then waits; a reconnect's full prompts frame, or catchUp(), recovers", async () => {
+    vi.useFakeTimers();
+    const { createStream } = await import("/assets/app-stream.js") as { createStream(o: unknown): any };
+    const h = heldEnv();
+    const s = createStream({ mode: "full", env: h.env });
+    const states: string[] = [];
+    s.on("hydration", (x: string) => states.push(x));
+    s.start();
+    h.sources[0].listeners.status({ data: "{}" });
+    const done = s.catchUp();
+    for (const wait of [1000, 2000, 4000]) {
+      h.reads.at(-1)!.fail(new Error("offline"));
+      await vi.advanceTimersByTimeAsync(wait - 1);
+      const before = h.reads.length;
+      await vi.advanceTimersByTimeAsync(1);
+      expect(h.reads.length, `retry after ${wait} ms`).toBe(before + 1);
+    }
+    h.reads.at(-1)!.fail(new Error("offline"));
+    await expect(done).resolves.toBe(false);
+    expect(states).toEqual(["catching", "retrying", "failed"]);
+    // Bounded: it waits for the person now. (A live stream keeps talking, so its own silence fallback stays off.)
+    for (let i = 0; i < 30; i++) { h.sources[0].listeners.status({ data: "{}" }); await vi.advanceTimersByTimeAsync(10_000); }
+    expect(h.reads).toHaveLength(4);
+    expect(h.sources).toHaveLength(1);
+    // A reconnect's full set of open prompts makes it current again…
+    h.sources[0].listeners.prompts({ data: "[]" });
+    expect(s.hydration()).toBe("ok");
+    // …and an explicit catchUp() reads again.
+    const again = s.catchUp();
+    h.reads.at(-1)!.open(snap());
+    await expect(again).resolves.toBe(true);
+    expect(h.reads).toHaveLength(5);
+    s.close();
+  });
+
+  it("too many live events to hold: they are applied, and the snapshot is read once more so nothing is lost", async () => {
+    const { createStream } = await import("/assets/app-stream.js") as { createStream(o: unknown): any };
+    const h = heldEnv();
+    const s = createStream({ mode: "full", env: h.env });
+    let n = 0;
+    s.on("delivery", () => { n++; });
+    s.start();
+    const done = s.catchUp();
+    for (let i = 0; i < 1200; i++) h.sources[0].listeners.delivery({ data: JSON.stringify({ i }) });
+    h.reads[0]!.open(snap());
+    await vi.waitFor(() => expect(h.reads).toHaveLength(2));
+    expect(n).toBe(1000);
+    h.reads[1]!.open(snap());
+    await expect(done).resolves.toBe(true);
+    s.close();
+  });
+
+  it("polls never overlap: one asked for while another runs follows it", async () => {
+    const { createStream } = await import("/assets/app-stream.js") as { createStream(o: unknown): any };
+    const h = heldEnv();
+    const s = createStream({ mode: "full", transport: "poll", env: h.env });
+    s.start();                                                // the public link polls at once
+    expect(h.reads).toHaveLength(1);
+    const c = s.catchUp();
+    expect(h.reads).toHaveLength(1);                          // not a second read alongside the first
+    h.reads[0]!.open(snap({ cursor: "1-7" }));
+    await expect(c).resolves.toBe(true);
+    await vi.waitFor(() => expect(h.reads).toHaveLength(2));  // then the one asked for meanwhile
+    expect(h.reads[1]!.url).toBe("/ui/poll?after=1-7");
+    h.reads[1]!.open(snap());
+    s.close();
+  });
+
+  it("a poll that never answers counts as failed after 10 s; the next one runs, and the late answer is ignored", async () => {
+    vi.useFakeTimers();
+    const { createStream } = await import("/assets/app-stream.js") as { createStream(o: unknown): any };
+    const h = heldEnv();
+    const s = createStream({ mode: "full", transport: "poll", env: h.env });
+    const statuses: unknown[] = [];
+    s.on("status", (d: unknown) => statuses.push(d));
+    s.start();
+    expect(h.reads).toHaveLength(1);                          // this one hangs
+    await vi.advanceTimersByTimeAsync(9_999);
+    expect(h.reads).toHaveLength(1);                          // the 5 s tick waited behind it
+    await vi.advanceTimersByTimeAsync(1);
+    expect(h.reads).toHaveLength(2);                          // given up on: the tick asked for meanwhile runs
+    h.reads[1]!.open(snap({ status: { instances: [], fresh: true } }));
+    await vi.advanceTimersByTimeAsync(0);
+    h.reads[0]!.open(snap({ status: { instances: [], stale: true } }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(statuses).toEqual([{ instances: [], fresh: true }]);
+    s.close();
   });
 });

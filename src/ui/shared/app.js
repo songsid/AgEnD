@@ -20,6 +20,9 @@ const stream = createStream({ mode, transport: boot.webTransport });
 stream.on("status", applyStatus);
 stream.on("activity", applyActivity);
 stream.on("connection", (connection) => appStore.set({ connection }));
+// A chat that loaded late catches up on what is open now; the shell shows that while it is not done, with Retry.
+stream.on("hydration", (hydration) => appStore.set({ hydration }));
+appStore.set({ retryHydration: () => stream.catchUp() });
 stream.on("needs", (d) => appStore.set({ needs: Array.isArray(d && d.items) ? d.items : [] }));
 appStore.set({ connection: stream.connection() });
 
@@ -37,9 +40,13 @@ const loadChat = retryable((a) => import(retryUrl("/ui/js/panel-chat.js", a)).th
 const loadFleet = retryable((a) => import(retryUrl("/ui/js/panel-fleet.js", a)));
 // The stream opens once the chat listens, so the frames sent on connect (status, open prompts, ticks) reach it too.
 // If the chat cannot load (a session that just ended), the stream still opens for the sidebar.
-loadChat().catch(() => {}).finally(() => stream.start());
+const chatBoot = loadChat();
+chatBoot.catch(() => {}).finally(() => stream.start());
+// The Outlet's first load of the chat is that same boot attempt, failed or not; only Retry starts another. (Otherwise
+// a boot import that failed before the Outlet first asked would be retried at once, depending on timing.)
+let chatLoads = 0;
 const panels = new Map([
-  ["chat", { load: () => loadChat().then((m) => m.ChatPanel) }],
+  ["chat", { load: () => (chatLoads++ === 0 ? chatBoot : loadChat()).then((m) => m.ChatPanel) }],
   ["fleet", { load: () => loadFleet().then((m) => m.FleetPanel) }],
 ]);
 

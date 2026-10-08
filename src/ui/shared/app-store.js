@@ -20,8 +20,10 @@ export function createStore(initial) {
 
 /** The app's store. `ready`: a status frame has arrived (before it, an unknown instance may just not be listed yet).
  *  `exec`: each instance's raw execution state (working / idle / stuck / null); `awaiting`: what it
- *  waits on at its terminal (text, "" when unknown), absent when it waits on nothing. */
-export const appStore = createStore({ ready: false, instances: [], uptime: 0, exec: {}, awaiting: {}, connection: "connecting", needs: [] });
+ *  waits on at its terminal (text, "" when unknown), absent when it waits on nothing. `hydration`: a late catch-up
+ *  (app-stream.js catchUp) — "catching" / "retrying" / "failed" / "ok"; `retryHydration` asks for it again. */
+export const appStore = createStore({ ready: false, instances: [], uptime: 0, exec: {}, awaiting: {}, connection: "connecting", needs: [],
+  hydration: "none", retryHydration: null });
 
 /** Fold one status frame (stream or poll) into the store. */
 export function applyStatus(d) {
