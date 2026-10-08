@@ -15,7 +15,7 @@ Registered via `setMyCommands` with `scope: chat` and `scope: chat_administrator
 | `/cancel` | Interrupt agent generation (handled, not in menu). The ⏹ button under a working instance does the same, for anyone that instance's bot lets speak in the topic | All |
 | 🔒 `/save` | Save agent session (handled, not in menu) | Admin |
 | 🔒 `/raw <text>` | Paste text into the CLI exactly as typed, without the `[user:]` envelope (handled, not in menu) | Fleet admin of the topic's bot |
-| `/steer <message>` | Interject into the agent's *current* turn instead of queueing for idle. Not admin-gated — anyone who can talk to the agent can steer it. Only `claude-code`, `codex`, and `grok` accept a busy-pane interjection; other backends reply "not supported". | All |
+| `/steer <message>` | Interject into the agent's *current* turn instead of queueing for idle. Not admin-gated — anyone who can talk to the agent can steer it. `claude-code`, `codex`, `grok` and `muse` accept a busy-pane interjection, and so does `kiro-cli` running its TUI on a verified version (see [backend support](#steer-btw-and-clear-backend-support)). Other backends reply "not supported". | All |
 | `/btw <message>` | Ask a side question without interrupting the agent's current task — delivered as a labelled `[BTW — side question]` inbound message via the same paste path as `/steer`, but framed as a question rather than new direction. Not admin-gated. `claude-code` only; every other backend replies "not supported". | All |
 | `/tips` | Draw a random usage tip, posted directly in the topic/channel where you ran it (no longer routed through General). 300 tips exist (100 beginner + 100 intermediate + 100 advanced), but only the **beginner** tier is currently drawn from — intermediate/advanced are staged but not yet enabled fleet-wide. | All |
 | 🔒 `/status` | Fleet table: Instance, Backend, Model, Ctx, Effort, Cost, State (State merges paused/stopped/crashed with the execution state) | Admin |
@@ -78,7 +78,7 @@ Registered globally via `client.application.commands.set()`.
 | `/ctx` | Show agent context usage | All |
 | `/usage` | Show AI subscription usage | All |
 | `/cancel` | Interrupt agent generation | All |
-| `/steer <message>` | Interject into the current turn (not admin-gated; `claude-code`/`codex`/`grok` only, others reply "not supported") | All |
+| `/steer <message>` | Interject into the current turn (not admin-gated; `claude-code`/`codex`/`grok`/`muse`, and `kiro-cli` on its verified TUI; others reply "not supported") | All |
 | `/btw <message>` | Side question that doesn't interrupt the current task (not admin-gated; `claude-code` only, others reply "not supported") | All |
 | `/tips [mode]` | Draw a random usage tip, posted in the current channel (`mode` empty); `mode: on\|off` toggles the daily auto-send; `mode: advanced on` manually unlocks the advanced tier fleet-wide (no visible effect yet — beginner-only rollout stage) | All / 🔒 for `on`\|`off`\|`advanced on` |
 | 🔒 `/dashboard` | General admin menu with private local/public sign-in; public link is opt-in | Admin |
@@ -169,17 +169,21 @@ No permission check:
 
 ### /steer, /btw, and /clear backend support
 
-All three commands route through a backend-name lookup rather than being universally available:
+All three commands route through a backend-name lookup rather than being universally available. `kiro-cli` is the exception for `/steer`: whether it can be steered depends on how the instance was launched, so the instance's own launch answers.
 
 | Backend | `/steer` (busy-pane interject) | `/btw` (side question) | `/clear` (full reset) |
 |---------|------|------|-------|
 | `claude-code` | ✅ | ✅ | `/clear` |
 | `codex` | ✅ | ❌ "not supported" | `/clear` |
 | `grok` | ✅ | ❌ "not supported" | `/new` |
-| `kiro-cli` | ❌ "not supported" (legacy TUI swallows the paste) | ❌ "not supported" | `/clear` |
+| `kiro-cli` | ✅ with `kiro_ui: tui` on a verified version (2.27.1, v2 engine); ❌ on the legacy UI (it swallows the paste), on v3 and on other versions | ❌ "not supported" | `/clear` |
 | `opencode` | ❌ unverified | ❌ "not supported" | `/clear` |
 | `antigravity` | ❌ unverified | ❌ "not supported" | `/clear` |
 | `muse` | ✅ (verified live on muse 1.3.0) | ❌ "not supported" | `/clear` |
+
+kiro's TUI has its own interrupt mode, which the user switches with Ctrl+S: typed input either steers the running turn or waits for the turn to end. It cannot be set at launch without editing `~/.kiro`, so AgEnD reads it from kiro's input row before each steer, and never switches it.
+- AgEnD pastes only while the input row says `Type to steer`. It counts the steer as delivered once that row is empty again.
+- If the row says `Type to queue`, the message goes in after the turn, like any other message.
 
 A `/steer` or `/btw` on an unsupported backend gets an honest error instead of silently falling back to a normal queued message (which would look the same to the user but behave differently). `/btw` rides the same paste path as `/steer` but is Claude Code-only — it exists because Claude Code's *native* `/btw` opens a side-fork that never reaches the channel, so AgEnD substitutes a labelled inbound message instead.
 

@@ -172,6 +172,9 @@ export interface InputBox {
   queued?: boolean;
 }
 
+/** The empty composer's interrupt mode (CliBackend.readSteerComposer, #1405). */
+export type SteerComposerMode = "steer" | "queue" | "idle";
+
 /** Result of probing a CLI backend's environment at startup (cached to disk). */
 export interface CliEnv {
   backend: string;
@@ -379,6 +382,22 @@ export interface CliBackend {
    * Absent means false.
    */
   supportsQueuedInput?(): boolean;
+
+  /**
+   * Whether THIS launch takes a busy paste+Enter into the running turn (/steer, send_to_instance steer:true) — for a
+   * backend where that depends on how the instance was launched (kiro: only its TUI front-ends, on a verified version;
+   * #1405). Absent, the backend-name table in steer-capability.ts decides.
+   */
+  supportsSteer?(): boolean;
+
+  /**
+   * What the composer does with typed input on this screen, for a CLI whose busy input either steers the running turn
+   * or waits for its end, by a mode the user switches (kiro TUI: Ctrl+S; #1405). Read off the empty composer:
+   * "steer" (busy, steers), "queue" (busy, waits for the turn's end), "idle" (the empty idle prompt); null for
+   * anything else — text in the box, a dialog, an unknown row. A steer is pasted only on "steer" (or, once the turn has
+   * ended, "idle"), never after switching the user's mode.
+   */
+  readSteerComposer?(pane: string): SteerComposerMode | null;
 
   /**
    * Whether every submission needs a defensive second Enter. Some TUIs swallow
