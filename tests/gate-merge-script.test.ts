@@ -414,6 +414,44 @@ describe("gate-merge: merge-synced and green", () => {
     expect(w.run(["--dry-run", "7", w.approved, "xmsg-approve-1"]).line).toMatch(/^BLOCKED the rules of main are unreadable/);
   });
 
+  // ── #gate-1348: CodeQL optional for release/** base ──────────────────────────────────────────────────────────
+
+  it("release/* base + only build+scan green (no CodeQL) → WOULD_MERGE (#gate-1348)", () => {
+    const w = world();
+    // Set PR base to release/2.1 — fetch also needs the ref; push it on origin.
+    w.sh(w.dev, "checkout", "-q", "main");
+    w.sh(w.dev, "push", "-q", "origin", "HEAD:refs/heads/release/2.1");
+    w.state.prs[7]!.baseRefName = "release/2.1";
+    // Only build and scan are present (no CodeQL/Analyze).
+    w.state.checkRuns[w.approved] = [w.ok("build", 1), w.ok("scan", 2)];
+    const r = w.run(["--dry-run", "7", w.approved, "xmsg-approve-1"]);
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.lines).toEqual([`WOULD_MERGE ${w.approved}`]);
+  });
+
+  it("release/* base + no build → BLOCKED even without CodeQL (#gate-1348)", () => {
+    const w = world();
+    w.sh(w.dev, "checkout", "-q", "main");
+    w.sh(w.dev, "push", "-q", "origin", "HEAD:refs/heads/release/2.1");
+    w.state.prs[7]!.baseRefName = "release/2.1";
+    // scan only — no build.
+    w.state.checkRuns[w.approved] = [w.ok("scan", 2)];
+    const r = w.run(["--dry-run", "7", w.approved, "xmsg-approve-1"]);
+    expect(r.status).toBe(1);
+    expect(r.line).toMatch(/^BLOCKED CI on \S+: build=missing/);
+  });
+
+  it("main base + no CodeQL → still BLOCKED (base=main behaviour unchanged) (#gate-1348 mutation)", () => {
+    // Mutation check: removing the release check makes the release-base test above pass for main too,
+    // but this test ensures the original main behaviour is kept.
+    const w = world();
+    // base is main (the default in world()); provide build+scan only.
+    w.state.checkRuns[w.approved] = [w.ok("build", 1), w.ok("scan", 2)];
+    const r = w.run(["--dry-run", "7", w.approved, "xmsg-approve-1"]);
+    expect(r.status).toBe(1);
+    expect(r.line).toMatch(/CodeQL=missing/);
+  });
+
   it("a re-run: the older run failed, the latest passed → merged", () => {
     const w = world();
     w.state.checkRuns[w.approved] = [{ id: 0, name: "build", status: "completed", conclusion: "failure" }, ...green(w.ok, 5)];
