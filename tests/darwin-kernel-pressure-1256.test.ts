@@ -147,4 +147,18 @@ describe("sampler scheduling, unknown diagnostics and real gate", () => {
     await vi.advanceTimersByTimeAsync(4_999); expect(work).toHaveBeenCalledOnce();
     await vi.advanceTimersByTimeAsync(1); expect(work).toHaveBeenCalledTimes(2); await Promise.all([a, b]);
   });
+  it("unknown clears the held latch before capacity checks while an older operation remains active", async () => {
+    let value = reported(), release!: () => void;
+    const p = new MemoryPressure({ platform: "darwin", read: () => value });
+    const storm = new StormWindow(); const gate = new SpawnGate({ storm, memoryPressure: p, concurrency: () => 3, staggerMs: () => 0 });
+    stops.push(() => { gate.shutdown(); p.stop(); storm.shutdown(); });
+    const old = gate.run({ instanceName: "old", workingDirectory: "/old", reason: "startup" }, () => new Promise<void>(resolve => { release = resolve; }));
+    value = reported(4); p.sample(); const work = vi.fn(async () => 1);
+    const b = gate.run({ instanceName: "b", workingDirectory: "/b", reason: "wake" }, work);
+    const c = gate.run({ instanceName: "c", workingDirectory: "/c", reason: "wake" }, work);
+    void b.catch(() => {}); void c.catch(() => {}); expect(work).not.toHaveBeenCalled();
+    value = reported(null); p.sample(); await vi.advanceTimersByTimeAsync(0);
+    expect(work).toHaveBeenCalledTimes(2); expect((gate as any).pressureHeld).toBe(false);
+    release(); await Promise.all([old, b, c]);
+  });
 });
