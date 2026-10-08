@@ -6519,6 +6519,8 @@ export class Daemon extends EventEmitter {
           opts?.steer === true,
           writeCurrent,
         );
+        // The hand-off's last capture had no box: nothing was begun or written — wait for readiness, then try again.
+        if (written === "handoff-box-unread") return "dialog";
         // Fenced before its first write: not attempted — redo after a spawn, else drop without a ❌.
         return written === false && verdict.fenced ? stale() : written;
       });
@@ -7666,7 +7668,8 @@ export class Daemon extends EventEmitter {
     // #829: the caller's fence, asked once more after the last await before the
     // first side effect. Stale means unwritten: false, with no failure verdict.
     stillCurrent?: () => boolean,
-  ): Promise<boolean | KiroPendingDelivery> {
+    // "handoff-box-unread": a hand-off's last capture had no readable box — nothing begun or written (#1169).
+  ): Promise<boolean | KiroPendingDelivery | "handoff-box-unread"> {
     const signature = this.submissionSignature(formatted, submissionId);
     const rawPaste = durableAttempt?.submissionMode === "raw_paste";
     let windowId = initialWindowId;
@@ -7684,6 +7687,14 @@ export class Daemon extends EventEmitter {
       // Every attempt, retries included: a stop or respawn during a recovery wait ends it unwritten.
       // After a durable begin, the caller's abort path owns the row; only an attempt with no begin may be redone.
       if (stillCurrent && !stillCurrent()) { verdict.fenced = !verdict.durableBeginCommitted; return false; }
+      // A hand-off pastes and presses Enter into a busy pane: the box must still be readable on this, the last capture
+      // before the write (#1169 review) — a modal that appeared after the under-lock check would take that Enter. Before
+      // the durable begin the caller waits for readiness outside the lock and tries again; after it (a paste retry),
+      // nothing was written and the attempt ends like a paste that failed.
+      if (handingOffToNativeQueue && this.backend?.readInputRow && !pasteBaseline?.inputReadable) {
+        if (!verdict.durableBeginCommitted) return "handoff-box-unread";
+        return this.failDelivery(verdict, status, "paste", "handoff-input-unreadable");
+      }
       // Readiness, idle-gate, dialog, spawn and pane-lock waits have all ended.
       // Commit the submission fence at the last possible point before the
       // first side effect; a crash during those waits remains safely replayable.

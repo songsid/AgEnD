@@ -69,7 +69,11 @@ describe("the backend", () => {
   });
 });
 
-interface Screen { pasted: boolean; enters: number; idled: boolean; captures: number; waited: number; pastedAfterWaits: number | null }
+interface Screen {
+  pasted: boolean; enters: number; idled: boolean; captures: number; waited: number;
+  /** How many readiness waits had happened when the first paste / the durable begin happened (null: never). */
+  pastedAfterWaits: number | null; begunAfterWaits: number | null;
+}
 
 const roots: string[] = [];
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -79,7 +83,7 @@ function makeDaemon(root: string, backend: ClaudeCodeBackend, screen: (s: Screen
   const instanceDir = join(root, "instances", "worker");
   mkdirSync(instanceDir, { recursive: true });
   writeFileSync(join(instanceDir, "window-id"), "@worker");
-  const s: Screen = { pasted: false, enters: 0, idled: false, captures: 0, waited: 0, pastedAfterWaits: null };
+  const s: Screen = { pasted: false, enters: 0, idled: false, captures: 0, waited: 0, pastedAfterWaits: null, begunAfterWaits: null };
   const control = {
     getObservationResetAt: () => 0, getLastOutputAt: () => undefined, isIdle: () => false, hasOutputSince: () => true,
     waitUntilIdle: vi.fn(async () => { s.idled = true; return true; }),
@@ -102,6 +106,8 @@ function makeDaemon(root: string, backend: ClaudeCodeBackend, screen: (s: Screen
   vi.spyOn(daemon, "waitForInputTransientToClear").mockResolvedValue(true);
   vi.spyOn(daemon, "paneReadinessForDelivery").mockResolvedValue("busy");
   vi.spyOn(daemon, "waitForPaneReadyForDelivery").mockImplementation(async () => { s.waited++; return true; });
+  const begin = daemon.beginDurableDelivery.bind(daemon);
+  vi.spyOn(daemon, "beginDurableDelivery").mockImplementation((...args: unknown[]) => { s.begunAfterWaits ??= s.waited; return begin(...args); });
   vi.spyOn(daemon, "probeBlockingDialog").mockResolvedValue({ state: "clear" });
   return { daemon, tmux, control, s };
 }
@@ -233,5 +239,35 @@ describe("a hand-off needs a readable box on a fresh capture", () => {
     expect(r.s.waited).toBe(1);
     expect(r.s.pastedAfterWaits).toBe(1);
     expect(r.tmux.pasteBuffer).toHaveBeenCalledTimes(1);
+  });
+
+  // Captures 1 and 2 are the two gate checks (box readable); capture 3 is writeMessageToPane's baseline, the last read
+  // before the durable begin and the paste.
+  const afterWait = (s: Screen) => (!s.pasted ? BUSY_EMPTY : s.enters === 0 ? BUSY_PASTED : BUSY_QUEUED);
+
+  it("both gates pass, then the last capture before the write has no box: no begin, no paste until readiness is waited for", async () => {
+    const info = vi.spyOn(logger, "info");
+    const r = await deliverToBusyClaude(s => (s.waited > 0 ? afterWait(s) : s.captures <= 2 ? BUSY_EMPTY : NO_BOX));
+    expect(lateRefusals(info)).toBe(1);
+    expect(r.s.waited).toBe(1);
+    expect(r.s.begunAfterWaits).toBe(1);
+    expect(r.s.pastedAfterWaits).toBe(1);
+    expect(r.tmux.pasteBuffer).toHaveBeenCalledTimes(1);
+    expect(r.state).toBe("delivered");
+  });
+
+  it("both gates pass, then every capture for the last read fails (EIO): no begin, no paste until readiness is waited for", async () => {
+    const info = vi.spyOn(logger, "info");
+    const r = await deliverToBusyClaude(s => {
+      if (s.waited > 0) return afterWait(s);
+      if (s.captures <= 2) return BUSY_EMPTY;
+      throw Object.assign(new Error("capture-pane: EIO"), { code: "EIO" });
+    });
+    expect(lateRefusals(info)).toBe(1);
+    expect(r.s.waited).toBe(1);
+    expect(r.s.begunAfterWaits).toBe(1);
+    expect(r.s.pastedAfterWaits).toBe(1);
+    expect(r.tmux.pasteBuffer).toHaveBeenCalledTimes(1);
+    expect(r.state).toBe("delivered");
   });
 });
