@@ -19,7 +19,7 @@ const idLists = new Set(["allowed_users", "admin_users", "allowed_groups", "allo
 export function settingsDisplay(value: unknown): string {
   return (typeof value === "string" ? value : JSON.stringify(value) ?? "absent")
     .replace(/[\p{Cc}\p{Cf}]/gu, char => `\\u{${char.codePointAt(0)!.toString(16)}}`)
-    .replace(/@/g, "[at]").replace(/[\\`*_~<>|]/g, char => `\\${char}`);
+    .replace(/@/g, "[at]").replace(/[\\`*_~[\]()<>|]/g, char => `\\${char}`);
 }
 function fingerprint(value: unknown): string {
   if (value === undefined || value === null || value === "") return "absent";

@@ -102,6 +102,12 @@ describe("authoritative normalized diff (#1423)", () => {
   it("refuses oversized authorization diffs rather than hiding IDs", () => {
     expect(() => settingsChangeDiff({ allowed_users: [] }, { allowed_users: Array.from({ length: 40 }, (_, n) => String(n)) }, { operation: "access" })).toThrow("confirmation_diff_too_large");
   });
+  it("shows a literal identity instead of letting its Markdown disguise the approved target", () => {
+    const identity = "[trusted admin](https://spoof.test)", escaped = "\\[trusted admin\\]\\(https://spoof.test\\)";
+    expect(settingsDisplay(identity)).toBe(escaped);
+    const diff = settingsChangeDiff({ allowed_users: [] }, { allowed_users: [identity] }, { operation: "access" })!;
+    expect(diff.summary).toContain("allowed\\_users: add user ID " + escaped);
+  });
   it("fails closed on unsupported nested/list effects instead of treating them as ordinary", () => {
     expect(() => settingsChangeDiff({}, { access: { allowed_users: [{ hidden: "secret" }] } }, { operation: "access" })).toThrow();
     expect(() => settingsChangeDiff({}, { unknown: "potential-secret" }, { operation: "unknown" })).toThrow("unsupported_sensitive_effect");
