@@ -139,7 +139,7 @@ describe("Telegram typed commands are decided by the command table before any ha
   });
   it("a command the table passes through in an instance topic is left alone (handled as before)", async () => {
     const r = rig("open");
-    expect(await r.any.topicCommands.handleInstanceCommand(typed("/status", PLAIN, "30"), "alpha")).toBe(false);
+    expect(await r.any.topicCommands.handleInstanceCommand(typed("/start", PLAIN, "30"), "alpha")).toBe(false);
     expect(r.replies).toEqual([]);
   });
   it("an ordinary command the table lets anyone use still runs for a member (/steer in an instance topic)", async () => {

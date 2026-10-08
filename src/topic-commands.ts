@@ -762,8 +762,12 @@ export class TopicCommands {
     msg = owned;
     const text = msg.text?.trim();
     if (!text) return false;
-    const command = typedCommand(INSTANCE_FORMS, text, msg.source);
-    const refusal = this.tableRefusal(msg, command, this.ctx.fleetConfig?.instances[instanceName]?.general_topic ? "general" : "fleet");
+    const inGeneral = !!this.ctx.fleetConfig?.instances[instanceName]?.general_topic;
+    // A General command typed in an instance topic is recognized too, in its General forms only: the table points it
+    // to General (#1148) instead of handing it to the agent. No branch below runs it.
+    const command = typedCommand(INSTANCE_FORMS, text, msg.source)
+      ?? (inGeneral ? undefined : typedCommand(GENERAL_FORMS, text, msg.source));
+    const refusal = this.tableRefusal(msg, command, inGeneral ? "general" : "fleet");
     if (refusal) { await this.sendRefusal(msg, refusal); return true; }
 
     // Tips are informational and should appear where requested, including a
@@ -783,7 +787,7 @@ export class TopicCommands {
         return true;
       }
 
-      const isGeneral = !!this.ctx.fleetConfig?.instances[instanceName]?.general_topic;
+      const isGeneral = inGeneral;
       if (isGeneral && !pauseWake.instance) {
         await adapter.sendText(msg.chatId, t(`${pauseWake.action}.usage`), { threadId: msg.threadId });
         return true;
