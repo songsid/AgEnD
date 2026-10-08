@@ -81,6 +81,7 @@ function rig(type: "telegram" | "discord", defaults: Record<string, unknown> = {
     await flush();
   }
   async function click(action: string, userId = FLEET_ADMIN, overrides: Record<string, unknown> = {}) {
+    expect(adapter.notifyAlert.mock.calls.length, "an approval prompt must exist before a click").toBeGreaterThan(0);
     const alert = adapter.notifyAlert.mock.calls.at(-1)![1];
     const choice = alert.choices.find((c: any) => c.id.endsWith(`:${action}`));
     const entry = [...fm.pendingNonceButtons.values()].find((e: any) => choice.id.includes(e.nonce)) as any;

@@ -353,7 +353,7 @@ describe("the table's Telegram column says what those handlers do, for every com
   });
 });
 
-describe("/start: not one level, and neither platform's real gate moved", () => {
+describe("/start: platform grants and ClassicBot admins (#1418)", () => {
   it("Telegram private chat: the user allowlist, no admin needed", async () => {
     const r = await rig();
     for (const [person, id] of Object.entries({ plain: PU, fleetAdmin: FA, classicAdmin: CA })) {
