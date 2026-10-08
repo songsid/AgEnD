@@ -413,7 +413,7 @@ describe("the dashboard (the real page script)", () => {
     const open = { overlay: null as unknown };
     const toasts: Array<[string, boolean]> = [];
     const c = vm.createContext({
-      localStorage: { getItem: () => null }, navigator: { language: "en" },
+      /* a returning browser: it has seen the first sign-in tour (#1366) */ localStorage: { getItem: (k: string) => k === "agend_tour_done" ? "1" : null }, navigator: { language: "en" },
       document: {
         addEventListener: (t: string, f: (e: any) => void) => { doc[t] = f; }, getElementById: (n: string) => nodes[n] ?? null, createElement: create,
         body: { appendChild() {} }, querySelector: (q: string) => q === ".form-overlay" ? open.overlay : null,

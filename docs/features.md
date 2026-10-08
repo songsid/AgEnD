@@ -581,7 +581,9 @@ Simplified 4-question setup wizard for new users. Auto-detects installed backend
 
 ## Web Dashboard
 
-`agend web` launches a browser-based dashboard with live fleet monitoring via Server-Sent Events (SSE). Includes an integrated chat UI with bidirectional sync to Telegram — messages sent from the Web UI appear in Telegram and vice versa.
+The fleet serves a web dashboard on `127.0.0.1` (`health_port`, default 19280). Its `/ui` is **web chat**: pick an instance and talk to it from the browser. It is the same conversation as that instance's Telegram or Discord chat: what you send from the web is echoed into the topic as `🌐 web-user: …`, and the agent's replies show in both. Files and images (📎, paste or drop), Stop, and ticks showing how far each message got all work there, and a fleet with no chat platform can be run from the dashboard alone. `/view` is the read-mostly overview and `/settings` the fleet settings.
+
+Sign in with a one-time code: send `/dashboard` (fleet admin) or run `agend web` on the host. To use it from a phone or another computer, see [Reaching it from elsewhere](web-dashboard.md#reaching-it-from-elsewhere). The full guide is [web-dashboard.md](web-dashboard.md).
 
 ## Remote CLI sign-in (`/login`)
 

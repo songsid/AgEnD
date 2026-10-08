@@ -432,7 +432,7 @@ describe("the dashboard (the real page script)", () => {
     const sse: Record<string, (e: { data: string }) => void> = {};
     const toasts: Array<[string, boolean]> = [];
     const c = vm.createContext({
-      localStorage: { getItem: () => null }, navigator: { language: "en" },
+      /* a returning browser: it has seen the first sign-in tour (#1366) */ localStorage: { getItem: (k: string) => k === "agend_tour_done" ? "1" : null }, navigator: { language: "en" },
       document: { addEventListener() {}, getElementById: (n: string) => nodes[n] ?? null, createElement: (t: string) => el(t), body: { appendChild() {} } },
       setTimeout: () => 0, clearTimeout() {}, setInterval: () => 0, clearInterval() {},
       fetch: async () => ({ ok: true, json: async () => ({}) }),

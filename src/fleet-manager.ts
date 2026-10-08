@@ -190,6 +190,7 @@ import { isFleetStartCommandLine, readProcessCommandLine, releaseProcessFleetLoc
 import { isSetupComplete, markSetupComplete } from "./setup-marker.js";
 import { manualCleanupMessage, reapStaleTunnel } from "./tunnel/lease.js";
 import { buildToolPermissionsNotice } from "./tool-permissions-notice.js";
+import { WEB_CHAT_NOTICE, WEB_REMOTE_DOCS_URL, claimNotice, hasWebChat, releaseNotice, upgradeNoticesPath } from "./upgrade-notices.js";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import {
   mayUseTool,
@@ -5299,6 +5300,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           generalThreadId != null ? String(generalThreadId) : undefined,
         );
       }
+      // After "fleet ready", so the notice is not the first thing people see of a restart.
+      void this.announceWebChatOnce(agendVersion);
     }
 
     // Health HTTP endpoint
@@ -7075,6 +7078,30 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * their fleet is organised. Both stay theirs — this only makes sure they are
    * not discovered by an agent failing at three in the morning.
    */
+  /**
+   * #1366: the first time a fleet runs 2.2 or later, tell each chat platform's General — once — that its agents can
+   * now be talked to from a browser. Claimed in upgrade-notices.json before the send, released if the send fails.
+   * Platforms with nowhere to post fleet notices (no group, or a Discord fleet with no General channel) are skipped
+   * and not recorded, so they are told once they have one.
+   */
+  async announceWebChatOnce(version: string): Promise<void> {
+    if (!hasWebChat(version)) return;
+    const path = upgradeNoticesPath(this.dataDir);
+    for (const [adapterId, world] of this.worlds) {
+      if (this.shuttingDown) return;
+      const target = this.fleetNoticeTarget(adapterId);
+      if (!target) continue;
+      if (!claimNotice(path, WEB_CHAT_NOTICE, adapterId)) continue;
+      try {
+        await world.adapter.sendText(target.chatId, t("upgrade.web_chat", WEB_REMOTE_DOCS_URL), target.opts);
+        this.logger.info({ adapterId, notice: WEB_CHAT_NOTICE }, "Announced web chat in General");
+      } catch (err) {
+        const released = releaseNotice(path, WEB_CHAT_NOTICE, adapterId);
+        this.logger.warn({ err, adapterId, released }, "Could not announce web chat in General — will try at the next start");
+      }
+    }
+  }
+
   private announceToolPermissionsChange(): void {
     try {
       const thirtyDaysAgo = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 19).replace("T", " ");

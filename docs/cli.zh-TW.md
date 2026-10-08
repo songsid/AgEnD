@@ -8,7 +8,7 @@ Telegram fleet 選單（General 主題與實例主題，`setMyCommands`）列出
 |---------|-------------|----------------|------------|
 | `/status` | Fleet 表格：Backend、Model、Context、推理強度、花費、執行狀態 | — | 🔒 管理員 |
 | `/sysinfo` | 詳細系統診斷（版本、負載、IPC 狀態、各 backend CLI 版本）；Telegram 另可用 `/sys-info`、`/sys_info` | — | 所有人 |
-| `/dashboard` | 顯示 View/Settings/WebUI 網址（Telegram 上帶 token 的網址會 spoiler，Discord 為悄悄回覆） | — | 🔒 管理員 |
+| `/dashboard` | 登入網頁儀表板與網頁聊天：登入連結和一次性登入碼（Telegram 上登入碼會 spoiler，Discord 只有你看得到）。儀表板在 `localhost` 時，也會說明怎麼從手機連進來。`/dashboard revoke`（Discord 上是 `action: revoke` 選項）讓所有瀏覽器登出 | `[revoke]` | 🔒 管理員 |
 | `/ctx` | 顯示 Agent 的 Context 使用量 | — | 所有人 |
 | `/compact` | 壓縮 Agent 的 Context | `[instructions]`——指定摘要重點，僅 Claude Code | fleet 主題所有人 |
 | `/steer` | 插話到 Agent 正在進行的回合，不等閒置 | `<message>` 必填；僅 `claude-code`／`codex`／`grok` | 所有人 |
@@ -138,9 +138,10 @@ agend delivery scan-forged-envelopes --instance <name>  # 檢查 kiro instance �
 ## Web 儀表板 (Web Dashboard)
 
 ```bash
-agend web                       # 在瀏覽器開 Web UI 儀表板
+agend web                       # 印出一次性登入碼並開啟登入頁
+agend web --code                # 只印出登入頁和登入碼（不開瀏覽器）
 agend view                      # 在瀏覽器開唯讀 View 儀表板
-agend web-token rotate          # 作廢所有儀表板連結與瀏覽器 session
+agend web-token rotate          # 讓所有瀏覽器登出，並更換 CLI token
 agend setup                     # 引導式設定頁，fleet 還不存在時用
 agend setup --reset             # 允許 setup 在完成後再跑一次
 agend setup --tunnel            # ……並公開出去，讓手機也能開
