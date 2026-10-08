@@ -6,11 +6,11 @@ AgEnD's web dashboard is three panels on one small web server that the fleet run
 
 | Panel | What it is for |
 |---|---|
-| **`/ui`**: Dashboard | Talk to your agents (chat, files, Stop), see who is working, and manage instances, tasks, schedules and teams |
+| **`/ui`**: the app | Talk to your agents (chat, files, Stop reply), see who is working, and manage instances, tasks, schedules and teams. Each chat has its own address, `/ui/chat/<name>`; Fleet is `/ui/fleet` (`/ui/fleet/schedules`, `…/teams`, `…/config`) |
 | **`/view`** | A read-mostly view of every agent: live terminal, roster, usage, and editing each agent's profile and avatar |
 | **`/settings`** | Fleet settings, with apply and restart |
 
-All three share one navigation bar (*Dashboard · View · Settings*) and a **Session** menu. `/` opens the dashboard.
+`/ui` is one app with a sidebar: the instances, **Fleet**, **View**, **Settings**, the theme, the language and the **Session** menu. Moving around inside it does not reload the page, and Back/Forward work. `/view` and `/settings` are still pages of their own for now, with their navigation bar. `/` opens `/ui`, which goes back to the chat you had open last. Old links of the form `/ui#instance=<name>` still work, also through signing in.
 
 The server listens on **`127.0.0.1`**, on `health_port` (default **19280**). It is reachable from the machine itself unless you set up a way in: see [Reaching it from elsewhere](#reaching-it-from-elsewhere).
 
@@ -35,7 +35,7 @@ An old `?token=` link or bookmark (`/ui?token=…`, as older versions printed) i
 - A session is a record on the server, not a value in your browser. It ends **12 hours** after sign-in, or after **2 hours** without use, whichever comes first. Local sessions survive a fleet restart. Public sessions are scoped to one exposure: four-hour absolute / 30-minute idle limits, and link closure also ends them. They cannot be used locally or on a later exposure; local cookies and header tokens cannot be used on the public host.
 - Only what you do counts as use: opening a page or a chat, sending, changing something. What a page does on its own timer never does: the live stream (also when it reconnects), the polling fallback, and `/view`'s terminal, roster and usage refresh. So a tab left open, including `/view` with `web.view_access: session`, still ends after its idle limit (2 hours locally, 30 minutes for a public session).
 - When a session ends, the page says so once ("Your session has ended. Sign in again") and keeps what you were doing on screen.
-- **The Session menu** (top bar) shows:
+- **The Session menu** (at the bottom of the sidebar in `/ui`; in the top bar of `/view` and `/settings`) shows:
   - which browser you are signed in as, and when the session ends;
   - every other signed-in device, each with **Sign out**;
   - **Sign out everywhere**.
@@ -66,13 +66,14 @@ Pick an instance on the left to talk to it. The web chat is **the same conversat
 - The conversation is one centred column. Your messages are bubbles on the right; an agent's replies use the full column, each with **Copy**.
 - **Code blocks** show their language, with **Copy** and **Wrap** (long lines wrap instead of scrolling; remembered for this browser). A block longer than 30 lines is folded: **Show all N lines** opens it.
 - The view follows new messages only while you are at the bottom. Scrolled up to read, it stays where you are, and **↓ N new** takes you down.
-- **‹** at the top of the sidebar hides it (☰ brings it back); the choice is remembered. On a phone the sidebar is a drawer: ☰ opens it, and choosing something, tapping outside it or Esc closes it.
-- **Theme** (bottom of the sidebar): *System* follows your device's light or dark setting; *Light* or *Dark* fixes it for this browser.
+- The sidebar button at its top hides it (☰ brings it back); the choice is remembered. On a phone the sidebar is a drawer: ☰ opens it, and choosing something, tapping outside it or Esc closes it. A phone also has tabs along the bottom (Chat, Fleet, View, Settings); they make room while the keyboard is open.
+- The header shows the instance's name and state. Its **⋯** menu holds **Instance details** and the instance's own actions, and only the ones that fit: **Start** for a stopped instance; **Restart** and **Stop instance** for a running one; **Delete** last, behind typing its name.
+- **Theme** and **Language** (bottom of the sidebar): *System* follows your device's light or dark setting; *Light* or *Dark* fixes it for this browser. The language applies to every panel.
 - **On a phone** the on-screen keyboard resizes the page, so the composer stays above it, and the layout keeps clear of the notch and the home bar.
 
 ### Keyboard and screen readers
 - **Esc** stops the agent's reply while it works, as Esc in its terminal would. It does nothing while it is idle or when a form or menu is open: Esc closes that first.
-- The sidebar's rows can be reached with **Tab** and opened with **Enter** or **Space**. On a phone, the drawer keeps focus inside it until it closes, and focus then returns to ☰.
+- The sidebar's rows are links: **Tab** reaches them and **Enter** opens one (a middle click or Ctrl+click opens it in a new tab). On a phone, the rest of the page cannot be reached while the drawer is open.
 - Messages are not read out as they arrive. A screen reader hears the coarse events once each: the agent started, finished, replied, or is waiting for your input. The conversation itself is a log to browse.
 
 ### Writing
@@ -118,9 +119,9 @@ Each message you send shows how far it got, the same steps Telegram shows as rea
 | ⊘ | Dropped by **Stop** before the agent got it |
 
 ### "*name* is working…" and Stop
-While the open chat's agent is working, a line above the composer says so, and the composer's **Send** becomes **Stop**. Type something and **Send** comes back beside it: a message sent while the agent works waits its turn.
+While the open chat's agent is working, a line above the composer says so, and **Stop reply** appears in the composer in place of **Send**. Type something and **Send** comes back beside it: a message sent while the agent works waits its turn.
 - Stop does what Telegram's cancel button and `/cancel` do: it interrupts the agent's current reply (Esc), and the messages still waiting are dropped. Their ticks turn to ⊘.
-- Stop does **not** stop the instance's process. The instance's own Stop in its actions does that.
+- Stop reply does **not** stop the instance's process. **Stop instance** in the header's **⋯** menu does that.
 - The line shows how long the agent has been working, counted from when this page saw it start. After Stop it reads "Stopping *name*…" until the agent is idle.
 - When the agent is waiting on its terminal (a permission question, a login, a dialog), the line says "*name* is waiting for your input", and the instance gets a **needs you** badge in the sidebar. This is read from the terminal screen, so take it as approximate. Answer it from the prompt buttons below, or on the host.
 
