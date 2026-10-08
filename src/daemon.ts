@@ -10542,9 +10542,19 @@ export class Daemon extends EventEmitter {
     // repainted after Enter, let the following hold-only entry report it
     // instead of sending a second Enter into a possibly changed screen.
     const attemptedSafetyChoices = new Set<string>();
+    // The scan belongs to this launch: its tmux, spawn and launch fence. A respawn, pause or stop that replaces any of
+    // them retires it — a key meant for this launch's dialog must never reach the replacement (#1435 review).
+    const ownerTmux = this.tmux;
+    const ownerSpawn = this.spawnGeneration;
+    const ownerFence = this.launchFenceEpoch;
+    const owned = () => this.tmux === ownerTmux && this.spawnGeneration === ownerSpawn && this.launchFenceEpoch === ownerFence;
     do {
       this.startupAdmission?.();
       attempts++;
+      if (!owned()) {
+        this.logger.info("Startup dialog scan superseded by a newer launch, pause or stop — retiring without answering");
+        return true;
+      }
       let pane: string;
       try {
         pane = await this.tmux!.capturePane(); this.startupAdmission?.();
@@ -10629,18 +10639,25 @@ export class Daemon extends EventEmitter {
               // The capture above may have gone stale while waiting for the
               // write lock. Trust/other safety prompts must still be the
               // CURRENT menu, with the same safe cursor, at the instant of
-              // the key send. A changed pane falls through to the next scan.
+              // the key send. A changed pane falls through to the next scan;
+              // a pane that is no longer this launch's is not read or keyed.
+              if (!owned()) return false;
               if (dialog.inputBlocked) {
                 const currentPane = await this.tmux!.capturePane(); this.startupAdmission?.();
+                // The capture is an await too: a replacement launched during it must find no answer recorded as its own.
+                if (!owned()) return false;
                 if (!Daemon.dialogMatches(dialog, currentPane)) return false;
               }
               if (dialog.autoResolutionKey) {
                 attemptedSafetyChoices.add(dialog.autoResolutionKey);
-                this.autoResolvedDialogGeneration = this.spawnGeneration;
+                this.autoResolvedDialogGeneration = ownerSpawn;
                 this.autoResolvedDialogKey = dialog.autoResolutionKey;
               }
               for (const key of dialog.keys) {
                 this.startupAdmission?.();
+                // Before every key, synchronously: the lock wait, the capture and the gap after the previous key can
+                // each have seen a respawn, pause or stop.
+                if (!owned()) return false;
                 if (key === "Up" || key === "Down" || key === "Enter" || key === "Escape") {
                   if (!await this.tmux!.sendSpecialKey(key)) return false;
                 } else {
