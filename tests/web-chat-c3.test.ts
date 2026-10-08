@@ -8,6 +8,8 @@ import { join } from "node:path";
 import vm from "node:vm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { channelStatus } from "../src/daemon.js";
+import { fire, settle } from "./helpers/mini-dom.js";
+import type { AppPage } from "./helpers/app-harness.js";
 import { handleWebRequest, type WebApiContext } from "../src/web-api.js";
 import { isWebMessageId, newWebMessageId, nextDeliveryState, WebChatHistory, type WebDeliveryState } from "../src/web-chat-history.js";
 import { csrfTokenFor } from "../src/web-session.js";
@@ -369,322 +371,420 @@ describe("chat-render.js: ticks", () => {
   });
 });
 
-describe("the dashboard (the real page script)", () => {
-  const PAGE = readFileSync(join(process.cwd(), "src", "ui", "dashboard.html"), "utf8").match(/<script>\n([\s\S]*?)<\/script>/)![1]!;
-  function el(tag = "div") {
-    const node: any = {
-      tag, className: "", textContent: "", title: "", type: "", id: "", disabled: false, dataset: {}, children: [] as any[], attrs: {} as Record<string, string>, style: {},
-      append(...kids: any[]) { node.children.push(...kids); }, setAttribute(k: string, v: string) { node.attrs[k] = v; }, remove() {},
-    };
-    // textContent = "" empties it, as in a browser.
-    let text = "";
-    Object.defineProperty(node, "textContent", { get: () => text, set: (v: string) => { text = v; if (v === "") node.children = []; } });
-    return node;
-  }
-  // The message list as the page builds it (#1307): one node per message, inserted, replaced and removed — enough of
-  // the DOM for that, and its innerHTML is the messages' HTML in order.
-  function msgNode(html: string, parent: any) {
-    const n: any = {
-      html, querySelectorAll: () => [],
-      remove() { const i = parent.kids.indexOf(n); if (i >= 0) parent.kids.splice(i, 1); },
-      replaceWith(m: any) { const i = parent.kids.indexOf(n); if (i >= 0) parent.kids.splice(i, 1, m); },
-      get nextSibling() { return parent.kids[parent.kids.indexOf(n) + 1] ?? null; },
-    };
-    return n;
-  }
-  function msgList() {
-    const list: any = {
-      kids: [] as any[], scrollHeight: 0,
-      get firstChild() { return list.kids[0] ?? null; },
-      insertBefore(n: any, ref: any) { const i = list.kids.indexOf(n); if (i >= 0) list.kids.splice(i, 1); const j = ref ? list.kids.indexOf(ref) : -1; if (j < 0) list.kids.push(n); else list.kids.splice(j, 0, n); },
-      set textContent(_v: string) { list.kids = []; },
-      set innerHTML(v: string) { list.kids = [msgNode(v, list)]; },
-      get innerHTML() { return list.kids.map((k: any) => k.html).join(""); },
-    };
-    return list;
-  }
-  function page() {
-    const messages = msgList();
-    // The composer buttons start as the page writes them: Stop hidden.
-    const nodes: Record<string, any> = { workBar: el(), messages, uptime: { textContent: "" }, stopBtn: Object.assign(el("button"), { hidden: true }), sendBtn: el("button"), msgIn: { value: "" } };
-    const create = (t: string) => t === "template"
-      ? { set innerHTML(v: string) { (this as any).content = { firstElementChild: msgNode(v, messages) }; } }
-      : el(t);
-    const sse: Record<string, (e: { data: string; lastEventId?: string }) => void> = {};
-    const doc: Record<string, (e: any) => void> = {};            // the page's own document listeners (keys)
-    const open = { overlay: null as unknown };
+// ── the chat panel: the real page modules, mounted the way the app mounts them (#1408 step 1) ──────────────────
+
+/** The app's stream as the chat hears it: `emit` is one frame, already parsed (app-stream.js parses before it emits). */
+function fakeStream() {
+  const subs = new Map<string, Array<(d: any, extra?: unknown) => void>>();
+  return {
+    on(name: string, fn: (d: any, extra?: unknown) => void) { subs.set(name, [...(subs.get(name) ?? []), fn]); return () => {}; },
+    emit(name: string, d: any, extra?: unknown) { for (const fn of subs.get(name) ?? []) fn(d, extra); },
+  };
+}
+/** The page's fetch: every call recorded; `respond` answers it (assign a new one to change the answer). */
+function fetchMock() {
+  const calls: Array<{ path: string; method: string; body?: any }> = [];
+  const mock = {
+    calls,
+    respond: (_path: string, _body?: any): unknown => ({}),
+    fn: async (path: string, o: { method?: string; body?: string } = {}) => {
+      const body = o.body ? JSON.parse(o.body) : undefined;
+      calls.push({ path, method: o.method ?? "GET", body });
+      const value = await mock.respond(path, body);
+      return { ok: true, status: 200, json: async () => value };
+    },
+  };
+  return mock;
+}
+const load = (path: string): Promise<any> => import(path);
+const inst = (name: string, over: Record<string, unknown> = {}) => ({ name, status: "running", state: "idle", backend: "claude-code", ...over });
+const frame = (...instances: Array<Record<string, unknown>>) => ({ uptime: 1, instances });
+const msg = (id: number, sender: string, text: string, over: Record<string, unknown> = {}) => ({ boot: "b", id, instance: "w", sender, text, ts: "2026-01-01T00:00:00Z", ...over });
+const key = (k: string, over: Record<string, unknown> = {}) => { const e: any = { key: k, isComposing: false, defaultPrevented: false, preventDefault() { e.defaultPrevented = true; }, ...over }; return e; };
+
+describe("the chat panel (the real page modules)", () => {
+  const pages: AppPage[] = [];
+  afterEach(async () => { for (const pg of pages.splice(0)) { await pg.unmount(); pg.restore(); } });
+
+  /** A page with the app's modules: the store booted on a stream (fake, or the real one over poll or SSE), <ChatPanel>
+   *  mounted into <main id="main"> as the shell does. vi.resetModules() first: boot runs once per module instance. */
+  async function chatPage(kind: "fake" | "poll" | "events" = "fake") {
+    vi.resetModules();
+    const harness = await import("./helpers/app-harness.js");
+    const p = harness.page();
+    pages.push(p);
+    const app = await load("/assets/app-store.js");
+    const shell = await load("/assets/app-shell.js");
+    const panel = await load("/ui/js/panel-chat.js");
+    const fx = fetchMock();
     const toasts: Array<[string, boolean]> = [];
-    const c = vm.createContext({
-      /* a returning browser: it has seen the first sign-in tour (#1366) */ localStorage: { getItem: (k: string) => k === "agend_tour_done" ? "1" : null }, navigator: { language: "en" },
-      document: {
-        addEventListener: (t: string, f: (e: any) => void) => { doc[t] = f; }, getElementById: (n: string) => nodes[n] ?? null, createElement: create,
-        body: { appendChild() {} }, querySelector: (q: string) => q === ".form-overlay" ? open.overlay : null,
-      },
-      setTimeout: () => 0, clearTimeout() {}, setInterval: () => 0, clearInterval() {},
-      fetch: async () => ({ ok: true, json: async () => ({}) }),
-      EventSource: class { addEventListener(k: string, f: (e: { data: string }) => void) { sse[k] = f; } },
-    });
-    vm.runInContext(RENDER, c);
-    vm.runInContext(PAGE, c);
-    (c as any).captureToast = (m: string, ok: boolean) => toasts.push([m, ok]);
-    vm.runInContext('toast=(m,ok=true)=>captureToast(m,ok);renderList=()=>{};renderActions=()=>{};mode="instance";cur="w";curTab="chat";', c);
-    return { c, nodes, sse, toasts, doc, open, read: (s: string) => vm.runInContext(s, c) };
+    const timers: Array<() => void> = [];        // the store's 60-second clocks: recorded, run only when a test says so
+    const sources: any[] = [];                   // the EventSource(s) the real stream opened
+    const clock = (f: () => void) => { timers.push(f); return timers.length; };
+    const env = {
+      fetch: fx.fn, setTimeout: clock, clearTimeout() {}, setInterval: () => 1, clearInterval() {},
+      EventSource: class { listeners = new Map<string, (e: { data: string; lastEventId?: string }) => void>(); constructor() { sources.push(this); } addEventListener(n: string, f: any) { this.listeners.set(n, f); } close() {} },
+    };
+    const stream: any = kind === "fake" ? fakeStream() : (await load("/assets/app-stream.js")).createStream({ mode: "full", transport: kind === "poll" ? "poll" : undefined, env });
+    stream.on("status", app.applyStatus);        // app.js wires these two before the chat boots
+    stream.on("activity", app.applyActivity);
+    panel.boot({ stream, boot: null, deps: { fetch: fx.fn, toast: (m: string, ok = true) => { toasts.push([m, ok]); }, setTimeout: clock } });
+    const mount = (name: string, ...beside: unknown[]) => p.mount(harness.h("main", { id: "main" }, ...beside, harness.h(panel.ChatPanel, { route: { panel: "chat", instance: name }, navKey: `chat|${name}` })));
+    const posts = () => fx.calls.filter(c => c.method === "POST");
+    return { p, fx, toasts, timers, stream, sources, app, shell, panel, mount, posts, store: () => panel.store as any, h: harness.h };
   }
-  const bar = (p: ReturnType<typeof page>) => p.nodes.workBar;
-  // Stop is the composer's (#1307): shown while the agent works, beside Send only when there is something to send.
-  const button = (p: ReturnType<typeof page>) => p.nodes.stopBtn;
 
-  it("shows '<name> is working…' and a Stop while the open chat's agent works, and hides them when it is idle", () => {
-    const p = page();
-    p.sse.activity!({ data: JSON.stringify({ instance: "w", state: "working" }) });
-    expect(bar(p).className).toBe("work-bar on");
-    expect(bar(p).children.map((k: any) => k.textContent)).toEqual(["", "w is working…", "0:00"]);
-    expect(bar(p).children[2].attrs["aria-hidden"], "the ticking time is not read out every second").toBe("true");
-    expect([button(p).hidden, p.nodes.sendBtn.hidden], "an empty composer: Send becomes Stop").toEqual([false, true]);
-    p.nodes.msgIn.value = "next, please";
-    p.read("renderComposerButtons()");
-    expect([button(p).hidden, p.nodes.sendBtn.hidden], "something typed: it can be sent to wait its turn, and Stop stays").toEqual([false, false]);
-    p.nodes.msgIn.value = "";
-    p.sse.activity!({ data: JSON.stringify({ instance: "w", state: "stuck" }) });
-    expect(bar(p).className).toBe("work-bar on stuck");
-    expect(bar(p).children[1].textContent).toBe("w looks stuck");
-    expect(button(p).hidden).toBe(false);
-    p.sse.activity!({ data: JSON.stringify({ instance: "w", state: "idle" }) });
-    expect(bar(p).className).toBe("work-bar");
-    expect(bar(p).children).toEqual([]);
-    expect([button(p).hidden, p.nodes.sendBtn.hidden]).toEqual([true, false]);
+  it("shows '<name> is working…' and a Stop while the open chat's agent works, and hides them when it is idle", async () => {
+    const c = await chatPage();
+    c.stream.emit("status", frame(inst("w")));
+    await c.mount("w");
+    const bar = () => c.p.root.querySelector(".work-bar");
+    const stop = () => c.p.root.querySelector("#stopBtn");
+    const send = () => c.p.root.querySelector("#sendBtn");
+    const typeIn = async (text: string) => { c.p.root.querySelector("#msgIn").value = text; fire(c.p.root.querySelector("#msgIn"), "input"); await settle(); };
+    c.stream.emit("activity", { instance: "w", state: "working" });
+    await settle();
+    expect(bar().className).toBe("work-bar working");
+    expect(bar().querySelector(".lbl").textContent).toBe("w is working…");
+    expect(bar().querySelector(".elapsed").getAttribute("aria-hidden"), "the ticking time is not read out every second").toBe("true");
+    expect([stop().hidden, send().hidden], "an empty composer: Send becomes Stop").toEqual([false, true]);
+    await typeIn("next, please");
+    expect([stop().hidden, send().hidden], "something typed: it can be sent to wait its turn, and Stop stays").toEqual([false, false]);
+    await typeIn("");
+    c.stream.emit("activity", { instance: "w", state: "stuck" });
+    await settle();
+    expect(bar().className).toBe("work-bar stuck");
+    expect(bar().querySelector(".lbl").textContent).toBe("w looks stuck");
+    expect(stop().hidden).toBe(false);
+    c.stream.emit("activity", { instance: "w", state: "idle" });
+    await settle();
+    expect(bar()).toBeNull();
+    expect([stop().hidden, send().hidden]).toEqual([true, false]);
   });
 
-  it("another instance working does not show here; the status frames carry the state too", () => {
-    const p = page();
-    p.sse.activity!({ data: JSON.stringify({ instance: "other", state: "working" }) });
-    expect(bar(p).children).toEqual([]);
-    expect(button(p).hidden).toBe(true);
-    p.sse.status!({ data: JSON.stringify({ uptime: 1, instances: [{ name: "w", state: "working" }, { name: "other", state: null }] }) });
-    expect(bar(p).className).toBe("work-bar on");
-    expect(p.read("activity.other")).toBeNull();
+  it("another instance working does not show here; the status frames carry the state too", async () => {
+    const c = await chatPage();
+    c.stream.emit("status", frame(inst("w"), inst("other")));
+    await c.mount("w");
+    c.stream.emit("activity", { instance: "other", state: "working" });
+    await settle();
+    expect(c.p.root.querySelector(".work-bar")).toBeNull();
+    expect(c.p.root.querySelector("#stopBtn").hidden).toBe(true);
+    c.stream.emit("status", frame(inst("w", { state: "working" }), inst("other", { state: null })));
+    await settle();
+    expect(c.p.root.querySelector(".work-bar").className).toBe("work-bar working");
+    expect(c.store().state.exec.other).toBeNull();
   });
 
-  it("a status that presents awaiting_input (#1212) keeps the agent's turn — the line stays, Stop stays — and says it waits on you (#1307)", () => {
-    const p = page();
-    p.sse.activity!({ data: JSON.stringify({ instance: "w", state: "working" }) });
-    p.sse.status!({ data: JSON.stringify({ uptime: 1, instances: [{ name: "w", state: "awaiting_input", execution_state: "working", interaction_summary: "Permission prompt for 12s" }] }) });
-    expect(bar(p).className).toBe("work-bar on awaiting");
-    expect(bar(p).children.map((k: any) => k.textContent)).toEqual(["", "w is waiting for your input", "Permission prompt for 12s"]);
-    expect(button(p).hidden, "Stop stays").toBe(false);
-    expect(p.read("activity.w")).toBe("working");
+  it("a status that presents awaiting_input (#1212) keeps the agent's turn — the line stays, Stop stays — and says it waits on you (#1307)", async () => {
+    const c = await chatPage();
+    c.stream.emit("status", frame(inst("w")));
+    await c.mount("w");
+    c.stream.emit("activity", { instance: "w", state: "working" });
+    c.stream.emit("status", frame(inst("w", { state: "awaiting_input", execution_state: "working", interaction_summary: "Permission prompt for 12s" })));
+    await settle();
+    const bar = c.p.root.querySelector(".work-bar");
+    expect(bar.className).toBe("work-bar awaiting");
+    expect([bar.querySelector(".lbl").textContent, bar.querySelector(".note").textContent]).toEqual(["w is waiting for your input", "Permission prompt for 12s"]);
+    expect(c.p.root.querySelector("#stopBtn").hidden, "Stop stays").toBe(false);
+    expect(c.store().state.exec.w).toBe("working");
     // Answered: back to working.
-    p.sse.status!({ data: JSON.stringify({ uptime: 1, instances: [{ name: "w", state: "working", execution_state: "working" }] }) });
-    expect(bar(p).className).toBe("work-bar on");
+    c.stream.emit("status", frame(inst("w", { state: "working", execution_state: "working" })));
+    await settle();
+    expect(c.p.root.querySelector(".work-bar").className).toBe("work-bar working");
     // An older status without execution_state still works from `state`.
-    p.sse.status!({ data: JSON.stringify({ uptime: 1, instances: [{ name: "w", state: "idle" }] }) });
-    expect(bar(p).className).toBe("work-bar");
+    c.stream.emit("status", frame(inst("w", { state: "idle" })));
+    await settle();
+    expect(c.p.root.querySelector(".work-bar")).toBeNull();
   });
 
-  it("the name is text, never markup", () => {
-    const p = page();
-    p.read('cur = "<img src=x onerror=alert(1)>"');
-    p.sse.activity!({ data: JSON.stringify({ instance: "<img src=x onerror=alert(1)>", state: "working" }) });
-    expect(bar(p).children[1].textContent).toBe("<img src=x onerror=alert(1)> is working…");
-    expect(bar(p).innerHTML).toBeUndefined();
+  it("the name is text, never markup", async () => {
+    const name = "<img src=x onerror=alert(1)>";
+    const c = await chatPage();
+    c.stream.emit("status", frame(inst(name)));
+    await c.mount(name);
+    c.stream.emit("activity", { instance: name, state: "working" });
+    await settle();
+    expect(c.p.root.querySelector(".work-bar .lbl").textContent).toBe(`${name} is working…`);
+    expect(c.p.root.querySelector("img"), "no element was made from the name").toBeNull();
   });
 
-  it("a status frame with no change keeps the same Stop button (a keyboard user's focus stays on it)", () => {
-    const p = page();
-    p.sse.activity!({ data: JSON.stringify({ instance: "w", state: "working" }) });
-    const first = button(p);
-    p.sse.status!({ data: JSON.stringify({ uptime: 1, instances: [{ name: "w", state: "working" }] }) });
-    expect(button(p)).toBe(first);
+  it("a status frame with no change keeps the same Stop button (a keyboard user's focus stays on it)", async () => {
+    const c = await chatPage();
+    c.stream.emit("status", frame(inst("w")));
+    await c.mount("w");
+    c.stream.emit("activity", { instance: "w", state: "working" });
+    await settle();
+    const first = c.p.root.querySelector("#stopBtn");
+    c.stream.emit("status", frame(inst("w", { state: "working" })));
+    await settle();
+    expect(c.p.root.querySelector("#stopBtn")).toBe(first);
     expect(first.hidden).toBe(false);
   });
 
   it("Stop posts /ui/cancel/<the chat it was pressed in> and says how it went", async () => {
-    const p = page();
-    const calls: unknown[] = [];
-    (p.c as any).recordCall = (x: unknown) => calls.push(x);
-    p.read('api = async (m, path) => { recordCall([m, path]); return path.endsWith("/a%2Fb") ? { error: "a/b is not running" } : { cancelled: "w" }; }');
-    p.sse.activity!({ data: JSON.stringify({ instance: "w", state: "working" }) });
-    (p.c as any).stopNode = button(p);
-    await p.read("ACTIONS.stopReply(stopNode)");
-    expect(calls).toEqual([["POST", "/ui/cancel/w"]]);
-    expect(p.toasts).toEqual([["w: Stopped", true]]);
-    await p.read('cancelReply("a/b")');
-    expect(calls.at(-1)).toEqual(["POST", "/ui/cancel/a%2Fb"]);
-    expect(p.toasts.at(-1)).toEqual(["a/b is not running", false]);
+    const c = await chatPage();
+    c.fx.respond = (path: string) => (path.endsWith("/a%2Fb") ? { error: "a/b is not running" } : { cancelled: "w" });
+    c.stream.emit("status", frame(inst("w", { state: "working" })));
+    await c.mount("w");
+    c.stream.emit("activity", { instance: "w", state: "working" });
+    await settle();
+    fire(c.p.root.querySelector("#stopBtn"), "click");
+    await settle();
+    expect(c.posts().map(x => [x.method, x.path])).toEqual([["POST", "/ui/cancel/w"]]);
+    expect(c.toasts).toEqual([["w: Stopped", true]]);
+    await c.store().cancelReply("a/b");
+    expect(c.posts().at(-1)!.path).toBe("/ui/cancel/a%2Fb");
+    expect(c.toasts.at(-1)).toEqual(["a/b is not running", false]);
   });
 
   it("after Stop: 'Stopping…' until the agent goes idle; a Stop that failed changes nothing (#1307)", async () => {
-    const p = page();
-    p.read('api = async (m, path) => path.endsWith("/w") ? { cancelled: "w" } : { error: "x is not running" }');
-    p.sse.activity!({ data: JSON.stringify({ instance: "w", state: "working" }) });
-    (p.c as any).stopNode = button(p);
-    await p.read("ACTIONS.stopReply(stopNode)");
-    expect(bar(p).className).toBe("work-bar on stopping");
-    expect(bar(p).children[1].textContent).toBe("Stopping w…");
-    p.sse.status!({ data: JSON.stringify({ uptime: 1, instances: [{ name: "w", state: "working" }] }) });
-    expect(bar(p).className, "still stopping while it works").toBe("work-bar on stopping");
-    p.sse.activity!({ data: JSON.stringify({ instance: "w", state: "idle" }) });
-    expect(bar(p).className).toBe("work-bar");
-    p.sse.activity!({ data: JSON.stringify({ instance: "w", state: "working" }) });
-    expect(bar(p).className, "the next turn starts fresh").toBe("work-bar on");
-    p.read('cur = "x"; activity.x = "working"');
-    await p.read('cancelReply("x")');
-    expect(p.read("stopping.x")).toBeUndefined();
+    const c = await chatPage();
+    c.fx.respond = (path: string) => (path.endsWith("/w") ? { cancelled: "w" } : { error: "x is not running" });
+    c.stream.emit("status", frame(inst("w", { state: "working" })));
+    await c.mount("w");
+    c.stream.emit("activity", { instance: "w", state: "working" });
+    await settle();
+    fire(c.p.root.querySelector("#stopBtn"), "click");
+    await settle();
+    const bar = () => c.p.root.querySelector(".work-bar");
+    expect(bar().className).toBe("work-bar stopping");
+    expect(bar().querySelector(".lbl").textContent).toBe("Stopping w…");
+    c.stream.emit("status", frame(inst("w", { state: "working" })));
+    await settle();
+    expect(bar().className, "still stopping while it works").toBe("work-bar stopping");
+    c.stream.emit("activity", { instance: "w", state: "idle" });
+    await settle();
+    expect(bar()).toBeNull();
+    c.stream.emit("activity", { instance: "w", state: "working" });
+    await settle();
+    expect(bar().className, "the next turn starts fresh").toBe("work-bar working");
+    c.stream.emit("activity", { instance: "x", state: "working" });
+    await c.store().cancelReply("x");
+    expect(c.store().state.stopping.x).toBeUndefined();
   });
 
-  // Segment 3: Esc stops the reply from the chat, while it works, when nothing else is open for Esc to close.
+  it("a Stop on its way gives way after a minute, even if the agent never goes idle", async () => {
+    const c = await chatPage();
+    c.stream.emit("status", frame(inst("w", { state: "working" })));
+    await c.mount("w");
+    c.stream.emit("activity", { instance: "w", state: "working" });
+    await settle();
+    fire(c.p.root.querySelector("#stopBtn"), "click");
+    await settle();
+    expect(c.p.root.querySelector(".work-bar").className).toBe("work-bar stopping");
+    c.timers.forEach(run => run());                 // a minute passes
+    await settle();
+    expect(c.p.root.querySelector(".work-bar").className).toBe("work-bar working");
+  });
+
+  // Esc stops the reply from the chat, while it works, when nothing else is open for Esc to close.
   it("Esc stops the agent's reply — only while it works, not twice, not over an open form", async () => {
-    const p = page();
-    const calls: string[] = [];
-    (p.c as any).recordCall = (x: string) => calls.push(x);
-    p.read('api = async (m, path) => { recordCall(path); return { cancelled: "w" }; }');
-    const esc = () => { let prevented = false; p.doc.keydown!({ key: "Escape", isComposing: false, preventDefault: () => { prevented = true; } }); return prevented; };
+    const c = await chatPage();
+    c.stream.emit("status", frame(inst("w")));
+    await c.mount("w");
+    const esc = (over: Record<string, unknown> = {}) => { const e = key("Escape", over); c.shell.handleKey(e); return e.defaultPrevented; };
     expect(esc(), "idle: Esc is left alone").toBe(false);
-    p.sse.activity!({ data: JSON.stringify({ instance: "w", state: "working" }) });
-    p.open.overlay = {};
-    expect(esc(), "a form is open: Esc is the form's").toBe(false);
-    p.open.overlay = null;
-    p.doc.keydown!({ key: "Escape", isComposing: true, preventDefault() {} });   // closing an IME candidate list
-    await new Promise(r => setImmediate(r));
-    expect(calls, "Esc that belongs to the input method stops nothing").toEqual([]);
+    c.stream.emit("activity", { instance: "w", state: "working" });
+    await settle();
+    for (const make of ["dialog", "pop"]) {
+      const open = c.p.document.createElement(make === "dialog" ? "dialog" : "div");
+      if (make === "dialog") open.setAttribute("open", ""); else open.className = "pop";
+      c.p.document.body.appendChild(open);
+      expect(esc(), `a ${make} is open: Esc is its own`).toBe(false);
+      open.remove();
+    }
+    expect(esc({ isComposing: true }), "Esc that belongs to the input method stops nothing").toBe(false);
+    await settle();
+    expect(c.posts()).toEqual([]);
     expect(esc()).toBe(true);
-    await new Promise(r => setImmediate(r));
-    expect(calls).toEqual(["/ui/cancel/w"]);
+    await settle();
+    expect(c.posts().map(x => x.path)).toEqual(["/ui/cancel/w"]);
     expect(esc(), "already stopping").toBe(false);
-    expect(calls).toHaveLength(1);
+    expect(c.posts()).toHaveLength(1);
+  });
+
+  it("Esc is the chat's only while focus is in the chat or on nothing — a control elsewhere on the page keeps its own Esc", async () => {
+    const c = await chatPage();
+    c.stream.emit("status", frame(inst("w")));
+    await c.mount("w", c.h("button", { id: "side", type: "button" }));
+    c.stream.emit("activity", { instance: "w", state: "working" });
+    await settle();
+    const esc = () => { const e = key("Escape"); c.shell.handleKey(e); return e.defaultPrevented; };
+    c.p.root.querySelector("#side").focus();
+    expect(esc(), "focus on a control outside the chat").toBe(false);
+    c.p.document.body.focus();
+    expect(esc(), "nothing focused").toBe(true);
+    await settle();
+    expect(c.posts()).toHaveLength(1);
   });
 
   // #1317 review: a Stop on its way blocks a second one at once — before its answer arrives, not after.
-  function heldCancel() {
-    const p = page();
-    const calls: string[] = [];
-    const answers: Array<(v: unknown) => void> = [];
-    (p.c as any).recordCall = (x: string) => calls.push(x);
-    (p.c as any).hold = () => new Promise(r => answers.push(r));
-    p.read('api = (m, path) => { recordCall(path); return hold(); }');
-    const esc = (repeat = false) => { let prevented = false; p.doc.keydown!({ key: "Escape", repeat, isComposing: false, preventDefault: () => { prevented = true; } }); return prevented; };
-    const settle = async (v: unknown) => { answers.shift()!(v); await new Promise(r => setImmediate(r)); };
-    return { p, calls, esc, settle };
-  }
-
   it("two Esc (a held key repeating) while the first Stop's answer is pending: one request", async () => {
-    const { p, calls, esc, settle } = heldCancel();
-    p.sse.activity!({ data: JSON.stringify({ instance: "w", state: "working" }) });
+    const c = await chatPage();
+    let release!: () => void;
+    const gate = new Promise<void>(r => { release = r; });
+    c.fx.respond = async () => { await gate; return { cancelled: "w" }; };
+    c.stream.emit("status", frame(inst("w")));
+    await c.mount("w");
+    c.stream.emit("activity", { instance: "w", state: "working" });
+    await settle();
+    const esc = () => { const e = key("Escape", { repeat: true }); c.shell.handleKey(e); return e.defaultPrevented; };
     expect(esc()).toBe(true);
-    expect(esc(true), "pending: nothing more").toBe(false);
-    expect(esc(true)).toBe(false);
-    p.read('cancelReply("w", null)');                                     // nor a click on Stop
-    expect(calls).toEqual(["/ui/cancel/w"]);
-    await settle({ cancelled: "w" });
-    expect(p.read("stopping.w"), "answered: the stopping gate takes over").toBe(true);
+    expect(esc(), "pending: nothing more").toBe(false);
+    fire(c.p.root.querySelector("#stopBtn"), "click");                  // nor a click on Stop
+    await settle();
+    expect(c.p.root.querySelector("#stopBtn").disabled).toBe(true);
+    expect(c.posts().map(x => x.path)).toEqual(["/ui/cancel/w"]);
+    release();
+    await settle();
+    expect(c.store().state.stopping.w, "answered: the stopping gate takes over").toBe(true);
     expect(esc()).toBe(false);
-    expect(calls).toHaveLength(1);
+    expect(c.posts()).toHaveLength(1);
   });
 
   it("a Stop that failed can be tried again", async () => {
-    const { p, calls, esc, settle } = heldCancel();
-    p.sse.activity!({ data: JSON.stringify({ instance: "w", state: "working" }) });
+    const c = await chatPage();
+    c.fx.respond = () => ({ error: "socket closed" });
+    c.stream.emit("status", frame(inst("w")));
+    await c.mount("w");
+    c.stream.emit("activity", { instance: "w", state: "working" });
+    await settle();
+    const esc = () => { const e = key("Escape"); c.shell.handleKey(e); return e.defaultPrevented; };
     esc();
-    await settle({ error: "socket closed" });
-    expect(p.read("stopping.w")).toBeUndefined();
+    await settle();
+    expect(c.store().state.stopping.w).toBeUndefined();
+    expect(c.toasts.at(-1)).toEqual(["socket closed", false]);
     expect(esc(), "after a refusal Esc works again").toBe(true);
-    expect(calls).toEqual(["/ui/cancel/w", "/ui/cancel/w"]);
+    await settle();
+    expect(c.posts().map(x => x.path)).toEqual(["/ui/cancel/w", "/ui/cancel/w"]);
   });
 
   it("switching chats while a Stop is pending: the other chat can be stopped, and the answer lands on the first", async () => {
-    const { p, calls, esc, settle } = heldCancel();
-    p.sse.activity!({ data: JSON.stringify({ instance: "w", state: "working" }) });
-    esc();
-    p.read('cur = "x"');
-    p.sse.activity!({ data: JSON.stringify({ instance: "x", state: "working" }) });
+    const c = await chatPage();
+    const answers: Array<() => void> = [];
+    c.fx.respond = (path: string) => (path.startsWith("/ui/cancel/") ? new Promise(r => answers.push(() => r({ cancelled: path.slice("/ui/cancel/".length) }))) : { messages: [] });
+    c.stream.emit("status", frame(inst("w", { state: "working" }), inst("x", { state: "working" })));
+    await c.mount("w");
+    c.stream.emit("activity", { instance: "w", state: "working" });
+    await settle();
+    const esc = () => { const e = key("Escape"); c.shell.handleKey(e); return e.defaultPrevented; };
+    expect(esc()).toBe(true);
+    await c.mount("x");
+    c.stream.emit("activity", { instance: "x", state: "working" });
+    await settle();
     expect(esc(), "x has no Stop pending").toBe(true);
-    expect(calls).toEqual(["/ui/cancel/w", "/ui/cancel/x"]);
-    await settle({ cancelled: "w" });
-    expect([p.read("stopping.w"), p.read("cancelling.w")]).toEqual([true, undefined]);
-    expect(p.read("cancelling.x"), "x still pending").toBe(true);
+    expect(c.posts().map(x => x.path)).toEqual(["/ui/cancel/w", "/ui/cancel/x"]);
+    answers[0]!();
+    await settle();
+    expect([c.store().state.stopping.w, c.store().state.cancelling.w]).toEqual([true, undefined]);
+    expect(c.store().state.cancelling.x, "x still pending").toBe(true);
   });
 
-  it("a polite status line says the coarse things only: started, finished, replied, waits on you", () => {
-    const p = page();
-    p.nodes.announcer = { textContent: "" };
-    p.read("setTimeout = (f) => { f(); return 0; }");          // the line is set after a beat, so a repeat is read again
-    const said = () => p.nodes.announcer.textContent;
+  it("a polite status line says the coarse things only: started, finished, replied, waits on you", async () => {
+    const c = await chatPage();
+    const beat = () => new Promise(r => setTimeout(r, 80));          // the line is set 60 ms after a change
+    const said = () => c.p.document.getElementById("announcer")?.textContent ?? "";
     // The page's first status says w is already working, and "other" is idle: that is how things are, not news.
-    p.sse.status!({ data: JSON.stringify({ uptime: 1, instances: [{ name: "w", state: "working" }, { name: "other", state: "idle" }] }) });
+    c.stream.emit("status", frame(inst("w", { state: "working" }), inst("other", { state: "idle" })));
+    await c.mount("w");
+    await beat();
     expect(said(), "the first status is not news").toBe("");
-    p.sse.activity!({ data: JSON.stringify({ instance: "w", state: "idle" }) });
-    p.sse.activity!({ data: JSON.stringify({ instance: "w", state: "working" }) });
-    expect(said()).toBe("w started working");
-    p.sse.status!({ data: JSON.stringify({ uptime: 1, instances: [{ name: "w", state: "awaiting_input", execution_state: "working" }] }) });
-    expect(said()).toBe("w is waiting for your input");
-    p.sse.message!({ data: JSON.stringify({ boot: "b", id: 1, instance: "w", sender: "w", text: "**done**", ts: "2026-01-01T00:00:00Z" }) });
-    expect(said(), "not the reply's text").toBe("w replied");
-    p.sse.message!({ data: JSON.stringify({ boot: "b", id: 2, instance: "w", sender: "web-user", text: "thanks", ts: "2026-01-01T00:00:01Z", messageId: "web-2" }) });
-    expect(said(), "your own message is not announced").toBe("w replied");
-    p.sse.activity!({ data: JSON.stringify({ instance: "w", state: "idle" }) });
+    c.stream.emit("activity", { instance: "w", state: "idle" });
+    await beat();
     expect(said()).toBe("w finished");
-    p.sse.activity!({ data: JSON.stringify({ instance: "other", state: "working" }) });
+    c.stream.emit("activity", { instance: "w", state: "working" });
+    await beat();
+    expect(said()).toBe("w started working");
+    c.stream.emit("status", frame(inst("w", { state: "awaiting_input", execution_state: "working" })));
+    await beat();
+    expect(said()).toBe("w is waiting for your input");
+    c.stream.emit("message", msg(1, "w", "**done**", { ts: "2026-01-01T00:00:00Z" }));
+    await beat();
+    expect(said(), "not the reply's text").toBe("w replied");
+    c.stream.emit("message", msg(2, "web-user", "thanks", { messageId: "web-2" }));
+    await beat();
+    expect(said(), "your own message is not announced").toBe("w replied");
+    c.stream.emit("activity", { instance: "w", state: "idle" });
+    await beat();
+    expect(said()).toBe("w finished");
+    c.stream.emit("activity", { instance: "other", state: "working" });
+    await beat();
     expect(said(), "another instance's edges are not this chat's").toBe("w finished");
   });
 
-  it("a `delivery` event puts the ticks on that message", () => {
-    const p = page();
-    p.sse.message!({ data: JSON.stringify({ boot: "b", id: 1, instance: "w", sender: "web-user", text: "hi", ts: "2026-01-01T00:00:00Z", messageId: "web-a" }) });
-    expect(p.nodes.messages.innerHTML).not.toContain("tick");
-    p.sse.delivery!({ data: JSON.stringify({ instance: "w", messageId: "web-a", delivery: "processing" }) });
-    expect(p.nodes.messages.innerHTML).toContain('<span class="tick tick-processing" role="img" aria-label="Handed to the agent" title="Handed to the agent">✓</span>');
-    p.sse.delivery!({ data: JSON.stringify({ instance: "w", messageId: "web-a", delivery: "cancelled" }) });
-    expect(p.nodes.messages.innerHTML).toContain("tick-cancelled");
-    expect(p.read("msgs.w[0].delivery")).toBe("cancelled");
+  it("a `delivery` event puts the ticks on that message", async () => {
+    const c = await chatPage();
+    c.stream.emit("status", frame(inst("w")));
+    await c.mount("w");
+    c.stream.emit("message", msg(1, "web-user", "hi", { messageId: "web-a" }));
+    await settle();
+    expect(c.p.root.querySelector(".tick")).toBeNull();
+    c.stream.emit("delivery", { instance: "w", messageId: "web-a", delivery: "processing" });
+    await settle();
+    const tick = c.p.root.querySelector(".tick-processing");
+    expect([tick.textContent, tick.getAttribute("role"), tick.getAttribute("aria-label"), tick.getAttribute("title")])
+      .toEqual(["✓", "img", "Handed to the agent", "Handed to the agent"]);
+    c.stream.emit("delivery", { instance: "w", messageId: "web-a", delivery: "cancelled" });
+    await settle();
+    expect(c.p.root.querySelector(".tick-cancelled")).not.toBeNull();
+    expect(c.store().state.msgs.w[0].delivery).toBe("cancelled");
   });
 
   // #1307: one node per message, so an update touches only its own message, and the view is the reader's.
-  const say = (p: ReturnType<typeof page>, id: number, sender: string, text: string) =>
-    p.sse.message!({ data: JSON.stringify({ boot: "b", id, instance: "w", sender, text, ts: "2026-01-01T00:00:00Z", ...(sender === "web-user" ? { messageId: `web-${id}` } : {}) }) });
-
-  it("a tick re-renders only its own message: the others are the same nodes, in the same order", () => {
-    const p = page();
-    say(p, 1, "web-user", "hi"); say(p, 2, "w", "hello"); say(p, 3, "web-user", "and?");
-    const [a, b, c] = p.nodes.messages.kids;
-    p.sse.delivery!({ data: JSON.stringify({ instance: "w", messageId: "web-1", delivery: "delivered" }) });
-    const after = p.nodes.messages.kids;
+  it("a tick re-renders only its own message: the others are the same nodes, in the same order", async () => {
+    const c = await chatPage();
+    c.stream.emit("status", frame(inst("w")));
+    await c.mount("w");
+    c.stream.emit("message", msg(1, "web-user", "hi", { messageId: "web-1" }));
+    c.stream.emit("message", msg(2, "w", "hello"));
+    c.stream.emit("message", msg(3, "web-user", "and?", { messageId: "web-3" }));
+    await settle();
+    const rows = () => c.p.root.querySelectorAll(".thread > .msg");
+    const [a, b, d] = rows();
+    c.stream.emit("delivery", { instance: "w", messageId: "web-1", delivery: "delivered" });
+    await settle();
+    const after = rows();
     expect(after).toHaveLength(3);
     expect(after[0]).not.toBe(a);
-    expect(after[0].html).toContain("tick-delivered");
-    expect([after[1], after[2]]).toEqual([b, c]);
+    expect(after[0].querySelector(".tick-delivered")).not.toBeNull();
     expect(after[1]).toBe(b);
-    expect(after[2]).toBe(c);
+    expect(after[2]).toBe(d);
   });
 
-  it("at the bottom, a new message pulls the view down; scrolled up, it stays put and '↓ N new' counts", () => {
-    const p = page();
-    const sc = { scrollTop: 0, clientHeight: 500, scrollHeight: 2000 };
-    p.nodes.scroller = sc;
-    p.nodes.jumpLatest = { hidden: true, textContent: "" };
-    say(p, 1, "w", "one");
+  it("at the bottom, a new message pulls the view down; scrolled up, it stays put and '↓ N new' counts", async () => {
+    const c = await chatPage();
+    c.stream.emit("status", frame(inst("w")));
+    await c.mount("w");
+    const sc = c.p.root.querySelector(".scroller");
+    Object.assign(sc, { scrollTop: 0, clientHeight: 500, scrollHeight: 2000 });
+    const jump = () => c.p.root.querySelector(".jump-latest");
+    c.stream.emit("message", msg(1, "w", "one"));
+    await settle();
     expect(sc.scrollTop, "it was not at the bottom: stays").toBe(0);
-    expect([p.nodes.jumpLatest.hidden, p.nodes.jumpLatest.textContent]).toEqual([false, "↓ 1 new"]);
-    say(p, 2, "w", "two");
-    expect(p.nodes.jumpLatest.textContent).toBe("↓ 2 new");
-    p.read("jumpLatest()");
+    expect(jump().textContent, "the arrow is an icon; the count is text").toBe("1 new");
+    c.stream.emit("message", msg(2, "w", "two"));
+    await settle();
+    expect(jump().textContent).toBe("2 new");
+    fire(jump(), "click");
+    await settle();
     expect(sc.scrollTop).toBe(2000);
-    expect(p.nodes.jumpLatest.hidden).toBe(true);
+    expect(jump()).toBeNull();
     sc.scrollTop = 1460;                                           // 40px above the bottom: counts as at it…
-    say(p, 3, "w", "three");                                       // …so a new one follows
+    c.stream.emit("message", msg(3, "w", "three"));                // …so a new one follows
+    await settle();
     expect(sc.scrollTop).toBe(2000);
-    expect(p.nodes.jumpLatest.hidden).toBe(true);
+    expect(jump()).toBeNull();
   });
 
   it("while polling, the ticks come with the poll — the chat's history is never re-read in the background (#1253 review)", async () => {
-    const p = page();
-    p.read(`msgs.w = [{ boot: "b", id: 1, instance: "w", sender: "web-user", text: "hi", ts: "1", messageId: "web-1", delivery: "processing" }]`);
-    const fetched: string[] = [];
-    (p.c as any).recordFetch = (u: string) => fetched.push(u);
-    p.read('fetch = async (u) => { recordFetch(u); return { ok: true, json: async () => ({ status: { uptime: 1, instances: [] }, messages: [], cursor: "b-1", deliveries: [{ instance: "w", messageId: "web-1", delivery: "delivered" }] }) }; }');
-    p.read('api = async (m, path) => { recordFetch(path); return { messages: [] }; }');
-    await p.read("pollOnce()");
-    expect(fetched, "one passive poll, no history read").toEqual(["/ui/poll?after="]);
-    expect(p.read("msgs.w[0].delivery")).toBe("delivered");
+    const c = await chatPage("poll");
+    c.store().ingest(msg(1, "web-user", "hi", { instance: "w", messageId: "web-1", delivery: "processing" }));
+    c.fx.respond = (path: string) => (path.startsWith("/ui/poll") ? { status: { uptime: 1, instances: [] }, messages: [], cursor: "b-1", deliveries: [{ instance: "w", messageId: "web-1", delivery: "delivered" }] } : { messages: [] });
+    c.stream.start();
+    await settle();
+    expect(c.fx.calls.map(x => x.path), "one passive poll, no history read").toEqual(["/ui/poll?after="]);
+    expect(c.store().state.msgs.w[0].delivery).toBe("delivered");
   });
 
   // The real /ui/events handler, as an EventSource that reconnects sees it: the frames it writes, in order.
@@ -700,22 +800,24 @@ describe("the dashboard (the real page script)", () => {
     });
   }
 
-  it.each(["delivered", "failed", "cancelled"] as const)("a tick that became %s while the stream was down is caught up on reconnect — no new message, no poll (#1253 review)", (final) => {
-    const p = page();
+  it.each(["delivered", "failed", "cancelled"] as const)("a tick that became %s while the stream was down is caught up on reconnect — no new message, no poll (#1253 review)", async (final) => {
+    const c = await chatPage("events");
     const h = new WebChatHistory({ boot: "b1" });
     const m = h.record({ instance: "w", sender: "web-user", text: "hi", ts: "1", messageId: "web-1" });
     h.setDelivery("w", "web-1", final === "cancelled" ? "queued" : "processing");
-    p.sse.message!({ data: JSON.stringify(m), lastEventId: h.cursorOf(m) });          // the page saw it…
-    const seen = p.read("msgs.w[0].delivery");
+    c.stream.start();
+    const source = c.sources[0];
+    source.listeners.get("message")({ data: JSON.stringify(m), lastEventId: h.cursorOf(m) });   // the page saw it…
+    const seen = c.store().state.msgs.w[0].delivery;
     // …the stream drops; the report arrives while it is down…
     if (final === "cancelled") h.cancelPending("w"); else h.setDelivery("w", "web-1", final);
     // …and the browser reconnects with the cursor it had, before any fallback poll.
-    const { c } = ctx({ webChatHistory: h, getUiStatus: () => ({ uptime: 1, instances: [] }) });
-    const frames = connect(c, h.cursorOf(m));
+    const { c: server } = ctx({ webChatHistory: h, getUiStatus: () => ({ uptime: 1, instances: [] }) });
+    const frames = connect(server, h.cursorOf(m));
     expect(frames.map(f => f.event), "nothing new to replay — only the status and the ticks").toEqual(["status", "deliveries"]);
-    for (const f of frames) p.sse[f.event]!({ data: f.data, lastEventId: f.id });
-    expect([seen, p.read("msgs.w[0].delivery")]).toEqual([final === "cancelled" ? "queued" : "processing", final]);
-    expect(p.read("pollTimer"), "no poll was needed").toBeNull();
+    for (const f of frames) source.listeners.get(f.event)!({ data: f.data, lastEventId: f.id });
+    expect([seen, c.store().state.msgs.w[0].delivery]).toEqual([final === "cancelled" ? "queued" : "processing", final]);
+    expect(c.fx.calls, "no poll was needed").toEqual([]);
   });
 
   it("GET /ui/poll carries the ticks of every retained web message (and only those)", async () => {

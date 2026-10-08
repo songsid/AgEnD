@@ -4,11 +4,13 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import vm from "node:vm";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { handleWebRequest, type WebApiContext } from "../src/web-api.js";
 import {
   attachmentDelivery, displayName, MAX_SERVED_BYTES, sniffUpload, UPLOAD_LIMITS, UPLOAD_TTL_MS, WebFileLedger, type UploadEntry,
 } from "../src/web-upload.js";
+import { h, page, settle, type AppPage } from "./helpers/app-harness.js";
+import { fire } from "./helpers/mini-dom.js";
 
 /**
  * Web track C2 — files in the web chat, Telegram parity: what may be uploaded (decided from the bytes),
@@ -588,151 +590,202 @@ describe("chat-render.js: file helpers", () => {
   });
 });
 
-describe("dashboard sendMsg with files (the real page script)", () => {
-  const RENDER = readFileSync(join(process.cwd(), "src", "ui", "chat-render.js"), "utf8");
-  const PAGE = readFileSync(join(process.cwd(), "src", "ui", "dashboard.html"), "utf8").match(/<script>\n([\s\S]*?)<\/script>/)![1]!;
-  function page() {
-    const nodes: Record<string, any> = { msgIn: { value: "", style: {}, scrollHeight: 20, focus() {} }, messages: { innerHTML: "" }, uptime: {}, failedSend: { textContent: "", append() {} }, pendingFiles: { textContent: "", append() {} } };
-    const toasts: string[] = [];
-    const c = vm.createContext({
-      /* a returning browser: it has seen the first sign-in tour (#1366) */ localStorage: { getItem: (k: string) => k === "agend_tour_done" ? "1" : null }, navigator: { language: "en" },
-      document: { addEventListener() {}, getElementById: (n: string) => nodes[n] ?? null, createElement: () => ({ style: {}, remove() {}, append() {}, setAttribute() {} }), body: { appendChild() {} } },
-      setTimeout: () => 0, clearTimeout() {}, setInterval: () => 0, clearInterval() {},
-      fetch: async () => ({ ok: true, json: async () => ({}) }), URL: { createObjectURL: () => "blob:x", revokeObjectURL() {} },
-      EventSource: class { addEventListener() {} }, File,
-    });
-    vm.runInContext(RENDER, c);
-    vm.runInContext(PAGE, c);
-    (c as any).captureToast = (m: string) => toasts.push(m);
-    vm.runInContext('toast=(m)=>captureToast(m);renderMsgs=()=>{};renderList=()=>{};cur="w";', c);
-    return { c, nodes, toasts, read: (s: string) => vm.runInContext(s, c) };
-  }
+// The page's files: the chat store (chat-store.js) holds what waits to go and what is in flight, and the mounted
+// composer (panel-chat.js) takes the paste.
 
+// Served ES modules: no type declarations for them, so each import is typed by hand.
+type Served = any;
+const storeMod = (): Promise<Served> => import("/ui/js/chat-store.js");
+const panelMod = (): Promise<Served> => import("/ui/js/panel-chat.js");
+const stringsMod = (): Promise<Served> => import("/ui/js/chat-strings.js");
+const streamMod = (): Promise<Served> => import("/assets/app-stream.js");
+const i18nMod = (): Promise<Served> => import("/assets/app-i18n.js");
+const appStoreMod = (): Promise<Served> => import("/assets/app-store.js");
+
+type Reply = { ok?: boolean; status?: number; body?: unknown };
+type Call = { path: string; method: string; headers: Record<string, string>; body: any };
+/** The network the store sees: every request is recorded; `route` answers it (default: an empty success). */
+function fakeNet() {
+  const calls: Call[] = [];
+  const net = {
+    calls,
+    route: (async (_path: string, _o: any): Promise<Reply> => ({ body: {} })) as (path: string, o: any) => Promise<Reply>,
+    fetch: async (path: string, o: any = {}) => {
+      calls.push({ path, method: o.method ?? "GET", headers: o.headers ?? {}, body: typeof o.body === "string" ? JSON.parse(o.body) : o.body });
+      const r = await net.route(path, o);
+      return { ok: r.ok ?? true, status: r.status ?? (r.ok === false ? 500 : 200), json: async () => r.body };
+    },
+  };
+  return net;
+}
+const flush = () => new Promise(r => setImmediate(r));
+/** A reply that is held until the test opens it. */
+function gate<T = Reply>() {
+  let open!: (v: T) => void;
+  const promise = new Promise<T>(r => { open = r; });
+  return { promise, open };
+}
+
+/** The chat store on its own, its deps driven directly (what boot() injects, with the fetch and toast under test). */
+async function chatStore() {
+  const { createChatStore } = await storeMod();
+  await stringsMod();
+  const { t } = await i18nMod();
+  const net = fakeNet();
+  const toasts: string[] = [];
+  const store = createChatStore({ fetch: net.fetch, toast: (m: string) => { toasts.push(m); }, announce: () => {}, t, setTimeout: () => 0 });
+  store.setCurrent("w");
+  return { store, net, toasts };
+}
+
+const MB_BYTES = 1024 * 1024;
+
+describe("chat store: files in a send (chat-store.js, driven directly)", () => {
   it("uploads each file, then sends the message naming them", async () => {
-    const p = page();
-    const calls: unknown[] = [];
-    (p.c as any).recordCall = (x: unknown) => calls.push(x);
-    p.read(`uploadFile = async (t, f) => { recordCall(["upload", t, f.name]); return { id: f.name === "a.png" ? "${"1".repeat(32)}" : "${"2".repeat(32)}" }; }`);
-    p.read(`api = async (m, path, body) => { recordCall(["api", path, body]); return { sent: true }; }`);
-    p.read(`pendingFiles.w = [{ name: "a.png", size: 3, type: "image/png" }, { name: "b.txt", size: 2, type: "text/plain" }]`);
-    p.nodes.msgIn.value = "with files";
-    await p.read("sendMsg()");
-    expect(calls).toEqual([
-      ["upload", "w", "a.png"], ["upload", "w", "b.txt"],
-      ["api", "/ui/send", { instance: "w", message: "with files", attachments: ["1".repeat(32), "2".repeat(32)] }],
-    ]);
-    expect(p.read("pendingFiles.w.length")).toBe(0);
+    const s = await chatStore();
+    s.net.route = async (path, o) => (path.startsWith("/ui/upload")
+      ? { body: { id: o.headers["X-Agend-Filename"] === "a.png" ? "1".repeat(32) : "2".repeat(32) } }
+      : { body: { sent: true } });
+    s.store.state.pendingFiles.w = [{ name: "a.png", size: 3, type: "image/png" }, { name: "b.txt", size: 2, type: "text/plain" }];
+    s.store.setDraft("w", "with files");
+    await s.store.send("w");
+    expect(s.net.calls.map(c => c.path)).toEqual(["/ui/upload?instance=w", "/ui/upload?instance=w", "/ui/send"]);
+    expect(s.net.calls.slice(0, 2).map(c => c.headers["X-Agend-Filename"])).toEqual(["a.png", "b.txt"]);
+    expect(s.net.calls[2]!.body).toEqual({ instance: "w", message: "with files", attachments: ["1".repeat(32), "2".repeat(32)] });
+    expect(s.store.state.pendingFiles.w.length).toBe(0);
   });
 
   it("an upload that fails keeps the files pending and gives the text back, with the server's reason", async () => {
-    const p = page();
-    p.read(`uploadFile = async (t, f) => { throw new Error(f.name + ": unsupported file type"); }`);
-    p.read(`api = async () => { throw new Error("must not be called"); }`);
-    p.read(`pendingFiles.w = [{ name: "x.exe", size: 3, type: "" }]`);
-    p.nodes.msgIn.value = "keep me";
-    await p.read("sendMsg()");
-    expect(p.read("pendingFiles.w.map(f => f.name)")).toEqual(["x.exe"]);
-    expect(p.nodes.msgIn.value).toBe("keep me");
-    expect(p.toasts).toEqual(["x.exe: unsupported file type"]);
+    const s = await chatStore();
+    s.net.route = async (path) => (path.startsWith("/ui/upload") ? { ok: false, status: 415, body: { error: "unsupported file type" } } : { body: { sent: true } });
+    s.store.state.pendingFiles.w = [{ name: "x.exe", size: 3, type: "" }];
+    s.store.setDraft("w", "keep me");
+    await s.store.send("w");
+    expect(s.net.calls.map(c => c.path), "the message is never sent").not.toContain("/ui/send");
+    expect(s.store.state.pendingFiles.w.map((f: { name: string }) => f.name)).toEqual(["x.exe"]);
+    expect(s.store.state.drafts.w).toBe("keep me");
+    expect(s.toasts).toEqual(["x.exe: unsupported file type"]);
   });
 
   it("files alone can be sent; nothing at all sends nothing", async () => {
-    const p = page();
-    const calls: unknown[] = [];
-    (p.c as any).recordCall = (x: unknown) => calls.push(x);
-    p.read(`uploadFile = async () => ({ id: "${"3".repeat(32)}" })`);
-    p.read(`api = async (m, path, body) => { recordCall(body); return { sent: true }; }`);
-    await p.read("sendMsg()");
-    expect(calls).toEqual([]);
-    p.read(`pendingFiles.w = [{ name: "a.png", size: 3, type: "image/png" }]`);
-    await p.read("sendMsg()");
-    expect(calls).toEqual([{ instance: "w", message: "", attachments: ["3".repeat(32)] }]);
+    const s = await chatStore();
+    s.net.route = async (path) => (path.startsWith("/ui/upload") ? { body: { id: "3".repeat(32) } } : { body: { sent: true } });
+    await s.store.send("w");
+    expect(s.net.calls).toEqual([]);
+    s.store.state.pendingFiles.w = [{ name: "a.png", size: 3, type: "image/png" }];
+    await s.store.send("w");
+    expect(s.net.calls.at(-1)).toMatchObject({ path: "/ui/send", body: { instance: "w", message: "", attachments: ["3".repeat(32)] } });
   });
 
   it("files chosen while a send is in flight are never lost when it fails (#1252 review P2-5)", async () => {
-    const p = page();
-    let fail!: () => void;
-    p.read(`uploadFile = async (t, f) => ({ id: "${"4".repeat(32)}" })`);
-    (p.c as any).held = new Promise<void>(r => { fail = r; });
-    p.read(`api = async () => { await held; return { error: "Instance delivery failed" }; }`);
-    p.read(`pendingFiles.w = [0,1,2,3,4].map(i => ({ name: "old" + i, size: 1, type: "text/plain" }))`);
-    const sending = p.read("sendMsg()");
-    await new Promise(r => setImmediate(r));
+    const s = await chatStore();
+    let failSend = gate();
+    s.net.route = async (path) => (path === "/ui/send" ? failSend.promise : { body: { id: "4".repeat(32) } });
+    s.store.state.pendingFiles.w = [0, 1, 2, 3, 4].map(i => ({ name: "old" + i, size: 1, type: "text/plain" }));
+    const sending = s.store.send("w");
+    await flush();
     // While the five are on their way, five more are chosen: there is no room — the five in flight still own it.
-    p.read(`addFiles([0,1,2,3,4].map(i => ({ name: "new" + i, size: 1, type: "text/plain" })))`);
-    expect(p.read("pendingFiles.w.length")).toBe(0);
-    expect(p.toasts.filter(t => t.includes("new"))).toHaveLength(5);  // each refusal is said, none is silent
-    fail();
+    s.store.addFiles("w", [0, 1, 2, 3, 4].map(i => ({ name: "new" + i, size: 1, type: "text/plain" })));
+    expect(s.store.state.pendingFiles.w.length).toBe(0);
+    expect(s.toasts.filter(t => t.includes("new"))).toHaveLength(5);  // each refusal is said, none is silent
+    failSend.open({ body: { error: "Instance delivery failed" } });
     await sending;
-    expect(p.read("pendingFiles.w.map(f => f.name)")).toEqual(["old0", "old1", "old2", "old3", "old4"]);
+    expect(s.store.state.pendingFiles.w.map((f: { name: string }) => f.name)).toEqual(["old0", "old1", "old2", "old3", "old4"]);
     // With room left, a file chosen meanwhile is kept beside the ones that come back.
-    p.read(`pendingFiles.w = [{ name: "a", size: 1, type: "text/plain" }]`);
-    (p.c as any).held = new Promise<void>(r => { fail = r; });
-    const again = p.read("sendMsg()");
-    await new Promise(r => setImmediate(r));
-    p.read(`addFiles([{ name: "b", size: 1, type: "text/plain" }])`);
-    fail();
+    s.store.state.pendingFiles.w = [{ name: "a", size: 1, type: "text/plain" }];
+    failSend = gate();
+    const again = s.store.send("w");
+    await flush();
+    s.store.addFiles("w", [{ name: "b", size: 1, type: "text/plain" }]);
+    failSend.open({ body: { error: "Instance delivery failed" } });
     await again;
-    expect(p.read("pendingFiles.w.map(f => f.name)")).toEqual(["a", "b"]);
+    expect(s.store.state.pendingFiles.w.map((f: { name: string }) => f.name)).toEqual(["a", "b"]);
   });
 
-  // #1316 review: a long paste becomes a file only when that file fits; otherwise the browser pastes the text as usual.
-  function paste(p: ReturnType<typeof page>, text: string) {
+  it("addFiles refuses what does not fit and says why", async () => {
+    const s = await chatStore();
+    s.store.addFiles("w", [{ name: "huge.bin", size: 11 * MB_BYTES }, { name: "ok.png", size: 5 }]);
+    expect(s.store.state.pendingFiles.w.map((f: { name: string }) => f.name)).toEqual(["ok.png"]);
+    expect(s.toasts).toEqual(["huge.bin: over 10 MB"]);
+  });
+});
+
+// ── the composer, mounted: a paste becomes a file, or stays text ───────────────────────────────────────────────
+
+describe("the composer's paste (panel-chat.js, mounted)", () => {
+  const LONG = "x".repeat(10_001);
+  let a: { p: AppPage; chat: Served; toasts: string[]; mount: (name: string) => Promise<void> };
+  let seq = 0;
+  beforeAll(async () => {
+      const p = page({ storage: { agend_tour_done: "1" } });
+    const { boot, ChatPanel } = await panelMod();
+    const { createStream } = await streamMod();
+    const { applyStatus } = await appStoreMod();
+    const net = fakeNet();
+    const toasts: string[] = [];
+    const chat = boot({ stream: createStream({ mode: "view" }), deps: { fetch: net.fetch, toast: (m: string) => { toasts.push(m); } } });
+    const instances = new Set<string>();
+    const mount = async (name: string) => {
+      instances.add(name);
+      applyStatus({ instances: [...instances].map(n => ({ name: n, status: "running", state: "idle", execution_state: "idle" })), uptime: 1 });
+      await p.mount(h(ChatPanel, { route: { instance: name }, navKey: name }));
+    };
+    a = { p, chat, toasts, mount };
+  });
+  afterAll(async () => { await a.p.unmount(); a.p.restore(); });
+  beforeEach(() => { a.toasts.length = 0; });
+  afterEach(async () => { await a.p.unmount(); });
+
+  const $ = (id: string) => a.p.document.getElementById(id)!;
+  /** A fresh chat for each test: its own instance name, so no state carries over. */
+  const freshChat = async () => { const name = `paste-${++seq}`; await a.mount(name); await settle(); return name; };
+  const names = (name: string) => (a.chat.state.pendingFiles[name] ?? []).map((f: { name: string }) => f.name.replace(/\d+/, "T"));
+  /** A paste into the composer; true when the browser's own paste was stopped. */
+  function paste(text: string) {
     let prevented = false;
-    p.read("onComposerPaste")({ clipboardData: { files: [], getData: () => text }, preventDefault: () => { prevented = true; } });
+    fire($("msgIn"), "paste", { clipboardData: { files: [], getData: () => text }, preventDefault: () => { prevented = true; } });
     return prevented;
   }
-  const LONG = "x".repeat(10_001);
-  const MB = 1024 * 1024;
 
-  it("a long paste that fits is attached as a text file (the browser's paste stopped), and As text puts it back", () => {
-    const p = page();
-    const made: any[] = [];
-    (p.c as any).makeEl = () => { const n: any = { style: {}, dataset: {}, remove() {}, append() {}, setAttribute() {} }; made.push(n); return n; };
-    p.read("document.createElement = () => makeEl()");
-    expect(paste(p, LONG)).toBe(true);
-    expect(p.read("pendingFiles.w.map(f => [f.name.replace(/\\d+/, 'T'), f.size])")).toEqual([["pasted-T.txt", 10_001]]);
-    expect(p.toasts).toEqual(["A long paste (10,001 characters) was attached as a text file"]);
-    made.find(n => n.textContent === "As text")!.onclick();
-    expect(p.nodes.msgIn.value).toBe(LONG);
-    expect(p.read("pendingFiles.w")).toEqual([]);
+  it("a long paste that fits is attached as a text file (the browser's paste stopped), and As text puts it back", async () => {
+    const name = await freshChat();
+    expect(paste(LONG)).toBe(true);
+    await settle();
+    expect(a.chat.state.pendingFiles[name].map((f: { name: string; size: number }) => [f.name.replace(/\d+/, "T"), f.size])).toEqual([["pasted-T.txt", 10_001]]);
+    expect(a.toasts).toEqual(["A long paste (10,001 characters) was attached as a text file"]);
+    a.p.document.querySelectorAll(".as-text")[0]!.click();
+    await settle();
+    expect($("msgIn").value).toBe(LONG);
+    expect(a.chat.state.pendingFiles[name]).toEqual([]);
   });
 
   it.each([
     ["five files are already attached", () => [1, 2, 3, 4, 5].map(i => ({ name: `${i}.png`, size: 10 }))],
-    ["25 MB is already taken", () => [{ name: "a.pdf", size: 10 * MB }, { name: "b.pdf", size: 10 * MB }, { name: "c.pdf", size: 5 * MB - 5_000 }]],
-  ])("no room — %s: nothing is attached, the browser pastes the text as usual", (_why, pending) => {
-    const p = page();
-    (p.c as any).pendingSeed = pending();
-    p.read("pendingFiles.w = pendingSeed.slice()");
-    const before = p.read("pendingFiles.w.map(f => f.name)");
-    expect(paste(p, LONG), "not prevented: the text lands in the composer").toBe(false);
-    expect(p.read("pendingFiles.w.map(f => f.name)")).toEqual(before);
-    expect(p.toasts).toEqual(["No room for another attachment: the long paste stays as text"]);
+    ["25 MB is already taken", () => [{ name: "a.pdf", size: 10 * MB_BYTES }, { name: "b.pdf", size: 10 * MB_BYTES }, { name: "c.pdf", size: 5 * MB_BYTES - 5_000 }]],
+  ])("no room — %s: nothing is attached, the browser pastes the text as usual", async (_why, pending) => {
+    const name = await freshChat();
+    a.chat.state.pendingFiles[name] = pending();
+    const before = names(name);
+    expect(paste(LONG), "not prevented: the text lands in the composer").toBe(false);
+    expect(names(name)).toEqual(before);
+    expect(a.toasts).toEqual(["No room for another attachment: the long paste stays as text"]);
   });
 
-  it("a paste over 10 MB is never a file: the browser pastes it as text", () => {
-    const p = page();
-    expect(paste(p, "y".repeat(10 * MB + 1))).toBe(false);
-    expect(p.read("pendingFiles.w || []")).toEqual([]);
+  it("a paste over 10 MB is never a file: the browser pastes it as text", async () => {
+    const name = await freshChat();
+    expect(paste("y".repeat(10 * MB_BYTES + 1))).toBe(false);
+    expect(names(name)).toEqual([]);
   });
 
-  it("files sent along a send still in flight count too: no room beside them, the text pastes as usual", () => {
-    const p = page();
-    p.read('inFlightFiles.w = [1, 2, 3, 4, 5].map(i => ({ name: i + ".png", size: 10 }))');
-    expect(paste(p, LONG)).toBe(false);
+  it("files sent along a send still in flight count too: no room beside them, the text pastes as usual", async () => {
+    const name = await freshChat();
+    a.chat.state.inFlightFiles[name] = [1, 2, 3, 4, 5].map(i => ({ name: i + ".png", size: 10 }));
+    expect(paste(LONG)).toBe(false);
   });
 
-  it("a short paste is just a paste", () => {
-    const p = page();
-    expect(paste(p, "x".repeat(10_000))).toBe(false);
-    expect(p.toasts).toEqual([]);
-  });
-
-  it("addFiles refuses what does not fit and says why", () => {
-    const p = page();
-    p.read(`addFiles([{ name: "huge.bin", size: ${11 * 1024 * 1024} }, { name: "ok.png", size: 5 }])`);
-    expect(p.read("pendingFiles.w.map(f => f.name)")).toEqual(["ok.png"]);
-    expect(p.toasts).toEqual(["huge.bin: over 10 MB"]);
+  it("a short paste is just a paste", async () => {
+    await freshChat();
+    expect(paste("x".repeat(10_000))).toBe(false);
+    expect(a.toasts).toEqual([]);
   });
 });

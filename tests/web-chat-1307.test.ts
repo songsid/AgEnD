@@ -1,8 +1,10 @@
 /**
  * #1307 (segment 1): the chat-first layout. Light and dark from semantic tokens (system by default, a per-browser
- * override applied before paint), no inline style attribute anywhere on the dashboard (#1300), and the pure pieces
+ * override applied before paint), no inline style attribute anywhere on the app (#1300), and the pure pieces
  * the conversation leans on: "at the bottom" and a code block's line count. The DOM behaviour (keyed messages,
- * stick-to-bottom, Send → Stop) runs against the real page script in web-chat-c3.test.ts and in a real browser.
+ * stick-to-bottom, Send → Stop) runs against the app's modules in the harness and in a real browser.
+ * #1408 step 1: the dashboard is the app shell (app.html + shared/tokens.css + shared/app.css + the modules), so
+ * the markup and style checks below read those files.
  */
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
@@ -10,7 +12,12 @@ import { join } from "node:path";
 import vm from "node:vm";
 
 const UI = join(process.cwd(), "src", "ui");
-const DASHBOARD = readFileSync(join(UI, "dashboard.html"), "utf8");
+const SHARED = join(UI, "shared");
+const APP = readFileSync(join(UI, "app.html"), "utf8");
+const TOKENS = readFileSync(join(SHARED, "tokens.css"), "utf8");
+const APP_CSS = readFileSync(join(SHARED, "app.css"), "utf8");
+const PANEL_CHAT = readFileSync(join(UI, "panel-chat.js"), "utf8");
+const APP_SHELL = readFileSync(join(SHARED, "app-shell.js"), "utf8");
 const THEME = readFileSync(join(UI, "shared", "theme.js"), "utf8");
 type Render = {
   isNearBottom(t: number, c: number, h: number, slack?: number): boolean; lineCount(s: unknown): number; CODE_FOLD_LINES: number;
@@ -64,41 +71,50 @@ describe("theme.js: system by default, this browser's choice when it made one", 
   });
 });
 
-describe("the dashboard's tokens and markup", () => {
-  const style = DASHBOARD.slice(DASHBOARD.indexOf("<style>"), DASHBOARD.indexOf("</style>"));
+describe("the app's tokens and markup", () => {
+  // The colour blocks of tokens.css, by their selector: "name: value" pairs, nothing else.
   const block = (selector: string) => {
-    const at = style.indexOf(selector);
-    const open = style.indexOf("{", at), close = style.indexOf("}", open);
-    return Object.fromEntries([...style.slice(open + 1, close).matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)].map(m => [m[1], m[2]!.trim()]));
+    const at = TOKENS.indexOf(selector);
+    const open = TOKENS.indexOf("{", at), close = TOKENS.indexOf("}", open);
+    return Object.fromEntries([...TOKENS.slice(open + 1, close).matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)].map(m => [m[1], m[2]!.trim()]));
   };
+  const isColour = (v: string) => /^(#|rgba?\()/.test(v);
   const dark = block(":root {"), systemLight = block(':root:not([data-theme="dark"]) {'), forcedLight = block(':root[data-theme="light"] {');
 
   it("light is defined twice — for the device and for a forced choice — and the two are identical", () => {
     expect(Object.keys(systemLight).length).toBeGreaterThan(30);
     expect(forcedLight).toEqual(systemLight);
-    expect(style).toContain("@media (prefers-color-scheme: light)");
+    expect(TOKENS).toContain("@media (prefers-color-scheme: light)");
   });
 
   it("every colour token dark defines, light redefines (nothing stays dark in light mode)", () => {
-    const colours = Object.keys(dark).filter(k => !["--font-ui", "--font-mono", "--col"].includes(k));
+    const colours = Object.keys(dark).filter(k => isColour(dark[k]!));
+    expect(colours.length).toBeGreaterThan(20);
     expect(colours.filter(k => !(k in systemLight))).toEqual([]);
   });
 
-  it("the system font stack, no web font", () => {
-    expect(dark["--font-ui"]).toMatch(/^system-ui, -apple-system/);
+  it("the type is Inter, bundled from this origin, with the system fonts behind it — no web font from anywhere else", () => {
+    expect(dark["--font-ui"]).toMatch(/^Inter, /);
+    expect(dark["--font-ui"]).toContain("system-ui, -apple-system");
     expect(dark["--font-mono"]).toMatch(/^ui-monospace/);
-    expect(DASHBOARD).not.toMatch(/DM Sans|Outfit|IBM Plex|fonts\.googleapis/);
+    expect(TOKENS).toContain('src: url("/assets/inter.woff2")');
+    for (const css of [TOKENS, APP_CSS, APP]) expect(css).not.toMatch(/DM Sans|Outfit|IBM Plex|fonts\.googleapis|fonts\.gstatic/);
   });
 
-  it("theme.js loads in <head> before the stylesheet and before anything paints", () => {
-    const head = DASHBOARD.slice(0, DASHBOARD.indexOf("</head>"));
+  it("theme.js loads in <head> before the stylesheets and before anything paints", () => {
+    const head = APP.slice(0, APP.indexOf("</head>"));
     expect(head.indexOf('<script src="/assets/theme.js"></script>')).toBeGreaterThan(-1);
-    expect(head.indexOf("/assets/theme.js")).toBeLessThan(head.indexOf("/assets/shell.css"));
+    expect(head.indexOf("/assets/theme.js")).toBeLessThan(head.indexOf("/assets/tokens.css"));
+    expect(head.indexOf("/assets/theme.js")).toBeLessThan(head.indexOf("/assets/app.css"));
     expect(head).not.toMatch(/theme\.js"[^>]*\b(defer|async)\b/);
   });
 
-  it("no style attribute anywhere on the page, in its markup or in what its script writes (#1300)", () => {
-    expect(DASHBOARD.match(/\sstyle\s*=/g) ?? []).toEqual([]);
+  it("no style attribute anywhere on the app, in its markup or in what its modules write (#1300)", () => {
+    expect(APP.match(/\sstyle\s*=/g) ?? []).toEqual([]);
+    expect(APP_CSS.match(/\sstyle\s*=/g) ?? []).toEqual([]);
+    for (const file of ["app-shell.js", "app.js", "app-nav.js", "app-session.js"]) {
+      expect(readFileSync(join(SHARED, file), "utf8").match(/\sstyle\s*=|[{,]\s*style\s*:/g) ?? [], file).toEqual([]);
+    }
   });
 });
 
@@ -136,19 +152,18 @@ describe("chat-render: the turn's elapsed time and a long paste (segment 2)", ()
 });
 
 describe("phones and assistive tech (segment 3)", () => {
-  const style = DASHBOARD.slice(DASHBOARD.indexOf("<style>"), DASHBOARD.indexOf("</style>"));
-  const narrow = style.slice(style.indexOf("@media (max-width: 760px)"));
+  const narrow = APP_CSS.slice(APP_CSS.indexOf("@media (max-width: 899px)"));
 
   it("the keyboard resizes the page instead of covering the composer; content may reach the notch, and is padded clear of it", () => {
-    expect(DASHBOARD).toContain('<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">');
-    expect(style).toMatch(/height: 100vh; height: 100dvh;/);
-    for (const inset of ["top", "bottom", "left", "right"]) expect(style, inset).toContain(`env(safe-area-inset-${inset})`);
+    expect(APP).toContain('<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">');
+    expect(APP_CSS).toMatch(/height: 100vh; height: 100dvh;/);
+    for (const inset of ["top", "bottom", "left", "right"]) expect(APP_CSS, inset).toContain(`env(safe-area-inset-${inset})`);
   });
 
-  // #1317 review: the cascade, not the presence of env(): at phone width every padding rule the top bar ends up with
-  // keeps the notch insets — no later shorthand resets them to plain pixels.
-  it("at phone width the top bar's padding still honours the top and side insets (the last rule that sets it wins)", () => {
-    const rules = [...narrow.matchAll(/\.topbar \{([^}]*)\}/g)].map(m => m[1]!);
+  // #1317 review: the cascade, not the presence of env(): every padding rule the panel's header ends up with keeps the
+  // notch insets — no later shorthand resets them to plain pixels. The header is .panel-head (app.css) now.
+  it("at phone width the panel header's padding still honours the top and side insets (the last rule that sets it wins)", () => {
+    const rules = [...APP_CSS.matchAll(/\.panel-head \{([^}]*)\}/g)].map(m => m[1]!);
     expect(rules.length).toBeGreaterThan(0);
     const last = rules.filter(r => /padding/.test(r)).at(-1)!;
     // Split the shorthand on spaces outside parentheses: max(6px, env(…)) is one value.
@@ -172,13 +187,17 @@ describe("phones and assistive tech (segment 3)", () => {
   });
 
   it("the conversation is a log that is not read out message by message; one polite status line carries the coarse events", () => {
-    expect(DASHBOARD).toMatch(/id="messages" role="log" aria-live="off" aria-label=/);
-    expect(DASHBOARD).toContain('<div id="announcer" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>');
-    expect(DASHBOARD, "the working line is no longer a live region of its own").toContain('<div id="workBar" class="work-bar"></div>');
+    expect(PANEL_CHAT).toMatch(/class="thread" ref=\$\{list\} role="log" aria-live="off" aria-label=/);
+    // The announcer is the one polite status line; the panel creates it once, with the same three attributes.
+    expect(PANEL_CHAT).toMatch(/el\.id = "announcer"; el\.className = "sr-only"; el\.setAttribute\("role", "status"\); el\.setAttribute\("aria-live", "polite"\); el\.setAttribute\("aria-atomic", "true"\)/);
+    const workBar = PANEL_CHAT.split("\n").find(l => l.includes('class=${`work-bar'))!;
+    expect(workBar, "the working line is no longer a live region of its own").toBeDefined();
+    expect(workBar).not.toMatch(/aria-live|role=/);
   });
 
-  it("the sidebar's rows can be reached and chosen from the keyboard", () => {
-    expect(DASHBOARD).toContain('data-act="selFleet" role="button" tabindex="0"');
-    expect(DASHBOARD).toMatch(/class="instance-item[^`]*role="button" tabindex="0"/);
+  it("the sidebar's rows are real links, so the keyboard reaches and chooses them (no role=button on a div)", () => {
+    expect(APP_SHELL).toMatch(/<li><a class=\$\{`inst\$\{active \? " active" : ""\}`\} href=\$\{chatPath\(i\.name\)\}/);
+    expect(APP_SHELL).not.toMatch(/role="button"|data-act=/);
   });
 });
+

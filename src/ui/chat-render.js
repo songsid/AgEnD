@@ -4,14 +4,15 @@
  * event handler of its own; the only attribute that carries message text is a link's href, and only an
  * http(s)/mailto URL gets one (rendered with target=_blank rel="noopener noreferrer").
  *
- * A classic script for the dashboard (window.AgendChatRender) that also exports itself for the tests.
+ * Imported by the chat panel (#1408: the import sets globalThis.AgendChatRender); also exports itself for the tests.
  */
 (function (root, factory) {
   "use strict";
   var api = factory();
   if (typeof module === "object" && module && module.exports) module.exports = api;
-  else root.AgendChatRender = api;
-})(this, function () {
+  // The global as well: the chat imports this file for its side effect (#1408), in the browser and under the tests.
+  if (root) root.AgendChatRender = api;
+})(typeof globalThis !== "undefined" ? globalThis : this, function () {
   "use strict";
 
   function escapeHtml(s) {

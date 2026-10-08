@@ -1,10 +1,11 @@
 import { EventEmitter } from "node:events";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { request, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import vm from "node:vm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fire, settle } from "./helpers/mini-dom.js";
+import type { AppPage } from "./helpers/app-harness.js";
 import { handleWebRequest, type WebApiContext } from "../src/web-api.js";
 import { csrfTokenFor } from "../src/web-session.js";
 
@@ -415,209 +416,290 @@ describe("POST /ui/prompt through the real gate", () => {
 
 // ── the page ────────────────────────────────────────────────────────────────────────────────────────────────
 
-describe("the dashboard (the real page script)", () => {
-  const RENDER = readFileSync(join(process.cwd(), "src", "ui", "chat-render.js"), "utf8");
-  const PAGE = readFileSync(join(process.cwd(), "src", "ui", "dashboard.html"), "utf8").match(/<script>\n([\s\S]*?)<\/script>/)![1]!;
-  function el(tag = "div") {
-    const node: any = {
-      tag, className: "", title: "", type: "", id: "", disabled: false, dataset: {}, children: [] as any[], attrs: {} as Record<string, string>, style: {},
-      append(...kids: any[]) { node.children.push(...kids); }, setAttribute(k: string, v: string) { node.attrs[k] = v; }, remove() {},
-    };
-    let text = "";
-    Object.defineProperty(node, "textContent", { get: () => text, set: (v: string) => { text = v; if (v === "") node.children = []; } });
-    return node;
-  }
-  function page() {
-    const nodes: Record<string, any> = { prompts: el(), workBar: el(), messages: { innerHTML: "", scrollHeight: 0 }, uptime: { textContent: "" } };
-    const sse: Record<string, (e: { data: string }) => void> = {};
-    const toasts: Array<[string, boolean]> = [];
-    const c = vm.createContext({
-      /* a returning browser: it has seen the first sign-in tour (#1366) */ localStorage: { getItem: (k: string) => k === "agend_tour_done" ? "1" : null }, navigator: { language: "en" },
-      document: { addEventListener() {}, getElementById: (n: string) => nodes[n] ?? null, createElement: (t: string) => el(t), body: { appendChild() {} } },
-      setTimeout: () => 0, clearTimeout() {}, setInterval: () => 0, clearInterval() {},
-      fetch: async () => ({ ok: true, json: async () => ({}) }),
-      EventSource: class { addEventListener(k: string, f: (e: { data: string }) => void) { sse[k] = f; } },
-    });
-    vm.runInContext(RENDER, c);
-    vm.runInContext(PAGE, c);
-    (c as any).captureToast = (m: string, ok: boolean) => toasts.push([m, ok]);
-    vm.runInContext('toast=(m,ok=true)=>captureToast(m,ok);renderList=()=>{};renderActions=()=>{};mode="instance";cur="w";curTab="chat";', c);
-    return { c, nodes, sse, toasts, read: (s: string) => vm.runInContext(s, c) };
-  }
-  const NONCE = "d".repeat(32);
-  const offer = (p: ReturnType<typeof page>, instance = "w", text = "w looks hung") =>
-    p.sse.prompt!({ data: JSON.stringify({ instance, nonce: NONCE, text, actions: [{ id: "restart", label: "Restart" }, { id: "wait", label: "Wait" }], expiresAt: 1 }) });
-  const cards = (p: ReturnType<typeof page>) => p.nodes.prompts.children;
-  const buttons = (p: ReturnType<typeof page>) => cards(p)[0].children[1]?.children.filter((k: any) => k.tag === "button") ?? [];
+/** The app's stream as the chat hears it: `emit` is one frame, already parsed (app-stream.js parses before it emits). */
+function fakeStream() {
+  const subs = new Map<string, Array<(d: any, extra?: unknown) => void>>();
+  return {
+    on(name: string, fn: (d: any, extra?: unknown) => void) { subs.set(name, [...(subs.get(name) ?? []), fn]); return () => {}; },
+    emit(name: string, d: any, extra?: unknown) { for (const fn of subs.get(name) ?? []) fn(d, extra); },
+  };
+}
+/** The page's fetch: every call recorded; `respond` answers it (assign a new one to change the answer). */
+function fetchMock() {
+  const calls: Array<{ path: string; method: string; body?: any }> = [];
+  const mock = {
+    calls,
+    respond: (_path: string, _body?: any): unknown => ({}),
+    fn: async (path: string, o: { method?: string; body?: string } = {}) => {
+      const body = o.body ? JSON.parse(o.body) : undefined;
+      calls.push({ path, method: o.method ?? "GET", body });
+      const value = await mock.respond(path, body);
+      return { ok: true, status: 200, json: async () => value };
+    },
+  };
+  return mock;
+}
+const load = (path: string): Promise<any> => import(path);
+const inst = (name: string, over: Record<string, unknown> = {}) => ({ name, status: "running", state: "idle", backend: "claude-code", ...over });
+const frame = (...instances: Array<Record<string, unknown>>) => ({ uptime: 1, instances });
 
-  it("shows the prompt in its instance's chat: its text and one button per answer, as text", () => {
-    const p = page();
-    offer(p, "w", "<img src=x onerror=alert(1)> looks hung");
-    expect(cards(p)).toHaveLength(1);
-    expect(cards(p)[0].attrs).toEqual({ role: "group", "aria-label": "<img src=x onerror=alert(1)> looks hung" });
-    expect(cards(p)[0].children[0].textContent).toBe("<img src=x onerror=alert(1)> looks hung");
-    expect(buttons(p).map((b: any) => [b.textContent, b.type])).toEqual([["Restart", "button"], ["Wait", "button"]]);
-    expect(cards(p)[0].innerHTML).toBeUndefined();
+describe("the chat panel's prompts (the real page modules)", () => {
+  const pages: AppPage[] = [];
+  afterEach(async () => { for (const pg of pages.splice(0)) { await pg.unmount(); pg.restore(); } });
+
+  /** A page with the app's modules: the store booted on a stream (fake, or the real one over poll or SSE), <ChatPanel>
+   *  mounted into <main id="main"> as the shell does. vi.resetModules() first: boot runs once per module instance. */
+  async function chatPage(kind: "fake" | "poll" | "events" = "fake") {
+    vi.resetModules();
+    const harness = await import("./helpers/app-harness.js");
+    const p = harness.page();
+    pages.push(p);
+    const app = await load("/assets/app-store.js");
+    const panel = await load("/ui/js/panel-chat.js");
+    const fx = fetchMock();
+    const toasts: Array<[string, boolean]> = [];
+    const timers: Array<() => void> = [];        // the store's 60-second clocks: recorded, never run here
+    const sources: any[] = [];                   // the EventSource(s) the real stream opened
+    const clock = (f: () => void) => { timers.push(f); return timers.length; };
+    const env = {
+      fetch: fx.fn, setTimeout: clock, clearTimeout() {}, setInterval: () => 1, clearInterval() {},
+      EventSource: class { listeners = new Map<string, (e: { data: string; lastEventId?: string }) => void>(); constructor() { sources.push(this); } addEventListener(n: string, f: any) { this.listeners.set(n, f); } close() {} },
+    };
+    const stream: any = kind === "fake" ? fakeStream() : (await load("/assets/app-stream.js")).createStream({ mode: "full", transport: kind === "poll" ? "poll" : undefined, env });
+    stream.on("status", app.applyStatus);        // app.js wires these two before the chat boots
+    stream.on("activity", app.applyActivity);
+    panel.boot({ stream, boot: null, deps: { fetch: fx.fn, toast: (m: string, ok = true) => { toasts.push([m, ok]); }, setTimeout: clock } });
+    const mount = (name: string) => p.mount(harness.h("main", { id: "main" }, harness.h(panel.ChatPanel, { route: { panel: "chat", instance: name }, navKey: `chat|${name}` })));
+    return { p, fx, toasts, timers, stream, sources, app, panel, mount, store: () => panel.store as any };
+  }
+
+  const NONCE = "d".repeat(32);
+  const posts = (c: { fx: { calls: Array<{ method: string }> } }) => c.fx.calls.filter(x => x.method === "POST");
+  /** The offered prompt: two answers, as the platform would show them. */
+  const offer = (c: { stream: any }, instance = "w", text = "w looks hung") =>
+    c.stream.emit("prompt", { instance, nonce: NONCE, text, actions: [{ id: "restart", label: "Restart" }, { id: "wait", label: "Wait" }], expiresAt: 1 });
+  const cards = (c: { p: AppPage }) => c.p.root.querySelectorAll(".prompts > .prompt");
+  const buttons = (card: any) => card.querySelectorAll(".acts button");
+  const txt = (card: any) => card.querySelector(".txt").textContent;
+
+  it("shows the prompt in its instance's chat: its text and one button per answer, as text", async () => {
+    const c = await chatPage();
+    c.stream.emit("status", frame(inst("w")));
+    await c.mount("w");
+    offer(c, "w", "<img src=x onerror=alert(1)> looks hung");
+    await settle();
+    expect(cards(c)).toHaveLength(1);
+    const card = cards(c)[0];
+    expect([card.getAttribute("role"), card.getAttribute("aria-label")]).toEqual(["group", "<img src=x onerror=alert(1)> looks hung"]);
+    expect(txt(card)).toBe("<img src=x onerror=alert(1)> looks hung");
+    expect(buttons(card).map((b: any) => [b.textContent, b.type])).toEqual([["Restart", "button"], ["Wait", "button"]]);
+    expect(card.querySelector("img"), "the text is text, never markup").toBeNull();
   });
 
-  it("another instance's prompt is announced, not shown here — not even when this chat re-renders", () => {
-    const p = page();
-    offer(p, "other", "other looks hung");
-    expect(cards(p)).toEqual([]);
-    expect(p.toasts).toEqual([["other: other looks hung", false]]);
-    p.sse.prompt!({ data: JSON.stringify({ instance: "w", nonce: "f".repeat(32), text: "w exited", actions: [{ id: "restart", label: "Restart" }], expiresAt: 1 }) });
-    expect(cards(p).map((k: any) => k.children[0].textContent)).toEqual(["w exited"]);
+  it("another instance's prompt is announced, not shown here — not even when this chat re-renders", async () => {
+    const c = await chatPage();
+    c.stream.emit("status", frame(inst("w"), inst("other")));
+    await c.mount("w");
+    offer(c, "other", "other looks hung");
+    await settle();
+    expect(cards(c)).toHaveLength(0);
+    expect(c.toasts).toEqual([["other: other looks hung", false]]);
+    c.stream.emit("prompt", { instance: "w", nonce: "f".repeat(32), text: "w exited", actions: [{ id: "restart", label: "Restart" }], expiresAt: 1 });
+    await settle();
+    expect(cards(c).map((k: any) => txt(k))).toEqual(["w exited"]);
   });
 
   it("the answer names the prompt's own instance, whatever chat is open by the time it is clicked", async () => {
-    const p = page();
-    const calls: unknown[] = [];
-    (p.c as any).recordCall = (x: unknown) => calls.push(x);
-    p.read('api = async (m, path, body) => { recordCall(body); return { answered: true }; }');
-    offer(p);
-    const wait = buttons(p)[1];
-    p.read('cur = "v"');
-    await wait.onclick();
-    expect(calls).toEqual([{ instance: "w", nonce: NONCE, action: "wait" }]);
+    const c = await chatPage();
+    c.fx.respond = () => ({ answered: true });
+    c.stream.emit("status", frame(inst("w")));
+    await c.mount("w");
+    offer(c);
+    await settle();
+    c.store().setCurrent("v");
+    fire(buttons(cards(c)[0])[1], "click");
+    await settle();
+    expect(posts(c)).toEqual([{ method: "POST", path: "/ui/prompt", body: { instance: "w", nonce: NONCE, action: "wait" } }]);
   });
 
   it("a click posts the answer for that prompt, then waits for the outcome; the outcome replaces the buttons", async () => {
-    const p = page();
-    const calls: unknown[] = [];
-    (p.c as any).recordCall = (x: unknown) => calls.push(x);
-    p.read('api = async (m, path, body) => { recordCall([m, path, body]); return { answered: true }; }');
-    offer(p);
-    await buttons(p)[1].onclick();
-    expect(calls).toEqual([["POST", "/ui/prompt", { instance: "w", nonce: NONCE, action: "wait" }]]);
-    expect(buttons(p).every((b: any) => b.disabled)).toBe(true);
-    expect(cards(p)[0].children[1].children.at(-1).textContent).toBe("Answering…");
-    p.sse.prompt_resolved!({ data: JSON.stringify({ instance: "w", nonce: NONCE }) });
-    p.sse.prompt_resolved!({ data: JSON.stringify({ instance: "w", nonce: NONCE, outcome: "Waiting for w" }) });
-    expect(cards(p)[0].className).toBe("prompt done");
-    expect(cards(p)[0].children.map((k: any) => k.textContent)).toEqual(["Waiting for w"]);
+    const c = await chatPage();
+    c.fx.respond = () => ({ answered: true });
+    c.stream.emit("status", frame(inst("w")));
+    await c.mount("w");
+    offer(c);
+    await settle();
+    fire(buttons(cards(c)[0])[1], "click");
+    await settle();
+    expect(posts(c)).toEqual([{ method: "POST", path: "/ui/prompt", body: { instance: "w", nonce: NONCE, action: "wait" } }]);
+    expect(buttons(cards(c)[0]).every((b: any) => b.disabled)).toBe(true);
+    expect(cards(c)[0].querySelector(".acts .wait").textContent).toBe("Answering…");
+    c.stream.emit("prompt_resolved", { instance: "w", nonce: NONCE });
+    await settle();
+    c.stream.emit("prompt_resolved", { instance: "w", nonce: NONCE, outcome: "Waiting for w" });
+    await settle();
+    expect(cards(c)[0].className).toBe("prompt done");
+    expect(cards(c)[0].children.map((k: any) => k.textContent)).toEqual(["Waiting for w"]);
     // A resolved prompt cannot be answered again.
-    await p.read(`answerPrompt(prompts["${NONCE}"], "wait")`);
-    expect(calls).toHaveLength(1);
+    await c.store().answerPrompt(c.store().state.prompts[NONCE], "wait");
+    expect(posts(c)).toHaveLength(1);
   });
 
   it("answered elsewhere first: the buttons go and the page says why; any other refusal keeps them", async () => {
-    const p = page();
-    p.read('api = async () => ({ error: "This prompt belongs to another instance" })');
-    offer(p);
-    await buttons(p)[0].onclick();
-    expect(buttons(p).map((b: any) => b.disabled)).toEqual([false, false]);
-    expect(p.toasts.at(-1)).toEqual(["This prompt belongs to another instance", false]);
-    p.read('api = async () => ({ error: "already answered on Telegram", gone: true })');
-    await buttons(p)[0].onclick();
-    expect(cards(p)[0].className).toBe("prompt done");
-    expect(cards(p)[0].children[0].textContent).toBe("This prompt is no longer open");
+    const c = await chatPage();
+    c.fx.respond = () => ({ error: "This prompt belongs to another instance" });
+    c.stream.emit("status", frame(inst("w")));
+    await c.mount("w");
+    offer(c);
+    await settle();
+    fire(buttons(cards(c)[0])[0], "click");
+    await settle();
+    expect(buttons(cards(c)[0]).map((b: any) => b.disabled)).toEqual([false, false]);
+    expect(c.toasts.at(-1)).toEqual(["This prompt belongs to another instance", false]);
+    c.fx.respond = () => ({ error: "already answered on Telegram", gone: true });
+    fire(buttons(cards(c)[0])[0], "click");
+    await settle();
+    expect(cards(c)[0].className).toBe("prompt done");
+    expect(txt(cards(c)[0])).toBe("This prompt is no longer open");
   });
 
-  it("the open prompts (sent on each stream connect, and with each poll): new ones appear, ones no longer open lose their buttons", () => {
-    const p = page();
-    offer(p);
-    p.sse.prompts!({ data: JSON.stringify([{ instance: "w", nonce: "e".repeat(32), text: "w exited", actions: [{ id: "restart", label: "Restart" }], expiresAt: 1 }]) });
-    expect(cards(p).map((k: any) => [k.className, k.children[0].textContent])).toEqual([["prompt done", "This prompt is no longer open"], ["prompt", "w exited"]]);
+  it("the open prompts (sent on each stream connect, and with each poll): new ones appear, ones no longer open lose their buttons", async () => {
+    const c = await chatPage();
+    c.stream.emit("status", frame(inst("w")));
+    await c.mount("w");
+    offer(c);
+    await settle();
+    c.stream.emit("prompts", [{ instance: "w", nonce: "e".repeat(32), text: "w exited", actions: [{ id: "restart", label: "Restart" }], expiresAt: 1 }]);
+    await settle();
+    expect(cards(c).map((k: any) => [k.className, txt(k)])).toEqual([["prompt done", "This prompt is no longer open"], ["prompt", "w exited"]]);
   });
 
   it("a snapshot arriving while an answer is on its way keeps that prompt answering — its buttons stay off", async () => {
-    const p = page();
-    let finish!: (v: unknown) => void;
-    (p.c as any).held = new Promise(r => { finish = r; });
-    p.read("api = async () => held");
-    offer(p);
-    const answering = buttons(p)[0].onclick();
-    expect(buttons(p).map((b: any) => b.disabled)).toEqual([true, true]);
-    p.sse.prompts!({ data: JSON.stringify([{ instance: "w", nonce: NONCE, text: "w looks hung", actions: [{ id: "restart", label: "Restart" }, { id: "wait", label: "Wait" }], expiresAt: 1 }]) });
-    expect(buttons(p).map((b: any) => b.disabled), "still answering").toEqual([true, true]);
-    finish({ answered: true });
-    await answering;
+    const c = await chatPage();
+    let release!: () => void;
+    const gate = new Promise<void>(r => { release = r; });
+    c.fx.respond = async () => { await gate; return { answered: true }; };
+    c.stream.emit("status", frame(inst("w")));
+    await c.mount("w");
+    offer(c);
+    await settle();
+    fire(buttons(cards(c)[0])[0], "click");
+    await settle();
+    expect(buttons(cards(c)[0]).map((b: any) => b.disabled)).toEqual([true, true]);
+    c.stream.emit("prompts", [{ instance: "w", nonce: NONCE, text: "w looks hung", actions: [{ id: "restart", label: "Restart" }, { id: "wait", label: "Wait" }], expiresAt: 1 }]);
+    await settle();
+    expect(buttons(cards(c)[0]).map((b: any) => b.disabled), "still answering").toEqual([true, true]);
+    release();
+    await settle();
+    expect(buttons(cards(c)[0]).map((b: any) => b.disabled), "answered: it waits for the outcome, buttons stay off").toEqual([true, true]);
   });
 
-  it.each([
+  it.each<[string, () => unknown, string]>([
     ["the request fails (network)", () => Promise.reject(new Error("Failed to fetch")), "buttons back"],
-    ["it is refused", () => Promise.resolve({ error: "This prompt belongs to another instance" }), "buttons back"],
-    ["it was answered elsewhere first", () => Promise.resolve({ error: "gone", gone: true }), "resolved"],
-  ] as const)("a snapshot arrives while an answer is on its way, then %s: the prompt on screen is settled (#1282 review)", async (_why, reply, outcome) => {
-    const p = page();
-    let finish!: () => void;
-    (p.c as any).held = new Promise<void>(r => { finish = r; });
-    (p.c as any).reply = reply;
-    p.read("api = async () => { await held; return reply(); }");
-    offer(p);
-    const answering = buttons(p)[0].onclick();
+    ["it is refused", () => ({ error: "This prompt belongs to another instance" }), "buttons back"],
+    ["it was answered elsewhere first", () => ({ error: "gone", gone: true }), "resolved"],
+  ])("a snapshot arrives while an answer is on its way, then %s: the prompt on screen is settled (#1282 review)", async (_why, reply, outcome) => {
+    const c = await chatPage();
+    let release!: () => void;
+    const gate = new Promise<void>(r => { release = r; });
+    c.fx.respond = async () => { await gate; return reply(); };
+    c.stream.emit("status", frame(inst("w")));
+    await c.mount("w");
+    offer(c);
+    await settle();
+    fire(buttons(cards(c)[0])[0], "click");
+    await settle();
     // The poll / a reconnect still lists the prompt while the answer is in flight.
-    p.sse.prompts!({ data: JSON.stringify([{ instance: "w", nonce: NONCE, text: "w looks hung", actions: [{ id: "restart", label: "Restart" }, { id: "wait", label: "Wait" }], expiresAt: 1 }]) });
-    finish();
-    await answering;
+    c.stream.emit("prompts", [{ instance: "w", nonce: NONCE, text: "w looks hung", actions: [{ id: "restart", label: "Restart" }, { id: "wait", label: "Wait" }], expiresAt: 1 }]);
+    await settle();
+    release();
+    await settle();
     if (outcome === "buttons back") {
-      expect(cards(p)[0].className).toBe("prompt");
-      expect(buttons(p).map((b: any) => b.disabled), "the buttons can be pressed again").toEqual([false, false]);
+      expect(cards(c)[0].className).toBe("prompt");
+      expect(buttons(cards(c)[0]).map((b: any) => b.disabled), "the buttons can be pressed again").toEqual([false, false]);
       // …and a retry goes out.
-      (p.c as any).reply = () => Promise.resolve({ answered: true });
-      (p.c as any).held = Promise.resolve();
-      await buttons(p)[1].onclick();
-      expect(buttons(p).map((b: any) => b.disabled)).toEqual([true, true]);
+      c.fx.respond = () => ({ answered: true });
+      fire(buttons(cards(c)[0])[1], "click");
+      await settle();
+      expect(buttons(cards(c)[0]).map((b: any) => b.disabled)).toEqual([true, true]);
     } else {
-      expect(cards(p)[0].className).toBe("prompt done");
+      expect(cards(c)[0].className).toBe("prompt done");
       // A later snapshot that still lists it (stale) never reopens it.
-      p.sse.prompts!({ data: JSON.stringify([{ instance: "w", nonce: NONCE, text: "w looks hung", actions: [{ id: "wait", label: "Wait" }], expiresAt: 1 }]) });
-      expect(cards(p)[0].className).toBe("prompt done");
+      c.stream.emit("prompts", [{ instance: "w", nonce: NONCE, text: "w looks hung", actions: [{ id: "wait", label: "Wait" }], expiresAt: 1 }]);
+      await settle();
+      expect(cards(c)[0].className).toBe("prompt done");
     }
   });
 
   it("each layer on its own: a snapshot keeps the very object an answer holds; a response settles whatever object holds the nonce now", async () => {
-    const p = page();
-    offer(p);
-    p.read(`globalThis.__held = prompts["${NONCE}"]`);
-    p.sse.prompts!({ data: JSON.stringify([{ instance: "w", nonce: NONCE, text: "w looks hung (2)", actions: [{ id: "wait", label: "Wait" }], expiresAt: 2 }]) });
-    expect(p.read(`prompts["${NONCE}"] === globalThis.__held`), "updated in place, not replaced").toBe(true);
-    expect(p.read(`prompts["${NONCE}"].text`)).toBe("w looks hung (2)");
+    const c = await chatPage();
+    c.stream.emit("status", frame(inst("w")));
+    await c.mount("w");
+    offer(c);
+    await settle();
+    const held = c.store().state.prompts[NONCE];
+    c.stream.emit("prompts", [{ instance: "w", nonce: NONCE, text: "w looks hung (2)", actions: [{ id: "wait", label: "Wait" }], expiresAt: 2 }]);
+    await settle();
+    expect(c.store().state.prompts[NONCE], "updated in place, not replaced").toBe(held);
+    expect(c.store().state.prompts[NONCE].text).toBe("w looks hung (2)");
     // The response side alone: the object is swapped under an in-flight answer (as an older page did) — still settled.
-    let finish!: () => void;
-    (p.c as any).held = new Promise<void>(r => { finish = r; });
-    p.read('api = async () => { await held; return { error: "Failed" }; }');
-    const answering = buttons(p)[0].onclick();
-    p.read(`prompts["${NONCE}"] = Object.assign({}, prompts["${NONCE}"])`);
-    finish();
-    await answering;
-    expect(p.read(`prompts["${NONCE}"].busy`)).toBe(false);
-    expect(buttons(p).map((b: any) => b.disabled)).toEqual([false]);
+    let release!: () => void;
+    const gate = new Promise<void>(r => { release = r; });
+    c.fx.respond = async () => { await gate; return { error: "Failed" }; };
+    fire(buttons(cards(c)[0])[0], "click");
+    await settle();
+    c.store().state.prompts[NONCE] = { ...c.store().state.prompts[NONCE] };
+    release();
+    await settle();
+    expect(c.store().state.prompts[NONCE].busy).toBe(false);
+    expect(buttons(cards(c)[0]).map((b: any) => b.disabled)).toEqual([false]);
   });
 
-  it("a resolved prompt is never reopened by a snapshot that still lists it", () => {
-    const p = page();
-    offer(p);
-    p.sse.prompt_resolved!({ data: JSON.stringify({ instance: "w", nonce: NONCE, outcome: "Restarted" }) });
-    p.sse.prompts!({ data: JSON.stringify([{ instance: "w", nonce: NONCE, text: "w looks hung", actions: [{ id: "wait", label: "Wait" }], expiresAt: 1 }]) });
-    expect(cards(p)[0].className).toBe("prompt done");
-    expect(cards(p)[0].children[0].textContent).toBe("Restarted");
+  it("a resolved prompt is never reopened by a snapshot that still lists it", async () => {
+    const c = await chatPage();
+    c.stream.emit("status", frame(inst("w")));
+    await c.mount("w");
+    offer(c);
+    await settle();
+    c.stream.emit("prompt_resolved", { instance: "w", nonce: NONCE, outcome: "Restarted" });
+    await settle();
+    c.stream.emit("prompts", [{ instance: "w", nonce: NONCE, text: "w looks hung", actions: [{ id: "wait", label: "Wait" }], expiresAt: 1 }]);
+    await settle();
+    expect(cards(c)[0].className).toBe("prompt done");
+    expect(txt(cards(c)[0])).toBe("Restarted");
   });
 
   it("polling carries the open prompts: the poll alone catches one up — the page never re-reads /ui/prompts on a timer (#1253 rule)", async () => {
-    const p = page();
-    const fetched: string[] = [];
-    (p.c as any).recordFetch = (u: string) => fetched.push(u);
-    p.read(`fetch = async (u) => { recordFetch(u); return { ok: true, json: async () => ({ status: { uptime: 1, instances: [] }, messages: [], cursor: "b-1", deliveries: [], prompts: [{ instance: "w", nonce: "${NONCE}", text: "w looks hung", actions: [{ id: "wait", label: "Wait" }], expiresAt: 1 }] }) }; }`);
-    p.read('api = async (m, path) => { recordFetch(path); return {}; }');
-    await p.read("pollOnce()");
-    expect(fetched, "one passive poll, nothing else").toEqual(["/ui/poll?after="]);
-    expect(cards(p).map((k: any) => k.children[0].textContent)).toEqual(["w looks hung"]);
+    const c = await chatPage("poll");
+    let pollFrame: Record<string, unknown> = { status: frame(inst("w")), messages: [], deliveries: [] };
+    c.fx.respond = (path: string) => (path.startsWith("/ui/poll") ? pollFrame : { messages: [] });
+    c.stream.start();                                       // the first poll lists the instance (no cursor yet)
+    await settle();
+    await c.mount("w");
+    c.fx.calls.length = 0;                                  // the first visit's own history read is not part of this
+    pollFrame = { status: frame(inst("w")), messages: [], cursor: "b-1", deliveries: [], prompts: [{ instance: "w", nonce: NONCE, text: "w looks hung", actions: [{ id: "wait", label: "Wait" }], expiresAt: 1 }] };
+    await c.stream._pollOnce();
+    await settle();
+    expect(c.fx.calls.map((x: { path: string }) => x.path), "one passive poll, nothing else").toEqual(["/ui/poll?after="]);
+    expect(cards(c).map((k: any) => txt(k))).toEqual(["w looks hung"]);
   });
 
-  it("a prompt posted while the stream was down is caught up on reconnect — through the real /ui/events handler, with no poll", () => {
-    const p = page();
+  it("a prompt posted while the stream was down is caught up on reconnect — through the real /ui/events handler, with no poll", async () => {
+    const c = await chatPage("events");
     const open = [{ instance: "w", nonce: NONCE, text: "w looks hung", actions: [{ id: "wait", label: "Wait" }], expiresAt: 1 }];
-    const { c } = ctx({ listWebPrompts: () => open, getUiStatus: () => ({ uptime: 1, instances: [] }) });
+    const { c: server } = ctx({ listWebPrompts: () => open, getUiStatus: () => ({ uptime: 1, instances: [inst("w")] }) });
     const writes: string[] = [];
     const req = Object.assign(new EventEmitter(), { method: "GET", url: "/ui/events", headers: { "x-agend-token": TOKEN, "last-event-id": "b1-1" }, socket: null });
     const res = Object.assign(new EventEmitter(), { setHeader() {}, writeHead() { return res; }, write(x: string) { writes.push(x); return true; }, end() { return res; } });
-    handleWebRequest(req as unknown as IncomingMessage, res as unknown as ServerResponse, new URL("http://localhost/ui/events"), c);
+    handleWebRequest(req as unknown as IncomingMessage, res as unknown as ServerResponse, new URL("http://localhost/ui/events"), server);
     res.emit("close");
     const frames = writes.join("").split("\n\n").filter(Boolean).map(f => ({ event: f.match(/^event: (.*)$/m)![1]!, data: f.match(/^data: (.*)$/m)![1]! }));
     expect(frames.map(f => f.event)).toEqual(["status", "prompts"]);
-    for (const f of frames) p.sse[f.event]?.({ data: f.data });
-    expect(cards(p).map((k: any) => k.children[0].textContent)).toEqual(["w looks hung"]);
-    expect(p.read("pollTimer")).toBeNull();
+    c.stream.start();
+    for (const f of frames) c.sources[0].listeners.get(f.event)?.({ data: f.data });
+    await c.mount("w");
+    await settle();
+    expect(cards(c).map((k: any) => txt(k))).toEqual(["w looks hung"]);
+    expect(c.fx.calls.filter((x: { path: string }) => x.path.startsWith("/ui/poll")), "no poll: the stream alone caught it up").toEqual([]);
   });
 });

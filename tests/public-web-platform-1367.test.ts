@@ -1,7 +1,8 @@
 import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import vm from "node:vm";
+// @ts-expect-error — a shipped ESM module with no types (the app's own file; tests/helpers/app-harness.ts does the same)
+import { createStream } from "../src/ui/shared/app-stream.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DiscordAdapter } from "../src/channel/adapters/discord.js";
 import { TelegramAdapter } from "../src/channel/adapters/telegram.js";
@@ -43,14 +44,31 @@ describe("private platform API boundary, no platform connections", () => {
     expect(followUp.mock.calls[0]?.[0]).toMatchObject({ content: "secret", flags: MessageFlags.Ephemeral | MessageFlags.SuppressEmbeds, allowedMentions: { parse: [] } });
     resolve({ id: "ephemeral" }); await sent; expect(finished).toBe(true);
   });
-  it("the public dashboard immediately polls without constructing EventSource; local keeps SSE", () => {
-    const page = readFileSync(join(process.cwd(), "src/ui/dashboard.html"), "utf8");
-    const code = page.slice(page.indexOf("const publicPolling ="), page.indexOf('sse.addEventListener("status"'));
-    for (const mode of ["poll", "sse"]) {
-      const poll = vi.fn(), schedule = vi.fn(), stream = vi.fn();
-      vm.runInNewContext(code, { document: { body: { dataset: { webTransport: mode } } }, EventSource: class { constructor() { stream(); } }, startPolling: poll, setTimeout: schedule, silentTimer: null });
-      expect(stream).toHaveBeenCalledTimes(mode === "sse" ? 1 : 0); expect(poll).toHaveBeenCalledTimes(mode === "poll" ? 1 : 0);
-      expect(schedule).toHaveBeenCalledTimes(mode === "sse" ? 1 : 0);
+  it("the public link polls at once and never constructs EventSource; the local page streams, and polls only when the stream is silent", () => {
+    // app.js hands createStream the body's mode and transport (data-web-transport="poll" on the public link).
+    expect(readFileSync(join(process.cwd(), "src/ui/shared/app.js"), "utf8")).toContain("createStream({ mode, transport: boot.webTransport })");
+    for (const transport of ["poll", undefined] as const) {
+      let streams = 0; const urls: string[] = []; const intervals: number[] = []; const silent: number[] = [];
+      class FakeSource { constructor(public url: string) { streams++; } addEventListener() {} close() {} }
+      const env = {
+        EventSource: FakeSource,
+        fetch: async (url: string) => { urls.push(url); return { ok: true, json: async () => ({}) }; },
+        setInterval: (_fn: () => void, ms: number) => { intervals.push(ms); return 1; },
+        setTimeout: (_fn: () => void, ms: number) => { silent.push(ms); return 2; },
+        clearInterval() {}, clearTimeout() {},
+      };
+      const stream = createStream({ mode: "full", transport, env });
+      stream.start();
+      if (transport === "poll") {
+        expect(streams, "no EventSource on the public link").toBe(0);
+        expect(urls, "the first poll goes out at once").toEqual(["/ui/poll?after="]);
+        expect(intervals).toEqual([5000]);
+        expect(stream.connection()).toBe("polling");
+      } else {
+        expect(streams, "the local page opens one stream").toBe(1);
+        expect(urls, "no poll while the stream is connecting").toEqual([]);
+        expect(silent, "the poll fallback waits 15 s for the stream to speak").toEqual([15000]);
+      }
     }
   });
 });
