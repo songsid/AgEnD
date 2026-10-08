@@ -6,6 +6,15 @@ import { applyNetworkReliabilityDefaults } from "./network-family.js";
 // premature-connect failure on WSL/VPN/high-load hosts (#658).
 applyNetworkReliabilityDefaults();
 
+// ── Runtime version guard ───────────────────────────────────────────────────
+// better-sqlite3 v13 requires Node-API 10 (>=22.14.0 / >=23.6.0 / >=24).
+// This MUST run at bootstrap so that even `agend --version` exits 1 on an
+// incompatible runtime. The old updater checks `agend --version` before
+// restarting; a non-zero exit makes it call failUpdate() and abort — the fleet
+// never restarts into a binary that would crash at the first native DB open.
+import { checkNodeVersion } from "./node-version-guard.js";
+checkNodeVersion();
+
 import { Command } from "commander";
 import { join, dirname } from "node:path";
 import { SchedulerDb } from "./scheduler/db.js";
@@ -1349,23 +1358,6 @@ program
     }
     if (!gateFleetControl(DATA_DIR, "update", { yes: opts.yes })) process.exit(1);
     const { spawnSync } = await import("node:child_process");
-
-    // ── Runtime version guard ──
-    // better-sqlite3 v13 requires Node-API 10 (available from 22.14.0 / 23.6.0+).
-    // Reject early before a partially-applied update leaves the operator stuck.
-    const [nodeMaj, nodeMin] = process.versions.node.split(".").map(Number);
-    const nodeOk = nodeMaj >= 24
-      || (nodeMaj === 23 && nodeMin >= 6)
-      || (nodeMaj === 22 && nodeMin >= 14);
-    if (!nodeOk) {
-      console.error(
-        `  ✗ Node.js ${process.version} is not supported by this version of AgEnD.\n` +
-        `    better-sqlite3 v13 requires Node-API 10, available from:\n` +
-        `      Node 22.14.0 LTS or later,  Node 23.6.0 or later,  Node 24+.\n` +
-        `    Upgrade Node first (e.g. nvm install 22), then run agend update again.`,
-      );
-      process.exit(1);
-    }
     // The channel follows the version being replaced — this CLI's own package — so an alpha or beta stays on its channel.
     const tag = getUpdateSelector(opts, pkgVersion);
     const looked = lookupTargetVersion(tag);

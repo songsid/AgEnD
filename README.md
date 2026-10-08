@@ -150,7 +150,7 @@ graph LR
 
 ## Requirements
 
-- Node.js >= 22.14.0 (or 23.6.0+, or 24+)
+- Node.js ^22.14.0 || ^23.6.0 || >=24
 - tmux
 - One of the supported AI coding CLIs (installed and authenticated)
 - Telegram bot token ([@BotFather](https://t.me/BotFather)) or Discord bot token

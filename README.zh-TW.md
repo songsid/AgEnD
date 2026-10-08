@@ -150,7 +150,7 @@ graph LR
 
 ## 系統需求
 
-- Node.js >= 22.14.0（或 23.6.0+、24+）
+- Node.js ^22.14.0 || ^23.6.0 || >=24
 - tmux
 - 以下任一 AI coding CLI（需安裝並完成認證）
 - Telegram bot token（[@BotFather](https://t.me/BotFather)）或 Discord bot token
