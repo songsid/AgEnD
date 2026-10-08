@@ -125,11 +125,11 @@ agent 的回覆裡有 ` ```html ` 區塊時，下方會出現一張卡片，可�
 - agent 停在終端機上等待（權限詢問、登入、對話框）時，這一列會顯示「*name* 正在等你回應」，側欄上的 instance 也會出現 **等你回應** 標記。這是從終端畫面判讀的，請當作參考。可以用下方的提示按鈕回應，或到主機上處理。
 
 ### 回應 fleet 的提示
-instance 看起來卡住、自己結束，或停在互動式提示時，Telegram／Discord 上的按鈕也會出現在該 instance 的聊天裡：*Force restart* / *Keep waiting*、*Restart* / *Ignore*、*Confirm* / *Cancel*。
+instance 看起來卡住、自己結束，或停在互動式提示時，Telegram／Discord 上的按鈕也會出現在該 instance 的聊天裡：*Force restart* / *Keep waiting*、*Restart* / *Ignore*、*請 General 協助* / *我自己處理*。
 - 它們是**同一個提示**：不論在哪邊，先回答的算數。另一邊的按鈕隨後會顯示結果，提示也會在所有地方同時到期。
 - 只有這幾種跟 instance 健康有關的提示會出現在 web 上；`/clear` 的確認、登入、ClassicBot 的核准、tips，以及 `/model`、`/effort` 選單，都會留在原本發出的地方。
 - 頁面沒連線時發出的提示，重新連上後會立刻出現；如果期間已經在別處回答了，會顯示為已回答。
-- **沒有聊天平台？** 只用 dashboard 的 fleet，這些提示會直接出現在該 instance 的聊天裡。互動式提示的 *Confirm* 是請 General instance 協助，所以只有 fleet 有 General 時才會出現。
+- **沒有聊天平台？** 只用 dashboard 的 fleet，這些提示會直接出現在該 instance 的聊天裡。互動式提示的 *請 General 協助* 是請 General instance 去看它的終端機，所以只有 fleet 有 General 時才會出現。
 
 ## `/view`
 
