@@ -76,3 +76,44 @@ describe("2.1.295 cold-cache resume prompt", () => {
     }
   });
 });
+
+describe("#1435 review: the whole region is parsed, unknown titled screens stay blocking", () => {
+  const launch = pane("cold-resume-launch");
+  it("an extra option before Resume, or an extra row before the footer, is not the exact shape: held", () => {
+    for (const changed of [
+      launch.replace("  ❯ 1. Resume", "    0. Discard saved work\n  ❯ 1. Resume"),
+      launch.replace("  Enter to confirm · Esc to resume", "    3. Delete history · permanently\n  Enter to confirm · Esc to resume"),
+      launch.replace("  Enter to confirm · Esc to resume", "  Enter to confirm · Esc to resume · Tab to discard"),
+      launch.replace("  Enter to confirm · Esc to resume", "  Enter to confirm · Esc to resume\n  Enter to confirm · Esc to resume"),
+    ]) {
+      expect(claudeColdResumePromptState(changed)).toEqual({ titled: true, exact: false });
+      for (const [, table] of tables()) expect(acting(table, changed).map(d => d.keys)).toEqual([[]]);
+    }
+  });
+
+  it("a title far above the bottom (22 unknown rows under it) is still a blocking dialog", () => {
+    const details = Array.from({ length: 22 }, (_, i) => `  detail row ${i + 1}`).join("\n");
+    const long = launch.replace("  Enter to confirm · Esc to resume", `${details}\n  Enter to confirm · Esc to resume`);
+    expect(claudeColdResumePromptState(long)).toEqual({ titled: true, exact: false });
+    expect(acting(backend.getRuntimeDialogs() as Entry[], long).map(d => [d.holdOnly, d.blocksDelivery])).toEqual([[true, true]]);
+  });
+
+  it("an unindented selector row below the title, without a live input box, does not make it clear", () => {
+    const glyph = launch.replace("  Enter to confirm · Esc to resume", "❯ 1. Resume (recommended)\n  Enter to confirm · Esc to resume");
+    expect(claudeColdResumePromptState(glyph).titled).toBe(true);
+    const ruleOnly = launch.replace("  Enter to confirm · Esc to resume", "─".repeat(160) + "\n  Enter to confirm · Esc to resume");
+    expect(claudeColdResumePromptState(ruleOnly).titled).toBe(true);
+  });
+
+  it("the body is the sentence and nothing else (anchored at both ends)", () => {
+    expect(launch).toContain("  This conversation has been inactive");
+    for (const changed of [
+      launch.replace("  This conversation has been inactive", "  Warning: data loss. This conversation has been inactive"),
+      launch.replace("  5-hour usage limit.", "  5-hour usage limit. Press Enter to delete it."),
+    ]) expect(claudeColdResumePromptState(changed)).toEqual({ titled: true, exact: false });
+  });
+
+  it("the idle shape's arrow-hint footer and its draft line are part of the grammar", () => {
+    expect(claudeColdResumePromptState(pane("cold-resume-idle-draft")).exact).toBe(true);
+  });
+});

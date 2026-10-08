@@ -210,37 +210,62 @@ const COLD_RESUME_TITLE = /^[ \t]*Resume this conversation\?[ \t]*$/;
 const COLD_RESUME_RESUME_ROW = /^[ \t]*(?:[❯›][ \t]*)?(?:1\.[ \t]*)?Resume[ \t]*$/;
 const COLD_RESUME_NEW_ROW = /^[ \t]*(?:[❯›][ \t]*)?(?:2\.[ \t]*)?Start a new conversation[ \t]*$/;
 const COLD_RESUME_NEW_DESCRIPTION = /^[ \t]*Claude can look this one up if you refer to it later[ \t]*$/;
-const COLD_RESUME_FOOTER = /^[ \t]*(?:Enter to confirm|Esc to resume|↑\/?↓[^\n]*pick a row first|[^\n]*·[^\n]*)[ \t]*$/;
+/** The input guide's parts, joined by " · " (the idle trigger adds the arrow hint when a draft is waiting). */
+const COLD_RESUME_FOOTER_PARTS = new Set(["Enter to confirm", "Esc to resume", "↑/↓ pick a row first", "↑↓ pick a row first"]);
+function coldResumeFooter(row: string): boolean {
+  const parts = row.trim().split(" · ");
+  return new Set(parts).size === parts.length && parts.every(part => COLD_RESUME_FOOTER_PARTS.has(part))
+    && parts.includes("Enter to confirm") && parts.includes("Esc to resume");
+}
+/** The body, joined across its wrapped rows: exactly the inactivity sentence, and the draft line when one is waiting. */
+const COLD_RESUME_BODY = /^This conversation has been inactive for [^.]+? and is \S+ tokens long\. Resuming it will use (?:all|about \d+%) of your 5-hour usage limit\.(?: Your unsent message will still be there after you answer\.)?$/;
+
+/**
+ * The live input box under a row: a `─` rule, the column-0 `❯` prompt row, another rule — positive evidence that the
+ * screen's bottom is Claude's composer, so a title above it is a quote in the transcript. A selector glyph or a rule
+ * alone is not that evidence.
+ */
+function liveComposerBelow(rows: string[]): boolean {
+  for (let i = 0; i < rows.length; i++) {
+    if (!CLAUDE_BOX_RULE.test(rows[i]!.trim())) continue;
+    let j = i + 1;
+    if (j < rows.length && /^❯(?:[ \t]|$)/.test(rows[j]!)) {
+      for (j = j + 1; j < rows.length; j++) if (CLAUDE_BOX_RULE.test(rows[j]!.trim())) return true;
+    }
+  }
+  return false;
+}
 
 export function claudeColdResumePromptState(pane: string): { titled: boolean; exact: boolean } {
   const rows = claudeRows(pane);
   let title = -1;
-  for (let i = rows.length - 1; i >= 0 && i >= rows.length - 20; i--) {
-    if (COLD_RESUME_TITLE.test(rows[i])) { title = i; break; }
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (COLD_RESUME_TITLE.test(rows[i]!)) { title = i; break; }
   }
   if (title < 0) return { titled: false, exact: false };
   const below = rows.slice(title + 1);
-  // The dialog is the bottom of the screen: a title quoted in the transcript has the live input box under it (its
-  // `─` rules and the column-0 `❯` row) and is not the dialog — not answered, and not held either.
-  if (below.some(r => CLAUDE_BOX_RULE.test(r.trim()) || /^❯/.test(r))) return { titled: false, exact: false };
-  const resume = below.findIndex(r => COLD_RESUME_RESUME_ROW.test(r));
-  const startNew = below.findIndex(r => COLD_RESUME_NEW_ROW.test(r));
-  // The body sentence may wrap: judged on the rows between the title and the first option, joined.
-  const body = below.slice(0, resume < 0 ? below.length : resume).map(r => r.trim()).join(" ");
-  const sentence = /This conversation has been inactive for .+? and is .+? tokens long\. Resuming it will use (?:all|about \d+%) of your 5-hour usage limit\./.test(body);
-  // Exactly the two options, in this order, then only the second option's description and the footer.
-  const optionRows = below.filter(r => /^[ \t]*(?:[❯›][ \t]*)?(?:\d\.[ \t]*)?\S/.test(r) && (COLD_RESUME_RESUME_ROW.test(r) || COLD_RESUME_NEW_ROW.test(r))).length;
-  const trailing = startNew < 0 ? [] : below.slice(startNew + 1).filter(r => r.trim() !== "");
-  if (trailing.length > 0 && COLD_RESUME_NEW_DESCRIPTION.test(trailing[0])) trailing.shift();
-  const exact = sentence && resume >= 0 && startNew === resume + 1 && optionRows === 2
-    && trailing.length <= 2 && trailing.every(r => COLD_RESUME_FOOTER.test(r) && !/^[ \t]*[❯›]/.test(r));
-  return { titled: true, exact };
+  // A title quoted in the transcript has the live input box under it: neither answered nor held. Anything else
+  // carrying the title is the dialog (or an unknown one), however long — never read as clear.
+  if (liveComposerBelow(below)) return { titled: false, exact: false };
+  const region = below.filter(r => r.trim() !== "");
+  // The whole region is parsed; any row the grammar does not name makes it not exact (held).
+  let k = 0;
+  const body: string[] = [];
+  while (k < region.length && !COLD_RESUME_RESUME_ROW.test(region[k]!)) body.push(region[k++]!.trim());
+  const bodyOk = COLD_RESUME_BODY.test(body.join(" "));
+  const optionsOk = k < region.length && COLD_RESUME_RESUME_ROW.test(region[k]!) && COLD_RESUME_NEW_ROW.test(region[k + 1] ?? "");
+  let rest = region.slice(k + 2);
+  if (rest.length > 0 && COLD_RESUME_NEW_DESCRIPTION.test(rest[0]!)) rest = rest.slice(1);
+  const footerOk = rest.length === 1 && coldResumeFooter(rest[0]!);
+  return { titled: true, exact: bodyOk && optionsOk && footerOk };
 }
+const coldResumeExact = (pane: string): boolean => claudeColdResumePromptState(pane).exact;
+const coldResumeUnknown = (pane: string): boolean => { const s = claudeColdResumePromptState(pane); return s.titled && !s.exact; };
+
 const COLD_RESUME_TITLE_ANY = /^[ \t]*Resume this conversation\?[ \t]*$/m;
 const COLD_RESUME_DESCRIPTION = "Claude cold-cache resume prompt — Escape (its own 'resume'): keep the full context";
 const COLD_RESUME_HOLD_DESCRIPTION = "Claude cold-cache resume prompt (unrecognised shape) — holding for a human, never 'Start a new conversation'";
-const coldResumeExact = (pane: string): boolean => claudeColdResumePromptState(pane).exact;
-const coldResumeUnknown = (pane: string): boolean => { const s = claudeColdResumePromptState(pane); return s.titled && !s.exact; };
+
 
 // ── First-run / trust / bypass screens (captured live from Claude Code 2.1.286) ──
 //
@@ -1103,7 +1128,7 @@ export class ClaudeCodeBackend implements CliBackend {
       // the default and drop the full context. Hold the pane, report for a human.
       { pattern: CLAUDE_RESUME_PROMPT_MENU, isActive: resumeMenuActive, keys: [], holdOnly: true, blocksDelivery: true, description: "Claude session resume prompt (unrecognised variant) — holding for a human, never auto-selecting" },
       // 2.1.295's cold-cache resume prompt on a resumed launch: Escape (the dialog's own "resume") keeps the context.
-      { pattern: COLD_RESUME_TITLE_ANY, isActive: coldResumeExact, keys: ["Escape"], description: COLD_RESUME_DESCRIPTION, blocksDelivery: true, verifyAfterKeys: true, autoResolutionKey: "claude-cold-resume-prompt" },
+      { pattern: COLD_RESUME_TITLE_ANY, isActive: coldResumeExact, keys: ["Escape"], description: COLD_RESUME_DESCRIPTION, blocksDelivery: true, inputBlocked: true, verifyAfterKeys: true, autoResolutionKey: "claude-cold-resume-prompt" },
       { pattern: COLD_RESUME_TITLE_ANY, isActive: coldResumeUnknown, keys: [], holdOnly: true, blocksDelivery: true, description: COLD_RESUME_HOLD_DESCRIPTION },
       // First-run onboarding. The theme picker's `❯ ✔ Dark mode` satisfies the
       // ready pattern, so without these entries a first launch was declared
@@ -1158,6 +1183,7 @@ export class ClaudeCodeBackend implements CliBackend {
         keys: ["Escape"],
         description: COLD_RESUME_DESCRIPTION,
         blocksDelivery: true,
+        inputBlocked: true,
         verifyAfterKeys: true,
         autoResolutionKey: "claude-cold-resume-prompt",
       },
@@ -1167,6 +1193,7 @@ export class ClaudeCodeBackend implements CliBackend {
         keys: [],
         holdOnly: true,
         blocksDelivery: true,
+        inputBlocked: true,
         description: COLD_RESUME_HOLD_DESCRIPTION,
       },
       // Claude's shell-command safety menu is the one runtime prompt AgEnD is
