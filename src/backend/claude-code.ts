@@ -2,7 +2,7 @@ import { EFFORT_CAPABILITIES } from "./effort-metadata.js";
 import { dirname, join, resolve } from "node:path";
 import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { type CliBackend, type CliBackendConfig, type ErrorPattern, type RuntimeDialog, type StartupDialog, CLI_PROBE_LONGEST_LEAF_MS, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
+import { type CliBackend, type CliBackendConfig, type ErrorPattern, type InputBox, type RuntimeDialog, type StartupDialog, CLI_PROBE_LONGEST_LEAF_MS, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
 
 /** Mirror Claude Code's ~/.claude/projects key for a working directory. Exported for the detection-signal seam. */
 export function claudeProjectKey(cwd: string): string {
@@ -196,6 +196,64 @@ function claudeRows(pane: string): string[] {
   const rows = pane.replace(/\r/g, "").split("\n");
   while (rows.length > 0 && rows[rows.length - 1].trim() === "") rows.pop();
   return rows;
+}
+
+/** A rule of Claude's input-box frame: a row of nothing but `─`. */
+const CLAUDE_BOX_RULE = /^─{10,}$/;
+/**
+ * Rows Claude paints under the box: the statusLine, the permission-mode line, a hint ("paste again to expand"). More
+ * than this many non-blank rows below the lower rule and that rule is not the live box's (a quoted capture, a dialog).
+ */
+const CLAUDE_BOX_FOOTER_MAX_ROWS = 4;
+/** Rows a box may hold before the reader stops believing it is one (Claude grows the box with the text). */
+const CLAUDE_BOX_MAX_ROWS = 40;
+/** The placeholder an empty box shows while messages are queued (2.1.293); it is not input. */
+const CLAUDE_QUEUED_PLACEHOLDER = "Press up to edit queued messages";
+/** A paste Claude shows collapsed in the box; the pasted text itself is not on screen. */
+const CLAUDE_COLLAPSED_PASTE = /\[Pasted text #\d+(?: \+\d+ lines?)?\]/g;
+
+/**
+ * Claude Code's live input box, read as a region (#1200). Captured live from 2.1.293 under the production launch
+ * (tests/fixtures/claude-2.1.293-*.pane.txt):
+ *
+ *   ❯ draft one two three                 ← typed text: `❯` + U+00A0, then the text
+ *   ──────────────────────────────────    ← the box's upper rule
+ *   ❯ [Pasted text #1 +11 lines]          ← a long paste stays collapsed until it is submitted
+ *   ──────────────────────────────────    ← lower rule
+ *     ok                                  ← statusLine
+ *     ⏵⏵ bypass permissions on (shift+tab to cycle)
+ *
+ * Bottom-anchored: the lower rule is the last `─` row, with at most CLAUDE_BOX_FOOTER_MAX_ROWS non-blank rows under it;
+ * the upper rule is the previous `─` row. The first row inside starts with `❯` (an empty box is a bare `❯`), further
+ * rows are indented two columns. Transcript echoes above the box also start with `❯` (with an ordinary space), which
+ * is why the box is found by its frame and never by the glyph. Anything else — no frame near the bottom, a first row
+ * that is not the prompt, a row that is not indented — is not a box this reader can vouch for: null.
+ */
+export function readClaudeInputBox(pane: string): InputBox | null {
+  const rows = claudeRows(pane).map(row => row.trimEnd());
+  let bottom = -1;
+  for (let i = rows.length - 1, footer = 0; i >= 0; i--) {
+    if (CLAUDE_BOX_RULE.test(rows[i]!)) { bottom = i; break; }
+    if (rows[i]!.trim() !== "" && ++footer > CLAUDE_BOX_FOOTER_MAX_ROWS) return null;
+  }
+  if (bottom < 1) return null;
+  let top = -1;
+  for (let i = bottom - 1; i >= 0 && bottom - i <= CLAUDE_BOX_MAX_ROWS + 1; i--) {
+    if (CLAUDE_BOX_RULE.test(rows[i]!)) { top = i; break; }
+  }
+  if (top < 0 || bottom - top < 2) return null;
+  const inner = rows.slice(top + 1, bottom);
+  const first = /^❯(?:[\u00a0 ](.*))?$/.exec(inner[0]!);
+  if (!first) return null;
+  const lines = [first[1] ?? ""];
+  for (const row of inner.slice(1)) {
+    if (row === "") lines.push("");
+    else if (row.startsWith("  ")) lines.push(row.slice(2));
+    else return null;
+  }
+  let text = lines.join("\n").trimEnd();
+  if (text === CLAUDE_QUEUED_PLACEHOLDER) text = "";
+  return { text, collapsedPastes: text.match(CLAUDE_COLLAPSED_PASTE)?.length ?? 0 };
 }
 
 /** The footer every confirm-style select dialog ends with (trust, bypass, MCP, resume, …). */
@@ -778,6 +836,11 @@ export class ClaudeCodeBackend implements CliBackend {
    * `working`. The veto only bites on a *frozen* pane whose last frame still shows
    * an in-progress spinner — which is exactly the hang this is meant to surface.
    */
+  /** #1200: the live input box, read structurally (readClaudeInputBox). */
+  readInputRow(pane: string): InputBox | null {
+    return readClaudeInputBox(pane);
+  }
+
   getBusyPattern(): RegExp {
     return new RegExp(`^[ \\t]*[✻✽✢·✶*][ \\t]+(?:\\p{L}+(?:-\\p{L}+)*…(?:[ \\t]+\\([^\\n]*)?|[^\\n]*?${CLAUDE_RETRY_SUFFIX}[ \\t]*$(?=${CLAUDE_LIVE_TAIL}))[ \\t]*$`, "mu");
   }

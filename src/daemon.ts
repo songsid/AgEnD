@@ -24,7 +24,7 @@ import { ContextGuardian } from "./context-guardian.js";
 import { IpcServer } from "./channel/ipc-bridge.js";
 import { daemonBudgetMs } from "./channel/ipc-timeouts.js";
 import { MessageBus } from "./channel/message-bus.js";
-import type { CliBackend, CliBackendConfig, ErrorPattern, InputDraft, InputUnavailableTransient, InstanceState, InstanceStateSnapshot, RuntimeDialog, StartupDialog } from "./backend/types.js";
+import type { CliBackend, CliBackendConfig, ErrorPattern, InputBox, InputDraft, InputUnavailableTransient, InstanceState, InstanceStateSnapshot, RuntimeDialog, StartupDialog } from "./backend/types.js";
 import { shellQuote, UnsupportedCliError } from "./backend/types.js";
 import type { ChannelAdapter, InboundMessage } from "./channel/types.js";
 import { getTmuxSession } from "./config.js";
@@ -40,7 +40,7 @@ import {
   renderCrossInstanceHandoffMetadata,
 } from "./cross-instance-envelope.js";
 import type { SpawnGate } from "./spawn-gate.js";
-import { bottomRowIsReady, inputAreaText, inputShowsPastedText, lastNonBlankRow, pastedTextSignature, pasteLeftInInput, strandedAgendMessageInInput } from "./pane-input-residue.js";
+import { agendMessageInInput, bottomRowIsReady, inputAreaText, inputShowsPastedText, lastNonBlankRow, pastedTextSignature, pasteLeftInInput, strandedAgendMessageInInput } from "./pane-input-residue.js";
 import type { StormWindow } from "./storm-window.js";
 import type { BackendOutageView } from "./backend-outage.js";
 import { TurnReplyGuard, type TurnReplySnapshot, type TurnReplyTarget } from "./turn-reply-guard.js";
@@ -568,6 +568,13 @@ interface PaneEvidence {
   payload: number;
   /** Whether the input area ALREADY showed that signature. */
   strandedInput: boolean;
+  /**
+   * Pastes the input box shows collapsed (claude-code's `[Pasted text #3 +11 lines]`, #1200): the pasted text is not on
+   * screen, so the signature cannot be seen in the box. One more than before our paste is our paste, still in the box.
+   */
+  collapsedPastes: number;
+  /** Whether this snapshot had an input box the backend could read (only meaningful for backends that read one). */
+  inputReadable: boolean;
 }
 
 /**
@@ -7868,7 +7875,7 @@ export class Daemon extends EventEmitter {
           // The recovery Enter can be accepted before Codex paints its new
           // transcript. One immediate capture is not a failure verdict: give
           // that echo/queue a bounded chance to appear, without re-pasting.
-          const afterEnter = this.backend?.isDeliveryInputReadyPane
+          const afterEnter = this.structuredInputEvidence()
             ? await this.lateCodexSubmissionProof(signature, pasteBaseline, true)
             : await this.confirmSubmitted(signature, pasteBaseline);
           if (afterEnter === "submitted") {
@@ -7881,7 +7888,7 @@ export class Daemon extends EventEmitter {
           // another turn's output — and treating that as proof re-confirms a
           // message nobody submitted. Output is corroboration; text sitting in
           // the input row is disqualifying, and disqualifying evidence wins.
-          if (this.backend?.isDeliveryInputReadyPane && afterEnter !== "stranded") {
+          if (this.structuredInputEvidence() && afterEnter !== "stranded") {
             this.logger.warn({ phase: "native-queue-submit", proof: afterEnter, strandedAt },
               "Codex recovery Enter outcome uncertain — no hard failure or duplicate paste");
             verdict.phase = "native-queue-submit";
@@ -7892,7 +7899,11 @@ export class Daemon extends EventEmitter {
           return this.failDelivery(verdict, status, "native-queue-submit", afterEnter);
         }
 
-        if (this.backend?.isDeliveryInputReadyPane) {
+        // A structural box reader (claude-code, #1200) is in the same position as Codex once the turn has run: the
+        // message may have been taken and its echo scrolled out, the queue drained, the box empty — or the capture
+        // failed. None of that proves the paste was lost, so nothing short of positive evidence is a reason to paste
+        // again (#1353 review); "unverifiable" used to, and could submit the message twice.
+        if (this.backend?.isDeliveryInputReadyPane || this.backend?.readInputRow) {
           // In Codex a missing viewport echo is inconclusive, not a proof of
           // loss. Another paste could run the same request twice. Leave the
           // already-pasted delivery at 👀 and let the next observation decide.
@@ -7993,14 +8004,14 @@ export class Daemon extends EventEmitter {
           // transcript-proof wait would hold a steer to `uncertain` whenever the CLI files no transcript marker (#1207 P2).
           if (!rawPaste && !steer && !this.canProveSubmission()) verdict.proof = "output-edge";
         } else {
-          const proof = this.backend?.isDeliveryInputReadyPane
+          const proof = this.structuredInputEvidence()
             ? await this.lateCodexSubmissionProof(signature, pasteBaseline)
             : await this.confirmSubmitted(signature, pasteBaseline);
           if (proof === "submitted") {
             if (status) this.emit("message_confirmed", status);
             return true;
           }
-          if (this.backend?.isDeliveryInputReadyPane && proof !== "stranded") {
+          if (this.structuredInputEvidence() && proof !== "stranded") {
             // This is the observed #910 race: the CLI processed the message
             // although its echo had not appeared within the proof window. A
             // missing viewport signature cannot establish non-delivery; keep
@@ -8078,7 +8089,7 @@ export class Daemon extends EventEmitter {
   }
 
   private canProveSubmission(): boolean {
-    return !!this.backend?.getBottomReadyPattern?.();
+    return this.readsInput();
   }
 
   /** Positive submission retires the startup transient guard for this spawn. */
@@ -8123,7 +8134,7 @@ export class Daemon extends EventEmitter {
       return busy;
     }
 
-    if (this.backend?.isDeliveryInputReadyPane) {
+    if (this.structuredInputEvidence()) {
       // Codex's first post-wake redraw may hide the echo for a few seconds.
       // Absence from a viewport is NOT proof the paste was lost, so only a
       // positively identified strand authorizes another Enter. Never re-paste
@@ -8173,6 +8184,15 @@ export class Daemon extends EventEmitter {
     if (!this.tmux) return "unproven";
     let pane: string;
     try { pane = await this.tmux.capturePane(); } catch { return "unproven"; }
+    return this.judgeSubmission(pane, signature, baseline);
+  }
+
+  /**
+   * The verdict one snapshot supports — the live viewport, or (for a unique signature) the scrollback a late proof
+   * reads. One judge for both, so a history read cannot vouch for what the live one refuses: an unreadable box, or our
+   * text still in it (#1353 review).
+   */
+  private judgeSubmission(pane: string, signature: SubmissionSignature, baseline: PaneEvidence | null): SubmitProof {
 
     // Without a way to tell the input row from the transcript, "the text is on
     // screen" cannot distinguish submitted from stranded — that ambiguity IS
@@ -8183,8 +8203,7 @@ export class Daemon extends EventEmitter {
     // for the first and recovers on the second, which is what it did before —
     // the fix here is for backends that CAN be read, not a new guess for those
     // that cannot.
-    const prompt = this.backend?.getBottomReadyPattern?.();
-    if (!prompt) {
+    if (!this.readsInput()) {
       const seen = this.paneEvidence(pane, signature);
       if (signature.unique && seen.payload > 0) return "unverifiable";
       return seen.payload > (baseline?.payload ?? Infinity) || seen.queued > (baseline?.queued ?? Infinity)
@@ -8201,6 +8220,11 @@ export class Daemon extends EventEmitter {
       && !this.backend.getBusyPattern?.()?.test(pane)) {
       return after.payload > 0 ? "unverifiable" : "unproven";
     }
+    // A structural reader (claude-code) that finds no input box on this screen — a dialog in front of it, a layout it
+    // does not know — cannot place our text on either side of the box: the same verdicts as a readerless backend.
+    if (this.backend?.readInputRow && !after.inputReadable) {
+      return after.payload > 0 ? "unverifiable" : "unproven";
+    }
 
     // 1. Disqualifying evidence, checked FIRST and never overridden by the
     //    corroborating evidence below: our text is sitting in the input row, so
@@ -8212,7 +8236,20 @@ export class Daemon extends EventEmitter {
     //    Otherwise an older stranded message with the same opening would be
     //    read as ours, we would press Enter to "recover" it, and the turn IT
     //    starts would confirm a message that never reached the pane.
-    if (after.strandedInput && (signature.unique || baseline?.strandedInput === false)) return "stranded";
+    //
+    //    For a structural box reader (claude-code), "did not already show it" needs a baseline whose box was READ: an
+    //    unreadable one (a dialog, a redraw the reader refused) says nothing about what the box held, and counting it as
+    //    empty would claim an older message as ours and press Enter on it (#1353 review). The prompt-row backends (codex,
+    //    kiro) keep their existing attribution.
+    const attributable = baseline != null
+      && (!this.backend?.readInputRow || (baseline.inputReadable && after.inputReadable));
+    if (after.strandedInput && (signature.unique || (attributable && baseline!.strandedInput === false))) return "stranded";
+    //    A paste the CLI shows collapsed carries no signature at all. One the box did not hold before we pasted is
+    //    ours, and it is still in the box — whatever echo or output is on screen (#1200).
+    if (attributable && after.collapsedPastes > baseline!.collapsedPastes) return "stranded";
+    //    Something sits in the box that cannot be attributed either way. Only a unique signature seen outside the box
+    //    (below) can still prove this delivery; nothing else on screen may.
+    const unattributedResidue = !attributable && (after.strandedInput || after.collapsedPastes > 0);
 
     // 2. Positive evidence. A unique signature needs no baseline: no earlier
     //    message can carry this delivery's message_id, so finding it outside
@@ -8220,6 +8257,7 @@ export class Daemon extends EventEmitter {
     //    failure to read the pane BEFORE pasting cannot turn a delivered
     //    message into a re-paste.
     if (signature.unique && after.payload > 0) return this.submittedProof();
+    if (unattributedResidue) return "unverifiable";
 
     // 3. Otherwise the evidence must be NEW relative to the pane as it was
     //    before we pasted: a queue marker left by an earlier message, or an
@@ -8255,12 +8293,10 @@ export class Daemon extends EventEmitter {
       if (proof === "submitted" || (proof === "stranded" && !waitThroughStranded)) return proof;
       if (signature.unique && this.tmux?.capturePaneWithHistory) {
         try {
+          // Scrollback can hold the echo the viewport lost — but it is judged exactly like the viewport: a box that
+          // cannot be read, or that still holds our text, is never upgraded by an echo further up.
           const history = await this.tmux.capturePaneWithHistory(300);
-          const seen = this.paneEvidence(history, signature);
-          const known = !this.backend?.isDeliveryInputReadyPane
-            || this.backend.isDeliveryInputReadyPane(history)
-            || this.backend.getBusyPattern?.()?.test(history);
-          if (known && seen.payload > 0 && !seen.strandedInput) return this.submittedProof();
+          if (this.judgeSubmission(history, signature, baseline) === "submitted") return this.submittedProof();
         } catch { /* a failed history read proves neither delivery nor loss */ }
       }
       if (Date.now() >= deadline) return proof;
@@ -8281,9 +8317,8 @@ export class Daemon extends EventEmitter {
       try {
         const pane = await this.tmux.capturePane();
         const evidence = this.paneEvidence(pane, signature);
-        const prompt = this.backend?.getBottomReadyPattern?.();
-        if (prompt && (!this.backend?.isDeliveryInputReadyPane || this.backend.isDeliveryInputReadyPane(pane))
-          && strandedAgendMessageInInput(pane, prompt)) {
+        const input = this.inputRegion(pane);
+        if (input && agendMessageInInput(input.text)) {
           // Whatever we paste now lands after it, and one Enter submits both as
           // a single message. Nothing here can undo that; saying so beats
           // letting two messages silently merge.
@@ -8302,14 +8337,40 @@ export class Daemon extends EventEmitter {
 
   private paneEvidence(pane: string, signature: SubmissionSignature): PaneEvidence {
     const marker = this.backend?.getQueuedInputMarker?.();
-    const prompt = this.backend?.getBottomReadyPattern?.();
-    const input = prompt && (!this.backend?.isDeliveryInputReadyPane || this.backend.isDeliveryInputReadyPane(pane))
-      ? inputAreaText(pane, prompt) : null;
+    const input = this.inputRegion(pane);
     return {
       queued: marker ? pane.split(/\r?\n/).filter(row => marker.test(row)).length : 0,
       payload: countOccurrences(pane.replace(/\s+/g, ""), signature.value),
-      strandedInput: input != null && inputShowsPastedText(input, signature.value),
+      strandedInput: input != null && inputShowsPastedText(input.text, signature.value),
+      collapsedPastes: input?.collapsedPastes ?? 0,
+      inputReadable: input != null,
     };
+  }
+
+  /**
+   * The input box as it stands on this screen: the backend's structural reader when it has one (claude-code, #1200),
+   * else the prompt-row heuristic (codex — only on a screen it vouches for — and kiro). null: no box to read here.
+   */
+  private inputRegion(pane: string): InputBox | null {
+    if (this.backend?.readInputRow) return this.backend.readInputRow(pane);
+    const prompt = this.backend?.getBottomReadyPattern?.();
+    if (!prompt || (this.backend?.isDeliveryInputReadyPane && !this.backend.isDeliveryInputReadyPane(pane))) return null;
+    const text = inputAreaText(pane, prompt);
+    return text == null ? null : { text, collapsedPastes: 0 };
+  }
+
+  /** Whether this backend's input box can be read at all (a given screen may still have none). */
+  private readsInput(): boolean {
+    return !!this.backend?.readInputRow || !!this.backend?.getBottomReadyPattern?.();
+  }
+
+  /**
+   * Backends whose pane evidence is structured (codex's input/footer pair, a structural box reader): there, our text
+   * missing from the viewport is inconclusive — an echo can arrive late or scroll away — and never a loss to re-paste
+   * over. Only text positively seen in the box (a strand) authorizes another Enter.
+   */
+  private structuredInputEvidence(): boolean {
+    return !!this.backend?.isDeliveryInputReadyPane || !!this.backend?.readInputRow;
   }
 
   /**
@@ -8370,6 +8431,16 @@ export class Daemon extends EventEmitter {
     if (!(await this.sendDeliveryEnter(label, guard?.current))) return false;
 
     let proof = await this.confirmSubmitted(signature, baseline);
+    // A structural box reader sees the paste in the box until the CLI digests the Enter (claude-code repaints a moment
+    // later): give that a bounded window before calling it stranded or lost, as the delivery ladder does.
+    if (this.backend?.readInputRow) {
+      const deadline = Date.now() + POST_ENTER_PROOF_WINDOW_MS;
+      while (proof !== "submitted" && Date.now() < deadline) {
+        await new Promise(r => setTimeout(r, POST_ENTER_PROOF_POLL_MS));
+        if (guard && !guard.current()) return false;
+        proof = await this.confirmSubmitted(signature, baseline);
+      }
+    }
     if (proof === "unverifiable") {
       if (this.backend?.isDeliveryInputReadyPane) {
         // A Codex screen without a structurally current input/footer pair is
