@@ -345,21 +345,27 @@ jobs:
           npm ci
           # Pack to a tarball so we test the published surface, not the dev tree.
           TGZ=$(npm pack --json | node -e "const d=require('fs').readFileSync('/dev/stdin','utf8'); console.log(JSON.parse(d)[0].filename)")
-          npm install -g "./$TGZ"
-          # npm global bin may not be on PATH on all runners (nvm / other prefix).
-          # Extend PATH via GITHUB_PATH for subsequent steps.
-          echo "$(npm config get prefix)/bin" >> "$GITHUB_PATH"
+          # Install to an explicit prefix so the bin directory is predictable
+          # regardless of nvm/brew/system npm prefix configuration.
+          SMOKE_PREFIX="$RUNNER_TEMP/agend-smoke"
+          npm install --global --prefix "$SMOKE_PREFIX" "./$TGZ"
+          echo "$SMOKE_PREFIX/bin" >> "$GITHUB_PATH"
       - name: agend --version
         if: needs.detect-changes.outputs.docs-only != 'true'
         run: agend --version
       - name: better-sqlite3 in-memory open
         if: needs.detect-changes.outputs.docs-only != 'true'
+        env:
+          SMOKE_PREFIX: ${{ runner.temp }}/agend-smoke
         run: |
           # Resolve the installed package and open an in-memory DB through it,
           # confirming the N-API prebuild loads on this OS + Node combination.
           node - <<'JS'
           const { createRequire } = require('node:module');
-          const agendPkg = require.resolve('@songsid/agend/package.json');
+          const prefix = process.env.SMOKE_PREFIX;
+          // npm --prefix installs packages under <prefix>/lib/node_modules
+          const agendPkg = require.resolve('@songsid/agend/package.json',
+            { paths: [`${prefix}/lib/node_modules`] });
           const req = createRequire(agendPkg);
           const Database = req('better-sqlite3');
           const db = new Database(':memory:');
