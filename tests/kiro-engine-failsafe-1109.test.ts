@@ -155,7 +155,8 @@ describe("P1: the launch pins the instance's UI and engine", () => {
 
   it("the command puts the pin right after `chat`", () => {
     const cmd = new KiroBackend("/tmp/kiro-1109", probe("2.27.0", null).compat).buildCommand(config());
-    expect(cmd).toMatch(/ chat --legacy-ui --agent-engine=v1 --trust-all-tools --resume$/);
+    // The engine pin comes first; what follows it (#906: the instance's agent) is not this test's subject.
+    expect(cmd).toMatch(/ chat --legacy-ui --agent-engine=v1 --trust-all-tools /);
   });
 });
 

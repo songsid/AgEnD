@@ -64,7 +64,7 @@ When an instance spawns, the daemon compares the fleet instructions it just buil
 
 - First spawn (nothing recorded yet): the instructions are recorded and nothing is sent.
 - Claude Code re-reads its instructions on resume, so it is never told.
-- Every other backend gets a one-line notice to reload its own instruction file (`AGENTS.md`, `.kiro/steering/agend-<name>.md`, `.agents/agents.md`, …). If no message is waiting, the notice is deferred to the next real message rather than provoking an unsolicited reply; if a delivery is already queued, the daemon waits for idle and pastes the notice first.
+- Every other backend gets a one-line notice to reload its own instruction file (`AGENTS.md`, kiro's agent file or steering file, `.agents/agents.md`, …). If no message is waiting, the notice is deferred to the next real message rather than provoking an unsolicited reply; if a delivery is already queued, the daemon waits for idle and pastes the notice first.
 
 No configuration is needed.
 
@@ -764,7 +764,7 @@ Define reusable fleet configurations in `fleet.yaml` under the `templates` secti
 Fleet instructions are injected additively — they don't override the CLI's built-in system prompt. Each backend uses its native mechanism:
 
 - Claude Code: `--append-system-prompt-file` (the file is `fleet-instructions.md` in the instance directory)
-- Kiro CLI: its own steering file, `.kiro/steering/agend-<instance>.md`
+- Kiro CLI: the `prompt` of the instance's own agent, `.kiro/agents/agend-<instance>-<fleet>.json` (see [Kiro instances in one working directory](#kiro-instances-in-one-working-directory)). On a kiro-cli older than 2.21, and for a resumed conversation until it is switched to its agent, the steering file `.kiro/steering/agend-<instance>.md` instead.
 - Codex, Grok Build, Meta Muse Code: a marked block in `AGENTS.md` in the working directory
 - Antigravity CLI: a marked block in `.agents/agents.md` in the working directory
 - OpenCode: `fleet-instructions.md` in the instance directory, added to the `instructions` list of `opencode.json` in the working directory
@@ -820,6 +820,18 @@ defaults:
 ```
 
 Instances sharing the same working directory are serialized within a group to avoid config file races.
+
+## Kiro instances in one working directory
+
+Each kiro instance runs as its own kiro agent, `.kiro/agents/agend-<instance>-<fleet>.json` in its working directory, and resumes its own conversation by id. That agent holds only this instance's AgEnD MCP server and its instructions, so kiro instances that share a working directory no longer start each other's AgEnD server, read each other's instructions, or resume each other's conversation. The details are in the [design](design/kiro-per-instance-agent.md). It needs kiro-cli 2.21 or newer; an older one runs as before and says so when the instance starts.
+
+- **Your own MCP servers stay.** The agent includes the global `~/.kiro/settings/mcp.json` and the workspace `.kiro/settings/mcp.json`. AgEnD no longer writes its own entries there.
+- **The switch, once per instance.** A conversation from before this version comes back as the agent it was saved under. On its first resume, AgEnD types `/agent swap <agent>` into the pane, checks the switch on screen, and only then removes that instance's old shared entries. If it cannot confirm the switch within 15 seconds, the old setup stays, a notice says so, and the next start tries again.
+- **When isolation is complete.** A removed entry is guaranteed gone from a running session only after its next start. Isolation in a directory is complete once every kiro instance there has confirmed its switch and started once more since: the switch at the first start after the upgrade, the completion at the start after that.
+- **Two instances, one old conversation.** At the upgrade, two existing instances in one directory both point at the directory's newest conversation. The first to start keeps it; the other starts a new one.
+- **An old instructions file.** A `.kiro/steering/agend-<instance>.md` written before this version carries no fleet tag. AgEnD cannot tell which fleet wrote it, so it keeps it and says so once. Delete it by hand once every fleet using that directory has upgraded; until then kiro still loads it for every agent there.
+- **Two fleets on one directory.** Two fleets updating the shared `.kiro/settings/mcp.json` at the same moment can bring back an entry the other just removed. That instance's next start removes it again.
+- **Grok** has no per-instance agent yet: Grok instances that share a working directory share its project-level MCP configuration. Run them from separate worktrees ([#1411](https://github.com/songsid/AgEnD/issues/1411)).
 
 ## Antigravity CLI backend
 
