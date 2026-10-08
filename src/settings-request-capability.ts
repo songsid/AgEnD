@@ -5,10 +5,12 @@ import type { SettingsExecution } from "./settings-transaction.js";
 interface Continuation { body: Buffer; execution: SettingsExecution; binding: string }
 const continuations = new WeakMap<object, Continuation>();
 const bodies = new WeakMap<object, Buffer>();
+const replays = new WeakSet<object>();
+export function isSettingsReplay(req: object): boolean { return replays.has(req); }
 /** Only server code creates a replay; bearer cookies/tokens are never replayed. */
 export function createSettingsReplay(input: { method: string; url: string; key?: string; body: Buffer; binding: string }, execution: SettingsExecution): IncomingMessage {
   const req = Readable.from([]) as unknown as IncomingMessage;
-  req.method = input.method; req.url = input.url;
+  req.method = input.method; req.url = input.url; replays.add(req);
   req.headers = input.key ? { "idempotency-key": input.key } : {};
   continuations.set(req, { body: Buffer.from(input.body), execution, binding: input.binding });
   return req;

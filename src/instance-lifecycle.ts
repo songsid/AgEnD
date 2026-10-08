@@ -1461,8 +1461,9 @@ export class InstanceLifecycle {
     runtimeIdentity?: FleetInstructionsParams["runtimeIdentity"],
     transition?: TransitionHandle,
     execution?: SettingsExecution,
+    published?: (daemon: Daemon) => void,
   ): Promise<void> {
-    return this.runTransition(name, () => this.startInTransition(name, config, topicMode, runtimeIdentity, execution), transition);
+    return this.runTransition(name, () => this.startInTransition(name, config, topicMode, runtimeIdentity, execution, published), transition);
   }
 
   private async startInTransition(
@@ -1471,6 +1472,7 @@ export class InstanceLifecycle {
     topicMode: boolean,
     runtimeIdentity?: FleetInstructionsParams["runtimeIdentity"],
     execution?: SettingsExecution,
+    published?: (daemon: Daemon) => void,
   ): Promise<void> {
     const epoch = this.epochOf(name);
     const check = (): void => { execution?.assert(); if (this.epochOf(name) !== epoch) throw new SupersededStartError(name); };
@@ -1628,6 +1630,7 @@ export class InstanceLifecycle {
     }
     this.capacityBackoffBaselines.delete(name);
     this.daemons.set(name, daemon);
+    published?.(daemon); // Exact publication, synchronously after the ownership fence.
     if (seedNow) this.noteWokeForWork(name);
     this.ctx.onDaemonReady?.(name, daemon.bootId);
 

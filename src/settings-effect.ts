@@ -1,6 +1,6 @@
 import { normalizeSettingsInstancePatch } from "./settings-instance-patch.js";
 import { basename } from "node:path";
-import { nextChannelId, planQuickstart, validateWizardInput, wizardChannels, type WizardPlanInput } from "./quickstart-api.js";
+import { draftQuickstart, planQuickstart, validateWizardInput, wizardChannels, type WizardPlanInput } from "./quickstart-api.js";
 import type { FleetConfig } from "./types.js";
 import { settingsChangeDiff, type SettingsChangeDiff } from "./settings-change.js";
 import { SettingsConfirmationError } from "./settings-confirmation.js";
@@ -90,10 +90,9 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     const patch = record(body); if (!cfg || typeof patch.token !== "string" || typeof patch.token_env !== "string") throw new SettingsConfirmationError(400, "invalid_quickstart");
     if (validateWizardInput(patch)) throw new SettingsConfirmationError(400, "invalid_quickstart");
     const channels = wizardChannels(cfg), plan = planQuickstart(patch as WizardPlanInput, { channels, has_fleet: !!Object.keys(cfg.instances).length, backends: [] });
-    const existing = (cfg.channels ?? (cfg.channel ? [cfg.channel] : [])).filter(item => item.bot_token_env === patch.token_env);
-    const proposed = { channels: [{ ...existing[0], id: nextChannelId(patch.platform, patch.token_env, channels), ...plan.channel }],
-      instance: { name: plan.instance.name, working_directory: plan.instance.working_directory } };
-    return { diff: settingsChangeDiff({ channels: existing }, proposed, { operation, force: true, secret: { key: patch.token_env, after: patch.token } }) };
+    const draft = draftQuickstart(cfg, patch as WizardPlanInput, plan);
+    const normalizedBefore = structuredClone(cfg); normalizedBefore.channels = cfg.channels ?? (cfg.channel ? [cfg.channel] : []); delete normalizedBefore.channel;
+    return { diff: settingsChangeDiff(normalizedBefore, draft, { operation: `${operation} instance ${patch.instance_name}`, force: true, secret: { key: patch.token_env, after: patch.token } }) };
   } else if (path === "/ui/instances") {
     const payload = record(body), channels = cfg?.channels ?? (cfg?.channel ? [cfg.channel] : []);
     const name = payload.topic_name ?? (typeof payload.directory === "string" ? basename(payload.directory) : null);
@@ -107,7 +106,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
   } else {
     if (!cfg) throw new SettingsConfirmationError(503, "fleet_unavailable");
     const payload = method === "DELETE" ? {} : record(body), pieces = path.split("/");
-    const name = path === "/ui/instances" || path === "/api/settings/fleet/instances" ? payload.name : decodeURIComponent(path.startsWith("/ui/") ? pieces[3] : pieces.at(-1)!);
+    const name = path === "/ui/instances" || path === "/api/settings/fleet/instances" ? typeof payload.name === "string" ? payload.name.trim() : payload.name : decodeURIComponent(path.startsWith("/ui/") ? pieces[3] : pieces.at(-1)!);
     if (typeof name !== "string" || !name) throw new SettingsConfirmationError(400, "invalid_instance_name");
     const exists = Object.hasOwn(cfg.instances, name);
     if (method === "DELETE" || path.endsWith("/delete")) { delete after.fleet.instances[name]; force = true; }

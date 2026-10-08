@@ -1,5 +1,5 @@
 import { settingsRequestExecution, settingsWrite } from "./settings-request-capability.js";
-import { SettingsExecutionError, settingsFileResource, trySettingsLease } from "./settings-transaction.js";
+import { type SettingsExecution, SettingsExecutionError, settingsFileResource, trySettingsLease } from "./settings-transaction.js";
 import { readBoundedWebBody } from "./web-body.js";
 import { permitWebContinuation } from "./web-continuation.js";
 /**
@@ -241,6 +241,22 @@ export function detectWizardBackends(): string[] {
  * asserts this module's import graph reaches neither fleet-manager, daemon nor
  * instance-lifecycle, so the host cannot grow a path to them by accident.
  */
+/** One pure draft shared by the writer and the authoritative confirmation diff. */
+export function draftQuickstart(cfg: FleetConfig, body: WizardPlanInput, plan: WizardPlan): FleetConfig {
+  const draft = structuredClone(cfg), summary = wizardChannels(cfg);
+  const channels = draft.channels ?? (draft.channel ? [draft.channel] : []);
+  const existingIndex = channels.findIndex(channel => channel.bot_token_env === body.token_env);
+  const entry = { id: nextChannelId(body.platform, body.token_env, summary), ...plan.channel };
+  if (existingIndex >= 0) channels[existingIndex] = { ...channels[existingIndex], ...entry } as typeof channels[number];
+  else channels.push(entry as typeof channels[number]);
+  draft.channels = channels; delete draft.channel;
+  draft.instances = { ...draft.instances, [body.instance_name]: {
+    ...(Object.hasOwn(draft.instances, body.instance_name) ? draft.instances[body.instance_name] : {}),
+    working_directory: body.working_directory, backend: body.backend,
+  } } as FleetConfig["instances"];
+  return draft;
+}
+
 export interface QuickstartApiContext {
   readonly webToken?: string | null;
   readonly webSessions?: import("./web-session.js").WebSessionStore | null;
@@ -248,6 +264,7 @@ export interface QuickstartApiContext {
   dataDir: string;
   logger: { info(obj: unknown, msg?: string): void; warn(obj: unknown, msg?: string): void };
   saveFleetConfig(): void;
+  settingsCommitted?(execution?: SettingsExecution): void;
   /** Only a running fleet can answer this; without one, nothing is polling. */
   isBotTokenInUse?(token: string): boolean;
 }
@@ -376,19 +393,7 @@ export function handleQuickstartRequest(
       // nothing in memory moves until the whole result is known to be valid —
       // the previous order wrote the token first and left the running config
       // rewritten when validation then failed.
-      const draft = structuredClone(cfg) as FleetConfig;
-      const channels = (draft.channels ?? (draft.channel ? [draft.channel] : [])) as unknown as Array<Record<string, unknown>>;
-      const existingIndex = channels.findIndex(channel => channel.bot_token_env === body.token_env);
-      const entry = { id: nextChannelId(body.platform, body.token_env, summary), ...plan.channel };
-      if (existingIndex >= 0) channels[existingIndex] = { ...channels[existingIndex], ...entry };
-      else channels.push(entry);
-      draft.channels = channels as unknown as typeof draft.channels;
-      delete (draft as { channel?: unknown }).channel;
-      draft.instances[body.instance_name] = {
-        ...(draft.instances[body.instance_name] ?? {}),
-        working_directory: body.working_directory,
-        backend: body.backend,
-      } as typeof draft.instances[string];
+      const draft = draftQuickstart(cfg, body, plan);
 
       const validation = validateFleetConfig(draft);
       if (!validation.valid) {
@@ -407,8 +412,10 @@ export function handleQuickstartRequest(
         store = new SecretStore(envPath, new Set([body.token_env]), { owner: lease.owner });
         settingsWrite(req, () => {
           secretBefore = store!.write(body.token_env, body.token!); stored = true;
-          cfg.channels = draft.channels; delete cfg.channel; cfg.instances[body.instance_name] = draft.instances[body.instance_name]!;
+          cfg.channels = draft.channels; delete cfg.channel;
+          Object.defineProperty(cfg.instances, body.instance_name, { value: draft.instances[body.instance_name], enumerable: true, writable: true, configurable: true });
           ctx.saveFleetConfig();
+          ctx.settingsCommitted?.(execution);
         });
       } catch (err) {
         cfg.channels = before.channels;

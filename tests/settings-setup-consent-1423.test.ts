@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SetupHost } from "../src/setup-host.js";
+import yaml from "js-yaml";
 import { setupHttp, setupPayload, decideSetup, confirmedSetup } from "./helpers/setup-confirmation-1423.js";
 
 const fixtures: { host: SetupHost; dir: string }[] = [];
@@ -58,6 +59,45 @@ describe("#1423 real no-fleet SetupHost consent", () => {
     writeFileSync(join(h.dir, "fleet.yaml"), "instances: {}\ndefaults: {}\n");
     expect((await setupHttp(h.port, h.path + "setup/finish", "POST", undefined, h.cookie)).status).toBe(409);
     expect(h.spawnFleet).not.toHaveBeenCalled();
+  });
+  it.each(["fleet.yaml", ".env"])("a later %s edit before replay settlement never becomes an approved Setup receipt", async filename => {
+    const h = await harness();
+    const pending = await setupHttp(h.port, h.path + "api/settings/quickstart/commit", "POST", setupPayload, h.cookie);
+    const context = (h.host as any).setupContext;
+    vi.spyOn(context.logger, "info").mockImplementation(() => {
+      const path = join(h.dir, filename);
+      if (filename === ".env") writeFileSync(path, "AGEND_BOT_TOKEN=later-unapproved-token\n");
+      else {
+        const cfg: any = yaml.load(readFileSync(path, "utf8")); cfg.channels[0].access.allowed_users = ["99"];
+        writeFileSync(path, yaml.dump(cfg));
+      }
+    });
+    expect((await decideSetup(h.dir, pending.body.pending_change.id)).pending_change.state).toBe("applied");
+    expect((await setupHttp(h.port, h.path + "setup/status", "GET", undefined, h.cookie)).body.finish_ready).toBe(false);
+    expect((await setupHttp(h.port, h.path + "setup/finish", "POST", undefined, h.cookie)).status).toBe(409);
+    expect(h.spawnFleet).not.toHaveBeenCalled();
+  });
+  it("same-session reload can discover finish readiness without starting; pending polling remains passive", async () => {
+    const h = await harness(), touch = vi.spyOn(h.host as any, "touch");
+    expect((await setupHttp(h.port, h.path + "setup/status", "GET", undefined, h.cookie)).body.finish_ready).toBe(false);
+    await confirmedSetup(h.dir, h.port, h.path, h.cookie);
+    const calls = touch.mock.calls.length;
+    expect((await setupHttp(h.port, h.path + "api/settings/pending", "GET", undefined, h.cookie)).body).toEqual([]);
+    expect(touch.mock.calls).toHaveLength(calls);
+    expect((await setupHttp(h.port, h.path + "setup/status", "GET", undefined, h.cookie)).body.finish_ready).toBe(true);
+    expect(touch.mock.calls).toHaveLength(calls + 1); expect(h.spawnFleet).not.toHaveBeenCalled();
+    expect((await setupHttp(h.port, h.path + "setup/status", "GET")).status).toBe(401);
+    expect((await setupHttp(h.port, h.path + "setup/finish", "POST", undefined, h.cookie)).status).toBe(202);
+    await h.host.shutdown(true, "explicit start"); expect(h.spawnFleet).toHaveBeenCalledOnce();
+  });
+  it("a disk change after the asynchronous readiness check is rejected at actual finish admission", async () => {
+    const h = await harness(); await confirmedSetup(h.dir, h.port, h.path, h.cookie);
+    const native = (h.host as any).finishReady.bind(h.host); let release!: () => void, checked = false;
+    const hold = new Promise<void>(yes => { release = yes; });
+    vi.spyOn(h.host as any, "finishReady").mockImplementation(async () => { const result = await native(); checked = true; await hold; return result; });
+    const finish = setupHttp(h.port, h.path + "setup/finish", "POST", undefined, h.cookie);
+    await vi.waitFor(() => expect(checked).toBe(true)); writeFileSync(join(h.dir, ".env"), "AGEND_BOT_TOKEN=changed-after-check\n"); release();
+    expect((await finish).status).toBe(409); expect(h.spawnFleet).not.toHaveBeenCalled();
   });
 });
 

@@ -24,7 +24,7 @@ export class SettingsHttpConfirmation {
     baseline(): Promise<SettingsBaseline>;
     snapshot(): unknown;
     job?(id: string): Promise<boolean>;
-    applied?(path: string, result: unknown): void | Promise<void>;
+    applied?(path: string, result: unknown, execution: SettingsExecution): void | Promise<void>;
   }) {}
   handle(req: IncomingMessage, res: ServerResponse, url: URL, next: SettingsRequestHandler): boolean {
     if (settingsRequestExecution(req) || this.passed.has(req)) return false;
@@ -87,7 +87,7 @@ export class SettingsHttpConfirmation {
         });
         if (response.status >= 400) throw new Error("apply_rejected");
         if (response.body.job_id && (!this.options.job || !await this.options.job(response.body.job_id))) throw new Error("apply_job_failed");
-        await this.options.applied?.(url.pathname, response.body);
+        await this.options.applied?.(url.pathname, response.body, execution);
         return response.body;
       }, discard: () => { payload.body.fill(0); effect.proof?.discard(); },
     });

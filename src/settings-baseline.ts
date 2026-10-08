@@ -1,4 +1,4 @@
-import { constants } from "node:fs";
+import { constants, openSync, fstatSync, readSync, closeSync } from "node:fs";
 import { open } from "node:fs/promises";
 import { join } from "node:path";
 import yaml from "js-yaml";
@@ -30,6 +30,22 @@ async function read(path: string | null): Promise<Buffer | null> {
   } finally { await file.close(); }
 }
 
+/** Only the synchronous commit receipt uses this bounded no-follow read; polling stays async. */
+function readCommitted(path: string | null): Buffer | null {
+  if (!path) return null;
+  let fd: number;
+  try { fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW); }
+  catch (err) { if ((err as NodeJS.ErrnoException).code === "ENOENT") return null; throw err; }
+  try {
+    const info = fstatSync(fd);
+    if (!info.isFile() || info.size > MAX_FILE_BYTES) throw new SettingsConfirmationError(413, "settings_baseline_too_large");
+    const buffer = Buffer.alloc(MAX_FILE_BYTES + 1); let bytes = 0, part: number;
+    while (bytes <= MAX_FILE_BYTES && (part = readSync(fd, buffer, bytes, buffer.length - bytes, null))) bytes += part;
+    if (bytes > MAX_FILE_BYTES) throw new SettingsConfirmationError(413, "settings_baseline_too_large");
+    return buffer.subarray(0, bytes);
+  } finally { closeSync(fd); }
+}
+
 /** The private hash includes disk and runtime state. Neither bytes nor hashes are logged. */
 export class SettingsBaselines {
   constructor(private readonly options: {
@@ -40,6 +56,12 @@ export class SettingsBaselines {
     const files = [this.options.configPath(), join(this.options.dataDir, "classicBot.yaml"), join(this.options.dataDir, ".env")];
     return { runtime: this.options.config(), owner: this.options.current(),
       revisions: files.map(path => path ? settingsRevision(path) : null) };
+  }
+  captureCommitted(): string {
+    const before = settingsFingerprint(this.snapshot());
+    const files = [this.options.configPath(), join(this.options.dataDir, "classicBot.yaml"), join(this.options.dataDir, ".env")];
+    const bytes = files.map(readCommitted);
+    return settingsFingerprint([before, ...bytes.map(item => item === null ? null : settingsFingerprint(item.toString("utf8")))]);
   }
   async read(): Promise<SettingsBaseline> {
     const before = settingsFingerprint(this.snapshot());

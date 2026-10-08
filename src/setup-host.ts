@@ -3,7 +3,7 @@ import { SettingsBaselines } from "./settings-baseline.js";
 import { SettingsConfirmationStore } from "./settings-confirmation.js";
 import { SettingsHttpConfirmation } from "./settings-http-confirmation.js";
 import { SettingsControlServer } from "./settings-control.js";
-import { settingsFingerprint, noteSettingsWrite } from "./settings-transaction.js";
+import { settingsFingerprint, noteSettingsWrite, type SettingsExecution } from "./settings-transaction.js";
 /**
  * The form that runs before there is a fleet.
  *
@@ -156,6 +156,9 @@ export class SetupHost {
   private confirmationControl: SettingsControlServer | null = null;
   private setupContext: QuickstartApiContext | null = null;
   private committedFingerprint: string | null = null;
+  private committedOwner: { readonly id: string } | null = null;
+  private committedExecution: SettingsExecution | null = null;
+  private committedApproved = false;
   private startedAt = 0;
   private admittedFinish = false;
   private shutdownPromise: Promise<void> | null = null;
@@ -173,29 +176,43 @@ export class SetupHost {
         return { id: owner.id, label: "setup session", source: "setup_session", current: () => !this.stopping && !this.admittedFinish
           && this.credentials.isSessionCurrent(owner) && (this.opts.now?.() ?? performance.now()) < this.startedAt + this.ttlMs };
       }, baseline: () => baselines.read(), snapshot: () => baselines.snapshot(),
-      applied: async path => {
-        if (path === "/api/settings/quickstart/commit") {
-          const owner = this.credentials.sessionIdentity;
-          const fresh = await baselines.read();
-          if (!this.stopping && !this.admittedFinish && owner && this.credentials.isSessionCurrent(owner)) this.committedFingerprint = fresh.fingerprint;
-        }
+      applied: (path, _result, execution) => {
+        if (path === "/api/settings/quickstart/commit" && this.committedExecution === execution) this.committedApproved = true;
       },
     });
+    ctx.settingsCommitted = execution => {
+      const owner = this.credentials.sessionIdentity;
+      if (!execution || !owner || !this.credentials.isSessionCurrent(owner) || this.stopping || this.admittedFinish) throw new Error("setup commit superseded");
+      // This runs synchronously INSIDE the authorized writer. Never adopt a later async disk read.
+      this.committedFingerprint = baselines.captureCommitted(); this.committedOwner = owner;
+      this.committedExecution = execution; this.committedApproved = false;
+    };
     return this.confirmation;
+  }
+
+  private async finishReady(): Promise<boolean> {
+    const owner = this.credentials.sessionIdentity, gate = this.confirmationGate(), expected = this.committedFingerprint;
+    const eligible = () => !!owner && owner === this.committedOwner && this.credentials.isSessionCurrent(owner)
+      && !this.stopping && !this.admittedFinish && this.committedApproved && !!expected && expected === this.committedFingerprint
+      && (this.opts.now?.() ?? performance.now()) < this.startedAt + this.ttlMs && !gate.store.list(owner.id).length;
+    if (!eligible()) return false;
+    const baseline = new SettingsBaselines({ dataDir: this.opts.dataDir, configPath: () => this.opts.configPath,
+      config: () => this.setupContext!.fleetConfig, current: () => [this.stopping, this.credentials.sessionIdentity?.id ?? null] });
+    try { const fresh = await baseline.read(); return eligible() && fresh.fingerprint === expected; }
+    catch { return false; }
   }
 
   private async finishSetup(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const owner = this.credentials.sessionIdentity, gate = this.confirmationGate();
-    if (!owner || this.stopping || this.admittedFinish || !this.committedFingerprint || gate.store.list(owner.id).length) {
-      this.deny(res, 409, "Confirm the current setup change on the host before finishing."); return;
-    }
-    const ctx = this.setupContext!;
+    const ready = await this.finishReady();
     const baseline = new SettingsBaselines({ dataDir: this.opts.dataDir, configPath: () => this.opts.configPath,
-      config: () => ctx.fleetConfig, current: () => [this.stopping, this.credentials.sessionIdentity?.id ?? null] });
-    const fresh = await baseline.read();
-    if (req.aborted || res.destroyed || this.stopping || !this.credentials.isSessionCurrent(owner) || this.admittedFinish
-      || (this.opts.now?.() ?? performance.now()) >= this.startedAt + this.ttlMs || gate.store.list(owner.id).length
-      || fresh.fingerprint !== this.committedFingerprint) { this.deny(res, 409, "Setup changed; review and confirm again."); return; }
+      config: () => this.setupContext!.fleetConfig, current: () => [this.stopping, this.credentials.sessionIdentity?.id ?? null] });
+    let commitCurrent = false; try { commitCurrent = baseline.captureCommitted() === this.committedFingerprint; } catch { /* fail closed */ }
+    if (!ready || !commitCurrent || req.aborted || res.destroyed || !owner || !this.credentials.isSessionCurrent(owner)
+      || this.stopping || this.admittedFinish || owner !== this.committedOwner || gate.store.list(owner.id).length
+      || (this.opts.now?.() ?? performance.now()) >= this.startedAt + this.ttlMs) {
+      this.deny(res, 409, "Setup changed; review and confirm again."); return;
+    }
     this.admittedFinish = true; this.handoverRequested = true;
     gate.store.close();
     res.setHeader("Content-Type", "application/json"); res.writeHead(202);
@@ -471,9 +488,15 @@ export class SetupHost {
     if (!(req.method === "GET" && /^\/api\/settings\/pending(?:\/[0-9a-f]{32})?$/.test(rest))) this.touch();
 
     if (req.method === "GET" && rest === "/setup/status") {
-      res.setHeader("Content-Type", "application/json");
-      res.writeHead(200);
-      res.end(JSON.stringify({ pre_fleet: true, ttl_ms: this.ttlMs }));
+      const owner = this.credentials.sessionIdentity;
+      void this.finishReady().then(ready => {
+        if (req.aborted || res.destroyed) return;
+        if (!owner || this.stopping || !this.credentials.isSessionCurrent(owner) || this.admittedFinish) {
+          this.deny(res, 409, "Setup confirmation unavailable."); return;
+        }
+        res.setHeader("Content-Type", "application/json"); res.writeHead(200);
+        res.end(JSON.stringify({ pre_fleet: true, ttl_ms: this.ttlMs, finish_ready: ready }));
+      }).catch(() => this.deny(res, 409, "Setup confirmation unavailable."));
       return;
     }
     if (req.method === "POST" && rest === "/setup/finish") {

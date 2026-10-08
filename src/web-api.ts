@@ -1,5 +1,5 @@
 import type { SettingsExecution } from "./settings-transaction.js";
-import { settingsRequestExecution, settingsWrite } from "./settings-request-capability.js";
+import { settingsRequestExecution, settingsWrite, isSettingsReplay } from "./settings-request-capability.js";
 import { readBoundedWebBody } from "./web-body.js";
 import { gatewayRequestContext } from "./web-request-context.js";
 import { permitWebContinuation } from "./web-continuation.js";
@@ -258,7 +258,12 @@ export function handleWebRequest(
   // gate: the same session cookie or header token, and an unset token closes
   // the panel instead of comparing null against a missing credential.
   if (path.startsWith("/ui")) {
-    if (!isWebRequestAuthorized(req, url, ctx.webToken, ctx.webSessions, { touch: !isPassiveWebRead(method, path) })) {
+    const approved = isSettingsReplay(req) && method === "POST"
+      && (path === "/ui/config" || path === "/ui/instances" || /^\/ui\/instances\/[^/]+\/delete$/.test(path))
+      ? settingsRequestExecution(req) : undefined;
+    if (approved) {
+      try { approved.assert(); } catch { json(res, 409, { error: "settings_execution_stale" }); return true; }
+    } else if (!isWebRequestAuthorized(req, url, ctx.webToken, ctx.webSessions, { touch: !isPassiveWebRead(method, path) })) {
       json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE });
       return true;
     }

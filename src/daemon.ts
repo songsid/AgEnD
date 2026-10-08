@@ -2339,7 +2339,7 @@ export class Daemon extends EventEmitter {
     const resumed = await this.spawnClaudeWindow(); this.startupAdmission?.();
     this.isNewSession = !resumed;
     if (!resumed) {
-      await this.injectSnapshotMessage(); this.startupAdmission?.();
+      await this.injectSnapshotMessage(this.startupAdmission); this.startupAdmission?.();
     } else {
       // Clean up stale snapshot file — resume restored full context, snapshot not needed
       try { unlinkSync(join(this.instanceDir, "rotation-state.json")); } catch { /* may not exist */ }
@@ -8672,36 +8672,42 @@ export class Daemon extends EventEmitter {
    * is asked again after every await that precedes a write, so a cancelled paste adds no further paste and no key
    * (the retries included). Without a guard it is exactly the old unconditional path.
    */
-  private async submitSystemPaste(text: string, label: string, guard?: { current: () => boolean; accept: (pane: string) => boolean }): Promise<boolean> {
+  private async submitSystemPaste(text: string, label: string, guard?: { current: () => boolean; accept: (pane: string) => boolean }, admission?: () => void): Promise<boolean> {
+    const current = guard || admission ? () => { admission?.(); return guard?.current() ?? true; } : undefined;
+    if (current && !current()) return false;
     if (!this.tmux) return false;
     const signature = this.submissionSignature(text);
     let baseline: PaneEvidence | null;
     if (guard) {
       let pane: string;
       try { pane = await this.tmux.capturePane(); } catch { return false; }
-      if (!guard.current() || !guard.accept(pane)) return false;
+      if (!current!() || !guard.accept(pane)) return false;
       baseline = this.paneEvidence(pane, signature);
     } else {
       baseline = await this.capturePaneEvidence(signature);
     }
+    if (current && !current()) return false;
     const pasteGeneration = this.spawnGeneration;
     if (!(await this.tmux.pasteBuffer(text))) {
       this.logger.warn({ label }, "System paste failed to reach the pane");
       return false;
     }
+    if (current && !current()) return false;
     this.rememberPaste(text, pasteGeneration);
     await new Promise(r => setTimeout(r, NORMAL_ENTER_SETTLE_MS));
-    if (!(await this.sendDeliveryEnter(label, guard?.current))) return false;
+    if (!(await this.sendDeliveryEnter(label, current))) return false;
 
     let proof = await this.confirmSubmitted(signature, baseline);
+    if (current && !current()) return false;
     // A structural box reader sees the paste in the box until the CLI digests the Enter (claude-code repaints a moment
     // later): give that a bounded window before calling it stranded or lost, as the delivery ladder does.
     if (this.backend?.readInputRow) {
       const deadline = Date.now() + POST_ENTER_PROOF_WINDOW_MS;
       while (proof !== "submitted" && Date.now() < deadline) {
         await new Promise(r => setTimeout(r, POST_ENTER_PROOF_POLL_MS));
-        if (guard && !guard.current()) return false;
+        if (current && !current()) return false;
         proof = await this.confirmSubmitted(signature, baseline);
+        if (current && !current()) return false;
       }
     }
     if (proof === "unverifiable") {
@@ -8719,7 +8725,7 @@ export class Daemon extends EventEmitter {
       // exists to remove — visible text is also what a strand looks like.
       if (this.systemPasteOptions().retryEnter) {
         await new Promise(r => setTimeout(r, 1_000));
-        await this.sendDeliveryEnter(`${label}-defensive-retry`, guard?.current);
+        await this.sendDeliveryEnter(`${label}-defensive-retry`, current);
       }
       return true; // best effort, exactly as before — nothing here is verified
     }
@@ -8728,8 +8734,9 @@ export class Daemon extends EventEmitter {
       // first one did land; when the text is still in the input row it is the
       // submit it never got. Re-pasting would append the text to itself.
       await new Promise(r => setTimeout(r, NORMAL_ENTER_SETTLE_MS));
-      if (!(await this.sendDeliveryEnter(`${label}-retry`, guard?.current))) return false;
+      if (!(await this.sendDeliveryEnter(`${label}-retry`, current))) return false;
       proof = await this.confirmSubmitted(signature, baseline);
+      if (current && !current()) return false;
     }
     if (proof !== "submitted") {
       this.logger.warn({ label, proof }, "System paste may not have been submitted");
@@ -9311,7 +9318,8 @@ export class Daemon extends EventEmitter {
    * user input so the agent picks up where the previous session left off.
    * This replaces the old system-prompt injection approach.
    */
-  private async injectSnapshotMessage(): Promise<void> {
+  private async injectSnapshotMessage(admission?: () => void): Promise<void> {
+    admission?.();
     if (this.snapshotConsumed) return;
     const snapshot = this.buildSnapshotPrompt();
     if (!snapshot || !this.tmux) return;
@@ -9321,11 +9329,15 @@ export class Daemon extends EventEmitter {
     }
     // Small delay to let the CLI fully render its ready prompt
     await new Promise(r => setTimeout(r, 1_000));
+    admission?.();
     try {
       // Messages can arrive during a restart and be queued on pasteLock before the
       // snapshot lands; both write to the pane, so both go through the same lock.
       const restoreNotice = `[system:session-snapshot]\n${snapshot}\n\nThis is a background context restore — do NOT reply to or acknowledge this message. Simply resume normal operation when the next user or instance message arrives.`;
-      const injected = await this.paneWriteLock.run(() => this.submitSystemPaste(restoreNotice, "session-snapshot-restore"));
+      const injected = await this.paneWriteLock.run(() => {
+        admission?.(); return this.submitSystemPaste(restoreNotice, "session-snapshot-restore", undefined, admission);
+      });
+      admission?.();
       if (!injected) {
         // rotation-state.json was deleted when the prompt was built, so there is
         // nothing left to retry from: the restore is gone either way. Say so —

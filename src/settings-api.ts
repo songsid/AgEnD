@@ -84,7 +84,7 @@ export interface SettingsApiContext {
   /** Phase 2b: an operator wake that respects the warm hard cap (FleetManager.explicitWake). */
   explicitWake?(name: string, timeoutMs?: number): Promise<void>;
   restartClassicInstanceFromSettings?(instanceName: string, changedFields?: string[], execution?: SettingsExecution): Promise<void>;
-  captureClassicSettingsRestoration?(instanceName: string, changedFields: string[]): () => Promise<void>;
+  captureClassicSettingsRestoration?(instanceName: string, changedFields: string[], execution?: SettingsExecution): () => Promise<void>;
   /** Present on a real fleet; absent in unit contexts that only exercise CRUD. */
   applyJobs?: ApplyJobStore;
   startSettingsApply?(key: string): { job: ApplyJob; reused: boolean } | { busy: ApplyJob | null };
@@ -837,7 +837,7 @@ export function handleSettingsRequest(
       const undo = settingsUndo(classicPath(ctx), previous, classic, Object.keys(body).map(field => ["channels", key, field]));
       const execution = settingsRequestExecution(req);
       const instanceName = typeof merged.instanceName === "string" ? merged.instanceName : undefined;
-      const restore = instanceName ? ctx.captureClassicSettingsRestoration?.(instanceName, Object.keys(body)) : undefined;
+      const restore = instanceName ? ctx.captureClassicSettingsRestoration?.(instanceName, Object.keys(body), execution) : undefined;
       try {
         if (instanceName && ctx.restartClassicInstanceFromSettings) {
           if (execution) await ctx.restartClassicInstanceFromSettings(instanceName, Object.keys(body), execution);

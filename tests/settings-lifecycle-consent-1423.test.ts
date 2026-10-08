@@ -37,6 +37,60 @@ function daemon() {
   return { d, root, cap, revoke: () => { alive = false; } };
 }
 describe("#1423 real lifecycle and nested startup boundaries", () => {
+  it.each(["delay", "lock", "capture", "paste", "settle", "transient"])("startup snapshot revocation during %s adds no subsequent paste or Enter", async stage => {
+    vi.useFakeTimers(); const h = daemon(), pending = hold<any>();
+    h.d.buildSnapshotPrompt = vi.fn(() => "approved context"); h.d.backend = {};
+    h.d.capturePaneEvidence = vi.fn(() => stage === "capture" ? pending.promise : Promise.resolve(null));
+    h.d.confirmSubmitted = vi.fn(async () => "submitted");
+    h.d.waitForInputTransientToClear = vi.fn(() => stage === "transient" ? pending.promise : Promise.resolve(true));
+    h.d.tmux = { pasteBuffer: vi.fn(() => stage === "paste" ? pending.promise : Promise.resolve(true)), sendSpecialKey: vi.fn(async () => true), getLastSendSpecialKeyError: () => null };
+    const event = vi.fn(); h.d.on("snapshot_injected", event);
+    const blocked = stage === "lock" ? h.d.paneWriteLock.run(() => pending.promise) : Promise.resolve();
+    const injecting = h.d.injectSnapshotMessage(h.d.startupAdmission).catch((error: Error) => error);
+    if (stage !== "delay") await vi.advanceTimersByTimeAsync(1000);
+    if (stage === "transient") await vi.advanceTimersByTimeAsync(500);
+    const pastes = h.d.tmux.pasteBuffer.mock.calls.length; h.revoke(); pending.resolve(true);
+    await vi.advanceTimersByTimeAsync(1500); await blocked; await injecting;
+    expect(h.d.tmux.pasteBuffer).toHaveBeenCalledTimes(pastes); expect(h.d.tmux.sendSpecialKey).not.toHaveBeenCalled(); expect(event).not.toHaveBeenCalled();
+  });
+  it("ordinary runtime snapshot injection remains available without a startup capability", async () => {
+    vi.useFakeTimers(); const h = daemon(); h.revoke(); h.d.buildSnapshotPrompt = vi.fn(() => "ordinary runtime context");
+    h.d.backend = {}; h.d.capturePaneEvidence = vi.fn(async () => null); h.d.confirmSubmitted = vi.fn(async () => "submitted");
+    h.d.waitForInputTransientToClear = vi.fn(async () => true);
+    h.d.tmux = { pasteBuffer: vi.fn(async () => true), sendSpecialKey: vi.fn(async () => true), getLastSendSpecialKeyError: () => null };
+    const injecting = h.d.injectSnapshotMessage(); await vi.advanceTimersByTimeAsync(1600); await injecting;
+    expect(h.d.tmux.pasteBuffer).toHaveBeenCalledOnce(); expect(h.d.tmux.sendSpecialKey).toHaveBeenCalledOnce();
+  });
+  it("same-generation replacement while compensation waits in the real transition queue cannot be stopped", async () => {
+    const h = fleet(), pending = hold(), old = { stop: vi.fn(async () => {}) }, fresh = { stop: vi.fn(async () => {}) };
+    h.fm.daemons.set("classic", old); h.fm.classicChannels = { reloadFromDisk: vi.fn(), getAll: () => [{ instanceName: "classic", channelId: "1" }] };
+    h.fm.reregisterClassicChannels = vi.fn(); h.fm.reportClassicUnrecoverableIds = vi.fn();
+    const blocker = h.fm.lifecycle.runTransition("classic", () => pending.promise); await Promise.resolve();
+    const restore = h.fm.captureClassicSettingsRestoration("classic", ["backend"]);
+    const restoring = restore().catch((error: Error) => error);
+    h.fm.daemons.set("classic", fresh); pending.resolve(); await blocker;
+    expect(await restoring).toBeInstanceOf(Error); expect(old.stop).not.toHaveBeenCalled(); expect(fresh.stop).not.toHaveBeenCalled();
+    expect(h.fm.daemons.get("classic")).toBe(fresh);
+  });
+  it("same-daemon epoch change also invalidates the captured Classic compensation", async () => {
+    const h = fleet(), old = { stop: vi.fn(async () => {}) }; h.fm.daemons.set("classic", old);
+    const restore = h.fm.captureClassicSettingsRestoration("classic", ["backend"]); h.fm.lifecycle.invalidate("classic");
+    expect(await restore().catch((error: Error) => error)).toMatchObject({ code: "settings_execution_stale" }); expect(old.stop).not.toHaveBeenCalled();
+  });
+  it("owned Classic restoration can stop its old daemon and synchronously acquire only its published replacement", async () => {
+    vi.useFakeTimers(); const h = fleet(), old = { stop: vi.fn(async () => {}) }, fresh = new EventEmitter();
+    h.fm.daemons.set("classic", old); h.fm.memoryPressure = null; h.fm.resolveInstanceModel = () => ({ display: undefined }); h.fm.setTopicIcon = vi.fn(); h.fm.statuslineWatcher.unwatch = vi.fn();
+    h.fm.classicChannels = { reloadFromDisk: vi.fn(), getAll: () => [{ instanceName: "classic", channelId: "1" }],
+      getBackendByInstance: () => "kiro-cli", getPreTaskCommand: () => undefined, getModel: () => undefined, getAutoPauseAfter: () => undefined };
+    h.fm.reregisterClassicChannels = vi.fn(); h.fm.reportClassicUnrecoverableIds = vi.fn();
+    vi.spyOn(h.fm.lifecycle, "start").mockImplementation(async (...args: any[]) => { args[5].assert(); h.fm.daemons.set(args[0], fresh); args[6](fresh); });
+    vi.spyOn(h.fm, "startClassicInstance").mockImplementation(async (...args: any[]) => {
+      await h.fm.startInstance("classic", { working_directory: h.project, backend: "kiro-cli" }, false, "classic", false, args[5], args[6]);
+    });
+    const restore = h.fm.captureClassicSettingsRestoration("classic", ["backend"]), restoring = restore().catch((error: Error) => error);
+    await vi.advanceTimersByTimeAsync(300); expect(await restoring).toBeUndefined();
+    expect(old.stop).toHaveBeenCalledOnce(); expect(h.fm.daemons.get("classic")).toBe(fresh); expect(h.fm.connectIpcToInstance).toHaveBeenCalledOnce();
+  });
   it("cleans an acquired topic after revoked capture, without starting", async () => {
     const h = fleet(), pending = hold<string>(); vi.spyOn(h.fm, "createForumTopic").mockReturnValue(pending.promise);
     const start = vi.spyOn(h.fm.lifecycle, "start").mockResolvedValue(undefined), respond = vi.fn();

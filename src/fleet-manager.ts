@@ -1098,6 +1098,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private settingsConfirmation: SettingsHttpConfirmation | null = null;
   private settingsControl: SettingsControlServer | null = null;
   private settingsJobSettlements = new Map<string, Promise<void>>();
+  private classicSettingsOwners = new WeakMap<SettingsExecution, { instanceName: string; epoch: number; daemon: object | undefined }>();
 
   private queueSettingsOperation(job: SecretApplyJob | ProviderSecretApplyJob, resources: string[], execution: SettingsExecution | undefined,
     run: (execution: SettingsExecution) => Promise<void>): void {
@@ -1105,13 +1106,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const owned = execution ?? new SettingsExecution({ current: () => !this.shuttingDown && this.settingsGeneration === generation,
       snapshot: () => [this.settingsRuntimeRevision, this.fleetConfig, settingsRevision(join(this.dataDir, ".env"))] });
     const done = Promise.resolve().then(async () => {
-      let lease: SettingsLease | null = null;
+      let lease: SettingsLease | null = null, admitted = false;
       try {
         lease = await waitSettingsLease(resources, () => owned.current(), performance.now() + owned.remainingMs, owned.owner);
-        owned.assert(); await run(owned);
-        if (["applied", "applied_next_use", "reloaded"].includes(job.result) && !owned.completed) owned.complete();
+        owned.assert(); admitted = true; await run(owned);
+        if (["applied", "applied_next_use", "reloaded", "restart_required"].includes(job.result) && !owned.completed) throw new Error("missing_settings_receipt");
       } catch {
-        job.status = "done"; job.finishedAt = Date.now(); job.result = "rolled_back"; job.error = "operation was not admitted or became stale";
+        job.status = "done"; job.finishedAt = Date.now(); job.result = admitted ? "rollback_failed" : "rolled_back";
+        job.error = admitted ? "operation did not provide a committed receipt; operator attention required" : "operation was not admitted";
       } finally {
         lease?.release(); if (!execution) owned.close();
         if ("envKey" in job) { if (this.providerSecretInFlight.get(job.envKey) === job.id) this.providerSecretInFlight.delete(job.envKey); }
@@ -3708,12 +3710,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     };
   }
 
-  /** A compensation receipt pins the original fleet generation. It cannot
-   * stop/start a later fleet when an old restart settles after shutdown. */
-  captureClassicSettingsRestoration(instanceName: string, changedFields: string[]): () => Promise<void> {
+  /** Compensation retains this transaction's exact instance owner across its own transitions. */
+  captureClassicSettingsRestoration(instanceName: string, changedFields: string[], execution?: SettingsExecution): () => Promise<void> {
     const generation = this.settingsGeneration;
+    const receipt = { instanceName, epoch: this.lifecycle.epochOf(instanceName), daemon: this.daemons.get(instanceName) as object | undefined };
+    if (execution) this.classicSettingsOwners.set(execution, receipt);
     return async () => {
-      const cleanup = new SettingsExecution({ current: () => !this.shuttingDown && this.settingsGeneration === generation, snapshot: () => null });
+      const cleanup = new SettingsExecution({ current: () => !this.shuttingDown && this.settingsGeneration === generation
+        && this.lifecycle.epochOf(instanceName) === receipt.epoch && this.daemons.get(instanceName) === receipt.daemon, snapshot: () => null });
+      this.classicSettingsOwners.set(cleanup, receipt);
       try { cleanup.assert(); await this.restartClassicInstanceFromSettings(instanceName, changedFields, cleanup); }
       finally { cleanup.close(); }
     };
@@ -3726,7 +3731,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private async restartClassicSettingsOwned(instanceName: string, changedFields: string[], execution: SettingsExecution | undefined, transition: TransitionHandle): Promise<void> {
     const generation = this.settingsGeneration;
-    const check = (): void => { execution?.assert(); if (this.shuttingDown || this.settingsGeneration !== generation) throw new Error("Classic restart superseded"); };
+    const receipt = execution ? this.classicSettingsOwners.get(execution) : undefined;
+    const check = (): void => {
+      execution?.assert();
+      if (this.shuttingDown || this.settingsGeneration !== generation || receipt &&
+        (receipt.instanceName !== instanceName || receipt.epoch !== this.lifecycle.epochOf(instanceName) || receipt.daemon !== this.daemons.get(instanceName)))
+        throw new Error("Classic restart superseded");
+    };
     check();
     if (!this.classicChannels) throw new Error("Classic channel manager not initialized");
     const wasRunning = this.daemons.has(instanceName);
@@ -3743,7 +3754,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger.info({ instanceName, fields: changedFields }, "Classic instance hot config reloaded");
       return;
     }
-    await this.stopInstance(instanceName, transition); check();
+    const stopping = this.stopInstance(instanceName, transition);
+    // stop() invalidates synchronously in our transition. Keep only that exact acquisition.
+    if (receipt && this.lifecycle.epochOf(instanceName) === receipt.epoch + 1 && this.daemons.get(instanceName) === receipt.daemon) receipt.epoch++;
+    await stopping;
+    if (receipt && this.lifecycle.epochOf(instanceName) === receipt.epoch && !this.daemons.has(instanceName)) receipt.daemon = undefined;
+    check();
     const stoppedEpoch = this.lifecycle.epochOf(instanceName);
     await new Promise(resolve => setTimeout(resolve, 250)); check();
     if (this.lifecycle.epochOf(instanceName) !== stoppedEpoch) throw new Error("Classic restart superseded by stop");
@@ -3894,11 +3910,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.logger.warn({ err, name, backend }, "Failed to sync worker skills — continuing startup");
       }
     }
-    await this.lifecycle.start(name, config, topicMode, {
-      kind,
-      backend,
-      model: this.resolveInstanceModel(name).display,
-    }, transition, execution);
+    const receipt = execution ? this.classicSettingsOwners.get(execution) : undefined;
+    const identity = { kind, backend, model: this.resolveInstanceModel(name).display };
+    if (receipt) {
+      await this.lifecycle.start(name, config, topicMode, identity, transition, execution, daemon => {
+        // Only this transition's actual publication can acquire its replacement.
+        receipt.daemon = daemon;
+      });
+    } else await this.lifecycle.start(name, config, topicMode, identity, transition, execution);
     execution?.assert();
     // Only clear a stale process status after a real start succeeded.  Clearing
     // it before lifecycle.start() can turn a crash-loop daemon's dead pane into
@@ -16595,6 +16614,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       if (execution) execution.mutate(write); else write();
       const applied = await this.rebuildAdapterForSecret(job.connectionId, channel, false, execution);
       execution?.assert();
+      execution?.complete(); // Linearize success inside the runner, before its promise settles.
       if (!applied) {
         job.result = "restart_required";
         job.status = "done";

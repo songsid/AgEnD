@@ -162,6 +162,7 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
 
   async function loadEnvironment() {
     const res = await api("api/settings/quickstart/environment");
+    if (formFrozen) return;
     const backends = res.body?.backends || [];
     $("backend").innerHTML = "";
     for (const name of backends.length ? backends : ["claude-code"]) {
@@ -173,6 +174,7 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
   }
 
   function setPlatform(platform) {
+    if (formFrozen) return;
     state.platform = platform;
     state.identity = null; $("verifyMsg").textContent = "";
     $("pickTelegram").className = platform === "telegram" ? "primary" : "";
@@ -185,6 +187,7 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
 
   // Only the ids that platform has — the same question the CLI asks.
   function renderPlatformFields() {
+    if (formFrozen) return;
     const host = $("platformFields"); host.innerHTML = "";
     const field = (id, labelText, hint) => {
       const label = document.createElement("label"); label.textContent = labelText; label.htmlFor = id;
@@ -203,7 +206,7 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
     } else {
       field("group", "Group id", "Or post any message in the group and press Detect.");
       const row = document.createElement("div"); row.className = "row";
-      const detect = document.createElement("button"); detect.textContent = "Detect from a message";
+      const detect = document.createElement("button"); detect.id = "detect"; detect.textContent = "Detect from a message";
       detect.onclick = detectGroup; row.append(detect);
       const msg = document.createElement("span"); msg.className = "msg"; msg.id = "detectMsg"; row.append(msg);
       host.append(row);
@@ -212,8 +215,10 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
   }
 
   async function detectGroup() {
+    if (formFrozen) return;
     $("detectMsg").textContent = "Waiting for a message in the group…";
     const res = await api("api/settings/quickstart/probe", { method: "POST", body: JSON.stringify({ action: "await-telegram-start", token: $("token").value.trim(), offset: state.offset }) });
+    if (formFrozen) return;
     if (!res.ok) { $("detectMsg").textContent = res.body?.error || "Failed."; return; }
     state.offset = res.body.offset;
     if (res.body.found) {
@@ -238,21 +243,26 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
   }
 
   $("verify").onclick = async () => {
+    if (formFrozen) return;
     $("verifyMsg").textContent = "Asking the provider…";
     const token = $("token").value.trim();
     const res = await api("api/settings/quickstart/probe", { method: "POST", body: JSON.stringify({ action: "verify", platform: state.platform, token }) });
+    if (formFrozen) return;
     state.identity = res.body?.identity || { valid: false };
     $("verifyMsg").className = "msg " + (state.identity.valid ? "ok" : "err");
     $("verifyMsg").textContent = state.identity.valid ? "✓ " + (state.identity.username || "verified") : "✗ " + (state.identity.reason || "rejected");
     if (state.identity.valid && state.platform === "discord") {
       const guilds = await api("api/settings/quickstart/probe", { method: "POST", body: JSON.stringify({ action: "guilds", token }) });
+      if (formFrozen) return;
       state.guilds = guilds.body?.guilds || [];
       renderPlatformFields();
     }
   };
 
   $("preview").onclick = async () => {
+    if (formFrozen) return;
     const res = await api("api/settings/quickstart/plan", { method: "POST", body: JSON.stringify(input()) });
+    if (formFrozen) return;
     if (!res.ok) { $("planOut").hidden = false; $("planOut").textContent = res.body?.error || "Failed."; return; }
     state.plan = res.body;
     $("planOut").hidden = false;
@@ -261,10 +271,12 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
   };
 
   let approvedSetup = false;
+  let formFrozen = false;
   let submission = null;
   let pollGeneration = 0;
   const freezeFields = (frozen) => {
-    for (const field of document.querySelectorAll("main input, main select, #verify, #preview")) field.disabled = frozen;
+    formFrozen = frozen;
+    for (const field of document.querySelectorAll("main input, main select, #verify, #preview, #pickTelegram, #pickDiscord, #detect")) field.disabled = frozen;
   };
   const restoreEditing = (message) => {
     pollGeneration++; approvedSetup = false; submission = null; state.identity = null;
@@ -306,6 +318,7 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
       // Preserve bytes and key on a lost HTTP response; a deliberate retry after
       // a terminal outcome receives a new key and requires secret reentry.
       submission ||= { key: crypto.randomUUID(), body: JSON.stringify(Object.assign({}, input(), { token: $("token").value.trim() })) };
+      freezeFields(true);
       $("finishMsg").textContent = "Requesting host confirmation…";
       const commit = await api("api/settings/quickstart/commit", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": submission.key }, body: submission.body });
       if (!commit.ok) { restoreEditing(commit.body?.error || "Failed."); return; }
@@ -317,7 +330,12 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
   // Same-cookie reloads rediscover an unresolved consent request without a secret.
   api("api/settings/pending").then(result => {
     const pending = result.ok && Array.isArray(result.body) && result.body.find(item => item.state === "pending" || item.state === "applying");
-    if (pending) watchPending(pending.id);
+    if (pending) { watchPending(pending.id); return; }
+    api("setup/status").then(status => {
+      if (!status.ok || !status.body?.finish_ready || submission || pollGeneration) return;
+      approvedSetup = true; freezeFields(true); $("finish").disabled = false; $("finish").textContent = "Start AgEnD";
+      $("finishMsg").textContent = "Configuration confirmed. Select Start AgEnD to finish setup.";
+    }).catch(() => {});
   }).catch(() => {});
 
   // The host is gone; the fleet is binding the same port. Connection refused is

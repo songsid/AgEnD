@@ -153,6 +153,33 @@ describe("#1423 actual General nonce handler", () => {
   });
 });
 describe("#1423 actual queued runners and owned cleanup", () => {
+  it("a token runner commits its receipt before returning, so revocation at queue settlement cannot fabricate rollback", async () => {
+    const h = harness(); writeFileSync(join(h.dir, ".env"), "TEST_BOT_TOKEN=old\n"); vi.stubEnv("TEST_BOT_TOKEN", "old");
+    let alive = true; const cap = new SettingsExecution({ current: () => alive, snapshot: () => h.fm.fleetConfig });
+    const job: any = { id: "receipt", connectionId: "primary", status: "running", result: "applying" };
+    h.fm.connectionSecretJobs.set(job.id, job);
+    h.fm.queueSettingsOperation(job, [settingsFileResource(join(h.dir, ".env"))], cap, async (execution: SettingsExecution) => {
+      await h.fm.runConnectionSecretApply(job, "new-token-sentinel", execution);
+      alive = false; // The exact runner has returned; the queue continuation has not run yet.
+    });
+    await h.fm.settingsJobSettlements.get(job.id);
+    expect(job.result).toBe("applied"); expect(cap.completed).toBe(true);
+    expect(readFileSync(join(h.dir, ".env"), "utf8")).toContain("new-token-sentinel");
+    expect(process.env.TEST_BOT_TOKEN).toBe("new-token-sentinel"); expect(h.fm.adapter).not.toBe(h.adapter);
+    expect(h.fm.startSingleAdapter).toHaveBeenCalledOnce(); cap.close();
+  });
+  it("revocation before the token runner's receipt still restores the owned disk, process token and adapter", async () => {
+    const h = harness(), pending = held(); writeFileSync(join(h.dir, ".env"), "TEST_BOT_TOKEN=old\n"); vi.stubEnv("TEST_BOT_TOKEN", "old");
+    const start = h.fm.startSingleAdapter.getMockImplementation(); let alive = true;
+    h.fm.startSingleAdapter.mockImplementationOnce(async (...args: any[]) => { await pending.promise; await start(...args); });
+    const cap = new SettingsExecution({ current: () => alive, snapshot: () => h.fm.fleetConfig });
+    const job: any = { id: "pre-receipt", connectionId: "primary", status: "running", result: "applying" };
+    h.fm.queueSettingsOperation(job, [settingsFileResource(join(h.dir, ".env"))], cap,
+      (execution: SettingsExecution) => h.fm.runConnectionSecretApply(job, "new-token-sentinel", execution));
+    await vi.waitFor(() => expect(h.fm.startSingleAdapter).toHaveBeenCalledOnce()); alive = false; pending.resolve();
+    await h.fm.settingsJobSettlements.get(job.id); expect(job.result).toBe("rolled_back");
+    expect(readFileSync(join(h.dir, ".env"), "utf8")).toBe("TEST_BOT_TOKEN=old\n"); expect(process.env.TEST_BOT_TOKEN).toBe("old"); cap.close();
+  });
   it("queued authorization loss makes no first secret effect", async () => {
     const h = harness(); writeFileSync(join(h.dir, ".env"), "GROQ_API_KEY=old\n");
     let alive = true; const cap = new SettingsExecution({ current: () => alive, snapshot: () => h.fm.fleetConfig });
