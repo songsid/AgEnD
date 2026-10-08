@@ -250,6 +250,7 @@ function writeKiroStub(dir: string, version: string, helpText: string): void {
     "",
   ].join("\n"));
   chmodSync(path, 0o755);
+  registerExecutableFixture(path); // pin each deliberately rewritten fake binary
 }
 
 describe("P2: a kiro-cli replaced in place is re-read at every launch (Prism #2)", () => {
@@ -601,3 +602,4 @@ describe("compatibility shape", () => {
     expect(c).toMatchObject({ supportsLegacyUi: true, supportsTui: true, supportsV3: true, supportsEffortFlag: true, source: "help" });
   });
 });
+import { registerExecutableFixture } from "./support/process-guard.js";

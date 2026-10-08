@@ -325,10 +325,14 @@ describe("the pure rule", () => {
   it("a Telegram override applies only on Telegram; the Discord answer for the same cell is unchanged", () => {
     const classicAdminOnly: CommandChecks = { ...nobody, classicAdmin: () => true };
     const fleetAdminInClassic: CommandChecks = { ...nobody, channelAdmin: () => true };    // what `isModelAdmin` says of a fleet admin
+    // #754: Telegram ClassicBot /pause is channel-admin now, as on Discord — a fleet admin passes on both.
     expect(decideCommand(commandSpec("pause")!, "classic", fleetAdminInClassic, "discord")).toEqual({ allow: true });
-    expect(decideCommand(commandSpec("pause")!, "classic", fleetAdminInClassic, "telegram")).toEqual({ allow: false, reply: ["permission.denied"] });
-    expect(decideCommand(commandSpec("pause")!, "classic", classicAdminOnly, "telegram")).toEqual({ allow: true });
-    expect(decideCommand(commandSpec("compact")!, "fleet", nobody, "telegram")).toEqual({ allow: true });
+    expect(decideCommand(commandSpec("pause")!, "classic", fleetAdminInClassic, "telegram")).toEqual({ allow: true });
+    expect(decideCommand(commandSpec("pause")!, "classic", classicAdminOnly, "telegram")).toEqual({ allow: false, reply: ["permission.denied"] });
+    // A Telegram override that remains: /stop in a ClassicBot chat is the ClassicBot admin's alone on both platforms.
+    expect(decideCommand(commandSpec("stop")!, "classic", fleetAdminInClassic, "telegram")).toEqual({ allow: false, reply: ["classic.admin_only_stop"] });
+    // #754 audit: Telegram /compact in a fleet topic is admin-gated now, like Discord — the two platforms agree here.
+    expect(decideCommand(commandSpec("compact")!, "fleet", nobody, "telegram")).toEqual({ allow: false, reply: ["cmd.admin_required", "/compact"] });
     expect(decideCommand(commandSpec("compact")!, "fleet", nobody, "discord")).toEqual({ allow: false, reply: ["cmd.admin_required", "/compact"] });
     expect(decideCommand(commandSpec("compact")!, "fleet", nobody)).toEqual({ allow: false, reply: ["cmd.admin_required", "/compact"] });      // the default platform is Discord
   });

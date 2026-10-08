@@ -2,6 +2,9 @@ import { defineConfig } from "vitest/config";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createRequire } from "node:module";
+const { scrubEnvironment } = createRequire(import.meta.url)("./tests/support/process-guard.cjs");
+scrubEnvironment(process.env);
 
 // Real-resource suites are deliberately kept in one worker. Running them
 // beside one another makes tmux/child-process scheduling part of the test
@@ -14,6 +17,8 @@ process.once("exit", () => {
 export default defineConfig({
   test: {
     globals: true,
+    globalSetup: ["./tests/setup-process-guard-global.ts"],
+    setupFiles: ["./tests/setup-process-guard.ts"],
     fileParallelism: false,
     testTimeout: 30_000,
     include: [
@@ -29,15 +34,19 @@ export default defineConfig({
       "tests/tmux-kill-window-confirmed.test.ts",
       "tests/view-api.test.ts",
       "tests/web-terminal-socket-cleanup.test.ts",
-      // Opt-in (AGEND_CODEX_E2E=1): real codex CLI on a private tmux socket.
+      "tests/e2e-tri-state.test.ts",
+    ],
+    exclude: [
+      "**/node_modules/**", "dist/**", ".worktrees/**", ".claude/worktrees/**",
+      // Deliberate real-backend tests have a separate, explicit opt-in runner.
       "tests/codex-exact-cwd-resume-e2e.test.ts",
       "tests/codex-status-line-e2e.test.ts",
     ],
-    exclude: ["**/node_modules/**", "dist/**", ".worktrees/**", ".claude/worktrees/**"],
     env: {
       PATH: process.env.PATH ?? "",
       AGEND_HOME: testAgendHome,
       NOTIFY_SOCKET: "",
+      AGEND_TEST_GUARD_DIR: testAgendHome,
     },
   },
 });

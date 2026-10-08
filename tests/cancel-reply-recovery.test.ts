@@ -211,8 +211,11 @@ describe("#1199 real fleet cancel → real Daemon → idle", () => {
   it("a cancel button click uses the same synchronous guard signal", async () => {
     const h = harness();
     await h.inbound();
-    h.fm.cancelButtons.set("button", { instanceName: "worker", messageId: "button" });
-    h.fm.handleCancelClick("worker", null, { chatId: "guild", messageId: "button" });
+    // The worker's owning adapter lets this user speak (the click is gated on that, #754 audit).
+    h.fm.getInstanceAdapterId = () => "bot";
+    h.fm.worlds.set("bot", { accessManager: { isAllowed: (u: string) => u === "user" } });
+    h.fm.cancelButtons.set("button", { instanceName: "worker", messageId: "button", chatId: "guild" });
+    h.fm.handleCancelClick("worker", null, { chatId: "guild", messageId: "button", userId: "user" }, "bot");
     expect(h.interrupts).toEqual([{ key: "Escape", cancelled: true }]);
     await h.idle();
     expectQuiet(h);
@@ -236,7 +239,7 @@ describe("#1199 real fleet cancel → real Daemon → idle", () => {
     const h = harness();
     await h.inbound();
     // Authorization has independent coverage; this test starts after that gate.
-    h.fm.authorizeSlash = vi.fn(async () => "fleet");
+    h.fm.slashDoor = vi.fn(() => ({ scope: "fleet" }));
     h.fm.isModelAdmin = vi.fn(() => true);
     const respond = vi.fn(async () => {});
     await h.fm.dispatchSlash({ command: "cancel", channelId: "room", userId: "user", respond }, "bot", {});

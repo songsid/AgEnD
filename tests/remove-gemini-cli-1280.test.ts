@@ -3,34 +3,37 @@
  * and the replacement (antigravity); at start that one instance refuses, says why, and the rest of the fleet comes
  * up. It is never swapped silently for another backend.
  *
- * Daemon is stubbed (no tmux, no CLI); scratch data directories only; no real fleet (bd0c88aa).
+ * Daemon.start/stop/abortStartup are stubbed on the real prototype (no tmux, no CLI); scratch data directories only; no real fleet (bd0c88aa).
  */
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
-
-const started = vi.hoisted(() => [] as Array<{ name: string; backend: string }>);
-vi.mock("../src/daemon.js", async importOriginal => {
-  const mod = await importOriginal<typeof import("../src/daemon.js")>();
-  const { EventEmitter } = await import("node:events");
-  class StubDaemon extends EventEmitter {
-    bootId = "stub-boot";
-    constructor(public name: string, _config: unknown, _dir: string, _topic: boolean, public backend: { binaryName?: string; constructor: { name: string } }) {
-      super();
-      // Anything else the lifecycle asks of a daemon is a no-op.
-      return new Proxy(this, { get: (t, k) => (k in t ? (t as any)[k] : () => undefined) });
-    }
-    async start(): Promise<void> { started.push({ name: this.name, backend: this.backend.constructor.name }); }
-    async stop(): Promise<void> {}
-  }
-  return { ...mod, Daemon: StubDaemon };
-});
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { validateClassicBotConfig, validateFleetConfig } from "../src/config-validator.js";
 import { createBackend } from "../src/backend/factory.js";
 import { InstanceLifecycle, type LifecycleContext } from "../src/instance-lifecycle.js";
 import { FleetManager } from "../src/fleet-manager.js";
+import { Daemon } from "../src/daemon.js";
+import { IpcServer } from "../src/channel/ipc-bridge.js";
+import * as binaryDiscovery from "../src/backend/types.js";
+
+const started: Array<{ name: string; backend: string }> = [];
+beforeEach(() => {
+  // #1384: concurrent dynamic imports in InstanceLifecycle bypass Vitest's
+  // manual module mock as a self-import. Patch the actual launch boundary,
+  // shared by every import, rather than replacing the module's constructor.
+  vi.spyOn(Daemon.prototype, "start").mockImplementation(async function(this: Daemon) {
+    const daemon = this as unknown as { name: string; backend: object };
+    started.push({ name: daemon.name, backend: daemon.backend.constructor.name });
+  });
+  vi.spyOn(Daemon.prototype, "stop").mockResolvedValue();
+  vi.spyOn(Daemon.prototype, "abortStartup").mockResolvedValue();
+  // Independent safety seam for the reverse mutation of the start stub: no
+  // listener is opened before the global process guard rejects native tmux.
+  vi.spyOn(IpcServer.prototype, "listen").mockResolvedValue();
+  vi.spyOn(binaryDiscovery, "resolveBinary").mockImplementation(binary => binary);
+});
 
 const dirs: string[] = [];
 const scratch = () => { const d = mkdtempSync(join(tmpdir(), "agend-1280-")); dirs.push(d); return d; };
@@ -124,7 +127,7 @@ describe("fleet startup with a gemini-cli instance (after `agend update`)", () =
     const any = fm as any;
     try {
       const w = scratch();
-      any.fleetConfig = { defaults: {}, instances: {
+      any.fleetConfig = { defaults: { startup: { concurrency: 2, stagger_delay_ms: 0 } }, instances: {
         legacy: { working_directory: join(w, "legacy"), backend: "gemini-cli" },
         a: { working_directory: join(w, "a"), backend: "claude-code" },
         b: { working_directory: join(w, "b"), backend: "codex" },
@@ -136,6 +139,8 @@ describe("fleet startup with a gemini-cli instance (after `agend update`)", () =
       await any.startInstancesWithConcurrency(Object.entries(any.fleetConfig.instances), false, (name: string) => ready.push(name));
       expect(ready.sort()).toEqual(["a", "b"]);
       expect(started.map(s => s.name).sort()).toEqual(["a", "b"]);
+      expect(Daemon.prototype.start).toHaveBeenCalledTimes(2);
+      expect(started.map(s => s.backend).sort()).toEqual(["ClaudeCodeBackend", "CodexBackend"]);
       expect(retries).not.toHaveBeenCalled();
       expect(notices.filter(([name]) => name === "legacy")).toEqual([["legacy", expect.stringContaining("backend: antigravity")]]);
     } finally {

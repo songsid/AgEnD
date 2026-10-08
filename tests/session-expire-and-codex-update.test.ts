@@ -53,7 +53,7 @@ describe("expired auth must not raise stuck alerts forever", () => {
   it("suppresses the stuck alert once an auth failure is known", () => {
     const { daemon, instanceDir } = makeDaemon();
     try {
-      const patterns = new KiroBackend("/tmp").getErrorPatterns();
+      const patterns = new KiroBackend("/tmp", TEST_KIRO_COMPAT).getErrorPatterns();
 
       // Before the auth error is seen, a genuinely stuck pane still alerts.
       expect(observeStuck(daemon, "working on it\n")).toHaveLength(1);
@@ -87,7 +87,7 @@ describe("expired auth must not raise stuck alerts forever", () => {
   it("resumes alerting after an explicit wake clears the auth failure", () => {
     const { daemon, instanceDir } = makeDaemon("woken");
     try {
-      const patterns = new KiroBackend("/tmp").getErrorPatterns();
+      const patterns = new KiroBackend("/tmp", TEST_KIRO_COMPAT).getErrorPatterns();
       (daemon as any).evaluateErrorPatterns(NO_TOKEN_PANE, patterns, /^> /m, 10 * 60_000);
       expect(observeStuck(daemon, NO_TOKEN_PANE)).toHaveLength(0);
 
@@ -287,3 +287,4 @@ describe("codex update picker is dismissed if it appears anyway", () => {
     expect(d?.inputBlocked).toBe(true);
   });
 });
+import { TEST_KIRO_COMPAT } from "./helpers/kiro-compat.js";

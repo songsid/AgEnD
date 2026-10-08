@@ -33,7 +33,7 @@ function makeTestEnv() {
 }
 
 function runHealth(agendHome: string, args: string[] = []) {
-  return spawnSync(process.execPath, ["--import", "tsx", cliPath, "health", ...args], {
+  return spawnSync(process.execPath, ["--require", resolve("tests/helpers/health-process-stub.cjs"), "--import", "tsx", cliPath, "health", ...args], {
     cwd: process.cwd(),
     encoding: "utf8",
     timeout: 10_000,
