@@ -99,16 +99,9 @@ jobs:
       # 308 errors before anyone looked.
       - run: npm run typecheck:tests
       - run: npm run build
-      # Share dist/ with the parallel shards. node_modules/ is NOT shared via
-      # artifact because GitHub Actions does not preserve symlinks (breaking
-      # node_modules/.bin/). Each shard runs its own `npm ci` which is fast
-      # from the npm download cache seeded above.
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-artifacts
-          path: dist/
-          retention-days: 1
+      # No artifact to upload: each shard does its own `npm run build` from
+      # source. TypeScript compilation is fast (~15s), the npm download cache
+      # is seeded above, and this avoids artifact path resolution issues.
 
   # ── test shards ──────────────────────────────────────────────────────────────
   test-shard:
@@ -125,12 +118,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: build-artifacts
-          # dist/ lands at $GITHUB_WORKSPACE/dist/ (workspace root).
-          path: .
+      - run: npm run build
       - name: Run test shard ${{ matrix.shard }}/4
         run: npx vitest run --shard=${{ matrix.shard }}/4
 
@@ -145,12 +133,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: build-artifacts
-          # dist/ lands at $GITHUB_WORKSPACE/dist/ (workspace root).
-          path: .
+      - run: npm run build
       # Real tmux/child-process suites run in one worker. The unit suite above
       # remains file-parallel, while this bounded serial invocation prevents
       # host scheduler contention from turning diagnostic timing into flakes.
