@@ -13,7 +13,7 @@ export interface InstanceStatusData {
 }
 
 export interface AlertData {
-  type: "hang" | "cost_warn" | "cost_limit" | "schedule_deferred" | "rotation" | "cancel" | "interactive_prompt" | "exit_restart" | "clear_confirm" | "tip" | "login" | "install" | "classic_approve";
+  type: "hang" | "cost_warn" | "cost_limit" | "schedule_deferred" | "rotation" | "cancel" | "interactive_prompt" | "exit_restart" | "clear_confirm" | "tip" | "login" | "install" | "classic_approve" | "needs_you";
   instanceName: string;
   message: string;
   choices?: Choice[];

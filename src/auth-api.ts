@@ -69,6 +69,9 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
   "shell.js": { file: join("shared", "shell.js"), type: "text/javascript; charset=utf-8" },
   "shell.css": { file: join("shared", "shell.css"), type: "text/css; charset=utf-8" },
   "theme.js": { file: join("shared", "theme.js"), type: "text/javascript; charset=utf-8" },
+  // #1408: the design tokens every panel shares, and the font they name (Inter, SIL OFL 1.1: shared/fonts/OFL.txt).
+  "tokens.css": { file: join("shared", "tokens.css"), type: "text/css; charset=utf-8" },
+  "inter.woff2": { file: join("shared", "fonts", "inter.woff2"), type: "font/woff2" },
 };
 
 export function isAuthPath(path: string): boolean {

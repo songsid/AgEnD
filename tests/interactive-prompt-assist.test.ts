@@ -98,8 +98,8 @@ describe("interactive prompt General assistance", () => {
         instanceName: "worker",
         message: expect.stringMatching(/worker.*sudo 密碼.*General/s),
         choices: [
-          expect.objectContaining({ label: "確認" }),
-          expect.objectContaining({ label: "取消" }),
+          expect.objectContaining({ id: expect.stringMatching(/:confirm$/), label: "請 General 協助" }),
+          expect.objectContaining({ id: expect.stringMatching(/:cancel$/), label: "我自己處理" }),
         ],
       }),
       { threadId: "general-topic" },
@@ -182,10 +182,22 @@ describe("interactive prompt General assistance", () => {
     expect(editMessageRemoveButtons).toHaveBeenCalledWith(
       "fleet-group",
       "assist-message",
-      expect.stringContaining("ignored"),
+      "🙋 You're handling worker's prompt yourself; General was not asked.",
       "general-topic",
     );
     expect(ipcSend).not.toHaveBeenCalled();
+  });
+
+  // #1414: the buttons say what they do — one asks General to look at the terminal, the other leaves it to the person.
+  it("the question and both buttons name what happens (shared text: Telegram, Discord and the web chat)", async () => {
+    const { fm, notifyAlert } = setup();
+    await fm.notifyInteractivePrompt("worker", "permission");
+    const alert = notifyAlert.mock.calls[0][1];
+    expect(alert.message).toBe("⚠️ worker is waiting for interactive input (permission confirmation). Ask General to help, or handle it yourself in its terminal?");
+    expect(alert.choices.map((c: { id: string; label: string }) => [c.id.split(":").at(-1), c.label])).toEqual([
+      ["confirm", "Ask General to help"],
+      ["cancel", "I'll handle it myself"],
+    ]);
   });
 
   it("still delivers Confirm when removing the buttons fails", async () => {

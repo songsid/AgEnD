@@ -7,7 +7,7 @@ import { applyWebSecurityHeaders } from "./web-host-guard.js";
 export function isPublicWebRoute(method: string, path: string): boolean {
   const reads = method === "GET" || method === "HEAD";
   if (reads && ["/", "/signin", "/ui", "/settings", "/view", "/auth/session", "/auth/sessions", "/api/fleet", "/api/profiles", "/api/sort-order", "/api/ai-usage"].includes(path)) return true;
-  if (method === "GET" && /^\/assets\/(agend-auth\.js|signin\.js|shell\.js|shell\.css|theme\.js)$/.test(path)) return true;
+  if (method === "GET" && /^\/assets\/(agend-auth\.js|signin\.js|shell\.js|shell\.css|theme\.js|tokens\.css|inter\.woff2)$/.test(path)) return true;
   if (method === "POST" && ["/auth/login", "/auth/logout"].includes(path)) return true;
   if (method === "DELETE" && /^\/auth\/sessions(?:\/[0-9a-f]{16})?$/.test(path)) return true;
   if (reads && /^\/api\/(pane|profile|avatar)\/[^/]+$/.test(path)) return true;
@@ -15,7 +15,7 @@ export function isPublicWebRoute(method: string, path: string): boolean {
   if (method === "POST" && (/^\/stop\/[^/]+$/.test(path) || /^\/api\/instance\/[^/]+\/start$/.test(path))) return true;
   if (method === "GET" && /^\/ui\/js\/[a-z0-9_-]+\.js$/.test(path)) return true;
   if (method === "GET" && /^\/ui\/(backends|poll|history|file\/[^/]+|prompts|instance\/[^/]+|instances|tasks(?:\/[^/]+)?|schedules(?:\/[^/]+)?|teams(?:\/[^/]+)?|config)$/.test(path)) return true;
-  if (method === "POST" && /^\/ui\/(send|upload|prompt|cancel\/[^/]+|stop\/[^/]+|start\/[^/]+|instances\/[^/]+\/delete|restart\/[^/]+|instances|tasks|schedules|teams|config)$/.test(path)) return true;
+  if (method === "POST" && /^\/ui\/(send|upload|prompt|needs\/ack|cancel\/[^/]+|stop\/[^/]+|start\/[^/]+|instances\/[^/]+\/delete|restart\/[^/]+|instances|tasks|schedules|teams|config)$/.test(path)) return true;
   if (((method === "POST" && /^\/ui\/tasks\/[^/]+$/.test(path))) || (method === "DELETE" && /^\/ui\/(schedules|teams)\/[^/]+$/.test(path))) return true;
   // Settings has an explicit method/subroute manifest (not an arbitrary /api prefix).
   return isPublicSettingsRoute(method, path);
