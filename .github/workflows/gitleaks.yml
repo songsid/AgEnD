@@ -11,6 +11,12 @@ on:
 permissions:
   contents: read
 
+# Cancel in-progress runs for the same PR when a new commit arrives. Push runs on
+# main/release/** are deliberately NOT cancelled — they are needed for release tagging.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   scan:
     runs-on: ubuntu-latest
