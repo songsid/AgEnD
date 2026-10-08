@@ -153,6 +153,12 @@ export interface InputBox {
   text: string;
   /** Pastes the CLI shows collapsed (`[Pasted text #3 +11 lines]`): the pasted text itself is NOT in `text`. */
   collapsedPastes: number;
+  /**
+   * The CLI holds a queue of submitted messages attached to this box, as the reader can vouch for structurally
+   * (claude-code: the queued placeholder in the box and the queue marker right above it, #1169). Absent otherwise.
+   * A reader backend's queue evidence is this, never a marker matched anywhere on the pane.
+   */
+  queued?: boolean;
 }
 
 /** Result of probing a CLI backend's environment at startup (cached to disk). */

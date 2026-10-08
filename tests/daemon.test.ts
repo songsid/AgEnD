@@ -427,7 +427,8 @@ describe("Daemon backend-native input queue delivery", () => {
   });
 
   it("cancels a delivery that entered the idle wait but has not pasted yet", async () => {
-    const { control, daemon, instanceDir, tmux } = makeDeliveryDaemon("claude-code", false);
+    // A backend that waits for idle (grok; claude-code hands a busy delivery to its own queue since #1169).
+    const { control, daemon, instanceDir, tmux } = makeDeliveryDaemon("grok", false);
     let releaseIdleWait!: (idle: boolean) => void;
     control.waitUntilIdle.mockImplementation(() => new Promise<boolean>(resolve => {
       releaseIdleWait = resolve;
@@ -691,7 +692,7 @@ describe("Daemon backend-native input queue delivery", () => {
     // waitUntilIdle used to have no timeout at all: a wedged pane held the
     // pasteLock forever and every message behind it queued silently, with no ❌ and
     // no log — the caller believed delivery was merely slow.
-    const { control, daemon, instanceDir, tmux } = makeDeliveryDaemon("claude-code", false);
+    const { control, daemon, instanceDir, tmux } = makeDeliveryDaemon("grok", false); // a backend that waits for idle (claude-code queues since #1169)
     control.waitUntilIdle.mockResolvedValue(false);
     const failed = vi.fn();
     daemon.on("message_failed", failed);
@@ -1203,6 +1204,14 @@ describe("Daemon error monitor recovery", () => {
   });
 });
 
+const CLAUDE_BUSY = readFileSync(join(__dirname, "fixtures", "claude-2.1.293-busy-empty.pane.txt"), "utf8");
+/** CLAUDE_BUSY with `text` taken into Claude's queue (2.1.293): the block above the spinner, the placeholder in the box. */
+const claudeQueued = (text: string) => {
+  const [first, ...rest] = text.split("\n");
+  const block = [`❯ ${first}`, ...rest.map(row => `  ${row}`), "  ctrl+x ctrl+s to send now"].join("\n");
+  return CLAUDE_BUSY.replace(/^(✻ Spelunking)/m, `${block}\n$1`).replace(/^❯\u00a0$/m, "❯\u00a0Press up to edit queued messages");
+};
+
 describe("Daemon /steer delivery", () => {
   function makeSteerDaemon(backendName: "claude-code" | "codex" | "grok", idle: boolean, pane = "", paneBeforePaste?: string) {
     const instanceDir = join(tmpdir(), `agend-steer-${backendName}-${Date.now()}-${Math.random()}`);
@@ -1244,12 +1253,13 @@ describe("Daemon /steer delivery", () => {
   }
 
   it("pastes into a BUSY non-queue CLI immediately instead of waiting for idle", async () => {
-    // The point of /steer: claude-code has no supportsQueuedInput, so a normal
+    // The point of /steer: grok has no supportsQueuedInput, so a normal
     // delivery would block on waitUntilIdle. steer takes the immediate-paste
     // transaction (the same one codex native-queue handoff uses), whose pane
-    // visibility check confirms the text landed.
+    // visibility check confirms the text landed. (claude-code queues natively
+    // since #1169 and needs its box readable to hand off: see below.)
     const { control, daemon, tmux } = makeSteerDaemon(
-      "claude-code", false,
+      "grok", false,
       "✻ thinking…\n[STEERING — mid-task course correction. Fold this into the CURRENT work if one is active.]",
       "✻ thinking…",
     );
@@ -1405,7 +1415,8 @@ describe("Daemon /steer delivery", () => {
 
   it("submits the BTW wrapper immediately to a busy Claude pane", async () => {
     const formatted = "[BTW — side question from the user.]\n[user:han] side question";
-    const { control, daemon, tmux } = makeSteerDaemon("claude-code", false, formatted, "✻ thinking…");
+    // A live busy frame (its box is readable — #1169 hands off only then), and the same frame with the wrapper queued.
+    const { control, daemon, tmux } = makeSteerDaemon("claude-code", false, claudeQueued(formatted), CLAUDE_BUSY);
 
     const result = await (daemon as any).deliverMessage(
       formatted,

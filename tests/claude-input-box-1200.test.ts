@@ -34,11 +34,14 @@ describe("readClaudeInputBox on live 2.1.293 captures", () => {
     ["busy-stranded", { text: "stranded while busy", collapsedPastes: 0 }],
     ["busy-paste-long", { text: "[Pasted text #2 +11 lines]", collapsedPastes: 1 }],
     ["long-busy-pasted", { text: "[Pasted text #4 +79 lines]", collapsedPastes: 1 }],
-    // queued: the box shows "Press up to edit queued messages" — a placeholder, not input
-    ["busy-queued", { text: "", collapsedPastes: 0 }],
-    ["busy-queued-long", { text: "", collapsedPastes: 0 }],
-    ["long-busy-queued", { text: "", collapsedPastes: 0 }],
-    ["tool-queued", { text: "", collapsedPastes: 0 }],
+    // queued: the box shows "Press up to edit queued messages" — a placeholder, not input — under Claude's queue (#1169)
+    ["busy-queued", { text: "", collapsedPastes: 0, queued: true }],
+    ["busy-queued-long", { text: "", collapsedPastes: 0, queued: true }],
+    ["long-busy-queued", { text: "", collapsedPastes: 0, queued: true }],
+    ["tool-queued", { text: "", collapsedPastes: 0, queued: true }],
+    ["busy-queued-two", { text: "", collapsedPastes: 0, queued: true }],
+    ["busy-queued-under-quote", { text: "", collapsedPastes: 0, queued: true }],
+    ["busy-reply-quotes-marker", { text: "", collapsedPastes: 0 }],
     ["queued-drained", { text: "", collapsedPastes: 0 }],
   ])("%s", (name, box) => {
     expect(readClaudeInputBox(pane(name))).toEqual(box);
@@ -58,6 +61,9 @@ describe("readClaudeInputBox on live 2.1.293 captures", () => {
         expect(box, f).toEqual({ text: "[user:alice via telegram, id:1] E429 please", collapsedPastes: 0 });
       } else if (/dialog|prompt|onboarding|theme|trust|bypass|login\b|login-method|oauth|resume|apikey|api-key|mcp|ext|settings|security|background-work|continue/.test(f)) {
         expect(box, f).toBeNull();
+      } else if (f === "claude-2.1.291-error-500-retrying-statusline.pane.txt") {
+        // a message queued while Claude retried (#1239's capture): an empty box under Claude's queue (#1169)
+        expect(box, f).toEqual({ text: "", collapsedPastes: 0, queued: true });
       } else if (/ready|busy|error|compact|not-logged-in/.test(f)) {
         expect(box, f).toEqual({ text: "", collapsedPastes: 0 });
       }
@@ -82,11 +88,11 @@ describe("readClaudeInputBox on live 2.1.293 captures", () => {
     expect(readClaudeInputBox(two)).toEqual({ text: "[Pasted text #1 +11 lines][Pasted text #2 +3 lines]", collapsedPastes: 2 });
   });
 
-  it("the backend exposes it as readInputRow, and does not claim the other readers", () => {
+  it("the backend exposes it as readInputRow, and does not claim the prompt-row reader", () => {
     const backend = new ClaudeCodeBackend("/nonexistent-1200");
     expect(backend.readInputRow(pane("idle-draft"))).toEqual({ text: "draft one two three", collapsedPastes: 0 });
     expect((backend as any).getBottomReadyPattern).toBeUndefined();
-    expect((backend as any).supportsQueuedInput).toBeUndefined();
+    // supportsQueuedInput / getQueuedInputMarker arrived with #1169 (claude-queued-input-1169.test.ts).
   });
 });
 
@@ -328,7 +334,7 @@ describe("evidence that cannot be attributed is not ours (#1353 review)", () => 
 });
 
 describe("text in the box after an unreadable baseline is not proof either (#1353 review)", () => {
-  it("a system paste (no unique id) seen only IN the box, against a baseline whose box could not be read: never 'submitted' — the defensive second Enter still goes out", async () => {
+  it("a system paste (no unique id) seen only IN the box, against a baseline whose box could not be read: never 'submitted'", async () => {
     vi.useFakeTimers();
     const root = mkdtempSync(join(tmpdir(), "agend-1200-res-")); roots.push(root);
     const instanceDir = join(root, "instances", "worker");
@@ -350,10 +356,15 @@ describe("text in the box after an unreadable baseline is not proof either (#135
       sendSpecialKey: vi.fn(async (key: string) => { if (key === "Enter") s.enters++; return true; }),
       getWindowId: () => "@worker",
     };
+    const verdicts: string[] = [];
+    const judge = daemon.confirmSubmitted.bind(daemon);
+    daemon.confirmSubmitted = async (...args: unknown[]) => { const v = await judge(...args); verdicts.push(v); return v; };
     const done = daemon.submitSystemPaste(text, "notice");
     await vi.advanceTimersByTimeAsync(20_000);
     await done;
-    // "submitted" would have stopped at one Enter; unattributable evidence keeps the best-effort second Enter.
-    expect(s.enters).toBe(2);
+    expect(verdicts.length).toBeGreaterThan(0);
+    expect(verdicts).not.toContain("submitted");
+    // Claude queues its own input since #1169: no defensive second Enter (it could touch the queue).
+    expect(s.enters).toBe(1);
   });
 });
