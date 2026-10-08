@@ -238,4 +238,3 @@ function collectKiroDbEvents(entry: unknown, out: TranscriptEvents, toolNames: M
     }
   }
 }
-
