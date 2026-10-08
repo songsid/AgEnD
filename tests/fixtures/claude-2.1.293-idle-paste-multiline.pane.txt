@@ -1,0 +1,50 @@
+  Line eleven.
+  Line twelve.
+
+● mock reply 8
+
+✻ Worked for 0s · done 7:20 AM
+
+❯ SLOW again
+
+● slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow
+  slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow
+
+✻ Baked for 25s · done 7:21 AM
+
+❯ [agend-delivery-id:5b0c1d2e-0000-4000-8000-000000000002]
+  [from:agend-leader-t1] Second task while busy.
+  Line three.
+  Line four.
+  Line five.
+  Line six.
+  Line seven.
+  Line eight.
+  Line nine.
+  Line ten.
+  Line eleven.
+  Line twelve.
+
+● mock reply 12
+
+✻ Worked for 0s · done 7:21 AM
+
+❯ TOOLWAIT run the wait
+
+  Ran 1 shell command
+
+❯ [agend-delivery-id:5b0c1d2e-0000-4000-8000-000000000003]
+  [from:agend-leader-t1] Third task during a tool.
+  Line three.
+
+● tool finished
+
+✻ Crunched for 25s · done 7:22 AM
+                                                                                                                                         ctrl+g to edit in Vim
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ short line one
+  short line two
+  short line three
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ok
+  ⏵⏵ bypass permissions on (shift+tab to cycle)
