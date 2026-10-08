@@ -175,7 +175,7 @@ jobs:
   # never `skipped`.
   build:
     runs-on: ubuntu-latest
-    needs: [detect-changes, changelog, setup, test-shard, test-integration]
+    needs: [detect-changes, changelog, setup, test-shard, test-integration, install-smoke]
     if: always()
     steps:
       - name: Check all jobs succeeded
@@ -185,6 +185,7 @@ jobs:
           SETUP: ${{ needs.setup.result }}
           SHARD: ${{ needs.test-shard.result }}
           INTEGRATION: ${{ needs.test-integration.result }}
+          SMOKE: ${{ needs.install-smoke.result }}
         run: |
           set -euo pipefail
           # changelog always runs; verify it first regardless of docs-only.
@@ -197,7 +198,7 @@ jobs:
             exit 0
           fi
           failed=()
-          for name_result in "setup:$SETUP" "test-shard:$SHARD" "test-integration:$INTEGRATION"; do
+          for name_result in "setup:$SETUP" "test-shard:$SHARD" "test-integration:$INTEGRATION" "install-smoke:$SMOKE"; do
             name="${name_result%%:*}"
             result="${name_result##*:}"
             if [ "$result" != "success" ]; then
@@ -311,3 +312,115 @@ jobs:
             -H "Content-Type: application/json" \
             -d @payload.json \
             "$DISCORD_WEBHOOK"
+
+  # ── install smoke ─────────────────────────────────────────────────────────────
+  # Packs the npm tarball and installs it globally on every platform × Node
+  # combination we claim to support. Verifies that `agend --version` runs and
+  # that the native better-sqlite3 prebuild loads correctly. This job never
+  # starts a fleet or touches tmux — it only does a brief in-process check.
+  #
+  # Runs independently so it never slows the test shards. Ubuntu and macOS are
+  # free for public repos. Node 22/24/26 cover the LTS + current span. 6 runners
+  # total: 2 os × 3 node versions.
+  install-smoke:
+    runs-on: ${{ matrix.os }}
+    needs: [detect-changes, setup]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        # '22' resolves to the latest 22.x (already >=22.14 on current runners).
+        # '22.14.0' is the exact minimum required for N-API 10 / better-sqlite3 v13.
+        # '24' and '26' cover the current and upcoming release lines.
+        node: ['22.14.0', '22', '24', '26']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - name: Skip on docs-only PRs
+        if: needs.detect-changes.outputs.docs-only == 'true'
+        run: echo "Docs-only — skipping install smoke."
+      - name: Pack and install globally
+        if: needs.detect-changes.outputs.docs-only != 'true'
+        run: |
+          npm ci
+          npm run build
+          # Pack to a tarball so we test the published surface, not the dev tree.
+          TGZ=$(npm pack --json | node -e "const d=require('fs').readFileSync('/dev/stdin','utf8'); console.log(JSON.parse(d)[0].filename)")
+          # Install to an explicit prefix so the bin directory is predictable
+          # regardless of nvm/brew/system npm prefix configuration.
+          SMOKE_PREFIX="$RUNNER_TEMP/agend-smoke"
+          npm install --global --prefix "$SMOKE_PREFIX" "./$TGZ"
+          echo "$SMOKE_PREFIX/bin" >> "$GITHUB_PATH"
+      - name: agend --version
+        if: needs.detect-changes.outputs.docs-only != 'true'
+        run: agend --version
+      - name: Verify incompatible runtime is rejected before native open
+        if: needs.detect-changes.outputs.docs-only != 'true'
+        env:
+          SMOKE_PREFIX: ${{ runner.temp }}/agend-smoke
+        run: |
+          # Run the production isNodeCompatible() from the INSTALLED package.
+          # If the guard is removed or its boundaries change, this step fails.
+          # Removing the production function turns this red (not an inline copy).
+          node - <<'JS'
+          const path = require('path');
+          const lib = process.env.SMOKE_PREFIX + '/lib/node_modules';
+          // Load the guard from the installed agend package (production path).
+          let isNodeCompatible;
+          try {
+            ({ isNodeCompatible } = require(path.join(lib, '@songsid/agend/dist/node-version-guard.js')));
+          } catch {
+            ({ isNodeCompatible } = require(path.join(lib, 'better-sqlite3/../@songsid/agend/dist/node-version-guard.js')));
+          }
+          if (typeof isNodeCompatible !== 'function') {
+            console.error('isNodeCompatible not found in installed package');
+            process.exit(1);
+          }
+          const cases = [
+            // N-API 9 — must reject
+            { v: '22.0.0',  ok: false },
+            { v: '22.13.0', ok: false },
+            { v: '23.0.0',  ok: false },
+            { v: '23.5.9',  ok: false },
+            // N-API 10 — must accept
+            { v: '22.14.0', ok: true },
+            { v: '23.6.0',  ok: true },
+            { v: '24.0.0',  ok: true },
+          ];
+          let failed = 0;
+          for (const c of cases) {
+            const got = isNodeCompatible(c.v);
+            if (got !== c.ok) { console.error(`FAIL: isNodeCompatible(${c.v}) = ${got}, want ${c.ok}`); failed++; }
+          }
+          if (failed > 0) process.exit(1);
+          console.log('Production runtime guard: all boundary cases correct');
+          JS
+      - name: better-sqlite3 in-memory open
+        if: needs.detect-changes.outputs.docs-only != 'true'
+        env:
+          SMOKE_PREFIX: ${{ runner.temp }}/agend-smoke
+        run: |
+          # Confirm the N-API prebuild loads on this OS + Node combination.
+          # better-sqlite3 may be hoisted to the prefix root or nested under
+          # the agend package, depending on npm's dedup behaviour. Try both.
+          node - <<'JS'
+          const path = require('path');
+          const prefix = process.env.SMOKE_PREFIX;
+          const lib = path.join(prefix, 'lib/node_modules');
+          // Try hoisted first, then nested under agend.
+          let Database;
+          try {
+            Database = require(path.join(lib, 'better-sqlite3'));
+          } catch {
+            Database = require(path.join(lib, '@songsid/agend/node_modules/better-sqlite3'));
+          }
+          const db = new Database(':memory:');
+          db.exec('CREATE TABLE smoke (v TEXT)');
+          db.prepare('INSERT INTO smoke VALUES(?)').run('ok');
+          const row = db.prepare('SELECT v FROM smoke').get();
+          if (row.v !== 'ok') process.exit(1);
+          console.log('better-sqlite3 N-API prebuild ok on Node', process.version);
+          JS
