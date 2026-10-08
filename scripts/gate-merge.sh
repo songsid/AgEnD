@@ -194,9 +194,17 @@ git merge-base --is-ancestor "$BASE_TIP" "$HEAD"; rc=$?
 [ "$rc" -eq 0 ] || blocked "#$PR is behind $BASE_REF ($BASE_TIP): merge-sync first"
 
 # ── 5. CI on the exact head ─────────────────────────────────────────────────────────────────────────────────────
+# GitHub's CodeQL default setup does not run on release/** branches, so CodeQL and Analyze(*)
+# are optional there: their absence does not block, but a present FAILURE still does.
+# build and scan are required regardless of base branch.
+# Only applies when GATE_REQUIRED_CHECKS is not set by the caller (i.e. using the default).
+EFFECTIVE_CHECKS="$REQUIRED_CHECKS"
+if [[ "$BASE_REF" == release/* ]] && [ -z "${GATE_REQUIRED_CHECKS+x}" ]; then
+  EFFECTIVE_CHECKS="build,scan"
+fi
 RULES="$(gh api "repos/$REPO/rules/branches/$BASE_REF" 2>/dev/null)" || blocked "the rules of $BASE_REF are unreadable"
 RUNS="$(gh api "repos/$REPO/commits/$HEAD/check-runs?per_page=100" 2>/dev/null)" || blocked "check-runs for $HEAD unreadable"
-CI="$(printf '%s' "$RUNS" | REQUIRED_CHECKS="$REQUIRED_CHECKS" RULES="$RULES" node -e '
+CI="$(printf '%s' "$RUNS" | REQUIRED_CHECKS="$EFFECTIVE_CHECKS" RULES="$RULES" node -e '
   let s = ""; process.stdin.on("data", c => s += c).on("end", () => {
     const out = m => { process.stdout.write(m); process.exit(0); };
     let d, rules;
