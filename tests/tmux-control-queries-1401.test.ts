@@ -185,7 +185,7 @@ describe("#1401 control read protocol and manager wiring", () => {
 
   it.each([true, false])("bounds huge stdout (newline=%s) and returns no partial snapshot", async newline => {
     fallback(); const { proc, manager } = opened();
-    const capture = manager.capturePane();
+    const capture = manager.capturePane(); void capture.catch(() => {});
     proc.stdout.emit("data", Buffer.from("%begin 2 4 1\n" + "x".repeat(TMUX_READ_MAX_BYTES + 65_537) + (newline ? "\n" : "")));
     expect(proc.kill).toHaveBeenCalledOnce(); expect(await capture).toBe("fallback\n");
   });
@@ -211,7 +211,7 @@ describe("#1401 deadlines and physical process ownership", () => {
     if (kind === "stdin-write") proc.stdin.write.mockImplementation((_data, callback) => {
       (callback as (error: Error) => void)(new Error("EPIPE")); return false;
     });
-    const result = manager.capturePane();
+    const result = manager.capturePane(); void result.catch(() => {});
     if (kind === "stdout") proc.stdout.emit("error", new Error("read failure"));
     expect(proc.kill).toHaveBeenCalledOnce(); expect(await result).toBe("fallback\n");
     await vi.advanceTimersByTimeAsync(4_000); expect(mocks.spawn).toHaveBeenCalledTimes(1);
@@ -276,7 +276,7 @@ describe("#1401 deadlines and physical process ownership", () => {
       const result = client.read({ kind: "windows", session: "s" }, 100); const assertion = expect(result).rejects.toMatchObject({ kind: "timeout" });
       await vi.advanceTimersByTimeAsync(100); await assertion;
     }
-    const third = client.read({ kind: "windows", session: "s" }, 1_000);
+    const third = client.read({ kind: "windows", session: "s" }, 1_000); void third.catch(() => {});
     await vi.advanceTimersByTimeAsync(100); expect(mocks.execFile).toHaveBeenCalledTimes(2);
     children[0].emit("exit", 0); expect(mocks.execFile).toHaveBeenCalledTimes(3);
     callbacks[0](null, "stale\n"); callbacks[2](null, "third\n"); expect(await third).toBe("third\n");
