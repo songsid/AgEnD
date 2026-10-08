@@ -20,6 +20,7 @@ import { join } from "node:path";
 import { FleetManager } from "../src/fleet-manager.js";
 import { decideSlash } from "../src/slash-authz.js";
 import { t } from "../src/locale.js";
+import { commandSpec } from "../src/command-table.js";
 
 const GROUP = "-1001";
 const ADMIN_A = "111";
@@ -129,12 +130,14 @@ describe("Telegram /collab, /compact, /save are channel-admin, as on Discord", (
       const sendCompact = vi.spyOn(r.any.topicCommands, "sendCompact").mockResolvedValue("compacted");
       const sendSave = vi.spyOn(r.any.topicCommands, "sendSave").mockResolvedValue("saved");
       expect(await r.any.topicCommands.handleInstanceCommand(typed(text, PLAIN), "alpha")).toBe(true);
-      expect(r.replies.map(x => x.text)).toEqual([t("permission.denied")]);
+      // The command's own refusal from the command table (the reply its Discord slash command gives too).
+      const [key, ...args] = commandSpec(text.slice(1).split(" ")[0]!)!.denied;
+      expect(r.replies.map(x => x.text)).toEqual([t(key, ...args)]);
       expect(sendCompact).not.toHaveBeenCalled();
       expect(sendSave).not.toHaveBeenCalled();
       r.replies.length = 0;
       expect(await r.any.topicCommands.handleInstanceCommand(typed(text, ADMIN_A), "alpha")).toBe(true);
-      expect(r.replies.map(x => x.text)).not.toContain(t("permission.denied"));
+      expect(r.replies.map(x => x.text)).not.toContain(t(...commandSpec(text.slice(1).split(" ")[0]!)!.denied));
     });
   }
 });

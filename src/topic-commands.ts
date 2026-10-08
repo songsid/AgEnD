@@ -17,7 +17,7 @@ import { truncateDisplay, MODEL_DISPLAY_WIDTH_MAX } from "./ls-rows.js";
 import { detectPlatform } from "./service-installer.js";
 import { getTmuxSocketName, getTmuxSessionName } from "./paths.js";
 import { t, getLocale } from "./locale.js";
-import { telegramMenu, type TelegramMenu } from "./command-table.js";
+import { commandSpec, decideCommand, telegramMenu, type TelegramMenu } from "./command-table.js";
 import { runVisibilityCommand } from "./cross-instance-notice.js";
 import type { ChannelConfig } from "./types.js";
 import {
@@ -511,10 +511,41 @@ export function resolveInstanceContext(
   return hit ? { context: hit.context, tokenRatio: hit.tokenRatio } : { context: null, tokenRatio: null };
 }
 
+/** Typed spellings that are another name for a command-table entry. */
+const TELEGRAM_COMMAND_ALIASES: Readonly<Record<string, string>> = {
+  "sys-info": "sysinfo", "sys_info": "sysinfo", "install-cli": "login", "install_cli": "login",
+};
+
 export class TopicCommands {
   constructor(private ctx: ExecutionFleetContext) {}
 
   /** Get the adapter that should reply to a given inbound message */
+  /**
+   * #754: who may run a typed Telegram command is decided by the command table — the same rule a Discord slash
+   * command goes through (`decideCommand`), here with its Telegram column — before any handler runs. `msg.adapterId`
+   * is the topic's owning adapter (ownedCopy), so the admin it asks about is that bot's. A command the table does not
+   * know (`/raw`, `/cancel`'s button) or does not handle here (a passthrough cell) is left to the handlers below.
+   * True when the command was refused and answered.
+   */
+  private async refusedByTable(msg: InboundMessage, scope: "general" | "fleet"): Promise<boolean> {
+    const name = msg.text?.trim().match(/^\/([A-Za-z][\w-]*)(?:@\S*)?(?:\s|$)/)?.[1]?.toLowerCase();
+    const spec = name ? commandSpec(TELEGRAM_COMMAND_ALIASES[name] ?? name) : undefined;
+    if (!spec) return false;
+    const fleetAdmin = (): "ok" | "disabled" | "denied" => this.ctx.isFleetAdmin(msg.userId, msg.adapterId) ? "ok"
+      : this.ctx.hasFleetAdmins && !this.ctx.hasFleetAdmins(msg.adapterId) ? "disabled" : "denied";
+    const decision = decideCommand(spec, scope, {
+      fleetAdmin,
+      // In a fleet topic the channel's own admin IS the owning bot's fleet admin.
+      channelAdmin: () => fleetAdmin() === "ok",
+      classicAdmin: () => false,
+    }, "telegram");
+    if (decision.allow || "passthrough" in decision) return false;
+    const adapter = this.getReplyAdapter(msg);
+    const [key, ...args] = decision.reply;
+    if (adapter) await adapter.sendText(msg.chatId, t(key, ...args), { threadId: msg.threadId }).catch(() => {});
+    return true;
+  }
+
   private getReplyAdapter(msg: InboundMessage): ChannelAdapter | null {
     if (msg.adapterId && this.ctx.adapters) {
       return this.ctx.adapters.get(msg.adapterId) ?? this.ctx.adapter;
@@ -548,6 +579,7 @@ export class TopicCommands {
     msg = owned;
     const text = msg.text?.trim();
     if (!text) return false;
+    if (await this.refusedByTable(msg, "general")) return true;
 
     const profile = msg.source === "telegram" ? text.match(/^\/profile(?:@\w+)?(?:\s+([\s\S]*))?$/) : null;
     if (profile) {
@@ -683,6 +715,7 @@ export class TopicCommands {
     msg = owned;
     const text = msg.text?.trim();
     if (!text) return false;
+    if (await this.refusedByTable(msg, this.ctx.fleetConfig?.instances[instanceName]?.general_topic ? "general" : "fleet")) return true;
 
     // Tips are informational and should appear where requested, including a
     // worker topic. This also keeps Telegram text commands aligned with
