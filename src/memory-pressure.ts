@@ -20,6 +20,7 @@ interface Options {
   read?: () => HostMemory;
   now?: () => number;
   onSample?: (snapshot: MemoryPressureSnapshot) => void;
+  onDarwinUnknown?: (memory: HostMemory | null) => void;
   criticalBytes?: number;
 }
 
@@ -38,6 +39,7 @@ export class MemoryPressure {
   private nativeFlight: Promise<MemoryPressureSnapshot> | null = null;
   private epoch = 0;
   private stopped = false;
+  private unknownReported = false;
   private readonly now: () => number;
   private timer: ReturnType<typeof setInterval> | null = null;
   private history: Array<{ at: number; memory: HostMemory & { availableBytes: number } }> = [];
@@ -52,12 +54,13 @@ export class MemoryPressure {
     this.read = options.read ?? (() => readHostMemory({ platform: this.platform }));
     this.now = options.now ?? Date.now;
     this.monotonicNow = options.monotonicNow ?? (() => performance.now());
-    this.native = this.platform === "darwin" && !options.read ? options.darwinProbe ?? new DarwinMemoryProbe() : null;
+    this.native = this.platform === "darwin" && !options.read ? options.darwinProbe ?? new DarwinMemoryProbe({ includePressure: true }) : null;
   }
 
   start(): void {
     if (this.timer) return;
     this.stopped = false;
+    this.unknownReported = false;
     this.timer = setInterval(() => this.sample(), MEMORY_SAMPLE_MS);
     this.timer.unref?.();
     this.sample();
@@ -77,7 +80,7 @@ export class MemoryPressure {
   /** Sampling may detect recovery before a long admission backoff expires. */
   startRecoveryWindow(): MemoryPressureSnapshot {
     if (this.advisoryOnly()) return this.snapshot();
-    this.recoveryUntil = this.now() + MEMORY_RECOVERY_MS;
+    this.recoveryUntil = (this.platform === "darwin" ? this.monotonicNow() : this.now()) + MEMORY_RECOVERY_MS;
     this.current = { ...this.current, recovering: true,
       level: this.current.level === "normal" ? "elevated" : this.current.level };
     return this.snapshot();
@@ -88,15 +91,9 @@ export class MemoryPressure {
     return { ...this.current, memory: this.current.memory && { ...this.current.memory }, trend: this.current.trend && { ...this.current.trend } };
   }
 
-  /**
-   * macOS is sampled for the log only (#1256): nothing here slows or defers a spawn there, and no notice is sent.
-   * Its numbers are not a pressure signal. Swap files are added on demand, so a small free share of them is normal,
-   * and cache and the compressor hold memory that vm_stat does not count as available. The levels computed from them
-   * alerted on Macs with plenty of memory. The kernel's own pressure level is the follow-up. Linux is unchanged:
-   * there a sample restricts, an unknown one included.
-   */
+  /** Unknown Darwin kernel alarms cannot restrict admission or spend a notice cooldown. Linux is unchanged. */
   advisoryOnly(): boolean {
-    return this.platform === "darwin";
+    return this.platform === "darwin" && this.current.level === "unknown";
   }
 
   onUpdate(listener: (snapshot: MemoryPressureSnapshot) => void): () => void {
@@ -104,12 +101,17 @@ export class MemoryPressure {
     return () => { this.listeners.delete(listener); };
   }
 
-  /** Gate yields while the first/stale macOS probe runs; Linux admission is unchanged. */
+  /** Admission joins a sampler flight or reads its cache; it never starts a Darwin command. */
   sampleForAdmission(): MemoryPressureSnapshot | Promise<MemoryPressureSnapshot> {
     if (!this.native) return this.sample();
     if (this.stopped) return this.snapshot();
     if (this.nativeFlight) return this.nativeFlight;
     if (this.nativeAt !== null && this.monotonicNow() - this.nativeAt < MEMORY_SAMPLE_MS) return this.evaluate(this.nativeValue);
+    return this.evaluate(null);
+  }
+
+  private sampleNative(): Promise<MemoryPressureSnapshot> {
+    if (this.nativeFlight) return this.nativeFlight;
     const epoch = this.epoch;
     const flight = Promise.resolve().then(() => {
       if (this.stopped || epoch !== this.epoch) return null;
@@ -130,19 +132,19 @@ export class MemoryPressure {
   }
 
   sample(): MemoryPressureSnapshot {
-    if (this.native) { void this.sampleForAdmission(); return this.snapshot(); }
+    if (this.native) { if (!this.stopped) void this.sampleNative(); return this.snapshot(); }
     let value: HostMemory | null = null;
     try { value = this.read(); } catch { /* Unreadable data is unknown. */ }
     return this.evaluate(value);
   }
 
   private evaluate(value: HostMemory | null): MemoryPressureSnapshot {
+    if (this.platform === "darwin") return this.evaluateDarwin(value);
     const at = this.now();
     let memory: (HostMemory & { availableBytes: number }) | null = null;
     try {
       if (value && Number.isFinite(value.totalBytes) && value.totalBytes > 0
-        && value.availableBytes !== null && Number.isFinite(value.availableBytes) && value.availableBytes >= 0 && value.availableBytes <= value.totalBytes
-        && (this.platform !== "darwin" || value.availableKind === "available")) {
+        && value.availableBytes !== null && Number.isFinite(value.availableBytes) && value.availableBytes >= 0 && value.availableBytes <= value.totalBytes) {
         memory = { ...value, availableBytes: value.availableBytes };
         if (value.swapTotalBytes === null || value.swapFreeBytes === null
           || !Number.isFinite(value.swapTotalBytes) || !Number.isFinite(value.swapFreeBytes)
@@ -198,6 +200,49 @@ export class MemoryPressure {
     this.current = { level, memory, sampledAt: at, recovering: at < this.recoveryUntil, samples: this.history.length, trend };
     if (this.timer) {
       try { this.options.onSample?.(this.snapshot()); } catch { /* Diagnostics must not break admission or polling. */ }
+    }
+    for (const listener of this.listeners) {
+      try { listener(this.snapshot()); } catch { /* Observers cannot break sampling. */ }
+    }
+    return this.snapshot();
+  }
+
+  /** The kernel is authoritative even when vm_stat fails; bytes are display/trend data only. */
+  private evaluateDarwin(value: HostMemory | null): MemoryPressureSnapshot {
+    const at = this.now(), monotonicAt = this.monotonicNow();
+    const kernel = value?.darwinPressureLevel;
+    let level: MemoryPressureLevel = kernel === 1 ? "normal" : kernel === 2 ? "elevated" : kernel === 4 ? "critical" : "unknown";
+    if (level === "critical" || level === "unknown") this.recoveryUntil = 0;
+    else {
+      if (this.current.level === "critical") this.recoveryUntil = monotonicAt + MEMORY_RECOVERY_MS;
+      if (monotonicAt < this.recoveryUntil) level = "elevated";
+    }
+    const memory = value ? { ...value } : null;
+    if (memory && Number.isFinite(memory.totalBytes) && memory.totalBytes > 0
+      && memory.availableKind === "available" && memory.availableBytes !== null
+      && Number.isFinite(memory.availableBytes) && memory.availableBytes >= 0 && memory.availableBytes <= memory.totalBytes) {
+      const last = this.history.at(-1);
+      if (!last || at - last.at >= MEMORY_SAMPLE_MS) {
+        this.history.push({ at, memory: { ...memory, availableBytes: memory.availableBytes } });
+        if (this.history.length > 12) this.history.shift();
+      }
+    } else this.history = [];
+    const first = this.history[0], last = this.history.at(-1);
+    let trend: MemoryPressureSnapshot["trend"] = null;
+    if (first && last && last.at - first.at >= 60_000 && first.memory.totalBytes === last.memory.totalBytes) {
+      const minutes = (last.at - first.at) / 60_000;
+      trend = { availableBytesPerMinute: (last.memory.availableBytes - first.memory.availableBytes) / minutes,
+        swapFreeBytesPerMinute: first.memory.swapFreeBytes !== null && last.memory.swapFreeBytes !== null
+          && first.memory.swapTotalBytes === last.memory.swapTotalBytes
+          ? (last.memory.swapFreeBytes - first.memory.swapFreeBytes) / minutes : null };
+    }
+    this.current = { level, memory, sampledAt: at, recovering: monotonicAt < this.recoveryUntil, samples: this.history.length, trend };
+    if (this.timer) {
+      if (level === "unknown" && !this.unknownReported) {
+        this.unknownReported = true;
+        try { this.options.onDarwinUnknown?.(memory); } catch { /* Diagnostics cannot block admission. */ }
+      }
+      try { this.options.onSample?.(this.snapshot()); } catch { /* Diagnostics cannot block admission. */ }
     }
     for (const listener of this.listeners) {
       try { listener(this.snapshot()); } catch { /* Observers cannot break sampling. */ }

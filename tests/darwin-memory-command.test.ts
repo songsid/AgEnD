@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "node:events";
 const mocks = vi.hoisted(() => ({ execFile: vi.fn() }));
-vi.mock("node:child_process", async original => ({ ...await original<typeof import("node:child_process")>(), execFile: mocks.execFile }));
+vi.mock("node:child_process", async original => ({ ...await original<typeof import("node:child_process")>(), execFile: mocks.execFile,
+  execFileSync: vi.fn(() => { throw new Error("synchronous memory probe forbidden"); }),
+  execSync: vi.fn(() => { throw new Error("synchronous memory probe forbidden"); }),
+  spawnSync: vi.fn(() => { throw new Error("synchronous memory probe forbidden"); }) }));
 import { runMemoryCommand } from "../src/darwin-memory.js";
 afterEach(() => mocks.execFile.mockReset());
 describe("native metric command boundary", () => {
@@ -11,6 +14,7 @@ describe("native metric command boundary", () => {
     const command = runMemoryCommand("/usr/sbin/sysctl", ["vm.swapusage"]);
     // Assert outside the production catch: a mutant must fail this assertion,
     // rather than swallowing the mock's assertion as a constructor failure.
+    expect(mocks.execFile).toHaveBeenCalledOnce();
     const [file, args, options] = mocks.execFile.mock.calls[0];
     expect(file).toBe("/usr/sbin/sysctl"); expect(args).toEqual(["vm.swapusage"]);
     expect(options).toMatchObject({ encoding: "utf8", timeout: 1500, killSignal: "SIGKILL", maxBuffer: 32768, env: expect.objectContaining({ LC_ALL: "C", LANG: "C" }) });
