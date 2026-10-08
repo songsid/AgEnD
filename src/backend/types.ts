@@ -172,8 +172,8 @@ export interface InputBox {
   queued?: boolean;
 }
 
-/** The empty composer's interrupt mode (CliBackend.readSteerComposer, #1405). */
-export type SteerComposerMode = "steer" | "queue" | "idle";
+/** The composer's state (CliBackend.readSteerComposer, #1405): an empty composer's interrupt mode, or typed text in it. */
+export type SteerComposerMode = "steer" | "queue" | "idle" | "text";
 
 /** Result of probing a CLI backend's environment at startup (cached to disk). */
 export interface CliEnv {
@@ -392,10 +392,11 @@ export interface CliBackend {
 
   /**
    * What the composer does with typed input on this screen, for a CLI whose busy input either steers the running turn
-   * or waits for its end, by a mode the user switches (kiro TUI: Ctrl+S; #1405). Read off the empty composer:
-   * "steer" (busy, steers), "queue" (busy, waits for the turn's end), "idle" (the empty idle prompt); null for
-   * anything else — text in the box, a dialog, an unknown row. A steer is pasted only on "steer" (or, once the turn has
-   * ended, "idle"), never after switching the user's mode.
+   * or waits for its end, by a mode the user switches (kiro TUI: Ctrl+S; #1405). The empty composer reads "steer"
+   * (busy, steers), "queue" (busy, waits for the turn's end) or "idle" (the empty idle prompt); "text" is positive
+   * evidence the box holds typed text; null is anything it cannot vouch for — a dialog, an unknown row — and never
+   * counts as either an empty or a full box. A steer is pasted only on "steer" (or, once the turn has ended, "idle"),
+   * never after switching the user's mode.
    */
   readSteerComposer?(pane: string): SteerComposerMode | null;
 

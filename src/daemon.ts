@@ -788,6 +788,21 @@ const FIRST_ENTER_SETTLE_MS = 1_750;
 const FIRST_DELIVERY_WINDOW_MS = 5_000;
 /** After busy native-queue paste+Enter, wait before checking the pane for silent loss. */
 const NATIVE_QUEUE_PASTE_VERIFY_MS = 2_000;
+/** #1405: how long a steer's paste gets to show in a mode-switched composer before its one Enter (captures included). */
+const STEER_PASTE_VISIBLE_MS = 2_000;
+
+/** `promise`'s value if it settles within `ms`, else undefined — the late answer is dropped, never awaited (#1405). */
+async function withinMs<T>(promise: Promise<T>, ms: number): Promise<T | undefined> {
+  if (ms <= 0) { promise.catch(() => {}); return undefined; }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([promise, new Promise<undefined>(resolve => { timer = setTimeout(() => resolve(undefined), ms); })]);
+  } catch {
+    return undefined;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 /** Enter-confirmation poll: 10 × 200ms ≈ 2s of observed silence before giving up. */
 const CONFIRM_BUSY_POLLS = 10;
 const CONFIRM_BUSY_POLL_MS = 200;
@@ -6578,7 +6593,7 @@ export class Daemon extends EventEmitter {
         && readiness === "busy"
         && (await this.probeBlockingDialog()).state === "clear"
         && await this.hasPositiveDeliveryInput(true)
-        && (!opts?.steer || await this.steerComposerAdmits(false));
+        && (!opts?.steer || (this.launchTakesSteer() && await this.steerComposerAdmits(false)));
       if (canHandOff) {
         // Native queue (codex), or an explicit /steer: hand the complete
         // paste+Enter transaction to the busy CLI now. For steer this is the
@@ -6671,7 +6686,10 @@ export class Daemon extends EventEmitter {
           if (probe.state !== "clear") return "dialog";
         }
         if (!(await this.hasPositiveDeliveryInput(handingOffToNativeQueue))) return "dialog";
-        // #1405: the composer can have changed mode since the gate above (the user's Ctrl+S) — or the turn ended.
+        // #1405: a launch that no longer takes a steer is not the one the gate saw — redo from the top (bounded), where
+        // the gate sends it down the idle path. The composer can also have changed mode since (the user's Ctrl+S), or
+        // the turn ended.
+        if (handingOffToNativeQueue && opts?.steer && !this.launchTakesSteer()) return "spawn-started";
         if (handingOffToNativeQueue && opts?.steer && !(await this.steerComposerAdmits(true))) return "dialog";
         // #829: a CLI that restores a cancelled prompt into its input box would
         // have this message pasted onto it and both submitted as one. Clear it
@@ -7234,13 +7252,15 @@ export class Daemon extends EventEmitter {
   }
 
   /**
-   * Codex can paint a prompt before the TTY enters raw mode. Both are required.
-   *
-   * A hand-off into a busy pane (native queue or steer) pastes and presses Enter at once, so a backend with a structural
-   * box reader must see its box on a fresh capture first: a pane whose box cannot be read — a modal the dialog table
-   * does not know, a frame the reader refuses, a failed capture — is not one to type into (#1169 review). Asked
-   * before the hand-off is chosen and again under the pane lock, right before the write; false waits for readiness.
+   * #1405: a steer is handed to the busy pane only if THIS launch takes one — asked of the backend again at delivery,
+   * not just by the hub when it was sent: a durable steer can outlive the launch it was meant for (a restart onto a
+   * legacy UI or an unverified version), and must then wait for the idle prompt like any message. Backends that do not
+   * answer per launch leave it to the hub's name table.
    */
+  private launchTakesSteer(): boolean {
+    return this.backend?.supportsSteer?.() !== false;
+  }
+
   /**
    * #1405: a steer into a CLI whose busy input steers or queues by a mode the user switches (kiro TUI) goes in only
    * while a fresh capture reads its composer as "steer" — or "idle" once the turn has ended (`allowIdle`, the pre-write
@@ -7256,6 +7276,28 @@ export class Daemon extends EventEmitter {
     return mode === "steer" || (allowIdle && mode === "idle");
   }
 
+  /**
+   * #1405: one look at a mode-switched composer for a steer's own proof: on the tmux of this write, inside `deadline`
+   * (monotonic) — the capture is raced against the time left and a late answer dropped — and `current` asked after the
+   * await. Null when unreadable, late or no longer this write's: never evidence of an empty or a full box.
+   */
+  private async steerComposerWithin(tmux: TmuxManager, deadline: number, current: () => boolean): Promise<SteerComposerMode | null> {
+    const read = this.backend?.readSteerComposer;
+    const left = deadline - performance.now();
+    if (!read || left <= 0 || !current()) return null;
+    const pane = await withinMs(tmux.capturePane(Math.ceil(left)), left);
+    if (pane === undefined || performance.now() > deadline || !current()) return null;
+    return read.call(this.backend, pane);
+  }
+
+  /**
+   * Codex can paint a prompt before the TTY enters raw mode. Both are required.
+   *
+   * A hand-off into a busy pane (native queue or steer) pastes and presses Enter at once, so a backend with a structural
+   * box reader must see its box on a fresh capture first: a pane whose box cannot be read — a modal the dialog table
+   * does not know, a frame the reader refuses, a failed capture — is not one to type into (#1169 review). Asked
+   * before the hand-off is chosen and again under the pane lock, right before the write; false waits for readiness.
+   */
   private async hasPositiveDeliveryInput(handOff = false): Promise<boolean> {
     if (handOff && this.backend?.readInputRow) {
       if (!this.tmux) return false;
@@ -7872,6 +7914,11 @@ export class Daemon extends EventEmitter {
     let windowId = initialWindowId;
     // The spawn this write belongs to: acceptance evidence is only read while it is still the current one (#1197).
     const spawnAtWrite = this.spawnGeneration;
+    // #1405: a composer-proven steer is bound to this write's tmux and launch: every read, the Enter and the proof ask
+    // this after each await (a respawn swaps this.tmux; a stop, pause or cancel ends the caller's fence).
+    const tmuxAtWrite = this.tmux;
+    const steerCurrent = () => (!stillCurrent || stillCurrent()) && !this.deliveryWritesStopping
+      && this.tmux === tmuxAtWrite && this.spawnGeneration === spawnAtWrite;
     // Bug A: paste with backoff. Transient failures are usually a stale window id
     // after a crash/respawn — recover by name and retry (max 3 attempts, 2s apart).
     const maxAttempts = 3;
@@ -7898,6 +7945,12 @@ export class Daemon extends EventEmitter {
         && pasteBaseline?.steerComposer !== "steer" && pasteBaseline?.steerComposer !== "idle") {
         if (!verdict.durableBeginCommitted) return "handoff-box-unread";
         return this.failDelivery(verdict, status, "paste", "steer-composer-not-steering");
+      }
+      // …and the launch must still take a steer (see launchTakesSteer). Not written: before the durable begin the row
+      // is retried, as a steer the gate will then send down the idle path.
+      if (handingOffToNativeQueue && steer && !this.launchTakesSteer()) {
+        verdict.fenced = !verdict.durableBeginCommitted;
+        return false;
       }
       // Readiness, idle-gate, dialog, spawn and pane-lock waits have all ended.
       // Commit the submission fence at the last possible point before the
@@ -7995,19 +8048,37 @@ export class Daemon extends EventEmitter {
         await new Promise(r => setTimeout(r, fallbackMs));
         settle = { settleMs: fallbackMs, observedPostPasteOutput: false, capHit: false, usedFallback: true };
       }
-      // #1405: a steer into a mode-switched composer (kiro TUI) is proven by the box alone — it must hold the paste
-      // before the Enter (no longer the empty placeholder) and be empty again after it. Still the placeholder here means
-      // the paste never reached the box: no Enter into it. An unreadable look leaves the decision to the read after.
-      const steerComposerProof = handingOffToNativeQueue && steer && !!this.backend?.readSteerComposer;
+      // #1405: a steer into a mode-switched composer (kiro TUI) is proven by the box alone — before the Enter it must
+      // positively hold typed text, and after it be the empty placeholder again. The empty placeholder here means the
+      // paste never reached the box; an unreadable box (a failed or late capture, a dialog) proves nothing: no Enter.
+      const steerComposerProof = handingOffToNativeQueue && steer && !!this.backend?.readSteerComposer && tmuxAtWrite !== null;
       if (steerComposerProof) {
+        const deadline = performance.now() + STEER_PASTE_VISIBLE_MS;
         let before: SteerComposerMode | null = null;
-        try { before = this.backend!.readSteerComposer!(await this.tmux!.capturePane()); } catch { /* the post-Enter read decides */ }
-        if (before !== null) return this.failDelivery(verdict, status, "steer-paste", `box-still-${before}`);
+        for (;;) {
+          before = await this.steerComposerWithin(tmuxAtWrite!, deadline, steerCurrent);
+          if (before !== null || !steerCurrent() || performance.now() >= deadline) break;
+          await new Promise(r => setTimeout(r, Math.min(POST_ENTER_PROOF_POLL_MS, Math.max(0, deadline - performance.now()))));
+        }
+        if (!steerCurrent()) {
+          // Written but not entered, and no longer this write's pane to judge: uncertain, never retried here.
+          verdict.phase = "steer-paste";
+          verdict.proof = "fenced-before-enter";
+          return false;
+        }
+        if (before !== "text") return this.failDelivery(verdict, status, "steer-paste", before === null ? "box-unread" : `box-still-${before}`);
       }
       let enterAt = Date.now();
-      if (!(await this.sendDeliveryEnter("initial-submit", undefined, durableAttempt))) {
+      if (!(await this.sendDeliveryEnter("initial-submit", steerComposerProof ? steerCurrent : undefined, durableAttempt))) {
+        if (steerComposerProof && !steerCurrent()) {
+          verdict.phase = "submit-enter";
+          verdict.proof = "fenced-before-enter";
+          return false;
+        }
         return this.failDelivery(verdict, status, "submit-enter", "tmux-send-keys-failed");
       }
+      // The proof's whole budget, from the Enter: every capture and dialog probe inside it, a late answer dropped.
+      const steerProofDeadline = performance.now() + NATIVE_QUEUE_PASTE_VERIFY_MS + POST_ENTER_PROOF_WINDOW_MS;
 
       // Kiro's legacy TUI can swallow Enter while it is still processing a large
       // paste — not only during the post-ready redraw (#479): on slower hosts it
@@ -8052,22 +8123,30 @@ export class Daemon extends EventEmitter {
           // #1405: the box is its empty placeholder again — "steer" (taken into the turn), "queue" (the user switched
           // mode meanwhile: held for the turn's end) or "idle" (the turn over: it started one) — with no dialog and the
           // same spawn and window. Kiro paints late, so a bounded poll on a monotonic deadline. Still not empty: the
-          // Enter did not take it — uncertain, never re-pasted and never sent another Enter.
-          const deadline = performance.now() + POST_ENTER_PROOF_WINDOW_MS;
+          // Enter did not take it — uncertain, never re-pasted and never sent another Enter. Every capture and dialog
+          // probe runs inside the budget set at the Enter; the deadline and this write's fence are asked again,
+          // synchronously, right before it is accepted.
+          const deadline = steerProofDeadline;
           for (;;) {
-            let after: SteerComposerMode | null = null;
-            try { after = this.backend!.readSteerComposer!(await this.tmux!.capturePane()); } catch { /* not this look */ }
-            if (after !== null && (await this.probeBlockingDialog()).state === "clear"
-              && this.spawnGeneration === spawnAtWrite && this.getWindowId() === windowId) {
-              verdict.phase = "steer-accepted";
-              verdict.proof = `steer-composer-${after}`;
-              if (status) this.emit("message_confirmed", status); // ✅ taken from the box
-              return true;
+            const after = await this.steerComposerWithin(tmuxAtWrite!, deadline, steerCurrent);
+            if (after === "steer" || after === "queue" || after === "idle") {
+              const probe = await withinMs(this.probeBlockingDialog(), deadline - performance.now());
+              if (probe?.state === "clear" && performance.now() <= deadline && steerCurrent() && this.getWindowId() === windowId) {
+                verdict.phase = "steer-accepted";
+                verdict.proof = `steer-composer-${after}`;
+                if (status) this.emit("message_confirmed", status); // ✅ taken from the box
+                return true;
+              }
             }
             if (performance.now() >= deadline) break;
-            await new Promise(r => setTimeout(r, POST_ENTER_PROOF_POLL_MS));
+            await new Promise(r => setTimeout(r, Math.min(POST_ENTER_PROOF_POLL_MS, Math.max(0, deadline - performance.now()))));
           }
-          this.logger.warn("Steer: the composer still held the text after the Enter — outcome uncertain, not re-sent");
+          if (!steerCurrent()) {
+            verdict.phase = "steer-proof";
+            verdict.proof = "fenced";
+            return false;
+          }
+          this.logger.warn("Steer: the composer was not shown empty after the Enter in time — outcome uncertain, not re-sent");
           verdict.phase = "steer-proof";
           verdict.proof = "composer-not-emptied";
           return false;

@@ -43,20 +43,29 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-function kiro(root: string, kiroUi: "tui" | "legacy" = "tui"): KiroBackend {
+function kiro(root: string, kiroUi: "tui" | "legacy" = "tui", version = COMPAT.version): KiroBackend {
   const instanceDir = join(root, "instances", "worker");
   const work = join(root, "work");
   mkdirSync(work, { recursive: true });
-  const b = new KiroBackend(instanceDir, COMPAT);
+  const b = new KiroBackend(instanceDir, { ...COMPAT, version });
   b.buildCommand({ workingDirectory: work, instanceDir, instanceName: "worker", mcpServers: {}, kiroUi });
   return b;
 }
 
 interface Opts {
   kiroUi?: "tui" | "legacy";
-  /** The pane on each capture: before the paste, while the box holds it, after the Enter. */
-  pane?: (s: { pasted: boolean; entered: boolean; captures: number }) => string;
+  /** The pane on each capture: before the paste, while the box holds it, after the Enter. An Error is thrown; a
+   *  promise is a capture still in flight (held). `daemon` lets a capture simulate a respawn, pause or stop. */
+  pane?: (s: { pasted: boolean; entered: boolean; captures: number; daemon: any }) => string | Error | Promise<string>;
   dialogOnVerify?: boolean;
+  /** The dialog probe after the Enter takes this long (held). */
+  dialogProbeMs?: number;
+  /** The backend launched for this delivery (default: kiro-cli 2.27.1 with --tui). */
+  version?: string;
+  /** Runs as the last capture before the paste is taken (the hand-off's final admission). */
+  beforeBaseline?: (daemon: any) => void;
+  /** Called with a function that moves performance.now() forward (an event-loop stall), for panes/probes to use. */
+  stall?: { ms: number; on: "capture-before-enter" | "dialog-probe" };
   /** waitForPaneReadyForDelivery's answer (a delivery that is not handed off waits for the idle prompt). */
   becameIdle?: boolean;
 }
@@ -65,8 +74,8 @@ async function steer(opts: Opts = {}) {
   vi.useFakeTimers();
   const root = mkdtempSync(join(tmpdir(), "agend-1405d-")); roots.push(root);
   const instanceDir = join(root, "instances", "worker");
-  const backend = kiro(root, opts.kiroUi);
-  expect(backend.supportsSteer()).toBe((opts.kiroUi ?? "tui") === "tui");
+  const backend = kiro(root, opts.kiroUi, opts.version);
+  expect(backend.supportsSteer()).toBe((opts.kiroUi ?? "tui") === "tui" && (opts.version ?? COMPAT.version) === COMPAT.version);
   const outbox = new DeliveryOutbox(join(root, "delivery-outbox.db"), "manager-test");
   const daemon: any = new Daemon("worker", {
     working_directory: root, log_level: "error", backend: "kiro",
@@ -82,10 +91,20 @@ async function steer(opts: Opts = {}) {
     targetInstance: "worker", kind: "steer", payload: { type: "steer", content: "hello", meta: {} },
   }).delivery;
   const claimed = outbox.claimNext("manager-test", () => daemon.bootId, new Set())!;
-  const s = { pasted: false, entered: false, captures: 0 };
+  const s = { pasted: false, entered: false, captures: 0, daemon };
   const pane = opts.pane ?? (({ pasted, entered }) => (entered ? BUSY : pasted ? HOLDING : BUSY));
+  // An event-loop stall: the continuation after an answer runs this much later than the answer itself.
+  let stallOffset = 0;
+  const realNow = performance.now.bind(performance);
+  vi.spyOn(performance, "now").mockImplementation(() => realNow() + stallOffset);
   const tmux = {
-    capturePane: vi.fn(async () => { s.captures++; return pane(s); }),
+    capturePane: vi.fn(async () => {
+      s.captures++;
+      const v = await pane(s);
+      if (v instanceof Error) throw v;
+      if (opts.stall?.on === "capture-before-enter" && s.pasted && !s.entered) stallOffset += opts.stall.ms;
+      return v;
+    }),
     pasteBuffer: vi.fn(async () => { s.pasted = true; return true; }),
     sendSpecialKey: vi.fn(async () => { s.entered = true; return true; }),
     getLastPasteError: vi.fn(), isLastPasteFailureRecoverable: vi.fn(() => true), getLastSendSpecialKeyError: vi.fn(),
@@ -98,11 +117,23 @@ async function steer(opts: Opts = {}) {
   const waitIdle = vi.spyOn(daemon, "waitForPaneReadyForDelivery").mockResolvedValue(opts.becameIdle ?? false);
   const clear = { state: "clear" } as const;
   const dialog = { state: "dialog", dialog: { description: "a dialog" } } as any;
+  const verifyProbe = () => {
+    // the stall lands as the probe answers: its budget was positive when asked, the continuation runs past it
+    if (opts.stall?.on === "dialog-probe") return Promise.resolve().then(() => { stallOffset += opts.stall!.ms; return clear; });
+    if (opts.dialogProbeMs === Infinity) return new Promise(() => {});      // never answers
+    return opts.dialogProbeMs
+      ? new Promise(r => setTimeout(() => r(clear), opts.dialogProbeMs))
+      : Promise.resolve(opts.dialogOnVerify ? dialog : clear);
+  };
   vi.spyOn(daemon, "probeBlockingDialog").mockResolvedValueOnce(clear).mockResolvedValueOnce(clear)
-    .mockResolvedValue(opts.dialogOnVerify ? dialog : clear);
+    .mockImplementation(verifyProbe as any);
   vi.spyOn(daemon, "hasPositiveDeliveryInput").mockResolvedValue(true);
   const admits = vi.spyOn(daemon, "steerComposerAdmits");
-  const baseline = vi.spyOn(daemon, "capturePaneEvidence");
+  const realBaseline = daemon.capturePaneEvidence.bind(daemon);
+  const baseline = vi.spyOn(daemon, "capturePaneEvidence").mockImplementation(async (...args: unknown[]) => {
+    opts.beforeBaseline?.(daemon);
+    return realBaseline(...args);
+  });
   const meta = {
     delivery_id: row.deliveryId, delivery_attempt: String(claimed.attemptNo), from_instance: "source", correlation_id: "c",
     user: "instance:source", user_id: "instance:source", message_id: "message-1405", chat_id: "", thread_id: "", ts: new Date().toISOString(),
@@ -112,7 +143,7 @@ async function steer(opts: Opts = {}) {
   await daemon.steerLock;
   const db = (outbox as any).db;
   return {
-    outbox, tmux, waitIdle,
+    outbox, tmux, waitIdle, daemon,
     /** Each composer admission asked, by its allowIdle argument: false = the hand-off gate, true = the pre-write re-check. */
     admitted: await Promise.all(admits.mock.calls.map(async (args, i) => [args[0], await admits.mock.results[i]!.value])),
     baselineReads: baseline.mock.calls.length,
@@ -226,6 +257,152 @@ describe("a steer that is not handed off: it waits for the idle prompt like any 
     const r = await steer({ kiroUi: "legacy" });
     expect(r.waitIdle).toHaveBeenCalled();
     expect(r.tmux.pasteBuffer).not.toHaveBeenCalled();
+    r.outbox.close();
+  });
+});
+
+describe("#1432 review: what is not proof, and what no longer belongs to this write", () => {
+  const held = (ms: number, value: string) => new Promise<string>(r => setTimeout(() => r(value), ms));
+
+  it("a failed capture before the Enter is not 'the box holds the paste': no Enter, not delivered (P1)", async () => {
+    // the paste was swallowed: every readable frame is the empty steer composer; only the pre-Enter reads fail
+    const r = await steer({ pane: ({ pasted, entered }) => (pasted && !entered ? new Error("capture failed") : BUSY) });
+    expect(r.tmux.sendSpecialKey).not.toHaveBeenCalled();
+    expect(r.delivery.state).not.toBe("delivered");
+    expect(r.attempt.evidence).toBe("steer-paste:box-unread");
+    r.outbox.close();
+  });
+
+  it("…while a readable box holding the paste is the control: entered once, delivered", async () => {
+    const r = await steer({ pane: ({ pasted, entered }) => (entered ? BUSY : pasted ? HOLDING : BUSY) });
+    expect(r.tmux.sendSpecialKey).toHaveBeenCalledOnce();
+    expect(r.delivery.state).toBe("delivered");
+    r.outbox.close();
+  });
+
+  it("a respawn during the pre-Enter read: no Enter on either tmux, not delivered (P2)", async () => {
+    const replacement = { capturePane: vi.fn(async () => BUSY), sendSpecialKey: vi.fn(async () => true), pasteBuffer: vi.fn(),
+      getLastSendSpecialKeyError: vi.fn(), getWindowId: () => "@worker" };
+    const r = await steer({ pane: ({ pasted, entered, daemon }) => {
+      if (pasted && !entered && daemon.tmux !== replacement) { daemon.spawnGeneration += 1; daemon.tmux = replacement; }
+      return pasted ? HOLDING : BUSY;
+    } });
+    expect(r.tmux.sendSpecialKey).not.toHaveBeenCalled();
+    expect(replacement.sendSpecialKey).not.toHaveBeenCalled();
+    expect(r.delivery.state).not.toBe("delivered");
+    r.outbox.close();
+  });
+
+  it("a pause during the pre-Enter read (the launch fence moves): no Enter (P2)", async () => {
+    const r = await steer({ pane: ({ pasted, entered, daemon }) => {
+      if (pasted && !entered) daemon.launchFenceEpoch += 1;
+      return pasted ? HOLDING : BUSY;
+    } });
+    expect(r.tmux.sendSpecialKey).not.toHaveBeenCalled();
+    expect(r.delivery.state).not.toBe("delivered");
+    r.outbox.close();
+  });
+
+  it("a stop after the Enter: the later empty frame is not accepted (P2)", async () => {
+    const r = await steer({ pane: ({ pasted, entered, daemon }) => {
+      if (entered) { daemon.deliveryWritesStopping = true; return BUSY; }
+      return pasted ? HOLDING : BUSY;
+    } });
+    expect(r.tmux.sendSpecialKey).toHaveBeenCalledOnce();
+    expect(r.delivery.state).toBe("uncertain");
+    expect(r.attempt.evidence).toBe("steer-proof:fenced");
+    r.outbox.close();
+  });
+
+  it("a saved steer replayed to a launch that does not take one waits for the idle prompt (P3)", async () => {
+    const r = await steer({ version: "kiro-cli 2.28.0" });              // TUI, composer reads steer, version unverified
+    expect(r.waitIdle).toHaveBeenCalled();
+    expect(r.tmux.pasteBuffer).not.toHaveBeenCalled();
+    r.outbox.close();
+  });
+
+  it("…and a launch replaced by an unverified one after the gate is sent back to the top, then down the idle path (P3)", async () => {
+    const r = await steer({ pane: ({ captures, daemon }) => {
+      // the gate (capture 1) saw a supported launch; by the pre-write re-check the instance runs an unverified version
+      if (captures === 1) (daemon.backend as any).compatibility = { ...COMPAT, version: "kiro-cli 2.28.0" };
+      return BUSY;
+    } });
+    expect(r.tmux.pasteBuffer).not.toHaveBeenCalled();
+    expect(r.waitIdle).toHaveBeenCalled();
+    r.outbox.close();
+  });
+
+  it("a draft arriving after the gate — even one starting with the idle placeholder's words — is not written onto (P4)", async () => {
+    const draft = composer("›  ask a question or describe a task that retrieves my logs");
+    const r = await steer({ pane: ({ captures }) => (captures <= 1 ? BUSY : draft) });
+    expect(r.tmux.pasteBuffer).not.toHaveBeenCalled();
+    r.outbox.close();
+  });
+
+  it("a capture held past the proof's budget is dropped: uncertain, never delivered late (P5)", async () => {
+    const r = await steer({ pane: ({ pasted, entered }) => (entered ? held(4_000, BUSY) : pasted ? HOLDING : BUSY) });
+    expect(r.delivery.state).toBe("uncertain");
+    expect(r.attempt.evidence).toBe("steer-proof:composer-not-emptied");
+    r.outbox.close();
+  });
+
+  it("a dialog probe held past the budget is dropped too (P5)", async () => {
+    const r = await steer({ dialogProbeMs: 10_000 });
+    expect(r.delivery.state).toBe("uncertain");
+    expect(r.attempt.evidence).toBe("steer-proof:composer-not-emptied");
+    r.outbox.close();
+  });
+
+  it("…and one that never answers does not hold the delivery (P5)", async () => {
+    const r = await steer({ dialogProbeMs: Infinity });
+    expect(r.delivery.state).toBe("uncertain");
+    expect(r.attempt.evidence).toBe("steer-proof:composer-not-emptied");
+    r.outbox.close();
+  });
+
+  it("…while a slow capture inside the budget is the control: delivered (P5)", async () => {
+    const r = await steer({ pane: ({ pasted, entered }) => (entered ? held(500, BUSY) : pasted ? HOLDING : BUSY), dialogProbeMs: 200 });
+    expect(r.delivery.state).toBe("delivered");
+    r.outbox.close();
+  });
+});
+
+describe("#1432 review: each guard on its own", () => {
+  it("a tmux swapped during the pre-Enter read, with no new spawn, still gets no Enter: the write is bound to its tmux", async () => {
+    const replacement = { capturePane: vi.fn(async () => BUSY), sendSpecialKey: vi.fn(async () => true), pasteBuffer: vi.fn(),
+      getLastSendSpecialKeyError: vi.fn(), getWindowId: () => "@worker" };
+    const r = await steer({ pane: ({ pasted, entered, daemon }) => {
+      if (pasted && !entered) daemon.tmux = replacement;
+      return pasted ? HOLDING : BUSY;
+    } });
+    expect(r.tmux.sendSpecialKey).not.toHaveBeenCalled();
+    expect(replacement.sendSpecialKey).not.toHaveBeenCalled();
+    r.outbox.close();
+  });
+
+  it("a launch that stops taking a steer at the very last capture is not written to", async () => {
+    const r = await steer({ beforeBaseline: daemon => { (daemon.backend as any).compatibility = { ...COMPAT, version: "kiro-cli 2.28.0" }; } });
+    expect(r.tmux.pasteBuffer).not.toHaveBeenCalled();
+    r.outbox.close();
+  });
+
+  it("a capture that never answers after the Enter does not hold the delivery: uncertain at the deadline", async () => {
+    const r = await steer({ pane: ({ pasted, entered }) => (entered ? new Promise<string>(() => {}) : pasted ? HOLDING : BUSY) });
+    expect(r.delivery.state).toBe("uncertain");
+    expect(r.attempt.evidence).toBe("steer-proof:composer-not-emptied");
+    r.outbox.close();
+  });
+
+  it("an answer that arrives after a stall past the pre-Enter budget is dropped: no Enter", async () => {
+    const r = await steer({ stall: { ms: 10_000, on: "capture-before-enter" } });
+    expect(r.tmux.sendSpecialKey).not.toHaveBeenCalled();
+    expect(r.attempt.evidence).toBe("steer-paste:box-unread");
+    r.outbox.close();
+  });
+
+  it("a dialog probe answering 'clear' after a stall past the proof's deadline is not accepted", async () => {
+    const r = await steer({ stall: { ms: 10_000, on: "dialog-probe" } });
+    expect(r.delivery.state).toBe("uncertain");
     r.outbox.close();
   });
 });

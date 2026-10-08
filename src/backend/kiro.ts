@@ -74,22 +74,31 @@ export const KIRO_STEER_VERIFIED: Readonly<Record<string, ReadonlyArray<"tui" | 
  *
  *   `› Kiro is working · 12s · Type to steer · Ctrl+S to queue`   → "steer"
  *   `› Kiro is working · 12s · Type to queue · Ctrl+S to steer`   → "queue"  (also `· Type to queue` alone: a spec task run)
- *   `› ask a question or describe a task ↵`                        → "idle"
+ *   `› ask a question or describe a task ↵`                        → "idle"  (exactly; also plan mode's and tangent's
+ *                                                                      complete forms — never a prefix of typed text)
  *
- * The toggle key's label is whatever the user bound; it is read past, never pressed. Text in the box replaces the
- * placeholder, and goal, editing and initializing placeholders are other modes — all of them read null.
+ * Any other text on the composer's row is typed text: "text" — positive evidence the box holds something. The goal,
+ * editing, initializing, spec-description and shell placeholders are other modes, and the ASCII glyph set (`.`/`enter`,
+ * never seen on a real pane of ours) is not read: null, like a screen with no composer row (a dialog) — null is never
+ * evidence of either an empty or a full box. The toggle key's label is whatever the user bound; it is read past, never
+ * pressed.
  */
 export function readKiroSteerComposer(pane: string): SteerComposerMode | null {
   const rows = pane.split("\n").map(row => row.replace(/\s+$/, ""));
   let i = rows.length - 1;
   while (i >= 0 && (rows[i] === "" || /^[ \t]{20,}\S/.test(rows[i]))) i--;
   const row = rows[i];
-  if (row === undefined) return null;
+  if (row === undefined || !/^›[ \t]+\S/.test(row)) return null;
   const working = String.raw`^›[ \t]+Kiro is working(?:[ \t]+·[ \t]+[^·]+?)?[ \t]+·[ \t]+`;
   if (new RegExp(`${working}Type to steer[ \\t]+·[ \\t]+[^·]+?[ \\t]+to queue$`).test(row)) return "steer";
   if (new RegExp(`${working}Type to queue(?:[ \\t]+·[ \\t]+[^·]+?[ \\t]+to steer)?$`).test(row)) return "queue";
-  if (/^›[ \t]+ask a question or describe a task\b/.test(row)) return "idle";
-  return null;
+  const idle = String.raw`^›[ \t]+ask a question or describe a task`;
+  if (new RegExp(`${idle}[ \\t]+↵$`).test(row)
+    || new RegExp(`${idle}[ \\t]+↵[ \\t]+·[ \\t]+exit plan mode: shift\\+tab$`).test(row)
+    || new RegExp(`${idle}[ \\t]+·[ \\t]+/tangent to go back[ \\t]+·[ \\t]+/tangent ls to view$`).test(row)) return "idle";
+  // Other placeholders (and anything the ASCII glyph set paints) are not typed text.
+  if (/^›[ \t]+(?:Kiro is working\b|Goal (?:Active|Paused):|Editing queued message \d|Initializing\b|describe what "|running shell command\b|ask a question or describe a task (?:\.|enter\b))/.test(row)) return null;
+  return "text";
 }
 
 export interface KiroCliCompatibility {

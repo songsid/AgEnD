@@ -55,11 +55,26 @@ describe("readKiroSteerComposer — the placeholder's other outputs (TEMPLATE)",
     expect(readKiroSteerComposer(withComposer("›  Kiro is working · 4s · Type to steer · Alt+Q to queue"))).toBe("steer");
   });
 
-  it("text in the box, and the goal, editing and initializing placeholders, are not a mode", () => {
-    expect(readKiroSteerComposer(withComposer("›  [STEERING — mid-task course correction.]"))).toBeNull();
-    expect(readKiroSteerComposer(withComposer("›  Goal Active: Running · Iteration 2/10 · Ctrl+C to pause"))).toBeNull();
-    expect(readKiroSteerComposer(withComposer("›  Editing queued message 1 · esc to cancel"))).toBeNull();
-    expect(readKiroSteerComposer(withComposer("›  Initializing · type to queue a message"))).toBeNull();
+  it("typed text in the box reads text — positive evidence it holds something", () => {
+    expect(readKiroSteerComposer(withComposer("›  [STEERING — mid-task course correction.]"))).toBe("text");
+    // a draft that begins with the idle placeholder's words is a draft, not the empty prompt (#1432 review)
+    expect(readKiroSteerComposer(withComposer("›  ask a question or describe a task that retrieves my logs"))).toBe("text");
+    expect(readKiroSteerComposer(withComposer("›  ask a question or describe a task ↵ and more"))).toBe("text");
+  });
+
+  it("the goal, editing, initializing, spec and shell placeholders, the ASCII glyph set, and no composer row are null", () => {
+    for (const row of [
+      "›  Goal Active: Running · Iteration 2/10 · Ctrl+C to pause",
+      "›  Goal Paused: Running · Iteration 2/10 · type to resume · Ctrl+C to cancel",
+      "›  Editing queued message 1 · esc to cancel",
+      "›  Initializing · type to queue a message",
+      "›  describe what \"auth\" should do · esc to cancel",
+      "›  running shell command · ctrl+c to cancel",
+      "›  Kiro is working . 3s . Type to steer . Ctrl+S to queue",     // ASCII glyphs: never seen live, not read
+      "›  ask a question or describe a task enter",
+      "›  Kiro is working · 3s · something new",
+    ]) expect(readKiroSteerComposer(withComposer(row)), row).toBeNull();
+    expect(readKiroSteerComposer(TUI_BUSY.replace(COMPOSER, "│ Allow this action? [y/n]"))).toBeNull();   // no composer row
   });
 
   it("only the composer's own row counts: an indented transcript row quoting it is not one", () => {
