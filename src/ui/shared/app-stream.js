@@ -56,13 +56,19 @@ export function createStream(opts) {
   }
 
   /**
-   * One /ui/poll; true when it was read and applied. Never two at once: a poll asked for meanwhile runs after it. A
-   * poll that has not answered within POLL_LIMIT_MS counts as failed — its late answer is ignored — so one stuck
-   * request can never hold up the polls after it.
+   * One /ui/poll; true when it was read and applied.
+   * - Ordered against the live stream, whatever asked for it (the fallback loop, a catch-up, a poll queued behind
+   *   another): live events that arrive while it is in flight are held and replayed after its snapshot, so an older
+   *   snapshot never lands on top of newer events (#1425 review).
+   * - Never two at once: a poll asked for meanwhile runs after it — unless the caller only wants the current read
+   *   (`join`, the catch-up): then it waits for that one and queues nothing.
+   * - One that has not answered within POLL_LIMIT_MS counts as failed and its late answer is ignored, so a stuck
+   *   request never holds up the polls after it (or the live events it holds).
    */
-  function pollOnce() {
-    if (polling) { pollAgain = true; return polling; }
+  function pollOnce(opts = {}) {
+    if (polling) { if (!opts.join) pollAgain = true; return polling; }
     const mine = ++pollSeq;
+    if (sse && !held) held = [];
     let limit = null;
     const read = (async () => {
       try {
@@ -82,8 +88,11 @@ export function createStream(opts) {
     const timedOut = new Promise((resolve) => { limit = env.setTimeout(() => { if (mine === pollSeq) pollSeq++; resolve(false); }, POLL_LIMIT_MS); });
     polling = Promise.race([read, timedOut]).finally(() => {
       env.clearTimeout(limit);
+      if (mine === pollSeq) pollSeq++;               // whatever this read still does from here on is ignored
       polling = null;
-      if (pollAgain && !closed) { pollAgain = false; pollOnce(); }
+      if (closed) { held = null; return; }
+      if (release()) pollAgain = true;                // too much arrived to keep: what was kept is applied; read again
+      if (pollAgain) { pollAgain = false; pollOnce(); }
     });
     return polling;
   }
@@ -113,12 +122,10 @@ export function createStream(opts) {
     setHydration("catching");
     catching = (async () => {
       for (let attempt = 0; ; attempt++) {
-        if (sse && !held) held = [];
-        const ok = await pollOnce();
-        if (closed) { held = null; return false; }
-        const overflowed = release();
-        if (ok && !overflowed) { catching = null; setHydration("ok"); return true; }
-        if (ok && overflowed) continue;               // too much arrived meanwhile to keep in order: read once more
+        // A poll already on its way will do (its answer reaches the listener that just attached); nothing is queued.
+        const ok = await pollOnce({ join: true });
+        if (closed) return false;
+        if (ok) { catching = null; setHydration("ok"); return true; }
         if (attempt >= RETRY_DELAYS.length) { catching = null; setHydration("failed"); return false; }
         setHydration("retrying");
         await new Promise((resolve) => { retryTimer = env.setTimeout(resolve, RETRY_DELAYS[attempt]); });

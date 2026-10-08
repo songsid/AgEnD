@@ -394,10 +394,55 @@ describe("catching up (#1425 review r3)", () => {
     const done = s.catchUp();
     for (let i = 0; i < 1200; i++) h.sources[0].listeners.delivery({ data: JSON.stringify({ i }) });
     h.reads[0]!.open(snap());
-    await vi.waitFor(() => expect(h.reads).toHaveLength(2));
+    await expect(done).resolves.toBe(true);
+    await vi.waitFor(() => expect(h.reads).toHaveLength(2));   // the read again, itself ordered
     expect(n).toBe(1000);
     h.reads[1]!.open(snap());
+    s.close();
+  });
+
+  it("a catch-up joining a poll already on its way: that read serves it, nothing extra is queued, and its snapshot is ordered", async () => {
+    vi.useFakeTimers();
+    const { createStream } = await import("/assets/app-stream.js") as { createStream(o: unknown): any };
+    const h = heldEnv();
+    const s = createStream({ mode: "full", env: h.env });
+    const seen: string[] = [];
+    for (const n of ["prompts", "prompt", "prompt_resolved"]) s.on(n, (d: any) => seen.push(`${n}:${d.nonce ?? (Array.isArray(d) ? d.map((x: any) => x.nonce).join("+") : "")}`));
+    s.start();
+    h.sources[0].onerror();
+    await vi.advanceTimersByTimeAsync(5_000);                 // the stream is down: fallback poll A starts, and hangs
+    expect(h.reads).toHaveLength(1);
+    const done = s.catchUp();                                 // the chat attaches now (Retry)
+    expect(h.reads).toHaveLength(1);
+    h.sources[0].listeners.prompt_resolved({ data: JSON.stringify({ nonce: "P1" }) });   // the stream is back meanwhile
+    h.sources[0].listeners.prompt({ data: JSON.stringify({ nonce: "P3" }) });
+    h.reads[0]!.open(snap({ prompts: [{ nonce: "P1" }] }));
     await expect(done).resolves.toBe(true);
+    expect(seen).toEqual(["prompts:P1", "prompt_resolved:P1", "prompt:P3"]);
+    await vi.advanceTimersByTimeAsync(20_000);                // (the stream spoke: its own 30 s silence fallback is not due)
+    expect(h.reads).toHaveLength(1);                          // no extra snapshot was queued by the join
+    s.close();
+  });
+
+  it("any poll is ordered: live events during a queued or fallback read are replayed after its (older) snapshot", async () => {
+    vi.useFakeTimers();
+    const { createStream } = await import("/assets/app-stream.js") as { createStream(o: unknown): any };
+    const h = heldEnv();
+    const s = createStream({ mode: "full", env: h.env });
+    const seen: string[] = [];
+    for (const n of ["prompts", "prompt", "prompt_resolved", "message"]) s.on(n, (d: any) => seen.push(`${n}:${d.nonce ?? d.id ?? (Array.isArray(d) ? d.map((x: any) => x.nonce).join("+") : "")}`));
+    s.start();
+    s._pollOnce(); s._pollOnce();                             // A, and B queued behind it
+    expect(h.reads).toHaveLength(1);
+    h.reads[0]!.open(snap({ prompts: [{ nonce: "P1" }], cursor: "1-5" }));
+    await vi.waitFor(() => expect(h.reads).toHaveLength(2));  // B on its way, with A's cursor
+    h.sources[0].listeners.prompt_resolved({ data: JSON.stringify({ nonce: "P1" }) });
+    h.sources[0].listeners.prompt({ data: JSON.stringify({ nonce: "P3" }) });
+    h.sources[0].listeners.message({ data: JSON.stringify({ id: 6 }), lastEventId: "1-6" });
+    h.reads[1]!.open(snap({ prompts: [{ nonce: "P1" }], cursor: "1-5" }));   // B's snapshot is older than those events
+    await vi.advanceTimersByTimeAsync(0);
+    expect(seen).toEqual(["prompts:P1", "prompts:P1", "prompt_resolved:P1", "prompt:P3", "message:6"]);
+    expect(s.cursor()).toBe("1-6");                          // not rewound to the snapshot's
     s.close();
   });
 
@@ -407,11 +452,13 @@ describe("catching up (#1425 review r3)", () => {
     const s = createStream({ mode: "full", transport: "poll", env: h.env });
     s.start();                                                // the public link polls at once
     expect(h.reads).toHaveLength(1);
-    const c = s.catchUp();
-    expect(h.reads).toHaveLength(1);                          // not a second read alongside the first
+    const c = s.catchUp();                                    // joins the read on its way: queues nothing
+    const next = s._pollOnce();                               // a poll asked for meanwhile is queued, not run alongside
+    expect(h.reads).toHaveLength(1);
     h.reads[0]!.open(snap({ cursor: "1-7" }));
     await expect(c).resolves.toBe(true);
     await vi.waitFor(() => expect(h.reads).toHaveLength(2));  // then the one asked for meanwhile
+    void next;
     expect(h.reads[1]!.url).toBe("/ui/poll?after=1-7");
     h.reads[1]!.open(snap());
     s.close();

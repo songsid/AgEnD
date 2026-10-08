@@ -126,6 +126,30 @@ describe("Retry after a failed first load of the chat", () => {
     expect(s.sources).toHaveLength(1);
   });
 
+  it("a fallback poll already on its way when Retry loads the chat: the catch-up joins it, and the live events after it win", async () => {
+    const h = held();
+    const s = await scenario([h.answer]);
+    s.sources[0].onerror();                                   // the stream drops: fallback poll A after 5 s, and it hangs
+    await vi.waitFor(() => expect(s.requests.filter(r => r.startsWith("GET /ui/poll"))).toHaveLength(1), { timeout: 8000 });
+    s.retry();                                                // the chat loads now and catches up — on A
+    await settle(6);
+    expect(s.polls()).toBe(0);                                // (retry() cleared the log: no new read was made)
+    h.open();
+    await vi.waitFor(() => expect(s.cards()).toEqual([{ text: "still open", done: false, buttons: [true] }]));
+    // The stream is back: P1 answered elsewhere, P3 posted, a new message.
+    s.send("prompt_resolved", { instance: "alpha", nonce: P1, outcome: "answered on Discord" });
+    s.send("prompt", prompt(P3, "posted meanwhile"));
+    s.send("message", { ...MSG, id: 6, text: "later", messageId: "m6" }, "1-6");
+    await settle(6);
+    await new Promise(r => setTimeout(r, 6000));              // long enough for any queued or fallback read to land
+    expect(s.cards()).toEqual([
+      { text: "answered on Discord", done: true, buttons: [] },
+      { text: "posted meanwhile", done: false, buttons: [true] },
+    ]);
+    expect(s.polls()).toBe(0);                                // nothing was queued behind A, and the stream speaks again
+    expect(s.sources).toHaveLength(1);
+  }, 25_000);
+
   it("a failed catch-up read (network, then bad JSON) is retried, says so meanwhile, then shows what is open", async () => {
     const s = await scenario([
       async () => { throw new Error("offline"); },
