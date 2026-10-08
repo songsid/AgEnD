@@ -3075,15 +3075,40 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
-  /** Fleet admin is an explicit config allowlist entry, not merely an open/paired user. */
+  /**
+   * The fleet-admin list of exactly this adapter (#754): its `access.allowed_users`, read from fleet.yaml. An adapter
+   * id that matches no configured channel and no running adapter has NO list — it is never answered with the primary
+   * channel's, as `getChannelConfig` would. No id at all means the primary adapter, a single-adapter fleet's only one.
+   */
+  private adminListOf(adapterId?: string): string[] | null {
+    const channels = this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
+    const id = adapterId ?? this.getPrimaryAdapterId();
+    if (!id) return null;
+    const config = channels.find(ch => (ch.id ?? ch.type) === id) ?? this.worlds.get(id)?.channelConfig;
+    return config ? (config.access?.allowed_users ?? []).map(String) : null;
+  }
+
+  /**
+   * The one fleet-admin gate (#754): is this user an admin of the adapter that OWNS what they are acting on — the
+   * target instance's or General's adapter, never merely the one the request arrived on. An empty list means nobody
+   * (`disabled`, so the reply can say admin commands are off); an unknown adapter means nobody either (`denied`).
+   * Fleet admin is an explicit config entry: a paired or open-mode user is not one.
+   */
+  adminGate(userId: string, ownerAdapterId?: string): "ok" | "disabled" | "denied" {
+    const list = this.adminListOf(ownerAdapterId);
+    if (!list) return "denied";
+    if (list.length === 0) return "disabled";
+    return list.includes(String(userId)) ? "ok" : "denied";
+  }
+
+  /** Fleet admin is an explicit config allowlist entry, not merely an open/paired user. See adminGate. */
   isFleetAdmin(userId: string, adapterId?: string): boolean {
-    const allowed = this.getChannelConfig(adapterId)?.access?.allowed_users ?? [];
-    return allowed.some(entry => String(entry) === String(userId));
+    return this.adminGate(userId, adapterId) === "ok";
   }
 
   /** Whether this adapter has any fleet admin at all (an empty allowlist means the admin commands are off). */
   hasFleetAdmins(adapterId?: string): boolean {
-    return (this.getChannelConfig(adapterId)?.access?.allowed_users ?? []).length > 0;
+    return (this.adminListOf(adapterId)?.length ?? 0) > 0;
   }
 
   /**
@@ -3094,8 +3119,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * type a slash command could `/update` the host.
    */
   fleetAdminGate(userId: string, adapterId?: string): "ok" | "disabled" | "denied" {
-    if (!this.hasFleetAdmins(adapterId)) return "disabled";
-    return this.isFleetAdmin(userId, adapterId) ? "ok" : "denied";
+    return this.adminGate(userId, adapterId);
   }
 
   private runtimeCpuProfiler: RuntimeCpuProfiler | null = null;
@@ -3132,10 +3156,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * this caller speak here at all) and then the COMMAND TABLE (src/command-table.ts — does this command apply
    * in this kind of channel, and which kind of admin does it need). The table can only narrow what the door
    * let through. A command nobody registered is answered, not left to time out.
+   *
+   * The door, the table and the start of the command run in one synchronous stretch (#1399 review): no await between
+   * the check and the act, so the channel's instance cannot be rebound to another bot in between.
    */
   private async dispatchSlash(data: ClassicStartSlashData, adapterId: string, adapter: ChannelAdapter): Promise<void> {
-    const scope = await this.authorizeSlash(data, adapterId);
-    if (!scope) return;
+    const door = this.slashDoor(data, adapterId);
+    if ("refusal" in door) {
+      await data.respond(t(door.refusal)).catch(() => { /* the interaction may already be gone */ });
+      return;
+    }
+    const scope = door.scope;
 
     const spec = commandSpec(data.command);
     if (!spec) {
@@ -3310,10 +3341,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /**
-   * The door every Discord slash command goes through (src/slash-authz.ts has the rule and the reasoning).
-   * Answers the caller itself when it refuses, so a refused command costs one reply and does nothing else.
+   * The door every Discord slash command goes through (src/slash-authz.ts has the rule and the reasoning): the scope
+   * it lets the command into, or the reply that refuses it. Synchronous, so the dispatch acts on what it judged.
    */
-  private async authorizeSlash(data: ClassicStartSlashData, adapterId: string): Promise<CommandScope | null> {
+  private slashDoor(data: ClassicStartSlashData, adapterId: string): { scope: CommandScope } | { refusal: string } {
     const channelId = data.channelId;
     const classic = !!this.classicChannels?.isClassicChannel(channelId, adapterId);
     const fleetTarget = classic ? undefined : this.routing.resolve(channelId);
@@ -3348,18 +3379,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // mode saves fleet config or unlocks tips; bare /tips only draws one (#1396 review).
       fleetAdminCommand: (!!rule && "level" in rule && rule.level === "fleet-admin")
         || (data.command === "tips" && typeof data.options?.mode === "string" && data.options.mode.trim() !== ""),
+      otherBotOwns: !!fleetTarget && !!this.getInstanceAdapterId(fleetTarget.name) && this.getInstanceAdapterId(fleetTarget.name) !== adapterId,
     };
     const decision = decideSlash(facts);
-    if (decision.allow) return commandScope;
+    if (decision.allow) return { scope: commandScope };
 
     this.logger.info(
       { command: data.command, reason: decision.reason, adapterId, guildId: data.guildId ?? null, channelId, scope },
       "Slash command refused",
     );
-    await data.respond(t(decision.reason === "dm" ? "slash.dm_unsupported"
+    return { refusal: decision.reason === "dm" ? "slash.dm_unsupported"
       : decision.reason === "wrong-guild" ? "slash.wrong_server"
-      : "not_authorized")).catch(() => { /* the interaction may already be gone */ });
-    return null;
+      : decision.reason === "other-bot" ? "slash.other_bot"
+      : "not_authorized" };
   }
 
   /** Phase 2: delivery_worker for a target (instance override → fleet default → wake_only). */
@@ -6700,7 +6732,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
         const pauseWake = parsePauseWakeCommand(text);
         if (pauseWake) {
-          if (!this.classicChannels.isAdmin(msg.userId)) {
+          // Channel-admin, as on Discord (#754): a fleet admin of this bot or a ClassicBot admin.
+          if (!this.isModelAdmin(msg.userId, chatId, msg.adapterId)) {
             await msgAdapter?.sendText(chatId, t("permission.denied"));
             return;
           }
@@ -6745,7 +6778,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // Handle /compact command (admin only)
         const classicCompact = parseCompactCommand(text);
         if (classicCompact) {
-          if (!this.classicChannels.isAdmin(msg.userId)) {
+          // Channel-admin, as on Discord (#754): a fleet admin of this bot or a ClassicBot admin.
+          if (!this.isModelAdmin(msg.userId, chatId, msg.adapterId)) {
             await msgAdapter?.sendText(chatId, t("cmd.admin_required", "/compact"));
             return;
           }
@@ -6846,7 +6880,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
         // Handle /save command (admin only)
         if (text === "/save" || text.startsWith("/save ") || text.startsWith("/save@")) {
-          if (!this.classicChannels.isAdmin(msg.userId)) {
+          // Channel-admin, as on Discord (#754): a fleet admin of this bot or a ClassicBot admin.
+          if (!this.isModelAdmin(msg.userId, chatId, msg.adapterId)) {
             await msgAdapter?.sendText(chatId, t("cmd.admin_required", "/save"));
             return;
           }

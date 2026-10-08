@@ -1,3 +1,4 @@
+import { TEST_KIRO_COMPAT } from "./helpers/kiro-compat.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -32,7 +33,7 @@ function daemon() {
     context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
     hang_detector: { enabled: false, timeout_minutes: 10, idle_debounce_ms: 10 },
     log_level: "silent",
-  } as any, dir, false, new KiroBackend(dir) as any, undefined, { child: () => logger } as any) as any;
+  } as any, dir, false, new KiroBackend(dir, TEST_KIRO_COMPAT) as any, undefined, { child: () => logger } as any) as any;
 }
 
 const authPattern = (d: any) =>

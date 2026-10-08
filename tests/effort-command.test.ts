@@ -163,3 +163,5 @@ describe("resolveInstanceEffort", () => {
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 });
+import { installKiroCompatibilityFixture } from "./helpers/kiro-process-stub.js";
+installKiroCompatibilityFixture();

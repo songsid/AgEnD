@@ -1,9 +1,12 @@
-import { spawn, execFile, type ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { createInterface, type Interface } from "node:readline";
+import { StringDecoder } from "node:string_decoder";
+import { randomUUID } from "node:crypto";
 import type { Logger } from "./logger.js";
 import { getTmuxSocketName } from "./paths.js";
 import { measureSyncWork } from "./sync-work-attribution.js";
+import { TmuxReadLane, TmuxReadError, TMUX_READ_MAX_BYTES, tmuxReadArgs, tmuxCommandToken,
+  type TmuxReadQuery, type TmuxReadPort } from "./tmux-read.js";
 
 export interface TmuxPaneOutputEvent {
   paneId: string;
@@ -12,6 +15,13 @@ export interface TmuxPaneOutputEvent {
 }
 
 export const CONTROL_SAFETY_SWEEP_MS = 60_000;
+/**
+ * The sweep's listeners — one per daemon, each capturing and evaluating its pane —
+ * are spread over this much of the period instead of all running in one tick (#1402): measured live, that one tick was
+ * 150–860 ms of unbroken spawning under normal load and 1–2.5 s when the host was busy (#1235). Half the period, so a
+ * sweep's last slot is always well before the next sweep starts.
+ */
+export const CONTROL_SAFETY_SWEEP_SPREAD_MS = CONTROL_SAFETY_SWEEP_MS / 2;
 
 /**
  * Consecutive `list-panes` failures before a window's registration is dropped.
@@ -20,19 +30,31 @@ export const CONTROL_SAFETY_SWEEP_MS = 60_000;
  */
 const RESOLVE_FAILURES_BEFORE_DROP = 3;
 
-function tmuxArgs(args: string[]): string[] {
-  const socket = getTmuxSocketName();
-  return socket ? ["-L", socket, ...args] : args;
+interface Attachment {
+  proc: ChildProcess;
+  retired: boolean;
+  released: boolean;
+  ready: boolean;
+  attachGuard: string | null;
+  decoder: StringDecoder;
+  pending: string;
+  timer?: ReturnType<typeof setTimeout>;
 }
 
-function execTmux(args: string[]): Promise<string> {
-  return new Promise((resolve, reject) => {
-    execFile("tmux", tmuxArgs(args), (err, stdout) => {
-      if (err) reject(err);
-      else resolve(stdout.trim());
-    });
-  });
+interface ControlRead {
+  owner: Attachment;
+  nonce: string;
+  guard: string | null;
+  lines: string[];
+  bytes: number;
+  deadline: number;
+  timer: ReturnType<typeof setTimeout>;
+  resolve: (output: string) => void;
+  reject: (error: unknown) => void;
 }
+
+const FRAME_OVERHEAD_BYTES = 64 * 1024;
+const RECONNECT_MS = 2_000;
 
 /**
  * Persistent tmux control mode client that monitors %output events
@@ -44,9 +66,15 @@ function execTmux(args: string[]): Promise<string> {
  *   await ctrl.waitForIdle("@5");  // wait until window @5 is idle
  *   tmux.pasteText(msg);
  */
-export class TmuxControlClient extends EventEmitter {
-  private proc: ChildProcess | null = null;
-  private rl: Interface | null = null;
+export class TmuxControlClient extends EventEmitter implements TmuxReadPort {
+  /** A retired child still owns this slot until exit/close proves it is gone. */
+  private attachment: Attachment | null = null;
+  private activeRead: ControlRead | null = null;
+  private reconnectAfter = 0;
+  private readonly socket = getTmuxSocketName();
+  private readonly reads: TmuxReadLane;
+  private registrationSerial = 0;
+  private registrationTokens = new Map<string, number>();
   private lastOutputAt = new Map<string, number>(); // paneId → timestamp
   private paneToWindow = new Map<string, string>();  // paneId → windowId
   private registeredWindows = new Set<string>();    // windowIds we should re-resolve on reconnect
@@ -57,6 +85,8 @@ export class TmuxControlClient extends EventEmitter {
    *  the pane cache was dropped, so the absence of a record proves nothing. */
   private observationResetAt = 0;
   private safetySweepTimer: ReturnType<typeof setInterval> | null = null;
+  /** The current sweep's pending per-listener slots. */
+  private safetySweepSlots = new Set<ReturnType<typeof setTimeout>>();
 
   constructor(
     private sessionName: string,
@@ -64,26 +94,53 @@ export class TmuxControlClient extends EventEmitter {
     private logger?: Logger,
   ) {
     super();
+    this.reads = new TmuxReadLane(this.socket, {
+      ready: () => Boolean(this.attachment?.ready && !this.attachment.retired),
+      execute: (args, deadline) => this.executeRead(args, deadline),
+      retire: () => this.cleanup(),
+    });
     // One shared control client intentionally has one listener per daemon.
     this.setMaxListeners(0);
   }
 
   start(): void {
+    if (!this.stopped && this.safetySweepTimer) return;
     this.stopped = false;
+    this.reads.start();
     if (!this.safetySweepTimer) {
-      this.safetySweepTimer = setInterval(() => {
-        // Every daemon's listener runs inside this one emit and starts its capture there (#1235): the synchronous
-        // part of the whole fleet-wide sweep is attributed as one stretch.
-        measureSyncWork("tmux.safetySweep", () => this.emit("safety_sweep", { at: Date.now() }));
-      }, CONTROL_SAFETY_SWEEP_MS);
+      this.safetySweepTimer = setInterval(() => this.runSafetySweep(), CONTROL_SAFETY_SWEEP_MS);
     }
     this.connect();
   }
 
-  // PLACEHOLDER_REST
+  /**
+   * One sweep: every daemon's listener, each in a tick of its own, spread evenly over CONTROL_SAFETY_SWEEP_SPREAD_MS
+   * (#1402). A listener removed before its slot (its daemon stopped) is skipped; stop() drops slots still pending.
+   */
+  private runSafetySweep(): void {
+    const listeners = this.listeners("safety_sweep") as Array<(event: { at: number }) => void>;
+    const step = listeners.length > 0 ? CONTROL_SAFETY_SWEEP_SPREAD_MS / listeners.length : 0;
+    listeners.forEach((listener, i) => {
+      const slot = setTimeout(() => {
+        this.safetySweepSlots.delete(slot);
+        if (this.stopped || !this.listeners("safety_sweep").includes(listener)) return;
+        // One daemon's capture start and pane evaluation: attributed per tick (#1235).
+        measureSyncWork("tmux.safetySweep", () => listener({ at: Date.now() }));
+      }, Math.floor(i * step));
+      slot.unref?.();
+      this.safetySweepSlots.add(slot);
+    });
+  }
+
+  private clearSafetySweepSlots(): void {
+    for (const slot of this.safetySweepSlots) clearTimeout(slot);
+    this.safetySweepSlots.clear();
+  }
 
   stop(): void {
     this.stopped = true;
+    this.reads.stop();
+    this.clearSafetySweepSlots();
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -95,18 +152,32 @@ export class TmuxControlClient extends EventEmitter {
     this.cleanup();
   }
 
+  isFor(session: string, socket: string | null): boolean {
+    return session === this.sessionName && socket === this.socket;
+  }
+
+  read(query: TmuxReadQuery, timeoutMs = 10_000): Promise<string> {
+    if (!this.isFor(query.session, getTmuxSocketName())) {
+      return Promise.reject(new TmuxReadError("command", "tmux read scope mismatch"));
+    }
+    try { return this.reads.read(tmuxReadArgs(query), timeoutMs); }
+    catch (error) { return Promise.reject(error); }
+  }
+
   /**
    * Register a window so we can track its pane's output.
    * Call this after createWindow().
    */
   async registerWindow(windowId: string): Promise<void> {
     this.registeredWindows.add(windowId);
+    this.registrationTokens.set(windowId, ++this.registrationSerial);
     await this.resolvePane(windowId);
   }
 
   /** Unregister a window (call on killWindow) */
   unregisterWindow(windowId: string): void {
     this.registeredWindows.delete(windowId);
+    this.registrationTokens.delete(windowId);
     this.resolveFailures.delete(windowId);
     for (const [pane, win] of this.paneToWindow) {
       if (win === windowId) {
@@ -121,8 +192,8 @@ export class TmuxControlClient extends EventEmitter {
    * Resolve a window's current pane id and cache the mapping.
    *
    * Drops a registration that has failed to resolve `RESOLVE_FAILURES_BEFORE_DROP`
-   * times in a row. Every reconnect re-resolves every registered window, one tmux
-   * subprocess each, so a registration for a window that no longer exists is a
+   * times in a row. Every reconnect re-resolves every registered window through the read FIFO,
+   * so a registration for a window that no longer exists is a
    * permanent per-reconnect cost — and callers do forget to unregister (a crash
    * respawn creates a new window id and the dead one used to stay forever).
    *
@@ -131,17 +202,20 @@ export class TmuxControlClient extends EventEmitter {
    * registration would silence its output events.
    */
   private async resolvePane(windowId: string): Promise<void> {
+    const token = this.registrationTokens.get(windowId);
+    const owner = this.attachment;
+    const current = () => !this.stopped && this.registeredWindows.has(windowId)
+      && this.registrationTokens.get(windowId) === token && this.attachment === owner;
     try {
-      const paneId = await execTmux([
-        "list-panes", "-t", `${this.sessionName}:${windowId}`,
-        "-F", "#{pane_id}",
-      ]);
+      const paneId = (await this.read({ kind: "pane", session: this.sessionName, window: windowId, field: "id" })).trim();
+      if (!current()) return;
       this.resolveFailures.delete(windowId);
       if (paneId) {
         this.paneToWindow.set(paneId, windowId);
         this.logger?.debug({ windowId, paneId }, "Registered window→pane mapping");
       }
-    } catch {
+    } catch (error) {
+      if (!current() || !(error instanceof TmuxReadError) || error.kind !== "command") return;
       const failures = (this.resolveFailures.get(windowId) ?? 0) + 1;
       this.resolveFailures.set(windowId, failures);
       if (failures >= RESOLVE_FAILURES_BEFORE_DROP && this.registeredWindows.has(windowId)) {
@@ -311,7 +385,8 @@ export class TmuxControlClient extends EventEmitter {
   }
 
   private connect(): void {
-    if (this.stopped) return;
+    if (this.stopped || this.attachment) return;
+    if (performance.now() < this.reconnectAfter) { this.scheduleReconnect(); return; }
 
     // Pane IDs are tmux-server-scoped: a server restart (or a long-enough
     // disconnect that windows churned) can leave our cached paneId →
@@ -332,37 +407,162 @@ export class TmuxControlClient extends EventEmitter {
     // successfully pasted message sitting unsubmitted. The control process is a
     // trusted child whose stdin is owned by this FleetManager; writable control
     // mode does not grant a capability the same OS user does not already have.
-    this.proc = spawn("tmux", tmuxArgs([
-      "-C", "attach", "-f", "ignore-size", "-t", this.sessionName,
-    ]), {
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-
-    this.rl = createInterface({ input: this.proc.stdout! });
-    this.rl.on("line", (line) => this.parseLine(line));
-
-    this.proc.on("close", () => {
-      this.cleanup();
-      if (!this.stopped) {
-        this.logger?.debug("Control mode disconnected — reconnecting in 2s");
-        this.reconnectTimer = setTimeout(() => this.connect(), 2000);
-      }
-    });
-
-    this.proc.on("error", (err) => {
-      this.logger?.warn({ err: (err as Error).message }, "Control mode spawn error");
-    });
-
-    // Re-resolve panes for any windows that were registered before this
-    // (re)connect. Safe even on first connect: registeredWindows is empty.
-    for (const windowId of this.registeredWindows) {
-      void this.resolvePane(windowId);
+    const args = ["-C", "attach", "-f", "ignore-size", "-t", this.sessionName];
+    let proc: ChildProcess;
+    try {
+      proc = measureSyncWork("tmux.spawn", () => spawn("tmux", this.socket ? ["-L", this.socket, ...args] : args,
+        { stdio: ["pipe", "pipe", "pipe"] }));
+    } catch {
+      this.reconnectAfter = performance.now() + RECONNECT_MS;
+      this.scheduleReconnect();
+      return;
     }
-
-    this.logger?.debug("tmux control mode connected");
+    const owner: Attachment = { proc, retired: false, released: false, ready: false,
+      attachGuard: null, decoder: new StringDecoder("utf8"), pending: "" };
+    this.attachment = owner;
+    owner.timer = setTimeout(() => this.retire(owner), 10_000);
+    owner.timer.unref?.();
+    proc.stdout?.on("data", (chunk: Buffer | string) => this.receive(owner, chunk));
+    proc.stdout?.on("error", () => this.retire(owner));
+    // Drain stderr without retaining/logging pane or protocol content.
+    proc.stderr?.on("data", () => {});
+    proc.stdin?.on("error", () => this.retire(owner));
+    proc.once("exit", () => this.release(owner));
+    proc.once("close", () => this.release(owner));
+    proc.on("error", () => {
+      this.retire(owner);
+      if (proc.pid === undefined) this.release(owner); // confirmed no-child spawn failure
+    });
   }
 
-  private parseLine(line: string): void {
+  private scheduleReconnect(): void {
+    if (this.stopped || this.attachment || this.reconnectTimer) return;
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      this.connect();
+    }, Math.max(0, Math.ceil(this.reconnectAfter - performance.now())));
+    this.reconnectTimer.unref?.();
+  }
+
+  private release(owner: Attachment): void {
+    if (owner.released) return;
+    owner.released = true;
+    this.retire(owner);
+    if (this.attachment !== owner) return;
+    this.attachment = null;
+    this.scheduleReconnect();
+  }
+
+  private retire(owner: Attachment): void {
+    if (this.attachment !== owner || owner.retired) return;
+    owner.retired = true;
+    owner.ready = false;
+    clearTimeout(owner.timer);
+    owner.pending = "";
+    this.reconnectAfter = performance.now() + RECONNECT_MS;
+    this.resetPaneObservations();
+    const read = this.activeRead;
+    if (read?.owner === owner) {
+      this.activeRead = null;
+      clearTimeout(read.timer);
+      read.reject(new TmuxReadError("transport", "tmux control transport unavailable"));
+    }
+    // killed/kill success is NOT exit proof; keep attachment until release().
+    if (!owner.released) {
+      try { owner.proc.kill(); } catch { /* no exit proof: retain physical reservation */ }
+    }
+  }
+
+  private receive(owner: Attachment, chunk: Buffer | string): void {
+    if (this.attachment !== owner || owner.retired) return;
+    const bytes = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
+    for (let offset = 0; offset < bytes.length; offset += 16 * 1024) {
+      owner.pending += owner.decoder.write(bytes.subarray(offset, offset + 16 * 1024));
+      let end: number;
+      while ((end = owner.pending.indexOf("\n")) !== -1) {
+        const line = owner.pending.slice(0, end);
+        owner.pending = owner.pending.slice(end + 1);
+        if (Buffer.byteLength(line) > TMUX_READ_MAX_BYTES + FRAME_OVERHEAD_BYTES) { this.retire(owner); return; }
+        this.parseLine(line, owner);
+        if (this.attachment !== owner || owner.retired) return;
+      }
+      if (Buffer.byteLength(owner.pending) > TMUX_READ_MAX_BYTES + FRAME_OVERHEAD_BYTES) { this.retire(owner); return; }
+    }
+  }
+
+  private executeRead(args: string[], deadline: number): Promise<string> {
+    const owner = this.attachment;
+    if (!owner?.ready || owner.retired || this.activeRead) {
+      return Promise.reject(new TmuxReadError("transport", "tmux control unavailable"));
+    }
+    return new Promise((resolve, reject) => {
+      const read: ControlRead = { owner, nonce: `agend-read-${randomUUID()}`, guard: null,
+        lines: [], bytes: 0, deadline, resolve, reject,
+        timer: setTimeout(() => this.retire(owner), Math.max(1, Math.ceil(deadline - performance.now()))) };
+      this.activeRead = read;
+      try {
+        const command = args.map(tmuxCommandToken).join(" ");
+        const payload = `${command}\ndisplay-message -p ${tmuxCommandToken(read.nonce)}\n`;
+        if (performance.now() >= deadline) { this.retire(owner); return; }
+        owner.proc.stdin!.write(payload, error => {
+          if (error) this.retire(owner);
+        });
+      } catch { this.retire(owner); }
+    });
+  }
+
+  private parseLine(line: string, owner = this.attachment): void {
+    if (owner && (owner !== this.attachment || owner.retired)) return;
+    if (owner && !owner.ready) {
+      if (!owner.attachGuard) {
+        const begin = line.match(/^%begin (\d+ \d+ 0)$/);
+        if (begin) owner.attachGuard = begin[1];
+      } else if (line === `%end ${owner.attachGuard}`) {
+        owner.ready = true;
+        clearTimeout(owner.timer);
+        this.reads.wake();
+        for (const window of this.registeredWindows) void this.resolvePane(window);
+      } else if (line === `%error ${owner.attachGuard}`) this.retire(owner);
+      if (line.startsWith("%exit")) this.retire(owner);
+      return;
+    }
+    const read = this.activeRead;
+    if (read && read.owner === owner) {
+      if (!read.guard) {
+        const begin = line.match(/^%begin (\d+ \d+ 1)$/);
+        if (begin) { read.guard = begin[1]; return; }
+      } else {
+        // Payload may contain %output or even a matching %end. Only the fresh
+        // nonce's complete frame proves where the read really ended.
+        read.lines.push(line);
+        read.bytes += Buffer.byteLength(line) + 1;
+        if (read.bytes > TMUX_READ_MAX_BYTES + FRAME_OVERHEAD_BYTES) { this.retire(read.owner); return; }
+        const length = read.lines.length;
+        const trailer = read.lines[length - 3]?.match(/^%begin (\d+ \d+ 1)$/);
+        if (trailer && read.lines[length - 2] === read.nonce && line === `%end ${trailer[1]}`) {
+          if (performance.now() >= read.deadline) { this.retire(read.owner); return; }
+          let footer = length - 4;
+          while (footer >= 0 && read.lines[footer] !== `%end ${read.guard}` && read.lines[footer] !== `%error ${read.guard}`) footer--;
+          if (footer < 0) { this.retire(read.owner); return; }
+          const data = read.lines.slice(0, footer);
+          const output = data.length ? data.join("\n") + "\n" : "";
+          if (Buffer.byteLength(output) > TMUX_READ_MAX_BYTES) { this.retire(read.owner); return; }
+          this.activeRead = null;
+          clearTimeout(read.timer);
+          // Notifications between the real footer and trailer remain visible;
+          // capture body lines never become activity evidence.
+          for (const notification of read.lines.slice(footer + 1, length - 3)) this.observeOutput(notification);
+          if (read.lines[footer].startsWith("%error")) read.reject(new TmuxReadError("command", "tmux control read failed"));
+          else read.resolve(output);
+        }
+        return;
+      }
+    }
+    if (line.startsWith("%exit") && owner) { this.retire(owner); return; }
+    this.observeOutput(line);
+  }
+
+  private observeOutput(line: string): void {
     if (line.startsWith("%output ")) {
       const match = line.match(/^%output (%\d+) /);
       if (match) {
@@ -380,12 +580,6 @@ export class TmuxControlClient extends EventEmitter {
   }
 
   private cleanup(): void {
-    this.rl?.close();
-    this.rl = null;
-    if (this.proc && !this.proc.killed) {
-      this.proc.stdin?.write("detach\n");
-      this.proc.kill();
-    }
-    this.proc = null;
+    if (this.attachment) this.retire(this.attachment);
   }
 }
