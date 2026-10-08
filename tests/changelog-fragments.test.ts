@@ -415,6 +415,22 @@ describe("changelog-guard (ci.yml's step, on a scratch repository)", () => {
     expect(ciSteps.find(s => s.run === "npm ci")).toBeUndefined();
   });
 
+  it("P2/P1 regression: the changelog job has no docs-only skip condition — it runs for all PRs", () => {
+    // A docs-only PR can add an unpaired fragment or directly edit the
+    // CHANGELOG. The changelog guards must run even when no src/ file changed.
+    // Verify neither the job-level `if:` nor the step-level conditions gate on
+    // detect-changes output.
+    const fullCi = yaml.load(readFileSync(join(ROOT, ".github", "workflows", "ci.yml"), "utf8")) as {
+      jobs: { changelog: { if?: string; needs?: string[]; steps: { if?: string }[] } };
+    };
+    const job = fullCi.jobs.changelog;
+    // Job must NOT have a detect-changes condition (docs-only skip).
+    expect(job.if, "changelog job must have no docs-only if condition").toBeUndefined();
+    // Job must NOT depend on detect-changes (which would allow skipping).
+    const needs = job.needs ?? [];
+    expect(needs, "changelog job must not depend on detect-changes").not.toContain("detect-changes");
+  });
+
   it("a PR that leaves the CHANGELOG alone (fragments only) → passes", () => {
     const r = gitRepo();
     const head = r.commit("fix: x", { "src/a.ts": "2\n", "changes/5.md": frag("Fixed", "- x"), "changes/5.zh-TW.md": frag("Fixed", "- y") });
