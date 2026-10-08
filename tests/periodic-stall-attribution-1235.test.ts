@@ -83,6 +83,52 @@ describe("a burst of short synchronous calls is one attributed stretch", () => {
   });
 });
 
+describe("each stall window counts only its own work (#1385 review)", () => {
+  function watch() {
+    const warn = vi.fn();
+    const histogram = { max: 1_100e6, mean: 40e6, percentile: () => 200e6, enable: () => true, disable: () => true, reset: vi.fn() };
+    const w = startEventLoopWatch({ logger: { warn }, histogram, gcObserver: () => ({ observe() {}, disconnect() {}, takeRecords: () => [] }) });
+    const lastSyncWork = () => warn.mock.calls.at(-1)![0].syncWork;
+    return { w, lastSyncWork };
+  }
+
+  it("a burst reported in one window is not reported again, larger, in the next", () => {
+    const { w, lastSyncWork } = watch();
+    try {
+      for (let i = 0; i < 3; i++) measureSyncWork("tmux.spawn", () => { io.now += 20; });
+      w.check();
+      expect(lastSyncWork()).toEqual([{ caller: "tmux.spawn", durationMs: 60, endedAt: 60, count: 3 }]);
+      io.now += 5;   // within the burst gap: before the fix this extended the reported entry to 80 ms × 4
+      measureSyncWork("tmux.spawn", () => { io.now += 20; });
+      w.check();
+      expect(lastSyncWork()).toEqual([]);   // this window had 20 ms in 1 call: under the bar, and only its own
+    } finally { w.stop(); }
+  });
+
+  it("a sum still under the bar when a window is sampled is not carried into the next window", () => {
+    const { w, lastSyncWork } = watch();
+    try {
+      for (let i = 0; i < 2; i++) measureSyncWork("tmux.spawn", () => { io.now += 20; });   // 40 ms: not recorded
+      w.check();
+      expect(lastSyncWork()).toEqual([]);
+      io.now += 5;
+      measureSyncWork("tmux.spawn", () => { io.now += 20; });   // carried, the sum would cross 50 ms here
+      w.check();
+      expect(lastSyncWork()).toEqual([]);
+    } finally { w.stop(); }
+  });
+
+  it("a burst that is entirely inside the next window is still named there", () => {
+    const { w, lastSyncWork } = watch();
+    try {
+      w.check();
+      for (let i = 0; i < 4; i++) measureSyncWork("tmux.spawn", () => { io.now += 20; });
+      w.check();
+      expect(lastSyncWork()).toEqual([{ caller: "tmux.spawn", durationMs: 80, endedAt: 80, count: 4 }]);
+    } finally { w.stop(); }
+  });
+});
+
 describe("the periodic paths are attributed", () => {
   it("every tmux call's synchronous spawn is `tmux.spawn`; a sweep's worth of them adds up", async () => {
     io.spawnMs = 30;

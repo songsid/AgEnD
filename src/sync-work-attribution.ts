@@ -47,6 +47,13 @@ export function noteSyncWork(caller: string, startedAt: number, endedAt = perfor
   if (burst.count > 1) burst.entry.count = burst.count;
 }
 
+/**
+ * End every open burst: the next call of any caller starts a new one. The stall watch calls this each time it has
+ * sampled, so one window's work is never added to an entry it already reported, nor carried into the next window's
+ * sum (#1385 review). Entries already recorded are kept as they are.
+ */
+export function closeSyncWorkBursts(): void { bursts.clear(); }
+
 export function slowSyncWorkSince(since: number, until: number): SlowSyncWork[] {
   return recent.filter(entry => entry.endedAt > since && entry.endedAt <= until).map(entry => ({ ...entry }));
 }
