@@ -191,6 +191,8 @@ const PASS_ = "pass" as const;
 const FA_ONLY: Person[] = ["fleetAdmin"];
 const CA_ONLY: Person[] = ["classicAdmin"];
 const FA_OR_CA: Person[] = ["fleetAdmin", "classicAdmin"];
+/** Refused for everyone, with a reply (#1148: a General-only command in an instance topic points to General). */
+const NOBODY: Person[] = [];
 
 /**
  * Telegram, typed, for EVERY command in the table: [text, what its handler records, who reaches it in a General topic /
@@ -225,16 +227,17 @@ const TG_EXPECTED: Array<{ name: string; text: string; label: string; general: T
   { name: "cancel", text: "/cancel", label: "cancel", general: ALL, fleet: ALL, classic: ALL, none: "refuse" },
   { name: "ctx", text: "/ctx", label: "ctx", general: ALL, fleet: ALL, classic: ALL, none: "refuse" },
   // only the General topic has a handler
-  { name: "status", text: "/status", label: "status", general: FA_ONLY, fleet: PASS_, classic: PASS_, none: "pass" },
-  { name: "restart", text: "/restart x", label: "restart", general: FA_ONLY, fleet: PASS_, classic: PASS_, none: "pass" },   // "x" is no mode: an admin gets the usage line, nobody restarts
-  { name: "login", text: "/login", label: "login", general: FA_ONLY, fleet: PASS_, classic: PASS_, none: "pass" },
-  { name: "profile", text: "/profile", label: "profile", general: FA_ONLY, fleet: PASS_, classic: PASS_, none: "pass" },
-  { name: "update", text: "/update", label: "update", general: FA_ONLY, fleet: PASS_, classic: PASS_, none: "pass" },
-  { name: "doctor", text: "/doctor", label: "doctor", general: FA_ONLY, fleet: PASS_, classic: PASS_, none: "pass" },
-  { name: "dashboard", text: "/dashboard", label: "dashboard", general: FA_ONLY, fleet: PASS_, classic: PASS_, none: "pass" },
-  { name: "visibility", text: "/visibility", label: "visibility", general: FA_ONLY, fleet: PASS_, classic: PASS_, none: "pass" },
-  { name: "sysinfo", text: "/sysinfo", label: "sysinfo", general: ALL, fleet: PASS_, classic: PASS_, none: "pass" },
-  { name: "usage", text: "/usage", label: "usage", general: ALL, fleet: PASS_, classic: PASS_, none: "pass" },
+  // #1148: in an instance topic these General-only commands are refused with "use it in General", not handed to the agent.
+  { name: "status", text: "/status", label: "status", general: FA_ONLY, fleet: NOBODY, classic: PASS_, none: "pass" },
+  { name: "restart", text: "/restart x", label: "restart", general: FA_ONLY, fleet: NOBODY, classic: PASS_, none: "pass" },   // "x" is no mode: an admin gets the usage line, nobody restarts
+  { name: "login", text: "/login", label: "login", general: FA_ONLY, fleet: NOBODY, classic: PASS_, none: "pass" },
+  { name: "profile", text: "/profile", label: "profile", general: FA_ONLY, fleet: NOBODY, classic: PASS_, none: "pass" },
+  { name: "update", text: "/update", label: "update", general: FA_ONLY, fleet: NOBODY, classic: PASS_, none: "pass" },
+  { name: "doctor", text: "/doctor", label: "doctor", general: FA_ONLY, fleet: NOBODY, classic: PASS_, none: "pass" },
+  { name: "dashboard", text: "/dashboard", label: "dashboard", general: FA_ONLY, fleet: NOBODY, classic: PASS_, none: "pass" },
+  { name: "visibility", text: "/visibility", label: "visibility", general: FA_ONLY, fleet: NOBODY, classic: PASS_, none: "pass" },
+  { name: "sysinfo", text: "/sysinfo", label: "sysinfo", general: ALL, fleet: NOBODY, classic: PASS_, none: "pass" },
+  { name: "usage", text: "/usage", label: "usage", general: ALL, fleet: NOBODY, classic: PASS_, none: "pass" },
   // General and an instance's topic; not a ClassicBot chat
   { name: "tips", text: "/tips", label: "tips", general: ALL, fleet: ALL, classic: PASS_, none: "pass" },
 ];
@@ -333,7 +336,9 @@ describe("the table's Telegram column says what those handlers do, for every com
   it("a pass-through cell is not a refusal and not a permission: the decision says so and asks nobody", () => {
     const asked: string[] = [];
     const spy = { fleetAdmin: () => { asked.push("f"); return "ok" as const; }, channelAdmin: () => { asked.push("c"); return true; }, classicAdmin: () => { asked.push("a"); return true; } };
-    expect(decideCommand(commandSpec("status")!, "fleet", spy, "telegram")).toEqual({ allow: false, passthrough: true });
+    expect(decideCommand(commandSpec("status")!, "classic", spy, "telegram")).toEqual({ allow: false, passthrough: true });
+    // #1148: in an instance topic a General-only command is a refusal that points to General, not a pass-through.
+    expect(decideCommand(commandSpec("status")!, "fleet", spy, "telegram")).toEqual({ allow: false, reply: ["cmd.use_in_general", "/status"] });
     expect(decideCommand(commandSpec("collab")!, "classic", spy, "telegram")).toEqual({ allow: false, passthrough: true });
     expect(asked).toEqual([]);
   });
