@@ -115,6 +115,24 @@ describe("a General-only command in a Telegram instance topic points to General,
     expect(r.replies.map(x => x.text)).not.toContain(t("cmd.use_in_general", "/status"));
   });
 
+  it("the other forms General runs too: /RESTART, /sys-info, /install_cli (pointed to the command they are)", async () => {
+    for (const [text, shown] of [["/RESTART", "/restart"], ["/sys-info", "/sysinfo"], ["/install_cli", "/login"]]) {
+      const r = rig("open");
+      expect(await r.any.topicCommands.handleInstanceCommand(typed(text, PLAIN, "30"), "alpha"), text).toBe(true);
+      expect(r.replies.map(x => x.text), text).toEqual([t("cmd.use_in_general", shown)]);
+    }
+  });
+
+  it("a form General would not run either (/status report, /STATUS, /Doctor, /update now) is the agent's text, for anyone", async () => {
+    for (const who of [PLAIN, ADMIN_A]) {
+      const r = rig("open");
+      for (const text of ["/status report", "/STATUS", "/Doctor", "/update now"]) {
+        expect(await r.any.topicCommands.handleInstanceCommand(typed(text, who, "30"), "alpha"), `${who} ${text}`).toBe(false);
+      }
+      expect(r.replies, who).toEqual([]);
+    }
+  });
+
   it("an ordinary message in the instance topic still goes to the agent (only commands are intercepted)", async () => {
     const r = rig("open");
     expect(await r.any.topicCommands.handleInstanceCommand(typed("status of the build?", PLAIN, "30"), "alpha")).toBe(false);
