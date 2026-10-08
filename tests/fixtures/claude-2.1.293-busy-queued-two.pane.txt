@@ -1,0 +1,50 @@
+  Body line 56 of the long task.
+  Body line 57 of the long task.
+  Body line 58 of the long task.
+  Body line 59 of the long task.
+  Body line 60 of the long task.
+  Body line 61 of the long task.
+  Body line 62 of the long task.
+  Body line 63 of the long task.
+  Body line 64 of the long task.
+  Body line 65 of the long task.
+  Body line 66 of the long task.
+  Body line 67 of the long task.
+  Body line 68 of the long task.
+  Body line 69 of the long task.
+  Body line 70 of the long task.
+  Body line 71 of the long task.
+  Body line 72 of the long task.
+  Body line 73 of the long task.
+  Body line 74 of the long task.
+  Body line 75 of the long task.
+  Body line 76 of the long task.
+  Body line 77 of the long task.
+  Body line 78 of the long task.
+  Body line 79 of the long task.
+  (message_id: xmsg-long-11 | correlation_id: cid-long-11)
+
+● mock reply 23
+
+✻ Brewed for 0s · done 7:29 AM
+
+❯ QUOTEMARK show the hint
+
+● The hint reads:
+
+  ctrl+x ctrl+s to send now
+
+❯ [agend-delivery-id:aaaa0000-0000-4000-8000-00000000000a]
+  [from:agend-leader-t1] First queued message.
+  (message_id: xmsg-q-a | correlation_id: cid-q-a)
+
+❯ [agend-delivery-id:bbbb0000-0000-4000-8000-00000000000b]
+  [from:agend-leader-t1] Second queued message.
+  (message_id: xmsg-q-b | correlation_id: cid-q-b)
+  ctrl+x ctrl+s to send now
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ Press up to edit queued messages
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ok
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents
