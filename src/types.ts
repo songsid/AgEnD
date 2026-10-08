@@ -423,6 +423,8 @@ export interface FleetConfig {
   profiles?: Record<string, ProfileConfig>;
   health_port?: number;
   web?: WebConfig;
+  /** #1386 "Needs you": the live list in each world's General (default on) and DMs to that world's admins (default off). */
+  needs_you?: { live_message?: boolean; dm?: boolean };
   /** Host name used when building URLs handed to users (/dashboard, web terminal). Default "localhost". */
   hostname?: string;
   /**

@@ -15,7 +15,7 @@ export function isPublicWebRoute(method: string, path: string): boolean {
   if (method === "POST" && (/^\/stop\/[^/]+$/.test(path) || /^\/api\/instance\/[^/]+\/start$/.test(path))) return true;
   if (method === "GET" && /^\/ui\/js\/[a-z0-9_-]+\.js$/.test(path)) return true;
   if (method === "GET" && /^\/ui\/(backends|poll|history|file\/[^/]+|prompts|instance\/[^/]+|instances|tasks(?:\/[^/]+)?|schedules(?:\/[^/]+)?|teams(?:\/[^/]+)?|config)$/.test(path)) return true;
-  if (method === "POST" && /^\/ui\/(send|upload|prompt|cancel\/[^/]+|stop\/[^/]+|start\/[^/]+|instances\/[^/]+\/delete|restart\/[^/]+|instances|tasks|schedules|teams|config)$/.test(path)) return true;
+  if (method === "POST" && /^\/ui\/(send|upload|prompt|needs\/ack|cancel\/[^/]+|stop\/[^/]+|start\/[^/]+|instances\/[^/]+\/delete|restart\/[^/]+|instances|tasks|schedules|teams|config)$/.test(path)) return true;
   if (((method === "POST" && /^\/ui\/tasks\/[^/]+$/.test(path))) || (method === "DELETE" && /^\/ui\/(schedules|teams)\/[^/]+$/.test(path))) return true;
   // Settings has an explicit method/subroute manifest (not an arbitrary /api prefix).
   return isPublicSettingsRoute(method, path);

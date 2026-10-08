@@ -291,10 +291,12 @@ describe("FleetManager status composers", () => {
       }
       vi.advanceTimersByTime(30_000);
       for (const { res } of clients) {
-        // On connect: a status, the ticks (`deliveries`, #1253 review) and the open prompts (C4); then a status every 10s.
-        expect(res.write).toHaveBeenCalledTimes(6);
+        // On connect: a status, the ticks (`deliveries`, #1253 review), the open prompts (C4) and "Needs you" (#1386);
+        // then a status every 10s.
+        expect(res.write).toHaveBeenCalledTimes(7);
         expect(String(res.write.mock.calls[1]![0])).toMatch(/^event: deliveries\n/);
         expect(String(res.write.mock.calls[2]![0])).toMatch(/^event: prompts\n/);
+        expect(String(res.write.mock.calls[3]![0])).toMatch(/^event: needs\n/);
         const first = String(res.write.mock.calls[0]![0]);
         expect(first).toContain('"effort":"max"');
         expect(first).toContain('"effort":"high"');

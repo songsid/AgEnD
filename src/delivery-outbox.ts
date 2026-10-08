@@ -245,6 +245,23 @@ export interface DeliveryReconciliationCandidate extends OutboxDelivery {
   };
 }
 
+/** The exact statement `needsAttention` runs; exported so the plan test checks this text and no copy of it. */
+export const NEEDS_ATTENTION_SQL = `
+  SELECT delivery_id, state, source_instance, target_instance, kind, finished_at, last_error
+  FROM deliveries INDEXED BY idx_delivery_attention
+  WHERE state IN ('uncertain','failed') AND acknowledged_at IS NULL AND finished_at >= ?
+  ORDER BY finished_at DESC LIMIT ?`;
+
+export interface NeedsAttentionDelivery {
+  deliveryId: string;
+  state: "uncertain" | "failed";
+  sourceInstance: string;
+  targetInstance: string;
+  kind: string;
+  finishedAt: string;
+  lastError: string | null;
+}
+
 interface OutboxRow {
   delivery_id: string;
   operation_id: string;
@@ -615,6 +632,13 @@ export class DeliveryOutbox extends EventEmitter {
     // will not match any caller and safely return "not found" (conservative).
     this.ensureColumn("pruned_ids", "source_instance", "TEXT NOT NULL DEFAULT ''");
     this.ensureColumn("pruned_ids", "target_instance", "TEXT NOT NULL DEFAULT ''");
+    // #1386: an operator acknowledged an uncertain/failed delivery ("Needs you"). The partial index is what
+    // bounds needsAttention()'s scan to the recent, unacknowledged rows — required there with INDEXED BY.
+    this.ensureColumn("deliveries", "acknowledged_at", "TEXT");
+    this.ensureColumn("deliveries", "acknowledged_by", "TEXT");
+    this.db.exec(`CREATE INDEX IF NOT EXISTS idx_delivery_attention ON deliveries(finished_at)
+      WHERE state IN ('uncertain','failed') AND acknowledged_at IS NULL`);
+    this.db.pragma("user_version = 5");
   }
 
   /**
@@ -905,6 +929,37 @@ export class DeliveryOutbox extends EventEmitter {
   }
 
   /** Rows addressed to `target` in any of `states` (indexed: target_instance, state). */
+  /**
+   * #1386: the deliveries an operator should look at — `uncertain` or `failed`, not acknowledged, finished at or
+   * after `sinceIso` — newest first, at most `limit`. Acknowledged rows are excluded before the cap, and the scan
+   * is held to that time range by requiring the partial index: without `INDEXED BY`, SQLite picks
+   * idx_delivery_state_seq and sorts every uncertain/failed row however old (uncertain rows are never pruned).
+   * A database the migration never reached fails here, loudly, instead of scanning.
+   */
+  needsAttention(sinceIso: string, limit = 50): NeedsAttentionDelivery[] {
+    const rows = this.db.prepare(NEEDS_ATTENTION_SQL).all(sinceIso, limit) as Array<{
+      delivery_id: string; state: "uncertain" | "failed"; source_instance: string; target_instance: string;
+      kind: string; finished_at: string; last_error: string | null;
+    }>;
+    return rows.map(r => ({
+      deliveryId: r.delivery_id, state: r.state, sourceInstance: r.source_instance, targetInstance: r.target_instance,
+      kind: r.kind, finishedAt: r.finished_at, lastError: r.last_error,
+    }));
+  }
+
+  /**
+   * #1386: record that `by` looked at this delivery. One statement, so it is atomic: true only when this call
+   * acknowledged it — false when it was already acknowledged, is no longer uncertain/failed (delivered by later
+   * proof), or does not exist. A write error throws; nothing is remembered as acknowledged elsewhere.
+   */
+  acknowledge(deliveryId: string, by: string, atIso: string = new Date().toISOString()): boolean {
+    const result = this.db.prepare(`
+      UPDATE deliveries SET acknowledged_at=?, acknowledged_by=?
+      WHERE delivery_id=? AND state IN ('uncertain','failed') AND acknowledged_at IS NULL
+    `).run(atIso, by, deliveryId);
+    return result.changes === 1;
+  }
+
   countForTarget(target: string, states: readonly OutboxState[]): number {
     if (states.length === 0) return 0;
     const row = this.db.prepare(`

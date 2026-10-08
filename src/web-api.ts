@@ -18,7 +18,7 @@ import type { LifecycleCreateArgs } from "./instance-lifecycle.js";
 import { CreateInstanceArgs, validateArgs } from "./outbound-schemas.js";
 import { readStatuslineModel, resolveInstanceContext } from "./topic-commands.js";
 import { z } from "zod";
-import { isPassiveWebRead, isSecureRequest, isWebRequestAuthorized, WEB_TOKEN_INVALID_MESSAGE } from "./web-auth.js";
+import { evaluateWebRequest, isPassiveWebRead, isSecureRequest, isWebRequestAuthorized, WEB_TOKEN_INVALID_MESSAGE, type WebGateRequest } from "./web-auth.js";
 import type { PreviewAvailability } from "./web-preview.js";
 import { newWebMessageId, parseLastEventId, type WebChatHistory } from "./web-chat-history.js";
 import { attachmentDelivery, displayName, INLINE_MIME, isFileId, publicAttachment, sniffUpload, UPLOAD_LIMITS, wellFormed, type UploadEntry, type WebFileLedger } from "./web-upload.js";
@@ -191,6 +191,10 @@ export interface WebApiContext {
   stopInstance(name: string): Promise<void>;
   /** The fleet prompts open on the dashboard (web track C4); absent: none are offered. */
   listWebPrompts?(): unknown[];
+  /** #1386: everything waiting on the person, every world (the web is global). */
+  needsYouItems?(): unknown[];
+  /** #1386: the web's Acknowledge of a delivery item; `principal` is "web:<session handle>" or "cli". */
+  acknowledgeNeedsItem?(id: string, principal: string): { status: number; message: string };
   /** Answer one of them, exactly as a click on its platform button would. */
   clickWebPrompt?(instance: string, nonce: string, action: string): Promise<{ status: number; error?: string }>;
   /** Interrupt the current reply and drop what was queued for it; false when the instance is not running. */
@@ -342,6 +346,8 @@ export function handleWebRequest(
       deliveries: history ? history.deliveries() : [],
       // And the fleet prompts open on the dashboard (C4): prompt events are stream-only too.
       prompts: ctx.listWebPrompts?.() ?? [],
+      // #1386: "Needs you" rides the passive channels only — no endpoint of its own to poll.
+      needs: ctx.needsYouItems?.() ?? [],
       cursor: history ? `${history.boot}-${history.lastId}` : null,
     });
     return true;
@@ -366,6 +372,8 @@ export function handleWebRequest(
     if (ctx.webChatHistory) res.write(`event: deliveries\ndata: ${JSON.stringify(ctx.webChatHistory.deliveries())}\n\n`);
     // The same for the fleet prompts (C4): one posted, answered or expired during a gap is caught up here.
     if (ctx.listWebPrompts) res.write(`event: prompts\ndata: ${JSON.stringify(ctx.listWebPrompts())}\n\n`);
+    // #1386: and "Needs you" as it is now; changes follow as `needs` events.
+    if (ctx.needsYouItems) res.write(`event: needs\ndata: ${JSON.stringify({ items: ctx.needsYouItems() })}\n\n`);
     ctx.sseClients.add(res);
     const interval = setInterval(() => {
       // A stream authorized once must not outlive the authorization. Re-checked
@@ -478,6 +486,29 @@ export function handleWebRequest(
     })().catch(err => {
       ctx.logger.error({ err: (err as Error).message }, "Web prompt answer failed");
       try { json(res, 500, { error: "Prompt answer failed" }); } catch { /* already answered */ }
+    });
+    return true;
+  }
+
+  // #1386: Acknowledge a "Needs you" delivery item — a session write (CSRF, checked by the gate) or the CLI's header
+  // token. Who did it is recorded by principal: the session's public handle, never the session id or a credential.
+  if (method === "POST" && path === "/ui/needs/ack") {
+    if (!ctx.acknowledgeNeedsItem) { json(res, 404, { error: "Nothing to acknowledge here" }); return true; }
+    const acknowledge = ctx.acknowledgeNeedsItem.bind(ctx);
+    (async () => {
+      let body: Record<string, unknown>;
+      try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
+      if (!permitWebContinuation(req, res, ctx)) return;
+      const id = body && typeof body === "object" ? body.id : undefined;
+      if (typeof id !== "string") { json(res, 400, { error: "id required" }); return; }
+      const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+      if (verdict.kind !== "allow") { json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE }); return; }
+      const principal = verdict.via === "session" && verdict.session ? `web:${verdict.session.handle}` : "cli";
+      const r = acknowledge(id, principal);
+      json(res, r.status, r.status === 200 ? { acknowledged: true, message: r.message } : { error: r.message });
+    })().catch(err => {
+      ctx.logger.error({ err: (err as Error).message }, "Needs you acknowledge failed");
+      try { json(res, 500, { error: "Acknowledge failed" }); } catch { /* already answered */ }
     });
     return true;
   }

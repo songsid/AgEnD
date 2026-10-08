@@ -356,6 +356,14 @@ export function validateFleetConfig(config: unknown): ValidationResult {
   if (config.health_port === 65535 && !(isObj(config.web) && (config.web.preview === false || config.web.preview_port !== undefined))) {
     warn("web.preview_port", "health_port is 65535, so there is no default preview port (health_port + 1) — set web.preview_port, or previews are off");
   }
+  if (config.needs_you !== undefined && !isObj(config.needs_you)) {
+    err("needs_you", "must be a mapping");
+  } else if (isObj(config.needs_you)) {
+    for (const key of Object.keys(config.needs_you)) {
+      if (key !== "live_message" && key !== "dm") err(`needs_you.${key}`, "unknown key (live_message, dm)");
+      else if (typeof (config.needs_you as Record<string, unknown>)[key] !== "boolean") err(`needs_you.${key}`, "must be a boolean");
+    }
+  }
   if (config.web !== undefined && !isObj(config.web)) {
     err("web", "must be a mapping");
   } else if (isObj(config.web)) {
