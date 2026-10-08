@@ -34,11 +34,14 @@ describe("readClaudeInputBox on live 2.1.293 captures", () => {
     ["busy-stranded", { text: "stranded while busy", collapsedPastes: 0 }],
     ["busy-paste-long", { text: "[Pasted text #2 +11 lines]", collapsedPastes: 1 }],
     ["long-busy-pasted", { text: "[Pasted text #4 +79 lines]", collapsedPastes: 1 }],
-    // queued: the box shows "Press up to edit queued messages" — a placeholder, not input
-    ["busy-queued", { text: "", collapsedPastes: 0 }],
-    ["busy-queued-long", { text: "", collapsedPastes: 0 }],
-    ["long-busy-queued", { text: "", collapsedPastes: 0 }],
-    ["tool-queued", { text: "", collapsedPastes: 0 }],
+    // queued: the box shows "Press up to edit queued messages" — a placeholder, not input — under Claude's queue (#1169)
+    ["busy-queued", { text: "", collapsedPastes: 0, queued: true }],
+    ["busy-queued-long", { text: "", collapsedPastes: 0, queued: true }],
+    ["long-busy-queued", { text: "", collapsedPastes: 0, queued: true }],
+    ["tool-queued", { text: "", collapsedPastes: 0, queued: true }],
+    ["busy-queued-two", { text: "", collapsedPastes: 0, queued: true }],
+    ["busy-queued-under-quote", { text: "", collapsedPastes: 0, queued: true }],
+    ["busy-reply-quotes-marker", { text: "", collapsedPastes: 0 }],
     ["queued-drained", { text: "", collapsedPastes: 0 }],
   ])("%s", (name, box) => {
     expect(readClaudeInputBox(pane(name))).toEqual(box);
@@ -58,6 +61,9 @@ describe("readClaudeInputBox on live 2.1.293 captures", () => {
         expect(box, f).toEqual({ text: "[user:alice via telegram, id:1] E429 please", collapsedPastes: 0 });
       } else if (/dialog|prompt|onboarding|theme|trust|bypass|login\b|login-method|oauth|resume|apikey|api-key|mcp|ext|settings|security|background-work|continue/.test(f)) {
         expect(box, f).toBeNull();
+      } else if (f === "claude-2.1.291-error-500-retrying-statusline.pane.txt") {
+        // a message queued while Claude retried (#1239's capture): an empty box under Claude's queue (#1169)
+        expect(box, f).toEqual({ text: "", collapsedPastes: 0, queued: true });
       } else if (/ready|busy|error|compact|not-logged-in/.test(f)) {
         expect(box, f).toEqual({ text: "", collapsedPastes: 0 });
       }
