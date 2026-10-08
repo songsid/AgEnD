@@ -342,7 +342,7 @@ messaging contract. Full fleet guidance — role, workflow, selected decisions a
 |---------|------------------------|
 | Claude Code | Instance `fleet-instructions.md`, loaded with additive `--append-system-prompt-file` |
 | Codex | Managed AgEnD marker block in the workspace's `AGENTS.md` |
-| Kiro CLI | Workspace `.kiro/steering/agend-<instance>.md` |
+| Kiro CLI | The `prompt` of the instance's own agent, `.kiro/agents/agend-<instance>-<fleet>.json`; the steering file `.kiro/steering/agend-<instance>.md` on kiro-cli < 2.21 and until a resumed conversation is switched to its agent |
 | OpenCode | Instance `fleet-instructions.md` appended to the project's `opencode.json` `instructions` array |
 | Antigravity | Managed marker block in workspace `.agents/agents.md` |
 | Grok / Muse | Managed marker block in workspace `AGENTS.md` |

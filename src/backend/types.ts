@@ -62,6 +62,17 @@ export class UnsupportedCliError extends Error {
   }
 }
 
+/** See CliBackend.agentSwitch. */
+export interface BackendAgentSwitch {
+  agent: string;
+  /** The switch was already confirmed for this conversation: the layout is only checked. */
+  alreadyConfirmed: boolean;
+  /** The agent the live layout shows, or null when it cannot be read. */
+  readActive(pane: string): string | null;
+  command: string;
+  confirm(): string[];
+}
+
 export interface CliBackendConfig {
   workingDirectory: string;
   instanceDir: string;
@@ -627,6 +638,17 @@ export interface CliBackend {
    * `buildCommand` never forks. Must not throw; a failed probe means "unknown", not a failed launch.
    */
   prepareLaunch?(): Promise<void>;
+
+  /**
+   * Optional (#906): after a launch that resumed a conversation, the agent it must run as and how to tell from the
+   * live layout which agent it runs as now. The daemon switches it with `command` when the layout shows another one,
+   * and calls `confirm` once the layout shows `agent` (returns warnings to surface). Null: nothing to check.
+   */
+  agentSwitch?(): BackendAgentSwitch | null;
+  /** Optional: where this launch's instructions live, when not the backend's usual file (kiro's agent, #906). */
+  instructionsSource?(): string | null;
+  /** Optional: the instance is being deleted or replaced — forget per-instance state kept outside its directory. */
+  forget?(instanceName: string): void;
 
   /** Pre-approve a working directory to skip trust dialogs on startup. */
   preTrust?(workingDirectory: string): void;

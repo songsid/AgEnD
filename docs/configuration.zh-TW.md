@@ -345,7 +345,7 @@ MCP server instructions 提供精簡的身分、回覆與跨 instance 通訊契�
 |---------|-------------------|
 | Claude Code | Instance 內的 `fleet-instructions.md`，用附加式 `--append-system-prompt-file` 載入 |
 | Codex | 工作目錄 `AGENTS.md` 中由 AgEnD 管理的 marker 區塊 |
-| Kiro CLI | 工作目錄 `.kiro/steering/agend-<instance>.md` |
+| Kiro CLI | instance 自己的 agent `.kiro/agents/agend-<instance>-<fleet>.json` 的 `prompt`；kiro-cli 2.21 以前，以及恢復的對話切換成自己的 agent 之前，用 steering 檔 `.kiro/steering/agend-<instance>.md` |
 | OpenCode | Instance 內的 `fleet-instructions.md`，加入專案 `opencode.json` 的 `instructions` 陣列 |
 | Antigravity | 工作目錄 `.agents/agents.md` 中的 marker 區塊 |
 | Grok／Muse | 工作目錄 `AGENTS.md` 中的 marker 區塊 |

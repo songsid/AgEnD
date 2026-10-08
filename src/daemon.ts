@@ -104,8 +104,8 @@ function transcriptMarkerEvidence(kind: TranscriptMarkerKind): string {
   return kind === "user" ? "transcript-marker" : kind === "absorbed" ? "transcript-marker-absorbed" : "transcript-marker-queued";
 }
 
-export function buildInstructionReloadNotice(binaryName: string, instanceName: string, instanceDir: string): string {
-  const source = binaryName === "codex" || binaryName === "grok" || binaryName === "muse"
+export function buildInstructionReloadNotice(binaryName: string, instanceName: string, instanceDir: string, backendSource?: string | null): string {
+  const source = backendSource ? backendSource : binaryName === "codex" || binaryName === "grok" || binaryName === "muse"
     ? "AGENTS.md"
     : binaryName === "kiro-cli"
       ? `.kiro/steering/agend-${instanceName}.md`
@@ -6407,7 +6407,7 @@ export class Daemon extends EventEmitter {
         if (this.pendingInstructionsNotice) {
           this.pendingInstructionsNotice = false;
           await this.deliverMessage(
-            buildInstructionReloadNotice(this.backend?.binaryName ?? "unknown", this.name, this.instanceDir),
+            buildInstructionReloadNotice(this.backend?.binaryName ?? "unknown", this.name, this.instanceDir, this.backend?.instructionsSource?.()),
             undefined,
             { deliveryEpoch },
           );
@@ -9626,12 +9626,83 @@ export class Daemon extends EventEmitter {
     this.lastSpawnAt = Date.now();
     // #1217: whatever session this CLI writes from here on is this backend's.
     this.recordSessionOwner();
+    // #906: a resumed kiro conversation comes back as the agent it was saved under; switch it to this instance's
+    // own agent while deliveries are still held by this spawn.
+    await this.ensureBackendAgent();
     this.skipResume = false; // CLI started successfully — reset for next spawn
     this.backgroundSessionRecoveryAttempted = false;
     } finally {
       this.endSpawn();
     }
     return resumedSuccessfully;
+  }
+
+  /** The whole agent switch after a resume, on the monotonic clock (#906 §3). */
+  private static readonly AGENT_SWITCH_BUDGET_MS = 15_000;
+  private static readonly AGENT_SWITCH_POLL_MS = 500;
+
+  /**
+   * #906 §3: after a resume, make the CLI run as this instance's own agent. Reads the agent off the live layout
+   * (backend.agentSwitch().readActive — never a name quoted in the conversation); when it is another one, types the
+   * switch command ONCE, under the pane-write lock, only into a pane the delivery path would call ready and whose
+   * fresh capture still shows another agent; then waits for a capture taken after the write to show ours, and
+   * confirms (the backend records it and removes the shared entries the transition kept).
+   *
+   * Fenced like a delivery: after every await the spawn generation, launch fence, the same tmux window, and that
+   * writes are not stopping are checked again — a stop, pause or respawn ends it without confirming or removing
+   * anything. Not confirmed within the budget: the old setup stays, a launch warning says so, the next launch tries
+   * again. Never throws into the spawn.
+   */
+  private async ensureBackendAgent(): Promise<void> {
+    let sw: ReturnType<NonNullable<CliBackend["agentSwitch"]>> | null = null;
+    try { sw = this.backend?.agentSwitch?.() ?? null; } catch { sw = null; }
+    const tmux = this.tmux;
+    if (!sw || !tmux) return;
+    const windowId = tmux.getWindowId();
+    const spawn = this.spawnGeneration, fence = this.launchFenceEpoch;
+    const current = () => !this.deliveryWritesStopping && !this.fatalStartupBlocked
+      && spawn === this.spawnGeneration && fence === this.launchFenceEpoch && this.tmux === tmux;
+    const deadline = performance.now() + Daemon.AGENT_SWITCH_BUDGET_MS;
+    let wroteAt: number | null = null;
+    try {
+      while (performance.now() < deadline) {
+        if (!current()) return;
+        const capturedAt = performance.now();
+        let pane: string | null;
+        try { pane = await tmux.capturePane(); } catch { pane = null; }
+        if (!current()) return;
+        const active = pane === null ? null : sw.readActive(pane);
+        if (active === sw.agent && (wroteAt === null || capturedAt > wroteAt)) {
+          if (sw.alreadyConfirmed && wroteAt === null) return; // already ours, already on record
+          for (const warning of sw.confirm()) this.emit("backend_launch_warning", { name: this.name, message: warning });
+          this.logger.info({ agent: sw.agent, switched: wroteAt !== null }, "The resumed conversation runs as this instance's agent");
+          return;
+        }
+        if (wroteAt === null && active !== null && active !== sw.agent) {
+          const wrote = await this.paneWriteLock.run(async () => {
+            if (!current()) return false;
+            if ((await this.paneReadinessForDelivery(windowId)) !== "ready" || !current()) return false;
+            let fresh: string;
+            try { fresh = await tmux.capturePane(); } catch { return false; }
+            if (!current()) return false;
+            const now = sw!.readActive(fresh);
+            if (now === null || now === sw!.agent) return false;
+            return tmux.pasteText(sw!.command, { retryEnter: false });
+          });
+          // (A stop, pause or respawn during the write is caught by the fence at the top of the next round.)
+          if (wrote) {
+            wroteAt = performance.now();
+            this.logger.info({ agent: sw.agent, was: active }, "Switching the resumed conversation to this instance's agent");
+          }
+        }
+        await new Promise(r => setTimeout(r, Daemon.AGENT_SWITCH_POLL_MS));
+      }
+      if (!current()) return;
+      this.logger.warn({ agent: sw.agent, typed: wroteAt !== null }, "The resumed conversation did not switch to this instance's agent in time");
+      this.emit("backend_launch_warning", { name: this.name, message: t("kiro.switch_timeout", Daemon.AGENT_SWITCH_BUDGET_MS / 1000) });
+    } catch (err) {
+      this.logger.warn({ err }, "The agent switch after resume failed — the shared entries stay; the next launch tries again");
+    }
   }
 
   /**
@@ -9932,7 +10003,7 @@ export class Daemon extends EventEmitter {
       // delivery is already in flight or queued. Without the lock the notice and
       // that delivery race into the same pane.
       const told = await this.paneWriteLock.run(() => this.submitSystemPaste(
-        buildInstructionReloadNotice(this.backend?.binaryName ?? "unknown", this.name, this.instanceDir),
+        buildInstructionReloadNotice(this.backend?.binaryName ?? "unknown", this.name, this.instanceDir, this.backend?.instructionsSource?.()),
         "instruction-reload-notice",
       ));
       if (!told) {
