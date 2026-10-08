@@ -9,7 +9,7 @@ Baseline: `/tmp/web22-shots/` (main `2d432413`). The rough edges listed there ar
 
 ## 0. Tech stack (decided 2026-10-08, the user agreed)
 
-- **No frontend framework.** The app is vanilla JS with native **ES modules** (`<script type="module" src="/ui/js/app.js">`, which `import`s the panels). The browser loads the files as they are in `src/ui/`.
+- **No frontend framework.** The app is vanilla JS with native **ES modules** (`<script type="module" src="/assets/app.js">`, which `import`s the shared modules and, by mode, the panels; see §4 for which file lives where). The browser loads the files as they are in `src/ui/`.
 - **No build step and no new npm dependency**: no bundler, transpiler, CSS preprocessor or UI library. The release copies `src/ui/` into `dist/` as it does today.
 - **Shared pieces are ours:**
   - design tokens as CSS custom properties, in one stylesheet;
@@ -141,8 +141,33 @@ The bottom tabs hide while the keyboard is open, using `visualViewport` (the com
 | `/settings`, `/settings/<section>` | Settings | sections: agents, bots, general, advanced … |
 
 - **Server:** every path in the table serves the **same** `app.html`, and the gate and its sign-in fallback apply unchanged.
-  - `serveSigninPage` now also covers `/ui/…`, `/view/…` and `/settings/…` navigations.
-  - signin.js's `nextTarget` already allows `^/(ui|view|settings)(/|$)`.
+  - **One exact navigation classifier**, `shellRoute(method, path)` in a new `src/web-shell-routes.ts`, returns the panel and a validated instance or section, or `null`. Four places use it:
+    - the route that serves the shell;
+    - the gate's sign-in fallback (`serveSigninPage` for HTML GETs with no credential, today hard-coded to `/ui`, `/settings` and `/view`);
+    - the public link's manifest (`isPublicWebRoute`);
+    - the anonymous `/view` bypass (`isViewPath`, which gains `/view/<instance>` and nothing else).
+
+    No copy of the pattern list exists anywhere else. signin.js cannot import TypeScript, so a test runs its `nextTarget` over the classifier's case table.
+  - **Bootstrap attributes (the server's decision, read by `app.js` on boot).** Today `/ui` alone gets `data-web-transport` and the #1306 preview attributes (`data-dashboard-origin`, `data-preview-origin`, `data-preview-boot`, `data-preview-reason`), plus the conditional CSP `frame-src <preview origin>/frame`. From step 1, **every signed-in shell entry** (`/ui…`, `/view…`, `/settings…`) is built by the same function and gets the same attributes and the same conditional `frame-src`. Entering at `/settings` or `/view` and then switching to Chat is identical to entering at `/ui`. The three modes:
+
+    | Entry | `data-mode` | Stream | Previews |
+    |---|---|---|---|
+    | local, signed in | `full` | **1 EventSource** `/ui/events`, falling back to `/ui/poll` every 5 s only while it is down (as today) | as /ui today (Host-only origin, boot, reason, conditional `frame-src`) |
+    | public link (#1367), signed in | `full` + `data-web-transport="poll"` | **0 EventSource**; `/ui/poll` from the start (the manifest still has no `/ui/events`) | off: no preview origin, no `frame-src`, the reason given as today |
+    | anonymous View-only (`view_access: open`) | `view-only` | **neither**: no `/ui/events` and no `/ui/poll` | off |
+
+    "One connection" in §5 means *at most* one, by these modes. The public-link regression tests (no SSE, immediate polling) stay as they are.
+  - **Sign-in keeps the legacy fragment** (`/ui#instance=alpha` signed out). The sign-in page is served at the requested URL, so `location.hash` is still there. Today `nextTarget()` (signin.js) drops it, and both return paths use `nextTarget()`: the code login and the cookie-probe bounce.
+
+    From step 1, `nextTarget()` keeps exactly one form: a hash of `#instance=<name>`, where the name passes the same name rule as the server. It converts that **itself** to `/ui/chat/<encoded name>`. Any other hash is dropped.
+
+    The existing guards stay:
+    - `token` is stripped from the query;
+    - only same-origin targets the classifier accepts;
+    - no backslash;
+    - the fallback is `/ui`.
+
+    Tests cover both return paths with a valid fragment, an invalid one (`#instance=../x`, `#instance=a&token=…`, `#next=//evil`) and none.
   - **Instance names in paths** (decided, §10):
     - written by the client with `encodeURIComponent`;
     - decoded and validated by the server against the same name rule that instance creation uses. A malformed name (bad encoding, `/`, characters outside the rule) gets the 400 that other routes use.
@@ -153,16 +178,55 @@ The bottom tabs hide while the keyboard is open, using `visualViewport` (the com
     - Their panel modules are not imported. The page makes no request to a session-only endpoint: no `/ui/events`, `/ui/poll`, `/ui/instances`, `/api/settings/*`.
     - The server marks the mode on the shell (`data-mode="view-only"`), from the same decision that lets the request in today.
     - Test: render the shell anonymously with `view_access: open` and assert that the nav has exactly View + Sign in, that no session-only link or panel module appears in the HTML or the DOM, and that the recorded requests stay within the View-only set.
+- **Known and unknown names:** the test compares the response **body** and the CSP **with the nonce masked**; each response has a fresh nonce, so the headers cannot be compared raw.
 - **No clash with data routes.** `/ui/` already holds data GETs: `/ui/instance/<x>`, `/ui/instances`, `/ui/tasks`, `/ui/schedules`, `/ui/teams`, `/ui/config`, `/ui/poll`, `/ui/history`, `/ui/file/<id>`, `/ui/prompts`, `/ui/backends`, `/ui/js/*`.
   - Client routes use only the new first segments `chat`, `fleet`, `needs` and `org`, and the server serves the shell for exactly those patterns (plus `/ui`, `/view[/<x>]`, `/settings[/<section>]`), never as a prefix fallback.
   - A test asserts that no shell pattern matches any existing data route, in both directions.
-  - The public link's manifest (`isPublicWebRoute`) gets the same exact patterns.
+  - The public link's manifest (`isPublicWebRoute`) uses the same classifier.
   - #1398's test that `GET /ui/needs` is not a data route stays true: from step 4 it serves the shell HTML (a navigation, not a read of the list), and the list still arrives only over SSE `needs` and `/ui/poll`.
 - **Client:** links are real `<a href>`s; clicks are intercepted (with modifier-click and middle-click left alone), then `pushState` and `popstate`. A route change runs `unmount` on the outgoing panel and `mount`/`update` on the incoming one, focuses the new view's heading (for screen readers), updates `document.title`, and sets `aria-current` on the nav.
 
 ## 4. Panels: modules with a lifecycle
 
-Each panel is an ES module (`/ui/js/panel-chat.js`, `panel-fleet.js`, `panel-view.js`, `panel-settings.js`, `panel-needs.js`) that exports `{ mount(root, route, ctx), update(route), unmount() }`. The router in `/ui/js/app.js` imports them; modules scope their names, which ends the global collisions of §1. Shared components are flat files beside them (`/ui/js/ui-dialog.js`, `ui-composer.js`, `ui-menu.js`, `ui-states.js` …). The existing `/ui/js/` route and the public-link manifest accept only flat `[a-z0-9_-]+.js` names, so no route change is needed. Module scripts are served as `application/javascript` from `'self'`, as today. The rules, enforced by tests:
+Each panel is an ES module that exports `{ mount(root, route, ctx), update(route), unmount() }`. Modules scope their names, which ends the global collisions of §1.
+
+**Where modules live: one public closure, private panels behind the gate.**
+- The entry `app.js`, everything it imports **statically**, and `panel-view.js` with its own static imports form the **public closure**. All of it is served from `/assets/`.
+  - `/assets/*` is already outside the session gate (`isAuthPath`) and is a **fixed map** of exact names (`ASSETS` in auth-api.ts). Each closure file is added to that map by name, with no pattern and no directory. The same names go in the public manifest.
+  - These files are static code with no data, like `shell.js` and `signin.js` today.
+  - The closure is: `app.js`, `app-router.js`, `app-store.js`, `app-stream.js`, `app-i18n.js`, `ui-dialog.js`, `ui-menu.js`, `ui-states.js`, `ui-icons.js`, `panel-view.js`, `app.css`, `inter.woff2`.
+- `panel-chat.js`, `panel-fleet.js`, `panel-settings.js`, `panel-needs.js` and their helpers (`ui-composer.js`, `chat-render.js`, `preview.js`, …) stay under `/ui/js/`, behind the session gate as today.
+  - `app.js` reaches them **only** with a dynamic `import()`, and only when `data-mode="full"`.
+  - The View-only shell never imports them, eagerly or lazily.
+- **Test over real HTTP**, with no module injection: an `http.Server` runs `FleetManager.dispatchWebHttp` on an ephemeral port from a scratch FleetManager. No fleet, no tmux, no instances (decision bd0c88aa).
+  - With no credential and `view_access: open`, the test fetches `/view` and parses its module entry. It then walks every **static** `import` specifier recursively and asserts each one is 200 with a JavaScript type.
+  - It asserts the closure contains no `/ui/` URL.
+  - It asserts that `/ui/js/panel-chat.js`, `/ui/js/panel-settings.js`, `/ui/events`, `/ui/poll` and `/ui/instances` are still 401 anonymously.
+  - With `view_access: session`, anonymous `/view` gets the sign-in page as today.
+
+**Navigation generations: async ownership.** An `AbortController` cancels a fetch, but not a continuation that already has its result, nor a dynamic `import()`. So:
+- Every navigation, mount and update gets a **generation** from the router.
+- `ctx.current()` is true only while that generation is the latest and the panel is still mounted.
+- The panel calls `ctx.current()` after **every** `await`: after the `import()`, after the response headers, after the body. It also calls it before any DOM write, `document.title` change, focus move, or action published to the app (store write, toast, navigation). If it is false, the continuation returns without doing anything.
+- `update()` on the same panel (View A → B, Settings section → section, Chat instance → instance) bumps the generation, so work started for A cannot land on B.
+- A mount that is superseded or fails disposes its `ctx` at once, which clears its timers, listeners, subscriptions and fetches. The router mounts only the latest.
+- Language change and the error state's Retry are themselves navigations with a new generation.
+- Tests:
+  - import of A resolving after import of B → only B renders;
+  - View A → B → A with the A1 response arriving last → shows A2's data;
+  - leave and re-enter during a load;
+  - a late Settings load after leaving → no DOM write and no title;
+  - a language switch and Retry mid-load.
+
+**Previews (#1306) are not `ctx`-owned today, so Chat handles them explicitly.** `preview.js` keeps its own timers (ready 3 s, watchdog, resize rAF), its window `message`/`storage` listeners, and `onChange` callbacks that cannot be removed.
+- `preview.init` and its two window listeners belong to the **app**, once per page, since they are page-wide by nature. `onChange` returns an unsubscribe function, and Chat registers it through `ctx`, so it is removed on dispose.
+- Before Chat leaves, re-renders a message, or moves a card, it calls `Preview.stopAll("leave")`. That removes every live frame and clears its timers.
+- A live preview iframe is **never cached, hidden or re-parented** across a switch. Coming back shows the card in its "stopped — Preview again" state, as a re-render does today.
+- Tests:
+  - a frame's late `ready`/resize message after Chat unmounted → ignored, no timer left;
+  - 50 Chat mounts with a preview started each time → zero live frames, timers and `onChange` callbacks afterwards.
+
+**The rules, enforced by tests:**
 - **Scoped DOM:** a panel queries only inside its `root` (`root.querySelector`), with no `getElementById` on the document. Ids are prefixed by panel if needed, and a test asserts no duplicate ids exist in the mounted app.
 - **No page-wide listeners of its own:**
   - keyboard: `ctx.on("key", handler)` is called only while the panel is mounted and the focus is inside its root, or nothing else is focused (`body`), never while a dialog or the drawer is open. Example: Esc stopping the reply is registered by Chat for its root only.
@@ -179,16 +243,49 @@ Each panel is an ES module (`/ui/js/panel-chat.js`, `panel-fleet.js`, `panel-vie
 
 | What | Lives in | Across a switch |
 |---|---|---|
-| Stream `/ui/events` (status, messages, ticks, prompts, `needs`) | **the app**: one EventSource for the whole session, with the 5 s `/ui/poll` fallback as today | kept: one connection whatever the panel. Chat, the Needs badge and the instance list all read it. Never one per panel. |
+| Stream (status, messages, ticks, prompts, `needs`) | **the app**, by mode (§3): local = one `/ui/events` with the `/ui/poll` fallback; public link = `/ui/poll` only; View-only = none | kept across switches; never one per panel |
 | Chat messages, drafts, pending files, ticks | app store (by instance) | kept: switching away and back restores the draft and scroll |
 | View pane poll (800 ms) and roster poll (5 s) | the View panel, via `ctx.interval` | **stopped on leave**, started on return; also paused while the tab is hidden (`visibilitychange`) |
 | View usage panel (60 s) | the View panel, only while the usage drawer is open | stopped on leave |
 | Settings data | loaded on mount; nothing recurring | dropped on leave (unsaved edits prompt before leaving) |
-| Settings apply job (1 s watcher, ≤ 10 min) | **the app** (a job in progress must finish and report wherever you are) | kept; the result is a toast in any panel |
+| Settings **Apply operation**: the staged writes, the `POST /api/settings/apply`, and the job watcher | **the app**, from the confirmation onward (below) | kept; progress and result show in any panel |
 | Theme, language, sidebar collapsed, tour seen | `localStorage` (as today) | app-wide |
 
-- **#1374:** no new timer and no new endpoint. Panels use the same passive reads (`/ui/poll`, `/ui/events`, `/api/pane/*`, `/api/profiles`, `/api/ai-usage`). Switching panels issues **no** request that counts as use (route changes are client-side). Mounting Settings issues its normal reads, which are a person's action, as today. A test asserts the allowlist is unchanged and that a route switch makes no non-passive request.
-- **No leaks:** a test mounts and unmounts each panel 50 times, then asserts zero live intervals, timeouts and listeners from panels, and still exactly one EventSource.
+**Settings Apply is owned by the app before the first write.** Today `applyPendingChanges` (settings.html):
+1. runs every confirmation;
+2. performs the staged writes **one by one**;
+3. only then makes the idempotency key and `POST /api/settings/apply`;
+4. watches the job.
+
+If only the watcher moved to the app, an unmount between steps 2 and 4 would lose an accepted write's follow-up, the key, or the job ID. So:
+- When the person confirms, the panel builds an **operation**: the list of staged changes as **data** (method, URL, body, label; no DOM closures), plus an idempotency key generated **now**. It hands the operation to the app's single `settingsApply` runner **before the first write**.
+- The runner performs the writes, the POST (reusing the key on retry, as today) and the one watcher. It publishes progress to the app store. It never touches panel DOM.
+  - A mounted Settings panel renders from the store, and a re-mounted one re-attaches by the operation's ID.
+  - Apply is disabled while an operation exists, so returning never starts a second job.
+  - 409 and failures are reported as today.
+- Navigation away is free once the operation is handed over.
+  - **Before that**, with staged but unapplied changes, leaving asks "Discard N pending changes?". Cancel keeps you on the page; Discard runs each change's cleanup, which today clears entered secrets, and drops them.
+  - `beforeunload` warns while an operation is still before its POST.
+- Secret values live only inside the operation and are dropped as each write finishes or the operation fails.
+- Tests:
+  - a switch while each write is in flight, accepted, and while the POST is in flight or accepted → one job, the same key, progress continues, no write to the old DOM;
+  - a dirty navigation Cancel, and Discard (secrets cleared);
+  - returning during a job → attached, Apply disabled, no second POST.
+
+**#1374: what counts as use.** No new timer and no new endpoint, and the passive allowlist is unchanged. Requests fall into three classes:
+- **Background reads that no person caused** must be passive reads, exactly as today: the stream, its reconnects, the 5 s poll fallback, View's pane and roster timers, the usage drawer refresh.
+- **Loads caused by a person's navigation** count as use, as they do today when the same click happens on the old pages. They are **not** made passive:
+  - the first selection of an instance in Chat (`GET /ui/history`);
+  - mounting a Fleet tab (`/ui/tasks`, `/ui/schedules`, `/ui/teams`, `/ui/config`);
+  - mounting Settings (`/api/settings/*`).
+- **Actions** (send, stop, apply …) count as use, as today.
+
+The router itself sends nothing. A cached return, such as Chat for an instance whose history is already in the store, sends no request at all. Tests, separately:
+- first selection → one `/ui/history`, which counts;
+- cached return → zero requests;
+- a Fleet mount and a Settings mount → their loads, which count;
+- with no interaction, background SSE reconnect and poll → only allowlisted passive reads, and the session's last-use time does not move.
+- **No leaks:** a test mounts and unmounts each panel 50 times, then asserts zero live intervals, timeouts, listeners, preview frames and `onChange` callbacks from panels, and the mode's stream count unchanged (local 1, public link 0 EventSource, View-only 0).
 
 ## 6. Empty, loading and error states (every panel)
 
@@ -240,13 +337,17 @@ Baseline item 5 (the permission prompt's wording) is the separate small issue th
   - no shell pattern overlaps a data route.
 - **View-only shell:** the anonymous `view_access: open` test of §3.
 - **Font:** `/assets/inter.woff2` is served as `font/woff2` under `font-src 'self'`; `OFL.txt` is present in `dist/`; `@font-face` has `font-display: swap`.
+- **Module admission:** the real-HTTP import walk of §4, anonymous and signed in.
+- **Bootstrap modes:** the three entries of §3. Each signed-in entry (`/ui`, `/view`, `/settings/general`) carries the same preview attributes and conditional `frame-src`; the public link and View-only carry none; the public-link no-SSE regression is kept.
+- **Sign-in return:** the legacy fragment through both the code login and the cookie-probe bounce (§3).
+- **Generations, Preview, Settings Apply, #1374 classes:** as listed in §4 and §5.
 - **Lifecycle:**
   - mount/unmount ×50 per panel leaves nothing behind;
-  - one EventSource across all switches;
+  - the mode's stream count (local 1 EventSource, public link 0 plus polling, View-only none) across all switches;
   - View's pollers stop on leave and when hidden, and restart on return;
   - the Settings apply job survives a switch.
 - **Keyboard scoping:** Esc in Settings or View never stops an agent's reply; "/" focuses View's filter only in View; a dialog's Esc wins over the panel's.
-- **#1374:** the allowlist is unchanged, and a route switch issues no non-passive request.
+- **#1374:** the allowlist is unchanged; the request classes of §5.
 - **#1300:** no style attribute and no inline handler anywhere; the CSP is unchanged except that external `/assets/app.css` and `/assets/inter.woff2` are served under `'self'`.
 - **Visual:** the screenshot set per step. Contrast computed from the token pairs.
 - **Existing suites:** the vm harnesses that load `dashboard.html`'s inline script (web-chat-c1…c4, web-csp-1268, web-preview-card-1306, web-ui-tour-1366, sidebar-instance-identity, …) move to loading `panel-chat.js` and `app.js` in step 1. This is the bulk of step 1's test work. What they assert stays the same.
