@@ -444,7 +444,8 @@ function codexUsageLimitMenuVisible(pane: string): boolean {
   // The hint row "Press enter to confirm or esc to continue working" must be last.
   if (!USAGE_LIMIT_ESC_HINT.test(rows[last])) return false;
 
-  // The option block, read upwards from the hint: consecutive numbered rows ending in N, N-1, … 1.
+  // The option block, read upwards from the hint: the WHOLE run of numbered rows, which must read N, N-1, … 1 —
+  // a numbered row above "1." (another "1.", a "0.") makes it some other list, not this picker.
   let i = last - 1;
   while (i >= 0 && rows[i].trim() === "") i--;
   const labels: string[] = [];
@@ -456,7 +457,6 @@ function codexUsageLimitMenuVisible(pane: string): boolean {
     if (expected !== null && n !== expected) return false;
     labels.unshift(option[2]);
     expected = n - 1;
-    if (n === 1) break;
   }
   if (expected !== 0) return false;
   if (labels[labels.length - 1] !== USAGE_LIMIT_CONTINUE) return false;

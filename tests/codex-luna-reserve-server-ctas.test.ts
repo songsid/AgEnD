@@ -65,6 +65,9 @@ describe("the Luna Reserve picker, whatever the server offers above 'Continue'",
     ["a row between two options", "  2. Reset usage\n", "  2. Reset usage\n     resets your 5h limit once\n"],
     ["a row between the options and the footer", "  3. Continue with Luna Reserve\n", "  3. Continue with Luna Reserve\n  something else\n"],
     ["more text on the 'Continue' row", "  3. Continue with Luna Reserve", "  3. Continue with Luna Reserve (recommended)"],
+    ["a '0.' row directly above '1.'", "› 1. Upgrade", "  0. Leave session\n› 1. Upgrade"],
+    ["a second '1.' row directly above '1.'", "› 1. Upgrade", "  1. Cancel the task\n› 1. Upgrade"],
+    ["a whole numbered list directly above '1.'", "› 1. Upgrade", "  1. End session\n  2. Discard draft\n› 1. Upgrade"],
   ])("not this picker, held for a human: %s", (_name, from, to) => {
     expect(LIVE_0160).toContain(from);
     const pane = LIVE_0160.replace(from, to);
