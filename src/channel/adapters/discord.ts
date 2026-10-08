@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { CPU_PROFILE_MAX_SECONDS } from "../../cpu-profile.js";
 import { slashLock } from "../../command-table.js";
 import { randomBytes } from "node:crypto";
 import { t } from "../../locale.js";
@@ -720,9 +721,9 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
             });
           } else {
             // Extract options as key-value pairs for fleet-manager
-            const options: Record<string, string | boolean> = {};
+            const options: Record<string, string | boolean | number> = {};
             for (const opt of interaction.options.data) {
-              options[opt.name] = opt.value as string | boolean;
+              options[opt.name] = opt.value as string | boolean | number;
             }
             this.emitFromClient(client, generation, "slash_command", {
               command: interaction.commandName,
@@ -1147,6 +1148,9 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
             }],
           },
           { name: "update", description: slashLock("update") + t("slash.update") },
+          { name: "profile", description: slashLock("profile") + t("slash.profile"),
+            options: [{ name: "seconds", description: t("slash.option.profile_seconds"),
+              type: ApplicationCommandOptionType.Integer, required: false, minValue: 1, maxValue: CPU_PROFILE_MAX_SECONDS }] },
           { name: "doctor", description: slashLock("doctor") + t("slash.doctor") },
           {
             name: "visibility", description: slashLock("visibility") + t("slash.visibility"),

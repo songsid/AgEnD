@@ -1,4 +1,7 @@
 import { measureSyncWork } from "./sync-work-attribution.js";
+import { RuntimeCpuProfiler, ProfileBusyError, profileDuration, type ProfileTicket } from "./runtime-cpu-profile.js";
+import { ProfileControlServer } from "./profile-control.js";
+import type { CpuProfile } from "./cpu-profile.js";
 import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync, readdirSync, renameSync, copyFileSync, chmodSync, statSync, accessSync, realpathSync, constants as fsConstants, type Dirent } from "node:fs";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
@@ -580,7 +583,7 @@ interface ClassicStartSlashData {
   userId: string;
   username?: string;
   text?: string;
-  options?: Record<string, string | boolean>;
+  options?: Record<string, string | boolean | number>;
   respond: (text: string) => Promise<string | undefined>;
   /** Remove Discord's deferred ephemeral acknowledgement after a command posts publicly. */
   dismissResponse?: () => Promise<void>;
@@ -2051,6 +2054,66 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     child.unref();
   }
 
+  private async handleProfileSlash(data: ClassicStartSlashData, adapterId: string): Promise<void> {
+    const route = this.routing.resolve(data.channelId);
+    await this.handleGeneralProfile(route?.kind === "general" ? route.name : undefined,
+      data.userId, adapterId, data.options?.seconds as string | number | undefined, data.respond);
+  }
+
+  /** Typed /profile belongs only to Telegram's General dispatcher. */
+  async runProfileCommand(msg: InboundMessage, seconds?: string): Promise<void> {
+    if (msg.source !== "telegram") return;
+    const adapterId = msg.adapterId ?? this.getPrimaryAdapterId();
+    const route = msg.threadId ? this.routing.resolve(msg.threadId) : undefined;
+    const general = msg.threadId ? (route?.kind === "general" ? route.name : undefined)
+      : Object.keys(this.fleetConfig?.instances ?? {}).find(name => this.fleetConfig!.instances[name].general_topic
+        && this.getInstanceAdapterId(name) === adapterId);
+    const adapter = adapterId ? this.adapters.get(adapterId) : this.adapter;
+    if (!adapter) return;
+    await this.handleGeneralProfile(general, msg.userId, adapterId, seconds,
+      async text => (await adapter.sendText(msg.chatId, text, { threadId: msg.threadId })).messageId);
+  }
+
+  private async handleGeneralProfile(general: string | undefined, userId: string, ingressAdapterId: string | undefined,
+    seconds: string | number | undefined, respond: (text: string) => Promise<unknown>): Promise<void> {
+    if (!general || !this.fleetConfig?.instances[general]?.general_topic) { await respond(t("profile.general_only")); return; }
+    const ownerId = this.getInstanceAdapterId(general);
+    if (!ownerId || ownerId !== ingressAdapterId) { await respond(t("not_authorized")); return; }
+    const gate = this.fleetAdminGate(userId, ownerId);
+    if (gate !== "ok") { await respond(t(gate === "disabled" ? "profile.disabled" : "not_authorized")); return; }
+    const adapter = this.getAdapterForInstance(general);
+    const group = String(this.getGroupIdForInstance(general) ?? "");
+    const topic = this.fleetConfig.instances[general].topic_id?.toString();
+    if (!adapter || this.worlds.get(ownerId)?.adapter !== adapter || !group) { await respond(t("profile.unavailable")); return; }
+    let duration: number;
+    try { duration = profileDuration(seconds); }
+    catch { await respond(t("profile.invalid")); return; }
+    let ticket: ProfileTicket;
+    try { ticket = await this.startCpuProfile(duration); }
+    catch (err) {
+      await respond(err instanceof ProfileBusyError ? t("profile.busy", String(err.remainingSeconds)) : t("profile.unavailable"));
+      return;
+    }
+    // A long recording must not hold a Discord interaction (or the inbound handler) open.
+    const initial = Promise.resolve().then(() => respond(t("profile.started", String(ticket.seconds))));
+    void (async () => {
+      await initial.catch(err => this.logger.warn({ err }, "CPU profile acknowledgement failed"));
+      let message: string;
+      try {
+        const result = await ticket.done;
+        const size = result.bytes === null ? t("profile.size_unknown") : `${(result.bytes / 1048576).toFixed(2)} MiB`;
+        message = t("profile.saved", result.path, size);
+      } catch { message = t("profile.failed"); }
+      // Never send a delayed artifact path to a replacement adapter/topic/world.
+      if (this.shuttingDown || this.getInstanceAdapterId(general) !== ownerId
+        || this.getAdapterForInstance(general) !== adapter || String(this.getGroupIdForInstance(general) ?? "") !== group
+        || this.fleetConfig?.instances[general]?.topic_id?.toString() !== topic
+        || !this.fleetConfig?.instances[general]?.general_topic) return;
+      await adapter.sendText(group, message, { threadId: topic });
+    })().catch(err => this.logger.warn({ err }, "CPU profile General notice failed"));
+    await initial.catch(() => {});
+  }
+
   private async handleRestartSlash(data: ClassicStartSlashData, adapterId: string): Promise<void> {
     if (!this.isFleetAdmin(data.userId, adapterId)) {
       await data.respond(t("not_authorized"));
@@ -2989,6 +3052,33 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.isFleetAdmin(userId, adapterId) ? "ok" : "denied";
   }
 
+  private runtimeCpuProfiler: RuntimeCpuProfiler | null = null;
+  private cpuProfileControl: ProfileControlServer | null = null;
+
+  private getCpuProfiler(): RuntimeCpuProfiler {
+    if (!this.runtimeCpuProfiler || (this.runtimeCpuProfiler.closed && !this.shuttingDown)) {
+      this.runtimeCpuProfiler = new RuntimeCpuProfiler({ dataDir: this.dataDir,
+        logger: { info: message => this.logger.info(message), warn: message => this.logger.warn(message) } });
+    }
+    return this.runtimeCpuProfiler;
+  }
+
+  /** Called only by cold CLI startup, after claiming the fleet singleton. */
+  async startCpuProfileControl(): Promise<void> {
+    if (this.shuttingDown || this.cpuProfileControl) return;
+    const control = new ProfileControlServer(this.dataDir, this.getCpuProfiler());
+    this.cpuProfileControl = control; // shutdown owns even an in-flight listen
+    try { await control.listen(); }
+    catch (err) { if (this.cpuProfileControl === control) this.cpuProfileControl = null; throw err; }
+  }
+
+  startEnvironmentCpuProfile(): Promise<CpuProfile | null> { return this.getCpuProfiler().startFromEnvironment(); }
+
+  startCpuProfile(seconds?: string | number): Promise<ProfileTicket> {
+    if (this.shuttingDown) return Promise.reject(new Error("Fleet is stopping."));
+    return this.getCpuProfiler().start(seconds);
+  }
+
   /**
    * Every Discord slash command, for every adapter, in one place (it used to be two copies that could drift).
    *
@@ -3097,6 +3187,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         : t("collab.off.classic"));
     } else if (data.command === "update") {
       await this.handleUpdateSlash(data, adapterId);
+    } else if (data.command === "profile") {
+      await this.handleProfileSlash(data, adapterId);
     } else if (data.command === "doctor") {
       await data.respond(await this.runBackendDoctor());
     } else if (data.command === "visibility") {
@@ -10638,7 +10730,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * Picks the backend-appropriate command (kiro → /chat save, claude → /export);
    * unsupported backends get a clear error. Routes via classic paste or fleet IPC.
    */
-  private async handleSlashSave(data: { channelId: string; userId: string; options?: Record<string, string | boolean>; respond: (text: string) => Promise<string | undefined> }, adapterId?: string): Promise<void> {
+  private async handleSlashSave(data: { channelId: string; userId: string; options?: Record<string, string | boolean | number>; respond: (text: string) => Promise<string | undefined> }, adapterId?: string): Promise<void> {
     // The admin of the channel's own kind (a fleet admin in a fleet channel). It used to ask for a ClassicBot
     // admin everywhere, so a fleet admin was refused in their own channel and a ClassicBot admin could paste
     // into a fleet instance.
@@ -14289,6 +14381,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // because we asked it to. Set synchronously — doStopAll runs to its first
     // await in the same tick as the signal handler, so no event can slip in.
     this.shuttingDown = true;
+    const profileStopped = this.runtimeCpuProfiler?.shutdown("fleet shutdown");
     this.ipcStoppingInstances.add("__fleet_stopping__");
     // Release held delivery promises before awaiting daemon shutdown, then
     // reject spawn work which has not started. Otherwise a storm backoff could
@@ -14312,6 +14405,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // A login/install window is a dedicated tmux server with its own TTL
     // timer and HTTP listener living in THIS process: without an explicit
     // shutdown it would outlive us as an owner-less login CLI (sol B3).
+    await profileStopped;
+    await this.cpuProfileControl?.close();
+    this.cpuProfileControl = null;
     await this.shutdownLoginWindows();
     // Cancel adapter retry timers
     for (const state of this.adapterState.values()) {
