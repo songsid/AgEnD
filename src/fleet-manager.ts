@@ -638,6 +638,11 @@ export interface DeliveryOptions {
    * paused after its row was claimed is handed back instead of woken here.
    */
   noInlineWake?: boolean;
+  /**
+   * #1426: the caller's own fence, asked wherever the delivery epoch is — through the wake, the idle wait and up to the
+   * IPC hand-off itself. False drops the delivery unsent (a schedule retry past its deadline).
+   */
+  stillCurrent?: () => boolean;
 }
 
 const CLASSIC_BACKEND_SELECTION_TIMEOUT_MS = 60_000;
@@ -2760,10 +2765,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     timeoutMs: number,
     deliveryEpoch: number,
     noInlineWake = false,
+    stillCurrent?: () => boolean,
   ): Promise<boolean> {
-    if (this.shuttingDown || !this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return false;
+    if (this.shuttingDown || !this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) return false;
     await this.holdDeliveryForStorm(instanceName, deliveryEpoch);
-    if (this.shuttingDown || !this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return false;
+    if (this.shuttingDown || !this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) return false;
     let idleObservedAfter = this.lastDeliveryAt.get(instanceName) ?? 0;
     if (this.lifecycle.isPaused(instanceName) && noInlineWake) {
       // Paused after its row was claimed (an operator or auth pause): hand the
@@ -2774,7 +2780,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (this.lifecycle.isPaused(instanceName)) {
       const wakeStartedAt = Date.now();
       await this.explicitWake(instanceName, 30_000);
-      if (!this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return false;
+      if (!this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) return false;
       // Waking added one to the warm count — make room by evicting a different
       // LRU idle instance (never this one; it's about to work).
       this.enforceWarmCap(instanceName);
@@ -2786,22 +2792,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       instanceName,
       timeoutMs,
       idleObservedAfter,
-      () => !this.isDeliveryEpochCurrent(instanceName, deliveryEpoch),
+      () => !this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent),
     );
-    if (!this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) {
+    if (!this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) {
       this.logger.info({ instanceName }, "Pending delivery dropped by user cancel");
       return false;
     }
     // A server crash can land while waitForInstanceIdle is pending. Re-check
     // immediately before the old timeout path would force text into a boot UI.
     await this.holdDeliveryForStorm(instanceName, deliveryEpoch);
-    if (this.shuttingDown || !this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return false;
+    if (this.shuttingDown || !this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) return false;
     if (!idle) {
       this.logger.warn({ instanceName, timeoutMs }, "Idle gate timed out; forcing delivery");
     }
-    const sent = await this.sendWhenConnected(instanceName, payload, deliveryEpoch);
+    const sent = await this.sendWhenConnected(instanceName, payload, deliveryEpoch, stillCurrent);
     if (!sent) return false;
-    if (this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) {
+    if (this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) {
       this.lastDeliveryAt.set(instanceName, Date.now());
     }
     return true;
@@ -2833,8 +2839,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     instanceName: string,
     payload: Record<string, unknown>,
     deliveryEpoch = this.getDeliveryEpoch(instanceName),
+    stillCurrent?: () => boolean,
   ): Promise<boolean> {
-    if (!this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return false;
+    if (!this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) return false;
     const queued = this.ipcWaitTails.get(instanceName);
     if (!queued) {
       const ipc = this.instanceIpcClients.get(instanceName);
@@ -2844,8 +2851,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const attempt = (queued ?? Promise.resolve())
       .catch(() => { /* a previous waiter's failure must not cancel this one */ })
       .then(() => {
-        if (!this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return false;
-        return this.sendAfterIpcReturns(instanceName, payload, deliveryEpoch);
+        if (!this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) return false;
+        return this.sendAfterIpcReturns(instanceName, payload, deliveryEpoch, stillCurrent);
       });
     // The chain stores a settled-either-way promise so one failed delivery cannot
     // wedge every later one, and so `queued` above is safe to await unguarded.
@@ -2867,11 +2874,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     instanceName: string,
     payload: Record<string, unknown>,
     deliveryEpoch = this.getDeliveryEpoch(instanceName),
+    stillCurrent?: () => boolean,
   ): Promise<boolean> {
     const deadline = Date.now() + IPC_RECONNECT_GRACE_MS;
     let warned = false;
     for (;;) {
-      if (!this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return false;
+      if (!this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) return false;
       // Re-read every round: a reconnect replaces the IpcClient object entirely,
       // so a cached reference would stay dead forever.
       const ipc = this.instanceIpcClients.get(instanceName);
@@ -3048,14 +3056,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (this.lifecycle.isPaused(instanceName)) {
         if (options.noInlineWake) { this.wakeCoordinator?.kick(); return false; }
         await this.explicitWake(instanceName, 30_000);
-        if (!this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return false;
+        if (!this.deliveryCurrent(instanceName, deliveryEpoch, options.stillCurrent)) return false;
         this.enforceWarmCap(instanceName); // woke one → evict a different LRU idle if over cap
       }
-      const sent = await this.sendWhenConnected(instanceName, deliveryPayload, deliveryEpoch);
+      const sent = await this.sendWhenConnected(instanceName, deliveryPayload, deliveryEpoch, options.stillCurrent);
       if (!sent) return false;
       // A cross-instance item arriving before the daemon observes this turn as
       // working must not trust the stale idle snapshot from before the send.
-      if (this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) {
+      if (this.deliveryCurrent(instanceName, deliveryEpoch, options.stillCurrent)) {
         this.lastDeliveryAt.set(instanceName, Date.now());
       }
       return true;
@@ -3068,6 +3076,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       options.idleTimeoutMs ?? 60_000,
       deliveryEpoch,
       options.noInlineWake === true,
+      options.stillCurrent,
     ));
     this.idleGatedDeliveryTails.set(instanceName, delivery);
     try {
@@ -7514,7 +7523,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const retryCount = schedulerDefaults?.retry_count ?? 3;
     const retryInterval = schedulerDefaults?.retry_interval_ms ?? 30_000;
 
-    const deliver = async (): Promise<boolean> => {
+    // #1426: a retry is only good until its deadline (the next occurrence or the cap) — through the idle wait and up to
+    // the IPC hand-off itself, not just when it starts.
+    const retryCurrent = retry ? () => Date.now() < retry.deadline_ms : undefined;
+    const deliver = async (): Promise<boolean | "past-deadline"> => {
+      if (retryCurrent && !retryCurrent()) return "past-deadline";
       try {
         // A schedule has no live inbound adapter context. Seed the daemon with
         // the target instance's configured world so replies use its persona
@@ -7532,7 +7545,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           this.logger.warn({ scheduleId: id, target, foreignWorld, targetWorld: adapterId, chatId: reply_chat_id },
             "Schedule reply target belongs to another channel world — not seeding chat context; the instance keeps its own last known chat");
         }
-        await this.deliverToInstance(target, {
+        const handed = await this.deliverToInstance(target, {
           type: "fleet_schedule_trigger",
           payload: { schedule_id: id, message: `[Scheduled] ${message}`, label },
           meta: {
@@ -7543,7 +7556,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             user: "scheduler",
             ...(adapterId ? { adapter_id: adapterId } : {}),
           },
-        }, { waitForIdle: true });
+        }, { waitForIdle: true, ...(retryCurrent ? { stillCurrent: retryCurrent } : {}) });
+        if (handed === false && retryCurrent && !retryCurrent()) return "past-deadline";
         // A scheduled trigger also puts the instance to work — show a cancel button.
         void this.sendCancelButton(target);
         return true;
@@ -7553,7 +7567,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
     };
 
-    if (await deliver()) {
+    const pastDeadline = () => {
+      this.scheduleRetryDropped(schedule, retry!, retry!.deadline_kind === "next_occurrence" ? "superseded" : "expired");
+    };
+    const first = await deliver();
+    if (first === "past-deadline") { pastDeadline(); return; }
+    if (first) {
       this.scheduler!.recordRun(id, runStatus("delivered"));
       if (source !== target) this.notifySourceTopic(schedule);
       return;
@@ -7561,7 +7580,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     for (let i = 0; i < retryCount; i++) {
       await new Promise((r) => setTimeout(r, retryInterval));
-      if (await deliver()) {
+      const again = await deliver();
+      if (again === "past-deadline") { pastDeadline(); return; }
+      if (again) {
         this.scheduler!.recordRun(id, runStatus("delivered"));
         if (source !== target) this.notifySourceTopic(schedule);
         return;
@@ -11945,6 +11966,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private isDeliveryEpochCurrent(instanceName: string, deliveryEpoch: number): boolean {
     return deliveryEpoch === this.getDeliveryEpoch(instanceName);
+  }
+
+  /** The delivery epoch, and the caller's own fence when it gave one (DeliveryOptions.stillCurrent, #1426). */
+  private deliveryCurrent(instanceName: string, deliveryEpoch: number, stillCurrent?: () => boolean): boolean {
+    return this.isDeliveryEpochCurrent(instanceName, deliveryEpoch) && (stillCurrent?.() ?? true);
   }
 
   /** Invalidate work queued before a user cancel and wake idle-gate waiters. */

@@ -189,7 +189,7 @@ describe("FleetManager: deferral, retry, escalation", () => {
   let topic: ReturnType<typeof vi.fn>;
   let sent: Array<{ text: string; opts: any }>;
 
-  function fleet(type: "telegram" | "discord" = "telegram") {
+  function fleet(type: "telegram" | "discord" = "telegram", realDelivery = false) {
     fm = new FleetManager(dir);
     const config = { id: "main", type, group_id: "group-1", access: { allowed_users: ["111"] } } as any;
     sent = [];
@@ -198,7 +198,7 @@ describe("FleetManager: deferral, retry, escalation", () => {
     fm.worlds.set("main", { id: "main", adapter, channelConfig: config, groupId: "group-1" } as any);
     limits = undefined;
     vi.spyOn((fm as any).statuslineWatcher, "getRateLimits").mockImplementation(() => limits);
-    deliver = vi.spyOn(fm, "deliverToInstance").mockResolvedValue(undefined) as any;
+    deliver = (realDelivery ? vi.spyOn(fm, "deliverToInstance") : vi.spyOn(fm, "deliverToInstance").mockResolvedValue(undefined)) as any;
     topic = vi.spyOn(fm as any, "notifyInstanceTopic").mockImplementation(() => {}) as any;
     vi.spyOn(fm as any, "sendCancelButton").mockResolvedValue(undefined);
     const scheduler = new Scheduler(join(dir, "scheduler.db"),
@@ -214,6 +214,50 @@ describe("FleetManager: deferral, retry, escalation", () => {
     label: "cli<watch>", timezone: "Asia/Taipei", silent,
   });
   const messages = () => deliver.mock.calls.map(c => (c[1] as any).payload.message as string);
+  /** A real IPC client stub on the target, and the target's state as the idle gate reads it. */
+  function target(state: "idle" | "working", connected = true) {
+    const ipcSent: any[] = [];
+    fm.instanceIpcClients.set("dev", { connected, send: vi.fn((m: any) => { if (m.type === "fleet_schedule_trigger") ipcSent.push(m); return connected; }) } as any);
+    (fm as any).instanceStateCache.set("dev", { state, observedAt: Date.now() });
+    return ipcSent;
+  }
+
+  it("P3: a retry still waiting for the idle gate at its deadline is dropped there; the held next occurrence then runs once", async () => {
+    const scheduler = fleet("telegram", true);
+    const s = create(scheduler, "0 * * * *");
+    // retry due 13:59:30.5: its idle-gate polls fall on the half second, so it is still in flight when 14:00 fires
+    limits = { five_hour_pct: 100, seven_day_pct: 10, five_hour_resets_at_ms: at("2030-10-08T13:58:30.500Z") };
+    await vi.advanceTimersByTimeAsync(at("2030-10-08T13:00:01Z") - Date.now());
+    const ipcSent = target("working");                           // busy: the idle gate waits (60 s backstop)
+    await vi.advanceTimersByTimeAsync(at("2030-10-08T14:00:05Z") - Date.now());
+    expect(ipcSent).toEqual([]);                                 // the retry never reached the daemon
+    expect(sent.map(m => m.text)).toEqual([expect.stringContaining("its next run (22:00) came before the window reset")]);
+    await vi.advanceTimersByTimeAsync(70_000);                   // the 14:00 occurrence: held behind the retry, then forced after 60 s
+    expect(ipcSent.map(m => m.payload.message)).toEqual(["[Scheduled] check versions"]);
+    expect(scheduler.getRuns(s.id).map(r => r.status).reverse()).toEqual(["deferred", "deferred → skipped (superseded)", "delivered"]);
+  });
+
+  it("P3: a retry held at the IPC hand-off (daemon disconnected) past its deadline is not sent", async () => {
+    const scheduler = fleet("telegram", true);
+    create(scheduler, "0 * * * *");
+    limits = { five_hour_pct: 100, seven_day_pct: 10, five_hour_resets_at_ms: at("2030-10-08T13:58:30Z") };
+    await vi.advanceTimersByTimeAsync(at("2030-10-08T13:00:01Z") - Date.now());
+    const ipcSent = target("idle", false);
+    await vi.advanceTimersByTimeAsync(at("2030-10-08T14:00:05Z") - Date.now());
+    expect(ipcSent).toEqual([]);
+    expect(sent).toHaveLength(1);                                // the superseded notice
+  });
+
+  it("P3: inside its deadline it is handed over, labelled (the control)", async () => {
+    const scheduler = fleet("telegram", true);
+    create(scheduler, "0 * * * *");
+    limits = { five_hour_pct: 100, seven_day_pct: 10, five_hour_resets_at_ms: at("2030-10-08T13:30:00Z") };
+    await vi.advanceTimersByTimeAsync(at("2030-10-08T13:00:01Z") - Date.now());
+    const ipcSent = target("idle");
+    await vi.advanceTimersByTimeAsync(at("2030-10-08T13:31:05Z") - Date.now());
+    expect(ipcSent.map(m => m.payload.message)).toEqual([expect.stringMatching(/^\[Scheduled\] \[retry\] originally due 21:00/)]);
+    expect(sent).toEqual([]);
+  });
 
   it("deferred at 100%: says when it will run; after the reset it runs once, labelled, and last_status says so", async () => {
     const scheduler = fleet();
@@ -286,5 +330,130 @@ describe("FleetManager: deferral, retry, escalation", () => {
     expect(outbox.listPending().map(r => [r.operationId, r.payload.content])).toEqual([[`schedule:${s.id}:${T13}`, "check versions"]]);
     expect(scheduler.get(s.id)!.last_status).toBe("deferred → queued (retry)");
     outbox.close();
+  });
+});
+
+describe("#1433 review", () => {
+  const oneShot = (s: Scheduler) => s.create({ at: "2030-10-08T13:00:00Z", message: "once", source: "src", target: "dev",
+    reply_chat_id: "chat", reply_thread_id: null, timezone: "Asia/Taipei" });
+  const deferOnce = (resetsAtMs: number | null) => (s: Schedule, runId: string, retry: ScheduleRetry | undefined, sch: Scheduler) => {
+    if (!retry) sch.deferForRetry(s, runId, { deferredPct: 100, resetsAtMs });
+    else sch.endRetry(retry);
+  };
+
+  it("P1: after a restart (and a reload) an overdue one-shot whose retry is pending runs once — as the retry", async () => {
+    const first = engine(deferOnce(at("2030-10-08T14:00:00Z")));
+    const s = oneShot(first.scheduler);
+    await vi.advanceTimersByTimeAsync(at("2030-10-08T13:00:01Z") - Date.now());
+    first.scheduler.recordRun(s.id, "deferred");
+    first.scheduler.shutdown();
+    vi.setSystemTime(at("2030-10-08T13:10:00Z"));
+    const second = engine(deferOnce(null));
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(second.calls).toEqual([]);                            // not re-run unlabelled
+    second.scheduler.reload();
+    await vi.advanceTimersByTimeAsync(at("2030-10-08T14:01:01Z") - Date.now());
+    expect(second.calls.map(c => [c.runId, !!c.retry])).toEqual([[T13, true]]);
+    expect(second.scheduler.get(s.id)).toBeNull();               // consumed after its retry
+  });
+
+  it("P2: a manual trigger superseding a one-shot's retry records the drop and runs (the real run record path)", async () => {
+    const drops: string[] = [];
+    let sch!: Scheduler;
+    const calls: Array<[string, boolean]> = [];
+    sch = new Scheduler(join(dir, "scheduler.db"), (s, runId, retry) => {
+      calls.push([runId, !!retry]);
+      if (calls.length === 1) sch.deferForRetry(s, runId, { deferredPct: 100, resetsAtMs: null });
+    }, DEFAULT_SCHEDULER_CONFIG, () => true, (s, retry, reason) => { sch.recordRun(s.id, `deferred → skipped (${reason})`); drops.push(`${reason}:${sch.getRuns(s.id).map(r => r.status).join("|")}`); });
+    schedulers.push(sch);
+    sch.init();
+    const s = oneShot(sch);
+    await vi.advanceTimersByTimeAsync(at("2030-10-08T13:00:01Z") - Date.now());
+    expect(sch.get(s.id)).not.toBeNull();
+    expect(() => sch.trigger(s.id)).not.toThrow();
+    expect(calls.map(c => c[1])).toEqual([false, false]);        // the manual run did run
+    expect(drops).toEqual(["superseded:deferred → skipped (superseded)"]);   // recorded while the row existed
+    expect(sch.get(s.id)).toBeNull();                            // the manual run consumed the one-shot after
+  });
+
+  it("P2: an expired one-shot retry records the drop before the row goes; a successful retry still consumes it", async () => {
+    const drops: string[] = [];
+    let sch!: Scheduler;
+    sch = new Scheduler(join(dir, "scheduler.db"), (s, runId, retry) => { if (!retry) sch.deferForRetry(s, runId, { deferredPct: 100, resetsAtMs: null }); },
+      DEFAULT_SCHEDULER_CONFIG, () => true, (s, retry, reason) => { sch.recordRun(s.id, `deferred → skipped (${reason})`); drops.push(`${reason}:${sch.getRuns(s.id).map(r => r.status).join("|")}`); });
+    schedulers.push(sch);
+    sch.init();
+    const s = oneShot(sch);
+    await vi.advanceTimersByTimeAsync(at("2030-10-08T13:00:01Z") - Date.now());
+    vi.setSystemTime(at("2030-10-08T19:00:00Z"));                 // past the 5h15m cap before its 13:15 look
+    await vi.advanceTimersByTimeAsync(16 * 60_000);
+    expect(drops).toEqual(["expired:deferred → skipped (expired)"]);
+    expect(sch.get(s.id)).toBeNull();
+  });
+
+  it("P4: a wall clock set back after arming does not fire it early; ordinary firing still happens", async () => {
+    const { scheduler, calls } = engine();
+    vi.setSystemTime(at(T13));
+    const s = daily(scheduler);
+    scheduler.deferForRetry(s, T13, { deferredPct: 100, resetsAtMs: at("2030-10-08T15:00:00Z") });   // due 15:01
+    vi.setSystemTime(at("2030-10-08T12:00:00Z"));                // set back an hour
+    await vi.advanceTimersByTimeAsync(at("2030-10-08T15:01:00Z") - at(T13) + 1_000);   // the timer's own delay has run out
+    expect(calls).toEqual([]);                                   // wall clock says 14:01: not due
+    await vi.advanceTimersByTimeAsync(at("2030-10-08T15:01:01Z") - Date.now());
+    expect(calls.map(c => !!c.retry)).toEqual([true]);
+  });
+
+  it("P4: a wall clock jumping past the deadline drops it", async () => {
+    const { scheduler, calls, drops } = engine();
+    vi.setSystemTime(at(T13));
+    const s = daily(scheduler, "0 * * * *");
+    scheduler.deferForRetry(s, T13, { deferredPct: 100, resetsAtMs: null });                         // due 13:15, deadline 14:00
+    vi.setSystemTime(at("2030-10-08T14:30:00Z"));
+    await vi.advanceTimersByTimeAsync(15 * 60_000);
+    expect(calls.filter(c => c.retry)).toEqual([]);
+    expect(drops.map(d => d.reason)).toEqual(["superseded"]);
+  });
+
+  it("P5: a catch-up of 13:00 at 14:20 has no retry: its next occurrence (14:00) is already past", async () => {
+    const first = engine();
+    daily(first.scheduler, "0 * * * *");                          // created 12:59
+    first.scheduler.shutdown();
+    vi.setSystemTime(at("2030-10-08T14:20:00Z"));
+    const results: unknown[] = [];
+    const second = engine((s, runId, retry, sch) => { if (!retry) results.push(sch.deferForRetry(s, runId, { deferredPct: 100, resetsAtMs: null })); });
+    expect(second.calls.map(c => c.runId)).toEqual([T13]);       // the catch-up
+    expect(results).toEqual([expect.objectContaining({ dropped: "superseded" })]);
+    expect(second.scheduler.getRetry(second.calls[0]!.id)).toBeNull();
+  });
+
+  it("a regular fire of the occurrence its pending retry owns (croner after a clock set back) does not run it again", async () => {
+    const { scheduler, calls } = engine();
+    vi.setSystemTime(at(T13));
+    const s = daily(scheduler);                                  // its occurrence: 21:00 Taipei = 13:00Z, now
+    scheduler.deferForRetry(s, T13, { deferredPct: 100, resetsAtMs: at("2030-10-08T15:00:00Z") });
+    vi.setSystemTime(at("2030-10-08T12:30:00Z"));                // set back across 13:00Z: croner fires 13:00 again
+    await vi.advanceTimersByTimeAsync(at("2030-10-08T13:00:05Z") - Date.now());
+    expect(calls).toEqual([]);                                   // the retry owns that occurrence
+    await vi.advanceTimersByTimeAsync(at("2030-10-08T15:01:01Z") - Date.now());
+    expect(calls.map(c => [c.runId, !!c.retry])).toEqual([[T13, true]]);
+  });
+
+  it("P6: a one-shot callback settling after shutdown touches nothing; a normal finish is the control", async () => {
+    let release!: () => void;
+    const unhandled = vi.fn();
+    process.on("unhandledRejection", unhandled);
+    try {
+      const { scheduler } = engine();
+      (scheduler as any).onTrigger = () => new Promise<void>(r => { release = r; });
+      const s = oneShot(scheduler);
+      await vi.advanceTimersByTimeAsync(at("2030-10-08T13:00:01Z") - Date.now());
+      scheduler.shutdown();
+      release();
+      await vi.advanceTimersByTimeAsync(10);
+      expect(unhandled).not.toHaveBeenCalled();
+      const control = engine();
+      const c = oneShot(control.scheduler);
+      expect(c).toBeTruthy();
+    } finally { process.off("unhandledRejection", unhandled); }
   });
 });
