@@ -401,6 +401,12 @@ export interface CliBackend {
   readSteerComposer?(pane: string): SteerComposerMode | null;
 
   /**
+   * The typed text on the composer's row when readSteerComposer reads "text" (#1405), else null: what a steer's pre-Enter
+   * check matches against its own payload, so a draft that is not this delivery's paste is never taken for it.
+   */
+  readSteerComposerText?(pane: string): string | null;
+
+  /**
    * Whether every submission needs a defensive second Enter. Some TUIs swallow
    * Enter while still processing a paste (a startup redraw, or a large paste on
    * a slow host) while emitting output that looks like a successful idle→busy

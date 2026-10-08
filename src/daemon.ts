@@ -7279,15 +7279,31 @@ export class Daemon extends EventEmitter {
   /**
    * #1405: one look at a mode-switched composer for a steer's own proof: on the tmux of this write, inside `deadline`
    * (monotonic) — the capture is raced against the time left and a late answer dropped — and `current` asked after the
-   * await. Null when unreadable, late or no longer this write's: never evidence of an empty or a full box.
+   * await. Null when unreadable, late or no longer this write's: never evidence of an empty or a full box. The pane
+   * comes back with the mode, so what follows judges the same capture.
    */
-  private async steerComposerWithin(tmux: TmuxManager, deadline: number, current: () => boolean): Promise<SteerComposerMode | null> {
+  private async steerComposerWithin(tmux: TmuxManager, deadline: number, current: () => boolean): Promise<{ mode: SteerComposerMode; pane: string } | null> {
     const read = this.backend?.readSteerComposer;
     const left = deadline - performance.now();
     if (!read || left <= 0 || !current()) return null;
     const pane = await withinMs(tmux.capturePane(Math.ceil(left)), left);
     if (pane === undefined || performance.now() > deadline || !current()) return null;
-    return read.call(this.backend, pane);
+    const mode = read.call(this.backend, pane);
+    return mode === null ? null : { mode, pane };
+  }
+
+  /**
+   * #1405: the composer's text is THIS delivery's paste — the start of its first line (kiro paints the first row; a
+   * long line wraps), not merely some text: another user's draft, or a paste of ours appended to one, is not it. A
+   * collapsed or otherwise unattributable form is not it either.
+   */
+  private steerPasteIsOurs(pane: string, formatted: string): boolean {
+    const shown = this.backend?.readSteerComposerText?.(pane);
+    if (!shown) return false;
+    const norm = (t: string) => t.replace(/\s+/g, " ").trim();
+    const row = norm(shown).replace(/…$/u, "");
+    const first = norm(formatted.split("\n").find(line => line.trim() !== "") ?? "");
+    return first !== "" && row.length >= Math.min(16, first.length) && first.startsWith(row);
   }
 
   /**
@@ -8052,9 +8068,10 @@ export class Daemon extends EventEmitter {
       // positively hold typed text, and after it be the empty placeholder again. The empty placeholder here means the
       // paste never reached the box; an unreadable box (a failed or late capture, a dialog) proves nothing: no Enter.
       const steerComposerProof = handingOffToNativeQueue && steer && !!this.backend?.readSteerComposer && tmuxAtWrite !== null;
+      let steerEnterDeadline = Infinity;
       if (steerComposerProof) {
         const deadline = performance.now() + STEER_PASTE_VISIBLE_MS;
-        let before: SteerComposerMode | null = null;
+        let before: { mode: SteerComposerMode; pane: string } | null = null;
         for (;;) {
           before = await this.steerComposerWithin(tmuxAtWrite!, deadline, steerCurrent);
           if (before !== null || !steerCurrent() || performance.now() >= deadline) break;
@@ -8066,15 +8083,22 @@ export class Daemon extends EventEmitter {
           verdict.proof = "fenced-before-enter";
           return false;
         }
-        if (before !== "text") return this.failDelivery(verdict, status, "steer-paste", before === null ? "box-unread" : `box-still-${before}`);
+        // The caller's own receipt is inside the budget too: a reading whose continuation ran late is not used.
+        if (performance.now() > deadline) return this.failDelivery(verdict, status, "steer-paste", "box-read-late");
+        if (before?.mode !== "text") return this.failDelivery(verdict, status, "steer-paste", before === null ? "box-unread" : `box-still-${before.mode}`);
+        if (!this.steerPasteIsOurs(before.pane, formatted)) return this.failDelivery(verdict, status, "steer-paste", "box-not-this-paste");
+        // …and so is the Enter: the key is sent only while the reading is still within it.
+        steerEnterDeadline = deadline;
       }
       let enterAt = Date.now();
-      if (!(await this.sendDeliveryEnter("initial-submit", steerComposerProof ? steerCurrent : undefined, durableAttempt))) {
+      const steerEnterCurrent = () => steerCurrent() && performance.now() <= steerEnterDeadline;
+      if (!(await this.sendDeliveryEnter("initial-submit", steerComposerProof ? steerEnterCurrent : undefined, durableAttempt))) {
         if (steerComposerProof && !steerCurrent()) {
           verdict.phase = "submit-enter";
           verdict.proof = "fenced-before-enter";
           return false;
         }
+        if (steerComposerProof && performance.now() > steerEnterDeadline) return this.failDelivery(verdict, status, "submit-enter", "pre-enter-deadline");
         return this.failDelivery(verdict, status, "submit-enter", "tmux-send-keys-failed");
       }
       // The proof's whole budget, from the Enter: every capture and dialog probe inside it, a late answer dropped.
@@ -8128,7 +8152,8 @@ export class Daemon extends EventEmitter {
           // synchronously, right before it is accepted.
           const deadline = steerProofDeadline;
           for (;;) {
-            const after = await this.steerComposerWithin(tmuxAtWrite!, deadline, steerCurrent);
+            const look = await this.steerComposerWithin(tmuxAtWrite!, deadline, steerCurrent);
+            const after = look?.mode;
             if (after === "steer" || after === "queue" || after === "idle") {
               const probe = await withinMs(this.probeBlockingDialog(), deadline - performance.now());
               if (probe?.state === "clear" && performance.now() <= deadline && steerCurrent() && this.getWindowId() === windowId) {

@@ -20,8 +20,8 @@ const COMPOSER = "›  Kiro is working · 0s · Type to steer · Ctrl+S to queue
 const composer = (row: string) => BUSY.replace(COMPOSER, row);
 const QUEUE = composer("›  Kiro is working · 0s · Type to queue · Ctrl+S to steer");
 const IDLE = composer("›  ask a question or describe a task ↵");
-/** The box holding the paste (its first row): no placeholder. */
-const HOLDING = composer("›  [agend-delivery-id:d] [STEERING — mid-task course correction.]");
+/** The box holding the paste: its first row is the start of what this delivery pasted (set by the stub pasteBuffer). */
+let HOLDING = composer("›  (nothing pasted yet)");
 const logger = { info() {}, warn() {}, error() {}, debug() {}, child() { return this; } } as any;
 
 const COMPAT: KiroCliCompatibility = {
@@ -65,7 +65,7 @@ interface Opts {
   /** Runs as the last capture before the paste is taken (the hand-off's final admission). */
   beforeBaseline?: (daemon: any) => void;
   /** Called with a function that moves performance.now() forward (an event-loop stall), for panes/probes to use. */
-  stall?: { ms: number; on: "capture-before-enter" | "dialog-probe" };
+  stall?: { ms: number; on: "capture-before-enter" | "dialog-probe" | "after-pre-enter-read" | "enter-transient" };
   /** waitForPaneReadyForDelivery's answer (a delivery that is not handed off waits for the idle prompt). */
   becameIdle?: boolean;
 }
@@ -105,14 +105,22 @@ async function steer(opts: Opts = {}) {
       if (opts.stall?.on === "capture-before-enter" && s.pasted && !s.entered) stallOffset += opts.stall.ms;
       return v;
     }),
-    pasteBuffer: vi.fn(async () => { s.pasted = true; return true; }),
+    pasteBuffer: vi.fn(async (text: string) => {
+      s.pasted = true;
+      HOLDING = composer(`›  ${text.split("\n").find(l => l.trim()) ?? ""}`);
+      return true;
+    }),
     sendSpecialKey: vi.fn(async () => { s.entered = true; return true; }),
     getLastPasteError: vi.fn(), isLastPasteFailureRecoverable: vi.fn(() => true), getLastSendSpecialKeyError: vi.fn(),
     getWindowId: () => "@worker",
   };
   daemon.tmux = tmux;
   vi.spyOn(daemon, "wake").mockResolvedValue(undefined);
-  vi.spyOn(daemon, "waitForInputTransientToClear").mockResolvedValue(true);
+  vi.spyOn(daemon, "waitForInputTransientToClear").mockImplementation(async (phase: unknown) => {
+    // the transient wait inside the Enter primitive outlives the pre-Enter budget
+    if (opts.stall?.on === "enter-transient" && phase === "initial-submit") stallOffset += opts.stall.ms;
+    return true;
+  });
   vi.spyOn(daemon, "paneReadinessForDelivery").mockResolvedValue("busy");
   const waitIdle = vi.spyOn(daemon, "waitForPaneReadyForDelivery").mockResolvedValue(opts.becameIdle ?? false);
   const clear = { state: "clear" } as const;
@@ -128,6 +136,13 @@ async function steer(opts: Opts = {}) {
   vi.spyOn(daemon, "probeBlockingDialog").mockResolvedValueOnce(clear).mockResolvedValueOnce(clear)
     .mockImplementation(verifyProbe as any);
   vi.spyOn(daemon, "hasPositiveDeliveryInput").mockResolvedValue(true);
+  const realWithin = daemon.steerComposerWithin.bind(daemon);
+  vi.spyOn(daemon, "steerComposerWithin").mockImplementation(async (...args: unknown[]) => {
+    const look = await realWithin(...args);
+    // a valid reading, whose caller continues only after a stall (the helper's own check passed)
+    if (opts.stall?.on === "after-pre-enter-read" && s.pasted && !s.entered && look) await Promise.resolve().then(() => { stallOffset += opts.stall!.ms; });
+    return look;
+  });
   const admits = vi.spyOn(daemon, "steerComposerAdmits");
   const realBaseline = daemon.capturePaneEvidence.bind(daemon);
   const baseline = vi.spyOn(daemon, "capturePaneEvidence").mockImplementation(async (...args: unknown[]) => {
@@ -396,13 +411,51 @@ describe("#1432 review: each guard on its own", () => {
   it("an answer that arrives after a stall past the pre-Enter budget is dropped: no Enter", async () => {
     const r = await steer({ stall: { ms: 10_000, on: "capture-before-enter" } });
     expect(r.tmux.sendSpecialKey).not.toHaveBeenCalled();
-    expect(r.attempt.evidence).toBe("steer-paste:box-unread");
+    expect(r.attempt.evidence).toBe("steer-paste:box-read-late");
     r.outbox.close();
   });
 
   it("a dialog probe answering 'clear' after a stall past the proof's deadline is not accepted", async () => {
     const r = await steer({ stall: { ms: 10_000, on: "dialog-probe" } });
     expect(r.delivery.state).toBe("uncertain");
+    r.outbox.close();
+  });
+});
+
+describe("#1432 review r2: the text is this paste, and the Enter stays inside the budget", () => {
+  it("another user's draft where the paste should be: no Enter, not delivered", async () => {
+    const draft = composer("›  Please report the weather for tomorrow");
+    const r = await steer({ pane: ({ pasted, entered }) => (entered ? BUSY : pasted ? draft : BUSY) });
+    expect(r.tmux.sendSpecialKey).not.toHaveBeenCalled();
+    expect(r.attempt.evidence).toBe("steer-paste:box-not-this-paste");
+    r.outbox.close();
+  });
+
+  it("our paste appended to a draft is not ours either", async () => {
+    const r = await steer({ pane: ({ pasted, entered }) => (entered ? BUSY : pasted ? HOLDING.replace("›  ", "›  half a draft ") : BUSY) });
+    expect(r.tmux.sendSpecialKey).not.toHaveBeenCalled();
+    expect(r.attempt.evidence).toBe("steer-paste:box-not-this-paste");
+    r.outbox.close();
+  });
+
+  it("…while the box showing the start of this delivery's own payload is the control: delivered", async () => {
+    const r = await steer();
+    expect(r.tmux.pasteBuffer.mock.calls[0]![0]).toMatch(/^\[agend-delivery-id:/);
+    expect(r.delivery.state).toBe("delivered");
+    r.outbox.close();
+  });
+
+  it("a valid reading whose caller continues past the budget is not used: no Enter", async () => {
+    const r = await steer({ stall: { ms: 10_000, on: "after-pre-enter-read" } });
+    expect(r.tmux.sendSpecialKey).not.toHaveBeenCalled();
+    expect(r.attempt.evidence).toBe("steer-paste:box-read-late");
+    r.outbox.close();
+  });
+
+  it("an Enter whose transient wait outlives the budget is not sent", async () => {
+    const r = await steer({ stall: { ms: 10_000, on: "enter-transient" } });
+    expect(r.tmux.sendSpecialKey).not.toHaveBeenCalled();
+    expect(r.attempt.evidence).toBe("submit-enter:pre-enter-deadline");
     r.outbox.close();
   });
 });

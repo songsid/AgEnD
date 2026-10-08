@@ -83,22 +83,33 @@ export const KIRO_STEER_VERIFIED: Readonly<Record<string, ReadonlyArray<"tui" | 
  * evidence of either an empty or a full box. The toggle key's label is whatever the user bound; it is read past, never
  * pressed.
  */
-export function readKiroSteerComposer(pane: string): SteerComposerMode | null {
+function readKiroComposer(pane: string): { mode: SteerComposerMode; text: string } | null {
   const rows = pane.split("\n").map(row => row.replace(/\s+$/, ""));
   let i = rows.length - 1;
   while (i >= 0 && (rows[i] === "" || /^[ \t]{20,}\S/.test(rows[i]))) i--;
   const row = rows[i];
   if (row === undefined || !/^›[ \t]+\S/.test(row)) return null;
   const working = String.raw`^›[ \t]+Kiro is working(?:[ \t]+·[ \t]+[^·]+?)?[ \t]+·[ \t]+`;
-  if (new RegExp(`${working}Type to steer[ \\t]+·[ \\t]+[^·]+?[ \\t]+to queue$`).test(row)) return "steer";
-  if (new RegExp(`${working}Type to queue(?:[ \\t]+·[ \\t]+[^·]+?[ \\t]+to steer)?$`).test(row)) return "queue";
+  const text = row.replace(/^›[ \t]+/, "");
+  if (new RegExp(`${working}Type to steer[ \\t]+·[ \\t]+[^·]+?[ \\t]+to queue$`).test(row)) return { mode: "steer", text };
+  if (new RegExp(`${working}Type to queue(?:[ \\t]+·[ \\t]+[^·]+?[ \\t]+to steer)?$`).test(row)) return { mode: "queue", text };
   const idle = String.raw`^›[ \t]+ask a question or describe a task`;
   if (new RegExp(`${idle}[ \\t]+↵$`).test(row)
     || new RegExp(`${idle}[ \\t]+↵[ \\t]+·[ \\t]+exit plan mode: shift\\+tab$`).test(row)
-    || new RegExp(`${idle}[ \\t]+·[ \\t]+/tangent to go back[ \\t]+·[ \\t]+/tangent ls to view$`).test(row)) return "idle";
+    || new RegExp(`${idle}[ \\t]+·[ \\t]+/tangent to go back[ \\t]+·[ \\t]+/tangent ls to view$`).test(row)) return { mode: "idle", text };
   // Other placeholders (and anything the ASCII glyph set paints) are not typed text.
   if (/^›[ \t]+(?:Kiro is working\b|Goal (?:Active|Paused):|Editing queued message \d|Initializing\b|describe what "|running shell command\b|ask a question or describe a task (?:\.|enter\b))/.test(row)) return null;
-  return "text";
+  return { mode: "text", text };
+}
+
+export function readKiroSteerComposer(pane: string): SteerComposerMode | null {
+  return readKiroComposer(pane)?.mode ?? null;
+}
+
+/** The typed text on the composer's row when it reads "text" (its first row, as kiro paints it); else null. */
+export function readKiroComposerText(pane: string): string | null {
+  const c = readKiroComposer(pane);
+  return c?.mode === "text" ? c.text : null;
 }
 
 export interface KiroCliCompatibility {
@@ -805,6 +816,10 @@ export class KiroBackend implements CliBackend {
   /** #1405: the TUI composer's mode; never read on the legacy UI, whose prompt row has no such mode. */
   readSteerComposer(pane: string): SteerComposerMode | null {
     return this.activeUi === "legacy" ? null : readKiroSteerComposer(pane);
+  }
+
+  readSteerComposerText(pane: string): string | null {
+    return this.activeUi === "legacy" ? null : readKiroComposerText(pane);
   }
 
   /**
