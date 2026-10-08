@@ -127,6 +127,9 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: build-artifacts
+          # Download directly into the workspace root so node_modules/ and
+          # dist/ land at $GITHUB_WORKSPACE/ rather than a subdirectory.
+          path: .
       - name: Run test shard ${{ matrix.shard }}/4
         run: npx vitest run --shard=${{ matrix.shard }}/4
 
@@ -143,6 +146,9 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: build-artifacts
+          # Download directly into the workspace root so node_modules/ and
+          # dist/ land at $GITHUB_WORKSPACE/ rather than a subdirectory.
+          path: .
       # Real tmux/child-process suites run in one worker. The unit suite above
       # remains file-parallel, while this bounded serial invocation prevents
       # host scheduler contention from turning diagnostic timing into flakes.
