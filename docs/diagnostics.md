@@ -1,5 +1,18 @@
 # Storage and host resources
 
+## Reading an "Event loop stalled" warning
+
+The fleet logs `Event loop stalled for <n>ms` when its single event loop was blocked for a second or more. Slash-command acknowledgements and gateway heartbeats can be missed during one. The warning says what it can about why:
+
+- **`slow sync work`** names the synchronous calls that ran in that window and took long enough to matter. A burst of short calls of the same kind is summed, with its count, for example `tmux.spawn=1200ms (25 calls)`. `unknown` means none of the measured calls did.
+- **`longest probe gap in this window: <g>ms (<l>ms late, ending <time>), in which the main thread got <c>ms of CPU: …`** comes from a probe that ticks every 100 ms. A stall shows up as a late gap between two ticks. The line describes the longest such gap of the 30-second report and the CPU time inside it. It is that gap, with its own times. It is not necessarily the stall the headline's `<n>ms` measured: two stalls of similar length in one window cannot be told apart by length, so compare the times and lengths yourself. What the CPU proves about that gap:
+  - **"the thread was running through that gap"**: even if the gap's on-time 100 ms had been busy too, the thread still had CPU for at least 70% of the late part. That was synchronous work in this process. Look at `slow sync work`, or take a CPU profile.
+  - **"the thread was not running for most of that gap"**: the CPU was at most 30% of the late part. The thread was waiting, starved by other load on the host (other processes, large test runs on the same machine), or blocked in a system call such as a slow disk.
+  - **"not enough to tell running from waiting"**: anything in between.
+  - **`the main thread`** is that thread's own CPU (Node's `process.threadCpuUsage`). On a Node version without it, the line says **`the whole process (all threads)`**. That count includes worker threads and can exceed the gap on several cores, so it can only ever show waiting, never running.
+  - The line is left out when no gap in the report was late by at least half the stall threshold. Each report counts only the gaps that ended in it.
+- **`host load a/b/c on N cores`** is the host's load average over 1, 5 and 15 minutes, and its core count, at the time of the warning.
+
 ## On-demand CPU profiles
 
 The local OS operator can record the running fleet’s main-thread CPU profile without restarting:
