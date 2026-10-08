@@ -335,7 +335,7 @@ describe("Daemon", () => {
 });
 
 describe("Daemon backend-native input queue delivery", () => {
-  function makeDeliveryDaemon(backendName: "codex" | "claude-code" | "kiro-cli" | "antigravity", idle: boolean, pane = "", paneBeforePaste?: string) {
+  function makeDeliveryDaemon(backendName: "codex" | "claude-code" | "kiro-cli" | "antigravity" | "grok", idle: boolean, pane = "", paneBeforePaste?: string) {
     const instanceDir = join(tmpdir(), `agend-queued-input-${backendName}-${Date.now()}-${Math.random()}`);
     mkdirSync(instanceDir, { recursive: true });
     writeFileSync(join(instanceDir, "window-id"), "@queued");
@@ -566,7 +566,8 @@ describe("Daemon backend-native input queue delivery", () => {
   });
 
   it("keeps the idle gate and confirmation path for backends without a native queue", async () => {
-    const { backend, control, daemon, instanceDir, tmux } = makeDeliveryDaemon("claude-code", false);
+    // A backend with neither a native queue nor an input reader (grok; claude-code before #1200).
+    const { backend, control, daemon, instanceDir, tmux } = makeDeliveryDaemon("grok", false);
     const confirm = vi.fn().mockResolvedValue(true);
     (daemon as any).confirmBusyAfterEnter = confirm;
 
@@ -673,7 +674,7 @@ describe("Daemon backend-native input queue delivery", () => {
   });
 
   it("does not add the Kiro retry to backends without the capability", async () => {
-    const { daemon, instanceDir, tmux } = makeDeliveryDaemon("claude-code", true);
+    const { daemon, instanceDir, tmux } = makeDeliveryDaemon("grok", true);
     const confirm = vi.fn().mockResolvedValue(true);
     (daemon as any).confirmBusyAfterEnter = confirm;
     (daemon as any).firstDeliveryDelay = { consume: () => 500 };
@@ -745,8 +746,9 @@ describe("Daemon backend-native input queue delivery", () => {
   it("reports a failure when both Enters are swallowed instead of claiming success", async () => {
     // The message is sitting UNSUBMITTED in the CLI's input box. This used to
     // return true, leaving the reaction at 👀 forever while the next delivery
-    // pasted on top — submitting two messages as one.
-    const { daemon, instanceDir, tmux } = makeDeliveryDaemon("claude-code", true);
+    // pasted on top — submitting two messages as one. (The output-edge ladder of a readerless backend: grok; claude-code
+    // reads its input box since #1200 and is covered in claude-input-box-1200.test.ts.)
+    const { daemon, instanceDir, tmux } = makeDeliveryDaemon("grok", true);
     (daemon as any).confirmBusyAfterEnter = vi.fn().mockResolvedValue(false);
     const failed = vi.fn();
     const confirmed = vi.fn();
@@ -1202,7 +1204,7 @@ describe("Daemon error monitor recovery", () => {
 });
 
 describe("Daemon /steer delivery", () => {
-  function makeSteerDaemon(backendName: "claude-code" | "codex", idle: boolean, pane = "", paneBeforePaste?: string) {
+  function makeSteerDaemon(backendName: "claude-code" | "codex" | "grok", idle: boolean, pane = "", paneBeforePaste?: string) {
     const instanceDir = join(tmpdir(), `agend-steer-${backendName}-${Date.now()}-${Math.random()}`);
     mkdirSync(instanceDir, { recursive: true });
     writeFileSync(join(instanceDir, "window-id"), "@steer");
@@ -1269,7 +1271,8 @@ describe("Daemon /steer delivery", () => {
   it("falls back to the idle-gated queue when the busy TUI swallows the paste", async () => {
     // kiro-style swallow: the pasted text never shows up in the pane. The steer
     // must degrade to "next message after this turn", not vanish silently.
-    const { control, daemon, tmux } = makeSteerDaemon("claude-code", false, "✻ thinking… nothing else");
+    // A readerless CLI (grok; claude-code before #1200, which now reads its box: claude-input-box-1200.test.ts).
+    const { control, daemon, tmux } = makeSteerDaemon("grok", false, "✻ thinking… nothing else");
     const confirmed = vi.fn();
     daemon.on("message_confirmed", confirmed);
 
@@ -1286,7 +1289,7 @@ describe("Daemon /steer delivery", () => {
   }, 15_000);
 
   it("delivers steer to an IDLE pane exactly like a normal message", async () => {
-    const { control, daemon, tmux } = makeSteerDaemon("claude-code", true);
+    const { control, daemon, tmux } = makeSteerDaemon("grok", true);
     const result = await (daemon as any).deliverMessage("steer while idle", undefined, { steer: true });
     expect(result).toBe(true);
     expect(control.waitUntilIdle).not.toHaveBeenCalled();
