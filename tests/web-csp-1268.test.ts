@@ -112,7 +112,7 @@ describe("the dashboard's one click listener (the real page script)", () => {
     let listener!: (e: unknown) => void;
     const node = () => ({ style: {}, remove() {}, append() {}, setAttribute() {}, children: [], textContent: "", innerHTML: "", className: "" });
     const c = vm.createContext({
-      localStorage: { getItem: () => null }, navigator: { language: "en" },
+      /* a returning browser: it has seen the first sign-in tour (#1366) */ localStorage: { getItem: (k: string) => k === "agend_tour_done" ? "1" : null }, navigator: { language: "en" },
       document: { addEventListener: (t: string, f: (e: unknown) => void) => { if (t === "click") listener = f; }, getElementById: () => node(), createElement: () => node(), body: { appendChild() {} } },
       setTimeout: () => 0, clearTimeout() {}, setInterval: () => 0, clearInterval() {},
       fetch: async () => ({ ok: true, json: async () => ({}) }), EventSource: class { addEventListener() {} },
@@ -175,7 +175,7 @@ describe("hostile names and config values stay inside their attribute (#1303 rev
     const node = (id: string) => (nodes[id] ??= { innerHTML: "", textContent: "", style: {}, className: "", querySelectorAll: () => [], addEventListener() {} });
     const posts: string[] = [];
     const c = vm.createContext({
-      localStorage: { getItem: () => null }, navigator: { language: "en" },
+      /* a returning browser: it has seen the first sign-in tour (#1366) */ localStorage: { getItem: (k: string) => k === "agend_tour_done" ? "1" : null }, navigator: { language: "en" },
       document: { addEventListener() {}, getElementById: (id: string) => node(id), createElement: () => ({ style: {}, remove() {}, append() {} }), body: { appendChild() {} } },
       setTimeout: () => 0, clearTimeout() {}, setInterval: () => 0, clearInterval() {},
       fetch: async (u: string, o: { method?: string } = {}) => { if ((o.method ?? "GET") !== "GET") posts.push(String(u)); return { ok: true, json: async () => ({}) }; },
