@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
+import { createRequire, syncBuiltinESMExports } from "node:module";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -303,12 +304,23 @@ describe("paused status visibility", () => {
     } as any);
 
     // Default (Telegram): markdown table format
-    const sysinfo = commands.getSysInfoText();
+    const native = createRequire(import.meta.url)("node:child_process");
+    const original = native.execFileSync;
+    const version = vi.spyOn(native, "execFileSync").mockImplementation((...values: unknown[]) => {
+      const [file, args] = values as [string, string[]];
+      if (file === "tmux" && args.join(" ") === "-V") return "tmux 3.5 (fixture)";
+      return original(...values);
+    });
+    syncBuiltinESMExports();
+    let sysinfo: string;
+    try { sysinfo = commands.getSysInfoText(); }
+    finally { version.mockRestore(); syncBuiltinESMExports(); }
     // System facts stay (and OS/Node/tmux are new).
     expect(sysinfo).toContain("| Uptime | 1h 1m |");
     expect(sysinfo).toContain(`| Node | ${process.version} |`);
     expect(sysinfo).toContain("| OS |");
     expect(sysinfo).toContain("| tmux |");
+    expect(sysinfo).toContain("| tmux | tmux 3.5 (fixture) |");
     // Fleet summary lines (now multi-line for mobile readability)
     expect(sysinfo).toContain("Instances: 1 running, 0 paused");
     expect(sysinfo).toContain("Fleet Mem: 0.5 GB");
