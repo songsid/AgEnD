@@ -30,6 +30,13 @@ Registration tokens prevent unregister/re-register ABA; connection ownership pre
 
 Unit tests use real client/manager/Daemon handler methods with fake child processes, streams and monotonic clocks. The benchmark declares 40 fixture instances over `(30.001s,90.001s]`, includes the whole 60–89.25s staggered sweep, and injects six output-driven captures per instance. Legacy reads total `40 × (24 monitor + 2 health + 1 sweep + 6 output) = 1,320` subprocess starts; connected control reads start zero. One control attachment per connection is outside the steady-state read count. A 1ms inert native-start cost is injected; measured synchronous API submission wall times are fixture results, not production loop/CPU measurements.
 
+Recorded fixture run (same host, injected native cost; host scheduling contributes to maxima):
+
+| Mode | Read starts / 60s | Longest synchronous submission | Median | p95 |
+| --- | ---: | ---: | ---: | ---: |
+| Legacy execFile | 1,320 | 9.137ms | 1.097ms | 1.289ms |
+| Connected control | 0 | 5.213ms | 0.136ms | 0.317ms |
+
 Native integration tests own a unique private tmux socket under the global process guard and compare capture/history/joined bytes and command errors on tmux 3.7b. No live/default tmux, backend CLI or fleet is used. Older tmux versions rely on the documented control protocol and the bounded fallback until separately verified. Protocol sources: [Control Mode](https://github.com/tmux/tmux/wiki/Control-Mode), [capture output](https://github.com/tmux/tmux/blob/3.4/cmd-capture-pane.c#L207-L219), [guard tuples](https://github.com/tmux/tmux/blob/3.4/cmd-queue.c#L762-L778).
 
 One serialized lane can add queue latency; a stalled retired child can delay control recovery while fallback continues within its cap. OS work can outlive a timeout; neither kill nor a JS timer proves exit. Parsing and other synchronous work remain and need a later same-duration production profile. Rollback is a revert, without data/config migration.

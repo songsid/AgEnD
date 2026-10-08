@@ -5503,12 +5503,13 @@ export class Daemon extends EventEmitter {
     const interactionCaptureAt = performance.now();
     const interactionCaptureOrder = ++this.interactionCaptureSerial;
     const interactionOwner = this.interactionOwner();
+    const captureTmux = this.tmux;
     const captureEpoch = `${this.spawnGeneration}:${this.launchAttempt}`;
-    const currentDeliveryCapture = () => captureEpoch === `${this.spawnGeneration}:${this.launchAttempt}`
+    const currentDeliveryCapture = () => this.tmux === captureTmux && captureEpoch === `${this.spawnGeneration}:${this.launchAttempt}`
       && !this.spawning && !this.runtimeMonitorsFrozen && this.instanceStateMonitorActive;
     try {
       const pane = reason === "interaction_confirmation"
-        ? await this.tmux.capturePane(1_000) : await this.tmux.capturePane();
+        ? await captureTmux.capturePane(1_000) : await captureTmux.capturePane();
       if (!currentDeliveryCapture() || !sameInteractionOwner(interactionOwner, this.interactionOwner())) return;
       // Delivery's unknown-footer proof also awaits the TTY mode. Validate
       // output and launch freshness AFTER both awaits, before accepting it.
@@ -8750,7 +8751,7 @@ export class Daemon extends EventEmitter {
       const recoveredTmux = this.tmux;
       writeFileSync(join(this.instanceDir, "window-id"), match.id);
       // The window we were talking to is gone; leaving it registered means the
-      // control client re-resolves a dead id — one tmux subprocess — on every
+      // control client re-resolves a dead id — one bounded read — on every
       // reconnect, for the life of the fleet process.
       if (previousWindowId && previousWindowId !== match.id) {
         this.controlClient?.unregisterWindow(previousWindowId);

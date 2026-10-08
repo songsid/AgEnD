@@ -16,7 +16,7 @@ export interface TmuxPaneOutputEvent {
 
 export const CONTROL_SAFETY_SWEEP_MS = 60_000;
 /**
- * The sweep's listeners — one per daemon, each starting a `tmux capture-pane` child process and evaluating its pane —
+ * The sweep's listeners — one per daemon, each capturing and evaluating its pane —
  * are spread over this much of the period instead of all running in one tick (#1402): measured live, that one tick was
  * 150–860 ms of unbroken spawning under normal load and 1–2.5 s when the host was busy (#1235). Half the period, so a
  * sweep's last slot is always well before the next sweep starts.
@@ -423,6 +423,7 @@ export class TmuxControlClient extends EventEmitter implements TmuxReadPort {
     owner.timer = setTimeout(() => this.retire(owner), 10_000);
     owner.timer.unref?.();
     proc.stdout?.on("data", (chunk: Buffer | string) => this.receive(owner, chunk));
+    proc.stdout?.on("error", () => this.retire(owner));
     // Drain stderr without retaining/logging pane or protocol content.
     proc.stderr?.on("data", () => {});
     proc.stdin?.on("error", () => this.retire(owner));

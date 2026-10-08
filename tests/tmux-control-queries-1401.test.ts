@@ -98,7 +98,9 @@ describe("#1401 control read protocol and manager wiring", () => {
   it("moves capture/window liveness/pane status to the real port without read children", async () => {
     fallback("unexpected fallback\n");
     const { proc, manager } = opened();
-    const capture = manager.capturePane(); answer(proc, "中文\\raw\n\n");
+    const capture = manager.capturePane(); void capture.catch(() => {});
+    expect(proc.stdin.write).toHaveBeenCalledTimes(1); expect(mocks.execFile).not.toHaveBeenCalled();
+    answer(proc, "中文\\raw\n\n");
     expect(await capture).toBe("中文\\raw\n\n");
     const alive = manager.isWindowAlive(); answer(proc, "@1|||agent\n"); expect(await alive).toBe(true);
     const status = manager.getPaneStatus(); answer(proc, "1 7\n"); expect(await status).toEqual({ alive: false, exitCode: 7 });
@@ -107,6 +109,20 @@ describe("#1401 control read protocol and manager wiring", () => {
     const joined = manager.capturePaneJoined(3); expect(proc.stdin.write.mock.calls.at(-1)?.[0]).toContain("'-J' '-S' '-3'");
     answer(proc, "joined\n"); expect(await joined).toBe("joined\n");
     expect(mocks.spawn).toHaveBeenCalledTimes(1); expect(mocks.execFile).not.toHaveBeenCalled();
+  });
+
+  it("keeps the 1s confirmation and 2s TTY budgets and uses the TTY metadata port", async () => {
+    const { client, proc, manager } = opened();
+    const confirmation = manager.capturePane(1_000);
+    expect((client as any).activeRead.deadline).toBe(500);
+    answer(proc, "READY\n"); expect(await confirmation).toBe("READY\n");
+    fallback("icanon\n");
+    const input = manager.getPaneInputMode();
+    expect((client as any).activeRead.deadline).toBe(1_000);
+    expect(proc.stdin.write.mock.calls.at(-1)?.[0]).toContain("'#{pane_tty}'");
+    answer(proc, "/dev/pts/42\n"); expect(await input).toBe("cooked");
+    expect(mocks.execFile).toHaveBeenCalledWith("stty", expect.any(Array), expect.objectContaining({ timeout: 2_000 }), expect.any(Function));
+    expect(mocks.execFile.mock.calls.every(call => call[0] !== "tmux")).toBe(true);
   });
 
   it("requires attach completion and shares control/fallback logical FIFO", async () => {
@@ -183,6 +199,17 @@ describe("#1401 deadlines and physical process ownership", () => {
     const replacement = processes[1];
     proc.emit("close", 0); proc.emit("error", new Error("old")); proc.stdout.emit("data", Buffer.from("%exit\n"));
     await vi.advanceTimersByTimeAsync(2_000); expect(mocks.spawn).toHaveBeenCalledTimes(2); expect(replacement.kill).not.toHaveBeenCalled();
+  });
+
+  it.each(["stdout", "stdin-write"])("%s transport error retires only its owner and keeps bounded fallback", async kind => {
+    fallback(); const { proc, manager } = opened();
+    if (kind === "stdin-write") proc.stdin.write.mockImplementation((_data, callback) => {
+      (callback as (error: Error) => void)(new Error("EPIPE")); return false;
+    });
+    const result = manager.capturePane();
+    if (kind === "stdout") proc.stdout.emit("error", new Error("read failure"));
+    expect(await result).toBe("fallback\n"); expect(proc.kill).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(4_000); expect(mocks.spawn).toHaveBeenCalledTimes(1);
   });
 
   it("respects minimum reconnect delay after natural close and no-child failure", async () => {
@@ -263,10 +290,11 @@ describe("#1401 real daemon handlers and registration fences", () => {
     expect(publish).not.toHaveBeenCalled(); expect(kill).not.toHaveBeenCalled(); expect(d.logPaneDeath).not.toHaveBeenCalled();
   });
 
-  it("drops stale state capture after stop fence and preserves a healthy control", async () => {
+  it.each(["launchFenceEpoch", "tmux"])("drops stale state capture after %s changes and preserves a healthy control", async field => {
     const { client, proc, manager } = opened(); const { d } = daemonFixture(manager, client);
     d.startInstanceStateMonitor(); const publish = vi.spyOn(d, "applyInstanceStateSnapshot");
-    d.launchFenceEpoch++; answer(proc, "READY\n"); await tick(); expect(publish).not.toHaveBeenCalled();
+    if (field === "tmux") d.tmux = {}; else d.launchFenceEpoch++;
+    answer(proc, "READY\n"); await tick(); expect(publish).not.toHaveBeenCalled();
     const next = manager.capturePane(1_000); answer(proc, "new\n"); expect(await next).toBe("new\n");
   });
 
