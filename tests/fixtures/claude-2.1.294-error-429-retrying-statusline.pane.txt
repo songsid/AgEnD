@@ -1,0 +1,50 @@
+  Updated to latest. Got 8 features, 64 bugfixes, and 20 other changes.
+  code.claude.com/docs/en/changelog for details
+
+
+❯ hello from the audit
+
+● mock reply 3
+
+✻ Churned for 0s · done 12:46 AM
+
+❯ SLOW turn please
+
+● slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow
+  slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow
+
+✻ Worked for 25s · done 12:47 AM
+
+❯ queued while busy MARKQ
+
+● mock reply 12
+
+✻ Baked for 0s · done 12:47 AM
+
+❯ [agend-delivery-id:11111111-2222-3333-4444-555555555555]
+  [from:audit-peer] first line of a multi-line message
+  second line with detail
+  third line closes it
+  (message_id: xmsg-1 | correlation_id: cid-1)
+
+● mock reply 14
+
+✻ Brewed for 0s · done 12:47 AM
+
+❯ same words start this paste
+  middle line
+  end with same words start this paste
+
+● mock reply 20
+
+✻ Worked for 0s · done 12:47 AM
+
+❯ trigger E429 now
+
+✻ 429 mock rate_limit_error · Retrying in 3s · attempt 5/10
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ok
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents
