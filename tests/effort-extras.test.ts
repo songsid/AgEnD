@@ -114,3 +114,5 @@ describe("get_effort MCP tool", () => {
     }));
   });
 });
+import { installKiroCompatibilityFixture } from "./helpers/kiro-process-stub.js";
+installKiroCompatibilityFixture();

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { Daemon } from "../src/daemon.js";
 import { ClaudeCodeBackend } from "../src/backend/claude-code.js";
+import * as binaryDiscovery from "../src/backend/types.js";
 
 // Point CLAUDE_HOME at an empty dir: the credentials FILE outranks the env
 // token, so a dev machine's real login must not leak into these tests.
@@ -108,6 +109,7 @@ describe("listApiModels", () => {
   });
 
   it("probeCLIEnv keeps the short alias tier separate from the API tier", async () => {
+    const version = vi.spyOn(binaryDiscovery, "probeCliVersion").mockReturnValue("claude 2.1.286 (fixture)");
     process.env.CLAUDE_CODE_OAUTH_TOKEN = "FAKE-OAUTH-FOR-TEST";
     vi.stubGlobal("fetch", vi.fn(async () => ({
       ok: true,
@@ -117,5 +119,6 @@ describe("listApiModels", () => {
     expect(env.models!.map(m => m.id)).toContain("opus");        // quick-pick aliases
     expect(env.models!.map(m => m.id)).not.toContain("claude-opus-5");
     expect((env as any).apiModels.map((m: any) => m.id)).toEqual(["claude-opus-5", "claude-opus-5[1m]"]);
+    version.mockRestore();
   });
 });

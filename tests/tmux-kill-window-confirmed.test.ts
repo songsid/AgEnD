@@ -12,7 +12,7 @@ import { TmuxManager } from "../src/tmux-manager.js";
  * clean result on a guess.
  */
 function have(bin: string): boolean {
-  try { execFileSync(bin, ["-V"], { stdio: "ignore" }); return true; } catch { return false; }
+  try { execFileSync(bin, ["-L", "agend-test-availability", "-V"], { stdio: "ignore" }); return true; } catch { return false; }
 }
 const SOCK = `agtkw${process.pid}`;
 const tmux = (...args: string[]) => execFileSync("tmux", ["-L", SOCK, ...args], { encoding: "utf8" });

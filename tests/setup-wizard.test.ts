@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { validateBotToken, verifyBotToken, checkPrerequisites } from "../src/setup-wizard.js";
+import { createRequire, syncBuiltinESMExports } from "node:module";
 
 describe("Setup Wizard", () => {
   describe("validateBotToken", () => {
@@ -54,11 +55,17 @@ describe("Setup Wizard", () => {
 
   describe("checkPrerequisites", () => {
     it("returns detection results for a given backend binary", () => {
+      const childProcess = createRequire(import.meta.url)("node:child_process");
+      const probe = vi.spyOn(childProcess, "execSync").mockReturnValue(Buffer.from("fixture version\n"));
+      syncBuiltinESMExports();
       const result = checkPrerequisites("claude");
       expect(result).toHaveProperty("backendOk");
       expect(result).toHaveProperty("tmux");
       expect(typeof result.backendOk).toBe("boolean");
       expect(typeof result.tmux).toBe("boolean");
+      expect(probe.mock.calls.map(call => call[0])).toEqual(["claude --version", "tmux -V"]);
+      probe.mockRestore();
+      syncBuiltinESMExports();
     });
   });
 });

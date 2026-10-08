@@ -312,3 +312,5 @@ describe("/clear nonce confirmation", () => {
     expect(ipcSend).toHaveBeenCalledWith({ type: "raw_paste", content: "/clear" });
   });
 });
+import { installKiroCompatibilityFixture } from "./helpers/kiro-process-stub.js";
+installKiroCompatibilityFixture();
