@@ -62,8 +62,13 @@ The shell therefore needs panel modules with a lifecycle, not three pages pasted
   - the agent's at full column width with no bubble;
   - message actions (Copy …) appear on hover and focus, and always on touch.
 - **Type:**
-  - **Inter**, variable, latin subset, **bundled locally** as `/assets/inter.woff2` (SIL OFL 1.1, licence file shipped next to it). The CSP already allows `font-src 'self'`; nothing is loaded from outside.
-  - Fallback is the system stack (`system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`).
+  - **Inter, bundled locally** (decided, §10):
+    - one variable woff2, Latin subset, served same-origin as `/assets/inter.woff2` with `font-display: swap`;
+    - the CSP's `font-src 'self'` already allows it, and nothing is loaded from outside;
+    - its licence (SIL OFL 1.1) is added to the repo as `src/ui/assets/fonts/OFL.txt`, and the release ships it beside the font;
+    - `/assets/*` is a fixed map today, so `inter.woff2` and `app.css` are added to that map and to the public link's manifest, with correct types (`font/woff2`, `text/css`).
+  - Chinese text falls back to the system CJK fonts, in this order: `"PingFang TC", "Noto Sans TC", "Microsoft JhengHei"`. After those comes the system stack (`system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`). The full stack:
+    `font-family: Inter, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`.
   - Code uses `ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace`.
   - Not OpenAI's font.
 - **Icons:** one consistent set, our existing line SVGs, extended in the same 24-px / 2-px-stroke style. Settings' emoji icons are retired. No third-party brand assets.
@@ -128,7 +133,7 @@ The bottom tabs hide while the keyboard is open, using `visualViewport` (the com
 |---|---|---|
 | `/ui` | Chat (last instance, or the empty "pick an instance" state) | |
 | `/ui/chat/<instance>` | Chat with that instance | new |
-| `/ui#instance=<name>` | → `replaceState` to `/ui/chat/<name>` | #1386 / tour links keep working |
+| `/ui#instance=<name>` | → `/ui/chat/<name>` | old deep links keep working. The fragment never reaches the server, so the shell does this with `history.replaceState` before the first render. |
 | `/ui/fleet[/tasks\|schedules\|teams\|config]` | Fleet | new |
 | `/ui/needs` | Needs you (#1386 part b) | new |
 | `/ui/org` | Org chart (#1389, later) | reserved |
@@ -138,7 +143,16 @@ The bottom tabs hide while the keyboard is open, using `visualViewport` (the com
 - **Server:** every path in the table serves the **same** `app.html`, and the gate and its sign-in fallback apply unchanged.
   - `serveSigninPage` now also covers `/ui/…`, `/view/…` and `/settings/…` navigations.
   - signin.js's `nextTarget` already allows `^/(ui|view|settings)(/|$)`.
-  - `/view` keeps its `web.view_access` semantics: the **shell** is gated like `/ui`. With `view_access: open`, an anonymous visitor to `/view` gets a View-only shell: no sidebar entries that need a session, and a "Sign in" link. That is what the open `/view` is today.
+  - **Instance names in paths** (decided, §10):
+    - written by the client with `encodeURIComponent`;
+    - decoded and validated by the server against the same name rule that instance creation uses. A malformed name (bad encoding, `/`, characters outside the rule) gets the 400 that other routes use.
+    - A **well-formed but unknown** name still gets the shell (200, same CSP). The Chat panel shows a "No instance called *x*" empty state with a link back to the list, not an error page.
+    - The server does not tell anonymous callers which names exist: the shell is identical for known and unknown names, and only the signed-in client learns from its own list.
+  - **Anonymous `/view` (`view_access: open`)**, decided in §10: a **View-only shell**. It looks the same as the signed-in shell. The nav holds only **View** and **Sign in**.
+    - Chat, Fleet, Settings, Needs you, Org chart and the Session menu are **not rendered at all** (absent from the DOM, not disabled).
+    - Their panel modules are not imported. The page makes no request to a session-only endpoint: no `/ui/events`, `/ui/poll`, `/ui/instances`, `/api/settings/*`.
+    - The server marks the mode on the shell (`data-mode="view-only"`), from the same decision that lets the request in today.
+    - Test: render the shell anonymously with `view_access: open` and assert that the nav has exactly View + Sign in, that no session-only link or panel module appears in the HTML or the DOM, and that the recorded requests stay within the View-only set.
 - **No clash with data routes.** `/ui/` already holds data GETs: `/ui/instance/<x>`, `/ui/instances`, `/ui/tasks`, `/ui/schedules`, `/ui/teams`, `/ui/config`, `/ui/poll`, `/ui/history`, `/ui/file/<id>`, `/ui/prompts`, `/ui/backends`, `/ui/js/*`.
   - Client routes use only the new first segments `chat`, `fleet`, `needs` and `org`, and the server serves the shell for exactly those patterns (plus `/ui`, `/view[/<x>]`, `/settings[/<section>]`), never as a prefix fallback.
   - A test asserts that no shell pattern matches any existing data route, in both directions.
@@ -207,7 +221,7 @@ The stream itself: a slim status line at the top of the main area when it falls 
 
 | Step | What | Rough edges closed (baseline #) |
 |---|---|---|
-| **1. Shell + Chat** | `app.html`, `app.js` (router, lifecycle, app stream, store, i18n, theme), `app.css` (tokens, Inter, components), sidebar + bottom tabs + Session/theme/language in the sidebar; the **Chat** and **Fleet** panels ported from dashboard.html into modules. `/ui` and `/ui/*` serve the shell. View and Settings remain their old pages for now, reached by normal links from the sidebar (a full load, styled by the new tokens as far as shared classes go). | 1 (Chat/Fleet side), 2 (/ui), **4** (the composer's control becomes "Stop reply" and shows only while the agent works; the instance's Stop moves into the header ⋯ menu as "Stop instance"), **6** (name and badge on two lines, never truncated to one letter), **7** (state-aware actions in ⋯: Start for a stopped instance, Stop/Restart only when running, Delete last behind a confirm; the phone header is one row), **9** (dark-mode text tokens meet AA; code wraps on phones and scrolls with a fade on desktop), 10 (delivery ticks visible; sign-in copy) |
+| **1. Shell + Chat** | `app.html`, `app.js` (router, lifecycle, app stream, store, i18n, theme), `app.css` (tokens, Inter, components), sidebar + bottom tabs + Session/theme/language in the sidebar; the **Chat** and **Fleet** panels ported from dashboard.html into modules. The shell patterns of §3 serve the shell. View and Settings remain their old pages for now, reached by normal links from the sidebar (a full load, styled by the new tokens as far as shared classes go). | 1 (Chat/Fleet side), 2 (/ui), **4** (the composer's control becomes "Stop reply" and shows only while the agent works; the instance's Stop moves into the header ⋯ menu as "Stop instance"), **6** (name and badge on two lines, never truncated to one letter), **7** (state-aware actions in ⋯: Start for a stopped instance, Stop/Restart only when running, Delete last behind a confirm; the phone header is one row), **9** (dark-mode text tokens meet AA; code wraps on phones and scrolls with a fade on desktop), 10 (delivery ticks visible; sign-in copy) |
 | **2. View** | View panel module: roster as a sidebar section or the phone drawer, the terminal at full width on phones, labelled icon buttons with tooltips, light and dark. `/view` serves the shell. | **3**, 2 (/view), 10 (View icon labels; "Edit" clarified) |
 | **3. Settings** | Settings panel module: sections become sub-routes; the same buttons, inputs and checkboxes as everywhere (`font: inherit`); SVG icons; **one create-instance component** shared with Chat's "New instance"; dialogs become sheets on phones (with ×); the version shown from the running release. | **1** (closed), 2 (/settings), **8**, 10 ("not probed yet" → "Detected when it starts"; version chip) |
 | **4. Needs you** | #1386 part (b) built here: the Needs you panel, the sidebar badge and bottom-tab badge, Acknowledge, `#instance` links, desktop notifications (#1386 §6). | — (#1386) |
@@ -218,6 +232,14 @@ Baseline item 5 (the permission prompt's wording) is the separate small issue th
 ## 9. Tests
 
 - **Router (vm harness on `app.js`):** every URL in §3, the `#instance=` migration, back/forward, modifier-click untouched, title, focus, `aria-current`.
+- **Server routes:**
+  - each shell pattern returns `app.html` with the panel CSP;
+  - encoded names round-trip (`%E4%B8%AD`, `a%20b` if the name rule allows it);
+  - malformed names → 400;
+  - an unknown well-formed name → the shell, whose response is byte-identical to the one for a known name;
+  - no shell pattern overlaps a data route.
+- **View-only shell:** the anonymous `view_access: open` test of §3.
+- **Font:** `/assets/inter.woff2` is served as `font/woff2` under `font-src 'self'`; `OFL.txt` is present in `dist/`; `@font-face` has `font-display: swap`.
 - **Lifecycle:**
   - mount/unmount ×50 per panel leaves nothing behind;
   - one EventSource across all switches;
@@ -229,9 +251,9 @@ Baseline item 5 (the permission prompt's wording) is the separate small issue th
 - **Visual:** the screenshot set per step. Contrast computed from the token pairs.
 - **Existing suites:** the vm harnesses that load `dashboard.html`'s inline script (web-chat-c1…c4, web-csp-1268, web-preview-card-1306, web-ui-tour-1366, sidebar-instance-identity, …) move to loading `panel-chat.js` and `app.js` in step 1. This is the bulk of step 1's test work. What they assert stays the same.
 
-## 10. Open questions for review
+## 10. Decisions (leader, 2026-10-08)
 
-1. **Step 1 keeps View and Settings as separate pages** (full-load links) for one step. Acceptable as an interim, or should step 1 frame them in the shell from day one (an iframe would bring back a second CSP context, so I'd rather not)?
-2. **Inter bundled** (about 300 KB woff2 for the latin variable subset) or **system font only**? Bundling gives the same look everywhere. The system stack is zero bytes and native on each OS.
-3. **Anonymous `/view`** (`view_access: open`): a View-only shell (proposed), or keep a separate minimal page for anonymous readers?
-4. **The URL scheme:** `/ui/chat/<instance>` etc. (proposed), or keep everything under hash fragments to avoid any server route changes?
+1. **Step 1 keeps View and Settings as separate pages** reached by full-load links, with no iframe. Steps 2 and 3 move them into the shell.
+2. **Inter bundled locally:** variable woff2, Latin subset, `font-display: swap`, same-origin `/assets`, OFL in the repo. CJK falls back to PingFang TC → Noto Sans TC → Microsoft JhengHei (§2).
+3. **Anonymous `/view`:** a View-only shell. The nav is View + Sign in only, and nothing that needs a session is rendered or requested; tested (§3).
+4. **Paths:** `/ui/chat/<instance>`. The server returns the shell with the same CSP; `/ui#instance=` is redirected client-side; names are URL-encoded and validated by the server; an unknown instance gets a "not found" empty state (§3).
