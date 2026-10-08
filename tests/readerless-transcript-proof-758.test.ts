@@ -26,7 +26,7 @@ import { GrokBackend } from "../src/backend/grok.js";
 /** Every transcript look goes through the scan; the hook sees each one and may act while it is in flight. */
 // `byDelivery` counts looks per delivery id: a wait an earlier test left running (its look still in flight when the test
 // ended) can outlive it, so what a test asserts about its own delivery's looks is never the global count.
-const lookHooks = vi.hoisted(() => ({ onLook: null as null | ((count: number) => void), looks: 0, done: 0, byDelivery: new Map<string, number>() }));
+const lookHooks = vi.hoisted(() => ({ onLook: null as null | ((count: number) => void), looks: 0, done: 0, byDelivery: new Map<string, number>(), slowRead: false }));
 vi.mock("../src/delivery-reconciliation.js", async importOriginal => {
   const real = await importOriginal<typeof import("../src/delivery-reconciliation.js")>();
   return {
@@ -35,6 +35,11 @@ vi.mock("../src/delivery-reconciliation.js", async importOriginal => {
       lookHooks.looks++;
       lookHooks.byDelivery.set(args[3], (lookHooks.byDelivery.get(args[3]) ?? 0) + 1);
       lookHooks.onLook?.(lookHooks.looks);
+      // slowRead: yield ONE real event-loop turn after the hook fires so the scan
+      // is still in-flight when the fence takes effect. Without this, the scan
+      // completes synchronously and the proof continuation can run before the
+      // stop-during-look scenario has a chance to be exercised.
+      if (lookHooks.slowRead) await new Promise<void>(r => realSetImmediate(r));
       try { return await real.scanTranscriptForDeliveryMarker(...args); } finally { lookHooks.done++; }
     },
   };
@@ -46,7 +51,7 @@ const daemons: any[] = [];
 afterEach(() => {
   // End every wait this test left open, so none keeps reading a transcript into the next test.
   for (const daemon of daemons.splice(0)) daemon.fenceDeliveryWritesForStop();
-  lookHooks.onLook = null; lookHooks.looks = 0; lookHooks.done = 0; lookHooks.byDelivery.clear();
+  lookHooks.onLook = null; lookHooks.looks = 0; lookHooks.done = 0; lookHooks.byDelivery.clear(); lookHooks.slowRead = false;
   vi.useRealTimers();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
@@ -287,12 +292,25 @@ describe("a readerless backend's idle delivery is proven by its transcript, not 
     const h = await deliver();
     await h.begun();
     appendFileSync(h.transcript, userEntry(h.deliveryId));
-    lookHooks.onLook = () => { h.daemon.fenceDeliveryWritesForStop(); };
-    // Wait until the look that finds the marker has actually started (and been fenced),
-    // rather than using a fixed step count that can be exhausted under CI load before
-    // any look fires for this delivery (the 1-in-6 flake on main: `looks()` was 0).
-    await h.pump(400, () => h.looks() > 0);
-    expect(h.looks()).toBeGreaterThan(0);
+    // slowRead: yield one real event-loop turn inside the scan after the hook
+    // fires, so the scan is still in-flight while the fence is in effect.
+    // Without this the scan completes synchronously before the settlement check
+    // runs, making the mutation (removing deliveryWritesStopping guard) invisible.
+    lookHooks.slowRead = true;
+    // Capture looks already counted so only NEW looks after hook install satisfy the predicate.
+    const looksBeforeHook = h.looks();
+    let stopHookFired = false;
+    lookHooks.onLook = () => { stopHookFired = true; h.daemon.fenceDeliveryWritesForStop(); };
+    // Pump until a look fires AFTER the hook was installed.
+    await h.pump(400, () => h.looks() > looksBeforeHook);
+    // The stop hook must have run on the new look.
+    expect(stopHookFired, "the stop hook must fire during a post-hook look").toBe(true);
+    expect(h.looks()).toBeGreaterThan(looksBeforeHook);
+    // Drain: let the in-flight scan (held by slowRead) and any proof continuation settle.
+    // The per-step drain (2 000 ioTurns) runs before until() is re-checked, but
+    // post-look continuations may schedule work after it; drain again explicitly.
+    for (let turn = 0; turn < 5_000 && lookHooks.done < lookHooks.looks; turn++) await ioTurn();
+    for (let turn = 0; turn < 20; turn++) await ioTurn();
     expect(h.state()).toBe("submission_started");
   });
 
