@@ -1,4 +1,6 @@
 import { measureSyncWork } from "./sync-work-attribution.js";
+import { LOOPBACK_HOST_NAMES } from "./web-host-guard.js";
+import { WEB_REMOTE_DOCS_URL } from "./upgrade-notices.js";
 import { readFileSync, existsSync } from "node:fs";
 import { exec, execFileSync, spawn } from "node:child_process";
 import { promisify } from "node:util";
@@ -655,6 +657,8 @@ export class TopicCommands {
       `• Settings:  ${base}/settings`,
       "",
       t("dashboard.code_help"),
+      // #1366: a loopback address does not open on a phone — say where the way in is documented.
+      ...(LOOPBACK_HOST_NAMES.includes(host.toLowerCase()) || host === "::1" ? ["", t("dashboard.remote_hint", WEB_REMOTE_DOCS_URL)] : []),
     ].join("\n");
   }
 
