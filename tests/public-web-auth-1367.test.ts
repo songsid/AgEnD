@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { ServerResponse, type IncomingMessage } from "node:http";
 import { performance } from "node:perf_hooks";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -85,6 +86,29 @@ describe("public credential scopes, real auth handlers", () => {
     h.feed({ code: issued.display }); await flush(); expect(notice).toHaveBeenCalledTimes(1); expect(h.status()).toBe(0);
     expect(store.list()).toEqual([]); expect(h.out["Set-Cookie"]).toBeUndefined();
     current = false; finish(); await flush(); expect(h.status()).toBe(503); expect(store.size).toBe(0); expect(h.out["Set-Cookie"]).toBeUndefined();
+  });
+  it.each(["response", "request", "response-property"] as const)("%s disconnect prevents a late notice ACK from activating an orphan session", async side => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-public-disconnect-"));
+    try {
+      const store = new WebSessionStore({ dataDir: dir }), codes = new WebLoginCodes();
+      let finish!: () => void; const notice = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+      const create = vi.spyOn(store, "create");
+      const issued = codes.issue({ epoch: tokenEpoch(token), audience: id, owner: { adapterId: "owner", userId: "admin", chatId: "G" } });
+      const h = request("/auth/login", "POST", { origin, "content-type": "application/json" }); bind(h.req);
+      const res = new ServerResponse(h.req as unknown as IncomingMessage);
+      handleAuthRequest(h.req as never, res, new URL(h.req.url, origin), { webToken: token, webSessions: store, webLoginCodes: codes, logger: logger as never, confirmPublicWebLogin: notice });
+      h.feed({ code: issued.display }); await flush(); expect(notice).toHaveBeenCalledTimes(1);
+      const candidate = create.mock.results[0].value.sessionId as string;
+      if (side === "response") { res.destroy(); res.emit("close"); }
+      else if (side === "request") { Object.assign(h.req, { aborted: true }); h.req.emit("aborted"); }
+      else res.destroy(); // Without a socket, no close event: final fence must check liveness too.
+      if (side !== "response-property") expect(store.size).toBe(0);
+      finish(); await flush();
+      expect(store.authenticate(candidate, tokenEpoch(token), { surface: "gateway", exposureId: id })).toBeNull();
+      expect(store.size).toBe(0); expect(res.getHeader("Set-Cookie")).toBeUndefined();
+      expect(new WebSessionStore({ dataDir: dir }).list()).toEqual([]);
+      res.destroy();
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
   it("confirmed public sign-in produces Secure cookie despite forwarded headers, public notice even notify=false", async () => {
     const store = new WebSessionStore(), codes = new WebLoginCodes(); const notice = vi.fn(async () => {}), localNotice = vi.fn();

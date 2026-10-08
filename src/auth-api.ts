@@ -177,10 +177,21 @@ export function handleAuthRequest(
     if (!token || !ctx.webSessions || !ctx.webLoginCodes) { json(res, 401, { error: LOGIN_REFUSED_MESSAGE }); return true; }
     const sessions = ctx.webSessions;
     const codes = ctx.webLoginCodes;
+    // A notice ACK cannot create an orphan credential after the browser has
+    // disconnected. Normal completed request-body close is not an abort.
+    const publicRequest = !!gatewayRequestContext(req);
+    let disconnected = false;
+    let candidateId: string | undefined;
+    const disconnect = (): void => {
+      disconnected = true;
+      if (candidateId) sessions.revokeById(candidateId);
+    };
+    if (publicRequest) { req.once("aborted", disconnect); res.once?.("close", disconnect); }
     void readJsonBody(req).then(async body => {
       if (!body || typeof body.code !== "string") { json(res, 400, { error: "expected {\"code\": \"XXXX-XXXX\"}" }); return; }
       const gateway = gatewayRequestContext(req);
-      const current = (): boolean => isWebRequestCurrent(req) && ctx.webToken === token;
+      const current = (): boolean => isWebRequestCurrent(req) && ctx.webToken === token
+        && (!publicRequest || (!disconnected && !req.aborted && !(req.destroyed && !req.complete) && !res.destroyed && !res.writableEnded));
       if (!current()) { json(res, 401, { error: LOGIN_REFUSED_MESSAGE }); return; }
       const result = codes.redeem(body.code, tokenEpoch(token), gateway?.exposureId ?? "local");
       if (result.kind === "paused") {
@@ -199,6 +210,7 @@ export function handleAuthRequest(
       if (previous && sessions.authenticate(previous, tokenEpoch(token), { touch: false, surface: gateway?.surface, exposureId: gateway?.exposureId })) sessions.revokeById(previous);
       const label = labelFromUserAgent(typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"] : undefined);
       const { sessionId, record } = sessions.create({ tier: result.tier, surface: gateway?.surface ?? "local", label, tokenEpoch: tokenEpoch(token), exposureId: gateway?.exposureId, pending: !!gateway });
+      if (gateway) candidateId = sessionId;
       if (gateway) {
         try {
           if (!result.owner || !ctx.confirmPublicWebLogin) throw new Error("public notice unavailable");
@@ -216,7 +228,8 @@ export function handleAuthRequest(
       json(res, 200, { ok: true, csrf: csrfTokenFor(sessionId), tier: record.tier, expiresAt: record.absoluteExpiry }, {
         "Set-Cookie": buildSessionCookie(sessionId, isSecureRequest(gateReq), (record.absoluteExpiry - record.created) / 1000),
       });
-    }).catch(() => { if (!res.destroyed && !res.headersSent) json(res, 500, { error: "sign-in failed" }); });
+    }).catch(() => { if (!res.destroyed && !res.headersSent) json(res, 500, { error: "sign-in failed" }); })
+      .finally(() => { req.removeListener("aborted", disconnect); res.removeListener?.("close", disconnect); });
     return true;
   }
 

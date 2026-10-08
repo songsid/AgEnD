@@ -3,6 +3,10 @@ import { PublicWebLink, publicLinkSettings, validPublicLinkPatch } from "../src/
 import { TunnelPurposeLane } from "../src/tunnel/purpose-lane.js";
 import type { PublicLinkDelivery } from "../src/public-web-link.js";
 import type { TunnelHandle } from "../src/tunnel/types.js";
+import { loadFleetConfig } from "../src/config.js";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 vi.mock("node:child_process", async original => ({ ...await original<typeof import("node:child_process")>(), spawn: () => { throw Error("no processes"); }, execFileSync: () => { throw Error("no CLI"); }, execSync: () => { throw Error("no CLI"); } }));
 const deferred = <T>() => { let resolve!: (value: T) => void, reject!: (e: Error) => void; const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 const owner = { adapterId: "owner", userId: "admin", chatId: "G", threadId: "T", binding: {} };
@@ -60,6 +64,21 @@ describe("public link access/child ownership, no real listener or tunnel", () =>
     h.advance(30_000); expect(first.isCurrent()).toBe(false); expect(h.publicLink.status().state).toBe("closing");
     expect(h.revoke).toHaveBeenCalledWith(first.exposureId); expect(h.gateway.close).toHaveBeenCalled(); await h.publicLink.close("end");
   });
+  it("raw YAML load cannot extend the controller past its 8h hard cap", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-public-ttl-"));
+    const path = join(dir, "fleet.yaml");
+    writeFileSync(path, JSON.stringify({ instances: {}, web: { public_link: { ttl_minutes: 900 } } }));
+    const h = rig(); let link!: PublicLinkDelivery;
+    try {
+      h.settings(loadFleetConfig(path).web);
+      expect(await h.publicLink.deliver(owner, async value => { link = value; return true; })).toBe(true);
+      expect(link.expiresAt).toBe(100_000 + 480 * 60_000);
+      h.advance(480 * 60_000 - 1); expect(link.isCurrent()).toBe(true);
+      h.advance(1); expect(link.isCurrent()).toBe(false);
+      expect(h.publicLink.status().state).toBe("closing");
+      await h.publicLink.close("end");
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
   it("close fences synchronously and waits late startup before stop; old click cannot close reopen", async () => {
     const h = rig(), wait = deferred<any>(); h.ensure.mockReturnValueOnce(wait.promise);
     const delivery = h.publicLink.deliver(owner, async () => true); const old = h.publicLink.exposureId!;
@@ -78,6 +97,6 @@ describe("public link access/child ownership, no real listener or tunnel", () =>
     if (why === "policy") h.settings({ public_link: { allow_public: false } }); else if (why === "binding") h.allow(false); else h.lost();
     h.publicLink.refresh(); expect(h.revoke).toHaveBeenCalled(); expect(h.gateway.close).toHaveBeenCalled(); await h.publicLink.close("end");
   });
-  it.each([{ ttl_minutes: 0 }, { ttl_minutes: 481 }, { ttl_minutes: 1.5 }, { allow_public: "true" }, { protocol: "bad" }])("rejects invalid config %j", cfg => expect(validPublicLinkPatch(cfg)).toBe(false));
+  it.each([{ ttl_minutes: 0 }, { ttl_minutes: 481 }, { ttl_minutes: 1.5 }, { allow_public: "true" }, { protocol: "bad" }, { protocol: ["quic"] }])("rejects invalid config %j", cfg => expect(validPublicLinkPatch(cfg)).toBe(false));
   it("allows sparse valid patches without populating defaults", () => { expect(validPublicLinkPatch({})).toBe(true); expect(validPublicLinkPatch({ ttl_minutes: 480 })).toBe(true); });
 });

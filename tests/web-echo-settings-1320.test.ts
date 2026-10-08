@@ -97,6 +97,13 @@ describe("web echo config and Settings (#1320 A)", () => {
     expect((await request(h.fm, "/api/settings/fleet/web", { public_link: { ttl_minutes: 481 } })).status).toBe(400);
     expect(h.raw().web.public_link.ttl_minutes).toBeUndefined();
   });
+  it("real Settings handler refuses array protocol without writing (#1367 r2)", async () => {
+    const h = context({ public_link: { protocol: "http2" } });
+    expect((await request(h.fm, "/api/settings/fleet/web", { public_link: { protocol: ["quic"] } })).status).toBe(400);
+    expect(h.raw().web.public_link).toEqual({ protocol: "http2" });
+    expect((await request(h.fm, "/api/settings/fleet/web", { public_link: { protocol: "quic" } })).status).toBe(200);
+    expect(h.raw().web.public_link).toEqual({ protocol: "quic" });
+  });
   it("validates boolean config and declares a hot impact", () => {
     for (const value of [true, false]) expect(validateFleetConfig({ instances: {}, web: { echo_to_channel: value } }).errors).toEqual([]);
     for (const value of ["false", null, 0, {}]) expect(validateFleetConfig({ instances: {}, web: { echo_to_channel: value } }).errors).toEqual(expect.arrayContaining([expect.objectContaining({ path: "web.echo_to_channel" })]));

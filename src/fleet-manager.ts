@@ -4465,16 +4465,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       && this.webToken === token && this.hasFleetAdmins(adapterId) && this.isFleetAdmin(data.userId, adapterId);
     const privateText = `${text}\n${t("dashboard.code", login.display, Math.round(LOGIN_CODE_TTL_MS / 60_000))}`;
     const deadline = performance.now() + 10_000;
+    let deliveredByDm = false;
     try {
       try {
         if (!adapter.sendDirect) throw new Error("DM unavailable");
         await withinBudget(adapter.sendDirect(data.userId, privateText, { disablePreview: true }), Math.min(deadline, performance.now() + 5_000));
+        deliveredByDm = true;
       } catch {
         if (!current()) throw new Error("owner changed");
         const id = await withinBudget(data.respond(privateText), deadline); // native slash response is already ephemeral
         if (!id) throw new Error("private delivery unconfirmed");
       }
       if (!current()) throw new Error("owner changed");
+      if (deliveredByDm) await withinBudget(data.respond(t("dashboard.private_sent")), deadline);
     } catch { this.webLoginCodes!.revokeIfCurrent(login.issuanceId); }
 
   }

@@ -11,7 +11,14 @@ import type { WebConfig } from "./types.js";
 export const PUBLIC_LINK_DEFAULT_MINUTES = 120;
 export const PUBLIC_LINK_MAX_MINUTES = 480;
 export function publicLinkSettings(web: WebConfig | undefined): { allowed: boolean; ttlMs: number; protocol: "http2" | "quic" | "auto" } {
-  return { allowed: web?.public_link?.allow_public !== false, ttlMs: (web?.public_link?.ttl_minutes ?? PUBLIC_LINK_DEFAULT_MINUTES) * 60_000, protocol: web?.public_link?.protocol ?? "http2" };
+  // Raw YAML startup does not go through the Settings validator. Enforce the
+  // fixed cap here too, at the boundary every runtime consumer shares.
+  const settings = web?.public_link;
+  const minutes = typeof settings?.ttl_minutes === "number" && Number.isInteger(settings.ttl_minutes) && settings.ttl_minutes > 0
+    ? Math.min(settings.ttl_minutes, PUBLIC_LINK_MAX_MINUTES) : PUBLIC_LINK_DEFAULT_MINUTES;
+  const protocol = settings?.protocol;
+  return { allowed: settings?.allow_public === undefined || settings.allow_public === true, ttlMs: minutes * 60_000,
+    protocol: typeof protocol === "string" && ["http2", "quic", "auto"].includes(protocol) ? protocol : "http2" };
 }
 export function validPublicLinkPatch(value: unknown): value is NonNullable<WebConfig["public_link"]> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
@@ -19,7 +26,7 @@ export function validPublicLinkPatch(value: unknown): value is NonNullable<WebCo
   return Object.keys(v).every(k => ["allow_public", "ttl_minutes", "protocol"].includes(k))
     && (v.allow_public === undefined || typeof v.allow_public === "boolean")
     && (v.ttl_minutes === undefined || (Number.isInteger(v.ttl_minutes) && Number(v.ttl_minutes) >= 1 && Number(v.ttl_minutes) <= PUBLIC_LINK_MAX_MINUTES))
-    && (v.protocol === undefined || ["http2", "quic", "auto"].includes(String(v.protocol)));
+    && (v.protocol === undefined || (typeof v.protocol === "string" && ["http2", "quic", "auto"].includes(v.protocol)));
 }
 interface Exposure {
   id: string;

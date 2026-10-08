@@ -108,6 +108,22 @@ describe("real dashboard dispatcher/nonce/private delivery, no fleet or tunnel",
     await h.s.dispatchAdapterCallback({ callbackData: `dashboard:${e.nonce}:close`, chatId: "G", threadId: "T0", messageId: "private", userId: "admin", ack: vi.fn() }, "owner", h.adapter);
     expect(h.s.publicWebLink.status().state).toBe("closed");
   });
+  it("Discord dashboard outside General finishes deferred response after private DM", async () => {
+    const h = rig("discord");
+    await h.slash("admin", "T1");
+    expect(h.adapter.sendDirect).toHaveBeenCalledTimes(1);
+    expect(h.respond).toHaveBeenCalledTimes(1);
+    expect(h.respond).toHaveBeenCalledWith(t("dashboard.private_sent"));
+    expect(h.respond.mock.calls[0][0]).not.toMatch(/[A-Z0-9]{4}-[A-Z0-9]{4}/);
+    expect(h.respond.mock.calls[0][0]).not.toContain("http");
+    expect(h.nonce()).toBeUndefined();
+  });
+  it("Discord outside-General refused DM retains private ephemeral fallback", async () => {
+    const h = rig("discord"); h.adapter.sendDirect.mockRejectedValue(Error("DM disabled"));
+    await h.slash("admin", "T1");
+    expect(h.respond).toHaveBeenCalledTimes(1);
+    expect(h.respond.mock.calls[0][0]).toMatch(/[A-Z0-9]{4}-[A-Z0-9]{4}/);
+  });
   it("requester, admin, owner world, configured General and exact message are all fenced", async () => {
     const h = rig(); await h.typed();
     for (const overrides of [{ userId: "member" }, { userId: "admin2" }, { chatId: "OTHER" }, { threadId: "T1" }, { messageId: "wrong" }]) await h.click("public", overrides);
