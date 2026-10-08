@@ -4,7 +4,7 @@
 #
 # This script:
 # 1. Detects OS + architecture
-# 2. Checks/installs Node.js >= 20 (via nvm)
+# 2. Checks/installs Node.js ^22.14.0 || ^23.6.0 || >=24 (via nvm)
 # 3. Checks/installs tmux
 # 4. Installs agend globally via npm
 # 5. Detects backend CLIs
