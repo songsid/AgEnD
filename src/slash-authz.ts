@@ -17,7 +17,8 @@
  *     tells a DM from a guild;
  *  2. the guild must be the adapter's own, unless the channel is a registered ClassicBot channel (those are
  *     open by design, in any guild the operator allowed) or the command is `/start` (which validates its own
- *     guild against `allowed_guilds`);
+ *     guild against `allowed_guilds`) — and a command that needs a fleet admin needs the fleet's own guild even
+ *     from a ClassicBot channel;
  *  3. whoever speaks must be someone the text path would also hear: a fleet channel applies the access policy
  *     of the adapter that owns its instance, anywhere else the invoking adapter's. ClassicBot channels stay
  *     open, exactly as they are for typed messages.
@@ -42,6 +43,12 @@ export interface SlashFacts {
   /** What the channel the command was typed in is. */
   scope: SlashScope;
   speaker: SlashSpeaker;
+  /**
+   * The command needs a fleet admin in this scope (the command table's level). A ClassicBot channel is open in any
+   * guild the operator allowed, but fleet administration is not: it is refused outside the fleet's own guild
+   * (#754 audit) — otherwise any guild that hosts a ClassicBot channel is a place to run /update or /restart from.
+   */
+  fleetAdminCommand?: boolean;
 }
 
 export type SlashDenial = "dm" | "wrong-guild" | "not-allowed" | "owner-not-running";
@@ -55,6 +62,7 @@ export function decideSlash(f: SlashFacts): SlashDecision {
   if (!inOwnGuild && f.scope !== "classic" && f.command !== "start") {
     return { allow: false, reason: "wrong-guild" };
   }
+  if (!inOwnGuild && f.fleetAdminCommand) return { allow: false, reason: "wrong-guild" };
 
   // Typed messages in a ClassicBot channel are open to everyone there, and so are its slash commands.
   if (f.scope === "classic") return { allow: true };

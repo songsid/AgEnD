@@ -11,9 +11,10 @@ Registered via `setMyCommands` with `scope: chat` and `scope: chat_administrator
 | `/sysinfo` | System diagnostics, including each backend CLI's version (also `/sys-info`, `/sys_info` when typed) | All |
 | `/ctx` | Show agent context usage | All |
 | `/usage` | Show AI subscription usage | All |
-| `/compact [instructions]` | Compact agent context; the optional text steers the summary (Claude Code only — other backends compact without it and say so) | All |
-| `/cancel` | Interrupt agent generation (handled, not in menu) | All |
-| `/save` | Save agent session (handled, not in menu) | All |
+| 🔒 `/compact [instructions]` | Compact agent context; the optional text steers the summary (Claude Code only — other backends compact without it and say so) | Admin |
+| `/cancel` | Interrupt agent generation (handled, not in menu). The ⏹ button under a working instance does the same, for anyone that instance's bot lets speak in the topic | All |
+| 🔒 `/save` | Save agent session (handled, not in menu) | Admin |
+| 🔒 `/raw <text>` | Paste text into the CLI exactly as typed, without the `[user:]` envelope (handled, not in menu) | Fleet admin of the topic's bot |
 | `/steer <message>` | Interject into the agent's *current* turn instead of queueing for idle. Not admin-gated — anyone who can talk to the agent can steer it. Only `claude-code`, `codex`, and `grok` accept a busy-pane interjection; other backends reply "not supported". | All |
 | `/btw <message>` | Ask a side question without interrupting the agent's current task — delivered as a labelled `[BTW — side question]` inbound message via the same paste path as `/steer`, but framed as a question rather than new direction. Not admin-gated. `claude-code` only; every other backend replies "not supported". | All |
 | `/tips` | Draw a random usage tip, posted directly in the topic/channel where you ran it (no longer routed through General). 300 tips exist (100 beginner + 100 intermediate + 100 advanced), but only the **beginner** tier is currently drawn from — intermediate/advanced are staged but not yet enabled fleet-wide. | All |
@@ -25,7 +26,7 @@ Registered via `setMyCommands` with `scope: chat` and `scope: chat_administrator
 | 🔒 `/update` | Update AgEnD to latest | Admin |
 | 🔒 `/doctor` | Run health diagnostics | Admin |
 | 🔒 `/login [backend\|cancel]` | **(beta)** Remote CLI sign-in — and install — without SSH. Away from the machine, a `kiro-cli` or `claude-code` sign-in can open a one-tap temporary public link (AgEnD fetches a pinned, checksum-verified cloudflared if needed) — see [configuration](configuration.md#finishing-a-login-away-from-the-machine-public-link). One entry point: a CLI that is not installed yet is installed first (the backend's official install script in a temporary tmux window, verified on PATH), then signed in. The old `/install-cli` (`/install_cli`) still works when typed but only redirects to `/login` with a "moved" notice — it is in no menu. No arg shows a backend picker of every installed or installable backend, each labelled with what a click does; device-code backends (codex, grok) post a URL and code in the chat; the others (claude, kiro) open a browser terminal where you finish the sign-in (and can paste the code back). Sign-in covers `codex`, `grok`, `kiro` and `claude`; `opencode` and `muse` are install-only (no sign-in flow); `antigravity` is refused outright — bare `agy` is the full agent CLI with no isolated login sub-command (user decision v2.1.5, `remoteLogin: "unsupported"` in `src/login-flows.ts`). Opens a temporary tmux window (instance panes untouched), warns if auth is already valid, 10-minute timeout, `/login cancel` anytime. Credentials are per-backend shared — one login fixes every instance on that backend, and running instances restart afterward to pick up the new credential. Also on Discord (`/login backend:… cancel:…`); not on TG Classic. | Admin |
-| `/collab` | Toggle bot/webhook message reception | All |
+| 🔒 `/collab` | Toggle bot/webhook message reception | Admin |
 | 🔒 `/dashboard` | General admin menu: local sign-in or opt-in temporary public link; code/link by DM (Discord ephemeral fallback). `/dashboard revoke` / Discord `action: revoke` closes the link and signs browsers out | Admin |
 | 🔒 `/model` | Change backend model (inline keyboard). A typed name applies directly (`/model sonnet`); with no arg the menu opens. On `claude-code`, a two-tier menu: 6 quick-select aliases, plus a "📋 更多模型…" (more models) button that fetches the live model catalog from the API (24h cache, falls back to the alias list on failure). | Admin |
 | 🔒 `/effort` | Adjust AI reasoning effort (low/medium/high/xhigh/max). A typed level applies directly; with no arg the menu opens | Admin |
@@ -118,6 +119,9 @@ On every platform, only the topic/entry owner ever answers, so a `/cmd` typed in
 
 Fleet-level commands — requires fleet admin:
 - `/status`, `/restart`, `/update`, `/doctor`, `/visibility`, `/pause`, `/wake`, `/model`, `/effort`, `/clear`, `/login`
+- In fleet topics and channels also `/collab`, `/compact`, `/save` (both platforms), and Telegram `/raw`
+- `/pause` and `/wake` from a General reach only that bot's own instances: an admin of one bot is not an admin of another bot's instances
+- A fleet-admin slash command runs only in the fleet's own Discord server, also when it is typed in a ClassicBot channel of another server
 
 ### ClassicBot Admin (`classicBot.yaml` → `defaults.admin_users`)
 
@@ -125,14 +129,23 @@ ClassicBot management commands:
 - TG: `/start` (groups), `/stop`, `/raw`, `/pause` and `/wake` and `/compact` and `/save` (in a ClassicBot chat)
 - DC: `/stop`, `/load`
 
+`defaults.admin_users` is **one list for every bot**: there is one `classicBot.yaml`, and a ClassicBot admin is an admin in the ClassicBot channels of every bot (Telegram and Discord), whichever bot the channel belongs to. It is not per bot. Keep that in mind when several bots share a fleet: give ClassicBot admin only to someone you would trust on all of them.
+
 ### Context-dependent
 
 Permission varies by platform/mode:
-- `/compact` — TG Classic: ClassicBot admin. TG fleet topic: all users. DC: fleet admin in a fleet channel, fleet admin or ClassicBot admin in a ClassicBot channel.
+- `/compact` — TG Classic: ClassicBot admin. TG fleet topic: fleet admin. DC: fleet admin in a fleet channel, fleet admin or ClassicBot admin in a ClassicBot channel.
 - `/pause`, `/wake` — TG Classic: ClassicBot admin only. DC Classic: fleet admin or ClassicBot admin. Fleet topics: fleet admin.
 - `/ctx` — all users (both platforms)
-- `/collab` — DC: fleet admin in a fleet channel; fleet admin or ClassicBot admin in a ClassicBot channel. TG: no check in a fleet topic (anyone the access policy admits); in a ClassicBot chat it is not a command (the text goes to the agent).
+- `/collab` — DC: fleet admin in a fleet channel; fleet admin or ClassicBot admin in a ClassicBot channel. TG: fleet admin in a fleet topic; in a ClassicBot chat it is not a command (the text goes to the agent).
 - `/tips` — drawing a tip is all-users, posted wherever it was invoked; `/tips on`/`off`/`advanced on` require fleet admin. Not registered on TG Classic at all.
+
+### Buttons
+
+A button click is checked again when it is clicked, not only when the button was posted:
+- confirmation and picker buttons (login, `/clear`, `/dashboard`, restart prompts, the advanced-tips unlock): a fleet admin of the bot that posted them (`/clear` in a ClassicBot channel: a ClassicBot admin too);
+- the `/model` and `/effort` menus: the admin who opened the menu, still an admin when they click, through the same bot;
+- the ⏹ cancel button: anyone that instance's bot lets speak in the topic, through that bot, on that instance's own button.
 
 ### All Users
 
