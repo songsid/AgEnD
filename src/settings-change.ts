@@ -97,6 +97,9 @@ export function settingsChangeDiff(before: unknown, after: unknown, options: {
     if (Array.isArray(old) || Array.isArray(next)) {
       if ([...(Array.isArray(old) ? old : []), ...(Array.isArray(next) ? next : [])].some(object))
         throw new SettingsConfirmationError(400, "unsupported_sensitive_effect");
+      // An unknown string array can contain credentials just like an unknown
+      // scalar. Only schema-owned public fields may reveal its actual values.
+      if (!publicKeys.has(key)) throw new SettingsConfirmationError(400, "unsupported_sensitive_effect");
     }
     if ((typeof old === "string" || typeof next === "string") && !publicKeys.has(key))
       throw new SettingsConfirmationError(400, "unsupported_sensitive_effect");

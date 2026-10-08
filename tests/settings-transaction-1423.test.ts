@@ -105,6 +105,7 @@ describe("authoritative normalized diff (#1423)", () => {
   it("fails closed on unsupported nested/list effects instead of treating them as ordinary", () => {
     expect(() => settingsChangeDiff({}, { access: { allowed_users: [{ hidden: "secret" }] } }, { operation: "access" })).toThrow();
     expect(() => settingsChangeDiff({}, { unknown: "potential-secret" }, { operation: "unknown" })).toThrow("unsupported_sensitive_effect");
+    expect(() => settingsChangeDiff({}, { unknown: ["potential-secret"] }, { operation: "unknown" })).toThrow("unsupported_sensitive_effect");
     expect(() => settingsChangeDiff({}, { unknown: [{ field: "value" }] }, { operation: "unknown" })).toThrow("unsupported_sensitive_effect");
   });
 });

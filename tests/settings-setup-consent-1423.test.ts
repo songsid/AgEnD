@@ -71,7 +71,9 @@ it("shutdown aborts and joins a held tunnel start before releasing its singleton
   const host = new SetupHost({ dataDir: dir, configPath: join(dir, "fleet.yaml"), port: 0, tunnel: true, tunnelProvider: provider, spawnFleet: vi.fn() }); fixtures.push({ host, dir });
   const starting = host.start().catch((err: Error) => err);
   await vi.waitFor(() => expect(provider.start).toHaveBeenCalledOnce()); const stopped = host.shutdown(false, "cancelled");
-  expect(context.signal.aborted).toBe(true); await new Promise(resolve => setImmediate(resolve)); expect((host as any).lock).toBeDefined();
-  release(); expect(await starting).toBeInstanceOf(Error); await stopped;
+  let result: unknown;
+  try { expect(context.signal.aborted).toBe(true); await new Promise(resolve => setImmediate(resolve)); expect((host as any).lock).toBeDefined(); }
+  finally { release(); result = await starting; await stopped; }
+  expect(result).toBeInstanceOf(Error);
   expect(stop).toHaveBeenCalledOnce(); expect((host as any).lock).toBeUndefined(); expect((host as any).externalHost).toBeNull();
 });

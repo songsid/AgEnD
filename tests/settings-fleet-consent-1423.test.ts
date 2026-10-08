@@ -152,8 +152,10 @@ describe("#1423 actual queued runners and owned cleanup", () => {
     const job: any = { id: "hook", specId: "groq.api_key", envKey: "GROQ_API_KEY", status: "running", result: "applying" }; h.fm.providerSecretJobs.set(job.id, job);
     const resource = settingsFileResource(join(h.dir, ".env")); h.fm.queueSettingsOperation(job, [resource], cap, (exec: SettingsExecution) => h.fm.runProviderSecretApply(job, "secret-sentinel", exec));
     await vi.waitFor(() => expect(process.env.GROQ_API_KEY).toBe("secret-sentinel")); alive = false;
-    expect(settingsLeaseBusy(resource)).toBe(true); expect(() => new SecretStore(join(h.dir, ".env"), new Set(["KEEP"])).write("KEEP", "newer")).toThrow();
-    expect(job.status).toBe("running"); hold.resolve(); await h.fm.settingsJobSettlements.get(job.id); cap.close();
+    try {
+      expect(settingsLeaseBusy(resource)).toBe(true); expect(() => new SecretStore(join(h.dir, ".env"), new Set(["KEEP"])).write("KEEP", "newer")).toThrow();
+      expect(job.status).toBe("running");
+    } finally { hold.resolve(); await h.fm.settingsJobSettlements.get(job.id); cap.close(); }
     expect(job.result).toBe("rolled_back"); expect(process.env.GROQ_API_KEY).toBe("old"); expect(readFileSync(join(h.dir, ".env"), "utf8")).toBe("GROQ_API_KEY=old\nKEEP=kept\n"); expect(settingsLeaseBusy(resource)).toBe(false); vi.unstubAllEnvs();
   });
   it("held binding stop plus fleet shutdown never starts a replacement or commits YAML", async () => {
