@@ -3005,7 +3005,7 @@ export class Daemon extends EventEmitter {
               // the window truly no longer exists vs a transient query glitch.
               nullReason = "no_window";
               try {
-                const windows = await TmuxManager.listWindows(this.tmuxSessionName, this.controlClient);
+                const windows = await TmuxManager.listWindowsStrict(this.tmuxSessionName, this.controlClient);
                 if (discardStaleHealth()) return;
                 this.windowQueryFailureTicks = 0;
                 const currentWindowId = this.tmux.getWindowId();

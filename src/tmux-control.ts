@@ -502,7 +502,9 @@ export class TmuxControlClient extends EventEmitter implements TmuxReadPort {
       this.activeRead = read;
       try {
         const command = args.map(tmuxCommandToken).join(" ");
-        owner.proc.stdin!.write(`${command}\ndisplay-message -p ${tmuxCommandToken(read.nonce)}\n`, error => {
+        const payload = `${command}\ndisplay-message -p ${tmuxCommandToken(read.nonce)}\n`;
+        if (performance.now() >= deadline) { this.retire(owner); return; }
+        owner.proc.stdin!.write(payload, error => {
           if (error) this.retire(owner);
         });
       } catch { this.retire(owner); }

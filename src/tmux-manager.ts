@@ -195,11 +195,12 @@ export class TmuxManager {
     } catch { return []; }
   }
 
-  /** Bounded, failing variant for the login/install path: a timeout or tmux error REJECTS instead of reading as "no windows". */
-  static async listWindowsStrict(sessionName: string): Promise<Array<{ id: string; name: string }>> {
-    const { stdout } = await exec("tmux", TmuxManager.tmuxArgs([
+  /** Bounded health/login read: errors REJECT instead of proving "no windows". */
+  static async listWindowsStrict(sessionName: string, readPort?: TmuxReadPort): Promise<Array<{ id: string; name: string }>> {
+    const stdout = readPort ? await TmuxManager.portRead(readPort, { kind: "windows", session: sessionName }, LOGIN_TMUX_OP_TIMEOUT_MS)
+      : (await exec("tmux", TmuxManager.tmuxArgs([
       "list-windows", "-t", sessionName, "-F", "#{window_id}|||#{window_name}"
-    ]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS });
+    ]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS })).stdout;
     return stdout.trim().split("\n").filter(Boolean).map(line => {
       const [id, name] = line.split("|||");
       return { id, name };

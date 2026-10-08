@@ -30,7 +30,7 @@ type Internals = {
 function tmuxWill(outcome: "ok" | "fail"): void {
   execFile.mockImplementation((_cmd: string, _args: string[], _options: unknown, cb: (e: Error | null, out: string) => void) => {
     if (outcome === "ok") cb(null, "%3\n");
-    else cb(new Error("can't find window: @7"), "");
+    else cb(Object.assign(new Error("can't find window: @7"), { code: 1 }), "");
   });
 }
 

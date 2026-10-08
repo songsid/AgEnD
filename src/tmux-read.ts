@@ -20,9 +20,21 @@ export interface TmuxReadPort {
 }
 
 export class TmuxReadError extends Error {
-  constructor(readonly kind: "transport" | "command" | "limit" | "timeout" | "stopped", message: string) {
-    super(message);
+  readonly code?: string | number;
+  constructor(readonly kind: "transport" | "command" | "limit" | "timeout" | "stopped", message: string, cause?: unknown) {
+    super(message, { cause });
+    const code = (cause as { code?: unknown } | null)?.code;
+    if (typeof code === "string" || typeof code === "number") this.code = code;
   }
+}
+
+/** Only an ordinary nonzero exit is a semantic tmux command failure. */
+function fallbackReadError(error: unknown): TmuxReadError {
+  const detail = error as { code?: unknown; killed?: boolean; signal?: unknown } | null;
+  const kind = detail?.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER" ? "limit"
+    : detail?.killed ? "timeout"
+    : typeof detail?.code === "number" && detail.code !== 0 && !detail.signal ? "command" : "transport";
+  return new TmuxReadError(kind, "tmux fallback read failed", error);
 }
 
 export function tmuxReadArgs(query: TmuxReadQuery): string[] {
@@ -171,25 +183,34 @@ export class TmuxReadLane {
       return;
     }
     this.physical.add(job);
-    const release = () => { this.physical.delete(job); this.pump(); };
+    const release = () => { if (this.physical.delete(job)) this.pump(); };
+    let spawnReturned = false;
+    let callbackError: unknown;
     try {
       const args = this.socket ? ["-L", this.socket, ...job.args] : job.args;
       const child = measureSyncWork("tmux.spawn", () => execFile("tmux", args, {
         timeout: Math.max(1, Math.floor(job.deadline - performance.now())), maxBuffer: TMUX_READ_MAX_BYTES,
       }, (error, stdout) => {
-        // execFile's callback proves completion; mock callbacks can be synchronous.
-        release();
+        // Node can invoke this callback on error before a live child exits
+        // (e.g. kill EPERM). It settles the read, not physical ownership.
+        callbackError = error;
+        if (spawnReturned && error && job.child?.pid === undefined) release();
         if (job.done) return;
         if (!this.current(job)) this.finish(job, new TmuxReadError("timeout", "tmux read deadline expired"));
-        else this.finish(job, error ? new TmuxReadError("command", "tmux fallback read failed") : undefined, String(stdout));
+        else this.finish(job, error ? fallbackReadError(error) : undefined, String(stdout));
       }));
       job.child = child;
+      spawnReturned = true;
       child?.once("exit", release);
       child?.once("close", release);
+      child?.once("error", () => { if (child.pid === undefined) release(); });
+      // Native execFile always returns a ChildProcess. The no-child branch
+      // also permits inert test doubles; a failed spawn has no process to own.
+      if (!child || (callbackError && child.pid === undefined)) release();
       if (job.done && this.physical.has(job)) killReadChild(child);
     } catch (error) {
-      release(); // native spawn threw before returning a child
-      this.finish(job, error);
+      if (!spawnReturned || job.child?.pid === undefined) release();
+      this.finish(job, fallbackReadError(error));
     }
   }
 }

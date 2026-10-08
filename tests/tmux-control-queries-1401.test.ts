@@ -3,7 +3,11 @@ import { EventEmitter } from "node:events";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-const mocks = vi.hoisted(() => ({ spawn: vi.fn(), execFile: vi.fn() }));
+const mocks = vi.hoisted(() => ({ spawn: vi.fn(), execFile: vi.fn(), randomUUID: vi.fn() }));
+vi.mock("node:crypto", async importOriginal => {
+  const actual = await importOriginal<typeof import("node:crypto")>();
+  return { ...actual, randomUUID: () => mocks.randomUUID() ?? actual.randomUUID() };
+});
 vi.mock("node:child_process", async importOriginal => {
   (mocks.execFile as any)[Symbol.for("nodejs.util.promisify.custom")] = (...args: unknown[]) => new Promise((resolve, reject) => {
     mocks.execFile(...args, (error: unknown, stdout: string, stderr: string) => error ? reject(error) : resolve({ stdout, stderr }));
@@ -18,7 +22,7 @@ import { Daemon } from "../src/daemon.js";
 import { TmuxControlClient } from "../src/tmux-control.js";
 import { TmuxManager } from "../src/tmux-manager.js";
 import { getTmuxSocketName } from "../src/paths.js";
-import { TMUX_READ_MAX_BYTES, TMUX_READ_QUEUE_LIMIT, tmuxCommandToken } from "../src/tmux-read.js";
+import { TMUX_READ_MAX_BYTES, TMUX_READ_QUEUE_LIMIT, TmuxReadLane, tmuxReadArgs, tmuxCommandToken } from "../src/tmux-read.js";
 
 function processFixture() {
   return Object.assign(new EventEmitter(), {
@@ -56,13 +60,13 @@ function answer(proc: Proc, output: string, error = false, extra = "") {
 function fallback(output = "fallback\n") {
   mocks.execFile.mockImplementation((_file, _args, _options, callback) => {
     const child = processFixture();
-    queueMicrotask(() => callback(null, output));
+    queueMicrotask(() => { child.emit("exit", 0); callback(null, output); child.emit("close", 0); });
     return child;
   });
 }
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date", "performance"] });
-  processes = []; sequence = 1;
+  processes = []; sequence = 1; mocks.randomUUID.mockReset();
   mocks.spawn.mockReset().mockImplementation(() => { const proc = processFixture(); processes.push(proc); return proc; });
   mocks.execFile.mockReset().mockImplementation(() => { throw new Error("unexpected fallback spawn"); });
   TmuxManager.setSocketName(getTmuxSocketName());
@@ -227,6 +231,26 @@ describe("#1401 deadlines and physical process ownership", () => {
     expect(await result).toBe("fallback\n"); expect(proc.kill).toHaveBeenCalled(); now.mockRestore();
   });
 
+  it.each([500, 501])("does not write a read if nonce preparation reaches its attempt deadline (%sms)", async now => {
+    fallback(); const { proc, manager } = opened();
+    const clock = vi.spyOn(performance, "now").mockReturnValue(0);
+    mocks.randomUUID.mockImplementationOnce(() => { clock.mockReturnValue(now); return "expired"; });
+    const result = manager.capturePane(1_000); void result.catch(() => {});
+    expect(proc.stdin.write).not.toHaveBeenCalled();
+    expect(proc.kill).toHaveBeenCalledOnce();
+    expect(await result).toBe("fallback\n");
+    expect(mocks.execFile.mock.calls[0][2].timeout).toBe(1_000 - now);
+    clock.mockRestore();
+  });
+
+  it("still writes a read prepared just before its deadline", async () => {
+    const { proc, manager } = opened(); const clock = vi.spyOn(performance, "now").mockReturnValue(0);
+    mocks.randomUUID.mockImplementationOnce(() => { clock.mockReturnValue(499); return "fresh"; });
+    const result = manager.capturePane(1_000);
+    expect(proc.stdin.write).toHaveBeenCalledOnce(); answer(proc, "fresh\n");
+    expect(await result).toBe("fresh\n"); expect(proc.kill).not.toHaveBeenCalled(); clock.mockRestore();
+  });
+
   it("retains original queued deadline and never submits expired work", async () => {
     fallback(); const { proc, manager } = opened(); const first = manager.capturePane();
     const short = manager.capturePane(100); const rejected = expect(short).rejects.toMatchObject({ kind: "timeout" });
@@ -259,6 +283,51 @@ describe("#1401 deadlines and physical process ownership", () => {
     expect(mocks.execFile.mock.calls[2][2]).toMatchObject({ timeout: 900, maxBuffer: TMUX_READ_MAX_BYTES });
   });
 
+  it.each(["error", "timeout"])("retains live fallback owners after %s callbacks across stop/start and late events", async mode => {
+    const children: Proc[] = []; const callbacks: Array<(error: Error | null, out: string) => void> = [];
+    mocks.execFile.mockImplementation((_f, _a, _o, callback) => {
+      const child = processFixture(); children.push(child); callbacks.push(callback); return child;
+    });
+    const client = new TmuxControlClient("s"); clients.push(client);
+    const failure = Object.assign(new Error("kill denied"), { code: "EPERM" });
+    for (let i = 0; i < 2; i++) {
+      const result = client.read({ kind: "windows", session: "s" }, 100);
+      const assertion = expect(result).rejects.toMatchObject({ kind: mode === "timeout" ? "timeout" : "transport" });
+      if (mode === "timeout") await vi.advanceTimersByTimeAsync(100);
+      callbacks[i](failure, ""); await assertion;
+    }
+    expect((client as any).reads.physical.size).toBe(2);
+    const queued = client.read({ kind: "windows", session: "s" }); void queued.catch(() => {});
+    const stopped = expect(queued).rejects.toMatchObject({ kind: "stopped" });
+    expect(mocks.execFile).toHaveBeenCalledTimes(2);
+    client.stop(); await stopped; client.start();
+    const next = client.read({ kind: "windows", session: "s" }); void next.catch(() => {});
+    callbacks[0](null, "late\n"); children[1].emit("error", failure);
+    expect(mocks.execFile).toHaveBeenCalledTimes(2);
+    children[0].emit("exit", 0); expect(mocks.execFile).toHaveBeenCalledTimes(3);
+    callbacks[2](null, "next\n"); expect(await next).toBe("next\n");
+    const fourth = client.read({ kind: "windows", session: "s" }); void fourth.catch(() => {});
+    children[0].emit("close", 0); callbacks[0](failure, "late\n");
+    expect(mocks.execFile).toHaveBeenCalledTimes(3);
+    expect((client as any).reads.physical.size).toBe(2);
+    children[1].emit("close", 0); expect(mocks.execFile).toHaveBeenCalledTimes(4);
+    callbacks[3](null, "fourth\n"); expect(await fourth).toBe("fourth\n");
+  });
+
+  it("frees a confirmed no-child spawn failure without needing an exit event", async () => {
+    const failure = Object.assign(new Error("spawn denied"), { code: "EMFILE" });
+    mocks.execFile.mockImplementation((_f, _a, _o, callback) => {
+      const child = processFixture(); (child as any).pid = undefined;
+      queueMicrotask(() => callback(failure, "")); return child;
+    });
+    const client = new TmuxControlClient("s"); clients.push(client);
+    for (let i = 0; i < 4; i++) {
+      await expect(client.read({ kind: "windows", session: "s" })).rejects.toMatchObject({ kind: "transport", code: "EMFILE", cause: failure });
+      expect((client as any).reads.physical.size).toBe(0);
+    }
+    expect(mocks.execFile).toHaveBeenCalledTimes(4);
+  });
+
   it("bounds the queue and rejects reads at stop without rearming on old ACK", async () => {
     const { client, proc } = opened(); const results: Promise<unknown>[] = [];
     for (let i = 0; i < TMUX_READ_QUEUE_LIMIT; i++) results.push(client.read({ kind: "windows", session: "s" }).catch(error => error));
@@ -270,6 +339,59 @@ describe("#1401 deadlines and physical process ownership", () => {
 });
 
 describe("#1401 real daemon handlers and registration fences", () => {
+  it("real lane saturation defers a real health tick without crash, kill or respawn", async () => {
+    const { client, manager } = opened(); const { d, logger } = daemonFixture(manager, client);
+    d.config.restart_policy.max_retries = 2;
+    const lane = new TmuxReadLane(getTmuxSocketName(), {
+      ready: () => true, execute: () => new Promise(() => {}), retire: vi.fn(),
+    });
+    (client as any).reads = lane;
+    const publish = vi.spyOn(d, "setProcessStatus");
+    const kill = vi.spyOn(TmuxManager.prototype, "killWindow").mockResolvedValue();
+    d.checkpointSessionId = vi.fn().mockResolvedValue(undefined);
+    d.resetTranscriptBeforeAdmission = vi.fn().mockResolvedValue(true);
+    d.writeRotationSnapshot = vi.fn(); d.appendCrashHistory = vi.fn();
+    d.spawnClaudeWindow = vi.fn().mockResolvedValue(true);
+    // Cold server probes and potential orphan cleanup are inert. The health
+    // port itself remains real and is saturated, rather than mocked rejected.
+    mocks.execFile.mockImplementation((...args: any[]) => {
+      const argv = args[1] as string[]; const callback = args.at(-1); const child = processFixture();
+      const output = argv.includes("list-windows") ? "@1|||fixture\n" : argv.includes("display-message") ? "123\n" : "";
+      queueMicrotask(() => { child.emit("exit", 0); callback(null, output, ""); child.emit("close", 0); });
+      return child;
+    });
+    d.startHealthCheck(); await vi.advanceTimersByTimeAsync(29_999);
+    const pending = Array.from({ length: TMUX_READ_QUEUE_LIMIT }, () => lane.read(tmuxReadArgs({ kind: "windows", session: "s" }), 120_000).catch(error => error));
+    await vi.advanceTimersByTimeAsync(5_001);
+    expect(logger.warn).toHaveBeenCalledWith({ failures: 1 }, expect.stringContaining("window list unavailable"));
+    expect(publish).not.toHaveBeenCalled(); expect(kill).not.toHaveBeenCalled();
+    expect(d.spawnClaudeWindow).not.toHaveBeenCalled(); expect(d.appendCrashHistory).not.toHaveBeenCalled();
+    expect(d.windowQueryFailureTicks).toBe(1);
+    client.stop(); await Promise.all(pending);
+  });
+
+  it.each([
+    ["EMFILE", "transport"], ["EAGAIN", "transport"], ["ENOENT", "transport"],
+    ["ERR_CHILD_PROCESS_STDIO_MAXBUFFER", "limit"], ["killed", "timeout"], ["no-code", "transport"],
+  ])("fallback %s keeps errno/cause and never retires a healthy registration", async (code, kind) => {
+    const failure = Object.assign(new Error("query uncertain"), {
+      ...(code === "killed" ? { killed: true, signal: "SIGTERM" } : code === "no-code" ? {} : { code }), stderr: "inert diagnostic",
+    });
+    mocks.execFile.mockImplementation((_f, _a, _o, callback) => {
+      const child = processFixture();
+      if (["EMFILE", "EAGAIN", "ENOENT", "no-code"].includes(code)) (child as any).pid = undefined;
+      queueMicrotask(() => { if (child.pid !== undefined) child.emit("exit", 1); callback(failure, ""); });
+      return child;
+    });
+    const client = new TmuxControlClient("s"); clients.push(client);
+    const error = await client.read({ kind: "windows", session: "s" }).catch(error => error);
+    expect(error).toMatchObject({ kind, cause: failure });
+    if ("code" in failure) expect(error.code).toBe(code);
+    for (let i = 0; i < 3; i++) await client.registerWindow("@1");
+    expect((client as any).registeredWindows.has("@1")).toBe(true);
+    expect((client as any).resolveFailures.has("@1")).toBe(false);
+  });
+
   it("real error monitor and state capture use control reads without children", async () => {
     const { client, proc, manager } = opened(); const { d } = daemonFixture(manager, client);
     d.startErrorMonitor(); await vi.advanceTimersByTimeAsync(5_000);
