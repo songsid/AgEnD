@@ -173,6 +173,38 @@ describe("#1398 review: config through the real loader, crash state, and a stop/
   });
 });
 
+describe("#1398 review r2: running then crashed with no collect in between is a new crash", () => {
+  it("the second crash gets a new id though the collector never saw the running state", async () => {
+    const { fm } = fleet();
+    fm.startNeedsYou();
+    await flush();
+    fm.cacheInstanceProcessStatus("alpha", "crashed");
+    fm.needsYou.recompute();
+    const first = fm.needsYouItems().find((i: any) => i.reason === "crashed")?.id;
+    expect(first).toMatch(/^crashed:alpha:/);
+    await new Promise(r => setTimeout(r, 5));
+    // One IPC chunk: running, then crashed — synchronously, no collect between them.
+    fm.cacheInstanceProcessStatus("alpha", "running");
+    fm.cacheInstanceProcessStatus("alpha", "crashed");
+    fm.needsYou.recompute();
+    const second = fm.needsYouItems().find((i: any) => i.reason === "crashed")?.id;
+    expect(second).toMatch(/^crashed:alpha:/);
+    expect(second).not.toBe(first);
+  });
+
+  it("control: a crash that stays crashed keeps its id across collects", async () => {
+    const { fm } = fleet();
+    fm.startNeedsYou();
+    await flush();
+    fm.cacheInstanceProcessStatus("alpha", "crashed");
+    fm.needsYou.recompute();
+    const first = fm.needsYouItems().find((i: any) => i.reason === "crashed")?.id;
+    fm.cacheInstanceProcessStatus("alpha", "crashed");           // repeated report of the same crash
+    fm.needsYou.recompute();
+    expect(fm.needsYouItems().find((i: any) => i.reason === "crashed")?.id).toBe(first);
+  });
+});
+
 describe("the outbox's own events recompute at once", () => {
   it("rows expiring (now failed) and state changes poke Needs you — not only the 10 s tick", async () => {
     const { fm } = fleet();

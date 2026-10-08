@@ -380,7 +380,8 @@ export class NeedsYouHub {
     if (this.stopped || ids.size === 0 || !this.ctx.settings().dm || this.ctx.stopping()) return;
     const world = this.ctx.worlds().find(w => w.id === worldId);
     if (!world || !world.adapter.sendDirect) return;
-    const still = itemsForWorld(this.items, worldId).filter(i => ids.has(i.id));
+    // Owned by this world NOW — asked of the fleet per item, not taken from the last derivation (#1398 review r2).
+    const still = this.items.filter(i => ids.has(i.id) && this.ctx.ownerOf(i.instance) === worldId);
     if (still.length === 0) return;
     this.dmLastAt.set(worldId, this.ctx.mono());
     const text = [this.ctx.t("needs.dm_header", still.length), ...still.slice(0, 10).map(item => {

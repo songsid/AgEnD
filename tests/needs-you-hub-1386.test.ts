@@ -293,6 +293,19 @@ describe("#1398 review: delayed DMs, replaced adapters, capability expiry and bi
     expect(dmsOf(r.B.calls).join("\n")).toContain("alpha");      // B owns it now
   });
 
+  it("moved to B and the timer fires before any recompute: still nothing for A (ownership checked at send)", async () => {
+    const r = rig();
+    r.state.settings.dm = true;
+    r.hub.start(); await r.advance(0);
+    r.state.deliveries = [delivery("d1", "alpha")];
+    r.hub.recompute(); await r.advance(0);
+    r.state.deliveries = [delivery("d1", "alpha"), delivery("d2", "alpha")];
+    r.hub.recompute(); await r.advance(1_000);                   // d2 queued for A, sent when the minute is up
+    r.state.owners.alpha = "dcB";                                // moved — and no recompute before the timer
+    await r.advance(60_000);
+    expect(dmsOf(r.A.calls)).toHaveLength(1);
+  });
+
   it("no DM after dm is turned off, or after stop, even when one was queued", async () => {
     for (const end of ["off", "stop"] as const) {
       const r = rig();

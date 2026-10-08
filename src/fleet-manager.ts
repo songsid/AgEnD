@@ -2603,6 +2603,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private cacheInstanceProcessStatus(name: string, status: unknown): void {
+    // #1386: every transition into crashed is a new occurrence (a new "Needs you" item), and every other status ends
+    // the previous one — at once, not when the coalesced collector next runs: running then crashed in one IPC chunk is
+    // a second crash (#1398 review r2). The collector still recovers a missed running event.
+    if (status === "crashed") { if (this.instanceProcessStatus.get(name) !== "crashed") this.needsCrashedAt.set(name, Date.now()); }
+    else this.needsCrashedAt.delete(name);
     this.needsYou?.poke();
     if (status === "running") {
       this.instanceProcessStatus.delete(name);
