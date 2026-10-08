@@ -520,8 +520,30 @@ export class TopicCommands {
     return this.ctx.adapter;
   }
 
+  /**
+   * #1346: keep only the owning adapter's copy. When several bots share a
+   * guild they each receive the same message; the copy that wins the
+   * cross-adapter dedup race is arbitrary, so commands must not follow the
+   * receiver. A non-owner copy runs no command and answers nothing (null) —
+   * the message falls through to normal delivery, which canonicalizes
+   * routing to the owner. Replies and permission checks below then use the
+   * owner automatically. Without an instance (or owner info) there is
+   * nothing to judge by and the copy proceeds as before.
+   */
+  private ownedCopy(msg: InboundMessage, instanceName?: string): InboundMessage | null {
+    if (!instanceName) return msg;
+    const owner = this.ctx.getInstanceAdapterId?.(instanceName);
+    if (!msg.adapterId || !owner || msg.adapterId === owner) {
+      return !msg.adapterId && owner ? { ...msg, adapterId: owner } : msg;
+    }
+    return null;
+  }
+
   /** Parse and dispatch commands from the General topic */
-  async handleGeneralCommand(msg: InboundMessage): Promise<boolean> {
+  async handleGeneralCommand(msg: InboundMessage, instanceName?: string): Promise<boolean> {
+    const owned = this.ownedCopy(msg, instanceName);
+    if (!owned) return false;
+    msg = owned;
     const text = msg.text?.trim();
     if (!text) return false;
 
@@ -640,6 +662,9 @@ export class TopicCommands {
 
   /** Handle /ctx or /compact in any instance topic — returns true if handled */
   async handleInstanceCommand(msg: InboundMessage, instanceName: string): Promise<boolean> {
+    const owned = this.ownedCopy(msg, instanceName);
+    if (!owned) return false;
+    msg = owned;
     const text = msg.text?.trim();
     if (!text) return false;
 
