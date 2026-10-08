@@ -13,7 +13,7 @@ AgEnD checks chat admission, command roles, AgEnD tool profiles and HTTP credent
 | AgEnD tool profile | Instance `tool_set` | Server-side permission to invoke AgEnD tools |
 | Dashboard / agent HTTP | `web.token` / per-instance `agent.token` | Separate bearer credentials, not chat roles |
 
-**Open chat access and approved pairing do not make a fleet admin.** F is an explicit entry in the invoking adapter's YAML list; an empty list grants nobody F. ClassicBot's empty admin list likewise grants nobody C. Its guild/group/private-user lists are different: omitted, empty or non-array lists allow all.
+**Open chat access and approved pairing do not make a fleet admin.** F is an explicit entry in the invoking adapter's YAML list; an empty list grants nobody F. ClassicBot's empty admin list likewise grants nobody C. For new ClassicBot starts, omitted, empty or non-array guild/group/private-user lists admit nobody: non-C callers request approval in General. C may start directly. Existing registrations are unaffected.
 
 ## Fleet chat admission and persisted access
 
@@ -55,7 +55,7 @@ The implementation matrix is [`src/command-table.ts`](../src/command-table.ts). 
 
 | Command/input | Discord Classic | Telegram private | Telegram Classic group |
 |---------------|-----------------|------------------|------------------------|
-| `/start` | Allowed guild; no admin requirement; no agent already active | Classic user allowlist | `/start@OurBot`, allowed group **and C** |
+| `/start` | **C**, or an explicitly allowed guild; otherwise General approval | **C**, or an explicitly allowed user; otherwise General approval | `/start@OurBot`: **C** starts directly; others request access for unlisted groups, but an allowed group still needs **C** to start |
 | `/stop` | C; registered Classic channel | C | `/stop@OurBot` and C |
 | `/load` | C; registered Classic channel | No AgEnD handler | No AgEnD handler |
 | `/chat` / normal chat | A; `/chat` needs an active Classic agent | Active agent; private routing | `@OurBot` in chat; active agent (a command suffix alone is insufficient) |
@@ -63,7 +63,7 @@ The implementation matrix is [`src/command-table.ts`](../src/command-table.ts). 
 
 In Telegram Classic groups, slash commands must target the bot as `/command@OurBot`. **Bare slash commands, including `/start`, are silently ignored.** A suffix for another bot is ignored too. Private chats accept bare commands. These checks apply after Telegram delivers the update; platform delivery settings are a separate prerequisite.
 
-Discord `/start` uses the Classic guild allowlist, not the Classic admin list. `/stop` requires C on both platforms; being F alone is insufficient. Allowlists admitting a chat do not grant its users admin authority.
+Discord `/start` accepts C or an explicit Classic guild grant. An empty list no longer means open. `/stop` requires C on both platforms; being F alone is insufficient. Allowlists admitting a chat do not grant its users admin authority.
 
 ## Bot and webhook messages
 
