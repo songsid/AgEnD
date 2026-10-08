@@ -9,6 +9,10 @@ import { SettingsConfirmationStore } from "../src/settings-confirmation.js";
 import { SettingsExecution, settingsFileResource, settingsLeaseBusy } from "../src/settings-transaction.js";
 import { ClassicChannelManager } from "../src/classic-channel-manager.js";
 import { SecretStore } from "../src/secret-store.js";
+import { WebSessionStore, csrfTokenFor, tokenEpoch } from "../src/web-session.js";
+import { isPassiveWebRead, rotateWebToken } from "../src/web-auth.js";
+import { bindGatewayRequest } from "../src/web-request-context.js";
+import { isPublicWebRoute } from "../src/public-web-gateway.js";
 
 const fixtures: any[] = [];
 afterEach(async () => {
@@ -47,6 +51,41 @@ function proposal(h: ReturnType<typeof harness>, options: { now?: () => number; 
     current: () => true, unchanged: options.unchanged ?? (async () => true), snapshot: () => null, apply }).view;
   return { store, view, apply };
 }
+describe("#1423 retained real web-session authority", () => {
+  it.each(["local", "gateway"] as const)("%s uses cookie-only authority and does not touch its idle lifetime", surface => {
+    const h = harness(), token = rotateWebToken(h.dir); let now = 1000, exposed = true;
+    const sessions = new WebSessionStore({ now: () => now }); h.fm.webSessions = sessions;
+    const issued = sessions.create({ tier: "admin", surface, label: "test browser", tokenEpoch: tokenEpoch(token), ...(surface === "gateway" ? { exposureId: "public-owner" } : {}) });
+    const gate = h.fm.settingsGate(); h.store = gate.store;
+    const req: any = { method: "PUT", headers: { host: "example.test", origin: "https://example.test", cookie: `${surface === "gateway" ? "__Host-agend_session" : "agend_session"}=${issued.sessionId}`, "x-agend-csrf": csrfTokenFor(issued.sessionId) } };
+    if (surface === "gateway") bindGatewayRequest(req, { surface, exposureId: "public-owner", expectedOrigin: "https://example.test", isCurrent: () => exposed });
+    const idle = issued.record.idleExpiry; now += 1000;
+    const principal = gate.options.principal(req);
+    expect(principal?.source).toBe(surface === "gateway" ? "public_link" : "web_session"); expect(principal?.current()).toBe(true);
+    expect(issued.record.idleExpiry).toBe(idle);
+    expect(gate.options.principal({ method: "PUT", headers: { "x-agend-token": token } })).toBeNull();
+    if (surface === "gateway") { exposed = false; expect(principal.current()).toBe(false); exposed = true; }
+    sessions.revokeById(issued.sessionId); expect(principal.current()).toBe(false);
+  });
+  it.each(["epoch", "idle", "owner"])("a retained principal rejects %s changes without replaying its cookie", reason => {
+    const h = harness(), token = rotateWebToken(h.dir); let now = 1000;
+    const sessions = new WebSessionStore({ now: () => now }); h.fm.webSessions = sessions;
+    const issued = sessions.create({ tier: "admin", surface: "local", label: "browser", tokenEpoch: tokenEpoch(token) });
+    const gate = h.fm.settingsGate(); h.store = gate.store;
+    const principal = gate.options.principal({ method: "GET", headers: { cookie: `agend_session=${issued.sessionId}` } }); expect(principal.current()).toBe(true);
+    if (reason === "epoch") rotateWebToken(h.dir);
+    if (reason === "idle") now = issued.record.idleExpiry;
+    if (reason === "owner") h.fm.webSessions = new WebSessionStore();
+    expect(principal.current()).toBe(false);
+  });
+  it("public pending reads are passive and no public confirm route exists", () => {
+    for (const path of ["/api/settings/pending", "/api/settings/pending/" + "a".repeat(32)]) {
+      expect(isPassiveWebRead("GET", path)).toBe(true); expect(isPublicWebRoute("GET", path)).toBe(true);
+    }
+    expect(isPublicWebRoute("DELETE", "/api/settings/pending/" + "a".repeat(32))).toBe(true);
+    expect(isPublicWebRoute("POST", "/api/settings/pending/" + "a".repeat(32) + "/confirm")).toBe(false);
+  });
+});
 async function promptData(h: ReturnType<typeof harness>, user = "admin") {
   await vi.waitFor(() => expect(h.fm.pendingNonceButtons.size).toBe(1));
   const entry: any = [...h.fm.pendingNonceButtons.values()][0];
