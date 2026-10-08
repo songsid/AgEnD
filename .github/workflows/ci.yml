@@ -99,15 +99,15 @@ jobs:
       # 308 errors before anyone looked.
       - run: npm run typecheck:tests
       - run: npm run build
-      # Share node_modules and dist with the parallel shards so they don't
-      # repeat `npm ci` or `npm run build`.
+      # Share dist/ with the parallel shards. node_modules/ is NOT shared via
+      # artifact because GitHub Actions does not preserve symlinks (breaking
+      # node_modules/.bin/). Each shard runs its own `npm ci` which is fast
+      # from the npm download cache seeded above.
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: build-artifacts
-          path: |
-            dist/
-            node_modules/
+          path: dist/
           retention-days: 1
 
   # ── test shards ──────────────────────────────────────────────────────────────
@@ -123,12 +123,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+      - run: npm ci
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
           name: build-artifacts
-          # Download directly into the workspace root so node_modules/ and
-          # dist/ land at $GITHUB_WORKSPACE/ rather than a subdirectory.
+          # dist/ lands at $GITHUB_WORKSPACE/dist/ (workspace root).
           path: .
       - name: Run test shard ${{ matrix.shard }}/4
         run: npx vitest run --shard=${{ matrix.shard }}/4
@@ -142,12 +143,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+      - run: npm ci
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
           name: build-artifacts
-          # Download directly into the workspace root so node_modules/ and
-          # dist/ land at $GITHUB_WORKSPACE/ rather than a subdirectory.
+          # dist/ lands at $GITHUB_WORKSPACE/dist/ (workspace root).
           path: .
       # Real tmux/child-process suites run in one worker. The unit suite above
       # remains file-parallel, while this bounded serial invocation prevents
