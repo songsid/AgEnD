@@ -6435,7 +6435,7 @@ export class Daemon extends EventEmitter {
       const canHandOff = (supportsQueuedInput || opts?.steer)
         && readiness === "busy"
         && (await this.probeBlockingDialog()).state === "clear"
-        && await this.hasPositiveDeliveryInput();
+        && await this.hasPositiveDeliveryInput(true);
       if (canHandOff) {
         // Native queue (codex), or an explicit /steer: hand the complete
         // paste+Enter transaction to the busy CLI now. For steer this is the
@@ -6527,7 +6527,7 @@ export class Daemon extends EventEmitter {
           const probe = await this.probeBlockingDialog();
           if (probe.state !== "clear") return "dialog";
         }
-        if (!(await this.hasPositiveDeliveryInput())) return "dialog";
+        if (!(await this.hasPositiveDeliveryInput(handingOffToNativeQueue))) return "dialog";
         // #829: a CLI that restores a cancelled prompt into its input box would
         // have this message pasted onto it and both submitted as one. Clear it
         // first, or do not write at all. From here every await is fenced: a
@@ -6556,6 +6556,8 @@ export class Daemon extends EventEmitter {
           opts?.steer === true,
           writeCurrent,
         );
+        // The hand-off's last capture had no box: nothing was begun or written — wait for readiness, then try again.
+        if (written === "handoff-box-unread") return "dialog";
         // Fenced before its first write: not attempted — redo after a spawn, else drop without a ❌.
         return written === false && verdict.fenced ? stale() : written;
       });
@@ -7086,8 +7088,23 @@ export class Daemon extends EventEmitter {
     return true;
   }
 
-  /** Codex can paint a prompt before the TTY enters raw mode. Both are required. */
-  private async hasPositiveDeliveryInput(): Promise<boolean> {
+  /**
+   * Codex can paint a prompt before the TTY enters raw mode. Both are required.
+   *
+   * A hand-off into a busy pane (native queue or steer) pastes and presses Enter at once, so a backend with a structural
+   * box reader must see its box on a fresh capture first: a pane whose box cannot be read — a modal the dialog table
+   * does not know, a frame the reader refuses, a failed capture — is not one to type into (#1169 review). Asked
+   * before the hand-off is chosen and again under the pane lock, right before the write; false waits for readiness.
+   */
+  private async hasPositiveDeliveryInput(handOff = false): Promise<boolean> {
+    if (handOff && this.backend?.readInputRow) {
+      if (!this.tmux) return false;
+      try {
+        if (this.backend.readInputRow(await this.tmux.capturePane()) === null) return false;
+      } catch {
+        return false;
+      }
+    }
     if (!this.needsStartupInputProof()) return true;
     const check = this.backend?.isDeliveryInputReadyPane;
     if (!check || !this.tmux) return !check;
@@ -7688,7 +7705,8 @@ export class Daemon extends EventEmitter {
     // #829: the caller's fence, asked once more after the last await before the
     // first side effect. Stale means unwritten: false, with no failure verdict.
     stillCurrent?: () => boolean,
-  ): Promise<boolean | KiroPendingDelivery> {
+    // "handoff-box-unread": a hand-off's last capture had no readable box — nothing begun or written (#1169).
+  ): Promise<boolean | KiroPendingDelivery | "handoff-box-unread"> {
     const signature = this.submissionSignature(formatted, submissionId);
     const rawPaste = durableAttempt?.submissionMode === "raw_paste";
     let windowId = initialWindowId;
@@ -7706,6 +7724,14 @@ export class Daemon extends EventEmitter {
       // Every attempt, retries included: a stop or respawn during a recovery wait ends it unwritten.
       // After a durable begin, the caller's abort path owns the row; only an attempt with no begin may be redone.
       if (stillCurrent && !stillCurrent()) { verdict.fenced = !verdict.durableBeginCommitted; return false; }
+      // A hand-off pastes and presses Enter into a busy pane: the box must still be readable on this, the last capture
+      // before the write (#1169 review) — a modal that appeared after the under-lock check would take that Enter. Before
+      // the durable begin the caller waits for readiness outside the lock and tries again; after it (a paste retry),
+      // nothing was written and the attempt ends like a paste that failed.
+      if (handingOffToNativeQueue && this.backend?.readInputRow && !pasteBaseline?.inputReadable) {
+        if (!verdict.durableBeginCommitted) return "handoff-box-unread";
+        return this.failDelivery(verdict, status, "paste", "handoff-input-unreadable");
+      }
       // Readiness, idle-gate, dialog, spawn and pane-lock waits have all ended.
       // Commit the submission fence at the last possible point before the
       // first side effect; a crash during those waits remains safely replayable.
@@ -8305,7 +8331,9 @@ export class Daemon extends EventEmitter {
     //    older transcript entry that opens the same way, are on screen either
     //    way and would otherwise confirm a paste that never landed.
     if (baseline) {
-      if (after.queued > baseline.queued) return this.submittedProof();
+      // A queue is new only against a box that was read before the paste (a reader backend): an unreadable baseline
+      // says nothing about whether the queue was already there.
+      if (after.queued > baseline.queued && (!this.backend?.readInputRow || baseline.inputReadable)) return this.submittedProof();
       if (after.payload > baseline.payload) return this.submittedProof();
       // 4. Nothing new of ours anywhere: the paste was swallowed by a redraw.
       return "unproven";
@@ -8377,10 +8405,14 @@ export class Daemon extends EventEmitter {
   }
 
   private paneEvidence(pane: string, signature: SubmissionSignature): PaneEvidence {
-    const marker = this.backend?.getQueuedInputMarker?.();
     const input = this.inputRegion(pane);
+    // A structural box reader vouches for the queue itself (InputBox.queued): a marker's words elsewhere on the pane —
+    // a reply quoting it, an old block — are not a queue (#1169 review). Other backends count their marker rows.
+    const marker = this.backend?.readInputRow ? null : this.backend?.getQueuedInputMarker?.();
     return {
-      queued: marker ? pane.split(/\r?\n/).filter(row => marker.test(row)).length : 0,
+      queued: this.backend?.readInputRow
+        ? (input?.queued ? 1 : 0)
+        : marker ? pane.split(/\r?\n/).filter(row => marker.test(row)).length : 0,
       payload: countOccurrences(pane.replace(/\s+/g, ""), signature.value),
       strandedInput: input != null && inputShowsPastedText(input.text, signature.value),
       collapsedPastes: input?.collapsedPastes ?? 0,

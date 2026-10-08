@@ -209,6 +209,14 @@ const CLAUDE_BOX_FOOTER_MAX_ROWS = 4;
 const CLAUDE_BOX_MAX_ROWS = 40;
 /** The placeholder an empty box shows while messages are queued (2.1.293); it is not input. */
 const CLAUDE_QUEUED_PLACEHOLDER = "Press up to edit queued messages";
+/**
+ * The row Claude paints at the bottom of its queue block (2.1.291, 2.1.293): `  ctrl+x ctrl+s to send now`, on a row of
+ * its own — ONE row under the whole block, however many messages are queued (captured live with two).
+ */
+const CLAUDE_QUEUE_MARKER_ROW = /^[ \t]+ctrl\+x ctrl\+s to send now[ \t]*$/;
+/** The status rows Claude may paint between its queue block and the box: the spinner / retry row, then `⎿` tip rows. */
+const CLAUDE_STATUS_TIP_ROW = /^ {2}⎿/;
+const CLAUDE_STATUS_SPINNER_ROW = /^[^\s❯●⎿]/;
 /** A paste Claude shows collapsed in the box; the pasted text itself is not on screen. */
 const CLAUDE_COLLAPSED_PASTE = /\[Pasted text #\d+(?: \+\d+ lines?)?\]/g;
 
@@ -252,8 +260,29 @@ export function readClaudeInputBox(pane: string): InputBox | null {
     else return null;
   }
   let text = lines.join("\n").trimEnd();
-  if (text === CLAUDE_QUEUED_PLACEHOLDER) text = "";
-  return { text, collapsedPastes: text.match(CLAUDE_COLLAPSED_PASTE)?.length ?? 0 };
+  const placeholder = text === CLAUDE_QUEUED_PLACEHOLDER;
+  if (placeholder) text = "";
+  const box: InputBox = { text, collapsedPastes: text.match(CLAUDE_COLLAPSED_PASTE)?.length ?? 0 };
+  if (placeholder && claudeQueueBlockAbove(rows, top)) box.queued = true;
+  return box;
+}
+
+/**
+ * Whether Claude's own queue block is attached to the box whose upper rule is rows[top] (#1169): walking up from the
+ * box, past at most one spinner/retry row and its `⎿` tip rows, the next row is the queue marker. Paired with the
+ * placeholder only Claude paints in the box while it holds a queue, this is a queue the CLI owns — never a reply that
+ * merely prints the marker's words (a quoted `ctrl+x ctrl+s to send now` above an empty box is not one).
+ */
+function claudeQueueBlockAbove(rows: readonly string[], top: number): boolean {
+  let spinner = false;
+  for (let i = top - 1; i >= 0; i--) {
+    const row = rows[i]!;
+    if (row.trim() === "" || CLAUDE_STATUS_TIP_ROW.test(row)) continue;
+    if (CLAUDE_QUEUE_MARKER_ROW.test(row)) return true;
+    if (!spinner && CLAUDE_STATUS_SPINNER_ROW.test(row)) { spinner = true; continue; }
+    return false;
+  }
+  return false;
 }
 
 /** The footer every confirm-style select dialog ends with (trust, bypass, MCP, resume, …). */
@@ -784,6 +813,27 @@ export class ClaudeCodeBackend implements CliBackend {
   }
 
   /**
+   * #1169: a paste+Enter into a busy Claude Code is taken into Claude's own queue, so a delivery can be handed to it
+   * instead of waiting for the turn to end — the path Codex's queue already uses. Verified live on 2.1.293 under the
+   * production launch (tests/fixtures/claude-2.1.293-{busy-queued,busy-queued-long,long-busy-queued,tool-queued}):
+   * - while it streams, the message moves above the spinner with `ctrl+x ctrl+s to send now` under it, the box shows
+   *   "Press up to edit queued messages", and it is sent as the next turn once this one ends — the running turn is not
+   *   interrupted, and it is sent exactly once, also when a second Enter follows;
+   * - while a tool runs, it is taken at that tool's boundary into the same turn (the transcript's `queue-operation`
+   *   remove + `queued_command` attachment), like Codex's "Messages to be submitted after next tool call".
+   * Submission is proven on the box (readClaudeInputBox): our message_id in the queue block, or a queue the box did not
+   * have before the paste (InputBox.queued: the queued placeholder in the box with the queue marker right above it).
+   */
+  supportsQueuedInput(): boolean {
+    return true;
+  }
+
+  /** #1200: the live input box, read structurally (readClaudeInputBox). */
+  readInputRow(pane: string): InputBox | null {
+    return readClaudeInputBox(pane);
+  }
+
+  /**
    * The live spinner line, which is on screen only while generating. Captured from
    * running panes and their pipe-pane recordings:
    *
@@ -836,11 +886,6 @@ export class ClaudeCodeBackend implements CliBackend {
    * `working`. The veto only bites on a *frozen* pane whose last frame still shows
    * an in-progress spinner — which is exactly the hang this is meant to surface.
    */
-  /** #1200: the live input box, read structurally (readClaudeInputBox). */
-  readInputRow(pane: string): InputBox | null {
-    return readClaudeInputBox(pane);
-  }
-
   getBusyPattern(): RegExp {
     return new RegExp(`^[ \\t]*[✻✽✢·✶*][ \\t]+(?:\\p{L}+(?:-\\p{L}+)*…(?:[ \\t]+\\([^\\n]*)?|[^\\n]*?${CLAUDE_RETRY_SUFFIX}[ \\t]*$(?=${CLAUDE_LIVE_TAIL}))[ \\t]*$`, "mu");
   }

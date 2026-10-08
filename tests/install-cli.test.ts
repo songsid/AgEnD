@@ -5,6 +5,52 @@ import { tmpdir } from "node:os";
 
 // The install session must never touch a real tmux server in unit tests.
 const fakeSessions: Array<{ flow: any; events: any; started: boolean; cancelled: boolean }> = [];
+// #1361: TmuxManager.socketName is null until setSocketName, so every tmux
+// call below used to go to the live default server (orphaning agend-<hash>
+// sessions). The suite pins a private socket AND stubs tmux behind an -L
+// guard: any tmux invocation without the private -L fails loudly instead of
+// reaching the live server. Removing setSocketName turns the suite red.
+const TMUX_SOCKET = "agend-test-install-cli";
+const tmuxGuard = vi.hoisted(() => ({ withoutL: [] as string[][] }));
+vi.mock("node:child_process", async (importOriginal) => {
+  const real = await importOriginal<typeof import("node:child_process")>();
+  const sessions = new Set<string>();
+  const fakeChild = { stdin: { on() {}, end() {} } };
+  const fakeExecFile = (file: string, args: unknown, opts: unknown, cb: unknown) => {
+    const callback = (typeof opts === "function" ? opts : cb) as ((...a: any[]) => void) | undefined;
+    if (file !== "tmux") return (real.execFile as any)(file, args, opts, cb);
+    const argv: string[] = Array.isArray(args) ? args : [];
+    if (argv[0] !== "-L" || typeof argv[1] !== "string" || argv[1].length === 0) {
+      tmuxGuard.withoutL.push(argv);
+      const err = new Error(`tmux without socket isolation: tmux ${argv.join(" ")}`);
+      if (callback) { queueMicrotask(() => callback(err)); return fakeChild; }
+      throw err;
+    }
+    const rest = argv.slice(2);
+    const flag = (name: string) => { const i = rest.indexOf(name); return i === -1 ? undefined : rest[i + 1]; };
+    const done = () => {
+      if (!callback) return;
+      const sub = rest[0];
+      if (sub === "has-session") {
+        const name = flag("-t") ?? "";
+        if (sessions.has(name)) { callback(null, "", ""); return; }
+        // sessionExistsStrict only treats exit 1 + this stderr as absent —
+        // anything else rejects, so reproduce the real shape exactly.
+        const err = Object.assign(new Error(`can't find session: ${name}`),
+          { code: 1, stdout: "", stderr: `can't find session: ${name}` });
+        callback(err);
+        return;
+      }
+      if (sub === "new-session") { const name = flag("-s"); if (name) sessions.add(name); callback(null, "", ""); return; }
+      if (sub === "kill-session") { const name = flag("-t"); if (name) sessions.delete(name); callback(null, "", ""); return; }
+      if (sub === "kill-server") { sessions.clear(); callback(null, "", ""); return; }
+      callback(null, "", "");
+    };
+    queueMicrotask(done);
+    return fakeChild;
+  };
+  return { ...real, execFile: fakeExecFile };
+});
 vi.mock("../src/login-manager.js", async (importOriginal) => {
   const real = await importOriginal<typeof import("../src/login-manager.js")>();
   class FakeLoginSession {
@@ -31,6 +77,7 @@ vi.mock("../src/instance-lifecycle.js", async (importOriginal) => {
 
 import { FleetManager } from "../src/fleet-manager.js";
 import { setLocale, t } from "../src/locale.js";
+import { TmuxManager } from "../src/tmux-manager.js";
 
 /** The part of a captured notifyAlert payload these tests read. */
 type Alert = { choices: { id: string }[] };
@@ -44,8 +91,14 @@ describe("the install /login runs for a missing CLI (#1131: one entry point)", (
     mkdirSync(tmpDir, { recursive: true });
     fakeSessions.length = 0;
     installedBinaries.clear();
+    tmuxGuard.withoutL.length = 0;
+    TmuxManager.setSocketName(TMUX_SOCKET);
   });
   afterEach(() => {
+    // The -L guard fails fast inside the stub; this pins the invariant
+    // explicitly so a silent pass-through can never hide a leak.
+    expect(tmuxGuard.withoutL, "tmux without -L socket isolation").toEqual([]);
+    TmuxManager.setSocketName(null);
     setLocale("en");
     rmSync(tmpDir, { recursive: true, force: true });
   });

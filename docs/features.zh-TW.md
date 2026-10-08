@@ -559,7 +559,9 @@ resume 預算、resume 重試和故障短路只針對 kiro（屬於後端能力�
 
 ## Web Dashboard
 
-`agend web` 會啟動瀏覽器儀表板，透過 Server-Sent Events (SSE) 即時監看 fleet。內建的聊天介面和 Telegram 雙向同步：從 Web UI 傳的訊息會出現在 Telegram，反之亦然。
+Fleet 會在 `127.0.0.1`（`health_port`，預設 19280）提供網頁儀表板。其中的 `/ui` 就是**網頁聊天**：選一個 instance，就能在瀏覽器裡跟它對話。這和那個 instance 在 Telegram 或 Discord 上的是同一段對話：從網頁送出的訊息會以 `🌐 web-user: …` 出現在 topic，Agent 的回覆兩邊都看得到。可以傳檔案和圖片（📎、貼上或拖進來）、按 Stop，也看得到每則訊息送到哪一步；沒有設定任何聊天平台的 fleet，也能只靠儀表板操作。`/view` 是以檢視為主的總覽，`/settings` 是 fleet 設定。
+
+用一次性登入碼登入：傳 `/dashboard`（fleet 管理員），或在主機上執行 `agend web`。要從手機或其他電腦使用，請看[從別的裝置連線](web-dashboard.zh-TW.md#從別的裝置連線)。完整說明在 [web-dashboard.zh-TW.md](web-dashboard.zh-TW.md)。
 
 ## 遠端登入 CLI（`/login`）
 

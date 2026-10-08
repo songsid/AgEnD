@@ -148,7 +148,7 @@ describe("a passive poll is not activity (#1251 review): it never keeps an idle 
     };
     const node = () => ({ style: {}, remove() {}, append() {}, setAttribute() {}, children: [], textContent: "", innerHTML: "" });
     const c = vm.createContext({
-      localStorage: { getItem: () => null }, navigator: { language: "en" },
+      /* a returning browser: it has seen the first sign-in tour (#1366) */ localStorage: { getItem: (k: string) => k === "agend_tour_done" ? "1" : null }, navigator: { language: "en" },
       document: { addEventListener() {}, getElementById: () => node(), createElement: () => node(), body: { appendChild() {} } },
       setTimeout: () => 0, clearTimeout() {}, setInterval: () => 0, clearInterval() {},
       fetch: browserFetch, EventSource: class { addEventListener() {} },
