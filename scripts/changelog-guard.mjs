@@ -6,7 +6,8 @@
  *
  * A PR adds `changes/<issue>.md` + `changes/<issue>.zh-TW.md` (scripts/changelog-assemble.mjs) and leaves
  * docs/CHANGELOG*.md alone. Only the assemble commit, marked with the trailer `Changelog: assemble`, edits them.
- * Everything is counted from the merge-base, so what a merge-sync brought in from main is not the PR's change.
+ * Everything is counted from the merge-base with --base (the PR's base branch: main, or a release/* line), so what a
+ * merge-sync brought in from that branch is not the PR's change.
  *
  * When the PR changes either CHANGELOG:
  *   1. every non-merge commit of the PR that edits them is marked;
@@ -17,10 +18,10 @@
  *      marked.
  * Whatever the PR does to the CHANGELOG:
  *   3. every fragment the PR deletes has its entry in the head's CHANGELOG (same language), so a merge that resolved
- *      the CHANGELOG back to main's after the assemble commit cannot lose the entries it moved.
+ *      the CHANGELOG back to the base branch's after the assemble commit cannot lose the entries it moved.
  *
  * This is judged on content, not on merge topology: a long-lived line whose old merge-syncs combined both sides'
- * CHANGELOG changes passes once its files equal main's and its entries are fragments (docs/development.md).
+ * CHANGELOG changes passes once its files equal the base branch's and its entries are fragments (docs/development.md).
  *
  * Exit 0 when allowed, 1 with the reason when not, 2 on bad arguments or a git failure.
  */
