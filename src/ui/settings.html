@@ -2042,7 +2042,7 @@
       const webPatch = { ...(fWebEcho.checked !== originalWebEcho ? { echo_to_channel: fWebEcho.checked } : {}), ...(Object.keys(publicPatch).length ? { public_link: publicPatch } : {}) };
       if (Object.keys(webPatch).length) {
         state.fleet.web = { ...originalWebConfig, ...webPatch, ...(webPatch.public_link ? { public_link: { ...originalWebConfig?.public_link, ...publicPatch } } : {}) };
-        stageChange("web:echo", { label: t("publicLink"), impact: "now", apply: () => api("/api/settings/fleet/web", { method: "PUT", body: JSON.stringify(webPatch) }) });
+        stageChange("web:echo", { label: t("publicLink"), impact: batchImpact([...(webPatch.echo_to_channel !== undefined ? ["web.echo_to_channel"] : []), ...Object.keys(publicPatch).map(key => `web.public_link.${key}`)], impactOf), apply: () => api("/api/settings/fleet/web", { method: "PUT", body: JSON.stringify(webPatch) }) });
       } else if (state.pending.has("web:echo")) {
         state.pending.delete("web:echo");
         if (originalWebConfig === undefined) delete state.fleet.web;

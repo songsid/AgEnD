@@ -12,6 +12,7 @@ import { bindGatewayRequest } from "../src/web-request-context.js";
 import { createPublicWebGateway, isPublicWebRoute } from "../src/public-web-gateway.js";
 import { handleViewRequest } from "../src/view-api.js";
 import { handleSettingsRequest } from "../src/settings-api.js";
+import { handleWebRequest } from "../src/web-api.js";
 const id = "a".repeat(32), second = "b".repeat(32), token = "c".repeat(48), origin = "https://sample.trycloudflare.com";
 const logger = { info: vi.fn(), debug: vi.fn(), error: vi.fn(), warn: vi.fn() };
 function request(path: string, method = "GET", headers: Record<string, string> = {}) {
@@ -118,6 +119,14 @@ describe("public credential scopes, real auth handlers", () => {
     const local = request("/api/pane/worker");
     handleViewRequest(local.req as never, local.res as never, new URL(local.req.url, origin), ctx as never);
     expect(local.status()).toBe(404); expect(read).toHaveBeenCalledOnce();
+  });
+  it("the real public UI handler emits poll-only data and never asks for a preview origin", () => {
+    const store = new WebSessionStore(); const p = store.create({ tier: "admin", surface: "gateway", exposureId: id, label: "phone", tokenEpoch: tokenEpoch(token) });
+    const h = request("/ui", "GET", { cookie: `__Host-agend_session=${p.sessionId}` }); bind(h.req);
+    const previewForUi = vi.fn(() => ({ previewOrigin: "http://private:1" }));
+    expect(handleWebRequest(h.req as never, h.res as never, new URL(h.req.url, origin), { webToken: token, webSessions: store, previewForUi } as never)).toBe(true);
+    expect(h.status()).toBe(200); expect(h.body()).toContain('data-web-transport="poll"');
+    expect(h.body()).toContain('data-preview-origin=""'); expect(previewForUi).not.toHaveBeenCalled();
   });
   it("a public Settings body buffered across close cannot save config", async () => {
     const store = new WebSessionStore(); const p = store.create({ tier: "admin", surface: "gateway", exposureId: id, label: "fixture", tokenEpoch: tokenEpoch(token) }); let current = true;
