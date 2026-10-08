@@ -28,7 +28,12 @@ appStore.set({ connection: stream.connection() });
 // A failed load can be retried (the panel's Retry): each retry asks for a fresh URL, since a browser may keep a failed
 // module import cached under the first one. boot() runs once, whichever attempt succeeds.
 const retryUrl = (path, attempt) => (attempt ? `${path}?retry=${attempt}` : path);
-const loadChat = retryable((a) => import(retryUrl("/ui/js/panel-chat.js", a)).then((m) => { m.boot({ stream, boot }); return m; }));
+const loadChat = retryable((a) => import(retryUrl("/ui/js/panel-chat.js", a)).then((m) => {
+  m.boot({ stream, boot });
+  // Loaded only after the stream opened (a Retry): the frames sent on connect never reached it — catch up once.
+  if (stream.started()) stream.catchUp();
+  return m;
+}));
 const loadFleet = retryable((a) => import(retryUrl("/ui/js/panel-fleet.js", a)));
 // The stream opens once the chat listens, so the frames sent on connect (status, open prompts, ticks) reach it too.
 // If the chat cannot load (a session that just ended), the stream still opens for the sidebar.

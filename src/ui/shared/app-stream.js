@@ -84,6 +84,14 @@ export function createStream(opts) {
       return () => listeners.get(name)?.delete(fn);
     },
     start,
+    started: () => started,
+    /**
+     * One passive /ui/poll, now: the current status, open prompts, delivery ticks and messages since the cursor, as
+     * events. For a listener that attached after the stream opened (the chat recovering from a failed first load,
+     * #1425 review): what was sent on connect reached nobody, and a healthy stream does not send it again. It starts
+     * no transport — the stream stays the one it is.
+     */
+    catchUp: () => (closed ? Promise.resolve() : pollOnce()),
     connection: () => state.connection,
     usesEventSource: () => sse !== null,
     /** For tests and page unload. */

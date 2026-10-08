@@ -287,7 +287,7 @@ describe("the stream's modes (#1408 §3)", () => {
 
   it("the app opens the stream only after the chat's store is attached", () => {
     const app = readFileSync(join(process.cwd(), "src", "ui", "shared", "app.js"), "utf8");
-    expect(app).toMatch(/const loadChat = retryable\(\(a\) => import\([^)]*\)\)\.then\(\(m\) => \{ m\.boot\(\{ stream, boot \}\); return m; \}\)\);/);
+    expect(app).toMatch(/const loadChat = retryable\(\(a\) => import\([^)]*\)\)\.then\(\(m\) => \{\n  m\.boot\(\{ stream, boot \}\);\n[\s\S]*?if \(stream\.started\(\)\) stream\.catchUp\(\);\n  return m;\n\}\)\);/);
     expect(app).toMatch(/loadChat\(\)\.catch\(\(\) => \{\}\)\.finally\(\(\) => stream\.start\(\)\)/);
     expect(app.indexOf("stream.start()")).toBeGreaterThan(app.indexOf("m.boot("));
   });

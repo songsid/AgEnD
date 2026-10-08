@@ -21,7 +21,8 @@ export default defineConfig({
   resolve: {
     alias: [
       { find: /^\/assets\/([a-z0-9._-]+)$/, replacement: `${fileURLToPath(new URL("./src/ui/shared/", import.meta.url))}$1` },
-      { find: /^\/ui\/js\/([a-z0-9_-]+\.js)$/, replacement: `${fileURLToPath(new URL("./src/ui/", import.meta.url))}$1` },
+      // (with the ?retry=<n> a retried load asks for, as the server serves it)
+      { find: /^\/ui\/js\/([a-z0-9_-]+\.js)(\?retry=\d+)?$/, replacement: `${fileURLToPath(new URL("./src/ui/", import.meta.url))}$1$2` },
     ],
   },
   // The vendored Preact/htm files end with a sourceMappingURL to maps we do not ship (vendor/vendor.json keeps the
