@@ -25,23 +25,31 @@ The per-instance `claude-settings.json` is generated again on startup (including
 
 The daemon communicates with the AgEnD MCP bridge over `~/.agend/instances/<name>/channel.sock`. AgEnD uses a restrictive umask and attempts to set the socket to `0600`. It creates private instance directories with `0700` and tightens eligible existing directories. There is **no shared-secret handshake**. These filesystem permissions separate Unix users; they do not authenticate or isolate processes running as the same UID, or protect against root. Check warnings when permissions could not be restricted.
 
-## Dashboard token and browser session
+## Dashboard sign-in and browser sessions
 
-The dashboard credential is a fleet-wide bearer token in `~/.agend/web.token` (created with mode `0600`). It persists across fleet restarts; permission tightening on an existing token file is best effort. `agend web-token rotate` replaces it; old dashboard URLs, header tokens and derived session cookies fail on subsequent authorization checks. Rotation is not a promise to retract an already authorized request or close every existing connection.
+Two credentials open the gated dashboard routes, and neither ever travels in a URL:
 
-For routes behind the dashboard gate:
+- **`X-Agend-Token`**, the fleet-wide bearer token in `~/.agend/web.token` (created with mode `0600`; permission tightening on an existing file is best effort). The CLI and scripts send it as a header. It persists across fleet restarts. `agend web-token rotate` replaces it, which also signs every browser out (see below). Rotation is not a promise to retract an already authorized request or close every existing connection.
+- **A browser session**, made by signing in with a **one-time code**. A fleet admin gets the code with `/dashboard`: on Telegram it is posted in General under a spoiler, on Discord only the admin sees the reply. On the host, `agend web` prints one, using the header token. A code is 8 characters, works **once**, expires after **5 minutes**, and only the newest code works. Five wrong tries spend a code. Twenty wrong tries within 15 minutes, across codes, pause all redemption for 5 minutes. While no code is outstanding there is nothing to guess. Each sign-in is announced in General (`web.notify_login`, on by default).
 
-- A matching URL `?token=` on GET/HEAD is exchanged for an `agend_session` cookie and a redirect without the token. A URL token alone is rejected for writes.
-- The cookie contains a derivation of the token, with `HttpOnly`, `SameSite=Strict` and a browser `Max-Age` of 12 hours. The server does not independently enforce a 12-hour cookie expiry. `Secure` is added when `X-Forwarded-Proto` reports HTTPS; use TLS for remote access.
-- A valid cookie or `X-Agend-Token` header authorizes the gated routes. An invalid `Origin`, or one whose parsed host/port differs from `Host`, is rejected; the scheme is not compared, and callers without `Origin` are accepted when their credential is valid. This is a shared operator credential, not a per-user account or role system.
+A `?token=` in a URL is **not** a credential, including in old links and bookmarks. It gets the sign-in page, and the token is removed from the address bar.
 
-Protect dashboard links and cookies as credentials: the initial token-bearing URL can still appear in browser history, proxy logs or terminal output. `/dashboard` requires a fleet admin, but anyone who obtains a valid credential can use it; chat allowlists are not rechecked for each HTTP action.
+About the session:
+
+- The cookie is an opaque random 256-bit id, unrelated to `web.token` or to the code. The server keeps only its SHA-256, in `~/.agend/web-sessions.json`, so neither the process nor the file can be replayed as a cookie. At most 8 sessions are kept; past that the least recently used one is dropped.
+- The **server** enforces the expiry: 12 hours after sign-in, or 2 hours without use, whichever comes first. The page's own background refresh does not count as use. The cookie's `Max-Age` only tells the browser to forget it at the same time. Sessions survive a fleet restart.
+- The cookie is `HttpOnly`, `SameSite=Strict` and `Path=/`. When `X-Forwarded-Proto` reports HTTPS it is named `__Host-agend_session` and is `Secure`; use TLS for remote access.
+- **A write authorized by the cookie** must also carry an `Origin` equal to `Host`, a `Sec-Fetch-Site` of `same-origin` when the browser sends one, and the session's own `X-Agend-CSRF` value. The cookie alone cannot change anything. A request with the header token needs none of these: a page cannot make a browser add that header.
+- On every gated route, an `Origin` whose host/port differs from `Host` (or that does not parse, such as `null`) is rejected. A read without `Origin` is accepted when its credential is valid.
+- **Revoking:** the Session menu signs out one device or every device, `/dashboard revoke` signs out every browser and withdraws any unused code, and `agend web-token rotate` ends every session made under the old token on its next request, without a restart.
+
+This is a shared operator credential, not a per-user account or role system. `/dashboard` requires a fleet admin, but whoever holds a code, a session or the header token can use it, and chat allowlists are not rechecked for each HTTP action. Treat a code like a password until it is used. In a group, it is visible to everyone in General for those five minutes.
 
 ## Public reads and the Host guard
 
-**The web token does not protect all HTTP reads.** `/view` and its GET APIs, including `/api/pane/<instance>`, profiles, avatars and sort order, are public to anyone who can reach the listener with an allowed `Host`. `/api/ai-usage` is also public when enabled, and GET `/health` needs no token. Pane captures can contain commands, credentials and other private output.
+**Signing in does not protect all HTTP reads.** `/view` and its GET APIs, including `/api/pane/<instance>`, profiles, avatars and sort order, are public to anyone who can reach the listener with an allowed `Host`. `/api/ai-usage` is also public when enabled, and GET `/health` needs no token. Pane captures can contain commands, credentials and other private output.
 
-`/view` profile/avatar/sort-order writes have their own token check: they require `web.token` via `X-Agend-Token` or `?token=`, not the dashboard cookie. They bypass the general dashboard gate and its Origin check; its GET/HEAD URL-token exchange should not be assumed for these routes.
+Set `web.view_access: session` to close those reads: `/view`, its GET APIs and `/api/ai-usage` then need a session or the header token, like the dashboard. `/view`'s writes (profile, avatar, sort order) always go through the dashboard gate: a session with the cookie-write checks above, or `X-Agend-Token`, never a `?token=`.
 
 The health/dashboard listener binds to `127.0.0.1`. Every request, including public reads and `/agent`, must pass the `Host` allowlist: `localhost`, `127.0.0.1`, `[::1]`, configured `hostname`, and names in `web.allowed_hosts`. Missing, malformed or unlisted hosts get 403. The login terminal listener also uses a Host allowlist.
 
@@ -53,6 +61,6 @@ This check limits DNS rebinding from a browser. It is **not authentication**: an
 
 ## Secrets storage
 
-Bot tokens and API keys are stored in plaintext at `~/.agend/.env`; `web.token` and per-instance `agent.token` are plaintext credentials too. Filesystem permissions restrict access but do not encrypt these files.
+Bot tokens and API keys are stored in plaintext at `~/.agend/.env`; `web.token` and per-instance `agent.token` are plaintext credentials too. Filesystem permissions restrict access but do not encrypt these files. `web-sessions.json` holds only hashes of session ids, not anything that signs a browser in.
 
 Minimal `agend export` includes `.env` when present; a full export can also include other credential files. The gzip tar archive is not encrypted, and the command warns about secure transfer. Protect exports and backups as credentials. Consider filesystem encryption if the host is shared.
