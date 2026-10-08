@@ -64,7 +64,7 @@ instance 啟動時，daemon 會把剛組好的 fleet 指示，和上次告訴 ag
 
 - 第一次啟動（還沒有任何紀錄）：只記錄指示，不送任何東西。
 - Claude Code 在 resume 時會自己重讀指示，所以永遠不用通知它。
-- 其他後端會收到一行通知，請它重新載入自己的指示檔（`AGENTS.md`、`.kiro/steering/agend-<name>.md`、`.agents/agents.md` 等）。如果沒有訊息在等，這則通知會延到下一則真正的訊息再一起送，免得 agent 平白回一段話；如果已經有投遞在排隊，daemon 會等到閒置，先貼上通知。
+- 其他後端會收到一行通知，請它重新載入自己的指示檔（`AGENTS.md`、kiro 的 agent 檔或 steering 檔、`.agents/agents.md` 等）。如果沒有訊息在等，這則通知會延到下一則真正的訊息再一起送，免得 agent 平白回一段話；如果已經有投遞在排隊，daemon 會等到閒置，先貼上通知。
 
 不需要任何設定。
 
@@ -737,7 +737,7 @@ instance 啟動時會帶上 `-c model_provider="glm"`。provider 本身（`[mode
 fleet 指示以附加的方式注入，不會覆蓋 CLI 內建的系統提示。每個後端都用它原生的機制：
 
 - Claude Code：`--append-system-prompt-file`（檔案是 instance 目錄裡的 `fleet-instructions.md`）
-- Kiro CLI：它自己的 steering 檔，`.kiro/steering/agend-<instance>.md`
+- Kiro CLI：instance 自己的 agent `.kiro/agents/agend-<instance>-<fleet>.json` 的 `prompt`（見[同一個工作目錄裡的 kiro instance](#同一個工作目錄裡的-kiro-instance)）。kiro-cli 2.21 以前，以及恢復的對話切換成自己的 agent 之前，改用 steering 檔 `.kiro/steering/agend-<instance>.md`。
 - Codex、Grok Build、Meta Muse Code：工作目錄裡 `AGENTS.md` 中一段有標記的區塊
 - Antigravity CLI：工作目錄裡 `.agents/agents.md` 中一段有標記的區塊
 - OpenCode：instance 目錄裡的 `fleet-instructions.md`，加進工作目錄中 `opencode.json` 的 `instructions` 清單
@@ -793,6 +793,18 @@ defaults:
 ```
 
 在同一批裡，共用同一個工作目錄的 instance 會依序啟動，避免設定檔的競爭狀況。
+
+## 同一個工作目錄裡的 kiro instance
+
+每個 kiro instance 都以自己的 kiro agent 執行（工作目錄裡的 `.kiro/agents/agend-<instance>-<fleet>.json`），並用 id 恢復自己的對話。這個 agent 只包含本 instance 的 AgEnD MCP server 和它的指示，所以共用工作目錄的 kiro instance 不再啟動彼此的 AgEnD server、讀到彼此的指示，或恢復到彼此的對話。細節見[設計文件](design/kiro-per-instance-agent.md)。需要 kiro-cli 2.21 以上；較舊的版本照舊執行，並在 instance 啟動時說明。
+
+- **你自己的 MCP server 都還在。** agent 會納入全域的 `~/.kiro/settings/mcp.json` 和工作目錄的 `.kiro/settings/mcp.json`；AgEnD 不再把自己的項目寫進去。
+- **每個 instance 切換一次。** 這個版本以前的對話，恢復時會回到它當初存檔時的 agent。第一次恢復時，AgEnD 會在 pane 裡輸入 `/agent swap <agent>`，在畫面上確認切換成功後，才移除該 instance 舊的共用設定。如果 15 秒內無法確認，就保留舊設定、發出通知，下次啟動再試。
+- **什麼時候算完全隔離。** 被移除的項目，保證在執行中的 session 下次啟動後才會消失。一個目錄裡所有 kiro instance 都確認切換、且之後又啟動過一次，隔離才算完整：升級後第一次啟動時切換，再下一次啟動時完成。
+- **兩個 instance、同一段舊對話。** 升級時，同目錄的兩個既有 instance 都會指向這個目錄最新的對話。先啟動的保留它，另一個開新的對話。
+- **舊的指示檔。** 這個版本以前寫的 `.kiro/steering/agend-<instance>.md` 沒有 fleet 標記。AgEnD 無法判斷是哪個 fleet 寫的，所以保留它並提醒一次。等所有使用這個目錄的 fleet 都升級後請手動刪除；在那之前，kiro 仍會讓該目錄的每個 agent 都載入它。
+- **兩個 fleet 共用一個目錄。** 兩個 fleet 同時更新共用的 `.kiro/settings/mcp.json` 時，可能把對方剛移除的項目寫回來；該 instance 下次啟動會再移除。
+- **Grok** 還沒有每個 instance 自己的 agent：共用工作目錄的 Grok instance 會共用它的專案層級 MCP 設定。請用不同的 worktree 執行它們（[#1411](https://github.com/songsid/AgEnD/issues/1411)）。
 
 ## Antigravity CLI 後端 (Antigravity CLI backend)
 

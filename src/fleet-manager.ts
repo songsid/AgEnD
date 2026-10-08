@@ -205,6 +205,7 @@ import {
 } from "./tool-permissions.js";
 import { decideWebGate, loadOrCreateWebToken, readWebToken } from "./web-auth.js";
 import { bypassesWebGate, handleAuthRequest, serveSigninPage, type AuthApiContext } from "./auth-api.js";
+import { isWebPageNavigation } from "./web-shell-routes.js";
 import { tokenEpoch, WebSessionStore } from "./web-session.js";
 import { WebLoginCodes, LOGIN_CODE_TTL_MS } from "./web-login.js";
 import { allowedHostNames, applyWebSecurityHeaders, hostnameOf, isHostAllowed, WEB_HOST_REJECTED_MESSAGE } from "./web-host-guard.js";
@@ -556,7 +557,9 @@ interface NonceButtonEntry {
    * guilds are gated by `allowed_guilds`, Telegram groups by `allowed_groups`,
    * and writing the wrong one changes a file without unblocking anything.
    */
-  classicScope?: "guild" | "group";
+  classicScope?: "guild" | "group" | "user";
+  /** Original requester address; a General approval never routes through an agent. */
+  classicReplyTo?: { adapterId: string; adapter: ChannelAdapter; chatId: string };
   /** classic-approve only: the user who asked, when the trigger had one. */
   classicUserId?: string;
   /** The entry's own key in pendingNonceButtons (set when posted). */
@@ -6661,42 +6664,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
         // Handle /start command
         if (text === "/start" || text.startsWith("/start ")) {
-          if (isPrivateChat) {
-            if (!this.classicChannels.isUserAllowed(msg.userId)) {
-              const generalId = this.findGeneralInstance(msg.adapterId);
-              if (generalId) {
-                this.notifyInstanceTopic(generalId, t("alert.unauth_user_private", msg.username, msg.userId, msg.source));
-              }
-              await msgAdapter?.sendText(chatId, t("classic.not_allowed_user"));
-              return;
-            }
-          } else {
-            if (!this.classicChannels.isGroupAllowed(chatId)) {
-              // Notify admin about new group wanting access
-              const groupTitle = (msg as any).chatTitle || chatId;
-              const adminMsg = t("alert.new_group", groupTitle, chatId, msg.username, msg.userId, msg.source);
-              const generalId = this.findGeneralInstance(msg.adapterId);
-              if (generalId) {
-                await this.promptClassicApproval({
-                  // Guarded by isGroupAllowed → this belongs in allowed_groups,
-                  // NOT allowed_guilds; writing the latter would change the file
-                  // without unblocking the group.
-                  generalName: generalId, message: adminMsg, groupId: String(chatId),
-                  scope: "group", userId: msg.userId,
-                });
-              }
-              await msgAdapter?.sendText(chatId, t("classic.access_requested"));
-              return;
-            }
-            if (!this.classicChannels.isAdmin(msg.userId)) {
-              await msgAdapter?.sendText(chatId, t("classic.admin_only_start"));
-              const generalId = this.findGeneralInstance(msg.adapterId);
-              if (generalId) {
-                this.notifyInstanceTopic(generalId, t("alert.start_not_admin", msg.username, msg.userId, msg.source, chatId));
-              }
-              return;
-            }
-          }
+          // All new starts, including explicit backend and later chooser callbacks,
+          // share validateClassicStart. Existing channels are recognized first.
+          const blocker = this.validateClassicStart(chatId, msg.userId, undefined, msg.adapterId);
+          if (blocker) { await msgAdapter?.sendText(chatId, blocker); return; }
           const channelName = msg.username || chatId;
           const requestedBackend = text.slice("/start".length).trim().split(/\s+/, 1)[0] || undefined;
           if (requestedBackend) {
@@ -8880,8 +8851,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const listEmojis = adapter.listGuildEmojis.bind(adapter);
     let servers: Array<{ id: string; name: string; primary: boolean }>;
     try {
+      // This authenticated metadata picker is not a start/admission path. Keep
+      // its existing empty-list inventory so existing channels' emoji settings
+      // do not disappear when new-start access changes (#1418).
+      const guildList = this.classicChannels?.getDefaults().allowed_guilds;
+      const unrestrictedInventory = !!this.classicChannels && (!Array.isArray(guildList) || guildList.length === 0);
       servers = adapter.listMemberGuilds
-        ? (await adapter.listMemberGuilds()).filter(g => g.primary || (this.classicChannels?.isGuildAllowed(g.id) ?? false))
+        ? (await adapter.listMemberGuilds()).filter(g => g.primary || unrestrictedInventory || (this.classicChannels?.isGuildAllowed(g.id) ?? false))
         : [{ id: "", name: "", primary: true }];
     } catch (e) {
       return { ok: false, error: `Discord refused the server list: ${(e as Error).message}` };
@@ -9969,7 +9945,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     choices: Array<{ action: string; label: string }>;
     expiredText: string;
     deliver?: (choices: Choice[]) => Promise<import("./channel/types.js").SentMessage>;
-    extra?: Pick<NonceButtonEntry, "requesterUserId" | "publicExposureId" | "dashboardOwner" | "generalName" | "promptKind" | "authChannelId" | "allowAnyUser" | "tipId" | "classicGroupId" | "classicUserId" | "classicScope" | "assistFor">;
+    extra?: Pick<NonceButtonEntry, "requesterUserId" | "publicExposureId" | "dashboardOwner" | "generalName" | "promptKind" | "authChannelId" | "allowAnyUser" | "tipId" | "classicGroupId" | "classicUserId" | "classicScope" | "classicReplyTo" | "assistFor">;
     timeoutMs?: number;
   }): Promise<string> {
     // 16 bytes = the 128-bit capability the design claims. Telegram's 64-byte
@@ -12059,9 +12035,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     generalName: string;
     message: string;
     groupId: string;
-    /** Discord guild (allowed_guilds) or Telegram group (allowed_groups). */
-    scope: "guild" | "group";
+    /** Discord guild, Telegram group, or Telegram private user; each has its own allowlist. */
+    scope: "guild" | "group" | "user";
     userId?: string;
+    replyTo?: NonceButtonEntry["classicReplyTo"];
   }): Promise<void> {
     const adapter = this.getAdapterForInstance(opts.generalName);
     // An instance with no world binding yet (fresh restart, or a fleet whose
@@ -12077,7 +12054,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.notifyInstanceTopic(opts.generalName, opts.message);
       return;
     }
-    const choices = [{ action: "allow", label: t("classic.approve_group") }];
+    const choices = [{ action: "allow", label: t(opts.scope === "user" ? "classic.approve_user" : "classic.approve_group") }];
     if (opts.userId) choices.push({ action: "allow-admin", label: t("classic.approve_group_admin") });
     choices.push({ action: "ignore", label: t("classic.approve_ignore") });
 
@@ -12092,7 +12069,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       message: opts.message,
       choices,
       expiredText: t("buttons.stale"),
-      extra: { classicGroupId: opts.groupId, classicUserId: opts.userId, classicScope: opts.scope },
+      extra: { classicGroupId: opts.groupId, classicUserId: opts.userId, classicScope: opts.scope, classicReplyTo: opts.replyTo },
     });
   }
 
@@ -12117,17 +12094,28 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
     const scope = entry.classicScope ?? "guild";
-    const access = scope === "group" ? classic.allowGroup(groupId) : classic.allowGuild(groupId);
+    const access = scope === "user" ? classic.allowUser(groupId)
+      : scope === "group" ? classic.allowGroup(groupId) : classic.allowGuild(groupId);
     const admin = adminUserId ? classic.addAdminUser(adminUserId) : null;
 
-    const lines = [t(access === "added" ? "classic.approve_done_group"
-      : access === "already" ? "classic.approve_done_group_already"
-      : "classic.approve_done_group_open", groupId)];
+    const lines = [t(access === "added" ? "classic.approve_done_group" : "classic.approve_done_group_already", groupId)];
     if (admin) {
       lines.push(t(admin === "added" ? "classic.approve_done_admin" : "classic.approve_done_admin_already",
         adminUserId ?? ""));
     }
     this.notifyInstanceTopic(entry.instanceName, lines.join("\n"));
+    await this.notifyClassicRequester(entry, "classic.request_allowed");
+  }
+
+  private async notifyClassicRequester(entry: NonceButtonEntry, key: string): Promise<void> {
+    const reply = entry.classicReplyTo;
+    // Do not use a replaced bot or guess a new recipient after adapter rebuild.
+    if (!reply || this.worlds.get(reply.adapterId)?.adapter !== reply.adapter) return;
+    try {
+      await reply.adapter.sendText(reply.chatId, t(key));
+    } catch (err) {
+      this.logger.warn({ err, adapterId: reply.adapterId, scope: entry.classicScope }, "Could not notify Classic access requester");
+    }
   }
 
   /** Consume a ClassicBot approval button. */
@@ -12152,6 +12140,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (action === "ignore") {
       await this.retireNonceButtons(entry, entry.messageId ?? data.messageId,
         t("classic.approve_ignored", groupId));
+      await this.notifyClassicRequester(entry, "classic.request_ignored");
       return true;
     }
     const grantAdmin = action === "allow-admin" && !!userId;
@@ -14594,27 +14583,52 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     return adapter?.type === "telegram" ? `${key}.telegram` : key;
   }
 
+  /** Approval is a system notification: General's agent need not be running. */
+  private findClassicApprovalGeneral(adapterId?: string): string | undefined {
+    const generals = Object.entries(this.fleetConfig?.instances ?? {}).filter(([, cfg]) => cfg.general_topic === true);
+    return (adapterId ? generals.find(([name, cfg]) => (cfg.channel_id ?? this.getInstanceAdapterId(name)) === adapterId) : undefined)?.[0]
+      ?? generals[0]?.[0];
+  }
+
   /** Return a user-facing blocker without mutating ClassicBot state. */
   private validateClassicStart(channelId: string, userId: string, guildId?: string, adapterId?: string): string | undefined {
-    if (!this.classicChannels) return t("classic.manager_unavailable");
-    if (guildId && !this.classicChannels.isGuildAllowed(guildId)) {
-      const generalId = this.findGeneralInstance(adapterId);
-      if (generalId) {
-        // Fire-and-forget, exactly as the notifyInstanceTopic it replaces: this
-        // function's return value is the rejection shown to the user, and it
-        // must not wait on posting buttons into the General topic.
-        void this.promptClassicApproval({
-          generalName: generalId,
-          message: t("alert.unauth_guild", guildId, userId),
-          groupId: String(guildId),
-          scope: "guild",
-          userId: userId ? String(userId) : undefined,
-        }).catch(err => this.logger.warn({ err, guildId }, "Classic approval prompt failed"));
-      }
-      return t("classic.not_authorized_guild");
-    }
-    if (this.classicChannels.isClassicChannel(channelId, adapterId)) return t(this.classicStartKey("classic.already_active", adapterId));
+    const classic = this.classicChannels;
+    if (!classic) return t("classic.manager_unavailable");
+    // Admission applies only to NEW channels. Revoking a start grant never
+    // blocks an existing agent's chat or changes its registration.
+    if (classic.isClassicChannel(channelId, adapterId)) return t(this.classicStartKey("classic.already_active", adapterId));
     if (this.routing.resolve(channelId)) return t("classic.topic_bound");
+    const adapter = (adapterId ? this.worlds.get(adapterId)?.adapter : undefined) ?? this.adapter;
+    // Discord DMs remain unsupported, including direct calls outside the slash door.
+    if (!guildId && adapter?.type === "discord") return t("slash.dm_unsupported");
+    // C is distinct from fleet admin. Only C bypasses new-channel admission.
+    if (classic.isAdmin(userId)) return undefined;
+    const scope = guildId ? "guild" : channelId.startsWith("-") ? "group" : "user";
+    const targetId = guildId ?? (scope === "user" ? userId : channelId);
+    const allowed = scope === "guild" ? classic.isGuildAllowed(targetId)
+      : scope === "group" ? classic.isGroupAllowed(targetId) : classic.isUserAllowed(targetId);
+    if (!allowed) {
+      const generalName = this.findClassicApprovalGeneral(adapterId);
+      if (generalName) {
+        const message = scope === "guild" ? t("alert.unauth_guild", targetId, userId)
+          : scope === "group" ? t("alert.new_group", channelId, targetId, userId, userId, "telegram")
+          : t("alert.unauth_user_private", userId, userId, "telegram");
+        void this.promptClassicApproval({
+          generalName, message, groupId: String(targetId), scope, userId,
+          replyTo: adapter ? { adapterId: adapter.id, adapter, chatId: channelId } : undefined,
+        }).catch(err => this.logger.warn({ err, scope }, "Classic approval prompt failed"));
+      } else {
+        this.logger.warn({ adapterId, scope }, "Classic access request has no running General");
+      }
+      return t("classic.access_requested");
+    }
+    // Preserve the existing group start role. Allow only grants the group;
+    // Allow+admin also gives the requester permission to start there.
+    if (scope === "group") {
+      const generalName = this.findClassicApprovalGeneral(adapterId);
+      if (generalName) this.notifyInstanceTopic(generalName, t("alert.start_not_admin", userId, userId, "telegram", channelId));
+      return t("classic.admin_only_start");
+    }
     return undefined;
   }
 
@@ -14643,6 +14657,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       return;
     }
 
+    const blocker = this.validateClassicStart(data.channelId, data.userId, data.guildId, adapterId);
+    if (blocker) { await data.respond(blocker); return; }
     const warning = this.getMissingBackendWarning(requestedBackend);
     // Keep the deferred ephemeral response useful even if daemon startup later
     // fails because the executable is absent. This is advisory, not a gate.
@@ -16816,7 +16832,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
           // not sent" by asking from inside the site. API callers still get JSON.
           if (decision.reason === "no-credential" && req.method === "GET"
             && String(req.headers.accept ?? "").includes("text/html")
-            && (requestPath === "/ui" || requestPath === "/settings" || requestPath === "/view")) {
+            && isWebPageNavigation(requestPath)) {
             serveSigninPage(res, 401);
             return;
           }

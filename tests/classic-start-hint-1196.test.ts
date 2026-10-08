@@ -33,7 +33,7 @@ function fleet() {
   any.worlds.set("tg", { id: "tg", adapter: tg });
   any.worlds.set("dc", { id: "dc", adapter: dc });
   any.classicChannels = {
-    isGuildAllowed: () => true,
+    isGuildAllowed: () => true, isAdmin: () => true,
     isClassicChannel: (channelId: string) => channelId === "active",
     deriveInstanceName: (name: string) => `classic-${name}`,
     register() {}, getBackend: () => "claude-code", getPreTaskCommand: () => undefined, getModel: () => undefined,

@@ -343,7 +343,7 @@ messaging contract. Full fleet guidance — role, workflow, selected decisions a
 |---------|------------------------|
 | Claude Code | Instance `fleet-instructions.md`, loaded with additive `--append-system-prompt-file` |
 | Codex | Managed AgEnD marker block in the workspace's `AGENTS.md` |
-| Kiro CLI | Workspace `.kiro/steering/agend-<instance>.md` |
+| Kiro CLI | The `prompt` of the instance's own agent, `.kiro/agents/agend-<instance>-<fleet>.json`; the steering file `.kiro/steering/agend-<instance>.md` on kiro-cli < 2.21 and until a resumed conversation is switched to its agent |
 | OpenCode | Instance `fleet-instructions.md` appended to the project's `opencode.json` `instructions` array |
 | Antigravity | Managed marker block in workspace `.agents/agents.md` |
 | Grok / Muse | Managed marker block in workspace `AGENTS.md` |
@@ -392,11 +392,13 @@ Located at `~/.agend/classicBot.yaml`. Manages ClassicBot channels (auto-created
 | `backend` | string | `"claude-code"` | Default backend for all classic channels |
 | `model` | string | — | Default model for all classic channels |
 | `context_lines` | number | `5` | Chat history lines injected before each message (0 = disable) |
-| `allowed_guilds` | string[] | `[]` | Discord server IDs allowed to use ClassicBot (empty = all) |
-| `allowed_groups` | string[] | `[]` | Telegram group IDs allowed |
-| `allowed_users` | string[] | `[]` | User IDs allowed to interact |
+| `allowed_guilds` | string[] | `[]` | Discord server IDs granted new ClassicBot starts; empty/unset requests approval |
+| `allowed_groups` | string[] | `[]` | Telegram group IDs granted access; empty/unset requests approval |
+| `allowed_users` | string[] | `[]` | Telegram private user IDs granted new starts; empty/unset requests approval |
 | `admin_users` | string[] | `[]` | Classic admin user IDs. Command gates differ by platform; see the [permissions matrix](permissions.md). `/raw` is not a supported command. |
 | `reply_completion_guard` | boolean | inherited | Per-channel → Classic defaults → fleet defaults → `true`; requires the backend capability described above. |
+
+New starts: ClassicBot admins (`admin_users`) may start directly. Other callers need an explicit guild/private-user grant; unlisted callers request General approval through **Allow / Allow+admin / Ignore** buttons. Telegram private approvals add the user to `allowed_users`. Telegram group starts still require a ClassicBot admin; Allow grants only the group, while Allow+admin also promotes the requester. Existing registered channels keep working, and Discord DMs remain unsupported. Approval does not start an agent: retry `/start` (groups: `/start@OurBot`).
 
 ### channels.\<channelId\>
 

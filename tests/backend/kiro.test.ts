@@ -258,6 +258,7 @@ describe("KiroBackend", () => {
         supportsV3: false,
         agentEngines: null,
         supportsEffortFlag: true,
+        supportsInstanceAgent: false, // no --agent / --resume-id in this help
         source: "help",
       });
     });
@@ -338,14 +339,14 @@ describe("KiroBackend", () => {
       expect(config.mcpServers["agend-instance-b"]).toBeDefined();
     });
 
-    it("cleans up old non-namespaced key", () => {
+    it("keeps an entry it has no evidence of having written, even a bare `agend` key (#906: provenance only)", () => {
       const mcpDir = join(WORK_DIR, ".kiro", "settings");
       mkdirSync(mcpDir, { recursive: true });
       writeFileSync(join(mcpDir, "mcp.json"), JSON.stringify({ mcpServers: { agend: { command: "old" } } }));
       const backend = makeBackend();
       backend.writeConfig(makeConfig());
       const config = JSON.parse(readFileSync(join(mcpDir, "mcp.json"), "utf-8"));
-      expect(config.mcpServers["agend"]).toBeUndefined();
+      expect(config.mcpServers["agend"]).toEqual({ command: "old" });
       expect(config.mcpServers["agend-test-kiro"]).toBeDefined();
     });
 

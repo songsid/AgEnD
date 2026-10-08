@@ -8,15 +8,16 @@
  * the banner saying so.
  *
  * This file knows nothing about the chat, the composer, the fleet's API or navigation: the message listener below can
- * reach the frames it made and nothing else (a test asserts it). A classic script (window.AgendPreview) that also
+ * reach the frames it made and nothing else (a test asserts it). Imported by the chat panel (#1408: the import sets globalThis.AgendPreview); also
  * exports itself for the tests.
  */
 (function (root, factory) {
   "use strict";
   var api = factory(root);
   if (typeof module === "object" && module && module.exports) module.exports = api;
-  else root.AgendPreview = api;
-})(this, function (root) {
+  // The global as well: the chat imports this file for its side effect (#1408), in the browser and under the tests.
+  if (root) root.AgendPreview = api;
+})(typeof globalThis !== "undefined" ? globalThis : this, function (root) {
   "use strict";
 
   var LIMITS = { maxBytes: 1024 * 1024, minHeight: 40, maxHeight: 4000, readyMs: 3000, watchdogMs: 10000, resizePerSec: 10, minDelta: 2, growthFreeze: 5, growthWindowMs: 2000 };
@@ -61,8 +62,14 @@
     if (!optedIn()) stopAll("off");
     notify();
   }
-  /** Call `fn` whenever this device's choice may have changed (here or in another tab). */
-  function onChange(fn) { if (typeof fn === "function") changed.push(fn); }
+  /** Call `fn` whenever this device's choice may have changed (here or in another tab). Returns the unsubscribe: a
+   *  chat that leaves takes its callback with it (#1408 §4), so 50 visits leave no callback behind. */
+  function onChange(fn) {
+    if (typeof fn !== "function") return function () {};
+    changed.push(fn);
+    return function () { var i = changed.indexOf(fn); if (i >= 0) changed.splice(i, 1); };
+  }
+  function listeners() { return changed.length; }
   function notify() { for (var i = 0; i < changed.length; i++) { try { changed[i](); } catch (e) { /* one listener's error stops no other */ } } }
 
   // ── This device's choice ────────────────────────────────
@@ -182,6 +189,7 @@
     return keys;
   }
   function running(key) { return live.has(key); }
+  function liveCount() { return live.size; }
   function liveFrame(key) { var c = live.get(key); return c ? c.iframe : null; }
 
   // ── Messages from frames (design §4.2) ──────────────────
@@ -251,8 +259,8 @@
   }
 
   return {
-    init: init, availability: availability, optedIn: optedIn, setOptIn: setOptIn, never: never, setNever: setNever, onChange: onChange, onStorage: onStorage,
-    start: start, stop: stop, stopAll: stopAll, stopIn: stopIn, running: running, liveFrame: liveFrame,
+    init: init, availability: availability, optedIn: optedIn, setOptIn: setOptIn, never: never, setNever: setNever, onChange: onChange, listeners: listeners, onStorage: onStorage,
+    start: start, stop: stop, stopAll: stopAll, stopIn: stopIn, running: running, liveCount: liveCount, liveFrame: liveFrame,
     mountPreview: mountPreview, onMessage: onMessage, BANNER: BANNER, LIMITS: LIMITS,
   };
 });

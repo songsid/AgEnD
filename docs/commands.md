@@ -41,7 +41,7 @@ Registered via `setMyCommands` with `scope: all_group_chats` and `scope: default
 
 | Command | Description | Permission |
 |---------|-------------|------------|
-| `/start` | Start an agent in this chat | Private chat: the user allowlist. Group: the group allowlist and a ClassicBot admin |
+| `/start` | Start an agent in this chat | Private: ClassicBot admin or explicit user grant; otherwise General approval. Group: ClassicBot admin; unlisted groups can request approval |
 | 🔒 `/stop` | Stop the agent | Admin |
 | 🔒 `/compact [instructions]` | Compact agent context; the optional text steers the summary (Claude Code only — other backends compact without it and say so) | Admin |
 | 🔒 `/model` | Switch model | Admin |
@@ -71,7 +71,7 @@ Registered globally via `client.application.commands.set()`.
 
 | Command | Description | Permission |
 |---------|-------------|------------|
-| `/start` | Start an agent in this channel | All |
+| `/start` | Start an agent in this channel; otherwise request General approval | ClassicBot admin or explicitly allowed guild |
 | 🔒 `/stop` | Stop the agent in this channel | ClassicBot admin |
 | `/chat <message>` | Send a message to the agent | All |
 | `/sysinfo` | System diagnostics, including each backend CLI's version | All |
@@ -165,7 +165,7 @@ No permission check:
 - `/sysinfo`, `/ctx`
 - `/steer`, `/btw` — deliberately not admin-gated on any platform/mode; both only change *when* (and, for `/btw`, how a reply is framed) a message a user could already send lands, so neither carries extra privilege
 - TG @mention conversation
-- DC `/start` (guild allowlist), `/chat`
+- DC `/start` (ClassicBot admin or explicit guild grant), `/chat`
 
 ### /steer, /btw, and /clear backend support
 

@@ -353,7 +353,7 @@ describe("the table's Telegram column says what those handlers do, for every com
   });
 });
 
-describe("/start: not one level, and neither platform's real gate moved", () => {
+describe("/start: platform grants and ClassicBot admins (#1418)", () => {
   it("Telegram private chat: the user allowlist, no admin needed", async () => {
     const r = await rig();
     for (const [person, id] of Object.entries({ plain: PU, fleetAdmin: FA, classicAdmin: CA })) {
@@ -361,8 +361,8 @@ describe("/start: not one level, and neither platform's real gate moved", () => 
       expect(r.reached, person).toEqual(["start"]);
     }
     await r.say("5560", STRANGER, "/start claude-code");
-    expect(r.reached, "a stranger").toEqual([]);
-    expect(r.replies).toEqual([t("classic.not_allowed_user")]);
+    expect(r.reached, "a stranger").toEqual(["approval"]);
+    expect(r.replies).toEqual([t("classic.access_requested")]);
   });
 
   it("Telegram group: an allowed group AND a ClassicBot admin — a fleet admin or a plain member is refused", async () => {
@@ -376,9 +376,11 @@ describe("/start: not one level, and neither platform's real gate moved", () => 
     }
   });
 
-  it("Telegram group not on the allowlist: nobody, an admin included — an approval is asked of General instead", async () => {
+  it("Telegram group not on the allowlist: C starts directly; others ask General (#1418)", async () => {
     const r = await rig();
-    for (const id of [CA, FA, PU]) {
+    await r.say(OTHER_GROUP, CA, `/start@${BOT} claude-code`);
+    expect(r.reached).toEqual(["start"]);
+    for (const id of [FA, PU]) {
       await r.say(OTHER_GROUP, id, `/start@${BOT} claude-code`);
       expect(r.reached, id).toEqual(["approval"]);
       expect(r.replies, id).toEqual([t("classic.access_requested")]);
@@ -401,7 +403,10 @@ describe("/start: not one level, and neither platform's real gate moved", () => 
     expect(results).toEqual([t("classic.started"), t("classic.started"), t("classic.started")]);
     expect(r.reached).toEqual(["started", "started", "started"]);
     r.reached.length = 0;
-    expect(await start("chan-x", CA, "G-not-allowed"), "an admin in a guild that is not allowed").toBe(t("classic.not_authorized_guild"));
+    expect(await start("chan-x", CA, "G-not-allowed"), "C bypasses new-start admission (#1418)").toBe(t("classic.started"));
+    expect(r.reached).toEqual(["started"]);
+    r.reached.length = 0;
+    expect(await start("chan-y", PU, "G-not-allowed")).toBe(t("classic.access_requested"));
     expect(r.reached).toEqual(["approval"]);
   });
 
