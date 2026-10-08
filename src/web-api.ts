@@ -9,6 +9,7 @@ import { formatWebChannelEcho } from "./web-channel-echo.js";
 import type { SendOpts } from "./channel/types.js";
 import { t } from "./locale.js";
 import { sendPanelHtml } from "./web-host-guard.js";
+import { shellRoute } from "./web-shell-routes.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -265,19 +266,17 @@ export function handleWebRequest(
 
   // ── Static files ───────────────────────────────────────
 
-  if (method === "GET" && path === "/ui") {
+  // #1408: the app shell, for exactly the paths the classifier names (src/web-shell-routes.ts). One page for every
+  // route; the client router mounts the panel. A malformed instance name is a 400, an unknown one is the shell (the
+  // panel says "not found"), so the response never tells which names exist.
+  const shell = shellRoute(method, path);
+  if (shell?.kind === "malformed") { json(res, 400, { error: "invalid instance name" }); return true; }
+  if (shell?.kind === "shell") {
     try {
-      const html = readFileSync(join(__dirname, "ui", "dashboard.html"), "utf-8");
-      // #1306: the page learns which origin the server believes it is at, the preview origin chosen for it (empty:
-      // disabled, with the reason) and the preview listener's boot id; /ui's CSP may frame exactly <origin>/frame.
-      // The page re-checks the first against location.origin before it makes any frame.
-      const p = gatewayRequestContext(req) ? null : ctx.previewForUi?.(typeof req.headers.host === "string" ? req.headers.host : undefined, isSecureRequest(req)) ?? null;
-      const attr = (v: string | null | undefined) => String(v ?? "").replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
-      const body = `<body${gatewayRequestContext(req) ? ' data-web-transport="poll"' : ""} data-dashboard-origin="${attr(p?.dashboardOrigin)}" data-preview-origin="${attr(p?.previewOrigin)}"`
-        + ` data-preview-boot="${attr(p?.previewOrigin ? p.boot : "")}" data-preview-reason="${attr(p ? p.reason : "Previews are not available on this fleet.")}">`;
-      sendPanelHtml(res, html.replace("<body>", body), 200, {}, p?.previewOrigin ? { frameSrc: `${p.previewOrigin}/frame` } : {});
+      const html = readFileSync(join(__dirname, "ui", "app.html"), "utf-8");
+      sendPanelHtml(res, html.replace("<body>", shellBodyTag(req, ctx)), 200, {}, shellFrameSrc(req, ctx));
     } catch {
-      json(res, 500, { error: "dashboard.html not found" });
+      json(res, 500, { error: "app.html not found" });
     }
     return true;
   }
@@ -1074,4 +1073,25 @@ function handleUpload(req: IncomingMessage, res: ServerResponse, url: URL, ctx: 
       json(res, 500, { error: "the file could not be stored" });
     }
   });
+}
+
+// ── #1408: what the server tells the app shell on its <body> ──
+// Built by one function for every signed-in entry, so arriving at /ui/fleet and then opening a chat is the same as
+// arriving at /ui. The mode decides the stream (§3): a local session gets the live stream (with polling while it is
+// down); the public link polls from the start (its manifest has no /ui/events). #1306: the origin the server believes
+// it is at, the preview origin chosen for this load (empty: previews off, with the reason) and the preview listener's
+// boot id. The public link has no previews.
+function shellPreview(req: IncomingMessage, ctx: WebApiContext) {
+  return gatewayRequestContext(req) ? null : ctx.previewForUi?.(typeof req.headers.host === "string" ? req.headers.host : undefined, isSecureRequest(req)) ?? null;
+}
+function shellBodyTag(req: IncomingMessage, ctx: WebApiContext): string {
+  const p = shellPreview(req, ctx);
+  const attr = (v: string | null | undefined) => String(v ?? "").replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
+  return `<body data-mode="full"${gatewayRequestContext(req) ? ' data-web-transport="poll"' : ""} data-dashboard-origin="${attr(p?.dashboardOrigin)}" data-preview-origin="${attr(p?.previewOrigin)}"`
+    + ` data-preview-boot="${attr(p?.previewOrigin ? p.boot : "")}" data-preview-reason="${attr(p ? p.reason : "Previews are not available on this fleet.")}">`;
+}
+/** The shell's CSP may frame exactly <preview origin>/frame, and only when this load chose one. */
+function shellFrameSrc(req: IncomingMessage, ctx: WebApiContext): { frameSrc?: string } {
+  const p = shellPreview(req, ctx);
+  return p?.previewOrigin ? { frameSrc: `${p.previewOrigin}/frame` } : {};
 }

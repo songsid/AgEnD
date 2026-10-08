@@ -3,9 +3,11 @@ import { EventEmitter } from "node:events";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
 import vm from "node:vm";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { handleWebRequest, sseFrame, broadcastSseEvent, type WebApiContext } from "../src/web-api.js";
 import { WebChatHistory, WEB_CHAT_TEXT_MAX, parseLastEventId } from "../src/web-chat-history.js";
+import { h, page, settle, type AppPage } from "./helpers/app-harness.js";
+import { fire, installDom } from "./helpers/mini-dom.js";
 
 /**
  * Web chat, first step towards Telegram parity (C1): messages render as Markdown (safely), a reload or a dropped
@@ -551,233 +553,378 @@ describe("FleetManager.emitSseEvent", () => {
   });
 });
 
+
 // ── the page ────────────────────────────────────────────────────────────────────────────────────────────────────
+// The page is the app's served modules (#1408 step 1): chat-store.js holds the state and the logic, chat-thread.js
+// the rendered thread, panel-chat.js the panel, app-stream.js the one live transport. They are loaded by the paths the
+// server serves them at (vitest.config.ts maps /ui/js/ and /assets/ onto src/ui), inside these describes only.
 
-describe("dashboard.html", () => {
-  const html = readFileSync(join(process.cwd(), "src", "ui", "dashboard.html"), "utf8");
+// Served ES modules: no type declarations for them, so each import is typed by hand.
+type Served = any;
+const storeMod = (): Promise<Served> => import("/ui/js/chat-store.js");
+const threadMod = (): Promise<Served> => import("/ui/js/chat-thread.js");
+const panelMod = (): Promise<Served> => import("/ui/js/panel-chat.js");
+const stringsMod = (): Promise<Served> => import("/ui/js/chat-strings.js");
+const streamMod = (): Promise<Served> => import("/assets/app-stream.js");
+const i18nMod = (): Promise<Served> => import("/assets/app-i18n.js");
+const appStoreMod = (): Promise<Served> => import("/assets/app-store.js");
 
-  it("loads the renderer before its own script, and renders message text only through it", () => {
-    expect(html.indexOf('<script src="/ui/js/chat-render.js"></script>')).toBeGreaterThan(-1);
-    expect(html.indexOf('<script src="/ui/js/chat-render.js"></script>')).toBeLessThan(html.indexOf("<script>\n"));
+type Reply = { ok?: boolean; status?: number; body?: unknown };
+type Call = { path: string; method: string; headers: Record<string, string>; body: any };
+
+/** The network the store sees: every request is recorded; `route` answers it (default: an empty success). */
+function fakeNet() {
+  const calls: Call[] = [];
+  const net = {
+    calls,
+    route: (async (_path: string, _o: any): Promise<Reply> => ({ body: {} })) as (path: string, o: any) => Promise<Reply>,
+    fetch: async (path: string, o: any = {}) => {
+      calls.push({ path, method: o.method ?? "GET", headers: o.headers ?? {}, body: typeof o.body === "string" ? JSON.parse(o.body) : o.body });
+      const r = await net.route(path, o);
+      return { ok: r.ok ?? true, status: r.status ?? (r.ok === false ? 500 : 200), json: async () => r.body };
+    },
+  };
+  return net;
+}
+/** A reply that is held until the test opens it. */
+function gate<T = Reply>() {
+  let open!: (v: T) => void;
+  const promise = new Promise<T>(r => { open = r; });
+  return { promise, open };
+}
+
+/** The chat store on its own, its deps driven directly (what boot() injects, with the fetch and toast under test). */
+async function chatStore() {
+  const { createChatStore } = await storeMod();
+  await stringsMod();
+  const { t } = await i18nMod();
+  const net = fakeNet();
+  const toasts: string[] = [];
+  const store = createChatStore({ fetch: net.fetch, toast: (m: string) => { toasts.push(m); }, announce: () => {}, t, setTimeout: () => 0 });
+  store.setCurrent("w");
+  return { store, net, toasts };
+}
+
+describe("chat-thread.js renders message text only through the renderer", () => {
+  it("imports the renderer before anything that uses it, and never writes message text as markup", async () => {
+    const thread = readFileSync(join(process.cwd(), "src", "ui", "chat-thread.js"), "utf8");
+    expect(thread.match(/^import .*$/m)?.[0]).toContain("./chat-render.js");
     // HTML cards (#1306) only for a message the server marked agent — never from sender or text.
-    expect(html).toContain('AgendChatRender.renderMarkdown(x.text, x.role === "agent" ? { htmlCards: true } : undefined)');
-    expect(html).not.toContain("${esc(x.text)}");
-    expect(html).not.toMatch(/innerHTML\s*=\s*[^;]*x\.text(?!\))/);
+    expect(thread).toContain('R().renderMarkdown(x.text, x.role === "agent" ? { htmlCards: true } : undefined)');
+    for (const file of ["chat-thread.js", "chat-store.js", "panel-chat.js"]) {
+      const src = readFileSync(join(process.cwd(), "src", "ui", file), "utf8");
+      expect(src, file).not.toMatch(/innerHTML\s*=\s*[^;]*x\.text(?!\))/);
+      expect(src, file).not.toContain("${esc(x.text)}");
+    }
   });
 
-  it("has a multi-line composer, and asks /ui/history when a chat is opened", () => {
-    expect(html).toMatch(/<textarea id="msgIn"/);
-    expect(html).not.toMatch(/<input id="msgIn"/);
-    expect(html).toContain("AgendChatRender.composerKey(e)");
-    expect(html).toMatch(/function sel\(name\)[^\n]*loadHistory\(name\)/);
-    expect(html).toContain("AgendChatRender.mergeMessages(");
-  });
-
-  it("a failed send goes through settleFailedSend for the chat it was sent from, and kept text is offered back", () => {
-    expect(html).toContain("const target = cur;");
-    expect(html).toContain('AgendChatRender.settleFailedSend(target, cur, !!now, now ? now.value : "")');
-    expect(html).toContain("failedSends[target] = failedSends[target] ?");
-    expect(html).toContain("AgendChatRender.putBack(kept, inp.value)");
-    expect(html).toContain(`setComposer(inp, drafts[cur] || "");`);
+  it("a message that holds markup shows as text: no element is made from it", async () => {
+      const { createThread } = await threadMod();
+    const p = installDom();
+    try {
+      const list = p.document.createElement("div");
+      const scroller = p.document.createElement("div");
+      const thread = createThread(list, scroller, {
+        t: (k: string) => k, tf: (k: string) => k, isUser: () => false, onJump: () => {}, onEmpty: () => {},
+        setPreviewOptIn: () => {}, copyText: async () => true, download: () => {}, toggleWrap: () => {},
+      });
+      thread.render([{ boot: "b", id: 1, instance: "w", sender: "agent", text: '<img src=x onerror="alert(1)"> and <b>bold</b>', ts: "" }]);
+      expect(list.querySelectorAll("img")).toHaveLength(0);
+      expect(list.querySelectorAll("b")).toHaveLength(0);
+      expect(list.textContent).toContain('<img src=x onerror="alert(1)"> and <b>bold</b>');
+      thread.dispose();
+    } finally { p.restore(); }
   });
 });
 
-// ── the page's own script, run against a fake DOM: failed sends ───────────────────────────────────────────────
+describe("chat page: the composer and the history", () => {
+  it("the composer is a multi-line textarea, keys go through composerKey, and a chat's history is asked for when it opens", () => {
+    const panel = readFileSync(join(process.cwd(), "src", "ui", "panel-chat.js"), "utf8");
+    expect(panel).toMatch(/<textarea id="msgIn"/);
+    expect(panel).not.toMatch(/<input id="msgIn"/);
+    expect(panel).toContain("R().composerKey(e)");
+    expect(panel).toContain("store.openHistory(name, lease)");
+    const store = readFileSync(join(process.cwd(), "src", "ui", "chat-store.js"), "utf8");
+    expect(store).toContain("R().mergeMessages(");
+  });
 
-describe("dashboard sendMsg (the real page script)", () => {
-  const PAGE = readFileSync(join(process.cwd(), "src", "ui", "dashboard.html"), "utf8").match(/<script>\n([\s\S]*?)<\/script>/)![1]!;
-  function page() {
-    const composer = () => ({ value: "", style: {} as Record<string, string>, scrollHeight: 20, focus() {} });
-    const nodes: Record<string, any> = { msgIn: composer(), messages: { innerHTML: "", scrollHeight: 0 }, uptime: { textContent: "" }, failedSend: { className: "", textContent: "", append() {} } };
-    const toasts: string[] = [];
-    const sse: Record<string, (e: { data: string; lastEventId?: string }) => void> = {};
-    const timers: Array<() => void> = [];
-    const fetched: string[] = [];
-    let pollReply: (url: string) => unknown = () => ({});
-    const c = vm.createContext({
-      /* a returning browser: it has seen the first sign-in tour (#1366) */ localStorage: { getItem: (k: string) => k === "agend_tour_done" ? "1" : null }, navigator: { language: "en" },
-      document: { addEventListener() {}, getElementById: (n: string) => nodes[n] ?? null, createElement: () => ({ style: {}, remove() {} }), body: { appendChild() {} } },
-      setTimeout: (f: () => void) => { timers.push(f); return timers.length; }, clearTimeout() {},
-      setInterval: (f: () => void) => { timers.push(f); return timers.length; }, clearInterval() {},
-      fetch: async (url: string) => { fetched.push(url); const body = pollReply(url); return { ok: true, json: async () => body }; },
-      EventSource: class { addEventListener(k: string, f: (e: { data: string; lastEventId?: string }) => void) { sse[k] = f; } },
-    });
-    vm.runInContext(SRC, c);
-    vm.runInContext(PAGE, c);
-    (c as any).captureToast = (m: string) => toasts.push(m);
-    vm.runInContext('toast=(m)=>captureToast(m);renderMsgs=()=>{};renderList=()=>{};cur="w";', c);
-    let release!: (v: unknown) => void;
-    (c as any).pending = new Promise(r => { release = r; });
-    vm.runInContext("api=()=>pending", c);
-    return { c, nodes, toasts, composer, release, sse, timers, fetched, setPollReply: (f: (url: string) => unknown) => { pollReply = f; }, read: (s: string) => vm.runInContext(s, c) };
-  }
+  it("the history of a chat is read once per page: opening it again asks nothing, and the reply is merged in", async () => {
+    const { store, net } = await chatStore();
+    const h = new WebChatHistory({ boot: "b1" });
+    h.record(msg("w", "one")); h.record(msg("w", "two"));
+    net.route = async (path) => ({ body: JSON.parse(call(path, ctxWith(h)).res.body) });
+    await store.openHistory("w");
+    expect(net.calls.map(c => c.path)).toEqual(["/ui/history?instance=w&limit=200"]);
+    expect(store.state.msgs.w.map((m: { text: string }) => m.text)).toEqual(["one", "two"]);
+    expect(await store.openHistory("w")).toBe(false);
+    expect(net.calls).toHaveLength(1);
+  });
 
+  it("a failed send goes through settleFailedSend for the chat it was sent from, and kept text is offered back", () => {
+    const store = readFileSync(join(process.cwd(), "src", "ui", "chat-store.js"), "utf8");
+    expect(store).toContain("const shown = s.current === target;");
+    expect(store).toContain("R().settleFailedSend(target, s.current, shown, shown ? (s.drafts[target] || \"\") : \"\") === \"restore\"");
+    expect(store).toContain("s.failedSends[target] = s.failedSends[target] ? `${s.failedSends[target]}\\n${txt}` : txt;");
+    expect(store).toContain("s.drafts[target] = R().putBack(kept, s.drafts[target] || \"\");");
+    const panel = readFileSync(join(process.cwd(), "src", "ui", "panel-chat.js"), "utf8");
+    expect(panel).toContain("onClick=${() => store.putBack(name)}");
+  });
+});
+
+// ── the chat store, driven directly: failed sends ──────────────────────────────────────────────────────────────
+
+describe("chat store: a failed send (chat-store.js, driven directly)", () => {
   it("the plain failure: the text goes back into the same composer", async () => {
-    const p = page();
-    p.nodes.msgIn.value = "hello";
-    const send = p.read("sendMsg()");
-    expect(p.nodes.msgIn.value).toBe("");
-    p.release({ error: "offline" });
+    const { store, net, toasts } = await chatStore();
+    const reply = gate();
+    net.route = async (path) => (path === "/ui/send" ? reply.promise : { body: {} });
+    store.setDraft("w", "hello");
+    const send = store.send("w");
+    expect(store.state.drafts.w).toBe("");
+    reply.open({ body: { error: "offline" } });
     await send;
-    expect(p.nodes.msgIn.value).toBe("hello");
-    expect(p.read("failedSends.w")).toBeUndefined();
-    expect(p.toasts).toEqual(["offline"]);
+    expect(store.state.drafts.w).toBe("hello");
+    expect(store.state.failedSends.w).toBeUndefined();
+    expect(toasts).toEqual(["offline"]);
+    expect(net.calls.at(-1)).toEqual({ path: "/ui/send", method: "POST", headers: { "Content-Type": "application/json" }, body: { instance: "w", message: "hello" } });
   });
 
   it("a new draft typed meanwhile is kept; the failed text is kept beside it for that chat, not lost", async () => {
-    const p = page();
-    p.nodes.msgIn.value = "failed first";
-    const send = p.read("sendMsg()");
-    p.nodes.msgIn.value = "new draft";
-    p.release({ error: "offline" });
+    const { store, net } = await chatStore();
+    const reply = gate();
+    net.route = async (path) => (path === "/ui/send" ? reply.promise : { body: {} });
+    store.setDraft("w", "failed first");
+    const send = store.send("w");
+    store.setDraft("w", "new draft");
+    reply.open({ body: { error: "offline" } });
     await send;
-    expect(p.nodes.msgIn.value).toBe("new draft");
-    expect(p.read("failedSends.w")).toBe("failed first");
-    expect(p.read("AgendChatRender.putBack(failedSends.w, 'new draft')")).toBe("failed first\nnew draft");
+    expect(store.state.drafts.w).toBe("new draft");
+    expect(store.state.failedSends.w).toBe("failed first");
+    // Put Back (the failed-send box's button) puts the kept text in front of the draft, never over it.
+    store.putBack("w");
+    expect(store.state.drafts.w).toBe("failed first\nnew draft");
+    expect(store.state.failedSends.w).toBeUndefined();
   });
 
-  it("the chat was re-rendered meanwhile: the text goes into the composer that is on screen now, not the detached one", async () => {
-    const p = page();
-    p.nodes.msgIn.value = "failed first";
-    const send = p.read("sendMsg()");
-    const old = p.nodes.msgIn;
-    p.nodes.msgIn = p.composer();
-    p.release({ error: "offline" });
+  it("the view was re-rendered meanwhile (the chat left and came back): the text goes into the draft on screen, not lost", async () => {
+    // ADAPTED: the old page held a DOM composer that a re-render could detach. The composer is now a view of the
+    // store's draft, so the question is only whether the chat is on screen when the answer comes.
+    const { store, net } = await chatStore();
+    const reply = gate();
+    net.route = async (path) => (path === "/ui/send" ? reply.promise : { body: {} });
+    store.setDraft("w", "failed first");
+    const send = store.send("w");
+    store.setCurrent(null);
+    store.setCurrent("w");
+    reply.open({ body: { error: "offline" } });
     await send;
-    expect(p.nodes.msgIn.value).toBe("failed first");
-    expect(old.value).toBe("");
+    expect(store.state.drafts.w).toBe("failed first");
+    expect(store.state.failedSends.w).toBeUndefined();
   });
 
   it("another chat was opened meanwhile: the text is not put into ITS composer, it is kept for the chat it was sent to", async () => {
-    const p = page();
-    p.nodes.msgIn.value = "for w";
-    const send = p.read("sendMsg()");
-    p.read('cur="x"');
-    p.nodes.msgIn = p.composer();
-    p.release({ error: "offline" });
+    const { store, net } = await chatStore();
+    const reply = gate();
+    net.route = async (path) => (path === "/ui/send" ? reply.promise : { body: {} });
+    store.setDraft("w", "for w");
+    const send = store.send("w");
+    store.setCurrent("x");
+    reply.open({ body: { error: "offline" } });
     await send;
-    expect(p.nodes.msgIn.value).toBe("");
-    expect(p.read("failedSends.w")).toBe("for w");
-    expect(p.read("failedSends.x")).toBeUndefined();
+    expect(store.state.drafts.x ?? "").toBe("");
+    expect(store.state.failedSends.w).toBe("for w");
+    expect(store.state.failedSends.x).toBeUndefined();
   });
 
   it("a successful send keeps nothing and says nothing", async () => {
-    const p = page();
-    p.nodes.msgIn.value = "ok";
-    const send = p.read("sendMsg()");
-    p.release({ sent: true });
+    const { store, net, toasts } = await chatStore();
+    const reply = gate();
+    net.route = async (path) => (path === "/ui/send" ? reply.promise : { body: {} });
+    store.setDraft("w", "ok");
+    const send = store.send("w");
+    reply.open({ body: { sent: true } });
     await send;
-    expect(p.nodes.msgIn.value).toBe("");
-    expect(p.read("failedSends.w")).toBeUndefined();
-    expect(p.toasts).toEqual([]);
+    expect(store.state.drafts.w).toBe("");
+    expect(store.state.failedSends.w).toBeUndefined();
+    expect(toasts).toEqual([]);
   });
+});
 
-  it("the page's SSE message handler keeps a new boot's message that reuses an old id, and still dedupes a repeat", () => {
-    const p = page();
+// ── the live path: app-stream.js feeding the chat store, as boot() wires it ─────────────────────────────────────
+
+/** A stream in "full" mode over a fake EventSource and fake timers, with the chat store attached as boot() does. */
+async function liveChat(route: (url: string) => unknown) {
+  const { createChatStore } = await storeMod();
+  const { createStream } = await streamMod();
+  await stringsMod();
+  const { t } = await i18nMod();
+  const sse: Record<string, (e: { data: string; lastEventId?: string }) => void> = {};
+  const fetched: string[] = [];
+  const timers: Array<() => void> = [];
+  const live = { route };
+  const get = async (url: string) => { fetched.push(url); const body = live.route(url); return { ok: true, status: 200, json: async () => body }; };
+  const env = {
+    fetch: get,
+    EventSource: class { onerror: unknown = null; addEventListener(k: string, f: (e: { data: string; lastEventId?: string }) => void) { sse[k] = f; } close() {} },
+    setTimeout: (f: () => void) => { timers.push(f); return timers.length; }, clearTimeout() {},
+    setInterval: (f: () => void) => { timers.push(f); return timers.length; }, clearInterval() {},
+  };
+  const stream = createStream({ mode: "full", transport: "sse", env });
+  const store = createChatStore({ fetch: get, toast: () => {}, announce: () => {}, t, setTimeout: () => 0 });
+  store.attach(stream);
+  store.setCurrent("w");
+  stream.start();
+  return { store, stream, sse, fetched, live };
+}
+
+describe("chat store on the live stream (app-stream.js → chat-store.js)", () => {
+  it("the stream's message handler keeps a new boot's message that reuses an old id, and still dedupes a repeat", async () => {
+    const { store, sse } = await liveChat(() => ({}));
     const before = new WebChatHistory({ boot: "aaa" }).record({ instance: "w", sender: "s", text: "before restart", ts: "2026-10-05T01:00:00Z" });
     const after = new WebChatHistory({ boot: "bbb" }).record({ instance: "w", sender: "s", text: "after restart", ts: "2026-10-05T02:00:00Z" });
     expect(before.id).toBe(after.id);
-    p.sse.message!({ data: JSON.stringify(before) });
-    p.sse.message!({ data: JSON.stringify(after) });
-    p.sse.message!({ data: JSON.stringify(after) });
-    expect(p.read("msgs.w.map(m => m.text)")).toEqual(["before restart", "after restart"]);
+    sse.message!({ data: JSON.stringify(before) });
+    sse.message!({ data: JSON.stringify(after) });
+    sse.message!({ data: JSON.stringify(after) });
+    expect(store.state.msgs.w.map((m: { text: string }) => m.text)).toEqual(["before restart", "after restart"]);
   });
 
   it("first fallback with ZERO stream messages: a message that arrived while the stream was silent is not skipped (#1251 review)", async () => {
-    // The real page script, and the real /ui/history and /ui/poll handlers over one real history. The stream only
-    // ever sent a status frame — no message event, so the page has no cursor of its own.
-    const p = page();
+    // The real /ui/history and /ui/poll handlers over one real history. The stream only ever sent a status frame — no
+    // message event, so the page has no cursor of its own: the first poll asks from the start.
     const h = new WebChatHistory({ boot: "b1" });
     const ctx = { ...ctxWith(h), getUiStatus: () => ({ instances: [], uptime: 1 }) } as unknown as WebApiContext;
     const viaHandler = (url: string) => JSON.parse(call(url, ctx).res.body);
+    const { store, stream, sse, fetched } = await liveChat(viaHandler);
     h.record(msg("w", "one"));
-    p.sse.status!({ data: JSON.stringify({ instances: [], uptime: 1 }) });
-    // The chat is opened: its history is loaded (through the real handler) — "one".
-    (p.c as any).historyVia = viaHandler;
-    p.read("api = async (_m, path) => historyVia(path)");
-    await p.read('loadHistory("w")');
-    expect(p.read("msgs.w.map(m => m.text)")).toEqual(["one"]);
-    expect(p.read("lastCursor")).toBe("");
+    sse.status!({ data: JSON.stringify({ instances: [], uptime: 1 }) });
+    // The chat is opened: its history is read through the real handler — "one".
+    await store.openHistory("w");
+    expect(store.state.msgs.w.map((m: { text: string }) => m.text)).toEqual(["one"]);
     // The stream goes quiet; meanwhile "two" is said. Then the first poll.
     h.record(msg("w", "two"));
-    p.setPollReply(viaHandler);
-    await p.read("pollOnce()");
-    expect(p.fetched.at(-1)).toBe("/ui/poll?after=");
-    expect(p.read("msgs.w.map(m => m.text)"), "two is shown, one is not doubled").toEqual(["one", "two"]);
-    expect(p.read("lastCursor")).toBe("b1-2");
-    // From the cursor on, polling goes on as usual.
+    await stream._pollOnce();
+    expect(fetched.at(-1)).toBe("/ui/poll?after=");
+    expect(store.state.msgs.w.map((m: { text: string }) => m.text), "two is shown, one is not doubled").toEqual(["one", "two"]);
+    // From the poll's cursor on, polling goes on as usual.
     h.record(msg("w", "three"));
-    await p.read("pollOnce()");
-    expect(p.fetched.at(-1)).toBe("/ui/poll?after=b1-2");
-    expect(p.read("msgs.w.map(m => m.text)")).toEqual(["one", "two", "three"]);
-    expect(p.sse.message, "no stream message was ever delivered").toBeDefined();
+    await stream._pollOnce();
+    expect(fetched.at(-1)).toBe("/ui/poll?after=b1-2");
+    expect(store.state.msgs.w.map((m: { text: string }) => m.text)).toEqual(["one", "two", "three"]);
+    expect(sse.message, "no stream message was ever delivered").toBeDefined();
   });
 
-  it("dashboard polling: uses the stream's cursor, and a message seen on both paths shows once", async () => {
-    const p = page();
+  it("polling uses the stream's cursor, and a message seen on both paths shows once", async () => {
     const h = new WebChatHistory({ boot: "b1" });
     const one = h.record({ instance: "w", sender: "agent", text: "one", ts: "t1" });
     const two = h.record({ instance: "w", sender: "agent", text: "two", ts: "t2" });
+    const { store, stream, sse, fetched, live } = await liveChat(() => ({}));
     // The stream delivers "one" with its cursor, then goes quiet.
-    p.sse.message!({ data: JSON.stringify(one), lastEventId: h.cursorOf(one) });
-    expect(p.read("lastCursor")).toBe("b1-1");
+    sse.message!({ data: JSON.stringify(one), lastEventId: h.cursorOf(one) });
     // The poll asks from exactly there, and gets "one" again (a replay) plus "two".
-    p.setPollReply(() => ({ status: { instances: [], uptime: 1 }, messages: [one, two], cursor: "b1-2" }));
-    p.read("pollOnce()");
-    await new Promise(r => setTimeout(r, 0));
-    await new Promise(r => setTimeout(r, 0));
-    expect(p.fetched.at(-1)).toBe("/ui/poll?after=b1-1");
-    expect(p.read("msgs.w.map(m => m.text)")).toEqual(["one", "two"]);
-    expect(p.read("lastCursor")).toBe("b1-2");
+    live.route = () => ({ status: { instances: [], uptime: 1 }, messages: [one, two], cursor: "b1-2" });
+    await stream._pollOnce();
+    expect(fetched.at(-1)).toBe("/ui/poll?after=b1-1");
+    expect(store.state.msgs.w.map((m: { text: string }) => m.text)).toEqual(["one", "two"]);
     // The stream comes back with "two" (already shown by the poll): still once.
-    p.sse.message!({ data: JSON.stringify(two), lastEventId: h.cursorOf(two) });
-    expect(p.read("msgs.w.map(m => m.text)")).toEqual(["one", "two"]);
+    sse.message!({ data: JSON.stringify(two), lastEventId: h.cursorOf(two) });
+    expect(store.state.msgs.w.map((m: { text: string }) => m.text)).toEqual(["one", "two"]);
+    await stream._pollOnce();
+    expect(fetched.at(-1)).toBe("/ui/poll?after=b1-2");
   });
+});
 
-  // #1313 review: while the agent works, an empty composer shows only Stop. Text the page itself puts back — after a
-  // failed send, or by Put Back — must bring Send back at once: no keystroke and no status frame in between.
-  function busyComposer() {
-    const p = page();
-    const made: any[] = [];
-    const el = () => { const n: any = { style: {}, dataset: {}, children: [] as any[], remove() {}, append(...k: any[]) { n.children.push(...k); }, setAttribute() {} }; made.push(n); return n; };
-    p.read("document.createElement = () => makeEl()");
-    (p.c as any).makeEl = el;
-    Object.assign(p.nodes, { stopBtn: { hidden: true }, sendBtn: { hidden: false }, pendingFiles: { textContent: "", append() {} }, failedSend: { className: "", textContent: "", append() {} } });
-    p.read('activity.w = "working"');
-    const shown = () => ({ stop: !p.nodes.stopBtn.hidden, send: !p.nodes.sendBtn.hidden });
-    return { p, made, shown };
-  }
+// ── the composer, mounted: busy, Send and Stop reply ───────────────────────────────────────────────────────────
+
+/** The app as boot() leaves it: the chat store on a stream (not started: the composer needs no transport), the app's
+ *  status frame for the instances, and <ChatPanel> mounted on a route. Each test uses its own instance name. */
+let app: { p: AppPage; chat: Served; net: ReturnType<typeof fakeNet>; toasts: string[]; mount: (name: string) => Promise<void>; setExec: (name: string, state: string) => void; ChatPanel: unknown; h: unknown; instances: Set<string> } | null = null;
+async function bootApp() {
+  const p = page({ storage: { agend_tour_done: "1" } });
+  const { boot, ChatPanel } = await panelMod();
+  const { createStream } = await streamMod();
+  const { applyActivity, applyStatus } = await appStoreMod();
+  const net = fakeNet();
+  const toasts: string[] = [];
+  const chat = boot({ stream: createStream({ mode: "view" }), deps: { fetch: net.fetch, toast: (m: string) => { toasts.push(m); } } });
+  const instances = new Set<string>();
+  const execOf: Record<string, string> = {};
+  // Every status frame carries each instance's execution state, as the server's does.
+  const setInstances = () => applyStatus({ instances: [...instances].map(name => ({ name, status: "running", state: "idle", execution_state: execOf[name] ?? "idle" })), uptime: 1 });
+  const mount = async (name: string) => {
+    instances.add(name); setInstances();
+    await p.mount(h(ChatPanel, { route: { instance: name }, navKey: name }));
+  };
+  // The app's two consumers of the activity frame: the store (the thread's working line) and the app store (the composer's buttons).
+  const setExec = (name: string, state: string) => { execOf[name] = state; applyActivity({ instance: name, state }); chat.applyActivity({ instance: name, state }); };
+  app = { p, chat, net, toasts, mount, setExec, ChatPanel, h, instances };
+  return app;
+}
+
+describe("the composer (panel-chat.js, mounted)", () => {
+  let a: NonNullable<typeof app>;
+  beforeAll(async () => { a = (await bootApp())!; });
+  afterAll(async () => { await a.p.unmount(); a.p.restore(); });
+  const $ = (id: string) => a.p.document.getElementById(id)!;
+  const buttonNamed = (text: string) => a.p.document.querySelectorAll("button").find(b => b.textContent === text)!;
+  const shown = () => ({ stop: !$("stopBtn").hidden, send: !$("sendBtn").hidden });
+  const type = async (text: string) => { const ta = $("msgIn"); ta.value = text; fire(ta, "input"); await settle(); };
 
   it("busy, a text-only send fails: the text comes back with Send beside Stop", async () => {
-    const { p, shown } = busyComposer();
-    p.nodes.msgIn.value = "hello";
-    p.read("renderComposerButtons()");
+    const name = "busy-text";
+    await a.mount(name);
+    a.setExec(name, "working");
+    await settle();
+    await type("hello");
     expect(shown()).toEqual({ stop: true, send: true });
-    const send = p.read("sendMsg()");
+    const reply = gate();
+    a.net.route = async (path) => (path === "/ui/send" ? reply.promise : { body: {} });
+    $("sendBtn").click();
+    await settle();
+    expect($("stopBtn").textContent, "the composer's Stop is named Stop reply").toBe("Stop reply");
     expect(shown(), "sent: the composer is empty, only Stop").toEqual({ stop: true, send: false });
-    p.release({ error: "instance is busy" });
-    await send;
-    expect(p.nodes.msgIn.value).toBe("hello");
+    reply.open({ body: { error: "instance is busy" } });
+    await settle(6);
+    expect($("msgIn").value).toBe("hello");
     expect(shown(), "given back: Send is there again").toEqual({ stop: true, send: true });
   });
 
-  it("busy, Put Back: the kept text comes back with Send beside Stop", () => {
-    const { p, made, shown } = busyComposer();
-    p.read('failedSends.w = "kept for later"; renderComposerButtons(); renderFailedSend()');
+  it("busy, Put Back: the kept text comes back with Send beside Stop", async () => {
+    // The person left the chat before the answer came: the text is kept for that chat, offered back when they return.
+    const name = "busy-put";
+    await a.mount(name);
+    a.setExec(name, "working");
+    await settle();
+    await type("kept for later");
+    const reply = gate();
+    a.net.route = async (path) => (path === "/ui/send" ? reply.promise : { body: {} });
+    $("sendBtn").click();
+    await settle();
+    await a.p.unmount();
+    reply.open({ body: { error: "instance is busy" } });
+    await settle(6);
+    await a.mount(name);
+    expect(a.p.document.querySelector(".failed-send .txt")!.textContent).toBe("kept for later");
     expect(shown()).toEqual({ stop: true, send: false });
-    made.find(n => n.textContent === "Put back")!.onclick();
-    expect(p.nodes.msgIn.value).toBe("kept for later");
+    buttonNamed("Put back").click();
+    await settle();
+    expect($("msgIn").value).toBe("kept for later");
     expect(shown()).toEqual({ stop: true, send: true });
   });
 
   it("control: text and files given back together — the files first, then the text — and Send is there", async () => {
-    const { p, shown } = busyComposer();
-    p.release({});                                                     // api is not reached: the upload fails first
-    p.nodes.msgIn.value = "with a file";
-    p.read('pendingFiles.w = [{ name: "a.txt", size: 3, type: "text/plain" }]');
-    await p.read("sendMsg()");
-    expect(p.read("pendingFiles.w.map(f => f.name)")).toEqual(["a.txt"]);
-    expect(p.nodes.msgIn.value).toBe("with a file");
+    const name = "busy-files";
+    await a.mount(name);
+    a.setExec(name, "working");
+    await settle();
+    a.net.route = async (path) => (path.startsWith("/ui/upload") ? { ok: false, body: {} } : { body: {} });
+    a.chat.addFiles(name, [{ name: "a.txt", size: 3, type: "text/plain" }]);
+    await settle();
+    await type("with a file");
+    $("sendBtn").click();
+    await settle(6);
+    expect(a.chat.state.pendingFiles[name].map((f: { name: string }) => f.name)).toEqual(["a.txt"]);
+    expect($("msgIn").value).toBe("with a file");
     expect(shown()).toEqual({ stop: true, send: true });
   });
 });

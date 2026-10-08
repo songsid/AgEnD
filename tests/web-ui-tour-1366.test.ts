@@ -1,258 +1,252 @@
 /**
  * #1366 item 4: the first sign-in tour in /ui. Shown once on this device, dismissed by Got it / Skip / Esc, replayed
- * from Tour in the sidebar, and built from classes only (#1300: no style attribute, no inline style). The dashboard's
- * own script runs as written in a vm with a small fake DOM; what a browser does with it is the smoke in the PR.
+ * from Tour in the sidebar, and built from classes only (#1300: no style attribute, no inline style). The tour
+ * (chat-tour.js) and the shell's key handling (app-shell.js) run as the app imports them, in the mini DOM; what a
+ * browser does with them is the smoke in the PR.
  */
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import vm from "node:vm";
+import { installDom, MiniEvent, settle, type MiniPage } from "./helpers/mini-dom.js";
 
 const UI = join(process.cwd(), "src", "ui");
-const RENDER = readFileSync(join(UI, "chat-render.js"), "utf8");
-const DASHBOARD = readFileSync(join(UI, "dashboard.html"), "utf8");
-const PAGE = DASHBOARD.match(/<script>\n([\s\S]*?)<\/script>/)![1]!;
+const TOUR_SRC = readFileSync(join(UI, "chat-tour.js"), "utf8");
+const PANEL_SRC = readFileSync(join(UI, "panel-chat.js"), "utf8");
+const TOUR_KEY = "agend_tour_done";
 
-class FakeEl {
-  id = ""; className = ""; hidden = false; title = ""; type = "";
-  private text = "";
-  /** As in a browser: setting it replaces the children. */
-  get textContent(): string { return this.text + this.children.map(c => c.textContent).join(""); }
-  set textContent(v: string) { for (const c of this.children) c.parent = null; this.children = []; this.text = v; }
-  /** Markup is not parsed — except that a needs-you badge in it becomes a new badge element, as a redraw would. */
-  set innerHTML(v: string) {
-    this.textContent = "";
-    if (v.includes("badge-await")) { const b = new FakeEl("span", this.doc); b.id = `badge-${++FakeEl.made}`; b.className = "badge-await"; this.append(b); }
-  }
-  static made = 0;
-  dataset: Record<string, string> = {};
-  attrs: Record<string, string> = {};
-  children: FakeEl[] = [];
-  parent: FakeEl | null = null;
-  constructor(public tag: string, private doc: FakeDoc) {}
-  get style(): never { throw new Error(`style touched on <${this.tag}>`); }
-  get classList() {
-    const list = () => this.className.split(/\s+/).filter(Boolean);
-    return {
-      add: (c: string) => { if (!list().includes(c)) this.className = [...list(), c].join(" "); },
-      remove: (c: string) => { this.className = list().filter(x => x !== c).join(" "); },
-      contains: (c: string) => list().includes(c),
-      toggle: (c: string) => { const on = !list().includes(c); if (on) this.classList.add(c); else this.classList.remove(c); return on; },
-    };
-  }
-  setAttribute(k: string, v: string) { if (k === "style") throw new Error("style attribute set"); this.attrs[k] = v; }
-  getAttribute(k: string) { return this.attrs[k] ?? null; }
-  append(...kids: FakeEl[]) { for (const k of kids) { k.parent = this; this.children.push(k); } }
-  appendChild(k: FakeEl) { this.append(k); return k; }
-  remove() { if (this.parent) this.parent.children = this.parent.children.filter(c => c !== this); this.parent = null; }
-  focus() { this.doc.activeElement = this; }
-  closest(sel: string) { let n: FakeEl | null = this; while (n) { if (sel === "[data-act]" && n.dataset.act) return n; n = n.parent; } return null; }
-  addEventListener() {}
-  querySelectorAll() { return []; }
-  querySelector() { return null; }
-  get offsetParent() { return null; }
-  /** Every element under this one, itself included. */
-  all(): FakeEl[] { return [this, ...this.children.flatMap(c => c.all())]; }
-}
-
-class FakeDoc {
-  activeElement: FakeEl | null = null;
-  listeners: Record<string, Array<(e: unknown) => void>> = {};
-  body: FakeEl;
-  fixed: Record<string, FakeEl> = {};
-  constructor() {
-    this.body = new FakeEl("body", this);
-    for (const id of ["instanceList", "mainArea", "tourBtn", "attachBtn", "sendBtn", "stopBtn", "messages", "uptime", "sbOpen", "fleetEntry", "msgIn"]) {
-      const e = new FakeEl("div", this); e.id = id; this.fixed[id] = e; this.body.append(e);
-    }
-    this.fixed.stopBtn.hidden = true;
-  }
-  createElement = (tag: string) => new FakeEl(tag, this);
-  getElementById = (id: string) => this.body.all().find(e => e.id === id) ?? null;
-  querySelector = (sel: string) => sel === ".badge-await" ? this.body.all().find(e => e.classList.contains("badge-await")) ?? null : null;
-  querySelectorAll = () => [];
-  contains = (e: FakeEl) => this.body.all().includes(e);
-  addEventListener = (t: string, f: (e: unknown) => void) => { (this.listeners[t] ??= []).push(f); };
-}
+let current: MiniPage | null = null;
+afterEach(() => {
+  vi.restoreAllMocks();
+  current?.restore();
+  current = null;
+});
 
 /**
- * The dashboard's script on a fresh page. `storage` is shared across loads (one device). null: reading the tour's key
- * throws. Only that key — the page's first line already reads agend_lang unguarded, so a storage that throws on
- * everything stops the whole script before the tour, which is not the tour's case to test.
+ * The page on a fresh load: the shell's element ids the tour outlines, and the app's own key listener (app.js installs
+ * handleKey on the document). `storage` is this device's, shared across loads by passing a previous load's entries.
+ * `blockTourKey`: this browser's storage throws for the tour's key (private windows, blocked site data).
  */
-function load(storage: Map<string, string> | null = new Map(), lang = "en", narrow = false) {
-  const doc = new FakeDoc();
-  const s = storage ?? new Map<string, string>();
-  const refuse = (k: string) => { if (!storage && k === "agend_tour_done") throw new Error("SecurityError"); };
-  const localStorage = {
-    getItem: (k: string) => { refuse(k); return s.get(k) ?? null; },
-    setItem: (k: string, v: string) => { refuse(k); s.set(k, v); },
-    removeItem: (k: string) => { s.delete(k); },
-  };
-  if (lang !== "en") s.set("agend_lang", lang);
-  const c = vm.createContext({
-    localStorage, navigator: { language: "en" }, document: doc, matchMedia: () => ({ matches: narrow }),
-    setTimeout: () => 0, clearTimeout() {}, setInterval: () => 0, clearInterval() {},
-    fetch: async () => ({ ok: true, json: async () => ({}) }),
-    EventSource: class { addEventListener() {} },
-    AgendPreview: { init() {}, optedIn: () => false, onChange() {}, stopAll: () => [], stopIn: () => [], availability: () => ({ ok: false }), BANNER: "" },
-  });
-  vm.runInContext(RENDER, c);
-  vm.runInContext(PAGE, c);
+async function load(opts: { storage?: Record<string, string>; narrow?: boolean; lang?: string; blockTourKey?: boolean; install?: boolean } = {}) {
+  vi.resetModules();
+  const storage = { ...(opts.lang ? { agend_lang: opts.lang } : {}), ...(opts.storage ?? {}) };
+  const dom = installDom({ storage, matchNarrow: !!opts.narrow });
+  current = dom;
+  const doc = dom.document;
+  for (const id of ["instanceList", "main", "attachBtn", "sendBtn", "stopBtn", "sbOpen", "msgIn"]) {
+    const e = doc.createElement("div"); e.id = id; doc.body.append(e);
+  }
+  (doc.getElementById("stopBtn") as any).hidden = true;
+  if (opts.blockTourKey) {
+    const real = (globalThis as any).localStorage;
+    const refuse = (k: string) => { if (k === TOUR_KEY) throw new Error("SecurityError"); };
+    (globalThis as any).localStorage = {
+      getItem: (k: string) => { refuse(k); return real.getItem(k); },
+      setItem: (k: string, v: string) => { refuse(k); real.setItem(k, v); },
+      removeItem: (k: string) => real.removeItem(k),
+    };
+  }
+  const shell = await import("/assets/app-shell.js");
+  // @ts-expect-error — a JS module of the app, with no types (as app-harness.ts does for preact)
+  const tour = await import("../src/ui/chat-tour.js");
+  doc.addEventListener("keydown", shell.handleKey);
+  if (opts.install !== false) tour.installTour();   // the chat's boot() does this on the page
+  await settle();                                   // the first showing waits one macrotask
   const card = () => doc.getElementById("tour");
-  const text = () => card()?.all().find(e => e.className === "tour-text")?.textContent;
-  const buttons = () => (card()?.all() ?? []).filter(e => e.tag === "button");
-  const click = (el: FakeEl) => { for (const f of doc.listeners.click ?? []) f({ target: el }); };
-  const key = (k: string, repeat = false) => { for (const f of doc.listeners.keydown ?? []) f({ key: k, repeat, isComposing: false, preventDefault() {} }); };
+  const text = () => card()?.querySelector(".tour-text")?.textContent;
+  const buttons = () => (card()?.querySelectorAll("button") ?? []) as any[];
   const button = (label: string) => buttons().find(b => b.textContent === label)!;
-  const spotted = () => doc.body.all().filter(e => e.classList.contains("tour-spot")).map(e => e.id);
-  return { doc, c, card, text, buttons, click, key, button, spotted };
+  const click = (el: any) => el.click();
+  /** A key press goes to the focused element, as a browser sends it; a held key repeats. */
+  const key = (k: string, repeat = false) => {
+    const target = (doc.activeElement ?? doc.body) as any;
+    target.dispatchEvent(new MiniEvent("keydown", { bubbles: true, key: k, repeat, isComposing: false }));
+  };
+  const spotted = () => (doc.querySelectorAll(".tour-spot") as any[]).map(e => e.id);
+  return { doc, dom, shell, tour, storage: dom.storage, card, text, buttons, button, click, key, spotted };
 }
 
 describe("the first sign-in tour (#1366)", () => {
-  it("opens on the first load: step 1 of 5, the instance list outlined, focus on Next", () => {
-    const p = load();
-    expect(p.card()?.attrs.role).toBe("dialog");
+  it("opens on the first load: step 1 of 5, the instance list outlined, focus on Next", async () => {
+    const p = await load();
+    expect(p.card()?.getAttribute("role")).toBe("dialog");
     expect(p.text()).toMatch(/Pick an instance/);
-    expect(p.card()!.all().find(e => e.className === "tour-count")?.textContent).toBe("1 of 5");
+    expect(p.card()!.querySelector(".tour-count")?.textContent).toBe("1 of 5");
     expect(p.spotted()).toEqual(["instanceList"]);
     expect(p.doc.activeElement?.textContent).toBe("Next");
     expect(p.buttons().map(b => b.textContent)).toEqual(["Skip", "Next"]);
   });
 
-  it("walks the five points — same conversation, files, Stop, needs you — and Back goes back", () => {
-    const p = load();
+  it("walks the five points — same conversation, files, Stop, needs you — and Back goes back", async () => {
+    const p = await load();
     p.click(p.button("Next"));
-    expect([p.text(), p.spotted()]).toEqual([expect.stringMatching(/same conversation as its Telegram or Discord/), ["mainArea"]]);
+    expect([p.text(), p.spotted()]).toEqual([expect.stringMatching(/same conversation as its Telegram or Discord/), ["main"]]);
     p.click(p.button("Next"));
     expect([p.text(), p.spotted()]).toEqual([expect.stringMatching(/📎/), ["attachBtn"]]);
     p.click(p.button("Back"));
-    expect(p.spotted()).toEqual(["mainArea"]);
+    expect(p.spotted()).toEqual(["main"]);
     p.click(p.button("Next")); p.click(p.button("Next"));
-    expect([p.text(), p.spotted()]).toEqual([expect.stringMatching(/Send becomes Stop/), ["sendBtn"]]);
+    expect([p.text(), p.spotted()]).toEqual([expect.stringMatching(/Stop reply appears/), ["sendBtn"]]);
     p.click(p.button("Next"));
     expect(p.text()).toMatch(/needs you/);
     expect(p.buttons().map(b => b.textContent)).toEqual(["Back", "Got it"]);
   });
 
-  it("outlines Stop when it is showing, and a real needs-you badge when there is one", () => {
-    const p = load();
-    p.doc.fixed.stopBtn.hidden = false;
-    const badge = p.doc.createElement("span"); badge.id = "badge"; badge.className = "badge-await"; p.doc.fixed.instanceList.append(badge);
-    vm.runInContext("showTourStep(3)", p.c);
+  it("outlines Stop when it is showing, and a real needs-you badge when there is one", async () => {
+    const p = await load();
+    (p.doc.getElementById("stopBtn") as any).hidden = false;
+    const badge = p.doc.createElement("span"); badge.id = "badge"; badge.className = "badge-await";
+    p.doc.getElementById("instanceList")!.append(badge);
+    for (let i = 0; i < 3; i++) p.click(p.button("Next"));
     expect(p.spotted()).toEqual(["stopBtn"]);
-    vm.runInContext("showTourStep(4)", p.c);
+    p.click(p.button("Next"));
     expect(p.spotted()).toEqual(["badge"]);
   });
 
-  it("Got it closes it, clears the outline, and it never opens again on this device", () => {
-    const storage = new Map<string, string>();
-    const p = load(storage);
-    for (let i = 0; i < 4; i++) p.click(p.button("Next"));
-    p.click(p.button("Got it"));
-    expect([p.card(), p.spotted(), storage.get("agend_tour_done")]).toEqual([null, [], "1"]);
-    expect(load(storage).card()).toBeNull();
+  it("Got it closes it, clears the outline, and it never opens again on this device", async () => {
+    const first = await load();
+    for (let i = 0; i < 4; i++) first.click(first.button("Next"));
+    first.click(first.button("Got it"));
+    expect([first.card(), first.spotted(), first.storage.get(TOUR_KEY)]).toEqual([null, [], "1"]);
+    const again = await load({ storage: Object.fromEntries(first.storage) });
+    expect(again.card()).toBeNull();
   });
 
-  it("Skip and Esc dismiss it for good too", () => {
-    const a = new Map<string, string>(), pa = load(a);
-    pa.click(pa.button("Skip"));
-    expect([pa.card(), a.get("agend_tour_done")]).toEqual([null, "1"]);
-    const b = new Map<string, string>(), pb = load(b);
-    pb.click(pb.button("Next"));
-    pb.key("Escape");
-    expect([pb.card(), pb.spotted(), b.get("agend_tour_done")]).toEqual([null, [], "1"]);
+  it("Skip and Esc dismiss it for good too", async () => {
+    const a = await load();
+    a.click(a.button("Skip"));
+    expect([a.card(), a.storage.get(TOUR_KEY)]).toEqual([null, "1"]);
+    const b = await load();
+    b.click(b.button("Next"));
+    b.key("Escape");
+    expect([b.card(), b.spotted(), b.storage.get(TOUR_KEY)]).toEqual([null, [], "1"]);
   });
 
-  it("Esc with the tour closed still does what it did before (closes the drawer)", () => {
-    const p = load(new Map([["agend_tour_done", "1"]]));
-    p.doc.body.classList.add("sb-open");
+  it("Esc with the tour closed still does what it did before (closes the drawer)", async () => {
+    const p = await load({ storage: { [TOUR_KEY]: "1" }, narrow: true });
+    p.shell.openDrawer();
     p.key("Escape");
-    expect(p.doc.body.classList.contains("sb-open")).toBe(false);
+    expect(p.shell.shellStore.get().drawer).toBe(false);
   });
 
-  it("a held Esc that closes the tour does not go on to Stop the agent; a new press does (#1369 review)", () => {
-    const p = load();
-    const stops: string[] = [];
-    (p.c as any).stops = stops;
-    // A busy chat where Esc would Stop: the page's own check says yes, and cancelReply records what it was asked.
-    vm.runInContext('stopOnEscape = () => true; cancelReply = (name) => { stops.push(String(name)); }; cur = "w";', p.c);
-    p.key("Escape");                                            // closes the tour
-    expect([p.card(), stops]).toEqual([null, []]);
-    p.key("Escape", true); p.key("Escape", true);               // the same key, held
-    expect(stops).toEqual([]);
-    p.key("Escape");                                            // released and pressed again: not a repeat
-    expect(stops).toEqual(["w"]);
+  it("a held Esc that closes the tour does not go on to the chat's Esc (Stop the reply); a new press does (#1369 review)", async () => {
+    const p = await load();
+    // The chat's own Esc handler, as ChatView registers it: it is reached through the shell only.
+    const reached: string[] = [];
+    p.shell.onPanelKey((e: { key: string }) => { reached.push(e.key); });
+    p.key("Escape");                                    // closes the tour: the press is spent
+    expect([p.card(), reached]).toEqual([null, []]);
+    p.doc.body.focus();
+    p.key("Escape", true); p.key("Escape", true);       // the same key, held
+    expect(reached).toEqual([]);
+    p.key("Escape");                                    // released and pressed again: not a repeat
+    expect(reached).toEqual(["Escape"]);
   });
 
-  it("on a phone, Tour from the open drawer closes the drawer first; Esc then closes the tour and focus goes back to ☰ (#1369 review)", () => {
-    const p = load(new Map([["agend_tour_done", "1"]]), "en", true);
-    p.doc.body.classList.add("sb-open");
-    p.doc.fixed.tourBtn.dataset.act = "startTour";
-    p.doc.fixed.tourBtn.focus();
-    p.click(p.doc.fixed.tourBtn);
-    expect(p.doc.body.classList.contains("sb-open")).toBe(false);
+  it("on a phone, Tour from the open drawer closes the drawer first; Esc then closes the tour and focus goes back to ☰ (#1369 review)", async () => {
+    const p = await load({ storage: { [TOUR_KEY]: "1" }, narrow: true });
+    p.shell.openDrawer();
+    (p.doc.getElementById("sbOpen") as any).focus();
+    p.tour.startTour();
+    expect(p.shell.shellStore.get().drawer).toBe(false);
     expect(p.card()).not.toBeNull();
     expect(p.doc.activeElement?.textContent).toBe("Next");
     p.key("Escape");
     expect([p.card(), p.doc.activeElement?.id]).toEqual([null, "sbOpen"]);
   });
 
-  it("Esc closes an open drawer before the tour (the drawer is on top of the card)", () => {
-    const p = load(new Map(), "en", true);
-    p.doc.body.classList.add("sb-open");
+  it("the sidebar's Tour button does the same: the drawer closes first and the card opens (#1366)", async () => {
+    const p = await load({ storage: { [TOUR_KEY]: "1" }, narrow: true, install: false });
+    // The chat's boot() adds the sidebar footer, with the Tour button, and installs the tour.
+    // @ts-expect-error — a JS module of the app, with no types (as app-harness.ts does for preact)
+    const panel = await import("../src/ui/panel-chat.js");
+    const { appStore } = await import("/assets/app-store.js");
+    panel.boot({ stream: { on() {} }, boot: undefined, deps: { fetch: () => new Promise(() => {}) } });
+    appStore.set({ ready: true, instances: [] });
+    const preact = await import("/assets/preact.module.js");
+    const footer = p.shell.shellStore.get().footer.find((f: { key: string }) => f.key === "tour");
+    const host = p.doc.createElement("div"); p.doc.body.append(host);
+    preact.render(preact.h(footer.Component, {}), host);
+    await settle();
+    const btn = host.querySelector("#tourBtn") as any;
+    expect(btn.textContent).toMatch(/Tour/);
+    p.shell.openDrawer();
+    (p.doc.getElementById("sbOpen") as any).focus();
+    btn.click();
+    await settle();
+    expect(p.shell.shellStore.get().drawer).toBe(false);
+    expect(p.text()).toMatch(/Pick an instance/);
+    expect(p.doc.activeElement?.textContent).toBe("Next");
+  });
+
+  it("Esc closes an open drawer before the tour (the drawer is on top of the card)", async () => {
+    const p = await load({ narrow: true });
+    p.shell.openDrawer();
     p.key("Escape");
-    expect([p.doc.body.classList.contains("sb-open"), p.card() !== null]).toEqual([false, true]);
+    expect([p.shell.shellStore.get().drawer, p.card() !== null]).toEqual([false, true]);
     p.key("Escape");
     expect(p.card()).toBeNull();
   });
 
-  it("the outline follows a redraw on the same step: a new needs-you badge, Send swapped for Stop — same card, same focus (#1369 review)", () => {
-    const p = load();
-    vm.runInContext('instances = [{ name: "w", status: "running" }]; awaiting.w = ""; renderList();', p.c);
-    vm.runInContext("showTourStep(4)", p.c);
-    const first = p.spotted();
-    expect(first[0]).toMatch(/^badge-/);
-    const focused = p.doc.activeElement, card = p.card();
-    vm.runInContext("renderList()", p.c);                       // a status update redraws the list: a new badge element
-    expect(p.spotted()).toHaveLength(1);
-    expect(p.spotted()[0]).not.toBe(first[0]);
-    expect([p.card(), p.doc.activeElement]).toEqual([card, focused]);
+  it("the outline follows a redraw on the same step: a new needs-you badge, Send swapped for Stop — same card, same focus (#1369 review)", async () => {
+    const p = await load();
+    for (let i = 0; i < 4; i++) p.click(p.button("Next"));          // step 5: the badge, or the instance list
+    expect(p.spotted()).toEqual(["instanceList"]);
+    const card = p.card(), focused = p.doc.activeElement;
+    // A status update redraws the list: a badge appears as a new element.
+    const badge = p.doc.createElement("span"); badge.id = "badge-1"; badge.className = "badge-await";
+    p.doc.getElementById("instanceList")!.append(badge);
+    p.tour.refreshTourSpot();
+    expect(p.spotted()).toEqual(["badge-1"]);
+    const badge2 = p.doc.createElement("span"); badge2.id = "badge-2"; badge2.className = "badge-await";
+    badge.remove(); p.doc.getElementById("instanceList")!.append(badge2);
+    p.tour.refreshTourSpot();
+    expect(p.spotted()).toEqual(["badge-2"]);
+    expect(p.card()).toBe(card);
+    expect(p.doc.activeElement).toBe(focused);
 
-    vm.runInContext("showTourStep(3)", p.c);
+    p.click(p.button("Back"));                                       // step 4: Send, or Stop when it shows
     expect(p.spotted()).toEqual(["sendBtn"]);
-    (p.doc.fixed.msgIn as any).value = "";                      // nothing typed: a busy agent shows Stop alone
-    vm.runInContext('cur = "w"; activity.w = "working"; renderComposerButtons();', p.c);  // idle → working
-    expect([p.doc.fixed.stopBtn.hidden, p.doc.fixed.sendBtn.hidden]).toEqual([false, true]);
+    const card4 = p.card(), focused4 = p.doc.activeElement;          // a redraw on this step keeps both
+    (p.doc.getElementById("stopBtn") as any).hidden = false;          // a busy agent shows Stop, Send goes
+    (p.doc.getElementById("sendBtn") as any).hidden = true;
+    p.tour.refreshTourSpot();
     expect(p.spotted()).toEqual(["stopBtn"]);
+    expect(p.card()).toBe(card4);
+    expect(p.doc.activeElement).toBe(focused4);
   });
 
-  it("Tour in the sidebar replays it after it was dismissed", () => {
-    const p = load(new Map([["agend_tour_done", "1"]]));
+  it("Tour replays it after it was dismissed", async () => {
+    const p = await load({ storage: { [TOUR_KEY]: "1" } });
     expect(p.card()).toBeNull();
-    expect(p.doc.fixed.tourBtn.textContent).toBe("Tour");
-    p.doc.fixed.tourBtn.dataset.act = "startTour";
-    p.click(p.doc.fixed.tourBtn);
+    p.tour.startTour();
     expect(p.text()).toMatch(/Pick an instance/);
   });
 
-  it("when this browser's storage cannot be read, it is not shown at all (never on every load)", () => {
-    expect(load(null).card()).toBeNull();
+  it("when this browser's storage cannot be read, it is not shown at all (never on every load)", async () => {
+    const p = await load({ blockTourKey: true });
+    expect(p.card()).toBeNull();
+    expect(p.tour.tourDone()).toBe(true);
   });
 
-  it("speaks zh-TW where the dashboard does", () => {
-    const p = load(new Map(), "zh-TW");
+  it("speaks zh-TW where the dashboard does", async () => {
+    const p = await load({ lang: "zh-TW" });
     expect(p.text()).toMatch(/選一個 instance/);
     expect(p.buttons().map(b => b.textContent)).toEqual(["略過", "下一步"]);
   });
 
-  it("is styled by classes in the page's own <style>: no style attribute, no inline style (#1300)", () => {
-    // The fake DOM throws on any style access or style attribute; reaching the end of the tour is the check.
-    const p = load();
+  it("is styled by classes in the app's stylesheet: no style attribute, no inline style (#1300)", async () => {
+    // Nothing in the tour's code reaches a style property or attribute, and nothing it builds carries one.
+    const code = TOUR_SRC.split("\n").filter(l => !/^\s*\/\//.test(l)).join("\n");
+    expect(code).not.toMatch(/\.style\b|\bstyle\s*=|["']style["']/);
+    expect(PANEL_SRC).not.toMatch(/id="tourBtn"[^>]*\sstyle\b/);
+    const p = await load();
     for (let i = 0; i < 4; i++) p.click(p.button("Next"));
     p.click(p.button("Got it"));
-    const css = DASHBOARD.match(/<style>([\s\S]*?)<\/style>/)![1]!;
+    const css = readFileSync(join(UI, "shared", "app.css"), "utf8");
     for (const cls of [".tour {", ".tour-spot {", ".tour .tour-foot"]) expect(css).toContain(cls);
-    expect(DASHBOARD).not.toMatch(/id="tourBtn"[^>]*style=/);
+    const built = await load();
+    for (const el of [built.card(), ...(built.doc.querySelectorAll(".tour-spot") as any[])] as any[]) {
+      expect(el.hasAttribute("style")).toBe(false);
+    }
   });
 });

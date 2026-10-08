@@ -8,6 +8,8 @@ import { bypassesWebGate } from "../src/auth-api.js";
 import { isViewPath } from "../src/view-api.js";
 import { isUsagePath } from "../src/usage/usage-api.js";
 import { csrfTokenFor } from "../src/web-session.js";
+// @ts-expect-error — a shipped ESM module with no types (the app's own file)
+import { createStream } from "../src/ui/shared/app-stream.js";
 
 const ui = (name: string) => readFileSync(join(process.cwd(), "src", "ui", name), "utf8");
 
@@ -131,34 +133,26 @@ describe("a passive poll is not activity (#1251 review): it never keeps an idle 
     await stop(h.fm);
   }, 30_000);
 
-  it("the dashboard's own polling, left alone, never keeps the session: the real page script against the real listener (#1253 review)", async () => {
+  it("the app's own polling, left alone, never keeps the session: the real stream against the real listener (#1253 review)", async () => {
     const h = await startFleet();
     const clock = { t: Date.now() };
     const cookie = await signedInAt(h, clock);
     const start = clock.t;
-    // The page as served, its fetch going to the real listener with this browser's cookie.
-    const vm = await import("node:vm");
-    const RENDER = ui("chat-render.js");
-    const PAGE = ui("dashboard.html").match(/<script>\n([\s\S]*?)<\/script>/)![1]!;
+    // The page's stream as the app runs it on a public link (no EventSource; a poll at once, then every 5 s). Its fetch goes to
+    // the real listener with this browser's cookie; the test drives the clock and calls the poll itself.
     const requested: string[] = [];
     const browserFetch = async (url: string, o: { method?: string; headers?: Record<string, string>; body?: string } = {}) => {
       requested.push(url);
       const r = await raw(h.port, o.method ?? "GET", url, { cookie, origin: h.origin, ...(o.headers ?? {}) }, o.body);
       return { ok: r.status >= 200 && r.status < 300, status: r.status, json: async () => JSON.parse(r.body || "{}") };
     };
-    const node = () => ({ style: {}, remove() {}, append() {}, setAttribute() {}, children: [], textContent: "", innerHTML: "" });
-    const c = vm.createContext({
-      /* a returning browser: it has seen the first sign-in tour (#1366) */ localStorage: { getItem: (k: string) => k === "agend_tour_done" ? "1" : null }, navigator: { language: "en" },
-      document: { addEventListener() {}, getElementById: () => node(), createElement: () => node(), body: { appendChild() {} } },
-      setTimeout: () => 0, clearTimeout() {}, setInterval: () => 0, clearInterval() {},
-      fetch: browserFetch, EventSource: class { addEventListener() {} },
+    const stream = createStream({
+      mode: "full", transport: "poll",
+      env: { fetch: browserFetch, setInterval: () => 0, clearInterval() {}, setTimeout: () => 0, clearTimeout() {} },
     });
-    vm.runInContext(RENDER, c);
-    vm.runInContext(PAGE, c);
-    vm.runInContext('renderList=()=>{};renderActions=()=>{};renderMsgs=()=>{};mode="instance";cur="w";curTab="chat";', c);
-    const pollOnce = () => vm.runInContext("pollOnce()", c) as Promise<void>;
-    for (const at of [5_000, 1 * H, 2 * H - 5_000]) { clock.t = start + at; await pollOnce(); }
-    expect(requested.length, "three polls").toBe(3);
+    stream.start();                                  // the first poll, at once
+    for (const at of [5_000, 1 * H, 2 * H - 5_000]) { clock.t = start + at; await stream._pollOnce(); }
+    expect(requested.length, "four polls").toBe(4);
     expect(requested.every(u => u.startsWith("/ui/poll?")), `only polls, no background history read: ${requested.join(" ")}`).toBe(true);
     clock.t = start + 2 * H + 5_000;
     expect((await raw(h.port, "GET", "/ui/history?instance=w", { cookie })).status, "two hours after sign-in, nobody touched it").toBe(401);
@@ -233,8 +227,8 @@ describe("/ and the shared assets", () => {
 });
 
 describe("the panels adopt the shell", () => {
-  it("each panel loads the stylesheet and both scripts, and places one nav marked with its own name", () => {
-    for (const [file, current] of [["dashboard.html", "ui"], ["view.html", "view"], ["settings.html", "settings"]] as const) {
+  it("view and settings load the stylesheet and both scripts, and place one nav marked with their own name", () => {
+    for (const [file, current] of [["view.html", "view"], ["settings.html", "settings"]] as const) {
       const html = ui(file);
       expect(html, file).toContain('<link rel="stylesheet" href="/assets/shell.css">');
       expect(html, file).toContain('<script src="/assets/agend-auth.js"></script>');
@@ -244,13 +238,33 @@ describe("the panels adopt the shell", () => {
     }
   });
 
+  // #1408 step 1: the dashboard is the app shell. It loads the app's own stylesheets and modules instead of shell.js, and
+  // its navigation is the app's sidebar (rendered by the app), so it has no data-agend-nav slot.
+  it("the app shell loads its tokens, its styles, the sign-in helper, the theme before paint, and the app module — and not the old shell", () => {
+    const html = ui("app.html");
+    const head = html.slice(0, html.indexOf("</head>"));
+    expect(head).toContain('<link rel="stylesheet" href="/assets/tokens.css">');
+    expect(head).toContain('<link rel="stylesheet" href="/assets/app.css">');
+    expect(head).toContain('<script src="/assets/agend-auth.js"></script>');
+    expect(head).toContain('<script src="/assets/theme.js"></script>');
+    expect(html).toContain('<script type="module" src="/assets/app.js"></script>');
+    expect(html).not.toContain("/assets/shell.js");
+    expect(html).not.toContain("/assets/shell.css");
+    expect(html).not.toContain("data-agend-nav");
+  });
+
   it("loads nothing from another origin — no CDN fonts, scripts or styles", () => {
-    for (const file of ["dashboard.html", "view.html", "settings.html", "signin.html"]) {
+    for (const file of ["app.html", "view.html", "settings.html", "signin.html"]) {
       const html = ui(file);
       expect(html, file).not.toMatch(/<(?:link|script|img)[^>]+(?:href|src)=["']https?:/i);
       expect(html, file).not.toContain("fonts.googleapis.com");
       expect(html, file).not.toContain("fonts.gstatic.com");
       expect(html, file).not.toMatch(/@import\s+url\(["']?https?:/i);
+    }
+    for (const file of ["shared/tokens.css", "shared/app.css"]) {
+      const css = readFileSync(join(process.cwd(), "src", "ui", file), "utf8");
+      expect(css, file).not.toMatch(/https?:\/\//);
+      expect(css, file).not.toMatch(/@import/i);
     }
   });
 
@@ -261,20 +275,92 @@ describe("the panels adopt the shell", () => {
     expect(js).not.toContain("document.write");
     expect(js).not.toMatch(/\beval\(|new Function\(/);
   });
+});
 
-  it("the dashboard falls back to polling when the stream is silent, and stops when it speaks", () => {
-    const html = ui("dashboard.html");
-    expect(html).toContain("/ui/poll?after=");
-    expect(html).toContain("setTimeout(startPolling, 15000)");   // nothing within 15s of load
-    expect(html).toMatch(/function stopPolling\(\) \{ if \(pollTimer\) \{ clearInterval\(pollTimer\); pollTimer = null; \} \}/);
-    // ...and it is the stream speaking that stops it.
-    expect(html).toMatch(/function sseAlive\(\) \{ stopPolling\(\);/);
-    // A failing stream fires onerror again on every retry; the deadline must not be pushed back each time.
-    expect(html).toMatch(/if \(!errorTimer\) errorTimer = setTimeout\(startPolling, 5000\)/);
-    expect(html).toMatch(/sse\.addEventListener\("status", e => \{ sseAlive\(\);/);
-    // The stream's cursor is the poll's cursor; a message is ingested through the boot+id merge (behaviour:
-    // tests/web-chat-c1.test.ts "dashboard polling").
-    expect(html).toContain("if (e.lastEventId) lastCursor = e.lastEventId;");
-    expect(html).toContain("/ui/poll?after=${encodeURIComponent(lastCursor)}");
+describe("the app's stream falls back to polling when it is silent, and stops when it speaks (#1408 §3)", () => {
+  // A clock the test moves: setTimeout/setInterval fire when advance() passes their due time, in order.
+  function fakeEnv() {
+    let now = 0, nextId = 0;
+    const timers = new Map<number, { due: number; fn: () => void; every?: number }>();
+    const fetched: string[] = [];
+    const sources: FakeSource[] = [];
+    class FakeSource {
+      listeners = new Map<string, (e: { data: string; lastEventId?: string }) => void>();
+      onerror: (() => void) | null = null;
+      closed = false;
+      constructor(public url: string) { sources.push(this); }
+      addEventListener(name: string, fn: (e: { data: string; lastEventId?: string }) => void) { this.listeners.set(name, fn); }
+      close() { this.closed = true; }
+      frame(name: string, data: unknown, lastEventId?: string) { this.listeners.get(name)?.({ data: JSON.stringify(data), lastEventId }); }
+    }
+    const env = {
+      EventSource: FakeSource,
+      fetch: async (url: string) => { fetched.push(url); return { ok: true, json: async () => ({}) }; },
+      setTimeout: (fn: () => void, ms: number) => { const k = ++nextId; timers.set(k, { due: now + ms, fn }); return k; },
+      clearTimeout: (k: number) => { timers.delete(k); },
+      setInterval: (fn: () => void, ms: number) => { const k = ++nextId; timers.set(k, { due: now + ms, fn, every: ms }); return k; },
+      clearInterval: (k: number) => { timers.delete(k); },
+    };
+    function advance(ms: number) {
+      const end = now + ms;
+      for (;;) {
+        const due = [...timers].sort(([, a], [, b]) => a.due - b.due)[0];
+        if (!due || due[1].due > end) break;
+        const [k, t] = due;
+        now = t.due;
+        if (t.every) t.due += t.every; else timers.delete(k);
+        t.fn();
+      }
+      now = end;
+    }
+    return { env, fetched, sources, advance };
+  }
+
+  // A poll's answer settles between timers in a browser; here the fake clock is synchronous, so let it settle.
+  const settled = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
+
+  it("a silent stream: nothing for 15 s, then a poll every 5 s from the empty cursor", async () => {
+    const f = fakeEnv();
+    const stream = createStream({ mode: "full", env: f.env });
+    stream.start();
+    expect(f.sources.map(s => s.url)).toEqual(["/ui/events"]);
+    f.advance(14_999);
+    expect(f.fetched, "not yet").toEqual([]);
+    f.advance(1);
+    expect(f.fetched).toEqual(["/ui/poll?after="]);
+    expect(stream.connection()).toBe("polling");
+    await settled();
+    f.advance(5_000);
+    expect(f.fetched).toHaveLength(2);
+  });
+
+  it("a status frame stops the polling; the message's id is the poll cursor, and silence re-arms the poll with it", async () => {
+    const f = fakeEnv();
+    const stream = createStream({ mode: "full", env: f.env });
+    stream.start();
+    f.advance(15_000);
+    expect(f.fetched).toHaveLength(1);
+    await settled();
+    f.sources[0]!.frame("status", { instances: [] });
+    expect(stream.connection()).toBe("live");
+    f.advance(12_000);
+    expect(f.fetched, "the stream speaks: no poll").toHaveLength(1);
+    f.sources[0]!.frame("message", { text: "hi" }, "b-7");
+    f.advance(30_000);
+    expect(f.fetched.at(-1), "the poll resumes from the stream's cursor").toBe("/ui/poll?after=b-7");
+  });
+
+  it("a failing stream re-fires onerror on every retry, but the 5 s deadline is armed once, not pushed back", () => {
+    const f = fakeEnv();
+    const stream = createStream({ mode: "full", env: f.env });
+    stream.start();
+    f.advance(3_000);
+    f.sources[0]!.onerror!();                        // the first failure: the poll is due 5 s after it (t = 8 s)
+    f.advance(2_000);
+    f.sources[0]!.onerror!();                        // the browser's retry fails again: the deadline must not move
+    f.advance(2_999);
+    expect(f.fetched, "t = 7.999 s").toEqual([]);
+    f.advance(1);
+    expect(f.fetched, "t = 8 s").toEqual(["/ui/poll?after="]);
   });
 });

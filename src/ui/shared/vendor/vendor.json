@@ -1,0 +1,39 @@
+{
+  "note": "Vendored for #1408 (Preact + htm, no build). Every file below is byte-checked by tests/web-vendor-1408.test.ts.",
+  "packages": {
+    "preact": {
+      "version": "10.29.8",
+      "tarball": "https://registry.npmjs.org/preact/-/preact-10.29.8.tgz",
+      "integrity": "sha512-ej2aVZ+vZ8WO7tvlQWRM9N63A0KzF9q4mWJfDUHgYaIofWY9hu74QdnQrjoPMmZi2/nZ5gN0bJCQF49xQqx09Q==",
+      "license": "MIT",
+      "licenseFile": "vendor/preact.LICENSE",
+      "files": {
+        "preact.module.js": {
+          "upstream": "package/dist/preact.module.js",
+          "sha256": "c30e721ebfdc6e2ad4c18c14d2dfb82667829c8aec27de1207774e3fc16858a8",
+          "upstreamSha256": "c30e721ebfdc6e2ad4c18c14d2dfb82667829c8aec27de1207774e3fc16858a8"
+        },
+        "preact-hooks.module.js": {
+          "upstream": "package/hooks/dist/hooks.module.js",
+          "sha256": "f3555e7a8dba84175c94f17148ba6670e4b3716888fe06b3330a485637296a38",
+          "upstreamSha256": "a6ee626f2d01570592dd569a792e3f050154aa02890eead8c223fa3ed5aa3d5a",
+          "rewrite": { "from": "from\"preact\"", "to": "from\"./preact.module.js\"" }
+        }
+      }
+    },
+    "htm": {
+      "version": "3.1.1",
+      "tarball": "https://registry.npmjs.org/htm/-/htm-3.1.1.tgz",
+      "integrity": "sha512-983Vyg8NwUE7JkZ6NmOqpCZ+sh1bKv2iYTlUkzlWmA5JD2acKoxd4KVxbMmxX/85mtfdnDmTFoNKcg5DGAvxNQ==",
+      "license": "Apache-2.0",
+      "licenseFile": "vendor/htm.LICENSE",
+      "files": {
+        "htm.module.js": {
+          "upstream": "package/dist/htm.module.js",
+          "sha256": "ab33dd3f38059b9be4d5f5350128eefb2356639c4e0bbe9d9e8b3ba75847e9e4",
+          "upstreamSha256": "ab33dd3f38059b9be4d5f5350128eefb2356639c4e0bbe9d9e8b3ba75847e9e4"
+        }
+      }
+    }
+  }
+}
