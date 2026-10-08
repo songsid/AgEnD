@@ -54,7 +54,7 @@ describe("real Daemon.start baseline barrier with all host operations stubbed", 
     const monitor=d.transcriptMonitor;
     if(mode==="abort")d.startupAborted=true;
     if(mode==="epoch")d.launchFenceEpoch++;
-    if(mode==="replacement")d.transcriptMonitor={};
+    if(mode==="replacement")d.transcriptMonitor=new TranscriptMonitor("/not-used", {debug:vi.fn()} as never, seams.source);
     resolve(); await start;
     expect(stop).toHaveBeenCalledTimes(1); expect(stop.mock.instances[0]).toBe(monitor);
     expect(seams.source.close).toHaveBeenCalledTimes(1);
