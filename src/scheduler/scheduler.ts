@@ -1,10 +1,19 @@
 import { Cron } from "croner";
 import { randomUUID } from "node:crypto";
 import { SchedulerDb } from "./db.js";
-import type { Schedule, CreateScheduleParams, UpdateScheduleParams, SchedulerConfig, ScheduleRun } from "./types.js";
+import type { Schedule, CreateScheduleParams, UpdateScheduleParams, SchedulerConfig, ScheduleRun, ScheduleRetry, ScheduleRetryDrop } from "./types.js";
 import { validateTimezone } from "../config.js";
 
+/** #1426: how a pending retry ended without running, reported for the escalation. */
+export type RetryDroppedHandler = (schedule: Schedule, retry: ScheduleRetry, reason: ScheduleRetryDrop) => void;
+
 export class Scheduler {
+  /** #1426: an attempt waiting for a reset time gives the window this long to settle before it looks again. */
+  static readonly RETRY_RESET_GRACE_MS = 60_000;
+  /** #1426: with no reset time to wait for, the retry looks again this often. */
+  static readonly RETRY_POLL_MS = 15 * 60_000;
+  /** #1426: a 5h window resets within 5h; past this a retry is given up even if no next occurrence comes first. */
+  static readonly RETRY_MAX_WAIT_MS = 5 * 60 * 60_000 + 15 * 60_000;
   /** Cap how far back we look for missed fires on init. Avoids dumping
    * dozens of "morning standup" pings on the user after a long outage,
    * while still recovering from short crashes/restarts. */
@@ -17,7 +26,15 @@ export class Scheduler {
   readonly db: SchedulerDb;
   private jobs: Map<string, Cron> = new Map();
   private oneShotTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
-  private onTrigger: (schedule: Schedule, runId: string) => void | Promise<void>;
+  /** #1426: the timer of each schedule's pending retry. */
+  private retryTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+  /** #1426: schedules whose in-flight run is a retry, and a regular occurrence held until that run settles. */
+  private runningRetry = new Set<string>();
+  private heldBehindRetry = new Map<string, string>();
+  /** Set by shutdown: a callback settling afterwards must not touch the closed database. */
+  private stopped = false;
+  private onRetryDropped: RetryDroppedHandler;
+  private onTrigger: (schedule: Schedule, runId: string, retry?: ScheduleRetry) => void | Promise<void>;
   private config: SchedulerConfig;
   private isValidInstance: (name: string) => boolean;
   /** IDs of schedules whose onTrigger is currently in flight; guards against
@@ -26,18 +43,21 @@ export class Scheduler {
 
   constructor(
     dbPath: string,
-    onTrigger: (schedule: Schedule, runId: string) => void | Promise<void>,
+    onTrigger: (schedule: Schedule, runId: string, retry?: ScheduleRetry) => void | Promise<void>,
     config: SchedulerConfig,
     isValidInstance: (name: string) => boolean,
+    onRetryDropped: RetryDroppedHandler = () => {},
   ) {
     this.db = new SchedulerDb(dbPath);
     this.onTrigger = onTrigger;
     this.config = config;
     this.isValidInstance = isValidInstance;
+    this.onRetryDropped = onRetryDropped;
   }
 
   init(): void {
     this.db.pruneOldRuns();
+    // Catch-up first: an occurrence missed while the fleet was down supersedes the retry of an older one.
     this.runCatchUp();
     this.registerAllJobs();
   }
@@ -89,6 +109,7 @@ export class Scheduler {
   }
 
   shutdown(): void {
+    this.stopped = true;
     this.stopAllJobs();
     this.db.close();
   }
@@ -145,7 +166,9 @@ export class Scheduler {
 
   delete(id: string): void {
     this.stopJob(id);
-    this.db.delete(id);
+    const retryTimer = this.retryTimers.get(id);
+    if (retryTimer) { clearTimeout(retryTimer); this.retryTimers.delete(id); }
+    this.db.delete(id);   // its pending retry goes with it (ON DELETE CASCADE)
   }
 
   trigger(id: string): void {
@@ -159,10 +182,36 @@ export class Scheduler {
 
   /** Invoke onTrigger while holding the per-schedule lock. Cleans up when
    * the callback returns synchronously, throws, or settles a returned Promise. */
-  private runWithLock(schedule: Schedule, runId: string = randomUUID()): void {
+  private runWithLock(schedule: Schedule, runId: string = randomUUID(), retry?: ScheduleRetry): void {
+    // #1426: any other run of the schedule — its next occurrence, a catch-up, a manual trigger — supersedes a pending
+    // retry of an earlier occurrence: never run twice.
+    if (!retry) {
+      // …but the occurrence a pending retry already owns is not run again unlabelled: a one-shot timer after a restart,
+      // or croner re-firing it after the wall clock was set back across it (#1433 review). The retry runs it.
+      if (this.db.getRetry(schedule.id)?.run_id === runId) return;
+      this.supersedeRetry(schedule, runId);
+    }
     this.executing.add(schedule.id);
+    if (retry) this.runningRetry.add(schedule.id);
     const finish = (consumeOneShot = true) => {
       this.executing.delete(schedule.id);
+      this.runningRetry.delete(schedule.id);
+      // A callback settling after shutdown touches nothing: the database is closed (#1433 review).
+      if (this.stopped) return;
+      // #1426: a regular occurrence that came due while this retry was still running was held for it — it runs now.
+      const held = this.heldBehindRetry.get(schedule.id);
+      if (held !== undefined) {
+        this.heldBehindRetry.delete(schedule.id);
+        // The row is read in the callback itself, right before the run: a delete, disable or edit landing between this
+        // finish and the callback is honoured, never run from a stale copy (#1433 review).
+        queueMicrotask(() => {
+          if (this.stopped || this.executing.has(schedule.id)) return;
+          const current = this.db.get(schedule.id);
+          if (current?.enabled) this.runWithLock(current, held);
+        });
+      }
+      // #1426: a one-shot whose run was deferred stays until its retry has run or been given up.
+      if (schedule.at && this.db.getRetry(schedule.id)) return;
       if (schedule.at) {
         // A one-shot is consumed after the delivery attempt settles, so
         // onTrigger can still record its run while the parent row exists. If
@@ -184,7 +233,7 @@ export class Scheduler {
     };
     let result: void | Promise<void>;
     try {
-      result = this.onTrigger(schedule, runId);
+      result = this.onTrigger(schedule, runId, retry);
     } catch (err) {
       finish(!schedule.silent);
       throw err;
@@ -214,16 +263,157 @@ export class Scheduler {
     return this.db.getRuns(scheduleId, limit);
   }
 
+  // ── #1426: the one retry of a rate-limit-deferred occurrence ──
+
+  getRetry(scheduleId: string): ScheduleRetry | null {
+    return this.db.getRetry(scheduleId);
+  }
+
+  /**
+   * Arrange the one retry of an occurrence the rate limit deferred: due at the window's reset (plus a grace) when the
+   * statusline gave one, else after RETRY_POLL_MS. It must come before its deadline — the schedule's next occurrence
+   * after this one, or RETRY_MAX_WAIT_MS — or there is no retry: the deadline's kind says why.
+   */
+  deferForRetry(
+    schedule: Schedule,
+    runId: string,
+    deferral: { deferredPct: number; resetsAtMs: number | null; nowMs?: number },
+  ): ScheduleRetry | { dropped: ScheduleRetryDrop; retry: ScheduleRetry } {
+    const nowMs = deferral.nowMs ?? Date.now();
+    const next = this.nextOccurrenceAfter(schedule, runId, nowMs);
+    const cap = nowMs + Scheduler.RETRY_MAX_WAIT_MS;
+    const retry: ScheduleRetry = {
+      schedule_id: schedule.id,
+      run_id: runId,
+      deferred_at_ms: nowMs,
+      deferred_pct: deferral.deferredPct,
+      resets_at_ms: deferral.resetsAtMs,
+      due_at_ms: this.retryDueAt(deferral.resetsAtMs, nowMs),
+      deadline_ms: next !== null && next < cap ? next : cap,
+      deadline_kind: next !== null && next < cap ? "next_occurrence" : "cap",
+    };
+    if (retry.due_at_ms >= retry.deadline_ms) return { dropped: this.deadlineDrop(retry), retry };
+    this.db.putRetry(retry);
+    this.armRetry(retry);
+    return retry;
+  }
+
+  /**
+   * The retry found the limit still in force and must look again later (reset time unknown, or a new one learnt): the
+   * same retry, re-armed — unless that would reach its deadline, which ends it.
+   */
+  postponeRetry(retry: ScheduleRetry, resetsAtMs: number | null, nowMs = Date.now()): ScheduleRetry | { dropped: ScheduleRetryDrop; retry: ScheduleRetry } {
+    const next: ScheduleRetry = { ...retry, resets_at_ms: resetsAtMs, due_at_ms: this.retryDueAt(resetsAtMs, nowMs) };
+    if (next.due_at_ms >= next.deadline_ms) {
+      this.endRetry(retry);
+      return { dropped: this.deadlineDrop(next), retry: next };
+    }
+    this.db.putRetry(next);
+    this.armRetry(next);
+    return next;
+  }
+
+  /**
+   * The retry is running now (or was given up by the caller): remove it, first — a crash after this loses the retry
+   * rather than running the occurrence twice. True when this call removed it. A one-shot it kept alive is consumed.
+   */
+  endRetry(retry: ScheduleRetry): boolean {
+    const timer = this.retryTimers.get(retry.schedule_id);
+    if (timer) { clearTimeout(timer); this.retryTimers.delete(retry.schedule_id); }
+    // A one-shot it kept alive is NOT consumed here: the run in progress (its finish) or the drop path does that, after
+    // its own bookkeeping — a parent row deleted first fails the run record's foreign key (#1433 review).
+    return this.db.deleteRetry(retry.schedule_id, retry.run_id);
+  }
+
+  private retryDueAt(resetsAtMs: number | null, nowMs: number): number {
+    return resetsAtMs !== null && resetsAtMs > nowMs ? resetsAtMs + Scheduler.RETRY_RESET_GRACE_MS : nowMs + Scheduler.RETRY_POLL_MS;
+  }
+
+  private deadlineDrop(retry: ScheduleRetry): ScheduleRetryDrop {
+    return retry.deadline_kind === "next_occurrence" ? "superseded" : "expired";
+  }
+
+  /** The schedule's first regular occurrence after `runId` (a cron instant), at or after now; null for a one-shot. */
+  private nextOccurrenceAfter(schedule: Schedule, runId: string, nowMs: number): number | null {
+    if (!schedule.cron) return null;
+    try {
+      const cron = new Cron(schedule.cron, { timezone: schedule.timezone });
+      // From the deferred occurrence's own instant (its run id), not from now: a catch-up of 13:00 at 14:20 still has
+      // 14:00 as its boundary — already past, so no retry (#1433 review). A manual trigger's id is not an instant.
+      const fromMs = Date.parse(runId);
+      return cron.nextRun(new Date(Number.isFinite(fromMs) ? fromMs : nowMs))?.getTime() ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Another run of the schedule is starting: a pending retry of an earlier occurrence is superseded by it. */
+  private supersedeRetry(schedule: Schedule, runId: string): void {
+    const pending = this.db.getRetry(schedule.id);
+    if (!pending || pending.run_id === runId) return;
+    if (!this.endRetry(pending)) return;
+    // The run about to start keeps a one-shot's row until it settles; the bookkeeping below can still record into it.
+    this.reportDropped(schedule, pending, "superseded");
+  }
+
+  private reportDropped(schedule: Schedule, retry: ScheduleRetry, reason: ScheduleRetryDrop): void {
+    try { this.onRetryDropped(schedule, retry, reason); } catch { /* the drop is already persisted; a failed notice must not break the timer or the run */ }
+  }
+
+  private consumeOneShotAfterRetry(scheduleId: string): void {
+    const schedule = this.db.get(scheduleId);
+    if (!schedule?.at || this.executing.has(scheduleId)) return;
+    this.stopJob(scheduleId);
+    try { this.db.delete(scheduleId); } catch { /* scheduler may be shutting down */ }
+  }
+
+  private armRetry(retry: ScheduleRetry): void {
+    const existing = this.retryTimers.get(retry.schedule_id);
+    if (existing) clearTimeout(existing);
+    const delay = Math.max(0, retry.due_at_ms - Date.now());
+    const timer = setTimeout(() => {
+      this.retryTimers.delete(retry.schedule_id);
+      if (delay > Scheduler.MAX_TIMEOUT_MS) { this.armRetry(retry); return; }   // a long wait, in chunks
+      this.fireRetry(retry.schedule_id, retry.run_id);
+    }, Math.min(delay, Scheduler.MAX_TIMEOUT_MS));
+    this.retryTimers.set(retry.schedule_id, timer);
+  }
+
+  private fireRetry(scheduleId: string, runId: string): void {
+    const retry = this.db.getRetry(scheduleId);
+    if (!retry || retry.run_id !== runId) return;              // superseded or replaced meanwhile
+    const schedule = this.db.get(scheduleId);
+    if (!schedule || !schedule.enabled) { this.endRetry(retry); return; }
+    if (Date.now() >= retry.deadline_ms) {
+      // A deadline reached while waiting (a clock jump, a long suspend): never run at or after it.
+      if (this.endRetry(retry)) {
+        this.reportDropped(schedule, retry, this.deadlineDrop(retry));
+        this.consumeOneShotAfterRetry(scheduleId);
+      }
+      return;
+    }
+    // The timer is monotonic, the due time wall clock: after the wall clock was set back, it is not due yet (#1433).
+    if (Date.now() < retry.due_at_ms) { this.armRetry(retry); return; }
+    if (this.executing.has(scheduleId)) {
+      this.armRetry({ ...retry, due_at_ms: Date.now() + Scheduler.ONE_SHOT_FAILURE_RETRY_MS });
+      return;
+    }
+    this.runWithLock(schedule, retry.run_id, retry);
+  }
+
   private registerAllJobs(): void {
     for (const schedule of this.db.list()) {
       if (schedule.enabled) {
         this.registerJob(schedule);
       }
     }
+    // #1426: pending retries survive a restart (and a reload): re-armed from what was persisted.
+    for (const retry of this.db.listRetries()) this.armRetry(retry);
   }
 
   private registerJob(schedule: Schedule): void {
     if (schedule.at) {
+      // (#1426: if its one occurrence was deferred, the pending retry owns it — runWithLock skips this timer's run.)
       this.registerOneShot(schedule);
       return;
     }
@@ -231,13 +421,17 @@ export class Scheduler {
     const job = new Cron(schedule.cron, { timezone: schedule.timezone }, currentJob => {
       const current = this.db.get(schedule.id);
       if (!current || !current.enabled) return;
-      // Skip if a previous fire (or manual trigger) is still in flight —
-      // avoids overlapping runs of the same schedule.
-      if (this.executing.has(current.id)) return;
       // currentRun() is callback wall-clock time, not the cron occurrence. A
       // delayed callback must still use the scheduled instant so restart
       // catch-up derives the same durable outbox key.
       const runId = this.cronRunAtOrBefore(currentJob, new Date())?.toISOString() ?? null;
+      // Skip if a previous fire (or manual trigger) is still in flight —
+      // avoids overlapping runs of the same schedule. A RETRY in flight is not a reason to lose this occurrence
+      // (#1426): it is held and runs as soon as the retry settles (the retry stops at this occurrence, its deadline).
+      if (this.executing.has(current.id)) {
+        if (runId && this.runningRetry.has(current.id)) this.heldBehindRetry.set(current.id, runId);
+        return;
+      }
       if (runId) this.runWithLock(current, runId);
     });
     this.jobs.set(schedule.id, job);
@@ -273,6 +467,8 @@ export class Scheduler {
     this.jobs.clear();
     for (const timer of this.oneShotTimers.values()) clearTimeout(timer);
     this.oneShotTimers.clear();
+    for (const timer of this.retryTimers.values()) clearTimeout(timer);
+    this.retryTimers.clear();
   }
 
   private registerOneShot(schedule: Schedule, retryDelayMs = 0): void {

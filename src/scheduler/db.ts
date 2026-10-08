@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
-import type { Schedule, ScheduleRun, CreateScheduleParams, UpdateScheduleParams, Decision, CreateDecisionParams, UpdateDecisionParams, Task, TaskCompact, ListTasksOpts, CreateTaskParams, UpdateTaskParams } from "./types.js";
+import type { Schedule, ScheduleRetry, ScheduleRun, CreateScheduleParams, UpdateScheduleParams, Decision, CreateDecisionParams, UpdateDecisionParams, Task, TaskCompact, ListTasksOpts, CreateTaskParams, UpdateTaskParams } from "./types.js";
 
 export class SchedulerDb {
   private db: Database.Database;
@@ -95,6 +95,21 @@ export class SchedulerDb {
         this.db.exec("ALTER TABLE schedules ADD COLUMN reply_adapter_id TEXT");
       }
     }
+
+    // #1426: the pending retry of a rate-limit-deferred occurrence, at most one per schedule. Created after the
+    // schedules migrations above (the timing migration rebuilds that table).
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS schedule_retries (
+        schedule_id    TEXT PRIMARY KEY REFERENCES schedules(id) ON DELETE CASCADE,
+        run_id         TEXT NOT NULL,
+        deferred_at_ms INTEGER NOT NULL,
+        deferred_pct   REAL NOT NULL,
+        resets_at_ms   INTEGER,
+        due_at_ms      INTEGER NOT NULL,
+        deadline_ms    INTEGER NOT NULL,
+        deadline_kind  TEXT NOT NULL
+      );
+    `);
 
     // Migration: add scope column to existing decisions tables that lack it
     const cols = this.db.prepare("PRAGMA table_info(decisions)").all() as { name: string }[];
@@ -278,6 +293,34 @@ export class SchedulerDb {
   recordRun(scheduleId: string, status: string, detail?: string): void {
     this.db.prepare("INSERT INTO schedule_runs (schedule_id, status, detail) VALUES (?, ?, ?)").run(scheduleId, status, detail ?? null);
     this.db.prepare("UPDATE schedules SET last_triggered_at = datetime('now'), last_status = ? WHERE id = ?").run(status, scheduleId);
+  }
+
+  /** #1426: record (or replace) a schedule's pending retry. */
+  putRetry(retry: ScheduleRetry): void {
+    this.db.prepare(`
+      INSERT INTO schedule_retries (schedule_id, run_id, deferred_at_ms, deferred_pct, resets_at_ms, due_at_ms, deadline_ms, deadline_kind)
+      VALUES (@schedule_id, @run_id, @deferred_at_ms, @deferred_pct, @resets_at_ms, @due_at_ms, @deadline_ms, @deadline_kind)
+      ON CONFLICT(schedule_id) DO UPDATE SET run_id = excluded.run_id, deferred_at_ms = excluded.deferred_at_ms,
+        deferred_pct = excluded.deferred_pct, resets_at_ms = excluded.resets_at_ms, due_at_ms = excluded.due_at_ms,
+        deadline_ms = excluded.deadline_ms, deadline_kind = excluded.deadline_kind
+    `).run(retry);
+  }
+
+  getRetry(scheduleId: string): ScheduleRetry | null {
+    const row = this.db.prepare("SELECT * FROM schedule_retries WHERE schedule_id = ?").get(scheduleId) as ScheduleRetry | undefined;
+    return row ?? null;
+  }
+
+  listRetries(): ScheduleRetry[] {
+    return this.db.prepare("SELECT * FROM schedule_retries ORDER BY due_at_ms").all() as ScheduleRetry[];
+  }
+
+  /** Remove a pending retry; true when this call removed it (the caller owns what follows), false when none was there. */
+  deleteRetry(scheduleId: string, runId?: string): boolean {
+    const result = runId === undefined
+      ? this.db.prepare("DELETE FROM schedule_retries WHERE schedule_id = ?").run(scheduleId)
+      : this.db.prepare("DELETE FROM schedule_retries WHERE schedule_id = ? AND run_id = ?").run(scheduleId, runId);
+    return result.changes > 0;
   }
 
   getRuns(scheduleId: string, limit = 50): ScheduleRun[] {

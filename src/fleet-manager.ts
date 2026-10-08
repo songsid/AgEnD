@@ -72,7 +72,8 @@ import { createLogger, rotateLogIfNeeded, type Logger } from "./logger.js";
 import { processAttachments } from "./channel/attachment-handler.js";
 import { routeToolCall } from "./channel/tool-router.js";
 import { Scheduler } from "./scheduler/index.js";
-import type { Schedule, SchedulerConfig } from "./scheduler/index.js";
+import type { Schedule, ScheduleRetry, ScheduleRetryDrop, SchedulerConfig } from "./scheduler/index.js";
+import { escapeTelegramHtml, scheduleClock, scheduleRetryLabel } from "./scheduler/retry-label.js";
 import { DEFAULT_SCHEDULER_CONFIG } from "./scheduler/index.js";
 import type { Task } from "./scheduler/types.js";
 import type { FleetContext } from "./fleet-context.js";
@@ -637,6 +638,11 @@ export interface DeliveryOptions {
    * paused after its row was claimed is handed back instead of woken here.
    */
   noInlineWake?: boolean;
+  /**
+   * #1426: the caller's own fence, asked wherever the delivery epoch is — through the wake, the idle wait and up to the
+   * IPC hand-off itself. False drops the delivery unsent (a schedule retry past its deadline).
+   */
+  stillCurrent?: () => boolean;
 }
 
 const CLASSIC_BACKEND_SELECTION_TIMEOUT_MS = 60_000;
@@ -2759,10 +2765,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     timeoutMs: number,
     deliveryEpoch: number,
     noInlineWake = false,
+    stillCurrent?: () => boolean,
   ): Promise<boolean> {
-    if (this.shuttingDown || !this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return false;
+    if (this.shuttingDown || !this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) return false;
     await this.holdDeliveryForStorm(instanceName, deliveryEpoch);
-    if (this.shuttingDown || !this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return false;
+    if (this.shuttingDown || !this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) return false;
     let idleObservedAfter = this.lastDeliveryAt.get(instanceName) ?? 0;
     if (this.lifecycle.isPaused(instanceName) && noInlineWake) {
       // Paused after its row was claimed (an operator or auth pause): hand the
@@ -2773,7 +2780,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (this.lifecycle.isPaused(instanceName)) {
       const wakeStartedAt = Date.now();
       await this.explicitWake(instanceName, 30_000);
-      if (!this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return false;
+      if (!this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) return false;
       // Waking added one to the warm count — make room by evicting a different
       // LRU idle instance (never this one; it's about to work).
       this.enforceWarmCap(instanceName);
@@ -2785,22 +2792,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       instanceName,
       timeoutMs,
       idleObservedAfter,
-      () => !this.isDeliveryEpochCurrent(instanceName, deliveryEpoch),
+      () => !this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent),
     );
-    if (!this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) {
+    if (!this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) {
       this.logger.info({ instanceName }, "Pending delivery dropped by user cancel");
       return false;
     }
     // A server crash can land while waitForInstanceIdle is pending. Re-check
     // immediately before the old timeout path would force text into a boot UI.
     await this.holdDeliveryForStorm(instanceName, deliveryEpoch);
-    if (this.shuttingDown || !this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return false;
+    if (this.shuttingDown || !this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) return false;
     if (!idle) {
       this.logger.warn({ instanceName, timeoutMs }, "Idle gate timed out; forcing delivery");
     }
-    const sent = await this.sendWhenConnected(instanceName, payload, deliveryEpoch);
+    const sent = await this.sendWhenConnected(instanceName, payload, deliveryEpoch, stillCurrent);
     if (!sent) return false;
-    if (this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) {
+    if (this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) {
       this.lastDeliveryAt.set(instanceName, Date.now());
     }
     return true;
@@ -2832,8 +2839,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     instanceName: string,
     payload: Record<string, unknown>,
     deliveryEpoch = this.getDeliveryEpoch(instanceName),
+    stillCurrent?: () => boolean,
   ): Promise<boolean> {
-    if (!this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return false;
+    if (!this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) return false;
     const queued = this.ipcWaitTails.get(instanceName);
     if (!queued) {
       const ipc = this.instanceIpcClients.get(instanceName);
@@ -2843,8 +2851,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const attempt = (queued ?? Promise.resolve())
       .catch(() => { /* a previous waiter's failure must not cancel this one */ })
       .then(() => {
-        if (!this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return false;
-        return this.sendAfterIpcReturns(instanceName, payload, deliveryEpoch);
+        if (!this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) return false;
+        return this.sendAfterIpcReturns(instanceName, payload, deliveryEpoch, stillCurrent);
       });
     // The chain stores a settled-either-way promise so one failed delivery cannot
     // wedge every later one, and so `queued` above is safe to await unguarded.
@@ -2866,11 +2874,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     instanceName: string,
     payload: Record<string, unknown>,
     deliveryEpoch = this.getDeliveryEpoch(instanceName),
+    stillCurrent?: () => boolean,
   ): Promise<boolean> {
     const deadline = Date.now() + IPC_RECONNECT_GRACE_MS;
     let warned = false;
     for (;;) {
-      if (!this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return false;
+      if (!this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) return false;
       // Re-read every round: a reconnect replaces the IpcClient object entirely,
       // so a cached reference would stay dead forever.
       const ipc = this.instanceIpcClients.get(instanceName);
@@ -3047,14 +3056,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (this.lifecycle.isPaused(instanceName)) {
         if (options.noInlineWake) { this.wakeCoordinator?.kick(); return false; }
         await this.explicitWake(instanceName, 30_000);
-        if (!this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return false;
+        if (!this.deliveryCurrent(instanceName, deliveryEpoch, options.stillCurrent)) return false;
         this.enforceWarmCap(instanceName); // woke one → evict a different LRU idle if over cap
       }
-      const sent = await this.sendWhenConnected(instanceName, deliveryPayload, deliveryEpoch);
+      const sent = await this.sendWhenConnected(instanceName, deliveryPayload, deliveryEpoch, options.stillCurrent);
       if (!sent) return false;
       // A cross-instance item arriving before the daemon observes this turn as
       // working must not trust the stale idle snapshot from before the send.
-      if (this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) {
+      if (this.deliveryCurrent(instanceName, deliveryEpoch, options.stillCurrent)) {
         this.lastDeliveryAt.set(instanceName, Date.now());
       }
       return true;
@@ -3067,6 +3076,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       options.idleTimeoutMs ?? 60_000,
       deliveryEpoch,
       options.noInlineWake === true,
+      options.stillCurrent,
     ));
     this.idleGatedDeliveryTails.set(instanceName, delivery);
     try {
@@ -5116,9 +5126,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
       this.scheduler = new Scheduler(
         join(this.dataDir, "scheduler.db"),
-        (schedule, runId) => this.handleScheduleTrigger(schedule, runId),
+        (schedule, runId, retry) => this.handleScheduleTrigger(schedule, runId, retry),
         schedulerConfig,
         (name) => this.fleetConfig?.instances?.[name] != null || !!this.classicChannels?.getAll().some(ch => ch.instanceName === name),
+        (schedule, retry, reason) => this.scheduleRetryDropped(schedule, retry, reason),
       );
       this.scheduler.init();
       this.logger.info("Scheduler initialized");
@@ -7427,23 +7438,53 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   // ===================== Scheduler =====================
 
-  private async handleScheduleTrigger(schedule: Schedule, stableRunId: string = randomUUID()): Promise<void> {
-    const { target, reply_chat_id, reply_thread_id, message, label, id, source, silent } = schedule;
+  private async handleScheduleTrigger(schedule: Schedule, stableRunId: string = randomUUID(), retry?: ScheduleRetry): Promise<void> {
+    const { target, reply_chat_id, reply_thread_id, label, id, source, silent } = schedule;
+    // #1426: the retry of a deferred occurrence says so in every status it records.
+    const runStatus = (status: string) => (retry ? `deferred → ${status} (retry)` : status);
 
     const RATE_LIMIT_DEFER_THRESHOLD = 85;
     const rl = this.statuslineWatcher.getRateLimits(target);
-    if (rl && rl.five_hour_pct > RATE_LIMIT_DEFER_THRESHOLD) {
-      this.scheduler!.recordRun(id, "deferred", `5hr rate limit at ${rl.five_hour_pct}%`);
+    // A reading whose window has reset describes a window that no longer exists: claude-code rewrites statusline.json
+    // only when it renders, so an idle instance keeps its last percentage long after the reset (#1426).
+    const nowMs = Date.now();
+    const windowCurrent = rl != null && (rl.five_hour_resets_at_ms === null || nowMs < rl.five_hour_resets_at_ms);
+    if (rl && windowCurrent && rl.five_hour_pct > RATE_LIMIT_DEFER_THRESHOLD) {
+      const resetsAtMs = rl.five_hour_resets_at_ms;
+      if (retry) {
+        // The window it waited for reset, and a new one is over the threshold again: deferred again — given up.
+        if (retry.resets_at_ms !== null && nowMs >= retry.resets_at_ms) {
+          if (this.scheduler!.endRetry(retry)) this.scheduleRetryDropped(schedule, retry, "deferred_again");
+          return;
+        }
+        // No reset time to wait for yet (or a new one learnt): look again later, within the deadline.
+        const later = this.scheduler!.postponeRetry(retry, resetsAtMs, nowMs);
+        if ("dropped" in later) this.scheduleRetryDropped(schedule, later.retry, later.dropped);
+        else this.logger.info({ target, scheduleId: id, runId: stableRunId, dueAt: new Date(later.due_at_ms).toISOString() }, "Schedule retry still rate limited — looking again later");
+        return;
+      }
+      const pending = this.scheduler!.deferForRetry(schedule, stableRunId, { deferredPct: rl.five_hour_pct, resetsAtMs, nowMs });
+      const dueAt = "dropped" in pending ? null : pending.due_at_ms;
+      this.scheduler!.recordRun(id, "deferred", `5hr rate limit at ${rl.five_hour_pct}%`
+        + (dueAt !== null ? `; retry at ${new Date(dueAt).toISOString()}` : ""));
       this.eventLog?.insert(target, "schedule_deferred", {
         schedule_id: id,
         label,
         five_hour_pct: rl.five_hour_pct,
+        retry_at: dueAt !== null ? new Date(dueAt).toISOString() : null,
       });
       this.webhookEmitter?.emit("schedule_deferred", target, { schedule_id: id, label, five_hour_pct: rl.five_hour_pct });
-      this.notifyInstanceTopic(target, t("schedule.deferred", label ?? id, rl.five_hour_pct));
-      this.logger.info({ target, scheduleId: id, rateLimitPct: rl.five_hour_pct }, "Schedule deferred due to rate limit");
+      this.notifyInstanceTopic(target, dueAt !== null
+        ? t("schedule.deferred_retry", label ?? id, rl.five_hour_pct, scheduleClock(dueAt, schedule.timezone))
+        : t("schedule.deferred", label ?? id, rl.five_hour_pct));
+      this.logger.info({ target, scheduleId: id, rateLimitPct: rl.five_hour_pct, retryAt: dueAt }, "Schedule deferred due to rate limit");
+      if ("dropped" in pending) this.scheduleRetryDropped(schedule, pending.retry, pending.dropped);
       return;
     }
+    // #1426: the retry runs now — removed first, so a crash from here loses it rather than running it twice.
+    if (retry && !this.scheduler!.endRetry(retry)) return;
+    // The agent sees it is a retry, and of what (a silent schedule pastes its raw command unchanged).
+    const message = retry && !silent ? `${scheduleRetryLabel(retry, schedule.timezone)}\n${schedule.message}` : schedule.message;
 
     // Silent mode: paste directly to tmux pane — no channel message.
     if (silent) {
@@ -7470,7 +7511,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           schedule_run_id: stableRunId,
         },
       });
-      this.scheduler!.recordRun(id, "queued", `durable raw_paste delivery_id=${admitted.delivery.deliveryId}`);
+      this.scheduler!.recordRun(id, runStatus("queued"), `durable raw_paste delivery_id=${admitted.delivery.deliveryId}`);
       this.logger.info({ target, scheduleId: id, runId: stableRunId, deliveryId: admitted.delivery.deliveryId, duplicate: !admitted.inserted },
         "Silent schedule durably admitted as raw_paste");
       this.scheduleDeliveryOutboxPump();
@@ -7482,7 +7523,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const retryCount = schedulerDefaults?.retry_count ?? 3;
     const retryInterval = schedulerDefaults?.retry_interval_ms ?? 30_000;
 
-    const deliver = async (): Promise<boolean> => {
+    // #1426: a retry is only good until its deadline (the next occurrence or the cap) — through the idle wait and up to
+    // the IPC hand-off itself, not just when it starts.
+    const retryCurrent = retry ? () => Date.now() < retry.deadline_ms : undefined;
+    const deliver = async (): Promise<boolean | "past-deadline"> => {
+      if (retryCurrent && !retryCurrent()) return "past-deadline";
       try {
         // A schedule has no live inbound adapter context. Seed the daemon with
         // the target instance's configured world so replies use its persona
@@ -7500,7 +7545,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           this.logger.warn({ scheduleId: id, target, foreignWorld, targetWorld: adapterId, chatId: reply_chat_id },
             "Schedule reply target belongs to another channel world — not seeding chat context; the instance keeps its own last known chat");
         }
-        await this.deliverToInstance(target, {
+        const handed = await this.deliverToInstance(target, {
           type: "fleet_schedule_trigger",
           payload: { schedule_id: id, message: `[Scheduled] ${message}`, label },
           meta: {
@@ -7511,7 +7556,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             user: "scheduler",
             ...(adapterId ? { adapter_id: adapterId } : {}),
           },
-        }, { waitForIdle: true });
+        }, { waitForIdle: true, ...(retryCurrent ? { stillCurrent: retryCurrent } : {}) });
+        if (handed === false && retryCurrent && !retryCurrent()) return "past-deadline";
         // A scheduled trigger also puts the instance to work — show a cancel button.
         void this.sendCancelButton(target);
         return true;
@@ -7521,22 +7567,29 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
     };
 
-    if (await deliver()) {
-      this.scheduler!.recordRun(id, "delivered");
+    const pastDeadline = () => {
+      this.scheduleRetryDropped(schedule, retry!, retry!.deadline_kind === "next_occurrence" ? "superseded" : "expired");
+    };
+    const first = await deliver();
+    if (first === "past-deadline") { pastDeadline(); return; }
+    if (first) {
+      this.scheduler!.recordRun(id, runStatus("delivered"));
       if (source !== target) this.notifySourceTopic(schedule);
       return;
     }
 
     for (let i = 0; i < retryCount; i++) {
       await new Promise((r) => setTimeout(r, retryInterval));
-      if (await deliver()) {
-        this.scheduler!.recordRun(id, "delivered");
+      const again = await deliver();
+      if (again === "past-deadline") { pastDeadline(); return; }
+      if (again) {
+        this.scheduler!.recordRun(id, runStatus("delivered"));
         if (source !== target) this.notifySourceTopic(schedule);
         return;
       }
     }
 
-    this.scheduler!.recordRun(id, "instance_offline", `retry ${retryCount}x failed`);
+    this.scheduler!.recordRun(id, runStatus("instance_offline"), `retry ${retryCount}x failed`);
     this.notifyScheduleFailure(schedule);
   }
 
@@ -7619,6 +7672,41 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     adapter.sendText(schedule.reply_chat_id, text, {
       threadId: schedule.reply_thread_id ?? undefined,
     }).catch((err: unknown) => this.logger.error({ err }, "Failed to send schedule failure notification"));
+  }
+
+  /**
+   * #1426: a deferred occurrence's retry will not run — superseded by the next occurrence, deferred again, or its wait
+   * capped. Recorded as `deferred → skipped (…)`, and said in the schedule's own chat with its admins @mentioned:
+   * this is the case that used to be a silently lost day.
+   */
+  private scheduleRetryDropped(schedule: Schedule, retry: ScheduleRetry, reason: ScheduleRetryDrop): void {
+    const why = { superseded: "superseded", deferred_again: "deferred again", expired: "expired" }[reason];
+    this.scheduler?.recordRun(schedule.id, `deferred → skipped (${why})`,
+      `run ${retry.run_id} deferred at ${retry.deferred_pct}%`);
+    this.eventLog?.insert(schedule.target, "schedule_retry_dropped", { schedule_id: schedule.id, label: schedule.label, run_id: retry.run_id, reason });
+    this.logger.warn({ scheduleId: schedule.id, target: schedule.target, runId: retry.run_id, reason }, "Deferred schedule occurrence will not run");
+    const reasonText = reason === "superseded"
+      ? t("schedule.retry_reason_superseded", scheduleClock(retry.deadline_ms, schedule.timezone))
+      : reason === "deferred_again" ? t("schedule.retry_reason_deferred_again")
+        : t("schedule.retry_reason_expired", Math.round(Scheduler.RETRY_MAX_WAIT_MS / 60_000));
+    const adapter = this.scheduleSourceAdapter(schedule);
+    if (!adapter) {
+      this.notifyInstanceTopic(schedule.target, t("schedule.retry_dropped", "", schedule.label ?? schedule.id,
+        scheduleClock(Date.parse(retry.run_id) || retry.deferred_at_ms, schedule.timezone), retry.deferred_pct, reasonText).trimStart());
+      return;
+    }
+    const admins = this.adminListOf(adapter.id) ?? [];
+    const html = adapter.type === "telegram";
+    const mention = admins.map(adminId => adapter.type === "discord" ? `<@${adminId}>`
+      : html ? `<a href="tg://user?id=${encodeURIComponent(adminId)}">admin</a>` : "").filter(Boolean).join(" ");
+    const due = scheduleClock(Date.parse(retry.run_id) || retry.deferred_at_ms, schedule.timezone);
+    const text = html
+      ? t("schedule.retry_dropped", mention, escapeTelegramHtml(schedule.label ?? schedule.id), due, retry.deferred_pct, escapeTelegramHtml(reasonText))
+      : t("schedule.retry_dropped", mention, schedule.label ?? schedule.id, due, retry.deferred_pct, reasonText);
+    adapter.sendText(schedule.reply_chat_id, text.trimStart(), {
+      threadId: schedule.reply_thread_id ?? undefined,
+      ...(html ? { format: "html" as const } : {}),
+    }).catch((err: unknown) => this.logger.error({ err }, "Failed to send the deferred-schedule escalation"));
   }
 
   /**
@@ -11878,6 +11966,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private isDeliveryEpochCurrent(instanceName: string, deliveryEpoch: number): boolean {
     return deliveryEpoch === this.getDeliveryEpoch(instanceName);
+  }
+
+  /** The delivery epoch, and the caller's own fence when it gave one (DeliveryOptions.stillCurrent, #1426). */
+  private deliveryCurrent(instanceName: string, deliveryEpoch: number, stillCurrent?: () => boolean): boolean {
+    return this.isDeliveryEpochCurrent(instanceName, deliveryEpoch) && (stillCurrent?.() ?? true);
   }
 
   /** Invalidate work queued before a user cancel and wake idle-gate waiters. */

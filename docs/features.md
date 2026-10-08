@@ -418,7 +418,15 @@ Uses multi-signal detection: checks both transcript activity and statusline fres
 
 ## Rate limit-aware scheduling
 
-When the 5-hour API rate limit exceeds 85%, scheduled triggers are automatically deferred instead of firing. A notification is posted to the instance's topic. Deferred schedules are not lost — they will fire on the next cron tick when rate limits are below threshold.
+When the target's 5-hour usage is over 85%, a scheduled trigger is deferred instead of firing, and the instance's topic says so. A reading whose window has already reset no longer counts: claude-code rewrites its statusline only when it renders, so an idle instance can show 100% long after the reset.
+
+A deferred run is retried **once**, after the window resets:
+- **When it runs.** At the reset time from the statusline (plus a minute). If the statusline gives no reset time, the retry checks every 15 minutes and runs at the first check below the threshold.
+- **What the agent sees.** The retry keeps the run's id, and its message starts with `[retry] originally due 21:00 (Asia/Taipei), deferred by the 5h rate limit at 100%`. A silent schedule pastes its raw command unchanged.
+- **Never twice.** A retry never runs at or after the schedule's next regular run, or after 5h15m. If the next run, a catch-up or a manual trigger comes first, the retry is dropped.
+- **Across restarts.** A pending retry survives a fleet restart.
+- **`last_status`.** It shows `deferred → delivered (retry)`, or `deferred → skipped (superseded | deferred again | expired)`.
+- **When it can't run.** If the retry is superseded, deferred again after the reset, or never gets a reset in time, the schedule's chat says so and @mentions that world's admins (the channel's `access.allowed_users`).
 
 ## Model failover
 
