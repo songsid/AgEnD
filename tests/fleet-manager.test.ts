@@ -1526,6 +1526,7 @@ describe("FleetManager", () => {
     chmodSync(join(binDir, "codex"), 0o755);
     process.env.PATH = binDir;
     try {
+      writeFileSync(join(tmpDir, "classicBot.yaml"), 'defaults:\n  admin_users: ["owner", "user-1"]\n');
       const fm = new FleetManager(tmpDir);
       const classicChannels = new ClassicChannelManager(tmpDir, fm.logger);
       classicChannels.setPrimaryAdapterId("telegram");
@@ -1569,6 +1570,7 @@ describe("FleetManager", () => {
     symlinkSync(execFileSync("which", ["which"], { encoding: "utf8" }).trim(), join(binDir, "which"));
     process.env.PATH = binDir;
     try {
+      writeFileSync(join(tmpDir, "classicBot.yaml"), 'defaults:\n  admin_users: ["owner", "user-1"]\n');
       const fm = new FleetManager(tmpDir);
       const classicChannels = new ClassicChannelManager(tmpDir, fm.logger);
       classicChannels.setPrimaryAdapterId("discord");
@@ -1597,6 +1599,7 @@ describe("FleetManager", () => {
   });
 
   it("rejects a stale Discord /start without backend immediately instead of opening the legacy selector", async () => {
+    writeFileSync(join(tmpDir, "classicBot.yaml"), 'defaults:\n  admin_users: ["owner", "user-1"]\n');
     const fm = new FleetManager(tmpDir);
     const classicChannels = new ClassicChannelManager(tmpDir, fm.logger);
     classicChannels.setPrimaryAdapterId("discord");
@@ -1622,6 +1625,7 @@ describe("FleetManager", () => {
   });
 
   it("persists a directly selected ClassicBot backend before starting", async () => {
+    writeFileSync(join(tmpDir, "classicBot.yaml"), 'defaults:\n  admin_users: ["owner", "user-1"]\n');
     const fm = new FleetManager(tmpDir);
     const classicChannels = new ClassicChannelManager(tmpDir, fm.logger);
     classicChannels.setPrimaryAdapterId("telegram");
@@ -1636,6 +1640,7 @@ describe("FleetManager", () => {
   });
 
   it("accepts a pending backend choice only from the user who issued /start", async () => {
+    writeFileSync(join(tmpDir, "classicBot.yaml"), 'defaults:\n  admin_users: ["owner", "user-1"]\n');
     const fm = new FleetManager(tmpDir);
     const classicChannels = new ClassicChannelManager(tmpDir, fm.logger);
     classicChannels.setPrimaryAdapterId("telegram");
@@ -1676,6 +1681,7 @@ describe("FleetManager", () => {
   it("expires backend selection without starting a default backend", async () => {
     vi.useFakeTimers();
     try {
+      writeFileSync(join(tmpDir, "classicBot.yaml"), 'defaults:\n  admin_users: ["owner", "user-1"]\n');
       const fm = new FleetManager(tmpDir);
       fm.fleetConfig = { defaults: { backend: "kiro-cli" }, instances: {} };
       const classicChannels = new ClassicChannelManager(tmpDir, fm.logger);

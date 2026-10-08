@@ -184,10 +184,10 @@ describe("Telegram ClassicBot onboarding dedup (#1104)", () => {
     expect(h.primary.adapter.sendText).not.toHaveBeenCalled();
   });
 
-  it("targeted onboarding still requires the group allowlist", async () => {
+  it("targeted non-admin onboarding still requires the group allowlist", async () => {
     const h = setup();
-    await h.primary.feed("/start@TargetBot codex", 10, "-1004444444444");
-    await h.target.feed("/start@TargetBot codex", 10, "-1004444444444");
+    await h.primary.feed("/start@TargetBot codex", 10, "-1004444444444", undefined, 43);
+    await h.target.feed("/start@TargetBot codex", 10, "-1004444444444", undefined, 43);
     expect(h.start).not.toHaveBeenCalled();
     expect(h.target.adapter.sendText).toHaveBeenCalledTimes(1);
     expect(h.primary.adapter.sendText).not.toHaveBeenCalled();

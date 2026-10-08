@@ -580,7 +580,7 @@ describe("the picker lists each server the bot is in that ClassicBot admits (#10
     } finally { await adapter.stop(); }
   });
 
-  it("an unset allowed_guilds admits every server, as classic routing does", async () => {
+  it("an unset allowed_guilds retains the metadata inventory, not start permission (#1418)", async () => {
     const { fleet, adapter } = fleetInThreeServers(undefined);
     try {
       const r = await fleet.listGuildEmojis("dc");
