@@ -43,7 +43,9 @@ const holdNextRead = (call: "stat" | "open" = "stat") => {
 };
 /** Until the watcher is parked inside the held call. */
 const untilEntered = async (call: "stat" | "open") => {
-  for (let i = 0; i < 200 && !fsHold.entered.includes(call); i++) await new Promise(r => setImmediate(r));
+  // Bounded by time, not by turns: reaching `open` means a real `stat` finished first, which a loaded machine can take
+  // longer than any fixed number of event-loop turns to do (CI and a busy dev box flaked on a 200-turn bound).
+  for (let i = 0; i < 2_500 && !fsHold.entered.includes(call); i++) await new Promise(r => setTimeout(r, 2));
   expect(fsHold.entered).toContain(call);
 };
 
