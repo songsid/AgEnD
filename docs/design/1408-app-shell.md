@@ -220,10 +220,18 @@ Each panel is an ES module that exports `{ mount(root, route, ctx), update(route
 
 **Previews (#1306) are not `ctx`-owned today, so Chat handles them explicitly.** `preview.js` keeps its own timers (ready 3 s, watchdog, resize rAF), its window `message`/`storage` listeners, and `onChange` callbacks that cannot be removed.
 - `preview.init` and its two window listeners belong to the **app**, once per page, since they are page-wide by nature. `onChange` returns an unsubscribe function, and Chat registers it through `ctx`, so it is removed on dispose.
-- Before Chat leaves, re-renders a message, or moves a card, it calls `Preview.stopAll("leave")`. That removes every live frame and clears its timers.
-- A live preview iframe is **never cached, hidden or re-parented** across a switch. Coming back shows the card in its "stopped — Preview again" state, as a re-render does today.
+- **The stop is scoped to what changes**, as the keyed `renderMsgs` does today (`stopIn(affectedNode)` in dashboard.html):
+  - **Chat leaves, or its whole root is replaced** (unmount, instance switch, full re-render): `Preview.stopAll("leave")`. Every live frame is removed and its timers are cleared.
+  - **One message or card is replaced, moved or removed:** `Preview.stopIn(affectedNode)` runs **before** the replace, move or remove. Only frames inside that node stop.
+  - **Unrelated updates leave live frames untouched**: a new message, another message's delivery or status tick, a status change. A frame in an unchanged node keeps its identity (the same iframe element, never re-created). This keeps #1306's "new messages, another message's ticks" case (web-preview-card-1306.test.ts) as it is.
+- A live preview iframe is **never cached, hidden or re-parented** across a switch. Coming back shows the card in its "stopped — Preview again" state.
 - Tests:
   - a frame's late `ready`/resize message after Chat unmounted → ignored, no timer left;
+  - **another message's tick and a new message** while a preview is live:
+    - the same iframe element is still attached and live;
+    - **`stopAll` was not called**, asserted on a spy of `stopAll` itself and on the whole preview log rather than one filtered by the agent's name, so a global stop cannot pass unseen;
+  - **the affected node changes** (replaced, moved, removed) → `stopIn` on that node was called before the DOM change, and frames in other nodes are still live;
+  - **leaving Chat** → `stopAll("leave")`, zero frames;
   - 50 Chat mounts with a preview started each time → zero live frames, timers and `onChange` callbacks afterwards.
 
 **The rules, enforced by tests:**
