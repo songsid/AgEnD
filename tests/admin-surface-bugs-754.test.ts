@@ -262,3 +262,148 @@ describe("fleet-admin slash commands need the fleet's own guild, also from a Cla
     expect("level" in rule && rule.level).toBe("fleet-admin");
   });
 });
+
+// ── #1396 review ─────────────────────────────────────────────────────────────────────────────────────────────────
+
+describe("a cancel click with no live button entry (stale recovery) must come from where the instance is now", () => {
+  const stale = (r: ReturnType<typeof rig>, threadId: string | undefined, chatId = GROUP, instance = "alpha") =>
+    r.any.handleCancelClick(instance, r.a, { callbackData: `cancel:${instance}`, chatId, threadId, messageId: "forgotten", userId: ADMIN_A }, "tg-a");
+
+  it("the instance's own topic: cancelled (the recovery still works)", () => {
+    const r = rig("open"); stale(r, "30"); expect(r.cancelled).toEqual(["alpha"]);
+  });
+  it("a button left in the topic the instance has since moved from: refused", () => {
+    const r = rig("open");
+    (r.fm.fleetConfig as any).instances.alpha.topic_id = 31;
+    stale(r, "30");
+    expect(r.cancelled).toEqual([]);
+    stale(r, "31");
+    expect(r.cancelled).toEqual(["alpha"]);
+  });
+  it("a click from an unrelated chat with the same topic number: refused", () => {
+    const r = rig("open"); stale(r, "30", "-1009"); expect(r.cancelled).toEqual([]);
+  });
+  it("Telegram General: its topic is thread 1 or no thread at all — both are General", () => {
+    const r = rig("open");
+    stale(r, undefined, GROUP, "general"); expect(r.cancelled).toEqual(["general"]);
+    r.cancelled.length = 0; r.any.staleCancelClickAt.clear();
+    stale(r, "1", GROUP, "general"); expect(r.cancelled).toEqual(["general"]);
+  });
+});
+
+describe("a ClassicBot instance's cancel button is pressed by whoever its ClassicBot chat lets talk, as typed /cancel there", () => {
+  function classicRig(chat: string, kind: "telegram" | "discord") {
+    const r = rig("locked");   // PLAIN is not in any fleet allowed_users: the fleet policy would refuse them
+    if (kind === "discord") {
+      const dc = { id: "dc", type: "discord", group_id: "G-1", access: { mode: "locked", allowed_users: [ADMIN_A] } };
+      (r.fm.fleetConfig as any).channels.push(dc);
+      r.any.worlds.set("dc", { id: "dc", adapter: { id: "dc", type: "discord" }, channelConfig: dc, accessManager: { isAllowed: () => false } });
+    }
+    const owner = kind === "discord" ? "dc" : "tg-a";
+    r.any.classicChannels = {
+      getChannelIdByInstance: (name: string) => (name === "cls" ? chat : undefined),
+      getAdapterIdByInstance: (name: string) => (name === "cls" ? owner : undefined),
+      hasChannel: () => false, isClassicChannel: () => false,
+    };
+    return { r, owner };
+  }
+  const press = (r: ReturnType<typeof rig>, owner: string, data: Record<string, unknown>) =>
+    r.any.handleCancelClick("cls", null, { callbackData: "cancel:cls", messageId: "btn-c", userId: PLAIN, ...data }, owner);
+
+  it("Telegram private chat: its user, absent from the fleet list, cancels", () => {
+    const { r, owner } = classicRig("4242", "telegram");
+    r.any.cancelButtons.set("btn-c", { instanceName: "cls", messageId: "btn-c", chatId: "4242", adapterId: owner });
+    press(r, owner, { chatId: "4242" });
+    expect(r.cancelled).toEqual(["cls"]);
+  });
+  it("Telegram ClassicBot group: a member, absent from the fleet list, cancels", () => {
+    const { r, owner } = classicRig("-5555", "telegram");
+    r.any.cancelButtons.set("btn-c", { instanceName: "cls", messageId: "btn-c", chatId: "-5555", adapterId: owner });
+    press(r, owner, { chatId: "-5555" });
+    expect(r.cancelled).toEqual(["cls"]);
+  });
+  it("Discord ClassicBot channel (click: guild as chat, channel as thread): cancels; stale too", () => {
+    const { r, owner } = classicRig("C-77", "discord");
+    r.any.cancelButtons.set("btn-c", { instanceName: "cls", messageId: "btn-c", chatId: "G-1", threadId: "C-77", adapterId: owner });
+    press(r, owner, { chatId: "G-1", threadId: "C-77" });
+    expect(r.cancelled).toEqual(["cls"]);
+    r.cancelled.length = 0; r.any.cancelButtons.clear();
+    press(r, owner, { chatId: "G-1", threadId: "C-77", messageId: "gone" });
+    expect(r.cancelled).toEqual(["cls"]);
+  });
+  it("…but only from its own ClassicBot chat, and only through its own bot", () => {
+    const { r, owner } = classicRig("-5555", "telegram");
+    press(r, owner, { chatId: "-6666", messageId: "gone" });
+    r.any.handleCancelClick("cls", null, { callbackData: "cancel:cls", chatId: "-5555", messageId: "gone", userId: PLAIN }, "tg-b");
+    expect(r.cancelled).toEqual([]);
+  });
+});
+
+describe("a /model or /effort click checks the target's current owner, and again right before applying", () => {
+  async function heldMenu(kind: "model" | "effort") {
+    const r = rig("open");
+    let release!: () => void;
+    const held = new Promise<void>(res => { release = res; });
+    const promptUser = vi.fn().mockResolvedValue("menu");
+    const adapter = { id: "tg-a", type: "telegram", promptUser, editMessageRemoveButtons: vi.fn(() => held), editMessage: vi.fn(async () => {}), sendText: vi.fn(async () => ({ messageId: "p" })) } as never;
+    const apply = kind === "model" ? vi.spyOn(r.fm, "applyModel").mockResolvedValue("✅") : vi.spyOn(r.fm, "applyEffort").mockResolvedValue("✅");
+    if (kind === "model") {
+      vi.spyOn(r.any, "getModelOptions").mockResolvedValue([{ id: "m1", label: "M1" }, { id: "m2", label: "M2" }]);
+      await r.fm.promptModelMenu("alpha", ADMIN_A, "30", adapter, GROUP, "30", "tg-a");
+    } else {
+      vi.spyOn(r.any, "effortLevelsFor").mockReturnValue(["low", "high"]);
+      await r.fm.promptEffortMenu("alpha", ADMIN_A, "30", adapter, GROUP, "30", "tg-a");
+    }
+    const id = (promptUser.mock.calls[0] as any)[2].find((c: { id: string }) => c.id.endsWith(kind === "model" ? ":m2" : ":high")).id;
+    const click = () => (kind === "model" ? r.any.handleModelSelection : r.any.handleEffortSelection).call(r.any,
+      { callbackData: id, chatId: GROUP, threadId: "30", messageId: "menu", userId: ADMIN_A, ack: vi.fn() }, "tg-a");
+    const settle = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
+    return { r, apply, click, release, settle };
+  }
+
+  for (const kind of ["model", "effort"] as const) {
+    it(`/${kind}: the instance moved to another bot before the click — not applied`, async () => {
+      const m = await heldMenu(kind);
+      (m.r.fm.fleetConfig as any).instances.alpha.channel_id = "tg-b";
+      m.release();
+      await m.click(); await m.settle();
+      expect(m.apply).not.toHaveBeenCalled();
+    });
+    it(`/${kind}: moved while the progress edit was held — not applied`, async () => {
+      const m = await heldMenu(kind);
+      const clicked = m.click();
+      await m.settle();
+      (m.r.fm.fleetConfig as any).instances.alpha.channel_id = "tg-b";
+      m.release(); await clicked; await m.settle();
+      expect(m.apply).not.toHaveBeenCalled();
+    });
+    it(`/${kind}: admin removed while the progress edit was held — not applied`, async () => {
+      const m = await heldMenu(kind);
+      const clicked = m.click();
+      await m.settle();
+      (m.r.fm.fleetConfig as any).channels[0].access.allowed_users = [];
+      m.release(); await clicked; await m.settle();
+      expect(m.apply).not.toHaveBeenCalled();
+    });
+    it(`/${kind}: nothing changed while held — applied (control)`, async () => {
+      const m = await heldMenu(kind);
+      const clicked = m.click();
+      await m.settle(); m.release(); await clicked; await m.settle();
+      expect(m.apply).toHaveBeenCalledOnce();
+    });
+  }
+});
+
+describe("/tips with a mode is fleet administration: refused from a foreign guild's ClassicBot channel", () => {
+  it("on, off and advanced on are refused there; bare /tips still draws", async () => {
+    const r = rig("open");
+    (r.fm.fleetConfig as any).channels[0].group_id = "G-fleet";
+    r.any.classicChannels = { isClassicChannel: () => true, getInstanceByChannel: () => "classic-1", hasChannel: () => true, isAdmin: () => false };
+    const ask = async (options: Record<string, string>) => {
+      const respond = vi.fn(async () => undefined);
+      return r.any.authorizeSlash({ command: "tips", channelId: "cc-1", guildId: "G-other", userId: ADMIN_A, respond, options }, "tg-a");
+    };
+    for (const mode of ["on", "off", "advanced on"]) expect(await ask({ mode }), mode).toBeNull();
+    expect(await ask({})).toBe("classic");
+  });
+});

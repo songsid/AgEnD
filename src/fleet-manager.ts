@@ -3318,7 +3318,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       primaryGuildId: String(this.getChannelConfig(adapterId)?.group_id ?? ""),
       scope,
       speaker,
-      fleetAdminCommand: !!rule && "level" in rule && rule.level === "fleet-admin",
+      // The table's level, plus the fleet-admin modes of a command whose handler decides by its options: /tips with a
+      // mode saves fleet config or unlocks tips; bare /tips only draws one (#1396 review).
+      fleetAdminCommand: (!!rule && "level" in rule && rule.level === "fleet-admin")
+        || (data.command === "tips" && typeof data.options?.mode === "string" && data.options.mode.trim() !== ""),
     };
     const decision = decideSlash(facts);
     if (decision.allow) return commandScope;
@@ -11025,11 +11028,24 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // the chat. So it may interrupt only when it comes through the instance's owning adapter (the one that posts its
     // buttons) from someone that adapter lets speak — and, on a live button, only that instance's own message.
     const owner = this.getInstanceAdapterId(instanceName);
-    const access = owner ? this.worlds.get(owner)?.accessManager ?? (owner === this.getPrimaryAdapterId() ? this.accessManager : null) : null;
-    const speaker = !!data.userId && !!owner && (this.isFleetAdmin(data.userId, owner) || !!access?.isAllowed(data.userId));
     const live = this.cancelButtons.get(data.messageId);
-    if (!owner || adapterId !== owner || !speaker || (live && (live.instanceName !== instanceName || live.chatId !== data.chatId))) {
-      this.logger.warn({ instanceName, adapterId, owner, userId: data.userId, live: !!live }, "Refused cancel click: not this instance's button, or not someone its adapter lets speak");
+    // Where the click came from: a live button's own message (and topic), or — when the fleet has no entry for the
+    // message (a button being replaced, or forgotten across a restart) — the instance's destination as it is NOW, so a
+    // button left behind in a channel the instance has since moved from, or a click from an unrelated chat, does not
+    // cancel it (#1396 review).
+    const dest = this.cancelButtonDestination(instanceName);
+    const atDestination = !!owner && (live
+      ? live.instanceName === instanceName && live.chatId === data.chatId
+        && (live.threadId == null || this.clickAtDestination({ chatId: live.chatId, threadId: live.threadId }, data, owner))
+      : !!dest && this.clickAtDestination(dest, data, owner));
+    // Who may press it: in a ClassicBot chat, anyone there — exactly who a typed /cancel there answers, since ClassicBot
+    // traffic is not admitted by the fleet's access policy (#1396 review); elsewhere someone the owning adapter lets speak.
+    const classic = this.classicChannels?.getChannelIdByInstance(instanceName) !== undefined;
+    const access = owner ? this.worlds.get(owner)?.accessManager ?? (owner === this.getPrimaryAdapterId() ? this.accessManager : null) : null;
+    const speaker = !!data.userId && !!owner
+      && (classic || this.isFleetAdmin(data.userId, owner) || !!access?.isAllowed(data.userId));
+    if (!owner || adapterId !== owner || !speaker || !atDestination) {
+      this.logger.warn({ instanceName, adapterId, owner, userId: data.userId, live: !!live, atDestination }, "Refused cancel click: not this instance's button where it is now, or not someone its adapter lets speak");
       data.ack?.(t("buttons.not_allowed"));
       return;
     }
@@ -11051,6 +11067,28 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.logger.info({ instanceName }, "Cancel click on an expired button — instance not running");
     adapter?.editMessage(data.chatId, data.messageId, t("cancel.button_stale", instanceName), data.threadId)
       .catch(() => { /* the message may already be gone */ });
+  }
+
+  /** Where an instance's cancel button is posted — and so the only place a click on it can come from. */
+  private cancelButtonDestination(instanceName: string): { chatId: string; threadId?: string } | null {
+    const groupId = this.getGroupIdForInstance(instanceName) || undefined;
+    const topicId = this.fleetConfig?.instances[instanceName]?.topic_id;
+    // Fleet topic instance.
+    if (topicId != null && groupId) return { chatId: String(groupId), threadId: String(topicId) };
+    // Classic instance: channelId from the classic manager; General / flat fallback: the group (no thread).
+    const chatId = this.classicChannels?.getChannelIdByInstance(instanceName) ?? (groupId ? String(groupId) : undefined);
+    return chatId ? { chatId } : null;
+  }
+
+  /**
+   * A click came from this destination. A Discord click names the guild as its chat and the channel as its thread; a
+   * Telegram click names the chat and topic, with the General topic as thread 1 or none at all.
+   */
+  private clickAtDestination(dest: { chatId: string; threadId?: string }, data: AdapterCallbackData, ownerAdapterId: string): boolean {
+    const telegram = this.getChannelConfig(ownerAdapterId)?.type === "telegram";
+    const thread = (id?: string): string | undefined => (telegram && (id === undefined || id === "1") ? undefined : id);
+    if (thread(dest.threadId) !== undefined) return data.chatId === dest.chatId && thread(data.threadId) === thread(dest.threadId);
+    return (thread(data.threadId) ?? data.chatId) === dest.chatId;
   }
 
   private hasCancelButton(instanceName: string): boolean {
@@ -11107,19 +11145,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const adapterId = this.getInstanceAdapterId(instanceName);
     const groupId = this.getGroupIdForInstance(instanceName) || undefined;
     const topicId = this.fleetConfig?.instances[instanceName]?.topic_id;
-
-    let chatId: string | undefined;
-    let threadId: string | undefined;
-    if (topicId != null && groupId) {
-      // Fleet topic instance.
-      chatId = String(groupId);
-      threadId = String(topicId);
-    } else {
-      // Classic instance: channelId from the classic manager.
-      chatId = this.classicChannels?.getChannelIdByInstance(instanceName);
-      // General / flat fallback: post to the group (no thread).
-      if (!chatId && groupId) chatId = String(groupId);
-    }
+    const { chatId, threadId } = this.cancelButtonDestination(instanceName) ?? {};
     if (!chatId) {
       // A button that cannot be addressed must say so — this exact silence is how
       // "the cancel button sometimes never appears" stayed unreported-in-logs.
@@ -13810,7 +13836,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (!data.userId || data.userId !== pending.userId
       || (pending.adapterId !== undefined && pending.adapterId !== adapterId)
       || (cbChannel !== pending.channelId && data.chatId !== pending.channelId)
-      || !this.isModelAdmin(data.userId, pending.channelId, adapterId)) {
+      || !this.menuClickStillCurrent(pending.instanceName, data.userId, pending.channelId, adapterId)) {
       data.ack?.(t("buttons.admin_only"));
       return true;
     }
@@ -13844,7 +13870,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     void (async () => {
       let result: string;
       try {
-        result = await this.applyEffort(pending.instanceName, level);
+        // Asked again after the progress edit awaited above: the instance may have moved, or the admin lost admin.
+        result = this.menuClickStillCurrent(pending.instanceName, data.userId!, pending.channelId, adapterId)
+          ? await this.applyEffort(pending.instanceName, level) : t("menu.click_stale");
       } catch (err) {
         this.logger.error({ err, instance: pending.instanceName, level }, "Effort switch failed");
         result = t("effort.switch_failed", level, err instanceof Error ? err.message : String(err));
@@ -14092,6 +14120,15 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     }
   }
 
+  /**
+   * A /model or /effort menu click may still act (#1396 review): the instance is still owned by the adapter the click
+   * came through (it may have been rebound since the menu opened) and the clicker is still that channel's admin. Asked
+   * when the click is claimed and again right before the change is applied.
+   */
+  private menuClickStillCurrent(instanceName: string, userId: string, channelId: string, adapterId: string): boolean {
+    return this.getInstanceAdapterId(instanceName) === adapterId && this.isModelAdmin(userId, channelId, adapterId);
+  }
+
   /** Consume a `/model` selection callback. Returns true for all model-select ids (incl. stale). */
   private async handleModelSelection(data: AdapterCallbackData, adapterId: string): Promise<boolean> {
     if (!data.callbackData.startsWith(MODEL_SELECT_CALLBACK_PREFIX)) return false;
@@ -14105,7 +14142,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (!data.userId || data.userId !== pending.userId
       || (pending.adapterId !== undefined && pending.adapterId !== adapterId)
       || (cbChannel !== pending.channelId && data.chatId !== pending.channelId)
-      || !this.isModelAdmin(data.userId, pending.channelId, adapterId)) {
+      || !this.menuClickStillCurrent(pending.instanceName, data.userId, pending.channelId, adapterId)) {
       data.ack?.(t("buttons.admin_only"));
       return true;
     }
@@ -14163,7 +14200,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     void (async () => {
       let result: string;
       try {
-        result = await this.applyModel(pending.instanceName, model);
+        // Asked again after the progress edit awaited above: the instance may have moved, or the admin lost admin.
+        result = this.menuClickStillCurrent(pending.instanceName, data.userId!, pending.channelId, adapterId)
+          ? await this.applyModel(pending.instanceName, model) : t("menu.click_stale");
       } catch (err) {
         this.logger.error({ err, instance: pending.instanceName, model }, "Model switch failed");
         result = t("model.switch_failed", model, err instanceof Error ? err.message : String(err));
