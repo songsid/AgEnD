@@ -175,7 +175,7 @@ jobs:
   # never `skipped`.
   build:
     runs-on: ubuntu-latest
-    needs: [detect-changes, changelog, setup, test-shard, test-integration, install-smoke]
+    needs: [detect-changes, changelog, setup, test-shard, test-integration, install-smoke, node20-rollback-smoke]
     if: always()
     steps:
       - name: Check all jobs succeeded
@@ -186,6 +186,7 @@ jobs:
           SHARD: ${{ needs.test-shard.result }}
           INTEGRATION: ${{ needs.test-integration.result }}
           SMOKE: ${{ needs.install-smoke.result }}
+          ROLLBACK: ${{ needs.node20-rollback-smoke.result }}
         run: |
           set -euo pipefail
           # changelog always runs; verify it first regardless of docs-only.
@@ -198,7 +199,7 @@ jobs:
             exit 0
           fi
           failed=()
-          for name_result in "setup:$SETUP" "test-shard:$SHARD" "test-integration:$INTEGRATION" "install-smoke:$SMOKE"; do
+          for name_result in "setup:$SETUP" "test-shard:$SHARD" "test-integration:$INTEGRATION" "install-smoke:$SMOKE" "node20-rollback-smoke:$ROLLBACK"; do
             name="${name_result%%:*}"
             result="${name_result##*:}"
             if [ "$result" != "success" ]; then
@@ -424,3 +425,50 @@ jobs:
           if (row.v !== 'ok') process.exit(1);
           console.log('better-sqlite3 N-API prebuild ok on Node', process.version);
           JS
+
+  # ── Node 20 preinstall rollback smoke ────────────────────────────────────────
+  # Proves that on Node 20 (incompatible with N-API 10), npm install of the new
+  # package over an existing 2.1.12 install rolls back and keeps 2.1.12.
+  # Uses an isolated global prefix — never touches the host global npm.
+  node20-rollback-smoke:
+    runs-on: ubuntu-latest
+    needs: setup
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Pack tarball on Node 22
+        if: needs.detect-changes.outputs.docs-only != 'true'
+        run: |
+          npm ci
+          npm run build
+          TGZ=$(npm pack --json | node -e "const d=require('fs').readFileSync('/dev/stdin','utf8'); console.log(JSON.parse(d)[0].filename)")
+          echo "TGZ=$TGZ" >> "$GITHUB_ENV"
+      - uses: actions/setup-node@v4
+        if: needs.detect-changes.outputs.docs-only != 'true'
+        with:
+          node-version: '20'
+      - name: Rollback proof — Node 20 must not install new package
+        if: needs.detect-changes.outputs.docs-only != 'true'
+        run: |
+          set -euo pipefail
+          PREFIX="$RUNNER_TEMP/node20-rollback-prefix"
+          mkdir -p "$PREFIX"
+          # Install old baseline
+          npm install --global --prefix "$PREFIX" @songsid/agend@2.1.12
+          BEFORE=$("$PREFIX/bin/agend" --version)
+          echo "Before: $BEFORE"
+          [ "$BEFORE" = "2.1.12" ] || { echo "baseline install failed"; exit 1; }
+          # Attempt upgrade to new package; must fail due to preinstall guard
+          if npm install --global --prefix "$PREFIX" "./$TGZ"; then
+            echo "ERROR: npm install should have failed on Node 20 but succeeded" >&2
+            exit 1
+          fi
+          echo "Good: npm failed as expected on Node 20"
+          # Verify old version is still in place
+          AFTER=$("$PREFIX/bin/agend" --version)
+          echo "After: $AFTER"
+          [ "$AFTER" = "2.1.12" ] || { echo "ROLLBACK FAILED: version is $AFTER, expected 2.1.12" >&2; exit 1; }
+          echo "Rollback confirmed: 2.1.12 is still installed after failed upgrade on Node 20"
