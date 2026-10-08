@@ -16,6 +16,7 @@ waiting on the person, across every instance, **derived from existing state** (�
   instance's chat. A device can opt in to browser notifications (§6).
 - **Resolved anywhere, gone everywhere.** All surfaces are renderings of one derivation (§4). An answer on
   Discord, Telegram or the web changes the underlying state, and every surface re-renders from it.
+- **Who sees what (decided 2026-10-08):** chat is scoped to the **owning world**, and `/ui` is global (§5.0).
 
 **Non-goals (v1).**
 - **No new source of truth for items.** The server keeps two small records, and neither decides what is listed:
@@ -209,10 +210,27 @@ work is added to any endpoint the web calls on a timer.
 
 ## 5. Discord / Telegram (primary)
 
+### 5.0 Visibility and authority: the owning world (decision, 2026-10-08)
+
+- **Owning world.** An item belongs to the world that owns its instance: `getInstanceAdapterId(item.instance)`
+  (`fleet-manager.ts:2342`), the same rule as #1346's owner gating. That is the configured `channel_id`, else the
+  primary adapter, plus classic and external bindings. A delivery item's instance is its **target**. An item has an
+  owning world only when that id is a live world (`this.worlds.has(owner)`).
+- **Chat is scoped to it:**
+  - each world's General live message lists **only** items whose owning world is that world (§5.1);
+  - the admin DM (§5.5) goes only to that world's admins, and only for its items;
+  - handling an item from chat (Acknowledge) is allowed only for an admin of the owning world,
+    `isFleetAdmin(userId, owner)` (§5.2).
+- **`/ui` is global.** The web view lists every item from every world and can handle any of them. A signed-in web
+  session is already fleet-admin level (§6.1).
+- **No owning world** (a web-only fleet, or an instance whose bound world is gone): the item appears **only in
+  `/ui`**.
+
 ### 5.1 The live message
 
-One message per platform, in that platform's General: `fleetNoticeTarget(adapterId)` (`fleet-manager.ts:9688`), the
-same place the daily summary and fleet errors go.
+One message per world, in that world's General: `fleetNoticeTarget(adapterId)` (`fleet-manager.ts:9688`), the same
+place the daily summary and fleet errors go. It lists only that world's items (§5.0); a world with none shows "✅
+Nothing needs you right now".
 
 ```
 📥 Needs you — 3
@@ -240,9 +258,13 @@ same place the daily summary and fleet errors go.
   buttons. One tap reaches the existing, already-authorized buttons. The capability model doesn't change, and two
   taps replace a new cross-message answer path. (§8 Q1 asks whether a later "answer here" proxy is wanted.)
 - **Acknowledge** is a new nonce prefix, `needs-ack:`, posted through `postNonceButtonPromptOrThrow`. So it gets
-  the same 128-bit nonce, the same binding to the live message, and fleet-admin authorization (`isFleetAdmin` on
-  the clicking adapter), exactly like every other mutating button. A click records the ack, recomputes, and
-  re-renders every surface.
+  the same 128-bit nonce and the same binding to the live message, which is in the owning world's General.
+- **Authorization** is the owning world's admin list. The entry is created with `authChannelId` unset and checked
+  against `isFleetAdmin(userId, callbackAdapterId)`. Because the message only ever carries items of its own world, the
+  binding makes `callbackAdapterId` the owner. The ack handler re-checks
+  `getInstanceAdapterId(item.instance) === callbackAdapterId` before recording, and refuses ("not this world's
+  item") if the instance has moved to another world since the message was rendered.
+- A click records the ack, recomputes, and re-renders every surface.
 - When the live message is replaced (§5.3), its Acknowledge nonces are retired with it (the existing
   `retireNonceButtons`), and the new message gets fresh ones. A click on an old message gets the standard "this
   button has expired".
@@ -268,8 +290,9 @@ record, every restart would leave a stale list behind. This is a pointer to a me
 ### 5.5 DM to admins (optional, off by default)
 
 - **Setting:** `needs_you.dm: true` (fleet-level, hot-reloadable).
-- **Behaviour:** when an item id **appears**, each fleet admin of that platform gets one short DM, e.g. "📥 alpha —
-  Not responding" with the jump link. On Discord this goes through the adapter's `sendDirect`. On Telegram it goes
+- **Behaviour:** when an item id **appears**, each fleet admin **of the item's owning world** gets one short DM
+  (that world's `access.allowed_users`, the list `isFleetAdmin` reads, `fleet-manager.ts:3047`), e.g. "📥 alpha — Not responding" with the jump link. Admins of other worlds do not get it,
+  and items with no owning world are never DMed (§5.0). On Discord this goes through the adapter's `sendDirect`. On Telegram it goes
   to the private chat with the bot, only if the admin has started it; otherwise it is skipped silently.
 - At most one DM per admin per 60 s, folding several new items into one message. There are no buttons in the DM:
   the jump link goes to where the buttons are.
@@ -289,6 +312,8 @@ forgets its pointer.
 
 ### 6.1 The view
 
+- **Global.** The view lists every item from every world, plus items with no owning world, and any of them can be
+  handled here: a signed-in web session is fleet-admin level (§5.0).
 - **Sidebar.** **Needs you**, with a count badge (hidden at 0), above *Fleet*. The tab title gets a `(N)` prefix.
 - **The view.** Grouped by instance as in §4.1. Each row shows an icon, the title, the detail, the age, and actions:
   - **prompts:** their own buttons, through the existing `POST /ui/prompt`. That is a session write plus CSRF; the
@@ -337,6 +362,14 @@ forgets its pointer.
   - **delivery:** an `uncertain` row appears; `markConsumed` makes it delivered and it is gone. Acknowledge works the
     same from the Discord button, the Telegram button and the web: an admin from any surface clears every surface,
     and a non-admin is refused. A `failed` row ages out after 24 h on a controlled clock.
+- **Visibility (§5.0):**
+  - with two worlds (A owns alpha, B owns beta), A's live message and DMs list only alpha's items, B's only beta's;
+  - `/ui` lists both;
+  - an instance with no live owning world appears only in `/ui`;
+  - an Acknowledge clicked by B's admin on A's message is refused by the binding;
+  - A's message clicked by a user who is an admin of B but not of A is refused;
+  - an ack whose instance moved to another world is refused;
+  - the web can acknowledge any item.
 - **Live message mechanics:** edit vs. replace, the debounce and rate limits on a controlled clock, a fallback post
   when an edit fails, the pointer persisted and resumed after a restart, retirement on shutdown, and expired-button
   handling on a replaced message.
