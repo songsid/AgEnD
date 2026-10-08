@@ -33,6 +33,8 @@ function renderDashboardSidebar(instances: Array<Record<string, unknown>>, await
     escAttr: (value: unknown) => String(value),
     awaiting,
     tr: (key: string) => key,
+    // The first sign-in tour's outline follows a redraw (#1366); no tour is open in these renders.
+    refreshTourSpot: () => {},
     document: {
       getElementById: (id: string) => id === "instanceList" ? list : fleetEntry,
     },

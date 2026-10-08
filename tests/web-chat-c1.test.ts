@@ -595,7 +595,7 @@ describe("dashboard sendMsg (the real page script)", () => {
     const fetched: string[] = [];
     let pollReply: (url: string) => unknown = () => ({});
     const c = vm.createContext({
-      localStorage: { getItem: () => null }, navigator: { language: "en" },
+      /* a returning browser: it has seen the first sign-in tour (#1366) */ localStorage: { getItem: (k: string) => k === "agend_tour_done" ? "1" : null }, navigator: { language: "en" },
       document: { addEventListener() {}, getElementById: (n: string) => nodes[n] ?? null, createElement: () => ({ style: {}, remove() {} }), body: { appendChild() {} } },
       setTimeout: (f: () => void) => { timers.push(f); return timers.length; }, clearTimeout() {},
       setInterval: (f: () => void) => { timers.push(f); return timers.length; }, clearInterval() {},

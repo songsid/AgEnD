@@ -421,6 +421,16 @@
     .toasts { top: calc(60px + env(safe-area-inset-top)); bottom: auto; left: max(12px, env(safe-area-inset-left)); right: max(12px, env(safe-area-inset-right)); align-items: stretch; }
   }
   @media (prefers-reduced-motion: reduce) { .sidebar { transition: none; } }
+  /* #1366: the first sign-in tour — a card that names one thing at a time and outlines it; classes only (#1300). */
+  /* Under the phone drawer (40) and its scrim (39), forms (50) and toasts: opening any of them covers the card. */
+  .tour { position: fixed; right: 20px; top: 68px; z-index: 38; width: min(360px, calc(100vw - 32px)); background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 12px 32px rgba(0,0,0,.25); padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+  .tour h2 { margin: 0; font-size: 15px; }
+  .tour .tour-text { margin: 0; font-size: 13px; line-height: 1.5; }
+  .tour .tour-foot { display: flex; align-items: center; gap: 8px; }
+  .tour .tour-count { font-size: 12px; color: var(--text-sec); margin-right: auto; }
+  .tour-spot { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 8px; }
+  /* Below the top bar, never over the composer that steps 3 and 4 point at. */
+  @media (max-width: 760px) { .tour { left: 16px; right: 16px; width: auto; top: calc(64px + env(safe-area-inset-top)); } }
 </style>
 </head>
 <body>
@@ -445,6 +455,7 @@
     <label class="theme-pick"><span id="themeLabel">Theme</span>
       <select id="themePick"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
     <label class="toggle-row"><input type="checkbox" id="previewOptIn"><span id="previewOptInLabel">Allow HTML previews on this device</span></label>
+    <button class="btn btn-ghost btn-block" type="button" id="tourBtn" data-act="startTour">Tour</button>
   </div>
 </aside>
 
@@ -473,6 +484,13 @@
 const UI_LANG = localStorage.getItem("agend_lang") || (navigator.language?.toLowerCase().startsWith("zh") ? "zh-TW" : "en");
 const UI_TEXT = {
   en: {
+    tourTitle: "Welcome to web chat", tourStep: "{0} of {1}", tourBack: "Back", tourNext: "Next", tourDone: "Got it", tourSkip: "Skip",
+    tourBtn: "Tour", tourBtnTitle: "Show the web chat tour again",
+    tour1: "Pick an instance in the list to chat with it. On a phone, ☰ opens the list.",
+    tour2: "It is the same conversation as its Telegram or Discord chat: what you send here shows up there too, and the agent's replies show up in both.",
+    tour3: "Attach files and images with 📎, or paste or drop them on the chat.",
+    tour4: "While the agent works, Send becomes Stop: it interrupts the current reply. The instance itself keeps running.",
+    tour5: "A “needs you” badge means the agent is waiting on its terminal, for example a permission question. Answer it from the buttons in its chat.",
     a11yWorking: "{0} started working", a11yIdle: "{0} finished", a11yReplied: "{0} replied", conversationWith: "Conversation with {0}",
     stopping: "Stopping {0}…", awaiting: "{0} is waiting for your input", approxNote: "Read from the terminal, so approximate", elapsedTitle: "Time since this page saw it start (approximate)", needsYou: "needs you",
     dropHere: "Drop files to attach them", asText: "As text", pasteAttached: "A long paste ({0} characters) was attached as a text file", pasteKeptAsText: "No room for another attachment: the long paste stays as text",
@@ -495,6 +513,13 @@ const UI_TEXT = {
     teamCreated: "Team created", teamDeleted: "Team deleted", configSaved: "Config saved", configRestart: " (restart Fleet to apply channel changes)",
   },
   "zh-TW": {
+    tourTitle: "歡迎使用網頁聊天", tourStep: "{0} / {1}", tourBack: "上一步", tourNext: "下一步", tourDone: "知道了", tourSkip: "略過",
+    tourBtn: "導覽", tourBtnTitle: "再看一次網頁聊天導覽",
+    tour1: "在清單裡選一個 instance，就能跟它對話。手機上請按 ☰ 打開清單。",
+    tour2: "這和它在 Telegram 或 Discord 上的是同一段對話：在這裡送出的訊息那邊也看得到，Agent 的回覆兩邊都會出現。",
+    tour3: "按 📎 附上檔案和圖片，也可以直接貼上或拖到聊天裡。",
+    tour4: "Agent 工作時，「送出」會變成「中止」：中斷目前的回覆，instance 本身會繼續運行。",
+    tour5: "看到「等你回應」標記，表示 Agent 在終端機上等你，例如權限詢問。到它的聊天裡按按鈕回應即可。",
     a11yWorking: "{0} 開始工作", a11yIdle: "{0} 已完成", a11yReplied: "{0} 已回覆", conversationWith: "與 {0} 的對話",
     stopping: "正在中止 {0}…", awaiting: "{0} 正在等你回應", approxNote: "從終端畫面判讀，僅供參考", elapsedTitle: "從這個頁面看到它開始工作起算（約略）", needsYou: "等你回應",
     dropHere: "放開即可附加檔案", asText: "改為文字", pasteAttached: "貼上的長文字（{0} 個字元）已改為文字檔附加", pasteKeptAsText: "附件已滿，貼上的長文字保留為一般文字",
@@ -599,6 +624,79 @@ if (typeof AgendPreview !== "undefined" && document.body?.dataset) AgendPreview.
     pick.addEventListener("change", () => AgendTheme.set(pick.value));
   }
 }
+// #1366: the first sign-in tour. Shown once on this device (agend_tour_done), dismissed by Got it, Skip or Esc, and
+// replayed from Tour in the sidebar. A card that outlines one thing at a time: no overlay, nothing blocked, and no
+// style attribute — the outline is a class (#1300). When this browser's storage cannot be read, it is not shown at
+// all: a tour that comes back on every load is worse than none.
+const TOUR_KEY = "agend_tour_done";
+const TOUR_STEPS = [
+  { text: "tour1", spot: () => document.getElementById("instanceList") },
+  { text: "tour2", spot: () => document.getElementById("mainArea") },
+  { text: "tour3", spot: () => document.getElementById("attachBtn") },
+  { text: "tour4", spot: () => { const stop = document.getElementById("stopBtn"); return stop && !stop.hidden ? stop : document.getElementById("sendBtn"); } },
+  { text: "tour5", spot: () => document.querySelector(".badge-await") || document.getElementById("instanceList") },
+];
+let tourAt = -1, tourSpot = null, tourReturn = null, tourEscHeld = false;
+function tourDone() { try { return localStorage.getItem(TOUR_KEY) === "1"; } catch { return true; } }
+function startTour() {
+  // The card sits under the phone drawer: replaying it from the drawer closes the drawer first (which puts focus back
+  // on ☰), so the tour is seen and Esc/Done return to something visible (#1369 review).
+  closeDrawer();
+  if (tourAt < 0) tourReturn = document.activeElement;
+  showTourStep(0);
+}
+/** The current step's outline follows a redraw (a new badge, Send swapped for Stop) — same card, same focus. */
+function refreshTourSpot() {
+  if (tourAt < 0) return;
+  const next = TOUR_STEPS[tourAt].spot() || null;
+  if (next === tourSpot && (!next || next.classList.contains("tour-spot"))) return;
+  tourSpot?.classList.remove("tour-spot");
+  tourSpot = next;
+  tourSpot?.classList.add("tour-spot");
+}
+function showTourStep(i) {
+  if (i < 0 || i >= TOUR_STEPS.length) return;
+  tourAt = i;
+  tourSpot?.classList.remove("tour-spot");
+  tourSpot = TOUR_STEPS[i].spot() || null;
+  tourSpot?.classList.add("tour-spot");
+  let card = document.getElementById("tour");
+  if (!card) {
+    card = document.createElement("section"); card.id = "tour"; card.className = "tour";
+    card.setAttribute("role", "dialog"); card.setAttribute("aria-labelledby", "tourTitle");
+    document.body.appendChild(card);
+  }
+  card.textContent = "";
+  const title = document.createElement("h2"); title.id = "tourTitle"; title.textContent = tr("tourTitle");
+  const text = document.createElement("p"); text.className = "tour-text"; text.setAttribute("aria-live", "polite"); text.textContent = tr(TOUR_STEPS[i].text);
+  const foot = document.createElement("div"); foot.className = "tour-foot";
+  const count = document.createElement("span"); count.className = "tour-count"; count.textContent = trf("tourStep", i + 1, TOUR_STEPS.length);
+  const button = (label, act, arg, cls) => {
+    const b = document.createElement("button"); b.type = "button"; b.className = `btn btn-sm ${cls}`; b.dataset.act = act;
+    if (arg != null) b.dataset.arg = String(arg);
+    b.textContent = tr(label); return b;
+  };
+  foot.append(count);
+  if (i < TOUR_STEPS.length - 1) foot.append(button("tourSkip", "endTour", null, "btn-ghost"));
+  if (i > 0) foot.append(button("tourBack", "tourMove", -1, "btn-ghost"));
+  const next = i < TOUR_STEPS.length - 1 ? button("tourNext", "tourMove", 1, "btn-accent") : button("tourDone", "endTour", null, "btn-accent");
+  foot.append(next);
+  card.append(title, text, foot);
+  next.focus();
+}
+function endTour() {
+  try { localStorage.setItem(TOUR_KEY, "1"); } catch { /* this page only */ }
+  tourAt = -1;
+  tourSpot?.classList.remove("tour-spot"); tourSpot = null;
+  document.getElementById("tour")?.remove();
+  if (tourReturn && document.contains?.(tourReturn)) tourReturn.focus?.();
+  tourReturn = null;
+}
+{
+  const btn = document.getElementById("tourBtn");
+  if (btn) { btn.textContent = tr("tourBtn"); btn.title = tr("tourBtnTitle"); }
+  if (!tourDone()) startTour();
+}
 
 async function api(m, p, b) {
   const o = { method: m, headers: { "Content-Type": "application/json" } };
@@ -678,6 +776,7 @@ const ACTIONS = {
   tab: el => { curTab = el.dataset.arg; renderMain(); }, toggleSidebar: () => toggleSidebar(), closeDrawer: () => closeDrawer(),
   stopReply: el => cancelReply(cur, el), jumpLatest: () => jumpLatest(),
   copyMsg: el => copyMsg(el), copyCode: el => copyCode(el), toggleFold: el => toggleFold(el), toggleWrap: () => toggleWrap(),
+  startTour: () => startTour(), tourMove: el => showTourStep(tourAt + Number(el.dataset.arg)), endTour: () => endTour(),
 };
 document.addEventListener("click", e => {
   const el = e.target && e.target.closest ? e.target.closest("[data-act]") : null;
@@ -686,7 +785,12 @@ document.addEventListener("click", e => {
 });
 document.addEventListener("keydown", e => {
   if (e.key === "Escape" && !e.isComposing) {
+    // The Esc that closed the tour is spent: its key repeats (a held key) must not go on to Stop the agent (#1369 review).
+    // A new press (not a repeat) is a new Esc.
+    if (tourEscHeld) { if (e.repeat) { e.preventDefault?.(); return; } tourEscHeld = false; }
+    // What is on top closes first: the drawer covers the tour card.
     if (document.body.classList?.contains("sb-open")) { closeDrawer(); return; }
+    if (tourAt >= 0) { e.preventDefault?.(); endTour(); tourEscHeld = true; return; }
     if (stopOnEscape(document.activeElement)) { e.preventDefault(); cancelReply(cur, document.getElementById("stopBtn")); }
     return;
   }
@@ -791,6 +895,7 @@ function renderList() {
     </div>${awaiting[i.name] != null ? `<span class="badge-await" title="${escAttr(awaiting[i.name] || tr("approxNote"))}">${tr("needsYou")}</span>` : ""}<div class="inst-meta">${i.cost>0?`$${i.cost.toFixed(2)}`:""}${ctxMeta}</div></div>`;
   }).join("");
   el.querySelectorAll(".instance-item").forEach(x => x.addEventListener("click", () => sel(x.dataset.n)));
+  refreshTourSpot();
 }
 
 function selFleet() { closeDrawer(); mode = "fleet"; cur = null; curTab = "tasks"; renderList(); renderMain(); }
@@ -807,8 +912,8 @@ function renderMain() {
   const main = document.getElementById("mainArea");
   // The whole view is rebuilt: no preview survives it (design §6.2 — never re-parented or reloaded silently).
   if (typeof AgendPreview !== "undefined") AgendPreview.stopAll();
-  if (mode === "fleet") return renderFleetMain(main);
-  if (mode === "instance" && cur) return renderInstanceMain(main);
+  if (mode === "fleet") { renderFleetMain(main); refreshTourSpot(); return; }
+  if (mode === "instance" && cur) { renderInstanceMain(main); refreshTourSpot(); return; }
   renderTopbar("", []);
   main.innerHTML = `<div class="no-sel"><svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg><span>${tr("selectTarget")}</span></div>`;
 }
@@ -1250,6 +1355,7 @@ function renderComposerButtons() {
   const content = !!(inp && inp.value.trim()) || !!(pendingFiles[cur] && pendingFiles[cur].length);
   stop.hidden = !busy;
   send.hidden = busy && !content;
+  refreshTourSpot();
 }
 // A Stop on its way, per instance: set before the request goes, so a second Esc (a held key repeats it) or a click
 // while the first answer is pending sends nothing more (#1317 review). Cleared when the answer comes, whatever it is.
