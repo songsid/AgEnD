@@ -142,15 +142,26 @@ This also covers dangerous-command and permission dialogs.
 - **Query (new method):**
 
   ```sql
-  SELECT … FROM deliveries
+  SELECT … FROM deliveries INDEXED BY idx_delivery_attention
    WHERE state IN ('uncertain','failed') AND acknowledged_at IS NULL AND finished_at >= ?
    ORDER BY finished_at DESC LIMIT 50
   ```
 
   - **Acknowledged rows are excluded before the cap.** With 51 recent rows where the newest 50 are acknowledged,
     row #51 is still listed.
-  - **The scan is bounded by the time range on the partial index.** Uncertain rows are never pruned, but rows
-    older than 24 h are outside the range and are not examined. The regression runs `EXPLAIN QUERY PLAN`: it must
+  - **The scan is bounded by the time range on the partial index, and the query requires it with `INDEXED BY`**
+    (#1390 review r2).
+    - Adding the index alone does not make SQLite use it. With the outbox's existing indexes present, the planner
+      picks `idx_delivery_state_seq (state=?)` plus `USE TEMP B-TREE FOR ORDER BY`, which examines every
+      uncertain/failed row however old.
+    - Verified with the project's own better-sqlite3 (SQLite 3.51.3) on a schema created by the real
+      `DeliveryOutbox`:
+      - unforced: `SEARCH deliveries USING INDEX idx_delivery_state_seq (state=?)`, then `USE TEMP B-TREE FOR ORDER BY`;
+      - with `INDEXED BY idx_delivery_attention`: `SEARCH deliveries USING INDEX idx_delivery_attention
+        (finished_at>?)`, with no sort.
+    - `INDEXED BY` also fails the `prepare` if the index is missing. A file the migration did not reach therefore
+      errors loudly at startup instead of silently scanning, and the migration test covers it.
+    - Uncertain rows are never pruned, but rows older than 24 h are outside the range and are not examined. The regression runs `EXPLAIN QUERY PLAN`: it must
     use `idx_delivery_attention` with no temp B-tree for `ORDER BY`. It also seeds 1,000 expired uncertain rows plus
     a few recent ones and asserts that only the recent ones come back.
   - It is synchronous on the fleet loop, which is acceptable at this bound: an indexed range of at most 50 rows,
@@ -465,8 +476,13 @@ forgets its pointer.
   - **instance:** an `auth` pause appears and a wake clears it; `crashed` appears and a restart clears it.
   - **delivery:** an `uncertain` row appears; `markConsumed` makes it delivered and it is gone.
     - **Ack before the cap:** 51 recent rows with the newest 50 acknowledged list row #51.
-    - **A bounded scan:** `EXPLAIN QUERY PLAN` uses `idx_delivery_attention` for the range with no temp B-tree, and
-      1,000 expired uncertain rows plus 3 recent ones list exactly the 3.
+    - **A bounded scan,** against the locked better-sqlite3:
+      - the schema is created by the real `DeliveryOutbox`, so every existing competing index is present, and no
+        `ANALYZE` is run, so there are no stats to depend on;
+      - `EXPLAIN QUERY PLAN` of the exact production statement must be exactly `SEARCH deliveries USING INDEX
+        idx_delivery_attention (finished_at>?)`, with no `idx_delivery_state_seq` and no temp B-tree;
+      - 1,000 expired uncertain rows plus 3 recent ones list exactly the 3;
+      - a mutation removing `INDEXED BY` turns the plan assertion red.
     - **The migration:** a v4 file gains the columns and index, and an operator read of an old file still works.
     - **A write failure on ack** reports to the clicker and keeps the item listed. Acknowledge works the
     same from the Discord button, the Telegram button and the web: an admin from any surface clears every surface,
