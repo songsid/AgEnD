@@ -17,7 +17,7 @@ function rig() {
   const revoke = vi.fn(), log = vi.fn(), unconfirmed = vi.fn();
   const publicLink = new PublicWebLink({ dataDir: "/fixture", web: () => web, permitted: () => permitted, reserve: id => lane.reserve("dashboard", id),
     createGateway: () => gateway as never, ensure, provider: () => ({ name: "fake" }) as never, revoke, log, onCleanupUnconfirmed: unconfirmed, now: () => now, wallNow: () => 100_000 });
-  return { publicLink, ensure, lane, gateway, manager, revoke, log, unconfirmed, lost: () => lost(), advance: (n: number) => { now += n; }, allow: (value: boolean) => { permitted = value; }, settings: (value: any) => { web = value; } };
+  return { publicLink, ensure, lane, gateway, manager, handle, revoke, log, unconfirmed, lost: () => lost(), advance: (n: number) => { now += n; }, allow: (value: boolean) => { permitted = value; }, settings: (value: any) => { web = value; } };
 }
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
@@ -34,6 +34,12 @@ describe("public link access/child ownership, no real listener or tunnel", () =>
     wait.resolve({ path: "/private/pinned", source: "agend" }); expect(await delivery).toBe(true);
     expect(h.manager.start.mock.calls[0]?.[1].origin.href).toBe("http://127.0.0.1:9999/");
     await h.publicLink.close("end"); expect(h.lane.reserve("login", "different")).not.toBeNull();
+  });
+  it.each(["https://user@sample.trycloudflare.com/signin", "https://user:pass@sample.trycloudflare.com/signin", "https://sample.trycloudflare.com/signin?code=private"])("rejects a published URL with credentials or embedded code: %s", async pageUrl => {
+    const h = rig(), send = vi.fn(async () => true);
+    h.manager.start.mockResolvedValue({ ok: true, handle: { ...h.handle, pageUrl } });
+    expect(await h.publicLink.deliver(owner, send)).toBe(false);
+    expect(send).not.toHaveBeenCalled(); expect(h.manager.stop).toHaveBeenCalledTimes(1);
   });
   it("same startup A fails/B confirmed: A cannot close B's link", async () => {
     const h = rig(), a = deferred<boolean>(), b = deferred<boolean>();
