@@ -85,6 +85,16 @@ describe("sampler scheduling, unknown diagnostics and real gate", () => {
     expect(native.read).toHaveBeenCalledOnce();
     await vi.advanceTimersByTimeAsync(30_000); expect(native.read).toHaveBeenCalledTimes(2);
   });
+  it("a stale admission cache cannot consume the once-per-lifecycle raw-read diagnostic", async () => {
+    let now = 0, value = reported(); const unknown = vi.fn();
+    const native = { read: vi.fn(async () => value), stop: vi.fn() };
+    const p = new MemoryPressure({ platform: "darwin", darwinProbe: native, monotonicNow: () => now, onDarwinUnknown: unknown });
+    stops.push(() => p.stop()); p.start(); await vi.advanceTimersByTimeAsync(0);
+    now = 30_000; expect(p.sampleForAdmission()).toMatchObject({ level: "unknown" });
+    expect(unknown).not.toHaveBeenCalled(); expect(native.read).toHaveBeenCalledOnce();
+    value = reported(null); p.sample(); await vi.advanceTimersByTimeAsync(0);
+    expect(unknown).toHaveBeenCalledOnce(); expect(unknown.mock.calls[0][0]?.darwinPressureRaw).toBe(value.darwinPressureRaw);
+  });
   it("diagnostic readers never request the kernel pressure command", async () => {
     const run = vi.fn(asyncRunner);
     const probe = new DarwinMemoryProbe({ run, totalmem: () => reported().totalBytes }); stops.push(() => probe.stop());

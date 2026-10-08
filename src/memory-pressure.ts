@@ -107,7 +107,8 @@ export class MemoryPressure {
     if (this.stopped) return this.snapshot();
     if (this.nativeFlight) return this.nativeFlight;
     if (this.nativeAt !== null && this.monotonicNow() - this.nativeAt < MEMORY_SAMPLE_MS) return this.evaluate(this.nativeValue);
-    return this.evaluate(null);
+    // A cache miss is not a completed probe: preserve the once-per-lifecycle raw-read diagnostic.
+    return this.evaluate(null, false);
   }
 
   private sampleNative(): Promise<MemoryPressureSnapshot> {
@@ -138,8 +139,8 @@ export class MemoryPressure {
     return this.evaluate(value);
   }
 
-  private evaluate(value: HostMemory | null): MemoryPressureSnapshot {
-    if (this.platform === "darwin") return this.evaluateDarwin(value);
+  private evaluate(value: HostMemory | null, reportUnknown = true): MemoryPressureSnapshot {
+    if (this.platform === "darwin") return this.evaluateDarwin(value, reportUnknown);
     const at = this.now();
     let memory: (HostMemory & { availableBytes: number }) | null = null;
     try {
@@ -208,7 +209,7 @@ export class MemoryPressure {
   }
 
   /** The kernel is authoritative even when vm_stat fails; bytes are display/trend data only. */
-  private evaluateDarwin(value: HostMemory | null): MemoryPressureSnapshot {
+  private evaluateDarwin(value: HostMemory | null, reportUnknown: boolean): MemoryPressureSnapshot {
     const at = this.now(), monotonicAt = this.monotonicNow();
     const kernel = value?.darwinPressureLevel;
     let level: MemoryPressureLevel = kernel === 1 ? "normal" : kernel === 2 ? "elevated" : kernel === 4 ? "critical" : "unknown";
@@ -238,7 +239,7 @@ export class MemoryPressure {
     }
     this.current = { level, memory, sampledAt: at, recovering: monotonicAt < this.recoveryUntil, samples: this.history.length, trend };
     if (this.timer) {
-      if (level === "unknown" && !this.unknownReported) {
+      if (reportUnknown && level === "unknown" && !this.unknownReported) {
         this.unknownReported = true;
         try { this.options.onDarwinUnknown?.(memory); } catch { /* Diagnostics cannot block admission. */ }
       }
