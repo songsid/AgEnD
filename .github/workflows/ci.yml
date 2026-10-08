@@ -346,9 +346,9 @@ jobs:
           # Pack to a tarball so we test the published surface, not the dev tree.
           TGZ=$(npm pack --json | node -e "const d=require('fs').readFileSync('/dev/stdin','utf8'); console.log(JSON.parse(d)[0].filename)")
           npm install -g "./$TGZ"
-          # npm global bin may not be on PATH on macOS (nvm sets up its own prefix).
-          # Extend PATH for subsequent steps.
-          echo "$(npm bin -g)" >> "$GITHUB_PATH"
+          # npm global bin may not be on PATH on all runners (nvm / other prefix).
+          # Extend PATH via GITHUB_PATH for subsequent steps.
+          echo "$(npm config get prefix)/bin" >> "$GITHUB_PATH"
       - name: agend --version
         if: needs.detect-changes.outputs.docs-only != 'true'
         run: agend --version
