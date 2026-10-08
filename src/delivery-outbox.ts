@@ -23,7 +23,18 @@ export interface DaemonDeliveryPort {
    * Optional — the concrete DeliveryOutbox already satisfies it via get().
    */
   get?(deliveryId: string): { state: OutboxState } | undefined;
+  /** #1201: the CLI's transcript shows this attempt's delivery consumed (see DeliveryOutbox.markConsumed). */
+  markConsumed?(deliveryId: string, targetBootId: string, attemptNo: number, via: ConsumedVia, evidence: string): MarkConsumedResult;
 }
+
+/** #1201: how the CLI took the delivery — as its own turn, or absorbed into the running turn at a tool boundary. */
+export type ConsumedVia = "turn" | "mid_turn";
+/**
+ * `marked`: a delivered row now carries consumed_at; `upgraded`: an uncertain row is delivered (its unsent failure
+ * notice cancelled); `already`: it was marked before; `ignored`: a state a transcript hit does not change (failed, a
+ * newer attempt, another boot's attempt).
+ */
+export type MarkConsumedResult = "marked" | "upgraded" | "already" | "ignored";
 
 export type OutboxState =
   | "queued"
@@ -161,6 +172,17 @@ export interface DeliveryStatusItem {
    * other query, and operator reads, stay redacted as before (#982).
    */
   content?: string | null;
+  /**
+   * How the message was routed, in send_to_instance's own words: `steer` (into the live turn) or `idle_queue` (as the
+   * next message). The fleet decided this at admission; it is the row's kind.
+   */
+  delivery_mode: "steer" | "idle_queue";
+  /** How the latest attempt was written to the pane (`native_queue_handoff`: into the CLI's own queue); null before any. */
+  submission_mode: DurableSubmissionMode | null;
+  /** #1201: when the CLI's transcript showed it consumed — accepted is not read; null until then (or never seen). */
+  consumed_at: string | null;
+  /** #1201: `turn` (taken as its own turn) or `mid_turn` (absorbed into a running turn at a tool boundary). */
+  consumed_via: ConsumedVia | null;
   /** #926: the reply this request is owed, when it asked for one. */
   reply_obligation?: { state: "open" | "answered"; opened_at: string; last_asked_at: string; nudged_at: string | null; overdue_notified_at: string | null; answered_at: string | null } | null;
 }
@@ -364,12 +386,19 @@ function queryStatusPage(
     params.push(...cursorParams);
   }
   const limit = selector.deliveryId ? 1 : Math.max(1, Math.min(100, selector.limit ?? 20));
+  // Read-only operator reads may open a database written before #1201's columns.
+  const consumedColumns = hasColumn(db, "deliveries", "consumed_at")
+    ? "d.consumed_at, d.consumed_via" : "NULL AS consumed_at, NULL AS consumed_via";
+  const submissionMode = hasColumn(db, "delivery_attempts", "submission_mode")
+    ? "(SELECT a.submission_mode FROM delivery_attempts a WHERE a.delivery_id=d.delivery_id ORDER BY a.attempt_no DESC LIMIT 1)"
+    : "NULL";
   const rows = db.prepare(`
     SELECT d.delivery_id,d.operation_id,d.correlation_id,d.source_instance,d.target_instance,
       d.kind,
       CASE WHEN d.state='submission_started' AND d.reconciliation_pending=1
         THEN 'reconciliation_pending' ELSE d.state END AS state,
-      d.attempt_no,d.created_at,d.updated_at,d.last_error,d.payload_json
+      d.attempt_no,d.created_at,d.updated_at,d.last_error,d.payload_json,
+      ${consumedColumns}, ${submissionMode} AS submission_mode
     FROM deliveries d
     WHERE ${where.join(" AND ")}
     ORDER BY d.created_seq
@@ -387,6 +416,9 @@ function queryStatusPage(
     updated_at: string;
     last_error: string | null;
     payload_json: string;
+    consumed_at: string | null;
+    consumed_via: ConsumedVia | null;
+    submission_mode: DurableSubmissionMode | null;
   }>;
   const hasMore = rows.length > limit;
   const visible = rows.slice(0, limit);
@@ -405,6 +437,10 @@ function queryStatusPage(
       status_summary: statusSummary(row.state),
       error_summary: safeErrorSummary(row.last_error, row.state),
       safe_to_retry: safeToRetry(row.state),
+      delivery_mode: row.kind === "steer" ? "steer" as const : "idle_queue" as const,
+      submission_mode: row.submission_mode ?? null,
+      consumed_at: row.consumed_at ?? null,
+      consumed_via: row.consumed_via ?? null,
       // Text only for the explicit verification query (#856), and only to the
       // row's own source/target; every other query keeps #982's redaction.
       ...rowContentEvidence(row.payload_json, callerInstance !== null && !!selector.messageId),
@@ -553,6 +589,9 @@ export class DeliveryOutbox extends EventEmitter {
     // receiver acting on a message nobody sent.
     this.ensureColumn("deliveries", "message_id", "TEXT");
     this.ensureColumn("deliveries", "content_sha256", "TEXT");
+    // #1201: the CLI's transcript showed the delivery consumed (when, and as its own turn or mid-turn).
+    this.ensureColumn("deliveries", "consumed_at", "TEXT");
+    this.ensureColumn("deliveries", "consumed_via", "TEXT");
     this.ensureColumn("delivery_attempts", "pasted_content_sha256", "TEXT");
     this.ensureColumn("delivery_attempts", "pasted_bytes_sha256", "TEXT");
     this.ensureColumn("delivery_attempts", "content_digest_mismatch", "INTEGER NOT NULL DEFAULT 0");
@@ -1081,6 +1120,65 @@ export class DeliveryOutbox extends EventEmitter {
     return result.accepted;
   }
 
+  /**
+   * #1201: the CLI's own transcript shows this attempt's delivery consumed — its exact `[agend-delivery-id:<id>]`
+   * marker in a user entry or a queued-command prompt, read by the late watcher. Positive evidence only: nothing calls
+   * this on a miss, so it can never downgrade a row.
+   *
+   * - `delivered` → stays delivered, gains consumed_at/consumed_via (no state event: nothing about it changed).
+   * - `uncertain` → `delivered`: last_error cleared, the attempt marked delivered, the reply obligation it never opened
+   *   opened, and its failure notice cancelled — but only while that notice is still unsent (queued / retry_wait). One
+   *   the pump already took is left alone: the protocol tells the sender to check delivery_status after an uncertain
+   *   outcome, which now says delivered.
+   * - anything else (failed, an attempt that is not this one) → `ignored`.
+   *
+   * Fenced like complete(): the row must still be on this boot's attempt.
+   */
+  markConsumed(deliveryId: string, targetBootId: string, attemptNo: number, via: ConsumedVia, evidence: string): MarkConsumedResult {
+    const now = new Date().toISOString();
+    const transaction = this.db.transaction((): { result: MarkConsumedResult; cancelledNotice: string | null } => {
+      const row = this.db.prepare("SELECT * FROM deliveries WHERE delivery_id=?").get(deliveryId) as (OutboxRow & { consumed_at?: string | null }) | undefined;
+      if (!row || row.target_daemon_boot_id !== targetBootId || row.attempt_no !== attemptNo) return { result: "ignored", cancelledNotice: null };
+      if (row.consumed_at) return { result: "already", cancelledNotice: null };
+      if (row.state === "delivered") {
+        const marked = this.db.prepare(`
+          UPDATE deliveries SET consumed_at=?,consumed_via=?,updated_at=?
+          WHERE delivery_id=? AND state='delivered' AND consumed_at IS NULL AND target_daemon_boot_id=? AND attempt_no=?
+        `).run(now, via, now, deliveryId, targetBootId, attemptNo);
+        return { result: marked.changes === 1 ? "marked" : "ignored", cancelledNotice: null };
+      }
+      if (row.state !== "uncertain") return { result: "ignored", cancelledNotice: null };
+      const upgraded = this.db.prepare(`
+        UPDATE deliveries SET state='delivered',last_error=NULL,consumed_at=?,consumed_via=?,updated_at=?
+        WHERE delivery_id=? AND state='uncertain' AND target_daemon_boot_id=? AND attempt_no=?
+      `).run(now, via, now, deliveryId, targetBootId, attemptNo);
+      if (upgraded.changes !== 1) return { result: "ignored", cancelledNotice: null };
+      this.db.prepare(`
+        UPDATE delivery_attempts SET state='delivered',evidence=substr(COALESCE(evidence || '; ', '') || ?, 1, 300)
+        WHERE delivery_id=? AND target_daemon_boot_id=? AND attempt_no=? AND state='uncertain'
+      `).run(evidence, deliveryId, targetBootId, attemptNo);
+      this.openReplyObligation(row, now);
+      // Withdraw the notice only while nobody has taken it: a conditional UPDATE on its pending state, so it is never
+      // both sent and cancelled — whichever of the pump's claim and this lands first wins, in one statement each.
+      const notice = this.db.prepare("SELECT notice_delivery_id FROM failure_notices WHERE parent_delivery_id=?").get(deliveryId) as { notice_delivery_id: string } | undefined;
+      let cancelledNotice: string | null = null;
+      if (notice) {
+        const cancelled = this.db.prepare(`
+          UPDATE deliveries SET state='cancelled',updated_at=?,finished_at=?,last_error=?
+          WHERE delivery_id=? AND state IN ('queued','retry_wait')
+        `).run(now, now, "withdrawn: the parent delivery was proven consumed", notice.notice_delivery_id);
+        if (cancelled.changes === 1) cancelledNotice = notice.notice_delivery_id;
+      }
+      return { result: "upgraded", cancelledNotice };
+    });
+    const { result, cancelledNotice } = transaction();
+    if (result === "upgraded") {
+      this.emit("state", { deliveryId, state: "delivered" });
+      if (cancelledNotice) this.emit("state", { deliveryId: cancelledNotice, state: "cancelled" });
+    }
+    return result;
+  }
+
   /** Transient pre-submit failure: state is retryable and the same row keeps its FIFO position. */
   retryBeforeBegin(deliveryId: string, targetBootId: string, attemptNo: number, reason: string, delayMs = 30_000): boolean {
     const now = new Date().toISOString();
@@ -1440,7 +1538,8 @@ export class DeliveryOutbox extends EventEmitter {
     const cutoff = new Date(Date.now() - days * 24 * 60 * 60_000).toISOString();
     const now = new Date().toISOString();
     // Prunable states: only terminal rows the retry logic will never revisit.
-    const PRUNABLE = "('delivered','failed')";
+    // `cancelled`: a failure notice withdrawn because its parent was proven delivered (#1201) — terminal too.
+    const PRUNABLE = "('delivered','failed','cancelled')";
     const CHUNK = 500;
     let total = 0;
 

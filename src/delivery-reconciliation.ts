@@ -212,32 +212,58 @@ function leadsWithMarker(text: string, backend: string, marker: string): boolean
 }
 
 /**
- * Where a delivery's marker turned up in a transcript delta: `user` — the CLI consumed it as a user message (the
- * strongest signal); `queued` — Claude Code's queue-operation enqueue, i.e. the CLI accepted it into its input queue
- * without having consumed it yet.
+ * Where a delivery's marker turned up in a transcript delta:
+ * - `user` — the CLI consumed it as a user message of its own (the strongest signal);
+ * - `absorbed` — consumed INTO a running turn at a tool boundary (#1201). Claude Code 2.1.293 writes no user entry for
+ *   that: a `queue-operation` remove with `reason: "absorbed_mid_turn"` and an `attachment` of type `queued_command`
+ *   whose `prompt` is the message (tests/fixtures/claude-2.1.293-steer-consumed-mid-turn.transcript.jsonl);
+ * - `queued` — Claude Code's queue-operation enqueue: accepted into its input queue, not consumed yet.
+ * Consumed means `user` or `absorbed`.
  */
-export type TranscriptMarkerKind = "user" | "queued";
+export type TranscriptMarkerKind = "user" | "absorbed" | "queued";
+
+/** Whether a marker kind means the CLI took the message (as its own turn, or into the running one). */
+export function markerConsumed(kind: TranscriptMarkerKind | null | undefined): kind is "user" | "absorbed" {
+  return kind === "user" || kind === "absorbed";
+}
+
+/** Claude Code's record of a queued message absorbed into the running turn: the message's own text, or null. */
+function claudeAbsorbedText(value: Record<string, any>): string | null {
+  if (value.type === "attachment" && value.attachment?.type === "queued_command" && typeof value.attachment.prompt === "string") {
+    return value.attachment.prompt;
+  }
+  if (value.type === "queue-operation" && value.operation === "remove" && value.reason === "absorbed_mid_turn"
+    && typeof value.content === "string") return value.content;
+  return null;
+}
 
 export function transcriptDeltaDeliveryMarker(rawDelta: string, backend: string, deliveryId: string): TranscriptMarkerKind | null {
   const marker = ENTER_MARKER(deliveryId);
   let queued = false;
+  let absorbed = false;
   for (const line of rawDelta.split(/\r?\n/)) {
     if (!line.trim()) continue;
     try {
       const entry = JSON.parse(line) as unknown;
       const firstUserText = userTextsFromEntry(entry, backend)[0];
       if (firstUserText !== undefined && leadsWithMarker(firstUserText, backend, marker)) return "user";
-      const value = entry as Record<string, unknown> | null;
-      if (backend === "claude-code" && value?.type === "queue-operation" && value.operation === "enqueue"
+      const value = entry as Record<string, any> | null;
+      if (backend !== "claude-code" || !value || typeof value !== "object") continue;
+      const absorbedText = claudeAbsorbedText(value);
+      if (absorbedText !== null && leadsWithMarker(absorbedText, backend, marker)) absorbed = true;
+      if (value.type === "queue-operation" && value.operation === "enqueue"
         && typeof value.content === "string" && leadsWithMarker(value.content, backend, marker)) queued = true;
     } catch { /* incomplete/malformed JSONL is not proof */ }
   }
-  return queued ? "queued" : null;
+  return absorbed ? "absorbed" : queued ? "queued" : null;
 }
 
-/** A unique marker counts only at the start of a persisted user-message body. */
+/**
+ * Whether the CLI consumed the delivery: its unique marker at the start of a persisted user-message body, or of the
+ * message Claude Code absorbed into a running turn (#1201).
+ */
 export function transcriptDeltaHasDeliveryMarker(rawDelta: string, backend: string, deliveryId: string): boolean {
-  return transcriptDeltaDeliveryMarker(rawDelta, backend, deliveryId) === "user";
+  return markerConsumed(transcriptDeltaDeliveryMarker(rawDelta, backend, deliveryId));
 }
 
 /**
