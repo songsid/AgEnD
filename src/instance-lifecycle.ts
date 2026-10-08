@@ -210,8 +210,8 @@ export interface LifecycleContext {
   notifyInstanceTopic(name: string, text: string): boolean | void;
   /** Notify the blocked instance and offer an interactive assist action in General. */
   notifyInteractivePrompt(name: string, kind: string): Promise<void>;
-  /** #1386: the daemon's interaction observation changed ("Needs you" recomputes at once, not at its tick). */
-  onInstanceInteraction?(name: string): void;
+  /** #1386: an instance's interaction observation, pause or wake changed ("Needs you" recomputes at once, not at its tick). */
+  onAttentionChanged?(name: string): void;
   /**
    * Offer a one-tap re-login beside an auth alert. Optional: contexts without
    * it (tests, lightweight fleets) still get the alert's written remedy.
@@ -1097,7 +1097,7 @@ export class InstanceLifecycle {
       this.ctx.notifyFleetError?.(t("fleet.dialog_answer_ignored", name, data.description, String(data.attempts)));
     }, this.ctx.logger, `daemon.dialog_answer_ignored[${name}]`));
 
-    daemon.on("instance_interaction", () => this.ctx.onInstanceInteraction?.(name));
+    daemon.on("instance_interaction", () => this.ctx.onAttentionChanged?.(name));
 
     daemon.on("interactive_prompt", safeHandler(async (data: { name: string; kind: string; prompt: string }) => {
       this.ctx.eventLog?.insert(name, "interactive_prompt", { kind: data.kind });
@@ -1633,9 +1633,11 @@ export class InstanceLifecycle {
       this.ctx.eventLog?.insert(name, "instance_paused", { reason: "idle", paused_at: data.pausedAt });
       this.ctx.logger.info({ name, pausedAt: data.pausedAt }, "Instance auto-paused after idle timeout");
       this.ctx.setTopicIcon(name, "remove");
+      this.ctx.onAttentionChanged?.(name);
     });
 
     daemon.on("auto_woke", () => {
+      this.ctx.onAttentionChanged?.(name);
       this.ctx.eventLog?.insert(name, "instance_resumed", { reason: "message" });
       this.ctx.logger.info({ name }, "Instance auto-woke for delivery");
       this.ctx.setTopicIcon(name, "green");
@@ -1699,6 +1701,7 @@ export class InstanceLifecycle {
       // A rejected/no-op pause leaves the instance active and must not strand
       // its fleet-level statusline watcher in the frozen state.
       if (!daemon.isPaused) this.ctx.startStatuslineWatcher(name);
+      this.ctx.onAttentionChanged?.(name);
     }
   }
 
@@ -1713,7 +1716,7 @@ export class InstanceLifecycle {
     transition?: TransitionHandle,
     opts: { source?: "coordinator" | "external" } = {},
   ): Promise<void> {
-    const woke = await this.wakeInner(name, timeoutMs, transition);
+    const woke = await this.wakeInner(name, timeoutMs, transition).finally(() => this.ctx.onAttentionChanged?.(name));
     // Only a successful operator/user wake lifts the coordinator's park.
     if (opts.source !== "coordinator") this.ctx.onExternalWake?.(name);
     return woke;

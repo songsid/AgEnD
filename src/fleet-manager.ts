@@ -10185,8 +10185,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return { owner: o ? `${o.bootId}:${o.spawnGeneration}:${o.launchAttempt}:${o.launchFenceEpoch}` : null, episode: snapshot.episode };
   }
 
-  /** The daemon's interaction observation changed (lifecycle relays `instance_interaction`): recompute now, not at the tick. */
-  onInstanceInteraction(_name: string): void {
+  /** An instance's interaction observation, pause or wake changed (relayed by the lifecycle): recompute now, not at the tick. */
+  onAttentionChanged(_name: string): void {
     this.needsYou?.poke();
   }
 

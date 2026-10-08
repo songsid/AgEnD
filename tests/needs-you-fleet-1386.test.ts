@@ -93,7 +93,7 @@ describe("#1386 through the real fleet", () => {
           interaction: { phase: "waiting", kind: "permission", reason: "permission", episode: 3, owner: { bootId: "b", spawnGeneration: 1, launchAttempt: 1, launchFenceEpoch: 0 }, since: Date.now(), observedAt: null, confirmedAt: null, ageMs: 0, stale: false, suspected: false } }
       : { state: null, execution_state: null, interaction: null, interaction_summary: null });
     vi.spyOn(fm, "getInstanceInteraction").mockImplementation((name: unknown) => name === "alpha" ? fm.instancePresentation("alpha").interaction : null);
-    fm.onInstanceInteraction("alpha");
+    fm.onAttentionChanged("alpha");
     await flush();
     expect(needsInstances(frames)).toEqual(["awaiting_input:alpha"]);
   });
