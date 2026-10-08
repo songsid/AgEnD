@@ -102,6 +102,10 @@ interface Run {
   messageId: string;
   /** What the pane shows, from the stub's own state. */
   screen: (s: { pasted: boolean; enters: number; idled: boolean }) => string;
+  /** What the scrollback read (capturePaneWithHistory) shows; defaults to the screen. */
+  history?: (s: { pasted: boolean; enters: number; idled: boolean }) => string;
+  /** Captures after the first write throw (an EIO from tmux). */
+  failCapturesAfterPaste?: boolean;
 }
 
 async function run(r: Run) {
@@ -130,8 +134,8 @@ async function run(r: Run) {
   }).delivery;
   const claimed = outbox.claimNext("manager-test", () => daemon.bootId, new Set())!;
   const tmux = {
-    capturePane: vi.fn(async () => r.screen(s)),
-    capturePaneWithHistory: vi.fn(async () => r.screen(s)),
+    capturePane: vi.fn(async () => { if (r.failCapturesAfterPaste && s.pasted) throw new Error("EIO"); return r.screen(s); }),
+    capturePaneWithHistory: vi.fn(async () => { if (r.failCapturesAfterPaste && s.pasted) throw new Error("EIO"); return (r.history ?? r.screen)(s); }),
     pasteBuffer: vi.fn(async () => { s.pasted = true; return true; }),
     sendSpecialKey: vi.fn(async (key: string) => { if (key === "Enter") s.enters++; return true; }),
     getLastPasteError: vi.fn(), isLastPasteFailureRecoverable: vi.fn(() => true), getLastSendSpecialKeyError: vi.fn(),
@@ -225,9 +229,18 @@ describe("a steer into a busy Claude pane", () => {
     expect(r.s.enters).toBe(2);
   });
 
-  it("nothing of ours anywhere and the box empty, before and after the turn: the paste itself was lost — pasted once more", async () => {
-    const r = await run({ mode: "steer-busy", messageId: "xmsg-long-11", screen: s => (s.pasted && s.idled && s.enters >= 2 ? IDLE_SUBMITTED.replace("xmsg-long-10", "xmsg-long-11") : BUSY_EMPTY) });
-    expect(r.tmux.pasteBuffer).toHaveBeenCalledTimes(2);
+  // #1353 review: none of these proves the paste was lost — a box reader never pastes the same delivery twice.
+  it("the steer was taken, but by the check its echo had scrolled out and after the turn the queue had drained: uncertain, NOT a second paste", async () => {
+    const r = await run({ mode: "steer-busy", messageId: "xmsg-long-11", screen: s => (s.pasted && s.enters === 0 ? BUSY_PASTED : BUSY_EMPTY) });
+    expect(r.tmux.pasteBuffer).toHaveBeenCalledTimes(1);
+    expect(r.s.enters).toBe(1);
+    expect(r.state).not.toBe("delivered");
+  });
+
+  it("every capture after the write fails (EIO): no verdict either way — NOT a second paste", async () => {
+    const r = await run({ mode: "steer-busy", messageId: "xmsg-long-11", screen: () => BUSY_EMPTY, failCapturesAfterPaste: true });
+    expect(r.tmux.pasteBuffer).toHaveBeenCalledTimes(1);
+    expect(r.state).not.toBe("delivered");
   });
 
   it("after the turn our marker is on screen but no box can be read: uncertain, NOT a second paste (it could run twice)", async () => {
@@ -277,5 +290,70 @@ describe("a system paste into a ready Claude pane", () => {
     const r = await systemPaste(s => (!s.pasted ? IDLE_EMPTY : IDLE_PASTED));
     expect(r.ok).toBe(false);
     expect(r.s.enters).toBe(2);
+  });
+});
+
+describe("evidence that cannot be attributed is not ours (#1353 review)", () => {
+  /** idle-paste-long with extra rows under the frame: the reader refuses it (null) — the same box, unreadable. */
+  const unreadable = (screen: string) => `${screen.trimEnd()}\n  a\n  b\n  c\n  d\n  e\n`;
+
+  it("an older collapsed paste, unreadable before ours and readable after: not stranded — no recovery Enter on someone else's text", async () => {
+    // Before our paste the box already held `[Pasted text #1 …]` (not ours) but the reader could not vouch for the
+    // frame; after it, the same token is readable. Our own message is nowhere on screen.
+    const r = await run({ mode: "idle", messageId: "xmsg-long-10", screen: s => (!s.pasted ? unreadable(IDLE_PASTED) : IDLE_PASTED) });
+    expect(r.s.enters).toBe(1);
+    expect(r.tmux.pasteBuffer).toHaveBeenCalledTimes(1);
+    expect(r.state).not.toBe("delivered");
+  });
+
+  it("the history read cannot vouch for a box it cannot read: our id still IN the unreadable box is not 'submitted'", async () => {
+    // A short delivery still sitting in the box (its id visible inside it), the frame unreadable.
+    const stuck = IDLE_EMPTY.replace(/^❯\u00a0?$/m, "❯\u00a0[from:x] hello (message_id: xmsg-short-1)");
+    expect(stuck).not.toBe(IDLE_EMPTY);
+    const r = await run({ mode: "idle", messageId: "xmsg-short-1", screen: s => (!s.pasted ? IDLE_EMPTY : unreadable(stuck)) });
+    expect(r.state).not.toBe("delivered");
+    expect(r.tmux.pasteBuffer).toHaveBeenCalledTimes(1);
+  });
+
+  it("the history read cannot vouch while our collapsed paste is still in the box, whatever older echo of the id is further up", async () => {
+    // The steer is stranded (a new collapsed paste) all along; the scrollback holds an earlier echo carrying the id.
+    const r = await run({
+      mode: "steer-busy", messageId: "xmsg-long-11",
+      screen: s => (!s.pasted ? BUSY_EMPTY : BUSY_PASTED),
+      history: s => (!s.pasted ? BUSY_EMPTY : `${BUSY_QUEUED}\n${BUSY_PASTED}`),
+    });
+    expect(r.state).not.toBe("delivered");
+    expect(r.tmux.pasteBuffer).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("text in the box after an unreadable baseline is not proof either (#1353 review)", () => {
+  it("a system paste (no unique id) seen only IN the box, against a baseline whose box could not be read: never 'submitted' — the defensive second Enter still goes out", async () => {
+    vi.useFakeTimers();
+    const root = mkdtempSync(join(tmpdir(), "agend-1200-res-")); roots.push(root);
+    const instanceDir = join(root, "instances", "worker");
+    mkdirSync(instanceDir, { recursive: true });
+    writeFileSync(join(instanceDir, "window-id"), "@worker");
+    const daemon: any = new Daemon("worker", {
+      working_directory: root, log_level: "error", backend: "claude-code",
+      restart_policy: { max_retries: 10, backoff: "exponential", reset_after: 300 },
+      context_guardian: { max_age_hours: 4, grace_period_ms: 600_000 },
+    }, instanceDir, false, new ClaudeCodeBackend(instanceDir) as any,
+    { getObservationResetAt: () => 0, getLastOutputAt: () => undefined, isIdle: () => true } as any, logger);
+    const s = { pasted: false, enters: 0 };
+    const text = "[agend-delivery-id:5b0c1d2e-0000-4000-8000-000000000001]\n[from:agend-leader-t1] Please check the build.";
+    const inBox = IDLE_EMPTY.replace(/^❯ ?$/m, `❯ ${text.split("\n")[0]}`);
+    expect(inBox).not.toBe(IDLE_EMPTY);
+    daemon.tmux = {
+      capturePane: vi.fn(async () => (!s.pasted ? `${IDLE_EMPTY.trimEnd()}\n  a\n  b\n  c\n  d\n  e\n` : inBox)),
+      pasteBuffer: vi.fn(async () => { s.pasted = true; return true; }),
+      sendSpecialKey: vi.fn(async (key: string) => { if (key === "Enter") s.enters++; return true; }),
+      getWindowId: () => "@worker",
+    };
+    const done = daemon.submitSystemPaste(text, "notice");
+    await vi.advanceTimersByTimeAsync(20_000);
+    await done;
+    // "submitted" would have stopped at one Enter; unattributable evidence keeps the best-effort second Enter.
+    expect(s.enters).toBe(2);
   });
 });
