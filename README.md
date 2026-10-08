@@ -7,7 +7,7 @@
     <a href="https://songsid.github.io/AgEnD"><img src="https://img.shields.io/badge/Website-songsid.github.io/AgEnD-blue" alt="Website"></a>
     <a href="https://www.npmjs.com/package/@songsid/agend"><img src="https://img.shields.io/npm/v/@songsid/agend" alt="npm"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
-    <a href="https://nodejs.org"><img src="https://img.shields.io/badge/Node.js-%3E%3D%2020-green.svg" alt="Node.js >= 20"></a>
+    <a href="https://nodejs.org"><img src="https://img.shields.io/badge/Node.js-%3E%3D%2022.14.0-green.svg" alt="Node.js >= 22.14.0"></a>
   </p>
 </p>
 
@@ -150,7 +150,7 @@ graph LR
 
 ## Requirements
 
-- Node.js >= 20
+- Node.js ^22.14.0 || ^23.6.0 || >=24
 - tmux
 - One of the supported AI coding CLIs (installed and authenticated)
 - Telegram bot token ([@BotFather](https://t.me/BotFather)) or Discord bot token

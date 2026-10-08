@@ -6,6 +6,15 @@ import { applyNetworkReliabilityDefaults } from "./network-family.js";
 // premature-connect failure on WSL/VPN/high-load hosts (#658).
 applyNetworkReliabilityDefaults();
 
+// ── Runtime version guard ───────────────────────────────────────────────────
+// better-sqlite3 v13 requires Node-API 10 (>=22.14.0 / >=23.6.0 / >=24).
+// This MUST run at bootstrap so that even `agend --version` exits 1 on an
+// incompatible runtime. The old updater checks `agend --version` before
+// restarting; a non-zero exit makes it call failUpdate() and abort — the fleet
+// never restarts into a binary that would crash at the first native DB open.
+import { checkNodeVersion } from "./node-version-guard.js";
+checkNodeVersion();
+
 import { Command } from "commander";
 import { join, dirname } from "node:path";
 import { SchedulerDb } from "./scheduler/db.js";
