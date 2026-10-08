@@ -368,7 +368,9 @@ describe("changelog-assemble: the repository's own files", () => {
 // ── The guard ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
 type CiStep = { name?: string; run?: string; if?: string; uses?: string; with?: Record<string, unknown>; env?: Record<string, string> };
-const ciSteps = (yaml.load(readFileSync(join(ROOT, ".github", "workflows", "ci.yml"), "utf8")) as { jobs: { build: { steps: CiStep[] } } }).jobs.build.steps;
+// In the refactored multi-job CI (post-#1391), changelog guards live in the
+// dedicated `changelog` job (no npm ci), not in the monolithic `build` job.
+const ciSteps = (yaml.load(readFileSync(join(ROOT, ".github", "workflows", "ci.yml"), "utf8")) as { jobs: { changelog: { steps: CiStep[] } } }).jobs.changelog.steps;
 
 function gitRepo() {
   const dir = scratch("agend-changelog-guard-");
@@ -407,9 +409,26 @@ describe("changelog-guard (ci.yml's step, on a scratch repository)", () => {
     const check = ciSteps.find(s => s.name === "CHANGELOG fragments are valid")!;
     expect(check.run).toContain("changelog-assemble.mjs --check");
     expect(check.if).toBeUndefined();
-    // Both run before npm ci: they need no dependencies, and fail fast.
-    const at = (name: string) => ciSteps.findIndex(s => s.name === name);
-    expect(at("CHANGELOG is assembled, not edited")).toBeLessThan(ciSteps.findIndex(s => s.run === "npm ci"));
+    // Post-#1391: the changelog guard lives in its own lightweight job that
+    // has no npm ci step at all (no dependencies needed), so no ordering
+    // relative to npm ci applies.  Verify there is no npm ci in this job.
+    expect(ciSteps.find(s => s.run === "npm ci")).toBeUndefined();
+  });
+
+  it("P2/P1 regression: the changelog job has no docs-only skip condition — it runs for all PRs", () => {
+    // A docs-only PR can add an unpaired fragment or directly edit the
+    // CHANGELOG. The changelog guards must run even when no src/ file changed.
+    // Verify neither the job-level `if:` nor the step-level conditions gate on
+    // detect-changes output.
+    const fullCi = yaml.load(readFileSync(join(ROOT, ".github", "workflows", "ci.yml"), "utf8")) as {
+      jobs: { changelog: { if?: string; needs?: string[]; steps: { if?: string }[] } };
+    };
+    const job = fullCi.jobs.changelog;
+    // Job must NOT have a detect-changes condition (docs-only skip).
+    expect(job.if, "changelog job must have no docs-only if condition").toBeUndefined();
+    // Job must NOT depend on detect-changes (which would allow skipping).
+    const needs = job.needs ?? [];
+    expect(needs, "changelog job must not depend on detect-changes").not.toContain("detect-changes");
   });
 
   it("a PR that leaves the CHANGELOG alone (fragments only) → passes", () => {

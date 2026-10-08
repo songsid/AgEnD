@@ -8,21 +8,84 @@ on:
   pull_request:
     branches: [main, 'release/**']
 
+# Cancel in-progress runs for the same PR when a new commit arrives. Push runs on
+# main/release/** are deliberately NOT cancelled — they are needed for release tagging.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
 jobs:
-  build:
+  # ── docs-only guard ──────────────────────────────────────────────────────────
+  # Detect whether this run touches only docs/changes/markdown. The result is
+  # consumed by every downstream job so none of them repeat the diff. Running
+  # as its own job avoids a checkout + diff in each parallel shard.
+  #
+  # We use a job output rather than paths-ignore so the `build` check always
+  # exists and can satisfy the gate even for a pure docs commit. paths-ignore
+  # would make the check missing and the gate would block.
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      docs-only: ${{ steps.check.outputs.docs-only }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Detect whether this is a docs-only change
+        id: check
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          # For pull_request events github.sha is the synthetic merge commit,
+          # not the PR branch head. Use the PR head SHA for an accurate diff.
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          # A push to main/release always runs the full suite — the gate needs CI.
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "docs-only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Collect the diff once and hold it in a variable. This avoids
+          # SIGPIPE on the git side when grep exits early (pipefail would
+          # otherwise see git's non-zero exit and fail-open, treating any
+          # large diff as docs-only). A git failure is fail-closed: run full CI.
+          if ! diff_files=$(git diff --name-only "$BASE_SHA...$HEAD_SHA"); then
+            echo "docs-only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Write to a temp file and grep the file directly. When grep exits
+          # early after a -q match, it simply stops reading — no echo or printf
+          # process is left behind to receive SIGPIPE. A diff larger than the
+          # pipe buffer would cause echo "$diff_files" | grep -q to SIGPIPE
+          # and fail-open (docs-only=true) for any large src/ change.
+          _diff_f=$(mktemp)
+          trap 'rm -f "$_diff_f"' EXIT
+          printf '%s\n' "$diff_files" > "$_diff_f"
+          # .github/** changes must always run the full suite.
+          if grep -qE '^\.github/' "$_diff_f"; then
+            echo "docs-only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Any file outside docs/, changes/, or a root *.md triggers full CI.
+          if grep -qvE '^(docs|changes)/|^[^/]+\.md$' "$_diff_f"; then
+            echo "docs-only=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "docs-only=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ── changelog guards (no install needed) ────────────────────────────────────
+  # Runs unconditionally: docs/changes/ PRs can add unpaired fragments or edit
+  # CHANGELOG directly. The guards have no npm dependency, so they are cheap
+  # enough to always run — including for docs-only PRs.
+  changelog:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          # The CHANGELOG guard diffs the PR against its merge-base with the PR's base branch
-          # (pull_request.base.sha: main's tip, or release/*'s for a PR into a maintenance line).
           fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
       # CHANGELOG fragments (docs/development.md): every changes/*.md parses
       # and has its zh-TW pair, and a PR adds fragments instead of editing
       # docs/CHANGELOG*.md. Only the assemble commit (trailer
@@ -35,19 +98,117 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: node scripts/changelog-guard.mjs --base "$BASE_SHA" --head "$HEAD_SHA"
-      - run: npm ci
-      - run: npx tsc --noEmit
-      # The test suites are excluded from tsconfig.json (it emits dist/ from
-      # src/ only), so nothing above sees them. Without this line the check
-      # exists in package.json and runs nowhere, which is how it drifted to
-      # 308 errors before anyone looked.
-      - run: npm run typecheck:tests
-      - run: npm run build
-      - run: npm test
-      # Real tmux/child-process suites run in one worker. The unit suite above
-      # remains file-parallel, while this bounded serial invocation prevents
-      # host scheduler contention from turning diagnostic timing into flakes.
-      - run: npm run test:integration
+
+  # ── setup: install, typecheck, build — shared across all shards ─────────────
+  # Always runs so gate-merge.sh always sees a `success` result (not `skipped`).
+  # For docs-only PRs the heavy steps are skipped via a step condition and the
+  # job succeeds immediately.
+  setup:
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install, typecheck and build
+        if: needs.detect-changes.outputs.docs-only != 'true'
+        run: |
+          npm ci
+          npx tsc --noEmit
+          # The test suites are excluded from tsconfig.json (it emits dist/ from
+          # src/ only), so nothing above sees them. Without this line the check
+          # exists in package.json and runs nowhere, which is how it drifted to
+          # 308 errors before anyone looked.
+          npm run typecheck:tests
+          npm run build
+
+  # ── test shards ──────────────────────────────────────────────────────────────
+  # Always runs; each shard skips heavy work for docs-only PRs and exits 0 so
+  # the gate always sees `success`.
+  test-shard:
+    runs-on: ubuntu-latest
+    needs: [detect-changes, setup]
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Run test shard ${{ matrix.shard }}/4
+        if: needs.detect-changes.outputs.docs-only != 'true'
+        run: |
+          npm ci
+          npm run build
+          npx vitest run --shard=${{ matrix.shard }}/4
+
+  # ── integration tests (serial, real-resource) ────────────────────────────────
+  # Always runs; skips heavy work for docs-only PRs.
+  test-integration:
+    runs-on: ubuntu-latest
+    needs: [detect-changes, setup]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Run integration tests
+        if: needs.detect-changes.outputs.docs-only != 'true'
+        run: |
+          npm ci
+          npm run build
+          # Real tmux/child-process suites run in one worker. The unit suite above
+          # remains file-parallel, while this bounded serial invocation prevents
+          # host scheduler contention from turning diagnostic timing into flakes.
+          npm run test:integration
+
+  # ── aggregate ────────────────────────────────────────────────────────────────
+  # The gate requires a check named exactly "build". This job aggregates every
+  # upstream job; it fails when any upstream job fails. All upstream jobs always
+  # run (no job-level `if:`), so gate-merge.sh always sees `success` conclusions,
+  # never `skipped`.
+  build:
+    runs-on: ubuntu-latest
+    needs: [detect-changes, changelog, setup, test-shard, test-integration]
+    if: always()
+    steps:
+      - name: Check all jobs succeeded
+        env:
+          DOCS_ONLY: ${{ needs.detect-changes.outputs.docs-only }}
+          CHANGELOG: ${{ needs.changelog.result }}
+          SETUP: ${{ needs.setup.result }}
+          SHARD: ${{ needs.test-shard.result }}
+          INTEGRATION: ${{ needs.test-integration.result }}
+        run: |
+          set -euo pipefail
+          # changelog always runs; verify it first regardless of docs-only.
+          if [ "$CHANGELOG" != "success" ]; then
+            echo "changelog job failed (result=$CHANGELOG)" >&2
+            exit 1
+          fi
+          if [ "$DOCS_ONLY" = "true" ]; then
+            echo "Docs-only change — changelog passed, heavy steps skipped. build passes."
+            exit 0
+          fi
+          failed=()
+          for name_result in "setup:$SETUP" "test-shard:$SHARD" "test-integration:$INTEGRATION"; do
+            name="${name_result%%:*}"
+            result="${name_result##*:}"
+            if [ "$result" != "success" ]; then
+              failed+=("$name ($result)")
+            fi
+          done
+          if [ "${#failed[@]}" -gt 0 ]; then
+            echo "Failed jobs: ${failed[*]}" >&2
+            exit 1
+          fi
+          echo "All jobs succeeded."
 
       # Tell Discord how this run ended, whichever way it ended.
       #
@@ -71,7 +232,10 @@ jobs:
           # case, and a channel that announces every one of them buries the
           # red ones it exists for.
           NOTIFY_ON: failure
-          STATUS: ${{ job.status }}
+          # In a multi-job workflow, job.status reflects only this aggregate
+          # job's exit, not the upstream failures. Use needs.*.result to
+          # collect the real outcome across all jobs.
+          STATUS: ${{ contains(needs.*.result, 'failure') && 'failure' || contains(needs.*.result, 'cancelled') && 'cancelled' || 'success' }}
           WORKFLOW: ${{ github.workflow }}
           REPO: ${{ github.repository }}
           REF_NAME: ${{ github.ref_name }}
