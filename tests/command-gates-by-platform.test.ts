@@ -139,6 +139,7 @@ async function rig(): Promise<Rig> {
   tc.getCtxText = async () => { reached.push("ctx"); return "ok:ctx"; };
   tc.getStatusText = async () => { reached.push("status"); return "ok:status"; };
   tc.getDashboardText = () => { reached.push("dashboard"); return "ok:dashboard"; };
+  any.dashboardMenu = async (msg: any) => { await tc.getReplyAdapter(msg).sendText(msg.chatId, tc.getDashboardText(), { threadId: msg.threadId }); };
   tc.sendSysInfo = async () => { reached.push("sysinfo"); };
   tc.handleTipsCommand = async () => { reached.push("tips"); };     // entry only: its `on|off` arguments are gated inside
   any.startCpuProfile = async () => { reached.push("profile"); return { seconds: 60, done: new Promise(() => {}) }; };

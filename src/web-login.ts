@@ -31,6 +31,7 @@ import {
   generateOneTimeCode,
   normalizeOneTimeCode,
 } from "./auth/one-time-code.js";
+import { randomBytes } from "node:crypto";
 import type { SessionTier } from "./web-session.js";
 
 export const LOGIN_CODE_TTL_MS = 5 * 60 * 1000;
@@ -43,7 +44,16 @@ export const LOGIN_BREAKER_PAUSE_MS = 5 * 60 * 1000;
 /** Compared against when nothing is outstanding, so "no code" costs what "wrong code" costs. */
 const NO_CODE_PLACEHOLDER = "AAAAAAAA";
 
+export interface LoginCodeOwner {
+  /** Server-owned live adapter identity; never accepted from HTTP. */
+  readonly binding?: object;
+  readonly adapterId: string;
+  readonly userId: string;
+  readonly chatId: string;
+  readonly threadId?: string;
+}
 export interface IssuedLoginCode {
+  readonly issuanceId: string;
   /** As typed: `ABCD-EFGH`. */
   readonly display: string;
   readonly expiresAt: number;
@@ -51,13 +61,16 @@ export interface IssuedLoginCode {
 }
 
 export type LoginRedeemResult =
-  | { readonly kind: "ok"; readonly tier: SessionTier }
+  | { readonly kind: "ok"; readonly tier: SessionTier; readonly owner?: LoginCodeOwner }
   /** Wrong, expired, spent, or none issued — deliberately indistinguishable. */
   | { readonly kind: "invalid" }
   /** The breaker is open. Even a correct code is refused until it closes. */
   | { readonly kind: "paused"; readonly retryAfterMs: number };
 
 interface Outstanding {
+  readonly issuanceId: string;
+  readonly audience: string;
+  readonly owner?: LoginCodeOwner;
   readonly code: string;
   readonly expiresAt: number;
   readonly tier: SessionTier;
@@ -92,13 +105,14 @@ export class WebLoginCodes {
    * `epoch` is the current web token's (`tokenEpoch`): rotating the token — from this process or from
    * `agend web-token rotate` in another — withdraws an unused code, because redemption re-checks it.
    */
-  issue(opts: { tier?: SessionTier; epoch: string }): IssuedLoginCode {
+  issue(opts: { tier?: SessionTier; epoch: string; audience?: string; owner?: LoginCodeOwner }): IssuedLoginCode {
     const code = this.generate();
     const tier = opts.tier ?? "admin";
     const expiresAt = this.now() + LOGIN_CODE_TTL_MS;
-    this.outstanding = { code, expiresAt, tier, epoch: opts.epoch, failures: 0 };
+    const issuanceId = randomBytes(16).toString("hex");
+    this.outstanding = { code, expiresAt, tier, epoch: opts.epoch, failures: 0, issuanceId, audience: opts.audience ?? "local", owner: opts.owner };
     this.onEvent("issued");
-    return { display: formatOneTimeCode(code), expiresAt, tier };
+    return { display: formatOneTimeCode(code), expiresAt, tier, issuanceId };
   }
 
   /** Whether a redemption right now would be compared against anything. */
@@ -112,7 +126,15 @@ export class WebLoginCodes {
   }
 
   /** `currentEpoch` is the web token's epoch NOW: a code issued under another token is gone. */
-  redeem(input: string, currentEpoch: string): LoginRedeemResult {
+  revokeIfCurrent(issuanceId: string): void {
+    if (this.outstanding?.issuanceId === issuanceId) this.outstanding = null;
+  }
+
+  revokeAudience(audience: string): void {
+    if (this.outstanding?.audience === audience) this.outstanding = null;
+  }
+
+  redeem(input: string, currentEpoch: string, audience = "local"): LoginRedeemResult {
     const now = this.now();
     if (now < this.pausedUntil) return { kind: "paused", retryAfterMs: this.pausedUntil - now };
 
@@ -131,10 +153,10 @@ export class WebLoginCodes {
       return { kind: "invalid" };
     }
 
-    if (constantTimeMatches(provided, active.code)) {
+    if (constantTimeMatches(provided, active.code) && active.audience === audience) {
       this.outstanding = null;
       this.onEvent("spent");
-      return { kind: "ok", tier: active.tier };
+      return { kind: "ok", tier: active.tier, ...(active.owner ? { owner: active.owner } : {}) };
     }
 
     active.failures += 1;

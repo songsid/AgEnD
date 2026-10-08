@@ -92,6 +92,9 @@ const CLASSIC_FIELDS = [
  */
 const FLEET_FIELD_IMPACTS: Readonly<Record<string, ConfigImpact>> = {
   "web.echo_to_channel": "now",
+  "web.public_link.allow_public": "now",
+  "web.public_link.ttl_minutes": "now",
+  "web.public_link.protocol": "now",
   "defaults.locale": "now",
   "fleet.channels": "fleet",
   "fleet.channel.access.mode": "fleet",

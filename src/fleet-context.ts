@@ -102,6 +102,7 @@ export interface FleetContext {
   /** Live dashboard auth/readiness; URLs must not be issued before the server listens. */
   getDashboardAccess?(): { ready: boolean; token: string | null };
   /** A fresh single-use dashboard login code (`/dashboard`); null while the panel is closed. */
+  dashboardMenu?(msg: InboundMessage): Promise<void>;
   issueDashboardLogin?(): { display: string; expiresAt: number; ttlMinutes: number } | null;
   /**
    * Sign every web session out and withdraw any unused login code (`/dashboard revoke`): how many sessions

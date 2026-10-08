@@ -627,30 +627,19 @@ export class TopicCommands {
   }
 
   /**
-   * Build the dashboard text (View / sign-in / Settings / Web UI) plus a fresh
-   * single-use login code.
-   *
-   * No URL carries a credential any more. The code is the only secret in the
-   * message: five minutes, one use, and worth nothing without the sign-in page.
-   * When `htmlSpoiler` is set it is wrapped in a Telegram HTML spoiler so it is
-   * not shown in the clear in a shared topic (the caller must send with format:
-   * "html"). /view is public, so it is never spoilered. DC uses the plain form
-   * (ephemeral reply). Every call issues a new code and retires the previous one.
+   * Pure, secret-free dashboard/menu copy. Issuance belongs to the private
+   * delivery action; rendering or previewing this text cannot retire a code.
    */
-  getDashboardText(htmlSpoiler = false): string {
+  getDashboardText(_htmlSpoiler = false, showRemoteHint = true): string {
     const port = this.ctx.fleetConfig?.health_port ?? 19280;
     const host = (this.ctx.fleetConfig as { hostname?: string } | null | undefined)?.hostname || "localhost";
     const access = this.ctx.getDashboardAccess?.();
     if (!access?.ready || !access.token) return t("dashboard.starting");
-    const login = this.ctx.issueDashboardLogin?.();
-    if (!login) return t("dashboard.starting");
     const base = `http://${host}:${port}`;
-    const hide = (u: string) => htmlSpoiler ? `<tg-spoiler>${u}</tg-spoiler>` : u;
     return [
       t("dashboard.title"),
       "",
       t("dashboard.signin", base),
-      t("dashboard.code", hide(login.display), login.ttlMinutes),
       "",
       `• View:      ${base}/view`,
       `• Dashboard: ${base}/ui`,
@@ -658,15 +647,13 @@ export class TopicCommands {
       "",
       t("dashboard.code_help"),
       // #1366: a loopback address does not open on a phone — say where the way in is documented.
-      ...(LOOPBACK_HOST_NAMES.includes(host.toLowerCase()) || host === "::1" ? ["", t("dashboard.remote_hint", WEB_REMOTE_DOCS_URL)] : []),
+      ...(showRemoteHint && (LOOPBACK_HOST_NAMES.includes(host.toLowerCase()) || host === "::1") ? ["", t("dashboard.remote_hint", WEB_REMOTE_DOCS_URL)] : []),
     ].join("\n");
   }
 
   /**
-   * /dashboard (TG): admin-only. Replies directly in the topic; the login code is
-   * wrapped in a Telegram HTML spoiler so it isn't shown in the clear (the adapter
-   * supports plain/HTML, not MarkdownV2's `||…||`). `/dashboard revoke` signs
-   * every browser out.
+   * /dashboard (TG): admin-only menu in General; codes are sent privately.
+   * `/dashboard revoke` also closes the public link and signs browsers out.
    */
   private async handleDashboardCommand(msg: InboundMessage): Promise<void> {
     const adapter = this.getReplyAdapter(msg);
@@ -685,7 +672,8 @@ export class TopicCommands {
       return;
     }
 
-    await adapter.sendText(chatId, this.getDashboardText(true), { threadId, format: "html" });
+    if (msg.source === "telegram") await this.ctx.dashboardMenu?.(msg);
+    else await adapter.sendText(chatId, this.getDashboardText(), { threadId });
   }
 
   /** Handle /ctx or /compact in any instance topic — returns true if handled */

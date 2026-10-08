@@ -19,21 +19,21 @@ The server listens on **`127.0.0.1`**, on `health_port` (default **19280**). It 
 The dashboard signs in with a **one-time code**, never with a link that carries a credential.
 
 1. Get a code, either way:
-   - in Telegram or Discord, send **`/dashboard`** (fleet admins only). On Discord the reply is visible only to you. On Telegram it is posted in the General topic, where a code is short-lived and works once.
+   - in General, use **`/dashboard`** (fleet admins only; Discord native slash). Choose local sign-in or a temporary public link. The menu contains no code: the bot sends the link and code privately.
    - on the host, run **`agend web`**. It prints the code and opens the sign-in page. `agend web --code` only prints them.
 2. Open the sign-in page and type the 8-character code (`ABCD-EFGH`, with or without the dash, in any case).
 
 About the codes:
 - A code works **once** and expires after **5 minutes**. Only the newest code works: asking again replaces the previous one.
 - Five wrong tries use up a code. Enough wrong tries across codes pause sign-in for a few minutes. While no code has been issued, there is nothing to guess.
-- Every sign-in is announced in the General topic ("New web sign-in: Chrome on macOS"). Turn this off with `web.notify_login: false`.
+- Local sign-ins are announced in General unless `web.notify_login: false`. Public sign-ins always require a confirmed public notice.
 
 An old `?token=` link or bookmark (`/ui?token=…`, as older versions printed) is **not** a way in. It opens the sign-in page, and the token is removed from the address bar.
 
 ## Sessions
 
-- A session is a record on the server, not a value in your browser. It ends **12 hours** after sign-in, or after **2 hours** without use, whichever comes first. It survives a fleet restart.
-- Only what you do counts as use. The page's own background refresh (live updates, polling) never keeps a session alive.
+- A session is a record on the server, not a value in your browser. It ends **12 hours** after sign-in, or after **2 hours** without use, whichever comes first. Local sessions survive a fleet restart. Public sessions are scoped to one exposure: four-hour absolute / 30-minute idle limits, and link closure also ends them. They cannot be used locally or on a later exposure; local cookies and header tokens cannot be used on the public host.
+- Only what you do counts as use: opening a page or a chat, sending, changing something. What a page does on its own timer never does: the live stream (also when it reconnects), the polling fallback, and `/view`'s terminal, roster and usage refresh. So a tab left open, including `/view` with `web.view_access: session`, still ends after its idle limit (2 hours locally, 30 minutes for a public session).
 - When a session ends, the page says so once ("Your session has ended. Sign in again") and keeps what you were doing on screen.
 - **The Session menu** (top bar) shows:
   - which browser you are signed in as, and when the session ends;
@@ -145,6 +145,18 @@ When an instance looks hung, exits on its own, or is stuck on an interactive pro
 
 ## Reaching it from elsewhere
 
+### Temporary public link from a phone
+
+In the owning General, an admin can choose **Open temporary public link** from `/dashboard` (Discord native slash; Telegram typed). Nothing is downloaded or exposed until that click. The bot DMs the link and code; Discord has an awaited ephemeral fallback. Telegram users must `/start` the bot privately first. No code is posted in General.
+
+It uses AgEnD's pinned, checksum-verified cloudflared, never an arbitrary executable on PATH. Only one tunnel can run; a public `/login` terminal shares that slot. The fixed lifetime is **two hours**, including startup; reuse does not renew it. Settings can set 1–480 minutes or disable the option. A private close button, a fresh menu, `/dashboard revoke`, expiry and fleet shutdown close access. Unconfirmed child cleanup blocks another tunnel, but web access is already closed.
+
+The separate gateway accepts only its current tunnel Host and reviewed panel routes. `/view` always requires sign-in there; preview, SSE, `/health`, `/agent` and code issuance are excluded. Chat polls immediately. Closing revokes that exposure's codes and sessions; local sessions stay separate. The host is ephemeral, never persisted in `allowed_hosts`.
+
+This grants full web-admin access, including terminals, files, settings and host actions. Cloudflare terminates TLS and can see traffic. Do not forward the link or code. A confirmed public 🔐 notice in the owning General is required within five seconds before a session becomes usable, even with `notify_login: false`; platform outages can block sign-in. Public guesses can consume the shared sign-in breaker. A proxy you configure yourself needs its own protection.
+
+### A connection you manage yourself
+
 The server answers on `127.0.0.1` only. To use the dashboard from another device, give it a way in, and tell it the name it will be reached by.
 
 1. **Pick a way in**, safest first:
@@ -169,11 +181,14 @@ Whoever reaches the address still has to sign in with a code from you, and each 
 | `health_port` | `19280` | The dashboard's port (on `127.0.0.1`) |
 | `web.view_access` | `open` | `session`: reading `/view` needs a sign-in too |
 | `web.allowed_hosts` | — | Extra `Host` names to answer to (behind a proxy, tunnel or port forward) |
-| `web.notify_login` | `true` | `false`: don't announce new sign-ins in General |
+| `web.notify_login` | `true` | `false`: don't announce new local sign-ins in General; public sign-ins always require a notice |
 | `web.usage_panel` | `true` | `false`: hide the AI usage panel on `/view` |
 | `web.preview` | `true` | `false`: no HTML previews at all (cards show the code and Download only) |
 | `web.preview_port` | `health_port + 1` | The preview listener's port, on `127.0.0.1` |
 | `web.preview_origin` | — | A separate host name, mapped to the preview port, for previews through a tunnel or proxy |
+| `web.public_link.allow_public` | `true` | Offer the opt-in action; disabling also closes an existing link |
+| `web.public_link.ttl_minutes` | `120` | Fixed lifetime from consent, 1–480 minutes; no renewal of an existing link |
+| `web.public_link.protocol` | `http2` | cloudflared `http2`, `quic` or `auto` |
 
 Full reference: [configuration.md](configuration.md). CLI commands: [cli.md](cli.md).
 

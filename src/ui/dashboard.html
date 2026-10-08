@@ -815,8 +815,10 @@ function announce(text) {
   clearTimeout(announceTimer);
   announceTimer = setTimeout(() => { el.textContent = text; }, 60);
 }
-const sse = new EventSource("/ui/events");
-silentTimer = setTimeout(startPolling, 15000);   // the server sends a status frame the moment a stream opens
+const publicPolling = document.body?.dataset?.webTransport === "poll";
+const sse = publicPolling ? { addEventListener() {}, close() {} } : new EventSource("/ui/events");
+if (publicPolling) startPolling();
+else silentTimer = setTimeout(startPolling, 15000);   // the server sends a status frame the moment a stream opens
 sse.addEventListener("status", e => { sseAlive(); applyStatus(JSON.parse(e.data)); });
 sse.addEventListener("message", e => {
   sseAlive();

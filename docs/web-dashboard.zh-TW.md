@@ -19,21 +19,21 @@ server 只聽 **`127.0.0.1`**，port 是 `health_port`（預設 **19280**）。�
 dashboard 用**一次性登入碼**登入，絕不使用帶有憑證的連結。
 
 1. 取得登入碼，兩種方式擇一：
-   - 在 Telegram 或 Discord 傳 **`/dashboard`**（限 fleet admin）。Discord 的回覆只有你看得到；Telegram 的回覆會貼在 General topic，登入碼很快到期、而且只能用一次。
+   - 在 General 使用 **`/dashboard`**（限 fleet admin；Discord 原生 slash），選本機登入或臨時公開連結。選單不含碼，bot 會私送連結與一次性登入碼。
    - 在主機上執行 **`agend web`**，會印出登入碼並開啟登入頁；`agend web --code` 則只印出來、不開瀏覽器。
 2. 打開登入頁，輸入 8 個字元的登入碼（`ABCD-EFGH`，有沒有連字號、大小寫都可以）。
 
 關於登入碼：
 - 只能用**一次**，**5 分鐘**後到期；只有最新的那一組有效，重新取得會取代前一組。
 - 同一組輸錯 5 次就作廢；跨多組累計輸錯太多次，會暫停登入幾分鐘。還沒發出任何登入碼時，根本沒有東西可以猜。
-- 每次登入都會通知 General topic（例如「New web sign-in: Chrome on macOS」），用 `web.notify_login: false` 可以關掉。
+- 本機登入預設通知 General，可用 `web.notify_login: false` 關閉；公開登入一律需要已確認的公開通知。
 
 舊的 `?token=` 連結或書籤（例如舊版印出的 `/ui?token=…`）**不能**用來登入：它會開到登入頁，網址列裡的 token 也會被清掉。
 
 ## Session
 
-- session 是伺服器上的一筆紀錄，不是存在瀏覽器裡的值。登入後最多 **12 小時**、或閒置 **2 小時**就會結束（以先到者為準）；fleet 重啟後仍然有效。
-- 只有你的操作才算活動。頁面自己的背景更新（即時串流、輪詢）不會讓 session 延長。
+- session 是伺服器上的一筆紀錄，不是存在瀏覽器裡的值。登入後最多 **12 小時**、或閒置 **2 小時**就會結束（以先到者為準）；本機 session 在 fleet 重啟後仍有效。公開 session 綁定單次入口，四小時／閒置 30 分鐘及入口關閉都會使其失效；不能用於本機或下一個入口，本機 cookie 與 header token 也不能用於公開入口。
+- 只有你的操作才算使用：打開頁面或聊天、送出訊息、變更任何東西。頁面自己定時做的事一律不算：即時串流（重新連線也一樣）、備援輪詢，以及 `/view` 的終端、名單與用量更新。所以開著不管的分頁——包括 `web.view_access: session` 時的 `/view`——仍會在閒置期限後結束（本機 2 小時、公開 session 30 分鐘）。
 - session 結束時，頁面會提示一次（「登入已結束。重新登入」），而且保留你畫面上正在做的事。
 - **Session 選單**（上方列）會顯示：
   - 你目前用哪個瀏覽器登入、這個 session 什麼時候到期；
@@ -145,6 +145,18 @@ instance 看起來卡住、自己結束，或停在互動式提示時，Telegram
 
 ## 從別的裝置連線
 
+### 手機使用臨時公開連結
+
+管理員在所屬 General 的 `/dashboard` 選 **開啟臨時公開連結**（Discord 原生 slash；Telegram 輸入指令）。按下前不下載、不開入口。bot 私送連結與登入碼；Discord 私訊失敗時改用須確認送達的 ephemeral 回覆。Telegram 請先私訊 bot 的 `/start`。General 絕不貼登入碼。
+
+使用 AgEnD 固定版本、checksum 驗證的 cloudflared，不採用 PATH 上的任意程式。一次只能開一條 tunnel，與公開 `/login` 終端共用名額。期限固定 **兩小時**，含啟動時間；再次取得連結不延長。Settings 可改為 1–480 分鐘或停用選項。私送的關閉按鈕、新選單、`/dashboard revoke`、到期及 fleet 關閉都會關入口。子行程無法確認停止時封鎖下一條 tunnel，但網頁存取已關閉。
+
+獨立 gateway 只接受當前 tunnel Host 與核准面板路由；`/view` 一律要登入，不暴露 preview、SSE、`/health`、`/agent` 或發碼 API。聊天立即輪詢。關閉會撤回該入口的碼與 session，本機 session 另行隔離。Host 只暫時允許，不寫入 `allowed_hosts`。
+
+這是完整 web-admin 權限，含終端、檔案、設定與主機操作。Cloudflare 終止 TLS，能看到流量。不要轉傳連結或碼。公開 session 啟用前，所屬 General 必須在五秒內確認收到 🔐 公開登入通知，即使 `notify_login: false` 也一樣；平台故障可能使登入不可用。公開猜碼也可能耗盡共用登入 breaker。自行設定的 proxy 仍需自己的保護。
+
+### 自行管理連線
+
 server 只回應 `127.0.0.1`。要從別的裝置使用 dashboard，你需要開一條路，並告訴它別人會用哪個名稱連進來。
 
 1. **選一種連線方式**，越前面越安全：
@@ -169,11 +181,14 @@ server 只回應 `127.0.0.1`。要從別的裝置使用 dashboard，你需要開
 | `health_port` | `19280` | dashboard 的 port（只聽 `127.0.0.1`） |
 | `web.view_access` | `open` | `session`：讀取 `/view` 也需要登入 |
 | `web.allowed_hosts` | — | 額外允許的 `Host` 名稱（經由 proxy、tunnel 或 port forward 連線時） |
-| `web.notify_login` | `true` | `false`：不在 General 通知新的登入 |
+| `web.notify_login` | `true` | `false`：不在 General 通知新的本機登入；公開登入一律需要通知 |
 | `web.usage_panel` | `true` | `false`：在 `/view` 隱藏 AI 用量面板 |
 | `web.preview` | `true` | `false`：完全不提供 HTML 預覽（卡片只顯示程式碼與下載） |
 | `web.preview_port` | `health_port + 1` | 預覽 listener 的 port（只聽 `127.0.0.1`） |
 | `web.preview_origin` | — | 透過 tunnel 或 proxy 預覽時，對應到預覽 port 的另一個主機名稱 |
+| `web.public_link.allow_public` | `true` | 提供需主動選擇的公開選項；停用也關閉現有入口 |
+| `web.public_link.ttl_minutes` | `120` | 從同意起固定期限，1–480 分鐘，不延長現有入口 |
+| `web.public_link.protocol` | `http2` | cloudflared 的 `http2`、`quic` 或 `auto` |
 
 完整設定說明：[configuration.zh-TW.md](configuration.zh-TW.md)；CLI 指令：[cli.zh-TW.md](cli.zh-TW.md)。
 

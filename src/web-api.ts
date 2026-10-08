@@ -1,3 +1,6 @@
+import { readBoundedWebBody } from "./web-body.js";
+import { gatewayRequestContext } from "./web-request-context.js";
+import { permitWebContinuation } from "./web-continuation.js";
 /**
  * Web UI HTTP API handler.
  * All /ui/* routes are handled here, extracted from fleet-manager.ts.
@@ -220,15 +223,8 @@ export interface WebApiContext {
 }
 
 /** Parse JSON body from request. */
-function parseBody(req: IncomingMessage): Promise<Record<string, unknown>> {
-  return new Promise((resolve, reject) => {
-    let body = "";
-    req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
-    req.on("end", () => {
-      try { resolve(JSON.parse(body)); }
-      catch { reject(new Error("Invalid JSON")); }
-    });
-  });
+async function parseBody(req: IncomingMessage): Promise<Record<string, unknown>> {
+  return JSON.parse((await readBoundedWebBody(req, 512 * 1024)).toString("utf8"));
 }
 
 /** Send JSON response. */
@@ -270,9 +266,9 @@ export function handleWebRequest(
       // #1306: the page learns which origin the server believes it is at, the preview origin chosen for it (empty:
       // disabled, with the reason) and the preview listener's boot id; /ui's CSP may frame exactly <origin>/frame.
       // The page re-checks the first against location.origin before it makes any frame.
-      const p = ctx.previewForUi?.(typeof req.headers.host === "string" ? req.headers.host : undefined, isSecureRequest(req)) ?? null;
+      const p = gatewayRequestContext(req) ? null : ctx.previewForUi?.(typeof req.headers.host === "string" ? req.headers.host : undefined, isSecureRequest(req)) ?? null;
       const attr = (v: string | null | undefined) => String(v ?? "").replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
-      const body = `<body data-dashboard-origin="${attr(p?.dashboardOrigin)}" data-preview-origin="${attr(p?.previewOrigin)}"`
+      const body = `<body${gatewayRequestContext(req) ? ' data-web-transport="poll"' : ""} data-dashboard-origin="${attr(p?.dashboardOrigin)}" data-preview-origin="${attr(p?.previewOrigin)}"`
         + ` data-preview-boot="${attr(p?.previewOrigin ? p.boot : "")}" data-preview-reason="${attr(p ? p.reason : "Previews are not available on this fleet.")}">`;
       sendPanelHtml(res, html.replace("<body>", body), 200, {}, p?.previewOrigin ? { frameSrc: `${p.previewOrigin}/frame` } : {});
     } catch {
@@ -351,6 +347,7 @@ export function handleWebRequest(
   }
 
   if (method === "GET" && path === "/ui/events") {
+    if (gatewayRequestContext(req)) { json(res, 404, { error: "Use polling on the public link" }); return true; }
     res.writeHead(200, {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
@@ -466,6 +463,7 @@ export function handleWebRequest(
     (async () => {
       let body: Record<string, unknown>;
       try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
+      if (!permitWebContinuation(req, res, ctx)) return;
       if (!body || typeof body !== "object") { json(res, 400, { error: "instance, nonce and action required" }); return; }
       const { instance, nonce, action } = body;
       if (typeof instance !== "string" || typeof nonce !== "string" || typeof action !== "string") {
@@ -552,6 +550,7 @@ export function handleWebRequest(
     (async () => {
       try {
         const body = await parseBody(req);
+        if (!permitWebContinuation(req, res, ctx)) return;
         if (body.confirm !== `delete ${name}`) {
           json(res, 400, { error: `Confirmation required: { "confirm": "delete ${name}" }` });
           return;
@@ -644,6 +643,7 @@ export function handleWebRequest(
     (async () => {
       try {
         const body = await parseBody(req);
+        if (!permitWebContinuation(req, res, ctx)) return;
         const v = validateArgs(CreateInstanceArgs, body, "create_instance");
         if (!v.ok) { json(res, 400, { error: v.error }); return; }
         let result: unknown = null;
@@ -682,6 +682,7 @@ export function handleWebRequest(
     (async () => {
       try {
         const body = await parseBody(req);
+        if (!permitWebContinuation(req, res, ctx)) return;
         const parsed = parseOrReject(TaskCreateSchema, body, res);
         if (!parsed) return;
         const task = ctx.scheduler!.db.createTask({
@@ -709,6 +710,7 @@ export function handleWebRequest(
     (async () => {
       try {
         const body = await parseBody(req);
+        if (!permitWebContinuation(req, res, ctx)) return;
         const parsed = parseOrReject(TaskUpdateSchema, body, res);
         if (!parsed) return;
         let result: unknown;
@@ -742,6 +744,7 @@ export function handleWebRequest(
     (async () => {
       try {
         const body = await parseBody(req);
+        if (!permitWebContinuation(req, res, ctx)) return;
         const parsed = parseOrReject(ScheduleCreateSchema, body, res);
         if (!parsed) return;
         const schedule = ctx.scheduler!.create(parsed);
@@ -773,6 +776,7 @@ export function handleWebRequest(
     (async () => {
       try {
         const body = await parseBody(req);
+        if (!permitWebContinuation(req, res, ctx)) return;
         const parsed = parseOrReject(TeamCreateSchema, body, res);
         if (!parsed) return;
         if (!ctx.fleetConfig) { json(res, 500, { error: "No fleet config" }); return; }
@@ -823,6 +827,7 @@ export function handleWebRequest(
     (async () => {
       try {
         const body = await parseBody(req);
+        if (!permitWebContinuation(req, res, ctx)) return;
         const parsed = parseOrReject(ConfigUpdateSchema, body, res);
         if (!parsed) return;
         const config = ctx.fleetConfig;
@@ -879,6 +884,7 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
     body += chunk.toString();
   });
   req.on("end", async () => {
+      if (!permitWebContinuation(req, res, ctx)) return;
     try {
       const raw = JSON.parse(body);
       const parsed = SendMessageSchema.safeParse(raw);
@@ -1012,6 +1018,7 @@ function handleUpload(req: IncomingMessage, res: ServerResponse, url: URL, ctx: 
   });
   req.on("error", () => { /* the client went away */ });
   req.on("end", () => {
+      if (!permitWebContinuation(req, res, ctx)) return;
     if (refused) return;
     const bytes = Buffer.concat(chunks);
     const name = displayName(typeof req.headers["x-agend-filename"] === "string" ? req.headers["x-agend-filename"] : "", "file");

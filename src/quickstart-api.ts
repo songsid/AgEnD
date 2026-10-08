@@ -1,3 +1,5 @@
+import { readBoundedWebBody } from "./web-body.js";
+import { permitWebContinuation } from "./web-continuation.js";
 /**
  * The Settings setup wizard's server side.
  *
@@ -238,6 +240,8 @@ export function detectWizardBackends(): string[] {
  * instance-lifecycle, so the host cannot grow a path to them by accident.
  */
 export interface QuickstartApiContext {
+  readonly webToken?: string | null;
+  readonly webSessions?: import("./web-session.js").WebSessionStore | null;
   fleetConfig: FleetConfig | null;
   dataDir: string;
   logger: { info(obj: unknown, msg?: string): void; warn(obj: unknown, msg?: string): void };
@@ -253,17 +257,7 @@ function json(res: ServerResponse, status: number, data: unknown): void {
 }
 
 function readBody(req: IncomingMessage, maxBytes: number): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    let size = 0;
-    req.on("data", (chunk: Buffer) => {
-      size += chunk.length;
-      if (size > maxBytes) { reject(new Error("body too large")); req.destroy(); return; }
-      chunks.push(chunk);
-    });
-    req.on("end", () => resolve(Buffer.concat(chunks)));
-    req.on("error", reject);
-  });
+  return readBoundedWebBody(req, maxBytes);
 }
 
 /** The channels as the wizard sees them, from either config shape. */
@@ -317,6 +311,7 @@ export function handleQuickstartRequest(
 
   if (method === "POST" && path === "/api/settings/quickstart/probe") {
     readBody(req, 16 * 1024).then(async buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
       let body: Record<string, unknown>;
       try { body = JSON.parse(buf.toString("utf-8") || "{}") as Record<string, unknown>; }
       catch { return json(res, 400, { error: "invalid JSON" }); }
@@ -342,6 +337,7 @@ export function handleQuickstartRequest(
   if (method === "POST" && path === "/api/settings/quickstart/plan") {
     if (!cfg) { json(res, 503, { error: "fleet not loaded" }); return true; }
     readBody(req, 16 * 1024).then(buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
       let body: WizardPlanInput;
       try { body = JSON.parse(buf.toString("utf-8") || "{}") as WizardPlanInput; }
       catch { return json(res, 400, { error: "invalid JSON" }); }
@@ -359,6 +355,7 @@ export function handleQuickstartRequest(
   if (method === "POST" && path === "/api/settings/quickstart/commit") {
     if (!cfg) { json(res, 503, { error: "fleet not loaded" }); return true; }
     readBody(req, 16 * 1024).then(buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
       let body: WizardPlanInput & { token?: string };
       try { body = JSON.parse(buf.toString("utf-8") || "{}") as WizardPlanInput & { token?: string }; }
       catch { return json(res, 400, { error: "invalid JSON" }); }
