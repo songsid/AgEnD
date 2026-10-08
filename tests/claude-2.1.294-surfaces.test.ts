@@ -1,21 +1,26 @@
 /**
- * Claude Code 2.1.294 audit (version gate, ffb8104e): every screen AgEnD acts on, captured from the real 2.1.294
- * binary in an isolated HOME, on a private tmux socket, against a local Anthropic mock — most through the production
- * writeConfig + buildCommand (with AgEnD's statusLine, as instances run). Each screen was captured from 2.1.292 the
- * same way and diffed, and every frame of both versions was classified with the production predicates: the
+ * Claude Code 2.1.294 audit (version gate, ffb8104e / af2f9f41): the screens AgEnD acts on, captured from the real
+ * 2.1.294 binary in an isolated HOME, on a private tmux socket, against a local Anthropic mock — most through the
+ * production writeConfig + buildCommand (with AgEnD's statusLine, as instances run). Each screen was captured from
+ * 2.1.292 the same way and diffed, and every frame of both versions was classified with the production predicates: the
  * classifications and the input-box readings are identical. The only differences are the spinner's verbs and a
  * one-time "Updated to latest" banner for a home last used by an older version.
  *
- * Upstream changes that touch AgEnD's surfaces, checked specifically: 2.1.293's pasted-text detection fix (pastes
- * are recorded the same way in the transcript, and the input box still collapses a long paste) and its queued-message
- * fix (the queue still shows the row, `ctrl+x ctrl+s to send now` and `Press up to edit queued messages`, and the
- * transcript still records enqueue/dequeue). 2.1.294 itself changes only hooks.
+ * What was covered and how (live / binary / not reached), the binaries' identity and the scripts that reproduce it all:
+ * scripts/manual/claude-version-audit/README.md.
  *
  * These tests hold the recognitions AgEnD relies on, against the real frames.
  */
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { ClaudeCodeBackend, claudeBackgroundWorkExitActive, readClaudeInputBox } from "../src/backend/claude-code.js";
+import {
+  ClaudeCodeBackend,
+  CLAUDE_RESUME_PROMPT_MENU,
+  claudeBackgroundWorkExitActive,
+  claudeBashPermissionActive,
+  claudeDangerousCommandPromptState,
+  readClaudeInputBox,
+} from "../src/backend/claude-code.js";
 
 const pane = (name: string) => readFileSync(new URL(`./fixtures/claude-2.1.294-${name}.pane.txt`, import.meta.url), "utf8");
 const backend = new ClaudeCodeBackend("/tmp/agend-claude-2.1.294-fixture");
@@ -23,6 +28,13 @@ type Dialog = { pattern: RegExp; isActive?: (pane: string) => boolean; descripti
 const hits = (dialogs: Dialog[], p: string) => dialogs.filter(d => (d.isActive ? d.isActive(p) : d.pattern.test(p))).map(d => d.description);
 const runtime = (p: string) => hits(backend.getRuntimeDialogs(), p);
 const errors = (p: string) => backend.getErrorPatterns().filter(e => e.pattern.test(p)).map(e => e.type);
+/** The live retry entries (inProgress) that read a pane, with the notice each would send — the row they matched, not just a type. */
+const retrying = (p: string) => backend.getErrorPatterns().filter(e => e.inProgress).flatMap(e => {
+  const m = p.match(e.pattern);
+  return m ? [{ type: e.type, action: e.action, notice: e.formatMessage ? e.formatMessage(m) : e.message }] : [];
+});
+/** The entries of one table that would act on a pane. */
+const acting = (dialogs: Array<Dialog & { keys?: string[] }>, p: string) => dialogs.filter(d => (d.isActive ? d.isActive(p) : d.pattern.test(p)));
 
 describe("Claude Code 2.1.294 screens (real panes)", () => {
   it("are 2.1.294 captures", () => {
@@ -74,11 +86,70 @@ describe("Claude Code 2.1.294 screens (real panes)", () => {
     expect(backend.getBusyPattern().test(p)).toBe(true);
   });
 
-  it("errors: 429/500/401 retry rows and repeated 529 are recognised as before", () => {
-    expect(errors(pane("error-429-retrying-statusline"))).toContain("rate_limit");
-    expect(errors(pane("error-500-retrying-statusline"))).toContain("rate_limit");
-    expect(errors(pane("error-401-retrying-statusline"))).toContain("config_error");
-    expect(errors(pane("error-529-repeated"))).toContain("rate_limit");
+  it("errors: the live 429/500/401 retry row is the one read — status, attempt, action — not the 529 above it", () => {
+    // The 500 and 401 frames also hold the earlier turn's repeated-529 line (scrollback), which matches a rate_limit
+    // entry on its own; only the live retry entry reading the live row proves the retry is recognised.
+    expect(retrying(pane("error-429-retrying-statusline"))).toEqual([{ type: "rate_limit", action: "notify",
+      notice: "Claude API returned 429 — Claude Code is retrying automatically (attempt 5/10)" }]);
+    expect(retrying(pane("error-500-retrying-statusline"))).toEqual([{ type: "rate_limit", action: "notify",
+      notice: "Claude API returned 500 — Claude Code is retrying automatically (attempt 5/10)" }]);
+    expect(retrying(pane("error-401-retrying-statusline"))).toEqual([{ type: "config_error", action: "notify",
+      notice: "Claude API returned 401 — Claude Code is retrying (attempt 5/10); check the credentials" }]);
+  });
+
+  it("errors: the repeated 529 notifies; not logged in pauses as an auth error", () => {
+    const final529 = backend.getErrorPatterns().filter(e => !e.inProgress && e.pattern.test(pane("error-529-repeated")));
+    expect(final529.map(e => `${e.type}/${e.action}/${e.message}`)).toContain("rate_limit/notify/API overloaded");
+    expect(retrying(pane("error-529-repeated"))).toEqual([]);
+    const auth = backend.getErrorPatterns().filter(e => e.pattern.test(pane("not-logged-in")));
+    expect(auth.map(e => `${e.type}/${e.action}`)).toEqual(["auth_error/pause"]);
+  });
+
+  it("the Bypass Permissions warning is answered stepwise: Down on 'No, exit', Enter only on 'Yes, I accept'", () => {
+    const onDecline = pane("bypass-dialog");
+    const onAccept = pane("bypass-dialog-cursor-accept");
+    expect(onDecline).toContain("❯ No, exit");
+    expect(onAccept).toContain("❯ Yes, I accept");
+    for (const table of [backend.getStartupDialogs(), backend.getRuntimeDialogs()]) {
+      const bypass = (p: string) => acting(table, p).filter(d => d.description.startsWith("Claude Bypass Permissions warning"));
+      expect(bypass(onDecline).map(d => d.keys)).toEqual([["Down"]]);
+      expect(bypass(onAccept).map(d => d.keys)).toEqual([["Enter"]]);
+    }
+    const accepted = pane("bypass-accepted");
+    expect(accepted).toContain("bypass permissions on");
+    expect(runtime(accepted)).toEqual([]);
+    expect(backend.getReadyPattern().test(accepted)).toBe(true);
+  });
+
+  it("the dangerous-rm prompt in bypass mode is declined; the native Bash permission is held, never answered", () => {
+    const danger = pane("bypass-dangerous-rm-prompt");
+    expect(claudeDangerousCommandPromptState(danger)).toEqual({ active: true, cursor: "yes" });
+    expect(acting(backend.getRuntimeDialogs(), danger).map(d => [d.description, d.keys])).toEqual([
+      ["Claude dangerous-command prompt — select No", ["Down", "Enter"]],
+    ]);
+    const perm = pane("bash-permission-prompt");
+    expect(claudeBashPermissionActive(perm)).toBe(true);
+    expect(acting(backend.getRuntimeDialogs(), perm).map(d => [d.description, d.keys])).toEqual([
+      ["Claude Bash permission — waiting for a human choice, never auto-approving", []],
+    ]);
+  });
+
+  it("unanswered by design, as before (claude-dialogs-1074's documented gap): MCP approval and the API-key dialog", () => {
+    // Neither table presses Enter on them; each screen's default is the safe choice.
+    expect(pane("mcp-approval")).toContain("❯ Continue without using this MCP server");
+    expect(pane("api-key-dialog")).toContain("❯ No (recommended)");
+    for (const name of ["mcp-approval", "api-key-dialog"]) {
+      for (const table of [backend.getStartupDialogs(), backend.getRuntimeDialogs()]) {
+        expect(acting(table, pane(name)).flatMap(d => d.keys ?? []), name).not.toContain("Enter");
+      }
+    }
+  });
+
+  it("--continue of a session backdated 4h resumed straight into the conversation: no resume menu was shown", () => {
+    const p = pane("continue-aged-session");
+    expect(CLAUDE_RESUME_PROMPT_MENU.test(p)).toBe(false);
+    expect(runtime(p)).toEqual([]);
+    expect(backend.getReadyPattern().test(p)).toBe(true);
   });
 
   it("the Background work exit prompt is held, never answered, and blocks the quit (#1217)", () => {
