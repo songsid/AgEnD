@@ -11,7 +11,7 @@ The Telegram fleet menu (General topic and instance topics, `setMyCommands`) lis
 | `/dashboard` | Sign in to the web dashboard and web chat: the sign-in link and a one-time code (spoilered on Telegram, visible only to you on Discord). On a `localhost` dashboard it also says how to reach it from a phone. `/dashboard revoke` (on Discord, the `action: revoke` option) signs every browser out | `[revoke]` | 🔒 admin |
 | `/ctx` | Show agent context usage | — | All |
 | `/compact` | Compact agent context | `[instructions]` — steers the summary, Claude Code only | All in fleet topics |
-| `/steer` | Interject into the agent's current turn instead of queueing for idle | `<message>` required; `claude-code`/`codex`/`grok` only | All |
+| `/steer` | Interject into the agent's current turn instead of queueing for idle | `<message>` required; `claude-code`/`codex`/`grok`/`muse`, and `kiro-cli` on its verified TUI ([details](commands.md#steer-btw-and-clear-backend-support)) | All |
 | `/btw` | Side question without interrupting the current task | `<message>` required; `claude-code` only | All |
 | `/clear` | Full conversation reset (destructive — asks Confirm/Cancel) | — | 🔒 admin |
 | `/model` | Switch backend model | Name or inline keyboard/select menu | 🔒 admin |

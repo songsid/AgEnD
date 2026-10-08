@@ -21,7 +21,7 @@ import {
 import { readKiroLedger } from "./kiro-engine-ledger.js";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, unlinkSync, statSync } from "node:fs";
-import { type BackendAgentSwitch, type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, UnsupportedCliError, resolveBinary, shellQuote, validateEffort, validateModel, warnIfModelMismatch } from "./types.js";
+import { type BackendAgentSwitch, type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, type SteerComposerMode, UnsupportedCliError, resolveBinary, shellQuote, validateEffort, validateModel, warnIfModelMismatch } from "./types.js";
 import { PIE_CLASS } from "../tui-glyphs.js";
 import { KIRO_EXPIRED_LOGIN_SCREEN } from "../login-flows.js";
 import { t } from "../locale.js";
@@ -54,6 +54,74 @@ export const KIRO_INSTANCE_AGENT_MIN = "2.21.0";
  * told the version is unverified.
  */
 export const KIRO_TESTED_MAX = "2.27.0";
+
+/**
+ * kiro-cli versions, per TUI front-end, whose mid-turn steering AgEnD drives (#1405). Only kiro's TUI steers — typed
+ * input while a turn runs is injected into it ("steer", the default) or held for its end ("queue", Ctrl+S toggles); the
+ * legacy UI swallows it. A version/front-end is listed once a live run of it — a real account, a steer and a
+ * queued message mid-tool — has been captured (tests/fixtures/kiro-steer-1405, 2026-10-08: 2.27.1 `--tui
+ * --agent-engine=v2` and `--v3`, 2.28.0 `--tui --agent-engine=v2`; identical rows on all three). Any other version,
+ * 2.28.0's v3, the legacy UI and an undetected version all deliver a steer as an ordinary message after the turn.
+ */
+export const KIRO_STEER_VERIFIED: Readonly<Record<string, ReadonlyArray<"tui" | "v3">>> = {
+  "2.27.1": ["tui", "v3"],
+  "2.28.0": ["tui"],
+};
+
+/**
+ * The TUI composer's interrupt mode, read off its own row: the LAST row starting at column 0 with `›` (transcript user
+ * rows are indented), below which only blank rows or right-aligned hints (`/copy to clipboard`) may follow. Its text is
+ * the empty composer's placeholder (tui.js, identical in 2.21.0, 2.27.1 and 2.28.0; 2.21.0 shows no elapsed time):
+ *
+ *   `› Kiro is working · 12s · Type to steer · Ctrl+S to queue`   → "steer"
+ *   `› Kiro is working · 12s · Type to queue · Ctrl+S to steer`   → "queue"  (also `· Type to queue` alone: a spec task run)
+ *   `› ask a question or describe a task ↵`                        → "idle"  (exactly; also plan mode's and tangent's
+ *                                                                      complete forms — never a prefix of typed text)
+ *
+ * Any other text on the composer's row is typed text: "text" — positive evidence the box holds something. The goal,
+ * editing, initializing, spec-description and shell placeholders are other modes, and the ASCII glyph set (`.`/`enter`,
+ * never seen on a real pane of ours) is not read: null, like a screen with no composer row (a dialog) — null is never
+ * evidence of either an empty or a full box. The toggle key's label is whatever the user bound; it is read past, never
+ * pressed.
+ */
+function readKiroComposer(pane: string): { mode: SteerComposerMode; text: string } | null {
+  const rows = pane.split("\n").map(row => row.replace(/\s+$/, ""));
+  let i = rows.length - 1;
+  while (i >= 0 && (rows[i] === "" || /^[ \t]{20,}\S/.test(rows[i]))) i--;
+  // Typed text of more than one line continues below the `›` row, each row indented two spaces (live, 2.27.1 and
+  // 2.28.0, TUI v2 and v3): the composer starts at the `›` row above them.
+  let continued = 0;
+  while (i >= 0 && /^ {2,19}\S/.test(rows[i]!)) { i--; continued++; }
+  const row = rows[i];
+  if (row === undefined || !/^›[ \t]+\S/.test(row)) return null;
+  // A placeholder is one row: with continuation rows below it, this is typed text — unless its first row is another
+  // mode's placeholder, which is then not ours to read.
+  if (continued > 0) {
+    if (/^›[ \t]+(?:Kiro is working\b|ask a question or describe a task\b|Goal (?:Active|Paused):|Editing queued message \d|Initializing\b|describe what "|running shell command\b)/.test(row)) return null;
+    return { mode: "text", text: row.replace(/^›[ \t]+/, "") };
+  }
+  const working = String.raw`^›[ \t]+Kiro is working(?:[ \t]+·[ \t]+[^·]+?)?[ \t]+·[ \t]+`;
+  const text = row.replace(/^›[ \t]+/, "");
+  if (new RegExp(`${working}Type to steer[ \\t]+·[ \\t]+[^·]+?[ \\t]+to queue$`).test(row)) return { mode: "steer", text };
+  if (new RegExp(`${working}Type to queue(?:[ \\t]+·[ \\t]+[^·]+?[ \\t]+to steer)?$`).test(row)) return { mode: "queue", text };
+  const idle = String.raw`^›[ \t]+ask a question or describe a task`;
+  if (new RegExp(`${idle}[ \\t]+↵$`).test(row)
+    || new RegExp(`${idle}[ \\t]+↵[ \\t]+·[ \\t]+exit plan mode: shift\\+tab$`).test(row)
+    || new RegExp(`${idle}[ \\t]+·[ \\t]+/tangent to go back[ \\t]+·[ \\t]+/tangent ls to view$`).test(row)) return { mode: "idle", text };
+  // Other placeholders (and anything the ASCII glyph set paints) are not typed text.
+  if (/^›[ \t]+(?:Kiro is working\b|Goal (?:Active|Paused):|Editing queued message \d|Initializing\b|describe what "|running shell command\b|ask a question or describe a task (?:\.|enter\b))/.test(row)) return null;
+  return { mode: "text", text };
+}
+
+export function readKiroSteerComposer(pane: string): SteerComposerMode | null {
+  return readKiroComposer(pane)?.mode ?? null;
+}
+
+/** The typed text on the composer's row when it reads "text" (its first row, as kiro paints it); else null. */
+export function readKiroComposerText(pane: string): string | null {
+  const c = readKiroComposer(pane);
+  return c?.mode === "text" ? c.text : null;
+}
 
 export interface KiroCliCompatibility {
   version?: string;
@@ -745,6 +813,24 @@ export class KiroBackend implements CliBackend {
     // `100% > done` — and never verified live. Both keep the silence gate until
     // their ready marker is verified.
     return this.activeUi === "legacy" && this.activeTrustAll;
+  }
+
+  /** #1405: the TUI front-end this instance was launched with, on a version listed in KIRO_STEER_VERIFIED. */
+  supportsSteer(): boolean {
+    if (this.activeUi === "legacy") return false;
+    // compatibility.version is kiro-cli's own `--version` line ("kiro-cli 2.27.1").
+    const version = parseSemver(this.compatibility.version)?.join(".");
+    return version !== undefined && Object.hasOwn(KIRO_STEER_VERIFIED, version)
+      && KIRO_STEER_VERIFIED[version].includes(this.activeUi);
+  }
+
+  /** #1405: the TUI composer's mode; never read on the legacy UI, whose prompt row has no such mode. */
+  readSteerComposer(pane: string): SteerComposerMode | null {
+    return this.activeUi === "legacy" ? null : readKiroSteerComposer(pane);
+  }
+
+  readSteerComposerText(pane: string): string | null {
+    return this.activeUi === "legacy" ? null : readKiroComposerText(pane);
   }
 
   /**

@@ -3198,6 +3198,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.idleGatedDeliveryTails.has(instanceName);
   }
 
+  /** The running launch's own steer capability (#1405); undefined for a backend without one, or no running Daemon. */
+  instanceLaunchSupportsSteer(instanceName: string): boolean | undefined {
+    return this.daemons.get(instanceName)?.launchSupportsSteer();
+  }
+
   /** Single delivery facade: wake paused CLIs and serialize non-user work behind idle. */
   async deliverToInstance(
     instanceName: string,

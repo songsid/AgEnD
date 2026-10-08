@@ -4,7 +4,10 @@ A=${AUDIT_DIR:?set AUDIT_DIR to the audit scratch directory}
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO=$(cd "$HERE/../../.." && pwd)
 mkdir -p "$A/cap" "$A/h" "$A/inst" "$A/w"
-SOCK=cc294audit
+# OLD/NEW: the two patch versions compared (binaries $AUDIT_DIR/2.1.$OLD and 2.1.$NEW).
+OLD=${OLD:-292}
+NEW=${NEW:-294}
+SOCK=cc${NEW}audit
 PORT=${PORT:-18294}
 # A fake key of the right shape, built at run time so no secret-shaped literal is committed; the mock never checks it.
 KEY="sk-ant-api03-$(printf 'test%.0s' $(seq 22))-testtestAA"
@@ -25,12 +28,12 @@ kill1() { t kill-session -t "$1" 2>/dev/null; }
 # step <prefix> <label> <sleep> <keys...>: send keys to <prefix>289 and <prefix>291, capture both, diff
 step() {
   local p=$1 label=$2 s=$3; shift 3
-  for v in 292 294; do [ $# -gt 0 ] && keys $p$v "$@"; done; sleep $s
-  for v in 292 294; do cap $p$v | sed 's/[[:space:]]*$//' > $A/cap/$v-$label.txt; done
-  if diff <(norm $A/cap/292-$label.txt) <(norm $A/cap/294-$label.txt) > $A/cap/diff-$label.txt; then echo "[$label] SAME"; else echo "[$label] DIFF ($(wc -l < $A/cap/diff-$label.txt) lines)"; fi
+  for v in $OLD $NEW; do [ $# -gt 0 ] && keys $p$v "$@"; done; sleep $s
+  for v in $OLD $NEW; do cap $p$v | sed 's/[[:space:]]*$//' > $A/cap/$v-$label.txt; done
+  if diff <(norm $A/cap/$OLD-$label.txt) <(norm $A/cap/$NEW-$label.txt) > $A/cap/diff-$label.txt; then echo "[$label] SAME"; else echo "[$label] DIFF ($(wc -l < $A/cap/diff-$label.txt) lines)"; fi
 }
-show() { sed '/^\s*$/d' $A/cap/294-$1.txt | grep -v "^[ .*░▓█▄]*$" | head -${2:-40}; }
-norm() { sed -E 's/v2\.1\.29(2|4)/vX/g; s/([a-z])(292|294)/\1VV/g; s/(code_challenge|state)=[^&]*/\1=X/g' "$1"; }
+show() { sed '/^\s*$/d' $A/cap/$NEW-$1.txt | grep -v "^[ .*░▓█▄]*$" | head -${2:-40}; }
+norm() { sed -E "s/v2\\.1\\.($OLD|$NEW)/vX/g; s/([a-z])($OLD|$NEW)/\\1VV/g;"'  s/(code_challenge|state)=[^&]*/\1=X/g' "$1"; }
 # startcmd <name> <home> <cwd> <cmd-file>: run a production command line in the isolated env
 startcmd() {
   local name=$1 home=$2 cwd=$3 cmdf=$4
@@ -44,6 +47,6 @@ gencmd() { # gencmd <v> <prefix> [resume]
 # frames <prefix> <label> <count> <interval>: capture both versions repeatedly into cap/frames/<label>/<v>/NNN.txt
 frames() {
   local p=$1 label=$2 n=$3 iv=$4
-  for v in 292 294; do mkdir -p $A/cap/frames/$label/$v; done
-  for i in $(seq -w 1 $n); do for v in 292 294; do cap $p$v > $A/cap/frames/$label/$v/$i.txt; done; sleep $iv; done
+  for v in $OLD $NEW; do mkdir -p $A/cap/frames/$label/$v; done
+  for i in $(seq -w 1 $n); do for v in $OLD $NEW; do cap $p$v > $A/cap/frames/$label/$v/$i.txt; done; sleep $iv; done
 }
