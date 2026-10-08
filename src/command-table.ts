@@ -123,12 +123,11 @@ export const COMMANDS: readonly CommandSpec[] = [
   // ── ClassicBot lifecycle ──
   {
     name: "start", slash: true, denied: NOT_AUTHORIZED,
-    // Not one level. Discord: the guild allowlist (`isGuildAllowed`) and nothing else — no admin. Telegram private chat:
-    // `isUserAllowed`. Telegram group: `isGroupAllowed` AND a ClassicBot admin. The handler enforces each (the table
-    // only says where it applies), so the single word "anyone" that stood here was wrong for Telegram groups.
+    // The handler admits ClassicBot admins directly, or an explicitly allowed guild/private user.
+    // Empty lists request General approval. Telegram groups retain their ClassicBot admin start role.
     scopes: {
       fleet: { refuse: ["classic.topic_bound"] }, general: { refuse: ["classic.topic_bound"] }, classic: { refuse: ["classic.already_active"] },
-      none: { level: "handler", note: "Discord: guild allowlist. Telegram private: user allowlist. Telegram group: group allowlist + ClassicBot admin." },
+      none: { level: "handler", note: "ClassicBot admin, or explicit guild/private-user grant; empty lists request approval. Telegram groups: ClassicBot admin." },
     },
     telegram: tg(PASS, PASS, HANDLER, HANDLER),
   },

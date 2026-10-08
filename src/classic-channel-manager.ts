@@ -462,10 +462,10 @@ export class ClassicChannelManager {
 
   getDefaults(): Readonly<ClassicDefaults> { return this.defaults; }
 
-  /** Check if a guild is allowed. Empty/unset/non-array allowed_guilds = allow all (backward compat). */
+  /** Check if a guild is allowed. Empty/unset/non-array lists require an access request. */
   isGuildAllowed(guildId: string): boolean {
     const list = this.defaults.allowed_guilds;
-    if (!Array.isArray(list) || list.length === 0) return true;
+    if (!Array.isArray(list) || list.length === 0) return false;
     // String comparison, matching isAdmin. A hand-edited config can hold an
     // UNQUOTED id, which YAML parses as a number; a strict includes() then
     // never matches the string an adapter supplies, and the chat is locked out
@@ -476,10 +476,10 @@ export class ClassicChannelManager {
     return list.some(entry => String(entry) === String(guildId));
   }
 
-  /** Check if a Telegram group is allowed. Empty/unset/non-array = allow all. */
+  /** Check if a Telegram group is allowed. Empty/unset/non-array lists require an access request. */
   isGroupAllowed(groupId: string): boolean {
     const list = this.defaults.allowed_groups;
-    if (!Array.isArray(list) || list.length === 0) return true;
+    if (!Array.isArray(list) || list.length === 0) return false;
     // String comparison, matching isAdmin. A hand-edited config can hold an
     // UNQUOTED id, which YAML parses as a number; a strict includes() then
     // never matches the string an adapter supplies, and the chat is locked out
@@ -490,10 +490,10 @@ export class ClassicChannelManager {
     return list.some(entry => String(entry) === String(groupId));
   }
 
-  /** Check if a Telegram user (private chat) is allowed. Empty/unset/non-array = allow all. */
+  /** Check if a Telegram user (private chat) is allowed. Empty/unset/non-array lists require an access request. */
   isUserAllowed(userId: string): boolean {
     const list = this.defaults.allowed_users;
-    if (!Array.isArray(list) || list.length === 0) return true;
+    if (!Array.isArray(list) || list.length === 0) return false;
     // String comparison, matching isAdmin. A hand-edited config can hold an
     // UNQUOTED id, which YAML parses as a number; a strict includes() then
     // never matches the string an adapter supplies, and the chat is locked out
@@ -507,7 +507,7 @@ export class ClassicChannelManager {
   /** Check if a user is admin. Empty/unset admin_users = no admins (secure default). */
   isAdmin(userId: string): boolean {
     const list = this.defaults.admin_users;
-    return !!list && list.length > 0 && list.some(id => String(id) === String(userId));
+    return Array.isArray(list) && list.some(id => String(id) === String(userId));
   }
 
   /**
@@ -519,19 +519,14 @@ export class ClassicChannelManager {
    * loses precision as a YAML integer, after which the strict `includes()` in
    * the isAllowed checks stops matching it.
    *
-   * "already-open" is not a no-op for tidiness — it is a guard. An empty
-   * allowed_guilds/allowed_groups means allow-all, so writing the FIRST entry
-   * would flip the fleet to an allow-list and lock out every other guild that
-   * works today. The caller asked to allow this one, not to restrict the rest.
+   * Empty lists now admit nobody (#1418), so the first grant must be persisted.
    */
   private grantTo(
-    field: "allowed_guilds" | "allowed_groups" | "admin_users",
+    field: "allowed_guilds" | "allowed_groups" | "allowed_users" | "admin_users",
     id: string,
-  ): "added" | "already" | "already-open" {
+  ): "added" | "already" {
     const value = String(id);
     const list = this.defaults[field];
-    // admin_users has no allow-all semantics: empty means nobody is admin.
-    if (field !== "admin_users" && (!Array.isArray(list) || list.length === 0)) return "already-open";
     // A truncated entry can never equal the real id, so this comparison will
     // not treat it as a duplicate: the correct quoted id is ADDED ALONGSIDE the
     // broken one, which stays until a human removes it. That is the right
@@ -622,17 +617,22 @@ export class ClassicChannelManager {
   }
 
   /** Allow a Discord guild to use ClassicBot. */
-  allowGuild(guildId: string): "added" | "already" | "already-open" {
+  allowGuild(guildId: string): "added" | "already" {
     return this.grantTo("allowed_guilds", guildId);
   }
 
   /** Allow a Telegram group to use ClassicBot. */
-  allowGroup(groupId: string): "added" | "already" | "already-open" {
+  allowGroup(groupId: string): "added" | "already" {
     return this.grantTo("allowed_groups", groupId);
   }
 
+  /** Allow a Telegram private-chat user to start ClassicBot. */
+  allowUser(userId: string): "added" | "already" {
+    return this.grantTo("allowed_users", userId);
+  }
+
   /** Promote a user to ClassicBot admin (start/stop/model on classic channels). */
-  addAdminUser(userId: string): "added" | "already" | "already-open" {
+  addAdminUser(userId: string): "added" | "already" {
     return this.grantTo("admin_users", userId);
   }
 

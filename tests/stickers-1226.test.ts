@@ -484,7 +484,7 @@ describe("list_emojis: lighter by default (#1226)", () => {
     };
     any.worlds.set("dc", { id: "dc", type: "discord", adapter, channelConfig: any.fleetConfig.channels[0] });
     any.adapter = adapter;
-    any.classicChannels = { isGuildAllowed: () => true, getAll: () => [], getChannelIdByInstance: () => undefined };
+    any.classicChannels = { getDefaults: () => ({}), isGuildAllowed: () => true, getAll: () => [], getChannelIdByInstance: () => undefined };
     any.resolveStatusEmojisFor = () => ({ platform: "discord" });
     return fm;
   }

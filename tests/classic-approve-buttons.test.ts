@@ -192,15 +192,12 @@ describe("ClassicChannelManager access mutators", () => {
     expect(m.isGuildAllowed("1496407196106494055")).toBe(true);   // in-memory, no reload
   });
 
-  it("refuses to turn an allow-all list into an allow-list of one", async () => {
-    // Empty allowed_guilds means allow-all. Writing the first entry would lock
-    // out every guild that works today — the opposite of "allow this one".
+  it("persists the first grant now that an empty list admits nobody (#1418)", async () => {
     const { m, dir } = await makeManager('defaults:\n  admin_users: ["1"]\n');
-    expect(m.allowGuild("new-guild")).toBe("already-open");
-
-    const raw = await read(dir);
-    expect(raw?.defaults?.allowed_guilds ?? []).toHaveLength(0);
-    expect(m.isGuildAllowed("some-other-guild")).toBe(true);      // still allowed
+    expect(m.allowGuild("new-guild")).toBe("added");
+    expect((await read(dir)).defaults.allowed_guilds).toEqual(["new-guild"]);
+    expect(m.isGuildAllowed("new-guild")).toBe(true);
+    expect(m.isGuildAllowed("some-other-guild")).toBe(false);
   });
 
   it("normalises ids already in the file to strings", async () => {
