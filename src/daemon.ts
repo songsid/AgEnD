@@ -2302,6 +2302,15 @@ export class Daemon extends EventEmitter {
           this.credentialProfileStore(),
         ),
       );
+      const transcriptMonitor = this.transcriptMonitor;
+      const transcriptFence = this.launchFenceEpoch;
+      // Baseline in the isolate before this daemon accepts new work. A
+      // stopped/replaced launch may never re-arm polling after this await.
+      await transcriptMonitor.initialize();
+      if (this.startupAborted || this.launchFenceEpoch !== transcriptFence || this.transcriptMonitor !== transcriptMonitor) {
+        transcriptMonitor.stop();
+        return;
+      }
 
       // 5. Wire transcript events
       const ackIfPending = () => {
