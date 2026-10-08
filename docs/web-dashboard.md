@@ -33,7 +33,7 @@ An old `?token=` link or bookmark (`/ui?token=…`, as older versions printed) i
 ## Sessions
 
 - A session is a record on the server, not a value in your browser. It ends **12 hours** after sign-in, or after **2 hours** without use, whichever comes first. Local sessions survive a fleet restart. Public sessions are scoped to one exposure: four-hour absolute / 30-minute idle limits, and link closure also ends them. They cannot be used locally or on a later exposure; local cookies and header tokens cannot be used on the public host.
-- What you do counts as use; the dashboard's own background refresh mostly does not. Its polling fallback and the live stream's periodic check never keep a session alive, but a local live stream that reconnects counts once each time. With `web.view_access: session`, an open `/view` page refreshes itself every few seconds and so keeps its session alive until its absolute cap or public-link closure. Close it, or sign out, when you leave.
+- Only what you do counts as use: opening a page or a chat, sending, changing something. What a page does on its own timer never does: the live stream (also when it reconnects), the polling fallback, and `/view`'s terminal, roster and usage refresh. So a tab left open, including `/view` with `web.view_access: session`, still ends after its idle limit (2 hours locally, 30 minutes for a public session).
 - When a session ends, the page says so once ("Your session has ended. Sign in again") and keeps what you were doing on screen.
 - **The Session menu** (top bar) shows:
   - which browser you are signed in as, and when the session ends;

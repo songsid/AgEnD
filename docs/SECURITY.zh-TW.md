@@ -37,7 +37,7 @@ Daemon 透過 `~/.agend/instances/<name>/channel.sock` 與 AgEnD MCP bridge 通�
 關於 session：
 
 - Cookie 是隨機產生、與 `web.token` 和登入碼都無關的 256-bit id。伺服器的 session 紀錄只保存它的 SHA-256，並寫入 `~/.agend/web-sessions.json`，所以儲存的紀錄或這個檔案都無法拿來冒充 cookie。原始 id 仍會經過行程：建立 session 時（`Set-Cookie`），以及每個帶著 cookie 的請求。最多保留 8 個 session，超過時會丟掉最久沒用的一個。
-- 到期由**伺服器**強制執行：登入後 12 小時，或 2 小時沒有使用，以先到者為準。Session 授權的每個請求都算使用，只有兩個例外：dashboard 的備援輪詢（`GET /ui/poll`），以及已開啟的即時串流定期重新檢查授權。所以閒置的 `/ui` 分頁不會讓 session 延長。但仍有兩種背景流量會：即時串流重新連線（`GET /ui/events`），以及在 `web.view_access: session` 時開著的 `/view` 頁面——它每 5 秒重讀名單（選了 agent 時，每 0.8 秒重讀它的 pane），因此會讓 session 一直有效到 12 小時上限。Cookie 的 `Max-Age` 只是讓瀏覽器在同一時間忘掉它。Session 在 fleet 重啟後仍有效。
+- 到期由**伺服器**強制執行：登入後 12 小時，或 2 小時沒有使用，以先到者為準。使用指的是人的操作：打開頁面、讀取聊天紀錄、任何變更。頁面自己定時發出的讀取會完整檢查授權，但不算使用：dashboard 的即時串流（`GET /ui/events`，重新連線也一樣）與備援輪詢（`GET /ui/poll`），以及在 `web.view_access: session` 時 `/view` 的終端（`GET /api/pane/<instance>`）、名單（`GET /api/profiles`）與用量面板（`GET /api/ai-usage`）。這份清單由伺服器依 method 與路徑固定，請求無法自行宣稱是被動的。所以開著不管的分頁不會讓 session 一直有效（#1373）。Cookie 的 `Max-Age` 只是讓瀏覽器在同一時間忘掉它。Session 在 fleet 重啟後仍有效。
 - Cookie 屬性為 `HttpOnly`、`SameSite=Strict`、`Path=/`。本機 listener 的 `X-Forwarded-Proto` 顯示 HTTPS 時，名稱改為 `__Host-agend_session` 並加上 `Secure`；遠端存取請使用 TLS。受管理的公開 cookie 一律 Secure，由 listener 指定的脈絡決定，不依賴 forwarded header。
 - **只靠 cookie 授權的寫入**，還必須帶與 `Host` 相同的 `Origin`、瀏覽器有送 `Sec-Fetch-Site` 時其值為 `same-origin`，以及該 session 專屬的 `X-Agend-CSRF` 值。光有 cookie 什麼都改不了。本機帶 header token 的請求不需要這些檢查：網頁無法讓瀏覽器自動加上那個 header。
 - 所有受保護路由都會拒絕 host／port 與 `Host` 不同（或無法解析，例如 `null`）的 `Origin`。沒有 `Origin` 的讀取，只要憑證有效仍可通過。
