@@ -471,6 +471,7 @@ describe("kiro live monitor (#995 emission)", () => {
       .run(WORK_DIR, "conversation-live", JSON.stringify({ history: seed }), Date.now() - 60_000, Date.now() - 10_000);
     const sessionsDir = join(root, "no-jsonl-here");
     const source = new KiroSessionSource(WORK_DIR, sessionsDir, Date.now(), dbPath);
+    await source.initialize();
     expect((await source.poll()).assistantTexts).toHaveLength(0);
 
     const live = [...seed, responseEntry("live assistant output")];
@@ -495,6 +496,7 @@ describe("kiro live monitor (#995 emission)", () => {
       .run(WORK_DIR, "conversation-live", JSON.stringify({ history: seed }), Date.now() - 60_000, updatedAt);
     const sessionsDir = join(root, "no-jsonl-here");
     const source = new KiroSessionSource(WORK_DIR, sessionsDir, Date.now(), dbPath);
+    await source.initialize();
     expect((await source.poll()).assistantTexts).toHaveLength(0);
 
     // Rewrite the value with same-length but different history content, same
@@ -525,6 +527,7 @@ describe("kiro live monitor (#995 emission)", () => {
       .run(WORK_DIR, "conversation-live", JSON.stringify({ history: seed }), Date.now() - 60_000, updatedAt);
     const sessionsDir = join(root, "no-jsonl-here");
     const source = new KiroSessionSource(WORK_DIR, sessionsDir, Date.now(), dbPath);
+    await source.initialize();
     expect((await source.poll()).assistantTexts).toHaveLength(0);
 
     // Same signature (same updated_at, same byte length) but one MORE history

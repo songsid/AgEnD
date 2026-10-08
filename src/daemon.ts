@@ -2299,6 +2299,15 @@ export class Daemon extends EventEmitter {
           this.credentialProfileStore(),
         ),
       );
+      const transcriptMonitor = this.transcriptMonitor;
+      const transcriptFence = this.launchFenceEpoch;
+      // Baseline in the isolate before this daemon accepts new work. A
+      // stopped/replaced launch may never re-arm polling after this await.
+      await transcriptMonitor.initialize();
+      if (this.startupAborted || this.launchFenceEpoch !== transcriptFence || this.transcriptMonitor !== transcriptMonitor) {
+        transcriptMonitor.stop();
+        return;
+      }
 
       // 5. Wire transcript events
       const ackIfPending = () => {
@@ -3098,7 +3107,11 @@ export class Daemon extends EventEmitter {
             // past that check and must not clear the process/window or respawn an instance that
             // was just stopped or paused (#1160 review).
             if (this.runtimeMonitorsFrozen || this.healthCheckPaused) return;
-            this.transcriptMonitor?.resetOffset();
+            // Reset is synchronous for file sources, but Kiro's baseline is
+            // read off-thread. Finish it before starting the replacement CLI,
+            // otherwise its first work could become part of that baseline.
+            if (!await this.resetTranscriptBeforeAdmission()) return;
+            if (this.runtimeMonitorsFrozen || this.healthCheckPaused) return;
             // Kill orphan MCP server from the crashed CLI session.
             // MCP server writes its PID to channel.mcp.pid on startup.
             try {
@@ -4474,44 +4487,68 @@ export class Daemon extends EventEmitter {
     // concurrency coordination, first output + idle is `budgetMs`, the dialog
     // scan is STARTUP_DIALOG_BUDGET_MS — so the outcome is always trySpawn's
     // own verdict. A soft timer only makes a slow wake visible in the log.
-    const transition = this.autoPauseController.wakeOnDeliver(async () => {
-      const slow = setTimeout(() => {
-        this.logger.warn({ budgetMs }, "Wake is exceeding its budget — still waiting for the spawn (it cannot be cancelled)");
-      }, budgetMs + STARTUP_DIALOG_BUDGET_MS);
-      slow.unref?.();
+    const wakeFence = this.launchFenceEpoch;
+    const wakeGeneration = this.spawnGeneration;
+    const isCurrent = () => !this.startupAborted && this.launchFenceEpoch === wakeFence
+      && this.spawnGeneration === wakeGeneration && this.pauseWakeState === "waking";
+    // The shared transition covers baseline initialization as well as spawn.
+    // Every wake().then(deliver) caller must wait for the same admission edge.
+    const transition = (async () => {
       try {
-        const ready = await this.trySpawn(true, budgetMs);
-        if (!ready) throw new Error(`Wake failed: the CLI did not become ready (budget ${budgetMs}ms)`);
+        await this.autoPauseController.wakeOnDeliver(async () => {
+          const slow = setTimeout(() => {
+            this.logger.warn({ budgetMs }, "Wake is exceeding its budget — still waiting for the spawn (it cannot be cancelled)");
+          }, budgetMs + STARTUP_DIALOG_BUDGET_MS);
+          slow.unref?.();
+          try {
+            const ready = await this.trySpawn(true, budgetMs);
+            if (!ready) throw new Error(`Wake failed: the CLI did not become ready (budget ${budgetMs}ms)`);
+          } finally {
+            clearTimeout(slow);
+          }
+        });
+        if (!isCurrent()) throw new Error("Wake cancelled: the launch was superseded");
+        if (!await this.resetTranscriptBeforeAdmission() || !isCurrent()) {
+          throw new Error("Wake cancelled: transcript initialization was superseded");
+        }
+        this.pauseWakeState = "active";
+        this.healthCheckPaused = false;
+        this.pauseRequested = false;
+        // trySpawn resolved only after the new CLI reached its ready prompt.
+        // Discard any recovery gate retained while monitors were frozen.
+        this.clearErrorRecoveryGate();
+        clearPausedMarker(this.instanceDir);
+        this.resumeRuntimeMonitors();
+        this.logger.info("Instance auto-woke");
+        this.ipcServer?.broadcast({
+          type: "instance_state", instanceName: this.name, state: this.instanceState, pausedAt: null,
+        });
+        this.emit("auto_woke", { name: this.name });
+      } catch (err) {
+        if (isCurrent()) {
+          this.pauseWakeState = "paused";
+          this.healthCheckPaused = true;
+        }
+        this.logger.error({ err: (err as Error).message }, "Instance wake failed");
+        throw err;
       } finally {
-        clearTimeout(slow);
+        this.endSpawn();
       }
-    });
+    })();
     this.pauseWakeTransition = transition;
-    try {
-      await transition;
-      this.pauseWakeState = "active";
-      this.healthCheckPaused = false;
-      this.pauseRequested = false;
-      // trySpawn resolved only after the new CLI reached its ready prompt.
-      // Discard any recovery gate retained while monitors were frozen.
-      this.clearErrorRecoveryGate();
-      clearPausedMarker(this.instanceDir);
-      this.transcriptMonitor?.resetOffset();
-      this.resumeRuntimeMonitors();
-      this.logger.info("Instance auto-woke");
-      this.ipcServer?.broadcast({
-        type: "instance_state", instanceName: this.name, state: this.instanceState, pausedAt: null,
-      });
-      this.emit("auto_woke", { name: this.name });
-    } catch (err) {
-      this.pauseWakeState = "paused";
-      this.healthCheckPaused = true;
-      this.logger.error({ err: (err as Error).message }, "Instance wake failed");
-      throw err;
-    } finally {
-      this.endSpawn();
+    try { await transition; } finally {
       if (this.pauseWakeTransition === transition) this.pauseWakeTransition = null;
     }
+  }
+
+  /** A reset baseline must settle before a launch admits new work. */
+  private async resetTranscriptBeforeAdmission(): Promise<boolean> {
+    const monitor = this.transcriptMonitor;
+    const fence = this.launchFenceEpoch, generation = this.spawnGeneration;
+    monitor?.resetOffset();
+    await monitor?.initialize();
+    return !this.startupAborted && this.launchFenceEpoch === fence
+      && this.spawnGeneration === generation && this.transcriptMonitor === monitor;
   }
 
   /**
