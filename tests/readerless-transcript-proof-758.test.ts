@@ -158,7 +158,23 @@ async function deliver(opts: Opts = {}) {
   const settleSteer = () => (daemon as any).steerLock as Promise<unknown>;
   /** Transcript looks for this delivery only. */
   const looks = () => lookHooks.byDelivery.get(row.deliveryId) ?? 0;
-  return { looks, daemon, outbox, tmux, confirmed, transcript, deliveryId: row.deliveryId, state, evidence, pump, finished, begun, notices, settleSteer };
+
+  // proofSettled: a promise that resolves when proveDeliveryFromTranscript
+  // has returned (successfully or not) for this delivery. Awaiting it gives
+  // the test a true completion signal rather than relying on spin counts.
+  let resolveProof!: () => void;
+  const proofSettled = new Promise<void>(r => { resolveProof = r; });
+  const realProve = daemon.proveDeliveryFromTranscript?.bind(daemon) as ((...a: unknown[]) => Promise<void>) | undefined;
+  if (realProve) {
+    daemon.proveDeliveryFromTranscript = async (...args: unknown[]) => {
+      try { await realProve(...args); } finally { resolveProof(); }
+    };
+  } else {
+    // If the method doesn't exist (backend variant), resolve immediately.
+    resolveProof();
+  }
+
+  return { looks, daemon, outbox, tmux, confirmed, transcript, deliveryId: row.deliveryId, state, evidence, pump, finished, begun, notices, settleSteer, proofSettled };
 }
 
 describe("a readerless backend's idle delivery is proven by its transcript, not by the pane printing something (#758)", () => {
@@ -307,10 +323,10 @@ describe("a readerless backend's idle delivery is proven by its transcript, not 
     // The stop hook must have run on the new look.
     expect(stopHookFired, "the stop hook must fire during a post-hook look").toBe(true);
     expect(h.looks()).toBeGreaterThan(looksBeforeHook);
-    // Drain: let the in-flight scan (held by slowRead) and any proof continuation settle.
-    // The per-step drain (2 000 ioTurns) runs before until() is re-checked, but
-    // post-look continuations may schedule work after it; drain again explicitly.
-    for (let turn = 0; turn < 5_000 && lookHooks.done < lookHooks.looks; turn++) await ioTurn();
+    // Wait for proveDeliveryFromTranscript to actually return (scan + settlement path).
+    // This is the true completion signal; spin counts cannot guarantee this.
+    await h.proofSettled;
+    // Drain any microtasks the proof continuation may have scheduled.
     for (let turn = 0; turn < 20; turn++) await ioTurn();
     expect(h.state()).toBe("submission_started");
   });
