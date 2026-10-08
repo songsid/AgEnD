@@ -16,6 +16,26 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+/**
+ * The transcript look is real file I/O under fake timers: count the fs promises in flight so each fake-time step can
+ * wait for them, or a look's 250 ms budget (fake) would expire before its read (real) has been given a chance.
+ */
+const ioTrack = vi.hoisted(() => ({ pending: 0 }));
+vi.mock("node:fs/promises", async importOriginal => {
+  const real = await importOriginal<typeof import("node:fs/promises")>();
+  const track = <T>(p: Promise<T>): Promise<T> => { ioTrack.pending++; return p.finally(() => { ioTrack.pending--; }); };
+  return {
+    ...real,
+    stat: ((...args: Parameters<typeof real.stat>) => track(real.stat(...args))) as typeof real.stat,
+    open: (async (...args: Parameters<typeof real.open>) => {
+      const fh = await track(real.open(...args));
+      const read = fh.read.bind(fh); const close = fh.close.bind(fh);
+      (fh as any).read = (...a: any[]) => track((read as any)(...a));
+      (fh as any).close = () => track(close());
+      return fh;
+    }) as typeof real.open,
+  };
+});
 import { Daemon } from "../src/daemon.js";
 import { DeliveryOutbox } from "../src/delivery-outbox.js";
 import { ClaudeCodeBackend } from "../src/backend/claude-code.js";
@@ -36,7 +56,9 @@ const transcriptFor = (deliveryId: string) =>
 
 const realSetImmediate = setImmediate;
 /** The transcript reads are real file I/O: let them finish between fake-time steps. */
-const ioTurns = async (n = 5) => { for (let i = 0; i < n; i++) await new Promise<void>(r => realSetImmediate(r)); };
+const ioTurns = async (n = 5) => {
+  for (let i = 0; i < n || (ioTrack.pending > 0 && i < 20_000); i++) await new Promise<void>(r => realSetImmediate(r));
+};
 const roots: string[] = [];
 const daemons: any[] = [];
 afterEach(() => {
@@ -118,8 +140,10 @@ async function deliverToIdleClaude(run: Run) {
     delivery_id: row.deliveryId, delivery_attempt: String(claimed.attemptNo), from_instance: "source", correlation_id: "c",
     user: "instance:source", user_id: "instance:source", message_id: CAPTURED_MESSAGE_ID, chat_id: "chat", thread_id: "", ts: new Date().toISOString(),
   });
-  for (let i = 0; i < 400 && !["delivered", "uncertain", "failed"].includes(outbox.get(row.deliveryId)?.state ?? ""); i++) {
-    await vi.advanceTimersByTimeAsync(250);
+  // 100 ms of fake time per step, then every real read started in it is let finish: no look's budget (250 ms) can run
+  // out before its read was given its chance.
+  for (let i = 0; i < 1_000 && !["delivered", "uncertain", "failed"].includes(outbox.get(row.deliveryId)?.state ?? ""); i++) {
+    await vi.advanceTimersByTimeAsync(100);
     await ioTurns();
   }
   const attempt = (outbox as any).db.prepare("SELECT evidence FROM delivery_attempts WHERE delivery_id=?").get(row.deliveryId) as { evidence: string | null };
