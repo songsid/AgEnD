@@ -1,0 +1,50 @@
+  Line eleven.
+  Line twelve.
+
+● mock reply 8
+
+✻ Worked for 0s · done 7:20 AM
+
+❯ SLOW again
+
+● slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow
+  slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow
+
+✻ Baked for 25s · done 7:21 AM
+
+❯ [agend-delivery-id:5b0c1d2e-0000-4000-8000-000000000002]
+  [from:agend-leader-t1] Second task while busy.
+  Line three.
+  Line four.
+  Line five.
+  Line six.
+  Line seven.
+  Line eight.
+  Line nine.
+  Line ten.
+  Line eleven.
+  Line twelve.
+
+● mock reply 12
+
+✻ Worked for 0s · done 7:21 AM
+
+❯ TOOLWAIT run the wait
+
+  Waiting 25 seconds · 5s
+  ⎿  $ sleep 25; echo waited (6s)
+     (ctrl+b to run in background)
+
+❯ [agend-delivery-id:5b0c1d2e-0000-4000-8000-000000000003]
+  [from:agend-leader-t1] Third task during a tool.
+  Line three.
+  ctrl+x ctrl+s to send now
+
+✽ Galloping… (6s · ↓ 18 tokens)
+  ⎿  Tip: Use /theme to change the color theme
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ Press up to edit queued messages
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ok
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents

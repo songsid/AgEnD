@@ -5,6 +5,13 @@ import { join } from "node:path";
 import { Daemon } from "../src/daemon.js";
 import { DeliveryOutbox } from "../src/delivery-outbox.js";
 import { ClaudeCodeBackend } from "../src/backend/claude-code.js";
+
+/**
+ * claude-code as it was before #1200: no input-box reader. These cases pin the daemon's readerless path (grok and muse
+ * still take it) on Claude's own panes and transcript format; claude-code itself now reads its box
+ * (claude-input-box-1200.test.ts).
+ */
+const readerlessClaude = (instanceDir: string) => Object.assign(new ClaudeCodeBackend(instanceDir), { readInputRow: undefined });
 import { CodexBackend } from "../src/backend/codex.js";
 import { GrokBackend } from "../src/backend/grok.js";
 
@@ -69,7 +76,7 @@ async function deliver(opts: Opts = {}) {
     working_directory: root, log_level: "error", backend: opts.backendName ?? "claude-code",
     restart_policy: { max_retries: 10, backoff: "exponential", reset_after: 300 },
     context_guardian: { max_age_hours: 4, grace_period_ms: 600_000 },
-  }, instanceDir, false, (opts.backend ? opts.backend(instanceDir) : new ClaudeCodeBackend(instanceDir)) as any,
+  }, instanceDir, false, (opts.backend ? opts.backend(instanceDir) : readerlessClaude(instanceDir)) as any,
   // The pane printed something after Enter (the redraw) — the legacy proof — and nothing in it is ours.
   { getObservationResetAt: () => 0, getLastOutputAt: () => undefined, isIdle: () => true, waitUntilIdle: vi.fn(async () => true), hasOutputSince: () => true } as any, logger);
   daemon.setDeliveryOutboxPort(outbox);
