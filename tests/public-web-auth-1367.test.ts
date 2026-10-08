@@ -110,9 +110,14 @@ describe("public credential scopes, real auth handlers", () => {
     delete (h.req.headers as any)["x-agend-csrf"]; expect(decideWebGate(h.req, new URL("/ui/send", origin), token, store).kind).toBe("reject");
   });
   it("direct public View reads are gated even when local View is open", () => {
-    const h = request("/api/profiles"); bind(h.req); const read = vi.fn();
-    handleViewRequest(h.req as never, h.res as never, new URL(h.req.url, origin), { webToken: token, webSessions: new WebSessionStore(), fleetConfig: { web: { view_access: "open" } }, listInstanceProfiles: read } as never);
+    const h = request("/api/pane/worker"); bind(h.req); const read = vi.fn(() => []);
+    const ctx = { webToken: token, webSessions: new WebSessionStore(), fleetConfig: { web: { view_access: "open" }, instances: {} }, classicChannels: { getAll: read } };
+    handleViewRequest(h.req as never, h.res as never, new URL(h.req.url, origin), ctx as never);
     expect(h.status()).toBe(401); expect(read).not.toHaveBeenCalled();
+    // A valid local control reaches roster evaluation and returns 404, with no FS/tmux/DB.
+    const local = request("/api/pane/worker");
+    handleViewRequest(local.req as never, local.res as never, new URL(local.req.url, origin), ctx as never);
+    expect(local.status()).toBe(404); expect(read).toHaveBeenCalledOnce();
   });
   it("a public Settings body buffered across close cannot save config", async () => {
     const store = new WebSessionStore(); const p = store.create({ tier: "admin", surface: "gateway", exposureId: id, label: "fixture", tokenEpoch: tokenEpoch(token) }); let current = true;
