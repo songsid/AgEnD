@@ -51,7 +51,8 @@ import { loadRawFleetConfig } from "./config.js";
 import { setLocale, t } from "./locale.js";
 import { DeliveryOutbox, deliveryStatusSelector, type DeliveryStatusSelector } from "./delivery-outbox.js";
 import { DeliveryStatusArgs } from "./outbound-schemas.js";
-import { startCpuProfileFromEnvironment, type CpuProfile } from "./cpu-profile.js";
+import type { CpuProfile } from "./cpu-profile.js";
+import { requestCpuProfile } from "./profile-control.js";
 
 /** Prefix tmux args with -L when socket isolation is active. */
 function tmuxArgs(args: string[]): string[] {
@@ -121,6 +122,16 @@ function signalFleetReload(): void {
 // === Fleet commands ===
 const fleet = program.command("fleet").description("Fleet management");
 
+program.command("profile")
+  .description("Record the running fleet's CPU profile (local operator only; no restart)")
+  .argument("[seconds]", "Recording duration, 1–1800 seconds", "60")
+  .action(async (seconds: string) => {
+    try {
+      const result = await requestCpuProfile(DATA_DIR, seconds);
+      console.log(result.path);
+    } catch (err) { console.error((err as Error).message); process.exitCode = 1; }
+  });
+
 fleet
   .command("start")
   .description("Start fleet or specific instance")
@@ -187,7 +198,9 @@ fleet
       if (stopping) return; // SIGINT and SIGTERM share this, and crash paths call stopAll too
       stopping = true;
       console.log("\nStopping fleet...");
-      await cpuProfile?.stop("fleet shutdown");
+      // stopAll fences new profile requests synchronously, before it awaits
+      // the shared owner's stop/save. Stopping the env handle first would leave
+      // the manager open to replacing that closed owner during the save.
       await fm.stopAll().catch(err => console.error("Shutdown error:", err));
       process.exit(0);
     };
@@ -204,8 +217,7 @@ fleet
       console.error("Uncaught exception:", err);
       if (stopping) return;
       stopping = true;
-      Promise.resolve(cpuProfile?.stop("uncaught exception")).catch(() => {})
-        .then(() => fm.stopAll()).catch(() => {}).finally(() => process.exit(1));
+      fm.stopAll().catch(() => {}).finally(() => process.exit(1));
     });
 
     process.on("unhandledRejection", (err) => {
@@ -235,9 +247,9 @@ fleet
       }
     });
 
-    cpuProfile = await startCpuProfileFromEnvironment({
-      dataDir: DATA_DIR, logger: { info: message => console.log(message), warn: message => console.warn(message) },
-    });
+    await fm.startCpuProfileControl().catch(err => console.warn(`Local profile control unavailable: ${String(err)}`));
+    if (stopping) return;
+    cpuProfile = await fm.startEnvironmentCpuProfile();
     if (stopping) { await cpuProfile?.stop("startup superseded by shutdown"); return; }
 
     if (instance) {

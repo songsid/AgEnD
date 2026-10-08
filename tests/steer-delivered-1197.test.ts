@@ -8,6 +8,13 @@ import { transcriptDeltaHasDeliveryMarker } from "../src/delivery-reconciliation
 import { ClaudeCodeBackend } from "../src/backend/claude-code.js";
 
 /**
+ * claude-code as it was before #1200: no input-box reader. These cases pin the daemon's readerless path (grok and muse
+ * still take it) on Claude's own panes and transcript format; claude-code itself now reads its box
+ * (claude-input-box-1200.test.ts).
+ */
+const readerlessClaude = (instanceDir: string) => Object.assign(new ClaudeCodeBackend(instanceDir), { readInputRow: undefined });
+
+/**
  * #1197: a durable steer into a BUSY pane of a CLI whose input row cannot be read (claude-code, grok, muse) always ended
  * `uncertain` ("best-effort-submission:unverified"): such a backend proves an ordinary submission by the idle→busy edge, and a
  * steer goes into a pane that is already busy. The operator got a ⚠️ and the sender a [system:delivery-outcome] for a steer
@@ -44,7 +51,7 @@ async function steer(opts: Opts = {}) {
     working_directory: root, log_level: "error",
     restart_policy: { max_retries: 10, backoff: "exponential", reset_after: 300 },
     context_guardian: { max_age_hours: 4, grace_period_ms: 600_000 },
-  }, instanceDir, false, (opts.backend ?? new ClaudeCodeBackend(instanceDir)) as any,
+  }, instanceDir, false, (opts.backend ?? readerlessClaude(instanceDir)) as any,
   { getObservationResetAt: () => 0, getLastOutputAt: () => undefined, isIdle: () => false, waitUntilIdle: vi.fn(async () => true) } as any, logger);
   daemon.setDeliveryOutboxPort(outbox);
   mkdirSync(instanceDir, { recursive: true });

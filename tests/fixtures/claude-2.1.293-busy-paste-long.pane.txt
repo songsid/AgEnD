@@ -1,0 +1,50 @@
+
+
+❯ draft one two three
+
+● mock reply 2
+
+✻ Cooked for 0s · done 7:18 AM
+
+❯ SLOW stream please
+
+● slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow
+  slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow
+
+✻ Cogitated for 25s · done 7:19 AM
+
+❯ stranded while busy
+
+● mock reply 6
+
+✻ Baked for 0s · done 7:19 AM
+
+❯ [agend-delivery-id:5b0c1d2e-0000-4000-8000-000000000001]
+  [from:agend-leader-t1] Please check the build.
+  Line three of the task.
+  Line four.
+  Line five.
+  Line six.
+  Line seven.
+  Line eight.
+  Line nine.
+  Line ten.
+  Line eleven.
+  Line twelve.
+
+● mock reply 8
+
+✻ Worked for 0s · done 7:20 AM
+
+❯ SLOW again
+
+●
+
+* Billowing… (3s · ↓ 9 tokens)
+  ⎿  Tip: Use /memory to view and manage Claude memory
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ [Pasted text #2 +11 lines]
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ok
+  paste again to expand

@@ -1,0 +1,50 @@
+  Body line 48 of the long task.
+  Body line 49 of the long task.
+  Body line 50 of the long task.
+  Body line 51 of the long task.
+  Body line 52 of the long task.
+  Body line 53 of the long task.
+  Body line 54 of the long task.
+  Body line 55 of the long task.
+  Body line 56 of the long task.
+  Body line 57 of the long task.
+  Body line 58 of the long task.
+  Body line 59 of the long task.
+  Body line 60 of the long task.
+  Body line 61 of the long task.
+  Body line 62 of the long task.
+  Body line 63 of the long task.
+  Body line 64 of the long task.
+  Body line 65 of the long task.
+  Body line 66 of the long task.
+  Body line 67 of the long task.
+  Body line 68 of the long task.
+  Body line 69 of the long task.
+  Body line 70 of the long task.
+  Body line 71 of the long task.
+  Body line 72 of the long task.
+  Body line 73 of the long task.
+  Body line 74 of the long task.
+  Body line 75 of the long task.
+  Body line 76 of the long task.
+  Body line 77 of the long task.
+  Body line 78 of the long task.
+  Body line 79 of the long task.
+  (message_id: xmsg-long-10 | correlation_id: cid-long-10)
+
+● mock reply 19
+
+✻ Crunched for 0s · done 7:28 AM
+
+❯ SLOW long busy
+
+●
+
+· Germinating… (3s · ↓ 9 tokens)
+  ⎿  Tip: Send messages to Claude while it works to steer Claude in real-time
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ [Pasted text #4 +79 lines]
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ok
+  paste again to expand
