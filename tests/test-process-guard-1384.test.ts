@@ -72,7 +72,9 @@ describe("global native process guard", () => {
   });
   it("guards native worker realms with explicitly overridden execArgv", async () => {
     const { file, marker } = fake("codex");
-    const worker = new Worker(`require('child_process').execFileSync(${JSON.stringify(file)})`, { eval: true, execArgv: [] });
+    const worker = new Worker(`require('child_process').execFileSync(${JSON.stringify(file)})`, {
+      eval: true, execArgv: [], env: { ...process.env, NODE_OPTIONS: "" },
+    });
     let error: Error | undefined;
     worker.once("error", value => { error = value as Error; });
     const status = await new Promise<number>(resolve => worker.once("exit", resolve));
