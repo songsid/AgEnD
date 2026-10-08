@@ -2,10 +2,13 @@ import { defineConfig } from "vitest/config";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createRequire } from "node:module";
+const { scrubEnvironment } = createRequire(import.meta.url)("./tests/support/process-guard.cjs");
+scrubEnvironment(process.env);
 
 // Never let tests fall back to the operator's real ~/.agend. Besides config and
-// state files, AGEND_HOME also namespaces the tmux session/socket, so one
-// per-run directory isolates every destructive lifecycle path.
+// state files, AGEND_HOME namespaces production tmux getters. TmuxManager
+// can still have a null socket; the native process guard enforces isolation.
 const testAgendHome = mkdtempSync(join(tmpdir(), "agend-vitest-"));
 process.once("exit", () => {
   rmSync(testAgendHome, { recursive: true, force: true });
@@ -14,6 +17,8 @@ process.once("exit", () => {
 export default defineConfig({
   test: {
     globals: true,
+    globalSetup: ["./tests/setup-process-guard-global.ts"],
+    setupFiles: ["./tests/setup-process-guard.ts"],
     testTimeout: 10000,
     exclude: [
       "**/node_modules/**",
@@ -39,6 +44,7 @@ export default defineConfig({
       "tests/tmux-kill-window-confirmed.test.ts",
       "tests/view-api.test.ts",
       "tests/web-terminal-socket-cleanup.test.ts",
+      "tests/e2e-tri-state.test.ts",
       // Opt-in (AGEND_CODEX_E2E=1): real codex CLI on a private tmux socket.
       "tests/codex-exact-cwd-resume-e2e.test.ts",
       "tests/codex-status-line-e2e.test.ts",
@@ -50,6 +56,7 @@ export default defineConfig({
       // launched from an agent inside the production systemd cgroup, inheriting
       // its NOTIFY_SOCKET would tell systemd to stop the real fleet.
       NOTIFY_SOCKET: "",
+      AGEND_TEST_GUARD_DIR: testAgendHome,
     },
   },
 });

@@ -1,3 +1,4 @@
+import { TEST_KIRO_COMPAT } from "./helpers/kiro-compat.js";
 import { describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -27,7 +28,7 @@ const REAL_ERROR = [
 ].join("\n");
 
 function findMatch(pane: string) {
-  return new KiroBackend("/tmp/test").getErrorPatterns()
+  return new KiroBackend("/tmp/test", TEST_KIRO_COMPAT).getErrorPatterns()
     .find(ep => ep.pattern.test(pane));
 }
 
@@ -91,7 +92,7 @@ describe("the daemon acts on it", () => {
     daemon.on("pty_error", e => errors.push(e as never));
 
     try {
-      const patterns = new KiroBackend("/tmp/test").getErrorPatterns();
+      const patterns = new KiroBackend("/tmp/test", TEST_KIRO_COMPAT).getErrorPatterns();
       // Well past ERROR_COOLDOWN_MS from the epoch, or the first detection is
       // swallowed as a cooldown hit.
       (daemon as any).evaluateErrorPatterns(REAL_ERROR, patterns, /\d+% !>/, 10 * 60_000);

@@ -638,7 +638,7 @@ describe("other backends send no extra keys", () => {
   it.each([
     ["claude-code", () => new ClaudeCodeBackend(dir())],
     ["codex", () => new CodexBackend(dir())],
-    ["kiro-cli", () => new KiroBackend(dir())],
+    ["kiro-cli", () => new KiroBackend(dir(), TEST_KIRO_COMPAT)],
   ])("%s", async (_name, make) => {
     const backend = make() as any;
     expect(backend.getClearInputKeys).toBeUndefined();
@@ -650,3 +650,4 @@ describe("other backends send no extra keys", () => {
     expect(daemon.tmux.capturePane).not.toHaveBeenCalled();
   });
 });
+import { TEST_KIRO_COMPAT } from "./helpers/kiro-compat.js";

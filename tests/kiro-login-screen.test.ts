@@ -1,3 +1,4 @@
+import { TEST_KIRO_COMPAT } from "./helpers/kiro-compat.js";
 import { describe, expect, it } from "vitest";
 import { KiroBackend } from "../src/backend/kiro.js";
 import { LOGIN_FLOWS } from "../src/login-flows.js";
@@ -43,7 +44,7 @@ const WORKING_PANE = [
 
 /** Exactly what the monitor does: first pattern in array order wins. */
 const classify = (pane: string) =>
-  new KiroBackend("/tmp/test").getErrorPatterns().find(ep => ep.pattern.test(pane));
+  new KiroBackend("/tmp/test", TEST_KIRO_COMPAT).getErrorPatterns().find(ep => ep.pattern.test(pane));
 
 const kiroLoginScreen = () => LOGIN_FLOWS["kiro-cli"].loginScreenPattern!;
 

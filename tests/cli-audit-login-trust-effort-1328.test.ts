@@ -1,3 +1,4 @@
+import { registerExecutableFixture } from "./support/process-guard.js";
 /**
  * #1328 (CLI audit 2026-10-07): the gaps fixable without a login.
  * - agy logged out was never reported: the pane says "You are currently not signed in. / Select login method:", the
@@ -172,6 +173,7 @@ describe("agy: effort levels from the binary's own --help", () => {
     writeFileSync(fake, `#!/bin/sh\ncase "$1" in\n  --help) ${help ? `cat '${join(FIX, "agy-help", help)}'` : "exit 1"} ;;\n`
       + `  --version) ${version ? `echo 'agy ${version}'` : "exit 1"} ;;\n  *) exit 1 ;;\nesac\n`);
     chmodSync(fake, 0o755);
+    registerExecutableFixture(fake);
     const be = new AntigravityBackend(dir, dir, dir);
     (be as unknown as { binaryPath: string }).binaryPath = fake;
     return be;

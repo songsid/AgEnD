@@ -38,7 +38,7 @@ describe("Backend ready patterns", () => {
 
   it("Kiro matches startup, daily prompt, and context statusline", async () => {
     const { KiroBackend } = await import("../src/backend/kiro.js");
-    const backend = new KiroBackend("/tmp/test");
+    const backend = new KiroBackend("/tmp/test", TEST_KIRO_COMPAT);
     const pattern = backend.getReadyPattern();
     expect(pattern.test("Trust All Tools active")).toBe(true);
     expect(pattern.test("22% !>")).toBe(true);
@@ -365,3 +365,6 @@ describe("safeHandler edge cases", () => {
   // This is why all fleet-manager listeners were changed to async/await
   // in the P0-1 Codex review fix (commit 5531488).
 });
+import { TEST_KIRO_COMPAT } from "./helpers/kiro-compat.js";
+import { installKiroCompatibilityFixture } from "./helpers/kiro-process-stub.js";
+installKiroCompatibilityFixture();

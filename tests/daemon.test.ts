@@ -1,3 +1,4 @@
+import { TEST_KIRO_COMPAT } from "./helpers/kiro-compat.js";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Daemon, PaneStateMachine } from "../src/daemon.js";
 import type { InstanceConfig } from "../src/types.js";
@@ -5,6 +6,7 @@ import { ClaudeCodeBackend } from "../src/backend/claude-code.js";
 import { AntigravityBackend } from "../src/backend/antigravity.js";
 import { KiroBackend } from "../src/backend/kiro.js";
 import { createBackend } from "../src/backend/factory.js";
+import type { CliBackend } from "../src/backend/types.js";
 import { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -48,7 +50,7 @@ describe("Daemon", () => {
   });
 
   it("auto-confirms Kiro's clear prompt only after an armed /clear delivery", async () => {
-    const backend = createBackend("kiro-cli", "/tmp/kiro-clear-confirm-test");
+    const backend = new KiroBackend("/tmp/kiro-clear-confirm-test", TEST_KIRO_COMPAT);
     const daemon = new Daemon(
       "kiro-clear-confirm",
       makeConfig(),
@@ -340,7 +342,7 @@ describe("Daemon backend-native input queue delivery", () => {
     mkdirSync(instanceDir, { recursive: true });
     writeFileSync(join(instanceDir, "window-id"), "@queued");
 
-    const backend = createBackend(backendName, instanceDir);
+    const backend: CliBackend = backendName === "kiro-cli" ? new KiroBackend(instanceDir, TEST_KIRO_COMPAT) : createBackend(backendName, instanceDir);
     const control = {
       isIdle: vi.fn(() => idle),
       // Resolves true = the pane reached idle. It returns a boolean now so a wedged

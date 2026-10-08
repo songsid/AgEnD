@@ -3,6 +3,7 @@ import { PaneStateMachine } from "../src/daemon.js";
 import { TmuxManager } from "../src/tmux-manager.js";
 
 const TMUX_SESSION = `agend-e2e-tri-state-${process.pid}-${Date.now()}`;
+const TMUX_SOCKET = `agend-test-tri-state-${process.pid}`;
 const STUCK_THRESHOLD_MS = 15_000;
 const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
@@ -10,6 +11,7 @@ describe("tri-state detection with a real tmux pane", () => {
   let tmux: TmuxManager;
 
   beforeAll(async () => {
+    TmuxManager.setSocketName(TMUX_SOCKET);
     await TmuxManager.ensureSession(TMUX_SESSION);
     tmux = new TmuxManager(TMUX_SESSION, "");
     await tmux.createWindow("bash --noprofile --norc", "/tmp", "tri-state");
@@ -17,7 +19,8 @@ describe("tri-state detection with a real tmux pane", () => {
   });
 
   afterAll(async () => {
-    await TmuxManager.killSession(TMUX_SESSION);
+    try { await TmuxManager.killSession(TMUX_SESSION); }
+    finally { TmuxManager.setSocketName(null); }
   });
 
   it("observes idle, working, stuck, then idle recovery", async () => {

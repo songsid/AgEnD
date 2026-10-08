@@ -19,6 +19,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { registerExecutableFixture } from "./support/process-guard.js";
+
 const fakeSessions: Array<{ events: any }> = [];
 vi.mock("../src/login-manager.js", async (importOriginal) => {
   const real = await importOriginal<typeof import("../src/login-manager.js")>();
@@ -54,6 +56,7 @@ function installLikeTheRealInstaller(binDir: string) {
   mkdirSync(release, { recursive: true });
   writeFileSync(join(release, "codex"), "#!/bin/sh\necho codex-cli 0.160.0\n");
   chmodSync(join(release, "codex"), 0o755);
+  registerExecutableFixture(join(release, "codex"));
   mkdirSync(binDir, { recursive: true });
   symlinkSync(join(release, "codex"), join(binDir, "codex"));
   writeFileSync(join(home, ".bashrc"),
@@ -169,6 +172,7 @@ describe("/install-cli codex: the installer's ~/.local/bin is found when no logi
     mkdirSync(other, { recursive: true });
     writeFileSync(join(other, "codex"), "#!/bin/sh\necho other\n");
     chmodSync(join(other, "codex"), 0o755);
+    registerExecutableFixture(join(other, "codex"));
     writeFileSync(join(home, ".bash_profile"), `export PATH="${other}:$PATH"\n`);
     installLikeTheRealInstaller(localBin);
     const { fm, chat } = fleet();
@@ -207,6 +211,7 @@ describe("every /install-cli backend is found where its own installer puts it (#
       mkdirSync(dir, { recursive: true });
       writeFileSync(join(dir, binary), `#!/bin/sh\necho ${binary} ok\n`);
       chmodSync(join(dir, binary), 0o755);
+      registerExecutableFixture(join(dir, binary));
       expect(spawnSync("bash", ["-lc", `command -v ${binary}`]).status, "login shell must not see it here").not.toBe(0);
       const { fm, chat } = fleet();
       await fm.startInstallSession(backend, chat);
@@ -223,6 +228,7 @@ describe("every /install-cli backend is found where its own installer puts it (#
       mkdirSync(custom, { recursive: true });
       writeFileSync(join(custom, "grok"), "#!/bin/sh\necho grok\n");
       chmodSync(join(custom, "grok"), 0o755);
+    registerExecutableFixture(join(custom, "grok"));
       const { fm, chat } = fleet();
       await fm.startInstallSession("grok", chat);
       await fakeSessions[0]!.events.onDone({ ok: true, detail: "clean exit" });

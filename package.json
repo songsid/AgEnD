@@ -21,6 +21,7 @@
     "dev": "tsx src/cli.ts",
     "test": "vitest run",
     "test:integration": "vitest run --config vitest.config.integration.ts && node scripts/check-integration-config.mjs",
+    "test:codex-e2e": "vitest run --config vitest.config.codex-e2e.ts",
     "test:watch": "vitest",
     "test:e2e": "vitest run --config e2e/vitest.config.e2e.ts",
     "typecheck": "tsc --noEmit",
