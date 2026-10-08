@@ -47,6 +47,7 @@ import { TurnReplyGuard, type TurnReplySnapshot, type TurnReplyTarget } from "./
 import { t } from "./locale.js";
 import { MuseUsageRelay, clearMuseUsageSnapshot } from "./muse-usage-relay.js";
 import { deliveryContentDigest, type DaemonDeliveryPort, type DeliveryAttemptEvidence, type DurableSubmissionMode } from "./delivery-outbox.js";
+import { consumedWatches } from "./delivery-consumed-watch.js";
 import { queueResumePolicyForAttempt } from "./delivery-queue-evidence.js";
 import { scanTranscriptForDeliveryMarker } from "./delivery-reconciliation.js";
 import {
@@ -731,6 +732,8 @@ type DeliveryVerdict = {
   fenced?: boolean;
   /** Where this attempt's transcript stood before the paste (#758), for a delivery only the output edge vouches for. */
   transcriptCheckpoint?: { backend: string; path: string; offset: number };
+  /** How the attempt was written (#1201: steer and native-queue hand-offs get a late consumed watch). */
+  submissionMode?: DurableSubmissionMode;
 };
 
 /**
@@ -1955,6 +1958,7 @@ export class Daemon extends EventEmitter {
     delivery: { deliveryId: string; attemptNo: number } | null,
     outcome: "delivered" | "failed" | "uncertain",
     evidence?: string,
+    verdict?: DeliveryVerdict,
   ): void {
     if (!delivery) return;
     // Delivered or uncertain means the pane write started: the work reached
@@ -1962,6 +1966,39 @@ export class Daemon extends EventEmitter {
     // not — a pre-write failure never gets here; it is retried before begin.
     if (outcome !== "failed") this.noteWorkActivity();
     this.deliveryOutbox?.complete(delivery.deliveryId, this.bootId, delivery.attemptNo, outcome, evidence);
+    if (verdict && outcome !== "failed") this.startConsumedWatch(delivery, verdict);
+  }
+
+  /**
+   * #1201: a steer or a native-queue hand-off was accepted into the CLI's input (or may have been) — not read. Watch
+   * the transcript from this attempt's checkpoint for the moment the CLI takes it, and record that on the delivery;
+   * an `uncertain` row becomes `delivered` then. Only claude-code and codex write a transcript AgEnD can read. The
+   * watch belongs to this CLI: a stop, pause or respawn ends it (restart reconciliation owns the row after that).
+   */
+  private startConsumedWatch(delivery: { deliveryId: string; attemptNo: number }, verdict: DeliveryVerdict): void {
+    const checkpoint = verdict.transcriptCheckpoint;
+    const outbox = this.deliveryOutbox;
+    if (!checkpoint || !outbox?.markConsumed) return;
+    if (verdict.submissionMode !== "steer" && verdict.submissionMode !== "native_queue_handoff") return;
+    if (!["claude-code", "codex"].includes(checkpoint.backend)) return;
+    const spawn = this.spawnGeneration, fence = this.launchFenceEpoch, boot = this.bootId;
+    consumedWatches.start({
+      deliveryId: delivery.deliveryId,
+      attemptNo: delivery.attemptNo,
+      backend: checkpoint.backend,
+      path: checkpoint.path,
+      offset: checkpoint.offset,
+      current: () => !this.deliveryWritesStopping && spawn === this.spawnGeneration && fence === this.launchFenceEpoch,
+      consumed: (via, evidence) => {
+        try {
+          const result = outbox.markConsumed!(delivery.deliveryId, boot, delivery.attemptNo, via, evidence);
+          this.logger.info({ deliveryId: delivery.deliveryId, via, result }, "The CLI's transcript shows the delivery consumed");
+        } catch (err) {
+          this.logger.warn({ err, deliveryId: delivery.deliveryId }, "Could not record the consumed signal (the row keeps its state)");
+        }
+      },
+      logger: this.logger,
+    });
   }
 
   private finishDurableSubmission(
@@ -1972,7 +2009,7 @@ export class Daemon extends EventEmitter {
     // claim submission. Keep that row inspectable instead of recording a false
     // delivered state; reconciliation can classify it in a later phase.
     if (verdict.proof === "unverified") {
-      this.finishDurableDelivery(delivery, "uncertain", `${verdict.phase ?? "submission"}:unverified`);
+      this.finishDurableDelivery(delivery, "uncertain", `${verdict.phase ?? "submission"}:unverified`, verdict);
       return;
     }
     // A steer into a busy pane of a CLI whose input row cannot be read: the paste and the one Enter went through and the
@@ -1980,7 +2017,7 @@ export class Daemon extends EventEmitter {
     // it", and delivery_status carries delivery_mode=steer — and it is all this class of backend can ever show for a steer
     // (#1197). Labelled, so it is never mistaken for a proof that the input row was cleared.
     if (verdict.proof === "steer-marker-on-pane") {
-      this.finishDurableDelivery(delivery, "delivered", "steer-accepted-marker-on-pane; input-row-unreadable");
+      this.finishDurableDelivery(delivery, "delivered", "steer-accepted-marker-on-pane; input-row-unreadable", verdict);
       return;
     }
     // A backend whose input row cannot be read: all that vouched for this delivery is that the pane printed something
@@ -1995,7 +2032,7 @@ export class Daemon extends EventEmitter {
       this.finishDurableDelivery(delivery, "delivered", OUTPUT_EDGE_ONLY_EVIDENCE);
       return;
     }
-    this.finishDurableDelivery(delivery, "delivered", "positive submission proof");
+    this.finishDurableDelivery(delivery, "delivered", "positive submission proof", verdict);
   }
 
   /**
@@ -2025,9 +2062,9 @@ export class Daemon extends EventEmitter {
       for (let polls = 0; polls <= TRANSCRIPT_PROOF_WINDOW_MS / TRANSCRIPT_PROOF_POLL_MS; polls++) {
         if (this.deliveryWritesStopping) return; // reconciliation owns the row now
         const found = await scanTranscriptForDeliveryMarker(checkpoint.path, checkpoint.offset, checkpoint.backend, delivery.deliveryId);
-        if (found === "user" || found === "queued") {
+        if (found === "user" || found === "absorbed" || found === "queued") {
           outcome = "delivered";
-          evidence = found === "user" ? "transcript-marker" : "transcript-marker-queued";
+          evidence = found === "user" ? "transcript-marker" : found === "absorbed" ? "transcript-marker-absorbed" : "transcript-marker-queued";
           break;
         }
         last = found;
@@ -6141,7 +6178,7 @@ export class Daemon extends EventEmitter {
           this.finishDurableSubmission(durableAttempt, verdict);
           this.markTurnStarted(meta, formatted, deliveryEpoch);
         } else if (durableAttempt && verdict.paneWriteStarted) {
-          this.finishDurableDelivery(durableAttempt, "uncertain", `${verdict.phase ?? "post-submit"}:${verdict.proof ?? "unproven"}`);
+          this.finishDurableDelivery(durableAttempt, "uncertain", `${verdict.phase ?? "post-submit"}:${verdict.proof ?? "unproven"}`, verdict);
         } else if (durableAttempt && verdict.durableBeginCommitted) {
           this.abortDurableDelivery(durableAttempt, `${verdict.phase ?? "delivery"}:${verdict.proof ?? "no-pane-write"}`);
         } else if (durableAttempt) {
@@ -6151,7 +6188,8 @@ export class Daemon extends EventEmitter {
           this.reportCrossInstanceDeliveryFailure(meta, verdict);
         }
       } catch (err) {
-        if (durableAttempt && verdict.paneWriteStarted) this.finishDurableDelivery(durableAttempt, "uncertain", (err as Error).message);
+        // The verdict goes along: a write that started and then threw is still a hand-off the CLI may consume (#1201).
+        if (durableAttempt && verdict.paneWriteStarted) this.finishDurableDelivery(durableAttempt, "uncertain", (err as Error).message, verdict);
         else if (durableAttempt && verdict.durableBeginCommitted) this.abortDurableDelivery(durableAttempt, (err as Error).message);
         else if (durableAttempt) this.retryDurableDeliveryBeforeBegin(durableAttempt, (err as Error).message);
         throw err;
@@ -6310,7 +6348,7 @@ export class Daemon extends EventEmitter {
           this.finishDurableSubmission(durable, verdict);
           this.markTurnStarted(meta, formatted, deliveryEpoch);
         } else if (durableAttempt && verdict.paneWriteStarted) {
-          this.finishDurableDelivery(durable, "uncertain", `${verdict.phase ?? "post-submit"}:${verdict.proof ?? "unproven"}`);
+          this.finishDurableDelivery(durable, "uncertain", `${verdict.phase ?? "post-submit"}:${verdict.proof ?? "unproven"}`, verdict);
         } else if (durableAttempt && verdict.durableBeginCommitted) {
           this.abortDurableDelivery(durable, `${verdict.phase ?? "delivery"}:${verdict.proof ?? "no-pane-write"}`);
         } else if (durableAttempt) {
@@ -6326,12 +6364,13 @@ export class Daemon extends EventEmitter {
         } else if (verdict.reached) {
           this.finishDurableDelivery(durable, "failed", `${verdict.phase ?? "delivery"}:${verdict.proof ?? "failed"}`);
         } else if (verdict.paneWriteStarted) {
-          this.finishDurableDelivery(durable, "uncertain", `${verdict.phase ?? "post-submit"}:${verdict.proof ?? "unproven"}`);
+          this.finishDurableDelivery(durable, "uncertain", `${verdict.phase ?? "post-submit"}:${verdict.proof ?? "unproven"}`, verdict);
         } else {
           this.abortDurableDelivery(durable, "delivery did not reach pane submission");
         }
       } catch (err) {
-        if (durable && verdict.paneWriteStarted) this.finishDurableDelivery(durable, "uncertain", (err as Error).message);
+        // The verdict goes along: a write that started and then threw is still a hand-off the CLI may consume (#1201).
+        if (durable && verdict.paneWriteStarted) this.finishDurableDelivery(durable, "uncertain", (err as Error).message, verdict);
         else if (durable && verdict.durableBeginCommitted) this.abortDurableDelivery(durable, (err as Error).message);
         else if (durable) this.retryDurableDeliveryBeforeBegin(durable, (err as Error).message);
         else throw err;
@@ -7757,6 +7796,7 @@ export class Daemon extends EventEmitter {
           return false;
         }
         verdict.durableBeginCommitted = true;
+        verdict.submissionMode = attemptEvidence.submissionMode;
         if (attemptEvidence.transcriptPath && attemptEvidence.transcriptOffset !== null) {
           verdict.transcriptCheckpoint = {
             backend: attemptEvidence.backend,

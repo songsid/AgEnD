@@ -200,6 +200,11 @@ If you `send_to_instance` a stopped instance, the error tells you to use `start_
 
 A cross-instance send returns as soon as the fleet has accepted it (`{ sent, queued }`, with an `operation_id` / `delivery_id`); the fleet owns delivery from there, through a durable outbox. `delivery_status` reads where a delivery got to, by exactly one of `delivery_id`, `operation_id`, `correlation_id` or `message_id` (paged with `limit` up to 100 and `cursor`). A row moves through `queued`, `delivering`, `submission_started`, `reconciliation_pending`, `retry_wait` to `delivered`, `failed`, `uncertain` or `cancelled`. `uncertain` means it may have arrived: do not resend blindly.
 
+Each row also says how it was routed and what became of it after it reached the CLI (#1201):
+- `delivery_mode` is `steer` (into the live turn) or `idle_queue` (as the next message), as `send_to_instance` reported it.
+- `submission_mode` is how the latest attempt was written: `idle_submit`, `steer`, `native_queue_handoff` (into a busy CLI's own queue) or `raw_paste`.
+- `consumed_at` / `consumed_via`: a steer or a native-queue hand-off is accepted into the CLI's input long before the model reads it. Claude Code takes it at the next tool boundary or when the turn ends. When the CLI's transcript (claude-code, codex) shows the delivery's own marker taken, the row records when, and whether it came as its own turn (`turn`) or inside the running one (`mid_turn`). That is also the one thing that turns an `uncertain` row into `delivered`; a failure notice not yet sent to the sender is then withdrawn. No match never changes a row.
+
 An instance only sees rows it sent or received (its identity comes from its own socket or token, never from an argument). Looking up an inbound message's `message_id` is how an agent checks that a peer message really came through the fleet: "Delivery not found" means it did not. Every tool profile has `delivery_status`, `minimal` included.
 
 ### `awaiting_input`
