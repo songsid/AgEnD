@@ -154,7 +154,7 @@ describe("real compiled/TS worker, explicit private SQLite only", () => {
       await source.initialize(); expect((await source.poll()).toolUses).toEqual([]);
       db.prepare("UPDATE conversations_v2 SET value=?,updated_at=2 WHERE key=?").run(JSON.stringify({ history: [history("old"), history("live")] }), dir);
       expect((await source.poll()).toolUses.map(x => x.name)).toEqual(["live"]);
-      expect((await source.poll()).toolUses).toEqual([]); clearInterval(timer); expect(ticks).toBeGreaterThan(0);
+      expect((await source.poll()).toolUses).toEqual([]); clearInterval(timer); expect(ticks).toBeGreaterThan(0); expect(mainSqlite).not.toHaveBeenCalled();
     } finally { clearInterval(timer); source?.close(); db.close(); rmSync(dir, { recursive: true, force: true }); }
   });
 });
