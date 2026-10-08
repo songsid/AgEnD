@@ -89,7 +89,7 @@ describe("GET /api/pane/:instance", () => {
     const session = getTmuxSession();
     const tmux = (...args: string[]) =>
       execFileSync("tmux", ["-L", socket!, ...args], { encoding: "utf-8" });
-    try { execFileSync("tmux", ["-V"], { stdio: "ignore" }); } catch { return; }  // no tmux → skip
+    try { execFileSync("tmux", ["-L", "agend-test-availability", "-V"], { stdio: "ignore" }); } catch { return; }  // no tmux → skip
 
     try {
       tmux("new-session", "-d", "-s", session, "-x", "120", "-y", "36", "sleep 60");

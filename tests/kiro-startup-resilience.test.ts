@@ -845,3 +845,5 @@ describe("outage hand-off is serialized against operator stop/restart", () => {
     } finally { cleanup(); }
   });
 });
+import { installKiroCompatibilityFixture } from "./helpers/kiro-process-stub.js";
+installKiroCompatibilityFixture();

@@ -1,3 +1,4 @@
+import { TEST_KIRO_COMPAT } from "./helpers/kiro-compat.js";
 import { describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -25,7 +26,7 @@ function makeDaemon(model?: string) {
     { child: () => logger } as any);
   const errors: any[] = [];
   daemon.on("pty_error", e => errors.push(e));
-  const patterns = new KiroBackend("/tmp/test").getErrorPatterns();
+  const patterns = new KiroBackend("/tmp/test", TEST_KIRO_COMPAT).getErrorPatterns();
   const ev = (pane: string, t: number) => (daemon as any).evaluateErrorPatterns(pane, patterns, READY, t);
   return { daemon, instanceDir, errors, ev, logger };
 }

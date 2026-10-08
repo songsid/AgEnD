@@ -248,15 +248,10 @@ describe("fleet-admin slash commands need the fleet's own guild, also from a Cla
     const r = rig("open");
     (r.fm.fleetConfig as any).channels[0].group_id = "G-fleet";
     r.any.classicChannels = { isClassicChannel: () => true, getInstanceByChannel: () => "classic-1", hasChannel: () => true, isAdmin: () => false };
-    const ask = async (command: string) => {
-      const respond = vi.fn(async () => undefined);
-      const scope = await r.any.authorizeSlash({ command, channelId: "cc-1", guildId: "G-other", userId: ADMIN_A, respond }, "tg-a");
-      return { scope, respond };
-    };
-    const update = await ask("update");
-    expect(update.scope).toBeNull();
-    expect(update.respond).toHaveBeenCalledWith(t("slash.wrong_server"));
-    expect((await ask("chat")).scope).toBe("classic");
+    const ask = (command: string) =>
+      r.any.slashDoor({ command, channelId: "cc-1", guildId: "G-other", userId: ADMIN_A, respond: vi.fn() }, "tg-a");
+    expect(ask("update")).toEqual({ refusal: "slash.wrong_server" });
+    expect(ask("chat")).toEqual({ scope: "classic" });
   });
 
   it("the facts come from the command table: /update in a ClassicBot channel is a fleet-admin command there", async () => {
@@ -402,11 +397,9 @@ describe("/tips with a mode is fleet administration: refused from a foreign guil
     const r = rig("open");
     (r.fm.fleetConfig as any).channels[0].group_id = "G-fleet";
     r.any.classicChannels = { isClassicChannel: () => true, getInstanceByChannel: () => "classic-1", hasChannel: () => true, isAdmin: () => false };
-    const ask = async (options: Record<string, string>) => {
-      const respond = vi.fn(async () => undefined);
-      return r.any.authorizeSlash({ command: "tips", channelId: "cc-1", guildId: "G-other", userId: ADMIN_A, respond, options }, "tg-a");
-    };
-    for (const mode of ["on", "off", "advanced on"]) expect(await ask({ mode }), mode).toBeNull();
-    expect(await ask({})).toBe("classic");
+    const ask = (options: Record<string, string>) =>
+      r.any.slashDoor({ command: "tips", channelId: "cc-1", guildId: "G-other", userId: ADMIN_A, respond: vi.fn(), options }, "tg-a");
+    for (const mode of ["on", "off", "advanced on"]) expect(ask({ mode }), mode).toEqual({ refusal: "slash.wrong_server" });
+    expect(ask({})).toEqual({ scope: "classic" });
   });
 });

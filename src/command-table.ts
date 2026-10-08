@@ -26,8 +26,10 @@
  *                   different list on each platform (see `start` below). A command with this level is not locked.
  *
  * Platforms: the table is read per platform. `scopes` is what the Discord slash dispatcher enforces; `telegram`, where
- * present, holds the cells where Telegram's own handlers gate differently (they are not table-driven yet, and each
- * override is pinned against the real handlers by tests/command-gates-by-platform.test.ts). The audit that produced
+ * present, holds the cells where Telegram gates differently. A typed Telegram command in a fleet topic or General is
+ * decided by this table before its handler runs (`TopicCommands.tableRefusal`, #754), and the ClassicBot handlers ask
+ * the same levels themselves; each Telegram cell is pinned against the real handlers by
+ * tests/command-gates-by-platform.test.ts. The audit that produced
  * this table once folded both platforms into one level per command and lost Telegram's side of it; a cell that holds
  * for Discord is not thereby true for Telegram, and "most restrictive wins" is not a way to merge them.
  *
@@ -139,20 +141,19 @@ export const COMMANDS: readonly CommandSpec[] = [
   { name: "load", slash: true, denied: ["admin.required"], scopes: classicOnly("classic-admin", NO_AGENT_START), telegram: tg(PASS, PASS, PASS) },
 
   // ── Per-agent controls ──
-  // Telegram's ClassicBot handler asks `isAdmin` (a ClassicBot admin only; a fleet admin alone is refused), where Discord
-  // asks `isModelAdmin` (a fleet admin or a ClassicBot admin).
+  // Channel-admin on both platforms (#754): in a ClassicBot chat the owning bot's fleet admin or a ClassicBot admin
+  // (`isModelAdmin`); in a fleet topic, the owning bot's fleet admin.
   { name: "pause", slash: true, denied: PERMISSION_DENIED, scopes: inAgentChannels("channel-admin", NO_AGENT), telegram: tg(FLEET_ADMIN, FLEET_ADMIN, CHANNEL_ADMIN, NOBODY_NO_AGENT_START) },
   { name: "wake", slash: true, denied: PERMISSION_DENIED, scopes: inAgentChannels("channel-admin", NO_AGENT), telegram: tg(FLEET_ADMIN, FLEET_ADMIN, CHANNEL_ADMIN, NOBODY_NO_AGENT_START) },
-  // Discord had no check at all (the 🔒 was only a label). Telegram: a ClassicBot admin in a ClassicBot chat, and NO
-  // check in a fleet topic.
+  // Discord once had no check at all (the 🔒 was only a label), and Telegram none in a fleet topic (#1148 audit).
   { name: "compact", slash: true, denied: ["cmd.admin_required", "/compact"], scopes: inAgentChannels("channel-admin", NO_AGENT), telegram: tg(FLEET_ADMIN, FLEET_ADMIN, CHANNEL_ADMIN, NOBODY_NO_AGENT_START) },
   { name: "clear", slash: true, denied: PERMISSION_DENIED, scopes: inAgentChannels("channel-admin", NO_AGENT), telegram: tg(FLEET_ADMIN, FLEET_ADMIN, CHANNEL_ADMIN, NOBODY_NO_AGENT_START) },
   { name: "model", slash: true, denied: PERMISSION_DENIED, scopes: inAgentChannels("channel-admin", NO_AGENT), telegram: tg(FLEET_ADMIN, FLEET_ADMIN, CHANNEL_ADMIN, NOBODY_NO_AGENT_START) },
   // Telegram has no ClassicBot /effort handler (the text goes to the agent).
   { name: "effort", slash: true, denied: PERMISSION_DENIED, scopes: inAgentChannels("channel-admin", NO_AGENT), telegram: tg(FLEET_ADMIN, FLEET_ADMIN, PASS) },
-  // Telegram's typed /collab has no check in a fleet topic and no handler in a ClassicBot chat (the text goes to the agent).
+  // Telegram has no ClassicBot /collab handler (the text goes to the agent).
   { name: "collab", slash: true, denied: NOT_AUTHORIZED, scopes: inAgentChannels("channel-admin", NO_AGENT_START), telegram: tg(FLEET_ADMIN, FLEET_ADMIN, PASS) },
-  // Telegram: a ClassicBot admin in a ClassicBot chat, no check in a fleet topic (same as /compact).
+  // Same levels as /compact.
   { name: "save", slash: true, denied: ["admin.required"], scopes: inAgentChannels("channel-admin", NO_AGENT_START), telegram: tg(FLEET_ADMIN, FLEET_ADMIN, CHANNEL_ADMIN, NOBODY_NO_AGENT_START) },
   // Anyone who can talk to the agent may talk to it mid-turn, ask a side question, interrupt it or read its context.
   { name: "steer", slash: true, denied: NOT_AUTHORIZED, scopes: inAgentChannels("anyone", NO_AGENT), telegram: tg(ANYONE, ANYONE, ANYONE, NOBODY_NO_AGENT_START) },
