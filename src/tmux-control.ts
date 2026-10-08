@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 import { createInterface, type Interface } from "node:readline";
 import type { Logger } from "./logger.js";
 import { getTmuxSocketName } from "./paths.js";
+import { measureSyncWork } from "./sync-work-attribution.js";
 
 export interface TmuxPaneOutputEvent {
   paneId: string;
@@ -71,7 +72,9 @@ export class TmuxControlClient extends EventEmitter {
     this.stopped = false;
     if (!this.safetySweepTimer) {
       this.safetySweepTimer = setInterval(() => {
-        this.emit("safety_sweep", { at: Date.now() });
+        // Every daemon's listener runs inside this one emit and starts its capture there (#1235): the synchronous
+        // part of the whole fleet-wide sweep is attributed as one stretch.
+        measureSyncWork("tmux.safetySweep", () => this.emit("safety_sweep", { at: Date.now() }));
       }, CONTROL_SAFETY_SWEEP_MS);
     }
     this.connect();

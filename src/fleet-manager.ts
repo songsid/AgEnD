@@ -1145,7 +1145,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
     });
     outbox.on("generation_recovered", () => this.scheduleDeliveryOutboxPump());
-    this.replyObligationTimer = setInterval(() => this.sweepReplyObligations(), REPLY_OBLIGATION_SWEEP_MS);
+    this.replyObligationTimer = setInterval(() => measureSyncWork("fleet.replyObligationSweep", () => this.sweepReplyObligations()), REPLY_OBLIGATION_SWEEP_MS);
     this.replyObligationTimer.unref?.();
     // #856: the text the target daemon received differs from what was
     // admitted. Transport has never been seen to do this; a warning and the
@@ -1270,7 +1270,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     this.deliveryPumpTimer = setTimeout(() => {
       this.deliveryPumpTimer = null;
-      void this.runDeliveryOutboxPump();
+      // The pump's body never awaits: the whole run is one synchronous stretch (#1235 attribution).
+      void measureSyncWork("fleet.deliveryPump", () => this.runDeliveryOutboxPump());
     }, Math.max(0, delayMs));
     this.deliveryPumpTimer.unref?.();
   }
@@ -4888,7 +4889,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // Poll classicBot.yaml for external changes every 30s
     this.classicReloadTimer = setInterval(() => {
-      void this.reloadClassicConfigFromDisk();
+      // Attributes the synchronous part, up to the reload's first await (#1235).
+      void measureSyncWork("fleet.classicReload", () => this.reloadClassicConfigFromDisk());
     }, 30_000);
 
     const costGuardConfig: CostGuardConfig = {
