@@ -86,13 +86,13 @@ All listener requests first pass the Host allowlist; that header check is not cl
 
 | Entry point | Credential boundary |
 |-------------|---------------------|
-| Dashboard-gated routes | Current `web.token` in `X-Agend-Token`, or its derived session cookie; GET/HEAD URL token exchanges for a cookie |
-| GET `/health`, enabled GET `/api/ai-usage`, `/view` and its GET data (including `/api/pane/*`) | Public reads, subject to listener reachability and Host check; no dashboard credential |
-| View profile/avatar/sort writes | `web.token` in query or header; not the dashboard cookie or its Origin gate |
+| Dashboard-gated routes | Current `web.token` in `X-Agend-Token`, or a browser session from a one-time sign-in code (writes also need a matching `Origin` and the session's CSRF header); a URL `?token=` is never a credential |
+| GET `/health`, enabled GET `/api/ai-usage`, `/view` and its GET data (including `/api/pane/*`) | Public reads, subject to listener reachability and Host check; no dashboard credential. `web.view_access: session` gates all of these except `/health` |
+| View profile/avatar/sort writes | The dashboard gate: a session (with its write checks) or `X-Agend-Token`; never a URL token |
 | POST `/agent` | Claimed instance's `X-Agend-Instance-Token`, plus that instance's AgEnD tool profile |
 | Temporary `/login` terminal | Separate per-login credential, not a dashboard credential |
 
-`web.token` persists and can be rotated without a fleet restart. Instance agent tokens are replaced on CLI spawn. Cookies are token-derived, with a 12-hour browser Max-Age, not independent server-side age enforcement. See [Security Considerations](SECURITY.md#dashboard-token-and-browser-session) for exceptions, connection lifetime and secret handling.
+`web.token` persists and can be rotated without a fleet restart; rotating it also ends every browser session. Instance agent tokens are replaced on CLI spawn. A browser session is an opaque random id that the server expires itself (12 hours after sign-in, or 2 hours without use) and can revoke per device. See [Security Considerations](SECURITY.md#dashboard-sign-in-and-browser-sessions) for the sign-in codes, revocation, connection lifetime and secret handling.
 
 ## Configuration example
 
