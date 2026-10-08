@@ -642,6 +642,8 @@ const MODEL_SELECT_CALLBACK_PREFIX = "model-select:";
 const EFFORT_SELECT_CALLBACK_PREFIX = "effort-select:";
 const INTERACTIVE_ASSIST_CALLBACK_PREFIX = "interactive-assist:";
 const EXIT_RESTART_CALLBACK_PREFIX = "exit-restart:";
+/** #1386: how long a paused instance's marker reason is reused before it is read again (transitions drop it at once). */
+const NEEDS_PAUSE_TTL_MS = 10_000;
 const HANG_CALLBACK_PREFIX = "hang:";
 const CLEAR_CONFIRM_CALLBACK_PREFIX = "clear-confirm:";
 /**
@@ -965,6 +967,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private needsYou: NeedsYouHub | null = null;
   /** When the fleet first saw an instance crashed, for its "Needs you" age; cleared when it is not. */
   private readonly needsCrashedAt = new Map<string, number>();
+  /** Pause reason/time read from the marker, per paused instance; dropped on any attention change of it, and at most
+   *  NEEDS_PAUSE_TTL_MS old — so a recompute does not re-read the file every time (#1386 §4.3). */
+  private readonly needsPauseCache = new Map<string, { reason: string | null; pausedAt: number | null; readAt: number }>();
   /**
    * Clicks that came from the web dashboard (clickWebPrompt). Only that method adds to it, so nothing an
    * adapter emits — whatever fields its payload carries — can claim a dashboard click's authority.
@@ -1170,6 +1175,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.wakeCoordinator.start();
     outbox.on("expired", (event: { count?: number; uncertain?: number }) => {
       this.scheduleDeliveryOutboxPump();
+      if (event.count) this.needsYou?.poke();   // #1386: rows that expired failed — they wait on someone now
       this.wakeCoordinator?.kick();
       if (event.count) this.notifyFleetError(
         t("delivery.expired", event.count, event.uncertain ?? 0),
@@ -2592,8 +2598,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private cacheInstanceProcessStatus(name: string, status: unknown): void {
-    if (status === "crashed") { if (!this.needsCrashedAt.has(name)) this.needsCrashedAt.set(name, Date.now()); }
-    else this.needsCrashedAt.delete(name);
     this.needsYou?.poke();
     if (status === "running") {
       this.instanceProcessStatus.delete(name);
@@ -10186,7 +10190,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** An instance's interaction observation, pause or wake changed (relayed by the lifecycle): recompute now, not at the tick. */
-  onAttentionChanged(_name: string): void {
+  onAttentionChanged(name: string): void {
+    this.needsPauseCache.delete(name);
     this.needsYou?.poke();
   }
 
@@ -10206,20 +10211,33 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     for (const ch of this.classicChannels?.getAll() ?? []) names.add(ch.instanceName);
     const out: InstanceInput[] = [];
     for (const name of names) {
+      // Crashed only by the authoritative reconciliation: a daemon that recovered while its "running" IPC event was
+      // missed is running (getInstanceStatus clears the stale cache — before the presentation below reads it). Every
+      // observation that is not crashed forgets the crash time, so a later crash is a new item (#1398 review).
+      const crashed = this.instanceProcessStatus.get(name) === "crashed" && this.getInstanceStatus(name) === "crashed";
+      if (crashed) { if (!this.needsCrashedAt.has(name)) this.needsCrashedAt.set(name, Date.now()); }
+      else this.needsCrashedAt.delete(name);
       const p = this.instancePresentation(name);
       const wait = p.interaction ? this.interactionWaitKey(name) : null;
       let pauseReason: string | null = null, pausedAt: number | null = null;
       if (this.lifecycle.isPaused(name)) {
-        const dir = this.getInstanceDir(name);
-        pauseReason = readPauseReason(dir);
-        pausedAt = readPausedAt(dir);
+        const now = performance.now();
+        let cached = this.needsPauseCache.get(name);
+        if (!cached || now - cached.readAt >= NEEDS_PAUSE_TTL_MS) {
+          const dir = this.getInstanceDir(name);
+          cached = { reason: readPauseReason(dir), pausedAt: readPausedAt(dir), readAt: now };
+          this.needsPauseCache.set(name, cached);
+        }
+        ({ reason: pauseReason, pausedAt } = cached);
+      } else {
+        this.needsPauseCache.delete(name);
       }
       out.push({
         name, state: p.state ?? undefined,
         interaction: p.interaction ? { kind: p.interaction.kind, owner: wait?.owner ?? null, episode: p.interaction.episode, since: p.interaction.since } : null,
         interactionSummary: p.interaction_summary ?? null,
         pauseReason, pausedAt,
-        crashedAt: this.instanceProcessStatus.get(name) === "crashed" ? (this.needsCrashedAt.get(name) ?? null) : null,
+        crashedAt: crashed ? (this.needsCrashedAt.get(name) ?? null) : null,
       });
     }
     return out;
@@ -10237,6 +10255,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       });
     }
     return out;
+  }
+
+  /**
+   * Shutdown: detach the hub first — nothing reaches it from here on, and the next startAll (finishStartup) builds a
+   * fresh one; the old one's late ACKs are fenced by its own stop (#1398 review) — then let it retire its live
+   * messages, bounded so a platform that does not answer cannot hold the shutdown.
+   */
+  private stopNeedsYou(): Promise<void> | undefined {
+    const hub = this.needsYou;
+    this.needsYou = null;
+    if (!hub) return undefined;
+    return Promise.race([hub.stop(), new Promise<void>(resolve => setTimeout(resolve, 5_000).unref?.())]);
   }
 
   private startNeedsYou(): void {
@@ -14741,9 +14771,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const publicStopped = this.publicWebLink?.close("fleet shutdown");
     // #1386: every live "Needs you" message says the fleet stopped (capabilities revoked first) — while the
     // adapters can still edit. Bounded: a platform that does not answer must not hold the shutdown.
-    const needsStopped = this.needsYou
-      ? Promise.race([this.needsYou.stop(), new Promise<void>(resolve => setTimeout(resolve, 5_000).unref?.())])
-      : undefined;
+    const needsStopped = this.stopNeedsYou();
     const profileStopped = this.runtimeCpuProfiler?.shutdown("fleet shutdown");
     this.ipcStoppingInstances.add("__fleet_stopping__");
     // Release held delivery promises before awaiting daemon shutdown, then

@@ -67,6 +67,8 @@ export const DEBOUNCE_MS = 3_000;
 export const EDIT_MIN_MS = 10_000;
 export const POST_MIN_MS = 60_000;
 export const RENEW_MS = 10 * 60_000;
+/** A failed post backs off from POST_MIN_MS, doubling, up to this (#1398 review: never a tight retry loop). */
+export const POST_BACKOFF_MAX_MS = 15 * 60_000;
 
 /** Telegram General is topic "1" on input and no thread on the wire: both are the same place. */
 export function canonicalTarget(target: LiveTarget): LiveTarget {
@@ -87,7 +89,9 @@ export class NeedsYouLiveMessage {
   private timer: unknown = null;
   private dueAt = Infinity;
   private lastEditAt = -Infinity;
-  private lastPostAt = -Infinity;
+  /** No post (of any kind: first, moved, new item, edit fallback) before this monotonic time. */
+  private nextPostAt = -Infinity;
+  private postFailures = 0;
   private postWanted = false;
   private retired = false;
 
@@ -103,7 +107,7 @@ export class NeedsYouLiveMessage {
     if (newIds) this.postWanted = true;
     const now = this.deps.now();
     let at = now + DEBOUNCE_MS;
-    if (this.postWanted) at = Math.max(at, Math.min(this.lastPostAt + POST_MIN_MS, this.lastEditAt + EDIT_MIN_MS));
+    if (this.postWanted) at = Math.max(at, Math.min(this.nextPostAt, this.lastEditAt + EDIT_MIN_MS));
     else at = Math.max(at, this.lastEditAt + EDIT_MIN_MS);
     this.requestAt(at);
   }
@@ -135,7 +139,7 @@ export class NeedsYouLiveMessage {
       if (this.rerun && !this.retired) { this.rerun = false; this.requestAt(this.deps.now()); }
       else if (!this.retired) {
         // A new item shown by an edit inside the post window is posted when the window opens.
-        if (this.postWanted) this.requestAt(Math.max(this.deps.now(), this.lastPostAt + POST_MIN_MS));
+        if (this.postWanted) this.requestAt(Math.max(this.deps.now(), this.nextPostAt));
         if (this.timer === null) this.scheduleRenewal();
       }
     }
@@ -159,9 +163,15 @@ export class NeedsYouLiveMessage {
     if (this.pointer === null && content.empty) { this.postWanted = false; return; }
 
     const moved = this.pointer !== null && !samePlace(this.pointer, target);
-    const postDue = this.postWanted && now >= this.lastPostAt + POST_MIN_MS;
-    if (this.pointer === null || moved || postDue) {
+    const mayPost = now >= this.nextPostAt;
+    if (this.pointer === null || moved) {
+      // Only a post will do. Not yet allowed (a failed one is backing off): try again when it is.
+      if (!mayPost) { this.postWanted = true; return; }
       await this.postNew(generation, target, content, moved);
+      return;
+    }
+    if (this.postWanted && mayPost) {
+      await this.postNew(generation, target, content, false);
       return;
     }
 
@@ -171,8 +181,14 @@ export class NeedsYouLiveMessage {
       await this.deps.edit(pointer, content.text, acks.choices);
     } catch (err) {
       if (!this.fenced(generation, target)) { this.deps.revokeAcks(); return; }
-      this.deps.log("live message edit failed; posting a new one", { world: this.deps.world, err: String((err as Error)?.message ?? err) });
       this.deps.revokeAcks();
+      if (this.deps.now() < this.nextPostAt) {
+        // The fallback post is rate-limited like any other: try again when it may.
+        this.deps.log("live message edit failed; will post when allowed", { world: this.deps.world, err: String((err as Error)?.message ?? err) });
+        this.postWanted = true;
+        return;
+      }
+      this.deps.log("live message edit failed; posting a new one", { world: this.deps.world, err: String((err as Error)?.message ?? err) });
       const next = ++this.generation;
       await this.postNew(next, target, this.deps.content(), false);
       return;
@@ -189,7 +205,11 @@ export class NeedsYouLiveMessage {
       sent = await this.deps.post(target, content.text, acks.choices);
     } catch (err) {
       this.deps.revokeAcks();
-      this.deps.log("live message post failed", { world: this.deps.world, err: String((err as Error)?.message ?? err) });
+      this.postFailures++;
+      const backoff = Math.min(POST_MIN_MS * 2 ** (this.postFailures - 1), POST_BACKOFF_MAX_MS);
+      this.nextPostAt = this.deps.now() + backoff;
+      this.postWanted = true;            // retried — no sooner than nextPostAt
+      this.deps.log("live message post failed", { world: this.deps.world, err: String((err as Error)?.message ?? err), retryInMs: backoff });
       return;
     }
     if (!this.fenced(generation, target)) {
@@ -202,7 +222,8 @@ export class NeedsYouLiveMessage {
     this.pointer = sent;
     this.deps.savePointer(sent);
     const at = this.deps.now();
-    this.lastPostAt = at;
+    this.nextPostAt = at + POST_MIN_MS;
+    this.postFailures = 0;
     this.lastEditAt = at;
     this.postWanted = false;
     // The previous message goes — without new content, so a moved target's former destination never gets this list.
@@ -220,6 +241,14 @@ export class NeedsYouLiveMessage {
     this.deps.revokeAcks();
     this.generation++;
     if (this.pointer) await this.deps.edit(this.pointer, this.deps.text.stopped, []).catch(() => {});
+  }
+
+  /** Replaced by another renderer (a new adapter under this world's id): stop and revoke, touching nothing remote. */
+  abandon(): void {
+    if (this.timer !== null) { this.deps.clearTimer(this.timer); this.timer = null; }
+    this.retired = true;
+    this.deps.revokeAcks();
+    this.generation++;
   }
 
   /** live_message turned off (or the world removed): revoke, mark the message, forget it. */

@@ -98,3 +98,94 @@ describe("#1386 through the real fleet", () => {
     expect(needsInstances(frames)).toEqual(["awaiting_input:alpha"]);
   });
 });
+
+describe("#1398 review: config through the real loader, crash state, and a stop/start cycle", () => {
+  it("needs_you from fleet.yaml reaches the runtime: live_message false means no live message (and dm true is kept)", async () => {
+    const { loadFleetConfig } = await import("../src/config.js");
+    const { writeFileSync } = await import("node:fs");
+    const { fm, adapter, posts } = fleet();
+    const path = join(fm.dataDir, "fleet.yaml");
+    writeFileSync(path, [
+      "channels:", "  - { id: dc, type: discord, group_id: '111111', access: { allowed_users: ['100'] } }",
+      "instances:", `  alpha: { working_directory: ${fm.dataDir}, topic_id: '700001', channel_id: dc }`,
+      `  gen: { working_directory: ${fm.dataDir}, topic_id: '900001', channel_id: dc, general_topic: true }`,
+      "needs_you: { live_message: false, dm: true }", "",
+    ].join("\n"));
+    expect(loadFleetConfig(path).needs_you).toEqual({ live_message: false, dm: true });
+    fm.fleetConfig = loadFleetConfig(path);
+    fm.startNeedsYou();
+    await flush();
+    await fm.postNonceButtonPromptOrThrow({
+      prefix: "exit-restart:", alertType: "exit_restart", instanceName: "alpha", adapter, adapterId: "dc",
+      chatId: "111111", threadId: "900001", message: "alpha exited",
+      choices: [{ action: "restart", label: "Restart" }, { action: "ignore", label: "Ignore" }], expiredText: "expired",
+    });
+    await new Promise(r => setTimeout(r, 3_300));
+    expect(fm.needsYouItems().map((i: any) => i.instance)).toEqual(["alpha"]);   // listed for the web
+    expect(posts.filter(p => p.text.includes("needs.") || p.text.includes("📥"))).toEqual([]);   // no live message
+  }, 10_000);
+
+  it("a daemon that recovered while its 'running' event was missed is not a crash item; a second crash is a new item", async () => {
+    const { fm } = fleet();
+    fm.startNeedsYou();
+    await flush();
+    // Crashed, as the cache says and nothing contradicts.
+    fm.instanceProcessStatus.set("alpha", "crashed");
+    fm.needsYou.recompute();
+    const first = fm.needsYouItems().find((i: any) => i.reason === "crashed")?.id;
+    expect(first).toMatch(/^crashed:alpha:/);
+    // The daemon is running again, but the IPC event was missed: the authoritative status wins.
+    fm.lifecycle.daemons.set("alpha", { getProcessStatus: () => "running", isPaused: false, getInteractionSnapshot: () => null });
+    fm.needsYou.recompute();
+    expect(fm.needsYouItems().some((i: any) => i.reason === "crashed")).toBe(false);
+    expect(fm.instanceProcessStatus.has("alpha")).toBe(false);
+    // Later it crashes again: a new occurrence, a new id.
+    fm.lifecycle.daemons.delete("alpha");
+    await new Promise(r => setTimeout(r, 5));
+    fm.instanceProcessStatus.set("alpha", "crashed");
+    fm.needsYou.recompute();
+    const second = fm.needsYouItems().find((i: any) => i.reason === "crashed")?.id;
+    expect(second).toMatch(/^crashed:alpha:/);
+    expect(second).not.toBe(first);
+  });
+
+  it("stop then start in the same manager: a fresh hub that works; the old hub's late post ACK publishes nothing", async () => {
+    const { fm, adapter } = fleet();
+    let release: (() => void) | undefined;
+    adapter.notifyAlert.mockImplementationOnce(async (chatId: string, _a: unknown, opts?: { threadId?: string }) =>
+      new Promise(res => { release = () => res({ messageId: "600001", chatId, threadId: opts?.threadId }); }));
+    fm.instanceProcessStatus.set("alpha", "crashed");             // something to list, so the old hub posts
+    fm.startNeedsYou();
+    await new Promise(r => setTimeout(r, 50));
+    const oldHub = fm.needsYou;
+    expect(release).toBeDefined();                                // the old hub's first post is in flight
+    await fm.stopNeedsYou();
+    expect(fm.needsYou).toBeNull();
+    fm.startNeedsYou();
+    expect(fm.needsYou).not.toBe(oldHub);
+    release!();                                                   // the old post's ACK, late
+    await new Promise(r => setTimeout(r, 50));
+    const { existsSync, readFileSync } = await import("node:fs");
+    const pointerFile = join(fm.dataDir, "needs-you-message.json");
+    const saved = existsSync(pointerFile) ? JSON.parse(readFileSync(pointerFile, "utf8")) : {};
+    expect(saved.dc?.messageId).not.toBe("600001");               // never the old hub's message
+    expect(fm.needsYouItems().some((i: any) => i.reason === "crashed")).toBe(true);   // the new hub lists
+  });
+});
+
+describe("the outbox's own events recompute at once", () => {
+  it("rows expiring (now failed) and state changes poke Needs you — not only the 10 s tick", async () => {
+    const { fm } = fleet();
+    fm.ensureDeliveryOutbox();
+    fm.startNeedsYou();
+    await flush();
+    const poke = vi.spyOn(fm.needsYou, "poke");
+    fm.deliveryOutbox.emit("expired", { count: 2, uncertain: 0 });
+    expect(poke).toHaveBeenCalled();
+    poke.mockClear();
+    fm.deliveryOutbox.emit("expired", { count: 0 });
+    expect(poke).not.toHaveBeenCalled();
+    fm.wakeCoordinator?.stop?.();
+    fm.deliveryOutbox.close();
+  });
+});

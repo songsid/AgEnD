@@ -16,15 +16,20 @@ afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, f
 function adapter(name: string) {
   let n = 0;
   const calls: string[] = [];
+  const held: Array<() => void> = [];
+  let hold = false;
+  const gate = <T>(v: T): Promise<T> => hold ? new Promise<T>(res => held.push(() => res(v))) : Promise.resolve(v);
   return {
     calls,
+    held,
+    setHold: (v: boolean) => { hold = v; },
     a: {
       type: "discord",
       notifyAlert: vi.fn(async (chatId: string, alert: { message: string; choices?: Array<{ id: string }> }, opts?: { threadId?: string }) => {
         calls.push(`post ${chatId}/${opts?.threadId} ${alert.message.split("\n").join(" | ")} [${(alert.choices ?? []).map(c => c.id.split(":")[0]).join(",")}]`);
-        return { messageId: `${name}-m${++n}`, chatId, threadId: opts?.threadId };
+        return gate({ messageId: `${name}-m${++n}`, chatId, threadId: opts?.threadId });
       }),
-      editAlert: vi.fn(async (_c: string, messageId: string, alert: { message: string; choices?: unknown[] }) => { calls.push(`edit ${messageId} ${alert.message.split("\n").join(" | ")} [${(alert.choices ?? []).length}]`); }),
+      editAlert: vi.fn(async (_c: string, messageId: string, alert: { message: string; choices?: unknown[] }) => { calls.push(`edit ${messageId} ${alert.message.split("\n").join(" | ")} [${(alert.choices ?? []).length}]`); return gate(undefined); }),
       deleteMessage: vi.fn(async (_c: string, messageId: string) => { calls.push(`delete ${messageId}`); }),
       sendDirect: vi.fn(async (user: string, text: string) => { calls.push(`dm ${user} ${text.split("\n").join(" | ")}`); return { messageId: "dm", chatId: user }; }),
     } as any,
@@ -37,6 +42,7 @@ function rig() {
   const timers: Array<{ at: number; fn: () => void; id: number }> = [];
   let id = 0;
   const A = adapter("A"), B = adapter("B");
+  const worldAdapters: Record<string, any> = { dcA: A.a, dcB: B.a };
   const state = {
     prompts: [] as PromptInput[],
     instances: [] as InstanceInput[],
@@ -58,8 +64,8 @@ function rig() {
     deliveries: () => state.deliveries.filter(d => !state.acked.has(d.deliveryId)),
     ownerOf: i => state.owners[i],
     worlds: () => [
-      { id: "dcA", place: { type: "discord", groupId: "111111" }, adapter: A.a },
-      { id: "dcB", place: { type: "discord", groupId: "222222" }, adapter: B.a },
+      { id: "dcA", place: { type: "discord", groupId: "111111" }, adapter: worldAdapters.dcA },
+      { id: "dcB", place: { type: "discord", groupId: "222222" }, adapter: worldAdapters.dcB },
     ],
     noticeTarget: w => (w === "dcA" ? { chatId: "111111", threadId: "900001" } : { chatId: "222222", threadId: "900002" }),
     instanceTopic: i => (i === "alpha" ? "700001" : i === "beta" ? "700002" : undefined),
@@ -90,7 +96,7 @@ function rig() {
     mono = end;
     for (let i = 0; i < 10; i++) await Promise.resolve();
   };
-  return { hub, A, B, state, advance, tick: (ms: number) => { wall += ms; } };
+  return { hub, A, B, state, advance, worldAdapters, tick: (ms: number) => { wall += ms; } };
 }
 
 const delivery = (id: string, target: string): DeliveryInput => ({ deliveryId: id, state: "uncertain", source: "src", target, kind: "fleet_inbound", finishedAt: 999_000 });
@@ -267,6 +273,113 @@ describe("§5.5 DMs (opt-in): the owning world's admins, new items only, rate-li
     r.hub.recompute();
     await r.advance(120_000);
     expect(r.A.calls.some(c => c.startsWith("dm"))).toBe(false);
+  });
+});
+
+describe("#1398 review: delayed DMs, replaced adapters, capability expiry and binding", () => {
+  const dmsOf = (calls: string[]) => calls.filter(c => c.startsWith("dm"));
+
+  it("a DM queued for A is not sent to A after the instance moved to B (B's admins hear it instead)", async () => {
+    const r = rig();
+    r.state.settings.dm = true;
+    r.hub.start(); await r.advance(0);
+    r.state.deliveries = [delivery("d1", "alpha")];
+    r.hub.recompute(); await r.advance(0);                       // A's first DM: the next may come in a minute
+    r.state.deliveries = [delivery("d1", "alpha"), delivery("d4", "alpha")];
+    r.hub.recompute(); await r.advance(1_000);                   // d4 queued for A
+    r.state.owners.alpha = "dcB";
+    r.hub.recompute(); await r.advance(120_000);
+    expect(dmsOf(r.A.calls)).toHaveLength(1);                    // nothing more for A
+    expect(dmsOf(r.B.calls).join("\n")).toContain("alpha");      // B owns it now
+  });
+
+  it("no DM after dm is turned off, or after stop, even when one was queued", async () => {
+    for (const end of ["off", "stop"] as const) {
+      const r = rig();
+      r.state.settings.dm = true;
+      r.hub.start(); await r.advance(0);
+      r.state.deliveries = [delivery("d1", "alpha")];
+      r.hub.recompute(); await r.advance(0);
+      r.state.deliveries = [delivery("d1", "alpha"), delivery("d4", "alpha")];
+      r.hub.recompute(); await r.advance(1_000);
+      if (end === "off") { r.state.settings.dm = false; r.hub.recompute(); } else await r.hub.stop();
+      await r.advance(120_000);
+      expect(dmsOf(r.A.calls), end).toHaveLength(1);
+    }
+  });
+
+  it("a replaced adapter under the same world id: the old one is never used again, and its late post ACK publishes nothing", async () => {
+    const r = rig();
+    r.state.deliveries = [delivery("d1", "alpha")];
+    r.A.setHold(true);
+    r.hub.start(); await r.advance(0);                           // A's first post is in flight (held)
+    const fresh = adapter("A2");
+    r.worldAdapters.dcA = fresh.a;
+    r.hub.recompute(); await r.advance(20_000);
+    expect(fresh.calls.some(c => c.startsWith("post"))).toBe(true);   // the new adapter posts
+    const oldCalls = r.A.calls.length;
+    r.A.held.splice(0).forEach(release => release());            // the old post's ACK arrives late
+    await r.advance(20_000);
+    // Through the old adapter: only the clean-up of its own late post — no new post or edit.
+    expect(r.A.calls.slice(oldCalls)).toEqual(["delete A-m1"]);
+    const [ack] = (r.A.a.notifyAlert.mock.calls[0][1].choices ?? []).map((c: any) => c.id);
+    expect(r.hub.handleCallback({ callbackData: ack, chatId: "111111", threadId: "900001", messageId: "A-m1", userId: "100", ack() {} }, "dcA")).toBe(true);
+    expect(r.state.acked.size).toBe(0);                          // its capability did not survive
+  });
+
+  it("an adapter swapped before any recompute noticed: the old renderer's late post ACK is fenced — no pointer, no capability", async () => {
+    const r = rig();
+    r.state.deliveries = [delivery("d1", "alpha")];
+    r.A.setHold(true);
+    r.hub.start(); await r.advance(0);
+    r.worldAdapters.dcA = adapter("A2").a;                       // swapped; no recompute yet
+    r.A.held.splice(0).forEach(release => release());
+    await r.advance(0);
+    const { existsSync, readFileSync } = await import("node:fs");
+    const file = join(r.hub["ctx"].dataDir, "needs-you-message.json");
+    const saved = existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : {};
+    expect(saved.dcA).toBeUndefined();
+    const [ack] = (r.A.a.notifyAlert.mock.calls[0][1].choices ?? []).map((c: any) => c.id);
+    const acks: string[] = [];
+    r.hub.handleCallback({ callbackData: ack, chatId: "111111", threadId: "900001", messageId: "A-m1", userId: "100", ack: n => acks.push(n ?? "") }, "dcA");
+    expect(acks).toEqual(["needs.ack_stale"]);
+  });
+
+  it("a button whose post has not returned yet has no authority (no message to bind to)", async () => {
+    const r = rig();
+    r.state.deliveries = [delivery("d1", "alpha")];
+    r.A.setHold(true);
+    r.hub.start(); await r.advance(0);
+    const [ack] = (r.A.a.notifyAlert.mock.calls[0][1].choices ?? []).map((c: any) => c.id);
+    const acks: string[] = [];
+    r.hub.handleCallback({ callbackData: ack, chatId: "111111", threadId: "900001", messageId: "some-other-message", userId: "100", ack: n => acks.push(n ?? "") }, "dcA");
+    expect(acks).toEqual(["needs.ack_stale"]);
+    expect(r.state.acked.size).toBe(0);
+  });
+
+  it("a capability lapses 15 minutes after it was minted, even when the renewal that replaces it never lands", async () => {
+    const r = rig();
+    r.state.deliveries = [delivery("d1", "alpha")];
+    r.hub.start(); await r.advance(0);                           // posted, bound
+    r.A.setHold(true);
+    await r.advance(10 * 60_000 + 1);                            // the renewal edit mints new buttons — and hangs
+    const renewal = r.A.a.editAlert.mock.calls.at(-1);
+    const [ack] = (renewal[2].choices ?? []).map((c: any) => c.id);
+    const click = () => { const acks: string[] = []; r.hub.handleCallback({ callbackData: ack, chatId: "111111", threadId: "900001", messageId: "A-m1", userId: "100", ack: n => acks.push(n ?? "") }, "dcA"); return acks; };
+    await r.advance(16 * 60_000);
+    expect(click()).toEqual(["needs.ack_stale"]);
+    expect(r.state.acked.size).toBe(0);
+  });
+
+  it("controls: the current message's button acknowledges, and a renewed one works", async () => {
+    const r = rig();
+    r.state.deliveries = [delivery("d1", "alpha")];
+    r.hub.start(); await r.advance(0);
+    await r.advance(10 * 60_000 + 1);                            // renewed (not held)
+    const [ack] = (r.A.a.editAlert.mock.calls.at(-1)[2].choices ?? []).map((c: any) => c.id);
+    const acks: string[] = [];
+    r.hub.handleCallback({ callbackData: ack, chatId: "111111", threadId: "900001", messageId: "A-m1", userId: "100", ack: n => acks.push(n ?? "") }, "dcA");
+    expect(acks).toEqual(["needs.ack_done"]);
   });
 });
 

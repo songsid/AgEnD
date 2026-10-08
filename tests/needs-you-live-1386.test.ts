@@ -21,7 +21,7 @@ function rig(over: { pointer?: LivePointer | null; target?: LiveTarget | null; c
   let saved: LivePointer | null = over.pointer ?? null;
   const pending: Array<{ resolve: () => void; reject: (e: Error) => void; kind: string }> = [];
   let hold = false;                                  // hold the next post/edit ACK until released
-  let failEdit = false;
+  let failEdit = false, failPost = false;
   const ack = <T>(kind: string, value: T): Promise<T> => hold
     ? new Promise<T>((resolve, reject) => pending.push({ resolve: () => resolve(value), reject, kind }))
     : Promise.resolve(value);
@@ -32,7 +32,7 @@ function rig(over: { pointer?: LivePointer | null; target?: LiveTarget | null; c
     clearTimer: h => { const i = timers.findIndex(t => t.id === h); if (i >= 0) timers.splice(i, 1); },
     target: () => target, enabled: () => enabled, stopping: () => stopping, worldExists: () => exists,
     content: () => content,
-    post: async (t, text, choices) => { const id = `m${nextMsg++}`; log.push(`post ${id} @${t.chatId}/${t.threadId ?? "-"} [${choices.length}] ${text}`); return ack("post", { ...canonicalTarget(t), messageId: id }); },
+    post: async (t, text, choices) => { const id = `m${nextMsg++}`; log.push(`post ${id} @${t.chatId}/${t.threadId ?? "-"} [${choices.length}] ${text}`); if (failPost) throw new Error("403"); return ack("post", { ...canonicalTarget(t), messageId: id }); },
     edit: async (p, text, choices) => { log.push(`edit ${p.messageId} [${choices.length}] ${text}`); if (failEdit) throw new Error("too old"); return ack("edit", undefined); },
     remove: async p => { log.push(`remove ${p.messageId}`); },
     loadPointer: () => saved,
@@ -68,7 +68,7 @@ function rig(over: { pointer?: LivePointer | null; target?: LiveTarget | null; c
     get saved() { return saved; },
     set: {
       target: (t: LiveTarget | null) => { target = t; }, enabled: (v: boolean) => { enabled = v; }, stopping: (v: boolean) => { stopping = v; },
-      exists: (v: boolean) => { exists = v; }, content: (c: LiveContent) => { content = c; }, hold: (v: boolean) => { hold = v; }, failEdit: (v: boolean) => { failEdit = v; },
+      exists: (v: boolean) => { exists = v; }, content: (c: LiveContent) => { content = c; }, hold: (v: boolean) => { hold = v; }, failEdit: (v: boolean) => { failEdit = v; }, failPost: (v: boolean) => { failPost = v; },
     },
   };
 }
@@ -112,14 +112,37 @@ describe("first message, edits and new posts (§5.3)", () => {
     expect(r.log.filter(l => /^(post|remove)/.test(l))).toEqual(["post m2 @g/general [1] list", "remove m1"]);   // then posted
   });
 
-  it("an edit that fails (too old, gone) becomes a new post", async () => {
+  it("an edit that fails (too old, gone) becomes a new post — no sooner than posts are allowed", async () => {
     const r = rig();
-    await r.advance(0);
+    await r.advance(0);                                         // post m1 at t=0: the next post may come at t=60 s
     r.set.failEdit(true);
     r.log.length = 0;
     r.m.changed(false);
-    await r.advance(EDIT_MIN_MS + DEBOUNCE_MS);
-    expect(r.log.filter(l => /^(edit|post|remove|save)/.test(l))).toEqual(["edit m1 [1] list", "post m2 @g/general [1] list", "save m2", "remove m1"]);
+    await r.advance(EDIT_MIN_MS + DEBOUNCE_MS);                 // the edit fails at t≈13 s
+    expect(r.log.filter(l => /^(edit|post|remove|save)/.test(l))).toEqual(["edit m1 [1] list"]);
+    await r.advance(POST_MIN_MS);                               // the window opens: the fallback post
+    expect(r.log.filter(l => /^(post|remove|save)/.test(l))).toEqual(["post m2 @g/general [1] list", "save m2", "remove m1"]);
+  });
+
+  it("a post that keeps failing backs off — never a tight loop (#1398 review)", async () => {
+    const r = rig();
+    r.set.failPost(true);
+    await r.advance(0);
+    const posts = () => r.log.filter(l => l.startsWith("post")).length;
+    expect(posts()).toBe(1);
+    await r.advance(POST_MIN_MS - 1);
+    expect(posts()).toBe(1);                                    // nothing before the first back-off
+    await r.advance(1);
+    expect(posts()).toBe(2);
+    await r.advance(2 * POST_MIN_MS - 1);
+    expect(posts()).toBe(2);                                    // doubled
+    await r.advance(1);
+    expect(posts()).toBe(3);
+    await r.advance(60 * 60_000);                               // an hour: capped at 15 min apart
+    expect(posts()).toBeLessThanOrEqual(3 + 1 + 4);
+    r.set.failPost(false);
+    await r.advance(16 * 60_000);
+    expect(r.saved?.messageId).toBeDefined();                   // recovers
   });
 });
 
