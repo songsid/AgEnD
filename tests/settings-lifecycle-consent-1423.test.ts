@@ -87,7 +87,9 @@ describe("#1423 real lifecycle and nested startup boundaries", () => {
   });
   it("startup capture cancellation is propagated instead of treated as an unknown ready screen", async () => {
     const h = daemon(), pending = hold<string>(); h.d.backend = { getStartupDialogs: () => [], getReadyPattern: () => /ready/ }; h.d.tmux = { capturePane: vi.fn(() => pending.promise) };
-    const scanning = h.d.dismissDialogsUntilReady(1000).catch((e: Error) => e); h.revoke(); pending.resolve("ready");
+    const scanning = h.d.dismissDialogsUntilReady(1000).catch((e: Error) => e);
+    await vi.waitFor(() => expect(h.d.tmux.capturePane).toHaveBeenCalledOnce());
+    h.revoke(); pending.resolve("ready");
     expect(await scanning).toMatchObject({ code: "settings_execution_stale" });
   });
   it("a Classic compensation receipt cannot restart a newer fleet generation", async () => {
