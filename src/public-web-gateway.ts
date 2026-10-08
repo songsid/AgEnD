@@ -7,7 +7,7 @@ import { applyWebSecurityHeaders } from "./web-host-guard.js";
 export function isPublicWebRoute(method: string, path: string): boolean {
   const reads = method === "GET" || method === "HEAD";
   if (reads && ["/", "/signin", "/ui", "/settings", "/view", "/auth/session", "/auth/sessions", "/api/fleet", "/api/profiles", "/api/sort-order", "/api/ai-usage"].includes(path)) return true;
-  if (method === "GET" && /^\/assets\/(agend-auth\.js|signin\.js|shell\.js|shell\.css|theme\.js)$/.test(path)) return true;
+  if (method === "GET" && /^\/assets\/(agend-auth\.js|signin\.js|shell\.js|shell\.css|theme\.js|tokens\.css|inter\.woff2)$/.test(path)) return true;
   if (method === "POST" && ["/auth/login", "/auth/logout"].includes(path)) return true;
   if (method === "DELETE" && /^\/auth\/sessions(?:\/[0-9a-f]{16})?$/.test(path)) return true;
   if (reads && /^\/api\/(pane|profile|avatar)\/[^/]+$/.test(path)) return true;

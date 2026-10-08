@@ -1,0 +1,153 @@
+/* Design tokens for every web panel (#1408). Served as /assets/tokens.css; nothing here is a component.
+ *
+ * Semantic names only: a rule says what a colour is FOR (the page, the sidebar, secondary text), never which colour it
+ * is. The look is neutral greys with few borders: areas differ by background tone, not by lines (design §2).
+ *
+ * Themes follow /assets/theme.js: dark under :root; light under @media (prefers-color-scheme: light) for
+ * :root:not([data-theme="dark"]), and again under :root[data-theme="light"] for a browser that chose light. The two
+ * light blocks carry the same values (a test compares them). Every text colour meets WCAG AA (4.5:1) on the
+ * surfaces it is used on, and focus rings and strong borders meet 3:1 (tests/web-tokens-1408.test.ts).
+ *
+ * Inter is bundled (/assets/inter.woff2, SIL OFL 1.1 — see fonts/README.md): the CSP allows fonts from 'self' only,
+ * and nothing is loaded from another site. Chinese falls back to the system's CJK fonts, in the order below. */
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/assets/inter.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2190-2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+:root {
+  /* ── Type ── */
+  --font-ui: Inter, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --fs-xs: 12px;  --lh-xs: 16px;
+  --fs-sm: 13px;  --lh-sm: 18px;
+  --fs-md: 15px;  --lh-md: 24px;   /* message text */
+  --fs-lg: 17px;  --lh-lg: 24px;
+  --fs-xl: 22px;  --lh-xl: 28px;
+  --fw-regular: 400; --fw-medium: 500; --fw-semibold: 600; --fw-bold: 700;
+
+  /* ── Space (a 4px grid) ── */
+  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 20px; --s-6: 24px; --s-7: 32px; --s-8: 48px;
+
+  /* ── Shape and motion ── */
+  --r-sm: 8px; --r-md: 12px; --r-lg: 16px; --r-xl: 24px; --r-full: 999px;
+  --t-fast: 120ms; --t-med: 200ms; --ease: cubic-bezier(0.2, 0, 0, 1);
+
+  /* ── Layout ── */
+  --col: 768px;            /* the conversation column */
+  --sidebar-w: 260px;
+  --header-h: 52px;
+  --tap: 44px;             /* the smallest touch target on a phone */
+
+  /* ── Colour: dark ── */
+  color-scheme: dark;
+  --bg: #212121;           /* the main area */
+  --bg-sidebar: #171717;
+  --surface: #2f2f2f;      /* the composer, a user's bubble, cards, menus */
+  --surface-2: #3a3a3a;    /* hover and pressed rows, raised chips */
+  --border: #3d3d3d;       /* used rarely: tone separates areas */
+  --border-strong: #7a7a7a;
+  --text: #ececec;
+  --text-2: #b4b4b4;       /* secondary: senders, labels */
+  --text-3: #a3a3a3;       /* tertiary: times, hints, metadata */
+  --accent: #7ab7ff;       /* links and selected text */
+  --accent-fill: #ececec;  /* the primary button (Send) */
+  --on-accent: #0d0d0d;
+  --accent-dim: rgba(122, 183, 255, 0.14);
+  --focus: #7ab7ff;
+  --ok: #4cc38a;
+  --warn: #e3b341;
+  --danger: #ff8a80;
+  --danger-fill: #c9372c;  /* a destructive button; its text is --on-danger */
+  --on-danger: #ffffff;
+  --ok-bg: rgba(76, 195, 138, 0.14);
+  --warn-bg: rgba(227, 179, 65, 0.14);  --warn-line: rgba(227, 179, 65, 0.45);
+  --danger-bg: rgba(255, 138, 128, 0.14); --danger-line: rgba(255, 138, 128, 0.45);
+  --user-bubble: #2f2f2f;
+  --code-bg: #171717;
+  --code-head: #2a2a2a;
+  --inline-code: #383838;
+  --tk-k: #ff7b72; --tk-s: #a5d6ff; --tk-n: #79c0ff; --tk-c: #9da5ae;
+  --scrim: rgba(0, 0, 0, 0.55);
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 8px 28px rgba(0, 0, 0, 0.5);
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --bg: #ffffff;
+    --bg-sidebar: #f9f9f9;
+    --surface: #f4f4f4;
+    --surface-2: #ececec;
+    --border: #e5e5e5;
+    --border-strong: #858585;
+    --text: #0d0d0d;
+    --text-2: #5d5d5d;
+    --text-3: #696969;
+    --accent: #0a62c2;
+    --accent-fill: #0d0d0d;
+    --on-accent: #ffffff;
+    --accent-dim: rgba(10, 98, 194, 0.08);
+    --focus: #0a62c2;
+    --ok: #1a7f37;
+    --warn: #8a5a00;
+    --danger: #c4222b;
+    --danger-fill: #c4222b;
+    --on-danger: #ffffff;
+    --ok-bg: #e6f4ea;
+    --warn-bg: #fff6d6;  --warn-line: #e3b341;
+    --danger-bg: #ffebe9; --danger-line: #ff8182;
+    --user-bubble: #f4f4f4;
+    --code-bg: #f9f9f9;
+    --code-head: #ececec;
+    --inline-code: #ececec;
+    --tk-k: #c4222b; --tk-s: #0a3069; --tk-n: #0550ae; --tk-c: #5d646c;
+    --scrim: rgba(13, 13, 13, 0.4);
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.06);
+    --shadow-2: 0 8px 24px rgba(0, 0, 0, 0.12);
+  }
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #ffffff;
+  --bg-sidebar: #f9f9f9;
+  --surface: #f4f4f4;
+  --surface-2: #ececec;
+  --border: #e5e5e5;
+  --border-strong: #858585;
+  --text: #0d0d0d;
+  --text-2: #5d5d5d;
+  --text-3: #696969;
+  --accent: #0a62c2;
+  --accent-fill: #0d0d0d;
+  --on-accent: #ffffff;
+  --accent-dim: rgba(10, 98, 194, 0.08);
+  --focus: #0a62c2;
+  --ok: #1a7f37;
+  --warn: #8a5a00;
+  --danger: #c4222b;
+  --danger-fill: #c4222b;
+  --on-danger: #ffffff;
+  --ok-bg: #e6f4ea;
+  --warn-bg: #fff6d6;  --warn-line: #e3b341;
+  --danger-bg: #ffebe9; --danger-line: #ff8182;
+  --user-bubble: #f4f4f4;
+  --code-bg: #f9f9f9;
+  --code-head: #ececec;
+  --inline-code: #ececec;
+  --tk-k: #c4222b; --tk-s: #0a3069; --tk-n: #0550ae; --tk-c: #5d646c;
+  --scrim: rgba(13, 13, 13, 0.4);
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-2: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --t-fast: 0ms; --t-med: 0ms; }
+}
