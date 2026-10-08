@@ -1,3 +1,4 @@
+import { admitSetupFinish, decideSetup } from "./helpers/setup-confirmation-1423.js";
 import { readFileSync, existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, normalize, resolve as resolvePath } from "node:path";
@@ -277,11 +278,13 @@ describe("the setup host", () => {
     // completing, so the form would hang at "starting…" and the fleet would
     // never be spawned. A half-sent request is the cheap way to hold one open —
     // a dropped mobile connection looks the same to the server.
-    const { host, port, spawnFleet } = await startHost();
+    const { host, dir, port, path, code, spawnFleet } = await startHost();
     const stuck = connect(port, "127.0.0.1");
     await new Promise<void>(resolve => stuck.once("connect", () => resolve()));
+    stuck.on("error", () => {});
     stuck.write("GET /setup/status HTTP/1.1\r\nHost: 127.0.0.1\r\n"); // no blank line: still in flight
 
+    await admitSetupFinish(dir, port, path, code);
     const closed = host.shutdown(true, "finished");
     await expect(Promise.race([
       closed.then(() => "closed"),
@@ -344,7 +347,11 @@ describe("the setup host", () => {
       admin_user_id: "42", token: "123456:ABC",
     }, { cookie });
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(202);
+    expect(existsSync(join(dir, "fleet.yaml"))).toBe(false);
+    expect(existsSync(join(dir, ".env"))).toBe(false);
+    const outcome = await decideSetup(dir, JSON.parse(res.body).pending_change.id);
+    expect(outcome.pending_change.state).toBe("applied");
     const { loadFleetConfig } = await import("../src/config.js");
     const written = loadFleetConfig(join(dir, "fleet.yaml"));
     expect(written.instances["agent-1"]).toMatchObject({ working_directory: "/tmp/app" });

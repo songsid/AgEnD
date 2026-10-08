@@ -543,18 +543,22 @@ export class TmuxManager {
       this.lastPasteError = formatExecError(loadError);
       return false;
     }
-    if (!allowed()) {
-      // Loaded but no longer wanted: drop the buffer, never paste it.
-      void execBounded(TmuxManager.tmuxArgs(["delete-buffer", "-b", bufName]), opts.timeoutMs).catch(() => {});
-      return false;
-    }
+    let pasteStarted = false;
     try {
-      await execBounded(TmuxManager.tmuxArgs(["paste-buffer", "-d", "-b", bufName, "-t", target, "-p"]), opts.timeoutMs);
-      return true;
-    } catch (err) {
-      this.lastPasteError = formatExecError(err);
-      this.lastPasteFailureRecoverable = true;
-      return false;
+      if (!allowed()) return false;
+      pasteStarted = true;
+      try {
+        await execBounded(TmuxManager.tmuxArgs(["paste-buffer", "-d", "-b", bufName, "-t", target, "-p"]), opts.timeoutMs);
+        return true;
+      } catch (err) {
+        this.lastPasteError = formatExecError(err);
+        this.lastPasteFailureRecoverable = true;
+        return false;
+      }
+    } finally {
+      // Cancellation may return false or throw (e.g. a revoked consent capability).
+      // Both retain ownership of the loaded buffer and must dispose of it without a pane write.
+      if (!pasteStarted) void execBounded(TmuxManager.tmuxArgs(["delete-buffer", "-b", bufName]), opts.timeoutMs).catch(() => {});
     }
   }
 

@@ -1,6 +1,7 @@
+import { SettingsExecution, settingsUndo, undoSettingsPaths, type SettingsUndo } from "./settings-transaction.js";
 import { measureSyncWork } from "./sync-work-attribution.js";
 import { REMOVED_BACKENDS, isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
-import { existsSync, readFileSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, mkdirSync, realpathSync, writeFileSync, statSync } from "node:fs";
 import { ensureInstanceDir } from "./private-dir.js";
 import { execFileSync } from "node:child_process";
 import { join, basename, dirname, resolve, sep as pathSep } from "node:path";
@@ -159,6 +160,7 @@ export interface LifecycleContext {
   readonly fleetConfig: FleetConfig | null;
   readonly logger: Logger;
   readonly dataDir: string;
+  getSettingsConfigPath?(): string;
   readonly routing: RoutingEngine;
   readonly instanceIpcClients: Map<string, IpcClient>;
   readonly ipcStoppingInstances: Set<string>;
@@ -1458,8 +1460,10 @@ export class InstanceLifecycle {
     topicMode: boolean,
     runtimeIdentity?: FleetInstructionsParams["runtimeIdentity"],
     transition?: TransitionHandle,
+    execution?: SettingsExecution,
+    published?: (daemon: Daemon) => void,
   ): Promise<void> {
-    return this.runTransition(name, () => this.startInTransition(name, config, topicMode, runtimeIdentity), transition);
+    return this.runTransition(name, () => this.startInTransition(name, config, topicMode, runtimeIdentity, execution, published), transition);
   }
 
   private async startInTransition(
@@ -1467,8 +1471,12 @@ export class InstanceLifecycle {
     config: InstanceConfig,
     topicMode: boolean,
     runtimeIdentity?: FleetInstructionsParams["runtimeIdentity"],
+    execution?: SettingsExecution,
+    published?: (daemon: Daemon) => void,
   ): Promise<void> {
     const epoch = this.epochOf(name);
+    const check = (): void => { execution?.assert(); if (this.epochOf(name) !== epoch) throw new SupersededStartError(name); };
+    check();
     const seedNow = this.activitySeedNow.delete(name);
     if (this.daemons.has(name)) {
       this.ctx.logger.info({ name }, "Instance already running, skipping");
@@ -1488,6 +1496,7 @@ export class InstanceLifecycle {
 
     const { Daemon } = await import("./daemon.js");
     const { createBackend } = await import("./backend/factory.js");
+    check();
 
     const backendName = config.backend ?? this.ctx.fleetConfig?.defaults?.backend ?? "claude-code";
 
@@ -1601,7 +1610,7 @@ export class InstanceLifecycle {
         throw new Error(message);
       }
     }
-    if (this.epochOf(name) !== epoch) {
+    if (this.epochOf(name) !== epoch || execution && !execution.current()) {
       // A stop/restart arrived while this start was reconciling: do not spawn.
       await daemon.abortStartup().catch(() => {});
       throw new SupersededStartError(name);
@@ -1610,17 +1619,18 @@ export class InstanceLifecycle {
     // before the handlers below exist and before this daemon is registered;
     // hold it and deliver it once both are true.
     (daemon as IncidentEventSource).holdStartupIncidents?.();
-    await InstanceLifecycle.startOrDispose(daemon, name, this.ctx.logger);
+    await InstanceLifecycle.startOrDispose(daemon, name, this.ctx.logger, execution ? check : undefined);
     // Publication fence (Phase 2a): the spawn cannot be cancelled, so a stop or
     // restart requested meanwhile has been waiting behind this transition. A
     // superseded start must not register, signal ready, or keep its window.
-    if (this.epochOf(name) !== epoch) {
+    if (this.epochOf(name) !== epoch || execution && !execution.current()) {
       await daemon.abortStartup().catch(err =>
         this.ctx.logger.warn({ err, name }, "Failed to dispose a superseded start"));
       throw new SupersededStartError(name);
     }
     this.capacityBackoffBaselines.delete(name);
     this.daemons.set(name, daemon);
+    published?.(daemon); // Exact publication, synchronously after the ownership fence.
     if (seedNow) this.noteWokeForWork(name);
     this.ctx.onDaemonReady?.(name, daemon.bootId);
 
@@ -1771,12 +1781,13 @@ export class InstanceLifecycle {
    * surface.
    */
   static async startOrDispose(
-    daemon: { start(): Promise<void>; abortStartup(): Promise<void> },
+    daemon: { start(admission?: () => void): Promise<void>; abortStartup(): Promise<void> },
     name: string,
     logger: Logger,
+    admission?: () => void,
   ): Promise<void> {
     try {
-      await daemon.start();
+      if (admission) await daemon.start(admission); else await daemon.start();
     } catch (err) {
       await daemon.abortStartup().catch(abortErr =>
         logger.warn({ err: abortErr, name }, "Failed to dispose a daemon whose start() rejected"));
@@ -1900,11 +1911,13 @@ export class InstanceLifecycle {
     }
   }
 
-  async remove(name: string, authorization: ExplicitInstanceRemoval): Promise<void> {
+  async remove(name: string, authorization: ExplicitInstanceRemoval, execution?: SettingsExecution, transition?: TransitionHandle): Promise<void> {
     // Automatic topology reconciliation must never reach the destructive path.
     assertExplicitInstanceRemoval(authorization);
     const config = this.ctx.fleetConfig?.instances[name];
     if (!config) return;
+    const check = (): void => { execution?.assert(); if (this.ctx.fleetConfig?.instances[name] !== config) throw new Error("instance removal superseded"); };
+    check();
 
     // Never remove the General instance
     if (config.general_topic) {
@@ -1917,7 +1930,7 @@ export class InstanceLifecycle {
     // We just clean up instance-related data here
 
     // Stop daemon and clean up tmux window (handles both in-memory and orphaned cases)
-    await this.stop(name);
+    await this.stop(name, transition); check();
 
     // Clean up backend config files (MCP config, instructions, etc.)
     // This is needed even when daemon is not in memory — stop() only calls
@@ -1929,7 +1942,7 @@ export class InstanceLifecycle {
     if (config.working_directory && effectiveBackend) {
       try {
         const { createBackend } = await import("./backend/factory.js");
-        const instanceDir = this.ctx.getInstanceDir(name);
+        check(); const instanceDir = this.ctx.getInstanceDir(name);
         const backend = createBackend(effectiveBackend, instanceDir);
         if (backend?.cleanup) {
           const backendConfig = {
@@ -1952,7 +1965,7 @@ export class InstanceLifecycle {
     // effective backend, so an instance on the fleet default is forgotten too.
     try {
       const { createBackend } = await import("./backend/factory.js");
-      const effective = config.backend ?? this.ctx.fleetConfig?.defaults?.backend ?? "claude-code";
+      check(); const effective = config.backend ?? this.ctx.fleetConfig?.defaults?.backend ?? "claude-code";
       createBackend(effective, this.ctx.getInstanceDir(name))?.forget?.(name);
     } catch { /* best effort */ }
 
@@ -1964,19 +1977,19 @@ export class InstanceLifecycle {
         try {
           const { execFile: execFileCb } = await import("node:child_process");
           const { promisify } = await import("node:util");
-          const execFileAsync = promisify(execFileCb);
+          check(); const execFileAsync = promisify(execFileCb);
           await execFileAsync("git", ["worktree", "remove", "--force", config.working_directory], {
             cwd: config.worktree_source,
           });
-          this.ctx.logger.info({ worktree: config.working_directory }, "Removed git worktree");
+          check(); this.ctx.logger.info({ worktree: config.working_directory }, "Removed git worktree");
         } catch {
-          // worktree remove failed — directory exists but isn't a valid worktree.
+          check(); // worktree remove failed — directory exists but isn't a valid worktree.
           // Only rm if directory is in the expected location (sibling of source repo or under ~/.agend/).
           const expectedParent = dirname(config.working_directory);
           const sourceParent = dirname(config.worktree_source);
           if (expectedParent === sourceParent || config.working_directory.startsWith(getAgendHome())) {
             const { rm } = await import("node:fs/promises");
-            await rm(config.working_directory, { recursive: true, force: true });
+            check(); await rm(config.working_directory, { recursive: true, force: true }); check();
             this.ctx.logger.info({ worktree: config.working_directory }, "Removed orphaned worktree directory");
           } else {
             this.ctx.logger.warn({ worktree: config.working_directory }, "Worktree removal failed and directory is outside expected location — skipping rm");
@@ -1987,16 +2000,17 @@ export class InstanceLifecycle {
       try {
         const { execFile: execFileCb } = await import("node:child_process");
         const { promisify } = await import("node:util");
-        const execFileAsync = promisify(execFileCb);
+        check(); const execFileAsync = promisify(execFileCb);
         await execFileAsync("git", ["worktree", "prune"], { cwd: config.worktree_source });
-      } catch { /* best effort */ }
+      } catch { check(); /* best effort */ }
     }
 
+    check();
     // Clean up IPC
     const ipc = this.ctx.instanceIpcClients.get(name);
     if (ipc) {
-      await ipc.close();
-      this.ctx.instanceIpcClients.delete(name);
+      await ipc.close(); check();
+      if (this.ctx.instanceIpcClients.get(name) === ipc) this.ctx.instanceIpcClients.delete(name);
     }
 
     // Remove from routing table (this instance only: #1085, another Telegram
@@ -2006,8 +2020,8 @@ export class InstanceLifecycle {
     }
 
     // Remove from fleet config and save
-    delete this.ctx.fleetConfig!.instances[name];
-    this.ctx.saveFleetConfig();
+    const persist = (): void => { delete this.ctx.fleetConfig!.instances[name]; this.ctx.saveFleetConfig(); };
+    if (execution) execution.mutate(persist); else { check(); persist(); }
     clearPausedMarker(this.ctx.getInstanceDir(name));
 
     this.ctx.logger.info({ name }, "Instance removed");
@@ -2018,7 +2032,9 @@ export class InstanceLifecycle {
     args: LifecycleCreateArgs,
     respond: (result: unknown, error?: string) => void,
     adapterId?: string,
+    execution?: SettingsExecution,
   ): Promise<void> {
+    const check = (): void => execution?.assert(); check();
     const rawDirectory = args.directory;
     const directory = rawDirectory ? rawDirectory.replace(/^~/, process.env.HOME || "~") : undefined;
     const topicName = args.topic_name || (directory ? basename(directory) : undefined);
@@ -2035,7 +2051,7 @@ export class InstanceLifecycle {
     // Validate directory exists (only when explicitly provided)
     if (directory) {
       try {
-        await access(directory);
+        await access(directory); check();
       } catch {
         respond(null, `Directory does not exist: ${directory}`);
         return;
@@ -2093,6 +2109,24 @@ export class InstanceLifecycle {
     // If branch specified, create git worktree (requires directory)
     let workDir = directory ?? "";
     let worktreePath: string | undefined;
+    let acquiredWorktree = false;
+    let acquiredDirectory: { dev: number; ino: number } | undefined;
+    const directoryReferenced = (): boolean => Object.values(this.ctx.fleetConfig?.instances ?? {}).some(config => config.working_directory === workDir);
+    const cleanupDirectory = async (): Promise<void> => {
+      if (!acquiredDirectory || !workDir || directoryReferenced()) return;
+      const ownsPath = (): boolean => {
+        if (directoryReferenced()) return false;
+        try { const current = statSync(workDir); return current.dev === acquiredDirectory!.dev && current.ino === acquiredDirectory!.ino; }
+        catch { return false; }
+      };
+      if (acquiredWorktree) {
+        const { execFile } = await import("node:child_process"); const { promisify } = await import("node:util");
+        if (!ownsPath()) return;
+        await promisify(execFile)("git", ["worktree", "remove", "--force", workDir], { cwd: directory });
+      } else {
+        const { rm } = await import("node:fs/promises"); if (ownsPath()) await rm(workDir, { recursive: true, force: true });
+      }
+    };
     if (branch && !directory) {
       respond(null, "directory is required when branch is specified");
       return;
@@ -2101,7 +2135,10 @@ export class InstanceLifecycle {
       try {
         const { execFile: execFileCb } = await import("node:child_process");
         const { promisify } = await import("node:util");
-        const execFileAsync = promisify(execFileCb);
+        const nativeExec = promisify(execFileCb);
+        const execFileAsync = async (file: string, args: string[], options: { cwd?: string; timeout?: number }, acquired?: () => void) => {
+          check(); const result = await nativeExec(file, args, options); acquired?.(); check(); return result;
+        };
 
         await execFileAsync("git", ["rev-parse", "--git-dir"], { cwd: directory });
 
@@ -2142,19 +2179,21 @@ export class InstanceLifecycle {
           return;
         }
 
+        const acquired = (): void => { acquiredWorktree = true; workDir = worktreePath!; acquiredDirectory = statSync(workDir); };
         if (detach) {
-          await execFileAsync("git", ["worktree", "add", "--detach", worktreePath, branch], { cwd: directory });
+          await execFileAsync("git", ["worktree", "add", "--detach", worktreePath, branch], { cwd: directory }, acquired);
         } else if (branchExists) {
-          await execFileAsync("git", ["worktree", "add", worktreePath, branch], { cwd: directory });
+          await execFileAsync("git", ["worktree", "add", worktreePath, branch], { cwd: directory }, acquired);
         } else {
           const startPoint = args.start_point;
           const worktreeArgs = ["worktree", "add", worktreePath, "-b", branch];
           if (startPoint) worktreeArgs.push(startPoint);
-          await execFileAsync("git", worktreeArgs, { cwd: directory });
+          await execFileAsync("git", worktreeArgs, { cwd: directory }, acquired);
         }
         this.ctx.logger.info({ worktreePath, branch, repo: directory }, "Created git worktree for instance");
         workDir = worktreePath;
       } catch (err) {
+        await cleanupDirectory().catch(e => this.ctx.logger.warn({ err: e }, "Owned worktree cleanup failed"));
         respond(null, `Failed to create worktree: ${(err as Error).message}`);
         return;
       }
@@ -2181,6 +2220,9 @@ export class InstanceLifecycle {
     // Sequential steps with rollback
     let createdTopicId: number | string | undefined;
     let newInstanceName: string | undefined;
+    let createdConfig: InstanceConfig | undefined;
+    let createdDaemon: unknown;
+    let createUndo: SettingsUndo[] = [];
     // Capture the creating world's delete capability BEFORE the create await:
     // rollback must use exactly this adapter even if the world is removed or
     // replaced while creating. Never re-resolve (that would substitute the
@@ -2188,7 +2230,7 @@ export class InstanceLifecycle {
     const topicDeleter = this.ctx.getForumTopicDeleter?.(adapterId) ?? null;
 
     try {
-      createdTopicId = await this.ctx.createForumTopic(topicName!, adapterId);
+      check(); createdTopicId = await this.ctx.createForumTopic(topicName!, adapterId); check();
 
       // Use explicit topic_name as name base when provided; fall back to directory basename
       const explicitTopicName = args.topic_name;
@@ -2218,7 +2260,9 @@ export class InstanceLifecycle {
       // If no directory was provided, auto-create default workspace
       if (!directory) {
         workDir = join(getAgendHome(), "workspaces", newInstanceName);
+        const existed = existsSync(workDir);
         mkdirSync(workDir, { recursive: true });
+        if (!existed) acquiredDirectory = statSync(workDir);
         ensureWorkspaceGit(workDir);
       }
 
@@ -2249,12 +2293,20 @@ export class InstanceLifecycle {
           && !isModelCompatible(instanceConfig.backend, instanceConfig.model)) {
         delete instanceConfig.model;
       }
-      this.ctx.fleetConfig!.instances[newInstanceName] = instanceConfig;
-      this.ctx.routing.register(createdTopicId, { kind: "instance", name: newInstanceName });
-      this.ctx.saveFleetConfig();
-
-      await this.start(newInstanceName, instanceConfig, true);
-      await this.ctx.connectIpcToInstance(newInstanceName);
+      createdConfig = instanceConfig;
+      const beforeCreate = structuredClone(this.ctx.fleetConfig);
+      const persist = (): void => {
+        this.ctx.fleetConfig!.instances[newInstanceName!] = instanceConfig;
+        this.ctx.routing.register(createdTopicId!, { kind: "instance", name: newInstanceName! });
+        try { this.ctx.saveFleetConfig(); }
+        finally { createUndo = settingsUndo((this.ctx.getSettingsConfigPath?.() ?? join(this.ctx.dataDir, "fleet.yaml")), beforeCreate, this.ctx.fleetConfig, [["instances", newInstanceName!]]); }
+      };
+      if (execution) execution.mutate(persist); else persist();
+      if (execution) await this.start(newInstanceName, instanceConfig, true, undefined, undefined, execution);
+      else await this.start(newInstanceName, instanceConfig, true);
+      createdDaemon = this.daemons.get(newInstanceName); check();
+      await this.ctx.connectIpcToInstance(newInstanceName); check();
+      execution?.complete();
 
       respond({
         success: true,
@@ -2264,15 +2316,20 @@ export class InstanceLifecycle {
       });
     } catch (err) {
       // Rollback in reverse order
-      if (newInstanceName && this.daemons.has(newInstanceName)) {
+      if (newInstanceName && createdDaemon && this.daemons.get(newInstanceName) === createdDaemon) {
         await this.stop(newInstanceName).catch(e => this.ctx.logger.error({ err: e, name: newInstanceName }, "Failed to stop instance during rollback"));
       }
-      if (newInstanceName && this.ctx.fleetConfig?.instances[newInstanceName]) {
-        delete this.ctx.fleetConfig.instances[newInstanceName];
-        if (createdTopicId) this.ctx.routing.unregister(createdTopicId, newInstanceName);
-        this.ctx.saveFleetConfig();
+      if (newInstanceName && createdConfig && this.ctx.fleetConfig?.instances[newInstanceName] === createdConfig && createUndo.length) {
+        const retained = undoSettingsPaths((this.ctx.getSettingsConfigPath?.() ?? join(this.ctx.dataDir, "fleet.yaml")), this.ctx.fleetConfig, createUndo);
+        if (!retained.conflicts) {
+          this.ctx.fleetConfig.instances = retained.value.instances;
+          if (createdTopicId && !this.ctx.fleetConfig.instances[newInstanceName]) this.ctx.routing.unregister(createdTopicId, newInstanceName);
+          this.ctx.saveFleetConfig();
+        }
       }
-      if (createdTopicId) {
+      const topicReferenced = createdTopicId != null && Object.values(this.ctx.fleetConfig?.instances ?? {}).some(config =>
+        String(config.topic_id) === String(createdTopicId) && (adapterId == null || config.channel_id == null || config.channel_id === adapterId));
+      if (createdTopicId && !topicReferenced) {
         // Delete through the captured creating adapter only (#1305 P2-4/r4).
         // If the world went away, fail closed: log and leave the topic for
         // manual cleanup rather than deleting through a substituted adapter.
@@ -2286,21 +2343,7 @@ export class InstanceLifecycle {
           this.ctx.logger.warn({ topicId: createdTopicId }, "Creating world has no delete capability; leaving topic for manual cleanup");
         }
       }
-      if (worktreePath) {
-        try {
-          const { execFile: execFileCb } = await import("node:child_process");
-          const { promisify } = await import("node:util");
-          const execFileAsync = promisify(execFileCb);
-          await execFileAsync("git", ["worktree", "remove", "--force", worktreePath], { cwd: directory });
-          await execFileAsync("git", ["worktree", "prune"], { cwd: directory });
-        } catch { /* best-effort worktree cleanup */ }
-      } else if (!directory && workDir) {
-        // Remove auto-created workspace directory
-        try {
-          const { rm } = await import("node:fs/promises");
-          await rm(workDir, { recursive: true, force: true });
-        } catch { /* best-effort cleanup */ }
-      }
+      await cleanupDirectory().catch(e => this.ctx.logger.warn({ err: e }, "Owned instance directory cleanup failed"));
       respond(null, `Failed to create instance: ${(err as Error).message}`);
     }
   }

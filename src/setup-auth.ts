@@ -90,6 +90,9 @@ export class SetupCredentials {
   readonly sid: string;
   readonly code: string;
   private secret: string | null = null;
+  private sessionOwner: { id: string } | null = null;
+  get sessionIdentity(): { readonly id: string } | null { return this.lockedOut ? null : this.sessionOwner; }
+  isSessionCurrent(owner: object): boolean { return !this.lockedOut && !!this.secret && this.sessionOwner === owner; }
   private failures = 0;
 
   constructor(opts: { sid?: string; code?: string } = {}) {
@@ -109,7 +112,7 @@ export class SetupCredentials {
    */
   revoke(): void {
     this.revoked = true;
-    this.secret = null;
+    this.secret = null; this.sessionOwner = null;
   }
 
   get revokedNow(): boolean { return this.revoked; }
@@ -151,6 +154,7 @@ export class SetupCredentials {
     // session. One exchange, then the code is dead.
     if (this.secret) return { kind: "rejected", attemptsLeft: this.attemptsLeft };
     this.secret = randomBytes(32).toString("hex");
+    this.sessionOwner = { id: randomBytes(16).toString("hex") };
     return { kind: "ok", secret: this.secret };
   }
 

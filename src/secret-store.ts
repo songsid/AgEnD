@@ -1,3 +1,4 @@
+import { assertSettingsLease, settingsFileResource, noteSettingsWrite, settingsFingerprint, settingsRevision } from "./settings-transaction.js";
 /**
  * Small, deliberately boring secret store for the running Settings API.
  *
@@ -33,6 +34,7 @@ export interface SecretSnapshot {
 }
 
 export interface SecretStoreOptions {
+  owner?: symbol;
   /** A test seam; production uses fsync and atomic rename below. */
   fsync?: (fd: number) => void;
 }
@@ -60,13 +62,17 @@ export function upsertSecretEnvLine(existing: string, key: string, value: string
 }
 
 export class SecretStore {
+  private readonly owner?: symbol;
   private readonly fsync: (fd: number) => void;
+  private lastWrite?: { fingerprint: string; revision: number };
 
   constructor(
     readonly path: string,
     private readonly allowedKeys: ReadonlySet<string> = new Set(),
     opts: SecretStoreOptions = {},
   ) {
+    this.owner = opts.owner;
+    assertSettingsLease(settingsFileResource(path), this.owner);
     this.fsync = opts.fsync ?? fsyncSync;
     mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
     this.rejectSymlink(path);
@@ -96,6 +102,9 @@ export class SecretStore {
 
   /** Atomic replacement; callers should retain snapshot() for rollback. */
   replace(content: string): void {
+    assertSettingsLease(settingsFileResource(this.path), this.owner);
+    const prior = this.snapshot();
+    noteSettingsWrite(this.path, prior.content, content);
     this.rejectSymlink(this.path);
     const dir = dirname(this.path);
     const temp = join(dir, `.${this.path.split(/[\\/]/).pop() ?? "env"}.${process.pid}.${randomBytes(8).toString("hex")}.tmp`);
@@ -111,6 +120,7 @@ export class SecretStore {
       this.rejectSymlink(temp);
       renameSync(temp, this.path);
       this.fsyncDirectory(dir);
+      this.lastWrite = { fingerprint: settingsFingerprint(this.snapshot()), revision: settingsRevision(this.path) };
     } catch (err) {
       if (fd !== undefined) { try { closeSync(fd); } catch { /* best effort */ } }
       try { unlinkSync(temp); } catch { /* best effort */ }
@@ -125,9 +135,11 @@ export class SecretStore {
   }
 
   restore(snapshot: SecretSnapshot): void {
+    assertSettingsLease(settingsFileResource(this.path), this.owner);
     if (snapshot.exists) this.replace(snapshot.content);
     else {
       this.rejectSymlink(this.path);
+      noteSettingsWrite(this.path, this.snapshot().content, undefined);
       try { unlinkSync(this.path); } catch (err) {
         if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw new Error("secret rollback could not remove file");
       }
@@ -135,7 +147,16 @@ export class SecretStore {
     }
   }
 
+  /** Never compensate over a later in-process or independent host write. */
+  restoreIfCurrent(snapshot: SecretSnapshot): void {
+    assertSettingsLease(settingsFileResource(this.path), this.owner);
+    if (!this.lastWrite || this.lastWrite.revision !== settingsRevision(this.path)
+      || this.lastWrite.fingerprint !== settingsFingerprint(this.snapshot())) throw new Error("secret rollback conflict");
+    this.restore(snapshot);
+  }
+
   write(key: string, value: string): SecretSnapshot {
+    assertSettingsLease(settingsFileResource(this.path), this.owner);
     this.validateKey(key);
     if (!value || /[\r\n\0]/.test(value)) throw new Error("secret value is invalid");
     const before = this.snapshot();

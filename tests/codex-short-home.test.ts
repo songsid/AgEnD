@@ -334,7 +334,11 @@ describe("B1: delete_instance cleans up the codex short home (#953)", () => {
       } as any;
       (fm as any).statuslineWatcher = { unwatch: vi.fn(), watch: vi.fn() };
       (fm as any).scheduler = null;
-      vi.spyOn((fm as any).lifecycle, "remove").mockResolvedValue(undefined);
+      vi.spyOn((fm as any).lifecycle, "remove").mockImplementation(async () => {
+        // Successful lifecycle removal deletes its registration. Keeping it
+        // would now correctly protect a same-name replacement's files.
+        delete fm.fleetConfig!.instances[name];
+      });
       await fm.removeInstance(name, authorizeExplicitInstanceRemoval("dashboard-confirmed"));
 
       // Short home must still be cleaned up even though backend is now claude-code.
