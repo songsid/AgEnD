@@ -25,6 +25,8 @@ export interface TurnReplySnapshot {
   cancelledByUser: boolean;
   target: TurnReplyTarget;
   replyAttempted: boolean;
+  /** #1377: a reply was attempted AND the adapter returned a definitive error. */
+  replyAttemptFailed: boolean;
   replyDelivered: boolean;
   completionDelivered: boolean;
   outboundDelivered: boolean;
@@ -46,6 +48,7 @@ interface ActiveTurn {
   target: TurnReplyTarget;
   latestObligation: number;
   replyAttemptedAt: number;
+  replyAttemptFailedAt: number;
   replyDeliveredAt: number;
   completionDeliveredAt: number;
   outboundDeliveredAt: number;
@@ -88,6 +91,7 @@ export class TurnReplyGuard {
         target,
         latestObligation: 1,
         replyAttemptedAt: 0,
+        replyAttemptFailedAt: 0,
         replyDeliveredAt: 0,
         completionDeliveredAt: 0,
         outboundDeliveredAt: 0,
@@ -143,7 +147,13 @@ export class TurnReplyGuard {
 
   settleToolAttempt(token: ReplyAttemptToken | null, delivered: boolean): void {
     const active = this.active;
-    if (!token || !active || token.generation !== active.generation || !delivered) return;
+    if (!token || !active || token.generation !== active.generation) return;
+    if (!delivered) {
+      // #1377: a definitive failure (adapter returned an error) is recorded so
+      // maybeProxyReplyOnTurnEnd can distinguish "in-flight" from "known-failed".
+      if (token.reply) active.replyAttemptFailedAt = Math.max(active.replyAttemptFailedAt, token.obligation);
+      return;
+    }
     active.outboundDeliveredAt = Math.max(active.outboundDeliveredAt, token.obligation);
     if (token.reply) active.replyDeliveredAt = Math.max(active.replyDeliveredAt, token.obligation);
     if (token.completionAction) active.completionDeliveredAt = Math.max(active.completionDeliveredAt, token.obligation);
@@ -158,6 +168,7 @@ export class TurnReplyGuard {
       cancelledByUser: active.cancelledByUser,
       target: { ...active.target },
       replyAttempted: active.replyAttemptedAt >= active.latestObligation,
+      replyAttemptFailed: active.replyAttemptFailedAt >= active.latestObligation,
       replyDelivered: active.replyDeliveredAt >= active.latestObligation,
       completionDelivered: active.completionDeliveredAt >= active.latestObligation,
       outboundDelivered: active.outboundDeliveredAt >= active.latestObligation,

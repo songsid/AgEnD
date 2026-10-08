@@ -4887,7 +4887,17 @@ export class Daemon extends EventEmitter {
    */
   private maybeConfirmReplyGuardIdle(pane?: string): void {
     const pending = this.replyGuardIdleConfirm;
-    if (!pending || this.isPaused || performance.now() < pending.confirmAt) return;
+    // #1377: if a successful settle already cleared the confirmation window,
+    // check if completionDelivered became true — if so, complete the guard
+    // on the next steady-idle tick so the guard doesn't persist indefinitely.
+    if (!pending) {
+      const turn = this.turnReplyGuard.snapshot();
+      if (turn && !turn.cancelledByUser && turn.phase === "awaiting" && turn.completionDelivered) {
+        this.turnReplyGuard.complete(turn.generation);
+      }
+      return;
+    }
+    if (this.isPaused || performance.now() < pending.confirmAt) return;
     this.maybeProxyReplyOnTurnEnd(pane, true);
   }
 
@@ -4979,15 +4989,6 @@ export class Daemon extends EventEmitter {
       return;
     }
 
-    if (turn.replyAttempted) {
-      // A provider timeout can be "applied, then timed out". Retrying it would
-      // risk a duplicate; report the unknown result and stop here.
-      this.clearReplyGuardConfirm();
-      this.turnReplyGuard.complete(turn.generation);
-      this.reportReplyDropWithoutRetry(turn, "reply_failed_or_unknown");
-      return;
-    }
-
     // #1241: an idle edge is not proof the turn ended. Two gates before the
     // recovery prompt goes anywhere near the CLI's input:
     // 1. work must have been observed after this generation armed — otherwise
@@ -4996,6 +4997,14 @@ export class Daemon extends EventEmitter {
     // 2. the edge must persist: the first qualifying edge only arms a
     //    confirmation window, and recovery starts only when steady idle past
     //    the window still shows no reply and no further work.
+    // Exception (#1377): a definitively failed reply (adapter returned an
+    // error) is known-bad now — no need to observe busy or wait 60s.
+    if (turn.replyAttemptFailed) {
+      this.clearReplyGuardConfirm();
+      this.turnReplyGuard.complete(turn.generation);
+      this.reportReplyDropWithoutRetry(turn, "reply_failed_or_unknown");
+      return;
+    }
     if (!turn.busyObserved) {
       this.logger.info({
         correlationId: turn.target.correlationId,
@@ -5027,6 +5036,15 @@ export class Daemon extends EventEmitter {
       return;
     }
     this.clearReplyGuardConfirm();
+    if (turn.replyAttempted) {
+      // A reply was attempted but its deliver result is unknown (in-flight
+      // IPC or a provider timeout). Retrying risks a duplicate; report the
+      // unknown result and stop here. (#1377: moved after the confirm window
+      // so an in-flight settle gets the same 60s deferral as a no-reply turn.)
+      this.turnReplyGuard.complete(turn.generation);
+      this.reportReplyDropWithoutRetry(turn, "reply_failed_or_unknown");
+      return;
+    }
     this.startReplyRecovery(turn, "no_valid_call");
   }
 
@@ -8684,6 +8702,30 @@ export class Daemon extends EventEmitter {
         // this, a restart in the reply-to-idle window would re-inject a
         // continuation for an already-answered turn.
         if (replyAttempt?.completionAction) clearInFlightTurnMarker(this.instanceDir);
+        // #1377: a confirmed completion action (reply/react/edit_message) ends
+        // the human-facing obligation immediately — the idle edge does not need
+        // to confirm it.  Clear any pending confirmation window so a later
+        // cross-instance busy→idle cycle cannot re-arm and fire false recovery.
+        // The guard itself completes on the next steady-idle tick via
+        // maybeConfirmReplyGuardIdle (which checks completionDelivered when
+        // replyGuardIdleConfirm is null) or at the next busy→idle edge.
+        // Cancelled turns are excluded: their completion semantics are handled
+        // by the idle edge's cancelledByUser check.
+        // An older reply that satisfied an earlier obligation but not the latest
+        // one (latestObligation > token.obligation) leaves completionDelivered
+        // false and must not clear the window either.
+        if (replyAttempt?.completionAction) {
+          const snap = this.turnReplyGuard.snapshot();
+          if (snap?.generation === replyAttempt.generation && snap.phase === "awaiting"
+            && snap.completionDelivered && !snap.cancelledByUser) {
+            this.clearReplyGuardConfirm();
+          }
+        }
+      } else if ((error || result == null) && replyAttempt?.reply && TURN_OUTBOUND_TOOLS.has(tool)) {
+        // #1377: the adapter returned a definitive error — record this so the
+        // confirm window can distinguish "in-flight" (unknown) from "known
+        // failed" and report unknown immediately rather than starting recovery.
+        this.turnReplyGuard.settleToolAttempt(replyAttempt, false);
       }
       const sent = this.ipcServer?.send(socket, { requestId, result, error, operationId }) ?? false;
       if (!sent) {
