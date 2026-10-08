@@ -198,7 +198,9 @@ fleet
       if (stopping) return; // SIGINT and SIGTERM share this, and crash paths call stopAll too
       stopping = true;
       console.log("\nStopping fleet...");
-      await cpuProfile?.stop("fleet shutdown");
+      // stopAll fences new profile requests synchronously, before it awaits
+      // the shared owner's stop/save. Stopping the env handle first would leave
+      // the manager open to replacing that closed owner during the save.
       await fm.stopAll().catch(err => console.error("Shutdown error:", err));
       process.exit(0);
     };
@@ -215,8 +217,7 @@ fleet
       console.error("Uncaught exception:", err);
       if (stopping) return;
       stopping = true;
-      Promise.resolve(cpuProfile?.stop("uncaught exception")).catch(() => {})
-        .then(() => fm.stopAll()).catch(() => {}).finally(() => process.exit(1));
+      fm.stopAll().catch(() => {}).finally(() => process.exit(1));
     });
 
     process.on("unhandledRejection", (err) => {

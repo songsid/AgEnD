@@ -17,14 +17,17 @@ function harness() {
     .replaceAll('import("./config.js")', "loadConfigModule()");
   const events = new Map<string, (...args: unknown[]) => unknown>();
   const order: string[] = [];
+  let profileReady = false;
   const stop = vi.fn(async () => { order.push("profile.stop"); return null; });
-  const startProfile = vi.fn(async () => { order.push("profile.start"); return { stop }; });
+  const startProfile = vi.fn(async () => { order.push("profile.start"); profileReady = true; return { stop }; });
   const manager = {
     startCpuProfileControl: vi.fn(async () => {}),
     startEnvironmentCpuProfile: startProfile,
     startAll: vi.fn(async () => { order.push("fleet.start"); }),
     startInstance: vi.fn(async () => { order.push("instance.start"); }),
-    stopAll: vi.fn(async () => { order.push("fleet.stop"); }),
+    // FleetManager owns env and runtime profiles; its shared shutdown stops
+    // the active handle before resource disposal. The CLI must enter it first.
+    stopAll: vi.fn(async () => { if (profileReady) { profileReady = false; await stop(); } order.push("fleet.stop"); }),
     loadConfig: vi.fn(() => ({ instances: { example: {} }, channel: { mode: "topic" } })),
     notifyFleetError: vi.fn(),
   };
@@ -65,9 +68,10 @@ describe("real fleet-start callback with fully stubbed effects", () => {
     expect(h.manager.startAll).not.toHaveBeenCalled(); expect(h.manager.startInstance).not.toHaveBeenCalled();
   });
 
-  it("the uncaught-exception handler cleans the profile before disposing the fleet", async () => {
+  it("the uncaught-exception handler uses the shared shutdown before disposing the fleet", async () => {
     const h = harness(); await h.action(); h.events.get("uncaughtException")!(new Error("fake"));
     await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
-    expect(h.stop).toHaveBeenCalledWith("uncaught exception"); expect(h.order.slice(-2)).toEqual(["profile.stop", "fleet.stop"]);
+    expect(h.manager.stopAll).toHaveBeenCalledTimes(1); expect(h.stop).toHaveBeenCalledTimes(1);
+    expect(h.order.slice(-2)).toEqual(["profile.stop", "fleet.stop"]);
   });
 });
