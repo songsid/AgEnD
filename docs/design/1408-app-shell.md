@@ -1,23 +1,46 @@
 # #1408 — One app shell for /ui, /view and /settings (design)
 
-Status: design for review. Milestone 2.2.0. Stack: vanilla JS + ES modules, no framework or build step (§0). The user's direction (2026-10-08):
+Status: merged design (#1412); §0 amended for step 1. Milestone 2.2.0. Stack: Preact + htm, vendored, no build step (§0). The user's direction (2026-10-08):
 - one production-style shell;
 - typography, type and layout modelled on ChatGPT's web UI, **design language only**: no OpenAI code, font, icons, logo or brand assets;
 - Discord stays the place people act; the web presents.
 
 Baseline: `/tmp/web22-shots/` (main `2d432413`). The rough edges listed there are mapped to steps in §8.
 
-## 0. Tech stack (decided 2026-10-08, the user agreed)
+## 0. Tech stack (amended 2026-10-08: Preact + htm, vendored, no build)
 
-- **No frontend framework.** The app is vanilla JS with native **ES modules** (`<script type="module" src="/assets/app.js">`, which `import`s the shared modules and, by mode, the panels; see §4 for which file lives where). The browser loads the files as they are in `src/ui/`.
-- **No build step and no new npm dependency**: no bundler, transpiler, CSS preprocessor or UI library. The release copies `src/ui/` into `dist/` as it does today.
-- **Shared pieces are ours:**
-  - design tokens as CSS custom properties, in one stylesheet;
-  - a small set of shared components: shell, sidebar, dialog/sheet, composer, menu, empty/loading/error states.
+The first version of this section chose plain DOM code. The user then chose **Preact + htm, vendored, with no build step**, because the UI keeps growing and this restructuring is the moment to pick a component model. Everything else in this design is unchanged: the §10 decisions, the runtime contracts of §3–§5, and the step plan with its rough-edge mapping.
 
-  Each component is an ES module exporting plain functions that build DOM (`el()`-style, as Settings does now), with no templating library.
-- **The #1300 CSP stays as it is:** `script-src 'self'` (module scripts from `'self'` need nothing new), `style-src 'self'`, no inline style attribute, no inline handler, no `eval`/`new Function`. Inter is a local file under `font-src 'self'`.
-- **Tests:** vitest imports the modules directly (they are ES modules) against the small DOM fakes the vm harnesses use now; no jsdom or happy-dom is added. Screenshots use the existing Playwright harness outside the repo.
+- **Preact 10.29.8 and htm 3.1.1, vendored.** These are single ESM files served same-origin from the fixed `/assets` map:
+  - `preact.module.js`;
+  - `preact-hooks.module.js`;
+  - `htm.module.js`.
+
+  They come from the npm tarballs (integrity recorded) and are byte-identical to upstream, with one exception. The hooks file's bare `from"preact"` import is rewritten to `from"./preact.module.js"` so that no import map is needed.
+  - `src/ui/shared/vendor/vendor.json` records, for each file:
+    - the sha256;
+    - the upstream path and its sha256;
+    - that one rewrite.
+  - A test fails on any byte change. It also proves the hooks file equals upstream once the rewrite is reversed.
+  - Each package's licence ships beside it: `vendor/preact.LICENSE` (MIT) and `vendor/htm.LICENSE` (Apache-2.0; htm ships no NOTICE file).
+  - The 10.x line is chosen over 11.0, which was a week old.
+- **htm, not JSX:** templates are tagged template literals (``html`<${Sidebar} items=${items} />` ``). There is no transpiler, and the browser loads `src/ui/` as it is. The release copies `src/ui/` into `dist/` as today, and a check of the packed tarball confirms the vendored files and licences ship.
+- **No other dependency, no build step.** No bundler, no CSS preprocessor, no UI kit. Components, icons and styles are ours (§2).
+- **Where Preact stops.** The chat thread stays a keyed DOM renderer, the one #1306 and #1307 reviewed, mounted by a Preact component through a `ref`.
+  - It owns live preview iframes, which must be stopped with `stopIn(node)` before their node is replaced, moved or removed (§4).
+  - Preact may move nodes during reconciliation, so it never manages the thread's children.
+  - Everything else uses Preact components and hooks: the shell, sidebar, header, menus, dialogs, composer chrome and Fleet.
+- **The #1300 CSP stays as it is:**
+  - `script-src 'self'`, with module scripts from `'self'` and a nonce only for the page's own boot data;
+  - `style-src 'self'`;
+  - no `unsafe-inline`, no `unsafe-eval`.
+
+  Preact and htm need neither: htm builds templates with plain JS, with no `eval` and no `new Function`. **No `style` prop and no `style=` attribute** on any panel; classes and tokens only. A static test rejects `style=` in templates and a `style` prop in panel code. A height that must be computed (the composer's auto-grow, a preview frame's height) is set through the CSSOM in an effect, as today.
+- **Tests:**
+  - Pure modules (routes, generations, stream modes, request classes, i18n) are tested directly in node.
+  - Components are rendered with the vendored Preact into a small DOM fake in `tests/helpers/`. No jsdom or happy-dom is added.
+  - Vitest resolves `/assets/<name>` to `src/ui/shared/<name>`, the same flat names the server serves.
+  - Screenshots and the CSP smoke (modals and `<details>` opened) use the existing Playwright harness outside the repo.
 
 ## 1. Where we start (survey of main)
 
@@ -189,6 +212,8 @@ The bottom tabs hide while the keyboard is open, using `visualViewport` (the com
 ## 4. Panels: modules with a lifecycle
 
 Each panel is an ES module that exports `{ mount(root, route, ctx), update(route), unmount() }`. Modules scope their names, which ends the global collisions of §1.
+
+With Preact (§0, amended), a panel module exports a component. `mount` and `unmount` are its effect lifecycle, `update(route)` is a new `route` prop, and `ctx` (timers, listeners, fetches, subscriptions, `current()`) comes from a per-mount hook. That hook disposes everything in the effect cleanup and issues a new generation lease on every route change, including a same-panel update. The rules below apply unchanged.
 
 **Where modules live: one public closure, private panels behind the gate.**
 - The entry `app.js`, everything it imports **statically**, and `panel-view.js` with its own static imports form the **public closure**. All of it is served from `/assets/`.

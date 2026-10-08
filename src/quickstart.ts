@@ -10,6 +10,8 @@ import { execSync } from "node:child_process";
 import yaml from "js-yaml";
 import { BACKENDS, validateBotToken, verifyBotToken } from "./setup-wizard.js";
 import { getAgendHome } from "./paths.js";
+import { setupGuideUrl } from "./setup-guide.js";
+export { SETUP_GUIDE_URLS, setupGuideUrl } from "./setup-guide.js";
 
 const DATA_DIR = getAgendHome();
 const FLEET_CONFIG_PATH = join(DATA_DIR, "fleet.yaml");
@@ -205,7 +207,8 @@ async function runTelegramFlow(rl: import("node:readline/promises").Interface): 
   console.log(bold("Telegram Bot"));
   console.log(`  1. Open BotFather: ${dim("https://t.me/BotFather")}`);
   console.log(`  2. Send /newbot and pick a name`);
-  console.log(`  3. Copy the token\n`);
+  console.log(`  3. Copy the token`);
+  console.log(`  📖 Setup guide: ${dim(setupGuideUrl("telegram"))}\n`);
 
   let token = "";
   let botUsername = "";
@@ -252,7 +255,8 @@ async function runDiscordFlow(rl: import("node:readline/promises").Interface): P
   console.log(bold("Discord Bot"));
   console.log(`  1. Go to Discord Developer Portal: ${dim("https://discord.com/developers/applications")}`);
   console.log(`  2. New Application → Bot → Reset Token → Copy`);
-  console.log(`  3. Enable ${bold("Message Content Intent")} under Bot → Privileged Gateway Intents\n`);
+  console.log(`  3. Enable ${bold("Message Content Intent")} under Bot → Privileged Gateway Intents`);
+  console.log(`  📖 Setup guide: ${dim(setupGuideUrl("discord"))}\n`);
 
   let token = "";
   let botUsername = "";

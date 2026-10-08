@@ -1,8 +1,9 @@
 import { defineConfig } from "vitest/config";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 const { scrubEnvironment } = createRequire(import.meta.url)("./tests/support/process-guard.cjs");
 scrubEnvironment(process.env);
 
@@ -15,6 +16,25 @@ process.once("exit", () => {
 });
 
 export default defineConfig({
+  // #1408: the web app's modules import each other by the URLs the server serves them at — /assets/<name> is
+  // src/ui/shared/<name> (the fixed asset map, flat names), /ui/js/<name> is src/ui/<name>. Tests resolve them the same.
+  resolve: {
+    alias: [
+      { find: /^\/assets\/([a-z0-9._-]+)$/, replacement: `${fileURLToPath(new URL("./src/ui/shared/", import.meta.url))}$1` },
+      // (with the ?retry=<n> a retried load asks for, as the server serves it)
+      { find: /^\/ui\/js\/([a-z0-9_-]+\.js)(\?retry=\d+)?$/, replacement: `${fileURLToPath(new URL("./src/ui/", import.meta.url))}$1$2` },
+    ],
+  },
+  // The vendored Preact/htm files end with a sourceMappingURL to maps we do not ship (vendor/vendor.json keeps the
+  // files byte-identical); without this, vite logs a missing-map error for each. Tests read the bytes from disk.
+  plugins: [{
+    name: "vendored-without-source-maps",
+    enforce: "pre",
+    load(id: string) {
+      if (/[\\/]src[\\/]ui[\\/]shared[\\/](preact|preact-hooks|htm)\.module\.js$/.test(id)) return readFileSync(id, "utf8").replace(/\n\/\/# sourceMappingURL=[^\n]*\s*$/, "\n");
+      return null;
+    },
+  }],
   test: {
     globals: true,
     globalSetup: ["./tests/setup-process-guard-global.ts"],

@@ -72,7 +72,21 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
   // #1408: the design tokens every panel shares, and the font they name (Inter, SIL OFL 1.1: shared/fonts/OFL.txt).
   "tokens.css": { file: join("shared", "tokens.css"), type: "text/css; charset=utf-8" },
   "inter.woff2": { file: join("shared", "fonts", "inter.woff2"), type: "font/woff2" },
+  // #1408: the app shell's public closure — the entry module, everything it imports statically, and the vendored
+  // Preact + htm (shared/vendor/vendor.json, byte-checked). Static code with no data, like signin.js; the panels that
+  // need a session stay behind the gate under /ui/js/ and are reached only by a dynamic import.
+  ...Object.fromEntries([
+    "app.js", "app-html.js", "app-i18n.js", "app-route.js", "app-nav.js", "app-ctx.js", "app-stream.js", "app-store.js",
+    "app-shell.js", "app-session.js", "ui-dialog.js", "ui-menu.js", "ui-states.js", "ui-icons.js", "ui-toast.js",
+    "preact.module.js", "preact-hooks.module.js", "htm.module.js",
+  ].map(name => [name, { file: join("shared", name), type: "text/javascript; charset=utf-8" }])),
+  "app.css": { file: join("shared", "app.css"), type: "text/css; charset=utf-8" },
 };
+
+/** True for a name `/assets/` serves. The public link's manifest asks this too: one list, not two. */
+export function isServedAsset(name: string): boolean {
+  return Object.prototype.hasOwnProperty.call(ASSETS, name);
+}
 
 export function isAuthPath(path: string): boolean {
   return path === "/" || path === "/signin" || path.startsWith("/auth/") || path.startsWith("/assets/");

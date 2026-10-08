@@ -3,10 +3,12 @@
  * nonce; no panel has a style attribute — not in its markup, not in what its scripts write — and what a script colours
  * or sizes at run time goes through the style object (CSSOM), which the policy does not govern. Real listener for the
  * served pages; no fleet started. (#1268 is the same for scripts: tests/web-csp-1268.test.ts.)
+ * #1408 step 1: the dashboard is the app shell: app.html has no <style> block at all (tokens.css and app.css are
+ * external), and every app module is scanned like the panels' scripts.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { request, type Server } from "node:http";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import vm from "node:vm";
@@ -14,8 +16,10 @@ import { FleetManager } from "../src/fleet-manager.js";
 import { WEB_CONTENT_SECURITY_POLICY, panelContentSecurityPolicy } from "../src/web-host-guard.js";
 
 const UI = join(process.cwd(), "src", "ui");
-const PANELS = ["dashboard.html", "view.html", "settings.html", "signin.html"];
-const SHARED = ["shared/agend-auth.js", "shared/shell.js", "shared/signin.js", "shared/theme.js", "chat-render.js"];
+const PANELS = ["app.html", "view.html", "settings.html", "signin.html"];
+// Every script a panel can load from this origin: the app's modules and the shared ones (*.module.js is vendored Preact/htm).
+const isModule = (f: string) => f.endsWith(".js") && !f.endsWith(".module.js");
+const SHARED = [...readdirSync(join(UI)).filter(isModule), ...readdirSync(join(UI, "shared")).filter(isModule).map(f => join("shared", f))];
 const tempDirs: string[] = [];
 afterEach(() => { for (const d of tempDirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 const directive = (csp: string, name: string) => csp.split(";").map(s => s.trim()).find(s => s.startsWith(name + " ")) ?? "";
@@ -42,14 +46,18 @@ describe("no style attribute, anywhere a panel could write one", () => {
   it.each(PANELS)("%s: every <style> block is a bare <style>, so the server's nonce reaches it", (file) => {
     const src = readFileSync(join(UI, file), "utf8");
     const tags = [...src.matchAll(/<style\b[^>]*>/g)].map(m => m[0]);
-    expect(tags.length, file).toBeGreaterThan(0);
+    // The app shell's styles are external (tokens.css, app.css): it has no style block to nonce.
+    if (file === "app.html") expect(tags, "the shell has no <style> block").toEqual([]);
+    else expect(tags.length, file).toBeGreaterThan(0);
     expect(tags.filter(t => t !== "<style>"), file).toEqual([]);
   });
 
   it("the shared scripts a panel loads write none either", () => {
     for (const f of SHARED) {
-      const src = readFileSync(join(UI, f), "utf8");
-      expect(src.match(/\sstyle\s*=\s*["'`]/gi) ?? [], f).toEqual([]);
+      const src = readFileSync(join(UI, f), "utf8");   // every app module too: the same rule
+      expect(src.match(/\sstyle\s*=\s*["'`{$\\]/gi) ?? [], f).toEqual([]);
+      // An htm prop (style=${…}) or an attribute object's key (el(tag, { style: … })) is a style attribute too.
+      expect(src.match(/[{,]\s*style\s*:\s*["'`]/g) ?? [], f).toEqual([]);
       expect(src, f).not.toMatch(/setAttribute\(\s*["'`]style["'`]|createElement\(\s*["'`]style["'`]/);
     }
   });
@@ -114,7 +122,8 @@ describe("every panel as served", () => {
         expect(nonce, `${path}: style-src names a nonce`).toBeTruthy();
         expect(directive(csp, "script-src"), "one nonce for both").toContain(`'nonce-${nonce}'`);
         const tags = [...res.body.matchAll(/<style\b([^>]*)>/g)].map(m => m[1]!.trim());
-        expect(tags.length, path).toBeGreaterThan(0);
+        if (path === "/ui") expect(tags, "the app shell's styles are external files").toEqual([]);
+        else expect(tags.length, path).toBeGreaterThan(0);
         for (const a of tags) expect(a, path).toBe(`nonce="${nonce}"`);
         expect(res.body.match(/\sstyle\s*=\s*"/gi) ?? [], path).toEqual([]);
       }

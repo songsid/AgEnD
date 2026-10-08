@@ -1,11 +1,12 @@
 /**
  * #1268: no `'unsafe-inline'` script on any web panel. Each panel's own inline <script> runs by a per-response
- * nonce; no panel has an inline `on*=` handler (the dashboard's buttons name an action in data-act, and one
- * delegated listener runs only listed actions). Real listener for the served pages; no fleet started.
+ * nonce; no panel has an inline `on*=` handler. #1408 step 1: the dashboard is the app shell (app.html) and its modules:
+ * they bind handlers as htm props (`onClick=${fn}`), never as attribute strings, and the shell has no inline script at
+ * all. Real listener for the served pages; no fleet started.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { request, type Server } from "node:http";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import vm from "node:vm";
@@ -13,7 +14,11 @@ import { FleetManager } from "../src/fleet-manager.js";
 import { WEB_CONTENT_SECURITY_POLICY, panelContentSecurityPolicy, sendPanelHtml } from "../src/web-host-guard.js";
 
 const UI = join(process.cwd(), "src", "ui");
-const PANELS = ["dashboard.html", "view.html", "settings.html", "signin.html", join("web-terminal", "terminal.html")];
+const PANELS = ["app.html", "view.html", "settings.html", "signin.html", join("web-terminal", "terminal.html")];
+// Every script a panel can load from this origin: the app's modules and the shared ones (*.module.js is vendored Preact/htm).
+const isModule = (f: string) => f.endsWith(".js") && !f.endsWith(".module.js");
+const MODULES = [...readdirSync(UI).filter(isModule), ...readdirSync(join(UI, "shared")).filter(isModule).map(f => join("shared", f))];
+const APP = readFileSync(join(UI, "app.html"), "utf8");
 const tempDirs: string[] = [];
 afterEach(() => { for (const d of tempDirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
@@ -30,6 +35,19 @@ describe("no inline event handler, anywhere a panel could write one", () => {
     for (const f of ["shared/agend-auth.js", "shared/shell.js", "chat-render.js"]) {
       expect(readFileSync(join(UI, f), "utf8").match(/\son[a-z]+\s*=\s*["'`]/gi) ?? [], f).toEqual([]);
     }
+  });
+
+  // The app's modules bind with htm props (onClick=${fn}): a quoted or template-string value is an attribute written as text.
+  it.each(MODULES)("%s: no on*= attribute written as a string, and no javascript: URL", (file) => {
+    const src = readFileSync(join(UI, file), "utf8");
+    expect(src.match(/\son[a-z]+\s*=\s*["'`]/gi) ?? [], file).toEqual([]);
+    // A javascript: URL is one written as a value (chat-render's LANG_ALIAS names the key, unquoted, and is fine).
+    expect(src, file).not.toMatch(/["'`(=]\s*javascript:/i);
+  });
+
+  it("the app shell has no inline script or inline handler at all: its one script is external", () => {
+    expect(APP.match(/<script(?![^>]*\ssrc=)[^>]*>/gi) ?? []).toEqual([]);
+    expect(APP.match(/\son[a-z]+\s*=/gi) ?? []).toEqual([]);
   });
 });
 
@@ -91,6 +109,7 @@ describe("every panel as served", () => {
           // Every opening script tag the page carries, in any case.
           const scripts = [...res.body.matchAll(/<script\b([^>]*)>/gi)].map(x => x[1]!);
           const inline = scripts.filter(a => !/\ssrc=/.test(a));
+          if (path === "/ui") expect(inline, "the app shell loads only external scripts").toEqual([]);
           if (inline.length) {
             expect(m, `${path} has inline script, so its CSP needs a nonce`).not.toBeNull();
             for (const a of inline) expect(a.trim(), path).toBe(`nonce="${m![1]}"`);
@@ -100,57 +119,15 @@ describe("every panel as served", () => {
           expect(res.body.match(/\son[a-z]+\s*=\s*"/gi) ?? [], path).toEqual([]);
         }
       }
-      expect(seen.size, "/ui, /view and /settings each have inline script, twice").toBe(6);
+      expect(seen.size, "/view and /settings each have inline script, twice; /ui none").toBe(4);
     } finally { await h.stop(); }
   }, 30_000);
 });
 
-describe("the dashboard's one click listener (the real page script)", () => {
-  const RENDER = readFileSync(join(UI, "chat-render.js"), "utf8");
-  const PAGE = readFileSync(join(UI, "dashboard.html"), "utf8").match(/<script>\n([\s\S]*?)<\/script>/)![1]!;
-  function page() {
-    let listener!: (e: unknown) => void;
-    const node = () => ({ style: {}, remove() {}, append() {}, setAttribute() {}, children: [], textContent: "", innerHTML: "", className: "" });
-    const c = vm.createContext({
-      /* a returning browser: it has seen the first sign-in tour (#1366) */ localStorage: { getItem: (k: string) => k === "agend_tour_done" ? "1" : null }, navigator: { language: "en" },
-      document: { addEventListener: (t: string, f: (e: unknown) => void) => { if (t === "click") listener = f; }, getElementById: () => node(), createElement: () => node(), body: { appendChild() {} } },
-      setTimeout: () => 0, clearTimeout() {}, setInterval: () => 0, clearInterval() {},
-      fetch: async () => ({ ok: true, json: async () => ({}) }), EventSource: class { addEventListener() {} },
-    });
-    vm.runInContext(RENDER, c);
-    vm.runInContext(PAGE, c);
-    const calls: unknown[][] = [];
-    (c as any).record = (...a: unknown[]) => calls.push(a);
-    vm.runInContext('doAction=(a)=>record("doAction",a);taskAct=(i,a)=>record("taskAct",i,a);sel=(n)=>record("sel",n);selFleet=()=>record("selFleet");', c);
-    const click = (dataset: Record<string, string>, extra: Record<string, unknown> = {}) => {
-      const el = { dataset, closest: (q: string) => (q === "[data-act]" ? el : null), ...extra };
-      listener({ target: el });
-    };
-    return { click, calls, read: (s: string) => vm.runInContext(s, c) };
-  }
-
-  it("runs the named action with its arguments", () => {
-    const p = page();
-    p.click({ act: "doAction", arg: "restart" });
-    p.click({ act: "taskAct", arg: "t-1", arg2: "claim" });
-    p.click({ act: "sel", arg: `x"><img src=y onerror=z>` });
-    p.click({ act: "selFleet" });
-    expect(p.calls).toEqual([["doAction", "restart"], ["taskAct", "t-1", "claim"], ["sel", `x"><img src=y onerror=z>`], ["selFleet"]]);
-  });
-
-  it("runs nothing that is not listed — not a page function, not a prototype name", () => {
-    const p = page();
-    for (const act of ["constructor", "__proto__", "toString", "hasOwnProperty", "eval", "alert", "doAction2", ""]) p.click({ act, arg: "x" });
-    p.click({}, { closest: () => null });
-    expect(p.calls).toEqual([]);
-  });
-
-  it("an argument goes into its attribute escaped — quotes cannot end it", () => {
-    const p = page();
-    expect(p.read(`escAttr('a"b\\'c<d>&')`)).toBe("a&quot;b&#39;c&lt;d&gt;&amp;");
-    expect(p.read("escAttr(null)")).toBe("");
-  });
-});
+// #1408 step 1 — dropped: "the dashboard's one click listener (the real page script)" (runs listed data-act names, not
+// prototype names, escapes its arguments). The app has no data-act delegation: htm binds each handler as a prop, so
+// there is no attribute that can name an action. The equivalent is in tests/sidebar-instance-identity.test.ts ("a hostile
+// name stays one name") and in the static checks above.
 
 // ── #1303 review: a value in a quoted attribute can never become attributes of its own ──
 
@@ -166,54 +143,35 @@ function startTags(html: string): Array<{ tag: string; attrs: Array<[string, str
 }
 const unescape = (v: string) => v.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
 
-describe("hostile names and config values stay inside their attribute (#1303 review)", () => {
-  const RENDER = readFileSync(join(UI, "chat-render.js"), "utf8");
-  const PAGE = readFileSync(join(UI, "dashboard.html"), "utf8").match(/<script>\n([\s\S]*?)<\/script>/)![1]!;
-  const HOSTILE = `victim" data-act="doAction" data-arg="stop" x="`;
-  function page(api: (m: string, p: string) => unknown) {
-    const nodes: Record<string, { innerHTML: string; textContent: string; style: Record<string, string>; className: string; querySelectorAll(): unknown[]; addEventListener(): void }> = {};
-    const node = (id: string) => (nodes[id] ??= { innerHTML: "", textContent: "", style: {}, className: "", querySelectorAll: () => [], addEventListener() {} });
-    const posts: string[] = [];
-    const c = vm.createContext({
-      /* a returning browser: it has seen the first sign-in tour (#1366) */ localStorage: { getItem: (k: string) => k === "agend_tour_done" ? "1" : null }, navigator: { language: "en" },
-      document: { addEventListener() {}, getElementById: (id: string) => node(id), createElement: () => ({ style: {}, remove() {}, append() {} }), body: { appendChild() {} } },
-      setTimeout: () => 0, clearTimeout() {}, setInterval: () => 0, clearInterval() {},
-      fetch: async (u: string, o: { method?: string } = {}) => { if ((o.method ?? "GET") !== "GET") posts.push(String(u)); return { ok: true, json: async () => ({}) }; },
-      EventSource: class { addEventListener() {} },
-    });
-    vm.runInContext(RENDER, c);
-    vm.runInContext(PAGE, c);
-    (c as any).apiStub = api;
-    vm.runInContext("api = async (m, p, b) => apiStub(m, p, b);", c);
-    return { nodes, posts, read: (s: string) => vm.runInContext(s, c) };
-  }
+// #1408 step 1 — dropped: "hostile names and config values stay inside their attribute (#1303 review)". Its roster case
+// is ported to the app's sidebar (tests/sidebar-instance-identity.test.ts, "a hostile name stays one name"). Its config-tab
+// case read the dashboard's innerHTML string builder, which the app does not have: the fleet's config tab binds values
+// as htm props, so no value can end an attribute.
 
-  it("the roster: a quote-bearing instance name forges no data-act; data-n and the tooltip carry the name whole", () => {
-    const p = page(() => ({}));
-    p.read(`instances = [{ name: ${JSON.stringify(HOSTILE)}, status: "running", backend: "claude-code" }]; mode = "instance"; cur = null; renderList();`);
-    const tags = startTags(p.nodes.instanceList!.innerHTML);
-    const row = tags.find(t => t.attrs.some(([k]) => k === "data-n"))!;
-    expect(row.attrs.map(([k]) => k).sort()).toEqual(["class", "data-n", "role", "tabindex", "title"]);
-    expect(unescape(row.attrs.find(([k]) => k === "data-n")![1])).toBe(HOSTILE);
-    expect(tags.flatMap(t => t.attrs).filter(([k]) => k === "data-act"), "no element in the roster names an action").toEqual([]);
+describe("the app builds its markup from templates and props; the thread's string template is escaped and allow-listed (#1303)", () => {
+  const THREAD = readFileSync(join(UI, "chat-thread.js"), "utf8");
+  it.each(MODULES.filter(f => f !== join("chat-thread.js")))("%s: no innerHTML write, insertAdjacentHTML, document.write, eval or new Function", (file) => {
+    const src = readFileSync(join(UI, file), "utf8");
+    expect(src, file).not.toMatch(/\.innerHTML\s*=/);
+    expect(src, file).not.toContain("insertAdjacentHTML");
+    expect(src, file).not.toContain("document.write");
+    expect(src, file).not.toMatch(/\beval\(|new Function\(/);
   });
 
-  it("the config tab: hostile group id and allowed users stay one value each; the only data-act are the page's own", async () => {
-    const p = page(async (_m, path) => path === "/ui/config"
-      ? { channel: { type: `x" data-act="doAction`, group_id: `-1" data-act="doAction" data-arg="delete`, access: { mode: "locked", allowed_users: [`a" data-act="saveConfig`, "b"] } }, defaults: {}, project_roots: [`/r" data-act="removeParent`] }
-      : {});
-    await p.read("loadConfig()");
-    const tags = startTags(p.nodes.configView!.innerHTML);
-    const acts = tags.flatMap(t => t.attrs).filter(([k]) => k === "data-act").map(([, v]) => v);
-    expect(acts.sort()).toEqual(["addRoot", "removeParent", "saveConfig", "togglePw", "togglePw"].sort());
-    const gid = tags.find(t => t.attrs.some(([k, v]) => k === "id" && v === "cfg-gid"))!;
-    expect(unescape(gid.attrs.find(([k]) => k === "value")![1])).toBe(`-1" data-act="doAction" data-arg="delete`);
-    const users = tags.find(t => t.attrs.some(([k, v]) => k === "id" && v === "cfg-users"))!;
-    expect(unescape(users.attrs.find(([k]) => k === "value")![1])).toBe(`a" data-act="saveConfig, b`);
+  // The conversation's messages are one string template (the keyed renderer, #1307): every data-* value in it is escaped
+  // by escAttr, and the one delegated listener runs only the actions its template names.
+  it("chat-thread: every data-* value is escaped, and the one listener runs only the actions the template names", () => {
+    expect(THREAD.match(/data-[\w-]+="\$\{(?!escAttr\()/g) ?? [], "an unescaped data-* value").toEqual([]);
+    // Named in the template (data-act="…") or set on a node (dataset.act = "…").
+    const named = [...new Set([...THREAD.matchAll(/data-act="([^"]+)"/g), ...THREAD.matchAll(/dataset\.act = "([^"]+)"/g)].map(m => m[1]!))].sort();
+    const handled = [...THREAD.slice(THREAD.indexOf("function onClick(e)"), THREAD.indexOf("function onClick(e)") + 900).matchAll(/act === "(\w+)"/g)].map(m => m[1]!).sort();
+    expect(named).toEqual(["copyCode", "copyMsg", "toggleFold", "toggleWrap"]);
+    expect(handled).toEqual(named);
+    expect(THREAD).toContain('e.target.closest("[data-act]")');
   });
 
-  it("esc() escapes quotes on every panel (the same function writes text and attributes)", () => {
-    for (const file of ["dashboard.html", "view.html", "settings.html"]) {
+  it("esc() escapes quotes on the panels that still write markup by string (the same function writes text and attributes)", () => {
+    for (const file of ["view.html", "settings.html"]) {
       const src = readFileSync(join(UI, file), "utf8");
       const m = src.match(/(?:function esc\(s\) \{[^\n]*\}|const esc = \(s\) => [^\n]*;)/);
       expect(m, file).not.toBeNull();

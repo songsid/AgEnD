@@ -205,6 +205,7 @@ import {
 } from "./tool-permissions.js";
 import { decideWebGate, loadOrCreateWebToken, readWebToken } from "./web-auth.js";
 import { bypassesWebGate, handleAuthRequest, serveSigninPage, type AuthApiContext } from "./auth-api.js";
+import { isWebPageNavigation } from "./web-shell-routes.js";
 import { tokenEpoch, WebSessionStore } from "./web-session.js";
 import { WebLoginCodes, LOGIN_CODE_TTL_MS } from "./web-login.js";
 import { allowedHostNames, applyWebSecurityHeaders, hostnameOf, isHostAllowed, WEB_HOST_REJECTED_MESSAGE } from "./web-host-guard.js";
@@ -16831,7 +16832,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
           // not sent" by asking from inside the site. API callers still get JSON.
           if (decision.reason === "no-credential" && req.method === "GET"
             && String(req.headers.accept ?? "").includes("text/html")
-            && (requestPath === "/ui" || requestPath === "/settings" || requestPath === "/view")) {
+            && isWebPageNavigation(requestPath)) {
             serveSigninPage(res, 401);
             return;
           }

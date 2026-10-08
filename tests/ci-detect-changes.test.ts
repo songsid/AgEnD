@@ -17,7 +17,7 @@
  * Then grep on the variable (no pipes to git).
  */
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, rm as rmAsync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import yaml from "js-yaml";
@@ -44,8 +44,17 @@ const SCRIPT = rawScript.replace(/"\$\{\{ github\.event_name \}\}"/g, '"pull_req
 
 const dirs: string[] = [];
 
-afterAll(() => {
-  for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+afterAll(async () => {
+  // Use async rm with maxRetries so that git background processes (pack, gc)
+  // that briefly hold file handles don't cause ENOTEMPTY flakes.
+  const toRemove = dirs.splice(0);
+  await Promise.allSettled(
+    toRemove.map(d =>
+      new Promise<void>((resolve) =>
+        rmAsync(d, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }, () => resolve()),
+      ),
+    ),
+  );
 });
 
 /** Run the detect-changes script with given BASE/HEAD SHAs in a git repo. */

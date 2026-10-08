@@ -11,7 +11,7 @@
     en: {
       checking: "Checking your session…", title: "Sign in to AgEnD", lead: "Enter the one-time code from your chat channel.",
       label: "One-time code", submit: "Sign in", working: "Signing in…",
-      hint: "Send /dashboard to your AgEnD bot, or run `agend web --code` on the host. A code works once and expires in 5 minutes.",
+      hint: "Send /dashboard to your AgEnD bot, or run “agend web --code” on the host. A code works once and expires in 5 minutes.",
       refused: "That code did not work — it may be wrong, expired or already used. Ask for a new one with /dashboard.",
       paused: "Too many wrong codes — sign-in is paused for a few minutes.",
       network: "Could not reach AgEnD. Check the connection and try again.",
@@ -19,7 +19,7 @@
     "zh-TW": {
       checking: "正在確認登入狀態…", title: "登入 AgEnD", lead: "請輸入聊天頻道給你的一次性登入碼。",
       label: "一次性登入碼", submit: "登入", working: "登入中…",
-      hint: "在 AgEnD bot 傳 /dashboard，或在主機執行 `agend web --code`。登入碼只能用一次，5 分鐘內有效。",
+      hint: "在 AgEnD bot 傳 /dashboard，或在主機執行「agend web --code」。登入碼只能用一次，5 分鐘內有效。",
       refused: "登入碼無效：可能輸入錯誤、已過期或已使用。請用 /dashboard 再要一個。",
       paused: "錯誤次數過多，登入暫停幾分鐘。",
       network: "連不上 AgEnD，請檢查連線後再試。",
@@ -41,10 +41,27 @@
   } catch { /* nothing to clean */ }
   document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.getAttribute("data-i18n")); });
 
-  // Where to go afterwards: only the three panels, never an arbitrary URL.
+  // An old deep link, /ui#instance=<name> (#1408 §3): the fragment never reaches the server, and the sign-in page is
+  // served at the URL that was asked for, so it is still in location.hash here. Exactly that one form becomes the new
+  // path /ui/chat/<name>; any other fragment is dropped. The name is held to the same rule as the server's.
+  function legacyChatTarget(pathname, hash) {
+    if (pathname !== "/ui") return null;
+    const m = /^#instance=([^&#]*)$/.exec(hash || "");
+    if (!m) return null;
+    let name;
+    try { name = decodeURIComponent(m[1]); } catch { return null; }
+    if (!name || name.length > 128 || /[/\\\u0000-\u001f\u007f]/.test(name) || name === "." || name.includes("..")) return null;
+    return "/ui/chat/" + encodeURIComponent(name);
+  }
+
+  // Where to go afterwards: only the app's pages, never an arbitrary URL.
   function nextTarget() {
     let candidate = new URLSearchParams(location.search).get("next");
-    if (!candidate && location.pathname !== "/signin") candidate = location.pathname + location.search;
+    if (!candidate && location.pathname !== "/signin") {
+      const legacy = legacyChatTarget(location.pathname, location.hash);
+      if (legacy) return legacy;
+      candidate = location.pathname + location.search;
+    }
     try {
       const u = new URL(candidate || "/ui", location.origin);
       u.searchParams.delete("token");

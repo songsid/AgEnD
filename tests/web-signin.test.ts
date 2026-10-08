@@ -480,7 +480,7 @@ describe("agend web --code", () => {
 
 describe("the pages themselves", () => {
   it("load the CSRF helper, and nothing in them carries a credential", () => {
-    for (const page of ["dashboard.html", "settings.html"]) {
+    for (const page of ["app.html", "settings.html"]) {  // #1408 step 1: the dashboard is the app shell
       const html = readFileSync(join(process.cwd(), "src", "ui", page), "utf8");
       expect(html, page).toContain('<script src="/assets/agend-auth.js"></script>');
     }
