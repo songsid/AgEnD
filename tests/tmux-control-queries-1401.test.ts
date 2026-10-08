@@ -96,6 +96,7 @@ function daemonFixture(manager: TmuxManager, control?: TmuxControlClient, name =
 
 describe("#1401 control read protocol and manager wiring", () => {
   it("moves capture/window liveness/pane status to the real port without read children", async () => {
+    fallback("unexpected fallback\n");
     const { proc, manager } = opened();
     const capture = manager.capturePane(); answer(proc, "中文\\raw\n\n");
     expect(await capture).toBe("中文\\raw\n\n");
@@ -151,9 +152,12 @@ describe("#1401 control read protocol and manager wiring", () => {
   });
 
   it("rejects wrong session/socket and safely serializes special tokens", async () => {
-    const { client, manager } = opened();
+    const { client, proc, manager } = opened();
+    expect(client.isFor("other", getTmuxSocketName())).toBe(false);
     await expect(client.read({ kind: "windows", session: "other" })).rejects.toThrow("scope");
-    TmuxManager.setSocketName("other"); await expect(manager.capturePane()).rejects.toThrow("scope");
+    TmuxManager.setSocketName("other"); const wrong = manager.capturePane();
+    if (proc.stdin.write.mock.calls.length) answer(proc, "wrong scope\n");
+    await expect(wrong).rejects.toThrow("scope");
     expect(tmuxCommandToken("s' ; $HOME #{pane_id}")).toBe("'s'\\'' ; $HOME #{pane_id}'");
     await expect(client.read({ kind: "capture", session: "s", window: "@1\nkill-server" })).rejects.toThrow("Invalid");
   });
@@ -162,7 +166,7 @@ describe("#1401 control read protocol and manager wiring", () => {
     fallback(); const { proc, manager } = opened();
     const capture = manager.capturePane();
     proc.stdout.emit("data", Buffer.from("%begin 2 4 1\n" + "x".repeat(TMUX_READ_MAX_BYTES + 65_537) + (newline ? "\n" : "")));
-    expect(await capture).toBe("fallback\n"); expect(proc.kill).toHaveBeenCalledOnce();
+    expect(proc.kill).toHaveBeenCalledOnce(); expect(await capture).toBe("fallback\n");
   });
 });
 
@@ -202,6 +206,16 @@ describe("#1401 deadlines and physical process ownership", () => {
     answer(proc, "first\n"); expect(await first).toBe("first\n"); expect(proc.stdin.write).toHaveBeenCalledTimes(1);
   });
 
+  it("rejects a fallback ACK at the total deadline before the timer callback", async () => {
+    let complete!: (error: null, stdout: string) => void;
+    mocks.execFile.mockImplementation((_f, _a, _o, callback) => { complete = callback; return processFixture(); });
+    const client = new TmuxControlClient("s"); clients.push(client);
+    const result = client.read({ kind: "windows", session: "s" }, 100);
+    const rejection = expect(result).rejects.toMatchObject({ kind: "timeout" });
+    const clock = vi.spyOn(performance, "now").mockReturnValue(100); complete(null, "late\n");
+    await rejection; clock.mockRestore();
+  });
+
   it("holds two timed-out fallback children until exit, drops late results", async () => {
     const children: Proc[] = []; const callbacks: Array<(error: null, out: string) => void> = [];
     mocks.execFile.mockImplementation((_f, _a, _o, cb) => { const child = processFixture(); children.push(child); callbacks.push(cb); return child; });
@@ -238,11 +252,14 @@ describe("#1401 real daemon handlers and registration fences", () => {
     expect(mocks.execFile).not.toHaveBeenCalled(); expect(mocks.spawn).toHaveBeenCalledTimes(1);
   });
 
-  it.each(["spawnGeneration", "launchFenceEpoch"])("drops stale health result after %s changes", async field => {
+  it.each(["spawnGeneration", "launchFenceEpoch", "tmux"])("drops stale health result after %s changes", async field => {
     const { client, proc, manager } = opened(); const { d } = daemonFixture(manager, client);
     const publish = vi.spyOn(d, "setProcessStatus"); const kill = vi.spyOn(manager, "killWindow");
-    d.startHealthCheck(); await vi.advanceTimersByTimeAsync(30_000); d[field]++;
+    d.startHealthCheck(); await vi.advanceTimersByTimeAsync(30_000);
+    if (field === "tmux") d.tmux = {};
+    else d[field]++;
     answer(proc, "1 137\n"); await tick();
+    if (proc.stdin.write.mock.calls.length > 1) { answer(proc, "old crash output\n"); await tick(); }
     expect(publish).not.toHaveBeenCalled(); expect(kill).not.toHaveBeenCalled(); expect(d.logPaneDeath).not.toHaveBeenCalled();
   });
 
@@ -295,6 +312,7 @@ describe("#1401 real daemon handlers and registration fences", () => {
   });
 
   it("window recovery constructs a manager with the same port", async () => {
+    fallback("unexpected fallback\n");
     const { client, proc, manager } = opened(); const { d, dir } = daemonFixture(manager, client);
     const recover = d.recoverWindow(); answer(proc, "@2|||fixture\n"); await tick();
     answer(proc, "%2\n"); expect(await recover).toBe("@2");

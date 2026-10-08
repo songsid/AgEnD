@@ -1,8 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 /**
- * Every reconnect re-resolves every registered window, one `tmux list-panes`
- * subprocess each. A registration for a window that no longer exists is therefore
+ * Every reconnect re-resolves every registered window, one bounded read each. A registration for a window that no longer exists is therefore
  * a permanent per-reconnect cost, paid for the life of the fleet process — and the
  * registry only ever grew: a crash respawn creates a new window id and the dead
  * one was never retired.
@@ -29,7 +28,7 @@ type Internals = {
 
 /** Next `tmux list-panes` succeeds with a pane id, or fails like a missing window. */
 function tmuxWill(outcome: "ok" | "fail"): void {
-  execFile.mockImplementation((_cmd: string, _args: string[], cb: (e: Error | null, out: string) => void) => {
+  execFile.mockImplementation((_cmd: string, _args: string[], _options: unknown, cb: (e: Error | null, out: string) => void) => {
     if (outcome === "ok") cb(null, "%3\n");
     else cb(new Error("can't find window: @7"), "");
   });

@@ -113,8 +113,6 @@ export class TmuxControlClient extends EventEmitter implements TmuxReadPort {
     this.connect();
   }
 
-  // PLACEHOLDER_REST
-
   /**
    * One sweep: every daemon's listener, each in a tick of its own, spread evenly over CONTROL_SAFETY_SWEEP_SPREAD_MS
    * (#1402). A listener removed before its slot (its daemon stopped) is skipped; stop() drops slots still pending.
@@ -194,8 +192,8 @@ export class TmuxControlClient extends EventEmitter implements TmuxReadPort {
    * Resolve a window's current pane id and cache the mapping.
    *
    * Drops a registration that has failed to resolve `RESOLVE_FAILURES_BEFORE_DROP`
-   * times in a row. Every reconnect re-resolves every registered window, one tmux
-   * subprocess each, so a registration for a window that no longer exists is a
+   * times in a row. Every reconnect re-resolves every registered window through the read FIFO,
+   * so a registration for a window that no longer exists is a
    * permanent per-reconnect cost — and callers do forget to unregister (a crash
    * respawn creates a new window id and the dead one used to stay forever).
    *
