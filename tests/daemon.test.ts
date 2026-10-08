@@ -427,7 +427,8 @@ describe("Daemon backend-native input queue delivery", () => {
   });
 
   it("cancels a delivery that entered the idle wait but has not pasted yet", async () => {
-    const { control, daemon, instanceDir, tmux } = makeDeliveryDaemon("claude-code", false);
+    // A backend that waits for idle (grok; claude-code hands a busy delivery to its own queue since #1169).
+    const { control, daemon, instanceDir, tmux } = makeDeliveryDaemon("grok", false);
     let releaseIdleWait!: (idle: boolean) => void;
     control.waitUntilIdle.mockImplementation(() => new Promise<boolean>(resolve => {
       releaseIdleWait = resolve;
@@ -691,7 +692,7 @@ describe("Daemon backend-native input queue delivery", () => {
     // waitUntilIdle used to have no timeout at all: a wedged pane held the
     // pasteLock forever and every message behind it queued silently, with no ❌ and
     // no log — the caller believed delivery was merely slow.
-    const { control, daemon, instanceDir, tmux } = makeDeliveryDaemon("claude-code", false);
+    const { control, daemon, instanceDir, tmux } = makeDeliveryDaemon("grok", false); // a backend that waits for idle (claude-code queues since #1169)
     control.waitUntilIdle.mockResolvedValue(false);
     const failed = vi.fn();
     daemon.on("message_failed", failed);

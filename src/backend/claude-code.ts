@@ -836,6 +836,30 @@ export class ClaudeCodeBackend implements CliBackend {
    * `working`. The veto only bites on a *frozen* pane whose last frame still shows
    * an in-progress spinner — which is exactly the hang this is meant to surface.
    */
+  /**
+   * #1169: a paste+Enter into a busy Claude Code is taken into Claude's own queue, so a delivery can be handed to it
+   * instead of waiting for the turn to end — the path Codex's queue already uses. Verified live on 2.1.293 under the
+   * production launch (tests/fixtures/claude-2.1.293-{busy-queued,busy-queued-long,long-busy-queued,tool-queued}):
+   * - while it streams, the message moves above the spinner with `ctrl+x ctrl+s to send now` under it, the box shows
+   *   "Press up to edit queued messages", and it is sent as the next turn once this one ends — the running turn is not
+   *   interrupted, and it is sent exactly once, also when a second Enter follows;
+   * - while a tool runs, it is taken at that tool's boundary into the same turn (the transcript's `queue-operation`
+   *   remove + `queued_command` attachment), like Codex's "Messages to be submitted after next tool call".
+   * Submission is proven on the box (readClaudeInputBox): our message_id in the queue block, or the marker below.
+   */
+  supportsQueuedInput(): boolean {
+    return true;
+  }
+
+  /**
+   * The row Claude paints under each queued message (2.1.293): `  ctrl+x ctrl+s to send now`, on a row of its own.
+   * Corroboration for a delivery whose own text has scrolled out of the queue block (only the bottom of a long message
+   * stays on screen) and that carries no unique id: one more of these rows than before the paste is ours.
+   */
+  getQueuedInputMarker(): RegExp | null {
+    return /^[ \t]+ctrl\+x ctrl\+s to send now[ \t]*$/;
+  }
+
   /** #1200: the live input box, read structurally (readClaudeInputBox). */
   readInputRow(pane: string): InputBox | null {
     return readClaudeInputBox(pane);

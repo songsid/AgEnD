@@ -82,11 +82,11 @@ describe("readClaudeInputBox on live 2.1.293 captures", () => {
     expect(readClaudeInputBox(two)).toEqual({ text: "[Pasted text #1 +11 lines][Pasted text #2 +3 lines]", collapsedPastes: 2 });
   });
 
-  it("the backend exposes it as readInputRow, and does not claim the other readers", () => {
+  it("the backend exposes it as readInputRow, and does not claim the prompt-row reader", () => {
     const backend = new ClaudeCodeBackend("/nonexistent-1200");
     expect(backend.readInputRow(pane("idle-draft"))).toEqual({ text: "draft one two three", collapsedPastes: 0 });
     expect((backend as any).getBottomReadyPattern).toBeUndefined();
-    expect((backend as any).supportsQueuedInput).toBeUndefined();
+    // supportsQueuedInput / getQueuedInputMarker arrived with #1169 (claude-queued-input-1169.test.ts).
   });
 });
 
