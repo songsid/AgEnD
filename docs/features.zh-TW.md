@@ -391,7 +391,15 @@ instance 連續 15 分鐘（可設定）沒有任何活動時，daemon 會發出
 
 ## 感知頻率限制的排程 (Rate limit-aware scheduling)
 
-5 小時 API 頻率限制的用量超過 85% 時，排程觸發會自動延後，而不是照常執行，並在 instance 的 topic 發出通知。延後的排程不會遺失，會在頻率限制回到門檻以下後的下一個 cron 時間點執行。
+目標 instance 的 5 小時用量超過 85% 時，排程觸發會延後，不照常執行，並在 instance 的 topic 通知。如果讀數所屬的額度視窗已經重置，就不再算數：claude-code 只在畫面更新時才改寫 statusline，所以閒置的 instance 可能在重置後很久還顯示 100%。
+
+延後的那次會在額度重置後**補跑一次**：
+- **什麼時候跑。** statusline 有重置時間時，在重置時間（加一分鐘）補跑；沒有的話，每 15 分鐘檢查一次，第一次低於門檻時就跑。
+- **agent 看到什麼。** 補跑沿用原本那次的 run id，訊息開頭是 `[retry] originally due 21:00 (Asia/Taipei), deferred by the 5h rate limit at 100%`。silent 排程則原封不動貼上它的指令。
+- **絕不跑兩次。** 補跑絕不會在下一次正常排程的時間點或之後執行，也不會超過 5 小時 15 分。下一次排程、catch-up 或手動觸發先到的話，補跑就取消。
+- **跨重啟。** 等待中的補跑在 fleet 重啟後仍會保留。
+- **`last_status`。** 會顯示 `deferred → delivered (retry)`，或 `deferred → skipped (superseded | deferred again | expired)`。
+- **補跑不成時。** 被下一次取代、重置後又被延後，或一直等不到重置，排程所在的聊天會說明，並 @ 該 world 的管理員（頻道的 `access.allowed_users`）。
 
 ## 模型備援切換 (Model failover)
 
