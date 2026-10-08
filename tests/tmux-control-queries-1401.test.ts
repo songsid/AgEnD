@@ -129,8 +129,9 @@ describe("#1401 control read protocol and manager wiring", () => {
     let callback!: (error: null, out: string) => void;
     mocks.execFile.mockImplementation((_file, _args, _options, cb) => { callback = cb; return processFixture(); });
     const client = new TmuxControlClient("s"); clients.push(client); client.start(); const proc = processes[0];
-    const a = client.read({ kind: "capture", session: "s", window: "@1" });
-    const b = client.read({ kind: "capture", session: "s", window: "@2" });
+    const a = client.read({ kind: "capture", session: "s", window: "@1" }); void a.catch(() => {});
+    const b = client.read({ kind: "capture", session: "s", window: "@2" }); void b.catch(() => {});
+    expect(mocks.execFile).toHaveBeenCalledTimes(1);
     expect(proc.stdin.write).not.toHaveBeenCalled();
     proc.stdout.emit("data", Buffer.from("%begin 1 1 0\n%end 1 1 0\n"));
     expect(proc.stdin.write).not.toHaveBeenCalled();
