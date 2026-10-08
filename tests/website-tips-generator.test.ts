@@ -30,7 +30,7 @@ describe("website tips pages", () => {
     // rather than source-vs-artifact staleness.
     const html = renderPage(TIPS as Parameters<typeof renderPage>[0], locale);
     expect(html.match(/data-tip-id="tip-\d{3}"/g)).toHaveLength(TIPS.length);
-    expect(html.match(/data-level="beginner"/g)).toHaveLength(100);
+    expect(html.match(/data-level="beginner"/g)).toHaveLength(104);
     expect(html.match(/data-level="intermediate"/g)).toHaveLength(100);
     expect(html.match(/data-level="advanced"/g)).toHaveLength(100);
   });

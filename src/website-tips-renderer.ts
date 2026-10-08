@@ -15,7 +15,7 @@ export const COPY = {
   en: {
     lang: "en",
     description: "Practical AgEnD guidance, from first chat to fleet operations.",
-    intro: "300 practical notes, grouped from everyday use to advanced fleet operations.",
+    intro: "{0} practical notes, grouped from everyday use to advanced fleet operations.",
     switchLabel: "繁體中文",
     switchHref: "./tips-zh.html",
     home: "Home",
@@ -29,7 +29,7 @@ export const COPY = {
   zh: {
     lang: "zh-TW",
     description: "從第一次對話到 Fleet 維運的 AgEnD 實用提示。",
-    intro: "300 條實用提示，從日常操作一路整理到進階 Fleet 維運。",
+    intro: "{0} 條實用提示，從日常操作一路整理到進階 Fleet 維運。",
     switchLabel: "English",
     switchHref: "./tips-en.html",
     home: "首頁",
@@ -142,7 +142,7 @@ export function renderPage(tips: Tip[], locale: Locale): string {
 <body>
   <nav><div class="nav-inner"><a class="brand" href="./">AgEnD</a><div class="nav-actions"><a href="./">${escapeHtml(copy.home)}</a><a href="${copy.switchHref}" hreflang="${locale === "zh" ? "en" : "zh-TW"}">${escapeHtml(copy.switchLabel)}</a></div></div></nav>
   <main>
-    <header class="hero"><span class="kicker">Knowledge library</span><h1>AgEnD Tips</h1><p>${escapeHtml(copy.intro)}</p><div class="jump-links">${LEVELS.map(level => `<a href="#${level}">${escapeHtml(copy.levels[level][0])}</a>`).join("")}</div></header>
+    <header class="hero"><span class="kicker">Knowledge library</span><h1>AgEnD Tips</h1><p>${escapeHtml(copy.intro.replace("{0}", String(tips.length)))}</p><div class="jump-links">${LEVELS.map(level => `<a href="#${level}">${escapeHtml(copy.levels[level][0])}</a>`).join("")}</div></header>
     ${sections}
   </main>
   <footer><div class="footer-inner"><span><strong>AgEnD</strong> · Multi-Agent, One Conversation</span><span>Generated from <code>src/tips.ts</code></span></div></footer>

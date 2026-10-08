@@ -403,12 +403,20 @@
               ["⚙️ 一般設定", ["修改全域 backend/model、允許使用者、ClassicBot 管理員", "點 [儲存]"]],
               ["📋 進階", ["直接編輯 YAML/JSON", "[⬇ fleet.yaml] 下載備份"]]],
   };
-  const WHATSNEW = [
-    "Settings redesign — user-flow sections, white theme, i18n (EN / 繁中)",
-    "What's New panel + info help panel + ClassicBot channels list",
-    "Same-channel multi-bot ClassicBot; per-bot cancel-button + react fixes",
-    "/view avatar & ctx% fixes; config validator + `agend validate` + validate_config MCP tool",
-  ];
+  const WHATSNEW = {
+    en: [
+      "Web chat — talk to your agents from the browser: Dashboard, then pick an instance. It is the same conversation as its Telegram/Discord chat.",
+      "Files and images in web chat (📎, paste or drop), Stop, and ticks showing how far each message got",
+      "Sign in with a one-time code: send /dashboard (admin) or run `agend web`; the Session menu lists and signs out browsers",
+      "One navigation bar across Dashboard · View · Settings, in light or dark",
+    ],
+    "zh-TW": [
+      "網頁聊天：在瀏覽器裡跟 Agent 對話，打開 Dashboard 再選一個 instance。它和 Telegram/Discord 上的是同一段對話。",
+      "網頁聊天可以傳檔案和圖片（📎、貼上或拖進來）、按 Stop，也看得到每則訊息送到哪一步",
+      "用一次性登入碼登入：傳 /dashboard（管理員）或執行 `agend web`；Session 選單可查看並登出各個瀏覽器",
+      "Dashboard · View · Settings 共用一條導覽列，支援淺色與深色",
+    ],
+  };
   let lang = localStorage.getItem("agend_lang") || (navigator.language && navigator.language.toLowerCase().startsWith("zh") ? "zh-TW" : "en");
   if (!I18N[lang]) lang = "en";
   const t = (k) => (I18N[lang] && I18N[lang][k]) || I18N.en[k] || k;
@@ -2090,7 +2098,7 @@
     host.append(el("div", { class: "sub u-mb8" }, `${t("currentVersion")}: ${state.version || "?"}`));
     host.append(el("div", { class: "u-fs13 u-mb6" }, t("wnIntro")));
     const ul = el("ul", { class: "u-ml18" });
-    for (const line of WHATSNEW) ul.append(el("li", { class: "u-fs13 u-my4" }, line));
+    for (const line of WHATSNEW[lang] || WHATSNEW.en) ul.append(el("li", { class: "u-fs13 u-my4" }, line));
     host.append(ul);
     // Beta builds have no per-tag release page → link to the latest release.
     const v = state.version || "";
