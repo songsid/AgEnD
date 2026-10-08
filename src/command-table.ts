@@ -105,15 +105,20 @@ const NOBODY_NO_AGENT_START: PlatformRule = { refuse: NO_AGENT_START };
 const HANDLER: PlatformRule = { level: "handler", note: "Telegram private: user allowlist. Telegram group: group allowlist + ClassicBot admin." };
 const tg = (general: PlatformRule, fleet: PlatformRule, classic: PlatformRule, none: PlatformRule = PASS): CommandSpec["telegram"] =>
   ({ general, fleet, classic, none });
-/** Only the General topic has a handler: everywhere else the typed text is an ordinary message to the agent. */
-const tgGeneralOnly = (general: PlatformRule): CommandSpec["telegram"] => tg(general, PASS, PASS);
+/**
+ * Only the General topic has a handler. In an instance topic the command is refused with a pointer to General (#1148):
+ * it used to be an ordinary message to the agent, which got raw command text instead of AgEnD acting or refusing. In a
+ * ClassicBot chat it is still not a command.
+ */
+const tgGeneralOnly = (general: PlatformRule, name: string): CommandSpec["telegram"] =>
+  tg(general, { refuse: ["cmd.use_in_general", `/${name}`] }, PASS);
 
 export const COMMANDS: readonly CommandSpec[] = [
   {
     name: "profile", slash: true, denied: NOT_AUTHORIZED, disabled: ["profile.disabled"],
     scopes: { general: { level: "fleet-admin" }, fleet: { refuse: ["profile.general_only"] },
       classic: { refuse: ["profile.general_only"] }, none: { refuse: ["profile.general_only"] } },
-    telegram: tgGeneralOnly(FLEET_ADMIN),
+    telegram: tgGeneralOnly(FLEET_ADMIN, "profile"),
   },
   // ── ClassicBot lifecycle ──
   {
@@ -157,17 +162,17 @@ export const COMMANDS: readonly CommandSpec[] = [
   { name: "ctx", slash: true, denied: NOT_AUTHORIZED, scopes: inAgentChannels("anyone", NO_AGENT), telegram: tg(ANYONE, ANYONE, ANYONE, NOBODY_NO_AGENT_START) },
 
   // ── The fleet, from anywhere ── (on Telegram: only the General topic has these handlers)
-  { name: "status", slash: true, denied: ["cmd.admin_required", "/status"], scopes: everywhere("fleet-admin"), telegram: tgGeneralOnly(FLEET_ADMIN) },
-  { name: "restart", slash: true, denied: NOT_AUTHORIZED, scopes: everywhere("fleet-admin"), telegram: tgGeneralOnly(FLEET_ADMIN) },
-  { name: "login", slash: true, denied: PERMISSION_DENIED, scopes: everywhere("fleet-admin"), telegram: tgGeneralOnly(FLEET_ADMIN) },
-  { name: "update", slash: true, denied: NOT_AUTHORIZED, disabled: ["update.disabled"], scopes: everywhere("fleet-admin"), telegram: tgGeneralOnly(FLEET_ADMIN) },
-  { name: "doctor", slash: true, denied: NOT_AUTHORIZED, scopes: everywhere("fleet-admin"), telegram: tgGeneralOnly(FLEET_ADMIN) },
-  { name: "dashboard", slash: true, denied: NOT_AUTHORIZED, disabled: ["dashboard.disabled"], scopes: everywhere("fleet-admin"), telegram: tgGeneralOnly(FLEET_ADMIN) },
+  { name: "status", slash: true, denied: ["cmd.admin_required", "/status"], scopes: everywhere("fleet-admin"), telegram: tgGeneralOnly(FLEET_ADMIN, "status") },
+  { name: "restart", slash: true, denied: NOT_AUTHORIZED, scopes: everywhere("fleet-admin"), telegram: tgGeneralOnly(FLEET_ADMIN, "restart") },
+  { name: "login", slash: true, denied: PERMISSION_DENIED, scopes: everywhere("fleet-admin"), telegram: tgGeneralOnly(FLEET_ADMIN, "login") },
+  { name: "update", slash: true, denied: NOT_AUTHORIZED, disabled: ["update.disabled"], scopes: everywhere("fleet-admin"), telegram: tgGeneralOnly(FLEET_ADMIN, "update") },
+  { name: "doctor", slash: true, denied: NOT_AUTHORIZED, scopes: everywhere("fleet-admin"), telegram: tgGeneralOnly(FLEET_ADMIN, "doctor") },
+  { name: "dashboard", slash: true, denied: NOT_AUTHORIZED, disabled: ["dashboard.disabled"], scopes: everywhere("fleet-admin"), telegram: tgGeneralOnly(FLEET_ADMIN, "dashboard") },
   // #1302: a fleet setting, so a fleet admin even to read it — the same as /doctor.
-  { name: "visibility", slash: true, denied: NOT_AUTHORIZED, scopes: everywhere("fleet-admin"), telegram: tgGeneralOnly(FLEET_ADMIN) },
+  { name: "visibility", slash: true, denied: NOT_AUTHORIZED, scopes: everywhere("fleet-admin"), telegram: tgGeneralOnly(FLEET_ADMIN, "visibility") },
   // Informational. `/tips on|off|advanced on` change settings and are gated by the handler on that argument.
-  { name: "sysinfo", slash: true, denied: NOT_AUTHORIZED, scopes: everywhere("anyone"), telegram: tgGeneralOnly(ANYONE) },
-  { name: "usage", slash: true, denied: NOT_AUTHORIZED, scopes: everywhere("anyone"), telegram: tgGeneralOnly(ANYONE) },
+  { name: "sysinfo", slash: true, denied: NOT_AUTHORIZED, scopes: everywhere("anyone"), telegram: tgGeneralOnly(ANYONE, "sysinfo") },
+  { name: "usage", slash: true, denied: NOT_AUTHORIZED, scopes: everywhere("anyone"), telegram: tgGeneralOnly(ANYONE, "usage") },
   // On Telegram it also works in an instance's topic.
   { name: "tips", slash: true, denied: PERMISSION_DENIED, scopes: everywhere("anyone"), telegram: tg(ANYONE, ANYONE, PASS) },
 ];
