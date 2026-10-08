@@ -500,7 +500,7 @@ describe("the tunnel's own readiness check can reach the page", () => {
 
     expect(source).not.toContain("endsWith(\".trycloudflare.com\")");
     expect(source).not.toMatch(/starting\s*\?\s*true/);
-    expect(source).toContain("onCandidateHost: host => { this.externalHost = host; }");
+    expect(source).toContain("onCandidateHost: host => { if (!this.stopping && !abort.signal.aborted) this.externalHost = host; }");
   });
 });
 

@@ -15101,7 +15101,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         + "fix it in classicBot.yaml; it will not start on another login");
     }
     const topicMode = this.fleetConfig?.channel?.mode === "topic";
-    await this.startInstance(instanceName, config, topicMode, "classic", false, transition, execution);
+    if (execution) await this.startInstance(instanceName, config, topicMode, "classic", false, transition, execution);
+    else await this.startInstance(instanceName, config, topicMode, "classic", false, transition);
   }
 
   /** Handle /start slash command — register classic channel */
