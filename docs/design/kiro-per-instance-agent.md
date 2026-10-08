@@ -72,24 +72,35 @@ At launch, per instance:
    - no more entries in `{cwd}/.kiro/settings/mcp.json`;
    - no more `{cwd}/.kiro/steering/agend-<instance>.md`.
 
-**`includeMcpJson` (needs a decision; I recommend `true`).** The approved direction said `false`. The evidence above shows that once the workspace `mcp.json` holds no AgEnD entries, `true` already isolates instances, and it keeps what users have today:
+**`includeMcpJson: true` (decided, leader 2026-10-08; the first direction said `false`).** The evidence above shows that once the workspace `mcp.json` holds no AgEnD entries, `true` already isolates instances, and it keeps what users have today:
 
 - With `false`, every kiro instance loses the user's own MCP servers on v1/v2: those in `~/.kiro/settings/mcp.json` and in the workspace `mcp.json`. That is a regression for anyone who relies on them.
 - On v3, `false` is worse than either choice: v3 still starts those servers, but hides their tools.
 
 The isolation does not come from this flag. It comes from AgEnD's entries living only in each instance's own agent file, together with the migration below that removes the old shared entries. `false` would only add protection against stale AgEnD entries that the migration failed to remove. If we want that belt-and-braces, it can be a per-instance option later.
 
-### (a) Resume across the switch: open, needs one real-account probe
+### (a) Resume across the switch
 
 What is known:
 
 - v1/v2 `--resume` is "the most recent conversation from this directory".
 - v2 sessions record their agent.
 
-What is not known offline is whether `--resume --agent agend-x` still picks a conversation saved under `kiro_default`. If it does not, an existing instance's first launch after the upgrade would start fresh, one time. Classic needs a model reply to save a conversation, so this cannot be answered offline.
+What is not known offline is whether `--resume --agent agend-x` still picks a conversation saved under `kiro_default`. Classic needs a model reply to save a conversation, so this cannot be answered offline.
 
-**Probe (needs the leader's OK; it uses a real login):**
-- **Setup:** an isolated HOME holding only a copy of the login. The copy is made by the user or leader, and the live `data.sqlite3` is never opened by me. Use a private tmux socket and a scratch cwd.
+**The plan does not depend on the answer: a one-time handover by id.**
+- **When:** the first launch of an existing instance with `--agent`, unless that launch skips resume.
+- **What it passes:** `--resume-id <id>` of the conversation plain `--resume` would have taken. That is the newest conversation for the working directory in the engine's store, read the way AgEnD already reads them: v1 `conversations_v2` (`src/kiro-db-reader.ts`, newest `updated_at` for the directory's keys) and v2 `~/.kiro/sessions/cli` (`transcript-sources.ts`).
+- **The record:** before launching, the handover is recorded in a small per-instance mark under `<AGEND_HOME>`, keyed by instance, working directory and credential profile. Every later launch uses plain `--resume`, so the handover happens once. A mark that cannot be recorded refuses the launch, as v3 identity does, so a failed handover is never repeated against a newer conversation.
+- **Cost:** the store is read once per instance, at that one launch. It is the same indexed `updated_at` query the transcript poller uses (about 0.05 ms against a 1 GB store, #1048), not a scan.
+- **No conversation found:** a fresh start, as for a new instance.
+- **v3:** v3 instances already resume by their own recorded id (`kiro-v3-identity.ts`), so they get no handover.
+- **Either answer from kiro is safe:**
+  - If kiro's `--resume` ignores the agent, the handover resumes the same conversation `--resume` would have.
+  - If it filters by agent, the handover is what keeps the conversation. If kiro then also leaves the resumed conversation tagged `kiro_default`, the next plain `--resume` would miss it; the probe below shows whether that happens. If it does, the instance's own id must be carried forward, which is #1410.
+
+**Probe (pending the user's OK; it uses a real login).** It confirms the plan rather than gating it.
+- **Setup:** an isolated HOME holding an `sqlite3 .backup` copy of the login. The leader makes the copy to a path I give; the live database is only read, and I never open it. Private tmux socket, scratch cwd, about 8 turns. The copy is deleted afterwards.
 - **Seed:** `chat --legacy-ui --agent-engine=v1` with "remember AAA", then quit.
 - **Switch:** `--agent agend-a --resume`, then ask what was said, and check the history.
 - **Cross-agent:** `--agent agend-b --resume`, to see whether agend-a's conversation is picked.
@@ -97,13 +108,7 @@ What is not known offline is whether `--resume --agent agend-x` still picks a co
 - **v3:** `--v3 --resume-id <id> --agent agend-a` for a session made under `kiro_default`.
 - **Prompt check:** ask the agent its instructions, to confirm the inline `prompt` is used. That is the one thing about the prompt I could not observe offline.
 
-What each outcome means:
-
-| Probe result | Consequence | Plan |
-|---|---|---|
-| `--resume` ignores the agent | No change at the switch | Ship as designed. Note that this also means two instances in one cwd already resume each other's newest conversation today. That is a separate, pre-existing identity bug, and its fix is per-instance `--resume-id` for v1/v2 like `kiro-v3-identity.ts` (follow-up issue). |
-| `--resume` filters by agent | One fresh start per existing instance at the upgrade | One-time handover: the first `--agent` launch passes `--resume-id` of the session plain `--resume` would have taken, and is recorded so it is never taken again. Same claim/ledger rules as v3 identity. This also removes the cross-instance resume above. |
-| `--resume-id` + a different `--agent` refuses or forks | v3 instances lose their session at the switch | Keep v3 instances on their recorded agent until the next fresh start, or hand over by conversion. Decided by what the probe shows. |
+**Related existing problem: #1410.** v1/v2 `--resume` is per directory, so two kiro instances in one working directory may each resume the other's newest conversation. That is inferred from kiro's documentation, and the probe will confirm it. It predates this design. The fix is per-instance `--resume-id` with claims, as v3 already does, and #1410 tracks it, separate from this change.
 
 ### (b) Engines
 
@@ -135,7 +140,7 @@ Ownership is decided by evidence, not by name shape:
 
 ## Grok (documentation only)
 
-Grok instances in one working directory share its project-level MCP config the same way. Grok has no per-agent equivalent that we have verified. `docs/` gets a known-limitation note: run Grok instances that share a repository from separate worktrees. A separate issue tracks the fix.
+Grok instances in one working directory share its project-level MCP config the same way. Grok has no per-agent equivalent that we have verified. `docs/` gets a known-limitation note: run Grok instances that share a repository from separate worktrees. #1411 tracks the fix.
 
 ## Tests (for the implementation PR)
 
@@ -146,4 +151,10 @@ Grok instances in one working directory share its project-level MCP config the s
 - `buildCommand`: `--agent agend-<name>` on all three plans; no `--agent` when the agent file could not be written (the launch fails).
 - Two instances in one cwd: each agent file names only its own wrapper. A mutation that writes to the shared `mcp.json` turns the two-instance test red.
 - `cleanup`: removes the agent file and its `.bak`, and nothing else.
+- Handover:
+  - the first `--agent` launch passes `--resume-id` of the newest conversation for the directory (v1 store and v2 store fixtures in scratch dirs), and records its mark first;
+  - later launches use plain `--resume`;
+  - an unrecordable mark refuses the launch;
+  - `skipResume` and an empty store start fresh;
+  - v3 instances are untouched.
 - Stub every filesystem root to a scratch dir. Launch no kiro, fleet or tmux (bd0c88aa). The engine behaviour itself is pinned by the evidence above, not by unit tests.
