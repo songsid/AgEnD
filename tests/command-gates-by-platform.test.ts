@@ -91,6 +91,7 @@ async function rig(): Promise<Rig> {
   const tg = { id: "tg", type: "telegram", react: async () => {}, unreact: async () => {}, sendText, editMessage: async () => {}, sendWithKeyboard: async () => ({ messageId: "k", chatId: "x" }) };
   const tgCfg = { id: "tg", type: "telegram", mode: "topic", group_id: FLEET_CHAT, access: { mode: "locked", allowed_users: [FA, "999000"] }, bot_token_env: "X" };
   any.adapter = tg;
+  any.adapters.set("tg", tg);
   any.worlds.set("tg", { id: "tg", adapter: tg, channelConfig: tgCfg, groupId: FLEET_CHAT, botUsername: BOT });
   fm.fleetConfig = {
     defaults: { backend: "claude-code" }, channels: [tgCfg], channel: tgCfg,
@@ -140,6 +141,7 @@ async function rig(): Promise<Rig> {
   tc.getDashboardText = () => { reached.push("dashboard"); return "ok:dashboard"; };
   tc.sendSysInfo = async () => { reached.push("sysinfo"); };
   tc.handleTipsCommand = async () => { reached.push("tips"); };     // entry only: its `on|off` arguments are gated inside
+  any.startCpuProfile = async () => { reached.push("profile"); return { seconds: 60, done: new Promise(() => {}) }; };
   any.cancelInstance = () => { reached.push("cancel"); return true; };
   any.promptLoginBackends = async () => { reached.push("login"); };
   any.startLoginSession = async () => { reached.push("login"); return "ok"; };
@@ -223,6 +225,7 @@ const TG_EXPECTED: Array<{ name: string; text: string; label: string; general: T
   { name: "status", text: "/status", label: "status", general: FA_ONLY, fleet: PASS_, classic: PASS_, none: "pass" },
   { name: "restart", text: "/restart x", label: "restart", general: FA_ONLY, fleet: PASS_, classic: PASS_, none: "pass" },   // "x" is no mode: an admin gets the usage line, nobody restarts
   { name: "login", text: "/login", label: "login", general: FA_ONLY, fleet: PASS_, classic: PASS_, none: "pass" },
+  { name: "profile", text: "/profile", label: "profile", general: FA_ONLY, fleet: PASS_, classic: PASS_, none: "pass" },
   { name: "update", text: "/update", label: "update", general: FA_ONLY, fleet: PASS_, classic: PASS_, none: "pass" },
   { name: "doctor", text: "/doctor", label: "doctor", general: FA_ONLY, fleet: PASS_, classic: PASS_, none: "pass" },
   { name: "dashboard", text: "/dashboard", label: "dashboard", general: FA_ONLY, fleet: PASS_, classic: PASS_, none: "pass" },
