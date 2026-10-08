@@ -84,6 +84,22 @@ describe("AutoPauseController", () => {
   });
 });
 
+/** List the live default server's sessions, or null when unreachable. */
+function liveTmuxList(): string | null {
+  try {
+    return execFileSync("tmux", ["ls"], { encoding: "utf8" });
+  } catch {
+    return null; // no tmux server reachable here — nothing to leak onto
+  }
+}
+
+/** Guard: our sessions must never appear on the live default server. */
+function assertNoLiveLeak(listLive: () => string | null = liveTmuxList): void {
+  const live = listLive();
+  if (live === null) return;
+  expect(live, "test session leaked onto the live tmux server").not.toMatch(/agend-(auto-pause|pause-soak)-/);
+}
+
 describe("Daemon auto-pause lifecycle", () => {
   const sessions: string[] = [];
   const dirs: string[] = [];
@@ -103,11 +119,7 @@ describe("Daemon auto-pause lifecycle", () => {
       execFileSync("tmux", ["-L", TMUX_SOCKET, "kill-server"], { stdio: "ignore" });
     } catch { /* private server may not exist when nothing spawned */ }
     TmuxManager.setSocketName(null);
-    // Guard: our sessions must never appear on the live default server.
-    try {
-      const live = execFileSync("tmux", ["ls"], { encoding: "utf8" });
-      expect(live, "test session leaked onto the live tmux server").not.toMatch(/agend-(auto-pause|pause-soak)-/);
-    } catch { /* no tmux server reachable here — nothing to leak onto */ }
+    assertNoLiveLeak();
   });
 
   it("keeps General exempt even when auto_pause_after is configured", () => {
@@ -389,5 +401,18 @@ describe("paused status visibility", () => {
     const sysinfo = commands.getSysInfoText();
     // Fleet summary line must show combined counts (fleet + Classic)
     expect(sysinfo).toContain("Instances: 2 running, 1 paused");
+  });
+});
+
+describe("live-server leak guard (#1361 review)", () => {
+  it("rejects a leaked listing for either session prefix", () => {
+    expect(() => assertNoLiveLeak(() => "agend-auto-pause-66-123: 1 windows (created X) [80x24]")).toThrow();
+    expect(() => assertNoLiveLeak(() => "agend-pause-soak-66-123: 1 windows (created X) [80x24]")).toThrow();
+  });
+
+  it("passes a clean listing and an unreachable server", () => {
+    expect(() => assertNoLiveLeak(() => "agend: 1 windows (created X) [80x24]")).not.toThrow();
+    expect(() => assertNoLiveLeak(() => "")).not.toThrow();
+    expect(() => assertNoLiveLeak(() => null)).not.toThrow();
   });
 });
