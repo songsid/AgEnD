@@ -209,7 +209,7 @@ describe("#1401 deadlines and physical process ownership", () => {
     });
     const result = manager.capturePane();
     if (kind === "stdout") proc.stdout.emit("error", new Error("read failure"));
-    expect(await result).toBe("fallback\n"); expect(proc.kill).toHaveBeenCalledOnce();
+    expect(proc.kill).toHaveBeenCalledOnce(); expect(await result).toBe("fallback\n");
     await vi.advanceTimersByTimeAsync(4_000); expect(mocks.spawn).toHaveBeenCalledTimes(1);
   });
 
