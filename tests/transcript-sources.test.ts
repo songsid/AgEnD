@@ -203,6 +203,7 @@ describe("KiroSessionSource", () => {
       .run(WORK_DIR, "conversation-live", JSON.stringify({ history: oldHistory }), Date.now() - 60_000, Date.now() - 10_000);
 
     const source = new KiroSessionSource(WORK_DIR, sessionsDir, Date.now(), dbPath);
+    await source.initialize();
     expect((await source.poll()).toolUses).toHaveLength(0);
 
     const liveEntry = {

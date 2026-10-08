@@ -280,7 +280,7 @@ describe("a crash tick that is already past the health check when stop() / pause
     d.checkMcpServerAlive = () => {};
     d.spawnClaudeWindow = vi.fn(async () => { order.push("respawn"); return true; });
     d.writeRotationSnapshot = vi.fn(); d.injectSnapshotMessage = async () => {};
-    d.transcriptMonitor = { resetOffset: vi.fn(), stop: () => {} };
+    d.transcriptMonitor = { resetOffset: vi.fn(), initialize: vi.fn(async () => {}), stop: () => {} };
     return { d, order, releaseLookup: () => release2(), killWindow };
   }
 
@@ -345,7 +345,7 @@ describe("a crash tick that is already past the health check when stop() / pause
     d.setProcessStatus("running");
     d.checkMcpServerAlive = () => {};
     d.writeRotationSnapshot = vi.fn(); d.injectSnapshotMessage = async () => {};
-    d.transcriptMonitor = { resetOffset: vi.fn(), stop: () => {} };
+    d.transcriptMonitor = { resetOffset: vi.fn(), initialize: vi.fn(async () => {}), stop: () => {} };
     d.spawnClaudeWindow = async () => { await d.trySpawn(false); return true; };    // the real trySpawn → the real gate
     const started: string[] = [];
     d.trySpawnInsideGate = async () => { started.push("cli-started"); return true; };
