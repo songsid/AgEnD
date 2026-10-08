@@ -6,6 +6,7 @@ import { homedir } from "node:os";
 import { stdin, stdout } from "node:process";
 import { execSync } from "node:child_process";
 import { getAgendHome } from "./paths.js";
+import { setupGuideUrl } from "./setup-guide.js";
 
 const DATA_DIR = getAgendHome();
 const FLEET_CONFIG_PATH = join(DATA_DIR, "fleet.yaml");
@@ -374,6 +375,7 @@ export async function runSetupWizard(): Promise<void> {
     // ── Step 3: Telegram Bot Token ──
     step(3, TOTAL_STEPS, "Telegram Bot Token");
     console.log(`  ${dim("Get one from @BotFather on Telegram")}`);
+    console.log(`  📖 Setup guide: ${dim(setupGuideUrl("telegram"))}`);
 
     tokenEnvName = "AGEND_BOT_TOKEN";
 
@@ -462,6 +464,7 @@ export async function runSetupWizard(): Promise<void> {
     // ── Step 3: Discord Bot Token ──
     step(3, TOTAL_STEPS, "Discord Bot Token");
     console.log(`  ${dim("Create a bot at https://discord.com/developers/applications")}`);
+    console.log(`  📖 Setup guide: ${dim(setupGuideUrl("discord"))}`);
 
     tokenEnvName = "AGEND_DISCORD_TOKEN";
 

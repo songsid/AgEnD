@@ -10,25 +10,8 @@ import { execSync } from "node:child_process";
 import yaml from "js-yaml";
 import { BACKENDS, validateBotToken, verifyBotToken } from "./setup-wizard.js";
 import { getAgendHome } from "./paths.js";
-import { getLocale } from "./locale.js";
-
-/** Setup guide URLs per locale. */
-export const SETUP_GUIDE_URLS = {
-  telegram: {
-    en: "https://songsid.github.io/AgEnD/setup-telegram/",
-    "zh-TW": "https://songsid.github.io/AgEnD/zh-tw/setup-telegram/",
-  },
-  discord: {
-    en: "https://songsid.github.io/AgEnD/setup-discord/",
-    "zh-TW": "https://songsid.github.io/AgEnD/zh-tw/setup-discord/",
-  },
-} as const;
-
-/** Returns the locale-appropriate setup guide URL for the given platform. */
-export function setupGuideUrl(platform: "telegram" | "discord"): string {
-  const locale = getLocale();
-  return SETUP_GUIDE_URLS[platform][locale === "zh-TW" ? "zh-TW" : "en"];
-}
+import { setupGuideUrl } from "./setup-guide.js";
+export { SETUP_GUIDE_URLS, setupGuideUrl } from "./setup-guide.js";
 
 const DATA_DIR = getAgendHome();
 const FLEET_CONFIG_PATH = join(DATA_DIR, "fleet.yaml");
