@@ -33,7 +33,7 @@ An old `?token=` link or bookmark (`/ui?token=…`, as older versions printed) i
 ## Sessions
 
 - A session is a record on the server, not a value in your browser. It ends **12 hours** after sign-in, or after **2 hours** without use, whichever comes first. It survives a fleet restart.
-- Only what you do counts as use. The page's own background refresh (live updates, polling) never keeps a session alive.
+- What you do counts as use; the dashboard's own background refresh mostly does not. Its polling fallback and the live stream's periodic check never keep a session alive, but a live stream that reconnects counts once each time. With `web.view_access: session`, an open `/view` page refreshes itself every few seconds and so keeps its session alive until the 12-hour cap. Close it, or sign out, when you leave.
 - When a session ends, the page says so once ("Your session has ended. Sign in again") and keeps what you were doing on screen.
 - **The Session menu** (top bar) shows:
   - which browser you are signed in as, and when the session ends;
