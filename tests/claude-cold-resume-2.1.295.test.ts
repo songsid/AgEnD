@@ -13,9 +13,10 @@
  */
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { ClaudeCodeBackend, claudeColdResumePromptState } from "../src/backend/claude-code.js";
+import { ClaudeCodeBackend, claudeColdResumePromptState, readClaudeInputBox } from "../src/backend/claude-code.js";
 
 const pane = (name: string) => readFileSync(new URL(`./fixtures/claude-2.1.295-${name}.pane.txt`, import.meta.url), "utf8");
+const launch = () => pane("cold-resume-launch");
 const old = (name: string) => readFileSync(new URL(`./fixtures/${name}.pane.txt`, import.meta.url), "utf8");
 const backend = new ClaudeCodeBackend("/tmp/agend-claude-cold-resume");
 type Entry = { pattern: RegExp; isActive?: (p: string) => boolean; keys?: string[]; holdOnly?: boolean; blocksDelivery?: boolean; verifyAfterKeys?: boolean; description: string };
@@ -67,6 +68,36 @@ describe("2.1.295 cold-cache resume prompt", () => {
     const ready = pane("cold-resume-launch").replace(/─{160}\n[\s\S]*$/, "  Resume this conversation?\n  quoted by a reply\n" + "─".repeat(160) + "\n❯ \n" + "─".repeat(160) + "\n");
     expect(claudeColdResumePromptState(ready).exact).toBe(false);
     for (const [, table] of tables()) expect(acting(table, ready).filter(d => d.description.includes("cold-cache"))).toEqual([]);
+  });
+
+  it("the title quoted above the REAL ready frame (its `❯`+U+00A0 input row) is not the dialog", () => {
+    const real = pane("ready-statusline");
+    expect(real).toContain("❯\u00a0");
+    expect(readClaudeInputBox(real)).toEqual({ text: "", collapsedPastes: 0 });
+    const quoted = "  Resume this conversation?\n  quoted by a reply\n" + real;
+    expect(claudeColdResumePromptState(quoted)).toEqual({ titled: false, exact: false });
+    for (const [, table] of tables()) expect(acting(table, quoted).filter(d => d.description.includes("cold-cache"))).toEqual([]);
+  });
+
+  it("a copied input box followed by more dialog rows is not the live composer: the title still holds", () => {
+    const rule = "─".repeat(160);
+    const details = Array.from({ length: 8 }, (_, i) => `  modal detail ${i + 1}`).join("\n");
+    for (const prompt of ["❯\u00a0", "❯ ", "❯"]) {
+      const stale = launch().replace("  Enter to confirm · Esc to resume", `${rule}\n${prompt}\n${rule}\n${details}\n  Enter to confirm · Esc to resume`);
+      expect(readClaudeInputBox(stale)).toBeNull();
+      expect(claudeColdResumePromptState(stale)).toEqual({ titled: true, exact: false });
+      for (const [, table] of tables()) expect(acting(table, stale).map(d => [d.holdOnly, d.blocksDelivery])).toEqual([[true, true]]);
+    }
+  });
+
+  it("an input box ABOVE the title does not clear it: only a box under the title is the composer", () => {
+    const rule = "─".repeat(160);
+    // a short unknown titled screen right under a box — few enough rows that the box reader, read on the whole pane,
+    // would take them for the box's own footer
+    const under = `${rule}\n❯\u00a0\n${rule}\n  Resume this conversation?\n  Enter to confirm · Esc to resume\n`;
+    expect(readClaudeInputBox(under)).not.toBeNull();
+    expect(claudeColdResumePromptState(under)).toEqual({ titled: true, exact: false });
+    for (const [, table] of tables()) expect(acting(table, under).map(d => [d.holdOnly, d.blocksDelivery])).toEqual([[true, true]]);
   });
 
   it("the old resume menu and ordinary panes are untouched", () => {

@@ -220,22 +220,6 @@ function coldResumeFooter(row: string): boolean {
 /** The body, joined across its wrapped rows: exactly the inactivity sentence, and the draft line when one is waiting. */
 const COLD_RESUME_BODY = /^This conversation has been inactive for [^.]+? and is \S+ tokens long\. Resuming it will use (?:all|about \d+%) of your 5-hour usage limit\.(?: Your unsent message will still be there after you answer\.)?$/;
 
-/**
- * The live input box under a row: a `─` rule, the column-0 `❯` prompt row, another rule — positive evidence that the
- * screen's bottom is Claude's composer, so a title above it is a quote in the transcript. A selector glyph or a rule
- * alone is not that evidence.
- */
-function liveComposerBelow(rows: string[]): boolean {
-  for (let i = 0; i < rows.length; i++) {
-    if (!CLAUDE_BOX_RULE.test(rows[i]!.trim())) continue;
-    let j = i + 1;
-    if (j < rows.length && /^❯(?:[ \t]|$)/.test(rows[j]!)) {
-      for (j = j + 1; j < rows.length; j++) if (CLAUDE_BOX_RULE.test(rows[j]!.trim())) return true;
-    }
-  }
-  return false;
-}
-
 export function claudeColdResumePromptState(pane: string): { titled: boolean; exact: boolean } {
   const rows = claudeRows(pane);
   let title = -1;
@@ -244,9 +228,10 @@ export function claudeColdResumePromptState(pane: string): { titled: boolean; ex
   }
   if (title < 0) return { titled: false, exact: false };
   const below = rows.slice(title + 1);
-  // A title quoted in the transcript has the live input box under it: neither answered nor held. Anything else
-  // carrying the title is the dialog (or an unknown one), however long — never read as clear.
-  if (liveComposerBelow(below)) return { titled: false, exact: false };
+  // A title quoted in the transcript has the live input box under it — read by the same bottom-anchored reader the
+  // deliveries use (its `❯`+U+00A0 prompt row, at most CLAUDE_BOX_FOOTER_MAX_ROWS rows under the box): neither answered
+  // nor held. Anything else carrying the title is the dialog (or an unknown one), however long — never read as clear.
+  if (readClaudeInputBox(below.join("\n")) !== null) return { titled: false, exact: false };
   const region = below.filter(r => r.trim() !== "");
   // The whole region is parsed; any row the grammar does not name makes it not exact (held).
   let k = 0;

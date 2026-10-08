@@ -27,7 +27,7 @@ function tmuxStub(frame: { pane: string }) {
   };
 }
 
-async function scan(between: (d: any, frame: { pane: string }) => void, opts: { pane?: string; onKey?: (d: any, key: string) => void } = {}) {
+async function scan(between: (d: any, frame: { pane: string }) => void, opts: { pane?: string; onKey?: (d: any, key: string) => void; underLockCapture?: (d: any) => Promise<string> } = {}) {
   const root = mkdtempSync(join(tmpdir(), "agend-1435-")); roots.push(root);
   const backend = new ClaudeCodeBackend(join(root, "inst"));
   const daemon: any = new Daemon("worker", {
@@ -38,6 +38,8 @@ async function scan(between: (d: any, frame: { pane: string }) => void, opts: { 
   const frame = { pane: opts.pane ?? DIALOG };
   const tmux = tmuxStub(frame);
   if (opts.onKey) tmux.sendSpecialKey.mockImplementation(async (key: string) => { opts.onKey!(daemon, key); return true; });
+  // the scan's first read is outside the lock; its second is the fresh capture under it
+  if (opts.underLockCapture) tmux.capturePane.mockImplementationOnce(async () => frame.pane).mockImplementationOnce(() => opts.underLockCapture!(daemon));
   daemon.tmux = tmux;
   vi.spyOn(daemon, "paneLiveness").mockResolvedValue("alive");
   // Hold the pane write lock, so the scan's answer has to wait for it.
@@ -94,5 +96,21 @@ describe("each owner check on its own", () => {
     expect(settledMs).toBeLessThan(700);                 // the budget is 1.5 s
     expect(replacement.capturePane).not.toHaveBeenCalled();
     expect(replacement.sendSpecialKey).not.toHaveBeenCalled();
+  });
+
+  it("a respawn during the final capture under the lock: no key, and no answer recorded for the replacement", async () => {
+    // Hold the under-lock capture (the scan's second read of the old tmux), replace tmux and the spawn, then let the
+    // old exact frame through: the retired scan must not mark the replacement's dialog as already answered.
+    let releaseCapture!: () => void;
+    const replacement = tmuxStub({ pane: DIALOG });
+    const { tmux, daemon } = await scan(() => {}, { underLockCapture: (d) => new Promise<string>(r => {
+      releaseCapture = () => r(DIALOG);
+      d.tmux = replacement; d.spawnGeneration += 1;
+      setTimeout(releaseCapture, 20);
+    }) });
+    expect(tmux.sendSpecialKey).not.toHaveBeenCalled();
+    expect(replacement.sendSpecialKey).not.toHaveBeenCalled();
+    expect(daemon.autoResolvedDialogKey).toBeNull();
+    expect(daemon.autoResolvedDialogGeneration).toBe(0);
   });
 });

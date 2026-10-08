@@ -10597,11 +10597,13 @@ export class Daemon extends EventEmitter {
               if (!owned()) return false;
               if (dialog.inputBlocked) {
                 const currentPane = await this.tmux!.capturePane();
+                // The capture is an await too: a replacement launched during it must find no answer recorded as its own.
+                if (!owned()) return false;
                 if (!Daemon.dialogMatches(dialog, currentPane)) return false;
               }
               if (dialog.autoResolutionKey) {
                 attemptedSafetyChoices.add(dialog.autoResolutionKey);
-                this.autoResolvedDialogGeneration = this.spawnGeneration;
+                this.autoResolvedDialogGeneration = ownerSpawn;
                 this.autoResolvedDialogKey = dialog.autoResolutionKey;
               }
               for (const key of dialog.keys) {
