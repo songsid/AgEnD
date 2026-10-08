@@ -4,7 +4,7 @@
 // Opening a tab reads its list: a person's navigation, so it counts as use, as the old tab click did (#1374 — no timer
 // here re-reads anything). Every read is under the navigation's lease: a list that arrives after the person moved on
 // is dropped (#1408 §4).
-import { html, useEffect, useState } from "/assets/app-html.js";
+import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { t, register } from "/assets/app-i18n.js";
 import { appStore, useStore } from "/assets/app-store.js";
 import { useLease } from "/assets/app-ctx.js";
@@ -69,16 +69,23 @@ async function api(method, path, body, lease) {
   return r.json();
 }
 
-/** Load `path` under the lease; `null` while loading, `{ error }` on failure. A stale answer is dropped. */
+/**
+ * Load `path` under the lease: `null` while the first load runs, `{ error }` on failure. A refresh (a new `version`,
+ * after Claim or Create) keeps showing what is there until the new list arrives — nothing below it is torn down, so
+ * an open dialog and its draft survive (#1425 review). Only the latest request's answer is kept.
+ */
 function useLoad(lease, path, version) {
   const [state, setState] = useState(null);
+  const seq = useRef(0);
+  const shownFor = useRef(null);
   useEffect(() => {
-    setState(null);
+    const mine = ++seq.current;
+    if (shownFor.current !== lease) { shownFor.current = lease; setState(null); }
     (async () => {
       try {
         const d = await api("GET", path, null, lease);
-        if (lease.current()) setState({ data: d });
-      } catch { if (lease.current()) setState({ error: true }); }
+        if (lease.current() && mine === seq.current) setState({ data: d });
+      } catch { if (lease.current() && mine === seq.current) setState({ error: true }); }
     })();
   }, [lease, path, version]);
   return state;
@@ -123,8 +130,9 @@ function Tasks({ lease }) {
         ${x.status === "open" ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => act(x.id, "claim")}>${t("fleet.claim")}</button>` : null}
         ${x.status === "claimed" ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => act(x.id, "complete")}>${t("fleet.done")}</button>` : null}
       </li>`)}</ul>` : html`<${Empty} icon="tasks" title=${t("fleet.noTasks")} hint=${t("fleet.noTasksHint")} />`}
-      ${creating ? html`<${CreateTask} onClose=${() => setCreating(false)} onDone=${() => setVersion(v => v + 1)} />` : null}`;
-  }}</${Loaded}>`;
+`;
+  }}</${Loaded}>
+  ${creating ? html`<${CreateTask} onClose=${() => setCreating(false)} onDone=${() => setVersion(v => v + 1)} />` : null}`;
 }
 
 function Schedules({ lease }) {
@@ -145,8 +153,9 @@ function Schedules({ lease }) {
         <a class="link" href=${chatPath(x.target)}>${x.target}</a>
         <button type="button" class="btn btn-ghost btn-sm danger" onClick=${() => del(x.id)}>${t("fleet.delete")}</button></li>`)}</ul>`
         : html`<${Empty} icon="clock" title=${t("fleet.noSchedules")} hint=${t("fleet.noSchedulesHint")} />`}
-      ${creating ? html`<${CreateSchedule} onClose=${() => setCreating(false)} onDone=${() => setVersion(v => v + 1)} />` : null}`;
-  }}</${Loaded}>`;
+`;
+  }}</${Loaded}>
+  ${creating ? html`<${CreateSchedule} onClose=${() => setCreating(false)} onDone=${() => setVersion(v => v + 1)} />` : null}`;
 }
 
 function Teams({ lease }) {
@@ -165,8 +174,9 @@ function Teams({ lease }) {
         <span class="grow strong">${name}</span><span class="muted">${(team.members || []).join(", ")}</span>
         <button type="button" class="btn btn-ghost btn-sm danger" onClick=${() => del(name)}>${t("fleet.delete")}</button></li>`)}</ul>`
         : html`<${Empty} icon="team" title=${t("fleet.noTeams")} hint=${t("fleet.noTeamsHint")} />`}
-      ${creating ? html`<${CreateTeam} onClose=${() => setCreating(false)} onDone=${() => setVersion(v => v + 1)} />` : null}`;
-  }}</${Loaded}>`;
+`;
+  }}</${Loaded}>
+  ${creating ? html`<${CreateTeam} onClose=${() => setCreating(false)} onDone=${() => setVersion(v => v + 1)} />` : null}`;
 }
 
 function Secret({ id, value, onInput, label }) {
@@ -221,26 +231,32 @@ function Config({ lease }) {
 
 // ── Create dialogs ──
 
-/** One form dialog: fields, Cancel / Create, the request, a toast. */
-function FormDialog({ title, onClose, submit, children }) {
+/**
+ * One form dialog: fields, Cancel / Create, the request, a toast. Its own lease ends when the dialog goes: a request
+ * that finishes after that still reports its toast (it may have created something), but never closes or refreshes
+ * whatever is on screen now (#1425 review). `ready` false keeps Create off until the form has what it needs.
+ */
+export function FormDialog({ title, onClose, submit, children, ready = true }) {
+  const lease = useLease("form-dialog");
   const [busy, setBusy] = useState(false);
   async function go() {
-    if (busy) return;
+    if (busy || !ready) return;
     const body = submit.collect();
     if (!body) return;
     setBusy(true);
     let r;
     try { r = await api("POST", submit.path, body); } catch (err) { r = { error: err.message }; }
-    setBusy(false);
-    if (r.error) { toast(r.error, false); return; }
+    if (r.error) { toast(r.error, false); if (lease.current()) setBusy(false); return; }
     toast(submit.done);
+    if (!lease.current()) return;
+    setBusy(false);
     onClose();
     if (submit.after) submit.after();
   }
   return html`<${Dialog} title=${title} onClose=${onClose} busy=${busy}
     actions=${html`<button type="button" class="btn" onClick=${onClose} disabled=${busy}>${t("fleet.cancel")}</button>
-      <button type="button" class="btn btn-primary" onClick=${go} disabled=${busy}>${busy ? t("fleet.creating") : t("fleet.create")}</button>`}>
-    <form class="form" onSubmit=${(e) => { e.preventDefault(); go(); }}>${children}</form></${Dialog}>`;
+      <button type="button" class="btn btn-primary" onClick=${go} disabled=${busy || !ready}>${busy ? t("fleet.creating") : t("fleet.create")}</button>`}>
+    <form class="form" onSubmit=${(e) => { e.preventDefault(); go(); }}><fieldset class="form" disabled=${busy}>${children}</fieldset></form></${Dialog}>`;
 }
 const field = (label, input) => html`<label class="field"><span>${label}</span>${input}</label>`;
 
@@ -314,7 +330,10 @@ export function CreateInstanceDialog({ onClose }) {
         const first = list.find(b => b.installed && !b.deprecated) || list.find(b => b.installed);
         setBackends(list);
         setF(x => ({ ...x, backend: first ? first.name : "" }));
-      } catch { if (lease.current()) setBackends(BACKENDS.map(name => ({ name, installed: true }))); }
+      } catch {
+        // The list could not be read: offer the known backends, and keep the explicit choice "fleet default" selected.
+        if (lease.current()) { setBackends(BACKENDS.map(name => ({ name, installed: true }))); setF(x => ({ ...x, backend: "" })); }
+      }
     })();
   }, [lease]);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
@@ -331,7 +350,9 @@ export function CreateInstanceDialog({ onClose }) {
     if (f.prompt.trim()) body.systemPrompt = f.prompt.trim();
     return body;
   } };
-  return html`<${FormDialog} title=${t("fleet.newInstance")} onClose=${onClose} submit=${submit}>
+  // Create waits for the backend list: a submission before it would go without a backend, and the list arriving
+  // afterwards would change the shown choice under a request already sent (#1425 review).
+  return html`<${FormDialog} title=${t("fleet.newInstance")} onClose=${onClose} submit=${submit} ready=${backends !== null}>
     ${field(t("fleet.directory"), html`<input value=${f.dir} onInput=${set("dir")} placeholder=${t("fleet.directoryHint")} />`)}
     ${field(`${t("fleet.topic")}${f.dir.trim() ? "" : " *"}`, html`<input value=${f.topic} onInput=${set("topic")} placeholder=${t("fleet.topicHint")} />`)}
     ${field(t("fleet.description"), html`<input value=${f.desc} onInput=${set("desc")} placeholder=${t("fleet.descriptionHint")} />`)}

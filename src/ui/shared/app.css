@@ -120,6 +120,7 @@ a { color: inherit; text-decoration: none; }
 
 .scrim { display: none; }
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+.main:focus { outline: none; }   /* the skip link's target: focus lands here, the next Tab goes on inside it */
 .conn { flex-shrink: 0; padding: var(--s-1) var(--s-4); text-align: center; font-size: var(--fs-xs); color: var(--text-2); background: var(--surface); }
 .tabs { display: none; }
 

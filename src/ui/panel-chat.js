@@ -375,6 +375,10 @@ function DetailsDialog({ name, onClose }) {
 }
 
 function DeleteDialog({ name, onClose }) {
+  // The dialog's own lease: it ends when the dialog goes (closed, or the chat left for another page). The delete
+  // may still finish on the server, and says so, but a dialog that is gone never closes or navigates the page the
+  // person is on now (#1425 review).
+  const lease = useLease(`delete:${name}`);
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
   const want = `delete ${name}`;
@@ -384,9 +388,10 @@ function DeleteDialog({ name, onClose }) {
     let r;
     try { const res = await fetch(`/ui/instances/${encodeURIComponent(name)}/delete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirm: typed }) }); r = await res.json(); }
     catch (err) { r = { error: err && err.message ? err.message : t("chat.disconnected") }; }
-    setBusy(false);
-    if (r && r.error) { toast(r.error, false); return; }
+    if (r && r.error) { toast(r.error, false); if (lease.current()) setBusy(false); return; }
     toast(t("chat.instanceDeleted", name));
+    if (!lease.current()) return;
+    setBusy(false);
     onClose();
     navigate("/ui");
   }

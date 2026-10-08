@@ -38,7 +38,11 @@ export function onLinkClick(e) {
   if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
   const a = e.target && e.target.closest ? e.target.closest("a[href]") : null;
   if (!a || (a.target && a.target !== "_self") || a.hasAttribute("download")) return;
+  // A link to a place on this page (the skip link, #main) is the browser's: it moves focus and scrolls, and is not
+  // a navigation of the app (#1425 review).
+  if ((a.getAttribute("href") || "").startsWith("#")) return;
   const url = new URL(a.getAttribute("href"), win.location.href);
+  if (url.hash && url.pathname === win.location.pathname && url.search === win.location.search) return;
   if (url.origin !== win.location.origin || !parseRoute(url.pathname)) return;
   e.preventDefault();
   navigate(url.pathname + url.search);

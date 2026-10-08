@@ -165,17 +165,29 @@ function ConnectionLine() {
   return text ? html`<div class="conn" role="status">${text}</div>` : null;
 }
 
-/** Shows the panel for the route, loading its module the first time. */
+/**
+ * A module loader that can be tried again: a failed attempt is forgotten (the next call loads afresh) and `attempt`
+ * counts, so a retry can ask for a new URL — a browser may keep a failed module import cached under the old one.
+ */
+export function retryable(load) {
+  let pending = null, attempt = 0;
+  return () => (pending ??= load(attempt++).catch((err) => { pending = null; throw err; }));
+}
+
+/** Shows the panel for the route, loading its module the first time; Retry is a real new attempt. */
 function Outlet({ route, seq, panels }) {
+  const [attempt, setAttempt] = useState(0);
   const [, force] = useState(0);
   const entry = route ? panels.get(route.panel) : null;
   useEffect(() => {
     if (entry && !entry.Component && !entry.loading) {
+      entry.error = null;
       entry.loading = entry.load().then(C => { entry.Component = C; entry.error = null; }, err => { entry.error = err; }).finally(() => { entry.loading = null; force(n => n + 1); });
+      force(n => n + 1);
     }
-  }, [entry, seq]);
+  }, [entry, seq, attempt]);
   if (!route) return html`<div class="panel"><${ErrorState} message=${t("app.loadFailed")} /></div>`;
-  if (entry && entry.error) return html`<div class="panel"><${ErrorState} onRetry=${() => { entry.error = null; force(n => n + 1); }} /></div>`;
+  if (entry && entry.error && !entry.loading) return html`<div class="panel"><${ErrorState} onRetry=${() => setAttempt(n => n + 1)} /></div>`;
   if (!entry || !entry.Component) return html`<div class="panel"><${Skeleton} lines=${4} /></div>`;
   const C = entry.Component;
   return html`<${C} route=${route} navKey=${`${routeKey(route)}|${seq}|${lang()}`} />`;
@@ -201,7 +213,7 @@ export function Shell({ panels, onNewInstance }) {
     <a class="skip" href="#main">${t("app.skip")}</a>
     <${Sidebar} route=${nav.route} onNewInstance=${onNewInstance} />
     <div class="scrim" onClick=${closeDrawer} aria-hidden="true"></div>
-    <main id="main" class="main" inert=${shell.drawer && narrow() ? true : undefined}>
+    <main id="main" class="main" tabindex="-1" inert=${shell.drawer && narrow() ? true : undefined}>
       <${ConnectionLine} />
       <${Outlet} route=${nav.route} seq=${nav.seq} panels=${panels} />
     </main>

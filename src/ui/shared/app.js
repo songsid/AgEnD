@@ -5,11 +5,13 @@
 // session. The panels that need one live under /ui/js/ and are reached only by the dynamic imports below, in "full"
 // mode. A test walks the static imports over real HTTP and asserts none of them names /ui/.
 import { html, render } from "./app-html.js";
-import { Shell, handleKey, showDialog, closeDrawer } from "./app-shell.js";
+import { Shell, handleKey, showDialog, closeDrawer, retryable } from "./app-shell.js";
 import { startRouter, navStore, navigate } from "./app-nav.js";
 import { createStream } from "./app-stream.js";
 import { appStore, applyStatus, applyActivity } from "./app-store.js";
 import { chatPath } from "./app-route.js";
+import { toast } from "./ui-toast.js";
+import { t } from "./app-i18n.js";
 
 const boot = document.body.dataset;
 const mode = boot.mode || "full";
@@ -23,13 +25,17 @@ appStore.set({ connection: stream.connection() });
 
 // The chat's store must hear every message from the first frame, whatever panel is open: its module boots once,
 // now, for the life of the page. Fleet loads the first time it is opened.
-const chat = import("/ui/js/panel-chat.js").then((m) => { m.boot({ stream, boot }); return m; });
+// A failed load can be retried (the panel's Retry): each retry asks for a fresh URL, since a browser may keep a failed
+// module import cached under the first one. boot() runs once, whichever attempt succeeds.
+const retryUrl = (path, attempt) => (attempt ? `${path}?retry=${attempt}` : path);
+const loadChat = retryable((a) => import(retryUrl("/ui/js/panel-chat.js", a)).then((m) => { m.boot({ stream, boot }); return m; }));
+const loadFleet = retryable((a) => import(retryUrl("/ui/js/panel-fleet.js", a)));
 // The stream opens once the chat listens, so the frames sent on connect (status, open prompts, ticks) reach it too.
 // If the chat cannot load (a session that just ended), the stream still opens for the sidebar.
-chat.catch(() => {}).finally(() => stream.start());
+loadChat().catch(() => {}).finally(() => stream.start());
 const panels = new Map([
-  ["chat", { load: () => chat.then((m) => m.ChatPanel) }],
-  ["fleet", { load: () => import("/ui/js/panel-fleet.js").then((m) => m.FleetPanel) }],
+  ["chat", { load: () => loadChat().then((m) => m.ChatPanel) }],
+  ["fleet", { load: () => loadFleet().then((m) => m.FleetPanel) }],
 ]);
 
 startRouter(window);
@@ -45,7 +51,8 @@ document.addEventListener("keydown", handleKey);
 
 async function onNewInstance() {
   closeDrawer();                                   // on a phone the dialog opens from the drawer: the drawer goes first
-  const m = await import("/ui/js/panel-fleet.js");
+  let m;
+  try { m = await loadFleet(); } catch { toast(t("app.loadFailed"), false); return; }
   showDialog(m.CreateInstanceDialog);
 }
 

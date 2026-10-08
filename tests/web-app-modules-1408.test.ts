@@ -86,7 +86,9 @@ describe("module admission (#1408 §4)", () => {
       for (const spec of staticImports(src)) expect(spec, `${name} → ${spec}`).toMatch(/^\.\/[a-z0-9._-]+\.js$/);
     }
     const app = readFileSync(join(shared, "app.js"), "utf8");
-    expect([...app.matchAll(/import\("([^"]+)"\)/g)].map(m => m[1]).sort()).toEqual(["/ui/js/panel-chat.js", "/ui/js/panel-fleet.js", "/ui/js/panel-fleet.js"]);
+    // Every dynamic import() in the entry names a private panel (through retryUrl, which only adds ?retry=<n>).
+    const dynamic = [...app.matchAll(/import\(([^)]*)\)/g)].map(m => m[1]!.trim());
+    expect(dynamic.sort()).toEqual(['retryUrl("/ui/js/panel-chat.js", a', 'retryUrl("/ui/js/panel-fleet.js", a']);
   });
 });
 
@@ -285,8 +287,8 @@ describe("the stream's modes (#1408 §3)", () => {
 
   it("the app opens the stream only after the chat's store is attached", () => {
     const app = readFileSync(join(process.cwd(), "src", "ui", "shared", "app.js"), "utf8");
-    expect(app).toMatch(/m\.boot\(\{ stream, boot \}\)/);
-    expect(app).toMatch(/chat\.catch\(\(\) => \{\}\)\.finally\(\(\) => stream\.start\(\)\)/);
+    expect(app).toMatch(/const loadChat = retryable\(\(a\) => import\([^)]*\)\)\.then\(\(m\) => \{ m\.boot\(\{ stream, boot \}\); return m; \}\)\);/);
+    expect(app).toMatch(/loadChat\(\)\.catch\(\(\) => \{\}\)\.finally\(\(\) => stream\.start\(\)\)/);
     expect(app.indexOf("stream.start()")).toBeGreaterThan(app.indexOf("m.boot("));
   });
 });
