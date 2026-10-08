@@ -107,6 +107,12 @@ const tg = (general: PlatformRule, fleet: PlatformRule, classic: PlatformRule, n
 const tgGeneralOnly = (general: PlatformRule): CommandSpec["telegram"] => tg(general, PASS, PASS);
 
 export const COMMANDS: readonly CommandSpec[] = [
+  {
+    name: "profile", slash: true, denied: NOT_AUTHORIZED, disabled: ["profile.disabled"],
+    scopes: { general: { level: "fleet-admin" }, fleet: { refuse: ["profile.general_only"] },
+      classic: { refuse: ["profile.general_only"] }, none: { refuse: ["profile.general_only"] } },
+    telegram: tgGeneralOnly(FLEET_ADMIN),
+  },
   // ── ClassicBot lifecycle ──
   {
     name: "start", slash: true, denied: NOT_AUTHORIZED,
@@ -206,7 +212,7 @@ export const TELEGRAM_MENUS = {
   fleet: {
     scopes: ["general", "fleet"],
     names: ["status", "sysinfo", "dashboard", "ctx", "compact", "steer", "btw", "clear", "model", "effort",
-      "pause", "wake", "restart", "collab", "update", "doctor", "login", "usage", "tips", "visibility"],
+      "pause", "wake", "restart", "collab", "update", "profile", "doctor", "login", "usage", "tips", "visibility"],
   },
   /**
    * Every other chat (`default` and `all_group_chats`): ClassicBot private chats and groups, the ones with an agent and

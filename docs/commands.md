@@ -21,6 +21,7 @@ Registered via `setMyCommands` with `scope: chat` and `scope: chat_administrator
 | 🔒 `/pause` | Pause an idle instance | Admin |
 | 🔒 `/wake` | Wake a paused instance | Admin |
 | 🔒 `/restart [full]` | Restart all instances in-process; `full` reloads the entire Fleet process and adapters, independent of version | Admin |
+| 🔒 `/profile [seconds]` | Record the running fleet’s CPU profile without restarting (default 60 s, maximum 1,800 s). General only; completion posts the local path and size, not the file. An active recording refuses another request and reports seconds left. | Fleet admin on the General topic’s owner adapter |
 | 🔒 `/update` | Update AgEnD to latest | Admin |
 | 🔒 `/doctor` | Run health diagnostics | Admin |
 | 🔒 `/login [backend\|cancel]` | **(beta)** Remote CLI sign-in — and install — without SSH. Away from the machine, a `kiro-cli` or `claude-code` sign-in can open a one-tap temporary public link (AgEnD fetches a pinned, checksum-verified cloudflared if needed) — see [configuration](configuration.md#finishing-a-login-away-from-the-machine-public-link). One entry point: a CLI that is not installed yet is installed first (the backend's official install script in a temporary tmux window, verified on PATH), then signed in. The old `/install-cli` (`/install_cli`) still works when typed but only redirects to `/login` with a "moved" notice — it is in no menu. No arg shows a backend picker of every installed or installable backend, each labelled with what a click does; device-code backends (codex, grok) post a URL and code in the chat; the others (claude, kiro) open a browser terminal where you finish the sign-in (and can paste the code back). Sign-in covers `codex`, `grok`, `kiro` and `claude`; `opencode` and `muse` are install-only (no sign-in flow); `antigravity` is refused outright — bare `agy` is the full agent CLI with no isolated login sub-command (user decision v2.1.5, `remoteLogin: "unsupported"` in `src/login-flows.ts`). Opens a temporary tmux window (instance panes untouched), warns if auth is already valid, 10-minute timeout, `/login cancel` anytime. Credentials are per-backend shared — one login fixes every instance on that backend, and running instances restart afterward to pick up the new credential. Also on Discord (`/login backend:… cancel:…`); not on TG Classic. | Admin |
@@ -84,6 +85,7 @@ Registered globally via `client.application.commands.set()`.
 | 🔒 `/pause [instance]` | Pause an idle instance | Admin |
 | 🔒 `/wake [instance]` | Wake a paused instance | Admin |
 | 🔒 `/restart [mode:full]` | Restart all instances in-process; `mode:full` reloads the entire Fleet process and adapters | Admin |
+| 🔒 `/profile [seconds]` | Record the running fleet’s CPU profile without restarting (default 60 s, maximum 1,800 s). General only; completion posts the local path and size, not the file. An active recording refuses another request and reports seconds left. | Fleet admin on the General topic’s owner adapter |
 | 🔒 `/update` | Update AgEnD to latest version | Admin |
 | 🔒 `/doctor` | Run health diagnostics | Admin |
 | 🔒 `/visibility [mode]` | Show, or set (`mode: full\|summary\|hidden`), how bot-to-bot messages appear in instance channels; saved to `fleet.yaml` | Admin |
@@ -186,3 +188,9 @@ User sends /command
      - TG classic → fleet-manager.ts (isTelegramClassic block)
   → Handler executes + responds
 ```
+
+### CPU profiling operator boundary
+
+Discord `/profile` uses the registered native slash command; typing the same text does not start a recording. Telegram accepts typed `/profile [seconds]` in General. An explicit fleet admin (`allowed_users`) on General’s owning adapter is required; an empty list disables it. ClassicBot and agent topics cannot start it. No MCP or web control is provided.
+
+The local operator can also run `agend profile [seconds]` against the running fleet and receive the saved path on stdout. Agent environments (`AGEND_INSTANCE_NAME`) are refused. See [diagnostics](diagnostics.md#on-demand-cpu-profiles) for the Unix socket boundary, artifact limits and costs.
