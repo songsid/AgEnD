@@ -26,7 +26,7 @@ interface FakeProc extends EventEmitter {
 function makeFakeProc(): FakeProc {
   const proc = new EventEmitter() as FakeProc;
   proc.stdout = new EventEmitter();
-  proc.stdin = { write: vi.fn() };
+  proc.stdin = Object.assign(new EventEmitter(), { write: vi.fn() });
   proc.killed = false;
   proc.kill = () => { proc.killed = true; };
   return proc;
@@ -46,14 +46,14 @@ describe("TmuxControlClient reconnect", () => {
     execFileMock.mockReset();
     spawnMock.mockReturnValue(makeFakeProc());
     // Default: execFile returns empty stdout so resolvePane is a harmless no-op
-    execFileMock.mockImplementation((_cmd, _args, cb: (e: Error | null, s: string) => void) => cb(null, ""));
+    execFileMock.mockImplementation((_cmd, _args, _options, cb: (e: Error | null, s: string) => void) => cb(null, ""));
   });
 
   it("registerWindow tracks the windowId for future reconnects", async () => {
     const client = new TmuxControlClient("s", 100);
     const internal = client as unknown as ClientInternals;
 
-    execFileMock.mockImplementationOnce((_c, _a, cb) => cb(null, "%1"));
+    execFileMock.mockImplementationOnce((_c, _a, _o, cb) => cb(null, "%1"));
     await client.registerWindow("@10");
 
     expect(internal.registeredWindows.has("@10")).toBe(true);
@@ -103,12 +103,20 @@ describe("TmuxControlClient reconnect", () => {
     internal.registeredWindows.add("@7");
 
     const seen: string[] = [];
-    execFileMock.mockImplementation((_cmd, args: string[], cb: (e: Error | null, s: string) => void) => {
-      seen.push(args.join(" "));
-      cb(null, "%99");
+    const proc = makeFakeProc();
+    spawnMock.mockReturnValue(proc);
+    let number = 1;
+    proc.stdin.write.mockImplementation((command: string) => {
+      seen.push(command);
+      const nonce = command.match(/display-message -p '(agend-read-[^']+)'/)?.[1];
+      if (!nonce) return;
+      const id = ++number;
+      queueMicrotask(() => proc.stdout.emit("data", Buffer.from(
+        `%begin 1 ${id} 1\n%99\n%end 1 ${id} 1\n%begin 1 ${id + 1} 1\n${nonce}\n%end 1 ${id + 1} 1\n`)));
     });
 
     internal.connect();
+    proc.stdout.emit("data", Buffer.from("%begin 1 1 0\n%end 1 1 0\n"));
     // Allow the fired-and-forget resolvePane promises to settle
     await new Promise(r => setImmediate(r));
 

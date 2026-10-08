@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { measureSyncWork } from "./sync-work-attribution.js";
 import type { TerminalConfig } from "./types.js";
+import { tmuxReadArgs, type TmuxReadPort, type TmuxReadQuery } from "./tmux-read.js";
 
 const execAsync = promisify(execFile);
 /**
@@ -102,6 +103,7 @@ export class TmuxManager {
     private sessionName: string,
     windowId: string,
     private logicalSize: TmuxLogicalSize = { ...DEFAULT_TMUX_LOGICAL_SIZE },
+    private readPort?: TmuxReadPort,
   ) {
     this.windowId = windowId;
   }
@@ -181,11 +183,11 @@ export class TmuxManager {
     }
   }
 
-  static async listWindows(sessionName: string): Promise<Array<{ id: string; name: string }>> {
+  static async listWindows(sessionName: string, readPort?: TmuxReadPort): Promise<Array<{ id: string; name: string }>> {
     try {
-      const { stdout } = await exec("tmux", TmuxManager.tmuxArgs([
+      const stdout = readPort ? await TmuxManager.portRead(readPort, { kind: "windows", session: sessionName }, 10_000) : (await exec("tmux", TmuxManager.tmuxArgs([
         "list-windows", "-t", sessionName, "-F", "#{window_id}|||#{window_name}"
-      ]));
+      ]))).stdout;
       return stdout.trim().split("\n").filter(Boolean).map(line => {
         const [id, name] = line.split("|||");
         return { id, name };
@@ -215,6 +217,16 @@ export class TmuxManager {
   }
 
   // === Instance window methods ===
+
+  private static portRead(port: TmuxReadPort, query: TmuxReadQuery, timeoutMs: number): Promise<string> {
+    if (!port.isFor(query.session, TmuxManager.socketName)) return Promise.reject(new Error("tmux read port scope mismatch"));
+    return port.read(query, timeoutMs);
+  }
+
+  private async read(query: TmuxReadQuery, timeoutMs = LOGIN_TMUX_OP_TIMEOUT_MS): Promise<string> {
+    if (this.readPort) return TmuxManager.portRead(this.readPort, query, timeoutMs);
+    return (await exec("tmux", TmuxManager.tmuxArgs(tmuxReadArgs(query)), { timeout: timeoutMs })).stdout;
+  }
 
   /** Window name handed to createWindow(), kept so a cleanup can find a window whose id we never learned. */
   private pendingWindowName: string | null = null;
@@ -354,7 +366,7 @@ export class TmuxManager {
   async isWindowAlive(): Promise<boolean> {
     if (!this.windowId) return false;
     try {
-      const windows = await TmuxManager.listWindows(this.sessionName);
+      const windows = await TmuxManager.listWindows(this.sessionName, this.readPort);
       return windows.some(w => w.id === this.windowId);
     } catch { return false; }
   }
@@ -380,10 +392,7 @@ export class TmuxManager {
     // liveness recheck before classifying a crash.
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const { stdout } = await exec("tmux", TmuxManager.tmuxArgs([
-          "list-panes", "-t", `${this.sessionName}:${this.windowId}`,
-          "-F", "#{pane_dead} #{pane_dead_status}",
-        ]));
+        const stdout = await this.read({ kind: "pane", session: this.sessionName, window: this.windowId, field: "status" });
         const line = stdout.trim().split("\n")[0];
         if (!line) return null;
         const parts = line.split(" ");
@@ -424,9 +433,7 @@ export class TmuxManager {
   async getPaneInputMode(): Promise<"raw" | "cooked" | "unknown"> {
     if (!this.windowId) return "unknown";
     try {
-      const { stdout } = await exec("tmux", TmuxManager.tmuxArgs([
-        "display-message", "-p", "-t", `${this.sessionName}:${this.windowId}`, "#{pane_tty}",
-      ]), { timeout: 2_000 });
+      const stdout = await this.read({ kind: "tty", session: this.sessionName, window: this.windowId }, 2_000);
       const tty = stdout.trim();
       if (!/^\/dev\/(?:pts\/\d+|tty\w*)$/.test(tty)) return "unknown";
       const flag = process.platform === "darwin" ? "-f" : "-F";
@@ -579,19 +586,12 @@ export class TmuxManager {
   }
 
   async capturePane(timeoutMs = LOGIN_TMUX_OP_TIMEOUT_MS): Promise<string> {
-    const { stdout } = await exec("tmux", TmuxManager.tmuxArgs([
-      "capture-pane", "-t", `${this.sessionName}:${this.windowId}`, "-p",
-    ]), { timeout: timeoutMs });
-    return stdout;
+    return this.read({ kind: "capture", session: this.sessionName, window: this.windowId }, timeoutMs);
   }
 
   /** Capture pane content including scrollback history (last N lines). */
   async capturePaneWithHistory(lines: number = 50, timeoutMs = LOGIN_TMUX_OP_TIMEOUT_MS): Promise<string> {
-    const { stdout } = await exec("tmux", TmuxManager.tmuxArgs([
-      "capture-pane", "-t", `${this.sessionName}:${this.windowId}`,
-      "-p", "-S", `-${lines}`,
-    ]), { timeout: timeoutMs });
-    return stdout;
+    return this.read({ kind: "capture", session: this.sessionName, window: this.windowId, history: lines }, timeoutMs);
   }
 
   /**
@@ -600,11 +600,7 @@ export class TmuxManager {
    * where URL reassembly matters more than screen-faithful geometry.
    */
   async capturePaneJoined(lines: number = 50): Promise<string> {
-    const { stdout } = await exec("tmux", TmuxManager.tmuxArgs([
-      "capture-pane", "-t", `${this.sessionName}:${this.windowId}`,
-      "-p", "-J", "-S", `-${lines}`,
-    ]));
-    return stdout;
+    return this.read({ kind: "capture", session: this.sessionName, window: this.windowId, history: lines, joined: true });
   }
 
   getWindowId(): string { return this.windowId; }
