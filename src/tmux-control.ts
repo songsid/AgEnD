@@ -12,6 +12,13 @@ export interface TmuxPaneOutputEvent {
 }
 
 export const CONTROL_SAFETY_SWEEP_MS = 60_000;
+/**
+ * The sweep's listeners — one per daemon, each starting a `tmux capture-pane` child process and evaluating its pane —
+ * are spread over this much of the period instead of all running in one tick (#1402): measured live, that one tick was
+ * 150–860 ms of unbroken spawning under normal load and 1–2.5 s when the host was busy (#1235). Half the period, so a
+ * sweep's last slot is always well before the next sweep starts.
+ */
+export const CONTROL_SAFETY_SWEEP_SPREAD_MS = CONTROL_SAFETY_SWEEP_MS / 2;
 
 /**
  * Consecutive `list-panes` failures before a window's registration is dropped.
@@ -57,6 +64,8 @@ export class TmuxControlClient extends EventEmitter {
    *  the pane cache was dropped, so the absence of a record proves nothing. */
   private observationResetAt = 0;
   private safetySweepTimer: ReturnType<typeof setInterval> | null = null;
+  /** The current sweep's pending per-listener slots. */
+  private safetySweepSlots = new Set<ReturnType<typeof setTimeout>>();
 
   constructor(
     private sessionName: string,
@@ -71,19 +80,40 @@ export class TmuxControlClient extends EventEmitter {
   start(): void {
     this.stopped = false;
     if (!this.safetySweepTimer) {
-      this.safetySweepTimer = setInterval(() => {
-        // Every daemon's listener runs inside this one emit and starts its capture there (#1235): the synchronous
-        // part of the whole fleet-wide sweep is attributed as one stretch.
-        measureSyncWork("tmux.safetySweep", () => this.emit("safety_sweep", { at: Date.now() }));
-      }, CONTROL_SAFETY_SWEEP_MS);
+      this.safetySweepTimer = setInterval(() => this.runSafetySweep(), CONTROL_SAFETY_SWEEP_MS);
     }
     this.connect();
   }
 
   // PLACEHOLDER_REST
 
+  /**
+   * One sweep: every daemon's listener, each in a tick of its own, spread evenly over CONTROL_SAFETY_SWEEP_SPREAD_MS
+   * (#1402). A listener removed before its slot (its daemon stopped) is skipped; stop() drops slots still pending.
+   */
+  private runSafetySweep(): void {
+    const listeners = this.listeners("safety_sweep") as Array<(event: { at: number }) => void>;
+    const step = listeners.length > 0 ? CONTROL_SAFETY_SWEEP_SPREAD_MS / listeners.length : 0;
+    listeners.forEach((listener, i) => {
+      const slot = setTimeout(() => {
+        this.safetySweepSlots.delete(slot);
+        if (this.stopped || !this.listeners("safety_sweep").includes(listener)) return;
+        // One daemon's capture start and pane evaluation: attributed per tick (#1235).
+        measureSyncWork("tmux.safetySweep", () => listener({ at: Date.now() }));
+      }, Math.floor(i * step));
+      slot.unref?.();
+      this.safetySweepSlots.add(slot);
+    });
+  }
+
+  private clearSafetySweepSlots(): void {
+    for (const slot of this.safetySweepSlots) clearTimeout(slot);
+    this.safetySweepSlots.clear();
+  }
+
   stop(): void {
     this.stopped = true;
+    this.clearSafetySweepSlots();
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
