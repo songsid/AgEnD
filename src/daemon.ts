@@ -104,8 +104,8 @@ function transcriptMarkerEvidence(kind: TranscriptMarkerKind): string {
   return kind === "user" ? "transcript-marker" : kind === "absorbed" ? "transcript-marker-absorbed" : "transcript-marker-queued";
 }
 
-export function buildInstructionReloadNotice(binaryName: string, instanceName: string, instanceDir: string): string {
-  const source = binaryName === "codex" || binaryName === "grok" || binaryName === "muse"
+export function buildInstructionReloadNotice(binaryName: string, instanceName: string, instanceDir: string, backendSource?: string | null): string {
+  const source = backendSource ? backendSource : binaryName === "codex" || binaryName === "grok" || binaryName === "muse"
     ? "AGENTS.md"
     : binaryName === "kiro-cli"
       ? `.kiro/steering/agend-${instanceName}.md`
@@ -6407,7 +6407,7 @@ export class Daemon extends EventEmitter {
         if (this.pendingInstructionsNotice) {
           this.pendingInstructionsNotice = false;
           await this.deliverMessage(
-            buildInstructionReloadNotice(this.backend?.binaryName ?? "unknown", this.name, this.instanceDir),
+            buildInstructionReloadNotice(this.backend?.binaryName ?? "unknown", this.name, this.instanceDir, this.backend?.instructionsSource?.()),
             undefined,
             { deliveryEpoch },
           );
@@ -9634,6 +9634,110 @@ export class Daemon extends EventEmitter {
     return resumedSuccessfully;
   }
 
+  /** The whole agent switch after a resume, on the monotonic clock (#906 §3). */
+  private static readonly AGENT_SWITCH_BUDGET_MS = 15_000;
+  private static readonly AGENT_SWITCH_POLL_MS = 500;
+  /** Each tmux call of the write (load, paste, Enter, take-back) is bounded by this. */
+  private static readonly AGENT_SWITCH_TMUX_OP_MS = 1_000;
+  /**
+   * The paste is started only with this much budget left, checked at the paste itself: the load and the paste, the
+   * settle, the Enter — each bounded by AGENT_SWITCH_TMUX_OP_MS — fit in it.
+   */
+  private static readonly AGENT_SWITCH_WRITE_RESERVE_MS = 4_000;
+  /** Between the paste and its Enter, as tmux pastes elsewhere (pasteText). */
+  private static readonly AGENT_SWITCH_PASTE_SETTLE_MS = 500;
+
+  /**
+   * #906 §3: after a resume, make the CLI run as this instance's own agent. Reads the agent off the live layout
+   * (backend.agentSwitch().readActive — the supported bottom layout only, never a name quoted in the conversation);
+   * when it is another one, types the switch command ONCE, under the pane-write lock, and only when ONE final capture
+   * taken there shows the live layout naming another agent AND an idle, input-ready pane (ready, not busy, no
+   * blocking dialog, no input transient) — after the delivery path's own readiness check. It confirms only on a
+   * later capture of the live layout naming ours.
+   *
+   * Fenced like a delivery, from entry on: the spawn generation, launch fence, the pause/wake phase it started in,
+   * the same tmux window, not aborted, writes not stopping — re-checked after every await, and between the paste and
+   * its Enter. The whole step, every await included, ends at one monotonic deadline: a late capture never confirms
+   * and a late admission never writes; a paste whose Enter would land past it is taken back. Not confirmed in time:
+   * the old setup stays, a launch warning says so, the next launch tries again. A stop, pause or respawn ends it
+   * silently, confirming and removing nothing. Never throws into the spawn.
+   */
+  private async ensureBackendAgent(): Promise<void> {
+    let sw: ReturnType<NonNullable<CliBackend["agentSwitch"]>> | null = null;
+    try { sw = this.backend?.agentSwitch?.() ?? null; } catch { sw = null; }
+    const tmux = this.tmux;
+    if (!sw || !tmux || !this.backend) return;
+    const windowId = tmux.getWindowId();
+    const spawn = this.spawnGeneration, fence = this.launchFenceEpoch, phase = this.pauseWakeState;
+    const fenced = () => !this.startupAborted && !this.deliveryWritesStopping && !this.fatalStartupBlocked
+      && (phase === "active" || phase === "waking") && this.pauseWakeState === phase
+      && spawn === this.spawnGeneration && fence === this.launchFenceEpoch && this.tmux === tmux;
+    const deadline = performance.now() + Daemon.AGENT_SWITCH_BUDGET_MS;
+    const live = () => fenced() && performance.now() < deadline;
+    if (!live()) return;
+    const TIMEOUT = Symbol("deadline");
+    const within = <T>(work: Promise<T>): Promise<T | typeof TIMEOUT> => {
+      const left = deadline - performance.now();
+      if (left <= 0) { work.catch(() => {}); return Promise.resolve(TIMEOUT); }
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      return Promise.race([work, new Promise<typeof TIMEOUT>(r => { timer = setTimeout(() => r(TIMEOUT), left); })])
+        .finally(() => clearTimeout(timer));
+    };
+    const capture = () => within(tmux.capturePane().catch(() => null));
+    let wroteAt: number | null = null;
+    try {
+      while (live()) {
+        const capturedAt = performance.now();
+        const pane = await capture();
+        if (pane === TIMEOUT || !live()) break;
+        const active = pane === null ? null : sw.readActive(pane);
+        if (active === sw.agent && (wroteAt === null || capturedAt > wroteAt)) {
+          if (sw.alreadyConfirmed && wroteAt === null) return; // already ours, already on record
+          for (const warning of sw.confirm()) this.emit("backend_launch_warning", { name: this.name, message: warning });
+          this.logger.info({ agent: sw.agent, switched: wroteAt !== null }, "The resumed conversation runs as this instance's agent");
+          return;
+        }
+        if (wroteAt === null && active !== null && active !== sw.agent) {
+          const wrote = await within(this.paneWriteLock.run(async () => {
+            // The whole write is one owned transaction under the lock. Every await is bounded; a take-back of a paste
+            // whose Enter would land past the deadline happens here, before the lock is released, so it can never
+            // edit a write admitted after this one.
+            if (!live()) return false;
+            const readiness = await within(this.paneReadinessForDelivery(windowId));
+            if (readiness !== "ready" || !live()) return false;
+            const final = await capture();
+            if (final === TIMEOUT || final === null || !live()) return false;
+            const now = sw!.readActive(final);
+            if (now === null || now === sw!.agent || this.inputTransientInPane(final) || !this.paneAuthoritativelyIdle(final)) return false;
+            // The reserve, at the paste boundary — after the final proof, which may have used some of the budget.
+            if (deadline - performance.now() < Daemon.AGENT_SWITCH_WRITE_RESERVE_MS) return false;
+            const op = Daemon.AGENT_SWITCH_TMUX_OP_MS;
+            // live() is asked before every tmux mutation inside the paste, so a stop, pause, respawn or the deadline
+            // between its load and its paste never reaches the pane.
+            const pasted = await tmux.pasteBuffer(sw!.command, { guard: live, timeoutMs: op });
+            if (!pasted) return false;
+            await new Promise(r => setTimeout(r, Daemon.AGENT_SWITCH_PASTE_SETTLE_MS));
+            if (live()) return tmux.sendSpecialKey("Enter", op);
+            // Same CLI, but no time left to see it through: take the command back out of its input row (bounded).
+            if (fenced()) await tmux.deleteBackward(sw!.command.length, op);
+            return false;
+          }));
+          if (wrote === true) {
+            wroteAt = performance.now();
+            this.logger.info({ agent: sw.agent, was: active }, "Switching the resumed conversation to this instance's agent");
+          }
+        }
+        if (!live()) break;
+        await within(new Promise(r => setTimeout(r, Math.min(Daemon.AGENT_SWITCH_POLL_MS, Math.max(0, deadline - performance.now())))));
+      }
+      if (!fenced()) return; // a stop, pause or respawn: nothing to say, nothing to do
+      this.logger.warn({ agent: sw.agent, typed: wroteAt !== null }, "The resumed conversation did not switch to this instance's agent in time");
+      this.emit("backend_launch_warning", { name: this.name, message: t("kiro.switch_timeout", Daemon.AGENT_SWITCH_BUDGET_MS / 1000) });
+    } catch (err) {
+      this.logger.warn({ err }, "The agent switch after resume failed — the shared entries stay; the next launch tries again");
+    }
+  }
+
   /**
    * Startup budget for this launch: the backend's override (resume-aware), never
    * below a user-configured startup_timeout_ms; undefined = trySpawn's default.
@@ -9757,12 +9861,16 @@ export class Daemon extends EventEmitter {
    * Returns true if CLI is ready, false if it failed or got stuck.
    */
   private async trySpawn(reuseWindow = false, startupTimeoutMs?: number): Promise<boolean> {
-    if (!this.spawnGate) return this.trySpawnInsideGate(reuseWindow, startupTimeoutMs);
-    return this.spawnGate.run({
+    const ready = !this.spawnGate ? await this.trySpawnInsideGate(reuseWindow, startupTimeoutMs) : await this.spawnGate.run({
       instanceName: this.name,
       workingDirectory: this.config.working_directory,
       reason: reuseWindow ? "wake" : this.lastSpawnAt > 0 ? "recovery" : "startup",
     }, () => this.trySpawnInsideGate(reuseWindow, startupTimeoutMs));
+    // #906: a resumed kiro conversation comes back as the agent it was saved under. Every launch path that reaches a
+    // ready CLI (start, recovery, wake) switches it to this instance's own agent here, while the spawn still holds
+    // deliveries — and outside the spawn gate, which it does not need.
+    if (ready) await this.ensureBackendAgent();
+    return ready;
   }
 
   /**
@@ -9932,7 +10040,7 @@ export class Daemon extends EventEmitter {
       // delivery is already in flight or queued. Without the lock the notice and
       // that delivery race into the same pane.
       const told = await this.paneWriteLock.run(() => this.submitSystemPaste(
-        buildInstructionReloadNotice(this.backend?.binaryName ?? "unknown", this.name, this.instanceDir),
+        buildInstructionReloadNotice(this.backend?.binaryName ?? "unknown", this.name, this.instanceDir, this.backend?.instructionsSource?.()),
         "instruction-reload-notice",
       ));
       if (!told) {

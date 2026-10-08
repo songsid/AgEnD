@@ -1923,11 +1923,14 @@ export class InstanceLifecycle {
     // This is needed even when daemon is not in memory — stop() only calls
     // backend.cleanup() when daemon object exists. Without this, stale MCP
     // entries remain in the working directory and crash new instances.
-    if (config.working_directory && config.backend) {
+    // By the effective backend: an instance on the fleet default backend (no per-instance `backend`) has the same
+    // files to clean up (#906 review: an inherited kiro left its agent, steering and shared entry behind).
+    const effectiveBackend = config.backend ?? this.ctx.fleetConfig?.defaults?.backend;
+    if (config.working_directory && effectiveBackend) {
       try {
         const { createBackend } = await import("./backend/factory.js");
         const instanceDir = this.ctx.getInstanceDir(name);
-        const backend = createBackend(config.backend, instanceDir);
+        const backend = createBackend(effectiveBackend, instanceDir);
         if (backend?.cleanup) {
           const backendConfig = {
             workingDirectory: config.working_directory,
@@ -1940,10 +1943,18 @@ export class InstanceLifecycle {
           backend.cleanup(backendConfig as import("./backend/types.js").CliBackendConfig);
           this.ctx.logger.info({ name }, "Cleaned up backend config files");
         }
+
       } catch (err) {
         this.ctx.logger.debug({ err, name }, "Backend cleanup failed (best effort)");
       }
     }
+    // State a backend keeps outside the instance directory (kiro: which conversations it owns, #906) — by the
+    // effective backend, so an instance on the fleet default is forgotten too.
+    try {
+      const { createBackend } = await import("./backend/factory.js");
+      const effective = config.backend ?? this.ctx.fleetConfig?.defaults?.backend ?? "claude-code";
+      createBackend(effective, this.ctx.getInstanceDir(name))?.forget?.(name);
+    } catch { /* best effort */ }
 
     // Clean up git worktree if applicable
     if (config.worktree_source && config.working_directory) {
@@ -2362,6 +2373,12 @@ export class InstanceLifecycle {
 
     // 5. Clean instanceDir to avoid stale rotation-state.json / crash-history
     const instanceDir = this.ctx.getInstanceDir(instanceName);
+    // The replacement starts a fresh context: forget the conversations the old one owned (kiro, #906).
+    try {
+      const { createBackend } = await import("./backend/factory.js");
+      const effective = savedConfig.backend ?? this.ctx.fleetConfig?.defaults?.backend ?? "claude-code";
+      createBackend(effective, instanceDir)?.forget?.(instanceName);
+    } catch { /* best effort */ }
     try {
       const { rm } = await import("node:fs/promises");
       await rm(instanceDir, { recursive: true, force: true });

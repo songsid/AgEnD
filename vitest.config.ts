@@ -53,6 +53,10 @@ export default defineConfig({
     env: {
       PATH: process.env.PATH ?? "",
       AGEND_HOME: testAgendHome,
+      // Never the operator's kiro stores (#906): its conversation store sits in the same file as the login, and kiro
+      // launch planning reads it. Tests that need a store build one under their own scratch directory.
+      XDG_DATA_HOME: join(testAgendHome, "xdg-data"),
+      KIRO_HOME: join(testAgendHome, "kiro-home"),
       // Test FleetManager.stopAll() calls sdNotify("STOPPING=1"). When tests are
       // launched from an agent inside the production systemd cgroup, inheriting
       // its NOTIFY_SOCKET would tell systemd to stop the real fleet.

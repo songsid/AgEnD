@@ -126,7 +126,7 @@ A fresh launch carries `--agent` from the start, needs no old setup, and runs no
 
 **Failure handling:** a malformed or unreadable shared file, or a failed removal, is never repaired and never reported as isolated. A launch warning names the file, and the next launch tries again. Writes happen only when something changed, atomically, keeping the rest of the file as is.
 
-**When a removal takes effect.** Removal takes effect for a running session no later than that session's next launch. Kiro has config hot reload since 2.10, which may apply it sooner, but that is not relied on: it was not probed on 2.21/2.28. So isolation in a cwd is complete once every kiro instance there has confirmed its switch **and relaunched once since**. Normally both happen at the first launch after the upgrade.
+**When a removal takes effect.** Removal takes effect for a running session no later than that session's next launch. Kiro has config hot reload since 2.10, which may apply it sooner, but that is not relied on: it was not probed on 2.21/2.28. So isolation in a cwd is complete once every kiro instance there has confirmed its switch, its old setup was removed successfully, **and it has started again since**. These are two stages: the switch at the first start after the upgrade, then the next start. Untagged legacy steering files (above) stay a recorded gap until someone deletes them by hand.
 
 **Known limit: two fleets on one cwd.** Their read-modify-writes of the shared `mcp.json` can race, and one can bring back an entry the other just removed. This can remain even after both have upgraded, until that instance's next launch removes it again. No cross-fleet locking is added.
 
