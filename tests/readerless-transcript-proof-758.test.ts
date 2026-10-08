@@ -291,16 +291,17 @@ describe("a readerless backend's idle delivery is proven by its transcript, not 
   it("a stop that lands while the look that finds the marker is in flight still leaves the row to reconciliation", async () => {
     const h = await deliver();
     await h.begun();
-    appendFileSync(h.transcript, userEntry(h.deliveryId));
-    // slowRead: yield one real event-loop turn inside the scan after the hook
-    // fires, so the scan is still in-flight while the fence is in effect.
-    // Without this the scan completes synchronously before the settlement check
-    // runs, making the mutation (removing deliveryWritesStopping guard) invisible.
+    // Install hook and slowRead BEFORE writing the marker so that the look
+    // that finds the marker always goes through onLook. Writing the marker
+    // first leaves a window where a look can find it hook-free (the race the
+    // test exists to close). looksBeforeHook is captured before the hook so
+    // any pre-hook look does not satisfy the post-hook predicate.
     lookHooks.slowRead = true;
-    // Capture looks already counted so only NEW looks after hook install satisfy the predicate.
     const looksBeforeHook = h.looks();
     let stopHookFired = false;
     lookHooks.onLook = () => { stopHookFired = true; h.daemon.fenceDeliveryWritesForStop(); };
+    // Write the marker after the hook is in place.
+    appendFileSync(h.transcript, userEntry(h.deliveryId));
     // Pump until a look fires AFTER the hook was installed.
     await h.pump(400, () => h.looks() > looksBeforeHook);
     // The stop hook must have run on the new look.
