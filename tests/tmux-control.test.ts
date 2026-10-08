@@ -14,7 +14,7 @@ vi.mock("node:readline", () => ({
   createInterface: vi.fn(() => ({ on: vi.fn(), close: vi.fn() })),
 }));
 
-import { CONTROL_SAFETY_SWEEP_MS, TmuxControlClient } from "../src/tmux-control.js";
+import { CONTROL_SAFETY_SWEEP_MS, CONTROL_SAFETY_SWEEP_SPREAD_MS, TmuxControlClient } from "../src/tmux-control.js";
 
 interface FakeProc extends EventEmitter {
   stdout: EventEmitter;
@@ -137,7 +137,8 @@ describe("TmuxControlClient reconnect", () => {
       client.on("safety_sweep", sweep);
       client.start();
 
-      await vi.advanceTimersByTimeAsync(CONTROL_SAFETY_SWEEP_MS);
+      // The sweep's slots run within its spread (#1402); a lone listener's slot is the tick right after the sweep.
+      await vi.advanceTimersByTimeAsync(CONTROL_SAFETY_SWEEP_MS + CONTROL_SAFETY_SWEEP_SPREAD_MS);
       expect(sweep).toHaveBeenCalledOnce();
 
       client.stop();
