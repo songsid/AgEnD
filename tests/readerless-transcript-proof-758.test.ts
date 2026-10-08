@@ -288,7 +288,10 @@ describe("a readerless backend's idle delivery is proven by its transcript, not 
     await h.begun();
     appendFileSync(h.transcript, userEntry(h.deliveryId));
     lookHooks.onLook = () => { h.daemon.fenceDeliveryWritesForStop(); };
-    await h.pump(80);
+    // Wait until the look that finds the marker has actually started (and been fenced),
+    // rather than using a fixed step count that can be exhausted under CI load before
+    // any look fires for this delivery (the 1-in-6 flake on main: `looks()` was 0).
+    await h.pump(400, () => h.looks() > 0);
     expect(h.looks()).toBeGreaterThan(0);
     expect(h.state()).toBe("submission_started");
   });
