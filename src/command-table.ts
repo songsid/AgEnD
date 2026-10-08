@@ -140,15 +140,15 @@ export const COMMANDS: readonly CommandSpec[] = [
   { name: "wake", slash: true, denied: PERMISSION_DENIED, scopes: inAgentChannels("channel-admin", NO_AGENT), telegram: tg(FLEET_ADMIN, FLEET_ADMIN, CLASSIC_ADMIN, NOBODY_NO_AGENT_START) },
   // Discord had no check at all (the 🔒 was only a label). Telegram: a ClassicBot admin in a ClassicBot chat, and NO
   // check in a fleet topic.
-  { name: "compact", slash: true, denied: ["cmd.admin_required", "/compact"], scopes: inAgentChannels("channel-admin", NO_AGENT), telegram: tg(ANYONE, ANYONE, CLASSIC_ADMIN, NOBODY_NO_AGENT_START) },
+  { name: "compact", slash: true, denied: ["cmd.admin_required", "/compact"], scopes: inAgentChannels("channel-admin", NO_AGENT), telegram: tg(FLEET_ADMIN, FLEET_ADMIN, CLASSIC_ADMIN, NOBODY_NO_AGENT_START) },
   { name: "clear", slash: true, denied: PERMISSION_DENIED, scopes: inAgentChannels("channel-admin", NO_AGENT), telegram: tg(FLEET_ADMIN, FLEET_ADMIN, CHANNEL_ADMIN, NOBODY_NO_AGENT_START) },
   { name: "model", slash: true, denied: PERMISSION_DENIED, scopes: inAgentChannels("channel-admin", NO_AGENT), telegram: tg(FLEET_ADMIN, FLEET_ADMIN, CHANNEL_ADMIN, NOBODY_NO_AGENT_START) },
   // Telegram has no ClassicBot /effort handler (the text goes to the agent).
   { name: "effort", slash: true, denied: PERMISSION_DENIED, scopes: inAgentChannels("channel-admin", NO_AGENT), telegram: tg(FLEET_ADMIN, FLEET_ADMIN, PASS) },
   // Telegram's typed /collab has no check in a fleet topic and no handler in a ClassicBot chat (the text goes to the agent).
-  { name: "collab", slash: true, denied: NOT_AUTHORIZED, scopes: inAgentChannels("channel-admin", NO_AGENT_START), telegram: tg(ANYONE, ANYONE, PASS) },
+  { name: "collab", slash: true, denied: NOT_AUTHORIZED, scopes: inAgentChannels("channel-admin", NO_AGENT_START), telegram: tg(FLEET_ADMIN, FLEET_ADMIN, PASS) },
   // Telegram: a ClassicBot admin in a ClassicBot chat, no check in a fleet topic (same as /compact).
-  { name: "save", slash: true, denied: ["admin.required"], scopes: inAgentChannels("channel-admin", NO_AGENT_START), telegram: tg(ANYONE, ANYONE, CLASSIC_ADMIN, NOBODY_NO_AGENT_START) },
+  { name: "save", slash: true, denied: ["admin.required"], scopes: inAgentChannels("channel-admin", NO_AGENT_START), telegram: tg(FLEET_ADMIN, FLEET_ADMIN, CLASSIC_ADMIN, NOBODY_NO_AGENT_START) },
   // Anyone who can talk to the agent may talk to it mid-turn, ask a side question, interrupt it or read its context.
   { name: "steer", slash: true, denied: NOT_AUTHORIZED, scopes: inAgentChannels("anyone", NO_AGENT), telegram: tg(ANYONE, ANYONE, ANYONE, NOBODY_NO_AGENT_START) },
   { name: "btw", slash: true, denied: NOT_AUTHORIZED, scopes: inAgentChannels("anyone", NO_AGENT), telegram: tg(ANYONE, ANYONE, ANYONE, NOBODY_NO_AGENT_START) },

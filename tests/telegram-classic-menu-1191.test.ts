@@ -51,9 +51,9 @@ const tg = (over: Partial<ChannelConfig> = {}): ChannelConfig =>
 
 // What each menu says, written out by hand from the table's Telegram column.
 const FLEET_MENU = [
-  ["status", "🔒 "], ["sysinfo", ""], ["dashboard", "🔒 "], ["ctx", ""], ["compact", ""], ["steer", ""], ["btw", ""],
+  ["status", "🔒 "], ["sysinfo", ""], ["dashboard", "🔒 "], ["ctx", ""], ["compact", "🔒 "], ["steer", ""], ["btw", ""],
   ["clear", "🔒 "], ["model", "🔒 "], ["effort", "🔒 "], ["pause", "🔒 "], ["wake", "🔒 "], ["restart", "🔒 "],
-  ["collab", ""], ["update", "🔒 "], ["profile", "🔒 "], ["doctor", "🔒 "], ["login", "🔒 "], ["usage", ""], ["tips", ""], ["visibility", "🔒 "],
+  ["collab", "🔒 "], ["update", "🔒 "], ["profile", "🔒 "], ["doctor", "🔒 "], ["login", "🔒 "], ["usage", ""], ["tips", ""], ["visibility", "🔒 "],
 ];
 const CLASSIC_MENU = [
   ["start", ""], ["stop", "🔒 "], ["compact", "🔒 "], ["steer", ""], ["btw", ""], ["clear", "🔒 "], ["model", "🔒 "],
@@ -68,7 +68,8 @@ describe("the menus come from the command table (#1177)", () => {
 
   it("the three hand-typed locks #1177 found wrong are gone, and the Classic menu has no /effort", () => {
     const lock = (menu: "fleet" | "classic", name: string) => telegramMenu(menu).find(e => e.name === name)?.lock;
-    expect(lock("fleet", "collab"), "Telegram fleet /collab has no gate").toBe("");
+    // #754 audit: Telegram fleet /collab is channel-admin now, as on Discord — so it is locked.
+    expect(lock("fleet", "collab"), "Telegram fleet /collab is channel-admin").toBe("🔒 ");
     expect(lock("classic", "start"), "private /start needs the user allowlist, not an admin").toBe("");
     expect(lock("classic", "effort"), "Telegram ClassicBot has no /effort").toBeUndefined();
   });
@@ -86,7 +87,8 @@ describe("the menus come from the command table (#1177)", () => {
   it("a lock is any Telegram level above anyone in the menu's scopes — the handler level is not one", () => {
     const at = (name: string) => commandSpec(name)!;
     expect(isLockedOnTelegram(at("pause"), ["general"])).toBe(true);          // fleet-admin
-    expect(isLockedOnTelegram(at("compact"), ["general", "fleet"])).toBe(false); // anyone in both
+    expect(isLockedOnTelegram(at("compact"), ["general", "fleet"])).toBe(true);  // fleet-admin in both (#754 audit)
+    expect(isLockedOnTelegram(at("steer"), ["general", "fleet"])).toBe(false);   // anyone in both
     expect(isLockedOnTelegram(at("compact"), ["classic"])).toBe(true);         // classic-admin
     expect(isLockedOnTelegram(at("clear"), ["classic"])).toBe(true);           // channel-admin
     expect(isLockedOnTelegram(at("start"), ["classic", "none"])).toBe(false);  // handler
@@ -149,10 +151,10 @@ describe("TopicCommands.registerBotCommands (#1191)", () => {
     expect(names(sent()[0]!.commands)).toEqual(FLEET_MENU.map(([n]) => n));
     expect(names(sent()[1]!.commands)).toEqual(FLEET_MENU.map(([n]) => n));
     expect(names(sent()[3]!.commands)).toEqual(CLASSIC_MENU.map(([n]) => n));
-    expect(sent()[0]!.commands.find((c: { command: string }) => c.command === "collab").description).not.toContain("🔒");
+    expect(sent()[0]!.commands.find((c: { command: string }) => c.command === "collab").description).toContain("🔒");
     // The argument hint #1145 added, in both menus, in the active locale.
     const compact = (i: number) => sent()[i]!.commands.find((c: { command: string }) => c.command === "compact").description;
-    expect(compact(0)).toBe("Compact agent context window [optional summary focus — Claude Code only]");
+    expect(compact(0)).toBe("🔒 Compact agent context window [optional summary focus — Claude Code only]");
     expect(compact(3)).toBe("🔒 Compact agent context window [optional summary focus — Claude Code only]");
   });
 

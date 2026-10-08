@@ -206,10 +206,11 @@ const TG_EXPECTED: Array<{ name: string; text: string; label: string; general: T
   { name: "chat", text: "/chat hi", label: "agent", general: PASS_, fleet: PASS_, classic: ALL, none: "pass" },
   { name: "load", text: "/load f.json", label: "load", general: PASS_, fleet: PASS_, classic: PASS_, none: "pass" },
   // fleet topic: NO check; ClassicBot chat: a ClassicBot admin only (a fleet admin alone is refused)
-  { name: "compact", text: "/compact", label: "compact", general: ALL, fleet: ALL, classic: CA_ONLY, none: "refuse" },
-  { name: "save", text: "/save f.json", label: "save", general: ALL, fleet: ALL, classic: CA_ONLY, none: "refuse" },
+  // #754 audit: channel-admin on Telegram too, as the Discord slash command (was: anyone who may speak).
+  { name: "compact", text: "/compact", label: "compact", general: FA_ONLY, fleet: FA_ONLY, classic: CA_ONLY, none: "refuse" },
+  { name: "save", text: "/save f.json", label: "save", general: FA_ONLY, fleet: FA_ONLY, classic: CA_ONLY, none: "refuse" },
   // fleet topic: NO check; ClassicBot chat: not a command
-  { name: "collab", text: "/collab", label: "collab", general: ALL, fleet: ALL, classic: PASS_, none: "pass" },
+  { name: "collab", text: "/collab", label: "collab", general: FA_ONLY, fleet: FA_ONLY, classic: PASS_, none: "pass" },
   // fleet admin in a fleet topic; ClassicBot admin ONLY in a ClassicBot chat
   { name: "pause", text: "/pause", label: "pause", general: "pause-needs-instance" as never, fleet: FA_ONLY, classic: CA_ONLY, none: "refuse" },
   { name: "wake", text: "/wake", label: "wake", general: "pause-needs-instance" as never, fleet: FA_ONLY, classic: CA_ONLY, none: "refuse" },

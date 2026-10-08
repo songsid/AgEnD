@@ -711,6 +711,11 @@ export class TopicCommands {
         await adapter.sendText(msg.chatId, t("instance.not_found", target), { threadId: msg.threadId });
         return true;
       }
+      // #754 audit: a General speaks for its own bot's instances only — an admin of this bot is not one of another's.
+      if (isGeneral && this.ctx.getInstanceAdapterId && this.ctx.getInstanceAdapterId(target) !== msg.adapterId) {
+        await adapter.sendText(msg.chatId, t("instance.other_bot", target), { threadId: msg.threadId });
+        return true;
+      }
       if (pauseWake.action === "pause" && isGeneralInstance(this.ctx.fleetConfig, target)) {
         await adapter.sendText(msg.chatId, t("general.pause_forbidden"), { threadId: msg.threadId });
         return true;
@@ -722,6 +727,11 @@ export class TopicCommands {
     if (text === "/collab" || text.startsWith("/collab@")) {
       const adapter = this.getReplyAdapter(msg);
       if (!adapter) return false;
+      // Channel-admin, as the Discord slash command (#754 audit): it changes how the instance is reached.
+      if (!this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) {
+        await adapter.sendText(msg.chatId, t("permission.denied"), { threadId: msg.threadId });
+        return true;
+      }
       const isCollab = this.ctx.toggleFleetCollab(instanceName);
       await adapter.sendText(msg.chatId, isCollab
         ? t("collab.on")
@@ -745,7 +755,7 @@ export class TopicCommands {
       } else if (this.ctx.promptEffortMenu) {
         // No arg → inline keyboard menu (TG), same shape as /model.
         const fallback = await this.ctx.promptEffortMenu(
-          instanceName, msg.userId, msg.threadId ?? msg.chatId, adapter, msg.chatId, msg.threadId,
+          instanceName, msg.userId, msg.threadId ?? msg.chatId, adapter, msg.chatId, msg.threadId, msg.adapterId,
         );
         if (fallback) await adapter.sendText(msg.chatId, fallback, { threadId: msg.threadId });
       }
@@ -766,7 +776,7 @@ export class TopicCommands {
       } else if (this.ctx.promptModelMenu) {
         // No arg → inline keyboard menu (TG)
         const fallback = await this.ctx.promptModelMenu(
-          instanceName, msg.userId, msg.threadId ?? msg.chatId, adapter, msg.chatId, msg.threadId,
+          instanceName, msg.userId, msg.threadId ?? msg.chatId, adapter, msg.chatId, msg.threadId, msg.adapterId,
         );
         if (fallback) await adapter.sendText(msg.chatId, fallback, { threadId: msg.threadId });
       } else {
@@ -779,6 +789,11 @@ export class TopicCommands {
     if (compact) {
       const adapter = this.getReplyAdapter(msg);
       if (!adapter) return false;
+      // Channel-admin, as the Discord slash command (#754 audit): it rewrites the instance's context.
+      if (!this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) {
+        await adapter.sendText(msg.chatId, t("permission.denied"), { threadId: msg.threadId });
+        return true;
+      }
       const result = await this.sendCompact(instanceName, compact.instructions);
       await adapter.sendText(msg.chatId, result, { threadId: msg.threadId });
       return true;
@@ -850,6 +865,11 @@ export class TopicCommands {
     if (text === "/save" || text.startsWith("/save ") || text.startsWith("/save@")) {
       const adapter = this.getReplyAdapter(msg);
       if (!adapter) return false;
+      // Channel-admin, as the Discord slash command (#754 audit): it writes a file in the instance's directory.
+      if (!this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) {
+        await adapter.sendText(msg.chatId, t("permission.denied"), { threadId: msg.threadId });
+        return true;
+      }
       const filename = parseSaveFilename(text);
       if (!filename) {
         await adapter.sendText(msg.chatId, t("save.usage"), { threadId: msg.threadId });
@@ -861,6 +881,15 @@ export class TopicCommands {
       }
       const result = await this.sendSave(instanceName, filename);
       await adapter.sendText(msg.chatId, result, { threadId: msg.threadId });
+      return true;
+    }
+
+    // `/raw <text>` is pasted into the CLI as typed, with no [user:] envelope (daemon.ts): it is CLI input, so only
+    // the owning bot's fleet admin may send it (#754 audit). An admin's falls through to delivery unchanged.
+    if (text === "/raw" || text.startsWith("/raw ")) {
+      if (this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) return false;
+      const adapter = this.getReplyAdapter(msg);
+      if (adapter) await adapter.sendText(msg.chatId, t("permission.denied"), { threadId: msg.threadId });
       return true;
     }
 
