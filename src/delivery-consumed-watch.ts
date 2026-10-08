@@ -11,12 +11,15 @@
  * It runs on the fleet's event loop, so it is built not to be felt there (#1235):
  * - every read is async and bounded: one look reads at most CONSUMED_WATCH.chunkBytes from where the previous one
  *   stopped, and a larger backlog continues on the following looks;
- * - only complete lines are parsed; a line longer than CONSUMED_WATCH.maxLineBytes (TUI logs can run megabytes
- *   without a newline) is skipped whole — it cannot be judged, so it proves nothing;
+ * - only complete lines are parsed, each held to CONSUMED_WATCH.maxLineBytes before it is decoded; a longer one (TUI logs
+ *   can run megabytes without a newline) is skipped whole — complete or not — and proves nothing; the lines after it
+ *   are still judged;
  * - the number of watches in the process (the fleet) is capped; one over the cap is logged and not started;
- * - a transcript that does not grow is looked at less and less often, and every watch ends after a fixed lifetime.
+ * - a transcript that does not grow is looked at less and less often, and every watch ends after a fixed lifetime,
+ *   measured on the monotonic clock and checked again after every await (a read that returns late proves nothing).
  */
 import { open, stat } from "node:fs/promises";
+import { performance } from "node:perf_hooks";
 import { transcriptDeltaDeliveryMarker } from "./delivery-reconciliation.js";
 import type { ConsumedVia } from "./delivery-outbox.js";
 
@@ -25,7 +28,7 @@ export const CONSUMED_WATCH = {
   maxWatchers: 32,
   /** Bytes one look reads past its offset. */
   chunkBytes: 256 * 1024,
-  /** A line this long cannot be parsed within one look's budget: skipped. */
+  /** A line longer than this (without its newline) is never decoded: skipped. */
   maxLineBytes: 256 * 1024,
   /** First interval between looks. */
   tickMs: 5_000,
@@ -35,7 +38,7 @@ export const CONSUMED_WATCH = {
   idleLooksBeforeBackoff: 6,
   /** …up to this. */
   maxTickMs: 60_000,
-  /** A watch ends after this long whatever it saw. */
+  /** A watch ends after this long (monotonic) whatever it saw. */
   lifetimeMs: 30 * 60_000,
 };
 
@@ -63,7 +66,7 @@ export class ConsumedWatch {
   private idleLooks = 0;
   private interval = CONSUMED_WATCH.tickMs;
   private timer: NodeJS.Timeout | null = null;
-  private readonly startedAt = Date.now();
+  private readonly startedAt = performance.now();
   private ended = false;
 
   constructor(private readonly target: ConsumedWatchTarget, private readonly onEnd: (why: Ended) => void) {
@@ -95,14 +98,25 @@ export class ConsumedWatch {
     this.onEnd(why);
   }
 
+  /**
+   * Whether this watch may still act, asked before the first await and again after each one: stopped, its CLI gone
+   * (stop, pause, respawn) or its lifetime over ends it — a read that returns after any of those proves nothing.
+   */
+  private stillLive(): boolean {
+    if (this.ended) return false;
+    if (!this.target.current()) { this.end("fenced"); return false; }
+    if (performance.now() - this.startedAt >= CONSUMED_WATCH.lifetimeMs) { this.end("expired"); return false; }
+    return true;
+  }
+
   /** One bounded look. Never throws; every outcome either schedules the next look or ends the watch. */
   async look(): Promise<void> {
     if (this.ended) return;
     try {
-      if (!this.target.current()) return this.end("fenced");
-      if (Date.now() - this.startedAt >= CONSUMED_WATCH.lifetimeMs) return this.end("expired");
+      if (!this.stillLive()) return;
       let size: number;
       try { size = (await stat(this.target.path)).size; } catch { return this.end("unavailable"); }
+      if (!this.stillLive()) return;
       if (size < this.offset) return this.end("unavailable"); // rotated or truncated below our offset
       if (size === this.offset) {
         if (++this.idleLooks >= CONSUMED_WATCH.idleLooksBeforeBackoff) {
@@ -114,11 +128,11 @@ export class ConsumedWatch {
       this.idleLooks = 0;
       const length = Math.min(CONSUMED_WATCH.chunkBytes, size - this.offset);
       const chunk = await readAt(this.target.path, this.offset, length);
+      if (!this.stillLive()) return;
       if (!chunk) return this.end("unavailable");
       this.offset += chunk.length;
       const found = this.scan(chunk);
       if (found) {
-        if (!this.target.current()) return this.end("fenced");
         this.target.consumed(found.via, found.evidence);
         return this.end("consumed");
       }
@@ -129,7 +143,11 @@ export class ConsumedWatch {
     }
   }
 
-  /** Complete lines of this chunk (plus the carried start of a line), judged once each. */
+  /**
+   * Complete lines of this chunk (plus the carried start of a line), judged once each. Every line is held to
+   * maxLineBytes BEFORE it is decoded — one that completes past the cap is skipped like one that never completes —
+   * and only the lines within it are parsed (#1201 review).
+   */
   private scan(chunk: Buffer): { via: ConsumedVia; evidence: string } | null {
     let data = chunk;
     if (this.skippingLine) {
@@ -140,20 +158,28 @@ export class ConsumedWatch {
     }
     const buffer = this.carry.length ? Buffer.concat([this.carry, data]) : data;
     const lastNl = buffer.lastIndexOf(0x0a);
+    let found: { via: ConsumedVia; evidence: string } | null = null;
     if (lastNl < 0) {
       this.carry = buffer;
     } else {
       this.carry = buffer.subarray(lastNl + 1);
-      const complete = buffer.subarray(0, lastNl + 1).toString("utf8");
-      const kind = transcriptDeltaDeliveryMarker(complete, this.target.backend, this.target.deliveryId);
-      if (kind === "user") return { via: "turn", evidence: "transcript-consumed:user-entry" };
-      if (kind === "absorbed") return { via: "mid_turn", evidence: "transcript-consumed:absorbed-mid-turn" };
+      const kept: Buffer[] = [];
+      for (let start = 0; start <= lastNl;) {
+        const nl = buffer.indexOf(0x0a, start);
+        if (nl - start <= CONSUMED_WATCH.maxLineBytes) kept.push(buffer.subarray(start, nl + 1));
+        start = nl + 1;
+      }
+      if (kept.length) {
+        const kind = transcriptDeltaDeliveryMarker(Buffer.concat(kept).toString("utf8"), this.target.backend, this.target.deliveryId);
+        if (kind === "user") found = { via: "turn", evidence: "transcript-consumed:user-entry" };
+        else if (kind === "absorbed") found = { via: "mid_turn", evidence: "transcript-consumed:absorbed-mid-turn" };
+      }
     }
     if (this.carry.length > CONSUMED_WATCH.maxLineBytes) {
       this.carry = Buffer.alloc(0);
       this.skippingLine = true;
     }
-    return null;
+    return found;
   }
 }
 

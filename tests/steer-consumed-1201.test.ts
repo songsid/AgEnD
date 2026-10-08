@@ -18,6 +18,35 @@ import { DeliveryOutbox } from "../src/delivery-outbox.js";
 import { markerConsumed, transcriptDeltaDeliveryMarker, transcriptDeltaHasDeliveryMarker } from "../src/delivery-reconciliation.js";
 import { CONSUMED_WATCH, ConsumedWatch, ConsumedWatchRegistry } from "../src/delivery-consumed-watch.js";
 
+/** Holds the watcher's next `stat` or `open` until released — a read still pending — and records when it is entered. */
+const fsHold = vi.hoisted(() => ({ stat: null as null | Promise<void>, open: null as null | Promise<void>, entered: [] as string[], opens: 0 }));
+vi.mock("node:fs/promises", async importOriginal => {
+  const real = await importOriginal<typeof import("node:fs/promises")>();
+  const held = async (call: "stat" | "open") => {
+    const wait = fsHold[call];
+    if (!wait) return;
+    fsHold[call] = null;
+    fsHold.entered.push(call);
+    await wait;
+  };
+  return {
+    ...real,
+    stat: (async (...args: Parameters<typeof real.stat>) => { await held("stat"); return real.stat(...args); }) as typeof real.stat,
+    open: (async (...args: Parameters<typeof real.open>) => { fsHold.opens++; await held("open"); return real.open(...args); }) as typeof real.open,
+  };
+});
+/** Hold the watcher's next stat (default) or open; the returned function lets it go. */
+const holdNextRead = (call: "stat" | "open" = "stat") => {
+  let release!: () => void;
+  fsHold[call] = new Promise<void>(r => { release = r; });
+  return () => release();
+};
+/** Until the watcher is parked inside the held call. */
+const untilEntered = async (call: "stat" | "open") => {
+  for (let i = 0; i < 200 && !fsHold.entered.includes(call); i++) await new Promise(r => setImmediate(r));
+  expect(fsHold.entered).toContain(call);
+};
+
 const FIX = join(__dirname, "fixtures");
 const AFTER_TURN = readFileSync(join(FIX, "claude-2.1.293-steer-consumed-after-turn.transcript.jsonl"), "utf8");
 const MID_TURN = readFileSync(join(FIX, "claude-2.1.293-steer-consumed-mid-turn.transcript.jsonl"), "utf8");
@@ -26,7 +55,7 @@ const MID_TURN_ID = "5b0c1d2e-0000-4000-8000-000000000003";
 const withId = (transcript: string, from: string, to: string) => transcript.split(from).join(to);
 const roots: string[] = [];
 const scratch = (prefix: string) => { const d = mkdtempSync(join(tmpdir(), prefix)); roots.push(d); return d; };
-afterEach(() => { vi.useRealTimers(); for (const d of roots.splice(0)) rmSync(d, { recursive: true, force: true }); });
+afterEach(() => { fsHold.stat = null; fsHold.open = null; fsHold.entered = []; fsHold.opens = 0; vi.restoreAllMocks(); vi.useRealTimers(); for (const d of roots.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
 describe("the parser on the live captures", () => {
   it("after the turn: a user entry → consumed as its own turn", () => {
@@ -275,13 +304,83 @@ describe("the watcher", () => {
     await truncated.watch.look();
     expect(truncated.ended).toEqual(["unavailable"]);
 
-    vi.useFakeTimers();
+    let clock = performance.now();
+    vi.spyOn(performance, "now").mockImplementation(() => clock);
     const old = watchOn("", MID_TURN_ID);
-    vi.setSystemTime(Date.now() + CONSUMED_WATCH.lifetimeMs + 1);
+    clock += CONSUMED_WATCH.lifetimeMs + 1;
     appendFileSync(old.path, MID_TURN);
     await old.watch.look();
     expect(old.ended).toEqual(["expired"]);
     expect(old.consumed).not.toHaveBeenCalled();
+  });
+
+  it("its lifetime is monotonic: a wall clock moved back does not extend it, one moved forward does not end it", async () => {
+    let clock = 1_000;
+    vi.spyOn(performance, "now").mockImplementation(() => clock);
+    const back = watchOn("", MID_TURN_ID);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now() - 24 * 3_600_000);
+    clock += CONSUMED_WATCH.lifetimeMs + 1;
+    appendFileSync(back.path, MID_TURN);
+    await back.watch.look();
+    expect(back.ended).toEqual(["expired"]);
+    expect(back.consumed).not.toHaveBeenCalled();
+
+    const forward = watchOn("", MID_TURN_ID);
+    vi.setSystemTime(Date.now() + 2 * CONSUMED_WATCH.lifetimeMs);
+    appendFileSync(forward.path, MID_TURN);
+    await forward.watch.look();
+    expect(forward.consumed).toHaveBeenCalledWith("mid_turn", expect.any(String));
+  });
+
+  it("a read that returns after the lifetime ended proves nothing (the deadline is asked again after the await)", async () => {
+    let clock = 1_000;
+    vi.spyOn(performance, "now").mockImplementation(() => clock);
+    // Held in the stat, or past the stat and held in the read's open: each await is followed by its own check.
+    for (const held of ["stat", "open"] as const) {
+      const w = watchOn("", MID_TURN_ID);
+      appendFileSync(w.path, MID_TURN);
+      fsHold.entered = [];
+      fsHold.opens = 0;
+      const release = holdNextRead(held);
+      const look = w.watch.look();
+      await untilEntered(held);
+      clock += CONSUMED_WATCH.lifetimeMs + 1;
+      release();
+      await look;
+      expect(w.consumed, held).not.toHaveBeenCalled();
+      expect(w.ended, held).toEqual(["expired"]);
+      // expired during the stat: the file is not even opened for the read
+      if (held === "stat") expect(fsHold.opens).toBe(0);
+      clock = 1_000;
+    }
+  });
+
+  it("stopped while a read is pending: the read that returns proves nothing", async () => {
+    const w = watchOn("", MID_TURN_ID);
+    appendFileSync(w.path, MID_TURN);
+    const release = holdNextRead("open");
+    const look = w.watch.look();
+    await untilEntered("open");
+    w.watch.stop();
+    release();
+    await look;
+    expect(w.ended).toEqual(["stopped"]);
+    expect(w.consumed).not.toHaveBeenCalled();
+  });
+
+  it("its CLI gone while a read is pending (stop, pause, respawn): the read that returns proves nothing", async () => {
+    let current = true;
+    const w = watchOn("", MID_TURN_ID, { current: () => current });
+    appendFileSync(w.path, MID_TURN);
+    const release = holdNextRead("open");
+    const look = w.watch.look();
+    await untilEntered("open");
+    current = false;
+    release();
+    await look;
+    expect(w.ended).toEqual(["fenced"]);
+    expect(w.consumed).not.toHaveBeenCalled();
   });
 
   it("a big backlog is read in bounded chunks, one per look, never all at once — and still found", async () => {
@@ -322,6 +421,46 @@ describe("the watcher", () => {
     // Memory stays bounded: the oversized line is dropped, not accumulated.
     expect(maxCarried).toBeLessThanOrEqual(CONSUMED_WATCH.maxLineBytes);
     expect(w.consumed).toHaveBeenCalledWith("mid_turn", expect.any(String));
+  });
+
+  /** This delivery's own after-turn user entry, as Claude writes it, padded to exactly `bytes` (without its newline). */
+  const ownUserLine = (bytes: number) => {
+    const line = AFTER_TURN.split("\n").find(l => l.includes('"type":"user"') && l.includes(AFTER_TURN_ID))!;
+    const entry = JSON.parse(line);
+    const base = Buffer.byteLength(JSON.stringify(entry));
+    entry.message.content += "p".repeat(bytes - base);
+    const out = JSON.stringify(entry);
+    expect(Buffer.byteLength(out)).toBe(bytes);
+    return out;
+  };
+  const readAll = async (w: ReturnType<typeof watchOn>) => {
+    for (let i = 0; i < 100 && !w.ended.length; i++) {
+      const before = w.watch.position;
+      await w.watch.look();
+      if (w.watch.position === before) break;
+    }
+  };
+
+  it("a complete line over the cap is skipped before it is decoded — even this delivery's own, valid user entry", async () => {
+    for (const bytes of [CONSUMED_WATCH.maxLineBytes + 1, 409_600]) {
+      const alone = watchOn("", AFTER_TURN_ID);
+      appendFileSync(alone.path, `${ownUserLine(bytes)}\n`);
+      await readAll(alone);
+      expect(alone.consumed, String(bytes)).not.toHaveBeenCalled();
+      alone.watch.stop();
+      // …and a valid short line after it is still judged: the mid-turn shape for the same delivery is the hit
+      const after = watchOn("", AFTER_TURN_ID);
+      appendFileSync(after.path, `${ownUserLine(bytes)}\n${withId(MID_TURN, MID_TURN_ID, AFTER_TURN_ID)}`);
+      await readAll(after);
+      expect(after.consumed, String(bytes)).toHaveBeenCalledWith("mid_turn", "transcript-consumed:absorbed-mid-turn");
+    }
+  });
+
+  it("a line of exactly the cap is still judged", async () => {
+    const w = watchOn("", AFTER_TURN_ID);
+    appendFileSync(w.path, `${ownUserLine(CONSUMED_WATCH.maxLineBytes)}\n`);
+    await readAll(w);
+    expect(w.consumed).toHaveBeenCalledWith("turn", "transcript-consumed:user-entry");
   });
 
   it("a transcript that does not grow is looked at less and less often", async () => {
@@ -411,5 +550,65 @@ describe("the daemon", () => {
     expect(port.markConsumed).toHaveBeenCalledWith("d-1", daemon.bootId, 2, "mid_turn", "transcript-consumed:absorbed-mid-turn");
     daemon.spawnGeneration++;
     expect(target.current()).toBe(false);
+  });
+
+  describe("a write that started and then threw still starts the watch (the verdict reaches the post-write catch)", () => {
+    // Real Daemon, real DeliveryOutbox; only deliverMessage is stubbed: it begins the durable submission, records the
+    // pane write, the hand-off mode and the transcript checkpoint — then throws, or returns false (the control).
+    async function deliverThrough(entry: "steer" | "push", mode: "steer" | "native_queue_handoff", end: "throw" | "false") {
+      const { Daemon } = await import("../src/daemon.js");
+      const { consumedWatches } = await import("../src/delivery-consumed-watch.js");
+      const root = scratch("agend-1201-catch-");
+      const instanceDir = join(root, "instances", "worker");
+      mkdirSync(instanceDir, { recursive: true });
+      const logger = { info() {}, warn() {}, error() {}, debug() {}, child() { return this; } } as any;
+      const daemon: any = new Daemon("worker", {
+        working_directory: root, log_level: "error", backend: "claude-code",
+        restart_policy: { max_retries: 10, backoff: "exponential", reset_after: 300 },
+        context_guardian: { max_age_hours: 4, grace_period_ms: 600_000 },
+      }, instanceDir, false, undefined as any, undefined as any, logger);
+      const outbox = new DeliveryOutbox(join(root, "delivery-outbox.db"), "manager-test");
+      daemon.setDeliveryOutboxPort(outbox);
+      // An inert tmux: the push path only asks that one exists; every pane write is the stubbed deliverMessage.
+      daemon.tmux = { capturePane: vi.fn(async () => ""), getWindowId: () => "@worker" };
+      const row = outbox.admit({
+        operationId: "op", sourceKey: "s:op:w:fleet_inbound", sourceInstance: "source", sourceDaemonBootId: "sb",
+        targetInstance: "worker", kind: "fleet_inbound", payload: { type: "fleet_inbound", content: "hello", meta: {} },
+      }).delivery;
+      const claimed = outbox.claimNext("manager-test", () => daemon.bootId, new Set())!;
+      const start = vi.spyOn(consumedWatches, "start").mockReturnValue(true);
+      vi.spyOn(daemon, "wake").mockResolvedValue(undefined);
+      vi.spyOn(daemon, "deliverMessage").mockImplementation(async (...args: unknown[]) => {
+        const opts = args[2] as { verdict: Record<string, unknown>; durableAttempt: unknown; steer?: boolean };
+        if (!opts?.durableAttempt) return true; // a system notice the push path writes first
+        const evidence = await daemon.durableAttemptEvidence(undefined, true, opts.steer === true, false);
+        expect(daemon.beginDurableDelivery(opts.durableAttempt, evidence)).toBe(true);
+        Object.assign(opts.verdict, {
+          durableBeginCommitted: true, paneWriteStarted: true, submissionMode: mode,
+          transcriptCheckpoint: { backend: "claude-code", path: join(root, "t.jsonl"), offset: 0 },
+        });
+        if (end === "throw") throw new Error("capture failed after the Enter");
+        return false;
+      });
+      const meta = {
+        delivery_id: row.deliveryId, delivery_attempt: String(claimed.attemptNo), from_instance: "source", correlation_id: "c",
+        user: "instance:source", user_id: "instance:source", message_id: "m-1201", chat_id: "chat", thread_id: "", ts: new Date().toISOString(),
+      };
+      if (entry === "steer") daemon.steerMessage("hello", meta);
+      else daemon.pushChannelMessage("hello", meta);
+      for (let i = 0; i < 200 && outbox.get(row.deliveryId)?.state !== "uncertain"; i++) await new Promise(r => setImmediate(r));
+      return { state: outbox.get(row.deliveryId)?.state, start, deliveryId: row.deliveryId, attemptNo: claimed.attemptNo };
+    }
+
+    for (const [entry, mode] of [["steer", "steer"], ["push", "native_queue_handoff"]] as const) {
+      it(`${entry === "steer" ? "steerMessage" : "pushChannelMessage"} (${mode}): throws after the write → uncertain AND watched, like the false return`, async () => {
+        for (const end of ["throw", "false"] as const) {
+          const r = await deliverThrough(entry, mode, end);
+          expect(r.state, end).toBe("uncertain");
+          expect(r.start, end).toHaveBeenCalledWith(expect.objectContaining({ deliveryId: r.deliveryId, attemptNo: r.attemptNo }));
+          vi.restoreAllMocks();
+        }
+      });
+    }
   });
 });

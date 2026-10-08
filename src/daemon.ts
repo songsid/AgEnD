@@ -6151,7 +6151,8 @@ export class Daemon extends EventEmitter {
           this.reportCrossInstanceDeliveryFailure(meta, verdict);
         }
       } catch (err) {
-        if (durableAttempt && verdict.paneWriteStarted) this.finishDurableDelivery(durableAttempt, "uncertain", (err as Error).message);
+        // The verdict goes along: a write that started and then threw is still a hand-off the CLI may consume (#1201).
+        if (durableAttempt && verdict.paneWriteStarted) this.finishDurableDelivery(durableAttempt, "uncertain", (err as Error).message, verdict);
         else if (durableAttempt && verdict.durableBeginCommitted) this.abortDurableDelivery(durableAttempt, (err as Error).message);
         else if (durableAttempt) this.retryDurableDeliveryBeforeBegin(durableAttempt, (err as Error).message);
         throw err;
@@ -6331,7 +6332,8 @@ export class Daemon extends EventEmitter {
           this.abortDurableDelivery(durable, "delivery did not reach pane submission");
         }
       } catch (err) {
-        if (durable && verdict.paneWriteStarted) this.finishDurableDelivery(durable, "uncertain", (err as Error).message);
+        // The verdict goes along: a write that started and then threw is still a hand-off the CLI may consume (#1201).
+        if (durable && verdict.paneWriteStarted) this.finishDurableDelivery(durable, "uncertain", (err as Error).message, verdict);
         else if (durable && verdict.durableBeginCommitted) this.abortDurableDelivery(durable, (err as Error).message);
         else if (durable) this.retryDurableDeliveryBeforeBegin(durable, (err as Error).message);
         else throw err;
