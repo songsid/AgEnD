@@ -195,6 +195,55 @@ describe("the daemon's proof is fenced to its write (a held look, then stop / pa
     expect(Date.now() - started).toBeLessThan(TRANSCRIPT_PROOF_READ.lookBudgetMs + 1_000);
   });
 
+  /** A daemon whose transcript look and pane capture resolve when the test says so. */
+  async function controlledDaemon() {
+    const dir = scratch();
+    const logger = { info() {}, warn() {}, error() {}, debug() {}, child() { return this; } } as any;
+    const daemon: any = new Daemon("worker", {
+      working_directory: dir, log_level: "error", backend: "claude-code",
+      restart_policy: { max_retries: 10, backoff: "exponential", reset_after: 300 },
+      context_guardian: { max_age_hours: 4, grace_period_ms: 600_000 },
+    }, join(dir, "worker"), false, { binaryName: "claude", getReadyPattern: () => /❯/, readInputRow: () => ({ text: "[Pasted text #1 +30 lines]", collapsedPastes: 1 }) } as any, undefined as any, logger);
+    let resolveCapture!: () => void;
+    daemon.tmux = { capturePane: vi.fn(() => new Promise<string>(r => { resolveCapture = () => r(PAINTING); })) };
+    const signature = daemon.submissionSignature("hello", "xmsg-fence");
+    const onProof = vi.fn();
+    signature.transcript = daemon.transcriptProofFor({ backend: "claude-code", path: join(dir, "t.jsonl"), offset: 0 }, ID, daemon.spawnGeneration, undefined, onProof);
+    let resolveLook!: (kind: string) => void;
+    vi.spyOn(signature.transcript.reader, "look").mockImplementation(() => new Promise(r => { resolveLook = r as any; }));
+    const baseline = { queued: 0, payload: 0, strandedInput: false, collapsedPastes: 0, inputReadable: true };
+    const respawn = () => { daemon.spawnGeneration++; daemon.inputTransientGuardGeneration = daemon.spawnGeneration; };
+    return { daemon, signature, onProof, baseline, respawn, capture: () => resolveCapture(), look: (k: string) => resolveLook(k) };
+  }
+  const turns = async (n = 20) => { for (let i = 0; i < n; i++) await Promise.resolve(); };
+
+  it("the look resolves and a respawn lands in the same microtask batch, before the proof's own continuation: not used", async () => {
+    const c = await controlledDaemon();
+    const verdict = c.daemon.confirmSubmitted(c.signature, c.baseline);
+    c.capture(); await turns();
+    // look("user") first, then the lifecycle continuation, queued back to back: the respawn runs before confirmSubmitted
+    // resumes from its await.
+    c.look("user");
+    queueMicrotask(c.respawn);
+    expect(await verdict).toBe("stranded");
+    expect(c.daemon.inputTransientGuardGeneration).toBe(c.daemon.spawnGeneration);
+    expect(c.onProof).not.toHaveBeenCalled();
+    expect(c.signature.transcript.provenBy).toBeUndefined();
+  });
+
+  it("a cached proof is asked through the same fence: a respawn before the proof resumes keeps the new guard", async () => {
+    const c = await controlledDaemon();
+    const first = c.daemon.confirmSubmitted(c.signature, c.baseline);
+    c.capture(); await turns(); c.look("user");
+    expect(await first).toBe("submitted");
+    expect(c.signature.transcript.provenBy).toBe("user");
+    const second = c.daemon.confirmSubmitted(c.signature, c.baseline);
+    c.capture();
+    queueMicrotask(c.respawn);   // lands while the cached look is being awaited
+    expect(await second).toBe("stranded");
+    expect(c.daemon.inputTransientGuardGeneration).toBe(c.daemon.spawnGeneration);
+  });
+
   it("the control: no fence, the same held look lands → submitted, recorded", async () => {
     const r = await daemonWithHeldLook(() => {});
     expect(r.verdict).toBe("submitted");

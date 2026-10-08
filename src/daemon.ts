@@ -8329,7 +8329,13 @@ export class Daemon extends EventEmitter {
     try { pane = await this.tmux.capturePane(); } catch { /* the transcript may still say */ }
     const onPane = pane === null ? "unproven" : this.judgeSubmission(pane, signature, baseline);
     if (onPane === "submitted") return onPane;
-    return await this.transcriptShowsSubmission(signature) ? this.submittedProof() : onPane;
+    const t = signature.transcript;
+    const found = await this.transcriptLook(signature);
+    // One synchronous stretch from here: the fence is asked after the last await, and only then is the hit kept and the
+    // spawn's guard retired — a stop or respawn that lands between the look and this line leaves both untouched.
+    if (!found || !t?.current()) return onPane;
+    if (!t.provenBy) { t.provenBy = found; t.onProof?.(found); }
+    return this.submittedProof();
   }
 
   /**
@@ -8338,17 +8344,13 @@ export class Daemon extends EventEmitter {
    * message, so it outranks the pane — including a box that still shows the paste a moment after Enter (Claude paints
    * the submit late, captured live on 2.1.293), which on its own reads as a strand. Positive only; never a downgrade.
    */
-  private async transcriptShowsSubmission(signature: SubmissionSignature): Promise<boolean> {
+  private async transcriptLook(signature: SubmissionSignature): Promise<TranscriptMarkerKind | null> {
     const t = signature.transcript;
-    if (!t || !t.current()) return false;
-    if (t.provenBy) return true;
+    if (!t || !t.current()) return null;
+    if (t.provenBy) return t.provenBy;
     const found = await t.reader.look();
-    // Asked again after the await, before the hit is kept or a guard retired: the write it belongs to may be over.
-    if (!t.current()) return false;
-    if (found !== "user" && found !== "absorbed" && found !== "queued") return false;
-    t.provenBy = found;
-    t.onProof?.(found);
-    return true;
+    // No side effect here: the caller keeps the hit and retires the guard only after its own fence check.
+    return found === "user" || found === "absorbed" || found === "queued" ? found : null;
   }
 
   /**
