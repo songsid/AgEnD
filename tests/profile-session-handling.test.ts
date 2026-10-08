@@ -334,6 +334,7 @@ describe("the transcript reader follows the profile", () => {
     const sharedBefore = statSync(join(shared, "data.sqlite3"));
 
     const source = createTranscriptSource("kiro-cli", cwd, profile)!;
+    await source.initialize?.();
     appendToolUse(profile, "profile_tool");
     const events = await source.poll();
 
@@ -350,6 +351,7 @@ describe("the transcript reader follows the profile", () => {
     process.env.XDG_DATA_HOME = join(shared, "..");
 
     const source = createTranscriptSource("kiro-cli", cwd)!;
+    await source.initialize?.();
     appendToolUse(shared, "shared_tool");
 
     expect((await source.poll()).toolUses.map(t => t.name)).toEqual(["shared_tool"]);

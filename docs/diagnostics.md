@@ -39,3 +39,17 @@ For the same report beside the regular instance list, use `agend ls --resources`
 Disk measurement uses asynchronous `du -sk -x` calls, at most two at a time, with a two-second limit per process and a shared five-second scan budget. Sizes are allocated disk space on the directory's filesystem. Descendant symlinks and nested filesystems are not followed. Explicitly configured workspace roots may be symlinks; their real paths are measured. Implicit unregistered symlinks under the managed directories are skipped. Parent/child workspace measurements can overlap, so no combined workspace total is claimed.
 
 Missing paths, permissions, an unavailable `du`, and scan deadlines produce unknown sizes rather than zero or partial totals. Invalid/unreadable registries, or registries that change during collection, leave directory classification unknown. No directories, Git repositories, registry migrations, archives, or cleanup actions are created by this report.
+
+## Kiro transcript stalls
+
+Current Kiro stores conversations in a shared SQLite database. Fleet polling
+uses a shared worker for readonly queries and history parsing; it does not change
+Kiro's schema or indexes. Each source keeps a warm handle and incremental cursor.
+A stopped or restarted monitor discards late results. Queue time counts toward
+the 15-second read budget; timeouts can temporarily omit progress and do not grant
+permission or change delivery results. The worker slot is held until it exits,
+preventing repeated timeouts from creating extra workers.
+
+The slow-call ring and CPU profile remain useful for other stalls. The worker
+fix does not attribute the earlier periodic warnings with empty sync/GC lists;
+see the [snapshot measurements and limits](design/1375-kiro-transcript-db.md).
