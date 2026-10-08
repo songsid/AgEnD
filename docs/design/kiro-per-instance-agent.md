@@ -1,6 +1,6 @@
 # Kiro: one agent and one conversation per instance (#906, #1410)
 
-Status: design, revision 2. It folds in the real-account probe, the leader's decisions of 2026-10-08, and Prism's review of revision 1. Taken over from dev1; every fact below was re-verified as described in "Evidence".
+Status: design, revision 3. It folds in the real-account probe, the leader's decisions of 2026-10-08, and Prism's reviews of revisions 1 and 2. Taken over from dev1; every fact below was re-verified as described in "Evidence".
 
 ## Problem
 
@@ -33,89 +33,114 @@ Two kiro instances that share a working directory see each other in two ways.
 
 ## Design
 
-### 1. A fleet-scoped agent per instance (Prism P1)
+### 1. A fleet-scoped agent per instance (Prism P1, R2 #3)
 
-**Name.** `agend-<instance>-<fleet>`, where `<fleet>` is the first 8 hex of SHA-256 of this fleet's resolved `AGEND_HOME`. An instance name outside `[A-Za-z0-9._-]` is replaced by a 16-hex hash of it. Two fleets on one cwd, or two instances named alike, never share a file. The file is `{cwd}/.kiro/agents/<name>.json`, holding:
+**Name.** `<fleet>` is the first 8 hex of SHA-256 of this fleet's resolved `AGEND_HOME`.
+- An instance name in `[A-Za-z0-9._-]{1,100}` gives `agend-<instance>-<fleet>`.
+- Any other name gives `agendx-<sha256(instance)[:16]>-<fleet>`.
+
+The two forms differ at the sixth character (`-` vs `x`), so no plain name can produce a hashed one. A same-named instance in another fleet differs by `<fleet>`.
+
+The file is `{cwd}/.kiro/agents/<name>.json`. It holds:
 - `name`, `description`;
 - `prompt`: the fleet instructions, inline;
-- `mcpServers`: this instance's wrapper under the **same key as the old shared entry** (`<server>-<instance>`), so during the transition kiro's "overridden configs" rule keeps one, not two;
+- `mcpServers`: exactly this instance's servers, each under the same key as the old shared entry (`<server>-<instance>`) with its command `<this instance's dir>/mcp-wrapper-<server>.sh`;
 - `tools: ["*"]`, `allowedTools: []`, `resources: []`;
 - `includeMcpJson: true` (decided);
 - `permissions: {rules: []}`.
 
-**Ownership is evidence, checked on every write and every removal.** A file is ours only when it parses, its `name` is ours, and every `mcpServers` command is one of this fleet's wrapper scripts, i.e. `<this fleet's instances dir>/<instance>/mcp-wrapper-*.sh`.
-- **Write:** if a file exists at our path and is not ours, refuse the launch with a clear error. Never overwrite it.
-- **Remove:** on stop, delete, replace and cleanup, remove the file only if it is ours, and the `.bak` only if its content is ours too. A file that is not ours is left in place and logged.
+**Ownership is a positive, canonical match**, checked separately for the JSON file and for the `.bak`, on every write and every removal. A file is ours only when all of these hold:
+- it parses;
+- its `name` is ours;
+- its `mcpServers` keys are **exactly** this instance's expected keys, none missing and none extra, and an empty map is not ours;
+- each command is **this instance's own** expected wrapper path. A sibling's wrapper does not count.
 
-### 2. One conversation per instance (#1410, Prism P3/P4)
+How the check is used:
+- **Write:** a file at our path that is not ours refuses the launch with a clear error and is never overwritten.
+- **Remove:** stop, delete, replace, and the delete path that rebuilds a config without a daemon all compute the expected map from this instance's directory and the configured server names, and remove only on a match.
+- **A file that is not ours** is left in place and logged.
+
+### 2. One conversation per instance (#1410; Prism P3/P4, R2 #1/#2)
 
 Generalise `kiro-v3-identity.ts` to v1 and v2, each with its own store adapter. The claims, fresh-start marks and refusals are the same as v3's.
 
-**Store selector (P4), per engine (E10):**
+**Store selector, per engine (E10):**
 - **v1 (`--legacy-ui --agent-engine=v1`):** read `conversations_v2` in the store the instance launches with: the credential profile's store home when it has one, else `$XDG_DATA_HOME/kiro-cli`. Read-only, and only indexed columns (`key`, `conversation_id`, `created_at`, `updated_at`; never `value`, #1048). Keys: the cwd as configured, resolved, and realpath'd. "Newest" means max `updated_at`.
-- **v2 (`--tui --agent-engine=v2`):** `~/.kiro/sessions/cli/*.json` with `cwd` equal to one of those keys and `session_created_reason` other than `"subagent"`. "Newest" means max `updated_at`. Kiro does not isolate this store per credential profile (E10), so the profile is recorded in the instance's state but does not choose the store.
-- **v3:** unchanged (`kiro-kas-store.ts`).
-- **Empty vs unreadable:**
-  - **Empty** (no row or file for the cwd) is a fresh start.
-  - **Unreadable** (missing permission, a locked or corrupt database, an unreadable directory) records nothing. This launch behaves as today (plain `--resume`, no agent switch), a launch warning says why, and the next launch tries again. An unreadable store is never read as "no conversation".
+- **v2 (`--tui --agent-engine=v2`):** `~/.kiro/sessions/cli/*.json` with `cwd` equal to one of those keys and `session_created_reason` other than `"subagent"`. "Newest" means max `updated_at`. This store is not isolated per credential profile.
+- **v3:** unchanged.
 
-**State** lives in `<AGEND_HOME>/kiro-identity/instances/<instance>.json`. Claims, `claims/<engine>/<id>`, are created exclusively, as in v3. The state is keyed by engine, cwd and credential profile; a mismatch on any of them is a first launch for the new key.
+**State** lives in `<AGEND_HOME>/kiro-identity/instances/<instance>.json`.
+- It holds **one record per key** (engine, cwd, credential profile): `pending(id)`, `owned(id)` or `fresh(since, known)`, each with the ids this key has abandoned.
+- Claims, `claims/<engine>/<id>`, are created exclusively and belong to whoever created them, as in v3.
 
-| State | Launch | Then |
+| Situation | Launch | Then |
 |---|---|---|
-| none: first launch under this code | Select the newest conversation for the cwd. If one exists, claim it, record `pending(id)` **before** launching, and resume it. A claim already taken (a sibling got it), or no conversation at all, records `fresh`. | — |
-| `pending(id)` | `--resume-id id`, the **same id on every retry** (the daemon's second resume attempt included) | The pane becomes ready, which is success: `owned(id)`. The daemon's explicit fresh-start transition after resume failures records `fresh` with the id abandoned (never taken back), as v3 does. A crash keeps `pending`, so the same id is tried next time. |
-| `owned(id)` | `--resume-id id` | — |
-| `fresh(since, known)` | No resume flag. The launch carries `--agent`. | The new conversation is taken up by evidence (created after `since`, absent from `known`, unclaimed, the only such one) as `owned`. Anything less certain stays `fresh`. |
-| a `skipResume` launch | No resume flag | Records `fresh` |
+| **Adoption:** no state file at all (the first launch under this code) | Read the store. If the newest conversation for the cwd exists, claim it and record `pending(id)` **before** launching. If there is none, or the claim is already taken, record `fresh`. | — |
+| **Adoption, store unreadable** | **Legacy mode, explicitly not isolated:** today's command (plain `--resume`, shared files), no state written, and a launch warning saying the instance is not isolated. The next launch tries adoption again. | — |
+| `pending(id)` | `--resume-id id`, the same id on every retry. **No store read is needed, so the store's readability never matters here.** | Pane ready, which is success: `owned(id)`. The daemon's explicit fresh-start transition records `fresh`, with `id` abandoned for good. A crash keeps `pending`. |
+| `owned(id)` | `--resume-id id`. No store read. | — |
+| `fresh` | No resume flag, and the launch carries `--agent`. **Never** a resume of any kind, so an abandoned id cannot come back. | Take-up by evidence (created after `since`, absent from `known`, unclaimed, the only one) gives `owned`. **An unreadable store defers the take-up** (stays `fresh`). It is never guessed. |
+| A **key the state file has no record for** (engine, profile or cwd changed after adoption) | **Durable `fresh`** for the new key, as v3 does today (`kiro-v3-identity.ts:143`). Never a selection of "newest". | Each key keeps its own record. Returning to the old key finds it as it was: `owned(X)` resumes X, and an abandoned X stays abandoned. |
+| `skipResume` | No resume flag | Records `fresh` for this key |
 
-Two existing instances in one cwd at the upgrade both select the same newest conversation. The first to claim it keeps it; the second starts fresh, which is the same known limit v3 has. That is chosen over giving one instance the other's conversation.
+Two existing instances in one cwd at the upgrade both select the same newest conversation. The first to claim it keeps it, and the second starts fresh. This is v3's known limit, and it is chosen over giving one instance the other's conversation.
 
-### 3. Switching a resumed conversation to the instance's agent (leader, approved)
+### 3. Switching a resumed conversation to the instance's agent (leader, approved; R2 #4/#5)
 
-`--agent` is ignored on resume (E6), so a conversation from before the upgrade comes back as `kiro_default`. After the first resume, AgEnD switches it once:
+`--agent` is ignored on resume (E6), so a conversation from before the upgrade comes back as `kiro_default`. While `agentConfirmed` is false for the current record, AgEnD switches it once.
 
-1. **Before launch,** while `agentConfirmed` is false for the owned or pending id, `writeConfig` writes the agent file and **keeps this instance's old shared entry and steering file**. Until the switch is confirmed, the resumed `kiro_default` conversation gets its MCP server from there, so the instance is never without one.
-2. **After the pane is ready,** before any message is delivered:
-   - AgEnD reads the active agent from the screen: v1's prompt row `[<agent>] N% …`, or the TUI and v3 status bar `<agent> · …`.
-   - If the agent is not ours, AgEnD types `/agent swap <agent>` once, then waits a bounded time (15 s) for the screen to show it.
-3. **Confirmed:** record `agentConfirmed`, then remove this instance's own old shared entry and steering file (§4).
-4. **Not confirmed in time:** leave the old setup in place, log it with a launch warning, and try again on the next launch. Never remove the old entry without a confirmed switch.
-5. **Every later resume checks the screen again.** It is cheap, and it repairs a manual `/agent swap` too.
+**Before launch: the old setup, written only where it is free (§4).**
+- The `mcp.json` key `<server>-<instance>` is written only if it is absent, or its command is already this instance's own wrapper.
+- `.kiro/steering/agend-<instance>.md` is written only if it is absent, or carries **this fleet's** tag (§4).
+- A conflict, meaning a foreign command under the key or a steering file this fleet cannot claim, is **not overwritten**. The transition goes ahead without that piece, with a launch warning. Only an instance whose conversation was already in conflict before the upgrade is affected, and the swap below still gives it its own agent.
 
-A fresh launch carries `--agent` from the start, so it needs no shared files and no swap.
+**After the pane is ready, the swap runs under the same admission and fences as a delivery.** The whole step is bounded by **15 s on the monotonic clock**.
+1. **Reading the agent** looks only at the live layout, never at history:
+   - v1: the pane's current prompt row (`[<agent>] N% …`), meaning the last non-empty row, and only when it matches the backend's prompt pattern;
+   - TUI/v3: the status row directly above the input row (`<agent> · …`).
 
-### 4. Leaving the shared files, by provenance only (Prism P2)
+   A quoted `[agend-…]` or `agend-… ·` elsewhere in the pane is not read.
+2. **Before writing,** AgEnD takes a fresh capture under the delivery path's write fence: its `current()` check of spawn generation, launch fence and delivery-writes-stopping (`daemon.ts` ~2011). The swap is typed only when that same capture shows a readable, idle, input-ready prompt. Unknown, modal, busy, auth or held-dialog states, and the startup scan's "true", never admit it: the step waits and re-captures within the budget.
+3. **The write and the confirmation:** type `/agent swap <agent>` once, then capture until the live layout shows `<agent>`.
+4. **Fences.** After every await (capture, write, confirmation capture), the launch fence is checked again: stop, pause, respawn, launch generation and pane owner.
+   - A stale frame or a superseded launch never marks the switch confirmed, never removes a file, and never lets a held delivery or replacement through.
+   - The last capture before confirmation must be newer than the write.
+5. **Confirmed:** record `agentConfirmed`, then remove this instance's own old setup (§4).
+6. **Not confirmed within the budget:** leave the old setup, log it with a launch warning, and try again on the next launch.
+7. **Every later resume** reads the live layout again. Not ours means the same step runs.
 
-AgEnD stops adding to the shared `mcp.json` and steering, except for an instance still waiting for its confirmed switch (§3).
+A fresh launch carries `--agent` from the start, needs no old setup, and runs no swap.
 
-What is removed, and when:
-- **`mcp.json` entries:** only an entry whose `command` is one of **this fleet's** wrapper scripts. A key name alone never counts.
-  - This instance's own entry is removed after its switch is confirmed.
-  - An entry whose wrapper belongs to an instance this fleet no longer has (its instance directory is gone) is removed at any time.
-  - Nothing else is touched: no "own key" without command evidence, no `agend-*` name sweep, no bare `agend` key.
-- **Steering files:** only `agend-<instance>.md` in **this instance's own** cwd, whose content starts with AgEnD's header for **that** instance and **that** cwd (`# AgEnD Fleet Context` / `You are **<instance>**` / `Your working directory is \`<cwd>\``, the header since 2026-04).
-  - This instance's own file is removed after its switch is confirmed.
-  - A file whose header names a different instance or cwd, or that has no header, is kept.
-  - There is no fleet-wide name sweep.
-- **Malformed or unreadable shared file, or a failed removal:** never repaired, and never reported as isolated. A launch warning names the file, and the next launch tries again.
-- **Writes:** only when something changed, atomic, and the rest of the file is kept as is.
+### 4. The shared files, by provenance only (Prism P2, R2 #4)
 
-**Known limits** (go in the docs):
-- **Transition window.** An instance still waiting for its switch keeps its shared entry, and v1/v2 agents load the workspace `mcp.json` (`includeMcpJson: true`). So isolation in a cwd is complete once every kiro instance there has confirmed its switch, normally at its first launch after the upgrade.
-- **Two fleets on one cwd.** Two fleets' read-modify-writes of the shared `mcp.json` can race, and one can bring back an entry the other just removed. **This can remain even after both have upgraded**, until that instance's next launch removes it again.
+**Fleet tag.** From now on, AgEnD writes a steering file (only in the transition of §3) starting with `<!-- agend-fleet:<fleet> instance:<instance> -->`, followed by the usual instructions.
 
-### 5. Capability gates (P4)
+**What is removed:**
+- **`mcp.json`:**
+  - this instance's key, when its command is **exactly** this instance's own wrapper and the switch is confirmed;
+  - any entry whose command is a wrapper under **this fleet's** instances directory, for an instance whose directory is gone.
 
-- **Flags:** the compatibility probe already parses `chat --help` for the `--agent-engine` values. It now also records `--agent` and `--resume-id`.
-- **Binary without both flags:** the instance behaves exactly as today (shared files, plain `--resume`) and gets a one-time launch warning that same-directory isolation needs a newer kiro-cli.
-- **v3:** its identity path is unchanged.
+  Nothing is removed by key name alone.
+- **Steering:** only a file with **this fleet's** tag for this instance, in this instance's cwd, once the switch is confirmed. The cleanup removes it on the same terms.
+- **Untagged legacy steering files, written before this change, are ambiguous.** Their header names an instance and a cwd but no fleet (`instructions.ts:132`), so two fleets with a same-named instance on one cwd cannot tell theirs apart. They are **kept**. A one-time launch warning names the file and says it can be deleted by hand once every fleet using that directory has upgraded. This is the one gap in steering isolation, and it is listed in the docs.
+
+**Failure handling:** a malformed or unreadable shared file, or a failed removal, is never repaired and never reported as isolated. A launch warning names the file, and the next launch tries again. Writes happen only when something changed, atomically, keeping the rest of the file as is.
+
+**When a removal takes effect.** Removal takes effect for a running session no later than that session's next launch. Kiro has config hot reload since 2.10, which may apply it sooner, but that is not relied on: it was not probed on 2.21/2.28. So isolation in a cwd is complete once every kiro instance there has confirmed its switch **and relaunched once since**. Normally both happen at the first launch after the upgrade.
+
+**Known limit: two fleets on one cwd.** Their read-modify-writes of the shared `mcp.json` can race, and one can bring back an entry the other just removed. This can remain even after both have upgraded, until that instance's next launch removes it again. No cross-fleet locking is added.
+
+### 5. Capability gates
+
+- The compatibility probe already parses `chat --help` for the `--agent-engine` values. It now also records `--agent` and `--resume-id`.
+- A binary without both flags behaves exactly as today and gets a one-time warning that same-directory isolation needs a newer kiro-cli.
+- v3's identity path is unchanged.
 
 ### 6. Cleanup (stop, delete, replace)
 
-- Remove the agent file and its `.bak`, if ours (§1).
-- Remove this instance's old shared entry and steering file, if ours (§4).
-- On delete and replace, also drop the identity state and release this instance's claims. The conversation itself stays in kiro's store.
+- The agent file and its `.bak`, each only on a positive match (§1).
+- This instance's own `mcp.json` key and tagged steering file, each only on a positive match (§4).
+- Delete and replace also drop the identity state and release this instance's claims. Conversations stay in kiro's store.
 - Directories are left in place.
 
 ## Grok (documentation only)
@@ -128,31 +153,43 @@ All filesystem roots are scratch dirs. No kiro, fleet or tmux is launched (bd0c8
 
 - **Agent identity:**
   - two `AGEND_HOME`s with a same-named instance in one cwd get different files;
-  - an existing foreign or user file at our path refuses the launch and is never overwritten;
-  - cleanup removes only our file and our `.bak`;
+  - the plain and hashed forms never collide (`中文` vs an instance named `sha256(中文)[:16]`, mixed-form control);
+  - files that are **not ours**, so refused on write and kept on removal:
+    - an empty `mcpServers`;
+    - a sibling's wrapper;
+    - an extra or missing key;
+    - a user file;
+    - a `.bak` that does not match;
+  - cleanup through the delete path that rebuilds a config without a daemon removes only our files;
   - a file rewritten by another owner survives our stop.
 - **Selector:**
-  - v1 fixture `conversations_v2` and v2 fixture `sessions/cli`: newest by `updated_at`, the other cwd's and subagent rows ignored;
+  - v1/v2 fixtures: newest by `updated_at`, the other cwd's and subagent rows ignored;
   - an empty store is fresh;
-  - unreadable or corrupt stores give today's behaviour plus a warning, and no state is written;
-  - the credential profile chooses the v1 store, not the v2 store.
+  - the credential profile chooses the v1 store only.
 - **State machine:**
-  - `pending` survives a crash and a failed launch, and the retry uses the same id;
-  - the daemon's fresh-start transition abandons the id for good;
-  - `skipResume` records fresh;
-  - a change of engine, profile or cwd starts a first launch;
-  - the claim race: the second instance starts fresh;
-  - take-up after a fresh launch only on full evidence.
+  - `pending` and `owned` resume the exact id while the store is unreadable;
+  - `fresh` never resumes, and its take-up is deferred while the store is unreadable;
+  - adoption with an unreadable store is legacy mode, not isolated, with no state and a warning;
+  - pending survives a crash and a failed launch, and the retry uses the same id;
+  - the fresh-start transition abandons the id for good;
+  - **round trip:** X abandoned, then engine, profile or cwd changed, then back again: X is never claimed or resumed;
+  - a new key after adoption is durable fresh;
+  - the claim race;
+  - take-up only on full evidence.
 - **Switch:**
-  - the old entry is written while unconfirmed;
-  - the screen shows ours: no swap typed;
-  - not ours: one `/agent swap` typed, and confirmation clears the old setup;
-  - timeout keeps the old setup, warns, and retries next launch;
-  - a fresh launch carries `--agent` and writes no shared files.
+  - the old setup is written only where it is free;
+  - a foreign `mcp.json` key or an unclaimable steering file is not overwritten, and gives a warning;
+  - two `AGEND_HOME`s with a same-named instance in one cwd: neither removes or overwrites the other's steering;
+  - the reader ignores a quoted `[agend-…]` or `agend-… ·` in history;
+  - an unreadable, modal or busy capture never admits the write;
+  - a confirmation capture older than the write never confirms;
+  - stop, pause or respawn while a capture, the write or the confirmation is awaited never confirms, never removes, and never releases a held delivery;
+  - the 15 s monotonic budget times out to "keep the old setup and warn";
+  - confirmation removes only this instance's tagged and own-wrapper files.
 - **Provenance:**
   - user `mcp.json` keys (including an `agend-*` key run with `npx`) are kept;
   - another fleet's wrappers are kept;
   - a gone instance's wrapper is removed;
-  - a steering file with another instance's header, another cwd's header, or none is kept;
+  - untagged legacy steering is kept with a one-time warning;
   - a malformed `mcp.json` or a failed unlink warns and is never reported as isolated.
 - **Capability:** help without `--agent` or `--resume-id` gives today's command and one warning.
