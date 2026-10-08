@@ -7903,10 +7903,10 @@ export class Daemon extends EventEmitter {
         }
 
         // A structural box reader (claude-code, #1200) is in the same position as Codex once the turn has run: the
-        // message may have been taken and its echo scrolled away, so only "nothing of ours anywhere, box empty"
-        // ("unproven") still means the paste itself was lost. "unverifiable" — our text is visible but the screen had no
-        // readable box — used to fall through to a second paste and could submit the message twice.
-        if (this.backend?.isDeliveryInputReadyPane || (this.backend?.readInputRow && settled !== "unproven")) {
+        // message may have been taken and its echo scrolled out, the queue drained, the box empty — or the capture
+        // failed. None of that proves the paste was lost, so nothing short of positive evidence is a reason to paste
+        // again (#1353 review); "unverifiable" used to, and could submit the message twice.
+        if (this.backend?.isDeliveryInputReadyPane || this.backend?.readInputRow) {
           // In Codex a missing viewport echo is inconclusive, not a proof of
           // loss. Another paste could run the same request twice. Leave the
           // already-pasted delivery at 👀 and let the next observation decide.
@@ -8187,6 +8187,15 @@ export class Daemon extends EventEmitter {
     if (!this.tmux) return "unproven";
     let pane: string;
     try { pane = await this.tmux.capturePane(); } catch { return "unproven"; }
+    return this.judgeSubmission(pane, signature, baseline);
+  }
+
+  /**
+   * The verdict one snapshot supports — the live viewport, or (for a unique signature) the scrollback a late proof
+   * reads. One judge for both, so a history read cannot vouch for what the live one refuses: an unreadable box, or our
+   * text still in it (#1353 review).
+   */
+  private judgeSubmission(pane: string, signature: SubmissionSignature, baseline: PaneEvidence | null): SubmitProof {
 
     // Without a way to tell the input row from the transcript, "the text is on
     // screen" cannot distinguish submitted from stranded — that ambiguity IS
@@ -8230,10 +8239,20 @@ export class Daemon extends EventEmitter {
     //    Otherwise an older stranded message with the same opening would be
     //    read as ours, we would press Enter to "recover" it, and the turn IT
     //    starts would confirm a message that never reached the pane.
-    if (after.strandedInput && (signature.unique || baseline?.strandedInput === false)) return "stranded";
+    //
+    //    For a structural box reader (claude-code), "did not already show it" needs a baseline whose box was READ: an
+    //    unreadable one (a dialog, a redraw the reader refused) says nothing about what the box held, and counting it as
+    //    empty would claim an older message as ours and press Enter on it (#1353 review). The prompt-row backends (codex,
+    //    kiro) keep their existing attribution.
+    const attributable = baseline != null
+      && (!this.backend?.readInputRow || (baseline.inputReadable && after.inputReadable));
+    if (after.strandedInput && (signature.unique || (attributable && baseline!.strandedInput === false))) return "stranded";
     //    A paste the CLI shows collapsed carries no signature at all. One the box did not hold before we pasted is
     //    ours, and it is still in the box — whatever echo or output is on screen (#1200).
-    if (baseline && after.collapsedPastes > baseline.collapsedPastes) return "stranded";
+    if (attributable && after.collapsedPastes > baseline!.collapsedPastes) return "stranded";
+    //    Something sits in the box that cannot be attributed either way. Only a unique signature seen outside the box
+    //    (below) can still prove this delivery; nothing else on screen may.
+    const unattributedResidue = !attributable && (after.strandedInput || after.collapsedPastes > 0);
 
     // 2. Positive evidence. A unique signature needs no baseline: no earlier
     //    message can carry this delivery's message_id, so finding it outside
@@ -8241,6 +8260,7 @@ export class Daemon extends EventEmitter {
     //    failure to read the pane BEFORE pasting cannot turn a delivered
     //    message into a re-paste.
     if (signature.unique && after.payload > 0) return this.submittedProof();
+    if (unattributedResidue) return "unverifiable";
 
     // 3. Otherwise the evidence must be NEW relative to the pane as it was
     //    before we pasted: a queue marker left by an earlier message, or an
@@ -8276,12 +8296,10 @@ export class Daemon extends EventEmitter {
       if (proof === "submitted" || (proof === "stranded" && !waitThroughStranded)) return proof;
       if (signature.unique && this.tmux?.capturePaneWithHistory) {
         try {
+          // Scrollback can hold the echo the viewport lost — but it is judged exactly like the viewport: a box that
+          // cannot be read, or that still holds our text, is never upgraded by an echo further up.
           const history = await this.tmux.capturePaneWithHistory(300);
-          const seen = this.paneEvidence(history, signature);
-          const known = !this.backend?.isDeliveryInputReadyPane
-            || this.backend.isDeliveryInputReadyPane(history)
-            || this.backend.getBusyPattern?.()?.test(history);
-          if (known && seen.payload > 0 && !seen.strandedInput) return this.submittedProof();
+          if (this.judgeSubmission(history, signature, baseline) === "submitted") return this.submittedProof();
         } catch { /* a failed history read proves neither delivery nor loss */ }
       }
       if (Date.now() >= deadline) return proof;
