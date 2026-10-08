@@ -106,6 +106,7 @@ Typed (non-slash-menu) text behaves differently per platform:
 - **Discord fleet topics:** a typed `/xxx` never runs a command — use the `/` slash menu instead. The adapter that owns the topic posts one system note saying so and consumes the message; every other bot stays silent. A `/xxx@otherbot` suffix is ignored silently.
 - **Discord ClassicBot channels:** a typed `/xxx` is ignored silently by every bot — no warning (so multi-bot groups don't all reply), no command, and it is not forwarded as `/chat` either. Slash commands (`/chat`, `/ctx`, …) are unaffected.
 - **Telegram fleet topics:** a bare `/cmd` runs, but only through the adapter that owns the topic — other adapters say nothing. `/cmd@otherbot` is ignored; `/cmd@ourbot` runs.
+- **Telegram instance topics:** the menu is the forum group's, so it also lists the General-only commands (`/status`, `/sysinfo`, `/dashboard`, `/restart`, `/update`, `/profile`, `/doctor`, `/login`, `/usage`, `/visibility`). Typed in an instance topic they answer "works in the General topic — please use it there"; they never reach the agent.
 - **Telegram ClassicBot groups:** a bare `/cmd` is ignored; only `/cmd@ourbot` runs.
 - **Telegram private chats:** unchanged — a bare `/cmd` runs.
 

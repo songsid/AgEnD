@@ -1,5 +1,9 @@
 /**
- * #754 / #1148 audit, PR-B: one fleet-admin gate. (The rig below is PR-A's two-bot fleet.)
+ * #1148, PR-C: a General-only command typed in an instance topic is refused with a pointer to General — it used to be
+ * handed to the agent as an ordinary message (the agent got raw command text, nothing acted and nothing refused).
+ * (The rig below is PR-A's two-bot fleet; its PR-B description follows.)
+ *
+ * #754 / #1148 audit, PR-B: one fleet-admin gate.
  *
  *  - `adminGate(user, ownerAdapterId)`: the owning adapter's list only — an unknown adapter is nobody (no fallback to
  *    the primary channel), an empty list is nobody (`disabled`);
@@ -80,76 +84,40 @@ const typed = (text: string, userId: string, threadId = "30", adapterId = "tg-a"
   ({ source: "telegram", adapterId, chatId: GROUP, threadId, messageId: `m-${Math.random()}`, userId, username: "u", text, timestamp: new Date() }) as never;
 
 
-describe("adminGate: the owning adapter's list, and nothing else", () => {
-  it("listed → ok; another adapter's admin → denied; an empty list → disabled", () => {
-    const r = rig("open");
-    expect(r.fm.adminGate(ADMIN_A, "tg-a")).toBe("ok");
-    expect(r.fm.adminGate(ADMIN_B, "tg-a")).toBe("denied");
-    (r.fm.fleetConfig as any).channels[1].access.allowed_users = [];
-    expect(r.fm.adminGate(ADMIN_B, "tg-b")).toBe("disabled");
-  });
-  it("an adapter id that matches nothing is nobody — never the primary channel's list", () => {
-    const r = rig("open");
-    expect(r.fm.adminGate(ADMIN_A, "no-such-adapter")).toBe("denied");
-    expect(r.fm.isFleetAdmin(ADMIN_A, "no-such-adapter")).toBe(false);
-    expect(r.fm.hasFleetAdmins("no-such-adapter")).toBe(false);
-    // (getChannelConfig, which other code uses for non-admin settings, still falls back — the admin path does not.)
-    expect(r.fm.getChannelConfig("no-such-adapter")?.id).toBe("tg-a");
-  });
-  it("no adapter id at all means the primary adapter (a single-adapter fleet's only one)", () => {
-    const r = rig("open");
-    expect(r.fm.adminGate(ADMIN_A)).toBe("ok");
-    expect(r.fm.adminGate(ADMIN_B)).toBe("denied");
-  });
-});
 
-describe("a Discord slash command in a channel another bot owns is refused at the door", () => {
-  const ask = async (r: ReturnType<typeof rig>, channelId: string, userId: string, adapterId: string) => {
-    const respond = vi.fn(async () => undefined);
-    const scope = await r.any.authorizeSlash({ command: "status", channelId, guildId: GROUP, userId, respond }, adapterId);
-    return { scope, respond };
-  };
-  it("beta belongs to tg-b: through tg-a it is refused even for an admin of both; through tg-b it reaches the table", async () => {
-    const r = rig("open");
-    (r.fm.fleetConfig as any).channels[1].access.allowed_users.push(ADMIN_A);
-    const viaA = await ask(r, "40", ADMIN_A, "tg-a");
-    expect(viaA.scope).toBeNull();
-    expect(viaA.respond).toHaveBeenCalledWith(t("slash.other_bot"));
-    expect((await ask(r, "40", ADMIN_A, "tg-b")).scope).toBe("fleet");
-    expect((await ask(r, "30", ADMIN_A, "tg-a")).scope).toBe("fleet");   // its own channel: unchanged
-  });
-  it("the facts: decideSlash refuses other-bot in a fleet channel, and keeps owner-not-running when the owner is down", () => {
-    const base = { command: "status", guildId: "G", primaryGuildId: "G", scope: "fleet" as const };
-    expect(decideSlash({ ...base, speaker: "allowed", otherBotOwns: true })).toEqual({ allow: false, reason: "other-bot" });
-    expect(decideSlash({ ...base, speaker: "owner-not-running", otherBotOwns: true })).toEqual({ allow: false, reason: "owner-not-running" });
-    expect(decideSlash({ ...base, speaker: "allowed", otherBotOwns: false })).toEqual({ allow: true });
-  });
-});
+const GENERAL_ONLY = ["status", "restart", "login", "profile", "update", "doctor", "dashboard", "visibility", "sysinfo", "usage"];
 
-describe("Telegram typed commands are decided by the command table before any handler", () => {
-  it("/status in General from a member: the table's refusal, and the handler never runs", async () => {
+describe("a General-only command in a Telegram instance topic points to General, for everyone, and reaches no agent", () => {
+  for (const name of GENERAL_ONLY) {
+    it(`/${name}`, async () => {
+      for (const who of [PLAIN, ADMIN_A]) {
+        const r = rig("open");
+        const delivered = vi.fn();
+        r.any.deliverToInstance = delivered;
+        expect(await r.any.topicCommands.handleInstanceCommand(typed(`/${name}`, who, "30"), "alpha"), who).toBe(true);
+        expect(r.replies.map(x => x.text), who).toEqual([t("cmd.use_in_general", `/${name}`)]);
+        expect(delivered, who).not.toHaveBeenCalled();
+      }
+    });
+  }
+
+  it("the bot-suffixed form too (/status@bot)", async () => {
     const r = rig("open");
-    const status = vi.spyOn(r.any.topicCommands, "handleStatusCommand");
-    expect(await r.any.topicCommands.handleGeneralCommand(typed("/status", PLAIN, "1"), "general")).toBe(true);
-    const [key, ...args] = commandSpec("status")!.denied;
-    expect(r.replies.map(x => x.text)).toEqual([t(key, ...args)]);
-    expect(status).not.toHaveBeenCalled();
+    expect(await r.any.topicCommands.handleInstanceCommand(typed("/status@fleetbot", ADMIN_A, "30"), "alpha")).toBe(true);
+    expect(r.replies.map(x => x.text)).toEqual([t("cmd.use_in_general", "/status")]);
   });
-  it("/update with an empty admin list: the table's 'disabled' reply, as on Discord", async () => {
+
+  it("in General the same commands still run (the refusal is the instance topic's only)", async () => {
     const r = rig("open");
-    (r.fm.fleetConfig as any).channels[0].access.allowed_users = [];
-    expect(await r.any.topicCommands.handleGeneralCommand(typed("/update", ADMIN_A, "1"), "general")).toBe(true);
-    const [key, ...args] = commandSpec("update")!.disabled!;
-    expect(r.replies.map(x => x.text)).toEqual([t(key, ...args)]);
+    const status = vi.spyOn(r.any.topicCommands, "handleStatusCommand").mockResolvedValue(undefined);
+    expect(await r.any.topicCommands.handleGeneralCommand(typed("/status", ADMIN_A, "1"), "general")).toBe(true);
+    expect(status).toHaveBeenCalledOnce();
+    expect(r.replies.map(x => x.text)).not.toContain(t("cmd.use_in_general", "/status"));
   });
-  it("a command the table passes through in an instance topic is left alone (handled as before)", async () => {
+
+  it("an ordinary message in the instance topic still goes to the agent (only commands are intercepted)", async () => {
     const r = rig("open");
-    expect(await r.any.topicCommands.handleInstanceCommand(typed("/start", PLAIN, "30"), "alpha")).toBe(false);
+    expect(await r.any.topicCommands.handleInstanceCommand(typed("status of the build?", PLAIN, "30"), "alpha")).toBe(false);
     expect(r.replies).toEqual([]);
-  });
-  it("an ordinary command the table lets anyone use still runs for a member (/steer in an instance topic)", async () => {
-    const r = rig("open");
-    expect(await r.any.topicCommands.handleInstanceCommand(typed("/steer hi", PLAIN, "30"), "alpha")).toBe(true);
-    expect(r.replies.map(x => x.text)).not.toContain(t(...commandSpec("steer")!.denied));
   });
 });
