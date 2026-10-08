@@ -8688,7 +8688,8 @@ export class Daemon extends EventEmitter {
     }
     if (current && !current()) return false;
     const pasteGeneration = this.spawnGeneration;
-    if (!(await this.tmux.pasteBuffer(text))) {
+    const pasted = current ? await this.tmux.pasteBuffer(text, { guard: current }) : await this.tmux.pasteBuffer(text);
+    if (!pasted) {
       this.logger.warn({ label }, "System paste failed to reach the pane");
       return false;
     }

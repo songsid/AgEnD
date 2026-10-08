@@ -1,9 +1,9 @@
 import { randomBytes } from "node:crypto";
-import { SettingsBaselines } from "./settings-baseline.js";
-import { SettingsConfirmationStore } from "./settings-confirmation.js";
+import { SettingsBaselines, readSettingsCommittedFile, SETTINGS_BASELINE_MAX_FILE_BYTES } from "./settings-baseline.js";
+import { SettingsConfirmationStore, SettingsConfirmationError } from "./settings-confirmation.js";
 import { SettingsHttpConfirmation } from "./settings-http-confirmation.js";
 import { SettingsControlServer } from "./settings-control.js";
-import { settingsFingerprint, noteSettingsWrite, type SettingsExecution } from "./settings-transaction.js";
+import { settingsFingerprint, settingsRevision, noteSettingsWrite, type SettingsExecution } from "./settings-transaction.js";
 /**
  * The form that runs before there is a fleet.
  *
@@ -240,12 +240,27 @@ export class SetupHost {
       // Nothing to preserve: before a fleet there are no comments and no hand
       // edits to keep, so a plain dump is the whole writer.
       saveFleetConfig: () => {
-        noteSettingsWrite(this.opts.configPath, this.readConfig(), config);
-        const temp = `${this.opts.configPath}.${randomBytes(8).toString("hex")}.tmp`;
-        try {
-          writeFileSync(temp, yaml.dump(config, { quotingType: '"', forceQuotes: false }), { mode: 0o600, flag: "wx" });
-          renameSync(temp, this.opts.configPath);
-        } finally { try { unlinkSync(temp); } catch { /* renamed or not created */ } }
+        const path = this.opts.configPath, before = readSettingsCommittedFile(path);
+        const previousConfig = this.readConfig(), writtenConfig = structuredClone(config);
+        const written = Buffer.from(yaml.dump(writtenConfig, { quotingType: '"', forceQuotes: false }));
+        if (written.length > SETTINGS_BASELINE_MAX_FILE_BYTES) throw new SettingsConfirmationError(413, "settings_baseline_too_large");
+        const replace = (bytes: Buffer): void => {
+          const temp = `${path}.${randomBytes(8).toString("hex")}.tmp`;
+          try {
+            writeFileSync(temp, bytes, { mode: 0o600, flag: "wx" });
+            renameSync(temp, path);
+          } finally { try { unlinkSync(temp); } catch { /* renamed or not created */ } }
+        };
+        noteSettingsWrite(path, previousConfig, writtenConfig);
+        replace(written);
+        const revision = settingsRevision(path);
+        return () => {
+          // A receipt failure can compensate only this write, never a newer writer or an ABA revision.
+          if (settingsRevision(path) !== revision || !readSettingsCommittedFile(path)?.equals(written)) return false;
+          noteSettingsWrite(path, writtenConfig, previousConfig);
+          if (before === null) unlinkSync(path); else replace(before);
+          return true;
+        };
       },
       // No fleet, so nothing is polling any bot token.
     };

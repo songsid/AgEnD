@@ -10,7 +10,8 @@ import { performance } from "node:perf_hooks";
 import { withinBudget } from "./monotonic-budget.js";
 import { settingsFingerprint, settingsRevision } from "./settings-transaction.js";
 
-const MAX_FILE_BYTES = 512 * 1024;
+export const SETTINGS_BASELINE_MAX_FILE_BYTES = 512 * 1024;
+const MAX_FILE_BYTES = SETTINGS_BASELINE_MAX_FILE_BYTES;
 async function read(path: string | null): Promise<Buffer | null> {
   if (!path) return null;
   let file;
@@ -30,8 +31,8 @@ async function read(path: string | null): Promise<Buffer | null> {
   } finally { await file.close(); }
 }
 
-/** Only the synchronous commit receipt uses this bounded no-follow read; polling stays async. */
-function readCommitted(path: string | null): Buffer | null {
+/** Bounded no-follow commit/Setup compensation reads; polling stays async. */
+export function readSettingsCommittedFile(path: string | null): Buffer | null {
   if (!path) return null;
   let fd: number;
   try { fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW); }
@@ -60,7 +61,7 @@ export class SettingsBaselines {
   captureCommitted(): string {
     const before = settingsFingerprint(this.snapshot());
     const files = [this.options.configPath(), join(this.options.dataDir, "classicBot.yaml"), join(this.options.dataDir, ".env")];
-    const bytes = files.map(readCommitted);
+    const bytes = files.map(readSettingsCommittedFile);
     return settingsFingerprint([before, ...bytes.map(item => item === null ? null : settingsFingerprint(item.toString("utf8")))]);
   }
   async read(): Promise<SettingsBaseline> {

@@ -263,7 +263,8 @@ export interface QuickstartApiContext {
   fleetConfig: FleetConfig | null;
   dataDir: string;
   logger: { info(obj: unknown, msg?: string): void; warn(obj: unknown, msg?: string): void };
-  saveFleetConfig(): void;
+  /** SetupHost returns an undo for its exact persisted write; ordinary fleet writers keep their existing contract. */
+  saveFleetConfig(): void | (() => boolean);
   settingsCommitted?(execution?: SettingsExecution): void;
   /** Only a running fleet can answer this; without one, nothing is polling. */
   isBotTokenInUse?(token: string): boolean;
@@ -407,6 +408,7 @@ export function handleQuickstartRequest(
       const before = { channels: cfg.channels, channel: cfg.channel, instance: cfg.instances[body.instance_name],
         hadInstance: Object.hasOwn(cfg.instances, body.instance_name) };
       let store: SecretStore | undefined;
+      const rollback: { config?: () => boolean } = {};
       try {
         execution?.assert();
         store = new SecretStore(envPath, new Set([body.token_env]), { owner: lease.owner });
@@ -414,15 +416,18 @@ export function handleQuickstartRequest(
           secretBefore = store!.write(body.token_env, body.token!); stored = true;
           cfg.channels = draft.channels; delete cfg.channel;
           Object.defineProperty(cfg.instances, body.instance_name, { value: draft.instances[body.instance_name], enumerable: true, writable: true, configurable: true });
-          ctx.saveFleetConfig();
+          const undo = ctx.saveFleetConfig();
+          if (typeof undo === "function") rollback.config = undo;
           ctx.settingsCommitted?.(execution);
         });
       } catch (err) {
         cfg.channels = before.channels;
         if (before.channel !== undefined) cfg.channel = before.channel; else delete cfg.channel;
         if (before.hadInstance) cfg.instances[body.instance_name] = before.instance!; else delete cfg.instances[body.instance_name];
-        try { if (stored && secretBefore) store!.restoreIfCurrent(secretBefore); }
-        catch { return json(res, 500, { error: "setup cleanup failed; inspect configuration on the host" }); }
+        let cleanupFailed = false;
+        try { if (rollback.config && !rollback.config()) cleanupFailed = true; } catch { cleanupFailed = true; }
+        try { if (stored && secretBefore) store!.restoreIfCurrent(secretBefore); } catch { cleanupFailed = true; }
+        if (cleanupFailed) return json(res, 500, { error: "setup cleanup failed; inspect configuration on the host" });
         return json(res, err instanceof SettingsExecutionError ? 409 : 500, { error: "setup was not committed" });
       } finally { lease.release(); }
       ctx.logger.info({ instance: body.instance_name, platform: body.platform }, "settings: quickstart committed");

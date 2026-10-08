@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SetupHost } from "../src/setup-host.js";
 import yaml from "js-yaml";
+import { noteSettingsWrite } from "../src/settings-transaction.js";
 import { setupHttp, setupPayload, decideSetup, confirmedSetup } from "./helpers/setup-confirmation-1423.js";
 
 const fixtures: { host: SetupHost; dir: string }[] = [];
@@ -18,6 +19,55 @@ async function harness() {
   return { host, dir, port, path, cookie, spawnFleet, logs };
 }
 describe("#1423 real no-fleet SetupHost consent", () => {
+  it.each([false, true])("receipt capture failure restores disk/runtime/env, including an existing YAML=%s", async existing => {
+    const h = await harness(), path = join(h.dir, "fleet.yaml"), envPath = join(h.dir, ".env");
+    const before = "# retain this exact formatting\ninstances: {}\ndefaults: {}\n";
+    if (existing) writeFileSync(path, before);
+    // A legal baseline becomes too large only after the approved token is added.
+    const env = "#" + "x".repeat(524280) + "\n"; expect(Buffer.byteLength(env)).toBe(524282); writeFileSync(envPath, env);
+    const pending = await setupHttp(h.port, h.path + "api/settings/quickstart/commit", "POST", setupPayload, h.cookie);
+    expect(pending.status).toBe(202);
+    const outcome = await decideSetup(h.dir, pending.body.pending_change.id);
+    expect(outcome.pending_change.state).toBe("failed");
+    expect(readFileSync(envPath, "utf8")).toBe(env);
+    expect(existsSync(path)).toBe(existing); if (existing) expect(readFileSync(path, "utf8")).toBe(before);
+    const config = (h.host as any).setupContext.fleetConfig;
+    expect(config.instances).toEqual({}); expect(config.channels).toBeUndefined();
+    expect((await setupHttp(h.port, h.path + "setup/status", "GET", undefined, h.cookie)).body.finish_ready).toBe(false);
+    expect((await setupHttp(h.port, h.path + "setup/finish", "POST", undefined, h.cookie)).status).toBe(409); expect(h.spawnFleet).not.toHaveBeenCalled();
+    if (!existing) {
+      writeFileSync(envPath, "# now within the receipt bound\n");
+      const retry = await setupHttp(h.port, h.path + "api/settings/quickstart/commit", "POST", { ...setupPayload, idempotency_key: "after-receipt-failure" }, h.cookie);
+      expect(retry.status).toBe(202); expect((await decideSetup(h.dir, retry.body.pending_change.id)).pending_change.state).toBe("applied");
+      expect((h.host as any).setupContext.fleetConfig.instances).toHaveProperty("agent-1");
+      expect((await setupHttp(h.port, h.path + "setup/status", "GET", undefined, h.cookie)).body.finish_ready).toBe(true);
+      expect(h.spawnFleet).not.toHaveBeenCalled();
+    }
+  });
+  it.each(["different bytes", "same-byte revision"])("failed receipt cannot compensate over a newer YAML writer: %s", async kind => {
+    const h = await harness(), path = join(h.dir, "fleet.yaml");
+    const pending = await setupHttp(h.port, h.path + "api/settings/quickstart/commit", "POST", setupPayload, h.cookie);
+    const context = (h.host as any).setupContext; let retained = "";
+    context.settingsCommitted = () => {
+      const written = readFileSync(path, "utf8"), current = yaml.load(written) as any;
+      if (kind === "different bytes") {
+        current.defaults.model = "later-writer"; retained = yaml.dump(current); writeFileSync(path, retained);
+      } else {
+        retained = written; noteSettingsWrite(path, current, current); writeFileSync(path, retained);
+      }
+      throw new Error("inert receipt failure");
+    };
+    const outcome = await decideSetup(h.dir, pending.body.pending_change.id);
+    expect(outcome.pending_change.state).toBe("failed");
+    expect(existsSync(path)).toBe(true); expect(readFileSync(path, "utf8")).toBe(retained); expect(existsSync(join(h.dir, ".env"))).toBe(false);
+    expect((await setupHttp(h.port, h.path + "setup/finish", "POST", undefined, h.cookie)).status).toBe(409); expect(h.spawnFleet).not.toHaveBeenCalled();
+  });
+  it("Setup preflights the resulting YAML receipt bound before replacing the file", async () => {
+    const h = await harness(), context = (h.host as any).setupContext;
+    context.fleetConfig.defaults.model = "x".repeat(512 * 1024);
+    expect(() => context.saveFleetConfig()).toThrow("settings_baseline_too_large");
+    expect(existsSync(join(h.dir, "fleet.yaml"))).toBe(false);
+  });
   it("a pending 202 writes nothing and cannot finish; host confirmation applies once", async () => {
     const h = await harness();
     expect((await setupHttp(h.port, h.path + "setup/finish", "POST", undefined, h.cookie)).status).toBe(409);
