@@ -851,6 +851,66 @@ describe("reply guard false idle edge (#1241)", () => {
   });
 });
 
+describe("#1377 P2 regression: late failure after idle edge with no busyObserved", () => {
+  it("a reply failure that arrives after an idle edge (busyObserved=false) is reported on the next steady-idle tick", async () => {
+    // Prism P2 repro: arm with no work observed (working snapshot predates arm
+    // or the turn is too short to get a working poll) → handleToolCall →
+    // beginToolAttempt (replyAttemptedAt=1) → idle edge → no confirm window
+    // (busyObserved=false → "no_busy_since_arm" → return) → IPC failure ACK
+    // arrives (replyAttemptFailed=true) → steady-idle tick → must report now.
+    vi.useFakeTimers();
+    const daemon = makeDaemon();
+    const detected = vi.fn();
+    daemon.on("reply_drop_detected", detected);
+    daemon.markTurnStarted(meta(), "[user] do the task\nreply marker");
+    // No working snapshot → busyObserved=false.
+    const socket = new EventEmitter() as any;
+    daemon.socketSessionNames.set(socket, "worker");
+    daemon.handleToolCall({ tool: "reply", args: { text: "maybe" }, requestId: 55 }, socket);
+    const pending = [...daemon.pendingIpcRequests.entries()].find(([key]: [string]) => key.startsWith("tool_"));
+    expect(pending).toBeDefined();
+    // Idle edge fires while IPC is pending.
+    daemon.instanceState = "working";
+    daemon.applyInstanceStateSnapshot(idle(), "work finished\n❯");
+    await daemon.pasteLock;
+    // busyObserved=false → no confirm window, no recovery yet.
+    expect(detected).not.toHaveBeenCalled();
+    expect(daemon.turnReplyGuard.snapshot()?.phase).toBe("awaiting");
+    // IPC failure ACK arrives (provider timeout / adapter error).
+    pending![1]({ result: null, error: "provider timed out" });
+    // Steady-idle tick: must report the failure now that replyAttemptFailed=true.
+    daemon.applyInstanceStateSnapshot(idle(Date.now()), "work finished\n❯");
+    await daemon.pasteLock;
+    expect(detected).toHaveBeenCalledWith(expect.objectContaining({
+      reason: "reply_failed_or_unknown",
+      recoveryStarted: false,
+    }));
+    expect(daemon.deliverDaemonReply).toHaveBeenCalledWith(
+      expect.any(String), "replydrop", "Unconfirmed reply status", expect.any(Object), true,
+    );
+    expect(daemon.turnReplyGuard.snapshot()).toBeNull();
+  });
+
+  it("a transport timeout (in-flight, not a definitive error) does not report until the confirm window or busy/idle", async () => {
+    // An in-flight reply whose IPC response has simply not returned must NOT be
+    // reported as failed on a steady-idle tick — only a definitive error does.
+    vi.useFakeTimers();
+    const daemon = makeDaemon();
+    const detected = vi.fn();
+    daemon.on("reply_drop_detected", detected);
+    daemon.markTurnStarted(meta(), "[user] do the task\nreply marker");
+    busyThenIdleEdge(daemon); // busyObserved=true, confirm window armed
+    // Settle (success) never arrives — IPC is still in-flight.
+    // Steady-idle ticks with no error: must not report yet.
+    daemon.applyInstanceStateSnapshot(idle(Date.now()), "work finished\n❯");
+    await daemon.pasteLock;
+    expect(detected).not.toHaveBeenCalled();
+    // Only after the confirm window elapses does recovery fire.
+    await elapseConfirmWindow(daemon);
+    expect(detected).toHaveBeenCalledWith(expect.objectContaining({ reason: "no_valid_call" }));
+  });
+});
+
 describe("#1377 mutation guards", () => {
   /**
    * Mutation (a): undo clearReplyGuardConfirm() from the settle path.

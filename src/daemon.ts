@@ -4890,10 +4890,17 @@ export class Daemon extends EventEmitter {
     // #1377: if a successful settle already cleared the confirmation window,
     // check if completionDelivered became true — if so, complete the guard
     // on the next steady-idle tick so the guard doesn't persist indefinitely.
+    // Also handle a late failure ACK (replyAttemptFailed) that arrived after
+    // an idle edge with busyObserved=false: no confirm window was armed at that
+    // edge (no_busy_since_arm returned early), so failure must be reported here.
     if (!pending) {
       const turn = this.turnReplyGuard.snapshot();
-      if (turn && !turn.cancelledByUser && turn.phase === "awaiting" && turn.completionDelivered) {
+      if (!turn || turn.cancelledByUser || turn.phase !== "awaiting") return;
+      if (turn.completionDelivered) {
         this.turnReplyGuard.complete(turn.generation);
+      } else if (turn.replyAttemptFailed) {
+        this.turnReplyGuard.complete(turn.generation);
+        this.reportReplyDropWithoutRetry(turn, "reply_failed_or_unknown");
       }
       return;
     }
