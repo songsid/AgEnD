@@ -1,11 +1,11 @@
 /**
  * #1235: three ~1.1 s fleet stalls at 08:49:41 / 08:50:41 / 08:51:41 logged "slow sync work: unknown". The stall watch
  * reports every 30 s, so stalls in alternate windows at one phase are a ~60 s periodic task; the fleet-wide one is the
- * shared tmux control client's safety sweep, which runs every daemon's listener in one emit — each starts a
- * `tmux capture-pane` (a synchronous spawn) and later evaluates its pane. Each piece alone is well under the 50 ms the
+ * shared tmux control client's safety sweep, which ran every daemon's listener in one emit (spread out since #1402) —
+ * each starts a `tmux capture-pane` (a synchronous spawn) and later evaluates its pane. Each piece alone is well under the 50 ms the
  * attribution records, so their sum stayed unnamed. These pin the instrumentation that names it next time:
  *  - back-to-back calls of one caller are summed into one entry with a count;
- *  - every tmux spawn, the sweep's emit, and each daemon's synchronous pane evaluation are attributed.
+ *  - every tmux spawn, each sweep listener's tick, and each daemon's synchronous pane evaluation are attributed.
  *
  * Nothing here starts a process, a tmux server or a fleet: child_process is mocked.
  */
@@ -31,7 +31,7 @@ vi.mock("node:child_process", async original => ({
 import { measureSyncWork, noteSyncWork, slowSyncWorkSince, resetSyncWorkAttributionForTests } from "../src/sync-work-attribution.js";
 import { startEventLoopWatch } from "../src/event-loop-watch.js";
 import { TmuxManager } from "../src/tmux-manager.js";
-import { TmuxControlClient, CONTROL_SAFETY_SWEEP_MS } from "../src/tmux-control.js";
+import { TmuxControlClient, CONTROL_SAFETY_SWEEP_MS, CONTROL_SAFETY_SWEEP_SPREAD_MS } from "../src/tmux-control.js";
 import { Daemon, PaneStateMachine } from "../src/daemon.js";
 
 const work = () => slowSyncWorkSince(-1, io.now + 1);
@@ -138,16 +138,19 @@ describe("the periodic paths are attributed", () => {
     await expect(Promise.all(captures)).resolves.toEqual(Array(20).fill("pane\n"));
   });
 
-  it("the control client's safety sweep: every listener runs inside one attributed emit", () => {
-    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  it("the control client's safety sweep: each listener is attributed in its own tick, not summed across them (#1402)", () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout", "Date"] });
+    // The attribution clock follows the fake clock: the sweep's slots are seconds apart, not back to back.
+    vi.spyOn(performance, "now").mockImplementation(() => Date.now() + io.now);
     const client = new TmuxControlClient("agend");
     vi.spyOn(client as any, "connect").mockImplementation(() => {});
     for (let i = 0; i < 20; i++) client.on("safety_sweep", () => { io.now += 4; });
+    client.on("safety_sweep", () => { io.now += 60; });
     client.start();
-    vi.advanceTimersByTime(CONTROL_SAFETY_SWEEP_MS);
-    expect(work().map(entry => entry.caller)).toContain("tmux.safetySweep");
-    expect(work().find(entry => entry.caller === "tmux.safetySweep")!.durationMs).toBe(80);
-    client.stop?.();
+    vi.advanceTimersByTime(CONTROL_SAFETY_SWEEP_MS + CONTROL_SAFETY_SWEEP_SPREAD_MS);
+    // Twenty 4 ms ticks are not one 80 ms stretch any more; the one slow listener is named on its own.
+    expect(slowSyncWorkSince(-1, Infinity).filter(entry => entry.caller === "tmux.safetySweep").map(entry => [entry.durationMs, entry.count])).toEqual([[60, undefined]]);
+    client.stop();
   });
 
   async function evaluatingDaemon(evaluateMs: number, captureMs: number) {
