@@ -457,3 +457,52 @@ describe("#1433 review", () => {
     } finally { process.off("unhandledRejection", unhandled); }
   });
 });
+
+describe("#1433 review r2: the held occurrence runs from the current row", () => {
+  /** An hourly schedule whose 13:00 retry (due 13:59:30) is still running at 14:00; `between` runs right after the retry settles. */
+  async function heldAt14(between: (sch: Scheduler, id: string) => void) {
+    let release!: () => void;
+    let sch!: Scheduler;
+    const calls: Array<{ runId: string; retry: boolean; message: string }> = [];
+    sch = new Scheduler(join(dir, "scheduler.db"), (s, runId, retry) => {
+      calls.push({ runId, retry: !!retry, message: s.message });
+      if (!retry && runId === T13) { sch.deferForRetry(s, runId, { deferredPct: 100, resetsAtMs: at("2030-10-08T13:58:30Z") }); return; }
+      if (retry) {
+        sch.endRetry(retry);
+        const held = new Promise<void>(r => { release = r; });
+        // a sibling reaction on the same promise, registered after the scheduler's own (which runWithLock attaches as
+        // soon as this returns): it runs after finish, before finish's queued callback
+        queueMicrotask(() => { void held.then(() => between(sch, s.id)); });
+        return held;
+      }
+    }, DEFAULT_SCHEDULER_CONFIG, () => true, () => {});
+    schedulers.push(sch);
+    sch.init();
+    const s = daily(sch, "0 * * * *");
+    await vi.advanceTimersByTimeAsync(at("2030-10-08T14:00:01Z") - Date.now());   // 13:00 deferred, 13:59:30 retry running, 14:00 held
+    expect(calls.map(c => [c.runId, c.retry])).toEqual([[T13, false], [T13, true]]);
+    release();
+    await vi.advanceTimersByTimeAsync(10);
+    return { calls, s, sch };
+  }
+
+  it("deleted meanwhile: no run, no foreign-key error", async () => {
+    const { calls } = await heldAt14((sch, id) => sch.delete(id));
+    expect(calls).toHaveLength(2);
+  });
+
+  it("disabled meanwhile: no run", async () => {
+    const { calls } = await heldAt14((sch, id) => { sch.update(id, { enabled: false }); });
+    expect(calls).toHaveLength(2);
+  });
+
+  it("edited meanwhile: runs with the current payload", async () => {
+    const { calls } = await heldAt14((sch, id) => { sch.update(id, { message: "edited" }); });
+    expect(calls.slice(2)).toEqual([{ runId: "2030-10-08T14:00:00.000Z", retry: false, message: "edited" }]);
+  });
+
+  it("unchanged: exactly one normal 14:00 run", async () => {
+    const { calls } = await heldAt14(() => {});
+    expect(calls.slice(2)).toEqual([{ runId: "2030-10-08T14:00:00.000Z", retry: false, message: "check versions" }]);
+  });
+});

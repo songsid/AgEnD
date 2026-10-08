@@ -202,8 +202,13 @@ export class Scheduler {
       const held = this.heldBehindRetry.get(schedule.id);
       if (held !== undefined) {
         this.heldBehindRetry.delete(schedule.id);
-        const current = this.db.get(schedule.id);
-        if (current?.enabled) queueMicrotask(() => { if (!this.stopped && !this.executing.has(current.id)) this.runWithLock(current, held); });
+        // The row is read in the callback itself, right before the run: a delete, disable or edit landing between this
+        // finish and the callback is honoured, never run from a stale copy (#1433 review).
+        queueMicrotask(() => {
+          if (this.stopped || this.executing.has(schedule.id)) return;
+          const current = this.db.get(schedule.id);
+          if (current?.enabled) this.runWithLock(current, held);
+        });
       }
       // #1426: a one-shot whose run was deferred stays until its retry has run or been given up.
       if (schedule.at && this.db.getRetry(schedule.id)) return;
