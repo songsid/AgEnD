@@ -2310,6 +2310,7 @@ export class Daemon extends EventEmitter {
       this.tmuxSessionName,
       "",
       resolveTmuxLogicalSize(this.config.terminal),
+      this.controlClient,
     );
 
     // Strategy A: always start fresh Claude window (MCP server has no reconnection)
@@ -2895,14 +2896,22 @@ export class Daemon extends EventEmitter {
 
           // Human-readable backend label for logs (e.g. "claude", "kiro-cli")
           const cliLabel = this.backend?.binaryName ?? "CLI";
+          const healthTmux = this.tmux;
+          const healthOwner = this.interactionOwner();
+          const healthCurrent = () => this.tmux === healthTmux
+            && sameInteractionOwner(healthOwner, this.interactionOwner())
+            && !this.runtimeMonitorsFrozen && !this.healthCheckPaused && !this.spawning
+            && !this.isPaused && this.pauseWakeState !== "waking";
+          const discardStaleHealth = () => {
+            if (healthCurrent()) return false;
+            scheduleNext();
+            return true;
+          };
 
-          let paneStatus = await this.tmux.getPaneStatus();
+          let paneStatus = await healthTmux.getPaneStatus();
           // Auto-pause intentionally exits the pane process. A health tick that
           // began just before pause must not classify that exit as a crash.
-          if (this.isPaused || this.pauseWakeState === "waking") {
-            scheduleNext();
-            return;
-          }
+          if (discardStaleHealth()) return;
           if (paneStatus?.alive) {
             this.windowQueryFailureTicks = 0;
             this.stormWindow?.noteWindowAlive(this.name);
@@ -2925,7 +2934,9 @@ export class Daemon extends EventEmitter {
           // and needs no recheck.
           if (paneStatus === null) {
             await new Promise(r => setTimeout(r, 1500));
-            paneStatus = await this.tmux.getPaneStatus();
+            if (discardStaleHealth()) return;
+            paneStatus = await healthTmux.getPaneStatus();
+            if (discardStaleHealth()) return;
             if (paneStatus?.alive) {
               this.logger.debug(`[health] ${cliLabel} pane reported gone then alive on recheck — transient query failure, ignoring`);
               this.windowQueryFailureTicks = 0;
@@ -2942,12 +2953,15 @@ export class Daemon extends EventEmitter {
 
           // Normal exit (e.g. user Ctrl+C or /exit) — no crash, no respawn
           if (paneStatus && exitCode === 0) {
-            this.setProcessStatus("stopped");
             // Status 0 is not proof of a clean exit: a codex that hits a quota
             // wall exits 0 too. Capture what it printed before the window goes.
-            this.logPaneDeath(cliLabel, exitCode, await this.capturePaneOutput());
+            const output = await this.capturePaneOutput();
+            if (discardStaleHealth()) return;
+            this.setProcessStatus("stopped");
+            this.logPaneDeath(cliLabel, exitCode, output);
             this.logger.info("CLI exited normally (code 0) — pausing health check");
-            await this.tmux.killWindow();
+            await healthTmux.killWindow();
+            if (discardStaleHealth()) return;
             this.healthCheckPaused = true;
             this.emitSupervisionEnded(
               "the CLI exited normally (code 0)",
@@ -2964,12 +2978,13 @@ export class Daemon extends EventEmitter {
           let nullReason: string | undefined;
           if (!paneStatus) {
             const serverAlive = await TmuxManager.sessionExists(this.tmuxSessionName);
+            if (discardStaleHealth()) return;
             // A server may have already restarted before this daemon's health
             // tick. The new PID is the durable generation boundary: treat it as
             // a fleet storm even though `has-session` is true again.
-            const generationChanged = serverAlive
-              ? this.stormWindow?.observeServerAlive(await TmuxManager.getServerPid(this.tmuxSessionName)) === true
-              : false;
+            const serverPid = serverAlive ? await TmuxManager.getServerPid(this.tmuxSessionName) : null;
+            if (discardStaleHealth()) return;
+            const generationChanged = serverAlive && this.stormWindow?.observeServerAlive(serverPid) === true;
             if (generationChanged) this.emit("tmux_server_crash", this.name);
             if (!serverAlive || generationChanged || this.stormWindow?.needsRecovery(this.name)) {
               crashType = "server";
@@ -2984,12 +2999,14 @@ export class Daemon extends EventEmitter {
               // The fleet breaker owns the delay and extends it on every new
               // server generation. Do not schedule a competing fixed timer.
               await this.stormWindow?.waitForSpawnAllowed();
+              if (discardStaleHealth()) return;
             } else {
               // null but server alive: window-level disappearance. Probe whether
               // the window truly no longer exists vs a transient query glitch.
               nullReason = "no_window";
               try {
-                const windows = await TmuxManager.listWindows(this.tmuxSessionName);
+                const windows = await TmuxManager.listWindowsStrict(this.tmuxSessionName, this.controlClient);
+                if (discardStaleHealth()) return;
                 this.windowQueryFailureTicks = 0;
                 const currentWindowId = this.tmux.getWindowId();
                 if (windows.some(w => w.id === currentWindowId)) {
@@ -3031,23 +3048,25 @@ export class Daemon extends EventEmitter {
           } else {
             this.logger.warn({ exitCode }, `${cliLabel} process exited`);
           }
-          this.setProcessStatus("crashed");
 
           // Capture last output before killing. Best-effort even when the pane is
           // gone (paneStatus null) — gives the crash record something to diagnose
           // from instead of an empty lastOutput.
           let lastOutput: string | undefined;
           try {
-            const raw = await this.tmux.capturePaneWithHistory(50);
+            const raw = await healthTmux.capturePaneWithHistory(50);
             // Strip ANSI escape codes for readability
             const cleaned = raw.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
             lastOutput = cleaned.trimEnd() || undefined;
           } catch { /* best effort — pane may already be gone */ }
+          if (discardStaleHealth()) return;
+          this.setProcessStatus("crashed");
           this.logPaneDeath(cliLabel, exitCode, lastOutput);
 
           // Kill the dead window (remain-on-exit keeps it around) before respawn
           if (paneStatus) {
-            await this.tmux.killWindow();
+            await healthTmux.killWindow();
+            if (discardStaleHealth()) return;
           }
 
           // Detect claude-code background session conflict — recover without counting as crash
@@ -5484,12 +5503,13 @@ export class Daemon extends EventEmitter {
     const interactionCaptureAt = performance.now();
     const interactionCaptureOrder = ++this.interactionCaptureSerial;
     const interactionOwner = this.interactionOwner();
+    const captureTmux = this.tmux;
     const captureEpoch = `${this.spawnGeneration}:${this.launchAttempt}`;
-    const currentDeliveryCapture = () => captureEpoch === `${this.spawnGeneration}:${this.launchAttempt}`
+    const currentDeliveryCapture = () => this.tmux === captureTmux && captureEpoch === `${this.spawnGeneration}:${this.launchAttempt}`
       && !this.spawning && !this.runtimeMonitorsFrozen && this.instanceStateMonitorActive;
     try {
       const pane = reason === "interaction_confirmation"
-        ? await this.tmux.capturePane(1_000) : await this.tmux.capturePane();
+        ? await captureTmux.capturePane(1_000) : await captureTmux.capturePane();
       if (!currentDeliveryCapture() || !sameInteractionOwner(interactionOwner, this.interactionOwner())) return;
       // Delivery's unknown-footer proof also awaits the TTY mode. Validate
       // output and launch freshness AFTER both awaits, before accepting it.
@@ -8712,24 +8732,32 @@ export class Daemon extends EventEmitter {
 
   /** Re-resolve this instance's tmux window by name (stale id after crash/respawn). */
   private async recoverWindow(): Promise<string | undefined> {
+    const previousTmux = this.tmux;
+    const recoveryOwner = this.interactionOwner();
+    const recoveryCurrent = () => !this.runtimeMonitorsFrozen
+      && sameInteractionOwner(recoveryOwner, this.interactionOwner());
     const previousWindowId = this.tmux?.getWindowId();
     try {
-      const windows = await TmuxManager.listWindows(this.tmuxSessionName);
+      const windows = await TmuxManager.listWindows(this.tmuxSessionName, this.controlClient);
+      if (!recoveryCurrent() || this.tmux !== previousTmux) return undefined;
       const match = windows.find(w => w.name === this.name);
       if (!match) return undefined;
       this.tmux = new TmuxManager(
         this.tmuxSessionName,
         match.id,
         resolveTmuxLogicalSize(this.config.terminal),
+        this.controlClient,
       );
+      const recoveredTmux = this.tmux;
       writeFileSync(join(this.instanceDir, "window-id"), match.id);
       // The window we were talking to is gone; leaving it registered means the
-      // control client re-resolves a dead id — one tmux subprocess — on every
+      // control client re-resolves a dead id — one bounded read — on every
       // reconnect, for the life of the fleet process.
       if (previousWindowId && previousWindowId !== match.id) {
         this.controlClient?.unregisterWindow(previousWindowId);
       }
       await this.controlClient?.registerWindow(match.id);
+      if (!recoveryCurrent() || this.tmux !== recoveredTmux) return undefined;
       this.bindInstanceStateOutputListener(match.id);
       this.logger.info({ windowId: match.id }, "Recovered window ID for message delivery");
       return match.id;
