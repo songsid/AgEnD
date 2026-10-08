@@ -218,7 +218,7 @@ describe("Daemon auto-pause lifecycle", () => {
     (daemon as any).tmux = tmux;
 
     const transcript = {
-      stop: vi.fn(), startPolling: vi.fn(), resetOffset: vi.fn(),
+      stop: vi.fn(), startPolling: vi.fn(), resetOffset: vi.fn(), initialize: vi.fn(async () => {}),
     };
     const guardian = { stop: vi.fn(), startWatching: vi.fn() };
     (daemon as any).transcriptMonitor = transcript;
