@@ -51,7 +51,7 @@
 <body>
   <nav><div class="nav-inner"><a class="brand" href="./">AgEnD</a><div class="nav-actions"><a href="./">首頁</a><a href="./tips-en.html" hreflang="en">English</a></div></div></nav>
   <main>
-    <header class="hero"><span class="kicker">Knowledge library</span><h1>AgEnD Tips</h1><p>300 條實用提示，從日常操作一路整理到進階 Fleet 維運。</p><div class="jump-links"><a href="#beginner">入門</a><a href="#intermediate">中階</a><a href="#advanced">進階</a></div></header>
+    <header class="hero"><span class="kicker">Knowledge library</span><h1>AgEnD Tips</h1><p>304 條實用提示，從日常操作一路整理到進階 Fleet 維運。</p><div class="jump-links"><a href="#beginner">入門</a><a href="#intermediate">中階</a><a href="#advanced">進階</a></div></header>
     <section class="tips-section" id="beginner">
       <div class="section-heading">
         <div>
@@ -59,7 +59,7 @@
           <h2>入門</h2>
           <p>日常對話與核心概念</p>
         </div>
-        <span class="level-count">100 條提示</span>
+        <span class="level-count">104 條提示</span>
       </div>
       <div class="tips-grid">
         <article class="tip-card" id="tip-001" data-tip-id="tip-001" data-level="beginner">
@@ -268,11 +268,11 @@
           </article>
         <article class="tip-card" id="tip-051" data-tip-id="tip-051" data-level="beginner">
             <a class="tip-id" href="#tip-051">tip-051</a>
-            <p>`/dashboard` = View、Settings 與 Web UI 的網址；編輯網址帶有存取 token，所以這是管理員指令。</p>
+            <p>`/dashboard` = 網頁儀表板（網頁聊天、View、Settings）的登入連結和一次性登入碼；登入碼能讓瀏覽器登入，所以這是管理員指令。</p>
           </article>
         <article class="tip-card" id="tip-052" data-tip-id="tip-052" data-level="beginner">
             <a class="tip-id" href="#tip-052">tip-052</a>
-            <p>`http://localhost:19280/view` 的 View = 預設本機即時畫面；localhost 代表通常只能在安裝 AgEnD 的電腦開啟。</p>
+            <p>預設的 `http://localhost:19280` = 網頁儀表板與網頁聊天；localhost 代表通常只能在安裝 AgEnD 的電腦開啟，手機要先有連進來的方式（SSH、Tailscale 或 tunnel）。</p>
           </article>
         <article class="tip-card" id="tip-053" data-tip-id="tip-053" data-level="beginner">
             <a class="tip-id" href="#tip-053">tip-053</a>
@@ -472,6 +472,22 @@
             <a class="tip-id" href="#tip-100">tip-100</a>
             <p>有用的 Tip 應該直接說明對你有什麼影響；看不出實際後果時就按「看不懂」。</p>
           </article>
+        <article class="tip-card" id="tip-301" data-tip-id="tip-301" data-level="beginner">
+            <a class="tip-id" href="#tip-301">tip-301</a>
+            <p>網頁聊天 = 在瀏覽器裡跟 Agent 對話；它和那個 Agent 在 Telegram 或 Discord 的對話是同一段，聊到一半可以在手機和電腦之間切換。</p>
+          </article>
+        <article class="tip-card" id="tip-302" data-tip-id="tip-302" data-level="beginner">
+            <a class="tip-id" href="#tip-302">tip-302</a>
+            <p>打開網頁聊天 = 管理員傳 `/dashboard`，打開登入連結並輸入一次性登入碼；之後那個瀏覽器會保持登入，不用每次重來。</p>
+          </article>
+        <article class="tip-card" id="tip-303" data-tip-id="tip-303" data-level="beginner">
+            <a class="tip-id" href="#tip-303">tip-303</a>
+            <p>網頁聊天的檔案 = 按 📎、直接貼上或拖到聊天裡；Agent 收到的方式和從 Telegram 傳的一樣（最多 5 個檔案，每個 10 MB）。</p>
+          </article>
+        <article class="tip-card" id="tip-304" data-tip-id="tip-304" data-level="beginner">
+            <a class="tip-id" href="#tip-304">tip-304</a>
+            <p>網頁聊天的 Stop = 中斷 Agent 目前的回覆，和 Telegram 的取消按鈕一樣；還在排隊的訊息會被丟掉，但 Agent 本身會繼續運行。</p>
+          </article>
       </div>
     </section>
 <section class="tips-section" id="intermediate">
@@ -618,7 +634,7 @@
           </article>
         <article class="tip-card" id="tip-134" data-tip-id="tip-134" data-level="intermediate">
             <a class="tip-id" href="#tip-134">tip-134</a>
-            <p>使用 `/dashboard` 可取得目前的 View 與 Settings 連結；含存取 Token 的連結應視同密碼，不要公開分享。</p>
+            <p>使用 `/dashboard` 可取得登入連結和一次性登入碼；登入碼只能用一次、5 分鐘後失效，請視同密碼，不要貼在別人可能搶先使用的地方。</p>
           </article>
         <article class="tip-card" id="tip-135" data-tip-id="tip-135" data-level="intermediate">
             <a class="tip-id" href="#tip-135">tip-135</a>
@@ -990,7 +1006,7 @@
           </article>
         <article class="tip-card" id="tip-224" data-tip-id="tip-224" data-level="advanced">
             <a class="tip-id" href="#tip-224">tip-224</a>
-            <p>Persistent web token 會讓 dashboard URL 在重啟後仍有效；執行 `agend web-token rotate` 可一次讓所有既有連結與瀏覽器 session 失效，執行中的 Fleet 不需重啟即會生效。</p>
+            <p>瀏覽器登入儀表板後，Fleet 重啟也不會登出（最長 12 小時）。傳 `/dashboard revoke`，或在主機上執行 `agend web-token rotate`，可一次讓所有瀏覽器登出；執行中的 Fleet 不需重啟即會生效。</p>
           </article>
         <article class="tip-card" id="tip-225" data-tip-id="tip-225" data-level="advanced">
             <a class="tip-id" href="#tip-225">tip-225</a>
