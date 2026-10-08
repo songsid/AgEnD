@@ -4,7 +4,8 @@
  *  - the CPU is the main thread's (`process.threadCpuUsage`) where Node has it, else the whole process's — workers
  *    included, so it can only ever prove "waiting";
  *  - the gap's on-time interval may have been busy too, so "running" needs CPU beyond it;
- *  - the gap is described as the stall only when it is within one probe interval of the histogram's maximum;
+ *  - what is reported is the window's longest probe gap, as itself — never said to be the histogram's maximum, which
+ *    a gap's length cannot identify (two nearby stalls of similar length);
  *  - a window's gaps end at the window: a stall before a check is never reported in the next window.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -45,17 +46,17 @@ describe("the stall WARN says what the CPU bounds prove", () => {
     gap(STALL_PROBE_MS + 1_500, 1_550);
     w.check(); w.stop();
     const [obj, msg] = warn.mock.calls[0]!;
-    expect(obj.cpu).toEqual({ gapStartedAt: new Date(EPOCH).toISOString(), gapEndedAt: new Date(EPOCH + 1_600).toISOString(),
+    expect(obj.longestProbeGap).toEqual({ gapStartedAt: new Date(EPOCH).toISOString(), gapEndedAt: new Date(EPOCH + 1_600).toISOString(),
       gapMs: 1_600, lateMs: 1_500, cpuMs: 1_550, cpuOf: "main-thread", verdict: "running" });
-    expect(msg).toContain(`in the 1600ms probe gap that held it (1500ms late, ending ${new Date(EPOCH + 1_600).toISOString()}) the main thread got 1550ms of CPU: the thread was running`);
+    expect(msg).toContain(`longest probe gap in this window: 1600ms (1500ms late, ending ${new Date(EPOCH + 1_600).toISOString()}), in which the main thread got 1550ms of CPU: the thread was running through that gap`);
   });
 
   it("little CPU in the gap: waiting", () => {
     const { w, warn } = watch(1_500);
     gap(STALL_PROBE_MS + 1_500, 150);
     w.check(); w.stop();
-    expect(warn.mock.calls[0]![0].cpu.verdict).toBe("waiting");
-    expect(warn.mock.calls[0]![1]).toContain("the thread was not running for most of it (blocked in a system call, or starved by other load on the host)");
+    expect(warn.mock.calls[0]![0].longestProbeGap.verdict).toBe("waiting");
+    expect(warn.mock.calls[0]![1]).toContain("the thread was not running for most of that gap (blocked in a system call, or starved by other load on the host)");
   });
 
   it("idle dilution: the on-time interval may have been busy, so CPU equal to it proves nothing about the late part", () => {
@@ -63,7 +64,7 @@ describe("the stall WARN says what the CPU bounds prove", () => {
     const { w, warn } = watch(1_000, { probeMs: 1_000 });
     gap(2_000, 1_000, 1_000);
     w.check(); w.stop();
-    expect(warn.mock.calls[0]![0].cpu).toMatchObject({ gapMs: 2_000, lateMs: 1_000, cpuMs: 1_000, verdict: "unclear" });
+    expect(warn.mock.calls[0]![0].longestProbeGap).toMatchObject({ gapMs: 2_000, lateMs: 1_000, cpuMs: 1_000, verdict: "unclear" });
     expect(warn.mock.calls[0]![1]).toContain("not enough to tell running from waiting");
   });
 
@@ -71,7 +72,7 @@ describe("the stall WARN says what the CPU bounds prove", () => {
     const { w, warn } = watch(1_000);
     gap(STALL_PROBE_MS + 1_000, 1_000);
     w.check(); w.stop();
-    expect(warn.mock.calls[0]![0].cpu).toMatchObject({ lateMs: 1_000, cpuMs: 1_000, verdict: "running" });
+    expect(warn.mock.calls[0]![0].longestProbeGap).toMatchObject({ lateMs: 1_000, cpuMs: 1_000, verdict: "running" });
   });
 
   it("whole-process CPU (no per-thread clock): a worker's CPU never reads as the main thread running", () => {
@@ -79,7 +80,7 @@ describe("the stall WARN says what the CPU bounds prove", () => {
     const { w, warn } = watch(2_500, { cpuSource: "process" });
     gap(STALL_PROBE_MS + 2_500, 2_400);
     w.check(); w.stop();
-    expect(warn.mock.calls[0]![0].cpu).toMatchObject({ cpuMs: 2_400, cpuOf: "process", verdict: "unclear" });
+    expect(warn.mock.calls[0]![0].longestProbeGap).toMatchObject({ cpuMs: 2_400, cpuOf: "process", verdict: "unclear" });
     expect(warn.mock.calls[0]![1]).toContain("the whole process (all threads) got 2400ms of CPU: not enough to tell");
   });
 
@@ -87,14 +88,38 @@ describe("the stall WARN says what the CPU bounds prove", () => {
     const { w, warn } = watch(2_500, { cpuSource: "process" });
     gap(STALL_PROBE_MS + 2_500, 300);
     w.check(); w.stop();
-    expect(warn.mock.calls[0]![0].cpu).toMatchObject({ cpuOf: "process", verdict: "waiting" });
+    expect(warn.mock.calls[0]![0].longestProbeGap).toMatchObject({ cpuOf: "process", verdict: "waiting" });
   });
 
-  it("a gap from a smaller stall is not described as the window's longest stall", () => {
+  it("two nearby stalls of similar length: the longest gap is reported as itself, never as the maximum's stall (#1400 review)", () => {
+    // Prism's witness: a 1450 ms CPU stall, then a 1500 ms blocked one (the histogram's maximum) with no CPU. The CPU
+    // gap is the longer late gap (1450 > 1401); it is reported with its own times and bounds, and the WARN does not
+    // say it held the 1500 ms stall.
     const { w, warn } = watch(1_500);
-    gap(STALL_PROBE_MS + 800, 850);   // a 0.8 s CPU stall; the 1.5 s stall left no probe gap (e.g. it was in a check)
+    gap(STALL_PROBE_MS + 1_450, 1_500);
+    gap(STALL_PROBE_MS + 1_401, 0);
     w.check(); w.stop();
-    expect(warn.mock.calls[0]![0].cpu).toBeNull();
+    const [obj, msg] = warn.mock.calls[0]!;
+    expect(obj.maxMs).toBe(1_500);
+    expect(obj.longestProbeGap).toMatchObject({ lateMs: 1_450, cpuMs: 1_500, verdict: "running",
+      gapStartedAt: new Date(EPOCH).toISOString(), gapEndedAt: new Date(EPOCH + 1_550).toISOString() });
+    expect(msg).toContain("longest probe gap in this window: 1550ms (1450ms late");
+    expect(msg).not.toMatch(/held it|the stall was|during the stall/);
+  });
+
+  it("a longest gap well short of the maximum is still reported, as itself (the maximum's stall left no probe gap)", () => {
+    const { w, warn } = watch(1_500);
+    gap(STALL_PROBE_MS + 800, 850);
+    w.check(); w.stop();
+    expect(warn.mock.calls[0]![0].longestProbeGap).toMatchObject({ lateMs: 800, cpuMs: 850, verdict: "running" });
+    expect(warn.mock.calls[0]![1]).toContain("longest probe gap in this window: 900ms (800ms late");
+  });
+
+  it("a gap late by less than half the stall threshold is not reported", () => {
+    const { w, warn } = watch(1_500);
+    gap(STALL_PROBE_MS + 450, 450);
+    w.check(); w.stop();
+    expect(warn.mock.calls[0]![0].longestProbeGap).toBeNull();
     expect(warn.mock.calls[0]![1]).not.toContain("probe gap");
   });
 
@@ -104,9 +129,9 @@ describe("the stall WARN says what the CPU bounds prove", () => {
     gap(STALL_PROBE_MS + 1_600, 100);
     gap(STALL_PROBE_MS + 200, 200);
     w.check();
-    expect(warn.mock.calls[0]![0].cpu).toMatchObject({ gapMs: 1_700, cpuMs: 100, verdict: "waiting" });
+    expect(warn.mock.calls[0]![0].longestProbeGap).toMatchObject({ gapMs: 1_700, cpuMs: 100, verdict: "waiting" });
     w.check(); w.stop();
-    expect(warn.mock.calls[1]![0].cpu).toBeNull();
+    expect(warn.mock.calls[1]![0].longestProbeGap).toBeNull();
   });
 
   it("a stall the check runs straight after belongs to that window, never to the next one (check before the overdue probe)", () => {
@@ -115,12 +140,12 @@ describe("the stall WARN says what the CPU bounds prove", () => {
     now += STALL_PROBE_MS + 2_000; cpuUs += 2_050 * 1_000;
     w.check();
     vi.advanceTimersByTime(STALL_PROBE_MS);
-    expect(warn.mock.calls[0]![0].cpu).toMatchObject({ lateMs: 2_000, cpuMs: 2_050, verdict: "running" });
+    expect(warn.mock.calls[0]![0].longestProbeGap).toMatchObject({ lateMs: 2_000, cpuMs: 2_050, verdict: "running" });
     // The next window: a 1 s stall with no CPU.
     histogram.max = 1_000 * 1e6;
     gap(STALL_PROBE_MS + 1_000, 0);
     w.check(); w.stop();
-    expect(warn.mock.calls[1]![0].cpu).toMatchObject({ lateMs: 1_000, cpuMs: 0, verdict: "waiting" });
+    expect(warn.mock.calls[1]![0].longestProbeGap).toMatchObject({ lateMs: 1_000, cpuMs: 0, verdict: "waiting" });
   });
 
   it("the host's load and cores are always on the WARN", () => {
@@ -154,7 +179,7 @@ describe("which CPU clock: the main thread's where Node has one, else the proces
       const { w, warn } = realClockWatch();
       gap(STALL_PROBE_MS + 1_500, 1_550);
       w.check(); w.stop();
-      expect(warn.mock.calls[0]![0].cpu).toMatchObject({ cpuOf: "main-thread", cpuMs: 1_550, verdict: "running" });
+      expect(warn.mock.calls[0]![0].longestProbeGap).toMatchObject({ cpuOf: "main-thread", cpuMs: 1_550, verdict: "running" });
       expect(proc).not.toHaveBeenCalled();
     } finally {
       if (had) Object.defineProperty(process, "threadCpuUsage", had); else delete (process as { threadCpuUsage?: unknown }).threadCpuUsage;
@@ -168,7 +193,7 @@ describe("which CPU clock: the main thread's where Node has one, else the proces
       const { w, warn } = realClockWatch();
       gap(STALL_PROBE_MS + 1_500, 1_550);
       w.check(); w.stop();
-      expect(warn.mock.calls[0]![0].cpu).toMatchObject({ cpuOf: "process", cpuMs: 1_550, verdict: "unclear" });
+      expect(warn.mock.calls[0]![0].longestProbeGap).toMatchObject({ cpuOf: "process", cpuMs: 1_550, verdict: "unclear" });
       expect(proc).toHaveBeenCalled();
     } finally {
       if (had) Object.defineProperty(process, "threadCpuUsage", had);

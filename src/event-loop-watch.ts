@@ -24,17 +24,16 @@ import { availableParallelism, loadavg } from "node:os";
  *    interval may have been busy too) and at most `cpu`. "running" needs the lower bound, from the main thread's own
  *    CPU, at STALL_BUSY_SHARE of the late part or more; "waiting" needs the upper bound at STALL_WAITING_SHARE or less.
  *    Anything between is "unclear".
- *  - The probe interval is short, so every stall longer than it leaves a gap within one interval of its length. The
- *    window's longest gap is reported as the stall only when it is that close to the histogram's maximum; a shorter
- *    gap belongs to some other, smaller stall and is not described as this one.
+ *  - What is reported is the window's longest probe gap, as itself: its own times, length and CPU. Nothing ties it to
+ *    the histogram's maximum — two stalls of similar length in one window are indistinguishable by length (#1400
+ *    review) — so the WARN never says the gap held that stall. Gaps late by less than half the stall threshold are not
+ *    reported at all.
  * Running and waiting need opposite fixes: the fleet's own synchronous work, or the host's load and slow system calls.
  */
 export const STALL_PROBE_MS = 100;
 /** Share of the late part with CPU at or above which the thread was running; at or below STALL_WAITING_SHARE, waiting. */
 export const STALL_BUSY_SHARE = 0.7;
 export const STALL_WAITING_SHARE = 0.3;
-/** monitorEventLoopDelay's resolution: how far its maximum can sit from a gap's late part beyond one probe interval. */
-const HISTOGRAM_RESOLUTION_MS = 20;
 
 type CpuSource = "main-thread" | "process";
 interface StallProbe { lateMs: number; wallMs: number; cpuMs: number; endedAt: number; }
@@ -145,13 +144,14 @@ export function startEventLoopWatch(opts: {
     const stallProbe = worstProbe;
     worstProbe = null;
     if (maxMs >= thresholdMs) {
-      // The longest gap is this stall only when it is within one probe interval (and the histogram's resolution) of it.
-      const cpu = stallProbe && stallProbe.lateMs >= maxMs - probeMs - HISTOGRAM_RESOLUTION_MS ? describeGap(stallProbe) : null;
+      // The window's longest probe gap, as itself — not as the maximum's stall, which it cannot be shown to be.
+      const longestProbeGap = stallProbe && stallProbe.lateMs >= thresholdMs / 2 ? describeGap(stallProbe) : null;
       const load = (opts.loadAverage ?? loadavg)().map(v => Math.round(v * 100) / 100);
       const cores = opts.cores ?? availableParallelism();
-      const cpuText = cpu
-        ? `; in the ${cpu.gapMs}ms probe gap that held it (${cpu.lateMs}ms late, ending ${cpu.gapEndedAt}) ${cpu.cpuOf === "main-thread" ? "the main thread" : "the whole process (all threads)"} got ${cpu.cpuMs}ms of CPU: ${cpu.verdict === "running" ? "the thread was running (synchronous work in this process)"
-          : cpu.verdict === "waiting" ? "the thread was not running for most of it (blocked in a system call, or starved by other load on the host)"
+      const gap = longestProbeGap;
+      const gapText = gap
+        ? `; longest probe gap in this window: ${gap.gapMs}ms (${gap.lateMs}ms late, ending ${gap.gapEndedAt}), in which ${gap.cpuOf === "main-thread" ? "the main thread" : "the whole process (all threads)"} got ${gap.cpuMs}ms of CPU: ${gap.verdict === "running" ? "the thread was running through that gap (synchronous work in this process)"
+          : gap.verdict === "waiting" ? "the thread was not running for most of that gap (blocked in a system call, or starved by other load on the host)"
           : "not enough to tell running from waiting"}`
         : "";
       opts.logger.warn({
@@ -160,9 +160,9 @@ export function startEventLoopWatch(opts: {
         gcPauses: gcWork,
         p99Ms: Math.round(histogram.percentile(99) / 1e6),
         meanMs: Math.round(histogram.mean / 1e6),
-        cpu,
+        longestProbeGap,
         hostLoad: { load1: load[0], load5: load[1], load15: load[2], cores },
-      }, `Event loop stalled for ${maxMs}ms — Discord slash commands (3s to acknowledge) and gateway heartbeats arriving then could be missed${syncWork.length ? `; slow sync work: ${syncWork.map(entry => `${entry.caller}=${entry.durationMs}ms${entry.count ? ` (${entry.count} calls)` : ""}`).join(", ")}` : "; slow sync work: unknown"}${gcWork.length ? `; GC pauses: ${gcWork.map(entry => `kind ${entry.kind}=${entry.durationMs}ms`).join(", ")}` : ""}${cpuText}; host load ${load.join("/")} on ${cores} cores`);
+      }, `Event loop stalled for ${maxMs}ms — Discord slash commands (3s to acknowledge) and gateway heartbeats arriving then could be missed${syncWork.length ? `; slow sync work: ${syncWork.map(entry => `${entry.caller}=${entry.durationMs}ms${entry.count ? ` (${entry.count} calls)` : ""}`).join(", ")}` : "; slow sync work: unknown"}${gcWork.length ? `; GC pauses: ${gcWork.map(entry => `kind ${entry.kind}=${entry.durationMs}ms`).join(", ")}` : ""}${gapText}; host load ${load.join("/")} on ${cores} cores`);
     }
     histogram.reset();
     return maxMs;
