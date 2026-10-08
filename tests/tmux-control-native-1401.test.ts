@@ -14,8 +14,11 @@ let client: TmuxControlClient;
 let manager: TmuxManager;
 
 beforeAll(async () => {
-  await native(["new-session", "-d", "-s", fixture.session, "-x", "120", "-y", "12",
+  const created = await native(["new-session", "-d", "-s", fixture.session, "-P", "-F", "#{session_name}", "-x", "120", "-y", "12",
     "printf '%s\\n' 'fixture 中文 😀' '%output %9 pane-text' '%end 123 456 1' 'back\\slash'; sleep 30"]);
+  // tmux 3.4 vis-escapes '$' in session names; newer versions preserve it.
+  // Keep the special-character fixture, but target tmux's actual created name.
+  fixture.session = created.stdout.trim();
   TmuxManager.setSocketName(fixture.socket);
   const { stdout } = await native(["list-windows", "-t", fixture.session, "-F", "#{window_id}"]);
   const window = stdout.trim();
