@@ -1,3 +1,8 @@
+vi.mock("node:child_process", async importOriginal => {
+  const real = await importOriginal<typeof import("node:child_process")>();
+  return { ...real, execFileSync: (file: string, args: string[], ...rest: any[]) => file.endsWith("agy")
+    ? (args[0] === "--version" ? "agy 1.3.1" : "--effort (low|medium|high)") : (real.execFileSync as any)(file, args, ...rest) };
+});
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   existsSync,

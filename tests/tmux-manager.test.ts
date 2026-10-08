@@ -73,9 +73,12 @@ const describeTransfer = (t: Transfer) => t.stalled
 
 describe("TmuxManager", () => {
   const session = `ccd-test-${Date.now()}`;
+  const socket = `agend-test-tmux-manager-${process.pid}`;
+  TmuxManager.setSocketName(socket);
 
   afterAll(async () => {
     await TmuxManager.killSession(session);
+    TmuxManager.setSocketName(null);
   });
 
   it("creates and detects session", async () => {
@@ -85,14 +88,14 @@ describe("TmuxManager", () => {
 
   it("enables mouse mode for both new and existing AgEnD sessions", async () => {
     const showMouse = async (): Promise<string> => {
-      const { stdout } = await exec("tmux", [
+      const { stdout } = await exec("tmux", ["-L", socket,
         "show-options", "-v", "-t", session, "mouse",
       ]);
       return stdout.trim();
     };
 
     expect(await showMouse()).toBe("on");
-    await exec("tmux", ["set-option", "-t", session, "mouse", "off"]);
+    await exec("tmux", ["-L", socket, "set-option", "-t", session, "mouse", "off"]);
     expect(await showMouse()).toBe("off");
 
     await TmuxManager.ensureSession(session);

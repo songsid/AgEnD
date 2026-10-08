@@ -1,3 +1,4 @@
+import { TEST_KIRO_COMPAT } from "./helpers/kiro-compat.js";
 import { describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -47,7 +48,7 @@ const THROTTLED_PANE = [
 
 /** Exactly what the monitor does: first pattern in array order wins. */
 function classify(pane: string) {
-  return new KiroBackend("/tmp/test").getErrorPatterns().find(ep => ep.pattern.test(pane));
+  return new KiroBackend("/tmp/test", TEST_KIRO_COMPAT).getErrorPatterns().find(ep => ep.pattern.test(pane));
 }
 
 describe("kiro auth failure is not a rate limit (#440)", () => {
@@ -103,7 +104,7 @@ describe("kiro auth failure is not a rate limit (#440)", () => {
   it("keeps the catch-all header last so nothing specific is shadowed", () => {
     // The ordering invariant #440 was caused by violating. Asserted structurally
     // so a future insert at the top of the array fails here instead of in prod.
-    const patterns = new KiroBackend("/tmp/test").getErrorPatterns();
+    const patterns = new KiroBackend("/tmp/test", TEST_KIRO_COMPAT).getErrorPatterns();
     const generic = patterns.findIndex(ep => ep.pattern.source === "having trouble responding");
     expect(generic).toBe(patterns.length - 1);
   });
@@ -136,7 +137,7 @@ describe("one incident produces one notification", () => {
     const { daemon, instanceDir } = makeDaemon();
     const errors: any[] = [];
     daemon.on("pty_error", e => errors.push(e));
-    const patterns = new KiroBackend("/tmp/test").getErrorPatterns();
+    const patterns = new KiroBackend("/tmp/test", TEST_KIRO_COMPAT).getErrorPatterns();
     const ready = /^> /m;
     const t0 = 10 * 60_000; // clear of ERROR_COOLDOWN_MS from the zero epoch
 
@@ -164,7 +165,7 @@ describe("one incident produces one notification", () => {
     const { daemon, instanceDir } = makeDaemon();
     const errors: any[] = [];
     daemon.on("pty_error", e => errors.push(e));
-    const patterns = new KiroBackend("/tmp/test").getErrorPatterns();
+    const patterns = new KiroBackend("/tmp/test", TEST_KIRO_COMPAT).getErrorPatterns();
     const ready = /^> /m;
     const t0 = 10 * 60_000;
 

@@ -1,3 +1,4 @@
+import { TEST_KIRO_COMPAT } from "./helpers/kiro-compat.js";
 import { describe, expect, it } from "vitest";
 import { KiroBackend } from "../src/backend/kiro.js";
 import { PaneStateMachine } from "../src/daemon.js";
@@ -37,7 +38,7 @@ const IDLE_WITH_STALE_SPINNER = [
 ].join("\n");
 
 describe("KiroBackend ready/busy patterns (#548)", () => {
-  const backend = new KiroBackend("/tmp/agend-kiro-busy-test");
+  const backend = new KiroBackend("/tmp/agend-kiro-busy-test", TEST_KIRO_COMPAT);
 
   it("vetoes the persistent ready statusline while the live Kiro spinner is visible", () => {
     expect(backend.getReadyPattern().test(WORKING_PANE)).toBe(true);

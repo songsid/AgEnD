@@ -124,3 +124,5 @@ describe("kiro auth_error pattern", () => {
     ]) expect(auth.pattern.test(line)).toBe(false);
   });
 });
+import { installKiroCompatibilityFixture } from "./helpers/kiro-process-stub.js";
+installKiroCompatibilityFixture();

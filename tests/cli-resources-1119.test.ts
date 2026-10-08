@@ -23,7 +23,7 @@ function fixture(empty = false, locale = "en") {
   return dir;
 }
 function run(dir: string, args: string[]) {
-  const child = spawnSync(process.execPath, ["--import", "tsx", "src/cli.ts", ...args], {
+  const child = spawnSync(process.execPath, ["--require", join(process.cwd(), "tests/helpers/health-process-stub.cjs"), "--import", "tsx", "src/cli.ts", ...args], {
     cwd: process.cwd(), encoding: "utf8", timeout: 8000,
     env: { ...process.env, AGEND_HOME: dir, HOME: dir, NOTIFY_SOCKET: "", PATH: `${join(dir, "bin")}:${process.env.PATH}` },
   });

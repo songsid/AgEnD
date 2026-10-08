@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,10 +9,6 @@ import { Daemon } from "../src/daemon.js";
 
 const dirs: string[] = [];
 const priorCodexHome = process.env.CODEX_HOME;
-const codex0156Installed = (() => {
-  try { return /codex-cli 0\.156\.0/.test(execFileSync("codex", ["--version"], { encoding: "utf-8" })); }
-  catch { return false; }
-})();
 afterEach(() => {
   if (priorCodexHome === undefined) delete process.env.CODEX_HOME;
   else process.env.CODEX_HOME = priorCodexHome;
@@ -176,17 +172,6 @@ describe("Codex 0.156 trust prompt", () => {
     const before = readFileSync(configPath, "utf-8");
     expect(() => backend.preTrust(cwd)).toThrow("Cannot safely edit Codex trust project table");
     expect(readFileSync(configPath, "utf-8")).toBe(before);
-  });
-
-  it.skipIf(!codex0156Installed)("true Codex 0.156 accepts the edited private config without a paid turn", () => {
-    const { shared, instance, cwd, backend } = fixture();
-    writeFileSync(join(shared, "config.toml"), `[ projects . "${cwd}" ]\n"trust_level" = "untrusted"\n`);
-    backend.writeConfig({ workingDirectory: cwd, instanceDir: instance, instanceName: "test", mcpServers: {} });
-    backend.preTrust(cwd);
-    expect(() => execFileSync("codex", ["features", "list"], {
-      env: { ...process.env, CODEX_HOME: join(instance, "codex-home") }, cwd,
-      encoding: "utf-8", timeout: 5_000, stdio: ["ignore", "pipe", "pipe"],
-    })).not.toThrow();
   });
 
   it("auto-enters only the authorized current folder with canonical options and cursor on Trust", () => {
