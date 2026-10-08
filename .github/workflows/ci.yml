@@ -360,14 +360,19 @@ jobs:
           SMOKE_PREFIX: ${{ runner.temp }}/agend-smoke
         run: |
           # Confirm the N-API prebuild loads on this OS + Node combination.
-          # better-sqlite3 is hoisted to the top of the install prefix by npm,
-          # so require it directly from the prefix lib — no need to resolve
-          # through @songsid/agend's exports map (which doesn't expose
-          # ./package.json and would fail inside the workspace checkout).
+          # better-sqlite3 may be hoisted to the prefix root or nested under
+          # the agend package, depending on npm's dedup behaviour. Try both.
           node - <<'JS'
           const path = require('path');
           const prefix = process.env.SMOKE_PREFIX;
-          const Database = require(path.join(prefix, 'lib/node_modules/better-sqlite3'));
+          const lib = path.join(prefix, 'lib/node_modules');
+          // Try hoisted first, then nested under agend.
+          let Database;
+          try {
+            Database = require(path.join(lib, 'better-sqlite3'));
+          } catch {
+            Database = require(path.join(lib, '@songsid/agend/node_modules/better-sqlite3'));
+          }
           const db = new Database(':memory:');
           db.exec('CREATE TABLE smoke (v TEXT)');
           db.prepare('INSERT INTO smoke VALUES(?)').run('ok');
