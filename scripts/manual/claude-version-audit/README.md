@@ -1,6 +1,10 @@
-# Claude Code version audit (2.1.292 → 2.1.294)
+# Claude Code version audits (2.1.292 → 2.1.294 → 2.1.295)
 
-These are the scripts behind PR #1427, the version-gate audit of the claude-code backend under decisions ffb8104e and af2f9f41. They were run on 2026-10-08. The fixtures they produced are in `tests/fixtures/claude-2.1.294-*.pane.txt`, and `tests/claude-2.1.294-surfaces.test.ts` holds the recognitions against them.
+These are the scripts behind the version-gate audits of the claude-code backend, under decisions ffb8104e and af2f9f41:
+- **#1427** compared 2.1.292 → 2.1.294. Its fixtures are `tests/fixtures/claude-2.1.294-*.pane.txt`, held by `tests/claude-2.1.294-surfaces.test.ts`.
+- **The 2.1.295 audit** compared 2.1.294 → 2.1.295. Its fixtures are `tests/fixtures/claude-2.1.295-*.pane.txt`, held by `tests/claude-2.1.295-surfaces.test.ts`.
+
+Both were run on 2026-10-08. `OLD` and `NEW` pick the pair; they default to 292 and 294, so the commands for the first audit stay unchanged.
 
 ## Binary identity
 
@@ -8,6 +12,7 @@ These are the scripts behind PR #1427, the version-gate audit of the claude-code
 |---|---|---|
 | 2.1.292 | `a967e7b1d8b4e47ee421d5433027880347952b0c0857abf880e2c942a4ec93b3` | the copy kept from the 2.1.292 audit |
 | 2.1.294 | `27122ca7b624f537546fbef35b80c66370d974ff258f3d9b10ac50bb8771f262` | `~/.local/share/claude/versions/2.1.294` (host auto-update) |
+| 2.1.295 | `4503bfe11a6c7fcc1e0b39b5e0d347c04248f750b03b0977b3ad6b531fe6f358` | `~/.local/share/claude/versions/2.1.295` (host auto-update) |
 
 ## Isolation
 
@@ -70,3 +75,17 @@ LIVE means the screen was captured on both versions, read identically by the pro
 | resume-summary menu (`Resume from summary` / `full session as-is`) | BIN | not reached: a 4h-backdated session resumed directly on both versions; the menu's literals are unchanged in the binary |
 | terminal-setup offer | BIN | did not appear in any onboarding run here (tmux, `TERM=xterm-256color`, no `TERM_PROGRAM`) on either version, so the trigger was not provoked; literal unchanged |
 | corrupt `claude.json` modal | BIN | not provoked; literal unchanged |
+
+## 2.1.294 → 2.1.295
+
+The audit was run as `AUDIT_DIR=… OLD=294 NEW=295 PORT=18295 bash pass1.sh` (then `extra.sh` and `extra2.sh`).
+
+- **LIVE: no change.** Every surface in the table above was captured on both versions, and all 45 frames classify identically with the production predicates. The input-box readings are identical too. The only differences are spinner verbs, the mock's reply counter, and the moment the effort hint first paints.
+- **Predicate fragments:** 3 of 215 changed count.
+  - `" and the "` and `"auth token"` are in prose.
+  - `"Esc to cancel"` dropped from 12 to 10. Its lost occurrences are the Claude apps gateway connect screen, which AgEnD doesn't handle. The footers AgEnD matches are composed at run time, and every part of them has the same count.
+- **New on AgEnD's path (binary only): the "Resume this conversation?" prompt.**
+  - It opens on resume, and by an idle timer once the prompt cache has gone cold.
+  - It is server-gated: `tengu_amber_tally` and `tengu_drifting_nova`, a subscription tier, and a cost of at least 5% of the 5-hour limit.
+  - It never appeared in the rig. It is answered in #1434 (PR #1435) with Escape, its own "resume", and held on any other shape. That PR's fixtures are binary-derived.
+- **Upstream changelog:** about 150 entries (hooks, gateway, MCP, plugins, Bash permission checks, paste and vim input). None of the screens AgEnD acts on changed in the frames.

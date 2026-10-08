@@ -27,7 +27,7 @@ import {
   type TokenContextRatio,
 } from "./context-percent.js";
 import { isGeneralInstance } from "./general-instance.js";
-import { backendSupportsSteer } from "./steer-capability.js";
+import { instanceSupportsSteer } from "./steer-capability.js";
 import { SYSINFO_BACKEND_IDS, type BackendCliVersionSnapshot, type SysInfoBackendId } from "./backend/types.js";
 import { recordInternalRequest, withOrigin } from "./fleet-control-audit.js";
 import { UPDATE_COMMAND } from "./update-check.js";
@@ -40,6 +40,8 @@ const TELEGRAM_COMMANDS_TIMEOUT_MS = 10_000;
 
 type ExecutionFleetContext = FleetContext & {
   getInstanceExecutionState?(instanceName: string): "idle" | "working" | "stuck" | null;
+  /** The running launch's own steer capability (CliBackend.supportsSteer, #1405); undefined when it has none to give. */
+  instanceLaunchSupportsSteer?(instanceName: string): boolean | undefined;
 };
 
 /** Sanitize a directory name into a valid instance name. Keeps Unicode letters (incl. CJK). */
@@ -1143,7 +1145,8 @@ export class TopicCommands {
    * Backends whose TUI accepts a busy-pane paste as steering input,
    * live-verified: claude-code and codex buffer-then-submit at the turn
    * boundary, grok accepts it in its input line. kiro's legacy TUI swallows
-   * the paste outright, and opencode/antigravity are unverified — for those
+   * the paste outright; its TUI front-ends steer, so kiro answers per launch
+   * (#1405). opencode/antigravity are unverified — for those
    * the user gets an honest "not supported" instead of a silent queue
    * fallback that looks like a steer but behaves like a normal message.
    */
@@ -1153,8 +1156,10 @@ export class TopicCommands {
     msg: Pick<InboundMessage, "chatId" | "messageId" | "username" | "userId" | "threadId" | "adapterId" | "source">,
   ): string {
     const backend = this.effectiveBackend(instanceName);
-    if (!backendSupportsSteer(backend)) {
-      return t("steer.unsupported", backend);
+    const launchSupportsSteer = this.ctx.instanceLaunchSupportsSteer?.(instanceName);
+    if (!instanceSupportsSteer(backend, launchSupportsSteer)) {
+      // A backend that answers per launch (kiro, #1405) can steer, just not as this instance runs now.
+      return launchSupportsSteer === false ? t("steer.unsupported_launch", backend) : t("steer.unsupported", backend);
     }
     const ipc = this.ctx.instanceIpcClients.get(instanceName);
     if (!ipc?.connected) return t("steer.not_connected");
