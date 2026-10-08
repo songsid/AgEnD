@@ -35,11 +35,13 @@ export default defineConfig({
       "tests/view-api.test.ts",
       "tests/web-terminal-socket-cleanup.test.ts",
       "tests/e2e-tri-state.test.ts",
-      // Opt-in (AGEND_CODEX_E2E=1): real codex CLI on a private tmux socket.
+    ],
+    exclude: [
+      "**/node_modules/**", "dist/**", ".worktrees/**", ".claude/worktrees/**",
+      // Deliberate real-backend tests have a separate, explicit opt-in runner.
       "tests/codex-exact-cwd-resume-e2e.test.ts",
       "tests/codex-status-line-e2e.test.ts",
     ],
-    exclude: ["**/node_modules/**", "dist/**", ".worktrees/**", ".claude/worktrees/**"],
     env: {
       PATH: process.env.PATH ?? "",
       AGEND_HOME: testAgendHome,

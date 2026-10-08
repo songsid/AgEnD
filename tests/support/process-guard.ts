@@ -1,7 +1,7 @@
 import { createRequire } from "node:module";
 const native = createRequire(import.meta.url)("./process-guard.cjs") as {
-  install(): { takeViolations(): string[]; registerFixture(path: string): void };
-  checkInvocation(file: string, args?: string[], env?: NodeJS.ProcessEnv): void;
+  install(): { takeViolations(): string[]; drainJournal(path: string): string[]; registerFixture(path: string): void };
+  checkInvocation(file: string, args?: string[], env?: NodeJS.ProcessEnv, cwd?: string | URL | Buffer): void;
   scrubEnvironment(env: NodeJS.ProcessEnv): void;
 };
 export const processGuard = native.install();

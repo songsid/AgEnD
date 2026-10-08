@@ -7,6 +7,7 @@ const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
 const { syncBuiltinESMExports } = require('node:module');
+const { fileURLToPath } = require('node:url');
 const KEY = Symbol.for('agend.test.process-guard');
 const BACKENDS = new Set(['claude', 'codex', 'kiro-cli', 'grok', 'muse', 'agy', 'opencode', 'gemini']);
 const SHELLS = new Set(['sh', 'bash', 'dash', 'zsh', 'fish']);
@@ -22,22 +23,46 @@ function tokens(text) {
   return (text.match(/(?:[^\s;'"|&<>]+|"(?:\\.|[^"\\])*"|'[^']*')+|[;|&\n]/g) || [])
     .map(word => word.replace(/(['"])(.*?)\1/g, '$2').replace(/\\(.)/g, '$1'));
 }
-function resolveExecutable(file, env) {
-  if (file.includes('/')) return path.resolve(file);
-  for (const dir of (env.PATH || '').split(path.delimiter)) {
-    const candidate = path.join(dir, file);
+function childCwd(cwd) {
+  if (cwd == null) return process.cwd();
+  return path.resolve(cwd instanceof URL ? fileURLToPath(cwd) : Buffer.isBuffer(cwd) ? cwd.toString() : cwd);
+}
+function resolveExecutable(file, env, cwd) {
+  if (file.includes('/')) return path.resolve(cwd, file);
+  // Without an explicit PATH, native lookup may use an OS default. Never
+  // substitute a pinned file in the parent's cwd for that unknown executable.
+  if (typeof env.PATH !== 'string') return null;
+  for (const dir of env.PATH.split(path.delimiter)) {
+    const candidate = path.resolve(cwd, dir || '.', file);
     try { fs.accessSync(candidate, fs.constants.X_OK); return candidate; } catch {}
   }
-  return file;
+  return null;
 }
-function fixtureAllowed(file, env) {
+function fixtureAllowed(file, env, cwd, script = false) {
   try {
     const entries = JSON.parse(process.env.AGEND_TEST_EXECUTABLE_FIXTURES || '{}');
-    const real = fs.realpathSync(resolveExecutable(file, env));
+    const real = fs.realpathSync(script ? path.resolve(cwd, file) : resolveExecutable(file, env, cwd));
     const digest = entries[real];
     return typeof digest === 'string' && fs.statSync(real).isFile()
       && crypto.createHash('sha256').update(fs.readFileSync(real)).digest('hex') === digest;
   } catch { return false; }
+}
+function canonicalFuturePath(file) {
+  let current = path.resolve(file);
+  const missing = [];
+  for (;;) {
+    try { return path.join(fs.realpathSync(current), ...missing.reverse()); }
+    catch (error) {
+      if (error.code !== 'ENOENT') return null;
+      // A dangling symlink is an unresolved alias, not a future private path.
+      try { fs.lstatSync(current); return null; }
+      catch (statError) { if (statError.code !== 'ENOENT') return null; }
+      const parent = path.dirname(current);
+      if (parent === current) return null;
+      missing.push(path.basename(current));
+      current = parent;
+    }
+  }
 }
 function privateSocket(argv, env = process.env) {
   // -L must name a test server, never AgEnD's production hashed socket. -S
@@ -64,10 +89,15 @@ function privateSocket(argv, env = process.env) {
   const socket = sockets[0];
   if (!socket || !path.isAbsolute(socket)) return false;
   const relative = path.relative(os.tmpdir(), path.resolve(socket));
-  return !relative.startsWith('..') && /^(?:agend-|agtkw)[^/]+\//.test(relative)
-    && !relative.split('/').includes('default');
+  if (relative.startsWith('..') || !/^(?:agend-|agtkw)[^/]+\//.test(relative)
+      || relative.split('/').includes('default')) return false;
+  // Resolve existing socket/parents without contacting tmux. A future socket
+  // is valid, but aliases inside its fixture cannot escape to another server.
+  const canonical = canonicalFuturePath(socket);
+  try { return canonical === path.join(fs.realpathSync(os.tmpdir()), relative); }
+  catch { return false; }
 }
-function checkShell(command, env) {
+function checkShell(command, env, cwd) {
   const words = tokens(command);
   let start = true;
   for (let i = 0; i < words.length; i++) {
@@ -82,27 +112,28 @@ function checkShell(command, env) {
     if (word === 'which' || (words[i - 1] === '-v' || words[i - 1] === '-V')) { start = false; continue; }
     const rest = words.slice(i + 1);
     const end = rest.findIndex(w => /^[;|&\n]$/.test(w));
-    checkInvocation(word, end < 0 ? rest : rest.slice(0, end), env);
+    checkInvocation(word, end < 0 ? rest : rest.slice(0, end), env, cwd);
     start = false;
   }
 }
-function checkInvocation(file, argv = [], env = process.env) {
+function checkInvocation(file, argv = [], env = process.env, cwd = process.cwd()) {
+  cwd = childCwd(cwd);
   const base = path.basename(String(file));
-  if (BACKENDS.has(base) && !fixtureAllowed(file, env)) throw new Error(`real backend CLI forbidden: ${base}`);
+  if (BACKENDS.has(base) && !fixtureAllowed(file, env, cwd)) throw new Error(`real backend CLI forbidden: ${base}`);
   if (base === 'tmux') {
     if (!privateSocket(argv, env)) throw new Error('tmux requires a private test socket (-L/-S)');
     // Check commands launched in panes; a private socket does not authorise a
     // vendor CLI. send-keys can launch one too.
-    for (const arg of argv) if (typeof arg === 'string') checkShell(arg, env);
+    for (const arg of argv) if (typeof arg === 'string') checkShell(arg, env, cwd);
   }
   if (SHELLS.has(base)) {
     const c = argv.findIndex(arg => /^-[^-]*c[^-]*$/.test(arg));
-    if (c !== -1 && typeof argv[c + 1] === 'string') checkShell(argv[c + 1], env);
+    if (c !== -1 && typeof argv[c + 1] === 'string') checkShell(argv[c + 1], env, cwd);
   }
   if (/^node(?:js)?$/.test(base) && !argv.some(arg => ['-e', '--eval', '-p', '--print'].includes(arg))) {
     const script = argv.find(arg => !arg.startsWith('-') && (BACKENDS.has(path.basename(arg).replace(/\.(?:m?js|cjs|exe)$/, ''))
       || /(?:@openai[\/]codex|@anthropic-ai[\/]claude-code|[\/]kiro-cli[\/]).*\.(?:m?js|cjs)$/.test(arg)));
-    if (script && !fixtureAllowed(script, env)) throw new Error(`real backend Node entry forbidden: ${path.basename(script)}`);
+    if (script && !fixtureAllowed(script, env, cwd, true)) throw new Error(`real backend Node entry forbidden: ${path.basename(script)}`);
   }
 }
 function install() {
@@ -115,8 +146,8 @@ function install() {
       if (process.env.AGEND_TEST_GUARD_LOG) fs.appendFileSync(process.env.AGEND_TEST_GUARD_LOG, `${error.message}\n`);
       throw error; // before ANY native spawn, even if the caller catches it
   }
-  function guard(file, argv, env) {
-    try { checkInvocation(file, argv, env); } catch (cause) { reject(cause); }
+  function guard(file, argv, env, cwd) {
+    try { checkInvocation(file, argv, env, cwd); } catch (cause) { reject(cause); }
   }
   function childEnv(env) {
     const result = { ...(env || process.env) };
@@ -131,7 +162,7 @@ function install() {
   const originalSpawn = cp.ChildProcess.prototype.spawn;
   cp.ChildProcess.prototype.spawn = function(options) {
     const env = Object.fromEntries((options.envPairs || []).map(pair => { const i = pair.indexOf('='); return [pair.slice(0, i), pair.slice(i + 1)]; }));
-    guard(options.file, options.args.slice(1), env);
+    guard(options.file, options.args.slice(1), env, options.cwd);
     options.envPairs = Object.entries(childEnv(env)).map(([key, value]) => `${key}=${value}`);
     return originalSpawn.call(this, options);
   };
@@ -142,13 +173,15 @@ function install() {
       if (shellCall) { options = argv || {}; argv = []; }
       else if (!Array.isArray(argv)) { options = argv || {}; argv = []; }
       options = options || {};
-      if (shellCall) {
-        try { checkShell(String(file), options.env || process.env); } catch (cause) {
-          reject(cause);
-        }
-      } else if (options.shell) {
-        try { checkShell([file, ...argv].join(' '), options.env || process.env); } catch (cause) { reject(cause); }
-      } else guard(file, argv, options.env || process.env);
+      const env = options.env || process.env;
+      const cwd = childCwd(options.cwd);
+      if (shellCall || options.shell) {
+        const shell = typeof options.shell === 'string' ? options.shell
+          : process.platform === 'win32' ? env.ComSpec || process.env.ComSpec || 'cmd.exe' : '/bin/sh';
+        guard(shell, [], env, cwd); // options.shell is itself an executable
+        try { checkShell(shellCall ? String(file) : [file, ...argv].join(' '), env, cwd); }
+        catch (cause) { reject(cause); }
+      } else guard(file, argv, env, cwd);
       const guardedOptions = { ...options, env: childEnv(options.env) };
       return shellCall ? original.call(this, file, guardedOptions) : original.call(this, file, argv, guardedOptions);
     };
@@ -166,12 +199,30 @@ function install() {
     }
   };
   syncBuiltinESMExports();
+  let drainSequence = 0;
+  state.drainJournal = log => {
+    if (!log || !fs.existsSync(log)) return [];
+    const bytes = fs.readFileSync(log);
+    const cursorPath = `${log}.cursor`;
+    let cursor = 0;
+    try {
+      const saved = Number(fs.readFileSync(cursorPath, 'utf8'));
+      if (Number.isSafeInteger(saved) && saved >= 0 && saved <= bytes.length) cursor = saved;
+    } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    const end = bytes.lastIndexOf(10) + 1;
+    if (end <= cursor) return [];
+    const recorded = bytes.subarray(cursor, end).toString('utf8').split('\n').filter(Boolean);
+    // Journals stay append-only. Persist only the boundary we actually read,
+    // so an append during the drain remains visible to the next drain/teardown.
+    // Atomic replacement prevents readers from seeing a partial cursor value.
+    const temporary = `${cursorPath}.${process.pid}-${threads.threadId}-${++drainSequence}`;
+    fs.writeFileSync(temporary, String(end), { flag: 'wx', mode: 0o600 });
+    fs.renameSync(temporary, cursorPath);
+    return recorded;
+  };
   state.takeViolations = () => {
     const local = state.violations.splice(0);
-    const log = process.env.AGEND_TEST_GUARD_LOG;
-    if (!log || !fs.existsSync(log)) return local;
-    const recorded = fs.readFileSync(log, 'utf8').trim().split('\n').filter(Boolean);
-    fs.writeFileSync(log, '');
+    const recorded = state.drainJournal(process.env.AGEND_TEST_GUARD_LOG);
     return recorded.length ? recorded : local;
   };
   state.registerFixture = file => {

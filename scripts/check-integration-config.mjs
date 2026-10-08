@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 const read = name => readFileSync(fileURLToPath(new URL(`../${name}`, import.meta.url)), "utf8");
 const integration = read("vitest.config.integration.ts");
 const unit = read("vitest.config.ts");
+const codexE2e = read("vitest.config.codex-e2e.ts");
 
 // Every suite that owns a real tmux server or child process. Each must be in
 // the serial config AND out of the parallel one: a file listed in both runs
@@ -17,8 +18,7 @@ const required = [
   "tests/tmux-kill-window-confirmed.test.ts",
   "tests/view-api.test.ts",
   "tests/web-terminal-socket-cleanup.test.ts",
-  "tests/codex-exact-cwd-resume-e2e.test.ts",
-  "tests/codex-status-line-e2e.test.ts",
+  "tests/e2e-tri-state.test.ts",
 ];
 
 const problems = [];
@@ -28,6 +28,17 @@ for (const file of required) {
   if (!unit.includes(quoted)) problems.push(`${file} is missing from the unit config's exclude, so it also runs in parallel`);
 }
 if (!integration.includes("fileParallelism: false")) problems.push("fileParallelism: false is missing from the integration config");
+
+for (const file of ["tests/codex-exact-cwd-resume-e2e.test.ts", "tests/codex-status-line-e2e.test.ts"]) {
+  const quoted = `"${file}"`;
+  if (!unit.includes(quoted)) problems.push(`${file} must be excluded from the guarded unit runner`);
+  if (!integration.slice(integration.indexOf("exclude:")).includes(quoted)
+      || integration.slice(0, integration.indexOf("exclude:")).includes(quoted)) {
+    problems.push(`${file} must be excluded, not included, in guarded integration`);
+  }
+  if (!codexE2e.includes(quoted)) problems.push(`${file} is missing from the explicit Codex opt-in runner`);
+}
+if (!codexE2e.includes('AGEND_CODEX_E2E !== "1"')) problems.push("explicit Codex opt-in flag check is missing");
 
 if (problems.length > 0) {
   console.error(problems.map(p => `  - ${p}`).join("\n"));
