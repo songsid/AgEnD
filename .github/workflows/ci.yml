@@ -311,3 +311,57 @@ jobs:
             -H "Content-Type: application/json" \
             -d @payload.json \
             "$DISCORD_WEBHOOK"
+
+  # ── install smoke ─────────────────────────────────────────────────────────────
+  # Packs the npm tarball and installs it globally on every platform × Node
+  # combination we claim to support. Verifies that `agend --version` runs and
+  # that the native better-sqlite3 prebuild loads correctly. This job never
+  # starts a fleet or touches tmux — it only does a brief in-process check.
+  #
+  # Runs independently so it never slows the test shards. Ubuntu and macOS are
+  # free for public repos. Node 22/24/26 cover the LTS + current span. 6 runners
+  # total: 2 os × 3 node versions.
+  install-smoke:
+    runs-on: ${{ matrix.os }}
+    needs: [detect-changes, setup]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        node: ['22', '24', '26']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - name: Skip on docs-only PRs
+        if: needs.detect-changes.outputs.docs-only == 'true'
+        run: echo "Docs-only — skipping install smoke."
+      - name: Pack and install globally
+        if: needs.detect-changes.outputs.docs-only != 'true'
+        run: |
+          npm ci
+          # Pack to a tarball so we test the published surface, not the dev tree.
+          TGZ=$(npm pack --json | node -e "const d=require('fs').readFileSync('/dev/stdin','utf8'); console.log(JSON.parse(d)[0].filename)")
+          npm install -g "./$TGZ"
+      - name: agend --version
+        if: needs.detect-changes.outputs.docs-only != 'true'
+        run: agend --version
+      - name: better-sqlite3 in-memory open
+        if: needs.detect-changes.outputs.docs-only != 'true'
+        run: |
+          # Resolve the installed package and open an in-memory DB through it,
+          # confirming the N-API prebuild loads on this OS + Node combination.
+          node - <<'JS'
+          const { createRequire } = require('node:module');
+          const agendPkg = require.resolve('@songsid/agend/package.json');
+          const req = createRequire(agendPkg);
+          const Database = req('better-sqlite3');
+          const db = new Database(':memory:');
+          db.exec('CREATE TABLE smoke (v TEXT)');
+          db.prepare('INSERT INTO smoke VALUES(?)').run('ok');
+          const row = db.prepare('SELECT v FROM smoke').get();
+          if (row.v !== 'ok') process.exit(1);
+          console.log('better-sqlite3 N-API prebuild ok on Node', process.version);
+          JS
