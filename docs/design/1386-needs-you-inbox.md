@@ -1,41 +1,45 @@
 # #1386 — "Needs you": one list of everything waiting on the user (design)
 
-Status: design for review. Milestone 2.2.0. Reference: todos.dev's inbox (https://todos.dev/docs/inbox) and fable's
-report "todos dev vs AgEnD" (§4, §5.1).
+Status: design for review, revised for the user's scope (2026-10-08). Milestone 2.2.0. Reference: todos.dev's inbox
+(https://todos.dev/docs/inbox) and fable's report "todos dev vs AgEnD" (§4, §5.1).
 
 ## 1. Goal and non-goals
 
-**Goal.** `/ui` gets a **Needs you** view and a sidebar badge. It lists everything currently waiting on the person,
-across every instance. Each item shows the instance, the reason, its age and one primary action (answer, open, or
-dismiss), and opens that instance's chat in one tap. An item disappears once it is resolved anywhere: the web,
-Telegram or Discord. A device can opt in to a notification when a new item appears. An optional, off-by-default
-digest can go to General.
+**Goal.** Discord is where people act, and the web shows the same list. There is one list of everything currently
+waiting on the person, across every instance, **derived from existing state** (§3).
+
+- **Discord (and Telegram): the primary surface.** Each platform's General has one live **Needs you** message
+  that is kept up to date. Every item in it is one tap from where it is acted on: the prompt's own message with its
+  existing buttons, or the instance's thread. The only new button is **Acknowledge** for delivery items, which
+  have no button today (§5). Optionally, fleet admins also get a DM when a new item appears.
+- **Web: the same list, presented.** `/ui` gets a Needs you view and a sidebar badge, with one tap to the
+  instance's chat. A device can opt in to browser notifications (§6).
+- **Resolved anywhere, gone everywhere.** All surfaces are renderings of one derivation (§4). An answer on
+  Discord, Telegram or the web changes the underlying state, and every surface re-renders from it.
 
 **Non-goals (v1).**
-- **No new source of truth.** Every item is computed from state the fleet already holds (§3). The inbox stores
-  nothing on the server. The one per-device choice it keeps, which items this browser dismissed and whether this
-  device wants notifications, lives in that browser's `localStorage`. It is a view preference, not state.
-- No board view (#1387) and no diff review (#1388).
-- No server-side Web Push in v1: no service worker, no VAPID keys, no subscription store. It is costed in §6.3 as a
-  follow-up.
-- No "agent asked the user a question" item. Nothing records that today (§3.6), and adding it would be a new source.
+- **No new source of truth for items.** The server keeps two small records, and neither decides what is listed:
+  - where each platform's live message is (§5.4);
+  - which delivery items were acknowledged (§3.4), the one new piece of state (§8 Q2).
+- No answering a prompt from the General message itself. Its buttons are bound to its own message (§5.2). The General
+  message links to it instead.
+- No org chart here (#1389, after this), and no diff review (#1388).
+- No server-side Web Push in v1 (§6.3).
+- No "agent asked the user a question" item (§3.6).
 
-## 2. What the person sees
+## 2. The flow, end to end
 
-- **Sidebar.** Above *Fleet*: **Needs you**, with a count badge (hidden at 0). The browser tab title gets a `(N)`
-  prefix while N > 0.
-- **View.** Items are grouped by instance, newest instance group first. Each row shows:
-  - an icon by type;
-  - the title (one line);
-  - the detail (one line, may be empty);
-  - the age ("4 min");
-  - its actions. A prompt shows its own buttons, the same ones Telegram has. Every other item shows **Open**, and a
-    delivery item also shows **Dismiss**.
-
-  An empty view says "Nothing needs you".
-- **Deep link.** `/ui#instance=<name>` opens that instance's chat. The hash is read on load and on `hashchange`.
-  It is client-side only: no new route, nothing sent to the server. Every row's **Open** uses it, and so does the
-  notification's click.
+1. **Something starts waiting.** For example, beta's Claude Code holds a Bash permission dialog. The daemon's
+   interaction observation reaches `waiting`, and `instance_interaction` fires (§3.2).
+2. **The fleet recomputes** `getNeedsYou()`. A new id appears (§4.2).
+3. **Discord**: the General **Needs you** message is replaced by a new one at the bottom, which notifies people
+   (§5.3). Its line "beta — Permission needed · <#beta>" opens beta's thread in one tap. With `needs_you.dm`, admins
+   also get a DM (§5.5).
+4. **The web**: connected pages get SSE `needs`, the badge goes to 1, and a hidden tab that opted in shows a
+   notification (§6).
+5. **The person answers**, wherever it applies: at the terminal through the thread or `/ui`, a prompt button in
+   Discord, Telegram or the web, or Acknowledge for a delivery item. The underlying state clears, the fleet
+   recomputes, and the General message is edited, the web list updates, and the badge drops, together.
 
 ## 3. Item sources (all existing state)
 
@@ -123,16 +127,19 @@ This also covers dangerous-command and permission dialogs.
   ('uncertain','failed') AND COALESCE(finished_at, created_at) >= ? ORDER BY created_seq DESC LIMIT 50`, served by
   `idx_delivery_state_seq` (`:513`). The window is the last 24 h. It is read-only.
 - **Item:** `id = "delivery:<delivery_id>"`. Title "Could not confirm delivery" or "Delivery failed". Detail
-  "<source> → <target>" plus the `kind`. `since` is `finished_at`. The instance is the target. Actions: **Open**
-  the target, and **Dismiss**.
+  "<source> → <target>" plus the `kind`. `since` is `finished_at`. The instance is the target. Actions: open the
+  target, and **Acknowledge**.
 - **Resolved:**
   - `markConsumed` (`:1137`) turns an `uncertain` row into `delivered` when transcript proof arrives (`daemon.ts
     2003-2031`), and the item drops;
   - the 24 h window ages a row out;
-  - **Dismiss** hides it on that device.
+  - **Acknowledge** from any surface: the General message's button, the DM, or the web. It removes the item
+    everywhere (§5.3).
 
-  There is no server-side acknowledge. The outbox has no such column, and adding one would make this a source of
-  truth (§7, Q2).
+  The outbox has no acknowledge column, so acknowledgements are kept in `<AGEND_HOME>/needs-you-acks.json`
+  (`{ "<delivery_id>": { "at": <ms>, "by": "<surface>:<user>" } }`, written atomically and pruned with the 24 h
+  window). This is the **one new piece of state**. It never adds an item, it only hides one; §8 Q2 has the
+  alternative of an outbox column.
 - **Web-chat user messages that failed** (`WebChatHistory` deliveries `failed`; `web-chat-history.ts:26`;
   in-memory ring) are **not** inbox items. They already show `!` on the message itself, in the chat where it was
   sent. Telegram and Discord user messages that fail only get a reaction (`status-emojis.ts`) and leave nothing
@@ -140,143 +147,226 @@ This also covers dangerous-command and permission dialogs.
 
 ### 3.5 What clears what (summary)
 
-| Type | Appears when | Disappears when (any surface) | Push trigger |
+| Type | Appears when | Disappears when (any surface) | Re-render trigger |
 |---|---|---|---|
 | prompt | `postNonceButtonPromptOrThrow` | `consumeNonceCallback` (web / TG / DC click), expiry, stop, shutdown | existing `prompt` / `prompt_resolved` |
 | awaiting_input | observation → `waiting` | observation clears (answered anywhere, stale, pause, respawn) | **new** fleet listener on `instance_interaction` |
 | instance (auth) | pause reason `auth` | wake / `clearPausedMarker` | pause / wake transitions |
 | instance (crashed) | `instanceProcessStatus = crashed` | restarted / stopped | status change |
-| delivery | outbox → `uncertain` / `failed` | `uncertain → delivered` (proof), 24 h window, per-device dismiss | existing outbox `"state"` listener |
+| delivery | outbox → `uncertain` / `failed` | `uncertain → delivered` (proof), 24 h window, Acknowledge (any surface) | existing outbox `"state"` listener |
 
 ### 3.6 Not available: "the agent asked you something"
 
 `reply` (`outbound-schemas.ts:18`) has no "this is a question" field. `requires_reply` / `request_kind` /
 `reply_obligations` (`delivery-outbox.ts:554`) exist only between instances; the person is never a party. A user
 question item would need a new signal: an agent-side flag or tool, plus where it is stored. That is outside "no new
-source of truth", so it is a follow-up issue, not v1 (§7, Q3).
+source of truth", so it is a follow-up issue, not v1 (§8, Q3).
 
-## 4. Server: one derivation, existing channels
+
+## 4. Server: one derivation
 
 ### 4.1 `FleetManager.getNeedsYou(): NeedsYouItem[]`
 
-A pure function of the state above, computed on demand. It is not stored.
+A pure function of the state in §3, minus acknowledged deliveries. It is computed on demand and not stored.
 
 ```ts
 type NeedsYouType = "prompt" | "awaiting_input" | "instance" | "delivery";
 interface NeedsYouItem {
-  id: string;              // stable per occurrence; see §3 (a new episode/occurrence gets a new id)
+  id: string;              // stable per occurrence (§3); a new episode/occurrence gets a new id
   type: NeedsYouType;
   instance: string;        // the instance to open; delivery → its target
-  title: string;           // localized, one line
-  detail: string;          // localized/derived, one line, may be ""
+  title: string;           // localized, one line (en / zh-TW by the fleet locale, as other fleet notices)
+  detail: string;          // one line, may be ""
   since: number;           // epoch ms of when it started waiting
-  actions: Array<{ id: string; label: string; kind: "prompt" | "open" | "dismiss" }>;
-  nonce?: string;          // prompt only: what POST /ui/prompt takes
+  nonce?: string;          // prompt: the prompt to answer (web: POST /ui/prompt)
+  promptAt?: { adapterId: string; chatId: string; threadId?: string; messageId?: string };  // prompt: where its buttons are
+  ackable?: boolean;       // delivery: Acknowledge offered
 }
 ```
 
-Ordering: oldest `since` first within an instance, and instances by their oldest item. Prompt text, summaries and
-delivery details are the strings each surface already shows, rendered with `textContent` only.
+Ordering: by instance (the instance with the oldest item first), then oldest `since` first.
 
-### 4.2 How the page gets it: the existing passive channels only
+### 4.2 One change signal, three renderers
 
-- **SSE.** A new event, `needs`, carries the full list. It is sent on connect (with `status`, `prompts`) and
-  whenever the list's signature (its ids, in order) changes. Recomputation is triggered by the existing emit points
-  (`prompt`, `prompt_resolved`, `activity`, status changes, the outbox `"state"` listener), plus the **new**
-  `instance_interaction` listener and pause/wake transitions. The SSE heartbeat (10 s) recomputes as a backstop.
-- **`/ui/poll`** gets a `needs` field next to `prompts`. The stream-down fallback sees the same list.
-- **Sessions (#1374):** both channels are already passive (`isPassiveWebRead`). **No new endpoint is added**, and
-  in particular none on a timer, so the inbox can never keep an idle session alive. The tests assert that the
-  allowlist is unchanged.
-- **Answers** use the existing `POST /ui/prompt` (a write: it needs the session plus CSRF, and counts as use).
-  **Open** and **Dismiss** are client-only.
+- **When it recomputes:**
+  - the existing emit points: `prompt`, `prompt_resolved`, `activity`, status changes, the outbox `"state"`
+    listener (`fleet-manager.ts:1138`);
+  - **new:** a fleet listener for the daemon's `instance_interaction` (`daemon.ts:4314`), the pause/wake
+    transitions, and an acknowledge;
+  - a 10 s backstop.
+- **When it is "changed":** when the list's signature (ids in order, plus each item's age bucket for the
+  displayed ages) differs from the last one.
+- **What runs on a change:**
+  - the **chat renderer** for each platform (§5), debounced and rate-limited;
+  - SSE `needs` to connected pages, plus a `needs` field on `/ui/poll` (§6);
+  - the optional DM on newly appeared ids (§5.5).
 
 ### 4.3 Cost
 
-A prompt list scan, an instance presentation per instance (already computed for `status`), cached pause reasons, and
-one indexed outbox query (at most 50 rows, last 24 h). It runs on change, plus once per 10 s heartbeat per connected
-stream; the result is cached for the heartbeat tick, so N streams cost one computation.
+A prompt-map scan, the instance presentations (already computed for `status`), cached pause reasons, and one
+indexed outbox query (at most 50 rows, last 24 h). It runs per change and is cached per 10 s tick. No per-request
+work is added to any endpoint the web calls on a timer.
 
-## 5. `/ui`
+## 5. Discord / Telegram (primary)
 
-- **Sidebar entry and view** as in §2.
-  - Built with `createElement` and `textContent`, styled by classes in the page's nonce'd stylesheet. No style
-    attribute and no inline handler (#1300 / #1268); actions use `data-act`.
-- **Prompt actions** reuse the chat's prompt-answer path, so one click from either place counts once. The server
-  already guarantees this (`consumeNonceCallback`).
-- **Dismiss** (delivery items only) stores the id in `localStorage.agend_needs_dismissed`, capped at 200 ids; ids
-  that are no longer listed are pruned. A storage that can't be read means nothing is hidden.
-- **Badge** is the count of listed, not-dismissed items. `document.title` gets a `(N)` prefix.
+### 5.1 The live message
 
-## 6. Notifications
+One message per platform, in that platform's General: `fleetNoticeTarget(adapterId)` (`fleet-manager.ts:9688`), the
+same place the daily summary and fleet errors go.
 
-### 6.1 Per-device browser notification (v1)
+```
+📥 Needs you — 3
+• alpha — Not responding (12 min) → [jump to its prompt]
+• beta — Permission needed (3 min) · <#beta-thread>
+• gamma ← delta — Could not confirm delivery (25 min) · <#gamma-thread>      [Acknowledge gamma]
+```
 
-- **Opt-in:** a toggle in the Needs you view, "Notify me on this device". It calls
-  `Notification.requestPermission()` on that click, and only then. The choice is stored per device
-  (`localStorage.agend_needs_notify`).
-- **When:** an item id appears that this page has not seen before (seen ids are kept per page load and seeded from
-  the first `needs`). The notification is shown only while the page is hidden (`document.visibilityState !==
-  "visible"`). Its title is the instance and its body the item title. `tag = item.id` makes the browser replace,
-  not stack, repeats. A click focuses the tab and sets `#instance=<name>`.
+- **Jump targets**, built by a new pure helper (`chatLink`):
+  - **Prompt items** link to the prompt's own message, where its existing buttons work as today. On Discord that is
+    `https://discord.com/channels/<guild>/<channel>/<message>`; on a Telegram forum it is
+    `https://t.me/c/<id>/<topic>/<message>`.
+  - **Other items** link to the instance's thread: Discord `<#channel>` (rendered as a clickable channel), Telegram
+    `https://t.me/c/<id>/<topic>`.
+  - If no link can be built (a private Telegram group without topics, say), the line is shown without one.
+- **When nothing is waiting**, the message is edited to "✅ Nothing needs you right now" rather than deleted.
+- **Size:** at most 10 lines, then "… and N more: open /ui". There is at most one Acknowledge button per delivery
+  item: the newest 5 (Discord: one action row of five; Telegram: one keyboard row each).
+
+### 5.2 Buttons on the live message: Acknowledge only
+
+- **Prompt capabilities stay where they are.** A prompt's nonce is bound to the chat, thread and message that
+  posted it, and a click from anywhere else is refused as "wrong place" (`consumeNonceCallback`,
+  `fleet-manager.ts:10036-10056`). The live message therefore **links** to the prompt instead of copying its
+  buttons. One tap reaches the existing, already-authorized buttons. The capability model doesn't change, and two
+  taps replace a new cross-message answer path. (§8 Q1 asks whether a later "answer here" proxy is wanted.)
+- **Acknowledge** is a new nonce prefix, `needs-ack:`, posted through `postNonceButtonPromptOrThrow`. So it gets
+  the same 128-bit nonce, the same binding to the live message, and fleet-admin authorization (`isFleetAdmin` on
+  the clicking adapter), exactly like every other mutating button. A click records the ack, recomputes, and
+  re-renders every surface.
+- When the live message is replaced (§5.3), its Acknowledge nonces are retired with it (the existing
+  `retireNonceButtons`), and the new message gets fresh ones. A click on an old message gets the standard "this
+  button has expired".
+
+### 5.3 Keeping it live without flooding
+
+- **Something resolved or aged:** the message is **edited in place**. Discord's `editMessage` with the components
+  replaced; on Telegram, text plus keyboard. Edits are debounced by 3 s and limited to one per 10 s per platform.
+- **A new item appears:** the old message is **deleted and a new one posted**. It moves to the bottom and the
+  platform notifies people, at most once per 60 s per platform. A new item inside that window is folded into an
+  edit, and the next allowed post carries it.
+- **An edit or delete fails** (Telegram refuses edits on messages older than 48 h, or the message is gone): a new
+  message is posted, and the pointer moves to it.
+- **On shutdown** the message is edited to "Fleet stopped; this list resumes when it starts" and its buttons are
+  removed, matching how prompts are retired today.
+
+### 5.4 Where the message is, across restarts
+
+`<AGEND_HOME>/needs-you-message.json` = `{ "<adapterId>": { chatId, threadId, messageId } }`, written atomically.
+On start, the fleet edits that message to the current list, or posts a new one if the edit fails. Without this
+record, every restart would leave a stale list behind. This is a pointer to a message, not a source of items.
+
+### 5.5 DM to admins (optional, off by default)
+
+- **Setting:** `needs_you.dm: true` (fleet-level, hot-reloadable).
+- **Behaviour:** when an item id **appears**, each fleet admin of that platform gets one short DM, e.g. "📥 alpha —
+  Not responding" with the jump link. On Discord this goes through the adapter's `sendDirect`. On Telegram it goes
+  to the private chat with the bot, only if the admin has started it; otherwise it is skipped silently.
+- At most one DM per admin per 60 s, folding several new items into one message. There are no buttons in the DM:
+  the jump link goes to where the buttons are.
+
+### 5.6 Settings
+
+```yaml
+needs_you:
+  live_message: true     # default true: the General message (§5.1); false turns it off per fleet
+  dm: false              # default false (§5.5)
+```
+
+Both are fleet-level and hot-reloadable. Turning `live_message` off edits the existing message to "Turned off" and
+forgets its pointer.
+
+## 6. Web (presentation of the same list)
+
+### 6.1 The view
+
+- **Sidebar.** **Needs you**, with a count badge (hidden at 0), above *Fleet*. The tab title gets a `(N)` prefix.
+- **The view.** Grouped by instance as in §4.1. Each row shows an icon, the title, the detail, the age, and actions:
+  - **prompts:** their own buttons, through the existing `POST /ui/prompt`. That is a session write plus CSRF; the
+    server claims the prompt once, whoever answers first;
+  - **everything:** **Open**, which sets `#instance=<name>`;
+  - **delivery:** **Acknowledge** (`POST /ui/needs/ack {id}`, a session write plus CSRF), which clears it
+    everywhere.
+- **Deep link.** `/ui#instance=<name>` opens that instance's chat. It is read on load and on `hashchange`, entirely
+  client-side.
+- **Build rules:** `createElement` plus `textContent`, classes in the nonce'd stylesheet, and `data-act` for actions.
+  No style attribute and no inline handler (#1300 / #1268).
+
+### 6.2 Channels and sessions (#1374)
+
+- The list arrives over the existing passive channels only: SSE `needs` (on connect and on change) and a `needs`
+  field on `/ui/poll`.
+- **No new GET endpoint, and no timer-driven request is added**, so the inbox can never keep an idle session
+  alive. The tests assert that the `isPassiveWebRead` allowlist is unchanged.
+- The one new endpoint is the `POST /ui/needs/ack` write. It is a person's action and counts as use.
+
+### 6.3 Browser notifications (per device, opt-in)
+
+- **Opt-in:** a "Notify me on this device" toggle in the view. It calls `Notification.requestPermission()` on that
+  click, and only then. The choice is stored per device (`localStorage.agend_needs_notify`).
+- **When:** while the page is hidden, for a new item id. The title is the instance, the body the item title, and
+  `tag = item.id`. A click focuses the tab and opens the instance.
 - **Constraints, stated in the UI:**
-  - The Notification API needs a secure context. `http://localhost` / `127.0.0.1` qualify, and so does the #1367
-    HTTPS public link. Plain-HTTP LAN addresses do not, and the toggle says why.
-  - It works only while some `/ui` tab is open; a closed browser gets nothing (§6.3).
-  - On iOS, only a Home Screen web app may notify.
+  - it needs a secure context: localhost/127.0.0.1 or #1367's HTTPS link work, a plain-HTTP LAN address does not;
+  - a `/ui` tab must be open;
+  - on iOS, only a Home Screen web app may notify.
 
-### 6.2 Optional General digest (off by default)
+  Discord's notification (§5.3) is the one that works with every tab closed.
+- **Real Web Push** (a service worker, VAPID keys, a subscription store, and calls to vendor push services) is a
+  follow-up with its own security review, not v1.
 
-- **Setting:** `web.needs_digest` (default `false`). Hot-reloadable like `web.notify_login`.
-- **Behaviour:** when an item has waited **30 minutes** and has not been in a digest before, one message goes to
-  each platform's General (`fleetNoticeTarget`), at most once per 30 minutes. For example: "📥 3 things have been
-  waiting on you for 30+ min: A (permission), B (could not confirm delivery), …". The message has a link to `/ui`
-  only when the dashboard has a non-loopback origin (`hostname` / #1367).
-- Which ids have been in a digest is kept in memory. A restart may repeat a digest once; that is acceptable for a
-  reminder and avoids a store.
-- Prompts already appear in their topic. The digest exists for the item types that do not ping (`awaiting_input`,
-  `delivery`), and for people who stopped watching topics.
+## 7. Lifecycle tests (implementation)
 
-### 6.3 Follow-up, not v1: real Web Push
+- **Per type, through the real derivation:**
+  - **prompt:** appears in `getNeedsYou()`, the live message (with a jump link to the prompt message), SSE `needs`
+    and `/ui/poll`. A **Discord** click on the prompt's own button (`receiveAdapterCallback`) removes it from the
+    live message (an edit) and from the web, with no web action. The same holds for a Telegram click, a web
+    answer, expiry, a stop and shutdown.
+  - **awaiting_input:** appears as soon as `instance_interaction` reaches `waiting`, pushed rather than waiting for
+    the 10 s tick. It folds into an interactive-assist prompt, and clears when the observation clears.
+  - **instance:** an `auth` pause appears and a wake clears it; `crashed` appears and a restart clears it.
+  - **delivery:** an `uncertain` row appears; `markConsumed` makes it delivered and it is gone. Acknowledge works the
+    same from the Discord button, the Telegram button and the web: an admin from any surface clears every surface,
+    and a non-admin is refused. A `failed` row ages out after 24 h on a controlled clock.
+- **Live message mechanics:** edit vs. replace, the debounce and rate limits on a controlled clock, a fallback post
+  when an edit fails, the pointer persisted and resumed after a restart, retirement on shutdown, and expired-button
+  handling on a replaced message.
+- **DM:** off by default; one per admin per window; folding; a Telegram admin who never started the bot is skipped.
+- **Web:** the `isPassiveWebRead` allowlist is unchanged and no new GET route exists. Plus a vm harness and a
+  real-browser smoke under the real CSP (badge, grouping, Open via the hash, prompt answer once, Acknowledge,
+  notify toggle) with no style attribute and zero CSP violations.
+- **Mutations** for every clearing path, every source filter, the binding of the ack capability, and the rate limits.
 
-Notifications with no tab open need four things:
-- a service worker (same-origin script; CSP `worker-src 'self'`);
-- VAPID keys;
-- a persisted store of push subscriptions per device (a new store);
-- the fleet calling the browser vendor's push service, which is an outbound network dependency.
+## 8. Open questions for review
 
-It only works on a secure origin, which in practice means #1367's public link. That is a separate issue with its own
-security review (subscription lifetime, revocation on sign-out, payload contents).
+1. **Answering in place.** v1 links each item to the prompt's own message rather than copying its buttons, which
+   would need a cross-message proxy capability. Is the extra tap acceptable, or should a later PR add a proxy? It
+   would claim the original nonce through a trusted internal path, as the web click does today.
+2. **Where the ack lives.** A small `needs-you-acks.json` (proposed), or an `acknowledged_at` column on the outbox,
+   which would need a migration but keeps it with the row?
+3. **"Agent asked you"** needs a new signal (e.g. `reply(…, needs_answer: true)` recorded in the web chat history).
+   Follow-up issue?
+4. **Defaults:** `live_message` on, `dm` off. Is a new post at most once per 60 s right for Discord's noise?
+5. **`awaiting_input` notifications** (DM and browser): only after the item is ≥ 5 s old, so a dialog AgEnD answers
+   by itself never pings anyone?
 
-## 7. Open questions for review
+## 9. Implementation plan
 
-1. **`awaiting_input` noise.** An auto-answered dialog passes the 500 ms confirmation only rarely. Should the inbox
-   require the item to be ≥ 5 s old before it shows (and notifies)? Recommended: yes for notification, no for the
-   list, so the list stays consistent with the existing *needs you* badge.
-2. **Delivery dismiss:** per device (v1, no store) or fleet-wide (needs an `acknowledged_at` column on the outbox,
-   i.e. state)? Recommended: per device now. Revisit if operators share a fleet.
-3. **"Agent asked you":** file a follow-up for an explicit signal (e.g. `reply(…, needs_answer: true)` recorded in
-   the web chat history), or leave it to the chat itself? Recommended: a follow-up issue.
-4. **Digest default** off, with a 30 min threshold: OK?
-
-## 8. Tests (implementation PRs)
-
-- **Lifecycle per type:**
-  - **prompt:** appears in `getNeedsYou()` and SSE `needs`. Answered via a TG/DC callback (`receiveAdapterCallback`),
-    it is gone from the next `needs` without any web action. It also goes on web answer, expiry, stop and shutdown.
-  - **awaiting_input:** appears once `instance_interaction` reaches `waiting` (pushed immediately, not at the
-    heartbeat). It folds into an interactive-assist prompt. It clears when the observation clears.
-  - **instance:** `auth` pause appears, and wake clears it. `crashed` appears, and restart clears it.
-  - **delivery:** an `uncertain` row appears; `markConsumed` makes it `delivered`, and it is gone. `failed` appears
-    and ages out after 24 h on a controlled clock. Rows outside the window, or in other states, never appear.
-- **Channels:** `needs` arrives on SSE connect and on change, and `/ui/poll` carries it. The `isPassiveWebRead`
-  allowlist is unchanged, and no new GET route exists.
-- **UI** (vm harness + real-browser smoke under the real CSP):
-  - badge and title count;
-  - grouping;
-  - Open sets the hash and opens the chat;
-  - prompt buttons answer once;
-  - Dismiss persists per device;
-  - the notify toggle asks permission only on click and fires only while hidden;
-  - no style attribute; zero CSP violations; desktop and phone.
-- **Mutations** for each clearing path and each source filter.
+- **PR (a), server + chat:**
+  - `getNeedsYou` and the recompute signal;
+  - the `instance_interaction` listener and the outbox query;
+  - the live message, with its renderer, pointer and rate limits;
+  - Acknowledge (the nonce prefix and the ack store), the DM and the settings;
+  - SSE `needs` and `/ui/poll`;
+  - tests.
+- **PR (b), web:** the view, the badge, the hash deep link, Acknowledge on the web, browser notifications, and the
+  real-browser smoke.
