@@ -1,0 +1,50 @@
+
+✻ Churned for 0s · done 12:46 AM
+
+❯ SLOW turn please
+
+● slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow
+  slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow
+
+✻ Worked for 25s · done 12:47 AM
+
+❯ queued while busy MARKQ
+
+● mock reply 12
+
+✻ Baked for 0s · done 12:47 AM
+
+❯ [agend-delivery-id:11111111-2222-3333-4444-555555555555]
+  [from:audit-peer] first line of a multi-line message
+  second line with detail
+  third line closes it
+  (message_id: xmsg-1 | correlation_id: cid-1)
+
+● mock reply 14
+
+✻ Brewed for 0s · done 12:47 AM
+
+❯ same words start this paste
+  middle line
+  end with same words start this paste
+
+● mock reply 20
+
+✻ Worked for 0s · done 12:47 AM
+
+❯ trigger E429 nowtrigger E529 now
+
+● API Error: Repeated 529 Overloaded errors. The API is at capacity — this is usually temporary. Try again in a moment. If it persists, check your
+  inference gateway (127.0.0.1:18294).
+
+✻ Sautéed for 1s · done 12:48 AM
+
+❯ trigger E500 now
+
+✻ 500 mock api_error · Retrying in 3s · attempt 5/10
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ok
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents
