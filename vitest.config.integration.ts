@@ -2,6 +2,9 @@ import { defineConfig } from "vitest/config";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createRequire } from "node:module";
+const { scrubEnvironment } = createRequire(import.meta.url)("./tests/support/process-guard.cjs");
+scrubEnvironment(process.env);
 
 // Real-resource suites are deliberately kept in one worker. Running them
 // beside one another makes tmux/child-process scheduling part of the test
@@ -14,6 +17,8 @@ process.once("exit", () => {
 export default defineConfig({
   test: {
     globals: true,
+    globalSetup: ["./tests/setup-process-guard-global.ts"],
+    setupFiles: ["./tests/setup-process-guard.ts"],
     fileParallelism: false,
     testTimeout: 30_000,
     include: [
@@ -38,6 +43,7 @@ export default defineConfig({
       PATH: process.env.PATH ?? "",
       AGEND_HOME: testAgendHome,
       NOTIFY_SOCKET: "",
+      AGEND_TEST_GUARD_DIR: testAgendHome,
     },
   },
 });

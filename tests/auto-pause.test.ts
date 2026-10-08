@@ -84,17 +84,8 @@ describe("AutoPauseController", () => {
   });
 });
 
-/** List the live default server's sessions, or null when unreachable. */
-function liveTmuxList(): string | null {
-  try {
-    return execFileSync("tmux", ["ls"], { encoding: "utf8" });
-  } catch {
-    return null; // no tmux server reachable here — nothing to leak onto
-  }
-}
-
 /** Guard: our sessions must never appear on the live default server. */
-function assertNoLiveLeak(listLive: () => string | null = liveTmuxList): void {
+function assertNoLiveLeak(listLive: () => string | null): void {
   const live = listLive();
   if (live === null) return;
   expect(live, "test session leaked onto the live tmux server").not.toMatch(/agend-(auto-pause|pause-soak)-/);
@@ -119,7 +110,8 @@ describe("Daemon auto-pause lifecycle", () => {
       execFileSync("tmux", ["-L", TMUX_SOCKET, "kill-server"], { stdio: "ignore" });
     } catch { /* private server may not exist when nothing spawned */ }
     TmuxManager.setSocketName(null);
-    assertNoLiveLeak();
+    // The global native guard rejects a default-socket call BEFORE execution,
+    // including errors swallowed by cleanup. Never inspect the live server.
   });
 
   it("keeps General exempt even when auto_pause_after is configured", () => {

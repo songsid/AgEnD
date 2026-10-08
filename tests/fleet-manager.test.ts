@@ -1,3 +1,5 @@
+import { installTmuxProcessFixture } from "./helpers/tmux-process-stub.js";
+installTmuxProcessFixture();
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { FleetManager, resolveReplyThreadId } from "../src/fleet-manager.js";
 import { TopicCommands } from "../src/topic-commands.js";

@@ -347,3 +347,5 @@ describe("MCP instructions budget", () => {
     expect(s).toContain("NEVER re-send");
   });
 });
+import { installKiroCompatibilityFixture } from "./helpers/kiro-process-stub.js";
+installKiroCompatibilityFixture();

@@ -1,3 +1,4 @@
+import { TEST_KIRO_COMPAT } from "./helpers/kiro-compat.js";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { mkdtempSync, rmSync, readFileSync, existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -88,7 +89,7 @@ describe("the real backends", () => {
       const exports: Record<string, any> = await import(`../src/backend/${mod}`);
       const Ctor = Object.values(exports).find(v => typeof v === "function" && /Backend$/.test((v as any).name));
       expect(Ctor, `a backend class in ${mod}`).toBeTruthy();
-      const be = new (Ctor as any)("/tmp/probe-instance");
+      const be = new (Ctor as any)("/tmp/probe-instance", mod === "kiro.js" ? TEST_KIRO_COMPAT : undefined);
       expect(backendNeedsPaneReloadNotice(be), `${mod} still needs the notice`).toBe(true);
     }
   });

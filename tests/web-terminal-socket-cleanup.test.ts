@@ -95,7 +95,7 @@ describe("the tmux socket file", () => {
 });
 
 const haveTmux = (() => {
-  try { execFileSync("tmux", ["-V"], { stdio: "ignore" }); return true; } catch { return false; }
+  try { execFileSync("tmux", ["-L", "agend-test-availability", "-V"], { stdio: "ignore" }); return true; } catch { return false; }
 })();
 
 describe.skipIf(!haveTmux)("against the real tmux", () => {

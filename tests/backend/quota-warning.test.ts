@@ -1,3 +1,5 @@
+import { TEST_KIRO_COMPAT } from "../helpers/kiro-compat.js";
+import { KiroBackend } from "../../src/backend/kiro.js";
 import { describe, expect, it } from "vitest";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -10,7 +12,7 @@ import type { ErrorPattern } from "../../src/backend/types.js";
 // which is exactly how the `monthly limit` gap survived.
 function quotaWarning(backendName: string): ErrorPattern {
   const dir = mkdtempSync(join(tmpdir(), `quota-${backendName}-`));
-  const patterns = createBackend(backendName, dir).getErrorPatterns?.() ?? [];
+  const patterns = (backendName === "kiro-cli" ? new KiroBackend(dir, TEST_KIRO_COMPAT) : createBackend(backendName, dir)).getErrorPatterns?.() ?? [];
   const found = patterns.find(p => p.formatMessage && p.type === "quota");
   if (!found) throw new Error(`${backendName} has no formatted quota warning pattern`);
   return found;
@@ -185,7 +187,7 @@ describe("period-scoped limit patterns across backends", () => {
   it("no backend matches one period while ignoring the others", () => {
     for (const name of BACKENDS) {
       const dir = mkdtempSync(join(tmpdir(), `periods-${name}-`));
-      const patterns = createBackend(name, dir).getErrorPatterns?.() ?? [];
+      const patterns = (name === "kiro-cli" ? new KiroBackend(dir, TEST_KIRO_COMPAT) : createBackend(name, dir)).getErrorPatterns?.() ?? [];
       for (const p of patterns) {
         const src = p.pattern.source;
         const mentioned = PERIODS.filter(period => src.toLowerCase().includes(period));

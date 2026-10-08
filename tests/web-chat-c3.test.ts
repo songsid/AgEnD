@@ -1,3 +1,5 @@
+import { installTmuxProcessFixture } from "./helpers/tmux-process-stub.js";
+installTmuxProcessFixture();
 import { EventEmitter } from "node:events";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { request, type IncomingMessage, type Server, type ServerResponse } from "node:http";

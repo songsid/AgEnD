@@ -113,3 +113,5 @@ describe("parseContextPercent ignores agent pie-like prose", () => {
     expect(parseContextPercent("◑ 27%")).toBe(27);
   });
 });
+import { installKiroCompatibilityFixture } from "./helpers/kiro-process-stub.js";
+installKiroCompatibilityFixture();
