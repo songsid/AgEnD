@@ -8,21 +8,65 @@ on:
   pull_request:
     branches: [main, 'release/**']
 
+# Cancel in-progress runs for the same PR when a new commit arrives. Push runs on
+# main/release/** are deliberately NOT cancelled — they are needed for release tagging.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
 jobs:
-  build:
+  # ── docs-only guard ──────────────────────────────────────────────────────────
+  # Detect whether this run touches only docs/changes/markdown. The result is
+  # consumed by every downstream job so none of them repeat the diff. Running
+  # as its own job avoids a checkout + diff in each parallel shard.
+  #
+  # We use a job output rather than paths-ignore so the `build` check always
+  # exists and can satisfy the gate even for a pure docs commit. paths-ignore
+  # would make the check missing and the gate would block.
+  detect-changes:
     runs-on: ubuntu-latest
+    outputs:
+      docs-only: ${{ steps.check.outputs.docs-only }}
     steps:
       - uses: actions/checkout@v4
         with:
-          # The CHANGELOG guard diffs the PR against its merge-base with the PR's base branch
-          # (pull_request.base.sha: main's tip, or release/*'s for a PR into a maintenance line).
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - name: Detect whether this is a docs-only change
+        id: check
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # A push to main/release always runs the full suite — the gate needs CI.
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "docs-only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # .github/** changes must always run the full suite.
+          if git diff --name-only "$BASE_SHA...$HEAD_SHA" | grep -qE '^\.github/'; then
+            echo "docs-only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Any file outside docs/, changes/, or a root *.md triggers full CI.
+          if git diff --name-only "$BASE_SHA...$HEAD_SHA" | grep -qvE '^(docs|changes)/|^[^/]+\.md$'; then
+            echo "docs-only=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "docs-only=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ── changelog guards (no install needed) ────────────────────────────────────
+  changelog:
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.docs-only != 'true'
+    steps:
+      - uses: actions/checkout@v4
         with:
-          node-version: 22
+          fetch-depth: 0
       # CHANGELOG fragments (docs/development.md): every changes/*.md parses
       # and has its zh-TW pair, and a PR adds fragments instead of editing
       # docs/CHANGELOG*.md. Only the assemble commit (trailer
@@ -35,6 +79,18 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: node scripts/changelog-guard.mjs --base "$BASE_SHA" --head "$HEAD_SHA"
+
+  # ── setup: install, typecheck, build — shared across all shards ─────────────
+  setup:
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.docs-only != 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
       - run: npm ci
       - run: npx tsc --noEmit
       # The test suites are excluded from tsconfig.json (it emits dist/ from
@@ -43,11 +99,91 @@ jobs:
       # 308 errors before anyone looked.
       - run: npm run typecheck:tests
       - run: npm run build
-      - run: npm test
+      # Share node_modules and dist with the parallel shards so they don't
+      # repeat `npm ci` or `npm run build`.
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: |
+            dist/
+            node_modules/
+          retention-days: 1
+
+  # ── test shards ──────────────────────────────────────────────────────────────
+  test-shard:
+    runs-on: ubuntu-latest
+    needs: setup
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts
+      - name: Run test shard ${{ matrix.shard }}/4
+        run: npx vitest run --shard=${{ matrix.shard }}/4
+
+  # ── integration tests (serial, real-resource) ────────────────────────────────
+  test-integration:
+    runs-on: ubuntu-latest
+    needs: setup
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts
       # Real tmux/child-process suites run in one worker. The unit suite above
       # remains file-parallel, while this bounded serial invocation prevents
       # host scheduler contention from turning diagnostic timing into flakes.
       - run: npm run test:integration
+
+  # ── aggregate ────────────────────────────────────────────────────────────────
+  # The gate requires a check named exactly "build". This job aggregates every
+  # shard and the changelog + integration jobs; it fails when any upstream job
+  # fails. For docs-only PRs it passes immediately without running any of the
+  # heavy steps above.
+  build:
+    runs-on: ubuntu-latest
+    needs: [detect-changes, changelog, setup, test-shard, test-integration]
+    if: always()
+    steps:
+      - name: Check all jobs succeeded
+        env:
+          DOCS_ONLY: ${{ needs.detect-changes.outputs.docs-only }}
+          CHANGELOG: ${{ needs.changelog.result }}
+          SETUP: ${{ needs.setup.result }}
+          SHARD: ${{ needs.test-shard.result }}
+          INTEGRATION: ${{ needs.test-integration.result }}
+        run: |
+          set -euo pipefail
+          if [ "$DOCS_ONLY" = "true" ]; then
+            echo "Docs-only change — skipped install/test. build passes."
+            exit 0
+          fi
+          failed=()
+          for name_result in "changelog:$CHANGELOG" "setup:$SETUP" "test-shard:$SHARD" "test-integration:$INTEGRATION"; do
+            name="${name_result%%:*}"
+            result="${name_result##*:}"
+            if [ "$result" != "success" ]; then
+              failed+=("$name ($result)")
+            fi
+          done
+          if [ "${#failed[@]}" -gt 0 ]; then
+            echo "Failed jobs: ${failed[*]}" >&2
+            exit 1
+          fi
+          echo "All jobs succeeded."
 
       # Tell Discord how this run ended, whichever way it ended.
       #
