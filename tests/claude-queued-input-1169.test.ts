@@ -35,7 +35,9 @@ const NO_BOX = fixture("claude-2.1.291-bypass-dangerous-rm-prompt.pane.txt");
 const QUEUED = ["busy-queued", "busy-queued-long", "long-busy-queued", "tool-queued", "busy-queued-two", "busy-queued-under-quote"]
   .map(n => `claude-2.1.293-${n}.pane.txt`)
   // #1239's 2.1.291 capture: a message queued while Claude retried a 500 — the same row, two versions back.
-  .concat("claude-2.1.291-error-500-retrying-statusline.pane.txt");
+  .concat("claude-2.1.291-error-500-retrying-statusline.pane.txt")
+  // The 2.1.294 audit's capture: a message queued mid-turn, unchanged from 2.1.293.
+  .concat("claude-2.1.294-busy-queued.pane.txt");
 
 describe("the backend", () => {
   const backend = new ClaudeCodeBackend("/nonexistent-1169");
