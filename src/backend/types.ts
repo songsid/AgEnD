@@ -147,6 +147,14 @@ export interface ModelOption {
 /** How long a cached CLI env (`<AGEND_HOME>/cli-env/<backend>.json`) is valid; after that nothing may read it. */
 export const CLI_ENV_TTL_MS = 24 * 60 * 60 * 1000;
 
+/** What a CLI's input box holds (CliBackend.readInputRow). */
+export interface InputBox {
+  /** The typed text, rows joined with "\n", without the prompt glyph or continuation indent; "" when empty. */
+  text: string;
+  /** Pastes the CLI shows collapsed (`[Pasted text #3 +11 lines]`): the pasted text itself is NOT in `text`. */
+  collapsedPastes: number;
+}
+
 /** Result of probing a CLI backend's environment at startup (cached to disk). */
 export interface CliEnv {
   backend: string;
@@ -399,6 +407,15 @@ export interface CliBackend {
    * enough to write into a pane that may still be changing terminal modes.
    */
   isDeliveryInputReadyPane?(pane: string): boolean;
+
+  /**
+   * A structural reader for the CLI's live input box (#1200, claude-code): what the box holds right now, or null when the
+   * current screen has no box it can vouch for (a dialog, an unknown layout). Unlike `getBottomReadyPattern` it reads
+   * the box as a region — the rows between its own frame — so the transcript above and the footer below are never
+   * mistaken for input. With it the daemon can tell a delivery that left the box (submitted) from one still sitting in
+   * it (stranded), where a backend without one can only say "unverifiable".
+   */
+  readInputRow?(pane: string): InputBox | null;
 
   /**
    * Marker the CLI paints when it has accepted input into its own pending

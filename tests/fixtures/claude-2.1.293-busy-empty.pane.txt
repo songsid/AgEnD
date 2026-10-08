@@ -1,0 +1,50 @@
+
+ ▐▛███▛█   Claude Code v2.1.293
+▝▜██████▀  Opus 5.5 · API Usage Billing
+ ▝▝   ▝▝   /work/claude-audit/proj
+
+
+❯ draft one two three
+
+● mock reply 2
+
+✻ Cooked for 0s · done 7:18 AM
+
+❯ SLOW stream please
+
+●
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+✻ Spelunking… (2s · ↓ 8 tokens)
+  ⎿  Tip: Start with small features or bug fixes, tell Claude to propose a plan, and verify its suggested edits
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ok
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents
