@@ -5,10 +5,12 @@
 The fleet logs `Event loop stalled for <n>ms` when its single event loop was blocked for a second or more. Slash-command acknowledgements and gateway heartbeats can be missed during one. The warning says what it can about why:
 
 - **`slow sync work`** names the synchronous calls that ran in that window and took long enough to matter. A burst of short calls of the same kind is summed, with its count, for example `tmux.spawn=1200ms (25 calls)`. `unknown` means none of the measured calls did.
-- **`the process got <c>ms of CPU in a <g>ms gap`** compares the fleet process's own CPU time with the length of the stall:
-  - **close to the gap:** the process was running. The cause is its own synchronous work, so look at `slow sync work` or take a CPU profile.
-  - **far below it:** the process was waiting. The host's CPU was busy with other work (other processes, large test runs on the same machine), or the process was blocked in a system call such as a slow disk.
-  - This line is left out when the once-a-second probe did not land in the stall.
+- **`in the <g>ms probe gap that held it (<l>ms late, ending <time>) the main thread got <c>ms of CPU: …`** comes from a probe that ticks every 100 ms. A stall shows up as one late gap between two ticks. The CPU time in that gap says what the event loop's thread did during the stall, as far as it proves:
+  - **"the thread was running"**: even if the on-time 100 ms of the gap had been busy too, the thread still had CPU for at least 70% of the late part. The stall was synchronous work in this process. Look at `slow sync work`, or take a CPU profile.
+  - **"the thread was not running for most of it"**: the CPU was at most 30% of the late part. The thread was waiting, starved by other load on the host (other processes, large test runs on the same machine), or blocked in a system call such as a slow disk.
+  - **"not enough to tell running from waiting"**: anything in between.
+  - **`the main thread`** is that thread's own CPU (Node's `process.threadCpuUsage`). On a Node version without it, the line says **`the whole process (all threads)`**. That count includes worker threads and can exceed the gap on several cores, so it can only ever show waiting, never running.
+  - The line is left out when the window's longest gap is shorter than the stall by more than one probe interval. That gap belongs to some other, smaller stall, so it says nothing about this one. Each 30-second report counts only the gaps that ended in it.
 - **`host load a/b/c on N cores`** is the host's load average over 1, 5 and 15 minutes, and its core count, at the time of the warning.
 
 ## On-demand CPU profiles

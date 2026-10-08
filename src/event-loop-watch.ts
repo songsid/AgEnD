@@ -15,17 +15,29 @@ import { performance, monitorEventLoopDelay, PerformanceObserver } from "node:pe
 import { availableParallelism, loadavg } from "node:os";
 
 /**
- * #1235: how much CPU the process itself got during a stall. A probe ticks every PROBE_MS; a tick that arrives late
- * measures a stall, and the process's CPU time (user + system, all its threads) over that same gap says what the stall
- * was: CPU close to the gap — this process was running (its own synchronous work); CPU far below it — the process was
- * waiting: starved by other load on the host, or blocked in a system call (a slow disk). The two need opposite fixes.
+ * #1235: was the event loop's thread running during a stall, or waiting? A probe ticks every STALL_PROBE_MS; a tick
+ * that arrives late spans a stall, and the CPU time over that same gap bounds what the thread did in it. Only what the
+ * bounds prove is said:
+ *  - CPU is the main thread's own (`process.threadCpuUsage`) where Node has it. Otherwise it is the whole process's,
+ *    workers included, which can exceed the gap on several cores: an upper bound on the main thread, nothing more.
+ *  - The gap is the expected interval plus the late part. The late part got at least `cpu − interval` of CPU (the
+ *    interval may have been busy too) and at most `cpu`. "running" needs the lower bound, from the main thread's own
+ *    CPU, at STALL_BUSY_SHARE of the late part or more; "waiting" needs the upper bound at STALL_WAITING_SHARE or less.
+ *    Anything between is "unclear".
+ *  - The probe interval is short, so every stall longer than it leaves a gap within one interval of its length. The
+ *    window's longest gap is reported as the stall only when it is that close to the histogram's maximum; a shorter
+ *    gap belongs to some other, smaller stall and is not described as this one.
+ * Running and waiting need opposite fixes: the fleet's own synchronous work, or the host's load and slow system calls.
  */
-export const STALL_PROBE_MS = 1_000;
-/** CPU share of a stall at or above which the process was running it; at or below STALL_WAITING_SHARE it was waiting. */
+export const STALL_PROBE_MS = 100;
+/** Share of the late part with CPU at or above which the thread was running; at or below STALL_WAITING_SHARE, waiting. */
 export const STALL_BUSY_SHARE = 0.7;
 export const STALL_WAITING_SHARE = 0.3;
+/** monitorEventLoopDelay's resolution: how far its maximum can sit from a gap's late part beyond one probe interval. */
+const HISTOGRAM_RESOLUTION_MS = 20;
 
-interface StallProbe { lagMs: number; wallMs: number; cpuMs: number; at: number; }
+type CpuSource = "main-thread" | "process";
+interface StallProbe { lateMs: number; wallMs: number; cpuMs: number; endedAt: number; }
 
 /** A stall at least this long (of Discord's 3000 ms acknowledgement window) is logged. */
 export const EVENT_LOOP_STALL_MS = 1_000;
@@ -59,8 +71,10 @@ export function startEventLoopWatch(opts: {
   histogram?: LoopDelayHistogram;
   /** Test seam; production observes V8 GC without a polling timer. */
   gcObserver?: (receive: (entries: GcEntry[]) => void) => GcObserver;
-  /** Test seams for the CPU-share probe (#1235). */
+  /** Test seams for the CPU probe (#1235). `cpuUsage` with `cpuSource` stands in for the CPU clock Node offers. */
   cpuUsage?: () => NodeJS.CpuUsage;
+  cpuSource?: CpuSource;
+  wallClock?: () => number;
   loadAverage?: () => number[];
   cores?: number;
   probeMs?: number;
@@ -83,31 +97,42 @@ export function startEventLoopWatch(opts: {
   };
   const gcObserver = opts.gcObserver?.(receiveGc) ?? new PerformanceObserver(list => receiveGc(list.getEntries()));
   gcObserver.observe({ entryTypes: ["gc"] });
-  // The CPU-share probe (#1235): the worst late tick since the last check.
-  const cpuUsage = opts.cpuUsage ?? (() => process.cpuUsage());
+  // The CPU probe (#1235): the longest late gap since the last check.
+  const threadCpuUsage = (process as { threadCpuUsage?: () => NodeJS.CpuUsage }).threadCpuUsage;
+  const cpuSource: CpuSource = opts.cpuSource ?? (opts.cpuUsage || typeof threadCpuUsage !== "function" ? "process" : "main-thread");
+  const cpuUsage = opts.cpuUsage ?? (cpuSource === "main-thread" ? () => threadCpuUsage!.call(process) : () => process.cpuUsage());
+  const wallClock = opts.wallClock ?? Date.now;
   const probeMs = opts.probeMs ?? STALL_PROBE_MS;
   let probeAt = performance.now();
   let probeCpu = cpuUsage();
   let worstProbe: StallProbe | null = null;
+  /** Close the gap since the last tick (a tick, or a window's end) and start the next one here. */
   const probe = (): void => {
     const now = performance.now();
     const cpu = cpuUsage();
     const wallMs = now - probeAt;
-    const lagMs = wallMs - probeMs;
+    const lateMs = wallMs - probeMs;
     const cpuMs = (cpu.user - probeCpu.user + cpu.system - probeCpu.system) / 1_000;
     probeAt = now; probeCpu = cpu;
-    if (lagMs > 0 && (!worstProbe || lagMs > worstProbe.lagMs)) worstProbe = { lagMs, wallMs, cpuMs, at: now };
+    if (lateMs > 0 && (!worstProbe || lateMs > worstProbe.lateMs)) worstProbe = { lateMs, wallMs, cpuMs, endedAt: wallClock() };
   };
   const probeTimer = setInterval(probe, probeMs);
   probeTimer.unref?.();
-  const cpuShareOf = (p: StallProbe) => {
-    const share = p.wallMs > 0 ? Math.min(1, p.cpuMs / p.wallMs) : 0;
-    const verdict = share >= STALL_BUSY_SHARE ? "running" : share <= STALL_WAITING_SHARE ? "waiting" : "mixed";
-    return { stallWallMs: Math.round(p.wallMs), processCpuMs: Math.round(p.cpuMs), share: Math.round(share * 100) / 100, verdict };
+  const describeGap = (p: StallProbe) => {
+    const verdict = p.cpuMs <= STALL_WAITING_SHARE * p.lateMs ? "waiting"
+      : cpuSource === "main-thread" && p.cpuMs - (p.wallMs - p.lateMs) >= STALL_BUSY_SHARE * p.lateMs ? "running"
+      : "unclear";
+    return {
+      gapStartedAt: new Date(p.endedAt - p.wallMs).toISOString(), gapEndedAt: new Date(p.endedAt).toISOString(),
+      gapMs: Math.round(p.wallMs), lateMs: Math.round(p.lateMs), cpuMs: Math.round(p.cpuMs), cpuOf: cpuSource, verdict,
+    } as const;
   };
 
   let lastCheckAt = performance.now();
   const check = (): number => {
+    // The window ends here for the probe too: a gap still open (a stall that ended just before this check ran) is this
+    // window's, and the next window's first gap starts now — never a gap that crosses the boundary.
+    probe();
     const now = performance.now();
     // Flush entries whose asynchronous observer callback has not run yet.
     receiveGc(gcObserver.takeRecords());
@@ -120,14 +145,14 @@ export function startEventLoopWatch(opts: {
     const stallProbe = worstProbe;
     worstProbe = null;
     if (maxMs >= thresholdMs) {
-      // The probe's worst late tick covers this window's stall when it saw one at least half as long; otherwise the
-      // probe tick did not land in it (it ticks once a second), and saying nothing beats a guess.
-      const cpu = stallProbe && stallProbe.lagMs >= maxMs / 2 ? cpuShareOf(stallProbe) : null;
+      // The longest gap is this stall only when it is within one probe interval (and the histogram's resolution) of it.
+      const cpu = stallProbe && stallProbe.lateMs >= maxMs - probeMs - HISTOGRAM_RESOLUTION_MS ? describeGap(stallProbe) : null;
       const load = (opts.loadAverage ?? loadavg)().map(v => Math.round(v * 100) / 100);
       const cores = opts.cores ?? availableParallelism();
       const cpuText = cpu
-        ? `; the process got ${cpu.processCpuMs}ms of CPU in a ${cpu.stallWallMs}ms gap (${cpu.verdict === "running" ? "it was running: its own synchronous work"
-          : cpu.verdict === "waiting" ? "it was waiting: starved by other load on the host, or blocked in a system call" : "partly running, partly waiting"})`
+        ? `; in the ${cpu.gapMs}ms probe gap that held it (${cpu.lateMs}ms late, ending ${cpu.gapEndedAt}) ${cpu.cpuOf === "main-thread" ? "the main thread" : "the whole process (all threads)"} got ${cpu.cpuMs}ms of CPU: ${cpu.verdict === "running" ? "the thread was running (synchronous work in this process)"
+          : cpu.verdict === "waiting" ? "the thread was not running for most of it (blocked in a system call, or starved by other load on the host)"
+          : "not enough to tell running from waiting"}`
         : "";
       opts.logger.warn({
         maxMs,
