@@ -18,7 +18,7 @@ import type { InteractionSnapshot } from "./backend/types.js";
 import { presentationState, interactionSummary } from "./interaction-observation.js";
 import { truncatePreview } from "./channel/markdown-chunk.js";
 import { crossInstanceVisibility, senderTopicNotice, targetTopicNotice } from "./cross-instance-notice.js";
-import { backendSupportsSteer } from "./steer-capability.js";
+import { instanceSupportsSteer } from "./steer-capability.js";
 import { assignDisplayLabels, displayInstanceName, readStatuslineModel } from "./topic-commands.js";
 import { credentialProfileLogin, credentialSwitchStartsFresh, instanceCredentialProfile } from "./backend/credential-profile.js";
 import { kiroEngineCandidates, kiroEngineStatus } from "./kiro-engine-status.js";
@@ -122,6 +122,8 @@ export interface OutboundContext {
   isInstanceRestarting?(instanceName: string): boolean;
   /** True while an earlier idle-gated delivery still owns this target's FIFO tail. */
   hasPendingIdleGatedDelivery?(instanceName: string): boolean;
+  /** The running launch's own steer capability (CliBackend.supportsSteer, #1405); undefined when it has none to give. */
+  instanceLaunchSupportsSteer?(instanceName: string): boolean | undefined;
   saveFleetConfig(): void;
   queueMirrorMessage?(text: string): void;
   getAdapterForInstance?(name: string): ChannelAdapter | null;
@@ -405,7 +407,7 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   const steerCapable = steer === true
     && !isExternalSession
     && targetBackend !== undefined
-    && backendSupportsSteer(targetBackend);
+    && instanceSupportsSteer(targetBackend, ctx.instanceLaunchSupportsSteer?.(targetInstanceName));
   // A supplement must not jump ahead of the work it is meant to amend. The
   // facade publishes its idle-gated tail synchronously, so a send immediately
   // followed by steer observes the predecessor and joins the same FIFO queue.
