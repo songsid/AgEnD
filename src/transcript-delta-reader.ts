@@ -11,6 +11,7 @@
  */
 import { open, stat } from "node:fs/promises";
 import { transcriptDeltaDeliveryMarker, type TranscriptMarkerKind } from "./delivery-reconciliation.js";
+import { measureSyncWork } from "./sync-work-attribution.js";
 
 export const TRANSCRIPT_PROOF_READ = {
   /** Bytes one look reads past the reader's position. */
@@ -53,7 +54,7 @@ export class TranscriptDeltaReader {
       if (got === "unavailable") return "unavailable";
       if (got === null) return "no-match";
       this.position += got.length;
-      return this.scan(got) ?? "no-match";
+      return measureSyncWork("transcriptProof.scan", () => this.scan(got)) ?? "no-match";
     } catch {
       return "unavailable";
     } finally {

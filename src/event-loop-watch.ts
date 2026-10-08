@@ -10,7 +10,7 @@
  * stall in the log, with how long it was, so the cause can be found instead of
  * guessed at. Observation only: it changes nothing about scheduling.
  */
-import { slowSyncWorkSince } from "./sync-work-attribution.js";
+import { closeSyncWorkBursts, slowSyncWorkSince } from "./sync-work-attribution.js";
 import { performance, monitorEventLoopDelay, PerformanceObserver } from "node:perf_hooks";
 
 /** A stall at least this long (of Discord's 3000 ms acknowledgement window) is logged. */
@@ -71,6 +71,8 @@ export function startEventLoopWatch(opts: {
     receiveGc(gcObserver.takeRecords());
     const gcWork = gcPauses.filter(entry => entry.endedAt > lastCheckAt && entry.startedAt <= now).map(entry => ({ ...entry }));
     const syncWork = slowSyncWorkSince(lastCheckAt, now);
+    // This window is sampled: work after this point is the next window's, never added to what was just reported.
+    closeSyncWorkBursts();
     lastCheckAt = now;
     const maxMs = Math.round(histogram.max / 1e6);
     if (maxMs >= thresholdMs) {
@@ -80,7 +82,7 @@ export function startEventLoopWatch(opts: {
         gcPauses: gcWork,
         p99Ms: Math.round(histogram.percentile(99) / 1e6),
         meanMs: Math.round(histogram.mean / 1e6),
-      }, `Event loop stalled for ${maxMs}ms — Discord slash commands (3s to acknowledge) and gateway heartbeats arriving then could be missed${syncWork.length ? `; slow sync work: ${syncWork.map(entry => `${entry.caller}=${entry.durationMs}ms`).join(", ")}` : "; slow sync work: unknown"}${gcWork.length ? `; GC pauses: ${gcWork.map(entry => `kind ${entry.kind}=${entry.durationMs}ms`).join(", ")}` : ""}`);
+      }, `Event loop stalled for ${maxMs}ms — Discord slash commands (3s to acknowledge) and gateway heartbeats arriving then could be missed${syncWork.length ? `; slow sync work: ${syncWork.map(entry => `${entry.caller}=${entry.durationMs}ms${entry.count ? ` (${entry.count} calls)` : ""}`).join(", ")}` : "; slow sync work: unknown"}${gcWork.length ? `; GC pauses: ${gcWork.map(entry => `kind ${entry.kind}=${entry.durationMs}ms`).join(", ")}` : ""}`);
     }
     histogram.reset();
     return maxMs;
