@@ -22,6 +22,7 @@ export class TranscriptMonitor extends EventEmitter {
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private offsetFile: string;
   private polling = false; // reentry guard for pollIncrement
+  private generation = 0;
 
   constructor(
     private instanceDir: string,
@@ -104,11 +105,13 @@ export class TranscriptMonitor extends EventEmitter {
   }
 
   private async pollSource(): Promise<void> {
+    const generation = this.generation;
     try {
       const events = await this.source!.poll();
-      for (const use of events.toolUses) this.emit("tool_use", use.name, use.input);
-      for (const result of events.toolResults) this.emit("tool_result", result.name, undefined);
-      for (const text of events.assistantTexts) this.emit("assistant_text", text);
+      if (generation !== this.generation) return;
+      for (const use of events.toolUses) { if (generation !== this.generation) return; this.emit("tool_use", use.name, use.input); }
+      for (const result of events.toolResults) { if (generation !== this.generation) return; this.emit("tool_result", result.name, undefined); }
+      for (const text of events.assistantTexts) { if (generation !== this.generation) return; this.emit("assistant_text", text); }
     } catch (err) {
       this.logger.debug({ err }, "TranscriptSource poll error");
     }
@@ -185,7 +188,10 @@ export class TranscriptMonitor extends EventEmitter {
     this.pollTimer = setInterval(() => this.pollIncrement(), intervalMs);
   }
 
+  async initialize(): Promise<void> { await this.source?.initialize?.(); }
+
   stop(): void {
+    this.generation++;
     if (this.pollTimer) {
       clearInterval(this.pollTimer);
       this.pollTimer = null;
@@ -204,6 +210,7 @@ export class TranscriptMonitor extends EventEmitter {
   }
 
   resetOffset(): void {
+    this.generation++;
     this.byteOffset = 0;
     this.transcriptPath = null;
     this.source?.reset();

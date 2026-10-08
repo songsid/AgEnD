@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { monitorEventLoopDelay } from "node:perf_hooks";
 import Database from "better-sqlite3";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { KiroSessionSource } from "../src/transcript-sources.js";
+import { KiroDbReader } from "../src/kiro-db-reader.js";
 import { TranscriptMonitor } from "../src/transcript-monitor.js";
 
 const ROOT = mkdtempSync(join(tmpdir(), "agend-1048-"));
@@ -63,7 +63,7 @@ describe("the kiro poll is cheap when nothing changed (#1048)", () => {
     // (length(value) counts characters; created_at sits after value). A
     // column before `value`, one the chosen index carries, or
     // octet_length(value) (the record header) costs nothing.
-    const source = new KiroSessionSource(dirs[0]!, sessionsDir, Date.now(), dbPath);
+    const source = new KiroDbReader(dirs[0]!, dbPath, Date.now());
     try {
       await source.poll();
       const sql: string = (source as any).newestRowStmt.source;
@@ -92,7 +92,7 @@ describe("the kiro poll is cheap when nothing changed (#1048)", () => {
   });
 
   it("a round of idle polls over ~75 MB of conversations stays far below one parse", async () => {
-    const sources = dirs.map(d => new KiroSessionSource(d, sessionsDir, Date.now(), dbPath));
+    const sources = dirs.map(d => new KiroDbReader(d, dbPath, Date.now()));
     try {
       for (const s of sources) await s.poll(); // warm: statements prepared, pages cached
       const lag = monitorEventLoopDelay({ resolution: 1 });
@@ -129,7 +129,7 @@ describe("one store handle, and changes still seen", () => {
       .run(dir, "c1", conversation(3), Date.now() - 60_000, 1_000);
     return { dbPath, db, dir };
   };
-  const sources: KiroSessionSource[] = [];
+  const sources: KiroDbReader[] = [];
   const stores: Database.Database[] = [];
   afterEach(() => {
     for (const s of sources.splice(0)) s.close();
@@ -138,16 +138,48 @@ describe("one store handle, and changes still seen", () => {
 
   it("keeps one handle across polls instead of reopening the store", async () => {
     const { dbPath, db, dir } = fresh(); stores.push(db);
-    const source = new KiroSessionSource(dir, sessionsDir, Date.now(), dbPath); sources.push(source);
+    const source = new KiroDbReader(dir, dbPath, Date.now()); sources.push(source);
     const handle = (source as any).db;
     expect(handle).toBeTruthy();
     for (let i = 0; i < 5; i++) await source.poll();
     expect((source as any).db).toBe(handle);
   });
 
+  it("opens only read-only handles and keyed queries cannot select a foreign row", async () => {
+    const { dbPath, db, dir } = fresh(); stores.push(db);
+    db.prepare("INSERT INTO conversations_v2 VALUES(?,?,?,?,?)").run("/foreign", "c1", conversation(0, [entry(99, "foreign")]), 0, 999999);
+    const source = new KiroDbReader(dir, dbPath, Date.now()); sources.push(source);
+    expect((source as any).db.readonly).toBe(true);
+    db.prepare("UPDATE conversations_v2 SET value=?,updated_at=2000 WHERE key=?").run(conversation(3, [entry(9, "ours")]), dir);
+    expect((await source.poll()).toolUses.map(x => x.name)).toEqual(["ours"]);
+    const statement = (source as any).historyStmt;
+    const plan = db.prepare(`EXPLAIN QUERY PLAN ${statement.source}`).all(dir, "c1") as Array<{detail: string}>;
+    expect(plan.map(x => x.detail).join(" ")).toMatch(/SEARCH .*USING INDEX sqlite_autoindex/);
+  });
+  it("compaction becomes the new baseline, then later tool results retain their names", async () => {
+    const { dbPath, db, dir } = fresh(); stores.push(db);
+    const source = new KiroDbReader(dir, dbPath, Date.now()); sources.push(source);
+    const update = (history: unknown[], updated: number) => db.prepare("UPDATE conversations_v2 SET value=?,updated_at=? WHERE key=?").run(JSON.stringify({history}), updated, dir);
+    update([entry(10, "summary")], 2000); expect((await source.poll()).toolUses).toEqual([]);
+    update([entry(10, "summary"), entry(11, "live")], 3000); expect((await source.poll()).toolUses.map(x => x.name)).toEqual(["live"]);
+    update([entry(10, "summary"), entry(11, "live"), {user:{content:{ToolUseResults:{tool_use_results:[{tool_use_id:"t11"}]}}}}], 4000);
+    expect((await source.poll()).toolResults).toEqual([{name:"live"}]);
+    expect((await source.poll()).toolResults).toEqual([]);
+  });
+  it("new conversations emit from zero; an older resume is baselined without replay", async () => {
+    const { dbPath, db, dir } = fresh(); stores.push(db);
+    const source = new KiroDbReader(dir, dbPath, Date.now()); sources.push(source);
+    const insert = db.prepare("INSERT INTO conversations_v2 VALUES(?,?,?,?,?)");
+    insert.run(dir,"fresh",conversation(0,[entry(50,"new")]),Date.now()+1000,2000);
+    expect((await source.poll()).toolUses.map(x=>x.name)).toEqual(["new"]);
+    insert.run(dir,"resume",conversation(0,[entry(60,"old")]),0,3000);
+    expect((await source.poll()).toolUses).toEqual([]);
+    db.prepare("UPDATE conversations_v2 SET value=?,updated_at=4000 WHERE key=? AND conversation_id='resume'").run(conversation(0,[entry(60,"old"),entry(61,"next")]),dir);
+    expect((await source.poll()).toolUses.map(x=>x.name)).toEqual(["next"]);
+  });
   it("sees a save that kept updated_at but changed the size", async () => {
     const { dbPath, db, dir } = fresh(); stores.push(db);
-    const source = new KiroSessionSource(dir, sessionsDir, Date.now(), dbPath); sources.push(source);
+    const source = new KiroDbReader(dir, dbPath, Date.now()); sources.push(source);
     expect((await source.poll()).toolUses).toEqual([]);
     // Two saves inside one millisecond share an updated_at.
     db.prepare("UPDATE conversations_v2 SET value = ? WHERE conversation_id = 'c1'")
@@ -157,7 +189,7 @@ describe("one store handle, and changes still seen", () => {
 
   it("does not re-read or re-parse an unchanged conversation", async () => {
     const { dbPath, db, dir } = fresh(); stores.push(db);
-    const source = new KiroSessionSource(dir, sessionsDir, Date.now(), dbPath); sources.push(source);
+    const source = new KiroDbReader(dir, dbPath, Date.now()); sources.push(source);
     await source.poll();
     const parse = JSON.parse;
     let parses = 0;
@@ -170,7 +202,7 @@ describe("one store handle, and changes still seen", () => {
 
   it("follows a replaced store file instead of reading the old one forever", async () => {
     const { dbPath, db, dir } = fresh(); stores.push(db);
-    const source = new KiroSessionSource(dir, sessionsDir, Date.now(), dbPath); sources.push(source);
+    const source = new KiroDbReader(dir, dbPath, Date.now()); sources.push(source);
     await source.poll();
     // Kiro writes a new store and moves it into place (new inode).
     const next = `${dbPath}.next`;
@@ -187,7 +219,7 @@ describe("one store handle, and changes still seen", () => {
 
   it("a stopped monitor releases the handle, and polling again reacquires it", async () => {
     const { dbPath, db, dir } = fresh(); stores.push(db);
-    const source = new KiroSessionSource(dir, sessionsDir, Date.now(), dbPath); sources.push(source);
+    const source = new KiroDbReader(dir, dbPath, Date.now()); sources.push(source);
     const monitor = new TranscriptMonitor(join(ROOT, `inst-${n}`), { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} } as any, source);
     monitor.startPolling(10);
     await new Promise(r => setTimeout(r, 40));
