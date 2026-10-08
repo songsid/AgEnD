@@ -22,6 +22,7 @@ import { open, stat } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
 import { transcriptDeltaDeliveryMarker } from "./delivery-reconciliation.js";
 import type { ConsumedVia } from "./delivery-outbox.js";
+import { measureSyncWork } from "./sync-work-attribution.js";
 
 export const CONSUMED_WATCH = {
   /** Watches alive at once across the fleet. */
@@ -131,7 +132,7 @@ export class ConsumedWatch {
       if (!this.stillLive()) return;
       if (!chunk) return this.end("unavailable");
       this.offset += chunk.length;
-      const found = this.scan(chunk);
+      const found = measureSyncWork("consumedWatch.scan", () => this.scan(chunk));
       if (found) {
         this.target.consumed(found.via, found.evidence);
         return this.end("consumed");

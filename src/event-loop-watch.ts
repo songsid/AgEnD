@@ -80,7 +80,7 @@ export function startEventLoopWatch(opts: {
         gcPauses: gcWork,
         p99Ms: Math.round(histogram.percentile(99) / 1e6),
         meanMs: Math.round(histogram.mean / 1e6),
-      }, `Event loop stalled for ${maxMs}ms — Discord slash commands (3s to acknowledge) and gateway heartbeats arriving then could be missed${syncWork.length ? `; slow sync work: ${syncWork.map(entry => `${entry.caller}=${entry.durationMs}ms`).join(", ")}` : "; slow sync work: unknown"}${gcWork.length ? `; GC pauses: ${gcWork.map(entry => `kind ${entry.kind}=${entry.durationMs}ms`).join(", ")}` : ""}`);
+      }, `Event loop stalled for ${maxMs}ms — Discord slash commands (3s to acknowledge) and gateway heartbeats arriving then could be missed${syncWork.length ? `; slow sync work: ${syncWork.map(entry => `${entry.caller}=${entry.durationMs}ms${entry.count ? ` (${entry.count} calls)` : ""}`).join(", ")}` : "; slow sync work: unknown"}${gcWork.length ? `; GC pauses: ${gcWork.map(entry => `kind ${entry.kind}=${entry.durationMs}ms`).join(", ")}` : ""}`);
     }
     histogram.reset();
     return maxMs;
