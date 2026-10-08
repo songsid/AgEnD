@@ -52,7 +52,7 @@ describe("Telegram command-menu registration", () => {
     for (const payload of fleetPayloads) {
       expect(payload.commands.map((c: { command: string }) => c.command)).toEqual([
         "status", "sysinfo", "dashboard", "ctx", "compact", "steer", "btw", "clear", "model", "effort",
-        "pause", "wake", "restart", "collab", "update", "doctor", "login", "usage", "tips", "visibility",
+        "pause", "wake", "restart", "collab", "update", "profile", "doctor", "login", "usage", "tips", "visibility",
       ]);
       expect(payload.commands.find((c: { command: string }) => c.command === "login")?.description)
         .toBe("🔒 Sign in or install a CLI backend remotely (beta)");
@@ -67,7 +67,7 @@ describe("Telegram command-menu registration", () => {
         .toEqual(["start", "stop", "compact", "steer", "btw", "clear", "model", "pause", "wake", "ctx"]);
     }
     expect(info).toHaveBeenCalledWith(
-      expect.objectContaining({ adapterId: "telegram-main", fleetCommandCount: 20, classicCommandCount: 10 }),
+      expect.objectContaining({ adapterId: "telegram-main", fleetCommandCount: 21, classicCommandCount: 10 }),
       expect.stringContaining("Registered Telegram bot commands"),
     );
     expect(warn).not.toHaveBeenCalled();

@@ -2,7 +2,18 @@
 
 ## On-demand CPU profiles
 
-The local OS operator can record the fleet's main-thread CPU profile at its next cold start:
+The local OS operator can record the running fleet’s main-thread CPU profile without restarting:
+
+```sh
+agend profile          # 60 seconds
+agend profile 120      # 1–1,800 seconds
+```
+
+The CLI waits for completion and prints the local file path. If no fleet control socket is available, it errors instead of starting a fleet. A recording already in progress (including saving or the startup environment capture) refuses another request and reports remaining seconds. The request uses only `AGEND_HOME/operator/profile.sock`: an owned real root without group/other write permission, a 0700 operator directory and a 0600 owned Unix socket. No TCP listener, inspector port, HTTP entry or MCP tool is added. The directory gates the socket even before socket chmod completes; requests are size-limited with finite input/result waits. Agent environments carrying `AGEND_INSTANCE_NAME` are refused before any filesystem/socket operation. This is a same-OS-user operator boundary, not a sandbox against code already running under that user or able to change its environment.
+
+An explicit fleet admin can use `/profile [seconds]` in **General** (native slash only on Discord; typed command on Telegram). The owner adapter’s nonempty `allowed_users` is required. The immediate acknowledgement returns without holding the channel handler open; completion posts the local path and size in that same General, guarded against replacement bindings and shutdown. The profile file itself is never uploaded.
+
+The startup environment path is also retained:
 
 ```sh
 AGEND_CPU_PROFILE_SECONDS=60 agend fleet start
@@ -15,7 +26,7 @@ The variable is read only by the cold `fleet start` path (including a cold singl
 - Output: `AGEND_HOME/profiles/fleet-cpu-*.cpuprofile` (normally `~/.agend/profiles/`), 0600 files in an operator-owned real 0700 directory. Symlinks/non-owned artifacts fail closed. Rotation retains five owned artifacts, at most 20 MiB each; unrelated files are untouched. Oversized output is discarded, never truncated into invalid JSON.
 - The artifact size cap is **not** a byte cap on V8's native recording memory or the JSON serialization allocation. Sampling and duration limit ordinary growth, but profiling itself consumes memory/CPU and serialization can add a stall. Start with a short capture on a memory-constrained host.
 
-The log prints the saved path. Open the file manually in a compatible CPU-profile viewer (for example Chrome DevTools' Performance panel); compare the stacks and timestamps with the stall warnings. Profiles contain source paths/function names and may expose sensitive script URLs. They are never posted to a channel or served by the web UI automatically. Abrupt process termination can lose the capture.
+The log prints the saved path. Open the file manually in a compatible CPU-profile viewer (for example Chrome DevTools' Performance panel); compare the stacks and timestamps with the stall warnings. Profiles contain source paths/function names and may expose sensitive script URLs. The files are never posted to a channel or served by the web UI automatically; an admin `/profile` request posts only its local path and size in General. Abrupt process termination can lose the capture.
 
 `agend doctor` and the text output of `agend fleet status` include:
 

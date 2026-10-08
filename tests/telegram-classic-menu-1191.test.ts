@@ -53,7 +53,7 @@ const tg = (over: Partial<ChannelConfig> = {}): ChannelConfig =>
 const FLEET_MENU = [
   ["status", "🔒 "], ["sysinfo", ""], ["dashboard", "🔒 "], ["ctx", ""], ["compact", ""], ["steer", ""], ["btw", ""],
   ["clear", "🔒 "], ["model", "🔒 "], ["effort", "🔒 "], ["pause", "🔒 "], ["wake", "🔒 "], ["restart", "🔒 "],
-  ["collab", ""], ["update", "🔒 "], ["doctor", "🔒 "], ["login", "🔒 "], ["usage", ""], ["tips", ""], ["visibility", "🔒 "],
+  ["collab", ""], ["update", "🔒 "], ["profile", "🔒 "], ["doctor", "🔒 "], ["login", "🔒 "], ["usage", ""], ["tips", ""], ["visibility", "🔒 "],
 ];
 const CLASSIC_MENU = [
   ["start", ""], ["stop", "🔒 "], ["compact", "🔒 "], ["steer", ""], ["btw", ""], ["clear", "🔒 "], ["model", "🔒 "],
