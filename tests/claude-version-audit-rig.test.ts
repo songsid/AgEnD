@@ -46,6 +46,13 @@ describe("the audit rig under set -u", () => {
     expect(r.calls).toContain(`ANTHROPIC_API_KEY=sk-ant-api03-${"test".repeat(22)}-testtestAA`);
   });
 
+  it("OLD/NEW pick the pair audited: its own socket, and the default stays the 2.1.294 audit's", () => {
+    const r = rig(`start k295 2.1.295 "$A/h/k295" "$A/w/k295"; echo "$OLD $NEW $SOCK"`, { OLD: "294", NEW: "295" });
+    expect(r.status).toBe(0);
+    expect(r.calls).toMatch(/^tmux -L cc295audit new-session -d -s k295 /m);
+    expect(rig(`echo "$OLD $NEW $SOCK" >&2; false`).stderr).toContain("292 294 cc294audit");
+  });
+
   it("gencmd without its optional resume argument builds the command", () => {
     const r = rig(`gencmd 292 p`);
     expect(r.stderr).not.toContain("unbound variable");
