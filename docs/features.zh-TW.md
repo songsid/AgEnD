@@ -200,6 +200,11 @@ agent 可以在 Discord 和 Telegram 傳送貼圖（2.1.12 起）。兩個平台
 
 跨 instance 的傳送只要 fleet 一接手就會立刻回傳（`{ sent, queued }`，附上 `operation_id` / `delivery_id`）；之後由 fleet 透過持久化的 outbox 負責投遞。`delivery_status` 可以查出某次投遞進行到哪裡，查詢時要剛好指定 `delivery_id`、`operation_id`、`correlation_id` 或 `message_id` 其中之一（可用 `limit` 分頁，最多 100 筆，搭配 `cursor`）。一筆紀錄會經過 `queued`、`delivering`、`submission_started`、`reconciliation_pending`、`retry_wait`，最後變成 `delivered`、`failed`、`uncertain` 或 `cancelled`。`uncertain` 代表訊息可能已經送達，不要貿然重送。
 
+每筆紀錄也會說明它怎麼被投遞、到了 CLI 之後怎麼了（#1201）：
+- `delivery_mode`：`steer`（插進進行中的回合）或 `idle_queue`（作為下一則訊息），與 `send_to_instance` 回報的一致。
+- `submission_mode`：最近一次嘗試的寫入方式：`idle_submit`、`steer`、`native_queue_handoff`（交給忙碌中 CLI 自己的佇列）或 `raw_paste`。
+- `consumed_at` / `consumed_via`：steer 或交給原生佇列的訊息，早在模型讀到之前就已被 CLI 收進輸入；Claude Code 會在下一個工具結束時或回合結束時才取用。當 CLI 的 transcript（claude-code、codex）顯示這則投遞自己的 marker 被取用，就記下時間，以及它是作為自己的回合（`turn`）還是併入進行中的回合（`mid_turn`）。這也是唯一能把 `uncertain` 變成 `delivered` 的情況；此時尚未寄給寄件者的失敗通知會被撤回。找不到 marker 絕不改變任何紀錄。
+
 instance 只看得到自己送出或收到的紀錄（身分取自它自己的 socket 或 token，絕不取自參數）。用收到的訊息的 `message_id` 去查，就能確認同伴傳來的訊息真的經過 fleet：回傳「Delivery not found」就代表不是。每種工具權限組合都有 `delivery_status`，連 `minimal` 也有。
 
 ### `awaiting_input`

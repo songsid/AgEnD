@@ -1,4 +1,4 @@
-import { appendFileSync, mkdtempSync, rmSync, statSync, truncateSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdtempSync, readFileSync, rmSync, statSync, truncateSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -275,6 +275,44 @@ describe("durable transcript marker reconciliation", () => {
     expect(result).toMatchObject({ delivered: 1, retry: 0, uncertain: 0, safeToStart: true });
     expect(h.outbox.get(h.row.deliveryId)?.state).toBe("delivered");
     h.outbox.close();
+  });
+
+  describe("a steer Claude Code absorbed into a running turn counts as consumed after a restart (#1201)", () => {
+    /** The live 2.1.293 capture of a steer taken at a tool boundary: enqueue, remove (absorbed_mid_turn), queued_command. */
+    const MID_TURN = readFileSync(join(__dirname, "..", "tests", "fixtures", "claude-2.1.293-steer-consumed-mid-turn.transcript.jsonl"), "utf8");
+    const CAPTURED_ID = "5b0c1d2e-0000-4000-8000-000000000003";
+    const reconcileSteer = async (transcript: (deliveryId: string) => string) => {
+      const root = mkdtempSync(join(tmpdir(), "agend-reconciliation-absorbed-"));
+      roots.push(root);
+      const transcriptPath = join(root, "session.jsonl");
+      writeFileSync(transcriptPath, "");
+      const h = makeAttempt({ enterStarted: true, backend: "claude-code", submissionMode: "steer", transcriptPath, transcriptOffset: 0 });
+      writeFileSync(transcriptPath, transcript(h.row.deliveryId));
+      const result = await finishTargetReconciliation(h.outbox, {
+        targetInstance: "worker", sessionName: "test-session", savedWindowId: "@old-worker",
+        attempts: [{ candidate: h.candidate, paneWindowId: "@old-worker", panePid: null, pane: "", paneCaptureError: null }],
+      }, true);
+      const state = h.outbox.get(h.row.deliveryId)?.state;
+      h.outbox.close();
+      return { result, state };
+    };
+
+    it("the captured mid-turn shape → delivered (it used to read as merely queued, so the steer stayed uncertain with a ⚠️)", async () => {
+      const { result, state } = await reconcileSteer(id => MID_TURN.split(CAPTURED_ID).join(id));
+      expect(state).toBe("delivered");
+      expect(result).toMatchObject({ delivered: 1, uncertain: 0 });
+    });
+
+    it("only the enqueue (accepted, not taken) → still uncertain", async () => {
+      const enqueueOnly = (id: string) => MID_TURN.split("\n").filter(l => !/"remove"|queued_command/.test(l)).join("\n").split(CAPTURED_ID).join(id);
+      const { state } = await reconcileSteer(enqueueOnly);
+      expect(state).toBe("uncertain");
+    });
+
+    it("another delivery's absorbed message proves nothing about this one", async () => {
+      const { state } = await reconcileSteer(() => MID_TURN);
+      expect(state).toBe("uncertain");
+    });
   });
 
   describe("a restart does not replay a Claude Code delivery that its transcript shows (#1205)", () => {
