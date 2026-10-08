@@ -456,7 +456,8 @@ describe("tip button flow", () => {
       isAdvancedTipsUnlocked: vi.fn(() => false),
       unlockAdvancedTips,
     } };
-    fm.fleetConfig = { defaults: {}, instances: { general: { general_topic: true } } } as any;
+    // The unlock is a persistent setting: only a fleet admin of the clicking adapter may confirm it (#754 audit).
+    fm.fleetConfig = { channels: [{ id: "discord-main", type: "discord", group_id: "fleet", access: { mode: "locked", allowed_users: ["owner"] } }], defaults: {}, instances: { general: { general_topic: true } } } as any;
 
     expect(await (fm as any).promptAdvancedTipUnlock(
       "general", adapter, "fleet", "general-topic",
@@ -471,10 +472,10 @@ describe("tip button flow", () => {
       chatId: "fleet",
       threadId: "general-topic",
       messageId: "unlock-message",
-      userId: "reader",
+      userId: "owner",
     }, "discord-main", adapter);
 
-    expect(unlockAdvancedTips).toHaveBeenCalledWith("reader");
+    expect(unlockAdvancedTips).toHaveBeenCalledWith("owner");
     expect(editMessageRemoveButtons).toHaveBeenCalledWith(
       "fleet", "unlock-message", expect.stringContaining("unlocked"), "general-topic",
     );

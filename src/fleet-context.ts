@@ -168,6 +168,8 @@ export interface FleetContext {
     adapter: import("./channel/types.js").ChannelAdapter,
     chatId: string,
     threadId?: string,
+    /** The adapter the menu is posted through: a click must come back through the same one (#754 audit). */
+    adapterId?: string,
   ): Promise<string | null>;
 
   /** Configured effort for an instance, for display (null when unset). */
@@ -184,6 +186,8 @@ export interface FleetContext {
     adapter: import("./channel/types.js").ChannelAdapter,
     chatId: string,
     threadId?: string,
+    /** The adapter the menu is posted through: a click must come back through the same one (#754 audit). */
+    adapterId?: string,
   ): Promise<string | null>;
 
   /**

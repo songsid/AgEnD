@@ -2170,9 +2170,11 @@ instances:
   it("removes Telegram's /model keyboard and reuses its message for progress", async () => {
     const fm = new FleetManager(tmpDir);
     fm.fleetConfig = {
+      // "admin" is a fleet admin of the telegram adapter: the click re-checks it (#754 audit).
+      channel: { type: "telegram", group_id: "chat-1", access: { mode: "locked", allowed_users: ["admin"] } },
       defaults: {},
       instances: { worker: instance({ working_directory: "/tmp/worker", model: "gpt-5.6" }) },
-    };
+    } as any;
     vi.spyOn(fm as any, "getModelOptions").mockResolvedValue([
       { id: "gpt-5.6", label: "GPT-5.6" },
       { id: "gpt-5.4", label: "GPT-5.4" },
@@ -2189,7 +2191,7 @@ instances:
       sendText,
     } as any;
 
-    await fm.promptModelMenu("worker", "admin", "topic-1", adapter, "chat-1", "topic-1");
+    await fm.promptModelMenu("worker", "admin", "topic-1", adapter, "chat-1", "topic-1", "telegram");
     const choice = promptUser.mock.calls[0][2].find(
       (item: { id: string }) => item.id.endsWith(":gpt-5.4"),
     );
@@ -2199,7 +2201,7 @@ instances:
       threadId: "topic-1",
       messageId: "menu-message",
       userId: "admin",
-    });
+    }, "telegram");
 
     expect(editMessageRemoveButtons).toHaveBeenCalledWith(
       "chat-1",
