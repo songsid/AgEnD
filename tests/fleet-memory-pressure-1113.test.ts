@@ -8,6 +8,8 @@ import type { HostMemory } from "../src/host-memory.js";
 import { TmuxManager } from "../src/tmux-manager.js";
 
 vi.mock("../src/sd-notify.js", () => ({ sdNotify: vi.fn(), sdNotifyBlocking: vi.fn() }));
+// Keep the constructor on the injected reader path on every test host; Darwin policy is selected below.
+vi.mock("node:os", async importOriginal => ({ ...await importOriginal<typeof import("node:os")>(), platform: () => "linux" }));
 const MiB = 1024 * 1024;
 const memory = (available = 4_000, swap = 4_000): HostMemory => ({ totalBytes: 16_000 * MiB,
   availableBytes: available * MiB, availableKind: "available", swapTotalBytes: 8_000 * MiB, swapFreeBytes: swap * MiB });
@@ -53,7 +55,7 @@ describe("fleet host memory wiring", () => {
     Object.defineProperty(fm.memoryPressure, "platform", { value: "darwin" });
     attach(); fm.memoryPressure.start();
     expect(logger.debug).toHaveBeenCalledOnce();
-    // The reported Mac: 16 GB, 2845 MiB available, swap nearly full (274 MiB free of 6 GB) — read as elevated.
+    // The old ratio policy called this elevated; without a kernel alarm it is now unknown.
     set({ totalBytes: 16_000 * MiB, availableBytes: 2_845 * MiB, availableKind: "available", swapTotalBytes: 6_000 * MiB, swapFreeBytes: 274 * MiB });
     fm.memoryPressure.sample();
     expect(fm.memoryPressure.snapshot().level).toBe("unknown");
