@@ -24,7 +24,7 @@ type Internals = {
   cancelButtons: Map<string, { instanceName: string; messageId: string; retiring?: boolean }>;
   daemons: Map<string, unknown>;
   sendCancelButton(name: string): Promise<void>;
-  handleCancelClick(name: string, adapter: unknown, data: unknown): void;
+  handleCancelClick(name: string, adapter: unknown, data: unknown, adapterId: string): void;
   hasCancelButton(name: string): boolean;
   deleteButtonMessage(entry: unknown): Promise<void>;
   logger: { info: ReturnType<typeof vi.fn>; warn: ReturnType<typeof vi.fn> };
@@ -41,7 +41,8 @@ function makeFleet(notifyAlert: ReturnType<typeof vi.fn>) {
   internals.lifecycle.isPaused = () => false;
   internals.getInstanceStatus = () => "running";
   (fm as unknown as { fleetConfig: unknown }).fleetConfig = {
-    defaults: {}, channel: { group_id: "g1" },
+    // The owning adapter (telegram) lets u1 speak: the cancel click is honoured only for such a clicker (#754 audit).
+    defaults: {}, channel: { type: "telegram", group_id: "g1", access: { mode: "locked", allowed_users: ["u1"] } },
     instances: { alpha: { working_directory: "/tmp", topic_id: "123" } },
   };
   (fm as unknown as { adapter: unknown }).adapter = { notifyAlert, editMessage: vi.fn().mockResolvedValue(undefined) };
@@ -121,14 +122,14 @@ describe("replacing a button never leaves the instance without one", () => {
 });
 
 describe("a click on a button the fleet no longer tracks", () => {
-  const clickData = { chatId: "g1", messageId: "old-msg", threadId: "123" };
+  const clickData = { chatId: "g1", messageId: "old-msg", threadId: "123", userId: "u1" };
 
   it("still cancels when the instance is running", () => {
     const { fm, internals } = makeFleet(vi.fn());
     const sendEscape = vi.fn().mockResolvedValue(undefined);
     internals.daemons.set("alpha", { sendEscape });
 
-    internals.handleCancelClick("alpha", (fm as unknown as { adapter: unknown }).adapter, clickData);
+    internals.handleCancelClick("alpha", (fm as unknown as { adapter: unknown }).adapter, clickData, "telegram");
 
     expect(sendEscape).toHaveBeenCalledOnce();
   });
@@ -137,7 +138,7 @@ describe("a click on a button the fleet no longer tracks", () => {
     const { fm, internals } = makeFleet(vi.fn());
     const adapter = (fm as unknown as { adapter: { editMessage: ReturnType<typeof vi.fn> } }).adapter;
 
-    internals.handleCancelClick("alpha", adapter, clickData);   // no daemon
+    internals.handleCancelClick("alpha", adapter, clickData, "telegram");   // no daemon
 
     // Silence here is what made a dead button indistinguishable from a bug.
     expect(adapter.editMessage).toHaveBeenCalledWith(
@@ -153,9 +154,9 @@ describe("a click on a button the fleet no longer tracks", () => {
     internals.daemons.set("alpha", { sendEscape });
     const adapter = (fm as unknown as { adapter: unknown }).adapter;
 
-    internals.handleCancelClick("alpha", adapter, clickData);
-    internals.handleCancelClick("alpha", adapter, clickData);
-    internals.handleCancelClick("alpha", adapter, clickData);
+    internals.handleCancelClick("alpha", adapter, clickData, "telegram");
+    internals.handleCancelClick("alpha", adapter, clickData, "telegram");
+    internals.handleCancelClick("alpha", adapter, clickData, "telegram");
 
     expect(sendEscape).toHaveBeenCalledOnce();
   });
@@ -169,7 +170,7 @@ describe("a click on a button the fleet no longer tracks", () => {
     internals.daemons.set("alpha", { sendEscape });
     await internals.sendCancelButton("alpha");
 
-    internals.handleCancelClick("alpha", (fm as unknown as { adapter: unknown }).adapter, clickData);
+    internals.handleCancelClick("alpha", (fm as unknown as { adapter: unknown }).adapter, clickData, "telegram");
 
     expect(sendEscape).toHaveBeenCalledOnce();
     // The delete resolves on a microtask, so let the retire settle first.

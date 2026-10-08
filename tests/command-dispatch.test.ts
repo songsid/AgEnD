@@ -328,7 +328,8 @@ describe("the pure rule", () => {
     expect(decideCommand(commandSpec("pause")!, "classic", fleetAdminInClassic, "discord")).toEqual({ allow: true });
     expect(decideCommand(commandSpec("pause")!, "classic", fleetAdminInClassic, "telegram")).toEqual({ allow: false, reply: ["permission.denied"] });
     expect(decideCommand(commandSpec("pause")!, "classic", classicAdminOnly, "telegram")).toEqual({ allow: true });
-    expect(decideCommand(commandSpec("compact")!, "fleet", nobody, "telegram")).toEqual({ allow: true });
+    // #754 audit: Telegram /compact in a fleet topic is admin-gated now, like Discord — the two platforms agree here.
+    expect(decideCommand(commandSpec("compact")!, "fleet", nobody, "telegram")).toEqual({ allow: false, reply: ["cmd.admin_required", "/compact"] });
     expect(decideCommand(commandSpec("compact")!, "fleet", nobody, "discord")).toEqual({ allow: false, reply: ["cmd.admin_required", "/compact"] });
     expect(decideCommand(commandSpec("compact")!, "fleet", nobody)).toEqual({ allow: false, reply: ["cmd.admin_required", "/compact"] });      // the default platform is Discord
   });
