@@ -11,6 +11,8 @@ const execAsync = promisify(execFile);
  * attributed so a stall made of N of them names itself (#1235). The promise itself is unchanged.
  */
 const exec = ((...args: Parameters<typeof execAsync>) => measureSyncWork("tmux.spawn", () => execAsync(...args))) as typeof execAsync;
+/** `exec`, bounded when a timeout is given — and in exactly the old (file, args) form when it is not. */
+const execBounded = (args: string[], timeoutMs?: number) => timeoutMs ? exec("tmux", args, { timeout: timeoutMs }) : exec("tmux", args);
 /** Keys sendKeySequence may send: cursor moves and deletions inside an input line. */
 const EDITING_KEYS: ReadonlySet<string> = new Set(["C-a", "C-e", "C-u", "C-k", "BSpace", "DC", "Home", "End", "Left", "Right"]);
 
@@ -35,9 +37,9 @@ function isTransientLoadBufferError(err: unknown): boolean {
 }
 
 /** Feed a tmux buffer through stdin so payload bytes never become an argv element. */
-function execTmuxWithInput(tmuxArgs: string[], input: string): Promise<void> {
+function execTmuxWithInput(tmuxArgs: string[], input: string, timeoutMs?: number): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = measureSyncWork("tmux.spawn", () => execFile("tmux", tmuxArgs, (error, _stdout, stderr) => {
+    const done = (error: Error | null, _stdout: string | Buffer, stderr: string | Buffer) => {
       if (!error) {
         resolve();
         return;
@@ -45,7 +47,11 @@ function execTmuxWithInput(tmuxArgs: string[], input: string): Promise<void> {
       const detail = String(stderr || "").trim();
       if (detail && !error.message.includes(detail)) error.message = `${error.message}: ${detail}`;
       reject(error);
-    }));
+    };
+    // Options only when a bound is asked for: every other caller keeps execFile's (file, args, callback) form.
+    const child = measureSyncWork("tmux.spawn", () => timeoutMs
+      ? execFile("tmux", tmuxArgs, { timeout: timeoutMs }, done)
+      : execFile("tmux", tmuxArgs, done));
     child?.stdin?.on("error", reject);
     child?.stdin?.end(input);
   });
@@ -467,10 +473,10 @@ export class TmuxManager {
     } catch { return false; }
   }
 
-  async sendSpecialKey(key: "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left" | "C-c" | "C-q"): Promise<boolean> {
+  async sendSpecialKey(key: "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left" | "C-c" | "C-q", timeoutMs?: number): Promise<boolean> {
     this.lastSendSpecialKeyError = null;
     try {
-      await exec("tmux", TmuxManager.tmuxArgs(["send-keys", "-t", `${this.sessionName}:${this.windowId}`, key]));
+      await execBounded(TmuxManager.tmuxArgs(["send-keys", "-t", `${this.sessionName}:${this.windowId}`, key]), timeoutMs);
       return true;
     } catch (err) {
       const stderr = err && typeof err === "object" && "stderr" in err
@@ -479,6 +485,15 @@ export class TmuxManager {
       this.lastSendSpecialKeyError = stderr || (err instanceof Error ? err.message : String(err));
       return false;
     }
+  }
+
+  /** Delete `count` characters before the cursor (a paste AgEnD must take back before submitting it). */
+  async deleteBackward(count: number, timeoutMs?: number): Promise<boolean> {
+    if (!Number.isInteger(count) || count <= 0) return true;
+    try {
+      await execBounded(TmuxManager.tmuxArgs(["send-keys", "-t", `${this.sessionName}:${this.windowId}`, "-N", String(count), "BSpace"]), timeoutMs);
+      return true;
+    } catch { return false; }
   }
 
   /** Diagnostic from the most recent failed sendSpecialKey call. */
@@ -496,16 +511,23 @@ export class TmuxManager {
     return this.lastPasteFailureRecoverable;
   }
 
-  private async loadAndPaste(text: string): Promise<boolean> {
+  /**
+   * `guard`, when given, is asked before every step that touches tmux — each load attempt and the paste into the
+   * pane — so a caller that stopped waiting (its owner stopped, its deadline passed) is never followed by a late pane
+   * write. `timeoutMs` bounds each tmux call.
+   */
+  private async loadAndPaste(text: string, opts: { guard?: () => boolean; timeoutMs?: number } = {}): Promise<boolean> {
     const target = `${this.sessionName}:${this.windowId}`;
+    const allowed = () => !opts.guard || opts.guard();
     const bufName = `paste-${this.windowId}-${Date.now()}`;
     this.lastPasteError = null;
     this.lastPasteFailureRecoverable = false;
     let loadError: unknown;
     let loaded = false;
     for (let attempt = 1; attempt <= LOAD_BUFFER_MAX_ATTEMPTS; attempt++) {
+      if (!allowed()) return false;
       try {
-        await execTmuxWithInput(TmuxManager.tmuxArgs(["load-buffer", "-b", bufName, "-"]), text);
+        await execTmuxWithInput(TmuxManager.tmuxArgs(["load-buffer", "-b", bufName, "-"]), text, opts.timeoutMs);
         loaded = true;
         break;
       } catch (err) {
@@ -521,8 +543,13 @@ export class TmuxManager {
       this.lastPasteError = formatExecError(loadError);
       return false;
     }
+    if (!allowed()) {
+      // Loaded but no longer wanted: drop the buffer, never paste it.
+      void execBounded(TmuxManager.tmuxArgs(["delete-buffer", "-b", bufName]), opts.timeoutMs).catch(() => {});
+      return false;
+    }
     try {
-      await exec("tmux", TmuxManager.tmuxArgs(["paste-buffer", "-d", "-b", bufName, "-t", target, "-p"]));
+      await execBounded(TmuxManager.tmuxArgs(["paste-buffer", "-d", "-b", bufName, "-t", target, "-p"]), opts.timeoutMs);
       return true;
     } catch (err) {
       this.lastPasteError = formatExecError(err);
@@ -568,8 +595,8 @@ export class TmuxManager {
    * Callers that need to verify the idle→busy transition before/after Enter use this
    * together with sendSpecialKey("Enter") so they control submit timing and retries.
    */
-  async pasteBuffer(text: string): Promise<boolean> {
-    return this.loadAndPaste(text);
+  async pasteBuffer(text: string, opts: { guard?: () => boolean; timeoutMs?: number } = {}): Promise<boolean> {
+    return this.loadAndPaste(text, opts);
   }
 
   async pipeOutput(logPath: string): Promise<void> {

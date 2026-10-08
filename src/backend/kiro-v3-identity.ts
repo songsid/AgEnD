@@ -193,3 +193,20 @@ export function readKiroV3Identity(instance: string, agendHome: string = getAgen
   try { claimHeld = readFileSync(join(root, "claims", state.id), "utf8") === `${instance}\n`; } catch { /* not held */ }
   return { kind: "owned", id: state.id, claimHeld, credentialProfile: state.credentialProfile };
 }
+
+/**
+ * Delete or replace (#906): forget the V3 session this instance owns — its state, and every claim it holds. Claims
+ * held by others, and the sessions themselves, are left alone.
+ */
+export function forgetKiroV3Identity(instance: string, agendHome: string = getAgendHome()): void {
+  if (!SAFE_NAME.test(instance)) return;
+  const root = join(agendHome, "kiro-v3");
+  rmSync(join(root, "instances", `${instance}.json`), { force: true });
+  let ids: string[] = [];
+  try { ids = readdirSync(join(root, "claims")); } catch { /* none */ }
+  for (const id of ids) {
+    try {
+      if (readFileSync(join(root, "claims", id), "utf8") === `${instance}\n`) rmSync(join(root, "claims", id), { force: true });
+    } catch { /* gone, or unreadable: not provably ours */ }
+  }
+}
