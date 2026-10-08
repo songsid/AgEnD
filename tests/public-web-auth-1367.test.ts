@@ -1,5 +1,8 @@
 import { EventEmitter } from "node:events";
 import { performance } from "node:perf_hooks";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WebSessionStore, tokenEpoch, csrfTokenFor } from "../src/web-session.js";
 import { WebLoginCodes } from "../src/web-login.js";
@@ -47,6 +50,21 @@ describe("public credential scopes, real auth handlers", () => {
     const scope = { surface: "gateway" as const, exposureId: id };
     expect(store.authenticate(candidate.sessionId, tokenEpoch(token), scope)).toBeNull(); expect(store.list()).toEqual([]);
     expect(store.activate(candidate.sessionId)).toBe(true); expect(store.authenticate(candidate.sessionId, tokenEpoch(token), scope)).not.toBeNull();
+  });
+  it("pending public credentials never reach disk, including a concurrent local save", () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-public-session-"));
+    try {
+      const store = new WebSessionStore({ dataDir: dir });
+      const local = store.create({ tier: "admin", surface: "local", label: "local", tokenEpoch: tokenEpoch(token) });
+      const candidate = store.create({ tier: "admin", surface: "gateway", exposureId: id, label: "phone", tokenEpoch: tokenEpoch(token), pending: true });
+      store.flush();
+      const path = join(dir, "web-sessions.json");
+      expect(JSON.parse(readFileSync(path, "utf8")).sessions.map((r: any) => r.idHash)).toEqual([local.record.idHash]);
+      const reloaded = new WebSessionStore({ dataDir: dir });
+      expect(reloaded.authenticate(candidate.sessionId, tokenEpoch(token), { surface: "gateway", exposureId: id })).toBeNull();
+      expect(store.activate(candidate.sessionId)).toBe(true); store.flush();
+      expect(JSON.parse(readFileSync(path, "utf8")).sessions.map((r: any) => r.idHash)).toContain(candidate.record.idHash);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
   it("single code audience, same breaker; stale failure cannot withdraw newer issuance", () => {
     const codes = new WebLoginCodes({ generate: () => "ABCDEFGH" });

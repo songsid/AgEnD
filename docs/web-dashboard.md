@@ -181,7 +181,7 @@ Whoever reaches the address still has to sign in with a code from you, and each 
 | `health_port` | `19280` | The dashboard's port (on `127.0.0.1`) |
 | `web.view_access` | `open` | `session`: reading `/view` needs a sign-in too |
 | `web.allowed_hosts` | — | Extra `Host` names to answer to (behind a proxy, tunnel or port forward) |
-| `web.notify_login` | `true` | `false`: don't announce new sign-ins in General |
+| `web.notify_login` | `true` | `false`: don't announce new local sign-ins in General; public sign-ins always require a notice |
 | `web.usage_panel` | `true` | `false`: hide the AI usage panel on `/view` |
 | `web.preview` | `true` | `false`: no HTML previews at all (cards show the code and Download only) |
 | `web.preview_port` | `health_port + 1` | The preview listener's port, on `127.0.0.1` |

@@ -72,6 +72,21 @@ describe("real dashboard dispatcher/nonce/private delivery, no fleet or tunnel",
     expect(h.adapter.sendText.mock.calls.flat().join(" ")).not.toContain("trycloudflare");
     expect(h.adapter.editMessageRemoveButtons.mock.calls.flat().join(" ")).not.toContain("trycloudflare");
   });
+  it("A private failure cannot close or revoke B's confirmed same-start link and newer code", async () => {
+    const h = rig(); let failA!: (error: Error) => void;
+    h.adapter.sendDirect.mockImplementation(async user => user === "admin"
+      ? await new Promise<never>((_resolve, reject) => { failA = reject; })
+      : { chatId: user, messageId: "dm-b" });
+    await h.typed(); const first = h.click(); await flush();
+    expect(h.adapter.sendDirect).toHaveBeenCalledTimes(1);
+    await h.typed("admin2"); await h.click("public", { userId: "admin2" });
+    const codeB = h.adapter.sendDirect.mock.calls[1][1].match(/[A-Z0-9]{4}-[A-Z0-9]{4}/)![0];
+    const exposure = h.s.publicWebLink.exposureId;
+    failA(new Error("DM refused")); await first;
+    expect(h.manager.start).toHaveBeenCalledTimes(1); expect(h.manager.stop).not.toHaveBeenCalled();
+    expect(h.s.publicWebLink.status().state).toBe("open");
+    expect(h.s.webLoginCodes.redeem(codeB, tokenEpoch("c".repeat(48)), exposure).kind).toBe("ok");
+  });
   it("Telegram DM failure gives safe /start guidance and withdraws code/link", async () => {
     const h = rig(); h.adapter.sendDirect.mockRejectedValue(Error("secret provider URL")); await h.typed(); await h.click();
     expect(h.s.webLoginCodes.hasOutstandingCode).toBe(false); expect(h.manager.stop).toHaveBeenCalledTimes(1);

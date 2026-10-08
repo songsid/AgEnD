@@ -131,7 +131,7 @@ export class PublicWebLink {
       });
       if (!result.ok || !this.current(e)) throw new Error("tunnel unavailable");
       const published = new URL(result.handle.pageUrl);
-      if (published.protocol !== "https:" || published.pathname !== "/signin" || published.search || published.hash) throw new Error("invalid public page");
+      if (published.protocol !== "https:" || published.pathname !== "/signin" || published.username || published.password || published.search || published.hash) throw new Error("invalid public page");
       gateway.setHost(published.host);
       e.url = published.href;
       e.unsubscribe = result.handle.onUnexpectedExit(() => { void this.close("tunnel exited", e.id); });

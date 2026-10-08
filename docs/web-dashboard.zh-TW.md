@@ -181,7 +181,7 @@ server 只回應 `127.0.0.1`。要從別的裝置使用 dashboard，你需要開
 | `health_port` | `19280` | dashboard 的 port（只聽 `127.0.0.1`） |
 | `web.view_access` | `open` | `session`：讀取 `/view` 也需要登入 |
 | `web.allowed_hosts` | — | 額外允許的 `Host` 名稱（經由 proxy、tunnel 或 port forward 連線時） |
-| `web.notify_login` | `true` | `false`：不在 General 通知新的登入 |
+| `web.notify_login` | `true` | `false`：不在 General 通知新的本機登入；公開登入一律需要通知 |
 | `web.usage_panel` | `true` | `false`：在 `/view` 隱藏 AI 用量面板 |
 | `web.preview` | `true` | `false`：完全不提供 HTML 預覽（卡片只顯示程式碼與下載） |
 | `web.preview_port` | `health_port + 1` | 預覽 listener 的 port（只聽 `127.0.0.1`） |
