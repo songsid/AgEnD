@@ -630,7 +630,7 @@ export class TopicCommands {
    * Pure, secret-free dashboard/menu copy. Issuance belongs to the private
    * delivery action; rendering or previewing this text cannot retire a code.
    */
-  getDashboardText(htmlSpoiler = false): string {
+  getDashboardText(_htmlSpoiler = false, showRemoteHint = true): string {
     const port = this.ctx.fleetConfig?.health_port ?? 19280;
     const host = (this.ctx.fleetConfig as { hostname?: string } | null | undefined)?.hostname || "localhost";
     const access = this.ctx.getDashboardAccess?.();
@@ -647,7 +647,7 @@ export class TopicCommands {
       "",
       t("dashboard.code_help"),
       // #1366: a loopback address does not open on a phone — say where the way in is documented.
-      ...(LOOPBACK_HOST_NAMES.includes(host.toLowerCase()) || host === "::1" ? ["", t("dashboard.remote_hint", WEB_REMOTE_DOCS_URL)] : []),
+      ...(showRemoteHint && (LOOPBACK_HOST_NAMES.includes(host.toLowerCase()) || host === "::1") ? ["", t("dashboard.remote_hint", WEB_REMOTE_DOCS_URL)] : []),
     ].join("\n");
   }
 

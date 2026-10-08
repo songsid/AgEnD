@@ -42,6 +42,12 @@ describe("public credential scopes, real auth handlers", () => {
     const legacy = store.create({ tier: "admin", surface: "gateway", label: "fixture", tokenEpoch: tokenEpoch(token) });
     expect(store.authenticate(legacy.sessionId, tokenEpoch(token), { surface: "gateway", exposureId: id })).toBeNull();
   });
+  it("a candidate session is unusable even with its id until activation", () => {
+    const store = new WebSessionStore(); const candidate = store.create({ tier: "admin", surface: "gateway", exposureId: id, label: "fixture", tokenEpoch: tokenEpoch(token), pending: true });
+    const scope = { surface: "gateway" as const, exposureId: id };
+    expect(store.authenticate(candidate.sessionId, tokenEpoch(token), scope)).toBeNull(); expect(store.list()).toEqual([]);
+    expect(store.activate(candidate.sessionId)).toBe(true); expect(store.authenticate(candidate.sessionId, tokenEpoch(token), scope)).not.toBeNull();
+  });
   it("single code audience, same breaker; stale failure cannot withdraw newer issuance", () => {
     const codes = new WebLoginCodes({ generate: () => "ABCDEFGH" });
     const local = codes.issue({ epoch: tokenEpoch(token) }); expect(codes.redeem(local.display, tokenEpoch(token), id).kind).toBe("invalid");

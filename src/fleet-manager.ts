@@ -4482,16 +4482,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!this.publicOwnerCurrent(owner)) return;
     const adapter = owner.binding as ChannelAdapter;
     const status = this.getPublicWebStatus();
+    const publicAllowed = publicLinkSettings(this.fleetConfig?.web).allowed;
+    const menuText = this.topicCommands.getDashboardText(false, !publicAllowed)
+      + (publicAllowed ? "\n\n" + t("dashboard.public_risk") : "")
+      + "\n" + t("dashboard.public_status", status.state, status.remainingSeconds ?? 0);
     const choices = [{ action: "local", label: t("dashboard.local") },
       ...(publicLinkSettings(this.fleetConfig?.web).allowed ? [{ action: "public", label: t("dashboard.public_open") }] : []),
       ...(status.state !== "closed" ? [{ action: "close", label: t("dashboard.public_close") }] : [])];
     await this.postNonceButtonPromptOrThrow({
       prefix: "dashboard:", alertType: "login", instanceName: "dashboard", adapter, adapterId: owner.adapterId,
       chatId: owner.chatId, threadId: owner.threadId, timeoutMs: 5 * 60_000,
-      message: `${this.topicCommands.getDashboardText()}\n\n${t("dashboard.public_risk")}\n${t("dashboard.public_status", status.state, status.remainingSeconds ?? 0)}`,
+      message: menuText,
       choices, expiredText: t("buttons.stale"), extra: { requesterUserId: owner.userId, dashboardOwner: owner, publicExposureId: this.publicWebLink?.exposureId },
       ...(respondButtons ? { deliver: async (c: Choice[]) => {
-        const messageId = await respondButtons(this.topicCommands.getDashboardText() + "\n\n" + t("dashboard.public_risk"), c);
+        const messageId = await respondButtons(menuText, c);
         if (!messageId) throw new Error("menu refused");
         return { chatId: owner.chatId, threadId: owner.threadId, messageId };
       } } : {}),
