@@ -636,11 +636,23 @@ const TOUR_STEPS = [
   { text: "tour4", spot: () => { const stop = document.getElementById("stopBtn"); return stop && !stop.hidden ? stop : document.getElementById("sendBtn"); } },
   { text: "tour5", spot: () => document.querySelector(".badge-await") || document.getElementById("instanceList") },
 ];
-let tourAt = -1, tourSpot = null, tourReturn = null;
+let tourAt = -1, tourSpot = null, tourReturn = null, tourEscHeld = false;
 function tourDone() { try { return localStorage.getItem(TOUR_KEY) === "1"; } catch { return true; } }
 function startTour() {
-  tourReturn = document.activeElement;
+  // The card sits under the phone drawer: replaying it from the drawer closes the drawer first (which puts focus back
+  // on ☰), so the tour is seen and Esc/Done return to something visible (#1369 review).
+  closeDrawer();
+  if (tourAt < 0) tourReturn = document.activeElement;
   showTourStep(0);
+}
+/** The current step's outline follows a redraw (a new badge, Send swapped for Stop) — same card, same focus. */
+function refreshTourSpot() {
+  if (tourAt < 0) return;
+  const next = TOUR_STEPS[tourAt].spot() || null;
+  if (next === tourSpot && (!next || next.classList.contains("tour-spot"))) return;
+  tourSpot?.classList.remove("tour-spot");
+  tourSpot = next;
+  tourSpot?.classList.add("tour-spot");
 }
 function showTourStep(i) {
   if (i < 0 || i >= TOUR_STEPS.length) return;
@@ -773,8 +785,12 @@ document.addEventListener("click", e => {
 });
 document.addEventListener("keydown", e => {
   if (e.key === "Escape" && !e.isComposing) {
-    if (tourAt >= 0) { endTour(); return; }
+    // The Esc that closed the tour is spent: its key repeats (a held key) must not go on to Stop the agent (#1369 review).
+    // A new press (not a repeat) is a new Esc.
+    if (tourEscHeld) { if (e.repeat) { e.preventDefault?.(); return; } tourEscHeld = false; }
+    // What is on top closes first: the drawer covers the tour card.
     if (document.body.classList?.contains("sb-open")) { closeDrawer(); return; }
+    if (tourAt >= 0) { e.preventDefault?.(); endTour(); tourEscHeld = true; return; }
     if (stopOnEscape(document.activeElement)) { e.preventDefault(); cancelReply(cur, document.getElementById("stopBtn")); }
     return;
   }
@@ -879,6 +895,7 @@ function renderList() {
     </div>${awaiting[i.name] != null ? `<span class="badge-await" title="${escAttr(awaiting[i.name] || tr("approxNote"))}">${tr("needsYou")}</span>` : ""}<div class="inst-meta">${i.cost>0?`$${i.cost.toFixed(2)}`:""}${ctxMeta}</div></div>`;
   }).join("");
   el.querySelectorAll(".instance-item").forEach(x => x.addEventListener("click", () => sel(x.dataset.n)));
+  refreshTourSpot();
 }
 
 function selFleet() { closeDrawer(); mode = "fleet"; cur = null; curTab = "tasks"; renderList(); renderMain(); }
@@ -895,8 +912,8 @@ function renderMain() {
   const main = document.getElementById("mainArea");
   // The whole view is rebuilt: no preview survives it (design §6.2 — never re-parented or reloaded silently).
   if (typeof AgendPreview !== "undefined") AgendPreview.stopAll();
-  if (mode === "fleet") return renderFleetMain(main);
-  if (mode === "instance" && cur) return renderInstanceMain(main);
+  if (mode === "fleet") { renderFleetMain(main); refreshTourSpot(); return; }
+  if (mode === "instance" && cur) { renderInstanceMain(main); refreshTourSpot(); return; }
   renderTopbar("", []);
   main.innerHTML = `<div class="no-sel"><svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg><span>${tr("selectTarget")}</span></div>`;
 }
@@ -1338,6 +1355,7 @@ function renderComposerButtons() {
   const content = !!(inp && inp.value.trim()) || !!(pendingFiles[cur] && pendingFiles[cur].length);
   stop.hidden = !busy;
   send.hidden = busy && !content;
+  refreshTourSpot();
 }
 // A Stop on its way, per instance: set before the request goes, so a second Esc (a held key repeats it) or a click
 // while the first answer is pending sends nothing more (#1317 review). Cleared when the answer comes, whatever it is.

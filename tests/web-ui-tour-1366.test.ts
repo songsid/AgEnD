@@ -19,6 +19,12 @@ class FakeEl {
   /** As in a browser: setting it replaces the children. */
   get textContent(): string { return this.text + this.children.map(c => c.textContent).join(""); }
   set textContent(v: string) { for (const c of this.children) c.parent = null; this.children = []; this.text = v; }
+  /** Markup is not parsed — except that a needs-you badge in it becomes a new badge element, as a redraw would. */
+  set innerHTML(v: string) {
+    this.textContent = "";
+    if (v.includes("badge-await")) { const b = new FakeEl("span", this.doc); b.id = `badge-${++FakeEl.made}`; b.className = "badge-await"; this.append(b); }
+  }
+  static made = 0;
   dataset: Record<string, string> = {};
   attrs: Record<string, string> = {};
   children: FakeEl[] = [];
@@ -56,7 +62,7 @@ class FakeDoc {
   fixed: Record<string, FakeEl> = {};
   constructor() {
     this.body = new FakeEl("body", this);
-    for (const id of ["instanceList", "mainArea", "tourBtn", "attachBtn", "sendBtn", "stopBtn", "messages", "uptime"]) {
+    for (const id of ["instanceList", "mainArea", "tourBtn", "attachBtn", "sendBtn", "stopBtn", "messages", "uptime", "sbOpen", "fleetEntry", "msgIn"]) {
       const e = new FakeEl("div", this); e.id = id; this.fixed[id] = e; this.body.append(e);
     }
     this.fixed.stopBtn.hidden = true;
@@ -74,7 +80,7 @@ class FakeDoc {
  * throws. Only that key — the page's first line already reads agend_lang unguarded, so a storage that throws on
  * everything stops the whole script before the tour, which is not the tour's case to test.
  */
-function load(storage: Map<string, string> | null = new Map(), lang = "en") {
+function load(storage: Map<string, string> | null = new Map(), lang = "en", narrow = false) {
   const doc = new FakeDoc();
   const s = storage ?? new Map<string, string>();
   const refuse = (k: string) => { if (!storage && k === "agend_tour_done") throw new Error("SecurityError"); };
@@ -85,7 +91,7 @@ function load(storage: Map<string, string> | null = new Map(), lang = "en") {
   };
   if (lang !== "en") s.set("agend_lang", lang);
   const c = vm.createContext({
-    localStorage, navigator: { language: "en" }, document: doc, matchMedia: () => ({ matches: false }),
+    localStorage, navigator: { language: "en" }, document: doc, matchMedia: () => ({ matches: narrow }),
     setTimeout: () => 0, clearTimeout() {}, setInterval: () => 0, clearInterval() {},
     fetch: async () => ({ ok: true, json: async () => ({}) }),
     EventSource: class { addEventListener() {} },
@@ -97,7 +103,7 @@ function load(storage: Map<string, string> | null = new Map(), lang = "en") {
   const text = () => card()?.all().find(e => e.className === "tour-text")?.textContent;
   const buttons = () => (card()?.all() ?? []).filter(e => e.tag === "button");
   const click = (el: FakeEl) => { for (const f of doc.listeners.click ?? []) f({ target: el }); };
-  const key = (k: string) => { for (const f of doc.listeners.keydown ?? []) f({ key: k, isComposing: false, preventDefault() {} }); };
+  const key = (k: string, repeat = false) => { for (const f of doc.listeners.keydown ?? []) f({ key: k, repeat, isComposing: false, preventDefault() {} }); };
   const button = (label: string) => buttons().find(b => b.textContent === label)!;
   const spotted = () => doc.body.all().filter(e => e.classList.contains("tour-spot")).map(e => e.id);
   return { doc, c, card, text, buttons, click, key, button, spotted };
@@ -163,6 +169,62 @@ describe("the first sign-in tour (#1366)", () => {
     p.doc.body.classList.add("sb-open");
     p.key("Escape");
     expect(p.doc.body.classList.contains("sb-open")).toBe(false);
+  });
+
+  it("a held Esc that closes the tour does not go on to Stop the agent; a new press does (#1369 review)", () => {
+    const p = load();
+    const stops: string[] = [];
+    (p.c as any).stops = stops;
+    // A busy chat where Esc would Stop: the page's own check says yes, and cancelReply records what it was asked.
+    vm.runInContext('stopOnEscape = () => true; cancelReply = (name) => { stops.push(String(name)); }; cur = "w";', p.c);
+    p.key("Escape");                                            // closes the tour
+    expect([p.card(), stops]).toEqual([null, []]);
+    p.key("Escape", true); p.key("Escape", true);               // the same key, held
+    expect(stops).toEqual([]);
+    p.key("Escape");                                            // released and pressed again: not a repeat
+    expect(stops).toEqual(["w"]);
+  });
+
+  it("on a phone, Tour from the open drawer closes the drawer first; Esc then closes the tour and focus goes back to ☰ (#1369 review)", () => {
+    const p = load(new Map([["agend_tour_done", "1"]]), "en", true);
+    p.doc.body.classList.add("sb-open");
+    p.doc.fixed.tourBtn.dataset.act = "startTour";
+    p.doc.fixed.tourBtn.focus();
+    p.click(p.doc.fixed.tourBtn);
+    expect(p.doc.body.classList.contains("sb-open")).toBe(false);
+    expect(p.card()).not.toBeNull();
+    expect(p.doc.activeElement?.textContent).toBe("Next");
+    p.key("Escape");
+    expect([p.card(), p.doc.activeElement?.id]).toEqual([null, "sbOpen"]);
+  });
+
+  it("Esc closes an open drawer before the tour (the drawer is on top of the card)", () => {
+    const p = load(new Map(), "en", true);
+    p.doc.body.classList.add("sb-open");
+    p.key("Escape");
+    expect([p.doc.body.classList.contains("sb-open"), p.card() !== null]).toEqual([false, true]);
+    p.key("Escape");
+    expect(p.card()).toBeNull();
+  });
+
+  it("the outline follows a redraw on the same step: a new needs-you badge, Send swapped for Stop — same card, same focus (#1369 review)", () => {
+    const p = load();
+    vm.runInContext('instances = [{ name: "w", status: "running" }]; awaiting.w = ""; renderList();', p.c);
+    vm.runInContext("showTourStep(4)", p.c);
+    const first = p.spotted();
+    expect(first[0]).toMatch(/^badge-/);
+    const focused = p.doc.activeElement, card = p.card();
+    vm.runInContext("renderList()", p.c);                       // a status update redraws the list: a new badge element
+    expect(p.spotted()).toHaveLength(1);
+    expect(p.spotted()[0]).not.toBe(first[0]);
+    expect([p.card(), p.doc.activeElement]).toEqual([card, focused]);
+
+    vm.runInContext("showTourStep(3)", p.c);
+    expect(p.spotted()).toEqual(["sendBtn"]);
+    (p.doc.fixed.msgIn as any).value = "";                      // nothing typed: a busy agent shows Stop alone
+    vm.runInContext('cur = "w"; activity.w = "working"; renderComposerButtons();', p.c);  // idle → working
+    expect([p.doc.fixed.stopBtn.hidden, p.doc.fixed.sendBtn.hidden]).toEqual([false, true]);
+    expect(p.spotted()).toEqual(["stopBtn"]);
   });
 
   it("Tour in the sidebar replays it after it was dismissed", () => {
