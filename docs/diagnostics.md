@@ -1,5 +1,16 @@
 # Storage and host resources
 
+## Reading an "Event loop stalled" warning
+
+The fleet logs `Event loop stalled for <n>ms` when its single event loop was blocked for a second or more. Slash-command acknowledgements and gateway heartbeats can be missed during one. The warning says what it can about why:
+
+- **`slow sync work`** names the synchronous calls that ran in that window and took long enough to matter. A burst of short calls of the same kind is summed, with its count, for example `tmux.spawn=1200ms (25 calls)`. `unknown` means none of the measured calls did.
+- **`the process got <c>ms of CPU in a <g>ms gap`** compares the fleet process's own CPU time with the length of the stall:
+  - **close to the gap:** the process was running. The cause is its own synchronous work, so look at `slow sync work` or take a CPU profile.
+  - **far below it:** the process was waiting. The host's CPU was busy with other work (other processes, large test runs on the same machine), or the process was blocked in a system call such as a slow disk.
+  - This line is left out when the once-a-second probe did not land in the stall.
+- **`host load a/b/c on N cores`** is the host's load average over 1, 5 and 15 minutes, and its core count, at the time of the warning.
+
 ## On-demand CPU profiles
 
 The local OS operator can record the running fleet’s main-thread CPU profile without restarting:
