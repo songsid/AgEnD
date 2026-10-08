@@ -1,0 +1,50 @@
+
+ ▐▛███▛█   Claude Code v2.1.295
+▝▜██████▀  Opus 5.5 · API Usage Billing
+ ▝▝   ▝▝   ~/audit/w/p295
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Resume this conversation?
+  This conversation has been inactive for 1h 4m and is 1.2m tokens long. Resuming it will use all of your 5-hour
+  usage limit.
+  Your unsent message will still be there after you answer.
+
+    Resume
+  ❯ Start a new conversation
+    Claude can look this one up if you refer to it later
+
+  ↑/↓ pick a row first · Enter to confirm · Esc to resume

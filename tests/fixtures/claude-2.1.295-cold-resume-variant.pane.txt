@@ -1,0 +1,50 @@
+
+ ▐▛███▛█   Claude Code v2.1.295
+▝▜██████▀  Opus 5.5 · API Usage Billing
+ ▝▝   ▝▝   ~/audit/w/p295
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Resume this conversation?
+  This conversation has been inactive for 3h 12m and is 412.3k tokens long. Resuming it will use about 38% of your
+  5-hour usage limit.
+
+  ❯ 1. Resume
+    2. Resume from a summary
+    3. Start a new conversation
+
+  Enter to confirm · Esc to resume
