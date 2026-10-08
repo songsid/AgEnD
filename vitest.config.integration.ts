@@ -26,6 +26,7 @@ export default defineConfig({
       "tests/mcp-slot-collision.test.ts",
       "tests/cli-env-probe-guard.test.ts",
       "tests/tmux-manager.test.ts",
+      "tests/tmux-control-native-1401.test.ts",
       // Each of these starts a real tmux SERVER, not just a client call:
       // `new-session` on an isolated socket, or TmuxTerminalBackend.start().
       // A file moves here whole, because fileParallelism is per file — the

@@ -228,7 +228,9 @@ function fleet(count: number, opts: { threshold?: number; staggerMs?: number } =
     return daemon;
   });
   // the tmux server's window list follows the stub panes
-  vi.spyOn(TmuxManager, "listWindows").mockImplementation(async () => [...state.up].map(i => ({ id: `@${i}`, name: `inst-${i}` })) as never);
+  vi.spyOn(TmuxManager, "listWindowsStrict").mockImplementation(async () => [...state.up].map(i => ({ id: `@${i}`, name: `inst-${i}` })) as never);
+  // Orphan cleanup still uses the broad API; both seams share this inert list.
+  vi.spyOn(TmuxManager, "listWindows").mockImplementation((...args) => TmuxManager.listWindowsStrict(...args));
   return { storm, gate, daemons, logger, state };
 }
 
@@ -310,7 +312,7 @@ describe("a burst through the real health loop", () => {
 describe("a window that is not confirmed gone is not respawned", () => {
   it("the window is back when the daemon looks again: nothing happens", async () => {
     const { daemons, state } = fleet(1);
-    (TmuxManager.listWindows as any).mockResolvedValue([{ id: "@0", name: "inst-0" }]);
+    (TmuxManager.listWindowsStrict as any).mockResolvedValue([{ id: "@0", name: "inst-0" }]);
     startAll(daemons);
     await vi.advanceTimersByTimeAsync(10_000);
     expect(state.started).toEqual([]);
@@ -319,7 +321,7 @@ describe("a window that is not confirmed gone is not respawned", () => {
 
   it("a failed list-windows is not a confirmed death: deferred for two ticks, then acted on", async () => {
     const { daemons, state, logger } = fleet(1);
-    (TmuxManager.listWindows as any).mockRejectedValue(new Error("tmux busy"));
+    (TmuxManager.listWindowsStrict as any).mockRejectedValue(new Error("tmux busy"));
     startAll(daemons);
     await vi.advanceTimersByTimeAsync(2_800);                // two ticks (1 s interval + the 1.5 s recheck each)
     expect(state.started).toEqual([]);
@@ -330,7 +332,7 @@ describe("a window that is not confirmed gone is not respawned", () => {
 
   it("…and one failed query followed by a healthy window never respawns", async () => {
     const { daemons, state } = fleet(1);
-    (TmuxManager.listWindows as any)
+    (TmuxManager.listWindowsStrict as any)
       .mockRejectedValueOnce(new Error("tmux busy"))
       .mockResolvedValue([{ id: "@0", name: "inst-0" }]);
     startAll(daemons);
@@ -342,7 +344,7 @@ describe("a window that is not confirmed gone is not respawned", () => {
     const { daemons, state, logger } = fleet(1);
     const here = [{ id: "@0", name: "inst-0" }];
     const busy = new Error("tmux busy");
-    (TmuxManager.listWindows as any)
+    (TmuxManager.listWindowsStrict as any)
       .mockRejectedValueOnce(busy).mockResolvedValueOnce(here)
       .mockRejectedValueOnce(busy).mockResolvedValueOnce(here)
       .mockRejectedValueOnce(busy)
@@ -481,7 +483,7 @@ describe("review of #1156: recovery boundaries", () => {
       .mockResolvedValueOnce(null).mockResolvedValueOnce(null)
       .mockResolvedValueOnce(null).mockResolvedValueOnce({ alive: true })
       .mockResolvedValue(null);
-    (TmuxManager.listWindows as any).mockRejectedValue(new Error("tmux busy"));
+    (TmuxManager.listWindowsStrict as any).mockRejectedValue(new Error("tmux busy"));
     daemons[0].startHealthCheck();
     await vi.advanceTimersByTimeAsync(10_100);
     expect(daemons[0].tmux.getPaneStatus).toHaveBeenCalledTimes(8);
