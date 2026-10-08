@@ -49,7 +49,7 @@ import { MuseUsageRelay, clearMuseUsageSnapshot } from "./muse-usage-relay.js";
 import { deliveryContentDigest, type DaemonDeliveryPort, type DeliveryAttemptEvidence, type DurableSubmissionMode } from "./delivery-outbox.js";
 import { consumedWatches } from "./delivery-consumed-watch.js";
 import { queueResumePolicyForAttempt } from "./delivery-queue-evidence.js";
-import { scanTranscriptForDeliveryMarker } from "./delivery-reconciliation.js";
+import { scanTranscriptForDeliveryMarker, type TranscriptMarkerKind } from "./delivery-reconciliation.js";
 import {
   buildResumeContinuation,
   clearInFlightTurnMarker,
@@ -97,6 +97,11 @@ const REPLY_GUARD_IDLE_CONFIRM_MS = 60_000;
 const REPLY_RECOVERY_PROMPT = "[system:reply-required] The previous human-facing turn ended without a successfully delivered reply. Do not redo the work. React with an emoji or use the reply tool exactly once now to send the user a concise conclusion. If no substantive answer is needed, a brief react is sufficient. If you already replied to this message, do nothing. Do not reply to this system instruction except through the react or reply tool.";
 
 /** Point a resumed CLI at its one backend-native instruction source. */
+/** The outbox evidence for a delivery the CLI's transcript shows taken (#758; #1201 absorbed). */
+function transcriptMarkerEvidence(kind: TranscriptMarkerKind): string {
+  return kind === "user" ? "transcript-marker" : kind === "absorbed" ? "transcript-marker-absorbed" : "transcript-marker-queued";
+}
+
 export function buildInstructionReloadNotice(binaryName: string, instanceName: string, instanceDir: string): string {
   const source = binaryName === "codex" || binaryName === "grok" || binaryName === "muse"
     ? "AGENTS.md"
@@ -586,6 +591,18 @@ interface PaneEvidence {
 interface SubmissionSignature {
   value: string;
   unique: boolean;
+  /**
+   * The CLI's own record of this delivery (set once the durable begin has a transcript checkpoint): the transcript from
+   * the checkpoint, read for this delivery's exact `[agend-delivery-id:…]` marker. A marker there is the CLI having
+   * taken the message — whatever the pane shows at that moment (a box still painting the paste, an echo already
+   * scrolled away by the reply). Positive only: no marker proves nothing either way.
+   */
+  transcript?: {
+    backend: string; path: string; offset: number; deliveryId: string;
+    /** Set on the first hit (later looks reuse it); the write records it as its evidence. */
+    provenBy?: TranscriptMarkerKind;
+    onProof?: (kind: TranscriptMarkerKind) => void;
+  };
 }
 
 interface KiroPendingDelivery {
@@ -734,6 +751,8 @@ type DeliveryVerdict = {
   transcriptCheckpoint?: { backend: string; path: string; offset: number };
   /** How the attempt was written (#1201: steer and native-queue hand-offs get a late consumed watch). */
   submissionMode?: DurableSubmissionMode;
+  /** The submission was proven by the CLI's transcript rather than the pane: the evidence the outbox records. */
+  transcriptProof?: TranscriptMarkerKind;
 };
 
 /**
@@ -2032,7 +2051,8 @@ export class Daemon extends EventEmitter {
       this.finishDurableDelivery(delivery, "delivered", OUTPUT_EDGE_ONLY_EVIDENCE);
       return;
     }
-    this.finishDurableDelivery(delivery, "delivered", "positive submission proof", verdict);
+    this.finishDurableDelivery(delivery, "delivered", verdict.transcriptProof
+      ? `positive submission proof; ${transcriptMarkerEvidence(verdict.transcriptProof)}` : "positive submission proof", verdict);
   }
 
   /**
@@ -2064,7 +2084,7 @@ export class Daemon extends EventEmitter {
         const found = await scanTranscriptForDeliveryMarker(checkpoint.path, checkpoint.offset, checkpoint.backend, delivery.deliveryId);
         if (found === "user" || found === "absorbed" || found === "queued") {
           outcome = "delivered";
-          evidence = found === "user" ? "transcript-marker" : found === "absorbed" ? "transcript-marker-absorbed" : "transcript-marker-queued";
+          evidence = transcriptMarkerEvidence(found);
           break;
         }
         last = found;
@@ -7766,6 +7786,14 @@ export class Daemon extends EventEmitter {
             path: attemptEvidence.transcriptPath,
             offset: attemptEvidence.transcriptOffset,
           };
+          // From here every proof of this write may also ask the CLI's transcript (the pane can lose the echo to the
+          // reply, or still be painting the paste) — this delivery's exact marker only.
+          if (["claude-code", "codex"].includes(attemptEvidence.backend)) {
+            signature.transcript = {
+              ...verdict.transcriptCheckpoint, deliveryId: durableAttempt.deliveryId,
+              onProof: kind => { verdict.transcriptProof = kind; },
+            };
+          }
         }
       }
       if (rawPaste) verdict.paneWriteStarted = true;
@@ -7959,7 +7987,7 @@ export class Daemon extends EventEmitter {
           // the input row is disqualifying, and disqualifying evidence wins.
           if (this.structuredInputEvidence() && afterEnter !== "stranded") {
             this.logger.warn({ phase: "native-queue-submit", proof: afterEnter, strandedAt },
-              "Codex recovery Enter outcome uncertain — no hard failure or duplicate paste");
+              `${this.cliLabel()} recovery Enter outcome uncertain — no hard failure or duplicate paste`);
             verdict.phase = "native-queue-submit";
             verdict.proof = afterEnter;
             return false;
@@ -7977,7 +8005,7 @@ export class Daemon extends EventEmitter {
           // loss. Another paste could run the same request twice. Leave the
           // already-pasted delivery at 👀 and let the next observation decide.
           this.logger.warn({ phase: "native-queue-proof", proof: settled },
-            "Codex native-queue outcome uncertain — not re-pasting");
+            `${this.cliLabel()} native-queue outcome uncertain — not re-pasting`);
           verdict.phase = "native-queue-proof";
           verdict.proof = settled;
           return false;
@@ -8086,7 +8114,7 @@ export class Daemon extends EventEmitter {
             // missing viewport signature cannot establish non-delivery; keep
             // 👀 and never emit the sender's hard ❌ or re-paste blindly.
             this.logger.warn({ phase: "post-submit-proof", proof },
-              "Codex delivery outcome uncertain — no hard failure or duplicate paste");
+              `${this.cliLabel()} delivery outcome uncertain — no hard failure or duplicate paste`);
             verdict.phase = "post-submit-proof";
             verdict.proof = proof;
             return false;
@@ -8210,10 +8238,14 @@ export class Daemon extends EventEmitter {
       // here: the CLI may already be processing the unique message_id.
       let proof: SubmitProof = "unproven";
       const firstDeadline = Date.now() + POST_ENTER_PROOF_WINDOW_MS;
+      // A structural box reader (claude-code) sees its box still holding the paste for a moment after an Enter it did
+      // take — Claude paints the submit late (captured live on 2.1.293: ~40 captures in a row). So for it a strand
+      // proves a swallowed Enter only once it outlasts the window; an early one is polled through. Codex keeps its rule.
+      const strandMustPersist = !!this.backend?.readInputRow;
       for (;;) {
         proof = await this.confirmSubmitted(signature, baseline);
         if (proof === "submitted") return true;
-        if (proof === "stranded" || Date.now() >= firstDeadline) break;
+        if ((proof === "stranded" && !strandMustPersist) || Date.now() >= firstDeadline) break;
         await new Promise(r => setTimeout(r, POST_ENTER_PROOF_POLL_MS));
       }
       if (proof !== "stranded" || !allowRecoveryEnter) return false;
@@ -8251,9 +8283,33 @@ export class Daemon extends EventEmitter {
 
   private async confirmSubmitted(signature: SubmissionSignature, baseline: PaneEvidence | null): Promise<SubmitProof> {
     if (!this.tmux) return "unproven";
-    let pane: string;
-    try { pane = await this.tmux.capturePane(); } catch { return "unproven"; }
-    return this.judgeSubmission(pane, signature, baseline);
+    let pane: string | null = null;
+    try { pane = await this.tmux.capturePane(); } catch { /* the transcript may still say */ }
+    const onPane = pane === null ? "unproven" : this.judgeSubmission(pane, signature, baseline);
+    if (onPane === "submitted") return onPane;
+    return await this.transcriptShowsSubmission(signature) ? this.submittedProof() : onPane;
+  }
+
+  /**
+   * The CLI's transcript, from this attempt's checkpoint, holds this delivery's exact marker: a user entry (read), an
+   * entry Claude absorbed mid-turn, or one it queued (taken into its queue). Any of them is the CLI having taken the
+   * message, so it outranks the pane — including a box that still shows the paste a moment after Enter (Claude paints
+   * the submit late, captured live on 2.1.293), which on its own reads as a strand. Positive only; never a downgrade.
+   */
+  private async transcriptShowsSubmission(signature: SubmissionSignature): Promise<boolean> {
+    const t = signature.transcript;
+    if (!t) return false;
+    if (t.provenBy) return true;
+    const found = await scanTranscriptForDeliveryMarker(t.path, t.offset, t.backend, t.deliveryId);
+    if (found !== "user" && found !== "absorbed" && found !== "queued") return false;
+    t.provenBy = found;
+    t.onProof?.(found);
+    return true;
+  }
+
+  /** The CLI this daemon drives, for log lines shared by every backend ("claude-code", "codex", …). */
+  private cliLabel(): string {
+    return this.config.backend ?? this.backend?.binaryName ?? "CLI";
   }
 
   /**
