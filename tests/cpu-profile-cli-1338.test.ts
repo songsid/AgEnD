@@ -22,6 +22,7 @@ function harness() {
   const startProfile = vi.fn(async () => { order.push("profile.start"); profileReady = true; return { stop }; });
   const manager = {
     startCpuProfileControl: vi.fn(async () => {}),
+    startSettingsConfirmationControl: vi.fn(async () => {}),
     startEnvironmentCpuProfile: startProfile,
     startAll: vi.fn(async () => { order.push("fleet.start"); }),
     startInstance: vi.fn(async () => { order.push("instance.start"); }),

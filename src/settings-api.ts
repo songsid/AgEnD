@@ -1,3 +1,6 @@
+import { normalizeSettingsInstancePatch, removesInstanceOverride } from "./settings-instance-patch.js";
+import { settingsRequestExecution, settingsWrite } from "./settings-request-capability.js";
+import { noteSettingsWrite, settingsUndo, undoSettingsPaths, type SettingsExecution } from "./settings-transaction.js";
 import { readBoundedWebBody } from "./web-body.js";
 import { validPublicLinkPatch } from "./public-web-link.js";
 import { permitWebContinuation } from "./web-continuation.js";
@@ -80,7 +83,8 @@ export interface SettingsApiContext {
   isClassicInstance?(name: string): boolean;
   /** Phase 2b: an operator wake that respects the warm hard cap (FleetManager.explicitWake). */
   explicitWake?(name: string, timeoutMs?: number): Promise<void>;
-  restartClassicInstanceFromSettings?(instanceName: string, changedFields?: string[]): Promise<void>;
+  restartClassicInstanceFromSettings?(instanceName: string, changedFields?: string[], execution?: SettingsExecution): Promise<void>;
+  captureClassicSettingsRestoration?(instanceName: string, changedFields: string[], execution?: SettingsExecution): () => Promise<void>;
   /** Present on a real fleet; absent in unit contexts that only exercise CRUD. */
   applyJobs?: ApplyJobStore;
   startSettingsApply?(key: string): { job: ApplyJob; reused: boolean } | { busy: ApplyJob | null };
@@ -110,6 +114,7 @@ export interface SettingsApiContext {
     verificationId: string;
     sessionBinding: string;
     idempotencyKey: string;
+    execution?: SettingsExecution;
   }): { job: SecretApplyJob; reused: boolean } | { busy: SecretApplyJob | null } | { error: string };
   getConnectionSecretApply?(jobId: string, sessionBinding: string): SecretApplyJob | null;
   /** Generic provider API-key verifier registry (#861). */
@@ -126,6 +131,7 @@ export interface SettingsApiContext {
     verificationId: string;
     sessionBinding: string;
     idempotencyKey: string;
+    execution?: SettingsExecution;
   }): { job: ProviderSecretApplyJob; reused: boolean } | { busy: ProviderSecretApplyJob | null } | { error: string };
   getProviderSecretApply?(jobId: string, sessionBinding: string): ProviderSecretApplyJob | null;
   verifyConnectionBinding?(input: {
@@ -139,6 +145,7 @@ export interface SettingsApiContext {
     verificationId: string;
     sessionBinding: string;
     idempotencyKey: string;
+    execution?: SettingsExecution;
   }): { job: SecretApplyJob; reused: boolean } | { busy: SecretApplyJob | null } | { error: string };
   getConnectionBindingApply?(jobId: string, sessionBinding: string): SecretApplyJob | null;
 }
@@ -206,6 +213,7 @@ function writeClassicAtomic(ctx: SettingsApiContext, classic: Record<string, unk
   const target = classicPath(ctx);
   const temp = `${target}.tmp-${process.pid}-${randomBytes(6).toString("hex")}`;
   const mode = existsSync(target) ? statSync(target).mode : 0o600;
+  noteSettingsWrite(target, readClassic(ctx), classic);
   try {
     writeFileSync(temp, yaml.dump(classic, { lineWidth: -1 }), { encoding: "utf-8", mode });
     renameSync(temp, target);
@@ -418,7 +426,7 @@ export function handleSettingsRequest(
         ? req.headers["idempotency-key"] : typeof body.idempotency_key === "string" ? body.idempotency_key : "";
       if (!verificationId) return json(res, 400, { error: "verification_id required" }, true);
       if (!/^[A-Za-z0-9_.:-]{8,128}$/.test(key)) return json(res, 400, { error: "Idempotency-Key required" }, true);
-      const result = ctx.startProviderSecretApply!({ specId, verificationId, sessionBinding: requestSessionBinding(req), idempotencyKey: key });
+      const result = ctx.startProviderSecretApply!({ specId, verificationId, sessionBinding: requestSessionBinding(req), idempotencyKey: key, execution: settingsRequestExecution(req) });
       if ("error" in result) return json(res, 422, { ok: false, error: "provider secret apply rejected" }, true);
       if ("busy" in result) return json(res, 409, { ok: false, result: "applying", job_id: result.busy?.id ?? null }, true);
       json(res, result.reused ? 200 : 202, { ok: true, result: result.job.result, job_id: result.job.id, reused: result.reused, stale_consumers: result.job.stale_consumers ?? [] }, true);
@@ -490,7 +498,7 @@ export function handleSettingsRequest(
         connectionId,
         verificationId,
         sessionBinding: requestSessionBinding(req),
-        idempotencyKey: key,
+        idempotencyKey: key, execution: settingsRequestExecution(req),
       });
       if ("error" in result) return json(res, 422, { ok: false, error: "secret apply rejected" }, true);
       if ("busy" in result) return json(res, 409, {
@@ -570,7 +578,7 @@ export function handleSettingsRequest(
       if (!verificationId) return json(res, 400, { error: "verification_id required" }, true);
       if (!/^[A-Za-z0-9_.:-]{8,128}$/.test(key)) return json(res, 400, { error: "Idempotency-Key required" }, true);
       const result = ctx.startConnectionBindingApply!({
-        connectionId, verificationId, sessionBinding: requestSessionBinding(req), idempotencyKey: key,
+        connectionId, verificationId, sessionBinding: requestSessionBinding(req), idempotencyKey: key, execution: settingsRequestExecution(req),
       });
       if ("error" in result) return json(res, 422, { ok: false, error: "binding apply rejected" }, true);
       if ("busy" in result) return json(res, 409, { ok: false, result: "applying" satisfies SecretApplyResult, job_id: result.busy?.id ?? null }, true);
@@ -629,8 +637,7 @@ export function handleSettingsRequest(
       const before = validateFleetConfig(cfg);
       const after = validateFleetConfig({ ...cfg, web });
       if (rejectIfWorse(res, before, after)) return;
-      cfg.web = web;
-      ctx.saveFleetConfig(changes);
+      settingsWrite(req, () => { cfg.web = web; ctx.saveFleetConfig(changes); });
       json(res, 200, { ok: true, warnings: saveWarnings(before, after) });
     }).catch(() => json(res, 400, { error: "bad request" }));
     return true;
@@ -651,8 +658,7 @@ export function handleSettingsRequest(
       const before = validateFleetConfig(cfg);
       const after = validateFleetConfig({ ...cfg, defaults: merged });
       if (rejectIfWorse(res, before, after)) return;
-      cfg.defaults = merged as typeof cfg.defaults;
-      ctx.saveFleetConfig();
+      settingsWrite(req, () => { cfg.defaults = merged as typeof cfg.defaults; ctx.saveFleetConfig(); });
       json(res, 200, { ok: true, warnings: saveWarnings(before, after) });
     }).catch(() => json(res, 400, { error: "bad request" }));
     return true;
@@ -721,9 +727,10 @@ export function handleSettingsRequest(
       const before = validateFleetConfig(cfg);
       const after = validateFleetConfig(next);
       if (rejectIfWorse(res, before, after)) return;
-      cfg.channels = normalizedBody as FleetConfig["channels"];
-      delete (cfg as { channel?: unknown }).channel;
-      ctx.saveFleetConfig();
+      settingsWrite(req, () => {
+        cfg.channels = normalizedBody as FleetConfig["channels"];
+        delete (cfg as { channel?: unknown }).channel; ctx.saveFleetConfig();
+      });
       json(res, 200, { ok: true, warnings: saveWarnings(before, after) });
     }).catch(() => json(res, 400, { error: "bad request" }));
     return true;
@@ -746,7 +753,7 @@ export function handleSettingsRequest(
       const after = validateClassicBotConfig({ ...classic, defaults: merged });
       if (rejectIfWorse(res, before, after)) return;
       classic.defaults = merged;
-      try { writeClassicAtomic(ctx, classic); }
+      try { settingsWrite(req, () => writeClassicAtomic(ctx, classic)); }
       catch (err) {
         ctx.logger.warn({ err }, "settings: failed to atomically update classicBot.yaml");
         return json(res, 500, { error: "failed to write classicBot.yaml" });
@@ -810,7 +817,7 @@ export function handleSettingsRequest(
       catch (err) { return json(res, 409, { error: (err as Error).message }); }
       const channels = classic.channels;
       if (!channels || typeof channels !== "object" || Array.isArray(channels)) return json(res, 404, { error: "classic channel not found" });
-      const current = (channels as Record<string, unknown>)[key];
+      const current = Object.hasOwn(channels, key) ? (channels as Record<string, unknown>)[key] : undefined;
       if (!current || typeof current !== "object" || Array.isArray(current)) return json(res, 404, { error: "classic channel not found" });
       const previous = structuredClone(classic);
       const merged = { ...(current as Record<string, unknown>), ...body };
@@ -822,28 +829,38 @@ export function handleSettingsRequest(
       const before = validateClassicBotConfig(previous);
       const after = validateClassicBotConfig(classic);
       if (rejectIfWorse(res, before, after)) return;
-      try { writeClassicAtomic(ctx, classic); }
+      try { settingsWrite(req, () => writeClassicAtomic(ctx, classic), false); }
       catch (err) {
         ctx.logger.warn({ err, key }, "settings: failed to atomically update classic channel");
         return json(res, 500, { error: "failed to write classicBot.yaml" });
       }
+      const undo = settingsUndo(classicPath(ctx), previous, classic, Object.keys(body).map(field => ["channels", key, field]));
+      const execution = settingsRequestExecution(req);
       const instanceName = typeof merged.instanceName === "string" ? merged.instanceName : undefined;
+      const restore = instanceName ? ctx.captureClassicSettingsRestoration?.(instanceName, Object.keys(body), execution) : undefined;
       try {
         if (instanceName && ctx.restartClassicInstanceFromSettings) {
-          await ctx.restartClassicInstanceFromSettings(instanceName, Object.keys(body));
+          if (execution) await ctx.restartClassicInstanceFromSettings(instanceName, Object.keys(body), execution);
+          else await ctx.restartClassicInstanceFromSettings(instanceName, Object.keys(body));
+          execution?.assert();
         }
       } catch (err) {
         // Keep disk and runtime consistent if the requested restart fails.
-        try { writeClassicAtomic(ctx, previous); } catch (rollbackErr) {
+        try {
+          const retained = undoSettingsPaths(classicPath(ctx), readClassic(ctx), undo);
+          writeClassicAtomic(ctx, retained.value);
+          if (retained.conflicts) throw new Error("concurrent Classic edit retained");
+        } catch (rollbackErr) {
           ctx.logger.error({ err: rollbackErr, key }, "settings: failed to roll back classic channel update");
         }
         if (instanceName && ctx.restartClassicInstanceFromSettings) {
-          try { await ctx.restartClassicInstanceFromSettings(instanceName, Object.keys(body)); }
+          try { if (restore) await restore(); else await ctx.restartClassicInstanceFromSettings(instanceName, Object.keys(body)); }
           catch (recoveryErr) { ctx.logger.error({ err: recoveryErr, key, instanceName }, "settings: failed to restore classic instance after rollback"); }
         }
         ctx.logger.warn({ err, key, instanceName }, "settings: classic channel restart failed; config rolled back");
         return json(res, 409, { error: `classic instance restart failed: ${(err as Error).message}` });
       }
+      execution?.complete();
       ctx.logger.info({ key, instanceName }, "settings: updated classic channel");
       const hotOnly = Object.keys(body).length > 0
         && Object.keys(body).every(field => CLASSIC_HOT_CONFIG_KEYS.has(field));
@@ -964,10 +981,6 @@ export function handleSettingsRequest(
 
   // ── Instances (create / patch / delete) ──
   const validName = (n: string) => !!n && /^[^\\/\x00]+$/.test(n);
-  const nullableInstanceOverrides = new Set(["model", "auto_pause_after", "hang_detector", "agent_mode", "tool_set", "tool_progress", "reply_completion_guard", "log_level", "lightweight", "model_failover", "display_name", "status_emojis", "cross_instance_visibility"]);
-  const removesInstanceOverride = (key: string, value: unknown): boolean =>
-    nullableInstanceOverrides.has(key)
-    && (value === null || (key === "model" && typeof value === "string" && value.trim() === ""));
   const rawInstancePatches = (name: string, patch: Record<string, unknown>): RawConfigPatch[] => {
     const changes: RawConfigPatch[] = [];
     for (const [key, value] of Object.entries(patch)) {
@@ -986,27 +999,17 @@ export function handleSettingsRequest(
     if (typeof body !== "object" || body === null || Array.isArray(body)) { json(res, 400, { error: "expected an object" }); return; }
     const base = (exists ? cfg!.instances[name] : {}) as Record<string, unknown>;
     const patch = body as Record<string, unknown>;
-    const mergedInst = { ...base, ...patch };
-    if (patch.hang_detector && typeof patch.hang_detector === "object" && !Array.isArray(patch.hang_detector)) {
-      const hangPatch = patch.hang_detector as Record<string, unknown>;
-      const mergedHang = { ...((base.hang_detector as Record<string, unknown>) ?? {}), ...hangPatch };
-      // Nested null removes only the timeout override while preserving any
-      // independently configured `enabled` override.
-      if (hangPatch.timeout_minutes === null) delete mergedHang.timeout_minutes;
-      if (Object.keys(mergedHang).length) mergedInst.hang_detector = mergedHang;
-      else delete mergedInst.hang_detector;
-    }
-    // JSON has no `undefined`; null is the PATCH sentinel for removing an
-    // optional override so the instance inherits the fleet default again.
-    for (const key of nullableInstanceOverrides) {
-      if (removesInstanceOverride(key, patch[key])) delete mergedInst[key];
-    }
+    let mergedInst: Record<string, any>;
+    try { mergedInst = normalizeSettingsInstancePatch(base, patch); }
+    catch { json(res, 400, { error: "unsupported_instance_null" }); return; }
     const before = validateFleetConfig(cfg!);
     const after = validateFleetConfig({ ...cfg!, instances: { ...cfg!.instances, [name]: mergedInst } });
     if (rejectIfWorse(res, before, after)) return;
-    cfg!.instances[name] = mergedInst as unknown as FleetConfig["instances"][string];
-    if (!exists) clearPausedMarker(join(ctx.dataDir, "instances", name));
-    ctx.saveFleetConfig(rawInstancePatches(name, patch));
+    settingsWrite(req, () => {
+      Object.defineProperty(cfg!.instances, name, { value: mergedInst, writable: true, enumerable: true, configurable: true });
+      if (!exists) clearPausedMarker(join(ctx.dataDir, "instances", name));
+      ctx.saveFleetConfig(rawInstancePatches(name, patch));
+    });
     json(res, 200, { ok: true, warnings: saveWarnings(before, after) });
   };
 
@@ -1020,7 +1023,7 @@ export function handleSettingsRequest(
       if (typeof body !== "object" || body === null || Array.isArray(body)) return json(res, 400, { error: "expected an object" });
       const name = typeof body.name === "string" ? body.name.trim() : "";
       if (!validName(name)) return json(res, 400, { error: "missing or invalid instance name (provide `name` in the body)" });
-      if (cfg.instances[name]) return json(res, 409, { error: "instance already exists" });
+      if (Object.hasOwn(cfg.instances, name)) return json(res, 409, { error: "instance already exists" });
       const { name: _n, ...instBody } = body;
       commitInstance(name, false, instBody);
     }).catch(() => json(res, 400, { error: "bad request" }));
@@ -1035,17 +1038,17 @@ export function handleSettingsRequest(
     if (!validName(name)) { json(res, 400, { error: "invalid instance name" }); return true; }
 
     if (method === "DELETE") {
-      if (!cfg.instances[name]) { json(res, 404, { error: "instance not found" }); return true; }
+      if (!Object.hasOwn(cfg.instances, name)) { json(res, 404, { error: "instance not found" }); return true; }
       // DELETE never blocks on validation; surface any resulting warnings.
-      delete cfg.instances[name];
-      clearPausedMarker(join(ctx.dataDir, "instances", name));
-      ctx.saveFleetConfig();
+      settingsWrite(req, () => {
+        delete cfg.instances[name]; clearPausedMarker(join(ctx.dataDir, "instances", name)); ctx.saveFleetConfig();
+      });
       json(res, 200, { ok: true, warnings: validateFleetConfig(cfg).warnings });
       return true;
     }
 
     if (method === "POST" || method === "PATCH") {
-      const exists = !!cfg.instances[name];
+      const exists = Object.hasOwn(cfg.instances, name);
       if (method === "POST" && exists) { json(res, 409, { error: "instance already exists" }); return true; }
       if (method === "PATCH" && !exists) { json(res, 404, { error: "instance not found" }); return true; }
       readBody(req, 512 * 1024).then(buf => {

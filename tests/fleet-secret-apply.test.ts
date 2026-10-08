@@ -149,7 +149,8 @@ describe("FleetManager connection secret apply", () => {
   it("rejects an expired verification challenge", async () => {
     const { fm } = manager();
     const verifiedResult = await verified(fm, { idempotencyKey: "key_expiry" });
-    fm.connectionSecretChallenges.get(verifiedResult.verification_id).expiresAt = Date.now() - 1;
+    // expiresAt is display-only; the server's real proof lifetime is monotonic.
+    fm.connectionSecretChallenges.get(verifiedResult.verification_id).deadline = -1;
     fm.rebuildAdapterForSecret = vi.fn(async () => true);
     const result = fm.startConnectionSecretApply({
       connectionId: "primary",

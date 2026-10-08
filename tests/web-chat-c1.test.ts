@@ -534,10 +534,10 @@ describe("FleetManager.emitSseEvent", () => {
       const any = fm as unknown as Record<string, any>;
       fm.webChatHistory.record({ instance: "w", sender: "u", text: "secret plan", ts: "t" });
       fm.webChatHistory.record({ instance: "keep", sender: "u", text: "other", ts: "t" });
-      any.lifecycle = { remove: async () => { throw new Error("lifecycle refused"); } };
+      any.lifecycle = { daemons: new Map(), remove: async () => { throw new Error("lifecycle refused"); } };
       await expect(fm.removeInstance("w", authorizeExplicitInstanceRemoval("dashboard-confirmed"))).rejects.toThrow("lifecycle refused");
       expect(fm.webChatHistory.list("w").map(m => m.text), "a failed removal keeps the history").toEqual(["secret plan"]);
-      any.lifecycle = { remove: async () => {} };
+      any.lifecycle = { daemons: new Map(), remove: async () => {} };
       any.statuslineWatcher = { unwatch() {} };
       await fm.removeInstance("w", authorizeExplicitInstanceRemoval("dashboard-confirmed"));
       expect(fm.webChatHistory.list("w")).toEqual([]);

@@ -534,10 +534,10 @@ describe("deleting an instance stops serving its files", () => {
     const any = fm as unknown as Record<string, any>;
     const f = join(dir, "r.txt"); writeFileSync(f, "x");
     const served = fm.webFiles.registerServed({ path: f, instance: "w" })!;
-    any.lifecycle = { remove: async () => { throw new Error("refused"); } };
+    any.lifecycle = { daemons: new Map(), remove: async () => { throw new Error("refused"); } };
     await expect(fm.removeInstance("w", authorizeExplicitInstanceRemoval("dashboard-confirmed"))).rejects.toThrow();
     expect(fm.webFiles.read(served.id), "a failed removal keeps them").not.toBeNull();
-    any.lifecycle = { remove: async () => {} };
+    any.lifecycle = { daemons: new Map(), remove: async () => {} };
     any.statuslineWatcher = { unwatch() {} };
     await fm.removeInstance("w", authorizeExplicitInstanceRemoval("dashboard-confirmed"));
     expect(fm.webFiles.read(served.id)).toBeNull();

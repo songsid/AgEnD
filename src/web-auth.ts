@@ -366,7 +366,7 @@ const PASSIVE_GET_PANE = /^\/api\/pane\/[^/]+$/;
 
 export function isPassiveWebRead(method: string | undefined, path: string): boolean {
   if ((method ?? "GET") !== "GET") return false;
-  return PASSIVE_GET_PATHS.has(path) || PASSIVE_GET_PANE.test(path);
+  return PASSIVE_GET_PATHS.has(path) || PASSIVE_GET_PANE.test(path) || /^\/api\/settings\/pending(?:\/[0-9a-f]{32})?$/.test(path);
 }
 
 /**

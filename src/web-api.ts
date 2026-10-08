@@ -1,3 +1,5 @@
+import type { SettingsExecution } from "./settings-transaction.js";
+import { settingsRequestExecution, settingsWrite, isSettingsReplay } from "./settings-request-capability.js";
 import { readBoundedWebBody } from "./web-body.js";
 import { gatewayRequestContext } from "./web-request-context.js";
 import { permitWebContinuation } from "./web-continuation.js";
@@ -201,10 +203,10 @@ export interface WebApiContext {
   /** Interrupt the current reply and drop what was queued for it; false when the instance is not running. */
   cancelInstance?(name: string): boolean;
   restartSingleInstance(name: string, opts?: { explicit?: boolean }): Promise<void>;
-  removeInstance(name: string, authorization: ExplicitInstanceRemoval): Promise<void>;
+  removeInstance(name: string, authorization: ExplicitInstanceRemoval, execution?: SettingsExecution): Promise<void>;
   lastInboundUser: Map<string, string>;
   saveFleetConfig(): void;
-  readonly lifecycle: { handleCreate(args: LifecycleCreateArgs, respond: (result: unknown, error?: string) => void): Promise<void> };
+  readonly lifecycle: { handleCreate(args: LifecycleCreateArgs, respond: (result: unknown, error?: string) => void, adapterId?: string, execution?: SettingsExecution): Promise<void> };
   connectIpcToInstance(name: string): Promise<void>;
   /** Human-readable model string (aligned with /ctx). */
   modelDisplayForInstance?(name: string): string;
@@ -256,7 +258,12 @@ export function handleWebRequest(
   // gate: the same session cookie or header token, and an unset token closes
   // the panel instead of comparing null against a missing credential.
   if (path.startsWith("/ui")) {
-    if (!isWebRequestAuthorized(req, url, ctx.webToken, ctx.webSessions, { touch: !isPassiveWebRead(method, path) })) {
+    const approved = isSettingsReplay(req) && method === "POST"
+      && (path === "/ui/config" || path === "/ui/instances" || /^\/ui\/instances\/[^/]+\/delete$/.test(path))
+      ? settingsRequestExecution(req) : undefined;
+    if (approved) {
+      try { approved.assert(); } catch { json(res, 409, { error: "settings_execution_stale" }); return true; }
+    } else if (!isWebRequestAuthorized(req, url, ctx.webToken, ctx.webSessions, { touch: !isPassiveWebRead(method, path) })) {
       json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE });
       return true;
     }
@@ -587,7 +594,9 @@ export function handleWebRequest(
           json(res, 400, { error: `Confirmation required: { "confirm": "delete ${name}" }` });
           return;
         }
-        await ctx.removeInstance(name, authorizeExplicitInstanceRemoval("dashboard-confirmed"));
+        const execution = settingsRequestExecution(req);
+        if (execution) await ctx.removeInstance(name, authorizeExplicitInstanceRemoval("dashboard-confirmed"), execution);
+        else await ctx.removeInstance(name, authorizeExplicitInstanceRemoval("dashboard-confirmed"));
         ctx.emitSseEvent("status", ctx.getUiStatus());
         json(res, 200, { deleted: name });
       } catch (err) {
@@ -680,7 +689,10 @@ export function handleWebRequest(
         if (!v.ok) { json(res, 400, { error: v.error }); return; }
         let result: unknown = null;
         let error: string | undefined;
-        await ctx.lifecycle.handleCreate(v.data, (r, e) => { result = r; error = e; });
+        const respond = (r: unknown, e?: string): void => { result = r; error = e; };
+        const execution = settingsRequestExecution(req);
+        if (execution) await ctx.lifecycle.handleCreate(v.data, respond, undefined, execution);
+        else await ctx.lifecycle.handleCreate(v.data, respond);
         if (error) {
           json(res, 400, { error });
         } else {
@@ -865,6 +877,7 @@ export function handleWebRequest(
         const config = ctx.fleetConfig;
         if (!config) { json(res, 500, { error: "No fleet config" }); return; }
         const ch = config.channel as Record<string, unknown> | undefined;
+        settingsWrite(req, () => {
         // Update channel settings
         if (parsed.channel && ch) {
           if (parsed.channel.group_id != null) (config.channel as Record<string, unknown>).group_id = parsed.channel.group_id;
@@ -881,6 +894,7 @@ export function handleWebRequest(
           (config as Record<string, unknown>).project_roots = parsed.project_roots;
         }
         ctx.saveFleetConfig();
+        });
         const needsRestart = parsed.channel?.group_id != null;
         json(res, 200, { saved: true, needs_restart: needsRestart });
       } catch (err) { json(res, 400, { error: (err as Error).message }); }

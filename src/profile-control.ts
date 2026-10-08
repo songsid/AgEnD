@@ -1,3 +1,4 @@
+import { operatorUid, assertOperatorRoot, assertOperatorClientPath } from "./operator-control-paths.js";
 import { createServer, createConnection, type Server, type Socket } from "node:net";
 import { constants } from "node:fs";
 import { lstat, mkdir, open, chmod, unlink } from "node:fs/promises";
@@ -10,25 +11,9 @@ import { RuntimeCpuProfiler, ProfileBusyError, profileDuration, type ProfileResu
 const INPUT_BYTES = 256;
 export const profileSocketPath = (dataDir: string): string => join(dataDir, "operator", "profile.sock");
 
-function uid(): number {
-  if (!process.getuid) throw new Error("Local CPU profile control requires Unix user permissions.");
-  return process.getuid();
-}
-async function checkRoot(dataDir: string): Promise<void> {
-  const root = await lstat(dataDir);
-  if (!root.isDirectory() || root.isSymbolicLink() || root.uid !== uid() || (root.mode & 0o022)) {
-    throw new Error("Profile control requires an owned real AGEND_HOME without group/other write permission.");
-  }
-}
-async function checkClientPath(dataDir: string): Promise<void> {
-  await checkRoot(dataDir);
-  const directory = await lstat(join(dataDir, "operator"));
-  const socket = await lstat(profileSocketPath(dataDir));
-  if (!directory.isDirectory() || directory.isSymbolicLink() || directory.uid !== uid() || (directory.mode & 0o077)
-    || !socket.isSocket() || socket.uid !== uid() || (socket.mode & 0o077)) {
-    throw new Error("Profile control is not a private socket owned by this user.");
-  }
-}
+function uid(): number { return operatorUid("CPU profile"); }
+async function checkRoot(dataDir: string): Promise<void> { await assertOperatorRoot(dataDir, "Profile control"); }
+async function checkClientPath(dataDir: string): Promise<void> { await assertOperatorClientPath(dataDir, profileSocketPath(dataDir), "Profile control"); }
 
 /** Operator-only Unix socket; never attached to daemon/MCP IPC or any HTTP listener. */
 export class ProfileControlServer {

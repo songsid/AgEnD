@@ -263,6 +263,12 @@ export class WebSessionStore {
     return record;
   }
 
+  /** Recheck a retained server record without retaining/replaying its bearer cookie. */
+  isCurrent(record: SessionRecord, currentEpoch: string): boolean {
+    return this.byHash.get(record.idHash) === record && !this.pending.has(record.idHash)
+      && record.tokenEpoch === currentEpoch && this.now() < record.absoluteExpiry && this.now() < record.idleExpiry;
+  }
+
   /** A candidate has no usable credential until the public notice and final fence passed. */
   activate(sessionId: string): boolean {
     const hash = sessionIdHash(sessionId);
