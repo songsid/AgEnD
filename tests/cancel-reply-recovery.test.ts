@@ -239,7 +239,7 @@ describe("#1199 real fleet cancel → real Daemon → idle", () => {
     const h = harness();
     await h.inbound();
     // Authorization has independent coverage; this test starts after that gate.
-    h.fm.authorizeSlash = vi.fn(async () => "fleet");
+    h.fm.slashDoor = vi.fn(() => ({ scope: "fleet" }));
     h.fm.isModelAdmin = vi.fn(() => true);
     const respond = vi.fn(async () => {});
     await h.fm.dispatchSlash({ command: "cancel", channelId: "room", userId: "user", respond }, "bot", {});

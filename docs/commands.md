@@ -124,7 +124,7 @@ On every platform, only the topic/entry owner ever answers, so a `/cmd` typed in
 - **A bot id that matches no configured channel means nobody:** it never falls back to the first channel's list.
 - **Paired or open-mode users are not fleet admins.**
 
-**One table for both platforms:** Telegram typed commands and Discord slash commands are decided by the same command table (`src/command-table.ts`), so a command needs the same level on both.
+**One table for both platforms:** Telegram typed commands and Discord slash commands are decided by the same command table (`src/command-table.ts`), so a command needs the same level on both. On Telegram the table judges only the forms a command actually runs in (for example `/status` or `/status@yourbot`, `/restart` in any case, `/pause <instance>`); any other text that starts with a slash, such as `/status report` or `/STATUS`, is a message to the agent, as before.
 
 Fleet-level commands — requires fleet admin:
 - `/status`, `/restart`, `/update`, `/doctor`, `/visibility`, `/pause`, `/wake`, `/model`, `/effort`, `/clear`, `/login`

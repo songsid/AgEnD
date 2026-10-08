@@ -104,19 +104,14 @@ describe("adminGate: the owning adapter's list, and nothing else", () => {
 });
 
 describe("a Discord slash command in a channel another bot owns is refused at the door", () => {
-  const ask = async (r: ReturnType<typeof rig>, channelId: string, userId: string, adapterId: string) => {
-    const respond = vi.fn(async () => undefined);
-    const scope = await r.any.authorizeSlash({ command: "status", channelId, guildId: GROUP, userId, respond }, adapterId);
-    return { scope, respond };
-  };
+  const ask = (r: ReturnType<typeof rig>, channelId: string, userId: string, adapterId: string) =>
+    r.any.slashDoor({ command: "status", channelId, guildId: GROUP, userId, respond: vi.fn() }, adapterId);
   it("beta belongs to tg-b: through tg-a it is refused even for an admin of both; through tg-b it reaches the table", async () => {
     const r = rig("open");
     (r.fm.fleetConfig as any).channels[1].access.allowed_users.push(ADMIN_A);
-    const viaA = await ask(r, "40", ADMIN_A, "tg-a");
-    expect(viaA.scope).toBeNull();
-    expect(viaA.respond).toHaveBeenCalledWith(t("slash.other_bot"));
-    expect((await ask(r, "40", ADMIN_A, "tg-b")).scope).toBe("fleet");
-    expect((await ask(r, "30", ADMIN_A, "tg-a")).scope).toBe("fleet");   // its own channel: unchanged
+    expect(ask(r, "40", ADMIN_A, "tg-a")).toEqual({ refusal: "slash.other_bot" });
+    expect(ask(r, "40", ADMIN_A, "tg-b")).toEqual({ scope: "fleet" });
+    expect(ask(r, "30", ADMIN_A, "tg-a")).toEqual({ scope: "fleet" });   // its own channel: unchanged
   });
   it("the facts: decideSlash refuses other-bot in a fleet channel, and keeps owner-not-running when the owner is down", () => {
     const base = { command: "status", guildId: "G", primaryGuildId: "G", scope: "fleet" as const };
@@ -151,5 +146,106 @@ describe("Telegram typed commands are decided by the command table before any ha
     const r = rig("open");
     expect(await r.any.topicCommands.handleInstanceCommand(typed("/steer hi", PLAIN, "30"), "alpha")).toBe(true);
     expect(r.replies.map(x => x.text)).not.toContain(t(...commandSpec("steer")!.denied));
+  });
+});
+
+describe("the check and the act are one stretch: an instance rebound to another bot cannot slip in between (#1399 review)", () => {
+  /** alpha's owner at the moment each effect runs. */
+  function recordEffects(r: ReturnType<typeof rig>) {
+    const acted: string[] = [];
+    const at = (what: string, name: string) => acted.push(`${what}:${name}@${r.fm.getInstanceAdapterId(name)}`);
+    r.any.toggleFleetCollab = (name: string) => { at("collab", name); return true; };
+    r.any.topicCommands.sendCompact = async (name: string) => { at("compact", name); return "ok"; };
+    return acted;
+  }
+  /** alpha moves to tg-b on the first microtask after the command arrives — where an await after the check resumed. */
+  const rebindAlphaToBNext = (r: ReturnType<typeof rig>) =>
+    queueMicrotask(() => { (r.fm.fleetConfig as any).instances.alpha.channel_id = "tg-b"; });
+
+  for (const command of ["collab", "compact"]) {
+    it(`Telegram /${command}: rebound right after it arrives, it acted while tg-a still owned alpha`, async () => {
+      const r = rig("open"); const acted = recordEffects(r);
+      rebindAlphaToBNext(r);
+      expect(await r.any.topicCommands.handleInstanceCommand(typed(`/${command}`, ADMIN_A), "alpha")).toBe(true);
+      expect(acted).toEqual([`${command}:alpha@tg-a`]);
+    });
+    it(`Discord /${command}: rebound right after it arrives, it acted while tg-a still owned alpha`, async () => {
+      const r = rig("open"); const acted = recordEffects(r);
+      const respond = vi.fn(async () => undefined);
+      rebindAlphaToBNext(r);
+      await r.any.dispatchSlash({ command, channelId: "30", guildId: GROUP, userId: ADMIN_A, respond, options: {} }, "tg-a", r.a);
+      expect(acted).toEqual([`${command}:alpha@tg-a`]);
+    });
+    it(`/${command} controls: unchanged owner acts; owned by tg-b from the start, tg-a's admin does nothing`, async () => {
+      const r = rig("open"); const acted = recordEffects(r);
+      const respond = vi.fn(async () => undefined);
+      await r.any.topicCommands.handleInstanceCommand(typed(`/${command}`, ADMIN_A), "alpha");
+      await r.any.dispatchSlash({ command, channelId: "30", guildId: GROUP, userId: ADMIN_A, respond, options: {} }, "tg-a", r.a);
+      expect(acted).toEqual([`${command}:alpha@tg-a`, `${command}:alpha@tg-a`]);
+
+      (r.fm.fleetConfig as any).instances.alpha.channel_id = "tg-b";
+      acted.length = 0; respond.mockClear();
+      expect(await r.any.topicCommands.handleInstanceCommand(typed(`/${command}`, ADMIN_A), "alpha")).toBe(false);
+      await r.any.dispatchSlash({ command, channelId: "30", guildId: GROUP, userId: ADMIN_A, respond, options: {} }, "tg-a", r.a);
+      expect(acted).toEqual([]);
+      expect(respond).toHaveBeenCalledWith(t("slash.other_bot"));   // the dispatch answers the door's refusal
+    });
+  }
+});
+
+describe("the table judges only what a handler would run: other text is the agent's, for a member and an admin alike (#1399 review)", () => {
+  const generalForms = ["/status report", "/STATUS", "/Doctor", "/update now", "/sysinfo please"];
+  const instanceForms = ["/COLLAB", "/pause one two", "/Compact", "/clear all", "/cancel now", "/ctx please"];
+  for (const user of [PLAIN, ADMIN_A]) {
+    it(`General, ${user === PLAIN ? "member" : "admin"}: ${generalForms.join(", ")} pass through with no reply`, async () => {
+      const r = rig("open");
+      for (const text of generalForms) {
+        expect(await r.any.topicCommands.handleInstanceCommand(typed(text, user, "1"), "general"), text).toBe(false);
+        expect(await r.any.topicCommands.handleGeneralCommand(typed(text, user, "1"), "general"), text).toBe(false);
+      }
+      expect(r.replies).toEqual([]);
+    });
+    it(`instance topic, ${user === PLAIN ? "member" : "admin"}: ${instanceForms.join(", ")} pass through with no reply`, async () => {
+      const r = rig("open"); const collab = vi.fn(() => true); r.any.toggleFleetCollab = collab;
+      for (const text of instanceForms) expect(await r.any.topicCommands.handleInstanceCommand(typed(text, user), "alpha"), text).toBe(false);
+      expect(r.replies).toEqual([]);
+      expect(collab).not.toHaveBeenCalled();
+    });
+  }
+
+  it("the forms the handlers do run keep their casing, alias and @bot suffix — and the table still gates each of them", async () => {
+    const cases: Array<[string, string, boolean]> = [
+      // text, the handler that runs it, whether a member is refused (sysinfo is anyone's)
+      ["/status@agend_bot", "handleStatusCommand", true],
+      ["/RESTART", "handleRestartCommand", true],
+      ["/VISIBILITY", "handleVisibilityCommand", true],
+      ["/sys-info", "handleSysInfoCommand", false],
+      ["/sys_info", "handleSysInfoCommand", false],
+    ];
+    for (const [text, handler, gated] of cases) {
+      const [thread, instance] = ["1", "general"];
+      const member = rig("open");
+      const memberRan = vi.spyOn(member.any.topicCommands, handler).mockResolvedValue(undefined);
+      expect(await member.any.topicCommands.handleGeneralCommand(typed(text, PLAIN, thread), instance), text).toBe(true);
+      expect(memberRan.mock.calls.length, `${text} member`).toBe(gated ? 0 : 1);
+      expect(member.replies.length, `${text} member is answered`).toBe(gated ? 1 : 0);
+
+      const admin = rig("open");
+      const adminRan = vi.spyOn(admin.any.topicCommands, handler).mockResolvedValue(undefined);
+      expect(await admin.any.topicCommands.handleGeneralCommand(typed(text, ADMIN_A, thread), instance), text).toBe(true);
+      expect(adminRan, `${text} admin`).toHaveBeenCalledOnce();
+    }
+    // An instance topic: /collab@bot and /pause <one name> are still commands, and still a member's refusal.
+    for (const text of ["/collab@agend_bot", "/compact@agend_bot keep the plan"]) {
+      const r = rig("open"); const collab = vi.fn(() => true); r.any.toggleFleetCollab = collab;
+      r.any.topicCommands.sendCompact = vi.fn(async () => "ok");
+      expect(await r.any.topicCommands.handleInstanceCommand(typed(text, PLAIN), "alpha"), text).toBe(true);
+      expect(r.replies.length, text).toBe(1);
+      expect(collab).not.toHaveBeenCalled();
+      expect(r.any.topicCommands.sendCompact).not.toHaveBeenCalled();
+    }
+    const g = rig("open");
+    expect(await g.any.topicCommands.handleInstanceCommand(typed("/pause alpha", PLAIN, "1"), "general")).toBe(true);
+    expect(g.pausedWoken).toEqual([]);
   });
 });
