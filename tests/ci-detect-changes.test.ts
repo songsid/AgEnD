@@ -45,7 +45,7 @@ const SCRIPT = rawScript.replace(/"\$\{\{ github\.event_name \}\}"/g, '"pull_req
 const dirs: string[] = [];
 
 afterAll(() => {
-  for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+  for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
 });
 
 /** Run the detect-changes script with given BASE/HEAD SHAs in a git repo. */
@@ -111,6 +111,10 @@ function makeRepo() {
     return git("rev-parse", "HEAD");
   };
   git("init", "-q", "-b", "main");
+  // The 5,000-file cases otherwise start detached auto-GC while afterAll
+  // removes their repositories. Scratch fixtures must own all their work.
+  git("config", "gc.auto", "0");
+  git("config", "maintenance.auto", "false");
   return { dir, git, commit, run: (b: string, h: string) => run(dir, b, h) };
 }
 

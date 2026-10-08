@@ -1179,13 +1179,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     for (const [name, config] of Object.entries(this.fleetConfig?.instances ?? {})) {
       if (!config.general_topic) continue;
       const adapterId = this.getInstanceAdapterId(name), adapter = this.getAdapterForInstance(name);
-      if (!adapterId || !adapter || excluded.has(adapterId) || !this.hasFleetAdmins(adapterId)) continue;
+      const general = this.daemons.get(name);
+      if (!adapterId || !adapter || !general || excluded.has(adapterId) || !this.hasFleetAdmins(adapterId)) continue;
       const chatId = this.getGroupIdForInstance(name), topic = String(config.topic_id ?? "");
       if (!chatId || !topic) continue;
       let retired = false, attached = false;
       const postingDeadline = performance.now() + Math.min(5000, view.remaining_ms);
       const current = (): boolean => !retired && (attached || performance.now() < postingDeadline) && !this.shuttingDown && this.settingsGeneration === generation
         && this.fleetConfig?.instances[name]?.general_topic === true
+        && this.daemons.get(name) === general && !this.ipcStoppingInstances.has(name)
+        && this.adapterState.get(adapterId)?.status === "connected"
         && this.getInstanceAdapterId(name) === adapterId && this.getAdapterForInstance(name) === adapter
         && this.getGroupIdForInstance(name) === chatId && String(this.fleetConfig?.instances[name]?.topic_id ?? "") === topic
         && this.hasFleetAdmins(adapterId);

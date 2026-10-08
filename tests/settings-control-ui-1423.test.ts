@@ -10,6 +10,11 @@ import { SETUP_FORM_HTML } from "../src/setup-form.js";
 const roots: string[] = [], servers: SettingsControlServer[] = [], stores: SettingsConfirmationStore[] = [];
 afterEach(async () => { for (const store of stores.splice(0)) store.close(); for (const server of servers.splice(0)) await server.close(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 function directory() { const root = mkdtempSync(join(tmpdir(), "agend-test-settings-control-")); roots.push(root); return root; }
+async function refusal(work: Promise<unknown>, message?: string): Promise<void> {
+  const result = await work.catch(error => error);
+  expect(result).toBeInstanceOf(Error);
+  if (message) expect((result as Error).message).toContain(message);
+}
 async function control() {
   const root = directory(), apply = vi.fn(async (_current, execution) => execution.commit(() => ({ ok: true })));
   const store = new SettingsConfirmationStore({ audit: vi.fn() }); stores.push(store);
@@ -24,16 +29,16 @@ describe("#1423 independent host authority", () => {
     const h = await control(), inspected = await h.inspect();
     expect(lstatSync(join(h.root, "operator")).mode & 0o777).toBe(0o700); expect(lstatSync(settingsSocketPath(h.root)).mode & 0o777).toBe(0o600);
     expect(inspected.pending_change.summary).toContain("fleet access: add fleet admin (F) ID 42");
-    await expect(requestSettingsConfirmation(h.root, { action: "confirm", ticket: { ...inspected.ticket, summary_fingerprint: "different" } }, {})).rejects.toThrow(); expect(h.apply).not.toHaveBeenCalled();
+    await refusal(requestSettingsConfirmation(h.root, { action: "confirm", ticket: { ...inspected.ticket, summary_fingerprint: "different" } }, {})); expect(h.apply).not.toHaveBeenCalled();
     const result = await requestSettingsConfirmation(h.root, { action: "confirm", ticket: inspected.ticket }, {});
     expect(result.pending_change.state).toBe("applied"); expect(h.apply).toHaveBeenCalledOnce();
     await expect(requestSettingsConfirmation(h.root, { action: "confirm", ticket: inspected.ticket }, {})).rejects.toThrow(); expect(h.apply).toHaveBeenCalledOnce();
   });
   it("agent presence, including an empty value, is rejected before any path access", async () => {
-    for (const value of ["worker", ""]) await expect(requestSettingsConfirmation("/does-not-exist", { action: "inspect", id: "a".repeat(32) }, { AGEND_INSTANCE_NAME: value })).rejects.toThrow("Agent sessions");
+    for (const value of ["worker", ""]) await refusal(requestSettingsConfirmation("/does-not-exist", { action: "inspect", id: "a".repeat(32) }, { AGEND_INSTANCE_NAME: value }), "Agent sessions");
   });
   it("group-accessible socket and symlink operator directory are rejected", async () => {
-    const h = await control(); chmodSync(settingsSocketPath(h.root), 0o660); await expect(h.inspect()).rejects.toThrow("private socket");
+    const h = await control(); chmodSync(settingsSocketPath(h.root), 0o660); await refusal(h.inspect(), "private socket");
     const root = directory(), target = directory(); symlinkSync(target, join(root, "operator")); const store = new SettingsConfirmationStore({ audit: vi.fn() }); stores.push(store);
     const server = new SettingsControlServer(root, store, () => true); servers.push(server); await expect(server.listen()).rejects.toThrow();
     expect(lstatSync(join(root, "operator")).isSymbolicLink()).toBe(true);

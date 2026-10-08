@@ -93,6 +93,7 @@ describe("#1423 real lifecycle and nested startup boundaries", () => {
   it("a Classic compensation receipt cannot restart a newer fleet generation", async () => {
     const h = fleet(), restore = h.fm.captureClassicSettingsRestoration("classic", ["backend"]);
     const restart = vi.spyOn(h.fm, "restartClassicInstanceFromSettings").mockResolvedValue(undefined); h.fm.settingsGeneration++;
-    await expect(restore()).rejects.toThrow("stale"); expect(restart).not.toHaveBeenCalled();
+    const refused = await restore().catch((error: Error) => error);
+    expect(refused).toBeInstanceOf(Error); expect(refused.message).toContain("stale"); expect(restart).not.toHaveBeenCalled();
   });
 });

@@ -45,6 +45,13 @@ describe("settings execution ownership (#1423)", () => {
     execution.cancel(); running = false; running = true;
     expect(() => execution.mutate(() => undefined)).toThrow("settings_execution_stale"); execution.close();
   });
+  it("authority loss alone prevents a new effect even with an unchanged snapshot", () => {
+    let authorized = true; const effect = vi.fn();
+    const execution = new SettingsExecution({ current: () => authorized, snapshot: () => null });
+    authorized = false;
+    expect(() => execution.mutate(effect)).toThrow("settings_execution_stale");
+    expect(effect).not.toHaveBeenCalled(); execution.close();
+  });
   it("bounds admission by monotonic receipt time even if its timer is delayed", () => {
     let now = 0; const effect = vi.fn(); const execution = new SettingsExecution({ current: () => true, snapshot: () => null, now: () => now });
     now = SETTINGS_OPERATION_MS; expect(() => execution.mutate(effect)).toThrow(); expect(effect).not.toHaveBeenCalled(); execution.close();

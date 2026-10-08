@@ -28,7 +28,8 @@ describe("#1423 pending confirmation owner (no fleet or adapter)", () => {
   });
   it("an unauthorised click leaves the pending operation available for the real admin", async () => {
     const p = proposal(); const { view } = store.propose(p);
-    await expect(store.decide(view.id, "confirm", { label: "user", current: () => false })).rejects.toThrow("admin_required");
+    const refused = await store.decide(view.id, "confirm", { label: "user", current: () => false }).catch(error => error);
+    expect(refused).toBeInstanceOf(Error); expect(refused.message).toBe("admin_required");
     expect(p.apply).not.toHaveBeenCalled(); expect(store.get(view.id, p.session)?.state).toBe("pending");
     expect((await store.decide(view.id, "confirm", admin())).state).toBe("applied");
   });

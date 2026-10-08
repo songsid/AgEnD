@@ -30,6 +30,7 @@ function harness() {
     channels: [{ id: "primary", type: "discord", mode: "topic", bot_token_env: "TEST_BOT_TOKEN", group_id: "100", options: { general_channel_id: "200" }, access: { mode: "locked", allowed_users: ["admin"] } }] };
   writeFileSync(fm.configPath, yaml.dump(fm.fleetConfig)); fm.savedFleetConfigSnapshot = structuredClone(fm.fleetConfig);
   const a = adapter(); fm.adapters.set("primary", a); fm.adapter = a; fm.getInstanceAdapterId = () => "primary";
+  fm.daemons.set("general", new EventEmitter()); fm.adapterState.set("primary", { status: "connected", retryCount: 0 });
   fm.getAdapterForInstance = () => fm.adapter; fm.getGroupIdForInstance = () => "100";
   // Only platform transports/lifecycle are replaced; confirmation methods and nonce dispatcher are real.
   fm.startSingleAdapter = vi.fn(async (_cfg: any, _channel: any, started: () => void) => {
@@ -37,13 +38,13 @@ function harness() {
   }); fm.reregisterClassicChannels = vi.fn();
   const h = { fm, dir, adapter: a, store: null as SettingsConfirmationStore | null }; fixtures.push(h); return h;
 }
-function proposal(h: ReturnType<typeof harness>, options: { now?: () => number; affected?: string[] } = {}) {
+function proposal(h: ReturnType<typeof harness>, options: { now?: () => number; affected?: string[]; unchanged?: () => Promise<boolean> } = {}) {
   const apply = vi.fn(async (_current: () => boolean, execution: SettingsExecution) => execution.commit(() => "applied"));
   const store: SettingsConfirmationStore = new SettingsConfirmationStore({ now: options.now, notify: view => h.fm.promptSettingsChange(store, view), audit: vi.fn() }); h.store = store;
   h.fm.settingsConfirmation = { store };
   const view = store.propose({ session: "browser", key: "request", bytes: 1, source: "web_session", section: "access", requestedBy: "admin browser", fingerprint: "effect",
     summary: ["fleet.channels.primary.access.allowed_users: add fleet admin (F) ID 42"], affectedConnections: options.affected,
-    current: () => true, unchanged: async () => true, snapshot: () => null, apply }).view;
+    current: () => true, unchanged: options.unchanged ?? (async () => true), snapshot: () => null, apply }).view;
   return { store, view, apply };
 }
 async function promptData(h: ReturnType<typeof harness>, user = "admin") {
@@ -71,6 +72,29 @@ describe("#1423 actual General nonce handler", () => {
   it("a changed connection is excluded, so no available other General falls back to host", async () => {
     const h = harness(); proposal(h, { affected: ["primary"] }); await new Promise(resolve => setTimeout(resolve, 5));
     expect(h.adapter.notifyAlert).not.toHaveBeenCalled(); expect(h.fm.pendingNonceButtons.size).toBe(0);
+  });
+  it("a stopped, stopping or replaced General cannot approve an old prompt", async () => {
+    const h = harness(), p = proposal(h), { data } = await promptData(h);
+    h.fm.ipcStoppingInstances.add("general");
+    await h.fm.dispatchAdapterCallback(data, "primary", h.adapter);
+    expect(p.apply).not.toHaveBeenCalled();
+    const second = harness(); second.fm.daemons.delete("general"); proposal(second);
+    await new Promise(resolve => setTimeout(resolve, 5));
+    expect(second.adapter.notifyAlert).not.toHaveBeenCalled();
+    const third = harness(), q = proposal(third), click = await promptData(third);
+    third.fm.daemons.set("general", new EventEmitter());
+    await third.fm.dispatchAdapterCallback(click.data, "primary", third.adapter);
+    expect(q.apply).not.toHaveBeenCalled();
+  });
+  it("the approving F must still be an admin after the actual baseline await", async () => {
+    let release!: (value: boolean) => void;
+    const h = harness(), held = new Promise<boolean>(resolve => { release = resolve; });
+    const unchanged = vi.fn(() => held), p = proposal(h, { unchanged }), { data } = await promptData(h);
+    const deciding = h.fm.dispatchAdapterCallback(data, "primary", h.adapter);
+    await vi.waitFor(() => expect(unchanged).toHaveBeenCalledOnce());
+    h.fm.fleetConfig.channels[0].access.allowed_users = ["another-F"];
+    release(true); await deciding;
+    expect(p.apply).not.toHaveBeenCalled(); expect(p.store.get(p.view.id, "browser")!.state).toBe("stale");
   });
 });
 describe("#1423 actual queued runners and owned cleanup", () => {
