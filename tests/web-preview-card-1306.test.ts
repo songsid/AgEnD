@@ -382,7 +382,7 @@ describe("the chat's renderer and a live preview (§6.2)", () => {
     const nodes: Record<string, any> = { messages: list, uptime: { textContent: "" }, mainArea: { innerHTML: "" }, previewOptIn: box };
     const pv = { optIn: true, changed: [] as Array<() => void>, cards: [] as unknown[] };
     const c = vm.createContext({
-      localStorage: { getItem: () => null }, navigator: { language: "en" },
+      /* a returning browser: it has seen the first sign-in tour (#1366) */ localStorage: { getItem: (k: string) => k === "agend_tour_done" ? "1" : null }, navigator: { language: "en" },
       document: { addEventListener() {}, querySelectorAll: () => pv.cards, getElementById: (n: string) => nodes[n] ?? null, createElement: (t: string) => t === "template" ? { set innerHTML(v: string) { (this as any).content = { firstElementChild: node(v) }; } } : {}, body: { appendChild() {} } },
       setTimeout: () => 0, clearTimeout() {}, setInterval: () => 0, clearInterval() {},
       fetch: async () => ({ ok: true, json: async () => ({}) }),

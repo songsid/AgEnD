@@ -595,7 +595,7 @@ describe("dashboard sendMsg with files (the real page script)", () => {
     const nodes: Record<string, any> = { msgIn: { value: "", style: {}, scrollHeight: 20, focus() {} }, messages: { innerHTML: "" }, uptime: {}, failedSend: { textContent: "", append() {} }, pendingFiles: { textContent: "", append() {} } };
     const toasts: string[] = [];
     const c = vm.createContext({
-      localStorage: { getItem: () => null }, navigator: { language: "en" },
+      /* a returning browser: it has seen the first sign-in tour (#1366) */ localStorage: { getItem: (k: string) => k === "agend_tour_done" ? "1" : null }, navigator: { language: "en" },
       document: { addEventListener() {}, getElementById: (n: string) => nodes[n] ?? null, createElement: () => ({ style: {}, remove() {}, append() {}, setAttribute() {} }), body: { appendChild() {} } },
       setTimeout: () => 0, clearTimeout() {}, setInterval: () => 0, clearInterval() {},
       fetch: async () => ({ ok: true, json: async () => ({}) }), URL: { createObjectURL: () => "blob:x", revokeObjectURL() {} },
