@@ -7,11 +7,13 @@
 //   Node 23.6.0        (released 2025-01-13)
 //   Node 24+
 //
-// #1450 (sol's rule): an old host Node may proceed only toward a runtime that can be VERIFIED COMPLETE. preinstall
-// cannot verify it — the bundled Node is not on disk yet — so it lets the install continue exactly when this release
-// pins a bundled Node for a supported host; launcher/postinstall.cjs then proves that Node inside the same npm
-// transaction and refuses (npm rolls back) if it cannot. Everything else on an old Node is refused here, as before:
-// no pinned runtime, or a host the runtime packages do not cover.
+// #1450: where this release pins a bundled Node for a supported host (Linux glibc >= 2.28 or macOS 11+, x64/arm64),
+// the system Node's version is NEVER a reason to refuse — 20, 18, 16, any Node whose npm can run the install: AgEnD
+// will not run on it. preinstall cannot verify the bundled Node (it is not on disk yet); launcher/postinstall.cjs
+// proves it inside the same npm transaction and refuses (npm rolls back, the previous install stays) if it cannot.
+// The one refusal here: a host no bundled Node covers (musl, 32-bit, another OS, older glibc/macOS, or a release that
+// pins none) AND a system Node older than ENGINES — AgEnD would install and then not start.
+// Old syntax only (var, no ?. ??, no trailing call commas): this runs under whatever Node runs npm.
 //
 // Exiting 1 aborts the install and keeps the previously installed version intact.
 // --ignore-scripts bypasses this check; see Upgrade Notes in the changelog.
@@ -48,6 +50,6 @@ process.stderr.write(
   "\n" +
   "  Update Node to a compatible version, then retry:\n" +
   "    npm install -g @songsid/agend\n" +
-  "\n",
+  "\n"
 );
 process.exit(1);
