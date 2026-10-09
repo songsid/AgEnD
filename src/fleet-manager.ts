@@ -173,6 +173,7 @@ import { ReplyButtonsController, type ReplyButtonsView } from "./reply-buttons-c
 import { publicAttachment, sweepOrphanedUploads, WebFileLedger } from "./web-upload.js";
 import { handleViewRequest, isViewPath, profileIdentities, resolveInstanceIdentity } from "./view-api.js";
 import { envFileKeys } from "./token-env-name.js";
+import { parseEnvText } from "./env-file.js";
 import { isDisallowedIntentsError } from "./discord-permissions.js";
 import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, usageProviderIdForBackend } from "./usage/usage-api.js";
 import { LOGIN_FLOWS, LOGIN_BACKEND_ALIASES, type LoginFlow, type AuthCheckResult } from "./login-flows.js";
@@ -4816,22 +4817,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const envPath = join(this.dataDir, ".env");
     if (!existsSync(envPath)) return;
     assertSettingsLease(settingsFileResource(envPath), owner);
-    const content = readFileSync(envPath, "utf-8");
-    for (const line of content.split("\n")) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-      const eqIdx = trimmed.indexOf("=");
-      if (eqIdx < 0) continue;
-      // Accept `export KEY=value` — the shell-style form people paste from their
-      // .bashrc. Without this the variable landed in process.env under the key
-      // "export KEY" and silently did nothing.
-      const key = trimmed.slice(0, eqIdx).replace(/^export\s+/, "").trim();
-      const raw = trimmed.slice(eqIdx + 1);
-      const value = raw.replace(/^["'](.*)["']$/, '$1');
-      // .env file always wins over inherited shell env vars, so that
-      // quickstart's newly written token overrides any stale value.
-      process.env[key] = value;
-    }
+    // .env file always wins over inherited shell env vars, so that quickstart's newly written token overrides any stale
+    // value. One parser for every reader of .env (env-file.ts): `export KEY=value` included.
+    for (const [key, value] of parseEnvText(readFileSync(envPath, "utf-8"))) process.env[key] = value;
   }
 
   /** Initialize auth before any adapter can answer /dashboard. */
@@ -17574,14 +17562,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const envPath = join(this.dataDir, ".env");
     if (!existsSync(envPath)) return;
     assertSettingsLease(settingsFileResource(envPath), owner);
-    for (const line of readFileSync(envPath, "utf-8").split("\n")) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-      const eq = trimmed.indexOf("=");
-      if (eq < 0) continue;
-      const key = trimmed.slice(0, eq).replace(/^export\s+/, "").trim();
-      if (keys.has(key)) process.env[key] = trimmed.slice(eq + 1).replace(/^["'](.*)["']$/, "$1");
-    }
+    // The same parser as the start's (env-file.ts): a token is read the same way at start and when hot-added.
+    for (const [key, value] of parseEnvText(readFileSync(envPath, "utf-8"))) if (keys.has(key)) process.env[key] = value;
   }
 
   planConfigApply(): Array<{ target: string; kind: ApplyTargetKind }> {

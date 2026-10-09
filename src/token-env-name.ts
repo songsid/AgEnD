@@ -7,6 +7,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { isReservedProviderEnvKey, providerRegistryEnvKeys } from "./provider-secret-registry.js";
+import { parseEnvText } from "./env-file.js";
 
 /** What a token env name must look like (fleet.yaml and the wizard). */
 export const TOKEN_ENV_PATTERN = /^[A-Z][A-Z0-9_]{2,63}$/;
@@ -50,7 +51,7 @@ export function envFileKeys(dataDir: string): Set<string> {
     if ((err as NodeJS.ErrnoException)?.code === "ENOENT") return new Set();
     throw new EnvFileUnreadableError(err);
   }
-  return new Set(text.split("\n").map(line => /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/.exec(line)?.[1]).filter((k): k is string => !!k));
+  return new Set(parseEnvText(text).keys());          // the same reading as the fleet's (env-file.ts)
 }
 
 /**
