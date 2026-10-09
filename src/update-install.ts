@@ -9,7 +9,9 @@
  *
  * Every command goes through an injected runner, so the sequence is testable without npm, nvm or a fleet.
  */
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { rmSync } from "node:fs";
+import { restorePackagePreimage, takePackagePreimage, type PackagePreimage } from "./package-preimage.js";
 
 export interface CommandResult {
   status: number | null;
@@ -19,8 +21,11 @@ export interface CommandResult {
 }
 
 export interface CommandRunner {
-  /** Run a program; `inherit` streams its output to the terminal (npm's progress), otherwise it is captured. */
-  run(command: string, args: string[], options?: { inherit?: boolean; timeoutMs?: number }): CommandResult;
+  /**
+   * Run a program; `inherit` streams its output to the terminal (npm's progress), otherwise it is captured. `env` is
+   * added to this process's environment for that one program (the install token goes to npm and nothing else).
+   */
+  run(command: string, args: string[], options?: { inherit?: boolean; timeoutMs?: number; env?: Record<string, string> }): CommandResult;
   /** Progress for the operator, printed when it happens. */
   log(message: string): void;
 }
@@ -34,11 +39,27 @@ export interface UpdateInstallPlan {
   viaNvm: boolean;
   /** `~/.nvm/nvm.sh`. */
   nvmSh: string;
+  /**
+   * #1450 C1: take the prefix lock for the realpath'd npm prefix this install will change, before npm runs; its token
+   * is handed to npm as AGEND_INSTALL_TOKEN. Omitted: no lock (tests of the order alone).
+   */
+  lock?(prefix: string): { ok: true; token: string } | { ok: false; reason: string };
+  /**
+   * #1450 C6: copy the installed package aside before npm (requires `lock`), and put it back when the new one does not
+   * verify. The successful outcome carries the preimage, so a later service failure can restore it too.
+   */
+  rollback?: boolean;
+  now?(): Date;
+  /**
+   * nvm's Node 22 bin directory, resolved ONCE (runUpdateInstall sets it): locking, installing and verifying then run
+   * on that exact selection, never on a fresh `nvm use 22` that could pick another Node 22 in between (#1472 review).
+   */
+  nvmBin?: string;
 }
 
 export type UpdateInstallOutcome =
-  | { ok: true; agendPath: string; version: string; dir: string; bin: string; entry: string; node: string }
-  | { ok: false; stage: "install" | "verify"; message: string };
+  | { ok: true; agendPath: string; version: string; dir: string; bin: string; entry: string; node: string; rollback?: { root: string; prefix: string; preimage: PackagePreimage | null }; /** nvm transition: retire the old system copy once activation settles. */ retireSystemCopy?: true }
+  | { ok: false; stage: "lock" | "install" | "verify"; message: string };
 
 /**
  * The `bash -c` script that puts nvm's Node 22 on PATH for the rest of the same shell (nvm only changes its own shell),
@@ -47,15 +68,20 @@ export type UpdateInstallOutcome =
  * arguments or switching to its default before `nvm use 22`.
  */
 export const NVM_RUN_SCRIPT = 'n=$1; shift; . "$n" --no-use >/dev/null 2>&1 && nvm use 22 >/dev/null 2>&1 && "$@"';
-/** The install itself, also with every path and spec as data: `$1` = nvm.sh, `$2` = the npm spec. */
-export const NVM_INSTALL_SCRIPT = 'n=$1; p=$2; . "$n" --no-use && nvm install 22 && nvm use 22 && npm install -g "$p"';
+/** Getting nvm's Node 22, before its prefix can be locked and installed into: `$1` = nvm.sh, as data. */
+export const NVM_PREPARE_SCRIPT = 'n=$1; . "$n" --no-use && nvm install 22';
+/** Which Node `nvm use 22` selects: its absolute path, printed once. `$1` = nvm.sh, as data. */
+export const NVM_SELECT_SCRIPT = 'n=$1; . "$n" --no-use >/dev/null 2>&1 && nvm use 22 >/dev/null 2>&1 && command -v node';
+/** Run the remaining arguments with a frozen nvm bin directory first on PATH (`$1`, as data). */
+export const NVM_BIN_SCRIPT = 'd=$1; shift; PATH="$d:$PATH"; export PATH; exec "$@"';
 
 /**
  * Run `argv` in the environment the new `agend` will run in: the parent's PATH for a direct install, nvm's Node 22
  * for an nvm install — so `agend`'s `#!/usr/bin/env node` and a bare `node` resolve to the same interpreter.
  */
-function inInstallEnv(runner: CommandRunner, plan: UpdateInstallPlan, argv: string[], options: { inherit?: boolean; timeoutMs?: number } = {}): CommandResult {
+function inInstallEnv(runner: CommandRunner, plan: UpdateInstallPlan, argv: string[], options: { inherit?: boolean; timeoutMs?: number; env?: Record<string, string> } = {}): CommandResult {
   if (!plan.viaNvm) return runner.run(argv[0]!, argv.slice(1), options);
+  if (plan.nvmBin) return runner.run("bash", ["-c", NVM_BIN_SCRIPT, "bash", plan.nvmBin, ...argv], options);
   return runner.run("bash", ["-c", NVM_RUN_SCRIPT, "bash", plan.nvmSh, ...argv], options);
 }
 
@@ -200,10 +226,39 @@ export function runUpdateInstall(plan: UpdateInstallPlan, runner: CommandRunner)
     }
   }
 
-  const install = plan.viaNvm
-    ? runner.run("bash", ["-c", NVM_INSTALL_SCRIPT, "bash", plan.nvmSh, plan.pkg], { inherit: true })
-    : runner.run("npm", ["install", "-g", plan.pkg], { inherit: true });
+  if (plan.viaNvm && runner.run("bash", ["-c", NVM_PREPARE_SCRIPT, "bash", plan.nvmSh], { inherit: true }).status !== 0) {
+    return { ok: false, stage: "install", message: "  Failed to install Node 22 via nvm. The current install was not touched." };
+  }
+  if (plan.viaNvm) {
+    // Freeze the selection: the prefix that is locked is the prefix npm installs into and the one verified.
+    const selected = runner.run("bash", ["-c", NVM_SELECT_SCRIPT, "bash", plan.nvmSh], { timeoutMs: 30_000 });
+    const node = selected.stdout.trim().split("\n").pop()?.trim() ?? "";
+    if (selected.status !== 0 || !node.startsWith("/")) return { ok: false, stage: "install", message: "  Could not tell which Node `nvm use 22` selects. The current install was not touched." };
+    plan = { ...plan, nvmBin: dirname(node) };
+  }
+  // C1: lock the prefix npm is about to change — read in the install environment, as npm itself sees it — before npm.
+  const env: Record<string, string> = {};
+  let rollback: { root: string; prefix: string; preimage: PackagePreimage | null } | undefined;
+  if (plan.lock) {
+    const prefix = inInstallEnv(runner, plan, ["npm", "prefix", "-g"], { timeoutMs: 15_000 });
+    const where = prefix.stdout.trim().split("\n").pop()?.trim() ?? "";
+    if (prefix.status !== 0 || !where) return { ok: false, stage: "lock", message: "  ✗ Could not ask npm which prefix it installs into; nothing was changed." };
+    const lock = plan.lock(where);
+    if (!lock.ok) return { ok: false, stage: "lock", message: `  ✗ Not updating: ${lock.reason}. Nothing was changed.` };
+    env.AGEND_INSTALL_TOKEN = lock.token;
+    if (plan.rollback) {
+      const rootRun = inInstallEnv(runner, plan, ["npm", "root", "-g"], { timeoutMs: 15_000 });
+      const root = rootRun.stdout.trim().split("\n").pop()?.trim() ?? "";
+      if (rootRun.status !== 0 || !root) return { ok: false, stage: "lock", message: "  ✗ Could not ask npm where it installs packages; nothing was changed." };
+      const taken = takePackagePreimage(root, where, plan.now?.() ?? new Date());
+      if (!taken.ok) return { ok: false, stage: "lock", message: `  ✗ Not updating: ${taken.reason}. Nothing was changed.` };
+      rollback = { root, prefix: where, preimage: taken.preimage };
+    }
+  }
+  const install = inInstallEnv(runner, plan, ["npm", "install", "-g", plan.pkg], { inherit: true, env });
   if (install.status !== 0) {
+    // npm rolled its own install back: the copy is not needed.
+    if (rollback?.preimage) rmSync(rollback.preimage.dir, { recursive: true, force: true });
     return {
       ok: false, stage: "install",
       message: plan.viaNvm ? "  Failed to install via nvm. The current install was not touched."
@@ -212,13 +267,44 @@ export function runUpdateInstall(plan: UpdateInstallPlan, runner: CommandRunner)
   }
 
   const verified = verifyInstalledPackage(plan, runner);
-  if (!verified.ok) return verified;
-
-  // Only now is the new install proven: clean up the old system copy an nvm install leaves behind. Best effort, and
-  // never waits for a password.
-  if (plan.viaNvm) {
-    runner.log("  Note: removing old system install (may require sudo)...");
-    runner.run("sudo", ["-n", "npm", "uninstall", "-g", "@songsid/agend"], { inherit: true, timeoutMs: 10_000 });
+  if (!verified.ok) {
+    if (!rollback?.preimage) return verified;
+    // C6 step 3: the new package does not verify — put the previous one back, and prove it is what is installed now.
+    const previous = rollback.preimage;
+    const restored = restorePackagePreimage(rollback.root, rollback.prefix, previous);
+    if (!restored.ok) return { ok: false, stage: "verify", message: `${verified.message}\n  ✗ ${restored.reason}. Reinstall it: npm install -g @songsid/agend@${previous.version}` };
+    const back = verifyInstalledPackage({ ...plan, targetVersion: previous.version }, runner);
+    return {
+      ok: false, stage: "verify",
+      message: back.ok ? `${verified.message}\n  ↩ Rolled back to v${previous.version}, which verifies; the running fleet was not touched.`
+        : `${verified.message}\n  ✗ v${previous.version} was put back but does not verify either: ${back.message.trim()} Reinstall it: npm install -g @songsid/agend@${previous.version}`,
+    };
   }
+  if (rollback) Object.assign(verified, { rollback });
+  // The old system copy an nvm install leaves behind is what the current service still runs: it is removed only once
+  // the activation has settled on the new install (retireSystemCopy, called by the caller), never here.
+  if (plan.viaNvm) Object.assign(verified, { retireSystemCopy: true });
   return verified;
+}
+
+/**
+ * Has the activation POSITIVELY settled on the new install — the moment the old system copy may go? launchd: the new
+ * job was proven running. Otherwise only a restart that reported "restarted": "pending" (systemd still running the
+ * job) and "failed" keep the old copy, as does any failed activation (#1473 review).
+ */
+export function activationSettled(
+  outcome: { ok: true; via: "restart" | "launchd-activation" } | { ok: false },
+  restart: "restarted" | "pending" | "failed" | null,
+): boolean {
+  if (!outcome.ok) return false;
+  return outcome.via === "launchd-activation" || restart === "restarted";
+}
+
+/**
+ * After an nvm transition's activation SETTLED (the fleet runs the new install): remove the old system copy. Best
+ * effort, and never waits for a password. Before that point the old copy is the rollback for the old service.
+ */
+export function retireSystemCopy(runner: CommandRunner): void {
+  runner.log("  Note: removing old system install (may require sudo)...");
+  runner.run("sudo", ["-n", "npm", "uninstall", "-g", "@songsid/agend"], { inherit: true, timeoutMs: 10_000 });
 }

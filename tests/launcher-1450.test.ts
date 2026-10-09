@@ -49,7 +49,7 @@ describe("runtime-platform: engines and host support", () => {
   });
 
   it("the launcher files a host's old Node runs use no syntax newer than it parses (no ?. ?? or import() there)", () => {
-    for (const file of ["runtime-platform.cjs", "runtime-select.cjs", "launch.cjs", "agend.cjs", "agend-agent.cjs", "postinstall.cjs"]) {
+    for (const file of ["runtime-platform.cjs", "runtime-select.cjs", "launch.cjs", "agend.cjs", "agend-agent.cjs", "postinstall.cjs", "install-admission.cjs"]) {
       const source = readFileSync(join(LAUNCHER, file), "utf8").replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`/g, '""');
       expect(source, file).not.toMatch(/\?\.|\?\?|\bimport\s*\(|^\s*(?:const|let)\s/m);
     }

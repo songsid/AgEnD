@@ -10,6 +10,7 @@ import {
   type ActivationDeps, type ServiceManager, type TupleDeps, type VerifiedTarget,
 } from "../src/service-activation.js";
 import type { CommandResult } from "../src/update-install.js";
+import { systemdWords } from "../src/service-installer.js";
 
 const PKG = "/usr/lib/node_modules/@songsid/agend";
 const verified: VerifiedTarget = { dir: PKG, bin: `${PKG}/dist/cli.js`, entry: `${PKG}/dist/cli.js`, node: "/opt/node22/bin/node" };
@@ -45,6 +46,11 @@ describe("parsers: what the managers report", () => {
       pid: 4242, state: "running",
     });
   });
+  // #1473 review: EJS writes `"` as `&#34;`; an AGEND_NODE / system path may contain one.
+  it("numeric XML character references are decoded (EJS's &#34;), hex too, and &amp; only once", () => {
+    const t = parsePlist(`<plist><dict><key>ProgramArguments</key><array><string>/opt/a&#34;b/node</string><string>/x/&#x27;q&#x27;/cli.js</string><string>a&amp;#34;b</string></array></dict></plist>`);
+    expect(t?.argv).toEqual(['/opt/a"b/node', "/x/'q'/cli.js", "a&#34;b"]);
+  });
 });
 
 describe("the activation tuple must start exactly the verified install", () => {
@@ -58,6 +64,8 @@ describe("the activation tuple must start exactly the verified install", () => {
     ["no PATH: systemd's default resolves /usr/bin/node, not the verified one", tuple(["/usr/bin/agend", "fleet", "start"], {}), false],
     ["extra arguments", tuple(["/usr/bin/agend", "fleet", "start", "--debug"]), false],
     ["NODE_OPTIONS set", tuple(["/usr/bin/agend", "fleet", "start"], { PATH: "/opt/node22/bin", NODE_OPTIONS: "--require /tmp/x.js" }), false],
+    ["NODE_EXTRA_CA_CERTS set (rendered by no template: must be absent)", tuple(["/opt/node22/bin/node", `${PKG}/dist/cli.js`, "fleet", "start"], { PATH: "/opt/node22/bin", NODE_EXTRA_CA_CERTS: "/tmp/ca.pem" }), false],
+    ["AGEND_NODE set (the launcher would pick that Node)", tuple(["/opt/node22/bin/node", `${PKG}/dist/cli.js`, "fleet", "start"], { PATH: "/opt/node22/bin", AGEND_NODE: "/opt/node20/bin/node" }), false],
     ["the explicit interpreter, but an old Node", tuple(["/opt/node20/bin/node", `${PKG}/dist/cli.js`, "fleet", "start"]), false],
     ["the explicit interpreter, but another entry", tuple(["/opt/node22/bin/node", `${PKG}/dist/agent-cli.js`, "fleet", "start"]), false],
   ])("%s → %s", (_name, t, ok) => {
@@ -70,10 +78,28 @@ describe("since the launcher (#1450): the bin is the sh launcher; a service stil
   it.each([
     ["the inner entry, `fleet start` (what `agend install` writes)", tuple([`${PKG}/dist/cli.js`, "fleet", "start"]), true],
     ["the interpreter explicitly on the inner entry", tuple(["/opt/node22/bin/node", `${PKG}/dist/cli.js`, "fleet", "start"]), true],
-    ["the sh launcher bin itself", tuple([`${PKG}/launcher/agend`, "fleet", "start"]), false],
+    // A system Node (no bundled runtime): the launcher, which finds the verified Node on this PATH (#1450 leader review).
+    ["the sh launcher bin itself, its PATH finding the verified Node", tuple([`${PKG}/launcher/agend`, "fleet", "start"]), true],
+    ["the sh launcher bin itself, its PATH finding an old Node", tuple([`${PKG}/launcher/agend`, "fleet", "start"], { PATH: "/opt/node20/bin:/opt/node22/bin" }), false],
+    ["the sh launcher bin itself, no PATH", tuple([`${PKG}/launcher/agend`, "fleet", "start"], {}), false],
+    ["the sh launcher bin itself, its PATH right but AGEND_NODE naming another Node", tuple([`${PKG}/launcher/agend`, "fleet", "start"], { PATH: "/opt/node22/bin:/usr/bin:/bin", AGEND_NODE: "/opt/node20/bin/node" }), false],
+    // #1473 review r2: an empty or relative entry is the working directory — a `node` there would win.
+    ["the sh launcher bin itself, a leading empty PATH entry", tuple([`${PKG}/launcher/agend`, "fleet", "start"], { PATH: ":/opt/node22/bin:/usr/bin:/bin" }), false],
+    ["the sh launcher bin itself, a relative PATH entry", tuple([`${PKG}/launcher/agend`, "fleet", "start"], { PATH: "bin:/opt/node22/bin:/usr/bin" }), false],
+    ["the inner entry (env node), a trailing empty PATH entry", tuple([`${PKG}/dist/cli.js`, "fleet", "start"], { PATH: "/opt/node22/bin:/usr/bin:" }), false],
     ["a Node on the JS launcher", tuple(["/opt/node22/bin/node", `${PKG}/launcher/agend.cjs`, "fleet", "start"]), false],
   ])("%s → %s", (_name, t, ok) => {
     expect(tupleStartsVerified(t, launcherTarget, "/usr/bin:/bin", fs).ok).toBe(ok);
+  });
+  it("a legacy target (its bin IS dist/cli.js) keeps the script rule: a shebang naming an old Node is refused, whatever PATH finds", () => {
+    const legacy: VerifiedTarget = { dir: PKG, bin: `${PKG}/dist/cli.js`, entry: `${PKG}/dist/cli.js`, node: "/opt/node22/bin/node" };
+    const pinnedShebang = { ...fs, readFirstLine: (p: string) => (p.endsWith("/dist/cli.js") ? "#!/opt/node20/bin/node" : fs.readFirstLine(p)) };
+    expect(tupleStartsVerified(tuple([`${PKG}/dist/cli.js`, "fleet", "start"]), legacy, "/usr/bin:/bin", pinnedShebang).ok).toBe(false);
+  });
+
+  it("a bundled runtime (on no PATH) is never reached through the launcher: it must be named", () => {
+    const bundled: VerifiedTarget = { ...launcherTarget, node: `${PKG}/node_modules/@songsid/agend-node-linux-x64/bin/node` };
+    expect(tupleStartsVerified(tuple([`${PKG}/launcher/agend`, "fleet", "start"]), bundled, "/usr/bin:/bin", fs).ok).toBe(false);
   });
 });
 
@@ -81,15 +107,23 @@ describe("since the launcher (#1450): the bin is the sh launcher; a service stil
 function manager(answers: Array<[RegExp, Partial<CommandResult> | (() => Partial<CommandResult>)]>, files: Record<string, string> = {}, refreshWrites?: [string, string]) {
   const calls: string[] = [];
   let restarts = 0;
+  // launchd: once a bootout succeeded, the job is gone — the next print says so (113) — unless a test says otherwise.
+  let bootedOut = false;
+  let clock = 0;
   const deps: ActivationDeps = {
     ...fs,
     run: (command, args) => {
       const line = [command, ...args].join(" ");
       calls.push(line);
+      if (bootedOut && /^launchctl print/.test(line)) { bootedOut = false; return { status: 113, signal: null, stdout: "", stderr: "Could not find service" }; }
       const found = answers.find(([pattern]) => pattern.test(line))?.[1];
       const answer = typeof found === "function" ? found() : found;
-      return { status: 0, signal: null, stdout: "", stderr: "", ...(answer ?? {}) };
+      const result = { status: 0, signal: null, stdout: "", stderr: "", ...(answer ?? {}) };
+      if (/^launchctl bootout/.test(line) && result.status === 0) bootedOut = true;
+      return result;
     },
+    sleep: () => { clock += 100; },
+    monotonicNow: () => clock,
     readFile: path => files[path] ?? null,
     writeFile: (path, content) => { files[path] = content; calls.push(`write ${path}`); },
     refresh: () => { calls.push("refresh"); if (refreshWrites) files[refreshWrites[0]] = refreshWrites[1]; return { status: 0, signal: null, stdout: "", stderr: "" }; },
@@ -180,6 +214,48 @@ describe("systemd: refresh → daemon-reload → the LOADED unit (D-Bus) must st
   });
 });
 
+describe("#1450 C6: a systemd failure before the restart restores the unit (reloaded, proven) and the package", () => {
+  const unitPath = "/home/u/.config/systemd/user/com.agend.fleet.service";
+  const OLD = `[Service]\nExecStart=/opt/node22/bin/node ${PKG}/dist/cli.js fleet start\nEnvironment=PATH=/opt/node22/bin:/usr/bin:/bin\n`;
+  const NEW_WRONG = `[Service]\nExecStart=/opt/node22/bin/node ${PKG}/dist/agent-cli.js fleet start\nEnvironment=PATH=/opt/node22/bin:/usr/bin:/bin\n`;
+  /** A systemd whose LOADED ExecStart is whatever the unit file says at the last successful daemon-reload. */
+  function systemd(reloads: Array<number>) {
+    const files: Record<string, string> = { [unitPath]: OLD };
+    let loadedText = OLD;
+    let n = 0;
+    const exec = () => {
+      const argv = systemdWords(/^ExecStart=(.*)$/m.exec(loadedText)![1]!);
+      return { stdout: JSON.stringify({ type: "a(sasbttttuii)", data: [[argv[0], argv, false, 0, 0, 0, 0, 0, 0, 0]] }) };
+    };
+    const answers: Array<[RegExp, Partial<CommandResult> | (() => Partial<CommandResult>)]> = [
+      [/daemon-reload/, () => { const status = reloads[n++] ?? 0; if (status === 0) loadedText = files[unitPath]!; return { status }; }],
+      [/Service ExecStart$/, exec],
+      ...busFor({ argv: [] }).filter(([re]) => !/ExecStart/.test(String(re))),
+    ];
+    const m = manager(answers, files, [unitPath, NEW_WRONG]);
+    const restored: string[] = [];
+    m.deps.restorePackage = () => { restored.push("package"); m.calls.push("restore-package"); return "The previous package (v2.1.12) is back in place"; };
+    return { m, restored };
+  }
+
+  it("the refreshed unit does not verify: the preimage goes back, is reloaded and loaded, and the package is restored", () => {
+    const { m, restored } = systemd([0, 0]);
+    const outcome = activateService({ kind: "systemd", unit: "com.agend.fleet", user: true, unitPath }, verified, m.deps);
+    expect(outcome).toMatchObject({ ok: false, stopped: false, message: expect.stringContaining("the previous com.agend.fleet is back and loaded; The previous package (v2.1.12) is back in place") });
+    expect(m.files[unitPath]).toBe(OLD);
+    expect(m.calls.filter(c => c === "systemctl --user daemon-reload")).toHaveLength(2);
+    expect(restored).toEqual(["package"]);
+    expect(m.restarts()).toBe(0);
+  });
+
+  it("the restore cannot be reloaded: said so, never called loaded", () => {
+    const { m } = systemd([0, 1]);                         // the refresh reloads; the restore's reload fails
+    const outcome = activateService({ kind: "systemd", unit: "com.agend.fleet", user: true, unitPath }, verified, m.deps);
+    expect(outcome).toMatchObject({ ok: false, message: expect.stringContaining("back on disk but systemd does not show it loaded") });
+    expect(m.files[unitPath]).toBe(OLD);
+  });
+});
+
 describe("launchd: loaded job = its plist, prove the new plist, ONE bootout+bootstrap, prove the loaded job; proven rollback", () => {
   const plistPath = "/Users/u/Library/LaunchAgents/com.agend.fleet.plist";
   const job: ServiceManager = { kind: "launchd", label: "com.agend.fleet", plistPath, domain: "gui/501" };
@@ -249,7 +325,7 @@ describe("launchd: loaded job = its plist, prove the new plist, ONE bootout+boot
 
   it("a launchctl getenv that did not complete (timed out) is uncertainty: refused, nothing touched", () => {
     const m = manager([[/getenv/, killed], [/print/, printed(OLD)]], { [plistPath]: plist(OLD) }, [plistPath, plist(NEW)]);
-    expect(activateService(job, verified, m.deps)).toMatchObject({ ok: false, stopped: false, message: expect.stringContaining("Could not read launchd") });
+    expect(activateService(job, verified, m.deps)).toMatchObject({ ok: false, stopped: false, message: expect.stringContaining("could not be read (launchctl getenv") });
     expect(m.calls).not.toContain("refresh");
     expect(m.calls.some(c => /bootout|bootstrap/.test(c))).toBe(false);
   });
@@ -260,6 +336,65 @@ describe("launchd: loaded job = its plist, prove the new plist, ONE bootout+boot
     expect(m.calls).not.toContain("refresh");
     expect(m.calls.some(c => /bootout|bootstrap/.test(c))).toBe(false);
     expect(m.files[plistPath]).toBe(plist(OLD));
+  });
+
+  // #1473 review: every refusal comes after npm replaced the package — each one puts the previous package back.
+  it.each([
+    ["launchctl getenv did not complete", [[/getenv/, killed], [/print/, printed(OLD)]]],
+    ["launchd's environment injects AGEND_NODE", [[/getenv AGEND_NODE/, { stdout: "/opt/node20/bin/node\n" }], [/getenv/, { stdout: "" }], [/print/, printed(OLD)]]],
+    ["the initial launchctl print did not complete", [[/print/, killed], [/getenv/, { stdout: "" }]]],
+    ["the loaded job is not the plist on disk (no owned preimage)", [[/print/, printed(OTHER)], [/getenv/, { stdout: "" }]]],
+  ] as Array<[string, Array<[RegExp, Partial<CommandResult>]>]>)("an early launchd refusal (%s) restores the previous package", (_n, answers) => {
+    const m = manager(answers, { [plistPath]: plist(OLD) }, [plistPath, plist(NEW)]);
+    let restored = 0;
+    m.deps.restorePackage = () => { restored++; return "The previous package (v2.1.12) is back in place"; };
+    const outcome = activateService(job, verified, m.deps);
+    expect(outcome).toMatchObject({ ok: false, stopped: false, message: expect.stringContaining("The previous package (v2.1.12) is back in place") });
+    expect(restored).toBe(1);
+    expect(m.calls.some(c => /bootout|bootstrap/.test(c))).toBe(false);
+  });
+
+  it("a blank value is a SET value: launchctl getenv printing \" \\n\" is refused (never trimmed to unset)", () => {
+    const m = manager([[/getenv AGEND_NODE/, { stdout: " \n" }], [/getenv/, { stdout: "" }], [/print/, printed(OLD)]], { [plistPath]: plist(OLD) }, [plistPath, plist(NEW)]);
+    expect(activateService(job, verified, m.deps)).toMatchObject({ ok: false, stopped: false, message: expect.stringContaining("AGEND_NODE") });
+  });
+
+  it.each(["NODE_EXTRA_CA_CERTS", "AGEND_NODE"])("launchd's own environment sets %s → refused before anything", key => {
+    const m = manager([[new RegExp(`getenv ${key}`), { stdout: "/x\n" }], [/getenv/, { stdout: "" }], [/print/, printed(OLD)]], { [plistPath]: plist(OLD) }, [plistPath, plist(NEW)]);
+    expect(activateService(job, verified, m.deps)).toMatchObject({ ok: false, stopped: false, message: expect.stringContaining(key) });
+    expect(m.calls.some(c => /bootout|bootstrap/.test(c))).toBe(false);
+  });
+
+  // Real launchd (macOS 15, native-c6): bootout returns before the job is unloaded; a bootstrap then fails with 5.
+  it("bootout is asynchronous: the bootstrap waits until launchd reports the job gone (113)", () => {
+    let polls = 0;
+    const m = manager([[/print/, prints(printed(OLD), printed(NEW))], [/getenv/, { stdout: "" }]], { [plistPath]: plist(OLD) }, [plistPath, plist(NEW)]);
+    const run = m.deps.run;
+    let stillThere = 0;
+    m.deps.run = (command, args) => {
+      if (args[0] === "bootout") stillThere = 2;                    // two polls still show the old job
+      if (args[0] === "print" && stillThere > 0) { stillThere--; polls++; m.calls.push("print (still loaded)"); return { status: 0, signal: null, stderr: "", ...printed(OLD) } as CommandResult; }
+      return run(command, args);
+    };
+    expect(activateService(job, verified, m.deps)).toEqual({ ok: true, via: "launchd-activation" });
+    expect(polls).toBe(2);
+    const order = m.calls.filter(c => /bootout|bootstrap|still loaded|print gui/.test(c));
+    expect(order.indexOf(`launchctl bootstrap gui/501 ${plistPath}`)).toBeGreaterThan(order.lastIndexOf("print (still loaded)"));
+  });
+  it.each(["xpcproxy", "spawn scheduled"])("right after a bootstrap the job is still spawning (%s): waited out, then judged", state => {
+    const m = manager([[/print/, prints(printed(OLD), printed(NEW, 900, state), printed(NEW, 900, state), printed(NEW, 900))], [/getenv/, { stdout: "" }]], { [plistPath]: plist(OLD) }, [plistPath, plist(NEW)]);
+    expect(activateService(job, verified, m.deps)).toEqual({ ok: true, via: "launchd-activation" });
+  });
+  it("a job that never finishes unloading: no bootstrap into it; rolled back, package back", () => {
+    const m = manager([[/print/, printed(OLD)], [/getenv/, { stdout: "" }]], { [plistPath]: plist(OLD) }, [plistPath, plist(NEW)]);
+    const run = m.deps.run;
+    m.deps.run = (command, args) => (args[0] === "print" && m.calls.some(c => /bootout/.test(c)) ? (m.calls.push("print (still loaded)"), { status: 0, signal: null, stderr: "", ...printed(OLD) } as CommandResult) : run(command, args));
+    let restored = 0;
+    m.deps.restorePackage = () => { restored++; return "package back"; };
+    const outcome = activateService(job, verified, m.deps);
+    expect(outcome).toMatchObject({ ok: false, message: expect.stringContaining("did not finish unloading") });
+    expect(m.calls.filter(c => /bootstrap/.test(c))).toEqual([]);
+    expect(restored).toBe(1);
   });
 
   it("an initial print that exits non-zero for another reason (not 113) is uncertainty too", () => {

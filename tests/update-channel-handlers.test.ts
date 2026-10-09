@@ -6,13 +6,13 @@
  * spawn is replaced and only its arguments are kept.
  */
 import { EventEmitter } from "node:events";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const spawned = vi.hoisted(() => [] as Array<{ cmd: string; args: string[] }>);
-const registry = vi.hoisted(() => ({ tags: {} as Record<string, string>, views: [] as string[] }));
+const registry = vi.hoisted(() => ({ tags: {} as Record<string, string>, views: [] as string[], prefix: null as string | null }));
 vi.mock("node:child_process", async importOriginal => {
   const real = await importOriginal<typeof import("node:child_process")>();
   return {
@@ -23,6 +23,11 @@ vi.mock("node:child_process", async importOriginal => {
     }) as never,
     // `npm view <spec> version`, answered from `registry.tags`.
     execFile: ((cmd: string, args: string[], _opts: unknown, cb: (err: Error | null, out?: { stdout: string; stderr: string }) => void) => {
+      // `npm root -g` / `npm prefix -g`: the scratch global install (#1450 C5), or a failure when there is none.
+      if (cmd === "npm" && args[1] === "-g" && (args[0] === "root" || args[0] === "prefix")) {
+        if (!registry.prefix) return cb(new Error("npm: not found"));
+        return cb(null, { stdout: `${args[0] === "root" ? join(registry.prefix, "lib", "node_modules") : registry.prefix}\n`, stderr: "" });
+      }
       const spec = args[1];
       registry.views.push(spec);
       const version = registry.tags[spec];
@@ -57,30 +62,47 @@ vi.mock("node:module", async importOriginal => {
 
 import { FleetManager } from "../src/fleet-manager.js";
 import { TopicCommands } from "../src/topic-commands.js";
-import { UPDATE_COMMAND } from "../src/update-check.js";
+import { DELAYED_UPDATE_SCRIPT } from "../src/update-dispatch.js";
 
 const dirs: string[] = [];
 const scratch = () => { const d = mkdtempSync(join(tmpdir(), "agend-update-channel-")); dirs.push(d); return d; };
-afterEach(() => { spawned.length = 0; registry.tags = {}; registry.views = []; installed.version = "2.1.11-beta.2"; for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
+afterEach(() => { spawned.length = 0; registry.tags = {}; registry.views = []; registry.prefix = null; installed.version = "2.1.11-beta.2"; for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
-const PLAIN = ["-c", `sleep 2 && ${UPDATE_COMMAND}`];
+/** A global install the way npm lays it out: the package, and `<prefix>/bin/agend` linking to its bin. */
+function globalInstall(opts: { linkElsewhere?: boolean; name?: string; manifest?: string } = {}): string {
+  const prefix = scratch();
+  const pkg = join(prefix, "lib", "node_modules", "@songsid", "agend");
+  mkdirSync(join(pkg, "launcher"), { recursive: true });
+  writeFileSync(join(pkg, "package.json"), opts.manifest ?? JSON.stringify({ name: opts.name ?? "@songsid/agend", version: "2.2.0-beta.1", bin: { agend: "./launcher/agend" } }));
+  writeFileSync(join(pkg, "launcher", "agend"), "#!/bin/sh\n");
+  mkdirSync(join(prefix, "bin"));
+  const checkout = join(prefix, "checkout-agend");
+  writeFileSync(checkout, "#!/bin/sh\n");
+  symlinkSync(opts.linkElsewhere ? checkout : join("..", "lib", "node_modules", "@songsid", "agend", "launcher", "agend"), join(prefix, "bin", "agend"));
+  registry.prefix = prefix;
+  return prefix;
+}
+/** No channel flag: the installed CLI picks its channel; the path is data (positional), never spliced. */
+const PLAIN = (prefix: string) => ["-c", DELAYED_UPDATE_SCRIPT, "sh", join(prefix, "bin", "agend")];
 
-describe("a chat /update runs a plain `agend update`", () => {
+describe("a chat /update runs the installed `agend update`, by absolute path", () => {
   it("the command carries no channel flag", () => {
-    expect(UPDATE_COMMAND).toBe("agend update");
+    expect(DELAYED_UPDATE_SCRIPT).toBe('sleep 2 && exec "$1" update');
   });
 
   it("Discord slash", async () => {
+    const prefix = globalInstall();
     const fm = new FleetManager(scratch());
     try {
       Object.assign(fm, { fleetAdminGate: () => "ok" });
       const respond = vi.fn().mockResolvedValue(undefined);
       await (fm as any).handleUpdateSlash({ command: "update", channelId: "c1", userId: "admin", respond }, "discord-main");
-      expect(spawned).toEqual([{ cmd: "sh", args: PLAIN }]);
+      expect(spawned).toEqual([{ cmd: "sh", args: PLAIN(prefix) }]);
     } finally { fm.stormWindow.shutdown(); fm.spawnGate.shutdown(); }
   });
 
   it("Telegram", async () => {
+    const prefix = globalInstall();
     const sendText = vi.fn().mockResolvedValue({ messageId: "p1", chatId: "chat", threadId: "1" });
     const adapter = { id: "telegram-main", type: "telegram", sendText };
     const commands = new TopicCommands({
@@ -91,7 +113,47 @@ describe("a chat /update runs a plain `agend update`", () => {
     } as any);
     const msg = { text: "/update", chatId: "chat", threadId: "1", messageId: "m", userId: "admin", adapterId: "telegram-main", username: "op", timestamp: new Date() } as any;
     expect(await commands.handleGeneralCommand(msg)).toBe(true);
-    expect(spawned).toEqual([{ cmd: "sh", args: PLAIN }]);
+    expect(spawned).toEqual([{ cmd: "sh", args: PLAIN(prefix) }]);
+  });
+
+  // No unverified fallback (Prism v2-3): whatever `agend` is on PATH is never run instead.
+  it.each([
+    ["npm cannot say where AgEnD is installed", () => {}, "npm could not say"],
+    ["its bin link leads elsewhere (a checkout)", () => { globalInstall({ linkElsewhere: true }); }, "not the installed package's"],
+    ["what npm's root holds there is not @songsid/agend", () => { globalInstall({ name: "@suzuke/agend" }); }, "is not an installed AgEnD package"],
+    // #1472 review: JSON that parses but is no manifest — judged by shape, never dereferenced (no TypeError escapes).
+    ["its package.json is JSON null", () => { globalInstall({ manifest: "null" }); }, "is not an installed AgEnD package"],
+    ["its package.json is an array", () => { globalInstall({ manifest: "[1]" }); }, "is not an installed AgEnD package"],
+    ["its bin is null", () => { globalInstall({ manifest: JSON.stringify({ name: "@songsid/agend", version: "2.2.0", bin: null }) }); }, "is not an installed AgEnD package"],
+  ] as const)("refused, nothing dispatched: %s", async (_n, arrange, reason) => {
+    arrange();
+    const fm = new FleetManager(scratch());
+    const failed: string[] = [];
+    try {
+      Object.assign(fm, { fleetAdminGate: () => "ok", failUpdateProgress: (m: string) => { failed.push(m); } });
+      const respond = vi.fn().mockResolvedValue(undefined);
+      await (fm as any).handleUpdateSlash({ command: "update", channelId: "c1", userId: "admin", respond }, "discord-main");
+      expect(spawned).toEqual([]);
+      expect(failed).toEqual([expect.stringContaining(reason)]);
+      expect(failed[0]).toContain("Run `agend update` from a shell");
+    } finally { fm.stormWindow.shutdown(); fm.spawnGate.shutdown(); }
+  });
+
+  it("Telegram refuses the same way: nothing dispatched", async () => {
+    globalInstall({ linkElsewhere: true });
+    const failed: string[] = [];
+    const sendText = vi.fn().mockResolvedValue({ messageId: "p1", chatId: "chat", threadId: "1" });
+    const adapter = { id: "telegram-main", type: "telegram", sendText };
+    const commands = new TopicCommands({
+      adapter, adapters: new Map([["telegram-main", adapter]]),
+      fleetConfig: { channel: { access: { allowed_users: ["admin"] } } },
+      hasFleetAdmins: () => true, isFleetAdmin: (u: string) => u === "admin",
+      dataDir: scratch(), failUpdateProgress: (m: string) => { failed.push(m); },
+    } as any);
+    const msg = { text: "/update", chatId: "chat", threadId: "1", messageId: "m", userId: "admin", adapterId: "telegram-main", username: "op", timestamp: new Date() } as any;
+    expect(await commands.handleGeneralCommand(msg)).toBe(true);
+    expect(spawned).toEqual([]);
+    expect(failed).toEqual([expect.stringContaining("not the installed package's")]);
   });
 });
 

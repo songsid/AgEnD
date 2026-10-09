@@ -3,6 +3,9 @@
 # a local verdaccio — nothing is published to npm. Every cell installs into a scratch prefix/HOME/AGEND_HOME.
 # CI checks service files by contents and paths only; it cannot prove that a systemd user service or launchd loads
 # one at boot or login (that is the manual check on a real host).
+# macOS cells (user decision, 2026-10-09): NOT on pull requests — Mac runners queue for 20–40 min and Mac users are few.
+# They run on a release tag (v*), on demand (workflow_dispatch) and weekly; before a release the real-Mac rehearsal
+# covers the Mac. Pull requests run the Linux cells (x64 and arm64).
 name: Runtime acceptance
 
 on:
@@ -17,10 +20,23 @@ on:
       - src/service-installer.ts
       - src/update-install.ts
       - src/service-activation.ts
+      - src/restart-guard.ts
+      - src/service-plan.ts
+      - src/package-preimage.ts
+  push:
+    tags: ['v*']
+  schedule:
+    - cron: '17 3 * * 1'   # weekly, Monday 03:17 UTC: the macOS cells
   workflow_dispatch:
 
 permissions:
   contents: read
+
+# A new head of the same pull request cancels its older run; a tag, schedule or dispatch run is its own group (never
+# cancelled).
+concurrency:
+  group: runtime-acceptance-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   PIN: 22.23.3          # the bundled Node: the newest 22.x (docs/design/1450 "Pinned Node")
@@ -51,7 +67,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, macos-15-intel]
+        os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest","ubuntu-24.04-arm"]' || '["ubuntu-latest","ubuntu-24.04-arm","macos-latest","macos-15-intel"]') }}
         # The system Node is never a reason to refuse where a bundled Node applies (#1450, user 2026-10-09): 16 and 18
         # install and run too — AgEnD runs on the bundled Node, whatever Node runs npm.
         node: ['16', '18', '20.19.0', '22']
@@ -84,8 +100,6 @@ jobs:
       - name: Install, select, open the DB, run the daemon — on the bundled Node
         run: bash scripts/ci/runtime-acceptance/install-run.sh "$RUNNER_TEMP/packages"
       - name: The service file starts the bundled Node
-        # Needs #1450 PR 3 (C6 render); reported, not yet gating. Remove continue-on-error when PR 3 lands.
-        continue-on-error: true
         run: bash scripts/ci/runtime-acceptance/install-run.sh "$RUNNER_TEMP/packages" service
 
   hop:
@@ -93,7 +107,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || '["ubuntu-latest","macos-latest"]') }}
         # 2.1.12 itself starts on 18 and 20, so both legs run there; on 16 it cannot start, so only plain npm applies.
         node: ['16', '18', '20.19.0']
     runs-on: ${{ matrix.os }}
@@ -121,3 +135,31 @@ jobs:
           python-version: '3.11'
       - name: 2.1.12 → candidate, through the old updater and through plain npm
         run: bash scripts/ci/runtime-acceptance/hop.sh "$RUNNER_TEMP/packages"
+
+  native-managers:
+    # #1450 C6 (design "Tests"): the restart guard, systemd activation rollback and launchd single activation/recovery
+    # against this runner's REAL service manager — private unit names/labels, a dummy long-running program, a real
+    # package preimage; never com.agend.fleet. scripts/ci/runtime-acceptance/native-c6.mjs.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || '["ubuntu-latest","macos-latest"]') }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci && npm run build
+      - name: A systemd user manager for the runner (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo loginctl enable-linger "$USER"
+          echo "XDG_RUNTIME_DIR=/run/user/$(id -u)" >> "$GITHUB_ENV"
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          for _ in $(seq 30); do systemctl --user show-environment >/dev/null 2>&1 && break; sleep 1; done
+          systemctl --user --version | head -1
+      - name: Restart guard, activation and rollback on the native manager
+        run: node scripts/ci/runtime-acceptance/native-c6.mjs

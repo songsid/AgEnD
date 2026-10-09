@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # gate-merge.sh — the merge gate the coordinator runs on a reviewer's APPROVE (fleet decision e723a50a).
 #
+#   gate-merge.sh --post-merge-check <gate-squash-sha>
 #   gate-merge.sh [--dry-run] [--delivery-json <file>|-] <pr> <approved-sha> <approval-message-id>
 #
 # The approval's delivery_status result comes from --delivery-json, or stdin when that is not given. delivery_status
@@ -11,7 +12,7 @@
 #
 # It merges only when all of these hold, in this order:
 #   1. approval: delivery_status has exactly that message, from the reviewer (source_instance starting with
-#      GATE_APPROVER), its content_sha256 matches its content, and a line of the content is the verdict for this PR
+#      any comma-separated GATE_APPROVER prefix), its content_sha256 matches its content, and a line of the content is the verdict for this PR
 #      and SHA together, starting the line:  APPROVE — PR #<pr> @<full sha>  (the dash, "PR" and "@" optional).
 #      A mention anywhere else — another line, a quote, a different PR's verdict — grants nothing;
 #   2. the PR is open and not a draft, and the fetched refs/pull head is gh's head;
@@ -20,7 +21,7 @@
 #      branch, whitespace kept, only index lines and hunk line numbers normalised) is the same, i.e. a merge-sync.
 #      Compared on every path except docs/ and changes/: src/ and tests/, and also scripts, workflows and package
 #      files. Anything else is NEEDS_REVIEW with the paths;
-#   4. the base branch tip is an ancestor of the head (merge-synced);
+#   4. the base tip is an ancestor, or both sides changed disjoint paths (main package/lock/workflow changes block);
 #   5. CI: every required check (GATE_REQUIRED_CHECKS, plus any the base branch's rulesets require) has a run on the
 #      exact head, and every check-run there (the latest run of each name) is completed with conclusion success.
 # Then it retargets open PRs based on this PR's branch to this PR's base (stacked PRs), squash-merges with
@@ -37,13 +38,13 @@
 #   NEEDS_REVIEW <paths…>         exit 3
 #   usage error                   exit 2
 #
-# Environment: GATE_REPO (default songsid/AgEnD), GATE_APPROVER (default agend-reviewer), GATE_REMOTE (default
+# Environment: GATE_REPO (default songsid/AgEnD), GATE_APPROVER (default agend-reviewer,claude-fable-), GATE_REMOTE (default
 # origin), GATE_REQUIRED_CHECKS (comma-separated; default main's gate: build, scan, CodeQL,
 # Analyze (javascript-typescript), Analyze (actions)).
 set -uo pipefail
 
 REPO="${GATE_REPO:-songsid/AgEnD}"
-APPROVER="${GATE_APPROVER:-agend-reviewer}"
+APPROVER="${GATE_APPROVER-agend-reviewer,claude-fable-}"
 REMOTE="${GATE_REMOTE:-origin}"
 REQUIRED_CHECKS="${GATE_REQUIRED_CHECKS-build,scan,CodeQL,Analyze (javascript-typescript),Analyze (actions)}"
 DRY_RUN=0
@@ -54,6 +55,11 @@ blocked() { echo "BLOCKED $*"; exit 1; }
 note() { echo "gate-merge: $*" >&2; }
 
 ARGS=()
+SUPPORT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/gate-support.mjs"
+if [ "${1:-}" = "--post-merge-check" ]; then
+  [ $# -eq 2 ] || usage
+  exec node "$SUPPORT" post "$2"
+fi
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run) DRY_RUN=1 ;;
@@ -100,7 +106,8 @@ VERDICT="$(printf '%s' "$DELIVERY" | MESSAGE_ID="$MESSAGE_ID" APPROVED="$APPROVE
     const items = (Array.isArray(d?.items) ? d.items : [d]).filter(i => i && i.message_id === MESSAGE_ID);
     if (items.length !== 1) say(`delivery_status has ${items.length} deliveries with message_id ${MESSAGE_ID}`);
     const it = items[0];
-    if (typeof it.source_instance !== "string" || !it.source_instance.startsWith(APPROVER)) say(`message is from ${it.source_instance}, not ${APPROVER}*`);
+    const prefixes = APPROVER.split(",").map(p => p.trim()).filter(Boolean);
+    if (!prefixes.length || typeof it.source_instance !== "string" || !prefixes.some(p => it.source_instance.startsWith(p))) say(`message is from ${it.source_instance}, not ${APPROVER}* (approver allowlist)`);
     if (typeof it.content !== "string") say("delivery has no content");
     const digest = createHash("sha256").update(it.content, "utf8").digest("hex");
     if (it.content_sha256 !== digest) say("content_sha256 does not match the content");
@@ -188,10 +195,14 @@ if [ "$HEAD" != "$APPROVED" ]; then
   note "head $HEAD carries the approval of $APPROVED ($CARRY-identical outside docs/ and changes/)"
 fi
 
-# ── 4. Merge-synced ─────────────────────────────────────────────────────────────────────────────────────────────
+# ── 4. Merge-synced or disjoint ─────────────────────────────────────────────────────────────────────────────────────────────
 git merge-base --is-ancestor "$BASE_TIP" "$HEAD"; rc=$?
 [ "$rc" -le 1 ] || blocked "git merge-base --is-ancestor failed"
-[ "$rc" -eq 0 ] || blocked "#$PR is behind $BASE_REF ($BASE_TIP): merge-sync first"
+if [ "$rc" -eq 1 ]; then
+  OVERLAP="$(node "$SUPPORT" overlap "$BASE_TIP" "$HEAD")" || blocked "#$PR behind $BASE_REF: cannot read changed paths; merge-sync first"
+  [ "$OVERLAP" = "DISJOINT" ] || blocked "#$PR is behind $BASE_REF ($BASE_TIP): merge-sync first ($OVERLAP)"
+  note "merged behind main, disjoint ($BASE_REF at $BASE_TIP)"
+fi
 
 # ── 5. CI on the exact head ─────────────────────────────────────────────────────────────────────────────────────
 # GitHub's CodeQL default setup does not run on release/** branches, so CodeQL and Analyze(*)
@@ -271,8 +282,15 @@ for n in $DEPS; do
 done
 
 # ── Merge ───────────────────────────────────────────────────────────────────────────────────────────────────────
+OP="$(node "$SUPPORT" prepare "$PR" "$HEAD" "$APPROVED" "$MESSAGE_ID" "$BASE_REF")" || { put_back; blocked "cannot prepare private gate receipt"; }
+BODY="$(node "$SUPPORT" body "$OP")" || { put_back; blocked "cannot read gate merge body"; }
+# Retarget/read/receipt work can outlive another main merge. Refresh at the actual mutation boundary too.
+git fetch -q "$REMOTE" "+refs/heads/$BASE_REF:refs/gate/base-$PR" 2>/dev/null || { put_back; blocked "final base fetch failed"; }
+FINAL_BASE="$(git rev-parse "refs/gate/base-$PR")" || { put_back; blocked "final base unreadable"; }
+FINAL_OVERLAP="$(node "$SUPPORT" overlap "$FINAL_BASE" "$HEAD")" || { put_back; blocked "final changed paths unreadable"; }
+[ "$FINAL_OVERLAP" = "DISJOINT" ] || { put_back; blocked "#$PR base moved or overlaps: merge-sync first ($FINAL_OVERLAP)"; }
 MERGE_OK=1
-MERGE_ERR="$(gh pr merge "$PR" -R "$REPO" --squash --match-head-commit "$HEAD" 2>&1 >/dev/null)" || MERGE_OK=0
+MERGE_ERR="$(gh pr merge "$PR" -R "$REPO" --squash --match-head-commit "$HEAD" --body-file "$BODY" 2>&1 >/dev/null)" || MERGE_OK=0
 # Whatever gh said, GitHub's state decides what happened.
 AFTER="$(gh pr view "$PR" -R "$REPO" --json state,mergeCommit 2>/dev/null)" \
   || blocked "uncertain: gh pr merge $([ "$MERGE_OK" = 1 ] && echo returned || echo failed) and #$PR is unreadable; nothing reverted (retargeted: ${RETARGETED[*]:-none})"
@@ -284,6 +302,7 @@ if [ "$AFTER_STATE" != "MERGED" ]; then
 fi
 [ "$MERGE_OK" = 1 ] || note "gh pr merge reported a failure, but #$PR is MERGED"
 MERGE_SHA="$(printf '%s' "$AFTER" | json 'd.mergeCommit && d.mergeCommit.oid')" || MERGE_SHA="(unknown)"
+node "$SUPPORT" record "$OP" "$MERGE_SHA" >/dev/null || note "merged, but receipt could not be verified; automatic revert unavailable (operation $OP)"
 
 # The branch goes only if nothing is based on it any more (a PR opened on it since the retarget keeps it).
 if [ "$CROSS" = "false" ]; then

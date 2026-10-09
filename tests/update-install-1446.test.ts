@@ -9,13 +9,13 @@
  * whose name holds `$`, spaces and quotes. No host npm, no network, no fleet.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { systemdRestartOutcome } from "../src/service-installer.js";
 import {
-  isLocalLinkTarget, NATIVE_CHECK_SCRIPT, newAgendInvocation, runUpdateInstall,
+  isLocalLinkTarget, NATIVE_CHECK_SCRIPT, newAgendInvocation, retireSystemCopy, runUpdateInstall, activationSettled,
   type CommandRunner, type UpdateInstallPlan,
 } from "../src/update-install.js";
 
@@ -98,6 +98,7 @@ function world() {
   writeFileSync(calls, "");
   const npmStub = (pfx: string) => `#!/bin/sh
 echo "npm $*" >> ${sq(calls)}
+[ -n "$AGEND_INSTALL_TOKEN" ] && echo "token $AGEND_INSTALL_TOKEN for npm $*" >> ${sq(calls)}
 case "$1 $2" in
   "root -g") echo ${sq(join(pfx, "lib", "node_modules"))}; exit 0;;
   "prefix -g") echo ${sq(pfx)}; exit 0;;
@@ -117,11 +118,11 @@ exit 0
   const extraPath: string[] = [];
   const env: Record<string, string> = {};
   const runner: CommandRunner = {
-    run: (command, args) => {
+    run: (command, args, options = {}) => {
       // cwd = the scratch root: a spliced `$(touch pwned)` would land where the tests look for it.
       const r = spawnSync(command, args, {
         encoding: "utf8", cwd: root,
-        env: { PATH: [...extraPath, tools, join(prefix, "bin"), "/usr/bin", "/bin"].join(":"), HOME: root, ...env },
+        env: { PATH: [...extraPath, tools, join(prefix, "bin"), "/usr/bin", "/bin"].join(":"), HOME: root, ...env, ...options.env },
       });
       return { status: r.status, signal: r.signal, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
     },
@@ -133,6 +134,68 @@ exit 0
 }
 
 const plan = (pkg: string, targetVersion: string | null = "2.2.0"): UpdateInstallPlan => ({ pkg, targetVersion, viaNvm: false, nvmSh: "/nonexistent" });
+
+describe("#1450 C6: a package that does not verify is replaced by the previous one, which must verify", () => {
+  const withRollback = (pkg: string, targetVersion: string | null = "2.2.0"): UpdateInstallPlan => ({
+    ...plan(pkg, targetVersion), lock: () => ({ ok: true, token: "9".repeat(32) }), rollback: true, now: () => new Date("2026-10-09T01:02:03Z"),
+  });
+  const installedVersion = (w: ReturnType<typeof world>) => JSON.parse(readFileSync(join(w.prefix, "lib", "node_modules", "@songsid", "agend", "package.json"), "utf8")).version;
+
+  it("the new package cannot open a database: v2.1.12 is put back, verified, and the copy is gone", () => {
+    const w = world();
+    runUpdateInstall(plan(fixturePackage(w.root, "v2112", "2.1.12"), "2.1.12"), w.runner);
+    const outcome = runUpdateInstall(withRollback(fixturePackage(w.root, "v220", "2.2.0", "throw-on-open")), w.runner);
+    expect(outcome).toMatchObject({ ok: false, stage: "verify", message: expect.stringContaining("Rolled back to v2.1.12, which verifies") });
+    expect(installedVersion(w)).toBe("2.1.12");
+    expect(realpathSync(join(w.prefix, "bin", "agend"))).toBe(realpathSync(join(w.prefix, "lib", "node_modules", "@songsid", "agend", "dist", "cli.js")));
+    expect(existsSync(join(w.prefix, ".agend-rollback"))).toBe(true);
+    expect(readdirSync(join(w.prefix, ".agend-rollback"))).toEqual([]);
+  });
+
+  it("npm's own failure: npm rolled back, and the copy is removed", () => {
+    const w = world();
+    runUpdateInstall(plan(fixturePackage(w.root, "v2112", "2.1.12"), "2.1.12"), w.runner);
+    w.env.NPM_FAIL = "1";
+    expect(runUpdateInstall(withRollback(fixturePackage(w.root, "v220", "2.2.0")), w.runner)).toMatchObject({ ok: false, stage: "install" });
+    expect(readdirSync(join(w.prefix, ".agend-rollback"))).toEqual([]);
+    expect(installedVersion(w)).toBe("2.1.12");
+  });
+
+  it("success: the outcome carries the preimage (for a later service failure), the new package is installed", () => {
+    const w = world();
+    runUpdateInstall(plan(fixturePackage(w.root, "v2112", "2.1.12"), "2.1.12"), w.runner);
+    const outcome = runUpdateInstall(withRollback(fixturePackage(w.root, "v220", "2.2.0")), w.runner);
+    expect(outcome.ok && outcome.rollback?.preimage?.version).toBe("2.1.12");
+    expect(existsSync(join(outcome.ok && outcome.rollback?.preimage ? outcome.rollback.preimage.dir : "/nonexistent", "agend", "package.json"))).toBe(true);
+    expect(installedVersion(w)).toBe("2.2.0");
+  });
+
+  it("nothing installed yet: no preimage, and a failed verify has nothing to roll back to", () => {
+    const w = world();
+    const outcome = runUpdateInstall(withRollback(fixturePackage(w.root, "v220", "2.2.0", "throw-on-open")), w.runner);
+    expect(outcome).toMatchObject({ ok: false, stage: "verify" });
+    expect(outcome.ok === false && outcome.message).not.toContain("Rolled back");
+  });
+});
+
+describe("#1450 C1: the npm prefix is locked before npm runs; the token goes to npm only", () => {
+  it("the lock is asked for npm's own prefix; its token reaches `npm install` and no other command", () => {
+    const w = world();
+    const asked: string[] = [];
+    const outcome = runUpdateInstall({ ...plan(fixturePackage(w.root, "v220", "2.2.0")), lock: prefix => { asked.push(prefix); return { ok: true, token: "7".repeat(32) }; } }, w.runner);
+    expect(outcome.ok).toBe(true);
+    expect(asked).toEqual([w.prefix]);
+    expect(w.callLog().filter(line => line.startsWith("token "))).toEqual([`token ${"7".repeat(32)} for npm install -g ${join(w.root, "src", "v220")}`]);
+  });
+
+  it("a refused lock stops before npm installs anything", () => {
+    const w = world();
+    runUpdateInstall(plan(fixturePackage(w.root, "v2112", "2.1.12"), "2.1.12"), w.runner);
+    const outcome = runUpdateInstall({ ...plan(fixturePackage(w.root, "v220", "2.2.0")), lock: () => ({ ok: false, reason: "another AgEnD install is running on /p" }) }, w.runner);
+    expect(outcome).toMatchObject({ ok: false, stage: "lock", message: expect.stringContaining("another AgEnD install is running on /p. Nothing was changed.") });
+    expect(w.callLog().filter(line => line.startsWith("npm install"))).toHaveLength(1);          // only the 2.1.12 setup
+  });
+});
 
 describe("#1450 C4: a launcher-era target is verified on the Node IT selects, not the updater's", () => {
   it("through the SHIPPED launcher: AGEND_NODE is what verification proves and reports — not PATH's node", () => {
@@ -312,14 +375,57 @@ describe("item 1: an nvm install runs every step inside nvm's Node 22 — nvm.sh
     return { w, nvmSh: join(nvmDir, "nvm.sh"), nvmPrefix };
   }
 
-  it("installs, verifies with nvm's node, and removes the old system copy last", () => {
+  it("installs and verifies with nvm's node; the old system copy is NOT removed until the activation settles", () => {
     const { w, nvmSh, nvmPrefix } = nvmWorld();
     const outcome = runUpdateInstall({ pkg: fixturePackage(w.root, "v220", "2.2.0"), targetVersion: "2.2.0", viaNvm: true, nvmSh }, w.runner);
-    expect(outcome).toMatchObject({ ok: true, agendPath: join(nvmPrefix, "bin", "agend"), version: "2.2.0" });
+    expect(outcome).toMatchObject({ ok: true, agendPath: join(nvmPrefix, "bin", "agend"), version: "2.2.0", retireSystemCopy: true });
     const calls = w.callLog();
     expect(calls).toContain("nvm-node");                                     // the checks ran on nvm's node
-    expect(calls.at(-1)).toBe("sudo -n npm uninstall -g @songsid/agend");
+    // #1473 review: the old system copy is what the current service still runs — an activation that fails later
+    // must find it in place. The caller retires it once the fleet runs the new install.
+    expect(calls.some(line => /uninstall/.test(line))).toBe(false);
+    retireSystemCopy(w.runner);
+    expect(w.callLog().at(-1)).toBe("sudo -n npm uninstall -g @songsid/agend");
     expect(existsSync(join(w.root, "pwned")), "the path was data, not shell").toBe(false);
+  });
+
+  // #1472 review: one `nvm use 22` selection, frozen — locking, installing and verifying all happen in that prefix.
+  it("nvm's selection is frozen once: a later `nvm use 22` that would pick another Node 22 is never asked", () => {
+    const w = world();
+    const nvmDir = join(w.root, "nvm");
+    const sel = (v: string) => ({ bin: join(nvmDir, "versions", v, "bin"), prefix: join(nvmDir, "versions", v) });
+    const A = sel("22a"), B = sel("22b");
+    for (const x of [A, B]) {
+      mkdirSync(x.bin, { recursive: true });
+      mkdirSync(join(x.prefix, "lib", "node_modules", "@songsid"), { recursive: true });
+      writeFileSync(join(x.bin, "npm"), w.npmStub(x.prefix));
+      writeFileSync(join(x.bin, "node"), `#!/bin/sh\nexec '${process.execPath}' "$@"\n`);
+      for (const f of ["npm", "node"]) chmodSync(join(x.bin, f), 0o755);
+    }
+    // Each `nvm use 22` after the first selects ANOTHER Node 22 (e.g. one installed meanwhile).
+    writeFileSync(join(nvmDir, "nvm.sh"), `nvm() { case "$1" in install) return 0;; use) c=$(cat '${join(nvmDir, "uses")}' 2>/dev/null || echo 0); c=$((c+1)); echo $c > '${join(nvmDir, "uses")}'; if [ $c -eq 1 ]; then PATH='${A.bin}':"$PATH"; else PATH='${B.bin}':"$PATH"; fi; export PATH;; esac; }\n`);
+    const locked: string[] = [];
+    const outcome = runUpdateInstall({
+      pkg: fixturePackage(w.root, "v220", "2.2.0"), targetVersion: "2.2.0", viaNvm: true, nvmSh: join(nvmDir, "nvm.sh"),
+      lock: prefix => { locked.push(prefix); return { ok: true, token: "f".repeat(32) }; },
+    }, w.runner);
+    expect(outcome).toMatchObject({ ok: true, agendPath: join(A.prefix, "bin", "agend") });
+    expect(locked).toEqual([A.prefix]);
+    expect(existsSync(join(A.prefix, "lib", "node_modules", "@songsid", "agend", "package.json"))).toBe(true);
+    expect(existsSync(join(B.prefix, "lib", "node_modules", "@songsid", "agend"))).toBe(false);
+    expect(readFileSync(join(nvmDir, "uses"), "utf8").trim()).toBe("1");
+  });
+
+  // #1473 review r2: only a POSITIVELY settled activation lets the old system copy go — never inferred from an exit code.
+  it.each([
+    [{ ok: true, via: "restart" } as const, "restarted" as const, true],
+    [{ ok: true, via: "restart" } as const, "pending" as const, false],     // systemd still running the restart job (75)
+    [{ ok: true, via: "restart" } as const, "failed" as const, false],
+    [{ ok: true, via: "restart" } as const, null, false],                  // the restart never reported
+    [{ ok: true, via: "launchd-activation" } as const, null, true],         // the new job was proven running
+    [{ ok: false } as const, "restarted" as const, false],
+  ])("activationSettled(%j, %s) = %s", (outcome, restart, settled) => {
+    expect(activationSettled(outcome, restart)).toBe(settled);
   });
 
   it("a failed verification under nvm keeps the old system copy", () => {
