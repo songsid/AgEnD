@@ -50,6 +50,7 @@ import {
 } from "./update-check.js";
 import { clearUpdateMarker, markUpdateInProgress, setUpdateProgressStage } from "./update-marker.js";
 import { describeSignalSource, forceAllowed, gateFleetControl, recordInstanceControl, withOrigin } from "./fleet-control-audit.js";
+import { FLEET_STOP_TIMEOUT_MS, stopDetachedOwner, systemdStopTimeoutMs, detachedProcessStart, detachedProcessExited, type DetachedOwnerState } from "./fleet-stop-budget.js";
 import { acquireFleetLock, isFleetStartCommandLine, readProcessCommandLine, releaseProcessFleetLock, setProcessFleetLock } from "./fleet-lock.js";
 import { limitFleetCoreDumps } from "./coredump-filter.js";
 import { SYSTEMD_RESTART_TIMEOUT_MS } from "./service-installer.js";
@@ -1443,6 +1444,7 @@ program
         }
         process.exitCode = 1;
       }
+      if (restartOutcome === "pending") process.exitCode = 75;
       return restartOutcome;
     };
 
@@ -1471,10 +1473,11 @@ program
       // C6: a failure before the fleet runs the new install puts the previous package back too (taken before npm).
       const { restorePackagePreimage, prunePreimages } = await import("./package-preimage.js");
       const rollback = verified.rollback;
-      const restorePackage = rollback?.preimage ? () => {
+      const restoreChecked = rollback?.preimage ? () => {
         const back = restorePackagePreimage(rollback.root, rollback.prefix, rollback.preimage!);
-        return back.ok ? `The previous package (v${rollback.preimage!.version}) is back in place` : `The previous package could NOT be put back: ${back.reason}`;
+        return { ok: back.ok, message: back.ok ? `The previous package (v${rollback.preimage!.version}) is back in place` : `The previous package could NOT be put back: ${back.reason}` };
       } : undefined;
+      const restorePackage = restoreChecked ? () => restoreChecked().message : undefined;
       const capture = (command: string, args: string[]) => {
         const result = spawnSync(command, args, { encoding: "utf-8", timeout: 15_000, stdio: ["ignore", "pipe", "pipe"] });
         return { status: result.status, signal: result.signal, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
@@ -1497,12 +1500,14 @@ program
           // The completion script embeds this version's subcommand names; --refresh only rewrites existing artifacts.
           try { spawnSync(newAgend.command, [...newAgend.args, "completion", "install", "--refresh"], { encoding: "utf-8", timeout: 15_000, stdio: "ignore" }); } catch { /* cosmetic */ }
           restartResult = restartFleetForUpdate(newAgend.command, newAgend.args, verified.version);
+          return restartResult;
         },
         log: message => console.log(message),
         restorePackage,
+        systemdRecovery: restoreChecked ? { restorePackage: restoreChecked } : undefined,
       });
       // Settled: after a success only this transition's preimage is kept (for a repair); a failure consumed it.
-      if (outcome.ok && rollback) prunePreimages(rollback.prefix, rollback.preimage);
+      if (activationSettled(outcome, restartResult) && rollback) prunePreimages(rollback.prefix, rollback.preimage);
       // nvm transition: the old system copy is what the previous service ran. Only once the fleet POSITIVELY runs the
       // new install (activationSettled) is it removed; pending, failed or refused, it stays, so the old unit still starts.
       if (verified.retireSystemCopy) {
@@ -1524,6 +1529,11 @@ program
         return;
       }
       if (!outcome.ok) {
+        if (outcome.pending) {
+          console.log(outcome.message);
+          process.exitCode = 75;
+          return;
+        }
         console.error(outcome.message);
         if (!setUpdateProgressStage(DATA_DIR, "failed", { error: outcome.message.trim() })) clearUpdateMarker(DATA_DIR);
         process.exitCode = 1;
@@ -1900,10 +1910,11 @@ program
     };
     const expectation = guard.expectedTuple();
     /** Refuse (nothing stopped) unless the definition about to run is proven; `--force` overrides for an operator. */
-    const refuses = (judged: { ok: true } | { ok: false; reason: string }): boolean => {
+    const refuses = (judged: { ok: true } | { ok: false; reason: string; recovery?: string }): boolean => {
       if (judged.ok) return false;
       if (opts.force) { console.log(`  ⚠ --force: ${judged.reason}; restarting anyway.`); return false; }
       console.error(`  ✗ Not restarting: ${judged.reason}. Nothing was stopped.`);
+      if (judged.recovery) console.error(`  To repair: ${judged.recovery}`);
       process.exitCode = 1;
       return true;
     };
@@ -1966,8 +1977,8 @@ program
       const unitPath = systemdTarget.user ? getServicePath() : getSystemServicePath();
       const reloadCmd = systemdTarget.user ? "systemctl --user daemon-reload" : "systemctl daemon-reload";
       // #1113 rides the same migration: crash-dump, start-limit and
-      // start-timeout directives are filled in alongside KillMode. Only
-      // KillMode gates the restart — the others change no stop behaviour.
+      // start-timeout directives are filled in alongside KillMode. KillMode
+      // and the loaded #1071 stop grace gate the restart; the others are informational.
       // The drop-ins systemd applies to this unit, by its own account
       // (DropInPaths), plus any on disk it has not loaded yet. Guessing the
       // directories alone misses type-wide service.d and other load paths.
@@ -2014,13 +2025,27 @@ program
           return;
         }
       }
+      // Migration preserves operator overrides. Admission independently requires
+      // the actual loaded budget for EVERY selected systemd target, even if its
+      // unit file disappeared or no migration/classification was possible.
+      if (hardening.TimeoutStopSec === "custom") {
+        console.log(`  ⚠ ${unitPath} sets its own TimeoutStopSec; left as is. A short grace can cut off busy CLI batches (#1071).`);
+      }
+      let loadedStopGrace = "";
+      try { loadedStopGrace = execSync(`systemctl${scopeFlag} show -p TimeoutStopUSec --value ${systemdTarget.unit}`, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 5000 }).trim(); } catch { /* unknown refuses */ }
+      const milliseconds = systemdStopTimeoutMs(loadedStopGrace);
+      if (milliseconds === null || milliseconds < FLEET_STOP_TIMEOUT_MS) {
+        console.error(`  ✗ Not restarting: systemd has ${loadedStopGrace || "unknown"} stop grace loaded; this fleet needs ${FLEET_STOP_TIMEOUT_MS / 1000}s. Set TimeoutStopSec to at least ${FLEET_STOP_TIMEOUT_MS / 1000}s in ${unitPath ?? systemdTarget.unit}, run \`${reloadCmd}\`, and retry (#1071).`);
+        process.exitCode = 1;
+        return;
+      }
       if (outcome === "added") {
         console.log(`  ✓ ${unitPath}: added KillMode=mixed (the fleet stops its CLIs; systemd no longer signals them all at once)`);
       }
       const updated = Object.entries(hardening)
         .filter(([key, state]) => key !== "KillMode" && (state === "added" || state === "upgraded"))
         .map(([key]) => key);
-      if (updated.length > 0) console.log(`  ✓ ${unitPath}: updated ${updated.join(", ")} (#1113: small crash dumps, bounded start, start limit)`);
+      if (updated.length > 0) console.log(`  ✓ ${unitPath}: updated ${updated.join(", ")} (#908/#1071/#1113: graceful stop, small crash dumps, bounded start, start limit)`);
       // Re-judged after the reload, against what systemd now applies: an
       // operator's own mask (anywhere — main file, unit or type drop-in, or a
       // trailing empty assignment that restores the inherited one) is warned
@@ -2098,7 +2123,7 @@ program
               readFirstLine: path => deps.readFile(path)?.split("\n", 1)[0] ?? null,
               isExecutable: path => { try { return statSync(path).isFile() && (statSync(path).mode & 0o111) !== 0; } catch { return false; } },
               refresh: () => ({ status: 0, signal: null, stdout: "", stderr: "" }),
-              restart: () => {},
+              restart: () => { throw new Error("planned launchd activation does not invoke restart"); },
               log: message => console.log(message),
               launchdPreimage: plan.preimage.plist,
             });
@@ -2124,28 +2149,79 @@ program
     }
     // 4. Detached process tracked by fleet.pid (no service manager)
     if (existsSync(pidPath)) {
-      const oldPid = parseInt(readFileSync(pidPath, "utf-8").trim(), 10);
-      // Only signal a process confirmed to BE this fleet (#1125 review): a
-      // stale fleet.pid may name a recycled pid — an unrelated process. Not
-      // confirmed (gone, or something else) is treated as a stale pid file.
-      const isOurFleet = () => {
-        try { process.kill(oldPid, 0); } catch { return false; }
-        return isFleetStartCommandLine(readProcessCommandLine(oldPid));
+      const originalPidFile = readFileSync(pidPath, "utf-8");
+      const oldPid = Number(originalPidFile.trim());
+      let claimedStart: string | null = null;
+      const absence = (): DetachedOwnerState | null => {
+        try { process.kill(oldPid, 0); }
+        catch (error) { return (error as NodeJS.ErrnoException).code === "ESRCH" ? "gone" : "unknown"; }
+        return detachedProcessExited(oldPid) ? "gone" : null;
       };
-      if (oldPid && isOurFleet()) {
-        // The replacement is `<this Node> <entry> fleet start` (C5): this Node must be the selected one.
+      const inspect = (): DetachedOwnerState => {
+        try {
+          if (existsSync(pidPath) && readFileSync(pidPath, "utf-8") !== originalPidFile) return "unknown";
+        } catch { return "unknown"; }
+        const missing = absence();
+        if (missing) return missing;
+        const start = detachedProcessStart(oldPid);
+        if (start === null) return absence() ?? "unknown";
+        const command = readProcessCommandLine(oldPid);
+        if (!command) return absence() ?? (claimedStart !== null && start === claimedStart ? "waiting" : "unknown");
+        const fleet = isFleetStartCommandLine(command);
+        if (claimedStart !== null && start !== claimedStart) return fleet ? "unknown" : "other";
+        // The claimed process is still alive: rewritten argv is not exit proof.
+        if (claimedStart !== null && !fleet) return "unknown";
+        claimedStart ??= start;
+        return fleet ? "fleet" : "other";
+      };
+      if (!Number.isSafeInteger(oldPid) || oldPid <= 1) {
+        console.error("  ✗ Invalid detached fleet PID; nothing was stopped or started.");
+        process.exitCode = 1;
+        return;
+      }
+      const state = inspect();
+      if (state === "unknown") {
+        console.error("  ✗ Cannot confirm the detached fleet owner; nothing was stopped or started.");
+        process.exitCode = 1;
+        return;
+      }
+      if (state === "fleet") {
         if (expectation.ok && refuses(guard.guardDetached(process.execPath, expectation.expected, guardDeps))) return;
-        try { process.kill(oldPid, "SIGTERM"); } catch { /* already gone */ }
-        for (let i = 0; i < 20; i++) {
-          try { process.kill(oldPid, 0); } catch { break; }
-          spawnSync("sleep", ["0.5"]);
+        console.log(`Stopping detached fleet (up to ${FLEET_STOP_TIMEOUT_MS / 60_000} minutes for graceful shutdown)...`);
+        try {
+          await stopDetachedOwner({
+            inspect,
+            signal: signal => {
+              if (signal === "SIGKILL") console.log("  ⚠ Grace expired; forcing the confirmed fleet owner to exit.");
+              // stdout can block. The helper's earlier proof cannot authorize a
+              // signal after that write; prove the exact owner again now.
+              const owner = inspect();
+              if (owner === "gone" || owner === "other") return;
+              if (owner !== "fleet") throw new Error("Detached fleet ownership changed before signalling; refusing the signal");
+              try { process.kill(oldPid, signal); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
+            },
+            now: () => performance.now(),
+            sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
+          });
+        } catch (error) {
+          console.error(`  ✗ ${(error as Error).message}`);
+          process.exitCode = 1;
+          return;
         }
-        // Re-confirmed right before the SIGKILL: the pid may have been reused
-        // during the wait.
-        if (isOurFleet()) { try { process.kill(oldPid, "SIGKILL"); } catch { /* already gone */ } }
-        try { unlinkSync(pidPath); } catch { /* best effort */ }
-        // This Node on this CLI, not `sh -c "agend fleet start"` through PATH (#1450 C5).
+        if (expectation.ok && refuses(guard.guardDetached(process.execPath, expectation.expected, guardDeps))) return;
         const start = selfCommand(["fleet", "start"]);
+        // The runtime guard and command preparation can read files. Recheck
+        // publication AFTER both, immediately before cleanup/spawn. Unreadable
+        // publication cannot authorize deleting a newly published owner's file.
+        let publicationCurrent = false;
+        try { publicationCurrent = readFileSync(pidPath, "utf-8") === originalPidFile; }
+        catch (error) { publicationCurrent = (error as NodeJS.ErrnoException | null)?.code === "ENOENT"; }
+        if (!publicationCurrent) {
+          console.error("  ✗ Fleet owner changed or its publication is unreadable; refusing a duplicate restart.");
+          process.exitCode = 1;
+          return;
+        }
+        try { unlinkSync(pidPath); } catch { /* old owner already removed it */ }
         const child = spawn(start.command, start.args, { detached: true, stdio: "ignore" });
         child.unref();
         console.log("Fleet restarting in background.");

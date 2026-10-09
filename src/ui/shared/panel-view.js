@@ -2,7 +2,7 @@
 // panel, in the app shell. Public (/assets/): under `web.view_access: open` an anonymous reader opens it in the
 // View-only shell, so nothing here needs a session to show, and the one write (Edit profile) asks for one.
 //
-// Its roster is the sidebar's section while it is mounted: groups by tag, the #999 filter, this browser's order (drag).
+// Its roster read also feeds the sidebar's list for an anonymous reader (instance-nav.js is the list on every page).
 // Everything recurring is a passive read (#1374) taken through the navigation's lease: the pane every 800 ms and the
 // roster every 5 s while the panel is mounted and the tab is visible, usage every 60 s while its dialog is open. They
 // stop when the panel goes.
@@ -10,7 +10,9 @@ import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from "./a
 import { t } from "./app-i18n.js";
 import { appStore, createStore, useStore } from "./app-store.js";
 import { useLease } from "./app-ctx.js";
-import { PanelHeader, setTitle, setSideSection, closeDrawer, onPanelKey, signInHref, keepActiveInView } from "./app-shell.js";
+import { PanelHeader, setTitle, onPanelKey, signInHref } from "./app-shell.js";
+import { backendLabel, STATUS_KEYS } from "./instance-nav.js";
+import { viewStore } from "./view-roster-store.js";
 import { navigate } from "./app-nav.js";
 import { viewPath } from "./app-route.js";
 import { Dialog } from "./ui-dialog.js";
@@ -88,192 +90,10 @@ function paintAnsi(root) {
   }
 }
 
-// ── The roster: groups, the #999 filter, this browser's order ──
-export function groupOf(it) {
-  const tags = it.tags || [];
-  if (tags.includes("classic")) return "Classic";
-  if (tags.length) return tags[0];
-  return "Other";
-}
-const BACKEND_LABELS = { "claude-code": "Claude Code", "kiro-cli": "Kiro CLI", codex: "Codex", grok: "Grok Build", antigravity: "Antigravity", opencode: "OpenCode" };
-export function backendLabel(backend) { return BACKEND_LABELS[backend] || backend || "Unknown"; }
-const KNOWN_BACKENDS = new Set(Object.keys(BACKEND_LABELS));
-const STATUS_KEYS = { running: "statusRunning", paused: "statusPaused", stopped: "statusStopped", crashed: "statusCrashed" };
-
-export function normalizeFilter(query) { return String(query == null ? "" : query).trim().toLowerCase(); }
-/** Case-insensitive substring on name (incl. display name), model and backend. */
-export function instanceMatchesFilter(it, needle, labelOf) {
-  if (!needle) return true;
-  const fields = [it.instance_name, it.display_name, it.model, it.backend, labelOf ? labelOf(it.backend) : null];
-  return fields.some((value) => typeof value === "string" && value.toLowerCase().includes(needle));
-}
-/** Visible groups in display order, and the "N / M" counts. */
-export function filterSidebar(groupNames, instByGroup, rosterByName, query, labelOf) {
-  const needle = normalizeFilter(query);
-  const groups = [];
-  let shown = 0, total = 0;
-  for (const g of groupNames) {
-    const names = (instByGroup.get(g) || []).filter((name) => rosterByName.has(name));
-    total += names.length;
-    const visible = names.filter((name) => instanceMatchesFilter(rosterByName.get(name), needle, labelOf));
-    shown += visible.length;
-    if (visible.length) groups.push({ group: g, names: visible });
-  }
-  return { groups, shown, total, active: needle.length > 0 };
-}
-export function instanceTooltip(it) {
-  const context = it.context_pct != null && Number.isFinite(it.context_pct) ? `${Math.round(Math.min(100, Math.max(0, it.context_pct)))}%` : tn("tooltipUnavailable");
-  const status = STATUS_KEYS[it.status] ? tn(STATUS_KEYS[it.status]) : it.status || tn("statusUnknown");
-  const line = (key, value) => tn(key, { value });
-  const lines = [];
-  if (it.display_name && it.display_name !== it.instance_name) lines.push(it.display_name, `(${it.instance_name})`);
-  else lines.push(it.instance_name);
-  lines.push(line("tooltipBackend", backendLabel(it.backend)));
-  const src = (s) => (s === "instance" || s === "classic" ? " (configured)" : s === "fleet-default" ? " (fleet default)" : "");
-  lines.push(line("tooltipModel", (it.model || tn("tooltipUnavailable")) + src(it.model_source)));
-  lines.push(line("tooltipStatus", status));
-  lines.push(line("tooltipContext", context));
-  if (it.effort) lines.push(line("tooltipEffort", it.effort + src(it.effort_source)));
-  if (typeof it.description === "string" && it.description.trim()) lines.push("", it.description.trim());
-  return lines.join("\n");
-}
-
-const SIDEBAR_ORDER_KEY = "agend_view_sidebar_order";
-function readOrder() {
-  const groups = new Map(), insts = new Map();
-  try {
-    const rows = JSON.parse(stored(SIDEBAR_ORDER_KEY) || "[]");
-    if (Array.isArray(rows)) for (const row of rows) {
-      if (row && row.item_type === "group" && typeof row.item_name === "string") groups.set(row.item_name, Number(row.sort_index) || 0);
-      else if (row && row.item_type === "instance" && typeof row.item_name === "string") insts.set(row.item_name, Number(row.sort_index) || 0);
-    }
-  } catch { /* ignore invalid browser-local state */ }
-  return { groups, insts };
-}
-/** Display order: this browser's saved order first, then new groups/instances by tag and name. */
-export function computeOrder(roster, order) {
-  const groups = new Map();
-  for (const it of roster) { const g = groupOf(it); if (!groups.has(g)) groups.set(g, []); groups.get(g).push(it); }
-  const gidx = (g) => (order.groups.has(g) ? order.groups.get(g) : Infinity);
-  const groupNames = [...groups.keys()].sort((a, b) => {
-    const ia = gidx(a), ib = gidx(b);
-    if (ia !== ib) return ia - ib;
-    if (a === "Other") return 1;
-    if (b === "Other") return -1;
-    return a.localeCompare(b);
-  });
-  const instByGroup = new Map();
-  for (const [g, items] of groups) {
-    instByGroup.set(g, items.map((it) => it.instance_name).sort((a, b) => {
-      const ia = order.insts.has(a) ? order.insts.get(a) : Infinity, ib = order.insts.has(b) ? order.insts.get(b) : Infinity;
-      return ia - ib;
-    }));
-  }
-  return { groupNames, instByGroup };
-}
-function moveIn(arr, moving, target, before) {
-  if (!arr) return;
-  const from = arr.indexOf(moving);
-  if (from === -1) return;
-  arr.splice(from, 1);
-  let to = arr.indexOf(target);
-  if (to === -1) { arr.push(moving); return; }
-  if (!before) to += 1;
-  arr.splice(to, 0, moving);
-}
-
-/** The roster shared by the panel and its sidebar section, for as long as the page lives. */
-export const viewStore = createStore({ loaded: false, error: null, roster: [], filter: "", collapsed: new Set(), current: null, order: readOrder() });
-const byName = (roster) => new Map(roster.map((r) => [r.instance_name, r]));
-
-function persistOrder(groupNames, instByGroup) {
-  const rows = [];
-  groupNames.forEach((g, i) => rows.push({ item_type: "group", item_name: g, sort_index: i, group_name: null }));
-  for (const g of groupNames) (instByGroup.get(g) || []).forEach((n, j) => rows.push({ item_type: "instance", item_name: n, sort_index: j, group_name: g }));
-  store(SIDEBAR_ORDER_KEY, JSON.stringify(rows));
-  viewStore.set({ order: { groups: new Map(groupNames.map((g, i) => [g, i])), insts: new Map(rows.filter((r) => r.item_type === "instance").map((r) => [r.item_name, r.sort_index])) } });
-}
-
-/** The sidebar section while View is mounted: the filter, then the groups and their instances (links to /view/<name>). */
-function ViewRoster() {
-  const v = useStore(viewStore);
-  const filterRef = useRef(null);
-  const list = useRef(null);
-  useLayoutEffect(() => { keepActiveInView(list.current); }, [v.current, v.loaded]);
-  const drag = useRef(null);
-  const rosterByName = byName(v.roster);
-  const { groupNames, instByGroup } = computeOrder(v.roster, v.order);
-  const shown = filterSidebar(groupNames, instByGroup, rosterByName, v.filter, backendLabel);
-  const setFilter = (value) => viewStore.set({ filter: value });
-  const toggle = (g) => { const c = new Set(v.collapsed); if (c.has(g)) c.delete(g); else c.add(g); viewStore.set({ collapsed: c }); };
-  // Drag to reorder: only the full list (a filtered subset would be ambiguous), groups among groups, instances within
-  // their group.
-  const dragProps = (item) => shown.active ? {} : {
-    draggable: "true",
-    onDragStart: (e) => { drag.current = item; e.currentTarget.classList.add("dragging"); try { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", item.name); } catch { /* Firefox needs data */ } },
-    onDragEnd: (e) => { e.currentTarget.classList.remove("dragging"); drag.current = null; },
-    onDragOver: (e) => {
-      const d = drag.current;
-      if (!d || d.type !== item.type || d.name === item.name || (item.type === "instance" && d.group !== item.group)) return;
-      e.preventDefault();
-      const r = e.currentTarget.getBoundingClientRect();
-      const before = e.clientY < r.top + r.height / 2;
-      e.currentTarget.classList.toggle("drop-before", before);
-      e.currentTarget.classList.toggle("drop-after", !before);
-    },
-    onDragLeave: (e) => e.currentTarget.classList.remove("drop-before", "drop-after"),
-    onDrop: (e) => {
-      e.preventDefault();
-      const before = e.currentTarget.classList.contains("drop-before");
-      e.currentTarget.classList.remove("drop-before", "drop-after");
-      const d = drag.current;
-      if (!d || d.type !== item.type) return;
-      const names = [...groupNames], insts = new Map([...instByGroup].map(([g, n]) => [g, [...n]]));
-      if (item.type === "group") moveIn(names, d.name, item.name, before);
-      else if (d.group === item.group) moveIn(insts.get(item.group), d.name, item.name, before);
-      else return;
-      persistOrder(names, insts);
-    },
-  };
-  // The list scrolls; the filter under it stays in view (#999), so it sits outside the scrolling section.
-  return html`<div class="view-roster">
-    <div class="side-section" id="instanceList" ref=${list}>
-    <h2 class="side-label">${tn("instancesLabel")}</h2>
-    ${!v.loaded ? html`<${Skeleton} lines=${4} />` : !v.roster.length ? html`<p class="side-empty">${tn("noInstances")}</p>` : null}
-    ${shown.groups.map(({ group: g, names }) => {
-      const folded = v.collapsed.has(g);
-      return html`<div key=${g} class="v-group">
-        <button type="button" class="v-group-head" aria-expanded=${folded ? "false" : "true"} onClick=${() => toggle(g)}
-          title=${tn(folded ? "expandGroup" : "collapseGroup", { group: g })} ...${dragProps({ type: "group", name: g })}>
-          <${Icon} name="chevron" size=${14} cls=${folded ? "caret folded" : "caret"} /><span class="grow">${g}</span><span class="count">${names.length}</span></button>
-        ${folded ? null : html`<ul class="inst-list">${names.map((name) => {
-          const it = rosterByName.get(name);
-          const alias = typeof it.display_name === "string" && it.display_name.trim() && it.display_name.trim() !== name ? it.display_name.trim() : "";
-          const active = name === v.current;
-          return html`<li key=${name}><a class=${`inst v-inst${active ? " active" : ""}`} href=${viewPath(name)} title=${instanceTooltip(it)}
-              aria-current=${active ? "page" : undefined} onClick=${closeDrawer} ...${dragProps({ type: "instance", name, group: g })}>
-            <span class=${`dot ${it.status === "running" ? "ok" : it.status === "crashed" ? "bad" : "off"}`} aria-hidden="true"></span>
-            <span class="inst-text"><span class="inst-name">${name}</span>${alias ? html`<span class="inst-sub"><span class="inst-alias">${alias}</span></span>` : null}</span>
-            <span class="v-meta">${it.context_pct != null ? `${Math.round(it.context_pct)}%` : ""}</span>
-            <span class=${`cli-icon cli-${KNOWN_BACKENDS.has(it.backend) ? it.backend : "other"}`} title=${backendLabel(it.backend)} aria-label=${tn("tooltipBackend", { value: backendLabel(it.backend) })}></span>
-          </a></li>`;
-        })}</ul>`}
-      </div>`;
-    })}
-    ${v.loaded && shown.active && !shown.groups.length ? html`<p class="side-empty">${tn("filterNone")}</p>` : null}
-    </div>
-    <div class="v-filter">
-      <label class="v-filter-box"><${Icon} name="search" size=${14} /><span class="sr-only">${tn("filterPh")}</span>
-        <input ref=${filterRef} id="filterInput" type="text" autocomplete="off" spellcheck="false" placeholder=${tn("filterPh")} value=${v.filter}
-          onInput=${(e) => setFilter(e.target.value)}
-          onKeyDown=${(e) => { if (e.key === "Escape" && v.filter) { e.preventDefault(); e.stopPropagation(); setFilter(""); } }} />
-        ${v.filter ? html`<button type="button" class="icon-btn v-filter-clear" aria-label=${tn("filterClear")} title=${tn("filterClear")}
-          onClick=${() => { setFilter(""); filterRef.current && filterRef.current.focus(); }}><${Icon} name="close" size=${14} /></button>` : null}
-      </label>
-      <p class="note" aria-live="polite">${shown.shown} / ${shown.total}${shown.active ? ` ${tn("filterShown")}` : ""}</p>
-    </div>
-  </div>`;
-}
+// ── The roster ── The sidebar's list is instance-nav.js on every page (alpha.2, N1); its helpers are re-exported here
+// for the View code and tests that used them from this module.
+export { groupOf, backendLabel, normalizeFilter, instanceMatchesFilter, filterSidebar, instanceTooltip, computeOrder } from "./instance-nav.js";
+export { viewStore };
 
 // ── The panel ──
 
@@ -319,10 +139,6 @@ export function ViewPanel({ route, navKey }) {
   const name = route.instance;
   const it = name ? v.roster.find((r) => r.instance_name === name) : null;
 
-  // The roster is the sidebar's section while View is mounted — once per mount, not per navigation (alpha.2): the lease
-  // changes with every instance clicked, and releasing and re-setting the section remounted the roster, so its list
-  // jumped back to the top on every click.
-  useEffect(() => setSideSection(ViewRoster), []);
   useEffect(() => { viewStore.set({ current: name }); }, [name]);
   useEffect(() => { setTitle(it ? (it.display_name || it.instance_name) : tn("title")); }, [name, it && it.display_name, navKey]);
   if (name && it) store("agend_last_view", name);
@@ -647,10 +463,12 @@ function UsageDialog({ onClose }) {
             <button type="button" class="icon-btn" disabled=${i === 0} aria-label=${tn("usageMoveUp")} title=${tn("usageMoveUp")} onClick=${() => move(key(p), -1, data.providers)}><${Icon} name="up" size=${14} /></button>
             <button type="button" class="icon-btn" disabled=${i === providers.length - 1} aria-label=${tn("usageMoveDown")} title=${tn("usageMoveDown")} onClick=${() => move(key(p), 1, data.providers)}><${Icon} name="down" size=${14} /></button>
           </span></div>
-        ${p.status === "error" ? html`<p class="u-err">${usageText(p.error || tn("usage.error_fallback"), p.errorI18n)}</p>`
+        ${p.stale ? html`<p class="note">${usageText(p.hint || "", p.hintI18n)}</p>` : null}
+        ${p.status === "error" && !p.transient ? html`<p class="u-err">${usageText(p.error || tn("usage.error_fallback"), p.errorI18n)}</p>`
+          : p.status === "error" && p.transient ? html`<p class="note">${usageText(p.error || tn("usage.error_fallback"), p.errorI18n)}</p>`
           : p.status === "no-credentials" ? html`<p class="note">${tn("usage.not_logged_in")}</p>${p.hint ? html`<p class="note">${usageText(p.hint, p.hintI18n)}</p>` : null}`
           : html`${(p.metrics || []).map((m, j) => html`<${UsageMetric} key=${j} m=${m} />`)}
-            ${p.hint ? html`<p class="note">${usageText(p.hint, p.hintI18n)}</p>` : !(p.metrics || []).length ? html`<p class="note">${tn("usage.no_data")}</p>` : null}`}
+            ${!p.stale && p.hint ? html`<p class="note">${usageText(p.hint, p.hintI18n)}</p>` : !(p.metrics || []).length ? html`<p class="note">${tn("usage.no_data")}</p>` : null}`}
       </section>`)}
       <div class="u-foot"><span class="note">${tn("usageUpdated")} ${new Date(data.fetchedAt).toLocaleTimeString()}</span>
         <button type="button" class="btn btn-sm" onClick=${() => load(true)}>${tn("usageRefresh")}</button></div>`;

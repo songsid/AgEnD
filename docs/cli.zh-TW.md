@@ -218,6 +218,10 @@ agend import <file>             # 從匯出檔案匯入配置
 
 在 Linux 上，systemd unit 使用 `KillMode=mixed`：停止或更新服務時會先停 fleet，再由 fleet 依序結束各個 CLI（#908）。`agend restart`（`agend update` 也會執行它）會替舊的 unit 補上這一行並重新載入 systemd；如果做不到，會拒絕重啟並說明怎麼手動處理。你自己設定的 `KillMode` 不會被更動。
 
+**Fleet 停機期限（#1071）。** Detached `agend restart` 與 AgEnD 的 systemd unit 都會給停機五分鐘。Busy Kiro 的 drain、quit 與 signal grace 各有階段期限，但逐批停止會累加等待；舊的 detached 10 秒與 unit 60 秒上限可能截斷它們。Restart 會將 AgEnD 原本的 `TimeoutStopSec=60` 預設遷移成 `300`，並在停止前核對 systemd 已載入的期限。明確自訂值、重複賦值與 drop-in 覆寫會保留並提示；直接以 service manager 停止／重啟仍依 operator 設定，較短的自訂期限可能截斷停機。`agend restart` 則會拒絕所有已選定、已載入期限讀不到或小於 300 秒的 systemd target，包含自訂值與 drop-in。五分鐘是外部上限，不保證涵蓋任意 fleet 大小或緩慢／卡住的 transport。
+
+Detached restart 使用非同步 polling 與 monotonic deadline。期限到了會重新核對 PID 的啟動 identity 與指令列，再送 SIGKILL，並最多等五秒確認真正退出。Ownership 讀不到或舊 owner 仍活著就拒絕啟動 replacement，避免重複 fleet。若已記錄的啟動 identity 不變，只有指令列變空，可以在 grace 內等待新的退出證據；空指令列不能授權 SIGKILL 或 replacement。launchd 原有的停機／activation 政策不變。
+
 同一次遷移也會替舊的 unit 補上 #1113 的設定：`CoredumpFilter=0` 讓 crash dump 只有幾 KB（WSL 會把所有 crash 交給 WSL 的 crash collector，它不理會 `LimitCORE`；kiro-cli 和 fleet 本身都曾留下約 1GB 和 450MB 的 dump）；`LimitCORE=0` 適用於直接寫 core 檔的系統；`TimeoutStartSec=15min` 取代原本不設上限的啟動逾時；`StartLimitIntervalSec=30min` 搭配 `StartLimitBurst=4`，讓 fleet 在 30 分鐘內失敗 4 次後，systemd 就不再自動重啟。`agend restart` 會先執行 `systemctl reset-failed`，所以不受這個限制影響；直接用 `systemctl --user restart` 則會受限。部分 systemd 版本（包括 249）會忽略 unit 檔裡的 `CoredumpFilter=`，所以在 Linux 上 AgEnD 會自己把 `coredump_filter` 設為 0：fleet 行程在啟動時設，每個它啟動的 CLI 也會設（啟動指令會先在 pane 自己的 shell 裡設好，所以即使 tmux server 不是這個 fleet 起的也有效）。`AGEND_KEEP_COREDUMP_FILTER=1` 會關掉這兩處：行程改用繼承來的 mask（來自 systemd、tmux 或你的 shell），不一定是完整 dump。不論哪種情況 unit 檔都不會被修改；除非你選擇關閉，實際生效的 mask 都是 AgEnD 設的那個。你自己設定的值不會被更動。
 
 **服務用哪個 Node 執行，以及 `agend restart` 何時會拒絕（#1450）。**
@@ -226,10 +230,14 @@ agend import <file>             # 從匯出檔案匯入配置
 - `agend restart` 在停止任何東西之前，會確認服務管理器**已載入**的定義正好是這樣：寫明選定的 Node、這次安裝的 entry、`fleet start`、沒有 `NODE_OPTIONS`/`NODE_PATH`，而且沒有待重新載入的變更。不符合就拒絕，什麼都不停止。
   - 舊格式的定義（把 Node 交給 `#!/usr/bin/env node` 和服務的 PATH 決定）會因此被拒絕；請執行 `agend install` 重寫。
   - `agend restart --force` 是給已自行檢查過服務的管理者用的；`agend update` 從不使用。
+  - 使用 system-source runtime 時，nvm/Homebrew 換版可能讓服務的 PATH 找到舊 Node，或完全找不到。Restart 仍會拒絕。在選到預期 Node 的 shell 執行 `agend install --no-activate`、`systemctl --user daemon-reload`，再執行 `agend restart`，可修復 user unit。System unit 則由其管理者更新 `Environment=PATH`，先執行 `systemctl daemon-reload`；`agend install` 只會寫 user service。macOS 使用 `agend install --no-activate`，再以 `agend restart` 執行預定的 launchd 啟用。
 - **macOS：** `agend install` 會寫入 `~/Library/LaunchAgents/com.agend.fleet.plist` 並載入 `gui/<uid>`，也就是你登入工作階段的 domain，LaunchAgents 會在登入時載入。
   - 對 launchd 來說，載入 plist 就等於啟動 job。所以 `agend install --no-activate` 只會寫入並驗證新的 plist，並記錄一次「預定的啟用」；已載入的 job 照常執行。
   - 下一次 `agend restart` 會執行這次啟用，只做一次：一次 `bootout`、一次 `bootstrap`。接著 `launchctl print` 必須顯示新的 job 正在執行；若沒有，會重新 bootstrap 先前的 plist 並確認。
   - 只能用 SSH 連線、沒有人登入的 Mac 沒有 `gui/<uid>` domain（`launchctl` 回報錯誤 125）。在那裡 job 只能以 `LimitLoadToSessionType=Background` 載入 `user/<uid>`；`agend install` 不會這樣寫，這種 job 需要你自行管理。
+
+**更新的啟用結果（#1490）。** 套件驗證通過不代表 fleet 正在執行。確認重啟完成才算成功；未完成的重啟回傳 exit 75（pending），保留更新標記與所有修復備份，不還原或移除套件。重啟失敗回傳 exit 1。Systemd 路徑只有在載入的目標相同、unit bytes 未變、沒有待執行 job、main/control PID 都為零，且確認停止之後，才可還原本次更新的套件與 unit 備份。重新載入並核對舊定義後，才啟動原本正在執行的服務；原本停止的服務維持停止。即使回復成功，仍回報本次更新失敗。Ownership 變更或讀不到、沒有備份、detached owner、自訂而無法追蹤停止的模式或回復未完成，都需要管理者檢查，不能回報回復成功。重試前請以 `systemctl [--user] status <unit>` 檢查選定的服務。這些核對不能讓外部的服務／套件修改變成原子操作；更新期間請勿同時執行其他安裝或服務管理操作。
+回復會恢復舊執行檔的政策，不會還原資料目錄。備份來自較舊版本時，請先看[降版相容性限制](downgrade-compatibility.zh-TW.md)。
 
 ## 環境變數 (Environment Variables)
 

@@ -99,9 +99,9 @@ async function copyText(text) {
   return ok;
 }
 /** The HTML as a file: a blob of the source as application/octet-stream, saved as reply.html — never opened. */
-function downloadHtml(code) {
+function downloadHtml(code, name) {
   const url = URL.createObjectURL(new Blob([code], { type: "application/octet-stream" }));
-  const a = document.createElement("a"); a.href = url; a.download = "reply.html"; a.className = "offscreen";
+  const a = document.createElement("a"); a.href = url; a.download = typeof name === "string" && name.trim() ? name.trim() : "reply.html"; a.className = "offscreen";
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
 }

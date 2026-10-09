@@ -2,6 +2,7 @@ import { normalizeSettingsInstancePatch, removesInstanceOverride } from "./setti
 import { settingsRequestExecution, settingsWrite } from "./settings-request-capability.js";
 import { noteSettingsWrite, settingsUndo, undoSettingsPaths, type SettingsExecution } from "./settings-transaction.js";
 import { readBoundedWebBody } from "./web-body.js";
+import { gatewayRequestContext } from "./web-request-context.js";
 import { validPublicLinkPatch } from "./public-web-link.js";
 import { permitWebContinuation } from "./web-continuation.js";
 /**
@@ -409,6 +410,7 @@ export function handleSettingsRequest(
 
   const providerSecretVerifyMatch = path.match(/^\/api\/settings\/(?:provider-secrets|secrets)\/([^/]+)\/verify$/);
   if (method === "POST" && providerSecretVerifyMatch) {
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "Secret operations are not permitted over a public link" }, true); return true; }
     if (!providerSecretsEnabled) { json(res, 404, { error: "not found" }, true); return true; }
     if (!ctx.verifyProviderSecret) { json(res, 501, { error: "provider secret registry unavailable" }, true); return true; }
     const specId = decodeURIComponent(providerSecretVerifyMatch[1]!);
@@ -434,6 +436,7 @@ export function handleSettingsRequest(
 
   const providerSecretApplyMatch = path.match(/^\/api\/settings\/(?:provider-secrets|secrets)\/([^/]+)\/apply$/);
   if (method === "POST" && providerSecretApplyMatch) {
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "Secret operations are not permitted over a public link" }, true); return true; }
     if (!providerSecretsEnabled) { json(res, 404, { error: "not found" }, true); return true; }
     if (!ctx.startProviderSecretApply) { json(res, 501, { error: "provider secret registry unavailable" }, true); return true; }
     const specId = decodeURIComponent(providerSecretApplyMatch[1]!);
@@ -467,6 +470,7 @@ export function handleSettingsRequest(
 
   const secretVerifyMatch = path.match(/^\/api\/settings\/connections\/([^/]+)\/secret\/verify$/);
   if (method === "POST" && secretVerifyMatch) {
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "Secret operations are not permitted over a public link" }, true); return true; }
     const verifyConnectionSecret = ctx.verifyConnectionSecret;
     if (!verifyConnectionSecret) { json(res, 501, { error: "connection secret verification unavailable" }); return true; }
     const connectionId = decodeURIComponent(secretVerifyMatch[1]!);
@@ -503,6 +507,7 @@ export function handleSettingsRequest(
 
   const secretApplyMatch = path.match(/^\/api\/settings\/connections\/([^/]+)\/secret\/apply$/);
   if (method === "POST" && secretApplyMatch) {
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "Secret operations are not permitted over a public link" }, true); return true; }
     if (!ctx.startConnectionSecretApply) { json(res, 501, { error: "connection secret apply unavailable" }); return true; }
     const connectionId = decodeURIComponent(secretApplyMatch[1]!);
     readBody(req, 16 * 1024).then(buf => {
@@ -550,6 +555,7 @@ export function handleSettingsRequest(
 
   const bindingVerifyMatch = path.match(/^\/api\/settings\/connections\/([^/]+)\/binding\/verify$/);
   if (method === "POST" && bindingVerifyMatch) {
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "Secret operations are not permitted over a public link" }, true); return true; }
     if (!ctx.verifyConnectionBinding) { json(res, 501, { error: "connection binding verification unavailable" }); return true; }
     const connectionId = decodeURIComponent(bindingVerifyMatch[1]!);
     readBody(req, 16 * 1024).then(async buf => {
@@ -586,6 +592,7 @@ export function handleSettingsRequest(
 
   const bindingApplyMatch = path.match(/^\/api\/settings\/connections\/([^/]+)\/binding\/apply$/);
   if (method === "POST" && bindingApplyMatch) {
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "Secret operations are not permitted over a public link" }, true); return true; }
     if (!ctx.startConnectionBindingApply) { json(res, 501, { error: "connection binding apply unavailable" }); return true; }
     const connectionId = decodeURIComponent(bindingApplyMatch[1]!);
     readBody(req, 16 * 1024).then(buf => {

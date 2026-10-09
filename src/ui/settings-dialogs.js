@@ -10,6 +10,8 @@ import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { api, confirmedWrite, newKey } from "./settings-confirm.js";
+import { botHandle, TokenEnvNote, TokenField, verifyBotToken } from "./settings-token.js";
+import { startOperation } from "./settings-apply.js";
 import {
   ACCESS_MODES, AGENT_FIELDS, AGENT_MODES, BOT_FIELDS, CH_TYPES, CLASSIC_FIELDS, LOG_LEVELS, TOOL_PROGRESS, TOOL_SETS,
   VISIBILITY_MODES, accessConfirmations, agentForm, agentPatch, backendOptions, changedFields, channelId, channelsOf,
@@ -341,15 +343,31 @@ export function BotDialog({ id, ctx, onClose }) {
   const [bindBusy, setBindBusy] = useState(false);
   const [token, setToken] = useState("");
   const [tokenNote, setTokenNote] = useState(null);
+  // Replace token (#1519 P1): the field opens on Replace, and a token is staged only once the platform has named its bot.
+  const [replacing, setReplacing] = useState(false);
+  const [tokenId, setTokenId] = useState(null);
+  const [tokenBusy, setTokenBusy] = useState(false);
+  const status = (ctx.connections || []).find((c) => c && c.id === id) || {};
   const [emojis, setEmojis] = useState({ value: null, baseline: null });
   const lease = useLease("bot-dialog");
   const accessWarn = mode === "locked" && users.length === 0 ? "accessLockedEmpty" : "";
+  // The token's revision (#1529 review): typing moves it, and a Verify for an older value is dropped when it lands.
+  const tokenRev = useRef(0);
+  const verifyToken = async () => {
+    setTokenBusy(true);
+    const mine = epoch.current, at = tokenRev.current;
+    const identity = await verifyBotToken(type, token);
+    if (!lease.current() || epoch.current !== mine) return;
+    setTokenBusy(false);
+    if (tokenRev.current === at) setTokenId(identity);
+  };
   const stageToken = () => {
     if (!ch) return;
     if (!token) { setTokenNote({ error: tn("tokenRequired") }); return; }
+    if (!tokenId || !tokenId.valid) { setTokenNote({ error: tn("wizardNeedVerify") }); return; }
     // The token goes into the staged change and nowhere else: not a label, not the URL, not storage.
     ctx.stage(`secret:${id}`, { label: tn("rotateToken", type), impact: schema.order[0], connectionSecret: { id, secret: token } });
-    setToken("");
+    setToken(""); setTokenId(null); setReplacing(false);
     setTokenNote({ text: tn("tokenQueued") });
   };
   const stage = () => {
@@ -419,45 +437,94 @@ export function BotDialog({ id, ctx, onClose }) {
         previewBody=${(map) => ({ channel_id: id, platform: type, channel_config: map })} onChange=${setEmojis} />
     </${Drawer}>
     <${Drawer} title=${tn("advancedSection")}>
-      <div class="field"><span>${tn("tokenEnv")}</span><code>${ch.bot_token_env || tn("noTokenEnv")}</code></div>
-      <div class="field"><label for="bot-token">${tn("tokenField")}</label>
-        <input id="bot-token" type="password" autocomplete="new-password" value=${token} placeholder=${tn("tokenPlaceholder")} onInput=${(e) => setToken(e.target.value)} />
-        <p class="note">${tn("tokenHint")}</p>
-        <div class="dlg-inline-actions"><button type="button" class="btn btn-sm" onClick=${stageToken}>${tn("tokenButton")}</button>
-          ${tokenNote ? html`<span class=${`feedback${tokenNote.error ? " error" : ""}`} role="status">${tokenNote.error || tokenNote.text}</span>` : null}</div></div>
+      <div class="field"><span>${tn("tokenStatus")}</span>
+        <div class="dlg-inline-actions"><span class="token-status">${status.token_present === false ? tn("tokenMissing")
+          : status.identity && status.identity.username ? tn("tokenSetAs", botHandle(status.identity.username)) : tn("tokenSet")}</span>
+          ${replacing ? null : html`<button type="button" class="btn btn-sm" onClick=${() => { setReplacing(true); setTokenNote(null); }}>${tn("tokenReplace")}</button>`}</div></div>
+      ${replacing ? html`<${TokenField} id="bot-token" platform=${type} value=${token} identity=${tokenId} busy=${tokenBusy}
+          onInput=${(v) => { tokenRev.current++; setToken(v); setTokenId(null); }} onVerify=${verifyToken} hint=${tn("tokenHint")} />
+        <div class="dlg-inline-actions"><button type="button" class="btn btn-sm" disabled=${!tokenId || !tokenId.valid} onClick=${stageToken}>${tn("tokenButton")}</button>
+          <button type="button" class="btn btn-sm btn-ghost" onClick=${() => { tokenRev.current++; setReplacing(false); setToken(""); setTokenId(null); }}>${tn("cancel")}</button></div>` : null}
+      ${tokenNote ? html`<p class=${`feedback${tokenNote.error ? " error" : ""}`} role="status">${tokenNote.error || tokenNote.text}</p>` : null}
+      <${TokenEnvNote} name=${ch.bot_token_env} />
       <div class="dlg-inline-actions"><button type="button" class="btn btn-sm danger" onClick=${remove}><${Icon} name="trash" size=${14} />${tn("deleteBot")}</button></div>
     </${Drawer}>
   </${EditDialog}>`;
 }
 
-/** A new connection: written at once (as before), through the confirmation an admin may have to give. */
+/**
+ * A new connection (#1519 P1): the bot token, checked with the platform, then the server-side plan — a free id and a
+ * generated token env (shown under Advanced, read-only) — then the same write the setup wizard makes, without an agent:
+ * one operation (the confirmation an admin may have to give, then Apply, which offers the restart a new connection
+ * needs). Never a replacement: the server refuses an id or token env another connection holds.
+ */
 export function NewBotDialog({ ctx, onClose }) {
   const lease = useLease("new-bot");
-  const [f, setF] = useState({ type: "discord", id: "", env: "", group: "" });
+  const [f, setF] = useState({ type: "discord", id: "", token: "", identity: null, guilds: [], group: "" });
+  const [plan, setPlan] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
-  const save = async () => {
-    if (!f.env.trim()) { setErr(tn("tokenEnvRequired")); return; }
-    const next = [...channelsOf(ctx.fleet), { id: f.id.trim() || undefined, type: f.type, bot_token_env: f.env.trim(), group_id: f.group.trim() || undefined, access: { mode: "locked", allowed_users: [] } }];
-    setBusy(true);
-    const res = await confirmedWrite("/api/settings/fleet/channels", { method: "PUT", body: next, label: tn("addBotLabel", f.id.trim() || f.type) }).catch(() => ({ ok: false, body: {} }));
-    if (!res.ok) { toast((res.body && res.body.error) || tn("failed"), false); if (lease.current()) setBusy(false); return; }
-    toast(tn("saved"));
-    ctx.reload();
-    if (lease.current()) onClose();
+  // The form's revision (#1529 review): any change to the token, platform, id or group moves it; a Verify or a plan
+  // that began before is dropped when it lands — never restoring an old token, naming it, or planning for it.
+  const rev = useRef(0);
+  const body = (x) => ({ platform: x.type, connection_only: true, ...(x.id.trim() ? { channel_id: x.id.trim() } : {}),
+    ...(x.group.trim() ? (x.type === "discord" ? { guild_id: x.group.trim() } : { group_id: x.group.trim() }) : {}) });
+  const planFor = async (x) => {
+    const at = rev.current;
+    const res = await api("/api/settings/quickstart/plan", { method: "POST", body: JSON.stringify(body(x)) }).catch(() => ({ ok: false, body: {} }));
+    if (!lease.current() || rev.current !== at) return null;
+    if (!res.ok) { setErr((res.body && res.body.error) || tn("failed")); setPlan(null); return null; }
+    setErr(""); setPlan(res.body); return res.body;
   };
-  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  const verify = async () => {
+    const at = rev.current, x = f;
+    const live = () => lease.current() && rev.current === at;
+    setBusy(true); setErr("");
+    const identity = await verifyBotToken(x.type, x.token);
+    if (!live()) { if (lease.current()) setBusy(false); return; }
+    let guilds = [];
+    if (identity.valid && x.type === "discord") {
+      const g = await api("/api/settings/quickstart/probe", { method: "POST", body: JSON.stringify({ action: "guilds", token: x.token }) }).catch(() => null);
+      if (!live()) { if (lease.current()) setBusy(false); return; }
+      guilds = (g && g.body && g.body.guilds) || [];
+    }
+    // Onto the form as it is now (same revision, so the same token): never a copy of the form from before the await.
+    setF((cur) => ({ ...cur, identity, guilds })); setBusy(false);
+    if (identity.valid) await planFor({ ...x, identity, guilds });
+  };
+  const save = async () => {
+    if (!f.identity || !f.identity.valid) { setErr(tn("wizardNeedVerify")); return; }
+    const x = f;
+    setBusy(true);
+    const p = await planFor(x);
+    if (!p) { if (lease.current()) setBusy(false); return; }
+    const handed = startOperation([{ label: tn("addBotLabel", p.channel_id), impact: impactOf(ctx.schema, "fleet.channels"),
+      request: { method: "POST", url: "/api/settings/quickstart/commit",
+        body: { ...body(x), channel_id: p.channel_id, token_env: p.token_env, token_env_generated: true, token: x.token }, sensitive: true } }]);
+    if (!handed) { setErr(tn("applyBusyLocal")); setBusy(false); return; }
+    setF((x) => ({ ...x, token: "" }));
+    onClose();
+  };
+  // A change of platform or id is another connection: what was verified and planned no longer applies. The server or
+  // group does not change the id or the token's name, so the plan (and its name under Advanced) stays.
+  const set = (k) => (v) => { rev.current++; setF((x) => ({ ...x, [k]: v, ...(k === "type" ? { identity: null, guilds: [], group: "" } : {}) })); if (k !== "group") setPlan(null); };
   return html`<${Dialog} title=${tn("newBot")} onClose=${onClose} busy=${busy}
     actions=${html`<button type="button" class="btn" disabled=${busy} onClick=${onClose}>${tn("cancel")}</button>
-      <button type="button" class="btn btn-primary" disabled=${busy} onClick=${save}>${tn("save")}</button>`}>
+      <button type="button" class="btn btn-primary" disabled=${busy || !f.identity || !f.identity.valid} onClick=${save}>${tn("save")}</button>`}>
     <div class="form">
-      <div class="grid2">
-        <div class="field"><label for="nb-type">${tn("type")}</label><${Select} id="nb-type" value=${f.type} onChange=${(v) => setF({ ...f, type: v })} options=${CH_TYPES} /></div>
-        <div class="field"><label for="nb-id">${tn("adapterId")}</label><input id="nb-id" type="text" placeholder="persona1" value=${f.id} onInput=${set("id")} /></div>
-        <div class="field"><label for="nb-env">${tn("tokenEnv")} *</label><input id="nb-env" type="text" placeholder="BOT_TOKEN_ENV" value=${f.env} onInput=${set("env")} /></div>
-        <div class="field"><label for="nb-group">${tn("groupId")}</label><input id="nb-group" type="text" value=${f.group} onInput=${set("group")} /></div>
-      </div>
-      <p class="note">${tn("envHint")}</p>
+      <div class="field"><label for="nb-type">${tn("type")}</label><${Select} id="nb-type" value=${f.type} onChange=${set("type")} options=${CH_TYPES} /></div>
+      <${TokenField} id="nb-token" platform=${f.type} value=${f.token} identity=${f.identity} busy=${busy}
+        onInput=${(v) => { rev.current++; setF((x) => ({ ...x, token: v, identity: null, guilds: [] })); setPlan(null); }} onVerify=${verify} hint=${tn("newBotTokenHint")} />
+      ${f.type === "discord" && f.guilds.length
+        ? html`<div class="field"><label for="nb-group">${tn("guildIdField")}</label><${Select} id="nb-group" value=${f.group} onChange=${set("group")}
+            options=${["", ...f.guilds.map((g) => ({ value: g.id, label: `${g.name} (${g.id})` }))]} /></div>`
+        : html`<div class="field"><label for="nb-group">${f.type === "discord" ? tn("guildIdField") : tn("groupIdField")}</label>
+            <input id="nb-group" type="text" value=${f.group} onInput=${(e) => set("group")(e.target.value.trim())} /></div>`}
+      <${Drawer} title=${tn("advancedSection")}>
+        <div class="field"><label for="nb-id">${tn("connectionIdOptional")}</label><input id="nb-id" type="text" placeholder=${plan ? plan.channel_id : f.type}
+          value=${f.id} onInput=${(e) => set("id")(e.target.value)} onBlur=${() => { if (f.identity && f.identity.valid) planFor(f); }} /></div>
+        <${TokenEnvNote} name=${plan && plan.token_env} />
+      </${Drawer}>
       ${err ? html`<p class="feedback error" role="alert">${err}</p>` : null}
     </div></${Dialog}>`;
 }

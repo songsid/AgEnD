@@ -6,6 +6,7 @@ import { SettingsExecution, settingsRevision, noteSettingsWrite, settingsFileRes
 import { performance } from "node:perf_hooks";
 import { gatewayRequestContext } from "./web-request-context.js";
 import { createPublicWebGateway } from "./public-web-gateway.js";
+import { renderPublicLinkProgress, ThrottledMessageEditor, type PublicLinkProgress } from "./public-link-progress.js";
 import { PublicWebLink, publicLinkSettings } from "./public-web-link.js";
 import { TunnelPurposeLane } from "./tunnel/purpose-lane.js";
 import { ManagedTunnel } from "./tunnel/manager.js";
@@ -63,6 +64,7 @@ import { loadFleetConfig, loadRawFleetConfig, DEFAULT_COST_GUARD, DEFAULT_DAILY_
 import { EventLog } from "./event-log.js";
 import { binaryProbe } from "./binary-probe.js";
 import { classifySqliteOpenError } from "./sqlite-open-errors.js";
+import { OutboxOpenError } from "./outbox-open-error.js";
 import { AdapterWorld } from "./adapter-world.js";
 import { CostGuard, formatCents } from "./cost-guard.js";
 import { startEventLoopWatch, type EventLoopWatch } from "./event-loop-watch.js";
@@ -169,7 +171,8 @@ import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, typ
 import { ReplyButtonStore, parseReplyButtons, replyButtonClickText, replyButtonsFallbackText, REPLY_BUTTON_PREFIX } from "./reply-buttons.js";
 import { ReplyButtonsController, type ReplyButtonsView } from "./reply-buttons-controller.js";
 import { publicAttachment, sweepOrphanedUploads, WebFileLedger } from "./web-upload.js";
-import { handleViewRequest, isViewPath } from "./view-api.js";
+import { handleViewRequest, isViewPath, profileIdentities, resolveInstanceIdentity } from "./view-api.js";
+import { envFileKeys } from "./token-env-name.js";
 import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, usageProviderIdForBackend } from "./usage/usage-api.js";
 import { LOGIN_FLOWS, LOGIN_BACKEND_ALIASES, type LoginFlow, type AuthCheckResult } from "./login-flows.js";
 import { LoginSession } from "./login-manager.js";
@@ -1205,7 +1208,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (!settlement) return false;
         await settlement;
         const job = this.providerSecretJobs.get(id) ?? this.connectionSecretJobs.get(id) ?? this.connectionBindingJobs.get(id);
-        return !!job && ["applied", "applied_next_use", "reloaded"].includes(job.result);
+        // restart_required: the value is stored and committed (the receipt is checked above), only no adapter was running
+        // to take it — the change is done, and the page says it starts with the next restart (#1519 P1), never "failed".
+        return !!job && ["applied", "applied_next_use", "reloaded", "restart_required"].includes(job.result);
       },
     });
     this.settingsConfirmation = gate; return gate;
@@ -1416,13 +1421,24 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private ensureDeliveryOutbox(): void {
     if (this.deliveryOutbox) return;
-    const outbox = new DeliveryOutbox(join(this.dataDir, "delivery-outbox.db"), this.managerBootId);
-    this.deliveryOutbox = outbox;
-    if (!this.deliveryOutboxRecovered) {
-      const recovered = outbox.recoverForBoot(this.managerBootId);
-      this.logger.info({ ...recovered }, "Recovered durable delivery outbox for this process boot");
-      this.deliveryOutboxRecovered = true;
+    const dbPath = join(this.dataDir, "delivery-outbox.db");
+    let outbox: DeliveryOutbox | undefined;
+    try {
+      outbox = new DeliveryOutbox(dbPath, this.managerBootId);
+      if (!this.deliveryOutboxRecovered) {
+        const recovered = outbox.recoverForBoot(this.managerBootId);
+        this.logger.info({ ...recovered }, "Recovered durable delivery outbox for this process boot");
+      }
+    } catch (cause) {
+      // Unlike events.db, these rows cannot be discarded: queued messages and uncertain submissions are authoritative.
+      // Publish only a fully recovered store. A partial open/recovery must not authorize admission on a later call.
+      try { outbox?.close(); } catch { /* preserve the original failure */ }
+      const error = new OutboxOpenError(dbPath, cause);
+      this.logger.error({ err: cause, dbPath, kind: error.kind }, error.message);
+      throw error;
     }
+    this.deliveryOutbox = outbox;
+    this.deliveryOutboxRecovered = true;
     outbox.on("admitted", () => { this.scheduleDeliveryOutboxPump(); this.wakeCoordinator?.kick(); });
     outbox.on("state", (event: { deliveryId?: string; state?: string }) => {
       this.scheduleDeliveryOutboxPump();
@@ -2032,6 +2048,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.lastActivity.get(name) ?? 0;
   }
 
+  /** Capture the current daemon and delivery owner for a background context read. */
+  getPaneContextSource(name: string): import("./pane-context-cache.js").PaneContextSource | null {
+    const daemon = this.daemons.get(name);
+    const source = daemon?.getPaneContextSource?.();
+    if (!daemon || !source || this.shuttingDown) return null;
+    const epoch = this.getDeliveryEpoch(name);
+    return { ...source, generation: `${source.generation}:${epoch}`, isCurrent: () => !this.shuttingDown
+      && this.daemons.get(name) === daemon && this.getDeliveryEpoch(name) === epoch && source.isCurrent() };
+  }
+
   /**
    * Is the instance between turns?
    *
@@ -2315,7 +2341,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         await data.respond(t(`${action}.usage`));
         return;
       }
-      if (!this.fleetConfig?.instances[requested]) {
+      if (!Object.hasOwn(this.fleetConfig?.instances ?? {}, requested)) {
         await data.respond(t("instance.not_found", requested));
         return;
       }
@@ -2404,7 +2430,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private async handleGeneralProfile(general: string | undefined, userId: string, ingressAdapterId: string | undefined,
     seconds: string | number | undefined, respond: (text: string) => Promise<unknown>): Promise<void> {
-    if (!general || !this.fleetConfig?.instances[general]?.general_topic) { await respond(t("profile.general_only")); return; }
+    if (!general || !Object.hasOwn(this.fleetConfig?.instances ?? {}, general) || !this.fleetConfig?.instances[general]?.general_topic) { await respond(t("profile.general_only")); return; }
     const ownerId = this.getInstanceAdapterId(general);
     if (!ownerId || ownerId !== ingressAdapterId) { await respond(t("not_authorized")); return; }
     const gate = this.fleetAdminGate(userId, ownerId);
@@ -4944,13 +4970,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (result?.confirmed === false) data.ack?.(t("dashboard.public_cleanup"));
       await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, t("dashboard.public_closed"), data.editClicked); return true;
     }
-    // The click is claimed and its buttons are spent: say so on the menu now. A public link can take a while to start
-    // (the first one installs cloudflared), and until the outcome lands the menu would otherwise look untouched.
+    // The click is claimed and its buttons are spent: say so on the menu now. A public link follows each of its steps
+    // there (the first one installs cloudflared, which can take a minute): on Discord through the interaction, on
+    // Telegram by editing the menu message itself. Only static words and numbers — the menu may be in General.
     const progressEdit = data.editClicked ?? entry.retire;
-    const progress = progressEdit
-      ? progressEdit(t(action === "public" ? "dashboard.public_starting" : "dashboard.private_sending"))
-        .catch(err => this.logger.debug({ err }, "Could not show the dashboard menu's progress"))
+    const progress = progressEdit && action !== "public"
+      ? progressEdit(t("dashboard.private_sending")).catch(err => this.logger.debug({ err }, "Could not show the dashboard menu's progress"))
       : Promise.resolve();
+    const stepsEdit = progressEdit ?? (entry.messageId && entry.adapter.editMessageRemoveButtons
+      ? (text: string) => entry.adapter.editMessageRemoveButtons!(entry.chatId, entry.messageId!, text, entry.threadId) : undefined);
+    const steps = action === "public" && stepsEdit ? new ThrottledMessageEditor({
+      edit: stepsEdit, now: () => performance.now(), heartbeatMs: 5_000,
+      // Telegram counts edits against a group's ~20 messages a minute.
+      minIntervalMs: (owner.binding as ChannelAdapter).type === "telegram" ? 3_000 : 2_000,
+      onError: err => this.logger.debug({ err }, "Could not show the public link's progress"),
+    }) : null;
+    let lastSteps: PublicLinkProgress | undefined;
     let deliveredByDm = false;
     const send = async (url: string, exposureId?: string, expiresAt?: number, current: () => boolean = () => this.publicOwnerCurrent(owner)): Promise<boolean> => {
       const token = this.webToken;
@@ -4988,14 +5023,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         return false;
       }
     };
-    const ok = action === "public"
-      ? await this.getPublicWebLink().deliver(owner, link => send(link.url, link.exposureId, link.expiresAt, link.isCurrent))
-      : await send(`http://${this.fleetConfig?.hostname || "localhost"}:${this.fleetConfig?.health_port ?? 19280}/signin`);
+    let ok = false;
+    try {
+      ok = action === "public"
+        ? await this.getPublicWebLink().deliver(owner, link => send(link.url, link.exposureId, link.expiresAt, link.isCurrent), p => {
+          lastSteps = p;
+          steps?.update(() => renderPublicLinkProgress(p, performance.now()));
+        })
+        : await send(`http://${this.fleetConfig?.hostname || "localhost"}:${this.fleetConfig?.health_port ?? 19280}/signin`);
+    } catch (err) {
+      // Still closes the step editor below and tells the clicker: a throw must not leave the menu refreshing.
+      this.logger.warn({ err }, "Dashboard sign-in delivery failed");
+    }
     // Only safe, static words enter General; never link, code or platform error text.
-    const outcome = !ok ? "dashboard.private_failed"
-      : (owner.binding as ChannelAdapter).type !== "discord" ? "dashboard.private_sent" : deliveredByDm ? "dashboard.private_sent_dm" : "dashboard.private_sent_here";
+    const outcome = t(!ok ? "dashboard.private_failed"
+      : (owner.binding as ChannelAdapter).type !== "discord" ? "dashboard.private_sent" : deliveredByDm ? "dashboard.private_sent_dm" : "dashboard.private_sent_here");
     await progress;
-    await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, t(outcome), data.editClicked);
+    await steps?.close(); // the last step edit has landed: the outcome cannot be overwritten by it
+    await this.retireNonceButtons(entry, entry.messageId ?? data.messageId,
+      lastSteps ? renderPublicLinkProgress(lastSteps, performance.now(), outcome) : outcome, data.editClicked);
     return true;
   }
 
@@ -15430,6 +15476,11 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   }
 
   async applyModel(instanceName: string, model: string): Promise<string> {
+    // Reject model names with newlines or control characters: they would be
+    // persisted to fleet.yaml and pasted raw into the CLI (P3 from #1490 audit).
+    if (/[\x00-\x1f\x7f]/.test(model)) {
+      return t("model.invalid_chars");
+    }
     const backendName = this.backendNameForInstance(instanceName);
     let strategy: "runtime" | "restart" = "restart";
     try {
@@ -16550,6 +16601,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   listSecureConnections(): ConnectionMetadata[] {
     const channels = this.fleetConfig?.channels
       ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
+    // A token written from Settings is in .env before this process has it (#1519 P1: a new connection's token waits for
+    // the restart that starts it) — stored is "set", not "missing". Names only; no value is read out.
+    let stored: Set<string>;
+    try { stored = envFileKeys(this.dataDir); } catch { stored = new Set(); }   // unreadable: only what this process has
     return channels.map((channel, index) => {
       const id = channel.id ?? channel.type ?? `channel-${index}`;
       const world = this.worlds.get(id);
@@ -16558,7 +16613,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         id,
         type: channel.type,
         token_env: channel.bot_token_env,
-        token_present: !!process.env[channel.bot_token_env],
+        token_present: !!process.env[channel.bot_token_env] || stored.has(channel.bot_token_env),
         group_id: channel.group_id != null ? String(channel.group_id) : null,
         general_channel_id: channel.options?.general_channel_id != null
           ? String(channel.options.general_channel_id)
@@ -17834,7 +17889,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
           const backend = this.fleetConfig?.instances[name]?.backend
             ?? this.fleetConfig?.defaults?.backend
             ?? "claude-code";
-          const { context } = resolveInstanceContext(this.dataDir, name, backend);
+          const { context } = resolveInstanceContext(this.dataDir, name, backend, { source: this.getPaneContextSource(name) });
           return {
             name,
             status: this.getInstanceStatus(name),
@@ -18211,6 +18266,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       .map(ch => ch.instanceName)
       .filter(name => !fleetNames.includes(name));
     const names = [...fleetNames, ...classicOnly];
+    // The identity every page shows (alpha.2, N1): alias, description, role and tags resolved by the same rule as
+    // /api/profiles (resolveInstanceIdentity) — the sidebar groups, searches and labels with it on every page.
+    const classicRooms = new Map((this.classicChannels?.getAll() ?? []).map(ch => [ch.instanceName, ch]));
+    const profiles = profileIdentities(this.dataDir);
 
     const instances = names.map(name => {
       const statusFile = join(this.getInstanceDir(name), "statusline.json");
@@ -18228,7 +18287,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         : (this.fleetConfig?.instances[name]?.backend
           ?? this.fleetConfig?.defaults?.backend
           ?? "claude-code");
-      const { context } = resolveInstanceContext(this.dataDir, name, backend);
+      const { context } = resolveInstanceContext(this.dataDir, name, backend, { source: this.getPaneContextSource(name) });
       // context_pct: null when unavailable, not 0
       const context_pct = context ?? null;
       // Model: Only Claude Code has live statusline; others use the effective resolver.
@@ -18247,13 +18306,13 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       // Only show effort if backend supports it and it's not antigravity
       const effort = (effortStrategy === "unsupported" || isAgy) ? null : effortResolved.effort;
       const effort_source = (effortStrategy === "unsupported" || isAgy) ? null : effortResolved.source;
-      // Display name: fleet config → classic channel → undefined
-      const display_name = classic
-        ? this.classicChannels?.getAll().find(ch => ch.instanceName === name)?.displayName
-        : this.fleetConfig?.instances[name]?.display_name;
+      const identity = resolveInstanceIdentity({ cfg: this.fleetConfig?.instances[name], classic: classicRooms.get(name), profile: profiles.get(name) });
       return {
         name,
-        display_name: display_name || undefined,
+        display_name: identity.display_name || undefined,
+        description: identity.description || undefined,
+        role: identity.role || undefined,
+        tags: identity.tags,
         status: this.getInstanceStatus(name),
         // `state` (presentation: may be awaiting_input) and `execution_state` (working / idle / stuck, or null —
         // what the dashboard's activity events carry) come from instancePresentation (#1212).

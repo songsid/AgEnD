@@ -411,6 +411,10 @@ agend import <file>             # Import config from export file
 
 On Linux the systemd unit uses `KillMode=mixed`, so stopping or updating the service stops the fleet first and lets it quit each CLI in turn (#908). `agend restart`, which `agend update` runs, adds the line to an older unit and reloads systemd. If it cannot, the restart is refused with instructions. A `KillMode` you set yourself is left alone.
 
+**Fleet stop grace (#1071).** Detached `agend restart` and AgEnD's systemd unit allow five minutes for shutdown. Busy Kiro instances drain, quit and escalate in bounded per-instance phases, but those waits add up across sequential batches; the old 10-second detached cutoff and 60-second unit could interrupt them. Restart migrates the shipped `TimeoutStopSec=60` default to `300` and checks systemd's loaded grace before stopping. Explicit custom values, duplicate assignments and drop-in overrides are preserved and warned about. Direct service-manager stop/restart still follows those operator settings and a shorter custom timeout can interrupt shutdown. `agend restart` refuses every selected systemd target whose loaded stop grace is unreadable or less than 300 seconds, including custom values and drop-ins. Five minutes is an outer limit, not a guarantee for arbitrary fleet size or slow/stuck transports.
+
+Detached restart polls asynchronously with a monotonic deadline. If grace expires it rechecks the PID's start identity and command before SIGKILL, then waits up to five seconds for confirmed exit. Unreadable ownership or an owner that remains alive refuses the replacement instead of spawning a duplicate. If only the command becomes empty on the captured start identity, restart can wait for fresh exit evidence within the grace; that empty command never authorizes SIGKILL or replacement. launchd's existing stop/activation policy is unchanged.
+
 The same migration also adds the #1113 settings to an older unit. `CoredumpFilter=0` keeps a crash dump to a few KB: on WSL every crash is piped to the WSL crash collector, which ignores `LimitCORE`, and kiro-cli and the fleet itself had left dumps of about 1 GB and 450 MB. `LimitCORE=0` covers systems that write core files directly. `TimeoutStartSec=15min` replaces the old unlimited start timeout, and `StartLimitIntervalSec=30min` with `StartLimitBurst=4` stops systemd from restarting a fleet that failed four times in 30 minutes. `agend restart` runs `systemctl reset-failed` first, so it is never blocked by that limit; a plain `systemctl --user restart` is. Some systemd versions (249 among them) ignore `CoredumpFilter=` in a unit file, so on Linux AgEnD sets `coredump_filter` to 0 itself: the fleet process at startup, and each CLI it launches (the launch command sets it in the pane's own shell first, so it applies even in a tmux server the fleet did not start). `AGEND_KEEP_COREDUMP_FILTER=1` turns both off: processes then keep the mask they inherit (from systemd, tmux or your shell), which is not necessarily a full dump. The unit file is left as it is either way; whatever it says, the runtime mask is what AgEnD sets unless you opt out.
 
 **Which Node the service runs, and when `agend restart` refuses (#1450).**
@@ -428,6 +432,11 @@ The same migration also adds the #1113 settings to an older unit. `CoredumpFilte
   - An older definition that leaves Node to `#!/usr/bin/env node` and the service's PATH is refused this way. Run
     `agend install` to rewrite it.
   - `agend restart --force` is for operators who have checked the service themselves. `agend update` never uses it.
+  - With a system-source runtime, a changed nvm/Homebrew installation can leave the service's PATH selecting the old
+    Node or no Node. Restart still refuses. In the shell selecting the intended Node, run `agend install --no-activate`,
+    `systemctl --user daemon-reload`, then `agend restart` for a user unit. For a system unit, its owner must update
+    `Environment=PATH` and run `systemctl daemon-reload` first; `agend install` writes only a user service. On macOS,
+    `agend install --no-activate` followed by `agend restart` uses the planned launchd activation.
 - **macOS:** `agend install` writes `~/Library/LaunchAgents/com.agend.fleet.plist` and loads it into `gui/<uid>`.
   That is the domain of your login session, where LaunchAgents are loaded at login.
   - For launchd, loading a plist is starting the job. So `agend install --no-activate` only writes and proves the new
@@ -437,6 +446,18 @@ The same migration also adds the #1113 settings to an older unit. `CoredumpFilte
   - A Mac reached only over SSH, with nobody logged in, has no `gui/<uid>` domain (`launchctl` reports error 125).
     There a job can only be loaded into `user/<uid>`, with `LimitLoadToSessionType=Background`. `agend install` does
     not write that; such a job is yours to manage.
+
+**Update activation outcomes (#1490).** A verified package is not a running fleet. A confirmed restart succeeds;
+an unfinished restart returns exit 75 (pending), keeps the update marker and all repair copies, and does not restore
+or remove packages. A failed restart returns exit 1. For systemd, the updater can restore its package and unit preimages
+only after checking the same loaded target, unchanged unit bytes, no pending job, and zero main/control PIDs, then
+confirming a stop. It reloads and checks the old definition before starting a previously running service; a previously
+stopped service stays stopped. Even successful recovery reports that the update failed. Changed or unreadable ownership,
+missing preimages, detached owners, custom untracked stop modes and incomplete recovery require operator inspection; they never count as rollback
+success. Inspect the selected unit with `systemctl [--user] status <unit>` before retrying. These checks do not make
+external service/package edits atomic; keep other installers and service operators out of an update's transition.
+Recovery restores the previous executable's policies, without reverting the data directory. Review the
+[downgrade compatibility limits](downgrade-compatibility.md) when the preimage is from an older release.
 
 ## Environment variables
 

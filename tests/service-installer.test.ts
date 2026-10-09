@@ -54,7 +54,7 @@ describe("ServiceInstaller", () => {
     expect(unit).toContain("Environment=PATH=/usr/local/bin:/usr/bin:/bin");
     expect(unit).toContain("TimeoutStartSec=15min");
     expect(unit).not.toMatch(/^TimeoutStartSec=0$/m);
-    expect(unit).toContain("TimeoutStopSec=60");
+    expect(unit).toContain("TimeoutStopSec=300");
   });
 
   it("treats active and activating systemd units as running", () => {

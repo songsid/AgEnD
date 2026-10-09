@@ -234,17 +234,23 @@ describe("staged changes and leaving", () => {
   });
 
   it("a staged token is held by the staged change only, and Discard drops it unsent", async () => {
+    // #1519 P1: Replace opens the field; Verify names the bot (the one request the token goes to) before it can be staged.
+    routes.push(r => (r.url === "/api/settings/quickstart/probe" && r.body?.action === "verify" ? { body: { identity: { valid: true, username: "main_bot" } } } : undefined));
     await mount("bots", "settings:bots|1|en"); await settle(6);
     btn(p.root.querySelector(".s-row"), "Settings").click(); await settle(4);
+    btn(p.root.querySelector("dialog"), "Replace").click(); await settle(2);
     const token = p.root.querySelector("#bot-token");
     token.value = "fake-token-value"; fire(token, "input"); await settle(2);
+    expect(btn(p.root.querySelector("dialog"), "Stage the new token").disabled, "not before the bot is named").toBe(true);
+    btn(p.root.querySelector("dialog .token-field"), "Verify").click(); await settle(4);
+    expect(p.root.querySelector("dialog .token-field .feedback")?.textContent).toBe("This is @main_bot.");
     btn(p.root.querySelector("dialog"), "Stage the new token").click(); await settle(2);
-    expect(p.root.querySelector("#bot-token").value).toBe("");
+    expect(p.root.querySelector("#bot-token"), "the field closes, its value gone").toBeNull();
     p.root.querySelector("dialog .dlg-x").click(); await settle(4);
     expect(p.root.querySelector(".s-pending")?.textContent).toContain("1");
     btn(p.root.querySelector(".s-pending"), "Discard").click(); await settle(6);
     expect(p.root.querySelector(".s-pending")).toBeNull();
-    expect(JSON.stringify(reqs)).not.toContain("fake-token-value");
+    expect(reqs.filter(r => JSON.stringify(r).includes("fake-token-value")).map(r => r.url), "only the verify probe saw it").toEqual(["/api/settings/quickstart/probe"]);
   });
 });
 
@@ -504,9 +510,12 @@ describe("#1453 review", () => {
     let channels: any[] = THREE;
     routes.push(r => (r.url === "/api/settings/fleet/raw" ? { body: { ...structuredClone(FLEET), channels: structuredClone(channels) } } : undefined));
     await mount("bots", "settings:bots|1|en"); await settle(6);
+    routes.push(r => (r.url === "/api/settings/quickstart/probe" && r.body?.action === "verify" ? { body: { identity: { valid: true, username: "main_bot" } } } : undefined));
     btn(rowNamed("main"), "Settings").click(); await settle(4);
+    btn(p.root.querySelector("dialog"), "Replace").click(); await settle(2);
     const token = p.root.querySelector("#bot-token");
     token.value = "fake-main-token"; fire(token, "input"); await settle(2);
+    btn(p.root.querySelector("dialog .token-field"), "Verify").click(); await settle(4);
     channels = THREE.filter(c => c.id !== "prior");                 // main moves from index 1 to 0, persona to 1
     await reloadPanel();
     expect(p.root.querySelector("dialog")?.textContent).toContain("main");
@@ -914,4 +923,85 @@ describe("#1465 review: confirmations that outlive their view", () => {
     const put = writes().find(r => r.method === "PUT" && r.url === "/api/settings/fleet/channels");
     expect(put?.body.map((c: any) => c.id)).toEqual(["main", "added"]);
   });
+});
+
+describe("#1519 P1: a bot token entered in the browser", () => {
+  const verifyAs = (username: string) => routes.push(r => (r.url === "/api/settings/quickstart/probe" && r.body?.action === "verify" ? { body: { identity: { valid: true, username } } } : undefined));
+
+  it("New connection: verify names the bot, the plan's generated env is shown read-only, and Save is the wizard's write without an agent", async () => {
+    verifyAs("persona_bot");
+    routes.push(r => (r.url === "/api/settings/quickstart/probe" && r.body?.action === "guilds" ? { body: { guilds: [{ id: "555", name: "HHV" }] } } : undefined));
+    routes.push(r => (r.url === "/api/settings/quickstart/plan" ? { body: { channel: {}, instance: null, channel_id: "discord-2", token_env: "AGEND_DISCORD_2_TOKEN", env_keys: ["AGEND_DISCORD_2_TOKEN"], warnings: [] } } : undefined));
+    routes.push(r => (r.url === "/api/settings/quickstart/commit" ? { body: { ok: true } } : undefined));
+    await mount("bots", "settings:bots|1|en"); await settle(6);
+    btn(p.root, "New connection").click(); await settle(4);
+    const dlg = () => p.root.querySelector("dialog");
+    expect(dlg().textContent, "no .env instruction").not.toMatch(/Reload Fleet|~\/\.agend\/\.env under this env var/);
+    expect(dlg().querySelector("#nb-env"), "no env-name question").toBeNull();
+    const token = dlg().querySelector("#nb-token");
+    expect(token.getAttribute("type")).toBe("password");
+    token.value = "fake-persona-token"; fire(token, "input"); await settle(2);
+    expect(btn(dlg(), "Save").disabled, "not before the bot is named").toBe(true);
+    btn(dlg().querySelector(".token-field"), "Verify").click(); await settle(6);
+    expect(dlg().querySelector(".token-field .feedback")?.textContent).toBe("This is @persona_bot.");
+    const plan = reqs.find(r => r.url === "/api/settings/quickstart/plan")!;
+    expect(plan.body).toEqual({ platform: "discord", connection_only: true });
+    expect([...dlg().querySelectorAll("details.drawer code")].map((c: any) => c.textContent)).toEqual(["AGEND_DISCORD_2_TOKEN"]);
+    const guild = dlg().querySelector("#nb-group"); guild.value = "555"; fire(guild, "change"); await settle(2);
+    btn(dlg(), "Save").click(); await settle(8);
+    await vi.waitFor(() => expect(reqs.some(r => r.url === "/api/settings/apply")).toBe(true));
+    const commit = reqs.find(r => r.url === "/api/settings/quickstart/commit")!;
+    expect(commit.body).toEqual({ platform: "discord", connection_only: true, guild_id: "555", channel_id: "discord-2", token_env: "AGEND_DISCORD_2_TOKEN", token_env_generated: true, token: "fake-persona-token" });
+    expect(reqs.some(r => r.url === "/api/settings/fleet/channels"), "no channels PUT with a typed env name").toBe(false);
+    expect(reqs.filter(r => JSON.stringify(r).includes("fake-persona-token")).map(r => r.url)).toEqual(["/api/settings/quickstart/probe", "/api/settings/quickstart/probe", "/api/settings/quickstart/commit"]);
+    expect(dlg(), "closed: the operation card takes it from here").toBeNull();
+  });
+
+  it("#1529 review: a Verify for an old token never names, enables or restores it — New connection and Replace token", async () => {
+    const held = gate<{ body: unknown }>();
+    routes.push(r => (r.url === "/api/settings/quickstart/probe" && r.body?.action === "verify" ? (r.body.token === "token-A" ? held.p : { body: { identity: { valid: true, username: "bot_b" } } }) : undefined));
+    routes.push(r => (r.url === "/api/settings/quickstart/plan" ? { body: { channel: {}, instance: null, channel_id: "discord-2", token_env: "AGEND_DISCORD_2_TOKEN", env_keys: [], warnings: [] } } : undefined));
+    await mount("bots", "settings:bots|1|en"); await settle(6);
+    // New connection: Verify(A) held, the field is locked meanwhile; an input that still arrives (B) is the form now.
+    btn(p.root, "New connection").click(); await settle(4);
+    const dlg = () => p.root.querySelector("dialog");
+    let token = dlg().querySelector("#nb-token"); token.value = "token-A"; fire(token, "input"); await settle(2);
+    btn(dlg().querySelector(".token-field"), "Verify").click(); await settle(2);
+    expect(dlg().querySelector("#nb-token").disabled, "locked while Verify runs").toBe(true);
+    token = dlg().querySelector("#nb-token"); token.value = "token-B"; fire(token, "input"); await settle(2);
+    held.open({ body: { identity: { valid: true, username: "bot_a" } } }); await settle(8);
+    expect([dlg().querySelector("#nb-token").value, dlg().querySelector(".token-field .feedback")?.textContent ?? null, btn(dlg(), "Save").disabled],
+      "B stays, unnamed, and Save stays off").toEqual(["token-B", null, true]);
+    expect(reqs.filter(r => r.url === "/api/settings/quickstart/plan"), "no plan for the old token").toEqual([]);
+    p.root.querySelector("dialog .dlg-x").click(); await settle(4);
+    // Replace token: the same — a late answer about A never lets B be staged.
+    const held2 = gate<{ body: unknown }>();
+    routes.unshift(r => (r.url === "/api/settings/quickstart/probe" && r.body?.token === "token-A2" ? held2.p : undefined));
+    btn(p.root.querySelector(".s-row"), "Settings").click(); await settle(4);
+    btn(dlg(), "Replace").click(); await settle(2);
+    token = dlg().querySelector("#bot-token"); token.value = "token-A2"; fire(token, "input"); await settle(2);
+    btn(dlg().querySelector(".token-field"), "Verify").click(); await settle(2);
+    token = dlg().querySelector("#bot-token"); token.value = "token-B2"; fire(token, "input"); await settle(2);
+    held2.open({ body: { identity: { valid: true, username: "bot_a" } } }); await settle(8);
+    expect([dlg().querySelector(".token-field .feedback")?.textContent ?? null, btn(dlg(), "Stage the new token").disabled]).toEqual([null, true]);
+  });
+
+  it("a connection shows its token as set (with the bot's name), never the token; Replace on a stopped connection says it waits for a restart", async () => {
+    verifyAs("main_bot");
+    routes.push(r => (r.url === "/api/settings/connections" ? { body: [{ id: "main", token_present: true, identity: { username: "main_bot" } }] } : undefined));
+    routes.push(r => (r.url.endsWith("/secret/verify") ? { body: { ok: true, result: "verified", verification_id: "v1" } } : undefined));
+    routes.push(r => (r.url.endsWith("/secret/apply") ? { body: { ok: true, result: "restart_required" } } : undefined));
+    await mount("bots", "settings:bots|1|en"); await settle(6);
+    btn(p.root.querySelector(".s-row"), "Settings").click(); await settle(4);
+    expect(p.root.querySelector("dialog .token-status")?.textContent).toBe("Token set · @main_bot");
+    btn(p.root.querySelector("dialog"), "Replace").click(); await settle(2);
+    const token = p.root.querySelector("#bot-token"); token.value = "fake-new-token"; fire(token, "input"); await settle(2);
+    btn(p.root.querySelector("dialog .token-field"), "Verify").click(); await settle(4);
+    btn(p.root.querySelector("dialog"), "Stage the new token").click(); await settle(2);
+    p.root.querySelector("dialog .dlg-x").click(); await settle(4);
+    btn(p.root.querySelector(".s-pending"), "Apply changes").click();
+    await vi.waitFor(() => expect(op()?.phase).not.toBe("writing"), { timeout: 5000 }); await settle(4);
+    await vi.waitFor(() => expect(p.root.textContent).toContain("starts with the new token when AgEnD restarts"), { timeout: 5000 });
+    expect(op().phase, "stored, not failed").not.toBe("failed");
+  }, 15_000);
 });

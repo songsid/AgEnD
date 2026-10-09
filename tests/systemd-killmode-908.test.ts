@@ -36,7 +36,7 @@ const tmp = () => { const d = mkdtempSync(join(tmpdir(), "agend-908-")); dirs.pu
 /** A unit as AgEnD wrote it before #908: the same, with no KillMode. */
 const legacyUnit = () => renderSystemdUnit(vars).split("\n")
   .filter(l => !/^(KillMode|CoredumpFilter|LimitCORE|StartLimitIntervalSec|StartLimitBurst)=/.test(l) && !/^#/.test(l))
-  .map(l => (/^TimeoutStartSec=/.test(l) ? "TimeoutStartSec=0" : l))
+  .map(l => (/^TimeoutStartSec=/.test(l) ? "TimeoutStartSec=0" : /^TimeoutStopSec=/.test(l) ? "TimeoutStopSec=60" : l))
   .join("\n");
 const serviceSection = (unit: string) => unit.split(/^\[Install\]/m)[0]!.split(/^\[Service\]/m)[1]!;
 
@@ -108,7 +108,7 @@ describe("#1113: crash dumps, start timeout and start limit", () => {
     writeFileSync(path, legacyUnit());
     const result = ensureSystemdUnitHardening(path);
     expect(result).toEqual({ kind: "ok", directives: {
-      StartLimitIntervalSec: "added", StartLimitBurst: "added", TimeoutStartSec: "upgraded",
+      StartLimitIntervalSec: "added", StartLimitBurst: "added", TimeoutStartSec: "upgraded", TimeoutStopSec: "upgraded",
       KillMode: "added", CoredumpFilter: "added", LimitCORE: "added",
     } });
     const after = readFileSync(path, "utf8");
@@ -118,7 +118,7 @@ describe("#1113: crash dumps, start timeout and start limit", () => {
     expect(after.split(/^\[Install\]/m)[1]).toBe(legacyUnit().split(/^\[Install\]/m)[1]);
     // Every pre-existing line survives, in order.
     const kept = after.split("\n").filter(l => !/^(StartLimitIntervalSec|StartLimitBurst|KillMode|CoredumpFilter|LimitCORE)=/.test(l));
-    expect(kept.join("\n")).toBe(legacyUnit().replace("TimeoutStartSec=0", "TimeoutStartSec=15min"));
+    expect(kept.join("\n")).toBe(legacyUnit().replace("TimeoutStartSec=0", "TimeoutStartSec=15min").replace("TimeoutStopSec=60", "TimeoutStopSec=300"));
     const again = ensureSystemdUnitHardening(path);
     expect(again.kind === "ok" && Object.values(again.directives).every(v => v === "present")).toBe(true);
     expect(readFileSync(path, "utf8")).toBe(after);
@@ -256,7 +256,7 @@ describe("`agend restart` (what `agend update` spawns) fixes the unit before rel
    * `show -p KillMode --value` prints the loaded one. `pinLoaded` keeps the
    * loaded value whatever a reload says; `failShow` makes `show` fail.
    */
-  function restart(unitText: string | null, opts: { failReload?: boolean; unreadable?: boolean; readOnlyDir?: boolean; loaded?: string; pinLoaded?: boolean; failShow?: boolean; systemdVersion?: number; pinFilter?: boolean; system?: boolean; dropIn?: string; typeDropIn?: string; dropInPaths?: string; dropInPathsAfterReload?: boolean; dropInName?: string } = {}) {
+  function restart(unitText: string | null, opts: { vanishDuringSelection?: boolean; stopLoaded?: string; failReload?: boolean; unreadable?: boolean; readOnlyDir?: boolean; loaded?: string; pinLoaded?: boolean; failShow?: boolean; systemdVersion?: number; pinFilter?: boolean; system?: boolean; dropIn?: string; typeDropIn?: string; dropInPaths?: string; dropInPathsAfterReload?: boolean; dropInName?: string } = {}) {
     const home = tmp();
     const unitDir = join(home, ".config", "systemd", "user");
     mkdirSync(unitDir, { recursive: true });
@@ -284,7 +284,7 @@ describe("`agend restart` (what `agend update` spawns) fixes the unit before rel
     writeFileSync(join(bin, "systemctl"), `#!/bin/sh
 has=no; grep -q '^KillMode=mixed$' '${unit}' 2>/dev/null && has=yes
 echo "$* killmode=$has" >> '${log}'
-case "$*" in *is-active*) echo active;; esac
+case "$*" in *"--user is-active"*) ${opts.vanishDuringSelection ? `rm -f '${unit}';` : ""} echo active;; *is-active*) echo active;; esac
 case "$*" in *daemon-reload*)
   [ "${opts.failReload ? "1" : "0"}" = 1 ] && exit 1
   if [ "${opts.pinLoaded ? "1" : "0"}" = 0 ]; then
@@ -296,6 +296,9 @@ case "$*" in *daemon-reload*)
   fi;;
 esac
 case "$*" in *--version*) echo "systemd ${opts.systemdVersion ?? 249} (stub)";; esac
+case "$*" in *"show -p TimeoutStopUSec --value"*)
+  ${opts.stopLoaded !== undefined ? `printf '%s\\n' '${opts.stopLoaded}'` : `v=$(sed -n 's/^TimeoutStopSec=//p' '${unit}' | tail -n1); printf '%ss\\n' "$v"`};;
+esac
 case "$*" in *"show -p CoredumpFilter --value"*) cat '${filterLoaded}';; esac
 case "$*" in *"show -p DropInPaths --value"*)
   if [ "${opts.dropInPathsAfterReload ? "1" : "0"}" = 0 ] || grep -q daemon-reload '${log}'; then printf '%s\\n' '${opts.dropInPaths ?? ""}'; fi;;
@@ -335,6 +338,43 @@ syncBuiltinESMExports();
     const calls = readFileSync(log, "utf8").trim().split("\n").filter(Boolean);
     return { r, calls, unit, out: `${r.stdout}\n${r.stderr}`, restarted: calls.some(c => (opts.system ? /^restart agend\b/ : /^--user restart com\.agend\.fleet/).test(c)) };
   }
+
+  it.each([
+    ["custom", "90s", "90"], ["duplicate", "90s", "60\nTimeoutStopSec=90"],
+    ["drop-in", "90s", "300"], ["custom unknown", "", "90"],
+  ])("loaded stop grace is independently gated for %s", (kind, stopLoaded, configured) => {
+    const unit = legacyUnit().replace("TimeoutStopSec=60", `TimeoutStopSec=${configured}`);
+    const r = restart(unit, { stopLoaded, loaded: "mixed", pinLoaded: true,
+      ...(kind === "drop-in" ? { dropIn: "[Service]\nTimeoutStopSec=90\n" } : {}) });
+    expect(r.r.status).toBe(1); expect(r.restarted).toBe(false);
+    expect(r.calls.some(c => c.includes("show -p TimeoutStopUSec --value"))).toBe(true);
+    expect(r.out).toContain("this fleet needs 300s");
+    expect(readFileSync(r.unit, "utf8")).toContain(`TimeoutStopSec=${configured}`);
+  });
+  it("a unit disappearing after target selection cannot skip the loaded stop-grace query", () => {
+    const r = restart(legacyUnit(), { vanishDuringSelection: true, stopLoaded: "90s", loaded: "mixed", pinLoaded: true });
+    expect(r.r.status).toBe(1); expect(r.restarted).toBe(false);
+    expect(r.calls.some(c => c.includes("show -p TimeoutStopUSec --value"))).toBe(true);
+    expect(r.out).toContain("this fleet needs 300s");
+  });
+  it("a preserved custom 600s loaded grace remains restartable", () => {
+    const r = restart(legacyUnit().replace("TimeoutStopSec=60", "TimeoutStopSec=600"), { stopLoaded: "10min" });
+    expect(r.restarted).toBe(true); expect(r.r.status).toBe(0);
+    expect(readFileSync(r.unit, "utf8")).toContain("TimeoutStopSec=600");
+  });
+
+  it.skipIf(!existsSync(cli))("#1071: stale, unknown or malformed loaded stop grace refuses before restart", () => {
+    for (const stopLoaded of ["1min", "", "5min garbage"]) {
+      const r = restart(legacyUnit(), { stopLoaded });
+      expect(r.restarted, r.out).toBe(false); expect(r.r.status).toBe(1);
+      expect(r.out).toContain("stop grace loaded");
+    }
+    const r = restart(legacyUnit(), { stopLoaded: "5min" });
+    expect(r.restarted, r.out).toBe(true); expect(r.r.status).toBe(0);
+    const show = r.calls.findIndex(c => c.includes("show -p TimeoutStopUSec"));
+    expect(show).toBeGreaterThan(r.calls.findIndex(c => c.includes("daemon-reload")));
+    expect(r.calls.findIndex(c => /^--user restart/.test(c))).toBeGreaterThan(show);
+  });
 
   // #1450 C6: the hop's failed step 4 leaves the 2.1 unit loaded — the entry as a script, its Node by PATH. The restart
   // refuses before stopping anything (the old fleet keeps running); with the 2.2 unit it proceeds (the cases below).
@@ -556,6 +596,7 @@ while :; do sleep 1; done
     spawnSync("systemctl", ["--user", "reset-failed", unit]);
     return readFileSync(out, "utf8").trim();
   }
+
 
   it("the template's KillMode lets the fleet quit its CLIs; control-group SIGTERMs them", () => {
     const rendered = /^KillMode=(\w[\w-]*)$/m.exec(renderSystemdUnit(vars))?.[1] ?? "control-group";

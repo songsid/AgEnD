@@ -323,6 +323,7 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .pv-newer { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; padding: var(--s-2) var(--s-3); border-radius: var(--r-sm);
   background: var(--surface); font-size: var(--fs-xs); }
 .pv-newer > span { flex: 1; min-width: 0; }
+.pv-newer > .pv-newer-note { flex-basis: 100%; color: var(--text-3); }
 .pv-panel-body { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 var(--s-3) var(--s-3); }
 .pv-panel-body .pv-holder { flex: 1; min-height: 0; margin: 0; display: flex; flex-direction: column; }
 .pv-panel-body.show-code .pv-holder { display: none; }
@@ -494,6 +495,19 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .v-filter-box input::placeholder { color: var(--text-3); }
 .v-filter-clear { width: 28px; height: 28px; }
 .v-filter .note { padding: var(--s-1) var(--s-1) 0; font-variant-numeric: tabular-nums; }
+/* alpha.2 (N1): status and CLI chips under the filter box — each a <details> with checkboxes. */
+.nav-facets { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--s-1) var(--s-2); padding: var(--s-2) var(--s-1) 0; }
+.nav-facet { font-size: var(--fs-xs); color: var(--text-2); }
+.nav-facet > summary { cursor: pointer; list-style: none; padding: 2px var(--s-2); border-radius: var(--r-sm); }
+.nav-facet > summary::-webkit-details-marker { display: none; }
+.nav-facet > summary::after { content: " ▾"; color: var(--text-3); }
+.nav-facet[open] > summary::after { content: " ▴"; }
+.nav-facet > summary:hover { background: var(--hover); }
+.nav-facet > summary:focus-visible { outline: 2px solid var(--accent); }
+.nav-facet-n { display: inline-block; min-width: 16px; padding: 0 4px; border-radius: 8px; background: var(--accent); color: var(--on-accent, #fff); text-align: center; font-variant-numeric: tabular-nums; }
+.nav-facet-list { display: flex; flex-direction: column; gap: 2px; padding: var(--s-1) var(--s-2); }
+.nav-chip { display: flex; align-items: center; gap: var(--s-2); cursor: pointer; color: var(--text); }
+.nav-facet-reset { font-size: var(--fs-xs); }
 
 .p-view .panel-actions .btn { gap: var(--s-1); }
 .v-term { flex: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable; padding: 5px 6px; background: #000000; position: relative; }
@@ -597,6 +611,10 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .chip-x:hover { color: var(--text); background: var(--surface); }
 .dlg-impact { margin-right: auto; align-self: center; }
 .dlg-inline-actions { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
+/* #1519 P1: the bot-token field — the input and its show/hide button on one row. */
+.token-row { display: flex; align-items: center; gap: var(--s-1); }
+.token-row input { flex: 1; min-width: 0; }
+.feedback.ok { color: var(--ok, var(--text)); }
 .seg-inline { display: inline-flex; gap: var(--s-1); }
 .btn.on { background: var(--surface-2); color: var(--text); font-weight: var(--fw-semibold); }
 .card h4 { font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--text-2); }

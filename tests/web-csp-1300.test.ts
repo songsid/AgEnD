@@ -171,3 +171,22 @@ describe("/view's terminal colours", () => {
     expect(runs.map(r => r.style)).toEqual([{ color: "#cd3131" }, { background: "rgb(1,2,3)" }, { color: "#ffffff", background: "#000000" }]);
   });
 });
+
+describe("the panel policy extends whole directives of the base, or refuses (#1520 review)", () => {
+  it("rewriteDirective replaces exactly the named directive", async () => {
+    const { rewriteDirective } = await import("../src/web-host-guard.js");
+    expect(rewriteDirective("a 'x'; img-src 'self'; b", "img-src 'self'", "img-src 'self' y")).toBe("a 'x'; img-src 'self' y; b");
+  });
+  it("a base without that directive — renamed, extended or gone — throws instead of shipping a panel without it", async () => {
+    const { rewriteDirective } = await import("../src/web-host-guard.js");
+    for (const base of ["default-src 'self'", "script-src 'self' https://x", "img-src 'self' data:"]) {
+      expect(() => rewriteDirective(base, base.startsWith("script") ? "script-src 'self'" : "img-src 'self' data: blob:", "z"), base).toThrow(/has no/);
+    }
+  });
+  it("the panel policy is the base with its three directives extended, and nothing else changed", () => {
+    const p = panelContentSecurityPolicy("abc").split("; ");
+    const base = WEB_CONTENT_SECURITY_POLICY.split("; ");
+    expect(p.length).toBe(base.length);
+    expect(p.filter((d, i) => d !== base[i])).toEqual(["script-src 'self' 'nonce-abc'", "style-src 'self' 'nonce-abc'", "img-src 'self' data: blob: https://cdn.discordapp.com/emojis/"]);
+  });
+});

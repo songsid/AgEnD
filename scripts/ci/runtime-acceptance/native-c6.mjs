@@ -176,7 +176,13 @@ async function systemd() {
         readFile: p => { try { return readFileSync(p, "utf8"); } catch { return null; } },
         writeFile: (p, c) => writeFileSync(p, c),
         refresh: () => { write(unit, newExec); return { status: 0, signal: null, stdout: "", stderr: "" }; },
-        restart: () => { restarts++; sd("restart", `${unit}.service`); },
+        restart: () => {
+          restarts++;
+          const result = sd("restart", `${unit}.service`);
+          if (result.status !== 0 || result.signal !== null) return "failed";
+          const state = sd("is-active", `${unit}.service`);
+          return state.status === 0 && state.signal === null && state.stdout.trim() === "active" ? "restarted" : "failed";
+        },
         log: () => {},
         restorePackage: () => { restored++; const back = restorePackagePreimage(root, prefix, taken.preimage); return back.ok ? "package back" : `package NOT back: ${back.reason}`; },
       });

@@ -7,6 +7,7 @@ import ejs from "ejs";
 const { render } = ejs;
 import { homedir, platform } from "node:os";
 import { canonicalCliEntry } from "./cli-entry.js";
+import { FLEET_STOP_TIMEOUT_MS } from "./fleet-stop-budget.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const templatesDir = join(__dirname, "..", "templates");
@@ -174,7 +175,7 @@ export function renderLaunchdPlist(vars: ServiceVars): string {
 
 export function renderSystemdUnit(vars: ServiceVars): string {
   const template = readFileSync(join(templatesDir, "systemd.service.ejs"), "utf-8");
-  return render(template, { ...withDefaults(vars), systemdQuote });
+  return render(template, { ...withDefaults(vars), systemdQuote, stopTimeoutSec: FLEET_STOP_TIMEOUT_MS / 1_000 });
 }
 
 /**
@@ -555,6 +556,7 @@ const UNIT_HARDENING: readonly UnitDirectivePolicy[] = [
   { section: "Unit", key: "StartLimitIntervalSec", value: "30min" },
   { section: "Unit", key: "StartLimitBurst", value: "4" },
   { section: "Service", key: "TimeoutStartSec", value: "15min", legacy: ["0"] },
+  { section: "Service", key: "TimeoutStopSec", value: String(FLEET_STOP_TIMEOUT_MS / 1_000), legacy: ["60", "60s", "1min"] },
   { section: "Service", key: "KillMode", value: "mixed" },
   // Classified from every assignment, drop-ins included: see unitCoredumpFilterState.
   { section: "Service", key: "CoredumpFilter", value: "0", equivalent: v => /^(?:0x)?0+$/i.test(v), allAssignments: true },
@@ -597,6 +599,16 @@ export function ensureSystemdUnitHardening(
   for (const policy of UNIT_HARDENING) {
     const bounds = sectionBounds(lines, policy.section);
     if (!bounds) continue;
+    // An explicit override or duplicate is an operator policy, not a legacy
+    // AgEnD default. Do not overwrite it or gate it as our managed value.
+    if (policy.key === "TimeoutStopSec") {
+      const drops = opts.dropInPaths ?? unitDropInCandidates(unitPath);
+      const texts = drops.map(path => { try { return readFileSync(path, "utf8"); } catch { return ""; } });
+      if (serviceAssignments(lines.join("\n"), policy.key).length > 1
+        || texts.some(text => serviceAssignments(text, policy.key).length > 0)) {
+        directives[policy.key] = "custom"; continue;
+      }
+    }
     if (policy.allAssignments) {
       const state = unitCoredumpFilterState(lines.join("\n"), opts.dropInPaths ?? unitDropInCandidates(unitPath));
       if (state === "custom") { directives[policy.key] = "custom"; continue; }

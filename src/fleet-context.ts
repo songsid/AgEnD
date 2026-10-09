@@ -1,3 +1,4 @@
+import type { PaneContextSource } from "./pane-context-cache.js";
 import type { FleetConfig, InstanceConfig } from "./types.js";
 import type { ChannelAdapter, InboundMessage } from "./channel/types.js";
 import type { IpcClient } from "./channel/ipc-bridge.js";
@@ -53,6 +54,8 @@ export interface FleetContext {
   /** Classic-bot channels (defined in classicBot.yaml, not fleet.yaml instances). */
   readonly classicChannels: ClassicChannelManager | null;
 
+  /** A read-only, bounded pane capture tied to the current daemon/launch. */
+  getPaneContextSource?(name: string): PaneContextSource | null;
   getSysInfo(): SysInfo;
   /** Read cached CLI versions without triggering a probe. */
   getBackendCliVersionSnapshot?(): BackendCliVersionSnapshot;
