@@ -2048,6 +2048,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.lastActivity.get(name) ?? 0;
   }
 
+  /** Capture the current daemon and delivery owner for a background context read. */
+  getPaneContextSource(name: string): import("./pane-context-cache.js").PaneContextSource | null {
+    const daemon = this.daemons.get(name);
+    const source = daemon?.getPaneContextSource?.();
+    if (!daemon || !source || this.shuttingDown) return null;
+    const epoch = this.getDeliveryEpoch(name);
+    return { ...source, generation: `${source.generation}:${epoch}`, isCurrent: () => !this.shuttingDown
+      && this.daemons.get(name) === daemon && this.getDeliveryEpoch(name) === epoch && source.isCurrent() };
+  }
+
   /**
    * Is the instance between turns?
    *
@@ -17878,7 +17888,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
           const backend = this.fleetConfig?.instances[name]?.backend
             ?? this.fleetConfig?.defaults?.backend
             ?? "claude-code";
-          const { context } = resolveInstanceContext(this.dataDir, name, backend);
+          const { context } = resolveInstanceContext(this.dataDir, name, backend, { source: this.getPaneContextSource(name) });
           return {
             name,
             status: this.getInstanceStatus(name),
@@ -18276,7 +18286,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         : (this.fleetConfig?.instances[name]?.backend
           ?? this.fleetConfig?.defaults?.backend
           ?? "claude-code");
-      const { context } = resolveInstanceContext(this.dataDir, name, backend);
+      const { context } = resolveInstanceContext(this.dataDir, name, backend, { source: this.getPaneContextSource(name) });
       // context_pct: null when unavailable, not 0
       const context_pct = context ?? null;
       // Model: Only Claude Code has live statusline; others use the effective resolver.
