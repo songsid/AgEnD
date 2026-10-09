@@ -18532,6 +18532,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       instances,
       publicLink: this.getPublicWebStatus(),
       uptime: Math.floor((Date.now() - this.startedAt) / 1000),
+      // #1519 P7: how many chat connections are configured — 0 is a web-only fleet, which gets the first-run card.
+      connections: (this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : [])).length,
     };
   }
 }

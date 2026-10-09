@@ -10,7 +10,7 @@ import { html, useEffect, useLayoutEffect, useRef, useState } from "/assets/app-
 import { t } from "/assets/app-i18n.js";
 import { appStore, useStore } from "/assets/app-store.js";
 import { useLease } from "/assets/app-ctx.js";
-import { PanelHeader, onPanelKey, setTitle, addFooterItem, statusClass, statusLabel, openDrawer } from "/assets/app-shell.js";
+import { PanelHeader, onPanelKey, setTitle, addFooterItem, statusClass, statusLabel, openDrawer, requestNewInstance } from "/assets/app-shell.js";
 import { navigate } from "/assets/app-nav.js";
 import { Menu } from "/assets/ui-menu.js";
 import { Dialog } from "/assets/ui-dialog.js";
@@ -25,6 +25,7 @@ import { createThread, msgKey } from "./chat-thread.js";
 import { PreviewPanel, openPanel, panelStore, shownKey } from "./preview-panel.js";
 import { needsArgument, paletteFor, parseCommandLine } from "./chat-commands.js";
 import { installTour, refreshTourSpot, startTour } from "./chat-tour.js";
+import { FirstRunCard } from "./first-run.js";
 
 const R = () => globalThis.AgendChatRender;
 const P = () => globalThis.AgendPreview;
@@ -127,9 +128,14 @@ export function ChatPanel({ route, navKey }) {
   }, [name, !!inst]);
   useEffect(() => { setTitle(name || t("app.chat")); }, [name, navKey]);
   if (!name) {
+    // #1519 P7: a web-only fleet starts here with the first-run card; with no agent at all, the way to make one.
+    const none = app.ready && !app.instances.length;
     return html`<div class="panel p-chat"><${PanelHeader} title=${t("app.chat")} />
-      <div class="panel-body center"><${Empty} icon="chat" title=${t("chat.pick")} hint=${t("chat.pickHint")}
-        action=${html`<button type="button" class="btn only-narrow" onClick=${openDrawer}>${t("chat.backToList")}</button>`} /></div></div>`;
+      <div class="panel-body center"><div class="first-run-stack"><${FirstRunCard} />
+        ${none ? html`<${Empty} icon="bot" title=${t("app.noInstances")} hint=${t("app.noInstancesHint")}
+          action=${html`<button type="button" class="btn btn-primary" onClick=${requestNewInstance}><${Icon} name="plus" size=${16} />${t("app.newInstance")}</button>`} />`
+        : html`<${Empty} icon="chat" title=${t("chat.pick")} hint=${t("chat.pickHint")}
+          action=${html`<button type="button" class="btn only-narrow" onClick=${openDrawer}>${t("chat.backToList")}</button>`} />`}</div></div></div>`;
   }
   if (!app.ready) return html`<div class="panel p-chat"><${PanelHeader} title=${name} /><div class="panel-body"><${Skeleton} lines=${5} /></div></div>`;
   if (!inst) return html`<${NotFound} name=${name} />`;

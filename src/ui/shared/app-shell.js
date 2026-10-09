@@ -29,6 +29,11 @@ export function setSideSection(Component) {
 // The sidebar's instance list (alpha.2, N1): one component on every page. keepActiveInView lives with it.
 export { keepActiveInView } from "./instance-nav.js";
 
+/** #1519 P7: "New agent" from anywhere (the sidebar's +, an empty chat): the app registers what opens it. */
+let newInstanceOpener = null;
+export function setNewInstanceOpener(fn) { newInstanceOpener = fn; }
+export function requestNewInstance() { if (newInstanceOpener) newInstanceOpener(); }
+
 /** An app-level dialog (New instance): rendered by the shell until closed, whatever panel is showing. */
 export function showDialog(Component, props = {}) { shellStore.set({ dialog: { Component, props } }); }
 export function closeDialog() { shellStore.set({ dialog: null }); }
@@ -128,7 +133,7 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
     <div class="side-head">
       <a class="brand" href="/ui" onClick=${closeDrawer}>${t("app.brand")}</a>
       <button type="button" class="icon-btn side-collapse" onClick=${toggleSidebar} aria-label=${narrow() ? t("app.closeMenu") : t("app.collapse")} title=${narrow() ? t("app.closeMenu") : t("app.collapse")} aria-controls="sidebar"><${Icon} name="sidebar" /></button>
-      <button type="button" class="icon-btn" onClick=${onNewInstance} aria-label=${t("app.newInstance")} title=${t("app.newInstance")}><${Icon} name="edit" /></button>
+      <button type="button" class="icon-btn" onClick=${onNewInstance} aria-label=${t("app.newInstance")} title=${t("app.newInstance")}><${Icon} name="plus" /></button>
     </div>
     <nav class="side-nav" aria-label=${t("app.menu")}>
       ${navLink("needs", NEEDS_PATH, "inbox", t("app.needsNav"), needsCount)}
