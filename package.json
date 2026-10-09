@@ -4,8 +4,8 @@
   "description": "Multi-agent fleet daemon \u2014 run any coding CLI (Claude, Gemini, Codex, OpenCode) from Telegram",
   "type": "module",
   "bin": {
-    "agend": "./dist/cli.js",
-    "agend-agent": "./dist/agent-cli.js"
+    "agend": "./launcher/agend.cjs",
+    "agend-agent": "./launcher/agend-agent.cjs"
   },
   "exports": {
     ".": "./dist/cli.js",
@@ -27,7 +27,8 @@
     "typecheck": "tsc --noEmit",
     "typecheck:tests": "tsc --noEmit -p tsconfig.test.json",
     "prepublishOnly": "npm run build",
-    "preinstall": "node scripts/preinstall-guard.cjs"
+    "preinstall": "node scripts/preinstall-guard.cjs",
+    "postinstall": "node launcher/postinstall.cjs"
   },
   "engines": {
     "node": "^22.14.0 || ^23.6.0 || >=24"
@@ -54,6 +55,7 @@
     "templates/",
     "README.md",
     "README.zh-TW.md",
+    "launcher/",
     "scripts/preinstall-guard.cjs"
   ],
   "dependencies": {
