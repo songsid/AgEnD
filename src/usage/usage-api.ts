@@ -150,6 +150,7 @@ function withStaleFallback(payload: UsagePayload): UsagePayload {
         const ageMin = Math.max(1, Math.round((now - good.at) / 60_000));
         return {
           ...good.provider,
+          stale: true,
           hint: `cached ${ageMin}m ago — ${p.hint}`,
         };
       }
@@ -173,12 +174,16 @@ function withStaleFallback(payload: UsagePayload): UsagePayload {
         const ageMin = Math.max(1, Math.round((now - good.at) / 60_000));
         return {
           ...good.provider,
+          stale: true,
           hint: `cached ${ageMin}m ago — live query is rate limited`,
+          hintI18n: { key: "usage.stale_rate_limited" as import("./i18n-keys.js").UsageI18nKey, args: [ageMin] },
         };
       }
-      // No stale data: use a gentler message that doesn't alarm the user
+      // No stale data: use a gentler message and mark as transient so format-rich
+      // shows a neutral icon instead of alarming 🔴.
       return {
         ...p,
+        transient: true,
         hint: undefined,
         error: p.error,
         errorI18n: { key: "usage.error.rate_limited_transient" as import("./i18n-keys.js").UsageI18nKey, args: [p.name] },
@@ -190,6 +195,7 @@ function withStaleFallback(payload: UsagePayload): UsagePayload {
         const ageMin = Math.max(1, Math.round((now - good.at) / 60_000));
         return {
           ...good.provider,
+          stale: true,
           hint: `cached ${ageMin}m ago — live query failed, will retry`,
         };
       }

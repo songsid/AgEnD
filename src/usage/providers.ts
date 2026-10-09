@@ -81,6 +81,10 @@ export interface ProviderUsage {
   errorI18n?: UsageI18nRef;
   hint?: string;
   hintI18n?: UsageI18nRef;
+  /** True when the row shows last-good data because the live query was rate-limited. */
+  stale?: boolean;
+  /** True when a rate-limit error has no stale data — a transient, non-alarming failure. */
+  transient?: boolean;
   metrics: UsageMetric[];
 }
 

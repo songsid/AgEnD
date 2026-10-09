@@ -47,7 +47,7 @@ async function forceAfterFloor(): ReturnType<typeof getUsageSnapshot> {
 }
 
 describe("stale-while-rate-limited", () => {
-  it("serves the last good numbers, labelled with their age", async () => {
+  it("serves the last good numbers, labelled with their age, with yellow/neutral dot", async () => {
     const fetcher = vi.fn()
       .mockResolvedValueOnce(OK)
       .mockResolvedValueOnce(RATE_LIMITED);
@@ -59,7 +59,14 @@ describe("stale-while-rate-limited", () => {
     const claude = result.providers[0];
     expect(claude.status).toBe("ok");                 // numbers, not a red row
     expect(claude.metrics[0].used).toBe(15);          // the last good values
-    expect(claude.hint).toMatch(/cached \d+m ago/);   // and honest about age
+    expect(claude.stale).toBe(true);                  // stale flag set
+    expect(claude.hint).toMatch(/cached \d+m ago/);   // honest about age
+    expect(claude.hintI18n?.key).toBe("usage.stale_rate_limited"); // i18n key
+    // format-rich must show 🟡 (not 🔴 even if stale metrics are ≥90%)
+    const { renderUsageMarkdown } = await import("../src/usage/format-rich.js");
+    const md = renderUsageMarkdown(result);
+    expect(md).toContain("🟡");
+    expect(md).not.toContain("🔴");
   });
 
   it("keeps a genuine auth error loud — stale data must not hide it", async () => {
@@ -101,10 +108,10 @@ describe("stale-while-rate-limited", () => {
 
     const md = renderUsageMarkdown(result);
     expect(md).toContain("15% Weekly");
-    expect(md).toMatch(/> cached \d+m ago/);
+    expect(md).toMatch(/> data from \d+ min ago/);  // hintI18n renders the i18n string
     const plain = formatUsageSummary(result);
     expect(plain).toContain("Weekly 15%");
-    expect(plain).toMatch(/cached \d+m ago/);
+    expect(plain).toMatch(/data from \d+ min ago/);
   });
 });
 
@@ -192,5 +199,37 @@ describe("Retry-After cap: 86400 does not lock /usage for a day", () => {
     vi.advanceTimersByTime(31_000);            // past force floor
     await getUsageSnapshot(true);             // 3: fetcher called again
     expect(fetcher).toHaveBeenCalledTimes(3);
+  });
+});
+
+const OK_HIGH: UsagePayload = {
+  fetchedAt: "2026-08-02T12:00:00Z",
+  providers: [{
+    id: "claude", name: "Claude", status: "ok", plan: "Team 5x",
+    metrics: [{ label: "Weekly", type: "percent", used: 95 }],
+  }],
+};
+
+describe("stale data at high usage — must not show 🔴", () => {
+  // Reverse mutation: removing `if (p.stale) return "🟡"` from statusDot makes
+  // this test fail because the 95% metric produces 🔴 from the old hottest logic.
+
+  it("stale 95% usage row shows 🟡, not 🔴", async () => {
+    const { renderUsageMarkdown } = await import("../src/usage/format-rich.js");
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(OK_HIGH)
+      .mockResolvedValueOnce(RATE_LIMITED);
+    setUsageFetcherForTests(fetcher);
+
+    await getUsageSnapshot();
+    const result = await forceAfterFloor();
+
+    const claude = result.providers[0];
+    expect(claude.stale).toBe(true);
+    expect(claude.metrics[0].used).toBe(95); // high — would be 🔴 without stale check
+
+    const md = renderUsageMarkdown(result);
+    expect(md).toContain("🟡");
+    expect(md).not.toContain("🔴");
   });
 });
