@@ -26,7 +26,7 @@ import { GrokBackend } from "../src/backend/grok.js";
 /** Every transcript look goes through the scan; the hook sees each one and may act while it is in flight. */
 // `byDelivery` counts looks per delivery id: a wait an earlier test left running (its look still in flight when the test
 // ended) can outlive it, so what a test asserts about its own delivery's looks is never the global count.
-const lookHooks = vi.hoisted(() => ({ onLook: null as null | ((count: number) => void), looks: 0, done: 0, byDelivery: new Map<string, number>() }));
+const lookHooks = vi.hoisted(() => ({ onLook: null as null | ((count: number) => void), looks: 0, done: 0, byDelivery: new Map<string, number>(), slowRead: false }));
 vi.mock("../src/delivery-reconciliation.js", async importOriginal => {
   const real = await importOriginal<typeof import("../src/delivery-reconciliation.js")>();
   return {
@@ -35,6 +35,11 @@ vi.mock("../src/delivery-reconciliation.js", async importOriginal => {
       lookHooks.looks++;
       lookHooks.byDelivery.set(args[3], (lookHooks.byDelivery.get(args[3]) ?? 0) + 1);
       lookHooks.onLook?.(lookHooks.looks);
+      // slowRead: yield ONE real event-loop turn after the hook fires so the scan
+      // is still in-flight when the fence takes effect. Without this, the scan
+      // completes synchronously and the proof continuation can run before the
+      // stop-during-look scenario has a chance to be exercised.
+      if (lookHooks.slowRead) await new Promise<void>(r => realSetImmediate(r));
       try { return await real.scanTranscriptForDeliveryMarker(...args); } finally { lookHooks.done++; }
     },
   };
@@ -46,7 +51,7 @@ const daemons: any[] = [];
 afterEach(() => {
   // End every wait this test left open, so none keeps reading a transcript into the next test.
   for (const daemon of daemons.splice(0)) daemon.fenceDeliveryWritesForStop();
-  lookHooks.onLook = null; lookHooks.looks = 0; lookHooks.done = 0; lookHooks.byDelivery.clear();
+  lookHooks.onLook = null; lookHooks.looks = 0; lookHooks.done = 0; lookHooks.byDelivery.clear(); lookHooks.slowRead = false;
   vi.useRealTimers();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
@@ -153,7 +158,23 @@ async function deliver(opts: Opts = {}) {
   const settleSteer = () => (daemon as any).steerLock as Promise<unknown>;
   /** Transcript looks for this delivery only. */
   const looks = () => lookHooks.byDelivery.get(row.deliveryId) ?? 0;
-  return { looks, daemon, outbox, tmux, confirmed, transcript, deliveryId: row.deliveryId, state, evidence, pump, finished, begun, notices, settleSteer };
+
+  // proofSettled: a promise that resolves when proveDeliveryFromTranscript
+  // has returned (successfully or not) for this delivery. Awaiting it gives
+  // the test a true completion signal rather than relying on spin counts.
+  let resolveProof!: () => void;
+  const proofSettled = new Promise<void>(r => { resolveProof = r; });
+  const realProve = daemon.proveDeliveryFromTranscript?.bind(daemon) as ((...a: unknown[]) => Promise<void>) | undefined;
+  if (realProve) {
+    daemon.proveDeliveryFromTranscript = async (...args: unknown[]) => {
+      try { await realProve(...args); } finally { resolveProof(); }
+    };
+  } else {
+    // If the method doesn't exist (backend variant), resolve immediately.
+    resolveProof();
+  }
+
+  return { looks, daemon, outbox, tmux, confirmed, transcript, deliveryId: row.deliveryId, state, evidence, pump, finished, begun, notices, settleSteer, proofSettled };
 }
 
 describe("a readerless backend's idle delivery is proven by its transcript, not by the pane printing something (#758)", () => {
@@ -286,10 +307,27 @@ describe("a readerless backend's idle delivery is proven by its transcript, not 
   it("a stop that lands while the look that finds the marker is in flight still leaves the row to reconciliation", async () => {
     const h = await deliver();
     await h.begun();
+    // Install hook and slowRead BEFORE writing the marker so that the look
+    // that finds the marker always goes through onLook. Writing the marker
+    // first leaves a window where a look can find it hook-free (the race the
+    // test exists to close). looksBeforeHook is captured before the hook so
+    // any pre-hook look does not satisfy the post-hook predicate.
+    lookHooks.slowRead = true;
+    const looksBeforeHook = h.looks();
+    let stopHookFired = false;
+    lookHooks.onLook = () => { stopHookFired = true; h.daemon.fenceDeliveryWritesForStop(); };
+    // Write the marker after the hook is in place.
     appendFileSync(h.transcript, userEntry(h.deliveryId));
-    lookHooks.onLook = () => { h.daemon.fenceDeliveryWritesForStop(); };
-    await h.pump(80);
-    expect(h.looks()).toBeGreaterThan(0);
+    // Pump until a look fires AFTER the hook was installed.
+    await h.pump(400, () => h.looks() > looksBeforeHook);
+    // The stop hook must have run on the new look.
+    expect(stopHookFired, "the stop hook must fire during a post-hook look").toBe(true);
+    expect(h.looks()).toBeGreaterThan(looksBeforeHook);
+    // Wait for proveDeliveryFromTranscript to actually return (scan + settlement path).
+    // This is the true completion signal; spin counts cannot guarantee this.
+    await h.proofSettled;
+    // Drain any microtasks the proof continuation may have scheduled.
+    for (let turn = 0; turn < 20; turn++) await ioTurn();
     expect(h.state()).toBe("submission_started");
   });
 
