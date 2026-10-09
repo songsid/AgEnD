@@ -3,7 +3,7 @@
  * produces AgEnD's production launch with the mock provider in the instance config, and the mock answers each mode
  * the way the audit relies on. No codex runs: a stub binary stands in on PATH.
  */
-import { execFileSync, spawn, type ChildProcess } from "node:child_process";
+import { execFileSync, spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -79,4 +79,76 @@ describe("mock.mjs: one response shape per mode", () => {
     expect(r.body).toContain(marker);
     if (mode === "near") expect(r.headers.get("x-codex-primary-used-percent")).toBe("96");
   });
+});
+
+// #1445 review: two audits of the SAME version from different roots must not share or tear down each other's tmux
+// server, sessions, homes or mock. Everything here is inert: HOME is a temp dir, `tmux` is a stub that logs (and, for
+// new-session, runs the command in the background), and the "app-servers" are sleeps named like one.
+describe("rig namespaces: one run's names belong to that run", () => {
+  const sandbox = mkdtempSync(join(tmpdir(), "agend-cx-ns-"));
+  const fakeHome = join(sandbox, "home");
+  const tools = join(sandbox, "tools");
+  const tmuxLog = join(sandbox, "tmux.log");
+  mkdirSync(fakeHome, { recursive: true }); mkdirSync(tools, { recursive: true });
+  writeFileSync(tmuxLog, "");
+  writeFileSync(join(tools, "tmux"), `#!/bin/sh
+echo "$*" >> '${tmuxLog}'
+case "$*" in
+  *has-session*) exit 1;;
+  *new-session*) for last; do :; done; sh -c "$last" >/dev/null 2>&1 & echo $! >> '${tmuxLog}.pids';;
+esac
+exit 0
+`);
+  chmodSync(join(tools, "tmux"), 0o755);
+  const rootA = join(sandbox, "audit-a"), rootB = join(sandbox, "audit-b");
+  const children: ChildProcess[] = [];
+  afterAll(() => {
+    for (const c of children) c.kill("SIGKILL");
+    try { for (const pid of readFileSync(`${tmuxLog}.pids`, "utf8").split("\n").filter(Boolean)) { try { process.kill(Number(pid), "SIGKILL"); } catch { /* gone */ } } } catch { /* none */ }
+    try { execFileSync("pkill", ["-f", `${sandbox}/.*mock[.]mjs`]); } catch { /* none left */ }
+    rmSync(sandbox, { recursive: true, force: true });
+  });
+  const rig = (root: string, args: string[], extra: Record<string, string> = {}) => spawnSync("bash", [join(RIG, "rig.sh"), "0.162.0", ...args], {
+    env: { ...process.env, HOME: fakeHome, AUDIT: root, PATH: `${tools}:${process.env.PATH}`, ...extra }, encoding: "utf8", timeout: 30_000,
+  });
+  const paths = (root: string) => Object.fromEntries(rig(root, ["paths"]).stdout.trim().split(" ").map(kv => kv.split("=") as [string, string]));
+
+  it("socket and homes differ between two roots of one version, and stay under the fake HOME", () => {
+    const a = paths(rootA), b = paths(rootB);
+    for (const key of ["SOCK", "AH", "SH", "RUN"]) expect(a[key], key).not.toBe(b[key]);
+    expect(a.AH!.startsWith(`${fakeHome}/.cxa01620`)).toBe(true);
+    expect(paths(rootA)).toEqual(a);                         // stable for the same root
+  });
+
+  it("stop only kills its own tmux server", () => {
+    writeFileSync(tmuxLog, "");
+    expect(rig(rootB, ["stop"]).status).toBe(0);
+    expect(readFileSync(tmuxLog, "utf8").trim()).toBe(`-L ${paths(rootB).SOCK} kill-server`);
+  });
+
+  it("kill signals only the app-server whose CODEX_HOME is under its own home", async () => {
+    const fake = (root: string) => {
+      const child = spawn("bash", ["-c", "exec -a codex-app-server-fake sleep 60"], {
+        env: { ...process.env, CODEX_HOME: `${paths(root).AH}/cx/deadbeef` }, stdio: "ignore",
+      });
+      children.push(child);
+      return child;
+    };
+    const a = fake(rootA), b = fake(rootB);
+    await new Promise(r => setTimeout(r, 300));
+    const out = rig(rootB, ["kill"]);
+    expect(out.stdout).toContain(`kill ${b.pid}`);
+    expect(out.stdout).not.toContain(`kill ${a.pid}`);
+    await new Promise(r => setTimeout(r, 300));
+    expect(b.exitCode !== null || b.signalCode !== null).toBe(true);
+    expect(a.exitCode === null && a.signalCode === null).toBe(true);
+  });
+
+  it("a second run whose mock cannot bind its port fails loudly instead of using the other run's mock", async () => {
+    const port = await new Promise<number>(resolve => { const s = createServer().listen(0, () => { const p = (s.address() as any).port; s.close(() => resolve(p)); }); });
+    expect(rig(rootA, ["mock"], { PORT: String(port) }).status).toBe(0);
+    const second = rig(rootB, ["mock"], { PORT: String(port) });
+    expect(second.status).toBe(1);
+    expect(second.stderr).toContain(`mock did not start on port ${port}`);
+  }, 30_000);
 });

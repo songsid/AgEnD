@@ -10,8 +10,11 @@ empty home.
 - `AUDIT`: a scratch root. Each version is installed there with npm, never into the host's `~/.codex/packages`:
   `npm install --prefix "$AUDIT/codex-X.Y.Z" @openai/codex@X.Y.Z`
 - `PORT`: the mock's port, one per version when two versions run side by side.
-- Homes go under `$HOME/.cxa<ver>`, `$HOME/.cxs<ver>` (and `.cxl<ver>` for the sign-in screen). Codex refuses helper
-  binaries under /tmp, and its socket path must fit SUN_LEN. Delete these homes when done.
+- Every name belongs to one run, the version plus a short hash of the audit root: the tmux socket `cx<ver>-<ns>`, and
+  the homes `$HOME/.cxa<ver><ns>` and `$HOME/.cxs<ver><ns>` (`rig.sh <ver> paths` prints them). Two audits of the same
+  version never share a server, a session, a home or a mock. `mock` refuses to go on if another run holds its port.
+  Homes sit under `$HOME`, because codex refuses helper binaries under /tmp and its socket path must fit SUN_LEN.
+  Delete them when done. The sign-in screen used a separate empty home that was set up by hand.
 
 ## Steps
 
