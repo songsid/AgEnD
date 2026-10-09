@@ -30,7 +30,7 @@ afterEach(() => {
 const BACKENDS = [
   { backend: "claude-code", binaryName: "claude", guard: true },
   { backend: "kiro-cli", binaryName: "kiro-cli", guard: true },     // the TUI and legacy launch plans opt in
-  { backend: "codex", binaryName: "codex", guard: false },
+  { backend: "codex", binaryName: "codex", guard: false },     // a stand-in without rollout evidence: #1510's fail-safe
   { backend: "muse", binaryName: "muse", guard: false },
 ] as const;
 
@@ -106,7 +106,7 @@ describe("the reply-completion guard covers web messages", () => {
       });
     }
   }
-  it("codex and muse do not run the guard (no verified turn-end signal, #1144) — documented, not changed here", async () => {
+  it("no recovery for codex without rollout evidence (#1510 fail-safe) or for muse (no verified turn-end signal yet)", async () => {
     for (const b of BACKENDS.filter(x => !x.guard)) {
       vi.useFakeTimers();
       const daemon = daemonFor(b);
