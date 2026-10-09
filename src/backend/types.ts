@@ -323,6 +323,12 @@ export interface RuntimeDialog {
    * return a stable, non-secret value; never include pane contents or tokens.
    */
   autoResolutionKey?: string;
+  /**
+   * Each named safety phase is claimed once for the physical launch attempt, shared by startup and runtime.
+   * A redraw, a clear screen or an uncertain send ACK never releases it. Requires a code-owned autoResolutionKey.
+   * Absent retains the existing per-visible-dialog behavior.
+   */
+  oncePerLaunch?: boolean;
 }
 
 /**
