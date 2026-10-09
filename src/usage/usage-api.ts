@@ -81,6 +81,11 @@ const TRANSIENT_CACHE_MS = 30 * 1000;
 const FORCE_FLOOR_MS = 30 * 1000;
 /** How old a last-good snapshot may be and still stand in for a rate-limited row. */
 const STALE_MAX_MS = 60 * 60 * 1000;
+/** Cap for Retry-After backoff. Prevents a single 429 from locking /usage for days.
+ * Note: the backoff is global — one provider's 429 blocks force-refresh for all
+ * providers (because fetchAllUsage fetches all at once). Per-provider backoff would
+ * require a larger refactor; this is an accepted trade-off. */
+const RETRY_AFTER_MAX_MS = 15 * 60 * 1000; // 15 minutes
 
 let cache: { at: number; ttlMs: number; payload: UsagePayload; museRevision: number } | null = null;
 let inflight: Promise<UsagePayload> | null = null;
@@ -155,7 +160,13 @@ function withStaleFallback(payload: UsagePayload): UsagePayload {
       const retryAfterMatch = p.hint?.match(/^retry-after:(\d+)$/);
       if (retryAfterMatch) {
         const seconds = parseInt(retryAfterMatch[1], 10);
-        retryAfterUntil.set(p.id, now + seconds * 1000);
+        // Cap the backoff so a large Retry-After (e.g. 86400) cannot lock /usage
+        // for all providers for an excessive time. Note: parseInt of an HTTP-date
+        // Retry-After format returns NaN, which falls back to 60 s — acceptable.
+        const cappedMs = Math.min(seconds * 1000, RETRY_AFTER_MAX_MS);
+        retryAfterUntil.set(p.id, now + cappedMs);
+        // Prune any expired entries from previous fetches.
+        for (const [id, until] of retryAfterUntil) { if (until <= now) retryAfterUntil.delete(id); }
       }
       const good = lastGood.get(p.id);
       if (good && now - good.at < STALE_MAX_MS) {
@@ -170,7 +181,7 @@ function withStaleFallback(payload: UsagePayload): UsagePayload {
         ...p,
         hint: undefined,
         error: p.error,
-        errorI18n: { key: "usage.error.rate_limited_transient" as any, args: [p.name] },
+        errorI18n: { key: "usage.error.rate_limited_transient" as import("./i18n-keys.js").UsageI18nKey, args: [p.name] },
       };
     }
     if (isTransientFailure(p)) {

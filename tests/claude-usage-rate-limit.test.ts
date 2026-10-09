@@ -157,3 +157,40 @@ describe("Retry-After backoff", () => {
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("Retry-After cap: 86400 does not lock /usage for a day", () => {
+  // Reverse mutation: removing the `Math.min(..., RETRY_AFTER_MAX_MS)` cap in
+  // withStaleFallback makes this test fail because the 86400-second backoff
+  // keeps the force-refresh blocked well past the 15-minute cap.
+
+  it("force refresh fires again after 15 min even with retry-after:86400", async () => {
+    const LARGE_RETRY: UsagePayload = {
+      fetchedAt: "2026-08-02T12:05:00Z",
+      providers: [{
+        id: "claude", name: "Claude", status: "error",
+        error: "Rate limited by Anthropic — try again later.",
+        hint: "retry-after:86400",   // 24 hours — must be capped
+        metrics: [],
+      }],
+    };
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(OK)
+      .mockResolvedValueOnce(LARGE_RETRY)
+      .mockResolvedValueOnce(OK);
+    setUsageFetcherForTests(fetcher);
+
+    await getUsageSnapshot();             // 1: OK
+    vi.advanceTimersByTime(31_000);       // past force floor
+    await getUsageSnapshot(true);         // 2: 429 with retry-after:86400 (capped to 15 min)
+    // Within 1 minute: still blocked
+    vi.advanceTimersByTime(31_000);
+    await getUsageSnapshot(true);
+    expect(fetcher).toHaveBeenCalledTimes(2); // still using cache
+
+    // After 15 minutes + force floor: backoff expired, fetcher should fire again
+    vi.advanceTimersByTime(15 * 60 * 1000);   // 15 min
+    vi.advanceTimersByTime(31_000);            // past force floor
+    await getUsageSnapshot(true);             // 3: fetcher called again
+    expect(fetcher).toHaveBeenCalledTimes(3);
+  });
+});
