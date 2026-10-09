@@ -8,6 +8,7 @@ import { useLease } from "/assets/app-ctx.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
+import { confirmDialog } from "/assets/ui-confirm.js";
 import { api, confirmedWrite, newKey } from "./settings-confirm.js";
 import {
   ACCESS_MODES, AGENT_FIELDS, AGENT_MODES, BOT_FIELDS, CH_TYPES, CLASSIC_FIELDS, LOG_LEVELS, TOOL_PROGRESS, TOOL_SETS,
@@ -18,8 +19,8 @@ import {
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
 export const impactText = (kind) => tn(kind === "now" ? "impactNow" : kind === "fleet" ? "impactFleet" : "impactAgent");
-/** The browser's confirm(), in one place (the tests answer it). No confirm() to ask → no. */
-export const ask = (message) => (typeof confirm === "function" ? confirm(message) : false);
+/** Ask in the app's own dialog (#1408 step 5): resolves true for the confirm button, false otherwise. */
+export const ask = (message, opts = {}) => confirmDialog({ message, ...opts });
 
 // ── Form pieces ──
 
@@ -293,7 +294,7 @@ async function rebind(connection, groupId, generalChannelId, say, alive) {
   const target = [probe.group_name || binding.group_id, probe.channel_name || probe.channel_id].filter(Boolean).join(" / ");
   const perms = [probe.can_view ? "view" : null, probe.can_send ? "send" : null, probe.can_manage_topics ? "topics" : null].filter(Boolean).join(", ");
   say({ text: tn("bindingVerified", `${target}${perms ? ` (${perms})` : ""}`) });
-  if (!ask(tn("bindingConfirm", target || binding.group_id))) { say({ text: tn("bindingNotApplied") }); return false; }
+  if (!(await ask(tn("bindingConfirm", target || binding.group_id), { confirmLabel: tn("bindingApplyButton") }))) { if (alive()) say({ text: tn("bindingNotApplied") }); return false; }
   if (!alive()) return false;
   say({ text: tn("bindingApplying") });
   const applied = await confirmedWrite(`${base}/apply`, { method: "POST", key, label: tn("bindingLabel", connection),
@@ -373,7 +374,8 @@ export function BotDialog({ id, ctx, onClose }) {
   };
   const remove = async () => {
     if (!ch) return;
-    if (!ask(tn("removeBot", `${type} (${chLabel(index)})`))) return;
+    if (!(await ask(tn("removeBot", `${type} (${chLabel(index)})`), { confirmLabel: tn("deleteBot"), danger: true }))) return;
+    if (!lease.current()) return;
     const next = chs.filter((_, j) => j !== index);
     const res = await confirmedWrite("/api/settings/fleet/channels", { method: "PUT", body: next, label: tn("removeBotLabel", id) }).catch(() => ({ ok: false, body: {} }));
     if (!res.ok) { toast((res.body && res.body.error) || tn("failed"), false); return; }
@@ -478,7 +480,8 @@ export function ClassicDialog({ room, ctx, onClose }) {
   const ready = !errors.auto && !errors.context;
   const runtime = ctx.classicRuntime(c.instanceName);
   const classicMode = fd.agent_mode ?? "mcp";
-  const stage = () => {
+  const lease = useLease("classic-dialog");
+  const stage = async () => {
     if (!ready) return;
     const patch = changedFields({
       backend: f.backend, model: f.model.trim() || null,
@@ -495,7 +498,9 @@ export function ClassicDialog({ room, ctx, onClose }) {
     });
     if (!Object.keys(patch).length) { onClose(); return; }
     // #1320: turning web echo on for a group posts every web message where all its members can read it.
-    if (patch.web_echo === true && !c.web_echo && webEchoIsGroup(c.channelId) && !ask(tn("webEchoGroupConfirm"))) return;
+    if (patch.web_echo === true && !c.web_echo && webEchoIsGroup(c.channelId)
+      && !(await ask(tn("webEchoGroupConfirm"), { confirmLabel: tn("webEchoEnable") }))) return;
+    if (!lease.current()) return;
     ctx.stageClassic(c, patch);
     onClose();
   };

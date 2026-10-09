@@ -502,6 +502,15 @@ a { color: inherit; text-decoration: none; }
 .s-row { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; min-height: 48px; padding: var(--s-2) var(--s-3); border-radius: var(--r-md); background: var(--surface); }
 .s-name { font-weight: var(--fw-semibold); font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 14em; }
 .s-meta { color: var(--text-3); font-size: var(--fs-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 16em; }
+/* A connection's row (#1408 step 5): one line on a desktop — identity | facts (clipped) | cluster. */
+.s-row.s-conn { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; column-gap: var(--s-3); row-gap: var(--s-1); }
+.s-ident { display: flex; align-items: center; gap: var(--s-2); min-width: 0; }
+.s-facts { min-width: 0; color: var(--text-3); font-size: var(--fs-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.s-conn .s-actions { margin-left: 0; flex-wrap: nowrap; }
+@media (max-width: 899px) {
+  .s-row.s-conn { grid-template-columns: minmax(0, 1fr) auto; }
+  .s-conn .s-facts { grid-column: 1 / -1; grid-row: 2; }
+}
 .s-state { font-size: var(--fs-xs); }
 .s-state.ok { color: var(--ok); }
 .s-state.bad { color: var(--danger); }
@@ -609,3 +618,4 @@ textarea.s-yaml { width: 100%; min-height: 50vh; resize: vertical; }
 .n-detail { color: var(--text-2); font-size: var(--fs-sm); overflow-wrap: anywhere; white-space: pre-wrap; }
 .n-actions { display: flex; gap: var(--s-2); flex-wrap: wrap; margin-top: var(--s-1); }
 .n-notify { display: flex; flex-direction: column; gap: var(--s-1); }
+.confirm-text { white-space: pre-wrap; font-size: var(--fs-sm); color: var(--text-2); }

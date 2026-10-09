@@ -66,7 +66,7 @@ describe("the preview listener", () => {
 
   it.each([
     ["GET", "/"], ["GET", "/open"], ["GET", "/frame/"], ["GET", "/frame?x=1"], ["GET", "/frame?"], ["GET", "/frame#x"], ["GET", "/FRAME"],
-    ["GET", "/ui"], ["GET", "/api/fleet"], ["GET", "/assets/shell.js"], ["GET", "//frame"],
+    ["GET", "/ui"], ["GET", "/api/fleet"], ["GET", "/assets/app.js"], ["GET", "//frame"],
     ["POST", "/frame"], ["HEAD", "/frame"], ["PUT", "/frame"], ["OPTIONS", "/frame"],
   ])("%s %s: an empty 404, never a redirect", async (method, path) => {
     const { port } = await listen();

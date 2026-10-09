@@ -4,6 +4,7 @@
 import { html, useEffect, useState } from "./app-html.js";
 import { Icon } from "./ui-icons.js";
 import { Toasts } from "./ui-toast.js";
+import { ConfirmHost } from "./ui-confirm.js";
 import { t, lang, setLang, onLang } from "./app-i18n.js";
 import { appStore, createStore, useStore } from "./app-store.js";
 import { navStore } from "./app-nav.js";
@@ -186,7 +187,7 @@ function Prefs() {
 export function PanelHeader({ title, sub, children, headingRef }) {
   const shell = useStore(shellStore);
   return html`<header class=${`panel-head${shell.collapsed ? " collapsed" : ""}`}>
-    <button type="button" class="icon-btn sb-open" onClick=${() => (narrow() ? openDrawer() : toggleSidebar())}
+    <button type="button" id="sbOpen" class="icon-btn sb-open" onClick=${() => (narrow() ? openDrawer() : toggleSidebar())}
       aria-label=${narrow() ? t("app.openMenu") : t("app.expand")} title=${narrow() ? t("app.openMenu") : t("app.expand")} aria-controls="sidebar" aria-expanded=${shell.drawer ? "true" : "false"}><${Icon} name="menu" /></button>
     <div class="panel-title"><h1 ref=${headingRef} tabindex="-1">${title}</h1>${sub ? html`<div class="panel-sub">${sub}</div>` : null}</div>
     <div class="panel-actions">${children}</div>
@@ -336,6 +337,7 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
     <${BottomTabs} route=${nav.route} viewOnly=${viewOnly} />
     ${shell.dialog ? html`<${shell.dialog.Component} ...${shell.dialog.props} onClose=${closeDialog} />` : null}
     ${viewOnly ? null : html`<${PendingChanges} />`}
+    <${ConfirmHost} />
     <${Toasts} />
   </div>`;
 }

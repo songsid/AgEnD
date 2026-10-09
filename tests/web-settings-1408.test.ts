@@ -206,18 +206,24 @@ describe("staged changes and leaving", () => {
     const messages: string[] = [];
     (globalThis as any).confirm = (m: string) => { messages.push(m); return false; };
     nav.navigate("/ui/fleet");
+    // Asked in the app's dialog (#1408 step 5): the navigation waits for the answer.
+    expect(nav.navStore.get().route).toEqual({ panel: "settings", section: "agents" });
+    await settle(4);
     expect(messages).toEqual(["Discard 1 pending changes?"]);
     expect(nav.navStore.get().route).toEqual({ panel: "settings", section: "agents" });
     expect(p.window.location.pathname).toBe("/settings");
     // Back/Forward too: the address is put back.
     p.window.history.pushState(null, "", "/ui/fleet");
     winEvent("popstate");
+    await settle(4);
     expect(messages).toHaveLength(2);
     expect(p.window.location.pathname).toBe("/settings");
     expect(nav.navStore.get().route.panel).toBe("settings");
     (globalThis as any).confirm = () => true;
     nav.navigate("/ui/fleet");
+    await settle(4);
     expect(nav.navStore.get().route).toEqual({ panel: "fleet", tab: "tasks" });
+    expect(p.window.location.pathname).toBe("/ui/fleet");
     await p.unmount();
     await new Promise(r => setTimeout(r, 50));
     expect(writes()).toEqual([]);
@@ -382,7 +388,8 @@ describe("the other ways in: Developer YAML and the setup wizard hand over to th
     btn(p.root.querySelector(".s-dev"), "Apply & save").click();
     await vi.waitFor(() => expect(op().phase).toBe("done"), { timeout: 6000 });
     const order = writes().map(r => `${r.method} ${r.url}`);
-    expect(order).toEqual(["PUT /api/settings/fleet/defaults", "PUT /api/settings/fleet/channels", "PATCH /api/settings/fleet/instances/alpha",
+    // #1408 step 5: only what the edit changed — the untouched defaults and channels are not written again.
+    expect(order).toEqual(["PATCH /api/settings/fleet/instances/alpha",
       "POST /api/settings/fleet/instances/gamma", "DELETE /api/settings/fleet/instances/beta", "POST /api/settings/apply"]);
   }, 10_000);
 
@@ -744,5 +751,19 @@ describe("#1453 review r2", () => {
     await vi.waitFor(() => expect(writes().filter(r => r.url.endsWith("/binding/apply"))).toHaveLength(1));
     expect(asked).toBe(1);
     expect(writes().find(r => r.url.endsWith("/binding/apply"))!.body.verification_id).toBe("v2");
+  });
+});
+
+describe("Developer: only what changed (#1408 step 5)", () => {
+  it("a model edited back to what it was writes nothing; a reordered section is the same section; a changed one is written", async () => {
+    const model = await import("/ui/js/settings-model.js");
+    const fleet = structuredClone(FLEET);
+    expect(model.fullModelRequests(model.fleetModel(fleet), fleet)).toEqual([]);
+    const reordered = { instances: { beta: fleet.instances.beta, alpha: { description: "A", working_directory: "/w/a" } }, defaults: { ...fleet.defaults }, channels: fleet.channels };
+    expect(model.fullModelRequests(reordered, fleet)).toEqual([]);
+    const changed = { ...model.fleetModel(fleet), defaults: { backend: "codex" } };
+    expect(model.fullModelRequests(changed, fleet).map((r: any) => `${r.method} ${r.url}`)).toEqual(["PUT /api/settings/fleet/defaults"]);
+    // Through the YAML the Developer view shows and reads back: untouched, nothing to send.
+    expect(model.fullModelRequests(model.fromYaml(model.toYaml(model.fleetModel(fleet))), fleet)).toEqual([]);
   });
 });

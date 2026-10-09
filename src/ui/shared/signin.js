@@ -81,6 +81,11 @@
   function showForm() {
     $("checking").hidden = true;
     $("form").hidden = false;
+    // A sign-out the server could not make durable says so here, once (agend-auth.js signOut).
+    try {
+      const note = sessionStorage.getItem("agend_signout_note");
+      if (note) { sessionStorage.removeItem("agend_signout_note"); $("msg").textContent = note; }
+    } catch { /* private mode */ }
     $("code").focus();
   }
 

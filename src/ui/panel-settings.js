@@ -13,7 +13,7 @@ import { t } from "/assets/app-i18n.js";
 import { appStore, useStore } from "/assets/app-store.js";
 import { useLease } from "/assets/app-ctx.js";
 import { PanelHeader, setTitle } from "/assets/app-shell.js";
-import { setLeaveGuard } from "/assets/app-nav.js";
+import { navigate, setLeaveGuard } from "/assets/app-nav.js";
 import { settingsPath, SETTINGS_SECTIONS } from "/assets/app-route.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
@@ -121,12 +121,22 @@ export function SettingsPanel({ route, navKey }) {
   useEffect(() => {
     reload();
     attach();
-    mount.hold(setLeaveGuard((to) => {
+    // Leaving with staged changes asks in the app's dialog; the navigation waits, and goes on (past the guard) on a yes.
+    let asking = false;
+    mount.hold(setLeaveGuard((to, path) => {
       const n = stagedRef.current.size;
       if (!n || (to && to.panel === "settings")) return true;
-      if (!ask(tn("discardOnLeave", n))) return false;
-      dropSecrets(stagedRef.current);
-      return true;
+      if (!asking) {
+        asking = true;
+        ask(tn("discardOnLeave", n), { confirmLabel: tn("discard"), danger: true }).then((yes) => {
+          asking = false;
+          if (!yes || !mount.current()) return;
+          dropSecrets(stagedRef.current);
+          stagedRef.current = new Map();
+          navigate(path, { force: true });
+        });
+      }
+      return false;
     }));
     mount.on(window, "beforeunload", (e) => { if (stagedRef.current.size) { e.preventDefault(); e.returnValue = ""; } });
   }, [mount]);
@@ -164,14 +174,19 @@ export function SettingsPanel({ route, navKey }) {
   };
   const unstage = (key) => setStaged((s) => { if (!s.has(key)) return s; const m = new Map(s); m.delete(key); return m; });
   const discard = () => { dropSecrets(staged); setStaged(new Map()); reload(); };
-  const apply = () => {
-    if (operationActive() || !staged.size) return;
+  const applying = useRef(false);
+  const apply = async () => {
+    if (applying.current || operationActive() || !staged.size) return;
     // Every confirmation before the first write: a cancelled one must not leave earlier changes applied and later
     // ones pending (a surprising partial apply).
-    for (const c of staged.values()) {
-      for (const k of c.confirms || []) if (!ask(tn(k))) { toast(tn("accessChangeCancelled"), false); return; }
-    }
-    const list = [...staged.values()].map(({ label, impact, request, connectionSecret, stageKey, key }) => ({ label, impact, request, connectionSecret, stageKey, key }));
+    applying.current = true;
+    try {
+      for (const c of [...stagedRef.current.values()]) {
+        for (const k of c.confirms || []) if (!(await ask(tn(k)))) { toast(tn("accessChangeCancelled"), false); return; }
+      }
+    } finally { applying.current = false; }
+    if (!mount.current() || operationActive()) return;
+    const list = [...stagedRef.current.values()].map(({ label, impact, request, connectionSecret, stageKey, key }) => ({ label, impact, request, connectionSecret, stageKey, key }));
     if (startOperation(list)) setStaged(new Map());
   };
 
@@ -249,8 +264,8 @@ function makeCtx(data, setData, stage, unstage, reload, reloadLive) {
         request: { method: "PATCH", url: `/api/settings/fleet/instances/${encodeURIComponent(name)}`, body: patch },
       });
     },
-    deleteAgent(name) {
-      if (!ask(tn("deleteAgent", name))) return;
+    async deleteAgent(name) {
+      if (!(await ask(tn("deleteAgent", name), { confirmLabel: tn("deleteAgentMenu"), danger: true }))) return;
       edit((d) => { delete d.fleet.instances[name]; });
       stage(`agent:${name}`, { label: tn("deleteAgentLabel", name), impact: impactOf(schema, "instance.delete"),
         request: { method: "DELETE", url: `/api/settings/fleet/instances/${encodeURIComponent(name)}` } });
@@ -355,14 +370,17 @@ function Bots({ ctx, search, openDialog }) {
     ${!rows.length ? html`<${Empty} icon="plug" title=${needle ? tn("noAgentMatch", search.trim()) : tn("noBots")} />` : html`<div class="s-list">${rows.map(({ ch, i }) => {
       const users = (ch.access && ch.access.allowed_users) || [];
       const token = (ctx.connections.find((c, j) => channelId(c, j) === channelId(ch, i)) || {}).token_present;
-      return html`<div key=${channelId(ch, i)} class="s-row">
-        <span class=${`dot ${ctx.fleetUp ? "ok" : "bad"}`} title=${ctx.fleetUp ? tn("connected") : tn("problem")} aria-hidden="true"></span>
-        <span class="s-name">${ch.type === "telegram" ? "Telegram" : "Discord"}</span>
-        <span class=${`tag${i === 0 ? "" : " persona"}`}>${ch.id || chLabel(i)}</span>
-        <span class="s-meta">${ch.bot_token_env || tn("noTokenEnv")}</span>
-        ${ch.group_id ? html`<span class="tag">${ch.type === "telegram" ? tn("groupTag", ch.group_id) : tn("guildTag", ch.group_id)}</span>` : null}
-        <span class="tag">${tn("accessTag", (ch.access && ch.access.mode) || "locked")}</span>
-        <span class="s-meta">${users.length ? `${users.slice(0, 3).join(", ")}${users.length > 3 ? ` +${users.length - 3}` : ""}` : tn("noAllowedUsers")}</span>
+      // #1408 step 5: one line on a desktop — who it is, its facts in one clipped line (all of them in its tooltip),
+      // then the cluster; on a phone the facts go under it. It no longer wraps fact by fact.
+      const facts = [ch.bot_token_env || tn("noTokenEnv"),
+        ch.group_id ? (ch.type === "telegram" ? tn("groupTag", ch.group_id) : tn("guildTag", ch.group_id)) : null,
+        tn("accessTag", (ch.access && ch.access.mode) || "locked"),
+        users.length ? `${users.slice(0, 3).join(", ")}${users.length > 3 ? ` +${users.length - 3}` : ""}` : tn("noAllowedUsers")].filter(Boolean).join(" · ");
+      return html`<div key=${channelId(ch, i)} class="s-row s-conn">
+        <span class="s-ident"><span class=${`dot ${ctx.fleetUp ? "ok" : "bad"}`} title=${ctx.fleetUp ? tn("connected") : tn("problem")} aria-hidden="true"></span>
+          <span class="s-name">${ch.type === "telegram" ? "Telegram" : "Discord"}</span>
+          <span class=${`tag${i === 0 ? "" : " persona"}`}>${ch.id || chLabel(i)}</span></span>
+        <span class="s-facts" title=${facts}>${facts}</span>
         <span class="s-actions">
           <span class=${`tag${token ? "" : " warn"}`}>${token ? tn("tokenConfigured") : tn("tokenMissing")}</span>
           <span class=${`s-state ${ctx.fleetUp ? "ok" : "bad"}`}>${ctx.fleetUp ? tn("connected") : tn("problem")}</span>
@@ -629,7 +647,7 @@ function Developer({ ctx }) {
     let parsed;
     try { parsed = fmt === "yaml" ? fromYaml(draft) : JSON.parse(draft || "{}"); } catch (e) { setMsg({ error: e.message }); return; }
     if (!parsed || typeof parsed !== "object") { setMsg({ error: tn("expectedMapping") }); return; }
-    const requests = fullModelRequests(parsed, ctx.fleet.instances || {});
+    const requests = fullModelRequests(parsed, ctx.fleet);
     if (!requests.length) { setMsg({ text: tn("noChanges") }); return; }
     if (operationActive()) { setMsg({ error: tn("applyBusyLocal") }); return; }
     // The whole edit is one operation: its writes in order, then the apply — the same runner as every Apply.
@@ -682,7 +700,7 @@ function OperationCard({ op, schema }) {
     : job && job.overdue ? tn("applyStillWorking", Math.round((job.elapsed_ms || 0) / 1000))
     : mismatch && needsRestart ? tn("signatureMismatch", mismatch.join(", ")) : needsRestart ? tn("applyRestartHint") : "";
   const restart = async () => {
-    if (!ask(tn("restartFleetConfirm"))) return;
+    if (!(await ask(tn("restartFleetConfirm"), { title: tn("restartFleetButton"), confirmLabel: tn("restartFleetButton"), danger: true }))) return;
     setRestarting(true);
     const res = await restartFleet();
     setRestarting(false);

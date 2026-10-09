@@ -61,6 +61,7 @@ register("app", {
     opFailed: "Settings were not applied", openSettings: "Open Settings",
     pendingSent: "Sent for confirmation — a fleet admin confirms it in chat.",
     needsNav: "Needs you", needsTab: "Needs you", needsCount: "{0} waiting",
+    confirmTitle: "Please confirm", confirmOk: "Continue", cancel: "Cancel",
     // The server's own wording (src/locale.ts needs.reason.*), so the web says what Discord says.
     needs_reason_hang: "Not responding", needs_reason_exited: "Exited", needs_reason_assist: "Waiting at its terminal", needs_reason_permission: "Permission needed", needs_reason_dangerous_command: "Dangerous command waiting", needs_reason_login: "Sign-in needed", needs_reason_dialog: "Waiting at a dialog", needs_reason_terminal_input: "May be waiting for input", needs_reason_auth_paused: "Paused: sign-in needed", needs_reason_crashed: "Crashed", needs_reason_delivery_uncertain: "Could not confirm delivery", needs_reason_delivery_failed: "Delivery failed",
   },
@@ -88,6 +89,7 @@ register("app", {
     opFailed: "設定沒有套用", openSettings: "開啟設定",
     pendingSent: "已送出確認——由 fleet 管理員在聊天中確認。",
     needsNav: "等你處理", needsTab: "待處理", needsCount: "{0} 件待處理",
+    confirmTitle: "請確認", confirmOk: "繼續", cancel: "取消",
     needs_reason_hang: "沒有回應", needs_reason_exited: "已結束", needs_reason_assist: "在終端機上等待", needs_reason_permission: "需要權限", needs_reason_dangerous_command: "危險指令待確認", needs_reason_login: "需要登入", needs_reason_dialog: "停在對話框", needs_reason_terminal_input: "可能在等輸入", needs_reason_auth_paused: "已暫停：需要登入", needs_reason_crashed: "已崩潰", needs_reason_delivery_uncertain: "無法確認是否送達", needs_reason_delivery_failed: "傳送失敗",
   },
 });

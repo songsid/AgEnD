@@ -37,7 +37,7 @@ describe("no inline event handler, anywhere a panel could write one", () => {
   });
 
   it("the shared scripts a panel loads write none either", () => {
-    for (const f of ["shared/agend-auth.js", "shared/shell.js", "chat-render.js"]) {
+    for (const f of ["shared/agend-auth.js", "shared/app-session.js", "chat-render.js"]) {
       expect(readFileSync(join(UI, f), "utf8").match(/\son[a-z]+\s*=\s*["'`]/gi) ?? [], f).toEqual([]);
     }
   });
