@@ -201,6 +201,7 @@ import { NeedsYouHub, type NeedsYouWorld, type WebNeedsItem } from "./needs-you-
 import type { InstanceInput, PromptInput } from "./needs-you.js";
 import { WEB_CHAT_NOTICE, WEB_REMOTE_DOCS_URL, claimNotice, hasWebChat, releaseNotice, upgradeNoticesPath } from "./upgrade-notices.js";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
+import { buildOrgChart, type OrgChart } from "./web-org.js";
 import {
   mayUseTool,
   resolveToolSet,
@@ -10640,6 +10641,36 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** The list for the web: every world's items, and those of instances with no world (#1386 §5.0). */
   needsYouItems(): WebNeedsItem[] {
     return this.needsYou?.webItems() ?? [];
+  }
+
+  /**
+   * #1389: the org chart's structure for the web — the instances the dashboard lists (getUiStatus's names), General,
+   * fleet.yaml's teams, each instance's description and thread link. Read on demand; the live state rides the stream.
+   */
+  orgChart(): OrgChart {
+    const config = this.fleetConfig;
+    const fleetNames = Object.keys(config?.instances ?? {});
+    const classic = new Map((this.classicChannels?.getAll() ?? []).filter(ch => !fleetNames.includes(ch.instanceName)).map(ch => [ch.instanceName, ch]));
+    return buildOrgChart({
+      names: [...fleetNames, ...classic.keys()],
+      instances: Object.fromEntries([
+        ...fleetNames.map(name => [name, config?.instances[name]] as const),
+        ...[...classic].map(([name, ch]) => [name, { description: ch.description }] as const),
+      ]),
+      teams: config?.teams,
+      isGeneral: name => !classic.has(name) && isGeneralInstance(config, name),
+      isClassic: name => classic.has(name),
+      place: name => {
+        const world = this.worlds.get(this.getInstanceAdapterId(name) ?? "");
+        return world ? { type: world.type, ...(world.groupId ? { groupId: world.groupId } : {}) } : undefined;
+      },
+      // fleet.yaml's topic only. A ClassicBot room has none here, so no link: its channel may sit in any allowed
+      // guild, not necessarily its world's group.
+      topic: name => {
+        const topic = config?.instances[name]?.topic_id;
+        return topic != null ? String(topic) : undefined;
+      },
+    });
   }
 
   /** The web's Acknowledge (any item; a signed-in session is fleet-admin level). */

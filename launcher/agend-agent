@@ -19,12 +19,14 @@ dir=$(cd "$(dirname "$self")" && pwd -P) || exit 1
 pkg=$(dirname "$dir")
 launcher=$dir/$(basename "$self").cjs
 
-case $(uname -s) in
+sys=$(uname -s) || sys=unknown
+mach=$(uname -m) || mach=unknown
+case $sys in
   Linux) os=linux ;;
   Darwin) os=darwin ;;
   *) os=unsupported ;;
 esac
-case $(uname -m) in
+case $mach in
   x86_64 | amd64) cpu=x64 ;;
   aarch64 | arm64) cpu=arm64 ;;
   *) cpu=unsupported ;;
@@ -50,18 +52,26 @@ fi
 #    this shell measures now — nothing parsed, the bytes rebuilt and compared: the host, the Node's realpath, size and
 #    mtime, and the POSIX cksum of both manifests and of the receipt. The JS selection requires the same key, so a
 #    change to any bound file keeps BOTH from running the candidate.
+# Every measurement must itself complete: a value printed by a command that then fails is no measurement (#1460 r4).
 admissible() {
   [ -f "$pkg/.agend-runtime.key" ] && [ -f "$node" ] && [ ! -L "$node" ] && [ -x "$node" ] || return 1
   case $os in
-    linux) hostlib=$(getconf GNU_LIBC_VERSION 2>/dev/null) || hostlib=none ;;
-    darwin) hostlib=$(uname -r) ;;
+    linux) if hostlib=$(getconf GNU_LIBC_VERSION 2>/dev/null); then :; else hostlib=none; fi ;;
+    darwin) hostlib=$(uname -r) || return 1 ;;
     *) return 1 ;;
   esac
   [ -n "$hostlib" ] || hostlib=none
-  real=$(cd "$(dirname "$node")" 2>/dev/null && pwd -P)/node || return 1
-  size=$(wc -c < "$node" | tr -d ' ') || return 1
-  mtime=$(stat -c %Y "$node" 2>/dev/null) || mtime=$(stat -f %m "$node" 2>/dev/null) || return 1
-  sum_package=$(cksum < "$pkg/package.json") && sum_runtime=$(cksum < "$node_pkg/package.json") && sum_receipt=$(cksum < "$receipt") || return 1
+  real=$(cd "${node%/*}" 2>/dev/null && pwd -P) || return 1
+  real=$real/node
+  size=$(wc -c < "$node") || return 1
+  set -- $size
+  size=${1:-}
+  case $size in '' | *[!0-9]*) return 1 ;; esac
+  if mtime=$(stat -c %Y "$node" 2>/dev/null); then :; elif mtime=$(stat -f %m "$node" 2>/dev/null); then :; else return 1; fi
+  case $mtime in '' | *[!0-9]*) return 1 ;; esac
+  sum_package=$(cksum < "$pkg/package.json") || return 1
+  sum_runtime=$(cksum < "$node_pkg/package.json") || return 1
+  sum_receipt=$(cksum < "$receipt") || return 1
   printf 'agend-runtime-key 1\nos %s\ncpu %s\nhost %s\nnode %s\nsize %s\nmtime %s\npackage %s\nruntime %s\nreceipt %s\n' \
     "$os" "$cpu" "$hostlib" "$real" "$size" "$mtime" "$sum_package" "$sum_runtime" "$sum_receipt" | cmp -s - "$pkg/.agend-runtime.key"
 }
