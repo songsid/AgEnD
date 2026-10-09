@@ -11149,13 +11149,40 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return true;
     }
 
+    // The nonce was claimed synchronously. Keep the exact owner across platform
+    // retirement awaits; a replacement with the same name is not this clear's
+    // target, and a role granted at claim time may be revoked while editing.
+    const ipc = this.instanceIpcClients.get(pending.instanceName);
+    const daemon = this.daemons.get(pending.instanceName);
+    const epoch = this.getDeliveryEpoch(pending.instanceName);
+    const groupId = this.getChannelConfig(callbackAdapterId)?.group_id;
+    const current = (): boolean => {
+      try { return !this.shuttingDown
+      && !!data.userId && !!pending.authChannelId
+      && !this.webPromptClicks.has(data) // clear is deliberately not web-mirrored
+      && this.worlds.get(callbackAdapterId)?.adapter === pending.adapter
+      && this.commandChannelStillTargets(pending.instanceName, pending.authChannelId, callbackAdapterId)
+      && this.isModelAdmin(data.userId, pending.authChannelId, callbackAdapterId)
+      && (this.classicChannels?.getInstanceByChannel(pending.authChannelId, callbackAdapterId) === pending.instanceName
+        ? pending.adapter.type !== "telegram" || pending.chatId === pending.authChannelId
+        : String(this.getChannelConfig(callbackAdapterId)?.group_id ?? "") === pending.chatId)
+      && this.getChannelConfig(callbackAdapterId)?.group_id === groupId
+      && this.daemons.get(pending.instanceName) === daemon
+      && this.instanceIpcClients.get(pending.instanceName) === ipc
+      && this.isDeliveryEpochCurrent(pending.instanceName, epoch);
+      } catch { return false; } // unavailable authority cannot admit a clear
+    };
+    const admitted = current();
     await this.retireNonceButtons(
       pending,
       pending.messageId ?? data.messageId,
-      t("clear.clearing", pending.instanceName),
+      admitted ? t("clear.clearing", pending.instanceName) : t("menu.click_stale"),
     );
     try {
-      const result = await this.topicCommands.sendClear(pending.instanceName);
+      // sendClear sends its first IPC synchronously; no await separates this
+      // final check from that effect. Uncertainty/throw never reaches IPC.
+      const result = admitted && current()
+        ? await this.topicCommands.sendClear(pending.instanceName) : t("menu.click_stale");
       await pending.adapter.editMessage(
         pending.chatId,
         pending.messageId ?? data.messageId,
@@ -14712,7 +14739,24 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    * when the click is claimed and again right before the change is applied.
    */
   private menuClickStillCurrent(instanceName: string, userId: string, channelId: string, adapterId: string): boolean {
-    return this.getInstanceAdapterId(instanceName) === adapterId && this.isModelAdmin(userId, channelId, adapterId);
+    return this.commandChannelStillTargets(instanceName, channelId, adapterId)
+      && this.isModelAdmin(userId, channelId, adapterId);
+  }
+
+  /** Current source-to-target mapping, including same-adapter topic moves. */
+  private commandChannelStillTargets(instanceName: string, channelId: string, adapterId: string): boolean {
+    if (this.getInstanceAdapterId(instanceName) !== adapterId) return false;
+    const classic = this.classicChannels?.getInstanceByChannel(channelId, adapterId);
+    if (classic !== undefined) return classic === instanceName;
+    // Read the current config rather than relying on a pre-reload route cache.
+    const target = Object.entries(this.fleetConfig?.instances ?? {}).find(([name, cfg]) =>
+      cfg.topic_id != null && String(cfg.topic_id) === channelId && this.getInstanceAdapterId(name) === adapterId);
+    if (target) return target[0] === instanceName;
+    // Root General menus carry the group address, not the logical topic id.
+    const channel = this.getChannelConfig(adapterId);
+    return channel?.type === "telegram" && channel.group_id != null && String(channel.group_id) === channelId
+      && this.fleetConfig?.instances[instanceName]?.general_topic === true
+      && this.findGeneralInstance(adapterId) === instanceName;
   }
 
   /** Consume a `/model` selection callback. Returns true for all model-select ids (incl. stale). */

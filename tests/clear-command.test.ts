@@ -292,6 +292,7 @@ describe("/clear nonce confirmation", () => {
     fm.fleetConfig!.defaults.backend = "codex";
     (fm as any).classicChannels = {
       getChannelIdByInstance: (name: string) => name === "classic-worker" ? "classic-room" : undefined,
+      getAdapterIdByInstance: () => "telegram-main",
       getBackendByInstance: () => "codex",
       getInstanceByChannel: (channelId: string) => channelId === "classic-room" ? "classic-worker" : undefined,
       isAdmin: (userId: string) => userId === "classic-admin",
