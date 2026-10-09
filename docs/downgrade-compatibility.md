@@ -1,0 +1,49 @@
+# Data downgrade check: 2.2 development → 2.1.12
+
+This is the Part C report for #1441. **The tested data stores can be opened and written by 2.1.12, then reopened by current code. That does not establish a safe live downgrade.** Old code does not enforce several new security policies or preserve every new feature.
+
+## Evidence and reproduction
+
+Source snapshots: current `34828033a007f8ef3cb22f07a96d12eb6d314069`; baseline `v2.1.12` commit `7a8160a12ac4024bffc5165b5b6e03af851cacf2`. The baseline probe uses the published `@songsid/agend@2.1.12` package, rather than rebuilding it against current dependencies.
+
+On Linux x64, the three successful phases were Node 22.22.2 / better-sqlite3 13.0.3 → Node 20.19.0 / better-sqlite3 12.11.1 → Node 22.22.2 / better-sqlite3 13.0.3. The resolved patch version of the baseline dependency is recorded, not assumed. This is not a macOS, vendor CLI, session-resume or running-fleet test.
+
+The local run passed 23 labelled groups, plus build and test typecheck. Five existing focused suites passed 71/71. Six compiled-JS counterfactuals (schema version, acknowledgement metadata, old recovery, schedule deletion, normalized config loss, Kiro ownership) passed syntax checks then failed directly with AssertionError. These are scratch build/installed-package probes, not six TypeScript mutations or a full-suite rerun; all mutated artifacts were restored and the round trip passed again.
+
+```sh
+# Build current code with a supported Node version.
+npm ci
+npm run build
+# Install @songsid/agend@2.1.12 with Node 20 in a disposable explicit prefix.
+# Supply the package directory and the absolute Node 20 executable:
+node scripts/check-data-downgrade.mjs /scratch/prefix/lib/node_modules/@songsid/agend /scratch/node20/bin/node
+```
+
+The runner creates its own unique scratch AGEND_HOME, runs the three phases sequentially, closes every store between phases, reports runtime/dependency versions and assertions, then removes only its own directory. Child environments use an allowlist without bot tokens, NODE_OPTIONS or live IPC paths. Each phase blocks child_process before importing production leaf modules. Kiro file tests call only file-writing prototype methods, never the constructor. No fleet, tmux, adapter, inspector, service or backend process starts. CI repeats the check in `data-downgrade.yml` and uploads the JSON result.
+
+## Findings
+
+| Area | Observed result | Limit / evidence |
+| --- | --- | --- |
+| Delivery outbox | `user_version` goes **5 → 4 → 5**, with no table rebuild. New consumed/acknowledged metadata survives old writes; old-created rows have NULL new columns. Duplicate admission remains deduplicated. Old boot recovery requeues an unbegun claim and retains begun work as `reconciliation_pending`. Integrity and FK checks pass. | The four new TEXT columns and partial attention index are additive ([current migration](https://github.com/songsid/AgEnD/blob/34828033a007f8ef3cb22f07a96d12eb6d314069/src/delivery-outbox.ts#L609)); old code unconditionally sets version 4 ([baseline](https://github.com/songsid/AgEnD/blob/7a8160a12ac4024bffc5165b5b6e03af851cacf2/src/delivery-outbox.ts#L561)). Old code cannot collect new consumption/acknowledgement evidence or show Needs you. The version number alone is not a schema compatibility fence. |
+| Scheduler, decisions, tasks | Existing rows/history remain readable and writable; old task completion is readable on return. An undeleted retry survives, while deleting its schedule through old code cascades its retry. Integrity and FK checks pass. | `schedule_retries` is additive with `ON DELETE CASCADE` ([schema](https://github.com/songsid/AgEnD/blob/34828033a007f8ef3cb22f07a96d12eb6d314069/src/scheduler/db.ts#L99)). Old code does not execute the new usage-deferred retry contract. Surviving retries may be considered again on return; the probe does not run timers or promise equivalent scheduling. |
+| Event/activity/reaction store | Old code reads new event/activity rows, consumes a queued reaction and writes an event read by current code. Integrity and FK checks pass. | The production store APIs and schema are compatible ([store](https://github.com/songsid/AgEnD/blob/34828033a007f8ef3cb22f07a96d12eb6d314069/src/event-log.ts#L47)); no transcript or live delivery is exercised. |
+| Needs you | The persisted live-message pointer survives byte for byte and can be read on return. A newly constructed hub has no acknowledgement capabilities. | `needs-you-message.json` is a pointer, not durable authority ([pointer helpers](https://github.com/songsid/AgEnD/blob/34828033a007f8ef3cb22f07a96d12eb6d314069/src/needs-you-hub.ts#L201), [in-memory registry](https://github.com/songsid/AgEnD/blob/34828033a007f8ef3cb22f07a96d12eb6d314069/src/needs-you-hub.ts#L107)). 2.1.12 has no hub; existing chat messages/buttons may remain, but old code cannot operate them. |
+| #1423 pending approvals | Pending proposals are memory-only; closing the store applies no effect, and a fresh store has no pending proposal. | [Store](https://github.com/songsid/AgEnD/blob/34828033a007f8ef3cb22f07a96d12eb6d314069/src/settings-confirmation.ts#L77). A downgrade does not transfer or replay unapproved changes. Resubmit on a version that implements confirmation. Already committed configuration remains on disk; old web handlers do not implement the new consent boundary. |
+| fleet.yaml | Old raw loading preserves unknown fields and channel order. Its effective loader drops `needs_you` but retains the whole nested `web` mapping. A normalized load/dump removes new top-level fields and unknown extensions. | [Current loader](https://github.com/songsid/AgEnD/blob/34828033a007f8ef3cb22f07a96d12eb6d314069/src/config.ts#L201), [old loader](https://github.com/songsid/AgEnD/blob/7a8160a12ac4024bffc5165b5b6e03af851cacf2/src/config.ts#L190). This reproduces old `topic bind/unbind` ([writer](https://github.com/songsid/AgEnD/blob/7a8160a12ac4024bffc5165b5b6e03af851cacf2/src/cli.ts#L1194)). **Ordinary old manager saves are not blanket rewrites**: the patching save rereads raw YAML and preserves unrelated keys ([save](https://github.com/songsid/AgEnD/blob/7a8160a12ac4024bffc5165b5b6e03af851cacf2/src/fleet-manager.ts#L7904)). |
+| Kiro files | Current owned agent JSON and `.bak` remain byte-identical after old write/cleanup; ownership is recognized on return. The old shared writer overwrites a foreign same-name MCP entry and steering file, then cleanup removes them. | [Current ownership](https://github.com/songsid/AgEnD/blob/34828033a007f8ef3cb22f07a96d12eb6d314069/src/backend/kiro-agent.ts#L80); [old shared writer](https://github.com/songsid/AgEnD/blob/7a8160a12ac4024bffc5165b5b6e03af851cacf2/src/backend/kiro.ts#L824), [old cleanup](https://github.com/songsid/AgEnD/blob/7a8160a12ac4024bffc5165b5b6e03af851cacf2/src/backend/kiro.ts#L1214). The old runtime does not select the new per-instance agent. Persistent files alone do not retain its isolation. No real Kiro conversation is tested. |
+
+### Policy and state-consistency regressions
+
+- Retained YAML is not enforcement. For example, `web.view_access: session` remains in the old effective object, but old `/view` reads are public ([old reads](https://github.com/songsid/AgEnD/blob/7a8160a12ac4024bffc5165b5b6e03af851cacf2/src/view-api.ts#L212), [current policy](https://github.com/songsid/AgEnD/blob/34828033a007f8ef3cb22f07a96d12eb6d314069/src/view-api.ts#L224)). Public-link/session and sensitive-settings features require the new runtime; their config parsing does not backport them.
+- Current Classic admission and settings consent rules are newer than 2.1.12. Returning to the old version restores its policies, including its empty-list admission semantics. Treat this as a security-policy rollback, not just an executable change.
+- Old channel-array patching uses indexes without current connection-identity checks. Concurrent disk reorder can redirect a policy edit ([old patch](https://github.com/songsid/AgEnD/blob/7a8160a12ac4024bffc5165b5b6e03af851cacf2/src/fleet-manager.ts#L8012), [current fence](https://github.com/songsid/AgEnD/blob/34828033a007f8ef3cb22f07a96d12eb6d314069/src/fleet-manager.ts#L9002)). This is source-audited, not exercised by the leaf-module runner; keep configuration writers stopped during rollback.
+- Legacy/TUI Kiro goes back to directory-wide `--resume`, without current per-instance selection ([old](https://github.com/songsid/AgEnD/blob/7a8160a12ac4024bffc5165b5b6e03af851cacf2/src/backend/kiro.ts#L716), [current](https://github.com/songsid/AgEnD/blob/34828033a007f8ef3cb22f07a96d12eb6d314069/src/backend/kiro.ts#L928)). V3 had separate ownership already; this report does not claim every Kiro engine loses it.
+
+## Recommendation and rollback limits
+
+No destructive DB downgrade migration is indicated by the tested stores. Do not run two fleet versions concurrently on the same data. Before an operator-approved downgrade, stop the fleet and retain a consistent backup of AGEND_HOME (including SQLite WAL state), fleet.yaml/.env and every affected workspace's shared Kiro MCP/steering files plus agent JSON/backups. A live `cp` of only a WAL database is not a consistent backup.
+
+Preserve preimages: an old normalized YAML rewrite or shared Kiro write can discard new information. Returning to new code preserves the tested DB metadata, but cannot reconstruct discarded config, overwritten workspace files or lost pending approvals. Restoring an entire older DB backup also discards activity since that backup. Re-check policies before exposing web pages, channels or shared workspaces on 2.1.12.
+
+This PR changes only verification scripts, CI and documentation. Rollback of this PR is a revert; it performs no production migration. Private Node bootstrap and old-updater safety are separate work (#1446), not established by this data check.
