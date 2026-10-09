@@ -25,7 +25,7 @@ const dir = path.dirname(process.argv[1]);
 const statePath = path.join(dir, "state.json");
 const st = JSON.parse(fs.readFileSync(statePath, "utf8"));
 const args = process.argv.slice(2);
-fs.appendFileSync(path.join(dir, "calls.log"), args.join(" ") + "\n");
+fs.appendFileSync(path.join(dir, "calls.log"), args.filter((a, i) => a !== "--body-file" && args[i-1] !== "--body-file").join(" ") + "\n");
 const save = () => fs.writeFileSync(statePath, JSON.stringify(st));
 const out = v => { process.stdout.write(JSON.stringify(v)); process.exit(0); };
 const fail = m => { process.stderr.write(m + "\n"); process.exit(1); };
@@ -36,8 +36,8 @@ if (args[0] === "pr" && args[1] === "view") {
   out(pr);
 }
 if (args[0] === "pr" && args[1] === "list") {
-  const base = opt("--base");
-  out(Object.entries(st.prs).filter(([, p]) => p.state === "OPEN" && p.baseRefName === base).map(([n]) => ({ number: Number(n) })));
+  const base = opt("--base"), head = opt("--head");
+  out(Object.entries(st.prs).filter(([, p]) => head ? p.headRefName === head : p.state === "OPEN" && p.baseRefName === base).map(([n,p]) => head ? {number: Number(n), ...p} : {number: Number(n)}));
 }
 if (args[0] === "pr" && args[1] === "edit") {
   if ((st.failEdit ?? []).includes(Number(args[2]))) fail("edit refused");
@@ -47,20 +47,43 @@ if (args[0] === "pr" && args[1] === "edit") {
   if ((st.editAppliedButFails ?? []).includes(Number(args[2]))) fail("HTTP 502 (after the write)");
   process.exit(0);
 }
+if (args[0] === "pr" && args[1] === "create") {
+  const cp = require("node:child_process");
+  const h = cp.execFileSync("git", ["--git-dir", st.origin, "rev-parse", "refs/heads/"+opt("--head")], {encoding:"utf8"}).trim();
+  st.prs[99] = {state:"OPEN",isDraft:false,headRefOid:h,headRefName:opt("--head"),baseRefName:opt("--base"),isCrossRepository:false};
+  st.checkRuns[h] = st.autoRevertGreen ? st.greenRuns : [];
+  save();
+  if (st.createAppliedButFails) fail("lost create ACK");
+  process.stdout.write("https://example.invalid/pull/99"); process.exit(0);
+}
 if (args[0] === "pr" && args[1] === "merge") {
   const pr = st.prs[args[2]];
   if (st.failMerge) fail(st.failMerge);
   if (opt("--match-head-commit") !== pr.headRefOid) fail("Head branch was modified. Review and try the merge again.");
   if (!args.includes("--squash")) fail("not squash");
-  pr.state = "MERGED"; pr.mergeCommit = { oid: "f".repeat(40) }; st.merged = true; save();
+  let merged = "f".repeat(40);
+  if (st.actualMerge) {
+    const cp = require("node:child_process"), server = path.join(dir,"server");
+    const git = (...a) => cp.execFileSync("git", a, {cwd:server,encoding:"utf8",stdio:["ignore","pipe","pipe"]}).trim();
+    if (!fs.existsSync(server)) cp.execFileSync("git", ["clone","-q",st.origin,server]);
+    git("fetch","-q","origin"); git("checkout","-q","-B","merge-work","origin/"+pr.baseRefName);
+    git("merge","--squash","origin/"+pr.headRefName);
+    const body = opt("--body-file") ? fs.readFileSync(opt("--body-file"),"utf8") : "automatic revert";
+    git("commit","-q","-m","Squash #"+args[2]+"\n\n"+body);
+    merged = git("rev-parse","HEAD"); git("push","-q","origin","HEAD:refs/heads/"+pr.baseRefName);
+    st.commitMetadata ??= {}; st.commitMetadata[merged] = {sha:merged,parents:[{sha:git("rev-parse","HEAD^")}],commit:{message:git("show","-s","--format=%B","HEAD")}};
+  }
+  pr.state = "MERGED"; pr.mergeCommit = { oid: merged }; st.merged = true; save();
   if (st.mergeAppliedButFails) fail("HTTP 502 (after the merge)");
   process.exit(0);
 }
 if (args[0] === "api" && args[1] === "-X" && args[2] === "DELETE") { process.exit(st.failDelete ? 1 : 0); }
 if (args[0] === "api" && /\/rules\/branches\//.test(args[1])) { if (st.failRules) fail("HTTP 500"); out(st.rules ?? []); }
 if (args[0] === "api") {
+  if (args[1].includes("actions/runs")) { if(st.failMainCi) fail("CI unavailable"); out(st.mainCi); }
+  const c = /commits\/([0-9a-f]{40})$/.exec(args[1]); if(c) {if(st.commitMetadata?.[c[1]]) out(st.commitMetadata[c[1]]); fail("no commit metadata");}
   const m = /commits\/([0-9a-f]{40})\/check-runs/.exec(args[1]);
-  if (m) { const runs = st.checkRuns[m[1]] ?? []; out({ total_count: st.totalCount ?? runs.length, check_runs: runs }); }
+  if (m) { if(st.moveMainAfterChecks) { require("node:child_process").execFileSync("git", ["--git-dir",st.origin,"update-ref","refs/heads/main",st.moveMainAfterChecks]); delete st.moveMainAfterChecks; save(); } const runs = st.checkRuns[m[1]] ?? []; out({ total_count: st.totalCount ?? runs.length, check_runs: runs }); }
 }
 fail("unexpected gh " + args.join(" "));
 `;
@@ -70,6 +93,8 @@ type State = {
   prs: Record<string, Pr>; checkRuns: Record<string, unknown[]>; failMerge?: string; failEdit?: number[]; ignoreEdit?: number[]; totalCount?: number;
   failDelete?: boolean; rules?: unknown[]; failRules?: boolean; viewFails?: number[]; viewFailsAfterMerge?: boolean; merged?: boolean;
   editAppliedButFails?: number[]; mergeAppliedButFails?: boolean;
+  actualMerge?: boolean; origin?: string; greenRuns?: unknown[]; autoRevertGreen?: boolean; mainCi?: unknown; failMainCi?: boolean;
+  commitMetadata?: Record<string, any>; createAppliedButFails?: boolean; moveMainAfterChecks?: string;
 };
 
 // main's gate: every required check, green.
@@ -106,6 +131,7 @@ function world() {
   writeFileSync(join(bin, "gh"), GH_STUB); chmodSync(join(bin, "gh"), 0o755);
   const ok = (name: string, id = 1) => ({ id, name, status: "completed", conclusion: "success" });
   const state: State = {
+    origin, greenRuns: green(ok, 1),
     prs: { 7: { state: "OPEN", isDraft: false, headRefOid: approved, headRefName: "feature", baseRefName: "main", isCrossRepository: false } },
     checkRuns: { [approved]: green(ok, 1) },
   };
@@ -133,7 +159,7 @@ function world() {
     expect(sh(work, "for-each-ref", "--format=%(refname)", "refs/gate")).toBe("");
     return { status: res.status, line: res.stdout, lines: res.stdout.split("\n").filter(Boolean), stderr: res.stderr, calls };
   };
-  const writes = (calls: string[]) => calls.filter(c => /^pr (merge|edit)|^api -X DELETE/.test(c));
+  const writes = (calls: string[]) => calls.filter(c => /^pr (merge|edit|create)|^api -X DELETE/.test(c));
   return { dir, dev, work, sh, commit, publish, approved, state, ok, approval, approveText, run, writes, setEnv };
 }
 
@@ -367,14 +393,15 @@ describe("gate-merge: a head that moved after the approval", () => {
 });
 
 describe("gate-merge: merge-synced and green", () => {
-  it("behind the base (main moved, not merged in) → BLOCKED", () => {
+  it("behind main with disjoint paths → admitted without sync", () => {
     const w = world();
     w.sh(w.dev, "checkout", "-q", "main");
     w.commit("main moves", { "src/b.ts": "b\n" });
     w.sh(w.dev, "push", "-q", "origin", "main");
     const r = w.run(["7", w.approved, "xmsg-approve-1"]);
-    expect(r.status).toBe(1);
-    expect(r.line).toMatch(/^BLOCKED #7 is behind main/);
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.line).toMatch(/^MERGED /);
+    expect(r.stderr).toContain("merged behind main, disjoint");
   });
 
   it.each([
@@ -574,5 +601,178 @@ describe("gate-merge: stacked PRs (never delete a branch another PR is based on)
     const r = w.run(["7", w.approved, "xmsg-approve-1"]);
     expect(r.status).toBe(0);
     expect(w.writes(r.calls)).toEqual([`pr merge 7 -R ${REPO} --squash --match-head-commit ${w.approved}`]);
+  });
+});
+
+// User-approved 4e928ba6: preserve all original auth/carry/CI/write-contract assertions above.
+describe("gate workflow 1480: reviewer prefixes and disjoint bases", () => {
+  it.each(["agend-reviewer-t1", "claude-fable-t1"])("default prefix admits %s", source_instance => {
+    const w = world();
+    const r = w.run(["--dry-run", "7", w.approved, "xmsg-approve-1"], w.approval(w.approveText(w.approved), { source_instance }));
+    expect(r.lines).toEqual([`WOULD_MERGE ${w.approved}`]);
+  });
+  it.each(["xclaude-fable-t1", "claude-fable", "agend-dev-sol", ""])("non-allowlisted %s refused", source_instance => {
+    const w = world();
+    const r = w.run(["7", w.approved, "xmsg-approve-1"], w.approval(w.approveText(w.approved), { source_instance }));
+    expect(r.status).toBe(1); expect(w.writes(r.calls)).toEqual([]);
+  });
+  it("trims custom comma prefixes and refuses empty effective lists", () => {
+    const w = world();
+    w.setEnv({ GATE_APPROVER: " alpha- , beta- " });
+    const d = w.approval(w.approveText(w.approved), { source_instance: "beta-1" });
+    expect(w.run(["--dry-run", "7", w.approved, "xmsg-approve-1"], d).status).toBe(0);
+    for (const value of ["", " , "]) {
+      w.setEnv({ GATE_APPROVER: value });
+      const r = w.run(["7", w.approved, "xmsg-approve-1"], d);
+      expect(r.status).toBe(1); expect(w.writes(r.calls)).toEqual([]);
+    }
+  });
+  it.each(["src/a.ts", "package.json", "package-lock.json", ".github/workflows/new.yml"])("overlap/global %s still requires sync", file => {
+    const w = world(); w.sh(w.dev, "checkout", "-q", "main");
+    w.commit("main moves", { [file]: "new\n" }); w.sh(w.dev, "push", "-q", "origin", "main");
+    const r = w.run(["7", w.approved, "xmsg-approve-1"]);
+    expect(r.status).toBe(1); expect(r.line).toContain("merge-sync first"); expect(r.line).toContain(file); expect(w.writes(r.calls)).toEqual([]);
+  });
+  it.each(["source", "destination", "unrelated"])("main rename counts both ends: %s", kind => {
+    const w = world(); w.sh(w.dev, "checkout", "-q", "main");
+    if (kind === "source") w.sh(w.dev, "mv", "src/a.ts", "src/moved.ts");
+    else if (kind === "destination") w.sh(w.dev, "mv", "-f", "docs/x.md", "src/a.ts");
+    else w.sh(w.dev, "mv", "docs/x.md", "docs/renamed.md");
+    w.commit("rename", {}); w.sh(w.dev, "push", "-q", "origin", "main");
+    const r = w.run(["--dry-run", "7", w.approved, "xmsg-approve-1"]);
+    expect(r.status).toBe(kind === "unrelated" ? 0 : 1);
+    if (kind !== "unrelated") expect(r.line).toContain("src/a.ts");
+  });
+  it("PR rename destination and deleted source both count", () => {
+    const w = world(); w.sh(w.dev, "mv", "src/a.ts", "src/renamed.ts");
+    const head = w.commit("rename", {}); w.publish(); w.state.prs[7]!.headRefOid = head; w.state.checkRuns[head] = green(w.ok, 1);
+    w.sh(w.dev, "checkout", "-q", "main"); w.commit("destination", { "src/renamed.ts": "unrelated\n" }); w.sh(w.dev, "push", "-q", "origin", "main");
+    const r = w.run(["7", head, "xmsg-approve-1"]);
+    expect(r.status).toBe(1); expect(r.line).toContain("src/renamed.ts");
+  });
+  it("a new overlap appearing during CI reads is refused at the final merge boundary", () => {
+    const w = world(); w.sh(w.dev,"checkout","-q","main");
+    w.state.moveMainAfterChecks = w.commit("late main", {"src/a.ts":"late\n"});
+    w.sh(w.dev,"push","-q","origin","main:refs/heads/future");
+    const r = w.run(["7",w.approved,"xmsg-approve-1"]);
+    expect(r.status).toBe(1); expect(r.line).toContain("base moved or overlaps"); expect(w.writes(r.calls)).toEqual([]);
+  });
+  it("disjoint diff read failure never grants an exemption", () => {
+    const w = world(); w.sh(w.dev, "checkout", "-q", "main"); w.commit("main", { "src/b.ts": "b\n" }); w.sh(w.dev, "push", "-q", "origin", "main");
+    w.setEnv({ GIT_FAIL_ON: "diff --name-only -z" });
+    const r = w.run(["7", w.approved, "xmsg-approve-1"]);
+    expect(r.status).toBe(1); expect(r.line).toContain("cannot read changed paths"); expect(w.writes(r.calls)).toEqual([]);
+  });
+});
+
+function mergedWorld() {
+  const w = world(); w.state.actualMerge = true;
+  const r = w.run(["7", w.approved, "xmsg-approve-1"]);
+  expect(r.status, r.stderr + r.line).toBe(0);
+  expect(r.stderr).not.toContain("receipt could not be verified");
+  const merged = w.state.prs[7]!.mergeCommit!.oid;
+  const ci = (status: string, conclusion: string | null, extras: Record<string, unknown> = {}) => {
+    w.state.mainCi = { total_count: 1, workflow_runs: [{ id: 100, workflow_id: 1, run_attempt: 1, head_sha: merged, head_branch: "main", event: "push", status, conclusion, ...extras }] };
+  };
+  ci("completed", "failure");
+  const post = () => w.run(["--post-merge-check", merged]);
+  return { ...w, merged, ci, post, receipt: join(w.work, ".git", "agend-gate", `${merged}.json`) };
+}
+
+describe("gate workflow 1480: exact main CI and private single-squash revert", () => {
+  it("failed main CI creates one real single-commit revert and waits for exact-head CI, then merges once", () => {
+    const w = mergedWorld();
+    const first = w.post(); expect(first.status, first.stderr + first.line).toBe(0); expect(first.line).toMatch(/^REVERT_PENDING #99 /);
+    expect(first.calls.filter(c => c.startsWith("pr create"))).toHaveLength(1);
+    expect(first.calls.filter(c => c.startsWith("pr merge"))).toEqual([]);
+    const head = w.state.prs[99]!.headRefOid;
+    expect(w.sh(w.work, "rev-list", "--parents", "-n", "1", head)).toBe(`${head} ${w.merged}`);
+    expect(w.sh(w.work, "show", `${head}:src/a.ts`)).toBe("a1");
+    const again = w.post(); expect(again.line).toBe(first.line); expect(w.writes(again.calls)).toEqual([]);
+    w.state.checkRuns[head] = green(w.ok, 20);
+    const done = w.post(); expect(done.status, done.stderr + done.line).toBe(0); expect(done.line).toMatch(/^REVERTED [a-f0-9]{40}/);
+    expect(w.writes(done.calls)).toEqual([`pr merge 99 -R ${REPO} --squash --match-head-commit ${head}`]);
+    expect(w.post().line).toBe(done.line); expect(w.writes(w.post().calls)).toEqual([]);
+  });
+  it.each([
+    ["running", "in_progress", null, {}, "PENDING"],
+    ["success", "completed", "success", {}, "HEALTHY"],
+    ["cancelled", "completed", "cancelled", {}, "BLOCKED"],
+    ["skipped", "completed", "skipped", {}, "BLOCKED"],
+    ["wrong sha", "completed", "failure", { head_sha: "a".repeat(40) }, "BLOCKED"],
+    ["wrong branch", "completed", "failure", { head_branch: "feature" }, "BLOCKED"],
+    ["wrong event", "completed", "failure", { event: "pull_request" }, "BLOCKED"],
+  ] as const)("%s main CI causes no writes", (_name, status, conclusion, extras, prefix) => {
+    const w = mergedWorld(); w.ci(status, conclusion, extras);
+    const r = w.post(); expect(r.line).toMatch(new RegExp(`^${prefix} `)); expect(w.writes(r.calls)).toEqual([]); expect(w.state.prs[99]).toBeUndefined();
+  });
+  it.each(["unreadable", "empty", "partial", "later success"])("%s failure evidence cannot cause revert", kind => {
+    const w = mergedWorld();
+    if (kind === "unreadable") w.state.failMainCi = true;
+    else if (kind === "empty") w.state.mainCi = { total_count: 0, workflow_runs: [] };
+    else if (kind === "partial") w.state.mainCi = { total_count: 101, workflow_runs: [{id:100,workflow_id:1,run_attempt:1,head_sha:w.merged,head_branch:"main",event:"push",status:"completed",conclusion:"failure"}] };
+    else w.state.mainCi = { total_count: 2, workflow_runs: [
+      {id:100,workflow_id:1,run_attempt:1,head_sha:w.merged,head_branch:"main",event:"push",status:"completed",conclusion:"failure"},
+      {id:101,workflow_id:1,run_attempt:1,head_sha:w.merged,head_branch:"main",event:"push",status:"completed",conclusion:"success"},
+    ]};
+    const r = w.post(); expect(w.writes(r.calls)).toEqual([]); expect(r.line).toMatch(/^(BLOCKED|HEALTHY) /);
+  });
+  it("success in one workflow cannot mask an exact failure in another", () => {
+    const w = mergedWorld(); w.state.mainCi = {total_count:2,workflow_runs:[
+      {id:100,workflow_id:1,head_sha:w.merged,head_branch:"main",event:"push",status:"completed",conclusion:"failure"},
+      {id:101,workflow_id:2,head_sha:w.merged,head_branch:"main",event:"push",status:"completed",conclusion:"success"},
+    ]};
+    const r=w.post(); expect(r.line).toMatch(/^REVERT_PENDING/); expect(r.calls.filter(c=>c.startsWith("pr create"))).toHaveLength(1);
+  });
+  it.each(["absent", "wrong repo", "wrong parent", "wrong operation", "not main", "revert kind"])("%s receipt refuses automatic revert", kind => {
+    const w = mergedWorld(); const data = JSON.parse(readFileSync(w.receipt, "utf8"));
+    if (kind === "absent") rmSync(w.receipt);
+    else { if(kind === "wrong repo") data.repo = "other/repo"; if(kind === "wrong parent") data.parent = w.approved; if(kind === "wrong operation") data.op = "a".repeat(48); if(kind === "not main") data.base = "feature"; if(kind === "revert kind") data.kind = "revert"; writeFileSync(w.receipt, JSON.stringify(data)); }
+    const r = w.post(); expect(r.status).toBe(1); expect(w.writes(r.calls)).toEqual([]);
+  });
+  it("a non-gate commit is refused even when its CI fails", () => {
+    const w = mergedWorld();
+    const r = w.run(["--post-merge-check", w.approved]); expect(r.status).toBe(1); expect(w.writes(r.calls)).toEqual([]);
+  });
+  it("a lost PR-create response resumes the same recorded proposal", () => {
+    const w = mergedWorld(); w.state.createAppliedButFails = true;
+    expect(w.post().status).toBe(1); expect(w.state.prs[99]).toBeDefined();
+    w.state.createAppliedButFails = false; const r = w.post();
+    expect(r.line).toMatch(/^REVERT_PENDING #99 /); expect(w.writes(r.calls)).toEqual([]);
+  });
+  it.each(["failed CI", "skipped CI", "missing CodeQL", "changed head", "retargeted", "original now green"])("%s revert cannot be landed", kind => {
+    const w = mergedWorld(); expect(w.post().line).toMatch(/^REVERT_PENDING/); const p = w.state.prs[99]!;
+    w.state.checkRuns[p.headRefOid] = green(w.ok, 20);
+    if(kind === "failed CI" || kind === "skipped CI") w.state.checkRuns[p.headRefOid]!.push({id:99,name:"extra",status:"completed",conclusion:kind === "failed CI" ? "failure" : "skipped"});
+    if(kind === "missing CodeQL") w.state.checkRuns[p.headRefOid] = green(w.ok,20).filter((r:any) => r.name !== "CodeQL");
+    if(kind === "changed head") p.headRefOid = w.approved;
+    if(kind === "retargeted") p.baseRefName = "feature";
+    if(kind === "original now green") w.ci("completed","success");
+    const r = w.post(); expect(w.writes(r.calls)).toEqual([]); expect(r.line).not.toMatch(/^REVERTED/);
+  });
+  it("changed remote revert content cannot acquire the recorded ownership", () => {
+    const w = mergedWorld(); expect(w.post().line).toMatch(/^REVERT_PENDING/);
+    const p = w.state.prs[99]!; w.state.checkRuns[p.headRefOid] = green(w.ok,20);
+    w.sh(w.dev,"fetch","-q","origin"); w.sh(w.dev,"checkout","-q","-B","edited","origin/"+p.headRefName);
+    w.commit("manual changes", {"src/b.ts":"not a revert\n"}); w.sh(w.dev,"push","-q","origin",`HEAD:refs/heads/${p.headRefName}`);
+    const r = w.post(); expect(r.status).toBe(1); expect(r.line).toContain("revert branch changed"); expect(w.writes(r.calls)).toEqual([]);
+  });
+  it("unreadable revert rules and checks never authorize a merge", () => {
+    const w = mergedWorld(); expect(w.post().line).toMatch(/^REVERT_PENDING/); w.state.failRules = true;
+    const r = w.post(); expect(r.status).toBe(1); expect(w.writes(r.calls)).toEqual([]);
+  });
+  it("a public-readable receipt is not operator authority", () => {
+    const w = mergedWorld(); chmodSync(w.receipt,0o644);
+    const r = w.post(); expect(r.status).toBe(1); expect(w.writes(r.calls)).toEqual([]);
+  });
+  it("an existing claim blocks a concurrent invocation", () => {
+    const w = mergedWorld(); mkdirSync(join(dirname(w.receipt), `lock-${w.merged}`), {mode:0o700});
+    const r = w.post(); expect(r.status).toBe(1); expect(w.writes(r.calls)).toEqual([]);
+  });
+  it("main conflicts prevent a revert branch from being pushed", () => {
+    const w = mergedWorld(); w.sh(w.dev, "fetch", "-q", "origin"); w.sh(w.dev, "checkout", "-q", "-B", "main", "origin/main");
+    w.commit("later same-path change", {"src/a.ts":"later\n"}); w.sh(w.dev,"push","-q","origin","main");
+    const r = w.post(); expect(r.status).toBe(1); expect(w.writes(r.calls)).toEqual([]);
+    expect(w.sh(w.dev,"ls-remote","--heads","origin",`refs/heads/gate-revert/${w.merged}`)).toBe("");
   });
 });
