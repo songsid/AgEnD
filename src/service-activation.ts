@@ -11,6 +11,7 @@
  */
 import type { CommandResult } from "./update-install.js";
 import { systemdWords } from "./service-installer.js";
+import { readSystemdRuntime, systemdRunning, systemdStopped, type SystemdRuntime } from "./systemd-runtime.js";
 
 /** What a manager would execute: the program, its full argv (argv[0] included), and the environment it sets. */
 export interface ActivationTuple {
@@ -266,8 +267,8 @@ export interface ActivationDeps extends TupleDeps {
   writeFile(path: string, content: string): void;
   /** `agend install --no-activate` through the verified binary. */
   refresh(): CommandResult;
-  /** `agend restart` through the verified binary (systemd, detached). Returns its exit status. */
-  restart(): void;
+  /** `agend restart` through the verified binary. An unfinished restart is not success. */
+  restart(): "restarted" | "pending" | "failed";
   log(message: string): void;
   /**
    * launchd planned activation (#1450 C6 path 2): the proven new plist is ALREADY on disk, so the job to roll back to
@@ -280,6 +281,8 @@ export interface ActivationDeps extends TupleDeps {
    * files inside the package. Returns one line for the outcome.
    */
   restorePackage?(): string;
+  /** Checked package recovery, available only while the updater owns its install-prefix lock. */
+  systemdRecovery?: { restorePackage(): { ok: boolean; message: string } };
   /** Blocking pause between launchd polls (default: Atomics.wait); tests pass a no-op. */
   sleep?(ms: number): void;
   /** A monotonic clock in ms for poll deadlines (default: performance.now). */
@@ -293,7 +296,64 @@ export const LAUNCHD_SPAWNING = ["spawn scheduled", "xpcproxy"];
 
 export type ActivationOutcome =
   | { ok: true; via: "restart" | "launchd-activation" }
-  | { ok: false; message: string; stopped: boolean };
+  | { ok: false; message: string; stopped: boolean; pending?: false }
+  | { ok: false; message: string; stopped: false; pending: true };
+
+const restartPending = (): ActivationOutcome => ({ ok: false, pending: true, stopped: false,
+  message: "  Restart is still pending. Repair copies were kept; no rollback was attempted." });
+
+// Both snapshots are fully read systemd environments. Unlike a plist's declared subset, additions also change them.
+const sameLoadedJob = (a: ActivationTuple, b: ActivationTuple): boolean => sameJob(a, b) && sameJob(b, a);
+
+/** A failed restart is not proof of absence. Recover only a settled service still owned by this transition. */
+function recoverSystemd(
+  manager: Extract<ServiceManager, { kind: "systemd" }>, deps: ActivationDeps,
+  preimage: string | null, before: LoadedUnit | null, runtimeBefore: SystemdRuntime | null,
+  refreshed: string | null, activated: LoadedUnit,
+): ActivationOutcome {
+  const scope = manager.user ? ["--user"] : [];
+  let packageRestored = false;
+  const failed = (why: string): ActivationOutcome => ({ ok: false, stopped: false,
+    message: `  ✗ Fleet restart failed. ${why}. ${packageRestored ? "The previous package was restored, but service recovery is incomplete." : "Repair copies were kept; no automatic rollback was completed."} Inspect systemctl${manager.user ? " --user" : ""} status ${manager.unit} before retrying.` });
+  const path = manager.unitPath;
+  if (!path || preimage === null || refreshed === null || !before || !deps.systemdRecovery ||
+      before.needDaemonReload || (!systemdRunning(runtimeBefore) && !systemdStopped(runtimeBefore))) return failed("The previous loaded service or package recovery authority is unavailable");
+  const oldArgv = systemdWords(/^ExecStart=(.*)$/m.exec(preimage)?.[1] ?? "");
+  if (!sameArgs(before.tuple.argv, oldArgv)) return failed("The previous loaded service was not its unit file");
+  const completed = (r: CommandResult) => r.status === 0 && r.signal === null;
+  // Re-read definition, runtime and disk after every potentially blocking manager/package operation. In particular,
+  // package restoration can remove the new Node, so subsequent comparisons use the captured raw tuple, not realpaths.
+  const currentStopped = (bytes: string, want: LoadedUnit): boolean => {
+    const loaded = readLoadedUnit(deps.run, manager.user, manager.unit);
+    const runtime = readSystemdRuntime(deps.run, manager.user, manager.unit);
+    return !!loaded.ok && !loaded.unit.needDaemonReload && sameLoadedJob(loaded.unit.tuple, want.tuple) &&
+      systemdStopped(runtime) && deps.readFile(path) === bytes;
+  };
+  try {
+    if (!currentStopped(refreshed, activated)) return failed("The refreshed service is running, pending, changed or unreadable");
+    // Cancel restart jobs before replacing any package file; successful exit alone is insufficient.
+    if (!completed(deps.run("systemctl", [...scope, "stop", manager.unit])) || !currentStopped(refreshed, activated)) return failed("A settled stop of the refreshed service could not be proven");
+    const back = deps.systemdRecovery.restorePackage();
+    packageRestored = back.ok;
+    if (!back.ok) return failed(back.message);
+    if (!currentStopped(refreshed, activated)) return failed("Service ownership changed during package restoration");
+    deps.writeFile(path, preimage);
+    if (!completed(deps.run("systemctl", [...scope, "daemon-reload"]))) return failed("The previous unit could not be reloaded");
+    if (!currentStopped(preimage, before)) return failed("The previous loaded unit or settled stop could not be proven");
+    if (systemdStopped(runtimeBefore)) return { ok: false, stopped: true,
+      message: "  ✗ Fleet restart failed. The previous package and loaded unit were restored; the previously stopped service was left stopped." };
+    if (!deps.isExecutable(before.tuple.program)) return failed("The previous service program is unavailable");
+    if (!currentStopped(preimage, before)) return failed("Service ownership changed before the recovery start");
+    // The start is the last effect: the old package, exact loaded unit, and stopped runtime were all proven above.
+    if (!completed(deps.run("systemctl", [...scope, "start", manager.unit]))) return failed("Starting the previous service failed");
+    const loadedBack = readLoadedUnit(deps.run, manager.user, manager.unit);
+    const runningBack = readSystemdRuntime(deps.run, manager.user, manager.unit);
+    if (!loadedBack.ok || loadedBack.unit.needDaemonReload || !sameLoadedJob(loadedBack.unit.tuple, before.tuple) ||
+        !systemdRunning(runningBack) || deps.readFile(path) !== preimage) return failed("The previous running service could not be confirmed");
+    return { ok: false, stopped: false,
+      message: "  ✗ Fleet restart failed. The previous package and loaded unit were restored; the previous service is running. The update did not succeed." };
+  } catch (error) { return failed(`Recovery failed: ${error instanceof Error ? error.message : String(error)}`); }
+}
 
 /**
  * Refresh, prove, activate. Nothing is stopped before the effective definition is proven, except where the manager's
@@ -304,13 +364,18 @@ export function activateService(manager: ServiceManager, verified: VerifiedTarge
   if (manager.kind === "detached") {
     const refreshed = deps.refresh();
     if (refreshed.status !== 0) deps.log("  ⚠ Service file refresh reported an error (no service installed; continuing)");
-    deps.restart();
-    return { ok: true, via: "restart" };
+    const restart = deps.restart();
+    if (restart === "pending") return restartPending();
+    return restart === "restarted" ? { ok: true, via: "restart" } : { ok: false, stopped: false,
+      message: "  ✗ Fleet restart failed. Repair copies were kept; detached process ownership is not proven, so no automatic rollback was attempted." };
   }
 
   if (manager.kind === "systemd") {
     const scope = manager.user ? ["--user"] : [];
     const preimage = manager.unitPath ? deps.readFile(manager.unitPath) : null;
+    const beforeRead = preimage !== null && deps.systemdRecovery ? readLoadedUnit(deps.run, manager.user, manager.unit) : null;
+    const before = beforeRead?.ok ? beforeRead.unit : null;
+    const runtimeBefore = before ? readSystemdRuntime(deps.run, manager.user, manager.unit) : null;
     // C6 step 5, a failure before the restart: the unit preimage goes back and is reloaded, and the LOADED ExecStart
     // must be the preimage's again; then the package preimage. The old fleet was never stopped.
     const fail = (why: string): ActivationOutcome => {
@@ -328,6 +393,7 @@ export function activateService(manager: ServiceManager, verified: VerifiedTarge
       return { ok: false, stopped: false, message: `  ✗ ${why}. Not restarting the fleet.${restored.length ? ` ${restored.join("; ")}.` : ""}` };
     };
     const refreshed = deps.refresh();
+    const refreshedBytes = manager.unitPath ? deps.readFile(manager.unitPath) : null;
     if (refreshed.status !== 0) deps.log(`  ⚠ Service file refresh failed: ${(refreshed.stderr || refreshed.stdout).trim()}`);
     const reload = deps.run("systemctl", [...scope, "daemon-reload"]);
     if (reload.status !== 0) return fail(`systemctl${manager.user ? " --user" : ""} daemon-reload failed, so systemd still runs the old definition`);
@@ -337,8 +403,10 @@ export function activateService(manager: ServiceManager, verified: VerifiedTarge
     if (loaded.needDaemonReload) return fail(`systemd still needs a daemon-reload for ${manager.unit} (the loaded definition is not the file)`);
     const match = tupleStartsVerified(loaded.tuple, verified, SYSTEMD_DEFAULT_PATH, deps);
     if (!match.ok) return fail(`systemd's loaded ${manager.unit} does not start the verified install: ${match.reason}`);
-    deps.restart();
-    return { ok: true, via: "restart" };
+    const restart = deps.restart();
+    if (restart === "pending") return restartPending();
+    if (restart === "restarted") return { ok: true, via: "restart" };
+    return recoverSystemd(manager, deps, preimage, before, runtimeBefore, refreshedBytes, loaded);
   }
 
   // launchd: the reload is the activation (#1449 review r4).

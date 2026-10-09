@@ -432,6 +432,11 @@ The same migration also adds the #1113 settings to an older unit. `CoredumpFilte
   - An older definition that leaves Node to `#!/usr/bin/env node` and the service's PATH is refused this way. Run
     `agend install` to rewrite it.
   - `agend restart --force` is for operators who have checked the service themselves. `agend update` never uses it.
+  - With a system-source runtime, a changed nvm/Homebrew installation can leave the service's PATH selecting the old
+    Node or no Node. Restart still refuses. In the shell selecting the intended Node, run `agend install --no-activate`,
+    `systemctl --user daemon-reload`, then `agend restart` for a user unit. For a system unit, its owner must update
+    `Environment=PATH` and run `systemctl daemon-reload` first; `agend install` writes only a user service. On macOS,
+    `agend install --no-activate` followed by `agend restart` uses the planned launchd activation.
 - **macOS:** `agend install` writes `~/Library/LaunchAgents/com.agend.fleet.plist` and loads it into `gui/<uid>`.
   That is the domain of your login session, where LaunchAgents are loaded at login.
   - For launchd, loading a plist is starting the job. So `agend install --no-activate` only writes and proves the new
@@ -441,6 +446,18 @@ The same migration also adds the #1113 settings to an older unit. `CoredumpFilte
   - A Mac reached only over SSH, with nobody logged in, has no `gui/<uid>` domain (`launchctl` reports error 125).
     There a job can only be loaded into `user/<uid>`, with `LimitLoadToSessionType=Background`. `agend install` does
     not write that; such a job is yours to manage.
+
+**Update activation outcomes (#1490).** A verified package is not a running fleet. A confirmed restart succeeds;
+an unfinished restart returns exit 75 (pending), keeps the update marker and all repair copies, and does not restore
+or remove packages. A failed restart returns exit 1. For systemd, the updater can restore its package and unit preimages
+only after checking the same loaded target, unchanged unit bytes, no pending job, and zero main/control PIDs, then
+confirming a stop. It reloads and checks the old definition before starting a previously running service; a previously
+stopped service stays stopped. Even successful recovery reports that the update failed. Changed or unreadable ownership,
+missing preimages, detached owners, custom untracked stop modes and incomplete recovery require operator inspection; they never count as rollback
+success. Inspect the selected unit with `systemctl [--user] status <unit>` before retrying. These checks do not make
+external service/package edits atomic; keep other installers and service operators out of an update's transition.
+Recovery restores the previous executable's policies, without reverting the data directory. Review the
+[downgrade compatibility limits](downgrade-compatibility.md) when the preimage is from an older release.
 
 ## Environment variables
 

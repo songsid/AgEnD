@@ -258,8 +258,13 @@ refresh (sol; Prism v2-4).
    4. then restart.
    - A failure before the restart: put the unit preimage back, `daemon-reload`, check the loaded `ExecStart` equals
      the preimage's, and restore the package. The old fleet was never stopped.
-   - A failure after the restart is the #1449 outcome (pending or failed). The preimages are kept for
-     `agend runtime repair`, and the result is not called "restored".
+   - After the restart, pending is exit 75 and keeps all preimages; it never authorizes rollback. #1490 adds conditional
+     recovery for a failed, authoritatively stopped systemd service: unchanged unit bytes and the same loaded tuple,
+     no job and zero main/control PIDs, tracked notify/simple/exec + mixed/control-group/SendSIGKILL semantics, a confirmed stop, checked package restoration under the install-prefix lock,
+     then restore/reload/prove the old unit before starting it if it was previously running. Proofs are repeated after
+     blocking operations. Changed or unreadable state refuses further effects and reports incomplete recovery. Even a
+     confirmed recovered old service returns exit 1 for the failed update. Detached ownership is not proven here;
+     detached failures keep preimages for operator repair. External package/service writers are not atomically fenced.
 6. **launchd: reload IS activation (Prism v2-5).**
    - `bootout` stops the job, and `bootstrap` of a `RunAtLoad`/`KeepAlive` plist starts it. So every proof (steps
      1–4) is done before the first disruptive command, and the activation is single: `bootout` + `bootstrap` of the
