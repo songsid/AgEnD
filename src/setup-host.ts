@@ -49,7 +49,7 @@ import {
   SetupCredentials,
   SETUP_COOKIE_NAME,
 } from "./setup-auth.js";
-import { SETUP_CODE_PAGE_HTML, SETUP_FORM_HTML } from "./setup-form.js";
+import { SETUP_CODE_PAGE_HTML, SETUP_FORM_HTML, setupContentSecurityPolicy, setupPage } from "./setup-form.js";
 import { ManagedTunnel } from "./tunnel/manager.js";
 import { leasePath } from "./tunnel/lease.js";
 import { CloudflaredProvider } from "./tunnel/cloudflared.js";
@@ -451,6 +451,10 @@ export class SetupHost {
     // cache in front of this — which is what a tunnel edge is — must never keep
     // a copy of a page or an answer belonging to one setup session.
     res.setHeader("Cache-Control", "no-store");
+    // #1490: no response of this host may be framed or load anything; the HTML pages below get their own nonce.
+    res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Content-Security-Policy", "default-src 'none'; base-uri 'none'; frame-ancestors 'none'");
     const url = new URL(req.url ?? "/", `http://127.0.0.1:${this.boundPort}`);
 
     // Everything below the sid, and nothing else. Checked before the idle timer
@@ -476,14 +480,16 @@ export class SetupHost {
       // prompt is not use of the page, and treating it as such would let
       // anyone holding the link hold the window open indefinitely.
       if (signedIn) this.touch();
+      const nonce = randomBytes(16).toString("base64");
       res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.setHeader("Content-Security-Policy", setupContentSecurityPolicy(nonce));
       res.writeHead(200);
       // The wizard itself is only served to a session that has the cookie; an
       // unauthenticated visitor gets the code prompt and nothing about this
       // machine.
-      res.end(signedIn
+      res.end(setupPage(signedIn
         ? SETUP_FORM_HTML
-        : SETUP_CODE_PAGE_HTML.replace("__AGEND_SETUP_MARKER__", this.credentials.readinessMarker));
+        : SETUP_CODE_PAGE_HTML.replace("__AGEND_SETUP_MARKER__", this.credentials.readinessMarker), nonce));
       return;
     }
     if (req.method === "POST" && rest === "/open") {
