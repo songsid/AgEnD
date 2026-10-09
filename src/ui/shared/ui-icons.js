@@ -49,6 +49,8 @@ const P = {
   key: () => html`<circle cx="7.5" cy="15.5" r="4.5"/><path d="M10.7 12.3L21 2M17 6l3 3M14 9l2 2"/>`,
   pause: () => html`<path d="M8 5v14M16 5v14"/>`,
   download: () => html`<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>`,
+  org: () => html`<rect x="9" y="2" width="6" height="5" rx="1"/><rect x="2" y="17" width="6" height="5" rx="1"/><rect x="16" y="17" width="6" height="5" rx="1"/><path d="M12 7v5M5 17v-5h14v5"/>`,
+  external: () => html`<path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>`,
 };
 
 /** <${Icon} name="menu" />; `size` 16 / 18 / 20 / 24. */

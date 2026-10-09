@@ -6,7 +6,7 @@
  * wrapper around this test's own Node.
  */
 import { spawn, spawnSync } from "node:child_process";
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createRequire } from "node:module";
@@ -58,9 +58,9 @@ describe("runtime-platform: engines and host support", () => {
 });
 
 /** A fixture @songsid/agend package with this repo's launcher/, a stand-in CLI, and optionally a pinned runtime. */
-function fixture(opts: { pin?: string | null; runtime?: "ok" | "wrong-version" | "none"; ancestorRuntime?: boolean; sqlite?: "real" | "main-only" | "broken"; npmLayout?: boolean } = {}) {
+function fixture(opts: { pin?: string | null; runtime?: "ok" | "wrong-version" | "none"; ancestorRuntime?: boolean; sqlite?: "real" | "main-only" | "broken"; npmLayout?: boolean; rootPrefix?: string } = {}) {
   // A space in every fixture path: the bins and the launcher must quote all of it.
-  const root = mkdtempSync(join(tmpdir(), "agend ln-"));
+  const root = mkdtempSync(join(tmpdir(), opts.rootPrefix ?? "agend ln-"));
   roots.push(root);
   const pkg = opts.ancestorRuntime ? join(root, "node_modules", "@songsid", "agend")
     : opts.npmLayout ? join(root, "pre fix", "lib", "node_modules", "@songsid", "agend") : join(root, "pkg");
@@ -438,6 +438,73 @@ describe("the sh bins: AgEnD starts with no Node on PATH", () => {
    * THE RECEIPT CONTRACT, both sides (#1460 r2): for each state, the sh bin admits the candidate (it RUNS — its marker
    * appears, with no node on PATH) exactly when the JS selection does, and both give the expected answer.
    */
+  /** toolsOnly, with some tools replaced by liars: each prints the given value — or, for null, runs the real tool — then exits 17. */
+  const liars = (lies: Record<string, string | null>) => {
+    const dir = mkdtempSync(join(tmpdir(), "agend liars-"));
+    roots.push(dir);
+    for (const name of readdirSync(toolsOnly)) symlinkSync(realpathSync(join(toolsOnly, name)), join(dir, name));
+    for (const [name, out] of Object.entries(lies)) {
+      const real = realpathSync(join(toolsOnly, name));
+      rmSync(join(dir, name));
+      writeFileSync(join(dir, name), out === null ? `#!/bin/sh\n'${real}' "$@"\nexit 17\n` : `#!/bin/sh\nprintf '%s\\n' '${out}'\nexit 17\n`);
+      chmodSync(join(dir, name), 0o755);
+    }
+    return dir;
+  };
+  describe("a measurement that does not complete is no measurement (#1460 r4)", () => {
+    const keyLine = (f: ReturnType<typeof fixture>, name: string) => readFileSync(join(f.pkg, ".agend-runtime.key"), "utf8").match(new RegExp(`^${name} (.*)$`, "m"))![1]!;
+    it.skipIf(!ON_FIXTURE_HOST).each([
+      ["wc prints the receipted size, then fails (the candidate was resized, mtime restored)", "wc", "size", (f: ReturnType<typeof fixture>, node: string) => { const st = statSync(node); writeFileSync(node, readFileSync(node, "utf8") + "# grown\n"); utimesSync(node, st.atime, st.mtime); void f; }],
+      ["stat prints the receipted mtime, then fails (the candidate was touched)", "stat", "mtime", (_f: ReturnType<typeof fixture>, node: string) => { const t = new Date(Date.now() + 60_000); utimesSync(node, t, t); }],
+      ["cksum prints the true sums, then fails", "cksum", null, () => {}],
+      ["cksum fails only on the receipt (after printing its true sum)", "cksum", "receipt-only", () => {}],
+      ["getconf prints the host's glibc, then fails", "getconf", null, () => {}],
+      ["uname prints the host, then fails", "uname", null, () => {}],
+    ] as const)("%s: the candidate never runs", (_n, tool, line, change) => {
+      const f = fixture({ runtime: "ok", npmLayout: true });
+      const node = join(f.runtimeHome, "bin", "node");
+      const mark = join(f.root, "candidate-ran");
+      writeFileSync(node, `#!/bin/sh\necho ran >> '${mark}'\nexec '${process.execPath}' "$@"\n`);
+      expect(postinstall(f).status).toBe(0);
+      rmSync(mark, { force: true });
+      const lie = line === null || line === "receipt-only" ? null : keyLine(f, line);
+      if (line === "receipt-only") {
+        const dir = liars({});
+        const real = realpathSync(join(toolsOnly, "cksum"));
+        const which = (t: string) => spawnSync("sh", ["-c", `command -v ${t}`], { encoding: "utf8" }).stdout.trim();
+        rmSync(join(dir, "cksum"));
+        writeFileSync(join(dir, "cksum"), `#!/bin/sh\nt=$('${which("mktemp")}')\n'${which("cat")}' > "$t"\n'${real}' < "$t"\nif '${which("grep")}' -q '"receipt": 2' "$t"; then rc=17; else rc=0; fi\n'${which("rm")}' -f "$t"\nexit $rc\n`);
+        chmodSync(join(dir, "cksum"), 0o755);
+        bin(f, "agend", dir);
+        expect(existsSync(mark)).toBe(false);
+        return;
+      }
+      (change as (f: ReturnType<typeof fixture>, node: string) => void)(f, node);
+      bin(f, "agend", liars({ [tool]: lie }));
+      expect(existsSync(mark)).toBe(false);
+    });
+  });
+
+  it.skipIf(!ON_FIXTURE_HOST)("the key is compared as bytes: an install path with U+FFFD whose key bytes became FF is refused by both", () => {
+    const f = fixture({ runtime: "ok", npmLayout: true, rootPrefix: "agend \uFFFD ln-" });
+    const node = join(f.runtimeHome, "bin", "node");
+    const mark = join(f.root, "candidate-ran");
+    writeFileSync(node, `#!/bin/sh\necho ran >> '${mark}'\nexec '${process.execPath}' "$@"\n`);
+    expect(postinstall(f).status).toBe(0);
+    rmSync(mark, { force: true });
+    const keyFile = join(f.pkg, ".agend-runtime.key");
+    const bytes = readFileSync(keyFile);
+    const fffd = Buffer.from("\uFFFD", "utf8");
+    const at = bytes.indexOf(fffd);
+    expect(at).toBeGreaterThan(0);
+    writeFileSync(keyFile, Buffer.concat([bytes.subarray(0, at), Buffer.from([0xff]), bytes.subarray(at + fffd.length)]));
+    expect(readFileSync(keyFile, "utf8")).toBe(bytes.toString("utf8"));   // the same TEXT once decoded
+    const js = choose(f, { host: HOST });
+    expect(js.ok === true && js.source === "runtime").toBe(false);
+    bin(f, "agend", toolsOnly);
+    expect(existsSync(mark)).toBe(false);
+  });
+
   describe("the sh bin and the JS selection agree, state by state", () => {
     const receiptFile = (f: ReturnType<typeof fixture>) => join(f.pkg, ".agend-runtime.json");
     const edit = (file: string, fn: (text: string) => string) => writeFileSync(file, fn(readFileSync(file, "utf8")));

@@ -10,7 +10,7 @@ var fs = require("fs");
 
 var SYSTEMCTL_FLAGS = ["--user", "--system", "--no-pager", "--no-legend", "--no-ask-password", "--quiet", "-q", "--value", "--all", "-a", "--full", "-l", "--plain"];
 var SYSTEMCTL_VALUED = ["-p", "--property", "-t", "--type", "--state", "-o", "--output", "-n", "--lines"];
-var SYSTEMCTL_READS = ["is-active", "is-enabled", "is-failed", "show", "status", "cat", "list-units", "list-unit-files", "list-dependencies", "show-environment", "daemon-reload", "reset-failed", "--version"];
+var SYSTEMCTL_READS = ["is-active", "is-enabled", "is-failed", "show", "status", "cat", "list-units", "list-unit-files", "list-dependencies", "show-environment", "daemon-reload", "reset-failed"];
 var LAUNCHCTL_READS = ["print", "print-disabled", "getenv", "list", "managername", "manageruid", "managerpid", "version", "help"];
 
 /** The records of a stub log: [{ name, args }]; null when the log is not well-formed (ambiguity: refused). */
@@ -35,25 +35,36 @@ function parseLog(buf) {
   return out;
 }
 
-/** Why this call is not plainly read-only — or null. */
+/** Why this call is not plainly read-only — or null. The WHOLE argv is judged: options before and after the verb. */
 function refusal(rec) {
   if (rec.name === "sudo") return "sudo was called";
-  var valued = rec.name === "systemctl" ? SYSTEMCTL_VALUED : [];
-  var flags = rec.name === "systemctl" ? SYSTEMCTL_FLAGS : [];
-  var reads = rec.name === "systemctl" ? SYSTEMCTL_READS : rec.name === "launchctl" ? LAUNCHCTL_READS : null;
+  var systemctl = rec.name === "systemctl";
+  var reads = systemctl ? SYSTEMCTL_READS : rec.name === "launchctl" ? LAUNCHCTL_READS : null;
   if (!reads) return "an unknown stubbed program " + rec.name;
+  var flags = systemctl ? SYSTEMCTL_FLAGS : [];
+  var valued = systemctl ? SYSTEMCTL_VALUED : [];
+  var verb = null, version = false;
   for (var i = 0; i < rec.args.length; i++) {
     var a = rec.args[i];
-    if (a === "--version" && rec.name === "systemctl") return null;
-    if (a.charAt(0) === "-") {
+    if (systemctl && a === "--version") { version = true; continue; }
+    // launchctl's options come after its verb (`kickstart -k`); before a verb, or for systemctl anywhere, every option
+    // must be known — and a valued one must have its value.
+    if (a.charAt(0) === "-" && (systemctl || verb === null)) {
       if (flags.indexOf(a) >= 0) continue;
-      if (valued.indexOf(a) >= 0) { i++; continue; }
-      if (/^--[a-z-]+=/.test(a) && valued.indexOf(a.slice(0, a.indexOf("="))) >= 0) continue;
+      if (valued.indexOf(a) >= 0) { if (i + 1 >= rec.args.length) return "the option " + a + " without its value"; i++; continue; }
+      var eq = a.indexOf("=");
+      if (/^--[a-z-]+=/.test(a) && valued.indexOf(a.slice(0, eq)) >= 0 && eq + 1 < a.length) continue;
       return "an option it cannot judge (" + a + ")";
     }
-    return reads.indexOf(a) >= 0 ? null : "the verb " + a;
+    if (verb === null) {
+      if (reads.indexOf(a) < 0) return "the verb " + a;
+      verb = a;
+      continue;
+    }
+    if (!systemctl && a.charAt(0) === "-") return "an option it cannot judge (" + a + ")";   // a read verb takes none here
   }
-  return "no verb";
+  if (version) return verb === null ? null : "--version with the verb " + verb;
+  return verb === null ? "no verb" : null;
 }
 
 module.exports = { parseLog: parseLog, refusal: refusal };
