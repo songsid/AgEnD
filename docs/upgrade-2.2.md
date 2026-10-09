@@ -31,12 +31,18 @@ This page is what to do, in order. For the full list of changes, see the [CHANGE
    agend fleet stop    # if you start it yourself with `agend fleet start`
    ```
    Either command can return before the fleet has exited: a busy fleet (Kiro instances finishing their turns) can take minutes. Its return alone does not mean "stopped".
-3. **Wait for that PID to be gone**, using the number from step 1 (here `12345`):
+3. **Check that this PID is gone**, using the number from step 1 (here `12345`):
    ```sh
-   while ps -p 12345 >/dev/null; do sleep 2; done; echo "12345 has exited"
+   ps -p 12345 -o pid=; echo "exit: $?"
    ```
-   `ps -p` succeeds while that process exists. Go on only after the line `12345 has exited` is printed.
-4. **A service must stay stopped** until step 2.4. On Linux, `systemctl --user is-active com.agend.fleet` must print `inactive` (or `failed`). On macOS, `launchctl print gui/$(id -u)/com.agend.fleet` must show no `pid =` line. If it is running again, stop it again and repeat step 3.
+   - A line with `12345`: the fleet is still stopping. Wait a few seconds and run it again.
+   - **No line, and `exit: 1`:** the process is gone. Only this result lets you go on.
+   - An error message, or any other exit status: **do not take it as exited.** Stop here and find out why.
+4. **A service must stay stopped** until step 2.4:
+   - **Linux:** `systemctl --user is-active com.agend.fleet` must print `inactive` or `failed`.
+   - **macOS:** `launchctl print gui/$(id -u)/com.agend.fleet` must either say it could not find the service, or show no `pid =` line.
+   - If the command itself fails (for example it cannot reach the service manager), do not take that as stopped; stop here and find out why.
+   - If the service is running again, it has a new PID. Go back to step 1 and do steps 1 to 4 again with that new PID.
 
 **2.2 Back up** the data directory (fleet.yaml, .env and the SQLite stores). If you use Kiro, also copy each workspace's `.kiro/` directory.
 ```sh

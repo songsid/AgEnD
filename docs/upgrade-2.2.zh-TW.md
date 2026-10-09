@@ -31,12 +31,18 @@
    agend fleet stop    # 自己用 agend fleet start 啟動的
    ```
    這兩個指令都可能在 fleet 還沒結束時就返回：忙碌中的 fleet（Kiro instance 正在把手上的 turn 做完）可能要好幾分鐘。指令返回本身，不代表已經停了。
-3. **等到那個 PID 消失**，用第 1 步記下的數字（這裡以 `12345` 為例）：
+3. **確認這個 PID 已經不在了**，用第 1 步記下的數字（這裡以 `12345` 為例）：
    ```sh
-   while ps -p 12345 >/dev/null; do sleep 2; done; echo "12345 has exited"
+   ps -p 12345 -o pid=; echo "exit: $?"
    ```
-   只要那個行程還在，`ps -p` 就會成功。要等到印出 `12345 has exited` 那一行，才繼續往下做。
-4. **服務在 2.4 之前必須保持停止。** Linux 上，`systemctl --user is-active com.agend.fleet` 要印出 `inactive`（或 `failed`）；macOS 上，`launchctl print gui/$(id -u)/com.agend.fleet` 的輸出裡不能有 `pid =` 那一行。如果它又跑起來了，就再停一次，並重做第 3 步。
+   - 印出一行 `12345`：fleet 還在停止中。等幾秒再執行一次。
+   - **沒有任何一行，而且是 `exit: 1`：** 行程已經不在了。只有這個結果才能繼續往下。
+   - 出現錯誤訊息，或是其他的 exit 狀態：**不能當作已經結束。** 先停在這裡，查清楚原因。
+4. **服務在 2.4 之前必須保持停止：**
+   - **Linux：** `systemctl --user is-active com.agend.fleet` 要印出 `inactive` 或 `failed`。
+   - **macOS：** `launchctl print gui/$(id -u)/com.agend.fleet` 要嘛說找不到這個服務，要嘛輸出裡沒有 `pid =` 那一行。
+   - 如果指令本身失敗（例如連不到服務管理程式），不能當作已經停止；先停在這裡，查清楚原因。
+   - 如果服務又跑起來了，它會有新的 PID。請回到第 1 步，用那個新的 PID 把第 1 到第 4 步重做一遍。
 
 **2.2 備份**資料目錄（fleet.yaml、.env 和 SQLite 資料都在裡面）。有用 Kiro 的話，也把每個工作目錄的 `.kiro/` 各複製一份。
 ```sh
