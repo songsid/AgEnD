@@ -385,8 +385,25 @@ describe("item 1: an nvm install runs every step inside nvm's Node 22 — nvm.sh
     // must find it in place. The caller retires it once the fleet runs the new install.
     expect(calls.some(line => /uninstall/.test(line))).toBe(false);
     retireSystemCopy(w.runner);
-    expect(w.callLog().at(-1)).toBe("sudo -n npm uninstall -g @songsid/agend");
+    const retireCall = w.callLog().at(-1) ?? "";
+    // sudo must use the absolute npm path (resolved by "command -v npm"), not bare "npm"
+    expect(retireCall).toMatch(/^sudo -n \/.*npm uninstall -g @songsid\/agend$/);
+    expect(retireCall).not.toContain("sudo -n npm "); // no bare npm in sudo argv
     expect(existsSync(join(w.root, "pwned")), "the path was data, not shell").toBe(false);
+  });
+
+  it("retireSystemCopy passes absolute npm path matching runner PATH resolution (#1490 P3)", () => {
+    // Reverse mutation: passing bare "npm" instead of the resolved absolute path
+    // makes this test fail because the resolved npm path starts with "/".
+    const w = world();
+    retireSystemCopy(w.runner);
+    const sudoCall = w.callLog().find(line => line.startsWith("sudo ")) ?? "";
+    const parts = sudoCall.split(" ");
+    const nIdx = parts.indexOf("-n");
+    const npmArg = nIdx >= 0 ? parts[nIdx + 1] : "";
+    // Must be absolute path to the same npm stub the runner uses on PATH
+    expect(npmArg).toMatch(/^\//);
+    expect(npmArg).toBe(join(w.tools, "npm"));
   });
 
   // #1472 review: one `nvm use 22` selection, frozen — locking, installing and verifying all happen in that prefix.

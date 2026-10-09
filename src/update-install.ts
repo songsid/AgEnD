@@ -306,5 +306,14 @@ export function activationSettled(
  */
 export function retireSystemCopy(runner: CommandRunner): void {
   runner.log("  Note: removing old system install (may require sudo)...");
-  runner.run("sudo", ["-n", "npm", "uninstall", "-g", "@songsid/agend"], { inherit: true, timeoutMs: 10_000 });
+  // Resolve npm's absolute path using the same PATH the runner operates under,
+  // so sudo -n sees the same npm binary that performed this install rather than
+  // whatever sudo's secure_path happens to contain (which may differ or be absent).
+  const npmPathResult = runner.run("sh", ["-c", "command -v npm"], { timeoutMs: 5_000 });
+  const npmPath = npmPathResult.stdout?.trim() || npmPathResult.status === 0 && "";
+  if (!npmPath || npmPathResult.status !== 0 || !npmPath.startsWith("/")) {
+    runner.log(`  ⚠️  Could not resolve npm absolute path (got: ${JSON.stringify(npmPath)}); skipping old-copy removal. You may remove it manually: sudo npm uninstall -g @songsid/agend`);
+    return;
+  }
+  runner.run("sudo", ["-n", npmPath, "uninstall", "-g", "@songsid/agend"], { inherit: true, timeoutMs: 10_000 });
 }
