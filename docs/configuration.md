@@ -395,7 +395,7 @@ Located at `~/.agend/classicBot.yaml`. Manages ClassicBot channels (auto-created
 | `allowed_guilds` | string[] | `[]` | Discord server IDs granted new ClassicBot starts; empty/unset requests approval |
 | `allowed_groups` | string[] | `[]` | Telegram group IDs granted access; empty/unset requests approval |
 | `allowed_users` | string[] | `[]` | Telegram private user IDs granted new starts; empty/unset requests approval |
-| `admin_users` | string[] | `[]` | Classic admin user IDs. Command gates differ by platform; see the [permissions matrix](permissions.md). `/raw` is not a supported command. |
+| `admin_users` | string[] | `[]` | Classic admin user IDs. Command gates differ by platform; see the [command surface matrix](command-surface.md). Classic Telegram `/raw` is currently blocked; hidden Fleet `/raw` requires the owning bot's F. |
 | `reply_completion_guard` | boolean | inherited | Per-channel → Classic defaults → fleet defaults → `true`; requires the backend capability described above. |
 
 New starts: ClassicBot admins (`admin_users`) may start directly. Other callers need an explicit guild/private-user grant; unlisted callers request General approval through **Allow / Allow+admin / Ignore** buttons. Telegram private approvals add the user to `allowed_users`. Telegram group starts still require a ClassicBot admin; Allow grants only the group, while Allow+admin also promotes the requester. Existing registered channels keep working, and Discord DMs remain unsupported. Approval does not start an agent: retry `/start` (groups: `/start@OurBot`).

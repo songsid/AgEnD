@@ -431,7 +431,7 @@ channels:
 | `defaults.allowed_guilds` | string[] | 獲准新啟動 ClassicBot 的 Discord 伺服器 ID（空白／省略會申請核准） |
 | `defaults.allowed_groups` | string[] | 獲准存取的 Telegram 群組 ID（空白／省略會申請核准） |
 | `defaults.allowed_users` | string[] | 獲准新啟動的 Telegram 私訊使用者 ID（空白／省略會申請核准） |
-| `defaults.admin_users` | string[] | Classic 管理者 ID；平台間的指令 gate 不同，見[權限矩陣](permissions.md)。`/raw` 不是支援的指令 |
+| `defaults.admin_users` | string[] | Classic 管理者 ID；平台間的指令 gate 不同，見[指令介面矩陣](command-surface.zh-TW.md)。Classic Telegram `/raw` 目前被擋住；Fleet 隱藏 `/raw` 須有 owning bot 的 F |
 | `defaults.reply_completion_guard` | boolean | 個別 channel → Classic defaults → fleet defaults → `true`；仍需上述 backend capability |
 | `channels.<key>.channelId` | string | 真實 channel／chat ID；未填時使用 YAML key |
 | `channels.<key>.name` | string | 顯示名稱；未填時使用 channel ID |
