@@ -264,16 +264,27 @@ describe("#1374 and leaks", () => {
     expect(p.root.querySelector(".list-head span").textContent).toBe("1 connection");
   });
 
-  it("alpha.2 sweep: every agent row breaks before its tags in the same place, so the chips wrap alike on a phone", async () => {
-    await mount("agents"); await settle(6);
-    const rows = [...p.root.querySelectorAll(".s-row")].filter(r => r.querySelector(".s-meta"));
-    expect(rows.length).toBeGreaterThan(1);
+  const breaksBeforeTags = (rows: any[]) => {
     for (const r of rows) {
       const kids = [...r.querySelector(".s-meta").parentNode.children];
       const at = kids.indexOf(r.querySelector(".s-meta"));
       expect(kids[at + 1].className, "the break follows the model").toBe("s-br");
       expect(kids[at + 2].className, "…and the effort chip follows the break").toBe("tag");
     }
+  };
+  it("alpha.2 sweep: every agent row breaks before its tags in the same place, so the chips wrap alike on a phone", async () => {
+    await mount("agents"); await settle(6);
+    const rows = [...p.root.querySelectorAll(".s-row")].filter(r => r.querySelector(".s-meta"));
+    expect(rows.length).toBeGreaterThan(1);
+    breaksBeforeTags(rows);
+  });
+  it("alpha.2 sweep: …and so does every ClassicBot room row", async () => {
+    routes = [(r) => (r.method === "GET" && r.url === "/api/settings/classic"
+      ? { body: { defaults: {}, channels: { "discord:1": { name: "lobby", instanceName: "classic-lobby" }, "discord:2": { name: "ops", instanceName: "classic-ops" } } } } : undefined)];
+    await mount("classic"); await settle(6);
+    const rows = [...p.root.querySelectorAll(".s-row")].filter(r => r.querySelector(".s-meta"));
+    expect(rows.map(r => r.querySelector(".s-name").textContent).sort(), "the two room rows").toEqual(["lobby", "ops"]);
+    breaksBeforeTags(rows);
   });
 
   it("alpha.2 sweep: a fleet without provider secrets (the schema says so) is not asked for them — no 404 on every load", async () => {

@@ -607,7 +607,7 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
 .se-default { opacity: 0.7; }
 /* #1423: requests waiting for a fleet admin, in any panel */
 .pending-stack { position: fixed; right: var(--s-4); top: calc(var(--header-h) + var(--s-2)); z-index: 40; display: flex; flex-direction: column; gap: var(--s-2); width: min(360px, calc(100vw - 32px)); }
-/* In Settings the cards sit in the column, under the Apply row — every width (alpha.2 sweep). */
+/* In Settings the cards sit in the column, right under the operation — every width (alpha.2 sweep). */
 .pending-stack.inline, .shell:has(.s-pending) .pending-stack.inline { position: static; width: auto; margin-bottom: var(--s-4); }
 .pending-card { background: var(--bg); border: 1px solid var(--border-strong); border-radius: var(--r-md); box-shadow: var(--shadow-2); padding: var(--s-3) var(--s-4); display: flex; flex-direction: column; gap: var(--s-1); font-size: var(--fs-sm); }
 .pending-card.applied { border-color: var(--ok); }

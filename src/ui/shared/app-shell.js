@@ -246,8 +246,8 @@ const mmss = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${Ma
 /**
  * #1423: Settings writes an admin has to confirm, from whichever panel made them (settings-confirm.js publishes them to
  * appStore.pendingChanges). What it asks, how to confirm it, the countdown, Withdraw — in any panel: a card in the
- * corner, except in Settings itself, which shows the same cards in its column under the Apply row (`inline`) so they
- * never cover it (alpha.2 sweep).
+ * corner, except in Settings itself, which shows the same cards in its column, right under the operation (`inline`),
+ * so they never cover it (alpha.2 sweep).
  */
 export function PendingChanges({ inline = false } = {}) {
   const { pendingChanges } = useStore(appStore);
