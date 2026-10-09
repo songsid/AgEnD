@@ -6,7 +6,7 @@
 // Everything recurring is a passive read (#1374) taken through the navigation's lease: the pane every 800 ms and the
 // roster every 5 s while the panel is mounted and the tab is visible, usage every 60 s while its dialog is open. They
 // stop when the panel goes.
-import { html, useEffect, useLayoutEffect, useRef, useState } from "./app-html.js";
+import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from "./app-html.js";
 import { t } from "./app-i18n.js";
 import { appStore, createStore, useStore } from "./app-store.js";
 import { useLease } from "./app-ctx.js";
@@ -275,6 +275,30 @@ function ViewRoster() {
 
 // ── The panel ──
 
+/**
+ * One stream of reads under a lease (the pane, the roster, usage): one at a time, and only the newest may land. A tick
+ * while a read is on its way is skipped; a forced read (Refresh), or one started after the last has hung STUCK_MS,
+ * supersedes it — and a superseded read's answer is dropped at every step: its response, its body, its commit
+ * (#1448 review: an interval alone starts overlapping reads, and lease.current() only tells navigations apart).
+ */
+const STUCK_MS = 10_000;
+const clock = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
+export function readStream(lease) {
+  let gen = 0, busy = false, since = 0;
+  return {
+    /** A token for a new read, or 0 when this one should not start. */
+    begin(force = false) {
+      const at = clock();
+      if (busy && !force && at - since < STUCK_MS) return 0;
+      busy = true; since = at;
+      return ++gen;
+    },
+    /** May this read still land? */
+    live: (token) => token === gen && lease.current(),
+    end(token) { if (token === gen) busy = false; },
+  };
+}
+
 const DENSITY = { fit: 1, comfortable: 1.25, compact: 0.8 };
 const DENSITY_ORDER = ["fit", "comfortable", "compact"];
 const MIN_PX = 12, MAX_PX = 22;
@@ -283,7 +307,11 @@ export function ViewPanel({ route, navKey }) {
   const lease = useLease(navKey);
   const v = useStore(viewStore);
   const { viewOnly } = useStore(appStore);
-  const [dialog, setDialog] = useState(null);            // "edit" | "usage" | "help" | null
+  // { kind: "edit" | "usage" | "help", key }: a dialog belongs to the navigation that opened it. The profile editor's
+  // draft names one agent; on another navigation it is gone, never retargeted (#1448 review).
+  const [dialog, setDialogState] = useState(null);
+  const setDialog = (kind) => setDialogState(kind ? { kind, key: navKey } : null);
+  const open = dialog && dialog.key === navKey ? dialog.kind : null;
   const [usageAvailable, setUsageAvailable] = useState(false);
   const [density, setDensity] = useState(DENSITY[stored("agend_view_density")] ? stored("agend_view_density") : "fit");
   const name = route.instance;
@@ -297,16 +325,20 @@ export function ViewPanel({ route, navKey }) {
 
   // The roster: now, then every 5 s while this panel is mounted and the tab is visible (a passive read).
   useEffect(() => {
+    const reads = readStream(lease);
     const load = async () => {
       if (typeof document !== "undefined" && document.hidden) return;
+      const token = reads.begin();
+      if (!token) return;
       try {
         const r = await lease.fetch("/api/profiles");
-        if (!lease.current()) return;
+        if (!reads.live(token)) return;
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const roster = await r.json();
-        if (!lease.current()) return;
+        if (!reads.live(token)) return;
         viewStore.set({ loaded: true, error: null, roster: Array.isArray(roster) ? roster : [] });
-      } catch (e) { if (lease.current()) viewStore.set({ loaded: true, error: e && e.message ? e.message : "error" }); }
+      } catch (e) { if (reads.live(token)) viewStore.set({ loaded: true, error: e && e.message ? e.message : "error" }); }
+      finally { reads.end(token); }
     };
     load();
     lease.interval(load, 5000);
@@ -359,9 +391,9 @@ export function ViewPanel({ route, navKey }) {
     <${PanelHeader} title=${it ? (it.display_name || it.instance_name) : tn("title")}
       sub=${it ? html`<span class="status"><span class=${`dot ${it.status === "running" ? "ok" : it.status === "crashed" ? "bad" : "off"}`} aria-hidden="true"></span>${tn(STATUS_KEYS[it.status] || "statusUnknown")}</span>` : null}>${actions}</${PanelHeader}>
     ${body}
-    ${dialog === "edit" && it ? html`<${EditProfile} it=${it} onClose=${() => setDialog(null)} />` : null}
-    ${dialog === "usage" ? html`<${UsageDialog} onClose=${() => setDialog(null)} />` : null}
-    ${dialog === "help" ? html`<${HelpDialog} onClose=${() => setDialog(null)} />` : null}
+    ${open === "edit" && it ? html`<${EditProfile} key=${navKey} it=${it} onClose=${() => setDialog(null)} />` : null}
+    ${open === "usage" ? html`<${UsageDialog} onClose=${() => setDialog(null)} />` : null}
+    ${open === "help" ? html`<${HelpDialog} onClose=${() => setDialog(null)} />` : null}
   </div>`;
 }
 
@@ -391,17 +423,20 @@ function Terminal({ name, lease, density }) {
   };
   useEffect(() => { grid.current.key = ""; fit(); }, [density]);
   useEffect(() => {
+    const reads = readStream(lease);
     const refresh = async () => {
       if (document.hidden) return;
       // A selection inside the pane is being copied: keep this frame until it is released.
       const sel = typeof window.getSelection === "function" ? window.getSelection() : null;
       if (sel && sel.toString().length > 0 && sel.anchorNode && pre.current && pre.current.contains(sel.anchorNode)) return;
+      const token = reads.begin();
+      if (!token) return;
       try {
         const r = await lease.fetch(`/api/pane/${encodeURIComponent(name)}`);
-        if (!lease.current()) return;
+        if (!reads.live(token)) return;
         if (!r.ok) { setProblem(r.status === 404 ? tn("paneUnavailable") : tn("paneFailed", { name, status: r.status })); return; }
         const text = await r.text();
-        if (!lease.current() || !pre.current) return;
+        if (!reads.live(token) || !pre.current) return;
         const c = Number(r.headers.get("X-Pane-Cols")), rw = Number(r.headers.get("X-Pane-Rows"));
         if (c >= 1 && rw >= 1 && (c !== grid.current.cols || rw !== grid.current.rows)) { grid.current.cols = c; grid.current.rows = rw; grid.current.key = ""; }
         setProblem(null);
@@ -409,6 +444,7 @@ function Terminal({ name, lease, density }) {
         paintAnsi(pre.current);
         fit();
       } catch { /* a transient error keeps the last frame */ }
+      finally { reads.end(token); }
     };
     refresh();
     lease.interval(refresh, 800);
@@ -476,13 +512,16 @@ function EditProfile({ it, onClose }) {
   async function save() {
     if (busy) return;
     setBusy(true); setMsg(null);
+    // The whole transaction is decided now, before the first await: its target, the draft and the picked file. Every
+    // later step checks this dialog's lease first — a navigation ends it, and its second write never goes out.
     const name = encodeURIComponent(it.instance_name);
+    const draft = { display_name: f.display, role: f.role, description: f.desc };
+    const picked = file.current && file.current.files && file.current.files[0];
     try {
-      const r = await fetch(`/api/profile/${name}`, { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ display_name: f.display, role: f.role, description: f.desc }) });
+      const r = await fetch(`/api/profile/${name}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(draft) });
+      if (!lease.current()) return;
       if (r.status === 401) throw new Error(tn("signInToSave"));
       if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(tn("saveFailed", { error: e.error || `HTTP ${r.status}` })); }
-      const picked = file.current && file.current.files && file.current.files[0];
       if (picked) {
         const ar = await fetch(`/api/avatar/${name}`, { method: "POST", headers: { "Content-Type": picked.type }, body: picked });
         if (!ar.ok) { const e = await ar.json().catch(() => ({})); throw new Error(tn("avatarFailed", { error: e.error || ar.status })); }
@@ -563,13 +602,18 @@ function UsageDialog({ onClose }) {
   const lease = useLease("usage-dialog");
   const [data, setData] = useState(undefined);       // undefined: loading; null: failed
   const [order, setOrder] = useState(() => { try { const a = JSON.parse(stored(USAGE_ORDER_KEY) || "[]"); return Array.isArray(a) ? a.filter((x) => typeof x === "string") : []; } catch { return []; } });
+  const reads = useMemo(() => readStream(lease), [lease]);
+  // Refresh (force) supersedes a read on its way; the minute's tick waits for it.
   const load = async (force) => {
+    const token = reads.begin(force);
+    if (!token) return;
     try {
       const r = await lease.fetch(`/api/ai-usage${force ? "?force=1" : ""}`);
-      if (!lease.current()) return;
+      if (!reads.live(token)) return;
       const d = await r.json();
-      if (lease.current()) setData(d);
-    } catch { if (lease.current()) setData(null); }
+      if (reads.live(token)) setData(d);
+    } catch { if (reads.live(token)) setData(null); }
+    finally { reads.end(token); }
   };
   useEffect(() => { load(false); lease.interval(() => load(false), 60_000); }, [lease]);
   const key = (p) => String(p.id || p.name || "");

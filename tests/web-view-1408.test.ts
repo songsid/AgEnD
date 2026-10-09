@@ -19,6 +19,7 @@ import { FleetManager } from "../src/fleet-manager.js";
 import { settle, fire } from "./helpers/mini-dom.js";
 import { page, h, type AppPage } from "./helpers/app-harness.js";
 import { isPassiveWebRead } from "../src/web-auth.js";
+import { setUsageFetcherForTests, type UsagePayload } from "../src/usage/usage-api.js";
 
 const tempDirs: string[] = [];
 afterEach(() => { for (const d of tempDirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
@@ -125,6 +126,13 @@ function staticImports(src: string): string[] {
 
 describe("module admission for a View-only page (#1408 §4)", () => {
   it("everything it loads comes from /assets/ with no session — the entry's closure and View's — and none of it is under /ui/", async () => {
+    // /api/ai-usage below must never reach a provider: no host credential read, no vendor call, no auth refresh. The
+    // fetcher seam answers instead, and any outbound fetch from this process fails the test.
+    const usage = vi.fn(async (): Promise<UsagePayload> => ({ providers: [], fetchedAt: "2026-10-09T00:00:00Z" }));
+    setUsageFetcherForTests(usage);
+    const realFetch = globalThis.fetch;
+    const outbound: string[] = [];
+    globalThis.fetch = (async (u: unknown) => { outbound.push(String(u)); throw new Error("no network in this test"); }) as typeof fetch;
     const h = await listener();
     try {
       const page = await raw(h.port, "GET", "/view", { accept: "text/html" });
@@ -148,7 +156,9 @@ describe("module admission for a View-only page (#1408 §4)", () => {
       // The View-only page's own reads, anonymous: open. The session-only ones: not.
       for (const p of ["/api/profiles", "/api/ai-usage"]) expect((await raw(h.port, "GET", p)).status, p).not.toBe(401);
       for (const p of ["/ui/js/panel-chat.js", "/ui/events", "/ui/poll", "/ui/instances", "/auth/sessions"]) expect((await raw(h.port, "GET", p)).status, p).toBe(401);
-    } finally { await h.stop(); }
+      expect(usage).toHaveBeenCalledTimes(1);
+      expect(outbound).toEqual([]);
+    } finally { await h.stop(); globalThis.fetch = realFetch; setUsageFetcherForTests(null); }
   }, 30_000);
 });
 
@@ -305,6 +315,187 @@ describe("the View panel's work belongs to its lease", () => {
       await s.p.unmount();
       s.p.document.activeElement = s.p.document.body;
       expect(key(s.p.document.body).defaultPrevented).toBe(false);
+    } finally { await s.done(); }
+  });
+});
+
+// ── Inside one lease: overlapping reads, and the profile editor's target (#1448 review) ──
+
+describe("within one navigation, an older answer never lands over a newer one; a profile draft keeps its target", () => {
+  const ROSTER_B = [
+    { ...ROSTER[0], display_name: "Alpha", role: "alpha-role", description: "a" },
+    { ...ROSTER[1], display_name: "Beta", role: "beta-role", description: "b" },
+  ];
+  type Responder = (url: string, init: any, n: number) => Promise<any> | any;
+  function deferred<T>() { let resolve!: (v: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }
+  const pane = (text: string) => ({ ok: true, status: 200, headers: { get: (k: string) => (k === "X-Pane-Cols" ? "80" : "24") }, text: async () => text });
+  const json = (body: unknown) => ({ ok: true, status: 200, headers: { get: () => null }, json: async () => body, text: async () => JSON.stringify(body) });
+  async function setup(responders: Record<string, Responder> = {}) {
+    const p: AppPage = page({ url: "http://127.0.0.1:19280/view/alpha" });
+    const calls: { url: string; init: any }[] = [];
+    const counts: Record<string, number> = {};
+    (globalThis as any).ResizeObserver = class { observe() {} disconnect() {} };
+    (globalThis as any).fetch = async (u: string, init: any = {}) => {
+      calls.push({ url: u, init });
+      const kind = u.startsWith("/api/pane/") ? "pane" : u.startsWith("/api/ai-usage") ? "usage" : u === "/api/profiles" ? "profiles"
+        : u.startsWith("/api/profile/") ? "profile" : u.startsWith("/api/avatar/") ? "avatar" : "other";
+      const n = (counts[kind] = (counts[kind] ?? -1) + 1);
+      if (responders[kind]) return responders[kind]!(u, init, n);
+      if (kind === "pane") return pane(`PANE:${decodeURIComponent(u.slice(10))}`);
+      if (kind === "profiles") return json(ROSTER_B);
+      if (kind === "usage") return json({ providers: [], fetchedAt: 1 });
+      return json({ ok: true });
+    };
+    const view = await import("/assets/panel-view.js");
+    view.viewStore.set({ loaded: false, error: null, roster: [], filter: "", current: null });
+    const done = async () => { vi.useRealTimers(); await p.unmount(); p.restore(); delete (globalThis as any).fetch; delete (globalThis as any).ResizeObserver; };
+    const mount = (name: string, key: string) => p.mount(h(view.ViewPanel, { route: { panel: "view", instance: name }, navKey: key }));
+    return { p, calls, view, done, mount };
+  }
+  const pre = (s: { p: AppPage }) => s.p.root.querySelector(".v-pre")?.textContent;
+
+  it("the pane: one read at a time; a newer read that lands is not overwritten by an older one released later", async () => {
+    const held = deferred<any>();
+    const s = await setup({ pane: (_u, _i, n) => (n === 0 ? held.promise : pane(`NEW${n}`)) });
+    try {
+      vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "clearTimeout", "clearInterval", "performance"] });
+      const m = s.mount("alpha", "view:alpha|1|en"); await vi.advanceTimersByTimeAsync(50); await m;
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(s.calls.filter(c => c.url.startsWith("/api/pane/"))).toHaveLength(1);       // the ticks wait for it
+      await vi.advanceTimersByTimeAsync(6_000);                                         // past STUCK_MS: a new read starts
+      await vi.waitFor(() => expect(pre(s)).toMatch(/^NEW/));
+      const shown = pre(s);
+      held.resolve(pane("OLD"));
+      await vi.advanceTimersByTimeAsync(10);
+      expect(pre(s)).not.toBe("OLD");
+      expect(pre(s)!.startsWith("NEW")).toBe(true);
+      expect(shown).toMatch(/^NEW/);
+    } finally { await s.done(); }
+  });
+
+  it("the roster: an older answer released after a newer one does not replace it", async () => {
+    const held = deferred<any>();
+    const fresh = ROSTER_B.map(r => ({ ...r, display_name: `${r.display_name} NEW` }));
+    const s = await setup({ profiles: (_u, _i, n) => (n === 0 ? held.promise : json(fresh)) });
+    try {
+      vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "clearTimeout", "clearInterval", "performance"] });
+      const m = s.mount("alpha", "view:alpha|1|en"); await vi.advanceTimersByTimeAsync(50); await m;
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(s.calls.filter(c => c.url === "/api/profiles")).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(5_100);
+      await vi.waitFor(() => expect(s.view.viewStore.get().roster[0]?.display_name).toBe("Alpha NEW"));
+      held.resolve(json(ROSTER_B.map(r => ({ ...r, display_name: `${r.display_name} OLD` }))));
+      await vi.advanceTimersByTimeAsync(10);
+      expect(s.view.viewStore.get().roster[0]?.display_name).toBe("Alpha NEW");
+    } finally { await s.done(); }
+  });
+
+  it("usage: Refresh supersedes the minute's read on its way; that read's late answer is dropped", async () => {
+    const held = deferred<any>();
+    const provider = (name: string) => ({ providers: [{ id: "p", name, status: "ok", metrics: [] }], fetchedAt: 1 });
+    // 0: the panel's availability check; 1: the dialog's first read; 2: the minute's tick (held); 3: Refresh.
+    const s = await setup({ usage: (_u, _i, n) => (n === 2 ? held.promise : json(provider(n === 3 ? "NEW" : "FIRST"))) });
+    try {
+      vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "clearTimeout", "clearInterval", "performance"] });
+      const m = s.mount("alpha", "view:alpha|1|en"); await vi.advanceTimersByTimeAsync(50); await m;
+      s.p.root.querySelectorAll(".panel-actions .btn").find((b: any) => b.textContent.includes("Usage")).click();
+      await vi.advanceTimersByTimeAsync(10);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(s.calls.filter(c => c.url.startsWith("/api/ai-usage"))).toHaveLength(3);
+      s.p.root.querySelectorAll("dialog .btn").find((b: any) => b.textContent.includes("Refresh")).click();
+      await vi.advanceTimersByTimeAsync(10);
+      const names = () => s.p.root.querySelectorAll(".u-provider strong").map((e: any) => e.textContent);
+      expect(names()).toEqual(["NEW"]);
+      held.resolve(json(provider("OLD")));
+      await vi.advanceTimersByTimeAsync(10);
+      expect(names()).toEqual(["NEW"]);
+    } finally { await s.done(); }
+  });
+
+  const openEditor = async (s: Awaited<ReturnType<typeof setup>>) => {
+    s.p.root.querySelectorAll(".v-card .btn").find((b: any) => b.textContent.includes("Edit")).click();
+    await settle(4);
+    return s.p.root.querySelector("dialog");
+  };
+
+  it("A's open profile editor is gone when the page moves to B; B's editor is B's, and saves to B", async () => {
+    const s = await setup();
+    try {
+      await s.mount("alpha", "view:alpha|1|en"); await settle(6);
+      const dlg = await openEditor(s);
+      expect(dlg).not.toBeNull();
+      const display = dlg.querySelectorAll("input")[0];
+      expect(display.value).toBe("Alpha");
+      await s.mount("beta", "view:beta|2|en"); await settle(6);
+      expect(s.p.root.querySelector("dialog")).toBeNull();
+      const dlgB = await openEditor(s);
+      expect(dlgB.querySelectorAll("input")[0].value).toBe("Beta");
+      dlgB.querySelectorAll(".btn").find((b: any) => b.textContent.includes("Save")).click();
+      await settle(6);
+      const post = s.calls.find(c => c.url.startsWith("/api/profile/"));
+      expect(post?.url).toBe("/api/profile/beta");
+      expect(JSON.parse(post!.init.body)).toMatchObject({ display_name: "Beta", role: "beta-role" });
+    } finally { await s.done(); }
+  });
+
+  for (const [label, moves] of [
+    ["A → B", [["beta", "view:beta|2|en"]]],
+    ["the same agent again (re-navigation)", [["alpha", "view:alpha|2|en"]]],
+    ["A → B → A", [["beta", "view:beta|2|en"], ["alpha", "view:alpha|3|en"]]],
+  ] as const) {
+    it(`a save in flight when the page moves (${label}) never sends its second write`, async () => {
+      const held = deferred<any>();
+      const s = await setup({ profile: () => held.promise });
+      try {
+        await s.mount("alpha", "view:alpha|1|en"); await settle(6);
+        const dlg = await openEditor(s);
+        const fileInput = dlg.querySelectorAll("input").find((i: any) => i.getAttribute("type") === "file");
+        expect(fileInput).toBeDefined();
+        fileInput.files = [{ type: "image/png", name: "alpha.png" }];
+        dlg.querySelectorAll(".btn").find((b: any) => b.textContent.includes("Save")).click();
+        await settle(2);
+        expect(s.calls.filter(c => c.url.startsWith("/api/profile/")).map(c => c.url)).toEqual(["/api/profile/alpha"]);
+        for (const [name, key] of moves) { await s.mount(name, key); await settle(4); }
+        held.resolve(json({ ok: true }));
+        await settle(6);
+        expect(s.calls.filter(c => c.url.startsWith("/api/avatar/"))).toEqual([]);
+      } finally { await s.done(); }
+    });
+  }
+
+  it("the save is decided when Save is pressed: a file swapped while its first write is on its way is not the one sent", async () => {
+    const held = deferred<any>();
+    const s = await setup({ profile: () => held.promise });
+    try {
+      await s.mount("alpha", "view:alpha|1|en"); await settle(6);
+      const dlg = await openEditor(s);
+      const fileInput = dlg.querySelectorAll("input").find((i: any) => i.getAttribute("type") === "file");
+      const picked = { type: "image/png", name: "alpha.png" };
+      fileInput.files = [picked];
+      dlg.querySelectorAll(".btn").find((b: any) => b.textContent.includes("Save")).click();
+      await settle(2);
+      fileInput.files = [{ type: "image/png", name: "other.png" }];
+      held.resolve(json({ ok: true }));
+      await settle(6);
+      const avatar = s.calls.filter(c => c.url.startsWith("/api/avatar/"));
+      expect(avatar.map(c => c.url)).toEqual(["/api/avatar/alpha"]);
+      expect(avatar[0]!.init.body).toBe(picked);
+    } finally { await s.done(); }
+  });
+
+  it("control: a save with no navigation sends both writes, the avatar to the same agent with the picked file", async () => {
+    const s = await setup();
+    try {
+      await s.mount("alpha", "view:alpha|1|en"); await settle(6);
+      const dlg = await openEditor(s);
+      const fileInput = dlg.querySelectorAll("input").find((i: any) => i.getAttribute("type") === "file");
+      const picked = { type: "image/png", name: "alpha.png" };
+      fileInput.files = [picked];
+      dlg.querySelectorAll(".btn").find((b: any) => b.textContent.includes("Save")).click();
+      await settle(6);
+      const avatar = s.calls.filter(c => c.url.startsWith("/api/avatar/"));
+      expect(avatar.map(c => c.url)).toEqual(["/api/avatar/alpha"]);
+      expect(avatar[0]!.init.body).toBe(picked);
     } finally { await s.done(); }
   });
 });
