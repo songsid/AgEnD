@@ -72,6 +72,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
+      # Node 16's npm 8 runs node-gyp for better-sqlite3 even though it ships prebuilds (npm 10 does not); the build is a
+      # no-op when a prebuild exists, but node-gyp 9 needs a Python with distutils (<= 3.11). The runners' Python 3.14
+      # has none; a Mac with the Command Line Tools' python3 does.
+      - if: matrix.node == '16'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
       - name: tmux for the scratch daemon
         run: command -v tmux || { if [ "$(uname)" = Darwin ]; then brew install tmux; else sudo apt-get install -y tmux; fi; }
       - name: Install, select, open the DB, run the daemon — on the bundled Node
@@ -105,5 +112,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
+      # Node 16's npm 8 runs node-gyp for better-sqlite3 even though it ships prebuilds (npm 10 does not); the build is a
+      # no-op when a prebuild exists, but node-gyp 9 needs a Python with distutils (<= 3.11). The runners' Python 3.14
+      # has none; a Mac with the Command Line Tools' python3 does.
+      - if: matrix.node == '16'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
       - name: 2.1.12 → candidate, through the old updater and through plain npm
         run: bash scripts/ci/runtime-acceptance/hop.sh "$RUNNER_TEMP/packages"

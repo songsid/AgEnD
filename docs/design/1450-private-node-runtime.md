@@ -412,6 +412,11 @@ This covers the old 2.1.12 updater's final `agend restart`:
   2. the postinstall's proof of the bundled Node fails: npm rolls the install back and the previous version stays.
   CI covers it with install-run cells on system Node 16 and 18, and hop cells from 2.1.12 on 16 and 18 (on 16, 2.1.12
   itself cannot start, so only the plain-npm leg exists there).
+  npm 8 (Node 16's) and npm 9 run an implicit `node-gyp rebuild` for better-sqlite3 13.0.3 despite its `gypfile: false`
+  (their arborist reads the packument, which lacks the field); npm 10 does not. The build is a no-op with a prebuild
+  (binding.gyp's `prebuild_exists`), but node-gyp 9 still needs Python with distutils (<= 3.11, or setuptools) and
+  make. Without them npm fails the install and rolls back: npm's requirement, not an AgEnD refusal. CI's Node 16
+  cells pin Python 3.11 (the macOS runners' 3.14 has no distutils); this is in the changelog.
 - **Dependency install scripts:** none in the **production closure that a global install actually resolves**. The test
   runs on a real `npm install -g` of the packed candidate into a scratch prefix (`npm query` there), not on the
   repository lockfile; esbuild and fsevents are dev-only. A future native dependency's fallback build would compile

@@ -5,6 +5,7 @@ section: Changed
   - 有自帶 Node 的平台上，系統 Node 的版本永遠不會擋下安裝或更新：Node 20、18、16，只要它的 npm 能跑安裝都可以，AgEnD 不會用它執行。只有兩種情況會拒絕安裝，此時 npm 會保留你原本的版本：
     - 此平台沒有自帶 Node（musl Linux、32 位元、其他作業系統、glibc 低於 2.28、macOS 11 以前），而系統 Node 又低於 AgEnD 的需求（`^22.14.0 || ^23.6.0 || >=24`），裝了也無法啟動；
     - 安裝過程中自帶 Node 沒通過驗證。
+    在 Node 16 上，npm 8 還會替 better-sqlite3 跑 `node-gyp`（已有預建檔時什麼也不編），所以需要 node-gyp 的條件：Python 3（3.11 以下，或裝了 setuptools）與 `make`（macOS 為 Command Line Tools）。缺少時 npm 會中止安裝並保留原本的版本。Node 18 以上不會這樣。
   - 自帶的 Node 缺少、不完整，或驗證後被更動，會直接拒絕並印出修復指令；絕不默默改用別的 Node。
   - 安裝時跳過了自帶 Node（`--omit=optional`、`--ignore-scripts`）時，若系統 Node 符合需求就用它，並明確提示。
   - 可用 `AGEND_NODE=/絕對路徑/node` 指定；該 Node 必須符合需求，否則拒絕執行，不會退回其他 Node。
