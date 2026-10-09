@@ -58,10 +58,21 @@ interface ControlRead {
   timer: ReturnType<typeof setTimeout>;
   resolve: (output: string) => void;
   reject: (error: unknown) => void;
+  /**
+   * Past its deadline (#1490): the caller has been answered (and falls back to a one-shot read), but the command is
+   * still in tmux's queue, so its frame is drained here before the stream can carry another read.
+   */
+  abandoned?: boolean;
 }
 
 const FRAME_OVERHEAD_BYTES = 64 * 1024;
 const RECONNECT_MS = 2_000;
+/**
+ * How long an abandoned read's frame may take to arrive before the attachment is retired (#1490). One slow read used
+ * to retire the whole control client at its 2 s attempt deadline, wiping every pane's observations; a read that is
+ * merely slow under load now costs only its own fallback, and only a stream that stays silent this long is retired.
+ */
+const CONTROL_DRAIN_MS = 10_000;
 
 /**
  * Persistent tmux control mode client that monitors %output events
@@ -94,6 +105,12 @@ export class TmuxControlClient extends EventEmitter implements TmuxReadPort {
   private lostWindows = new Map<string, { lastTryAt: number; token: number; inFlight: boolean }>();
   /** Monotonic time a lost window resolved again: until it has been silent this long, it is not idle. */
   private recoveredAt = new Map<string, number>();
+  /**
+   * Monotonic time each pane's mapping was (re)established (#1490). A pane with no output observed is idle only once
+   * it has been silent this long SINCE ITS OWN MAPPING, not since the reconnect reset: with many windows, or tmux slow
+   * under load, the last windows are re-mapped after the reset's grace is over and would otherwise read idle at once.
+   */
+  private mappedAt = new Map<string, number>();
   /** Monotonic clock for retry spacing and the recovery silence (elapsed budgets, never wall time). */
   private mono = (): number => performance.now();
   private stopped = false;
@@ -204,6 +221,7 @@ export class TmuxControlClient extends EventEmitter implements TmuxReadPort {
       if (win === windowId) {
         this.paneToWindow.delete(pane);
         this.lastOutputAt.delete(pane);
+        this.mappedAt.delete(pane);
         break;
       }
     }
@@ -233,6 +251,7 @@ export class TmuxControlClient extends EventEmitter implements TmuxReadPort {
       this.resolveFailures.delete(windowId);
       if (paneId) {
         this.paneToWindow.set(paneId, windowId);
+        this.mappedAt.set(paneId, this.mono());
         this.logger?.debug({ windowId, paneId }, "Registered window→pane mapping");
       }
     } catch (error) {
@@ -260,6 +279,7 @@ export class TmuxControlClient extends EventEmitter implements TmuxReadPort {
   private resetPaneObservations(): void {
     this.paneToWindow.clear();
     this.lastOutputAt.clear();
+    this.mappedAt.clear();
     // A recovered window's "silent since it came back" is an observation too: kept, it would vouch for whatever pane
     // the window re-resolves to inside the new grace (#1494 review).
     this.recoveredAt.clear();
@@ -323,6 +343,8 @@ export class TmuxControlClient extends EventEmitter implements TmuxReadPort {
       // Back from lost: nothing observed since; idle only after silenceMs of observed silence.
       const recovered = this.recoveredAt.get(windowId);
       if (recovered !== undefined) return this.mono() - recovered >= this.silenceMs;
+      const mapped = this.mappedAt.get(paneId);
+      if (mapped !== undefined && this.mono() - mapped < this.silenceMs) return false;
       return !this.inObservationGrace();
     }
     return Date.now() - last >= this.silenceMs;
@@ -578,17 +600,35 @@ export class TmuxControlClient extends EventEmitter implements TmuxReadPort {
     return new Promise((resolve, reject) => {
       const read: ControlRead = { owner, nonce: `agend-read-${randomUUID()}`, guard: null,
         lines: [], bytes: 0, deadline, resolve, reject,
-        timer: setTimeout(() => this.retire(owner), Math.max(1, Math.ceil(deadline - performance.now()))) };
+        timer: setTimeout(() => this.abandon(read), Math.max(1, Math.ceil(deadline - performance.now()))) };
       this.activeRead = read;
       try {
         const command = args.map(tmuxCommandToken).join(" ");
         const payload = `${command}\ndisplay-message -p ${tmuxCommandToken(read.nonce)}\n`;
-        if (performance.now() >= deadline) { this.retire(owner); return; }
+        if (performance.now() >= deadline) {
+          // Nothing was written: the stream is untouched, so the slot is simply free again.
+          this.activeRead = null;
+          clearTimeout(read.timer);
+          reject(new TmuxReadError("transport", "tmux control read deadline expired before submission"));
+          return;
+        }
         owner.proc.stdin!.write(payload, error => {
           if (error) this.retire(owner);
         });
       } catch { this.retire(owner); }
     });
+  }
+
+  /**
+   * A read past its deadline: answer the caller now (a transport error, so the lane falls back to a one-shot read)
+   * and keep the slot until the read's own frame has been drained, or retire the attachment after CONTROL_DRAIN_MS.
+   */
+  private abandon(read: ControlRead): void {
+    if (this.activeRead !== read || read.abandoned) return;
+    read.abandoned = true;
+    read.reject(new TmuxReadError("transport", "tmux control read slow; answered by a one-shot read"));
+    read.timer = setTimeout(() => { if (this.activeRead === read) this.retire(read.owner); }, CONTROL_DRAIN_MS);
+    read.timer.unref?.();
   }
 
   private parseLine(line: string, owner = this.attachment): void {
@@ -620,7 +660,6 @@ export class TmuxControlClient extends EventEmitter implements TmuxReadPort {
         const length = read.lines.length;
         const trailer = read.lines[length - 3]?.match(/^%begin (\d+ \d+ 1)$/);
         if (trailer && read.lines[length - 2] === read.nonce && line === `%end ${trailer[1]}`) {
-          if (performance.now() >= read.deadline) { this.retire(read.owner); return; }
           let footer = length - 4;
           while (footer >= 0 && read.lines[footer] !== `%end ${read.guard}` && read.lines[footer] !== `%error ${read.guard}`) footer--;
           if (footer < 0) { this.retire(read.owner); return; }
@@ -632,7 +671,11 @@ export class TmuxControlClient extends EventEmitter implements TmuxReadPort {
           // Notifications between the real footer and trailer remain visible;
           // capture body lines never become activity evidence.
           for (const notification of read.lines.slice(footer + 1, length - 3)) this.observeOutput(notification);
-          if (read.lines[footer].startsWith("%error")) read.reject(new TmuxReadError("command", "tmux control read failed"));
+          if (read.abandoned || performance.now() >= read.deadline) {
+            // Drained: the stream is in step again and the next read may use it. Its answer went to the fallback.
+            read.reject(new TmuxReadError("transport", "tmux control read deadline expired"));
+            this.reads.wake();
+          } else if (read.lines[footer].startsWith("%error")) read.reject(new TmuxReadError("command", "tmux control read failed"));
           else read.resolve(output);
         }
         return;
