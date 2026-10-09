@@ -814,6 +814,22 @@ describe("chat store on the live stream (app-stream.js → chat-store.js)", () =
     expect(sse.message, "no stream message was ever delivered").toBeDefined();
   });
 
+  it("#1266: a reply's buttons that ended after the page saw the reply reach a polling page (the public link)", async () => {
+    const h = new WebChatHistory({ boot: "b1" });
+    const ctx = { ...ctxWith(h), getUiStatus: () => ({ instances: [], uptime: 1 }) } as unknown as WebApiContext;
+    const viaHandler = (url: string) => JSON.parse(call(url, ctx).res.body);
+    const { store, stream, sse } = await liveChat(viaHandler);
+    const id = "e".repeat(32);
+    h.record({ instance: "w", sender: "w", role: "agent", text: "Deploy?", ts: "t1", buttons: { id, labels: ["Deploy", "Wait"], state: "open" } });
+    sse.status!({ data: JSON.stringify({ instances: [], uptime: 1 }) });
+    await stream._pollOnce();
+    expect(store.state.msgs.w[0].buttons.state).toBe("open");
+    // Chosen on Discord: only the history changes — the message is not sent again.
+    h.updateButtons("w", { id, labels: ["Deploy", "Wait"], state: "chosen", chosen: 1, by: "alice" });
+    await stream._pollOnce();
+    expect(store.state.msgs.w[0].buttons).toEqual({ id, labels: ["Deploy", "Wait"], state: "chosen", chosen: 1, by: "alice" });
+  });
+
   it("polling uses the stream's cursor, and a message seen on both paths shows once", async () => {
     const h = new WebChatHistory({ boot: "b1" });
     const one = h.record({ instance: "w", sender: "agent", text: "one", ts: "t1" });

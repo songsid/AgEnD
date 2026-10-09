@@ -37,6 +37,7 @@ import type {
   ChannelAdapter,
   ApprovalHandle,
   SendOpts,
+  ReplyButtonsOutcome,
   SentMessage,
   PermissionPrompt,
   Choice,
@@ -651,6 +652,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
             threadId: interaction.guildId ? interaction.channelId : undefined,
             messageId: interaction.message.id,
             userId: interaction.user.id,
+            username: interaction.user.username,
             ack: privateNotice(interaction, this.id),
             ...(interaction.customId.startsWith("dashboard:") ? { respondPrivate: async (text: string, choices?: Choice[]) => {
               const sent = await interaction.followUp({ content: text, flags: MessageFlags.Ephemeral | MessageFlags.SuppressEmbeds, allowedMentions: { parse: [] }, components: choices ? buttonRows(choices) : [] });
@@ -1349,18 +1351,43 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     // first chunk was awaited and later chunks were fire-and-forget queue items,
     // so the reply tool could return success for a silently truncated message.
     let first: Awaited<ReturnType<typeof channel.send>> | undefined;
-    for (const chunk of chunks) {
-      const sent = await channel.send(opts?.disablePreview || opts?.allowedMentions
-        ? { content: chunk, ...(opts?.disablePreview ? { flags: MessageFlags.SuppressEmbeds } : {}), ...(opts?.allowedMentions ? { allowedMentions: opts.allowedMentions } : {}) }
+    let last: Awaited<ReturnType<typeof channel.send>> | undefined;
+    // #1266: a reply's buttons go on the last part (built first: too many buttons is an error before anything is sent).
+    const replyRows = opts?.replyButtons?.length ? buttonRows(opts.replyButtons) : null;
+    for (const [i, chunk] of chunks.entries()) {
+      const components = replyRows && i === chunks.length - 1 ? { components: replyRows } : {};
+      const sent = await channel.send(opts?.disablePreview || opts?.allowedMentions || replyRows
+        ? { content: chunk, ...(opts?.disablePreview ? { flags: MessageFlags.SuppressEmbeds } : {}), ...(opts?.allowedMentions ? { allowedMentions: opts.allowedMentions } : {}), ...components }
         : chunk);
       first ??= sent;
+      last = sent;
     }
 
     return {
       messageId: first!.id,
       chatId,
       threadId: opts?.threadId,
+      ...(replyRows ? { buttonsMessageId: last!.id } : {}),
     };
+  }
+
+  /** #1266: this adapter puts a reply's buttons (message components) on its last message. */
+  get supportsReplyButtons(): boolean { return true; }
+
+  /** #1266: the same buttons, all disabled; the chosen one is marked and names who chose it. */
+  async settleReplyButtons(chatId: string, messageId: string, threadId: string | undefined, labels: readonly string[], outcome: ReplyButtonsOutcome): Promise<void> {
+    const channel = await this._fetchTextChannel(threadId ?? chatId);
+    const msg = await channel.messages.fetch(messageId);
+    const rows: ActionRowBuilder<ButtonBuilder>[] = [];
+    for (let i = 0; i < labels.length; i += BUTTONS_PER_ROW) {
+      rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(labels.slice(i, i + BUTTONS_PER_ROW).map((label, j) => {
+        const chosen = "chosenIndex" in outcome && outcome.chosenIndex === i + j;
+        const text = chosen ? t("reply_buttons.chosen", label, (outcome as { by: string }).by) : label;
+        return new ButtonBuilder().setCustomId(`rb:closed:${i + j}`).setLabel(text.length > 80 ? `${text.slice(0, 79)}…` : text)
+          .setStyle(chosen ? ButtonStyle.Success : ButtonStyle.Secondary).setDisabled(true);
+      })));
+    }
+    await msg.edit({ components: rows });
   }
 
   async sendFile(chatId: string, filePath: string, opts?: SendOpts): Promise<SentMessage> {

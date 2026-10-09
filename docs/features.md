@@ -140,6 +140,26 @@ Agents can send stickers on Discord and Telegram (2.1.12). The tools look the sa
 
 Uploading stickers or creating sticker sets is not supported.
 
+### Reply buttons
+
+An agent can offer choices people click instead of typing (2.2). The same buttons appear in the web chat, on Telegram (an inline keyboard) and on Discord (message components).
+
+- **Sending:** `reply` takes `buttons`: 1–10 items, each `{ label, value? }`.
+  - A label is one line of plain text, at most 80 characters (Discord's limit, the strictest).
+  - `value` (at most 200 characters) is what the agent receives when it differs from the label. It stays in AgEnD and is never sent to a platform.
+  - Buttons need `text` and go on its last message. They cannot be combined with `stickers`; `files` are sent after the text as usual.
+  - An invalid `buttons` is the reply's error, and nothing is sent.
+- **A click** reaches the agent as an ordinary message from the person who clicked: `[button] Deploy`, or `[button] Deploy (value: deploy-prod)` when the value differs. It also shows in the web chat.
+- **One choice per reply.** The first permitted click answers for everyone. The buttons then show the choice and who made it on every surface: on Discord they are disabled with the choice marked, Telegram shows a single "✓ Deploy — alice" button, and the web chat disables them. A later click is told "Already answered."
+- **Who may click:** whoever may message that instance there.
+  - In a fleet topic, the connection's allowed users.
+  - In a ClassicBot room, anyone there.
+  - In the web chat, the signed-in user, or a visitor using the public link (who may send messages too).
+  - A bot's click never counts.
+- **Lifetime:** buttons expire after 24 hours and then say so. They survive an AgEnD restart: each set is a row in `reply-buttons.db`, matched to the exact message it was posted on and answered once, so a click cannot be replayed.
+- **Where buttons cannot be shown,** for example through `agend-agent reply`, the choices are added to the text as a numbered list for people to answer by writing back.
+- **Security:** a platform carries only an unguessable id and the button's index, never a label or value. Labels are always shown as plain text.
+
 ## Tool progress (`tool_progress`)
 
 `tool_progress` adds the agent's tool activity to the progress bubble, as a running list for the turn:
