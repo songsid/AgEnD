@@ -342,6 +342,33 @@ describe("item 1: an nvm install runs every step inside nvm's Node 22 — nvm.sh
     expect(existsSync(join(w.root, "pwned")), "the path was data, not shell").toBe(false);
   });
 
+  // #1472 review: one `nvm use 22` selection, frozen — locking, installing and verifying all happen in that prefix.
+  it("nvm's selection is frozen once: a later `nvm use 22` that would pick another Node 22 is never asked", () => {
+    const w = world();
+    const nvmDir = join(w.root, "nvm");
+    const sel = (v: string) => ({ bin: join(nvmDir, "versions", v, "bin"), prefix: join(nvmDir, "versions", v) });
+    const A = sel("22a"), B = sel("22b");
+    for (const x of [A, B]) {
+      mkdirSync(x.bin, { recursive: true });
+      mkdirSync(join(x.prefix, "lib", "node_modules", "@songsid"), { recursive: true });
+      writeFileSync(join(x.bin, "npm"), w.npmStub(x.prefix));
+      writeFileSync(join(x.bin, "node"), `#!/bin/sh\nexec '${process.execPath}' "$@"\n`);
+      for (const f of ["npm", "node"]) chmodSync(join(x.bin, f), 0o755);
+    }
+    // Each `nvm use 22` after the first selects ANOTHER Node 22 (e.g. one installed meanwhile).
+    writeFileSync(join(nvmDir, "nvm.sh"), `nvm() { case "$1" in install) return 0;; use) c=$(cat '${join(nvmDir, "uses")}' 2>/dev/null || echo 0); c=$((c+1)); echo $c > '${join(nvmDir, "uses")}'; if [ $c -eq 1 ]; then PATH='${A.bin}':"$PATH"; else PATH='${B.bin}':"$PATH"; fi; export PATH;; esac; }\n`);
+    const locked: string[] = [];
+    const outcome = runUpdateInstall({
+      pkg: fixturePackage(w.root, "v220", "2.2.0"), targetVersion: "2.2.0", viaNvm: true, nvmSh: join(nvmDir, "nvm.sh"),
+      lock: prefix => { locked.push(prefix); return { ok: true, token: "f".repeat(32) }; },
+    }, w.runner);
+    expect(outcome).toMatchObject({ ok: true, agendPath: join(A.prefix, "bin", "agend") });
+    expect(locked).toEqual([A.prefix]);
+    expect(existsSync(join(A.prefix, "lib", "node_modules", "@songsid", "agend", "package.json"))).toBe(true);
+    expect(existsSync(join(B.prefix, "lib", "node_modules", "@songsid", "agend"))).toBe(false);
+    expect(readFileSync(join(nvmDir, "uses"), "utf8").trim()).toBe("1");
+  });
+
   it("a failed verification under nvm keeps the old system copy", () => {
     const { w, nvmSh } = nvmWorld();
     expect(runUpdateInstall({ pkg: fixturePackage(w.root, "v220", "2.2.0", "throw-on-open"), targetVersion: "2.2.0", viaNvm: true, nvmSh }, w.runner))

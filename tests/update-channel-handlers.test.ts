@@ -69,11 +69,11 @@ const scratch = () => { const d = mkdtempSync(join(tmpdir(), "agend-update-chann
 afterEach(() => { spawned.length = 0; registry.tags = {}; registry.views = []; registry.prefix = null; installed.version = "2.1.11-beta.2"; for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
 /** A global install the way npm lays it out: the package, and `<prefix>/bin/agend` linking to its bin. */
-function globalInstall(opts: { linkElsewhere?: boolean; name?: string } = {}): string {
+function globalInstall(opts: { linkElsewhere?: boolean; name?: string; manifest?: string } = {}): string {
   const prefix = scratch();
   const pkg = join(prefix, "lib", "node_modules", "@songsid", "agend");
   mkdirSync(join(pkg, "launcher"), { recursive: true });
-  writeFileSync(join(pkg, "package.json"), JSON.stringify({ name: opts.name ?? "@songsid/agend", version: "2.2.0-beta.1", bin: { agend: "./launcher/agend" } }));
+  writeFileSync(join(pkg, "package.json"), opts.manifest ?? JSON.stringify({ name: opts.name ?? "@songsid/agend", version: "2.2.0-beta.1", bin: { agend: "./launcher/agend" } }));
   writeFileSync(join(pkg, "launcher", "agend"), "#!/bin/sh\n");
   mkdirSync(join(prefix, "bin"));
   const checkout = join(prefix, "checkout-agend");
@@ -121,6 +121,10 @@ describe("a chat /update runs the installed `agend update`, by absolute path", (
     ["npm cannot say where AgEnD is installed", () => {}, "npm could not say"],
     ["its bin link leads elsewhere (a checkout)", () => { globalInstall({ linkElsewhere: true }); }, "not the installed package's"],
     ["what npm's root holds there is not @songsid/agend", () => { globalInstall({ name: "@suzuke/agend" }); }, "is not an installed AgEnD package"],
+    // #1472 review: JSON that parses but is no manifest — judged by shape, never dereferenced (no TypeError escapes).
+    ["its package.json is JSON null", () => { globalInstall({ manifest: "null" }); }, "is not an installed AgEnD package"],
+    ["its package.json is an array", () => { globalInstall({ manifest: "[1]" }); }, "is not an installed AgEnD package"],
+    ["its bin is null", () => { globalInstall({ manifest: JSON.stringify({ name: "@songsid/agend", version: "2.2.0", bin: null }) }); }, "is not an installed AgEnD package"],
   ] as const)("refused, nothing dispatched: %s", async (_n, arrange, reason) => {
     arrange();
     const fm = new FleetManager(scratch());
