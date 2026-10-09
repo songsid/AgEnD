@@ -29,8 +29,8 @@ function codexVersion(): string | null {
   } catch { return null; }
 }
 const version = process.env.AGEND_CODEX_E2E === "1" ? codexVersion() : null;
-/** Codex versions this real-CLI test is run against before AgEnD claims support. */
-const SUPPORTED_CODEX = /\b0\.(?:155|156|157|158|159)\.\d+\b/;
+/** Codex versions this real-CLI test is run against before AgEnD claims support (0.161 was never run; 0.160.0 and 0.162.0 verified 2026-10-09). */
+const SUPPORTED_CODEX = /\b0\.(?:155|156|157|158|159|160|162)\.\d+\b/;
 const enabled = !!version && SUPPORTED_CODEX.test(version) && existsSync(AUTH);
 
 const SCHEMA = readFileSync(fileURLToPath(new URL("./fixtures/codex-0157-state5-schema.sql", import.meta.url)), "utf8");
@@ -172,7 +172,7 @@ describe.skipIf(!enabled)("real codex 0.157: an instance in a git worktree resum
 
 /** #1034: exercise the real daemon path, plus the embedded --no-daemon control. */
 // Every SUPPORTED_CODEX version, not 0.157 alone: the fleet runs 0.159 and the
-// daemon path must be proven on what it runs (verified on 0.159.2).
+// daemon path must be proven on what it runs (verified on 0.159.2, 0.160.0, 0.162.0).
 describe.skipIf(!enabled)("real codex: private app-server runtime directories (#1034)", () => {
   const runtimeDirs = ["app-server-daemon", "app-server-control"] as const;
   let runtimeRoot = "";

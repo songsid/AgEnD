@@ -43,25 +43,25 @@ describe("SpawnGate memory resilience", () => {
     held.resolve(); await Promise.all(runs);
   });
 
-  it("macOS (#1256): a critical sample never holds a spawn, and admission does not even read one", async () => {
+  it("macOS (#1256): without a kernel value, low RAM/swap never hold a spawn", async () => {
     const read = vi.fn(() => memory(100, 0));
     const pressure = new MemoryPressure({ platform: "darwin", read });
     const gate = own(new SpawnGate({ storm: new StormWindow(), memoryPressure: pressure, concurrency: () => 2, staggerMs: () => 0 }));
     const held = deferred(); const operation = vi.fn(() => held.promise);
     const a = gate.run(task("a"), operation); const b = gate.run(task("b"), operation);
     expect(operation).toHaveBeenCalledTimes(2);
-    expect(read).not.toHaveBeenCalled();
+    expect(read).toHaveBeenCalled();
     expect((gate as any).pressureHeld).toBe(false);
     expect(vi.getTimerCount()).toBe(0);
-    expect(pressure.sample().level).toBe("critical");   // still sampled, for the log
+    expect(pressure.sample().level).toBe("unknown"); // ratios are not pressure evidence
     held.resolve(); await Promise.all([a, b]);
   });
 
-  it("macOS: the reported Mac's elevated sample (16 GB, 2845 MiB available, swap nearly full) neither limits nor staggers", async () => {
-    const reported: HostMemory = { totalBytes: 16_000 * MiB, availableBytes: 2_845 * MiB, availableKind: "available", swapTotalBytes: 6_000 * MiB, swapFreeBytes: 274 * MiB };
+  it("macOS: the reported Mac's normal kernel sample (16 GB, 2845 MiB available, swap nearly full) neither limits nor staggers", async () => {
+    const reported: HostMemory = { totalBytes: 16_000 * MiB, availableBytes: 2_845 * MiB, availableKind: "available", swapTotalBytes: 6_000 * MiB, swapFreeBytes: 274 * MiB, darwinPressureLevel: 1 };
     const pressure = new MemoryPressure({ platform: "darwin", read: () => reported });
     pressure.sample();
-    expect(pressure.snapshot().level).toBe("elevated");
+    expect(pressure.snapshot().level).toBe("normal");
     const gate = own(new SpawnGate({ storm: new StormWindow(), memoryPressure: pressure, concurrency: () => 3, staggerMs: () => 0 }));
     const held = deferred(); const operation = vi.fn(() => held.promise);
     const runs = [gate.run(task("a"), operation), gate.run(task("b"), operation), gate.run(task("c"), operation)];
