@@ -1,0 +1,15 @@
+{"recorded_at": 1791567473192465, "payload_type": "runtime.command_intake.received"}
+{"recorded_at": 1791567473192468, "payload_type": "runtime.user_intent.accepted"}
+{"recorded_at": 1791567473201186, "payload_type": "runtime.session", "payload": {"kind": "run", "run_id": "24b8f95c-c492-4392-bf87-17d193f8a31c", "event": {"kind": "started", "prompt": "long echo one"}}}
+{"recorded_at": 1791567473205684, "payload_type": "runtime.user_intent.materialized"}
+{"recorded_at": 1791567473347675, "payload_type": "runtime.session", "payload": {"kind": "run", "run_id": "24b8f95c-c492-4392-bf87-17d193f8a31c", "event": {"kind": "model_response_created"}}}
+{"recorded_at": 1791567477514235, "payload_type": "runtime.user_intent.accepted"}
+{"recorded_at": 1791567477541246, "payload_type": "runtime.user_intent.materialized"}
+{"recorded_at": 1791567488364325, "payload_type": "runtime.session", "payload": {"kind": "run", "run_id": "24b8f95c-c492-4392-bf87-17d193f8a31c", "event": {"kind": "model_completed"}}}
+{"recorded_at": 1791567488379770, "payload_type": "runtime.session", "payload": {"kind": "run", "run_id": "24b8f95c-c492-4392-bf87-17d193f8a31c", "event": {"kind": "assistant_message_committed"}}}
+{"recorded_at": 1791567488447354, "payload_type": "runtime.session", "payload": {"kind": "run", "run_id": "24b8f95c-c492-4392-bf87-17d193f8a31c", "event": {"kind": "terminal", "reason": null}}}
+{"recorded_at": 1791567488535386, "payload_type": "runtime.session", "payload": {"kind": "run", "run_id": "01a121be-3b07-7c82-8e31-b5e23376ae5e", "event": {"kind": "started", "prompt": ""}}}
+{"recorded_at": 1791567488725746, "payload_type": "runtime.session", "payload": {"kind": "run", "run_id": "01a121be-3b07-7c82-8e31-b5e23376ae5e", "event": {"kind": "model_response_created"}}}
+{"recorded_at": 1791567503742490, "payload_type": "runtime.session", "payload": {"kind": "run", "run_id": "01a121be-3b07-7c82-8e31-b5e23376ae5e", "event": {"kind": "model_completed"}}}
+{"recorded_at": 1791567503756130, "payload_type": "runtime.session", "payload": {"kind": "run", "run_id": "01a121be-3b07-7c82-8e31-b5e23376ae5e", "event": {"kind": "assistant_message_committed"}}}
+{"recorded_at": 1791567503927178, "payload_type": "runtime.session", "payload": {"kind": "run", "run_id": "01a121be-3b07-7c82-8e31-b5e23376ae5e", "event": {"kind": "terminal", "reason": null}}}

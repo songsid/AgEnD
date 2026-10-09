@@ -180,7 +180,13 @@ A human message has to be answered through the `reply` (or `react`) tool; text t
 - It then asks the agent, once, to send its conclusion with `reply` or `react` — without redoing the work.
 - If a reply was attempted but its result is unknown (it may have been applied and then timed out), it does not retry, so you never get the answer twice; a short notice in the chat says the reply could not be confirmed.
 
-It is on by default (`reply_completion_guard: true`); set `false` per instance, in `defaults`, or per ClassicBot channel to turn it off. Other backends do not have it.
+It is on by default (`reply_completion_guard: true`); set `false` per instance, in `defaults`, or per ClassicBot channel to turn it off.
+
+Which backends have it:
+- **Claude Code** and successful **Kiro** legacy/TUI launches.
+- **Codex**, which additionally needs codex's own session log to show that the turn holding your message ended and that nothing started after it. An interrupted turn (Esc) or one that ended on a provider error is left alone. A turn that cannot be found in the log is left alone too, as before.
+
+Other backends do not have it.
 
 ## Peer-to-peer agent collaboration
 
