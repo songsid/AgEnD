@@ -99,8 +99,9 @@ const FLEET_FIELD_IMPACTS: Readonly<Record<string, ConfigImpact>> = {
   "fleet.channels": "fleet",
   "fleet.channel.access.mode": "fleet",
   "fleet.channel.access.allowed_users": "fleet",
-  // A running adapter keeps the channel config it started with (#1005).
-  "fleet.channel.options.status_emojis": "fleet",
+  // #1056: each stamp resolves the connection's status emojis from the live config (an agent's "avoid these" list
+  // follows at its next start), so this applies now; the rest of a connection still needs the fleet restart.
+  "fleet.channel.options.status_emojis": "now",
   "fleet.spawn_concurrency": "fleet",
   "fleet.spawn_stagger_ms": "fleet",
   "classic.admin_users": "fleet",

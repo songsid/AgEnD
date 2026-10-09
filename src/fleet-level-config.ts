@@ -69,12 +69,30 @@ export const RUNTIME_READ_FLEET_KEYS = [
   "needs_you",
 ] as const;
 
+/**
+ * #1056: inside a connection, `options.status_emojis` is read at the point of use (every stamp resolves it from the
+ * live config, fleet-manager resolveStatusEmojisFor), so a change to it alone is not a pending restart. The rest of
+ * the connection — binding, access, token, other options — is still what createAdapter() took at startup.
+ */
+const RUNTIME_READ_CHANNEL_OPTIONS = ["status_emojis"] as const;
+function withoutRuntimeOptions(channel: unknown): unknown {
+  if (!channel || typeof channel !== "object" || Array.isArray(channel)) return channel;
+  const options = (channel as { options?: unknown }).options;
+  if (!options || typeof options !== "object" || Array.isArray(options)) return channel;
+  const kept = { ...(options as Record<string, unknown>) };
+  for (const key of RUNTIME_READ_CHANNEL_OPTIONS) delete kept[key];
+  const { options: _options, ...rest } = channel as Record<string, unknown>;
+  return Object.keys(kept).length ? { ...rest, options: kept } : rest;
+}
+
 function pick(source: unknown, path: string): unknown {
   let value: unknown = source;
   for (const segment of path.split(".")) {
     if (value === null || typeof value !== "object") return undefined;
     value = (value as Record<string, unknown>)[segment];
   }
+  if (path === "channel") return withoutRuntimeOptions(value);
+  if (path === "channels" && Array.isArray(value)) return value.map(withoutRuntimeOptions);
   return value;
 }
 
