@@ -227,7 +227,7 @@ describe("#1148 clear exclusions and role controls", () => {
 
 it("same-number topics in another world do not replace the selector's source mapping", async () => {
   const r = rig();
-  r.fm.fleetConfig!.instances = { peer: { working_directory: dirs.at(-1)!, topic_id: 10, channel_id: r.b.id }, ...r.fm.fleetConfig!.instances };
+  r.fm.fleetConfig!.instances = { peer: { ...r.fm.fleetConfig!.instances.worker, topic_id: 10, channel_id: r.b.id }, ...r.fm.fleetConfig!.instances };
   r.fm.routing.rebuild(r.fm.fleetConfig!);
   const { apply, click } = seedMenu(r, "model", "worker", "10", "10");
   await click(); await Promise.resolve(); await Promise.resolve();
@@ -247,3 +247,44 @@ for (const state of ["false", "throw", "disconnected", "group move"] as const) {
     expect(r.ipc.send).not.toHaveBeenCalled();
   });
 }
+
+describe("#1148 Discord clear retains guild/channel addressing", () => {
+  for (const source of ["fleet", "Classic"] as const) {
+    for (const outcome of ["live", "revoked"] as const) {
+      it(`${source} ${outcome}: a real slash prompt retains the source channel`, async () => {
+        const r = rig(); const guild = "guild-a"; let user = "admin", channel = "10", classicAdmin = true;
+        (r.a as any).type = "discord";
+        (r.fm.fleetConfig!.channels![0] as any).type = "discord";
+        r.fm.fleetConfig!.channels![0].group_id = guild;
+        if (source === "Classic") {
+          user = "classic-admin"; channel = "classic-room";
+          delete r.fm.fleetConfig!.instances.worker;
+          r.any.classicChannels = {
+            getChannelIdByInstance: () => channel, getAdapterIdByInstance: () => r.a.id,
+            getBackendByInstance: () => "codex",
+            getInstanceByChannel: (id: string, owner: string) => id === channel && owner === r.a.id ? "worker" : undefined,
+            isAdmin: (id: string) => classicAdmin && id === user,
+          };
+        }
+        const respond = vi.fn(async () => undefined);
+        await r.any.handleClearSlash({ command: "clear", channelId: channel, guildId: guild, userId: user, respond }, r.a.id);
+        expect(r.a.notifyAlert).toHaveBeenCalledOnce();
+        expect(r.a.notifyAlert.mock.calls[0][0]).toBe(guild);
+        expect(r.a.notifyAlert.mock.calls[0][2]).toMatchObject({ threadId: channel });
+        const alert = r.a.notifyAlert.mock.calls[0][1] as any;
+        const entered = deferred(); const release = deferred();
+        r.a.editMessageRemoveButtons.mockImplementationOnce(async () => { entered.resolve(); await release.promise; });
+        const running = r.any.handleClearConfirmation({
+          callbackData: alert.choices[0].id, chatId: guild, threadId: channel, messageId: "prompt", userId: user,
+        }, r.a.id, r.a);
+        await entered.promise;
+        if (outcome === "revoked") {
+          if (source === "Classic") classicAdmin = false;
+          else r.fm.fleetConfig!.channels![0].access!.allowed_users = [];
+        }
+        release.resolve(); await running;
+        expect(r.ipc.send).toHaveBeenCalledTimes(outcome === "live" ? 1 : 0);
+      });
+    }
+  }
+});
