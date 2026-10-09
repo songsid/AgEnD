@@ -1,3 +1,4 @@
+import { binaryProbe } from "./binary-probe.js";
 import type { SettingsExecution } from "./settings-transaction.js";
 import { settingsRequestExecution, settingsWrite, isSettingsReplay } from "./settings-request-capability.js";
 import { readBoundedWebBody } from "./web-body.js";
@@ -18,7 +19,6 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { execFileSync } from "node:child_process";
 import type { LifecycleCreateArgs } from "./instance-lifecycle.js";
 import { CreateInstanceArgs, validateArgs } from "./outbound-schemas.js";
 import { readStatuslineModel, resolveInstanceContext } from "./topic-commands.js";
@@ -320,16 +320,18 @@ export function handleWebRequest(
       { name: "grok", binary: "grok" },
       { name: "muse", binary: "muse" },
     ];
-    const backends = BACKENDS.map(b => {
-      let installed = false;
-      let binPath = "";
-      // Timeout matches the other `which` probe (instance-lifecycle): these are
-      // synchronous and run in the fleet process, so a hung lookup on a broken
-      // PATH entry (a dead NFS mount) would block the event loop indefinitely.
-      try { binPath = execFileSync("which", [b.binary], { stdio: "pipe", timeout: 2000 }).toString().trim(); installed = true; } catch { /* not installed */ }
-      return { name: b.name, binary: b.binary, installed, path: binPath, deprecated: b.deprecated ?? false };
-    });
-    json(res, 200, { backends });
+    // #1490: seven sequential 2 s `execFileSync("which")` calls used to block the event loop here. The shared probe
+    // runs `which` as bounded async children and reuses an answer for BINARY_PROBE_TTL_MS. `unknown`: no answer in
+    // time (shown as not installed, as the old timeout was).
+    void Promise.all(BACKENDS.map(async (b) => {
+      const found = await binaryProbe.probe(b.binary);
+      const path = found.known ? found.path : null;
+      return { name: b.name, binary: b.binary, installed: path !== null, path: path ?? "", deprecated: b.deprecated ?? false,
+        ...(found.known ? {} : { unknown: true }) };
+    })).then(
+      (backends) => { if (!res.headersSent) json(res, 200, { backends }); },
+      () => { if (!res.headersSent) json(res, 500, { error: "backend probe failed" }); },
+    );
     return true;
   }
 
