@@ -29,6 +29,6 @@ regexes = [
   # matched only as this exact constant (the rule fires on "KEYS" in the name).
   '''^RELEASE_KEYS_COMMIT = "[0-9a-f]{40}"$''',
   # #1519: the NAME of the env var that holds a bot token (bot_token_env / token_env in fleet.yaml and its fixtures),
-  # never the token — matched only as an UPPER_SNAKE name ending in _TOKEN (no real key has that shape).
-  '''token_env["'\x60]?\s*[:=]\s*["'\x60]?[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*_TOKEN["'\x60;\s]?$''',
+  # never the token — matched only as an UPPER_SNAKE name with at least one underscore (keys such as AWS's have none).
+  '''token_env["'\x60]?\s*[:=]\s*["'\x60]?[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+["'\x60;\s]?$''',
 ]
