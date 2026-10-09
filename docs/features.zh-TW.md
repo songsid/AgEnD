@@ -1043,3 +1043,11 @@ agend update --stable   # 從 @latest 安裝，即使目前裝的是 beta 或 al
 - critical 解除後，啟動速度會在 30 秒內慢慢回升。
 
 `/health` 一定會帶 `hostMemory` 區塊（等級、RAM 和 swap、趨勢）；在 Linux 上，記憶體壓力也會讓它標成 degraded，並發出 fleet 通知，冷卻時間 10 分鐘（升級到 critical 會立刻通知）。在 **macOS** 上，從 #1257 起樣本只寫進日誌：不會放慢或擋下任何東西、不發通知，`/health` 也不回報壓力，因為 macOS 的可用記憶體和 swap 數字，在記憶體充裕的機器上也會觸發警示。詳見英文版 [memory-pressure.md](memory-pressure.md)。
+
+## 「需要你處理」收件匣（#1386 / #1398）
+
+每個世界的 General topic 都有一則持續更新的**「需要你處理」**訊息，彙整所有等待操作者處理的事項——投遞確認、掛起警告、權限請求——橫跨所有 instance。訊息中的每個項目都能一鍵前往對應的地方操作：instance 的獨立 topic 或訊息本身的現有按鈕。唯一新增的互動是對目前沒有按鈕的投遞項目加上**確認（Acknowledge）**功能。同一份清單也會顯示在 `/ui` 網頁儀表板，並在側欄顯示提示標記。任何介面上解決的項目都會在所有介面上消失。設計文件：[docs/design/1386-needs-you-inbox.md](design/1386-needs-you-inbox.md)。
+
+## 網頁應用程式外殼（#1408）
+
+`/ui` 以單一統一的 Preact + htm 應用程式重建（已本地化，無需建置步驟），用一個完整的外殼取代原有的 `/view` 和 `/settings` 頁面。排版和版面設計以 ChatGPT 網頁介面為參考（僅參考設計語言——不使用 OpenAI 的程式碼或素材）。聊天執行緒保持為由 Preact 元件掛載的鍵值 DOM 渲染器。外殼在同一個 URL 下統整了工作階段清單、instance 聊天、設定面板和「需要你處理」視圖。設計文件：[docs/design/1408-app-shell.md](design/1408-app-shell.md)。
