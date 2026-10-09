@@ -9059,7 +9059,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // Conversely, `channels` is a normalized alias for a legacy `channel`.
         // Keep the user's original shape unless the caller explicitly removed
         // `channel` (the Settings channels endpoint intentionally migrates it).
-        if (path.length === 0 && key === "channels" && this.rawFleetConfig.channel && !this.rawFleetConfig.channels && after.channel !== undefined) continue;
+        if (path.length === 0 && key === "channels" && this.rawFleetConfig.channel && !this.rawFleetConfig.channels) {
+          if (after.channel !== undefined) continue;
+          // #1056: migrating. The file has no `channels` to patch leaf by leaf (the snapshot's list is the
+          // normalized alias), so a leaf diff would write only the changed field into a new, bare channels[0]
+          // while `channel` is deleted. Write the whole list instead.
+          this.patchFleetDocument(document, [...path, key], undefined, after[key]);
+          continue;
+        }
         this.patchFleetDocument(document, [...path, key], before[key], after[key]);
       }
       return;
@@ -9215,7 +9222,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     instanceName: string, adapterId?: string, adapter?: ChannelAdapter | null,
   ): ResolvedStatusEmojis & { platform: string | undefined } {
     const worldId = adapterId ?? this.getInstanceAdapterId(instanceName);
-    const channel = (worldId ? this.worlds.get(worldId)?.channelConfig : undefined) ?? this.getChannelConfig(worldId ?? undefined);
+    const channel = this.statusEmojiChannel(worldId);
     // The adapter that will react decides the vocabulary: a Telegram bot gets
     // Telegram's reaction set even if the channel lookup fell back elsewhere.
     const reacting = adapter ?? (worldId ? this.worlds.get(worldId)?.adapter : undefined) ?? this.adapter;
@@ -9235,6 +9242,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return { ...resolved, platform };
   }
   private warnedStatusEmojis = new Set<string>();
+
+  /**
+   * The connection whose `options.status_emojis` an instance on `worldId` stamps with. #1056: read from the live config
+   * first — a Settings save replaces `fleetConfig.channels`, and the running world keeps the object it started with —
+   * so a change to the connection's emojis applies at the next stamp, as an instance's own override does. Only the
+   * emoji options are taken from it: the platform is still the running adapter's (resolveStatusEmojisFor).
+   */
+  private statusEmojiChannel(worldId: string | null | undefined): ChannelConfig | undefined {
+    const started = (worldId ? this.worlds.get(worldId)?.channelConfig : undefined) ?? this.getChannelConfig(worldId ?? undefined);
+    if (!worldId) return started;
+    const list = this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
+    const live = list.find(ch => (ch.id ?? ch.type) === worldId);
+    if (!live || !started) return live ?? started;
+    return { ...started, options: { ...(started.options ?? {}), status_emojis: live.options?.status_emojis } } as ChannelConfig;
+  }
 
   /**
    * A Discord connection's server emojis for the Settings picker (#1005), from
@@ -9324,11 +9346,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!self && !classic) return { error: this.personaEmojiMissing(instanceName) };
     const worldId = this.getInstanceAdapterId(instanceName);
     const { platform } = this.resolveStatusEmojisFor(instanceName);
-    const channel = (worldId ? this.worlds.get(worldId)?.channelConfig : undefined) ?? this.getChannelConfig(worldId ?? undefined);
+    const channel = this.statusEmojiChannel(worldId);
     const current = previewStatusEmojis({ platform, platformConfig: channel?.options?.status_emojis, instanceConfig: self?.status_emojis });
     const out: Record<string, unknown> = {
       platform: platform ?? null,
-      statuses: current.entries.map(e => ({ status: e.key, value: e.value, source: e.source })),
+      // #1056: progress_prefix is the emoji at the start of the progress message, not a reaction stamp.
+      statuses: current.entries.map(e => ({ status: e.key, value: e.value, source: e.source, kind: e.key === "progress_prefix" ? "text_prefix" : "reaction" })),
+      // #1056: say inline why the lists differ by platform, so an agent need not know it already.
+      platform_note: platform === "telegram"
+        ? "Telegram has no server custom emoji, so there is no server_emojis list: standard.reactions is the complete set a status reaction can use. progress_prefix is message text, not a reaction, so any single emoji works there."
+        : platform === "discord"
+          ? "A status reaction can be any single emoji, or a server emoji from server_emojis as <:name:id> (one of the servers this bot is in). progress_prefix is message text, not a reaction."
+          : "This instance has no chat connection, so no platform rules apply yet.",
       standard: platform === "telegram"
         ? { reactions: [...TELEGRAM_REACTION_EMOJIS], note: "Telegram reacts only with these; progress_prefix may be any single emoji" }
         : { suggestions: STATUS_EMOJI_SUGGESTIONS, note: "any single emoji works" },

@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import yaml from "js-yaml";
 import { ClassicChannelManager, getClassicBackendChoices, readClassicLastActivityAt } from "../src/classic-channel-manager.js";
-import { KNOWN_BACKENDS } from "../src/config-validator.js";
+import { KNOWN_BACKENDS, validateFleetConfig } from "../src/config-validator.js";
 import { IpcServer } from "../src/channel/ipc-bridge.js";
 import type { InstanceConfig } from "../src/types.js";
 import { setUsageFetcherForTests } from "../src/usage/usage-api.js";
@@ -2320,6 +2320,38 @@ instances: {}
     expect(saved.channels).toBeUndefined();
     expect(saved.channel.access.allowed_users).toEqual([1, 2]);
     expect(saved.channel.custom_adapter_option).toBe("keep-me");
+  });
+
+  it("#1056: a Settings channels replace on a legacy channel writes the whole connection, never a bare channels[0]", () => {
+    const fm = new FleetManager(tmpDir);
+    const configPath = join(tmpDir, "fleet.yaml");
+    writeFileSync(configPath, `channel:
+  type: discord
+  bot_token_env: BOT
+  group_id: "123456789012345678"
+  custom_adapter_option: keep-me
+  access:
+    mode: locked
+    allowed_users: [1]
+instances: {}
+`);
+    fm.loadConfig(configPath);
+    // What PUT /api/settings/fleet/channels does (settings-api.ts): the current connection plus its status emojis.
+    const cfg = fm.fleetConfig!;
+    cfg.channels = (cfg.channels ?? []).map(ch => ({ ...ch, options: { ...(ch.options ?? {}), status_emojis: { delivered: "✅" } } }));
+    delete (cfg as { channel?: unknown }).channel;
+    fm.saveFleetConfig();
+
+    const saved = yaml.load(readFileSync(configPath, "utf8")) as any;
+    expect(saved.channel, "migrated to channels").toBeUndefined();
+    expect(saved.channels).toHaveLength(1);
+    expect(saved.channels[0]).toMatchObject({
+      type: "discord", bot_token_env: "BOT", group_id: "123456789012345678", custom_adapter_option: "keep-me",
+      access: { mode: "locked", allowed_users: [1] }, options: { status_emojis: { delivered: "✅" } },
+    });
+    const reloaded = new FleetManager(tmpDir);
+    reloaded.loadConfig(configPath);
+    expect(validateFleetConfig(reloaded.fleetConfig!).errors).toEqual([]);
   });
 });
 
