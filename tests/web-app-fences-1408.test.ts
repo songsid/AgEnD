@@ -83,7 +83,7 @@ describe("1. Retry is a real new attempt", () => {
     const { readFileSync } = await import("node:fs");
     const src = readFileSync(new URL("../src/ui/shared/app.js", import.meta.url), "utf8");
     expect(src).toMatch(/const loadChat = retryable\(\(a\) => import\(retryUrl\("\/ui\/js\/panel-chat\.js", a\)\)/);
-    expect(src).toMatch(/\["chat", \{ load: \(\) => \(chatLoads\+\+ === 0 \? chatBoot : loadChat\(\)\)\.then/);
+    expect(src).toMatch(/panels\.set\("chat", \{ load: \(\) => \(chatLoads\+\+ === 0 \? chatBoot : loadChat\(\)\)\.then/);
     expect(src).toMatch(/attempt \? `\$\{path\}\?retry=\$\{attempt\}` : path/);
   });
 });

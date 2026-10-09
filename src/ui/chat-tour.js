@@ -107,5 +107,6 @@ export function installTour() {
   installed = true;
   document.addEventListener("keydown", onTourKey, true);
   onLang(() => { if (at >= 0) show(at); });
-  if (!tourDone()) setTimeout(startTour, 0);
+  // Shown first on the chat (it points at the chat's own controls), never over View or another panel.
+  if (!tourDone() && /^\/ui(\/chat\/|$)/.test(location.pathname)) setTimeout(startTour, 0);
 }

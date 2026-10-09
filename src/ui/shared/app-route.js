@@ -12,8 +12,8 @@ export function isSafeInstanceName(name) {
 }
 
 /**
- * A path → the route it names: { panel: "chat", instance } | { panel: "fleet", tab } | null (not a page of the app:
- * a full load, like /view and /settings in step 1). A malformed chat path is null too; the server answers it 400.
+ * A path → the route it names: { panel: "chat" | "view", instance } | { panel: "fleet", tab } | null (not a page of
+ * the app: a full load, like /settings until step 3). A malformed name is null too; the server answers it 400.
  */
 export function parseRoute(pathname) {
   if (pathname === "/ui") return { panel: "chat", instance: null };
@@ -21,19 +21,25 @@ export function parseRoute(pathname) {
   let m = /^\/ui\/fleet\/([^/]+)$/.exec(pathname);
   if (m) return FLEET_TABS.includes(m[1]) ? { panel: "fleet", tab: m[1] } : null;
   m = /^\/ui\/chat\/([^/]+)$/.exec(pathname);
-  if (m) {
-    let name = null;
-    try { name = decodeURIComponent(m[1]); } catch { return null; }
-    return isSafeInstanceName(name) ? { panel: "chat", instance: name } : null;
-  }
+  if (m) return named("chat", m[1]);
+  if (pathname === "/view") return { panel: "view", instance: null };
+  m = /^\/view\/([^/]+)$/.exec(pathname);
+  if (m) return named("view", m[1]);
   return null;
+}
+function named(panel, segment) {
+  let name = null;
+  try { name = decodeURIComponent(segment); } catch { return null; }
+  return isSafeInstanceName(name) ? { panel, instance: name } : null;
 }
 
 export function chatPath(instance) { return `/ui/chat/${encodeURIComponent(instance)}`; }
+export function viewPath(instance) { return instance ? `/view/${encodeURIComponent(instance)}` : "/view"; }
 export function fleetPath(tab) { return tab && tab !== "tasks" ? `/ui/fleet/${tab}` : "/ui/fleet"; }
 export function routePath(route) {
   if (!route) return "/ui";
   if (route.panel === "fleet") return fleetPath(route.tab);
+  if (route.panel === "view") return viewPath(route.instance);
   return route.instance ? chatPath(route.instance) : "/ui";
 }
 /** One string per route: a change of it is a new navigation (a new lease for the panel, §4). */
