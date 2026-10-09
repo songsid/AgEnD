@@ -201,6 +201,70 @@ describe("the reaction filter follows config (#1005 point 3)", () => {
     expect(summary).toContain("inbox from bot-b");
   });
 
+  it("#1056: a bot's earlier stamp stays a stamp after its connection's set changes; humans and its other reactions still pass", async () => {
+    const a = recorder("bot-a", "discord"); const b = recorder("bot-b", "discord");
+    const { fleet, internals, eventLog } = makeFleet([
+      { id: "bot-a", type: "discord", adapter: a.adapter, botUserId: "uid-a" },
+      { id: "bot-b", type: "discord", adapter: b.adapter, botUserId: "uid-b", options: { status_emojis: { delivered: DONE } } },
+    ], { alpha: { channel_id: "bot-a" }, beta: { channel_id: "bot-b" } });
+    // beta's bot stamps its delivered emoji, the old custom one.
+    fleet.reactMessageStatus("beta", "g", "old-message", "delivered", "t");
+    await vi.waitFor(() => expect(b.react).toHaveBeenCalledWith("t", "old-message", "done:222222222222222222", "t"));
+    // Settings replaces the connections (new objects): bot-b's delivered is now 🦉.
+    const cfg = internals.fleetConfig as { channels: ChannelConfig[] };
+    cfg.channels = cfg.channels.map(ch => ch.id === "bot-b" ? { ...ch, options: { status_emojis: { delivered: "🦉" } } } : { ...ch });
+    // The old stamp comes back through the gateway after the change: still plumbing.
+    await internals.handleInboundReaction(r({ userId: "uid-b", username: "bot-b", emoji: "done", emojiId: "222222222222222222", messageId: "old-message" }));
+    // …and the new set is plumbing too.
+    await internals.handleInboundReaction(r({ userId: "uid-b", username: "bot-b", emoji: "🦉", messageId: "new-message" }));
+    expect(eventLog.pendingReactions("alpha"), "neither reached an agent").toBeNull();
+    // Controls: the same old emoji from a human, bot-b's old emoji on a message it never stamped, and its other signals.
+    await internals.handleInboundReaction(r({ userId: "human", username: "han", emoji: "done", emojiId: "222222222222222222", messageId: "old-message" }));
+    await internals.handleInboundReaction(r({ userId: "uid-b", username: "bot-b", emoji: "done", emojiId: "222222222222222222", messageId: "other-message" }));
+    await internals.handleInboundReaction(r({ userId: "uid-b", username: "bot-b", emoji: "🎯", messageId: "old-message" }));
+    const summary = eventLog.pendingReactions("alpha")!.summary;
+    // Grouped per message: "msg old-message: done from han, 🎯 from bot-b; msg other-message: done from bot-b".
+    expect(summary).toContain("old-message: done from han, 🎯 from bot-b");
+    expect(summary).toContain("other-message: done from bot-b");
+  });
+
+  // #1485 review: the ClassicBot received stamp goes through its own react call (reactClassicReceived), so it must
+  // record the same provenance. Driven through the real handleClassicChannelMessage in collab mode.
+  async function classicReceipt(changeSet: boolean) {
+    const a = recorder("bot-a", "discord"); const b = recorder("bot-b", "discord");
+    const { fleet, internals, eventLog } = makeFleet([
+      { id: "bot-a", type: "discord", adapter: a.adapter, botUserId: "uid-a" },
+      { id: "bot-b", type: "discord", adapter: b.adapter, botUserId: "uid-b", options: { status_emojis: { received: INBOX } } },
+    ], { alpha: { channel_id: "bot-a" } });
+    const fm = fleet as any;
+    fm.classicChannels = {
+      isCollab: () => true, getInstanceByChannel: () => "classic-b", getChannelIdByInstance: (n: string) => (n === "classic-b" ? "room" : undefined),
+      getAdapterIdByInstance: () => "bot-b", getContextLines: () => 5, getAll: () => [{ instanceName: "classic-b", channelId: "room", adapterId: "bot-b" }],
+    };
+    fm.forwardToClassicInstance = vi.fn(async () => {});
+    fm.deliverToInstance = vi.fn(async () => true);
+    fm.trackInboundMsg = vi.fn(); fm.sendCancelButton = vi.fn(async () => {});
+    // bot-a's message mentions bot-b: bot-b's ClassicBot handler stamps its received emoji on it.
+    await fm.handleClassicChannelMessage("classic-b", {
+      source: "discord", adapterId: "bot-b", chatId: "g", threadId: "room", messageId: "classic-message", userId: "uid-a", username: "bot-a",
+      text: "<@uid-b> please look", timestamp: new Date(), isBotMessage: true,
+    });
+    await vi.waitFor(() => expect(b.react).toHaveBeenCalledWith("room", "classic-message", "inbox:111111111111111111"));
+    if (changeSet) {
+      const cfg = internals.fleetConfig as { channels: ChannelConfig[] };
+      cfg.channels = cfg.channels.map(ch => ch.id === "bot-b" ? { ...ch, options: { status_emojis: { received: "🦉" } } } : { ...ch });
+    }
+    // The receipt comes back through the gateway.
+    await internals.handleInboundReaction(r({ userId: "uid-b", username: "bot-b", emoji: "inbox", emojiId: "111111111111111111", messageId: "classic-message" }));
+    return eventLog;
+  }
+  it("#1485 review: a ClassicBot received stamp stays a stamp after its connection's set changes", async () => {
+    expect((await classicReceipt(true)).pendingReactions("alpha"), "the old receipt reached no agent").toBeNull();
+  });
+  it("#1485 review control: with the set unchanged the receipt is a stamp too", async () => {
+    expect((await classicReceipt(false)).pendingReactions("alpha")).toBeNull();
+  });
+
   it("without every bot id, falls back to the emoji — configured custom stamps included", async () => {
     const a = recorder("bot-a", "discord");
     const { internals, eventLog } = makeFleet([

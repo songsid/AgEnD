@@ -15,7 +15,9 @@ persona emoji replaces your `delivered` stamp with one of your own, the way
 ## Tools
 
 - `list_emojis` — your current stamps (`statuses`, with `source`: instance =
-  yours, platform = the connection's, builtin = AgEnD's), the standard emojis
+  yours, platform = the connection's, builtin = AgEnD's; `kind`: `reaction`,
+  or `text_prefix` for `progress_prefix`), a `platform_note` saying what your
+  platform allows, the standard emojis
   your platform accepts (`standard`), and on Discord the server emojis your
   bot can react with (`server_emojis`, grouped by server; each has a `value`
   ready to pass on, e.g. `<:fox:123456789012345678>`). No image URLs by

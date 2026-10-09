@@ -231,6 +231,30 @@ const issueKey = (i: { path: string; message: string }) => i.path + "\u0000" + i
  * user out of saving anything, which reads as "save didn't persist".
  * Returns true (and responds 400) when the edit adds errors.
  */
+/**
+ * #1490 (Fable's 2.2 audit): the connection fields Settings writes. A PUT carries whole connections back, so a field
+ * outside these (one added by hand to fleet.yaml) passes through unchanged — but it is never added or changed here:
+ * an inline `bot_token`, or anything else, cannot reach fleet.yaml through this endpoint.
+ */
+const CHANNEL_FIELDS = new Set(["id", "type", "mode", "bot_token_env", "group_id", "access", "options", "telegram_api_root", "mirror_topic_id"]);
+const CHANNEL_ACCESS_FIELDS = new Set(["mode", "allowed_users", "max_pending_codes", "code_expiry_minutes"]);
+const CHANNEL_OPTION_FIELDS = new Set(["category_name", "general_channel_id", "topic_probe", "sticker_sets", "status_emojis"]);
+function unownedChannelField(candidate: Record<string, unknown>, previous: Record<string, unknown> | undefined): string | null {
+  const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+  const check = (fields: ReadonlySet<string>, next: Record<string, unknown>, prev: unknown, at: string): string | null => {
+    const before = record(prev) ? prev : {};
+    for (const key of Object.keys(next)) {
+      if (fields.has(key)) continue;
+      if (Object.hasOwn(before, key) && JSON.stringify(before[key]) === JSON.stringify(next[key])) continue;
+      return `${at}${key}`;
+    }
+    return null;
+  };
+  return check(CHANNEL_FIELDS, candidate, previous, "")
+    ?? (record(candidate.access) ? check(CHANNEL_ACCESS_FIELDS, candidate.access, previous?.access, "access.") : null)
+    ?? (record(candidate.options) ? check(CHANNEL_OPTION_FIELDS, candidate.options, previous?.options, "options.") : null);
+}
+
 function rejectIfWorse(res: ServerResponse, before: ValidationResult, after: ValidationResult): boolean {
   const had = new Set(before.errors.map(issueKey));
   const introduced = after.errors.filter(e => !had.has(issueKey(e)));
@@ -696,6 +720,8 @@ export function handleSettingsRequest(
         const id = typeof candidate.id === "string" ? candidate.id
           : typeof candidate.type === "string" ? candidate.type : `channel-${index}`;
         const previous = currentById.get(id);
+        const unowned = unownedChannelField(candidate, previous as Record<string, unknown> | undefined);
+        if (unowned) return json(res, 400, { ok: false, error: `unsupported connection field: channels[${index}].${unowned}` }, true);
         const tokenEnv = typeof candidate.bot_token_env === "string" ? candidate.bot_token_env : null;
         if (tokenEnv && (providerRegistryEnvKeys().has(tokenEnv) || isReservedProviderEnvKey(tokenEnv))) {
           return json(res, 409, { ok: false, error: "bot token env conflicts with a protected provider secret key" }, true);
@@ -724,10 +750,19 @@ export function handleSettingsRequest(
       const before = validateFleetConfig(cfg);
       const after = validateFleetConfig(next);
       if (rejectIfWorse(res, before, after)) return;
-      settingsWrite(req, () => {
-        cfg.channels = normalizedBody as FleetConfig["channels"];
-        delete (cfg as { channel?: unknown }).channel; ctx.saveFleetConfig();
-      });
+      const previous = { channels: cfg.channels, channel: cfg.channel, hadChannel: "channel" in cfg };
+      try {
+        settingsWrite(req, () => {
+          cfg.channels = normalizedBody as FleetConfig["channels"];
+          delete (cfg as { channel?: unknown }).channel; ctx.saveFleetConfig();
+        });
+      } catch (err) {
+        // #1056: the save refused (fleet.yaml unchanged): memory goes back to what the file still says.
+        cfg.channels = previous.channels;
+        if (previous.hadChannel) cfg.channel = previous.channel;
+        ctx.logger.warn({ err }, "settings: channels save refused");
+        return json(res, 500, { ok: false, error: (err as Error).message });
+      }
       json(res, 200, { ok: true, warnings: saveWarnings(before, after) });
     }).catch(() => json(res, 400, { error: "bad request" }));
     return true;
