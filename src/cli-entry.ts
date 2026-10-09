@@ -8,13 +8,17 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export function canonicalCliEntry(moduleUrl: string = import.meta.url): string {
-  const entry = join(dirname(fileURLToPath(moduleUrl)), "cli.js");
+  // Built: dist/cli.js. Run from source (tsx), this module is src/cli-entry.ts and the CLI is src/cli.ts beside it.
+  const entry = join(dirname(fileURLToPath(moduleUrl)), moduleUrl.endsWith(".ts") ? "cli.ts" : "cli.js");
   try { return realpathSync(entry); } catch { return entry; }
 }
 
-/** Run this CLI again: the Node running now (the verified selection, C2) on the canonical entry — no PATH lookup. */
+/**
+ * Run this CLI again: the Node running now (the verified selection, C2) on the canonical entry — no PATH lookup. With
+ * this process's own Node flags, as `fork()` passes them (a source run's `--import tsx`; none in a release).
+ */
 export function selfCommand(args: string[]): { command: string; args: string[] } {
-  return { command: process.execPath, args: [canonicalCliEntry(), ...args] };
+  return { command: process.execPath, args: [...process.execArgv, canonicalCliEntry(), ...args] };
 }
 
 /**

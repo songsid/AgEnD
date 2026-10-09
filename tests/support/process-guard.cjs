@@ -141,20 +141,18 @@ function checkInvocation(file, argv = [], env = process.env, cwd = process.cwd()
     if (script && !fixtureAllowed(script, env, cwd, true)) throw new Error(`real backend Node entry forbidden: ${path.basename(script)}`);
   }
 }
-// #1450 C5: AgEnD restarts itself as `<this Node> <repo>/dist/cli.js fleet start` — no `agend` on PATH a test could
-// stub. A test may never start a real fleet (the daemon) that way; one that means to observe it sets AGEND_TEST_SELF_SPAWN_LOG,
-// and the spawn is recorded there and replaced by an inert `sh -c 'exit 0'`.
-const REPO_CLI = new Set(['dist/cli.js', 'src/cli.ts'].map(rel => {
-  const file = path.resolve(__dirname, '..', '..', rel);
-  try { return fs.realpathSync(file); } catch { return file; }
-}));
+// #1450 C5: AgEnD restarts itself as `<this Node> <package>/dist/cli.js fleet start` (src/cli.ts from source) — no
+// `agend` on PATH a test could stub. A test may never start a real fleet (the daemon) that way, from this repo or any
+// copy of it; one that means to observe it sets AGEND_TEST_SELF_SPAWN_LOG, and the spawn is recorded there and
+// replaced by an inert `sh -c 'exit 0'`.
+function isAgendCli(file) {
+  if (!/^cli\.(?:js|ts)$/.test(path.basename(file))) return false;
+  try { return JSON.parse(fs.readFileSync(path.join(path.dirname(file), '..', 'package.json'), 'utf8')).name === '@songsid/agend'; }
+  catch { return false; }
+}
 function selfFleetStart(file, argv, cwd) {
   if (!/^node(?:js)?$/.test(path.basename(String(file)))) return null;
-  const i = argv.findIndex(arg => {
-    if (typeof arg !== 'string' || arg.startsWith('-')) return false;
-    const file = path.resolve(childCwd(cwd), arg);
-    try { return REPO_CLI.has(fs.realpathSync(file)); } catch { return REPO_CLI.has(file); }
-  });
+  const i = argv.findIndex(arg => typeof arg === 'string' && !arg.startsWith('-') && isAgendCli(path.resolve(childCwd(cwd), arg)));
   const rest = i < 0 ? [] : argv.slice(i + 1);
   return rest[0] === 'fleet' && rest[1] === 'start' ? rest.join(' ') : null;
 }

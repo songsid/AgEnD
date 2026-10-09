@@ -109,7 +109,7 @@ describe("the antigravity statusline runs on AgEnD's Node, not a node from PATH"
 
 describe("AgEnD re-runs itself on this Node and the canonical entry", () => {
   it("selfCommand: process.execPath + the canonical dist/cli.js + the arguments", () => {
-    expect(selfCommand(["fleet", "start"])).toEqual({ command: process.execPath, args: [canonicalCliEntry(), "fleet", "start"] });
+    expect(selfCommand(["fleet", "start"])).toEqual({ command: process.execPath, args: [...process.execArgv, canonicalCliEntry(), "fleet", "start"] });
   });
 
   it("canonicalCliEntry is <module dir>/cli.js, realpath'd — never process.argv[1]", () => {
@@ -118,6 +118,8 @@ describe("AgEnD re-runs itself on this Node and the canonical entry", () => {
     writeFileSync(join(root, "real", "dist", "cli.js"), "");
     spawnSync("ln", ["-s", join(root, "real"), join(root, "link")]);
     expect(canonicalCliEntry(`file://${join(root, "link", "dist", "cli-entry.js")}`)).toBe(join(root, "real", "dist", "cli.js"));
+    writeFileSync(join(root, "real", "dist", "cli.ts"), "");
+    expect(canonicalCliEntry(`file://${join(root, "link", "dist", "cli-entry.ts")}`)).toBe(join(root, "real", "dist", "cli.ts"));   // from source
   });
 
   it("the delayed form passes every value as data through real sh: a hostile path and arguments run as written", () => {
@@ -125,7 +127,7 @@ describe("AgEnD re-runs itself on this Node and the canonical entry", () => {
     const srv = inertServer(root);
     const c = delayedSelfCommand(0, ["fleet", "restart", "--reload"]);
     expect(c.args.slice(0, 4)).toEqual(["-c", DELAYED_EXEC_SCRIPT, "sh", "0"]);
-    expect(c.args.slice(4)).toEqual([process.execPath, canonicalCliEntry(), "fleet", "restart", "--reload"]);
+    expect(c.args.slice(4)).toEqual([process.execPath, ...process.execArgv, canonicalCliEntry(), "fleet", "restart", "--reload"]);
     // The same script with the inert stand-in in place of this Node.
     const run = spawnSync("sh", ["-c", DELAYED_EXEC_SCRIPT, "sh", "0", srv.command, ...ARGS], { cwd: root, encoding: "utf8" });
     expect(run.status, run.stderr).toBe(0);
