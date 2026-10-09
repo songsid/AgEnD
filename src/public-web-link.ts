@@ -1,7 +1,8 @@
 import { performance } from "node:perf_hooks";
 import { newTunnelSid } from "./tunnel/manager.js";
 import { CloudflaredProvider } from "./tunnel/cloudflared.js";
-import { ensureCloudflared } from "./tunnel/cloudflared-install.js";
+import { CloudflaredInstallError, ensureCloudflared } from "./tunnel/cloudflared-install.js";
+import { PublicLinkProgressTracker, failureOf, type PublicLinkFailure, type PublicLinkProgress } from "./public-link-progress.js";
 import type { TunnelReservation } from "./tunnel/purpose-lane.js";
 import type { TunnelStopResult } from "./tunnel/types.js";
 import type { PublicGateway } from "./public-web-gateway.js";
@@ -44,12 +45,19 @@ interface Exposure {
   url?: string;
   requests: number;
   delivered: boolean;
+  /** The shared start's steps (①–⑤); each request adds its own ⑥. */
+  progress: PublicLinkProgressTracker;
+  watchers: Set<() => void>;
 }
 export interface PublicLinkDelivery {
   readonly exposureId: string;
   readonly url: string;
   readonly expiresAt: number;
   readonly isCurrent: () => boolean;
+}
+/** A start step that failed for a reason the user is shown. */
+class StartFailure extends Error {
+  constructor(readonly reason: PublicLinkFailure) { super(reason); }
 }
 /** Owns access before child cleanup: losing a tunnel cannot leave a public web session alive. */
 export class PublicWebLink {
@@ -85,7 +93,11 @@ export class PublicWebLink {
     if (e && !this.current(e)) void this.close("policy or binding changed");
   }
   /** Multiple same-start requests share delivery proof: failed A may never close confirmed B. */
-  async deliver(owner: LoginCodeOwner, send: (link: PublicLinkDelivery) => Promise<boolean>): Promise<boolean> {
+  /**
+   * `onProgress` hears every step of this request (see public-link-progress.ts): the shared start's, then its own
+   * delivery. Its last call is the final state — every step ended, or one failed.
+   */
+  async deliver(owner: LoginCodeOwner, send: (link: PublicLinkDelivery) => Promise<boolean>, onProgress?: (p: PublicLinkProgress) => void): Promise<boolean> {
     if (!this.deps.permitted(owner) || !publicLinkSettings(this.deps.web()).allowed) return false;
     let e = this.entry;
     if (e && (e.owner.adapterId !== owner.adapterId || e.owner.chatId !== owner.chatId || e.owner.threadId !== owner.threadId || !this.current(e))) return false;
@@ -93,9 +105,18 @@ export class PublicWebLink {
       const settings = publicLinkSettings(this.deps.web());
       const id = newTunnelSid();
       const reservation = this.deps.reserve(id); // Before installer, listener, or any await.
-      if (!reservation) return false;
+      if (!reservation) {
+        // The one tunnel is someone else's (a /login link, or one whose cleanup is unconfirmed): say so.
+        const refused = new PublicLinkProgressTracker(this.now, () => {});
+        refused.fail("lease-held");
+        onProgress?.(refused.snapshot);
+        return false;
+      }
       e = { id, owner: { ...owner }, reservation, abort: new AbortController(), deadline: this.now() + settings.ttlMs,
-        expiresAt: (this.deps.wallNow ?? Date.now)() + settings.ttlMs, phase: "starting", gateway: null, starting: Promise.resolve(), requests: 0, delivered: false };
+        expiresAt: (this.deps.wallNow ?? Date.now)() + settings.ttlMs, phase: "starting", gateway: null, starting: Promise.resolve(), requests: 0, delivered: false,
+        progress: undefined as unknown as PublicLinkProgressTracker, watchers: new Set() };
+      const watched = e;
+      e.progress = new PublicLinkProgressTracker(this.now, () => { for (const w of watched.watchers) w(); });
       this.entry = e;
       const captured = e;
       const expire = (): void => {
@@ -109,34 +130,64 @@ export class PublicWebLink {
       this.deps.log("requested", id);
     }
     e.requests++;
+    // This request's view: the shared steps, then its own ⑥.
+    const shared = e;
+    let own: { startedAt: number; endedAt?: number } | undefined;
+    let ownFailure: PublicLinkFailure | undefined;
+    const view = (): PublicLinkProgress => {
+      const base = shared.progress.snapshot;
+      if (!own && !ownFailure) return base;
+      const steps = own ? [...base.steps, { step: "deliver" as const, ...own }] : base.steps;
+      const failedStep = own ? "deliver" as const : base.steps.at(-1)!.step;
+      return { ...base, steps, ...(ownFailure && !base.failed ? { failed: { step: failedStep, reason: ownFailure } } : {}) };
+    };
+    const watcher = onProgress ? () => onProgress(view()) : null;
+    if (watcher) { e.watchers.add(watcher); watcher(); }
+    const finish = (outcome: boolean, failure?: PublicLinkFailure): boolean => {
+      if (own && own.endedAt === undefined) own.endedAt = this.now();
+      if (!outcome && !shared.progress.snapshot.failed) ownFailure = failure ?? "closed";
+      if (watcher) { shared.watchers.delete(watcher); watcher(); }
+      return outcome;
+    };
     try {
       await e.starting;
-      if (!this.current(e) || !this.deps.permitted(owner) || !e.url) return false;
+      if (!this.current(e) || !this.deps.permitted(owner) || !e.url) return finish(false);
+      own = { startedAt: this.now() };
+      watcher?.();
       const delivered = await send({ exposureId: e.id, url: e.url, expiresAt: e.expiresAt, isCurrent: () => this.current(e!) && this.deps.permitted(owner) });
-      if (!delivered || !this.current(e) || !this.deps.permitted(owner)) return false;
+      if (!delivered) return finish(false, "delivery-failed");
+      if (!this.current(e) || !this.deps.permitted(owner)) return finish(false);
       e.delivered = true;
       this.deps.log("privately delivered", e.id);
-      return true;
-    } catch { return false; }
+      return finish(true);
+    } catch { return finish(false); }
     finally {
+      if (watcher) shared.watchers.delete(watcher);
       e.requests--;
       if (!e.delivered && e.requests === 0 && this.entry === e) await this.close("no confirmed private recipient");
     }
   }
   private async start(e: Exposure, protocol: "http2" | "quic" | "auto"): Promise<void> {
     try {
-      const binary = await (this.deps.ensure ?? ensureCloudflared)({ dataDir: this.deps.dataDir, pinnedOnly: true, signal: e.abort.signal });
+      const binary = await (this.deps.ensure ?? ensureCloudflared)({ dataDir: this.deps.dataDir, pinnedOnly: true, signal: e.abort.signal,
+        onProgress: p => {
+          if (p.phase === "checked") e.progress.installChecked(p.download, p.version);
+          else if (p.phase === "downloading") e.progress.downloaded(p.received, p.total);
+          else e.progress.begin("verify");
+        } });
       if (!this.current(e)) throw new Error("closed");
+      e.progress.begin("tunnel");
       const gateway = this.deps.createGateway(e.id, () => this.current(e), () => e.phase === "open", () => { void this.close("gateway failed", e.id); });
       e.gateway = gateway;
-      const origin = await gateway.listen();
+      const origin = await gateway.listen().catch(() => { throw new StartFailure("gateway-failed"); });
       if (!this.current(e)) throw new Error("closed");
       const provider = (this.deps.provider ?? ((path, p) => new CloudflaredProvider({ binaryName: path, protocol: p })))(binary.path, protocol);
       const result = await e.reservation.start(provider, {
         sid: e.id, origin, pagePath: "/signin", readinessMarker: gateway.readinessMarker, expiresAt: e.expiresAt,
-        signal: e.abort.signal, onCandidateHost: host => { if (this.current(e)) gateway.setHost(host); },
+        signal: e.abort.signal, onCandidateHost: host => { if (this.current(e)) { gateway.setHost(host); e.progress.begin("address"); } },
       });
-      if (!result.ok || !this.current(e)) throw new Error("tunnel unavailable");
+      if (!result.ok) throw new StartFailure(failureOf(result.errorKind));
+      if (!this.current(e)) throw new Error("tunnel unavailable");
       const published = new URL(result.handle.pageUrl);
       if (published.protocol !== "https:" || published.pathname !== "/signin" || published.username || published.password || published.search || published.hash) throw new Error("invalid public page");
       gateway.setHost(published.host);
@@ -144,8 +195,11 @@ export class PublicWebLink {
       e.unsubscribe = result.handle.onUnexpectedExit(() => { void this.close("tunnel exited", e.id); });
       if (!this.current(e)) throw new Error("closed");
       e.phase = "open";
+      e.progress.complete();
       this.deps.log("opened", e.id);
-    } catch {
+    } catch (err) {
+      e.progress.fail(err instanceof StartFailure ? err.reason : err instanceof CloudflaredInstallError ? failureOf(err.kind)
+        : this.current(e) ? "unknown" : "closed");
       // deliver's finally joins close after this promise settles; no self-await.
       e.abort.abort(); e.gateway?.setHost(null); e.gateway?.close();
       this.deps.log("startup failed", e.id);
