@@ -1,0 +1,168 @@
+# One instance sidebar, an instance view switch, one top bar
+
+Status: design for review. Nothing here is implemented yet.
+Source: user feedback on 2.2 alpha.2 (via the leader, 2026-10-10):
+- "I want Fleet and View to have the same left sidebar, including the filter."
+- "Or, once I'm in an instance, switch between Fleet and View right next to its name."
+- "View's usage and text-size controls should be in Fleet's top bar too."
+
+The leader asked for all three, in one direction.
+
+## 1. What exists (survey of `main` at 839f1a81)
+
+| Piece | Today |
+|---|---|
+| Shell sidebar (`app-shell.js` `Sidebar`) | Nav (Needs you, Fleet, View), then `app.instances` in **server order**: no groups, no filter, no drag. The row dot comes from live state (`statusClass`: busy, warn, bad, off or ok), and the row has a needs-you badge. Every row links to **Chat**. The row is highlighted only on Chat. Used by Chat, Fleet, Settings and Needs. |
+| View roster (`panel-view.js` `ViewRoster`) | Replaces the shell list on View through `setSideSection`. Data: `GET /api/profiles` every 5 s. **Groups** by tag (Classic / first tag / Other), collapse, **drag to reorder** (saved in `agend_view_sidebar_order`), and a **filter** (name, alias, model, backend; not status). The dot knows only running, crashed or off. It adds context % and a backend icon. Rows link to **View**. |
+| Top bars (`PanelHeader`) | Chat: name, status, model and effort chips, ⋯ menu (details, start/restart/stop, delete). View: name, status, **text size** (`fit / comfortable / compact`, `agend_view_density`, terminal only), **usage** (`UsageDialog`, `/api/ai-usage`, hidden when that is a 404), help. Fleet: the title only. |
+| Per-instance summary | Chat's `DetailsDialog` (`GET /ui/instance/:name`): backend, model, effort, cost, context, 5h/7d limits, recent activity. Settings → Agents rows and `AgentDialog`: config and pause/wake/start/stop. Fleet has **no per-instance page**. |
+| Routes | `/ui/chat/:name`, `/view/:name` (public under `web.view_access: open`), `/ui/fleet/<tab>`. Client and server tables must match (`web-shell-routes-1408.test.ts`). The public `/assets` closure must not import `/ui/` modules (`web-app-modules-1408.test.ts`). |
+| Phone (< 900 px) | The sidebar is a drawer, bottom tabs are Chat, Needs, Fleet, View and Settings, and there are no top tabs. |
+
+So there are two different lists with different data, dots, order and links. There is a filter on only one of them, and the text-size and usage controls exist only on View.
+
+## 2. Layout
+
+### 2.1 Desktop (≥ 900 px): Chat, View or Details of one instance
+
+```
+┌───────────────────────┬──────────────────────────────────────────────────────────────────────────┐
+│ AgEnD           ▣  ✎ │ web-dev · Web developer   ● working    [ Chat | View | Details ]   Aa  ◔  ⋯ │
+│ ◎ Needs you        2 │──────────────────────────────────────────────────────────────────────────│
+│ ▤ Fleet              │                                                                          │
+│ ▸ View               │   (the selected view of web-dev: the conversation, the terminal,         │
+│ ─────────────────────│    or its details — same instance, the sidebar does not move)            │
+│ INSTANCES      12/24 │                                                                          │
+│ ▾ Platform         4 │                                                                          │
+│   ● general     12%  │                                                                          │
+│   ◐ web-dev ▸   82% ◆│  ← active row (highlighted on all three views)                           │
+│   ! api-server  38% ◇│  ← needs you                                                             │
+│ ▸ Classic          8 │                                                                          │
+│ ▾ Other            3 │                                                                          │
+│   ○ qa-bot       —  ✦│                                                                          │
+│ ─────────────────────│                                                                          │
+│ 🔍 Filter…       [×] │                                                                          │
+│ ⚑ Status ▾ ⚙ CLI ▾   │  ← status / backend chips; shown "12 / 24 (filtered)"                    │
+│ ─────────────────────│                                                                          │
+│ ⚙ Settings · ◑ · 文  │                                                                          │
+└───────────────────────┴──────────────────────────────────────────────────────────────────────────┘
+  Aa = text size (shared)   ◔ = usage (shared)   ⋯ = instance actions (details, start/stop, …)
+```
+
+### 2.2 Desktop: Fleet's own tabs (no instance chosen)
+
+```
+┌───────────────────────┬──────────────────────────────────────────────────────────────────────────┐
+│ (the same sidebar)    │ Fleet   [ Tasks | Schedules | Teams | Org | Cache | Config ]       Aa  ◔ │
+│                       │──────────────────────────────────────────────────────────────────────────│
+│                       │   (the tab)                                                              │
+└───────────────────────┴──────────────────────────────────────────────────────────────────────────┘
+```
+
+Clicking an instance in the sidebar from a Fleet tab opens **its Details** (the Fleet side of that instance). The Details header has the same switch (§3.2).
+
+### 2.3 Phone (< 900 px)
+
+```
+┌──────────────────────────────────────┐
+│ ☰  web-dev  ● working        Aa ◔ ⋯ │
+│ ┌──────────┬──────────┬────────────┐ │   ← the switch becomes top tabs under the header
+│ │   Chat   │   View   │  Details   │ │
+│ └──────────┴──────────┴────────────┘ │
+│                                      │
+│   (the selected view)                │
+│                                      │
+├──────────────────────────────────────┤
+│ Chat  Needs  Fleet  View  Settings   │   ← bottom tabs as today
+└──────────────────────────────────────┘
+☰ opens the same sidebar as a drawer: groups, filter, status/CLI chips. A row keeps the current view.
+```
+
+## 3. Design
+
+### 3.1 One sidebar component: `InstanceNav`
+
+- **Where it lives:** in `/assets` (`shared/instance-nav.js`), because View is public. The shell renders it on every page. `setSideSection` stays for other uses, but View no longer replaces the list.
+- **Data:** the live `appStore.instances` (SSE/poll status frames) for state, dots and needs-you, which is already pushed with no extra polling. Groups need tags, which the status frame does not carry today. The status frame gains `tags` (and `role` for the tooltip), taken from what `/api/profiles` already reads.
+  - View's 5 s `/api/profiles` poll stays only for what View shows elsewhere (avatars and descriptions on the cards). The sidebar no longer depends on it.
+  - In view-only mode (anonymous reader, no SSE), the list comes from `/api/profiles` as today, mapped to the same row shape.
+- **Rows** (one row component, replacing both today):
+  - The dot uses the shell's richer `statusClass`.
+  - Name, then alias (#1366 identity rules unchanged), the needs-you badge, context %, and the backend icon.
+  - The tooltip is the current `instanceTooltip`.
+- **Groups and order:** View's model (tag groups, collapse, drag within a group, groups among groups) applied to every page.
+  - **One saved order** under `agend_instance_order`. View's `agend_view_sidebar_order` is read once as the starting value, so nobody loses their arrangement.
+  - Collapsed groups are remembered per device (`agend_instance_collapsed`).
+- **Filter:** the text box (name, alias, model, backend, as today), plus two chip menus:
+  - **Status:** working, needs you, idle, stopped/paused, crashed.
+  - **CLI:** each backend present.
+  - The whole filter (`{ q, status[], cli[] }`) is kept **per device** (`agend_instance_filter`) and **carries across pages**.
+  - "/" focuses it and Esc clears it, as on View today. Drag is off while a filter is active, as today.
+  - The count reads "12 / 24 (filtered)".
+- **Where a row goes:** **the view you are in.** On Chat it opens Chat, on View it opens View, on Details or a Fleet tab it opens Details, and on Settings or Needs it opens Chat. The row's `href` is that path, so a middle-click or a copied link goes to the same place.
+- **The active row** is highlighted on all three views, with `aria-current="page"`.
+- **Scroll:** the list is never remounted on navigation, and `keepActiveInView` (#1515) nudges only its `scrollTop`. Its scroll position is kept per page load.
+
+### 3.2 The instance view switch
+
+- **In the header,** next to the name and status: a segmented control **Chat | View | Details** (`role="tablist"` on a phone, links on desktop). Each segment is an `<a>` to that view's URL for the **same instance**, so switching keeps the instance and the sidebar.
+- **URLs** (shareable; a reload keeps the view):
+  - `/ui/chat/:name`, as today;
+  - `/view/:name`, as today (public under `view_access: open`);
+  - **`/ui/fleet/agent/:name`**, new: the Details view, added to both route tables.
+- **The anonymous View reader** (view-only mode) sees no switch. Chat and Details need a session.
+- **Phone:** the same three as top tabs under the header (§2.3).
+
+### 3.3 Details: "the Fleet side of one instance"
+
+A new panel at `/ui/fleet/agent/:name` (a `/ui/js` module). What it holds is decision **Q1** (§4). The proposed default, option B:
+- **Runtime**, today's `DetailsDialog` moved into a page: backend, model, effort, cost, context, 5h/7d limits, recent activity.
+- **Config summary:**
+  - working directory, binding (channel, topic or room), tags, description, ClassicBot room if any;
+  - "Edit in Settings" opens that agent's `AgentDialog`;
+  - nothing is edited on this page.
+- **Actions** from the ⋯ menu: start/restart/stop, pause/wake, delete. They are the existing calls with the existing confirmations.
+
+Chat's ⋯ → "Details" goes here instead of the dialog.
+
+### 3.4 One top bar
+
+`InstanceHeader` (`/assets`) is used by Chat, View and Details. `PanelHeader` keeps its slot API, and Fleet tabs and Settings use it with the shared actions.
+- **Left:** name · alias, status dot and label, the switch (§3.2). Chat keeps its model/effort chips here.
+- **Right, in the same order on every page:**
+  - **Aa** text size;
+  - **◔** usage, hidden when `/api/ai-usage` is a 404, as today; `UsageDialog` moves to its own `/assets` module;
+  - **⋯** instance actions on an instance page;
+  - View's help stays View's.
+- **Text size, shared per device** (`agend_text_size`, read once from `agend_view_density`): **S / M / L**, decision **Q2**.
+  - It sets one CSS custom property on the app root through the CSSOM (#1300: no style attribute).
+  - Chat's thread, Details, and Fleet tables read it.
+  - View's terminal multiplies its fitted size by it, as `DENSITY` does today. View keeps **Fit** as its own extra choice, since "fit the terminal's width" has no meaning elsewhere.
+
+### 3.5 What does not change
+
+- Bottom tabs on a phone, and Settings' own sections and guard.
+- The public link's limits.
+- `/assets` keeps its manifest (new files are added there; nothing under `/ui/` becomes public).
+- The CSP: no style attributes, no inline handlers.
+- Background reads stay passive (#1374). The sidebar adds **no** new poll; its data rides the existing status frames.
+
+## 4. Decisions for the user
+
+| # | Question | Options | Proposed |
+|---|---|---|---|
+| Q1 | What does **Details** (the Fleet side of one instance) show? | A: the current details dialog as a page (runtime + recent activity) · B: A + a read-only config summary (directory, binding, tags, description) with "Edit in Settings", + start/stop/pause actions · C: B + the full config editor inline | **B** |
+| Q2 | **Text size** steps, shared by Chat, View and Fleet | A: S / M / L everywhere; View also keeps "Fit" · B: View's current three (fit / comfortable / compact) everywhere · C: a slider (90–130 %) | **A** |
+| Q3 | **Groups** in the sidebar on every page (View's tag groups, collapse, drag), or a flat list with grouping as an option | A: groups everywhere (View's model) · B: flat by default, "Group by tag" toggle | **A** |
+| Q4 | A sidebar click while on a **Fleet tab** (Tasks, Org, …) | A: opens that instance's Details · B: opens Chat (as today) | **A** |
+| Q5 | **Status chips**: which states | working · needs you · idle · stopped/paused · crashed (five) | as listed |
+
+## 5. Pull requests
+
+| PR | Scope | Size | Depends on |
+|---|---|---|---|
+| N1 | `InstanceNav`: one list on every page; `tags` in the status frame; groups, saved order (migrated), filter with status/CLI chips kept per device; the row keeps the current view; scroll kept. Tests: one component on Chat, View and Fleet; filter carried across pages and reloads; order migration; the anonymous View reader; no new poll | M (1–2 days) | #1515 |
+| N2 | The view switch and Details: `/ui/fleet/agent/:name` in both route tables, the Details panel per Q1, ⋯ → Details, phone top tabs. Tests: the switch keeps the instance; URL round-trip; the anonymous reader sees no switch; Details read-only | M (1–2 days) | N1 |
+| N3 | `InstanceHeader`: usage and text size on Chat, View, Details and Fleet; shared `agend_text_size` (migrated); Chat/Fleet font scaling via one custom property. Tests: the same controls in the same order on every page; one setting across views and reloads; no style attribute | S–M (1 day) | N1 |
+
+Each PR includes a real-browser sweep (desktop and phone, light and dark) through the whole-app harness, and extends it with "the sidebar is the same component on Chat, View and Fleet" and "the filter survives a page change and a reload".
