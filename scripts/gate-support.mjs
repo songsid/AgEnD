@@ -82,7 +82,7 @@ function mainCi(merged) {
   const current = [...latest.values()];
   if (current.some(r => r.status === 'completed' && r.conclusion === 'failure')) return 'FAILURE';
   if (current.some(r => r.status !== 'completed')) return 'PENDING';
-  if (current.every(r => r.conclusion === 'success')) return 'HEALTHY';
+  if (current.every(r => r.conclusion === 'success')) return exactCi(merged) ? 'HEALTHY' : 'PENDING';
   throw new Error('main CI is not explicit failure/success');
 }
 function exactCi(head) {

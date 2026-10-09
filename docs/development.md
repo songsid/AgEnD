@@ -457,7 +457,9 @@ gate-merge.sh --post-merge-check <full-gate-squash-sha>
 ```
 
 It reads the latest exact-SHA **push to main** run of each Actions workflow. `HEALTHY` and
-`PENDING` cause no action. Missing, partial, unreadable, cancelled or otherwise
+`PENDING` cause no action. `HEALTHY` also requires every required and present
+check on that main SHA to pass; early workflow success with checks not yet
+registered stays `PENDING`. Missing, partial, unreadable, cancelled or otherwise
 uncertain results are `BLOCKED`, also with no action. A completed `failure`
 permits one generated `git revert <sha>` in a detached private worktree and one
 revert PR into main. The failed commit may be behind main; conflicts block

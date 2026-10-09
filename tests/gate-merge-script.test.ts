@@ -672,6 +672,7 @@ function mergedWorld() {
   expect(r.status, r.stderr + r.line).toBe(0);
   expect(r.stderr).not.toContain("receipt could not be verified");
   const merged = w.state.prs[7]!.mergeCommit!.oid;
+  w.state.checkRuns[merged] = green(w.ok, 10);
   const ci = (status: string, conclusion: string | null, extras: Record<string, unknown> = {}) => {
     w.state.mainCi = { total_count: 1, workflow_runs: [{ id: 100, workflow_id: 1, run_attempt: 1, head_sha: merged, head_branch: "main", event: "push", status, conclusion, ...extras }] };
   };
@@ -694,6 +695,11 @@ describe("gate workflow 1480: exact main CI and private single-squash revert", (
     const done = w.post(); expect(done.status, done.stderr + done.line).toBe(0); expect(done.line).toMatch(/^REVERTED [a-f0-9]{40}/);
     expect(w.writes(done.calls)).toEqual([`pr merge 99 -R ${REPO} --squash --match-head-commit ${head}`]);
     expect(w.post().line).toBe(done.line); expect(w.writes(w.post().calls)).toEqual([]);
+  });
+  it.each(["not registered", "scan only"])("main workflows green but required checks %s remain pending", kind => {
+    const w = mergedWorld(); w.ci("completed","success");
+    w.state.checkRuns[w.merged] = kind === "scan only" ? [w.ok("scan")] : [];
+    const r = w.post(); expect(r.line).toMatch(/^PENDING /); expect(w.writes(r.calls)).toEqual([]);
   });
   it.each([
     ["running", "in_progress", null, {}, "PENDING"],
