@@ -30,3 +30,4 @@ npm install -g --no-audit --no-fund "@songsid/agend@$CAND"
 
 check_installed
 check_daemon
+check_no_system_node

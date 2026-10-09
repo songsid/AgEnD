@@ -57,14 +57,45 @@ check_installed() {
   echo "  $SYS_NODE $SYS_NODE_VERSION"
 }
 
+# A PATH with this host's ordinary tools and NO Node at all: /usr/bin and /bin (plus tmux) as links, minus node, npm,
+# npx and corepack. Prints the directory.
+no_node_path() {
+  local farm="$WORK/no-node-bin" f name
+  rm -rf "$farm"; mkdir -p "$farm"
+  for f in /usr/bin/* /bin/* "$(command -v tmux)"; do
+    name=$(basename "$f")
+    case $name in node | nodejs | npm | npx | corepack) continue ;; esac
+    [ -x "$f" ] && [ ! -e "$farm/$name" ] && ln -s "$f" "$farm/$name"
+  done
+  echo "$farm"
+}
+
+# D1: `agend` ITSELF — npm's bin link to the sh launcher, not `<node> launcher` — with no node on PATH: --version,
+# the selection, and the scratch daemon.
+check_no_system_node() {
+  local bin="$PREFIX/bin/agend" path sel v
+  path="$PREFIX/bin:$(no_node_path)"
+  step "agend itself (npm's bin link → the sh launcher) with NO node on PATH"
+  if env PATH="$path" sh -c 'command -v node'; then fail "node is still reachable on the restricted PATH"; fi
+  v="$(env PATH="$path" "$bin" --version)" || fail "agend --version failed with no node on PATH"
+  [ "$v" = "$CAND" ] || fail "agend --version printed '$v' with no node on PATH"
+  sel="$(env PATH="$path" "$bin" --agend-select-json)" || fail "agend --agend-select-json failed with no node on PATH"
+  [ "$(node -pe 'JSON.parse(process.argv[1]).node' "$sel")" = "$RT_NODE" ] || fail "with no node on PATH the selection is $sel"
+  echo "  --version $v; selected $RT_NODE"
+  NO_NODE_PATH="$path" check_daemon
+}
+
 # Start a scratch fleet with no instances (isolated HOME/AGEND_HOME, a private tmux socket), prove the daemon process
-# IS the bundled Node, then stop it.
+# IS the bundled Node, then stop it. With NO_NODE_PATH set, the fleet is started and stopped on that PATH.
 check_daemon() {
   local bin="$PREFIX/bin/agend" port=19391 fpid exe launcher
-  step "a scratch daemon runs on the bundled Node"
+  local -a run=()
+  [ -n "${NO_NODE_PATH:-}" ] && run=(env "PATH=$NO_NODE_PATH")
+  step "a scratch daemon runs on the bundled Node${NO_NODE_PATH:+ (no node on PATH)}"
   mkdir -p "$AGEND_HOME"
+  rm -f "$AGEND_HOME/fleet.pid"
   printf 'health_port: %s\ninstances: {}\n' "$port" > "$AGEND_HOME/fleet.yaml"
-  "$bin" fleet start >"$WORK/fleet.out" 2>&1 &
+  ${run[@]+"${run[@]}"} "$bin" fleet start >"$WORK/fleet.out" 2>&1 &
   launcher=$!
   for _ in $(seq 90); do
     [ -s "$AGEND_HOME/fleet.pid" ] && curl -s -o /dev/null "http://127.0.0.1:$port/health" && break
@@ -76,7 +107,7 @@ check_daemon() {
   if [ -e "/proc/$fpid/exe" ]; then exe="$(readlink "/proc/$fpid/exe")"; else exe="$(ps -o comm= -p "$fpid")"; fi
   echo "  fleet pid $fpid runs $exe"
   [ "$(realpath_of "$exe")" = "$RT_NODE" ] || fail "the daemon runs $exe, not the bundled $RT_NODE"
-  "$bin" fleet stop --yes
+  ${run[@]+"${run[@]}"} "$bin" fleet stop --yes
   for _ in $(seq 60); do kill -0 "$fpid" 2>/dev/null || break; sleep 1; done
   if kill -0 "$fpid" 2>/dev/null; then cat "$WORK/fleet.out"; fail "the scratch fleet did not stop"; fi
   wait "$launcher" 2>/dev/null || true
