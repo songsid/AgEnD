@@ -15,7 +15,8 @@ import { measureSyncWork } from "./sync-work-attribution.js";
 import { RuntimeCpuProfiler, ProfileBusyError, profileDuration, type ProfileTicket } from "./runtime-cpu-profile.js";
 import { ProfileControlServer } from "./profile-control.js";
 import type { CpuProfile } from "./cpu-profile.js";
-import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync, readdirSync, renameSync, copyFileSync, chmodSync, statSync, accessSync, realpathSync, constants as fsConstants, type Dirent } from "node:fs";
+import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync, readdirSync, renameSync, copyFileSync, chmodSync, statSync, accessSync, realpathSync, constants as fsConstants, type Dirent, openSync, closeSync, fsyncSync } from "node:fs";
+import { atomicWriteFileSync } from "./atomic-write.js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { freemem, totalmem, cpus, homedir } from "node:os";
@@ -8990,7 +8991,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       throw new Error(refusal);
     }
     if (existsSync(this.configPath)) chmodSync(tempPath, statSync(this.configPath).mode);
+    // fsync before rename so data survives a power loss between write and rename.
+    const tempFd = openSync(tempPath, "r+");
+    try { fsyncSync(tempFd); } finally { closeSync(tempFd); }
     renameSync(tempPath, this.configPath);
+    // Dir fsync: best-effort; rename already succeeded so data is safe.
+    const dirFd = openSync(dirname(this.configPath), "r");
+    try { fsyncSync(dirFd); } catch { /* best effort */ } finally { closeSync(dirFd); }
 
     this.rawFleetConfig = loadRawFleetConfig(this.configPath);
     this.savedFleetConfigSnapshot = structuredClone(this.fleetConfig);

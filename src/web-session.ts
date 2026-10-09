@@ -23,7 +23,7 @@
  * See `docs/design/web-unification-secure-login.zh-TW.md` §3.3.
  */
 import { createHash, randomBytes } from "node:crypto";
-import { chmodSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 export type SessionSurface = "local" | "gateway";
@@ -140,6 +140,12 @@ export interface SessionFileOps {
   writeFileSync: typeof writeFileSync;
   renameSync: typeof renameSync;
   unlinkSync: typeof unlinkSync;
+  /** fsync a file descriptor. Injected for tests; default is fsyncSync. */
+  fsyncSync?: typeof fsyncSync;
+  /** Open a path. Injected for tests; default is openSync. */
+  openSync?: typeof openSync;
+  /** Close a fd. Injected for tests; default is closeSync. */
+  closeSync?: typeof closeSync;
 }
 
 export interface WebSessionStoreOptions {
@@ -192,7 +198,7 @@ export class WebSessionStore {
     this.maxSessions = opts.maxSessions ?? MAX_WEB_SESSIONS;
     this.path = opts.dataDir ? join(opts.dataDir, "web-sessions.json") : null;
     this.warn = opts.onWarn ?? (() => {});
-    this.ops = { writeFileSync, renameSync, unlinkSync, ...opts.fileOps };
+    this.ops = { writeFileSync, renameSync, unlinkSync, fsyncSync, openSync, closeSync, ...opts.fileOps };
     this.load();
   }
 
@@ -387,7 +393,13 @@ export class WebSessionStore {
       mkdirSync(dir, { recursive: true });
       const body = JSON.stringify({ version: 1, sessions: [...this.byHash.values()].filter(r => !this.pending.has(r.idHash)) });
       this.ops.writeFileSync(temp, body, { encoding: "utf8", mode: 0o600, flag: "wx" });
+      // fsync before rename so data survives a power loss between write and rename.
+      const tmpFd = (this.ops.openSync ?? openSync)(temp, "r+");
+      try { (this.ops.fsyncSync ?? fsyncSync)(tmpFd); } finally { (this.ops.closeSync ?? closeSync)(tmpFd); }
       this.ops.renameSync(temp, this.path);
+      // Dir fsync: best-effort; rename already succeeded so data is safe.
+      const dirFd = (this.ops.openSync ?? openSync)(dir, "r");
+      try { (this.ops.fsyncSync ?? fsyncSync)(dirFd); } catch { /* best effort */ } finally { (this.ops.closeSync ?? closeSync)(dirFd); }
       try { chmodSync(this.path, 0o600); } catch { /* best effort */ }
       this.persisted = new Set([...this.byHash.keys()].filter(hash => !this.pending.has(hash)));
       this.dirty = false;
