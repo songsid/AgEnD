@@ -392,22 +392,26 @@ function codexTrustVariantActive(pane: string): boolean {
 /**
  * Structural helpers for the codex usage-limit selection menu (#945).
  *
- * The real codex 0.156.1 dialog (captured live) states that codex has
- * ALREADY switched to Luna Reserve and offers:
+ * Codex shows it once it has ALREADY switched the session to Luna Reserve. The
+ * rows above "Continue with Luna Reserve" are the server's own call-to-action
+ * buttons (`rateLimitUpsell.ctas` in the account usage reply, rendered by
+ * codex-rs/tui chatwidget/backend_banners.rs), so their labels, number and
+ * order belong to the account and the day — not to the codex version:
  *
- *   • Automatically switched to Luna Reserve xhigh due to usage limits.
- *     You're now using Luna, a faster model for simpler tasks.
- *     Use your reset to continue using the most advanced models, or
- *     wait for usage to reset after 08:00 on 27 Sep.
- *   › 1. Reset usage
- *     2. Add Credits
- *     3. Continue with Luna Reserve
+ *   codex 0.156.1, captured live            codex 0.160.0, live replay 2026-10-08
+ *   › 1. Reset usage                        › 1. Upgrade
+ *     2. Add Credits                          2. Reset usage
+ *     3. Continue with Luna Reserve           3. Continue with Luna Reserve
  *     Press enter to confirm or esc to continue working
  *
- * The SAFE key is **Escape** ("esc to continue working"), which dismisses
- * the dialog and keeps the already-active Luna Reserve session. Escape is
- * sent via sendSpecialKey, NEVER via pasteText (which would add an implicit
- * Enter that could confirm option 1 = Reset usage).
+ * Codex itself appends "Continue with Luna Reserve" as the LAST row, and the
+ * "esc to continue working" footer, only while the session is on Luna Reserve;
+ * Escape is the picker's cancel (`on_cancel`), which closes it with no action
+ * and keeps the composer's draft (codex 0.160.0 and 0.162.0 source, unchanged
+ * between them). That makes **Escape** the safe key whatever the server
+ * offers. It is sent via sendSpecialKey, NEVER via pasteText (whose implicit
+ * Enter would confirm the highlighted server action), and never a digit (a
+ * digit selects its row at once).
  *
  * Design:  keys: ["Escape"]  + verifyAfterKeys: true (menu must vanish).
  * No confirmBeforeEnter / keysAfterConfirm needed: Escape cannot select any
@@ -416,17 +420,19 @@ function codexTrustVariantActive(pane: string): boolean {
 
 /** MUST match the exact hint row text to prevent false positives. */
 const USAGE_LIMIT_ESC_HINT = /^\s*Press enter to confirm or esc to continue working\s*$/i;
-/** Option-set that appears in this specific menu (exact wording). */
-const USAGE_LIMIT_OPT1 = /^\s*[›❯>]?\s*1\.\s+Reset usage\b/i;
-const USAGE_LIMIT_OPT3 = /^\s*[›❯>]?\s*3\.\s+Continue with Luna Reserve\b/i;
+/** One numbered option row of the picker; the label is the server's (or codex's own last row). */
+const USAGE_LIMIT_OPTION = /^\s*[›❯>]?\s*(\d+)\.\s+(\S.*?)\s*$/;
+/** The row codex appends last, and only while the session is on Luna Reserve. */
+const USAGE_LIMIT_CONTINUE = "Continue with Luna Reserve";
 
 /**
  * True when the usage-limit selection menu is the **current** interactive
  * region of the pane (not a historical transcript copy).
  *
  * Structural requirements (all must hold):
- *   - Hint row "Press enter to confirm or esc to continue working"
- *   - Options 1 and 3 present in the bottom region (with exact text)
+ *   - The last non-blank row is the hint "Press enter to confirm or esc to continue working"
+ *   - Directly above it (blank rows aside) a block of option rows numbered 1..N, nothing between them
+ *   - The last option is exactly "Continue with Luna Reserve"; the ones above it are whatever the server sent
  *   - NOT followed by the Codex idle compositor (Context footer / Ask Codex row)
  */
 function codexUsageLimitMenuVisible(pane: string): boolean {
@@ -438,15 +444,26 @@ function codexUsageLimitMenuVisible(pane: string): boolean {
   // The hint row "Press enter to confirm or esc to continue working" must be last.
   if (!USAGE_LIMIT_ESC_HINT.test(rows[last])) return false;
 
-  // The three options must appear in the bottom region (within 10 rows of hint).
-  const region = rows.slice(Math.max(0, last - 10), last);
-  const hasOpt1 = region.some(r => USAGE_LIMIT_OPT1.test(r));
-  const hasOpt3 = region.some(r => USAGE_LIMIT_OPT3.test(r));
-  if (!hasOpt1 || !hasOpt3) return false;
+  // The option block, read upwards from the hint: the WHOLE run of numbered rows, which must read N, N-1, … 1 —
+  // a numbered row above "1." (another "1.", a "0.") makes it some other list, not this picker.
+  let i = last - 1;
+  while (i >= 0 && rows[i].trim() === "") i--;
+  const labels: string[] = [];
+  let expected: number | null = null;
+  for (; i >= 0; i--) {
+    const option = USAGE_LIMIT_OPTION.exec(rows[i]);
+    if (!option) break;
+    const n = Number(option[1]);
+    if (expected !== null && n !== expected) return false;
+    labels.unshift(option[2]);
+    expected = n - 1;
+  }
+  if (expected !== 0) return false;
+  if (labels[labels.length - 1] !== USAGE_LIMIT_CONTINUE) return false;
 
   // Guard: if the Codex compositor (idle prompt + Context footer) is at the
   // bottom, this is scrollback, not the live menu.
-  const tail = region.join("\n");
+  const tail = rows.slice(Math.max(0, last - 10), last).join("\n");
   if (/[›>]\s*Ask Codex to do anything\b/i.test(tail)) return false;
   if (isCodexContextFooter(rows[last])) return false;
 
@@ -2032,10 +2049,10 @@ export class CodexBackend implements CliBackend {
     // sendSpecialKey is the ONLY safe key:
     //
     //   • Escape is sent via sendSpecialKey — never via pasteText (which adds
-    //     an implicit bracketed-paste Enter that could confirm Reset usage).
-    //   • A digit pasted via pasteText would leave the cursor on option 1 and
-    //     its own implicit Enter would fire Reset usage BEFORE any confirmation
-    //     gate. This path is explicitly NOT used.
+    //     an implicit bracketed-paste Enter that could confirm the highlighted
+    //     server action: Upgrade, Reset usage, Add Credits, …).
+    //   • A digit selects its row at once, and pasted its implicit Enter would
+    //     confirm whatever it landed on. This path is explicitly NOT used.
     //
     // verifyAfterKeys: true — confirm the menu is gone after Escape.
     // No confirmBeforeEnter / keysAfterConfirm: Escape needs no confirm gate.
