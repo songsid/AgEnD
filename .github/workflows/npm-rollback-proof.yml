@@ -1,16 +1,26 @@
 # #1450 PR 0 gate: AgEnD's private Node runtime (docs/design/1450-private-node-runtime.md, option A) relies on npm
 # rolling a global install back when the package's own lifecycle refuses. This proves it on every npm the 2.1.12 →
 # 2.2 hop can meet (9, the 10.8.2 that Node 20.19 ships, 11), on Node 20.19.0, on Linux and macOS. Inert and offline:
-# local tarballs, a scratch prefix/cache/npmrc, an unreachable registry. No runtime PR merges unless every cell passes.
+# local tarballs, a scratch prefix/cache/npmrc, an unreachable registry. Every selected cell must pass; Mac cells run at release/manual/weekly time.
 name: npm rollback proof
 
 on:
+  push:
+    branches: [main, 'release/**']
+    tags: ['v*']
   pull_request:
     paths:
       - scripts/ci/npm-rollback-proof.sh
       - .github/workflows/npm-rollback-proof.yml
       - package.json
   workflow_dispatch:
+  schedule:
+    - cron: '37 3 * * 1'
+
+# Superseded PR work releases runners; branch/release/weekly runs are retained.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -20,7 +30,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        # No skipped Mac check-runs on a PR/main head; deferred events add them.
+        os: ${{ fromJSON((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))) && '["ubuntu-latest", "macos-latest"]' || '["ubuntu-latest"]') }}
         npm: ["9.9.4", "10.8.2", "11.6.2"]
     runs-on: ${{ matrix.os }}
     steps:

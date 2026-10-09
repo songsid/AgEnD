@@ -5,8 +5,12 @@ on:
   # get the same checks as main's.
   push:
     branches: [main, 'release/**']
+    tags: ['v*']
   pull_request:
     branches: [main, 'release/**']
+  workflow_dispatch:
+  schedule:
+    - cron: '17 3 * * 1' # Weekly Mac signal; never a PR/main required run.
 
 # Cancel in-progress runs for the same PR when a new commit arrives. Push runs on
 # main/release/** are deliberately NOT cancelled — they are needed for release tagging.
@@ -320,16 +324,17 @@ jobs:
   # that the native better-sqlite3 prebuild loads correctly. This job never
   # starts a fleet or touches tmux — it only does a brief in-process check.
   #
-  # Runs independently so it never slows the test shards. Ubuntu and macOS are
-  # free for public repos. Node 22/24/26 cover the LTS + current span. 6 runners
-  # total: 2 os × 3 node versions.
+  # PR/branch-push runs create only Linux cells: the gate rejects skipped checks.
+  # Release tags, manual runs and the weekly schedule also create Mac cells.
+  # Keeping optional Mac cells absent avoids their queue without dropping the
+  # required build aggregate or changing the smoke steps.
   install-smoke:
     runs-on: ${{ matrix.os }}
     needs: [detect-changes, setup]
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: ${{ fromJSON((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))) && '["ubuntu-latest", "macos-latest"]' || '["ubuntu-latest"]') }}
         # '22' resolves to the latest 22.x (already >=22.14 on current runners).
         # '22.14.0' is the exact minimum required for N-API 10 / better-sqlite3 v13.
         # '24' and '26' cover the current and upcoming release lines.
