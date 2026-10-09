@@ -1,8 +1,8 @@
 import { settingsRequestExecution, settingsWrite } from "./settings-request-capability.js";
 import { type SettingsExecution, SettingsExecutionError, settingsFileResource, trySettingsLease } from "./settings-transaction.js";
 import { readBoundedWebBody } from "./web-body.js";
-import { gatewayRequestContext } from "./web-request-context.js";
 import { permitWebContinuation } from "./web-continuation.js";
+import { gatewayRequestContext } from "./web-request-context.js";
 /**
  * The Settings setup wizard's server side.
  *
@@ -104,26 +104,6 @@ export function nextChannelId(
   if (!taken.has(qualified)) return qualified;
   for (let n = 2; ; n++) {
     const candidate = `${qualified}-${n}`;
-    if (!taken.has(candidate)) return candidate;
-  }
-}
-
-/**
- * Return a platform-specific token env name that is not yet used by any
- * existing connection in the fleet config. Starts with
- * "AGEND_TELEGRAM_TOKEN" / "AGEND_DISCORD_TOKEN" and appends _2, _3, …
- * until a free name is found.
- * Exported so settings-wizard.js and tests can call it directly.
- */
-export function defaultTokenEnvName(
-  platform: string,
-  existingConnections: ReadonlyArray<{ bot_token_env?: string | null }>,
-): string {
-  const base = platform === "telegram" ? "AGEND_TELEGRAM_TOKEN" : "AGEND_DISCORD_TOKEN";
-  const taken = new Set(existingConnections.map(c => c.bot_token_env).filter(Boolean));
-  if (!taken.has(base)) return base;
-  for (let n = 2; ; n++) {
-    const candidate = `${base}_${n}`;
     if (!taken.has(candidate)) return candidate;
   }
 }
@@ -266,33 +246,10 @@ export function detectWizardBackends(): string[] {
 export function draftQuickstart(cfg: FleetConfig, body: WizardPlanInput, plan: WizardPlan): FleetConfig {
   const draft = structuredClone(cfg), summary = wizardChannels(cfg);
   const channels = draft.channels ?? (draft.channel ? [draft.channel] : []);
-  // Match an existing connection only when platform type, bot_token_env, AND
-  // the actual bot identity (group_id for Telegram, guild_id for Discord) ALL
-  // agree — this represents the same bot being re-configured, not a new bot.
-  //
-  // The S1 bug: matching only by bot_token_env caused a cross-platform replace
-  // (e.g. Discord with same default "AGEND_BOT_TOKEN" env silently replaced a
-  // Telegram connection). Adding platform AND group_id to the key prevents this:
-  // two bots that happen to share an env name but differ in group/guild/platform
-  // are always added as separate entries.
-  const botGroupId = body.platform === "telegram" ? body.group_id : body.guild_id;
-  const existingIndex = botGroupId
-    ? channels.findIndex((ch: any) =>
-        (ch as any).type === body.platform &&
-        (ch as any).bot_token_env === body.token_env &&
-        ((ch as any).group_id === botGroupId || (ch as any).guild_id === botGroupId))
-    : -1;
-  // Null out token_env in the ID summary so nextChannelId does not reuse
-  // an existing channel's ID when only the env name matches (which would
-  // produce a duplicate channel id when we push a new entry).
-  const idSummary = existingIndex >= 0 ? summary
-    : summary.map(s => ({ id: s.id, token_env: null }));
-  const entry = { id: nextChannelId(body.platform, body.token_env, idSummary), ...plan.channel };
-  if (existingIndex >= 0) {
-    // Keep the existing channel's id — only its configuration changes.
-    const existingId = (channels[existingIndex] as any).id;
-    channels[existingIndex] = { ...channels[existingIndex], ...entry, id: existingId } as typeof channels[number];
-  } else channels.push(entry as typeof channels[number]);
+  const existingIndex = channels.findIndex(channel => channel.bot_token_env === body.token_env);
+  const entry = { id: nextChannelId(body.platform, body.token_env, summary), ...plan.channel };
+  if (existingIndex >= 0) channels[existingIndex] = { ...channels[existingIndex], ...entry } as typeof channels[number];
+  else channels.push(entry as typeof channels[number]);
   draft.channels = channels; delete draft.channel;
   draft.instances = { ...draft.instances, [body.instance_name]: {
     ...(Object.hasOwn(draft.instances, body.instance_name) ? draft.instances[body.instance_name] : {}),
