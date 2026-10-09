@@ -32,6 +32,12 @@ on:
 permissions:
   contents: read
 
+# A new head of the same pull request cancels its older run; a tag, schedule or dispatch run is its own group (never
+# cancelled).
+concurrency:
+  group: runtime-acceptance-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   PIN: 22.23.3          # the bundled Node: the newest 22.x (docs/design/1450 "Pinned Node")
 
