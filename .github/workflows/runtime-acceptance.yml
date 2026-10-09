@@ -71,8 +71,6 @@ jobs:
       - name: Install, select, open the DB, run the daemon — on the bundled Node
         run: bash scripts/ci/runtime-acceptance/install-run.sh "$RUNNER_TEMP/packages"
       - name: The service file starts the bundled Node
-        # Needs #1450 PR 3 (C6 render); reported, not yet gating. Remove continue-on-error when PR 3 lands.
-        continue-on-error: true
         run: bash scripts/ci/runtime-acceptance/install-run.sh "$RUNNER_TEMP/packages" service
 
   hop:

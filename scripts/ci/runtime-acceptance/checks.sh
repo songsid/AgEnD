@@ -117,16 +117,24 @@ check_daemon() {
 # What a service definition written by this install would start. CI checks the file's contents and paths only: it
 # cannot prove a systemd user service or launchd loads it at boot/login.
 check_service_files() {
-  local bin="$PREFIX/bin/agend" file argv0
-  step "agend install --no-activate writes a service that starts the bundled Node"
+  local bin="$PREFIX/bin/agend" file argv0 argv1 path entry
+  entry="$(realpath_of "$PREFIX/lib/node_modules/@songsid/agend/dist/cli.js")"
+  step "agend install --no-activate writes a service that names the bundled Node and starts this install"
   "$bin" install --no-activate
   if [ "$(uname)" = "Darwin" ]; then
     file="$HOME/Library/LaunchAgents/com.agend.fleet.plist"
     argv0="$(plutil -extract ProgramArguments.0 raw -o - "$file")"
+    argv1="$(plutil -extract ProgramArguments.1 raw -o - "$file")"
+    path="$(plutil -extract EnvironmentVariables.PATH raw -o - "$file")"
   else
     file="$HOME/.config/systemd/user/com.agend.fleet.service"
-    argv0="$(sed -n 's/^ExecStart=\([^ ]*\).*/\1/p' "$file")"
+    argv0="$(sed -n 's/^ExecStart=\([^ ]*\) .*/\1/p' "$file")"
+    argv1="$(sed -n 's/^ExecStart=[^ ]* \([^ ]*\) .*/\1/p' "$file")"
+    path="$(sed -n 's/^Environment=PATH=//p' "$file")"
   fi
   cat "$file"
-  [ "$argv0" = "$RT_NODE" ] || fail "the service starts '$argv0', not the bundled $RT_NODE (C6, #1450 PR 3)"
+  [ "$argv0" = "$RT_NODE" ] || fail "the service starts '$argv0', not the bundled $RT_NODE"
+  [ "$(realpath_of "$argv1")" = "$entry" ] || fail "the service's CLI is '$argv1', not this install's $entry"
+  case ":$path:" in *"/agend-node-"*) fail "the service PATH contains the runtime directory: $path" ;; esac
+  echo "  argv: $argv0 $argv1 fleet start"
 }
