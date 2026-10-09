@@ -22,6 +22,7 @@ import "./chat-strings.js";
 import { confirmedWrite } from "./settings-confirm.js";
 import { createChatStore } from "./chat-store.js";
 import { createThread } from "./chat-thread.js";
+import { needsArgument, paletteFor, parseCommandLine } from "./chat-commands.js";
 import { installTour, refreshTourSpot, startTour } from "./chat-tour.js";
 
 const R = () => globalThis.AgendChatRender;
@@ -56,7 +57,7 @@ export async function setPreviewOptIn(on) {
 export function boot({ stream, boot: bootData, deps = {} }) {
   if (store) return store;
   store = createChatStore({
-    fetch: (...a) => fetch(...a), toast, announce, t, setTimeout: (fn, ms) => setTimeout(fn, ms), ...deps,
+    fetch: (...a) => fetch(...a), toast, announce, t, setTimeout: (fn, ms) => setTimeout(fn, ms), confirm: confirmDialog, ...deps,
   });
   store.attach(stream);
   // #1306: what the server said about previews for this load. The page-wide message and storage listeners this adds
@@ -189,11 +190,15 @@ function ChatView({ name, inst, lease, exec, awaiting }) {
     { key: "delete", label: t("chat.delete"), icon: "trash", danger: true, onSelect: () => setDialog("delete") },
   ];
   const cls = statusClass(inst, exec, awaiting);
-  const sub = html`<span class="status"><span class=${`dot ${cls}`} aria-hidden="true"></span>${statusLabel(inst, exec, awaiting)}</span>`;
+  // #1269 quick actions: the model and effort it runs, each a way to /model or /effort (the same pick list).
+  const pick = (command) => store.runCommand(name, command, "", { alive: () => lease.current() });
+  const sub = html`<span class="status"><span class=${`dot ${cls}`} aria-hidden="true"></span>${statusLabel(inst, exec, awaiting)}</span>
+    ${inst.model ? html`<button type="button" class="hd-chip" title=${t("chat.chipModel", inst.model)} aria-label=${t("chat.chipModel", inst.model)} onClick=${() => pick("model")}>${inst.model}</button>` : null}
+    ${inst.effort ? html`<button type="button" class="hd-chip" title=${t("chat.chipEffort", inst.effort)} aria-label=${t("chat.chipEffort", inst.effort)} onClick=${() => pick("effort")}>${inst.effort}</button>` : null}`;
   return html`<div class=${`panel p-chat${wrap ? " wrap-code" : ""}`} ref=${view}>
     <${PanelHeader} title=${name} sub=${sub}><${Menu} items=${items} label=${t("app.more")} /></${PanelHeader}>
     <${Thread} name=${name} />
-    <${Dock} name=${name} lease=${lease} exec=${exec} awaiting=${awaiting} />
+    <${Dock} name=${name} inst=${inst} lease=${lease} exec=${exec} awaiting=${awaiting} />
     <div class="drop-overlay" aria-hidden="true"><div class="drop-card"><${Icon} name="attach" size=${32} /><span>${t("chat.dropHere")}</span></div></div>
     ${dialog === "details" ? html`<${DetailsDialog} name=${name} onClose=${() => setDialog(null)} />` : null}
     ${dialog === "delete" ? html`<${DeleteDialog} name=${name} onClose=${() => setDialog(null)} />` : null}
@@ -239,18 +244,49 @@ function Thread({ name }) {
 }
 
 /** Everything under the thread: prompts, the working line, a failed send, files waiting, and the composer. */
-function Dock({ name, lease, exec, awaiting }) {
+function Dock({ name, inst, lease, exec, awaiting }) {
   useChatTick(name, ["state"]);
   const s = store.state;
   return html`<div class="dock"><div class="dock-col">
     <${Prompts} name=${name} />
     <${WorkBar} name=${name} lease=${lease} exec=${exec} awaiting=${awaiting} />
+    <${CommandCard} name=${name} lease=${lease} />
+    <${QuickActions} name=${name} inst=${inst} lease=${lease} />
     ${s.failedSends[name] ? html`<div class="failed-send" role="alert"><span>${t("chat.notSent")}</span><span class="txt">${s.failedSends[name]}</span>
       <button type="button" class="btn btn-primary btn-sm" onClick=${() => store.putBack(name)}>${t("chat.putBack")}</button>
       <button type="button" class="btn btn-sm" onClick=${() => store.discardFailed(name)}>${t("chat.discard")}</button></div>` : null}
-    <${Composer} name=${name} busy=${R().isBusy(exec)} />
+    <${Composer} name=${name} lease=${lease} busy=${R().isBusy(exec)} />
     <p class="hint">${t("chat.composerHint")}</p>
   </div></div>`;
+}
+
+/** #1269: what the last chat command answered — its text, why it was refused, or a list to choose from. */
+function CommandCard({ name, lease }) {
+  const c = store.state.commands[name];
+  if (!c) return null;
+  const run = (args) => store.runCommand(name, c.command, args, { alive: () => lease.current() });
+  return html`<div class=${`cmd-card${c.error ? " bad" : ""}`} role=${c.error ? "alert" : "status"}>
+    <div class="cmd-head"><span class="cmd-name mono">/${c.command}</span>
+      ${c.busy ? html`<span class="wait">${t("chat.cmdRunning", c.command)}</span>` : html`<button type="button" class="icon-btn" title=${t("chat.cmdDismiss")}
+        aria-label=${t("chat.cmdDismiss")} onClick=${() => store.dismissCommand(name)}><${Icon} name="close" size=${14} /></button>`}</div>
+    ${c.error ? html`<p class="cmd-text">${c.error}</p>` : null}
+    ${c.text ? html`<pre class="cmd-text">${c.text}</pre>` : null}
+    ${c.choices ? html`<div class="cmd-choices" role="group" aria-label=${t("chat.cmdChoose")}>${c.choices.options.map((o) => html`<button key=${o.id} type="button"
+      class=${`btn btn-sm${o.id === c.choices.current ? " current" : ""}`} aria-current=${o.id === c.choices.current ? "true" : undefined} onClick=${() => run(o.id)}>${o.label}</button>`)}</div>` : null}
+  </div>`;
+}
+
+/** #1269 quick actions: Compact and Clear… once the instance's context is 70% used (from the status it already has). */
+function QuickActions({ name, inst, lease }) {
+  const pct = inst && typeof inst.context_pct === "number" ? Math.round(inst.context_pct) : null;
+  if (pct == null || pct < 70) return null;
+  const busy = !!(store.state.commands[name] && store.state.commands[name].busy);
+  const run = (command) => store.runCommand(name, command, "", { alive: () => lease.current() });
+  return html`<div class="quick-actions" role="group" aria-label=${t("chat.chipContext", pct)}>
+    <span class="qa-ctx">${t("chat.chipContext", pct)}</span>
+    <button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => run("compact")}>${t("chat.chipCompact")}</button>
+    <button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => run("clear")}>${t("chat.chipClear")}</button>
+  </div>`;
 }
 
 function Prompts({ name }) {
@@ -281,20 +317,53 @@ function WorkBar({ name, lease, exec, awaiting }) {
       : html`<span class="elapsed" title=${t("chat.elapsedTitle")} aria-hidden="true">${since == null ? "" : R().formatElapsed(performance.now() - since)}</span>`}</div>`;
 }
 
-function Composer({ name, busy }) {
+function Composer({ name, lease, busy }) {
   const s = store.state;
   const input = useRef(null), fileIn = useRef(null);
   const [, tick] = useState(0);
+  const [sel, setSel] = useState(0);
+  const [closedFor, setClosedFor] = useState(null);    // the draft the palette was closed on (Esc); it opens again on change
   const value = s.drafts[name] || "";
   const files = s.pendingFiles[name] || [];
   const content = !!value.trim() || files.length > 0;
+  // A file waiting: what goes is a message with its file, never a command (no palette, no command line).
+  const palette = files.length || closedFor === value ? null : paletteFor(value);
+  const pick = palette && palette.length ? palette[Math.min(sel, palette.length - 1)] : null;
   // Grow with the text, up to a limit: set through the CSSOM, never a style attribute (#1300).
   useLayoutEffect(() => { const el = input.current; if (!el) return; el.style.height = "auto"; el.style.height = `${Math.min(el.scrollHeight, 240)}px`; }, [value]);
   useEffect(() => { if (input.current) input.current.focus(); }, [name]);
   useEffect(() => { refreshTourSpot(); });
-  const send = () => store.send(name);
-  const onKeyDown = (e) => { if (R().composerKey(e) === "send") { e.preventDefault(); send(); } };
-  const onInput = (e) => { store.setDraft(name, e.target.value); tick(n => n + 1); };
+  const setValue = (v) => { store.setDraft(name, v); setSel(0); tick(n => n + 1); };
+  // #1269: a command line runs the command (POST /ui/command); anything else — "/" included — is sent as before.
+  // The draft is consumed only by a command that starts: one still out keeps the new line in the composer (#1476 review).
+  const runLine = (cmd) => {
+    if (!store.commandFree(name)) return;
+    setValue("");
+    store.runCommand(name, cmd.command, cmd.args, { alive: () => lease.current() });
+  };
+  const complete = (c) => setValue(`/${c.name}${c.arg ? " " : ""}`);
+  const submit = () => {
+    if (pick) {
+      if (value === `/${pick.name}` && !needsArgument(pick.name)) runLine({ command: pick.name, args: "" });
+      else complete(pick);
+      return;
+    }
+    const cmd = files.length ? null : parseCommandLine(value);
+    if (cmd && needsArgument(cmd.command) && !cmd.args) { setValue(`/${cmd.command} `); return; }
+    if (cmd) { runLine(cmd); return; }
+    store.send(name);
+  };
+  const onKeyDown = (e) => {
+    if (palette && palette.length && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+      e.preventDefault();
+      setSel((n) => (Math.min(n, palette.length - 1) + (e.key === "ArrowDown" ? 1 : palette.length - 1)) % palette.length);
+      return;
+    }
+    if (pick && e.key === "Tab" && !e.shiftKey) { e.preventDefault(); complete(pick); return; }
+    if (palette && e.key === "Escape" && !e.isComposing) { e.preventDefault(); setClosedFor(value); return; }
+    if (R().composerKey(e) === "send") { e.preventDefault(); submit(); }
+  };
+  const onInput = (e) => { setValue(e.target.value); };
   // Files in a paste are attached; a very long text paste goes as a text file — only once it is really attached.
   const onPaste = (e) => {
     const list = e.clipboardData && e.clipboardData.files;
@@ -302,18 +371,26 @@ function Composer({ name, busy }) {
     if (list && list.length) { store.addFiles(name, list); if (!text) e.preventDefault(); return; }
     if (R().isLongPaste(text) && store.attachPastedText(name, text)) e.preventDefault();
   };
+  const optId = (c) => `cmd-${c.name}`;
   return html`<div class="composer-box">
+    ${palette ? html`<ul class="cmd-palette" id="cmdPalette" role="listbox" aria-label=${t("chat.cmdCommands")}>
+      ${palette.length ? palette.map((c) => html`<li key=${c.name} id=${optId(c)} role="option" aria-selected=${c === pick ? "true" : "false"}
+          class=${c === pick ? "on" : ""} onMouseDown=${(e) => { e.preventDefault(); complete(c); }}>
+          <span class="cmd-name mono">/${c.name}${c.arg ? html` <span class="cmd-arg">${c.arg}</span>` : null}</span><span class="cmd-desc">${t(`chat.cmd_${c.name}`)}</span></li>`)
+        : html`<li class="cmd-none" role="option" aria-selected="false">${t("chat.cmdNotCommand")}</li>`}
+    </ul>` : null}
     ${files.length ? html`<div class="pending-files">${files.map((f, i) => html`<${FileChip} key=${`${f.name}-${i}`} f=${f} i=${i} name=${name} />`)}</div>` : null}
     <div class="composer">
       <button id="attachBtn" type="button" class="icon-btn" title=${t("chat.attachTitle")} aria-label=${t("chat.attachTitle")} onClick=${() => fileIn.current && fileIn.current.click()}><${Icon} name="attach" /></button>
       <input ref=${fileIn} type="file" multiple hidden accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/*,.md,.csv,.json,.log,.yaml,.yml"
         onChange=${(e) => { store.addFiles(name, e.target.files); e.target.value = ""; }} />
       <textarea id="msgIn" ref=${input} rows="1" value=${value} placeholder=${t("chat.composerPlaceholder", name)} aria-label=${t("chat.composerPlaceholder", name)}
-        autocomplete="off" onInput=${onInput} onKeyDown=${onKeyDown} onPaste=${onPaste}></textarea>
+        autocomplete="off" aria-controls=${palette ? "cmdPalette" : undefined} aria-expanded=${palette ? "true" : "false"}
+        aria-activedescendant=${pick ? optId(pick) : undefined} onInput=${onInput} onKeyDown=${onKeyDown} onPaste=${onPaste}></textarea>
       <button id="stopBtn" type="button" class="btn btn-stop" hidden=${!busy} title=${t("chat.stopReplyTitle")}
         disabled=${!!s.cancelling[name]} onClick=${() => store.cancelReply(name)}><${Icon} name="stop" size=${14} />${t("chat.stopReply")}</button>
       <button id="sendBtn" type="button" class="btn btn-primary btn-send" hidden=${busy && !content} disabled=${!content || !!s.sending[name]}
-        aria-label=${t("chat.send")} title=${t("chat.send")} onClick=${send}><${Icon} name="send" size=${16} /><span class="send-label">${t("chat.send")}</span></button>
+        aria-label=${t("chat.send")} title=${t("chat.send")} onClick=${submit}><${Icon} name="send" size=${16} /><span class="send-label">${t("chat.send")}</span></button>
     </div></div>`;
 }
 

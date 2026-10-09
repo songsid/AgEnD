@@ -710,3 +710,32 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
   .ch-fleet { grid-template-columns: minmax(0, 1fr); }
   .ch-bar .btn { min-height: var(--tap); }
 }
+
+/* ── Chat commands and quick actions (#1269) ── */
+.hd-chip { margin-left: var(--s-2); padding: 0 var(--s-2); border: 1px solid var(--border); border-radius: var(--r-full); background: transparent; color: var(--text-2);
+  font-size: var(--fs-xs); line-height: 20px; cursor: pointer; max-width: 16em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
+.hd-chip:hover { background: var(--surface); color: var(--text); }
+.composer-box { position: relative; }
+.cmd-palette { position: absolute; left: 0; right: 0; bottom: calc(100% + var(--s-1)); z-index: 20; list-style: none; max-height: 280px; overflow-y: auto;
+  padding: var(--s-1); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg); box-shadow: var(--shadow-2); }
+.cmd-palette li { display: flex; align-items: baseline; gap: var(--s-3); padding: var(--s-2) var(--s-3); border-radius: var(--r-sm); cursor: pointer; font-size: var(--fs-sm); }
+.cmd-palette li.on, .cmd-palette li:hover { background: var(--surface-2); }
+.cmd-palette .cmd-name { flex-shrink: 0; white-space: nowrap; }
+.cmd-palette .cmd-desc { color: var(--text-3); font-size: var(--fs-xs); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmd-palette .cmd-arg { color: var(--text-3); }
+.cmd-palette .cmd-none { color: var(--text-3); cursor: default; }
+.cmd-card { display: flex; flex-direction: column; gap: var(--s-2); margin-bottom: var(--s-2); padding: var(--s-2) var(--s-3); border-radius: var(--r-md); background: var(--surface); font-size: var(--fs-sm); }
+.cmd-card.bad { border-left: 3px solid var(--danger); }
+.cmd-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); }
+.cmd-name { font-weight: var(--fw-semibold); }
+.cmd-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-ui); color: var(--text-2); }
+.cmd-choices { display: flex; flex-wrap: wrap; gap: var(--s-1); max-height: 180px; overflow-y: auto; }
+.cmd-choices .btn.current { border-color: var(--accent); color: var(--accent); }
+.quick-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); margin-bottom: var(--s-2); font-size: var(--fs-xs); color: var(--text-2); }
+/* A phone: the instance's name keeps the header; /model and /effort are a "/" away. */
+@media (max-width: 479px) { .hd-chip { display: none; } }
+@media (max-width: 899px) {
+  .hd-chip { max-width: 9em; }
+  .cmd-palette li { min-height: var(--tap); align-items: center; }
+  .cmd-choices .btn, .quick-actions .btn { min-height: var(--tap); }
+}
