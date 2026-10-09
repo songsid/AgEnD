@@ -12,11 +12,14 @@ var fs = require("fs");
 var path = require("path");
 var LOG = process.env.AGEND_BOUNDARY_LOG;
 
+/** A service manager reached by absolute path, as a program or anywhere inside a shell string. */
+var MANAGER_BY_PATH = /(^|[\s;&|(`"'=])\/[^\s;&|()`"']*\/(systemctl|launchctl)(?=$|[\s;&|)`"'])/;
 function violation(file, args) {
   var all = [String(file)].concat((args || []).map(String));
   for (var i = 0; i < all.length - 1; i++) if (all[i] === "fleet" && all[i + 1] === "start") return "fleet start: " + all.join(" ");
   if (/\bfleet\s+start\b/.test(all.join(" "))) return "fleet start in a shell string: " + all.join(" ");
   if (/^(systemctl|launchctl)$/.test(path.basename(String(file))) && path.isAbsolute(String(file))) return "service manager by absolute path: " + all.join(" ");
+  for (var j = 0; j < all.length; j++) if (MANAGER_BY_PATH.test(all[j])) return "service manager by absolute path in a command string: " + all.join(" ");
   return null;
 }
 function stop(what) {

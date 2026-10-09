@@ -46,12 +46,13 @@ check_installed() {
     const [pkg, file] = process.argv.slice(1);
     const main = addRow(pkg, file);
     const w = new Worker(`${addRow}; require("node:worker_threads").parentPort.postMessage(addRow(${JSON.stringify(pkg)}, ${JSON.stringify(file)}))`, { eval: true });
-    // Only a validated answer from the worker passes: an exit before it — even exit 0 — fails, and so does silence.
+    // Only a validated answer AND a clean exit (code 0) pass: an exit before the answer — even exit 0 —, a nonzero exit
+    // after it, and silence all fail.
     let answer = null;
     w.on("message", n => { answer = n; });
     w.on("error", e => { console.error(e); process.exit(1); });
     w.on("exit", code => {
-      if (answer !== main + 1) { console.error(`  the worker exited ${code} with ${answer === null ? "no answer" : `${answer} row(s), not ${main + 1}`}`); process.exit(1); }
+      if (code !== 0 || answer !== main + 1) { console.error(`  the worker exited ${code} with ${answer === null ? "no answer" : `${answer} row(s)${answer === main + 1 ? "" : `, not ${main + 1}`}`}`); process.exit(1); }
       console.log(`  main thread: ${main} row(s); then the worker: ${answer}`);
       process.exit(0);
     });
