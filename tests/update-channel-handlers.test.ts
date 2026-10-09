@@ -69,11 +69,11 @@ const scratch = () => { const d = mkdtempSync(join(tmpdir(), "agend-update-chann
 afterEach(() => { spawned.length = 0; registry.tags = {}; registry.views = []; registry.prefix = null; installed.version = "2.1.11-beta.2"; for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
 /** A global install the way npm lays it out: the package, and `<prefix>/bin/agend` linking to its bin. */
-function globalInstall(opts: { linkElsewhere?: boolean } = {}): string {
+function globalInstall(opts: { linkElsewhere?: boolean; name?: string } = {}): string {
   const prefix = scratch();
   const pkg = join(prefix, "lib", "node_modules", "@songsid", "agend");
   mkdirSync(join(pkg, "launcher"), { recursive: true });
-  writeFileSync(join(pkg, "package.json"), JSON.stringify({ name: "@songsid/agend", version: "2.2.0-beta.1", bin: { agend: "./launcher/agend" } }));
+  writeFileSync(join(pkg, "package.json"), JSON.stringify({ name: opts.name ?? "@songsid/agend", version: "2.2.0-beta.1", bin: { agend: "./launcher/agend" } }));
   writeFileSync(join(pkg, "launcher", "agend"), "#!/bin/sh\n");
   mkdirSync(join(prefix, "bin"));
   const checkout = join(prefix, "checkout-agend");
@@ -117,7 +117,11 @@ describe("a chat /update runs the installed `agend update`, by absolute path", (
   });
 
   // No unverified fallback (Prism v2-3): whatever `agend` is on PATH is never run instead.
-  it.each([["npm cannot say where AgEnD is installed", () => {}, "npm could not say"], ["its bin link leads elsewhere (a checkout)", () => { globalInstall({ linkElsewhere: true }); }, "not the installed package's"]] as const)("refused, nothing dispatched: %s", async (_n, arrange, reason) => {
+  it.each([
+    ["npm cannot say where AgEnD is installed", () => {}, "npm could not say"],
+    ["its bin link leads elsewhere (a checkout)", () => { globalInstall({ linkElsewhere: true }); }, "not the installed package's"],
+    ["what npm's root holds there is not @songsid/agend", () => { globalInstall({ name: "@suzuke/agend" }); }, "is not an installed AgEnD package"],
+  ] as const)("refused, nothing dispatched: %s", async (_n, arrange, reason) => {
     arrange();
     const fm = new FleetManager(scratch());
     const failed: string[] = [];
@@ -129,6 +133,23 @@ describe("a chat /update runs the installed `agend update`, by absolute path", (
       expect(failed).toEqual([expect.stringContaining(reason)]);
       expect(failed[0]).toContain("Run `agend update` from a shell");
     } finally { fm.stormWindow.shutdown(); fm.spawnGate.shutdown(); }
+  });
+
+  it("Telegram refuses the same way: nothing dispatched", async () => {
+    globalInstall({ linkElsewhere: true });
+    const failed: string[] = [];
+    const sendText = vi.fn().mockResolvedValue({ messageId: "p1", chatId: "chat", threadId: "1" });
+    const adapter = { id: "telegram-main", type: "telegram", sendText };
+    const commands = new TopicCommands({
+      adapter, adapters: new Map([["telegram-main", adapter]]),
+      fleetConfig: { channel: { access: { allowed_users: ["admin"] } } },
+      hasFleetAdmins: () => true, isFleetAdmin: (u: string) => u === "admin",
+      dataDir: scratch(), failUpdateProgress: (m: string) => { failed.push(m); },
+    } as any);
+    const msg = { text: "/update", chatId: "chat", threadId: "1", messageId: "m", userId: "admin", adapterId: "telegram-main", username: "op", timestamp: new Date() } as any;
+    expect(await commands.handleGeneralCommand(msg)).toBe(true);
+    expect(spawned).toEqual([]);
+    expect(failed).toEqual([expect.stringContaining("not the installed package's")]);
   });
 });
 
