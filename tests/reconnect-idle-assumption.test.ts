@@ -22,9 +22,17 @@ function makeClient() {
   const state = client as unknown as {
     paneToWindow: Map<string, string>;
     lastOutputAt: Map<string, number>;
+    lastOutputAtMono: Map<string, number>;
     resetPaneObservations(): void;
+    mono: () => number;
   };
-  return { client, state };
+  // Inject an injectable monotonic clock. isIdle and inObservationGrace use
+  // this.mono() (not Date.now()), so tests advance the injected clock rather
+  // than relying on real wall-time or fake-timer hooks.
+  let monoNow = 1_000_000;
+  state.mono = () => monoNow;
+  const advanceMono = (ms: number) => { monoNow += ms; };
+  return { client, state, advanceMono };
 }
 
 /**
@@ -40,11 +48,11 @@ describe("control-mode reconnect does not fake an idle pane", () => {
   afterEach(() => { vi.useRealTimers(); });
 
   it("reports a pane with no observations as busy while the grace holds", () => {
-    vi.useFakeTimers();
     const { client, state } = makeClient();
 
     state.paneToWindow.set("%1", "@1");
     state.lastOutputAt.set("%1", Date.now());
+    state.lastOutputAtMono.set("%1", state.mono());
     expect(client.isIdle("@1")).toBe(false); // actively producing output
 
     simulateReconnect(state);
@@ -53,7 +61,6 @@ describe("control-mode reconnect does not fake an idle pane", () => {
   });
 
   it("re-resolving the pane before any output still does not claim idle", () => {
-    vi.useFakeTimers();
     const { client, state } = makeClient();
     simulateReconnect(state);
 
@@ -63,30 +70,29 @@ describe("control-mode reconnect does not fake an idle pane", () => {
   });
 
   it("becomes idle again once the grace expires with nothing observed", () => {
-    vi.useFakeTimers();
-    const { client, state } = makeClient();
+    const { client, state, advanceMono } = makeClient();
     simulateReconnect(state);
 
     expect(client.isIdle("@1")).toBe(false);
-    vi.advanceTimersByTime(SILENCE_MS);
+    advanceMono(SILENCE_MS);
     // A window that is genuinely untracked must not block delivery forever, and
     // silence for silenceMs is this class's own definition of idle anyway.
     expect(client.isIdle("@1")).toBe(true);
   });
 
   it("lets real output during the grace settle to idle on the normal schedule", () => {
-    vi.useFakeTimers();
-    const { client, state } = makeClient();
+    const { client, state, advanceMono } = makeClient();
     simulateReconnect(state);
 
     state.paneToWindow.set("%1", "@1");
-    vi.advanceTimersByTime(500);
+    advanceMono(500);
     state.lastOutputAt.set("%1", Date.now()); // a %output record arrives
+    state.lastOutputAtMono.set("%1", state.mono());
 
     expect(client.isIdle("@1")).toBe(false);
-    vi.advanceTimersByTime(SILENCE_MS - 1);
+    advanceMono(SILENCE_MS - 1);
     expect(client.isIdle("@1")).toBe(false);
-    vi.advanceTimersByTime(1);
+    advanceMono(1);
     expect(client.isIdle("@1")).toBe(true);
   });
 

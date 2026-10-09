@@ -15,6 +15,7 @@ const SILENCE_MS = 200;
 type Internals = {
   mono: () => number;
   lastOutputAt: Map<string, number>;
+  lastOutputAtMono: Map<string, number>;
   observationResetAt: number;
   windowToPaneId(id: string): string | undefined;
   paneToWindow: Map<string, string>;
@@ -68,7 +69,8 @@ describe("TmuxControlClient: observation age uses monotonic clock (#1490 P3)", (
     internals.registeredWindows.add("@2");
     internals.windowToPaneId = () => paneId;
     // Record output at current mono time
-    internals.lastOutputAt.set(paneId, internals.mono());
+    internals.lastOutputAt.set(paneId, Date.now()); // wall clock for hasOutputSince
+    internals.lastOutputAtMono.set(paneId, internals.mono()); // mono for isIdle
 
     // Not idle yet (0ms since last output)
     expect(client.isIdle("@2")).toBe(false);
@@ -116,7 +118,8 @@ describe("TmuxControlClient.waitUntilIdle: resolves false when stopped (#1490 P3
     internals.paneToWindow.set(paneId, "@4");
     internals.registeredWindows.add("@4");
     internals.windowToPaneId = () => paneId;
-    internals.lastOutputAt.set(paneId, internals.mono());
+    internals.lastOutputAt.set(paneId, Date.now()); // wall clock for hasOutputSince
+    internals.lastOutputAtMono.set(paneId, internals.mono()); // mono for isIdle
 
     const promise = client.waitUntilIdle("@4", 5_000);
     // Advance mono past silenceMs so isIdle returns true

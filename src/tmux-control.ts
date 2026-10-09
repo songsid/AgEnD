@@ -93,7 +93,8 @@ export class TmuxControlClient extends EventEmitter implements TmuxReadPort {
   private readonly reads: TmuxReadLane;
   private registrationSerial = 0;
   private registrationTokens = new Map<string, number>();
-  private lastOutputAt = new Map<string, number>(); // paneId → timestamp
+  private lastOutputAt = new Map<string, number>();  // wall-clock (Date.now) for hasOutputSince
+  private lastOutputAtMono = new Map<string, number>(); // monotonic (mono) for isIdle // paneId → timestamp
   private paneToWindow = new Map<string, string>();  // paneId → windowId
   private registeredWindows = new Set<string>();    // windowIds we should re-resolve on reconnect
   private resolveFailures = new Map<string, number>(); // windowId → consecutive resolve failures
@@ -117,7 +118,7 @@ export class TmuxControlClient extends EventEmitter implements TmuxReadPort {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   /** Epoch ms of the last observation reset. Everything before it is unobservable:
    *  the pane cache was dropped, so the absence of a record proves nothing. */
-  private observationResetAt = 0;
+  private observationResetAt = -1; // -1 = never reset; ≥0 = reset at this mono timestamp
   private safetySweepTimer: ReturnType<typeof setInterval> | null = null;
   /** The current sweep's pending per-listener slots. */
   private safetySweepSlots = new Set<ReturnType<typeof setTimeout>>();
@@ -253,7 +254,7 @@ export class TmuxControlClient extends EventEmitter implements TmuxReadPort {
         this.paneToWindow.set(paneId, windowId);
         // Only once observations have been reset (a connect or reconnect): before that there is nothing a mapping
         // could have been missing, and a never-connected client keeps the old optimistic answer.
-        if (this.observationResetAt > 0) this.mappedAt.set(paneId, this.mono());
+        if (this.observationResetAt >= 0) this.mappedAt.set(paneId, this.mono());
         this.logger?.debug({ windowId, paneId }, "Registered window→pane mapping");
       }
     } catch (error) {
@@ -281,6 +282,7 @@ export class TmuxControlClient extends EventEmitter implements TmuxReadPort {
   private resetPaneObservations(): void {
     this.paneToWindow.clear();
     this.lastOutputAt.clear();
+    this.lastOutputAtMono.clear();
     this.mappedAt.clear();
     // A recovered window's "silent since it came back" is an observation too: kept, it would vouch for whatever pane
     // the window re-resolves to inside the new grace (#1494 review).
@@ -313,7 +315,7 @@ export class TmuxControlClient extends EventEmitter implements TmuxReadPort {
    * An actively generating pane re-registers well inside it.
    */
   private inObservationGrace(): boolean {
-    return this.observationResetAt > 0 && this.mono() < this.observationResetAt + this.silenceMs;
+    return this.observationResetAt >= 0 && this.mono() < this.observationResetAt + this.silenceMs;
   }
 
   /**
@@ -352,8 +354,8 @@ export class TmuxControlClient extends EventEmitter implements TmuxReadPort {
     // After the grace we fall back to the old optimistic answer, because a window
     // that was never registered must not block delivery forever.
     if (!paneId) return !this.inObservationGrace();
-    const last = this.lastOutputAt.get(paneId);
-    if (last == null) {
+    const lastMono = this.lastOutputAtMono.get(paneId);
+    if (lastMono == null) {
       // Back from lost: nothing observed since; idle only after silenceMs of observed silence.
       const recovered = this.recoveredAt.get(windowId);
       if (recovered !== undefined) return this.mono() - recovered >= this.silenceMs;
@@ -361,7 +363,7 @@ export class TmuxControlClient extends EventEmitter implements TmuxReadPort {
       if (mapped !== undefined && this.mono() - mapped < this.silenceMs) return false;
       return !this.inObservationGrace();
     }
-    return this.mono() - last >= this.silenceMs;
+    return this.mono() - lastMono >= this.silenceMs;
   }
 
   /**
@@ -700,10 +702,12 @@ export class TmuxControlClient extends EventEmitter implements TmuxReadPort {
     if (line.startsWith("%output ")) {
       const match = line.match(/^%output (%\d+) /);
       if (match) {
-        const at = this.mono();
+        const at = Date.now(); // wall-clock for hasOutputSince comparisons with enterAt
+        const atMono = this.mono(); // monotonic for isIdle elapsed checks
         const paneId = match[1];
         const windowId = this.paneToWindow.get(paneId);
         this.lastOutputAt.set(paneId, at);
+        this.lastOutputAtMono.set(paneId, atMono);
         if (windowId) {
           // Scope hot-path output events by window so one active TUI does not
           // wake every daemon listener in a large fleet.
