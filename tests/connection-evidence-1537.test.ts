@@ -33,7 +33,7 @@ afterEach(() => {
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 
-const tg = (id: string): ChannelConfig => ({ id, type: "telegram", mode: "topic", bot_token_env: TOKEN_ENV, group_id: "-100", access: { mode: "locked", allowed_users: [] } } as ChannelConfig);
+const tg = (id: string): ChannelConfig => ({ id, type: "telegram", mode: "topic", bot_token_env: TOKEN_ENV, group_id: "-100", access: { mode: "locked", allowed_users: [] } } as unknown as ChannelConfig);
 function fleet(channels: ChannelConfig[]) {
   const dir = mkdtempSync(join(tmpdir(), "agend-evidence-")); dirs.push(dir);
   vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ ok: true, result: true }) })));
