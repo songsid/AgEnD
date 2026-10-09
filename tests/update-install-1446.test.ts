@@ -89,6 +89,7 @@ function world() {
   writeFileSync(calls, "");
   const npmStub = (pfx: string) => `#!/bin/sh
 echo "npm $*" >> ${sq(calls)}
+[ -n "$AGEND_INSTALL_TOKEN" ] && echo "token $AGEND_INSTALL_TOKEN for npm $*" >> ${sq(calls)}
 case "$1 $2" in
   "root -g") echo ${sq(join(pfx, "lib", "node_modules"))}; exit 0;;
   "prefix -g") echo ${sq(pfx)}; exit 0;;
@@ -124,6 +125,25 @@ exit 0
 }
 
 const plan = (pkg: string, targetVersion: string | null = "2.2.0"): UpdateInstallPlan => ({ pkg, targetVersion, viaNvm: false, nvmSh: "/nonexistent" });
+
+describe("#1450 C1: the npm prefix is locked before npm runs; the token goes to npm only", () => {
+  it("the lock is asked for npm's own prefix; its token reaches `npm install` and no other command", () => {
+    const w = world();
+    const asked: string[] = [];
+    const outcome = runUpdateInstall({ ...plan(fixturePackage(w.root, "v220", "2.2.0")), lock: prefix => { asked.push(prefix); return { ok: true, token: "7".repeat(32) }; } }, w.runner);
+    expect(outcome.ok).toBe(true);
+    expect(asked).toEqual([w.prefix]);
+    expect(w.callLog().filter(line => line.startsWith("token "))).toEqual([`token ${"7".repeat(32)} for npm install -g ${join(w.root, "src", "v220")}`]);
+  });
+
+  it("a refused lock stops before npm installs anything", () => {
+    const w = world();
+    runUpdateInstall(plan(fixturePackage(w.root, "v2112", "2.1.12"), "2.1.12"), w.runner);
+    const outcome = runUpdateInstall({ ...plan(fixturePackage(w.root, "v220", "2.2.0")), lock: () => ({ ok: false, reason: "another AgEnD install is running on /p" }) }, w.runner);
+    expect(outcome).toMatchObject({ ok: false, stage: "lock", message: expect.stringContaining("another AgEnD install is running on /p. Nothing was changed.") });
+    expect(w.callLog().filter(line => line.startsWith("npm install"))).toHaveLength(1);          // only the 2.1.12 setup
+  });
+});
 
 describe("#1450 C4: a launcher-era target is verified on the Node IT selects, not the updater's", () => {
   const install = (select: "runtime" | "error" | "other-package", native: NativeMode = "ok") => {
