@@ -32,7 +32,12 @@ jobs:
           cache: npm
       - name: Build current stores
         run: npm ci && npm run build
+      - name: A failed probe fails the workflow step
+        shell: bash
+        run: node scripts/check-data-downgrade-workflow.mjs
       - name: Current Node 22 → published 2.1.12 Node 20 → current Node 22
+        id: roundtrip
+        shell: bash
         env:
           OLD_NODE: ${{ steps.baseline.outputs.node }}
           OLD_PACKAGE: ${{ runner.temp }}/agend-downgrade-baseline/lib/node_modules/@songsid/agend
