@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { createContext, runInContext } from "node:vm";
 import ts from "typescript";
@@ -346,4 +346,63 @@ it.each(["changed", "unreadable"] as const)("CLI rechecks %s PID publication aft
   expect(probes).toBe(2); expect(h.process.exitCode).toBe(1);
   expect(h.unlink).not.toHaveBeenCalled(); expect(h.start).not.toHaveBeenCalled();
   expect(readFileSync(publication, "utf8")).toBe("999");
+});
+
+it.skipIf(process.platform === "win32" || process.getuid?.() === 0)("CLI refuses a real inaccessible PID publication after the runtime guard", async () => {
+  const root = scratch(), publication = join(root, "fleet.pid"); writeFileSync(publication, "123");
+  const h = detachedCliRig(async () => {});
+  h.context.pidPath = publication;
+  h.context.existsSync = existsSync;
+  h.context.readFileSync = readFileSync;
+  const { guardDetached } = await import("../src/restart-guard.js");
+  let probes = 0;
+  h.guard.guardDetached.mockImplementation(() => guardDetached("/private/node", { node: "/private/node", entry: "/private/cli.js" }, {
+    realpath: path => {
+      if (++probes === 2) {
+        writeFileSync(publication, "999");
+        chmodSync(root, 0o000);
+        expect(existsSync(publication)).toBe(false);
+        expect(() => readFileSync(publication, "utf8")).toThrow(expect.objectContaining({ code: "EACCES" }));
+      }
+      return path;
+    },
+  }));
+  try {
+    await h.action();
+    expect(probes).toBe(2); expect(h.process.exitCode).toBe(1);
+    expect(h.unlink).not.toHaveBeenCalled(); expect(h.start).not.toHaveBeenCalled();
+  } finally { chmodSync(root, 0o700); }
+  expect(readFileSync(publication, "utf8")).toBe("999");
+});
+
+it.each(["ENOENT", "unchanged"] as const)("CLI permits a %s PID publication at the final boundary", async state => {
+  const root = scratch(), publication = join(root, "fleet.pid"); writeFileSync(publication, "123");
+  const h = detachedCliRig(async () => {});
+  h.context.pidPath = publication;
+  h.context.existsSync = existsSync;
+  h.context.readFileSync = readFileSync;
+  const { guardDetached } = await import("../src/restart-guard.js");
+  let probes = 0;
+  h.guard.guardDetached.mockImplementation(() => guardDetached("/private/node", { node: "/private/node", entry: "/private/cli.js" }, {
+    realpath: path => { if (++probes === 2 && state === "ENOENT") unlinkSync(publication); return path; },
+  }));
+  await h.action();
+  expect(probes).toBe(2); expect(h.process.exitCode).toBe(0);
+  expect(h.unlink).toHaveBeenCalledOnce(); expect(h.start).toHaveBeenCalledOnce();
+  expect(existsSync(publication)).toBe(state === "unchanged");
+});
+
+it.each(["EACCES", "ENOTDIR", undefined])("CLI refuses failed PID lookup %s even when existsSync returns false", async code => {
+  const h = detachedCliRig(async () => {});
+  let probes = 0;
+  h.guard.guardDetached.mockImplementation(() => {
+    if (++probes === 2) {
+      h.context.existsSync = () => false;
+      h.context.readFileSync = () => { throw Object.assign(new Error("lookup failed"), { code }); };
+    }
+    return { ok: true };
+  });
+  await h.action();
+  expect(probes).toBe(2); expect(h.process.exitCode).toBe(1);
+  expect(h.unlink).not.toHaveBeenCalled(); expect(h.start).not.toHaveBeenCalled();
 });

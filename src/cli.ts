@@ -2204,7 +2204,8 @@ program
         // publication AFTER both, immediately before cleanup/spawn. Unreadable
         // publication cannot authorize deleting a newly published owner's file.
         let publicationCurrent = false;
-        try { publicationCurrent = !existsSync(pidPath) || readFileSync(pidPath, "utf-8") === originalPidFile; } catch { /* unknown refuses */ }
+        try { publicationCurrent = readFileSync(pidPath, "utf-8") === originalPidFile; }
+        catch (error) { publicationCurrent = (error as NodeJS.ErrnoException | null)?.code === "ENOENT"; }
         if (!publicationCurrent) {
           console.error("  ✗ Fleet owner changed or its publication is unreadable; refusing a duplicate restart.");
           process.exitCode = 1;
