@@ -1097,6 +1097,13 @@ function introducedErrors(before: ValidationResult, after: ValidationResult): Va
 }
 
 const updateInstanceConfig: Handler = (ctx, rawArgs, respond) => {
+  // Privilege boundary (#804/#814): tool_set must be set via Settings or
+  // fleet.yaml, not through the MCP tool. Check the raw args before Zod
+  // strips unknown fields, so the field is never silently ignored.
+  if (typeof (rawArgs as any)?.config?.tool_set === "string" || (rawArgs as any)?.config?.tool_set !== undefined) {
+    respond(null, "tool_set can only be changed by an administrator via Settings or fleet.yaml (privilege boundary, #804/#814)");
+    return;
+  }
   const v = validateArgs(UpdateInstanceConfigArgs, rawArgs, "update_instance_config");
   if (!v.ok) { respond(null, v.error); return; }
   const inst = ctx.fleetConfig?.instances[v.data.name];
