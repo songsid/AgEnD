@@ -12,19 +12,21 @@ import {
 import type { CommandResult } from "../src/update-install.js";
 
 const PKG = "/usr/lib/node_modules/@songsid/agend";
-const verified: VerifiedTarget = { dir: PKG, bin: `${PKG}/dist/cli.js`, node: "/opt/node22/bin/node" };
+const verified: VerifiedTarget = { dir: PKG, bin: `${PKG}/dist/cli.js`, entry: `${PKG}/dist/cli.js`, node: "/opt/node22/bin/node" };
 /** A small filesystem: links, executables and shebangs. */
 const fs: TupleDeps = {
   realpath: p => ({
     "/usr/bin/agend": `${PKG}/dist/cli.js`,
     [`${PKG}/dist/cli.js`]: `${PKG}/dist/cli.js`,
     [`${PKG}/dist/agent-cli.js`]: `${PKG}/dist/agent-cli.js`,
+    [`${PKG}/launcher/agend`]: `${PKG}/launcher/agend`,
+    [`${PKG}/launcher/agend.cjs`]: `${PKG}/launcher/agend.cjs`,
     "/home/u/src/agend/dist/cli.js": "/home/u/src/agend/dist/cli.js",
     "/opt/node22/bin/node": "/opt/node22/bin/node",
     "/usr/bin/node": "/usr/bin/node",
     "/opt/node20/bin/node": "/opt/node20/bin/node",
   } as Record<string, string>)[p] ?? null,
-  readFirstLine: p => (p.endsWith(".js") ? "#!/usr/bin/env node" : null),
+  readFirstLine: p => (p.endsWith(".js") || p.endsWith(".cjs") ? "#!/usr/bin/env node" : p.endsWith("/launcher/agend") ? "#!/bin/sh" : null),
   isExecutable: p => ["/opt/node22/bin/node", "/usr/bin/node", "/opt/node20/bin/node"].includes(p),
 };
 const tuple = (argv: string[], env: Record<string, string> = { PATH: "/opt/node22/bin:/usr/bin:/bin" }) => ({ program: argv[0]!, argv, env });
@@ -60,6 +62,18 @@ describe("the activation tuple must start exactly the verified install", () => {
     ["the explicit interpreter, but another entry", tuple(["/opt/node22/bin/node", `${PKG}/dist/agent-cli.js`, "fleet", "start"]), false],
   ])("%s → %s", (_name, t, ok) => {
     expect(tupleStartsVerified(t, verified, "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", fs).ok).toBe(ok);
+  });
+});
+
+describe("since the launcher (#1450): the bin is the sh launcher; a service still starts the inner entry", () => {
+  const launcherTarget: VerifiedTarget = { ...verified, bin: `${PKG}/launcher/agend` };
+  it.each([
+    ["the inner entry, `fleet start` (what `agend install` writes)", tuple([`${PKG}/dist/cli.js`, "fleet", "start"]), true],
+    ["the interpreter explicitly on the inner entry", tuple(["/opt/node22/bin/node", `${PKG}/dist/cli.js`, "fleet", "start"]), true],
+    ["the sh launcher bin itself", tuple([`${PKG}/launcher/agend`, "fleet", "start"]), false],
+    ["a Node on the JS launcher", tuple(["/opt/node22/bin/node", `${PKG}/launcher/agend.cjs`, "fleet", "start"]), false],
+  ])("%s → %s", (_name, t, ok) => {
+    expect(tupleStartsVerified(t, launcherTarget, "/usr/bin:/bin", fs).ok).toBe(ok);
   });
 });
 

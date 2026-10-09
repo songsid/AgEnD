@@ -1,6 +1,6 @@
 import { execFileSync, execSync, spawnSync } from "node:child_process";
 import { createRequire, syncBuiltinESMExports } from "node:module";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { runInNewContext } from "node:vm";
@@ -94,6 +94,69 @@ describe("process guard child execution boundaries", () => {
     expect(existsSync(am)).toBe(true);
     expect(existsSync(bm)).toBe(false);
     expect(processGuard.takeViolations()).toEqual([expect.stringContaining("real backend Node entry forbidden")]);
+  });
+
+  // #1450: AgEnD starts itself as `<node> <pkg>/dist/cli.js fleet start`, through its launcher, or as `agend` on PATH.
+  // Every attempt below targets PRIVATE INERT copies — an @songsid/agend package whose entries only write a marker — so
+  // a broken guard can never start a fleet here; a marker that appears is the failure.
+  describe("a fleet start of AgEnD itself is refused in every form (inert private copies)", () => {
+    function inertAgend() {
+      const root = scratch("agend-guard-self-");
+      const pkg = join(root, "pkg");
+      const marks = join(root, "ran");
+      mkdirSync(marks);
+      const nodeEntry = (name: string) => `require('fs').writeFileSync(${JSON.stringify(join(marks, name))}, process.argv.slice(2).join(' '));\n`;
+      for (const [rel, body] of [["dist/cli.js", nodeEntry("dist-cli")], ["src/cli.ts", nodeEntry("src-cli")], ["launcher/agend.cjs", nodeEntry("launcher-cjs")]] as const) {
+        mkdirSync(dirname(join(pkg, rel)), { recursive: true });
+        writeFileSync(join(pkg, rel), body);
+      }
+      writeFileSync(join(pkg, "launcher", "agend"), `#!/bin/sh\necho "$*" > ${JSON.stringify(join(marks, "launcher-sh"))}\n`);
+      chmodSync(join(pkg, "launcher", "agend"), 0o755);
+      writeFileSync(join(pkg, "package.json"), JSON.stringify({ name: "@songsid/agend", version: "0.0.0-inert" }));
+      const bin = join(root, "bin");
+      mkdirSync(bin);
+      writeFileSync(join(bin, "agend"), `#!/bin/sh\necho "$*" > ${JSON.stringify(join(marks, "path-agend"))}\n`);
+      chmodSync(join(bin, "agend"), 0o755);
+      return { pkg, marks, env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, ran: () => readdirSync(marks) };
+    }
+    const cp = createRequire(import.meta.url)("node:child_process") as typeof import("node:child_process");
+    const attempt = (f: () => unknown): string => { try { f(); return "ran"; } catch (e) { return String((e as Error).message); } };
+
+    it.each([
+      ["spawn: node <pkg>/dist/cli.js fleet start", (a: ReturnType<typeof inertAgend>) => cp.spawn(process.execPath, [join(a.pkg, "dist", "cli.js"), "fleet", "start"], { env: a.env })],
+      ["spawnSync, node flags first: node --no-warnings --import tsx <pkg>/src/cli.ts fleet start", (a: ReturnType<typeof inertAgend>) => cp.spawnSync(process.execPath, ["--no-warnings", "--import", "tsx", join(a.pkg, "src", "cli.ts"), "fleet", "start"], { env: a.env })],
+      ["execFileSync: node <pkg>/launcher/agend.cjs fleet start", (a: ReturnType<typeof inertAgend>) => cp.execFileSync(process.execPath, [join(a.pkg, "launcher", "agend.cjs"), "fleet", "start"], { env: a.env })],
+      ["fork: <pkg>/dist/cli.js fleet start", (a: ReturnType<typeof inertAgend>) => cp.fork(join(a.pkg, "dist", "cli.js"), ["fleet", "start"], { env: a.env })],
+      ["direct exec of the sh launcher", (a: ReturnType<typeof inertAgend>) => cp.spawnSync(join(a.pkg, "launcher", "agend"), ["fleet", "start"], { env: a.env })],
+      ["a shell string: agend fleet start (PATH)", (a: ReturnType<typeof inertAgend>) => cp.execSync("agend fleet start", { env: a.env })],
+      ["positional through sh -c: exec \"$@\"", (a: ReturnType<typeof inertAgend>) => cp.spawnSync("sh", ["-c", 'exec "$@"', "sh", process.execPath, join(a.pkg, "dist", "cli.js"), "fleet", "start"], { env: a.env })],
+      ["the instance form (falls through to a start when no fleet answers)", (a: ReturnType<typeof inertAgend>) => cp.spawnSync(process.execPath, [join(a.pkg, "dist", "cli.js"), "fleet", "start", "worker"], { env: a.env })],
+    ])("refused: %s", (_name, launch) => {
+      const a = inertAgend();
+      expect(attempt(() => launch(a))).toContain("a real `agend fleet start");
+      expect(processGuard.takeViolations()).toEqual([expect.stringContaining("agend fleet start")]);
+      expect(a.ran()).toEqual([]);
+    });
+
+    it("AGEND_TEST_SELF_SPAWN_LOG: a direct start is recorded and inert (sync and async); a shell string is still refused", async () => {
+      const a = inertAgend();
+      const log = join(a.marks, "..", "self-spawn.log");
+      const env = { ...a.env, AGEND_TEST_SELF_SPAWN_LOG: log };
+      expect(cp.spawnSync(process.execPath, [join(a.pkg, "dist", "cli.js"), "fleet", "start"], { env }).status).toBe(0);
+      await new Promise(r => cp.spawn(process.execPath, [join(a.pkg, "launcher", "agend.cjs"), "fleet", "start"], { env }).once("exit", r));
+      expect(readFileSync(log, "utf8")).toBe("agend fleet start\nagend fleet start\n");
+      expect(attempt(() => cp.execSync("agend fleet start", { env }))).toContain("a real `agend fleet start");
+      processGuard.takeViolations();
+      expect(a.ran()).toEqual([]);
+    });
+
+    it("controls: other commands, and the instance form a test declares (AGEND_TEST_ALLOW_INSTANCE_START), do run", () => {
+      const a = inertAgend();
+      expect(cp.spawnSync(process.execPath, [join(a.pkg, "dist", "cli.js"), "fleet", "restart"], { env: a.env }).status).toBe(0);
+      expect(cp.spawnSync(process.execPath, [join(a.pkg, "launcher", "agend.cjs"), "fleet", "start", "worker"], { env: { ...a.env, AGEND_TEST_ALLOW_INSTANCE_START: "1" } }).status).toBe(0);
+      expect(a.ran().sort()).toEqual(["dist-cli", "launcher-cjs"]);
+      expect(processGuard.takeViolations()).toEqual([]);
+    });
   });
 
   it("does not bootstrap a fixture from the parent cwd when child PATH is absent", () => {

@@ -322,6 +322,8 @@ describe("Daemon", () => {
       rootLogger,
     );
     expect((mcpDaemon as any).buildBackendConfig().mcpServers.agend).toBeDefined();
+    // #1450 C5: the CLIs start AgEnD's MCP server on the Node this daemon runs on, never a `node` from their PATH.
+    expect((mcpDaemon as any).buildBackendConfig().mcpServers.agend.command).toBe(process.execPath);
 
     const cliDaemon = new Daemon(
       "agy-cli",

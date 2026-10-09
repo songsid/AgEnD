@@ -9,7 +9,7 @@
  * whose name holds `$`, spaces and quotes. No host npm, no network, no fleet.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
@@ -22,7 +22,7 @@ import {
 const roots: string[] = [];
 afterAll(() => { for (const r of roots) rmSync(r, { recursive: true, force: true }); });
 
-type NativeMode = "ok" | "throw-on-open" | "wrong-answer";
+type NativeMode = "ok" | "throw-on-open" | "wrong-answer" | "fails-in-worker";
 
 /** Single-quote for sh: the nvm fixture's path holds `'`, `$` and spaces on purpose. */
 function sq(text: string): string {
@@ -30,18 +30,53 @@ function sq(text: string): string {
 }
 
 /** A fixture @songsid/agend package: `agend --version` prints its version; better-sqlite3 is an inert recorder. */
-function fixturePackage(root: string, name: string, version: string, native: NativeMode = "ok"): string {
+function fixturePackage(root: string, name: string, version: string, native: NativeMode = "ok", opts: { launcher?: boolean; select?: "runtime" | "error" | "other-package"; realLauncher?: boolean } = {}): string {
   const dir = join(root, "src", name);
   mkdirSync(join(dir, "dist"), { recursive: true });
   mkdirSync(join(dir, "node_modules", "better-sqlite3"), { recursive: true });
-  writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "@songsid/agend", version, bin: { agend: "dist/cli.js" } }));
-  writeFileSync(join(dir, "dist", "cli.js"), `#!/bin/sh\n[ "$1" = "--version" ] && { echo ${version}; exit 0; }\necho "agend $*" >> '${join(root, "agend.log")}'\nexit 0\n`);
-  chmodSync(join(dir, "dist", "cli.js"), 0o755);
+  // #1450: since the launcher, the bin is `launcher/agend` (an sh script) and the CLI stays dist/cli.js.
+  const bin = opts.launcher ? "launcher/agend" : "dist/cli.js";
+  writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "@songsid/agend", version, bin: { agend: bin } }));
+  writeFileSync(join(dir, ".bin-target"), bin);
+  if (opts.realLauncher) {
+    // The SHIPPED launcher (sh bin + runtime-select), and a JS CLI it can run in process or spawn.
+    cpSync(join(process.cwd(), "launcher"), join(dir, "launcher"), { recursive: true });
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "@songsid/agend", version, bin: { agend: "launcher/agend" }, engines: { node: "^22.14.0 || ^23.6.0 || >=24" } }));
+    writeFileSync(join(dir, ".bin-target"), "launcher/agend");
+    writeFileSync(join(dir, "dist", "cli.js"), `if (process.argv[2] === "--version") console.log(${JSON.stringify(version)});\n`);
+  }
+  if (opts.launcher) {
+    mkdirSync(join(dir, "launcher"));
+    // A launcher-era package (#1450): `--agend-select-json` answers what launcher/launch.cjs would — the bundled Node,
+    // here a stand-in at <root>/bundled/node that logs each run — and the package it found itself in.
+    const bundled = join(root, "bundled", "node");
+    mkdirSync(dirname(bundled), { recursive: true });
+    writeFileSync(bundled, `#!/bin/sh\necho "bundled $*" >> ${sq(join(root, "bundled.log"))}\nexec ${sq(process.execPath)} "$@"\n`);
+    chmodSync(bundled, 0o755);
+    if (opts.select) writeFileSync(join(dir, "launcher", "runtime-select.cjs"), "");
+    const answer = opts.select === "error" ? `printf '{"error":"the bundled Node is missing","recovery":"npm install -g @songsid/agend@${version}"}\\n'; exit 1`
+      : `pkg=$(cd "$(dirname "$self")/.." && pwd -P); printf '{"node":"%s","source":"runtime","pkgDir":"%s","entry":"%s/dist/cli.js"}\\n' ${sq(bundled)} "$${opts.select === "other-package" ? "{pkg}-elsewhere" : "pkg"}" "$pkg"; exit 0`;
+    writeFileSync(join(dir, "launcher", "agend"), [
+      "#!/bin/sh",
+      'self=$0; while [ -L "$self" ]; do l=$(readlink "$self"); case $l in /*) self=$l;; *) self=$(dirname "$self")/$l;; esac; done',
+      `[ "$1" = --agend-select-json ] && { ${answer}; }`,
+      `exec ${sq(join(dir, "dist", "cli.js"))} "$@"`,
+    ].join("\n") + "\n");
+    chmodSync(join(dir, "launcher", "agend"), 0o755);
+  }
+  if (!opts.realLauncher) {
+    writeFileSync(join(dir, "dist", "cli.js"), `#!/bin/sh\n[ "$1" = "--version" ] && { echo ${version}; exit 0; }\necho "agend $*" >> '${join(root, "agend.log")}'\nexit 0\n`);
+    chmodSync(join(dir, "dist", "cli.js"), 0o755);
+  }
   writeFileSync(join(dir, "node_modules", "better-sqlite3", "index.js"), `
 const fs = require("node:fs"); const log = ${JSON.stringify(join(root, "native.log"))};
 const note = line => fs.appendFileSync(log, line + "\\n");
 module.exports = class Database {
-  constructor(file) { note("open " + file); if (${JSON.stringify(native)} === "throw-on-open") throw new Error("SIGSEGV stand-in"); }
+  constructor(file) {
+    note("open " + file);
+    if (${JSON.stringify(native)} === "throw-on-open") throw new Error("SIGSEGV stand-in");
+    if (${JSON.stringify(native)} === "fails-in-worker" && !require("node:worker_threads").isMainThread) throw new Error("worker-only failure");
+  }
   prepare(sql) { note("prepare " + sql); return { get: () => { note("get"); return { one: ${native === "wrong-answer" ? 2 : 1} }; } }; }
   close() { note("close"); }
 };`);
@@ -70,7 +105,7 @@ case "$1 $2" in
     [ -n "$NPM_FAIL" ] && exit 1
     rm -rf ${sq(join(pfx, "lib", "node_modules", "@songsid", "agend"))}
     cp -r "$3" ${sq(join(pfx, "lib", "node_modules", "@songsid", "agend"))}
-    ln -sf ../lib/node_modules/@songsid/agend/dist/cli.js ${sq(join(pfx, "bin", "agend"))}
+    ln -sf "../lib/node_modules/@songsid/agend/$(cat "$3/.bin-target")" ${sq(join(pfx, "bin", "agend"))}
     exit 0;;
 esac
 exit 0
@@ -99,12 +134,75 @@ exit 0
 
 const plan = (pkg: string, targetVersion: string | null = "2.2.0"): UpdateInstallPlan => ({ pkg, targetVersion, viaNvm: false, nvmSh: "/nonexistent" });
 
+describe("#1450 C4: a launcher-era target is verified on the Node IT selects, not the updater's", () => {
+  it("through the SHIPPED launcher: AGEND_NODE is what verification proves and reports — not PATH's node", () => {
+    const w = world();
+    const chosen = join(w.root, "chosen-node");
+    writeFileSync(chosen, `#!/bin/sh\necho "chosen $1" >> ${sq(join(w.root, "chosen.log"))}\nexec ${sq(process.execPath)} "$@"\n`);
+    chmodSync(chosen, 0o755);
+    w.env.AGEND_NODE = chosen;
+    const outcome = runUpdateInstall(plan(fixturePackage(w.root, "v220", "2.2.0", "ok", { realLauncher: true })), w.runner);
+    expect(outcome).toMatchObject({ ok: true, node: realpathSync(chosen) });
+    expect(readFileSync(join(w.root, "chosen.log"), "utf8")).toContain("chosen -e");          // the DB proof ran on it
+    expect(w.nativeLog()).toEqual([...ONE_OPEN, ...ONE_OPEN]);
+  });
+
+  it("through the SHIPPED launcher: a selection whose DB fails is refused even though PATH's node would pass", () => {
+    const w = world();
+    const chosen = join(w.root, "chosen-node");
+    // A Node on which the package's database cannot open (as better-sqlite3 13 on Node 20 SIGSEGVs).
+    writeFileSync(chosen, `#!/bin/sh\n[ "$1" = -e ] && case "$2" in *better-sqlite3*) exit 139;; esac\nexec ${sq(process.execPath)} "$@"\n`);
+    chmodSync(chosen, 0o755);
+    w.env.AGEND_NODE = chosen;
+    expect(runUpdateInstall(plan(fixturePackage(w.root, "v220", "2.2.0", "ok", { realLauncher: true })), w.runner))
+      .toMatchObject({ ok: false, stage: "verify", message: expect.stringContaining(`on the Node it selected, ${realpathSync(chosen)}`) });
+  });
+
+  const install = (select: "runtime" | "error" | "other-package", native: NativeMode = "ok") => {
+    const w = world();
+    const outcome = runUpdateInstall(plan(fixturePackage(w.root, "v220", "2.2.0", native, { launcher: true, select })), w.runner);
+    const ran = existsSync(join(w.root, "bundled.log")) ? readFileSync(join(w.root, "bundled.log"), "utf8") : "";
+    return { w, outcome, ran };
+  };
+
+  it("the proof (both threads) runs on the selected bundled Node, and that Node is what activation must find", () => {
+    const { w, outcome, ran } = install("runtime");
+    expect(outcome).toMatchObject({ ok: true, node: join(w.root, "bundled", "node") });
+    expect(ran).toContain(`bundled -e ${NATIVE_CHECK_SCRIPT.slice(0, 20)}`);
+    expect(w.nativeLog()).toEqual([...ONE_OPEN, ...ONE_OPEN]);
+  });
+
+  it("a package that will not start here (its selection refuses) fails verification with its own repair line", () => {
+    const { outcome, ran } = install("error");
+    expect(outcome).toMatchObject({ ok: false, stage: "verify", message: expect.stringContaining("the bundled Node is missing. To repair: npm install -g @songsid/agend@2.2.0") });
+    expect(ran).toBe("");
+  });
+
+  it("a selection that names another package is refused", () => {
+    expect(install("other-package").outcome).toMatchObject({ ok: false, stage: "verify", message: expect.stringContaining("not the installed package") });
+  });
+
+  it("a module that fails on the selected Node (in a worker) fails verification, naming that Node", () => {
+    const { w, outcome } = install("runtime", "fails-in-worker");
+    expect(outcome).toMatchObject({ ok: false, stage: "verify", message: expect.stringContaining(`on the Node it selected, ${join(w.root, "bundled", "node")}`) });
+  });
+});
+
 describe("P0: the current install is never removed before the new one has succeeded", () => {
+  it("a launcher-shaped package (#1450): the bin is the sh launcher, the verified entry is still dist/cli.js", () => {
+    const w = world();
+    const outcome = runUpdateInstall(plan(fixturePackage(w.root, "v220", "2.2.0", "ok", { launcher: true })), w.runner);
+    const pkg = realpathSync(join(w.prefix, "lib", "node_modules", "@songsid", "agend"));
+    expect(outcome).toMatchObject({ ok: true, version: "2.2.0", bin: join(pkg, "launcher", "agend"), entry: join(pkg, "dist", "cli.js") });
+  });
+
   it("installs over the current package with no unlink, and verifies the installed one", () => {
     const w = world();
     runUpdateInstall(plan(fixturePackage(w.root, "v2112", "2.1.12"), "2.1.12"), w.runner);
     const outcome = runUpdateInstall(plan(fixturePackage(w.root, "v220", "2.2.0")), w.runner);
     expect(outcome).toMatchObject({ ok: true, agendPath: join(w.prefix, "bin", "agend"), version: "2.2.0" });
+    // #1450 C4: the canonical inner entry a service starts, verified as a realpath (here also the bin).
+    expect(outcome.ok && outcome.entry).toBe(realpathSync(join(w.prefix, "lib", "node_modules", "@songsid", "agend", "dist", "cli.js")));
     expect(w.callLog().some(line => /\bunlink\b|\buninstall\b/.test(line))).toBe(false);
   });
 
@@ -174,16 +272,18 @@ describe("item 3: the installed package is verified — not whatever agend wins 
   });
 });
 
+const ONE_OPEN = ["open :memory:", "prepare select 1 as one", "get", "close"];
+
 describe("item 3: the native check really opens a database", () => {
   it("the generated script constructs, queries and closes, against the installed package's module", () => {
     const w = world();
     const dir = fixturePackage(w.root, "direct", "2.2.0");
     const r = spawnSync(process.execPath, ["-e", NATIVE_CHECK_SCRIPT, dir], { encoding: "utf8" });
     expect(r.stdout).toBe("native-ok");
-    expect(w.nativeLog()).toEqual(["open :memory:", "prepare select 1 as one", "get", "close"]);
+    expect(w.nativeLog()).toEqual([...ONE_OPEN, ...ONE_OPEN]);   // the main thread, then a worker
   });
 
-  it.each([["throw-on-open"], ["wrong-answer"]] as const)("a module that fails (%s) fails verification", (mode) => {
+  it.each([["throw-on-open"], ["wrong-answer"], ["fails-in-worker"]] as const)("a module that fails (%s) fails verification", (mode) => {
     const w = world();
     expect(runUpdateInstall(plan(fixturePackage(w.root, "v220", "2.2.0", mode)), w.runner))
       .toMatchObject({ ok: false, stage: "verify", message: expect.stringContaining("cannot open a database") });
@@ -192,7 +292,7 @@ describe("item 3: the native check really opens a database", () => {
   it("a successful update ran the full check on the installed package", () => {
     const w = world();
     expect(runUpdateInstall(plan(fixturePackage(w.root, "v220", "2.2.0")), w.runner).ok).toBe(true);
-    expect(w.nativeLog()).toEqual(["open :memory:", "prepare select 1 as one", "get", "close"]);
+    expect(w.nativeLog()).toEqual([...ONE_OPEN, ...ONE_OPEN]);   // the main thread, then a worker
   });
 });
 

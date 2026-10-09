@@ -2,6 +2,7 @@ import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process"
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { withOrigin } from "./fleet-control-audit.js";
+import { canonicalCliEntry } from "./cli-entry.js";
 
 export interface FullRestartHelperCompletion {
   code: number | null;
@@ -25,7 +26,7 @@ type SpawnProcess = (command: string, args: readonly string[], options: SpawnOpt
  */
 export function launchFullRestartHelper(
   spawnProcess: SpawnProcess = spawn,
-  cliEntry = join(dirname(fileURLToPath(import.meta.url)), "cli.js"),
+  cliEntry = canonicalCliEntry(),
 ): Promise<FullRestartHelperHandle> {
   return new Promise((resolve, reject) => {
     let child: ChildProcess;

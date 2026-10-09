@@ -5,6 +5,7 @@ import { execFileSync, execSync, spawnSync } from "node:child_process";
 import ejs from "ejs";
 const { render } = ejs;
 import { homedir, platform } from "node:os";
+import { canonicalCliEntry } from "./cli-entry.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const templatesDir = join(__dirname, "..", "templates");
@@ -74,7 +75,7 @@ function validateVars(vars: ServiceVars & { path: string }): void {
  */
 export function buildServicePath(
   basePath = process.env.PATH ?? "",
-  execPath = process.argv[1] ?? "",
+  execPath = canonicalCliEntry(),
   homeDir = homedir(),
 ): string {
   const seen = new Set<string>();
@@ -134,7 +135,43 @@ export function renderLaunchdPlist(vars: ServiceVars): string {
 
 export function renderSystemdUnit(vars: ServiceVars): string {
   const template = readFileSync(join(templatesDir, "systemd.service.ejs"), "utf-8");
-  return render(template, withDefaults(vars));
+  return render(template, { ...withDefaults(vars), systemdQuote });
+}
+
+/**
+ * One word of a systemd command line, exactly (#1460 review): double-quoted, with `\` and `"` escaped inside, and
+ * systemd's own expansions neutralised — `%` (specifiers) as `%%`, `$` (variables) as `$$`. A path with spaces stays one
+ * argument.
+ */
+export function systemdQuote(word: string): string {
+  return `"${word.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/%/g, "%%").replace(/\$/g, "$$$$")}"`;
+}
+
+/** The words of a systemd command line as systemd splits them: quotes, backslash escapes, `%%` and `$$` undone. */
+export function systemdWords(line: string): string[] {
+  const words: string[] = [];
+  let i = 0;
+  while (i < line.length) {
+    while (i < line.length && /\s/.test(line[i]!)) i++;
+    if (i >= line.length) break;
+    let word = "";
+    let quote: string | null = null;
+    for (; i < line.length; i++) {
+      const c = line[i]!;
+      if (quote) {
+        if (c === quote) { quote = null; continue; }
+        if (c === "\\" && i + 1 < line.length) { word += line[++i]; continue; }
+        word += c;
+      } else {
+        if (/\s/.test(c)) break;
+        if (c === '"' || c === "'") { quote = c; continue; }
+        if (c === "\\" && i + 1 < line.length) { word += line[++i]; continue; }
+        word += c;
+      }
+    }
+    words.push(word.replace(/%%/g, "%").replace(/\$\$/g, "$"));
+  }
+  return words;
 }
 
 export interface ServiceInfo {
@@ -238,6 +275,15 @@ export function uninstallService(label: string): boolean {
     spawnSync("systemctl", ["--user", "daemon-reload"], { stdio: "ignore", timeout: 5000 });
   }
   return true;
+}
+
+/**
+ * The CLI file a unit starts: `ExecStart=<entry> fleet start`, or `ExecStart=<node> <entry> fleet start` (the explicit
+ * interpreter, #1450). "" when there is no ExecStart.
+ */
+export function unitCliEntry(unitText: string): string {
+  const words = systemdWords(unitText.match(/^ExecStart=(.*)$/m)?.[1] ?? "");
+  return (words[0] && /(^|\/)node$/.test(words[0]) ? words[1] : words[0]) ?? "";
 }
 
 export function installService(vars: ServiceVars): string {
