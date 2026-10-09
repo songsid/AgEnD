@@ -359,7 +359,7 @@ with the counts. It never edits your config: which agents coordinate is a
 statement about how your fleet is organised, and an explicit `tool_set: full`
 stays exactly as you wrote it.
 
-**`tool_set` can only be set through Settings or by editing `fleet.yaml`.** Sending `tool_set` through General's `update_instance_config` is refused with a privilege-boundary error (#804/#814) — an MCP tool that any coordinator-profile agent can call must not be able to widen profiles.
+**`tool_set` can only be set through Settings or by editing `fleet.yaml`.** Sending `tool_set` through `update_instance_config` is refused with a privilege-boundary error (#804/#814). `create_instance` also refuses both `tool_set` and `skipPermissions` — coordinator-profile agents must not be able to widen profiles or bypass permission prompts. (`skipPermissions` is not an accepted field for `update_instance_config`; Zod strips it silently.)
 
 ## Permission system
 
