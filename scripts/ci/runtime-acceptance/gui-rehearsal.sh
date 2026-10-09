@@ -52,16 +52,16 @@ npm_config_userconfig="$RUNNER_TEMP/registry/npmrc" agend update --version "$CAN
 rc=${PIPESTATUS[0]}
 set -e
 echo "  the old updater exited $rc"
+# The hop's verdict, before anything else touches the service: the old updater must have installed the candidate,
+# succeeded, and ACTIVATED it — its restart consumed the planned activation. Nothing here repairs a failed hop.
 grep -q "Installed: $CAND" "$WORK/update.out" || fail "the old updater did not install $CAND"
+[ "$rc" = 0 ] || fail "the old updater exited $rc: it installed $CAND but did not complete the update"
+[ ! -f "$HOME/.agend/service-plan.json" ] || fail "the old updater left the planned activation unconsumed: launchd was not switched to $CAND"
+echo "  hop verdict: the old updater installed $CAND, exited 0 and consumed the planned activation"
 
 check_installed
 
 step "after the update: what launchd runs"
-if [ -f "$HOME/.agend/service-plan.json" ]; then
-  echo "  a planned activation is still recorded: the old updater's restart did not consume it — \`agend restart\` (2.2) performs it"
-  agend restart --yes
-fi
-[ ! -f "$HOME/.agend/service-plan.json" ] || fail "the planned activation is still recorded after agend restart"
 wait_health || { show_job || true; fail "the fleet did not answer /health after the update"; }
 show_job
 NEW_PID="$(job_pid)"
