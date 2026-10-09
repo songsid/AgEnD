@@ -57,9 +57,14 @@ export async function saveCpuProfile(dataDir: string, profile: unknown, signal?:
   estimatedBytes += samples.length * 8;        // samples array
   for (const node of nodes) {
     const frame = (node.callFrame ?? {}) as Record<string, unknown>;
-    const urlLen = typeof frame.url === "string" ? frame.url.length : 0;
-    const fnLen = typeof frame.functionName === "string" ? frame.functionName.length : 0;
-    estimatedBytes += NODE_FIXED + FRAME_FIXED + urlLen + fnLen;
+    // Use Buffer.byteLength for UTF-8 byte count (not .length which counts
+    // UTF-16 code units — a CJK character is 2 code units but 3 UTF-8 bytes).
+    // Add a 20% headroom for JSON-escaping overhead.
+    const urlBytes = typeof frame.url === "string"
+      ? Math.ceil(Buffer.byteLength(frame.url, "utf8") * 1.2) : 0;
+    const fnBytes = typeof frame.functionName === "string"
+      ? Math.ceil(Buffer.byteLength(frame.functionName, "utf8") * 1.2) : 0;
+    estimatedBytes += NODE_FIXED + FRAME_FIXED + urlBytes + fnBytes;
   }
   if (estimatedBytes > CPU_PROFILE_MAX_BYTES) {
     throw new Error(`CPU profile is too large to save (estimated ≥${Math.round(estimatedBytes / 1_048_576)} MiB, cap is 20 MiB); discarded`);

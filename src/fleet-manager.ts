@@ -15877,7 +15877,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // #1386: every live "Needs you" message says the fleet stopped (capabilities revoked first) — while the
     // adapters can still edit. Bounded: a platform that does not answer must not hold the shutdown.
     const needsStopped = this.stopNeedsYou();
-    this.cacheService?.stop();
+    // #1490 P3: stop() now returns a Promise; await it so the final
+    // ledger flush completes before process.exit(0) in doStopAll's caller.
+    const cacheStopped = this.cacheService?.stop() ?? Promise.resolve();
     const profileStopped = this.runtimeCpuProfiler?.shutdown("fleet shutdown");
     this.ipcStoppingInstances.add("__fleet_stopping__");
     // Release held delivery promises before awaiting daemon shutdown, then
@@ -15906,6 +15908,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     await profileStopped;
     await needsStopped;
     await settingsControlStopped;
+    await cacheStopped;
     await this.cpuProfileControl?.close();
     this.cpuProfileControl = null;
     await this.shutdownLoginWindows();

@@ -103,14 +103,28 @@ export class CacheService {
   }
 
   /** Stop the periodic timer and flush any pending dirty data. Returns a promise
-   * that resolves when the final flush (if needed) completes. Callers that care
-   * about durability should await the returned promise. */
+   * that resolves once: (1) any in-progress pass has completed, and (2) a
+   * bounded final save of dirty data has been attempted.
+   * Callers that care about durability MUST await the returned promise.
+   */
   stop(): Promise<void> {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
-    // Flush pending dirty writes BEFORE setting stopped, so kick() can run.
-    const flush = (this.dirty.size > 0 || this.metaDirty) ? this.kick() : Promise.resolve();
-    return flush.finally(() => { this.stopped = true; });
+    // Join any pass that was already admitted (running !== null) so we don't
+    // set stopped=true while a catchUp() is mid-flight: it would then hit the
+    // `if (this.stopped) return` guard and skip its own save() call.
+    const inFlight = this.running ?? Promise.resolve();
+    return inFlight
+      .catch(() => {}) // a failed pass must not prevent the flush
+      .then(() => {
+        // Now do a final flush of any data that was dirtied by the completed
+        // pass (or was already dirty before stop() was called).
+        if (this.dirty.size > 0 || this.metaDirty) {
+          return this.kick();
+        }
+      })
+      .catch(() => {}) // best-effort flush
+      .finally(() => { this.stopped = true; });
   }
 
   scanning(): CacheReport["scanning"] {
