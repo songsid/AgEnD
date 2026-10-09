@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -442,6 +442,60 @@ describe("POST /api/settings/quickstart/commit", () => {
     expect(readFileSync(join(dir, ".env"), "utf8")).toBe("AGEND_DISCORD_TOKEN=first\nAGEND_DISCORD_2_TOKEN=999:SECOND\n");
   });
 
+  it("#1529 review: a generated name taken after the plan is refused at the commit — the value written meanwhile stays", async () => {
+    const dir = tempDir();
+    const { ctx, saveFleetConfig } = context(dir);
+    const { token_env: _drop, ...noEnv } = valid;
+    const plan = await request("/api/settings/quickstart/plan", ctx, "POST", noEnv);
+    expect(plan.body.token_env).toBe("AGEND_TELEGRAM_TOKEN");
+    writeFileSync(join(dir, ".env"), "AGEND_TELEGRAM_TOKEN=written-by-another-operation\n");
+    const res = await request("/api/settings/quickstart/commit", ctx, "POST", { ...noEnv, channel_id: plan.body.channel_id, token_env: plan.body.token_env, token_env_generated: true });
+    expect([res.status, String(res.body?.error ?? "")]).toEqual([409, expect.stringMatching(/no longer free/)]);
+    expect([saveFleetConfig.mock.calls.length, readFileSync(join(dir, ".env"), "utf8")]).toEqual([0, "AGEND_TELEGRAM_TOKEN=written-by-another-operation\n"]);
+    // Control: an explicit name (the pre-fleet form's own) keeps its old meaning — it may set a key .env already has.
+    const explicit = await request("/api/settings/quickstart/commit", ctx, "POST", { ...valid, token_env: "AGEND_TELEGRAM_TOKEN" });
+    expect(explicit.status).toBe(200);
+  });
+
+  it("#1529 review: an unreadable .env is never 'free' — the plan and a generated commit refuse, nothing written", async () => {
+    const dir = tempDir();
+    const { ctx, saveFleetConfig } = context(dir);
+    mkdirSync(join(dir, ".env"));                                 // a directory: reading it fails (EISDIR), not ENOENT
+    const { token_env: _drop, ...noEnv } = valid;
+    expect((await request("/api/settings/quickstart/plan", ctx, "POST", noEnv)).status).toBe(503);
+    const res = await request("/api/settings/quickstart/commit", ctx, "POST", { ...noEnv, token_env: "AGEND_TELEGRAM_TOKEN", token_env_generated: true });
+    expect([res.status, saveFleetConfig.mock.calls.length]).toEqual([503, 0]);
+  });
+
+  it("#1529 review: the plan's connection id taken before the commit is refused (409), never quietly renumbered", async () => {
+    const dir = tempDir();
+    const { ctx, saveFleetConfig } = context(dir);
+    const { token_env: _drop, ...noEnv } = valid;
+    const plan = await request("/api/settings/quickstart/plan", ctx, "POST", noEnv);
+    (ctx.fleetConfig as unknown as { channels: unknown[] }).channels = [
+      { id: plan.body.channel_id, type: "telegram", bot_token_env: "OTHER_TOKEN", group_id: "-9", mode: "topic", access: { mode: "locked", allowed_users: [] } }];
+    const res = await request("/api/settings/quickstart/commit", ctx, "POST", { ...noEnv, channel_id: plan.body.channel_id, token_env: plan.body.token_env, token_env_generated: true });
+    expect([res.status, String(res.body?.error ?? ""), saveFleetConfig.mock.calls.length]).toEqual([409, expect.stringMatching(/already exists/), 0]);
+  });
+
+  it("#1529 review: the wizard's agent is the new connection's — bound by channel_id, as the running fleet resolves it", async () => {
+    const dir = tempDir();
+    const { ctx } = context(dir);
+    (ctx.fleetConfig as unknown as { channels: unknown[] }).channels = [
+      { id: "telegram", type: "telegram", bot_token_env: "AGEND_TELEGRAM_TOKEN", group_id: "-1", mode: "topic", access: { mode: "locked", allowed_users: ["1"] } }];
+    const { token_env: _drop, ...noEnv } = valid;
+    for (const [name, guild] of [["agent-dc", "555"], ["agent-dc2", "555"]] as const) {
+      const input = { ...noEnv, platform: "discord", group_id: undefined, guild_id: guild, instance_name: name };
+      const plan = await request("/api/settings/quickstart/plan", ctx, "POST", input);
+      expect(plan.body.instance.channel_id, "the preview names the binding").toBe(plan.body.channel_id);
+      const res = await request("/api/settings/quickstart/commit", ctx, "POST", { ...input, channel_id: plan.body.channel_id, token_env: plan.body.token_env, token_env_generated: true });
+      expect(res.status).toBe(200);
+    }
+    const { FleetManager } = await import("../src/fleet-manager.js");
+    const fm = new FleetManager(dir) as any; fm.fleetConfig = ctx.fleetConfig;
+    expect(["agent-dc", "agent-dc2"].map(n => [ctx.fleetConfig!.instances[n]!.channel_id, fm.getInstanceAdapterId(n)])).toEqual([["discord", "discord"], ["discord-2", "discord-2"]]);
+  });
+
   it("#1519 P1: New connection — connection_only adds the connection and writes no agent", async () => {
     const dir = tempDir();
     const { ctx } = context(dir);
@@ -519,7 +573,10 @@ describe("the wizard in the panel", () => {
       sent.push({ path, method, headers: init.headers ?? {}, body: init.body ? JSON.parse(init.body) : undefined });
       const json = (body: unknown, status = 200) => ({ ok: status < 400, status, json: async () => body });
       if (path === "/api/settings/quickstart/environment") return json(env);
-      if (path === "/api/settings/quickstart/probe") return json({ identity: { valid: true, username: "bot_one" } });
+      if (path === "/api/settings/quickstart/probe") {
+        const answer = json({ identity: { valid: true, username: "bot_one" } });
+        return probeHold ? probeHold.then(() => answer) : answer;
+      }
       if (path === "/api/settings/quickstart/plan") return json({
         channel: { type: "telegram", group_id: "-100123", access: { mode: "locked", allowed_users: ["42"] } },
         instance: { name: "agent-1", working_directory: "/tmp/app", backend: "claude-code" },
@@ -542,6 +599,7 @@ describe("the wizard in the panel", () => {
   });
   afterEach(async () => { runner.resetOperation(); await p.unmount(); });
 
+  let probeHold: Promise<void> | null = null;
   const mountWizard = async () => {
     const onClose = vi.fn();
     await p.mount(h(wizard.SetupWizard, { onClose }));
@@ -655,6 +713,31 @@ describe("the wizard in the panel", () => {
     expect(plan.body).not.toHaveProperty("token_env");
     expect([...p.root.querySelectorAll("details.drawer code")].map((c: any) => c.textContent)).toEqual(["AGEND_TELEGRAM_TOKEN"]);
     expect(p.root.querySelectorAll("input").some((i: any) => i.value === "AGEND_TELEGRAM_TOKEN"), "not an editable field").toBe(false);
+  });
+
+  it("#1529 review: a Verify still on its way for an old token never names the new one or lets it reach the plan", async () => {
+    await mountWizard();
+    await type("wz-wd", "/tmp/app"); await next(); await next();
+    await type("wz-token", "token-A");
+    let release!: () => void; probeHold = new Promise<void>(r => { release = r; });
+    button(tn("wizardVerify")).click(); await settle();
+    expect(field("wz-token").disabled, "locked while Verify runs").toBe(true);
+    await type("wz-token", "token-B");                    // an input that still arrives is the form now
+    release(); probeHold = null; await settle(); await settle();
+    expect(p.root.querySelector(".token-field .feedback"), "token-B is not named by A's answer").toBeNull();
+    await next();
+    expect(sent.some(c => c.path === "/api/settings/quickstart/plan"), "no plan for an unverified token").toBe(false);
+    expect(p.root.textContent).toContain(tn("wizardNeedVerify"));
+  });
+
+  it("#1529 review: Finish carries the plan's whole target — connection id, generated token env, and that it was generated", async () => {
+    await mountWizard();
+    await toStepThree(); await next();
+    await vi.waitFor(() => expect(p.root.textContent).toContain(tn("wizardWillWrite")));
+    await finish();
+    await vi.waitFor(() => expect(sent.some(c => c.path === "/api/settings/quickstart/commit")).toBe(true));
+    const commit = sent.find(c => c.path === "/api/settings/quickstart/commit")!;
+    expect([commit.body.channel_id, commit.body.token_env, commit.body.token_env_generated]).toEqual(["telegram", "AGEND_TELEGRAM_TOKEN", true]);
   });
 
   it("keeps the token out of the URL and out of the page after use", async () => {

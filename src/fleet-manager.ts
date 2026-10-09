@@ -16603,7 +16603,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
     // A token written from Settings is in .env before this process has it (#1519 P1: a new connection's token waits for
     // the restart that starts it) — stored is "set", not "missing". Names only; no value is read out.
-    const stored = envFileKeys(this.dataDir);
+    let stored: Set<string>;
+    try { stored = envFileKeys(this.dataDir); } catch { stored = new Set(); }   // unreadable: only what this process has
     return channels.map((channel, index) => {
       const id = channel.id ?? channel.type ?? `channel-${index}`;
       const world = this.worlds.get(id);

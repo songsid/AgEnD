@@ -2,7 +2,7 @@
 // configuration and, when it finishes, writes the files (a write an admin may have to confirm, #1423) and hands over
 // to the ordinary Apply: the app's runner (settings-apply.js) posts the apply and watches its job, with the same
 // progress, deadline and restart recovery as every other change.
-import { html, useEffect, useState } from "/assets/app-html.js";
+import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
 import { useLease } from "/assets/app-ctx.js";
 import { Dialog } from "/assets/ui-dialog.js";
@@ -19,6 +19,10 @@ const post = (path, body) => api(path, { method: "POST", body: JSON.stringify(bo
 export function SetupWizard({ ctx, onClose }) {
   const lease = useLease("wizard");
   const [w, setW] = useState(null);
+  // The credential's revision (#1529 review): a token or platform change moves it, and a Verify, Detect or plan that
+  // began before is dropped when it lands — an answer about an old token never names, or plans for, a new one.
+  const rev = useRef(0);
+  const bump = () => { rev.current++; };
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
   useEffect(() => {
@@ -41,22 +45,26 @@ export function SetupWizard({ ctx, onClose }) {
   });
 
   const verify = async () => {
+    const at = rev.current, token = w.token, platform = w.platform;
+    const live = () => lease.current() && rev.current === at;
     setBusy(tn("wizardVerifying")); setErr("");
-    const identity = await verifyBotToken(w.platform, w.token);
-    if (!lease.current()) return;
+    const identity = await verifyBotToken(platform, token);
+    if (!live()) { if (lease.current()) setBusy(""); return; }
     let guilds = [];
-    if (identity.valid && w.platform === "discord") {
-      const g = await post("/api/settings/quickstart/probe", { action: "guilds", token: w.token });
-      if (!lease.current()) return;
+    if (identity.valid && platform === "discord") {
+      const g = await post("/api/settings/quickstart/probe", { action: "guilds", token });
+      if (!live()) { if (lease.current()) setBusy(""); return; }
       guilds = (g.body && g.body.guilds) || [];
     }
     setBusy("");
-    setW((x) => ({ ...x, identity, guilds }));
+    setW((x) => (x.token === token && x.platform === platform ? { ...x, identity, guilds } : x));
   };
   const detect = async () => {
+    const at = rev.current;
     setBusy(tn("wizardWaitingStart")); setErr("");
     const res = await post("/api/settings/quickstart/probe", { action: "await-telegram-start", token: w.token, offset: w.offset || 0 });
     if (!lease.current()) return;
+    if (rev.current !== at) { setBusy(""); return; }
     setBusy("");
     if (!res.ok) { setErr((res.body && res.body.error) || tn("applyFailed")); return; }
     if (res.body.found) setW((x) => ({ ...x, offset: res.body.offset, group_id: String(res.body.found.groupId), admin_user_id: String(res.body.found.userId) }));
@@ -68,10 +76,12 @@ export function SetupWizard({ ctx, onClose }) {
     if (w.step === 2) { setW({ ...w, step: 3 }); return; }
     if (w.step === 3) {
       if (!w.identity || !w.identity.valid) { setErr(tn("wizardNeedVerify")); return; }
+      const at = rev.current;
       setBusy(tn("wizardPlanLoading"));
       const res = await post("/api/settings/quickstart/plan", input());
       if (!lease.current()) return;
       setBusy("");
+      if (rev.current !== at) return;
       if (!res.ok) { setErr((res.body && res.body.error) || tn("applyFailed")); return; }
       setW((x) => ({ ...x, plan: res.body, step: 4 }));
       return;
@@ -85,7 +95,9 @@ export function SetupWizard({ ctx, onClose }) {
  * commit's body until that write completes, then drops it.
    */
   const finish = () => {
-    const body = { ...input(), token_env: w.plan.token_env, token: w.token };
+    // The plan's target, all of it (#1529 review): its connection id and its generated token env — the commit refuses
+    // either if it was taken since, instead of quietly picking another.
+    const body = { ...input(), channel_id: w.plan.channel_id, token_env: w.plan.token_env, token_env_generated: true, token: w.token };
     // It writes the connection and the first agent: it costs what a connection change does (the server's schema).
     const handed = startOperation([{ label: tn("wizardTitle"), impact: impactOf((ctx && ctx.schema) || DEFAULT_SCHEMA, "fleet.channels"),
       request: { method: "POST", url: "/api/settings/quickstart/commit", body, sensitive: true } }]);
@@ -104,11 +116,11 @@ export function SetupWizard({ ctx, onClose }) {
   } else if (w.step === 2) {
     body = html`<div class="seg-inline" role="group" aria-label=${tn("wizardPlatform")}>
         ${["telegram", "discord"].map((p) => html`<button key=${p} type="button" class=${`btn${w.platform === p ? " btn-primary" : ""}`} aria-pressed=${w.platform === p ? "true" : "false"}
-          onClick=${() => setW({ ...w, platform: p, identity: null })}>${p === "telegram" ? "Telegram" : "Discord"}</button>`)}</div>
+          onClick=${() => { bump(); setW((x) => ({ ...x, platform: p, identity: null })); }}>${p === "telegram" ? "Telegram" : "Discord"}</button>`)}</div>
       <p class="note">${w.platform === "telegram" ? tn("wizardTelegramHint") : tn("wizardDiscordHint")}</p>`;
   } else if (w.step === 3) {
     body = html`<${TokenField} id="wz-token" platform=${w.platform} value=${w.token} identity=${w.identity} busy=${!!busy}
-        onInput=${(v) => setW({ ...w, token: v, identity: null })} onVerify=${verify} />
+        onInput=${(v) => { bump(); setW((x) => ({ ...x, token: v, identity: null })); }} onVerify=${verify} />
       ${w.platform === "discord" ? html`
         <div class="field"><label for="wz-guild">${tn("guildIdField")}</label><${Select} id="wz-guild" value=${w.guild_id} onChange=${set("guild_id")}
           options=${["", ...w.guilds.map((g) => ({ value: g.id, label: `${g.name} (${g.id})` }))]} /></div>

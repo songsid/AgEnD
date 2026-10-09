@@ -951,10 +951,39 @@ describe("#1519 P1: a bot token entered in the browser", () => {
     btn(dlg(), "Save").click(); await settle(8);
     await vi.waitFor(() => expect(reqs.some(r => r.url === "/api/settings/apply")).toBe(true));
     const commit = reqs.find(r => r.url === "/api/settings/quickstart/commit")!;
-    expect(commit.body).toEqual({ platform: "discord", connection_only: true, guild_id: "555", channel_id: "discord-2", token_env: "AGEND_DISCORD_2_TOKEN", token: "fake-persona-token" });
+    expect(commit.body).toEqual({ platform: "discord", connection_only: true, guild_id: "555", channel_id: "discord-2", token_env: "AGEND_DISCORD_2_TOKEN", token_env_generated: true, token: "fake-persona-token" });
     expect(reqs.some(r => r.url === "/api/settings/fleet/channels"), "no channels PUT with a typed env name").toBe(false);
     expect(reqs.filter(r => JSON.stringify(r).includes("fake-persona-token")).map(r => r.url)).toEqual(["/api/settings/quickstart/probe", "/api/settings/quickstart/probe", "/api/settings/quickstart/commit"]);
     expect(dlg(), "closed: the operation card takes it from here").toBeNull();
+  });
+
+  it("#1529 review: a Verify for an old token never names, enables or restores it — New connection and Replace token", async () => {
+    const held = gate<{ body: unknown }>();
+    routes.push(r => (r.url === "/api/settings/quickstart/probe" && r.body?.action === "verify" ? (r.body.token === "token-A" ? held.p : { body: { identity: { valid: true, username: "bot_b" } } }) : undefined));
+    routes.push(r => (r.url === "/api/settings/quickstart/plan" ? { body: { channel: {}, instance: null, channel_id: "discord-2", token_env: "AGEND_DISCORD_2_TOKEN", env_keys: [], warnings: [] } } : undefined));
+    await mount("bots", "settings:bots|1|en"); await settle(6);
+    // New connection: Verify(A) held, the field is locked meanwhile; an input that still arrives (B) is the form now.
+    btn(p.root, "New connection").click(); await settle(4);
+    const dlg = () => p.root.querySelector("dialog");
+    let token = dlg().querySelector("#nb-token"); token.value = "token-A"; fire(token, "input"); await settle(2);
+    btn(dlg().querySelector(".token-field"), "Verify").click(); await settle(2);
+    expect(dlg().querySelector("#nb-token").disabled, "locked while Verify runs").toBe(true);
+    token = dlg().querySelector("#nb-token"); token.value = "token-B"; fire(token, "input"); await settle(2);
+    held.open({ body: { identity: { valid: true, username: "bot_a" } } }); await settle(8);
+    expect([dlg().querySelector("#nb-token").value, dlg().querySelector(".token-field .feedback")?.textContent ?? null, btn(dlg(), "Save").disabled],
+      "B stays, unnamed, and Save stays off").toEqual(["token-B", null, true]);
+    expect(reqs.filter(r => r.url === "/api/settings/quickstart/plan"), "no plan for the old token").toEqual([]);
+    p.root.querySelector("dialog .dlg-x").click(); await settle(4);
+    // Replace token: the same — a late answer about A never lets B be staged.
+    const held2 = gate<{ body: unknown }>();
+    routes.unshift(r => (r.url === "/api/settings/quickstart/probe" && r.body?.token === "token-A2" ? held2.p : undefined));
+    btn(p.root.querySelector(".s-row"), "Settings").click(); await settle(4);
+    btn(dlg(), "Replace").click(); await settle(2);
+    token = dlg().querySelector("#bot-token"); token.value = "token-A2"; fire(token, "input"); await settle(2);
+    btn(dlg().querySelector(".token-field"), "Verify").click(); await settle(2);
+    token = dlg().querySelector("#bot-token"); token.value = "token-B2"; fire(token, "input"); await settle(2);
+    held2.open({ body: { identity: { valid: true, username: "bot_a" } } }); await settle(8);
+    expect([dlg().querySelector(".token-field .feedback")?.textContent ?? null, btn(dlg(), "Stage the new token").disabled]).toEqual([null, true]);
   });
 
   it("a connection shows its token as set (with the bot's name), never the token; Replace on a stopped connection says it waits for a restart", async () => {

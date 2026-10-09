@@ -37,12 +37,31 @@ export function generateTokenEnvName(platform: string, channelId: string, taken:
   throw new Error("no free token env name");
 }
 
-/** The names already in the data dir's .env (names only; a missing or unreadable file has none). */
+/** The .env could not be read, so which names it holds is unknown — never taken as "none" (#1529 review). */
+export class EnvFileUnreadableError extends Error {
+  constructor(cause: unknown) { super(`the data dir's .env cannot be read: ${(cause as Error)?.message ?? String(cause)}`); }
+}
+
+/** The names already in the data dir's .env (names only). No file: none. A file that cannot be read throws. */
 export function envFileKeys(dataDir: string): Set<string> {
-  try {
-    const text = readFileSync(join(dataDir, ".env"), "utf-8");
-    return new Set(text.split("\n").map(line => /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/.exec(line)?.[1]).filter((k): k is string => !!k));
-  } catch { return new Set(); }
+  let text: string;
+  try { text = readFileSync(join(dataDir, ".env"), "utf-8"); }
+  catch (err) {
+    if ((err as NodeJS.ErrnoException)?.code === "ENOENT") return new Set();
+    throw new EnvFileUnreadableError(err);
+  }
+  return new Set(text.split("\n").map(line => /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/.exec(line)?.[1]).filter((k): k is string => !!k));
+}
+
+/**
+ * Why a GENERATED name (#1519 P1) can no longer be written, or null. A generated name only ever names a new value, so
+ * at the write it must still be free of everything the plan avoided — another connection, a provider or reserved name,
+ * a key in .env (read under the caller's lease), one in this process's environment. Throws when .env is unreadable.
+ */
+export function generatedTokenEnvStale(name: string, opts: { dataDir: string; channelEnvs: Iterable<string | null>; processEnv?: Iterable<string> }): string | null {
+  const taken = takenTokenEnvNames({ channelEnvs: opts.channelEnvs, envFile: envFileKeys(opts.dataDir), processEnv: opts.processEnv ?? Object.keys(process.env) });
+  if (taken.has(name) || isReservedProviderEnvKey(name)) return `${name} is no longer free (it was taken after this setup was planned) — plan it again`;
+  return null;
 }
 
 /** Every name a new connection's token must not take. */

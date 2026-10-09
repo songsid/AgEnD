@@ -351,12 +351,15 @@ export function BotDialog({ id, ctx, onClose }) {
   const [emojis, setEmojis] = useState({ value: null, baseline: null });
   const lease = useLease("bot-dialog");
   const accessWarn = mode === "locked" && users.length === 0 ? "accessLockedEmpty" : "";
+  // The token's revision (#1529 review): typing moves it, and a Verify for an older value is dropped when it lands.
+  const tokenRev = useRef(0);
   const verifyToken = async () => {
     setTokenBusy(true);
-    const mine = epoch.current;
+    const mine = epoch.current, at = tokenRev.current;
     const identity = await verifyBotToken(type, token);
     if (!lease.current() || epoch.current !== mine) return;
-    setTokenBusy(false); setTokenId(identity);
+    setTokenBusy(false);
+    if (tokenRev.current === at) setTokenId(identity);
   };
   const stageToken = () => {
     if (!ch) return;
@@ -439,9 +442,9 @@ export function BotDialog({ id, ctx, onClose }) {
           : status.identity && status.identity.username ? tn("tokenSetAs", botHandle(status.identity.username)) : tn("tokenSet")}</span>
           ${replacing ? null : html`<button type="button" class="btn btn-sm" onClick=${() => { setReplacing(true); setTokenNote(null); }}>${tn("tokenReplace")}</button>`}</div></div>
       ${replacing ? html`<${TokenField} id="bot-token" platform=${type} value=${token} identity=${tokenId} busy=${tokenBusy}
-          onInput=${(v) => { setToken(v); setTokenId(null); }} onVerify=${verifyToken} hint=${tn("tokenHint")} />
+          onInput=${(v) => { tokenRev.current++; setToken(v); setTokenId(null); }} onVerify=${verifyToken} hint=${tn("tokenHint")} />
         <div class="dlg-inline-actions"><button type="button" class="btn btn-sm" disabled=${!tokenId || !tokenId.valid} onClick=${stageToken}>${tn("tokenButton")}</button>
-          <button type="button" class="btn btn-sm btn-ghost" onClick=${() => { setReplacing(false); setToken(""); setTokenId(null); }}>${tn("cancel")}</button></div>` : null}
+          <button type="button" class="btn btn-sm btn-ghost" onClick=${() => { tokenRev.current++; setReplacing(false); setToken(""); setTokenId(null); }}>${tn("cancel")}</button></div>` : null}
       ${tokenNote ? html`<p class=${`feedback${tokenNote.error ? " error" : ""}`} role="status">${tokenNote.error || tokenNote.text}</p>` : null}
       <${TokenEnvNote} name=${ch.bot_token_env} />
       <div class="dlg-inline-actions"><button type="button" class="btn btn-sm danger" onClick=${remove}><${Icon} name="trash" size=${14} />${tn("deleteBot")}</button></div>
@@ -461,49 +464,57 @@ export function NewBotDialog({ ctx, onClose }) {
   const [plan, setPlan] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  // The form's revision (#1529 review): any change to the token, platform, id or group moves it; a Verify or a plan
+  // that began before is dropped when it lands — never restoring an old token, naming it, or planning for it.
+  const rev = useRef(0);
   const body = (x) => ({ platform: x.type, connection_only: true, ...(x.id.trim() ? { channel_id: x.id.trim() } : {}),
     ...(x.group.trim() ? (x.type === "discord" ? { guild_id: x.group.trim() } : { group_id: x.group.trim() }) : {}) });
   const planFor = async (x) => {
+    const at = rev.current;
     const res = await api("/api/settings/quickstart/plan", { method: "POST", body: JSON.stringify(body(x)) }).catch(() => ({ ok: false, body: {} }));
-    if (!lease.current()) return null;
+    if (!lease.current() || rev.current !== at) return null;
     if (!res.ok) { setErr((res.body && res.body.error) || tn("failed")); setPlan(null); return null; }
     setErr(""); setPlan(res.body); return res.body;
   };
   const verify = async () => {
+    const at = rev.current, x = f;
+    const live = () => lease.current() && rev.current === at;
     setBusy(true); setErr("");
-    const identity = await verifyBotToken(f.type, f.token);
-    if (!lease.current()) return;
+    const identity = await verifyBotToken(x.type, x.token);
+    if (!live()) { if (lease.current()) setBusy(false); return; }
     let guilds = [];
-    if (identity.valid && f.type === "discord") {
-      const g = await api("/api/settings/quickstart/probe", { method: "POST", body: JSON.stringify({ action: "guilds", token: f.token }) }).catch(() => null);
-      if (!lease.current()) return;
+    if (identity.valid && x.type === "discord") {
+      const g = await api("/api/settings/quickstart/probe", { method: "POST", body: JSON.stringify({ action: "guilds", token: x.token }) }).catch(() => null);
+      if (!live()) { if (lease.current()) setBusy(false); return; }
       guilds = (g && g.body && g.body.guilds) || [];
     }
-    const next = { ...f, identity, guilds };
-    setF(next); setBusy(false);
-    if (identity.valid) await planFor(next);
+    // Onto the form as it is now (same revision, so the same token): never a copy of the form from before the await.
+    setF((cur) => ({ ...cur, identity, guilds })); setBusy(false);
+    if (identity.valid) await planFor({ ...x, identity, guilds });
   };
   const save = async () => {
     if (!f.identity || !f.identity.valid) { setErr(tn("wizardNeedVerify")); return; }
+    const x = f;
     setBusy(true);
-    const p = await planFor(f);
+    const p = await planFor(x);
     if (!p) { if (lease.current()) setBusy(false); return; }
     const handed = startOperation([{ label: tn("addBotLabel", p.channel_id), impact: impactOf(ctx.schema, "fleet.channels"),
-      request: { method: "POST", url: "/api/settings/quickstart/commit", body: { ...body(f), channel_id: p.channel_id, token_env: p.token_env, token: f.token }, sensitive: true } }]);
+      request: { method: "POST", url: "/api/settings/quickstart/commit",
+        body: { ...body(x), channel_id: p.channel_id, token_env: p.token_env, token_env_generated: true, token: x.token }, sensitive: true } }]);
     if (!handed) { setErr(tn("applyBusyLocal")); setBusy(false); return; }
     setF((x) => ({ ...x, token: "" }));
     onClose();
   };
   // A change of platform or id is another connection: what was verified and planned no longer applies. The server or
   // group does not change the id or the token's name, so the plan (and its name under Advanced) stays.
-  const set = (k) => (v) => { setF((x) => ({ ...x, [k]: v, ...(k === "type" ? { identity: null, guilds: [], group: "" } : {}) })); if (k !== "group") setPlan(null); };
+  const set = (k) => (v) => { rev.current++; setF((x) => ({ ...x, [k]: v, ...(k === "type" ? { identity: null, guilds: [], group: "" } : {}) })); if (k !== "group") setPlan(null); };
   return html`<${Dialog} title=${tn("newBot")} onClose=${onClose} busy=${busy}
     actions=${html`<button type="button" class="btn" disabled=${busy} onClick=${onClose}>${tn("cancel")}</button>
       <button type="button" class="btn btn-primary" disabled=${busy || !f.identity || !f.identity.valid} onClick=${save}>${tn("save")}</button>`}>
     <div class="form">
       <div class="field"><label for="nb-type">${tn("type")}</label><${Select} id="nb-type" value=${f.type} onChange=${set("type")} options=${CH_TYPES} /></div>
       <${TokenField} id="nb-token" platform=${f.type} value=${f.token} identity=${f.identity} busy=${busy}
-        onInput=${(v) => { setF((x) => ({ ...x, token: v, identity: null, guilds: [] })); setPlan(null); }} onVerify=${verify} hint=${tn("newBotTokenHint")} />
+        onInput=${(v) => { rev.current++; setF((x) => ({ ...x, token: v, identity: null, guilds: [] })); setPlan(null); }} onVerify=${verify} hint=${tn("newBotTokenHint")} />
       ${f.type === "discord" && f.guilds.length
         ? html`<div class="field"><label for="nb-group">${tn("guildIdField")}</label><${Select} id="nb-group" value=${f.group} onChange=${set("group")}
             options=${["", ...f.guilds.map((g) => ({ value: g.id, label: `${g.name} (${g.id})` }))]} /></div>`

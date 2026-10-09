@@ -19,7 +19,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
 import type { SecretWriteResult } from "./secret-file.js";
 import { SecretStore } from "./secret-store.js";
-import { envFileKeys, generateTokenEnvName, newTokenEnvConflict, takenTokenEnvNames, TOKEN_ENV_PATTERN } from "./token-env-name.js";
+import { EnvFileUnreadableError, envFileKeys, generateTokenEnvName, generatedTokenEnvStale, newTokenEnvConflict, takenTokenEnvNames, TOKEN_ENV_PATTERN } from "./token-env-name.js";
 import { KNOWN_BACKENDS, validateFleetConfig } from "./config-validator.js";
 import type { FleetConfig } from "./types.js";
 import {
@@ -72,6 +72,12 @@ export interface WizardPlanInput {
   connection_only?: boolean;
   /** The new connection's id; free ids only (a new connection never takes over one). Default: the platform's, else numbered. */
   channel_id?: string;
+  /**
+   * The token env came from a plan (#1529 review): the commit then re-checks, under its write lease, that the name is
+   * still free of everything the plan avoided — a generated name never overwrites a value. Without it, the name is the
+   * caller's own (the pre-fleet setup form, the CLI) and only another connection's or a reserved name is refused.
+   */
+  token_env_generated?: boolean;
   backend: string;
   working_directory: string;
   instance_name: string;
@@ -85,7 +91,7 @@ export interface WizardPlanInput {
 export interface WizardPlan {
   /** The channel entry that will be merged into fleet.yaml. */
   channel: Record<string, unknown>;
-  instance: { name: string; working_directory: string; backend: string } | null;
+  instance: { name: string; working_directory: string; backend: string; channel_id: string } | null;
   /** The new connection's id and the env var its token goes to. */
   channel_id: string;
   token_env: string;
@@ -144,7 +150,8 @@ export function planQuickstart(input: WizardPlanInput, env: WizardEnvironment & 
 
   return {
     channel,
-    instance: input.connection_only ? null : { name: input.instance_name, working_directory: input.working_directory, backend: input.backend },
+    // The agent is the new connection's (#1529 review): bound to it, not to whichever connection is first.
+    instance: input.connection_only ? null : { name: input.instance_name, working_directory: input.working_directory, backend: input.backend, channel_id: channelId },
     channel_id: channelId,
     token_env: tokenEnv,
     env_keys: [tokenEnv],
@@ -255,7 +262,7 @@ export function draftQuickstart(cfg: FleetConfig, body: WizardPlanInput, plan: W
   if (body.connection_only) return draft;
   draft.instances = { ...draft.instances, [body.instance_name]: {
     ...(Object.hasOwn(draft.instances, body.instance_name) ? draft.instances[body.instance_name] : {}),
-    working_directory: body.working_directory, backend: body.backend,
+    working_directory: body.working_directory, backend: body.backend, channel_id: plan.channel_id,
   } } as FleetConfig["instances"];
   return draft;
 }
@@ -299,6 +306,7 @@ export function wizardChannels(cfg: FleetConfig | null): WizardEnvironment["chan
 export function validateWizardInput(input: Partial<WizardPlanInput>, opts: { tokenEnvOptional?: boolean } = {}): string | null {
   if (input.platform !== "telegram" && input.platform !== "discord") return "platform must be telegram or discord";
   if (input.connection_only !== undefined && typeof input.connection_only !== "boolean") return "connection_only must be a boolean";
+  if (input.token_env_generated !== undefined && typeof input.token_env_generated !== "boolean") return "token_env_generated must be a boolean";
   if (!(opts.tokenEnvOptional && input.token_env === undefined) && (!input.token_env || !TOKEN_ENV_PATTERN.test(input.token_env))) return "token_env must be an UPPER_SNAKE env var name";
   if (input.channel_id !== undefined && (typeof input.channel_id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/.test(input.channel_id))) return "channel_id must be [A-Za-z0-9_-], up to 32 characters";
   if (!input.connection_only) {
@@ -374,7 +382,10 @@ export function handleQuickstartRequest(
       const conflict = newConnectionConflict(body, { channels });
       if (conflict) return json(res, 409, { error: conflict });
       // A generated name avoids every name already held: connections', providers', this data dir's .env, this process's.
-      const taken = takenTokenEnvNames({ channelEnvs: channels.map(c => c.token_env), envFile: envFileKeys(ctx.dataDir), processEnv: Object.keys(process.env) });
+      let envFile: Set<string>;
+      try { envFile = envFileKeys(ctx.dataDir); }
+      catch (err) { if (err instanceof EnvFileUnreadableError) return json(res, 503, { error: err.message }); throw err; }
+      const taken = takenTokenEnvNames({ channelEnvs: channels.map(c => c.token_env), envFile, processEnv: Object.keys(process.env) });
       json(res, 200, planQuickstart(body, {
         backends: body.connection_only ? [] : detectWizardBackends(),
         has_fleet: Object.keys(cfg.instances ?? {}).length > 0,
@@ -428,6 +439,13 @@ export function handleQuickstartRequest(
       const rollback: { config?: () => boolean } = {};
       try {
         execution?.assert();
+        // A generated name is re-checked here, under the .env lease, against what the write would overwrite (#1529 review).
+        if (body.token_env_generated) {
+          let stale: string | null;
+          try { stale = generatedTokenEnvStale(body.token_env, { dataDir: ctx.dataDir, channelEnvs: summary.map(c => c.token_env) }); }
+          catch (err) { if (err instanceof EnvFileUnreadableError) return json(res, 503, { error: err.message }); throw err; }
+          if (stale) return json(res, 409, { error: stale });                // nothing written yet; the lease goes in finally
+        }
         store = new SecretStore(envPath, new Set([body.token_env]), { owner: lease.owner });
         settingsWrite(req, () => {
           secretBefore = store!.write(body.token_env, body.token!); stored = true;
