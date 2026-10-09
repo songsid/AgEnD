@@ -1,0 +1,44 @@
+
+
+› again
+
+
+• ok
+
+  Worked for 8s • 07:37
+
+
+› third
+
+
+• ok
+
+⚠ Heads up, you have less than 5% of your weekly limit left. Run /status for a breakdown.
+
+⚠ Heads up, you have less than 5% of your 5h limit left. Run /status for a breakdown.
+
+  Worked for <1s • 07:37
+
+
+› fourth
+
+
+■ You’ve hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), visit https://chatgpt.com/codex/settings/usage to purchase more
+credits or try again at 8:37 AM.
+
+
+› fifth
+
+
+■ unexpected status 401 Unauthorized: Incorrect API key provided, url: http://127.0.0.1:18760/v1/responses
+
+
+› sixth
+
+
+■ We’re currently experiencing high demand, which may cause temporary errors.
+
+
+› Ask Codex to do anything
+
+  Context 100% left                                                                                                         ⚠ 4 warnings · f2 to view

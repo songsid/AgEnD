@@ -8,6 +8,8 @@ import type { HostMemory } from "../src/host-memory.js";
 import { TmuxManager } from "../src/tmux-manager.js";
 
 vi.mock("../src/sd-notify.js", () => ({ sdNotify: vi.fn(), sdNotifyBlocking: vi.fn() }));
+// Keep the constructor on the injected reader path on every test host; Darwin policy is selected below.
+vi.mock("node:os", async importOriginal => ({ ...await importOriginal<typeof import("node:os")>(), platform: () => "linux" }));
 const MiB = 1024 * 1024;
 const memory = (available = 4_000, swap = 4_000): HostMemory => ({ totalBytes: 16_000 * MiB,
   availableBytes: available * MiB, availableKind: "available", swapTotalBytes: 8_000 * MiB, swapFreeBytes: swap * MiB });
@@ -48,20 +50,40 @@ describe("fleet host memory wiring", () => {
     return { fm, internal, read, logger, sendText, attach, set: (value: HostMemory) => { current = value; } };
   }
 
-  it("macOS (#1256): a sample is logged, never a warning, a channel notice or a health problem — even at critical", () => {
+  it("macOS (#1256): missing kernel values are logged once, never a warning, notice or health problem", () => {
     const { fm, internal, attach, sendText, logger, set } = make({ ...memory(), availableBytes: null, availableKind: "unknown" });
     Object.defineProperty(fm.memoryPressure, "platform", { value: "darwin" });
     attach(); fm.memoryPressure.start();
     expect(logger.debug).toHaveBeenCalledOnce();
-    // The reported Mac: 16 GB, 2845 MiB available, swap nearly full (274 MiB free of 6 GB) — read as elevated.
+    // The old ratio policy called this elevated; without a kernel alarm it is now unknown.
     set({ totalBytes: 16_000 * MiB, availableBytes: 2_845 * MiB, availableKind: "available", swapTotalBytes: 6_000 * MiB, swapFreeBytes: 274 * MiB });
     fm.memoryPressure.sample();
-    expect(fm.memoryPressure.snapshot().level).toBe("elevated");
+    expect(fm.memoryPressure.snapshot().level).toBe("unknown");
     set(memory(100, 0)); fm.memoryPressure.sample();
-    expect(fm.memoryPressure.snapshot().level).toBe("critical");
+    expect(fm.memoryPressure.snapshot().level).toBe("unknown");
     expect(sendText).not.toHaveBeenCalled(); expect(logger.warn).not.toHaveBeenCalled();
     expect(internal.memoryNoticeAt).toBeNull(); expect(internal.memoryLogAt).toBeNull();
-    expect(logger.info).toHaveBeenCalledWith(expect.objectContaining({ hostMemory: expect.objectContaining({ level: "critical" }) }), expect.stringContaining("macOS: logged only"));
+    expect(logger.info).toHaveBeenCalledOnce();
+    expect(logger.info).toHaveBeenCalledWith({ pressureRaw: null }, expect.stringContaining("kernel memory pressure unknown"));
+    expect(fm.getFleetHealth().problems ?? []).not.toEqual(expect.arrayContaining([expect.stringContaining("host memory")]));
+  });
+
+  it.each([2, 4] as const)("macOS kernel %s warns, sends a diagnostic-labelled notice and degrades health", kernel => {
+    const { fm, attach, sendText, logger } = make({ ...memory(), darwinPressureLevel: kernel });
+    Object.defineProperty(fm.memoryPressure, "platform", { value: "darwin" });
+    attach(); fm.memoryPressure.start();
+    expect(logger.warn).toHaveBeenCalledOnce(); expect(sendText).toHaveBeenCalledOnce();
+    expect(String(sendText.mock.calls[0]![1])).toContain(`kernel memory pressure level: ${kernel}`);
+    expect(String(sendText.mock.calls[0]![1])).toContain("diagnostic only");
+    expect(fm.getFleetHealth().problems).toEqual(expect.arrayContaining([expect.stringContaining("host memory")]));
+  });
+
+  it("the reported Mac's kernel normal does not warn despite nearly full swap", () => {
+    const { fm, attach, sendText, logger } = make({ totalBytes: 16_000 * MiB, availableBytes: 2_845 * MiB, availableKind: "available", swapTotalBytes: 6_000 * MiB, swapFreeBytes: 274 * MiB, darwinPressureLevel: 1 });
+    Object.defineProperty(fm.memoryPressure, "platform", { value: "darwin" });
+    attach(); fm.memoryPressure.start();
+    expect(fm.memoryPressure.snapshot().level).toBe("normal");
+    expect(logger.warn).not.toHaveBeenCalled(); expect(sendText).not.toHaveBeenCalled();
     expect(fm.getFleetHealth().problems ?? []).not.toEqual(expect.arrayContaining([expect.stringContaining("host memory")]));
   });
 
