@@ -72,6 +72,38 @@ interface ProfileRow {
   updated_at: number;
 }
 
+/**
+ * The identity one instance shows on every page (alpha.2, docs/design/web-unified-instance-nav.md §3.1): the status
+ * frame (SSE, poll — the sidebar, Chat, Fleet) and /api/profiles (View, its anonymous reader) both resolve it here, so
+ * an alias or description set on a profile is the same everywhere.
+ * - display_name: profile → fleet.yaml → ClassicBot room → none
+ * - description: profile → fleet.yaml → none;  role: profile → none
+ * - tags: fleet.yaml; a ClassicBot room without its own is "classic" (strings only)
+ */
+export interface InstanceIdentity { display_name: string | null; description: string | null; role: string | null; tags: string[] }
+export function resolveInstanceIdentity(input: {
+  cfg?: { display_name?: string; description?: string; tags?: unknown } | null;
+  classic?: { displayName?: string } | null;
+  profile?: { display_name: string | null; description: string | null; role: string | null } | null;
+}): InstanceIdentity {
+  const { cfg, classic, profile } = input;
+  const tags = Array.isArray(cfg?.tags) ? cfg.tags : classic ? ["classic"] : [];
+  return {
+    display_name: profile?.display_name ?? cfg?.display_name ?? classic?.displayName ?? null,
+    description: profile?.description ?? cfg?.description ?? null,
+    role: profile?.role ?? null,
+    tags: tags.filter((t): t is string => typeof t === "string"),
+  };
+}
+/** Profiles by instance, for a status read: only when profiles.db already exists — a status read never creates it. */
+export function profileIdentities(dataDir: string): Map<string, Pick<ProfileRow, "display_name" | "description" | "role">> {
+  if (!existsSync(join(dataDir, "profiles.db"))) return new Map();
+  try {
+    const rows = profileDb(dataDir).prepare("SELECT instance_name, display_name, description, role FROM instance_profile").all() as ProfileRow[];
+    return new Map(rows.map(r => [r.instance_name, r]));
+  } catch { return new Map(); }
+}
+
 // Lazy per-dataDir SQLite handle for instance profiles.
 let _db: Database.Database | null = null;
 let _dbPath = "";
@@ -283,12 +315,8 @@ export function handleViewRequest(
       const classic = classicByName.get(name);
       const l = live.get(name);
       const p = profiles.get(name);
-      // display_name priority: profile DB > fleet config > classic channel > null
-      const display_name = p?.display_name
-        ?? cfg?.display_name
-        ?? classic?.displayName
-        ?? l?.display_name
-        ?? null;
+      // The same identity as the status frame's (resolveInstanceIdentity).
+      const identity = resolveInstanceIdentity({ cfg, classic, profile: p });
       return {
         instance_name: name,
         status: l?.status ?? ctx.getInstanceStatus(name),
@@ -307,11 +335,11 @@ export function handleViewRequest(
             ? ctx.classicChannels!.getBackendByInstance(name, ctx.fleetConfig?.defaults?.backend)
             : ctx.fleetConfig?.defaults?.backend)
           ?? "claude-code",
-        tags: cfg?.tags ?? (classic ? ["classic"] : []),
-        display_name,
-        role: p?.role ?? null,
+        tags: identity.tags,
+        display_name: identity.display_name,
+        role: identity.role,
         avatar_path: p?.avatar_path ?? null,
-        description: p?.description ?? cfg?.description ?? null,
+        description: identity.description,
         has_avatar: !!p?.avatar_path,
       };
     });

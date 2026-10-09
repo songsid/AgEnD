@@ -150,6 +150,20 @@ describe("the filter: text, status and CLI, the same on every page and kept by t
   });
 });
 
+describe("the identity the status frame carries (one rule with /api/profiles)", () => {
+  it("a profile alias and description: searched and shown the same on Chat, View and Fleet", async () => {
+    const withProfile = INSTANCES.map(i => i.name === "docs-writer" ? { ...i, display_name: "Sentinel", description: "Writes the release notes" } : i);
+    const pg = await app("/ui/chat/web-dev", {}, withProfile);
+    await typeFilter(pg, "sentinel");
+    for (const path of ["/ui/chat/web-dev", "/view/web-dev", "/ui/fleet"]) {
+      await go(path);
+      const row = pg.root.querySelector("#instanceList a.inst") as any;
+      expect([rowNames(pg), row?.querySelector(".inst-alias")?.textContent, row?.getAttribute("title")?.split("\n").at(-1)], path)
+        .toEqual([["docs-writer"], "Sentinel", "Writes the release notes"]);
+    }
+  });
+});
+
 describe("order and folding: View's, on every page", () => {
   it("the order saved by dragging on View is the order on Chat; a folded group stays folded across pages and loads", async () => {
     const order = JSON.stringify([
