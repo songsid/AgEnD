@@ -1,3 +1,4 @@
+import type { PaneContextSource } from "./pane-context-cache.js";
 import { join, dirname, basename, resolve } from "node:path";
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, unlinkSync, rmSync, appendFileSync, statSync, chmodSync, renameSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -4326,6 +4327,23 @@ export class Daemon extends EventEmitter {
     } catch (e) {
       this.logger.debug({ err: e }, "Failed to remove PID file");
     }
+  }
+
+  /** Context refresh uses the already-bound manager; no name-based child or backend probe. */
+  getPaneContextSource(): PaneContextSource | null {
+    const tmux = this.tmux;
+    const control = this.controlClient;
+    if (!tmux || !control || this.deliveryWritesStopping) return null;
+    const owner = this.interactionOwner();
+    const epoch = this.deliveryEpoch;
+    const isCurrent = () => {
+      const now = this.interactionOwner();
+      return !this.deliveryWritesStopping && this.controlClient === control && this.tmux === tmux && this.deliveryEpoch === epoch
+        && now.bootId === owner.bootId && now.spawnGeneration === owner.spawnGeneration
+        && now.launchAttempt === owner.launchAttempt && now.launchFenceEpoch === owner.launchFenceEpoch;
+    };
+    return { owner: tmux, generation: JSON.stringify([owner.bootId, owner.spawnGeneration, owner.launchAttempt, owner.launchFenceEpoch, epoch]),
+      isCurrent, capture: () => isCurrent() ? tmux.capturePaneWithHistory(60, 2_000) : Promise.reject(new Error("Pane context owner retired")) };
   }
 
   getHangDetector(): HangDetector | null {

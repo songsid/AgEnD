@@ -1,3 +1,4 @@
+import { PaneContextCache } from "./pane-context-cache.js";
 import { measureSyncWork } from "./sync-work-attribution.js";
 import { LOOPBACK_HOST_NAMES } from "./web-host-guard.js";
 import { WEB_REMOTE_DOCS_URL } from "./upgrade-notices.js";
@@ -426,47 +427,11 @@ export function scrapePaneContext(
   }
 }
 
-const paneContextCache = new Map<string, { at: number; context: number | null; tokenRatio: TokenContextRatio | null }>();
-// Below the dashboard's 10s SSE tick on purpose: at the previous 12s the cache was
-// guaranteed to be stale on roughly every other tick, which is what made the
-// blocking scrape fire so often. Now a tick either hits the cache or triggers a
-// background refresh, never a synchronous capture.
-const PANE_CONTEXT_CACHE_MS = 8_000;
-/** Instances with a background scrape in flight, so polls don't pile up captures. */
-const paneScrapeInFlight = new Set<string>();
+const paneContextCache = new PaneContextCache();
 
-/** Async twin of scrapePaneContext — same parsers, no blocking. */
-async function scrapePaneContextAsync(
-  instanceName: string,
-  backend: string,
-): Promise<{ context: number | null; tokenRatio: TokenContextRatio | null }> {
-  try {
-    const socketName = getTmuxSocketName();
-    const baseArgs = ["capture-pane", "-t", `${getTmuxSessionName()}:${instanceName}`, "-p", "-S", "-60"];
-    const tmuxArgs = socketName ? ["-L", socketName, ...baseArgs] : baseArgs;
-    const { promisify } = await import("node:util");
-    const { execFile } = await import("node:child_process");
-    const { stdout } = await promisify(execFile)("tmux", tmuxArgs, { encoding: "utf-8", timeout: 2000 });
-    const pane = stdout.toString();
-    const tokenRatio = backend === "grok" ? parseTokenContextRatio(pane) : null;
-    return { context: tokenRatio?.percentage ?? parseContextPercent(pane), tokenRatio };
-  } catch {
-    return { context: null, tokenRatio: null };
-  }
-}
-
-/** Refresh one instance's cached context in the background (deduped per instance). */
-function refreshPaneContext(instanceName: string, backend: string): void {
-  if (paneScrapeInFlight.has(instanceName)) return;
-  paneScrapeInFlight.add(instanceName);
-  void scrapePaneContextAsync(instanceName, backend)
-    .then(scraped => { paneContextCache.set(instanceName, { at: Date.now(), ...scraped }); })
-    .finally(() => { paneScrapeInFlight.delete(instanceName); });
-}
-
-/** Forget a deleted instance's cached context so the map can't grow forever. */
+/** Forget a deleted instance and revoke any outstanding refresh for its old pane. */
 export function forgetInstanceContext(instanceName: string): void {
-  paneContextCache.delete(instanceName);
+  paneContextCache.forget(instanceName);
 }
 
 /**
@@ -475,8 +440,8 @@ export function forgetInstanceContext(instanceName: string): void {
  * else scrapes the live pane with the same parsers /ctx uses.
  *
  * Non-blocking by default (stale-while-revalidate): a fresh cache entry is
- * returned as-is; a stale or missing one is returned immediately anyway while a
- * background refresh runs. This used to scrape synchronously with `execFileSync`
+ * returned as-is; a stale or missing one is returned immediately anyway while an owned
+ * control-mode refresh runs. A missing pane owner returns unknown without spawning. This used to scrape synchronously with `execFileSync`
  * (2s timeout) on a cache miss, and the 12s TTL is LONGER than the dashboard's
  * 10s poll — so roughly every other tick did N blocking captures. With ten
  * non-claude-code instances and a slow tmux that froze the entire fleet event
@@ -490,7 +455,7 @@ export function resolveInstanceContext(
   dataDir: string,
   instanceName: string,
   backend: string,
-  opts?: { bypassCache?: boolean },
+  opts?: { bypassCache?: boolean; source?: import("./pane-context-cache.js").PaneContextSource | null },
 ): { context: number | null; tokenRatio: TokenContextRatio | null } {
   if (backend === "claude-code") {
     const fromFile = readStatuslineContextPct(dataDir, instanceName);
@@ -499,19 +464,11 @@ export function resolveInstanceContext(
 
   if (opts?.bypassCache) {
     const scraped = scrapePaneContext(instanceName, backend);
-    paneContextCache.set(instanceName, { at: Date.now(), ...scraped });
+    paneContextCache.record(dataDir, instanceName, backend, scraped, opts.source);
     return scraped;
   }
 
-  const hit = paneContextCache.get(instanceName);
-  if (hit && Date.now() - hit.at < PANE_CONTEXT_CACHE_MS) {
-    return { context: hit.context, tokenRatio: hit.tokenRatio };
-  }
-
-  // Stale or absent: kick off the refresh and answer with what we have. A brand-new
-  // instance reads as "no data" for one tick rather than blocking the fleet.
-  refreshPaneContext(instanceName, backend);
-  return hit ? { context: hit.context, tokenRatio: hit.tokenRatio } : { context: null, tokenRatio: null };
+  return paneContextCache.resolve(dataDir, instanceName, backend, opts?.source);
 }
 
 const PROFILE_RE = /^\/profile(?:@\w+)?(?:\s+([\s\S]*))?$/;
@@ -1025,7 +982,7 @@ export class TopicCommands {
       this.ctx.dataDir,
       instanceName,
       backend,
-      { bypassCache: true },
+      { bypassCache: true, source: this.ctx.getPaneContextSource?.(instanceName) },
     );
     const contextLine = context == null ? null : formatContextUsageLine(context, tokenRatio);
     // Effective model (resolves per-instance → fleet default → classic channel →
@@ -1454,7 +1411,7 @@ export class TopicCommands {
       // Without this, kiro/grok/codex always showed "-" in the Ctx column.
       const { context } = backend === "-"
         ? { context: null as number | null }
-        : resolveInstanceContext(this.ctx.dataDir, name, backend);
+        : resolveInstanceContext(this.ctx.dataDir, name, backend, { source: this.ctx.getPaneContextSource?.(name) });
       const contextStr = context == null ? "-" : `${Math.round(context)}%`;
 
       const costCents = this.ctx.costGuard?.getDailyCostCents(name) ?? 0;
