@@ -6,6 +6,9 @@ export interface TurnReplyTarget {
   messageId?: string;
   correlationId?: string;
   inboundMarker?: string;
+  /** #1510: exactly what was pasted, and when (wall clock) — how a transcript turn is proven to be this delivery's. */
+  deliveredText?: string;
+  deliveredAt?: number;
 }
 
 export type TurnReplyPhase = "awaiting" | "recovering";

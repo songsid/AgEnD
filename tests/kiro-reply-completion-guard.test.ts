@@ -147,9 +147,10 @@ describe("Kiro reply guard follows the successful launch plan (#1144)", () => {
     }
   });
 
-  it("does not opt Codex in", () => {
+  it("opts Codex in only with its turn end read from the rollout (#1510; tests/codex-reply-guard-1510.test.ts)", () => {
     const backend: CliBackend = new CodexBackend(temp());
-    expect(backend.replyCompletionGuard).not.toBe(true);
+    expect(backend.replyCompletionGuard).toBe(true);
+    expect(backend.turnEndFromTranscript).toBe(true);
   });
 });
 

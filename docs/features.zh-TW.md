@@ -180,7 +180,13 @@ agent 可以提供讓人點選、而不必打字的選項（2.2）。同一組�
 - 接著它會提醒 agent 一次，請它用 `reply` 或 `react` 送出結論，不必重做一遍。
 - 如果 agent 嘗試過回覆但結果不明（可能已經送出、只是逾時），守衛不會重試，所以你不會收到兩次答案；聊天室裡會出現一則簡短通知，說明這則回覆無法確認。
 
-預設開啟（`reply_completion_guard: true`）；要關掉，就依 instance、在 `defaults` 裡，或依 ClassicBot 頻道設為 `false`。其他後端沒有這個功能。
+預設開啟（`reply_completion_guard: true`）；要關掉，就依 instance、在 `defaults` 裡，或依 ClassicBot 頻道設為 `false`。
+
+支援的後端：
+- **Claude Code**，以及成功建立的 **Kiro** legacy/TUI 啟動。
+- **Codex**，但還要 codex 自己的 session 紀錄顯示：裝著你這則訊息的那一輪已經結束，而且之後沒有新的一輪開始。被中斷的一輪（Esc）或因 provider 錯誤結束的一輪不會提醒；紀錄裡找不到的一輪也照舊不會提醒。
+
+其他後端沒有這個功能。
 
 ## 點對點 Agent 協作 (Peer-to-peer agent collaboration)
 
