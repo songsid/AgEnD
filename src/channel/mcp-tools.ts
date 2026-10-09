@@ -39,7 +39,7 @@ type ToolDef = {
  */
 const DEFS: Array<[string, ZodType, string]> = [
   ["reply", schemas.ReplyArgs,
-    "Reply on the channel. Routing is handled automatically — do not pass chat_id or thread_id."],
+    "Reply on the channel. Routing is handled automatically — do not pass chat_id or thread_id. Add `buttons` to offer choices people can click."],
   ["react", schemas.ReactArgs,
     "Add an emoji reaction to a channel message."],
   ["edit_message", schemas.EditMessageArgs,

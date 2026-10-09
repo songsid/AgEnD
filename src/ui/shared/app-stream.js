@@ -15,7 +15,7 @@
 // older snapshot. A failed read is retried a few times with a growing delay, and then waits for the person (Retry);
 // the state is told as "hydration" events. Polls never overlap: a poll asked for while one runs follows it.
 
-const EVENTS = ["status", "message", "delivery", "deliveries", "prompt", "prompts", "prompt_resolved", "activity", "needs"];
+const EVENTS = ["status", "message", "delivery", "deliveries", "prompt", "prompts", "prompt_resolved", "activity", "needs", "reply_buttons"];
 const MAX_HELD = 1000;                    // live events held during one catch-up read; more → read again afterwards
 const RETRY_DELAYS = [1000, 2000, 4000];  // after the first failed catch-up read; then it waits for Retry
 const POLL_LIMIT_MS = 10000;              // a poll that has not answered by then counts as failed
@@ -83,6 +83,7 @@ export function createStream(opts) {
         if (typeof d.cursor === "string") state.cursor = d.cursor;
         if (Array.isArray(d.deliveries)) emit("deliveries", d.deliveries);
         if (Array.isArray(d.prompts)) emit("prompts", d.prompts);
+        if (Array.isArray(d.reply_buttons)) for (const u of d.reply_buttons) emit("reply_buttons", u);   // #1266
         if (Array.isArray(d.needs)) emit("needs", { items: d.needs });
         return true;
       } catch { return false; /* the next tick, or the catch-up's retry, tries again */ }

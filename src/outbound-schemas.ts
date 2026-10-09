@@ -25,6 +25,11 @@ export const ReplyArgs = z.object({
   format: MessageFormat.optional().describe("Rendering mode. Default: 'text'."),
   stickers: z.array(NonEmptyString).max(3).optional()
     .describe("Up to 3 sticker ids from list_stickers, sent with the text (Discord: the same message; Telegram: after it). Stickers are never written in the text."),
+  buttons: z.array(z.object({
+    label: z.string().min(1).max(80).describe("What the button says: one line of plain text, at most 80 characters."),
+    value: z.string().max(200).optional().describe("What you receive when it is clicked, if not the label (at most 200 characters; never shown on the platform)."),
+  })).min(1).max(10).optional()
+    .describe("Up to 10 buttons under the text (needs text; not with stickers). The first click by someone who may talk to you there answers for everyone and comes back to you as a message: `[button] <label>` (and `(value: …)` when it differs). Unanswered buttons expire after 24 h."),
 });
 
 export const ReactArgs = z.object({

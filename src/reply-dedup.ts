@@ -29,7 +29,9 @@ import { createHash } from "node:crypto";
 export function replyDedupText(args: Record<string, unknown>): string {
   const text = String(args.text ?? "");
   const stickers = Array.isArray(args.stickers) ? (args.stickers as unknown[]).map(String) : [];
-  return stickers.length ? `${text}\u0000stickers:${stickers.join(",")}` : text;
+  const keyed = stickers.length ? `${text}\u0000stickers:${stickers.join(",")}` : text;
+  // #1266: the same text with other buttons is another reply.
+  return Array.isArray(args.buttons) && args.buttons.length ? `${keyed}\u0000buttons:${JSON.stringify(args.buttons)}` : keyed;
 }
 
 export class ReplyDeduper {

@@ -183,7 +183,7 @@ describe("the app builds its markup from templates and props; the thread's strin
     // Named in the template (data-act="…") or set on a node (dataset.act = "…").
     const named = [...new Set([...THREAD.matchAll(/data-act="([^"]+)"/g), ...THREAD.matchAll(/dataset\.act = "([^"]+)"/g)].map(m => m[1]!))].sort();
     const handled = [...THREAD.slice(THREAD.indexOf("function onClick(e)"), THREAD.indexOf("function onClick(e)") + 900).matchAll(/act === "(\w+)"/g)].map(m => m[1]!).sort();
-    expect(named).toEqual(["copyCode", "copyMsg", "toggleFold", "toggleWrap"]);
+    expect(named).toEqual(["copyCode", "copyMsg", "replyButton", "toggleFold", "toggleWrap"]);   // #1266: replyButton
     expect(handled).toEqual(named);
     expect(THREAD).toContain('e.target.closest("[data-act]")');
   });

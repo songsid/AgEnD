@@ -300,6 +300,21 @@
    * id, in id order, the newest `cap` kept. The same message can arrive twice — from /ui/history and from the
    * stream — and must show once.
    */
+  function buttonsRank(b) { return b && b.state !== "open" ? 1 : 0; }
+  /**
+   * #1266: a reply's buttons changed (one was chosen, or they expired): the message carrying them, by its set id.
+   * Returns the list unchanged when no message carries that set.
+   */
+  function applyReplyButtons(list, buttons) {
+    if (!Array.isArray(list) || !buttons || typeof buttons.id !== "string") return list;
+    var i = -1;
+    for (var j = list.length - 1; j >= 0; j--) if (list[j] && list[j].buttons && list[j].buttons.id === buttons.id) { i = j; break; }
+    if (i < 0 || buttonsRank(list[i].buttons) > buttonsRank(buttons)) return list;
+    var out = list.slice();
+    out[i] = Object.assign({}, list[i], { buttons: buttons });
+    return out;
+  }
+
   function mergeMessages(existing, incoming, cap) {
     var seen = {};
     var out = [];
@@ -312,7 +327,9 @@
         // The same message again (history after the stream): the copy that got further shows its ticks.
         var had = out[seen[k]];
         var next = nextDeliveryState(had.delivery, m.delivery);
-        if (next !== had.delivery) out[seen[k]] = Object.assign({}, had, { delivery: next });
+        if (next !== had.delivery) out[seen[k]] = had = Object.assign({}, had, { delivery: next });
+        // #1266: …and the copy whose buttons got further (open → chosen / expired) shows them.
+        if (m.buttons && (!had.buttons || buttonsRank(m.buttons) > buttonsRank(had.buttons))) out[seen[k]] = Object.assign({}, had, { buttons: m.buttons });
         return;
       }
       seen[k] = out.length;
@@ -467,7 +484,7 @@
   }
 
   return {
-    renderMarkdown: renderMarkdown, escapeHtml: escapeHtml, mergeMessages: mergeMessages, composerKey: composerKey,
+    renderMarkdown: renderMarkdown, escapeHtml: escapeHtml, mergeMessages: mergeMessages, applyReplyButtons: applyReplyButtons, composerKey: composerKey,
     settleFailedSend: settleFailedSend, putBack: putBack,
     FILE_LIMITS: FILE_LIMITS, formatSize: formatSize, checkFiles: checkFiles, attachmentsHtml: attachmentsHtml,
     nextDeliveryState: nextDeliveryState, applyDelivery: applyDelivery, deliveryHtml: deliveryHtml, isBusy: isBusy,
