@@ -6757,7 +6757,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * identity) passes through to the existing handling.
    */
   private isOwnerCommandCopy(msg: InboundMessage, threadId: string | undefined): boolean {
-    if (!msg.adapterId || threadId === undefined) return true;
+    if (!msg.adapterId) return true;
+    const suffix = msg.text?.trim().match(/^\/[\w-]+@(\S+)/)?.[1];
+    if (threadId === undefined) {
+      // General at the forum root belongs to the receiving world. Prove an
+      // explicit suffix before shared dedup, even when there is no message id.
+      // Classic/private/foreign-forum copies retain their own dispatch rules.
+      const channels = this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
+      const channel = channels.find(ch => (ch.id ?? ch.type) === msg.adapterId)
+        ?? this.worlds.get(msg.adapterId)?.channelConfig;
+      if (msg.source === "telegram" && channel?.type === "telegram"
+        && channel.group_id != null && String(channel.group_id) === msg.chatId && suffix) {
+        const username = this.worlds.get(msg.adapterId)?.botUsername;
+        return !!username && suffix.toLowerCase() === username.toLowerCase();
+      }
+      return true;
+    }
     const target = this.resolveInboundTarget(msg, threadId);
     if (!target || target.kind === "classic") return true;
     const owner = this.getInstanceAdapterId(target.name);
@@ -6768,7 +6783,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Telegram classic branch.
     // Hyphenated aliases count too (e.g. /install-cli): Telegram command
     // names cannot contain "-", but typed aliases can.
-    const suffix = msg.text?.trim().match(/^\/[\w-]+@(\S+)/)?.[1];
     if (suffix && owner) {
       const ownerUser = this.worlds.get(owner)?.botUsername;
       if (ownerUser && suffix.toLowerCase() !== ownerUser.toLowerCase()) return false;
@@ -6876,7 +6890,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // per-adapter keys — first-/start-contact onboarding needs every copy
     // to flow — so only fleet targets are judged here; the in-handler gates
     // (owner entry check, Discord ignore) cover classic instead.
-    if (msg.messageId && /^\/\w/.test(msg.text?.trim() ?? "") && !this.isOwnerCommandCopy(msg, threadId)) {
+    if ((msg.messageId || (msg.source === "telegram" && threadId === undefined))
+      && /^\/\w/.test(msg.text?.trim() ?? "") && !this.isOwnerCommandCopy(msg, threadId)) {
       this.logger.debug({ adapterId: msg.adapterId, threadId }, "Non-owner command copy — skipping before dedup claim");
       return;
     }
