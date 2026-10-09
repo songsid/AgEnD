@@ -24,6 +24,10 @@ export function usageBar(percent: number): string {
 }
 
 function statusDot(p: ProviderUsage): string {
+  // Stale data: show neutral/yellow — the numbers are from cache, not live.
+  if (p.stale) return "🟡";
+  // Transient rate-limit with no stale data: neutral rather than alarming 🔴.
+  if (p.transient) return "🟡";
   if (p.status === "error") return "🔴";
   if (p.status === "no-credentials") return "⚪";
   // Highest metric drives the colour: the reader scans for "which one is hot".
@@ -98,7 +102,7 @@ function toBlocks(payload: UsagePayload): ProviderBlock[] {
     note: p.status === "no-credentials" ? t("usage.not_logged_in")
       : p.status === "error" ? `⚠️ ${usageText(p.error ?? t("usage.error_fallback"), p.errorI18n)}`
         : null,
-    okHint: p.status === "ok" && p.hint ? usageText(p.hint, p.hintI18n) : null,
+    okHint: (p.status === "ok" || p.stale) && p.hint ? usageText(p.hint, p.hintI18n) : null,
     lines: p.status === "ok"
       ? p.metrics.filter(isVisibleUsageMetric).map(metricLine).filter((l): l is MetricLine => l !== null)
       : [],

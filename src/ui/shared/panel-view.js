@@ -463,10 +463,12 @@ function UsageDialog({ onClose }) {
             <button type="button" class="icon-btn" disabled=${i === 0} aria-label=${tn("usageMoveUp")} title=${tn("usageMoveUp")} onClick=${() => move(key(p), -1, data.providers)}><${Icon} name="up" size=${14} /></button>
             <button type="button" class="icon-btn" disabled=${i === providers.length - 1} aria-label=${tn("usageMoveDown")} title=${tn("usageMoveDown")} onClick=${() => move(key(p), 1, data.providers)}><${Icon} name="down" size=${14} /></button>
           </span></div>
-        ${p.status === "error" ? html`<p class="u-err">${usageText(p.error || tn("usage.error_fallback"), p.errorI18n)}</p>`
+        ${p.stale ? html`<p class="note">${usageText(p.hint || "", p.hintI18n)}</p>` : null}
+        ${p.status === "error" && !p.transient ? html`<p class="u-err">${usageText(p.error || tn("usage.error_fallback"), p.errorI18n)}</p>`
+          : p.status === "error" && p.transient ? html`<p class="note">${usageText(p.error || tn("usage.error_fallback"), p.errorI18n)}</p>`
           : p.status === "no-credentials" ? html`<p class="note">${tn("usage.not_logged_in")}</p>${p.hint ? html`<p class="note">${usageText(p.hint, p.hintI18n)}</p>` : null}`
           : html`${(p.metrics || []).map((m, j) => html`<${UsageMetric} key=${j} m=${m} />`)}
-            ${p.hint ? html`<p class="note">${usageText(p.hint, p.hintI18n)}</p>` : !(p.metrics || []).length ? html`<p class="note">${tn("usage.no_data")}</p>` : null}`}
+            ${!p.stale && p.hint ? html`<p class="note">${usageText(p.hint, p.hintI18n)}</p>` : !(p.metrics || []).length ? html`<p class="note">${tn("usage.no_data")}</p>` : null}`}
       </section>`)}
       <div class="u-foot"><span class="note">${tn("usageUpdated")} ${new Date(data.fetchedAt).toLocaleTimeString()}</span>
         <button type="button" class="btn btn-sm" onClick=${() => load(true)}>${tn("usageRefresh")}</button></div>`;

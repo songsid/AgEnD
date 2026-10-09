@@ -81,12 +81,19 @@ const TRANSIENT_CACHE_MS = 30 * 1000;
 const FORCE_FLOOR_MS = 30 * 1000;
 /** How old a last-good snapshot may be and still stand in for a rate-limited row. */
 const STALE_MAX_MS = 60 * 60 * 1000;
+/** Cap for Retry-After backoff. Prevents a single 429 from locking /usage for days.
+ * Note: the backoff is global — one provider's 429 blocks force-refresh for all
+ * providers (because fetchAllUsage fetches all at once). Per-provider backoff would
+ * require a larger refactor; this is an accepted trade-off. */
+const RETRY_AFTER_MAX_MS = 15 * 60 * 1000; // 15 minutes
 
 let cache: { at: number; ttlMs: number; payload: UsagePayload; museRevision: number } | null = null;
 let inflight: Promise<UsagePayload> | null = null;
 let lastForcedFetchStartedAt: number | null = null;
 /** Last successful per-provider rows, for stale-while-rate-limited. */
 const lastGood = new Map<string, { at: number; provider: ProviderUsage }>();
+/** Retry-After deadline per provider: do not fetch until after this timestamp. */
+const retryAfterUntil = new Map<string, number>();
 // Test seam: lets tests stub the network layer without real credentials.
 let fetcher: () => Promise<UsagePayload> = fetchAllUsage;
 
@@ -96,6 +103,7 @@ export function setUsageFetcherForTests(fn: (() => Promise<UsagePayload>) | null
   inflight = null;
   lastForcedFetchStartedAt = null;
   lastGood.clear();
+  retryAfterUntil.clear();
 }
 
 /**
@@ -142,20 +150,45 @@ function withStaleFallback(payload: UsagePayload): UsagePayload {
         const ageMin = Math.max(1, Math.round((now - good.at) / 60_000));
         return {
           ...good.provider,
+          stale: true,
           hint: `cached ${ageMin}m ago — ${p.hint}`,
+          hintI18n: { key: "usage.stale_rate_limited" as import("./i18n-keys.js").UsageI18nKey, args: [ageMin] },
         };
       }
       return p;
     }
     if (p.status === "error" && /rate.?limit/i.test(p.error ?? "")) {
+      // Parse Retry-After from the hint field (set by providers.ts on 429)
+      const retryAfterMatch = p.hint?.match(/^retry-after:(\d+)$/);
+      if (retryAfterMatch) {
+        const seconds = parseInt(retryAfterMatch[1], 10);
+        // Cap the backoff so a large Retry-After (e.g. 86400) cannot lock /usage
+        // for all providers for an excessive time. Note: parseInt of an HTTP-date
+        // Retry-After format returns NaN, which falls back to 60 s — acceptable.
+        const cappedMs = Math.min(seconds * 1000, RETRY_AFTER_MAX_MS);
+        retryAfterUntil.set(p.id, now + cappedMs);
+        // Prune any expired entries from previous fetches.
+        for (const [id, until] of retryAfterUntil) { if (until <= now) retryAfterUntil.delete(id); }
+      }
       const good = lastGood.get(p.id);
       if (good && now - good.at < STALE_MAX_MS) {
         const ageMin = Math.max(1, Math.round((now - good.at) / 60_000));
         return {
           ...good.provider,
+          stale: true,
           hint: `cached ${ageMin}m ago — live query is rate limited`,
+          hintI18n: { key: "usage.stale_rate_limited" as import("./i18n-keys.js").UsageI18nKey, args: [ageMin] },
         };
       }
+      // No stale data: use a gentler message and mark as transient so format-rich
+      // shows a neutral icon instead of alarming 🔴.
+      return {
+        ...p,
+        transient: true,
+        hint: undefined,
+        error: p.error,
+        errorI18n: { key: "usage.error.rate_limited_transient" as import("./i18n-keys.js").UsageI18nKey, args: [p.name] },
+      };
     }
     if (isTransientFailure(p)) {
       const good = lastGood.get(p.id);
@@ -163,7 +196,9 @@ function withStaleFallback(payload: UsagePayload): UsagePayload {
         const ageMin = Math.max(1, Math.round((now - good.at) / 60_000));
         return {
           ...good.provider,
+          stale: true,
           hint: `cached ${ageMin}m ago — live query failed, will retry`,
+          hintI18n: { key: "usage.stale_rate_limited" as import("./i18n-keys.js").UsageI18nKey, args: [ageMin] },
         };
       }
     }
@@ -192,7 +227,10 @@ async function usage(force: boolean): Promise<UsagePayload> {
   // fetch (notably when Kiro refreshed its token just after that fetch). Only
   // repeated force requests are floored to protect vendor endpoints.
   const now = Date.now();
-  const effectiveForce = force && (
+  // Within a Retry-After window, even a force refresh must use the cache.
+  const anyBackoffActive = retryAfterUntil.size > 0
+    && [...retryAfterUntil.values()].some(until => until > now);
+  const effectiveForce = !anyBackoffActive && force && (
     lastForcedFetchStartedAt === null
     || now - lastForcedFetchStartedAt >= FORCE_FLOOR_MS
   );
@@ -204,9 +242,14 @@ async function usage(force: boolean): Promise<UsagePayload> {
       .then(payload => {
         const transient = hasTransientEmpty(payload);
         const resolved = withStaleFallback(payload);
+        // Extend cache TTL to the longest Retry-After deadline so we don't
+        // hammer vendor endpoints during a backoff window.
+        const maxRetryAfterMs = retryAfterUntil.size > 0
+          ? Math.max(0, Math.max(...retryAfterUntil.values()) - Date.now())
+          : 0;
         cache = {
           at: Date.now(),
-          ttlMs: transient ? TRANSIENT_CACHE_MS : CACHE_MS,
+          ttlMs: Math.max(transient ? TRANSIENT_CACHE_MS : CACHE_MS, maxRetryAfterMs),
           payload: resolved,
           museRevision,
         };

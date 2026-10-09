@@ -22,7 +22,7 @@ export const USAGE_I18N_KEYS = [
   "usage.hint.login_codex", "usage.hint.codex_no_oauth", "usage.hint.login_grok",
   "usage.hint.grok_no_login", "usage.hint.login_kiro", "usage.hint.kiro_signed_out",
   "usage.hint.token_refreshing", "usage.hint.subscription_no_credit", "usage.hint.no_quota_account",
-  "usage.error.unreachable", "usage.error.token_rejected", "usage.error.rate_limited",
+  "usage.error.unreachable", "usage.error.token_rejected", "usage.error.rate_limited", "usage.error.rate_limited_transient", "usage.stale_rate_limited",
   "usage.error.http", "usage.error.billing_http", "usage.error.invalid_response",
   "usage.error.invalid_billing_response", "usage.error.invalid_kiro_response",
   "usage.error.claude_token_expired", "usage.error.codex_token_expired",
