@@ -1411,7 +1411,9 @@ program
         // part of it, not a second command for the agent-session guard.
         env: withOrigin("agend-update"),
       });
-      if (!reportUpdateRestart(restartResult.status)) {
+      const restartOutcome = reportUpdateRestart(restartResult.status);
+      // "pending": systemd is still running the restart job; the replacement fleet settles the marker.
+      if (restartOutcome === "failed") {
         // No new fleet is coming up to clear the marker — do it here, or the next
         // 15 minutes of genuine crashes would go unreported.
         if (!setUpdateProgressStage(DATA_DIR, "failed", { error: "fleet restart failed" })) {
@@ -1436,7 +1438,28 @@ program
         processStartMs: pid => processStartMs(pid),
         isFleetProcess: pid => isFleetStartCommandLine(readProcessCommandLine(pid)),
       })) {
-        console.log(`\n  ✓ v${pkgVersion} is installed, but the running fleet started before it was — restarting it onto v${pkgVersion}.\n`);
+        console.log(`\n  v${pkgVersion} is installed, but the running fleet started before it was — verifying it before restarting onto it.`);
+        // The earlier update may have stopped exactly because this install failed verification (#1449 review): a
+        // second `agend update` must not restart onto it unchecked.
+        const { verifyInstalledPackage } = await import("./update-install.js");
+        const verified = verifyInstalledPackage(
+          { pkg: `@songsid/agend@${pkgVersion}`, targetVersion: pkgVersion, viaNvm: false, nvmSh: join(homedir(), ".nvm", "nvm.sh") },
+          {
+            run: (command, args, options = {}) => {
+              const result = spawnSync(command, args, { encoding: "utf-8", timeout: options.timeoutMs, stdio: ["ignore", "pipe", "pipe"] });
+              return { status: result.status, signal: result.signal, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
+            },
+            log: message => console.log(message),
+          },
+        );
+        if (!verified.ok) {
+          const message = `${verified.message}\n  Not restarting the fleet onto it. Reinstall a working version: npm install -g @songsid/agend@<version>`;
+          console.error(message);
+          setUpdateProgressStage(DATA_DIR, "failed", { error: message.trim() });
+          process.exitCode = 1;
+          return;
+        }
+        console.log(`  ✓ v${pkgVersion} verified — restarting the fleet onto it.\n`);
         markUpdateInProgress(DATA_DIR);
         restartFleetForUpdate(process.execPath, [process.argv[1]], pkgVersion);
         return;

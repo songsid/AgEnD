@@ -279,7 +279,8 @@ describe("full-restart helper hand-off", () => {
     // A false return from restartSystemdService can be its Type=notify timeout
     // while the systemd job remains alive. Preserve the update/full-restart
     // marker so the replacement fleet, not the old CLI, decides the outcome.
-    expect(SYSTEMD_RESTART_INDETERMINATE_EXIT_CODE).toBe(0);
+    // Its own exit code (#1446 item 4), so `agend update` can tell "still running" from "restarted".
+    expect(SYSTEMD_RESTART_INDETERMINATE_EXIT_CODE).toBe(75);
   });
 
   it("spawns the environment-aware CLI wrapper and acknowledges only the spawn event", async () => {
@@ -407,6 +408,26 @@ describe("full-restart cross-process progress", () => {
 
     expect(await fleet.requestFullRestart(adapter, "guild", "channel", "progress")).toBe(true);
     complete({ code: 0, signal: null });
+    await Promise.resolve();
+    expect(readUpdateProgress(dir)?.progress.stage).toBe("stopping");
+    if ((fleet as any).updateProgressTimer) clearInterval((fleet as any).updateProgressTimer);
+  });
+
+  it("does not mark a restart that systemd is still running (exit 75) as a failed hand-off", async () => {
+    const dir = tempDir();
+    const fleet = new FleetManager(dir);
+    let complete!: (value: { code: number | null; signal: NodeJS.Signals | null }) => void;
+    const completion = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(resolve => { complete = resolve; });
+    (fleet as any).fullRestartLauncher = vi.fn().mockResolvedValue({ completion });
+    const adapter = {
+      id: "discord-main",
+      type: "discord",
+      editMessage: vi.fn().mockResolvedValue(undefined),
+      sendText: vi.fn(),
+    } as unknown as ChannelAdapter;
+
+    expect(await fleet.requestFullRestart(adapter, "guild", "channel", "progress")).toBe(true);
+    complete({ code: SYSTEMD_RESTART_INDETERMINATE_EXIT_CODE, signal: null });
     await Promise.resolve();
     expect(readUpdateProgress(dir)?.progress.stage).toBe("stopping");
     if ((fleet as any).updateProgressTimer) clearInterval((fleet as any).updateProgressTimer);

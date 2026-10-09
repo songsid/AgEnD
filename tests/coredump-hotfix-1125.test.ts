@@ -209,7 +209,16 @@ describe("`agend update` when the package is already current (built CLI copy, st
     const log = join(home, "calls.log");
     writeFileSync(log, "");
     const version = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")).version;
-    writeFileSync(join(bin, "npm"), `#!/bin/sh\necho "npm $*" >> '${log}'\ncase "$*" in view*) echo '${version}';; esac\nexit 0\n`);
+    // The global package npm reports as installed: before restarting a fleet that predates it, the update verifies
+    // it (#1449 review: version, bin on PATH, a database opens on its node).
+    const globalPkg = join(home, "lib", "node_modules", "@songsid", "agend");
+    mkdirSync(join(globalPkg, "dist"), { recursive: true });
+    symlinkSync(join(process.cwd(), "node_modules"), join(globalPkg, "node_modules"));
+    writeFileSync(join(globalPkg, "package.json"), JSON.stringify({ name: "@songsid/agend", version, bin: { agend: "dist/cli.js" } }));
+    writeFileSync(join(globalPkg, "dist", "cli.js"), `#!/bin/sh\n[ "$1" = "--version" ] && { echo ${version}; exit 0; }\nexit 0\n`);
+    chmodSync(join(globalPkg, "dist", "cli.js"), 0o755);
+    symlinkSync(join(globalPkg, "dist", "cli.js"), join(bin, "agend"));
+    writeFileSync(join(bin, "npm"), `#!/bin/sh\necho "npm $*" >> '${log}'\ncase "$*" in view*) echo '${version}';; "root -g") echo '${join(home, "lib", "node_modules")}';; "prefix -g") echo '${home}';; esac\nexit 0\n`);
     // systemd 249 as observed: CoredumpFilter stays 0x33 whatever the unit file says.
     writeFileSync(join(bin, "systemctl"), `#!/bin/sh
 echo "systemctl $*" >> '${log}'
@@ -386,12 +395,13 @@ describe("upgrade path: the restart runs through the newly installed binary (bui
     const log = join(home, "calls.log");
     writeFileSync(log, "");
     // npm: a newer version is published; install is a no-op that "lands" it.
-    writeFileSync(join(bin, "npm"), `#!/bin/sh\necho "npm $*" >> '${log}'\ncase "$*" in view*) echo '99.0.0-beta.3';; "config get prefix") echo '${home}';; "root -g") echo '${join(home, "lib", "node_modules")}';; esac\nexit 0\n`);
+    writeFileSync(join(bin, "npm"), `#!/bin/sh\necho "npm $*" >> '${log}'\ncase "$*" in view*) echo '99.0.0-beta.3';; "config get prefix") echo '${home}';; "root -g") echo '${join(home, "lib", "node_modules")}';; "prefix -g") echo '${home}';; esac\nexit 0\n`);
     // `agend` on PATH = the freshly installed binary: this build, inside a global package npm "installed" (#1446: the
     // updater checks it reports the target version and that the package opens a database on its node).
     const globalPkg = join(home, "lib", "node_modules", "@songsid", "agend");
     mkdirSync(join(globalPkg, "dist"), { recursive: true });
     symlinkSync(join(process.cwd(), "node_modules"), join(globalPkg, "node_modules"));
+    writeFileSync(join(globalPkg, "package.json"), JSON.stringify({ name: "@songsid/agend", version: "99.0.0-beta.3", bin: { agend: "dist/cli.js" } }));
     writeFileSync(join(globalPkg, "dist", "cli.js"), `#!/bin/sh\necho "agend $*" >> '${log}'\n[ "$*" = "--version" ] && { echo 99.0.0-beta.3; exit 0; }\nexec '${process.execPath}' '${cli}' "$@"\n`);
     chmodSync(join(globalPkg, "dist", "cli.js"), 0o755);
     symlinkSync(join(globalPkg, "dist", "cli.js"), join(bin, "agend"));

@@ -40,19 +40,23 @@ export type UpdateInstallOutcome =
   | { ok: true; agendPath: string; version: string }
   | { ok: false; stage: "install" | "verify"; message: string };
 
-/** Shell prefix that puts nvm's Node 22 on PATH for the rest of the same `bash -c` (nvm only changes its own shell). */
-function nvmPrefix(plan: UpdateInstallPlan): string {
-  return `source ${JSON.stringify(plan.nvmSh)} >/dev/null 2>&1 && nvm use 22 >/dev/null 2>&1 && `;
-}
+/**
+ * The `bash -c` script that puts nvm's Node 22 on PATH for the rest of the same shell (nvm only changes its own shell),
+ * then runs the remaining arguments. The nvm.sh path is DATA — positional `$1`, never spliced into the script — so a
+ * path with `$`, spaces or quotes is sourced as written (#1449 review). `--no-use` keeps nvm.sh from reading our
+ * arguments or switching to its default before `nvm use 22`.
+ */
+export const NVM_RUN_SCRIPT = 'n=$1; shift; . "$n" --no-use >/dev/null 2>&1 && nvm use 22 >/dev/null 2>&1 && "$@"';
+/** The install itself, also with every path and spec as data: `$1` = nvm.sh, `$2` = the npm spec. */
+export const NVM_INSTALL_SCRIPT = 'n=$1; p=$2; . "$n" --no-use && nvm install 22 && nvm use 22 && npm install -g "$p"';
 
 /**
  * Run `argv` in the environment the new `agend` will run in: the parent's PATH for a direct install, nvm's Node 22
  * for an nvm install — so `agend`'s `#!/usr/bin/env node` and a bare `node` resolve to the same interpreter.
- * Arguments travel as positional parameters, never spliced into the script.
  */
 function inInstallEnv(runner: CommandRunner, plan: UpdateInstallPlan, argv: string[], options: { inherit?: boolean; timeoutMs?: number } = {}): CommandResult {
   if (!plan.viaNvm) return runner.run(argv[0]!, argv.slice(1), options);
-  return runner.run("bash", ["-c", `${nvmPrefix(plan)}"$@"`, "bash", ...argv], options);
+  return runner.run("bash", ["-c", NVM_RUN_SCRIPT, "bash", plan.nvmSh, ...argv], options);
 }
 
 /**
@@ -61,13 +65,25 @@ function inInstallEnv(runner: CommandRunner, plan: UpdateInstallPlan, argv: stri
  */
 export function newAgendInvocation(plan: Pick<UpdateInstallPlan, "viaNvm" | "nvmSh">, agendPath: string): { command: string; args: string[] } {
   if (!plan.viaNvm) return { command: agendPath, args: [] };
-  return { command: "bash", args: ["-c", `${nvmPrefix(plan as UpdateInstallPlan)}"$@"`, "bash", agendPath] };
+  return { command: "bash", args: ["-c", NVM_RUN_SCRIPT, "bash", plan.nvmSh, agendPath] };
 }
 
 /** `npm link` leaves a symlink to a source checkout outside any node_modules tree; a registry install is a directory. */
 export function isLocalLinkTarget(entryIsSymlink: boolean, realTarget: string): boolean {
   return entryIsSymlink && !realTarget.split("/").includes("node_modules");
 }
+
+/**
+ * The identity of what npm installed: `$1` is the package directory in npm's global root. Prints its name, version and
+ * the REAL path of its `agend` bin target, so PATH's `agend` can be held to that exact file.
+ */
+export const PACKAGE_IDENTITY_SCRIPT = [
+  "const fs = require('node:fs'), path = require('node:path');",
+  "const dir = process.argv[1];",
+  "const p = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));",
+  "const bin = typeof p.bin === 'string' ? p.bin : (p.bin || {}).agend;",
+  "process.stdout.write(JSON.stringify({ name: p.name, version: p.version, dir: fs.realpathSync(dir), bin: bin ? fs.realpathSync(path.join(dir, bin)) : null }));",
+].join(" ");
 
 /** Proves the native module loads AND works: on Node 20 better-sqlite3 13 imports fine and then SIGSEGVs on open. */
 export const NATIVE_CHECK_SCRIPT = [
@@ -81,6 +97,60 @@ export const NATIVE_CHECK_SCRIPT = [
 ].join(" ");
 
 const normalizeVersion = (text: string): string => text.trim().replace(/^v/i, "");
+
+/**
+ * Prove the package npm installed — read from npm's own global root and prefix in the install environment — is the
+ * one `agend` on PATH runs, reports `plan.targetVersion` (when known) and opens a database on the interpreter its
+ * shebang resolves to. Used after an install, and before restarting a fleet that predates an earlier install (#1449
+ * review: an update whose verification failed must not be completed by simply running `agend update` again).
+ */
+export function verifyInstalledPackage(plan: UpdateInstallPlan, runner: CommandRunner): UpdateInstallOutcome {
+  const fail = (message: string): UpdateInstallOutcome => ({ ok: false, stage: "verify", message });
+  const run = (argv: string[], timeoutMs = 15_000) => inInstallEnv(runner, plan, argv, { timeoutMs });
+  const out = (r: CommandResult) => r.stdout.trim().split("\n").pop()?.trim() ?? "";
+
+  // What npm installed, read from npm's own global root and prefix in the install environment — not from whatever
+  // `agend` happens to win PATH (#1449 review: a same-version checkout earlier on PATH must not pass).
+  const rootRun = run(["npm", "root", "-g"]);
+  const prefixRun = run(["npm", "prefix", "-g"]);
+  if (rootRun.status !== 0 || prefixRun.status !== 0 || !out(rootRun) || !out(prefixRun)) {
+    return fail("  ✗ Verification failed: could not ask npm where it installed the package.");
+  }
+  const pkgDir = join(out(rootRun), "@songsid", "agend");
+  const identityRun = run(["node", "-e", PACKAGE_IDENTITY_SCRIPT, pkgDir]);
+  let identity: { name?: string; version?: string; dir?: string; bin?: string | null } = {};
+  try { identity = JSON.parse(out(identityRun)); } catch { /* checked below */ }
+  if (identityRun.status !== 0 || identity.name !== "@songsid/agend" || !identity.version || !identity.dir || !identity.bin) {
+    return fail(`  ✗ Verification failed: ${pkgDir} is not an installed @songsid/agend package.`);
+  }
+  const version = normalizeVersion(identity.version);
+  if (plan.targetVersion && version !== plan.targetVersion) {
+    return fail(`  ✗ Verification failed: npm installed v${version} at ${pkgDir}, not v${plan.targetVersion}.`);
+  }
+  const agendPath = join(out(prefixRun), "bin", "agend");
+  const binReal = runner.run("readlink", ["-f", agendPath], { timeoutMs: 5_000 });
+  if (binReal.status !== 0 || out(binReal) !== identity.bin) {
+    return fail(`  ✗ Verification failed: ${agendPath} does not lead to the installed package (${identity.bin}).`);
+  }
+  // The `agend` the operator, the service refresh and the restart will run must be that same file.
+  const which = run(["sh", "-c", "command -v agend"]);
+  const onPath = out(which);
+  const onPathReal = onPath ? runner.run("readlink", ["-f", onPath], { timeoutMs: 5_000 }) : null;
+  if (which.status !== 0 || !onPathReal || onPathReal.status !== 0 || out(onPathReal) !== identity.bin) {
+    return fail(`  ✗ Verification failed: npm installed v${version} at ${pkgDir}, but \`agend\` on PATH is ${onPath || "missing"}${onPathReal?.status === 0 ? ` (${out(onPathReal)})` : ""}. Another install shadows it; remove that one and retry.${plan.viaNvm && !onPath ? " You may need to add nvm to your shell profile." : ""}`);
+  }
+  const versionRun = run([agendPath, "--version"]);
+  if (versionRun.status !== 0) return fail(`  ✗ Verification failed: \`${agendPath} --version\` exited ${versionRun.status ?? versionRun.signal}.`);
+  if (normalizeVersion(out(versionRun)) !== version) {
+    return fail(`  ✗ Verification failed: \`${agendPath} --version\` printed ${out(versionRun)}, but the installed package is v${version}.`);
+  }
+  const native = run(["node", "-e", NATIVE_CHECK_SCRIPT, identity.dir], 30_000);
+  if (native.status !== 0 || out(native) !== "native-ok") {
+    return fail(`  ✗ Verification failed: the installed package cannot open a database with this Node (${native.signal ?? `exit ${native.status}`}). ${native.stderr.trim().split("\n").pop() ?? ""}`.trimEnd());
+  }
+
+  return { ok: true, agendPath, version };
+}
 
 export function runUpdateInstall(plan: UpdateInstallPlan, runner: CommandRunner): UpdateInstallOutcome {
   // A real local link is only reported: the install below replaces it in place, and a failed install leaves it.
@@ -97,7 +167,7 @@ export function runUpdateInstall(plan: UpdateInstallPlan, runner: CommandRunner)
   }
 
   const install = plan.viaNvm
-    ? runner.run("bash", ["-c", `source ${JSON.stringify(plan.nvmSh)} && nvm install 22 && nvm use 22 && npm install -g "$1"`, "bash", plan.pkg], { inherit: true })
+    ? runner.run("bash", ["-c", NVM_INSTALL_SCRIPT, "bash", plan.nvmSh, plan.pkg], { inherit: true })
     : runner.run("npm", ["install", "-g", plan.pkg], { inherit: true });
   if (install.status !== 0) {
     return {
@@ -107,26 +177,8 @@ export function runUpdateInstall(plan: UpdateInstallPlan, runner: CommandRunner)
     };
   }
 
-  const fail = (message: string): UpdateInstallOutcome => ({ ok: false, stage: "verify", message });
-  const which = inInstallEnv(runner, plan, ["sh", "-c", "command -v agend"], { timeoutMs: 15_000 });
-  const agendPath = which.stdout.trim().split("\n").pop() ?? "";
-  if (which.status !== 0 || !agendPath) {
-    return fail(`  ✗ Verification failed: agend not found in PATH after install.${plan.viaNvm ? " You may need to add nvm to your shell profile." : ""}`);
-  }
-  const versionRun = inInstallEnv(runner, plan, [agendPath, "--version"], { timeoutMs: 15_000 });
-  if (versionRun.status !== 0) return fail(`  ✗ Verification failed: \`${agendPath} --version\` exited ${versionRun.status ?? versionRun.signal}.`);
-  const version = normalizeVersion(versionRun.stdout);
-  if (plan.targetVersion && version !== plan.targetVersion) {
-    return fail(`  ✗ Verification failed: npm installed ${plan.pkg}, but \`agend\` on PATH (${agendPath}) is v${version}. Another install shadows it; remove that one and retry.`);
-  }
-  const real = runner.run("readlink", ["-f", agendPath], { timeoutMs: 5_000 });
-  // <pkg>/dist/cli.js → <pkg>
-  const pkgRoot = real.status === 0 ? real.stdout.trim().replace(/\/dist\/[^/]+$/, "") : "";
-  if (!pkgRoot || pkgRoot === real.stdout.trim()) return fail(`  ✗ Verification failed: could not find the installed package behind ${agendPath}.`);
-  const native = inInstallEnv(runner, plan, ["node", "-e", NATIVE_CHECK_SCRIPT, pkgRoot], { timeoutMs: 30_000 });
-  if (native.status !== 0 || native.stdout.trim() !== "native-ok") {
-    return fail(`  ✗ Verification failed: the installed package cannot open a database with this Node (${native.signal ?? `exit ${native.status}`}). ${native.stderr.trim().split("\n").pop() ?? ""}`.trimEnd());
-  }
+  const verified = verifyInstalledPackage(plan, runner);
+  if (!verified.ok) return verified;
 
   // Only now is the new install proven: clean up the old system copy an nvm install leaves behind. Best effort, and
   // never waits for a password.
@@ -134,5 +186,5 @@ export function runUpdateInstall(plan: UpdateInstallPlan, runner: CommandRunner)
     runner.log("  Note: removing old system install (may require sudo)...");
     runner.run("sudo", ["-n", "npm", "uninstall", "-g", "@songsid/agend"], { inherit: true, timeoutMs: 10_000 });
   }
-  return { ok: true, agendPath, version };
+  return verified;
 }

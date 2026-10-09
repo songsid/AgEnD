@@ -7,7 +7,7 @@ import type { ServiceState } from "./service-installer.js";
  * marker pending for that replacement instead of declaring failure. A
  * definitive systemctl error ("failed") exits 1 (#1446 item 4).
  */
-export const SYSTEMD_RESTART_INDETERMINATE_EXIT_CODE = 0;
+export const SYSTEMD_RESTART_INDETERMINATE_EXIT_CODE = 75; // EX_TEMPFAIL: neither done nor failed
 
 export interface SystemdRestartSelectionInput {
   platform: "macos" | "linux";
