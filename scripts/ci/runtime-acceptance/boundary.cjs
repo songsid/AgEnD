@@ -130,7 +130,8 @@ function onPath(name, pathVar, cwd) {
 /**
  * An environment the boundary can reason about: no shell startup files, and no startup hook the trusted hop did not
  * start with — NODE_OPTIONS is the trusted value, or dropped/blank (keepBoundary restores it); loader variables
- * (LD_*, DYLD_*) are the trusted ones or absent; the stub directory is the trusted one.
+ * (LD_*, DYLD_*) are the trusted ones or absent. (The stub directory is never read from a child's env: keepBoundary
+ * hands every child the trusted one, and a shell assignment to AGEND_BOUNDARY_* is refused.)
  */
 function envViolation(env) {
   if (env.BASH_ENV !== undefined || env.ENV !== undefined) return "a shell startup file in the environment (BASH_ENV/ENV)";
@@ -139,7 +140,6 @@ function envViolation(env) {
   for (var i = 0; i < keys.length; i++) {
     if (/^(LD_|DYLD_)/.test(keys[i]) && env[keys[i]] !== TRUSTED.loader[keys[i]]) return "a loader variable the hop did not start with (" + keys[i] + ")";
   }
-  if (env.AGEND_BOUNDARY_STUBS !== undefined && path.resolve(env.AGEND_BOUNDARY_STUBS) !== TRUSTED.stubs) return "another AGEND_BOUNDARY_STUBS (" + env.AGEND_BOUNDARY_STUBS + ")";
   return null;
 }
 

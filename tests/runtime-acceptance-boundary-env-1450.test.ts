@@ -82,6 +82,28 @@ describe("remaining effective environment contract witnesses", () => {
   it("child env cannot rename a private manager directory as the hop's owned stubs", () => {
     const w = world(); refuse(w.run(`const r=require('child_process').spawnSync('systemctl',['--user','restart','private-unit'],{env:{...process.env,PATH:${JSON.stringify(w.privateDir)},AGEND_BOUNDARY_STUBS:${JSON.stringify(w.privateDir)}}});${relay}`));
   });
+  it("a Node child handed another AGEND_BOUNDARY_STUBS still judges by the trusted stubs", () => {
+    const w = world(), inner = `const r=require('child_process').spawnSync('systemctl',['--user','restart','private-unit'],{env:{...process.env,PATH:${JSON.stringify(w.privateDir)}}});${relay}`;
+    refuse(w.run(`const r=require('child_process').spawnSync(process.execPath,['-e',${JSON.stringify(inner)}],{env:{...process.env,AGEND_BOUNDARY_STUBS:${JSON.stringify(w.privateDir)}}});${relay}`));
+  });
+  it("a shell assignment to AGEND_BOUNDARY_STUBS for a Node grandchild is refused", () => {
+    const w = world(), inner = `require('child_process').spawnSync('systemctl',['--user','restart','private-unit'],{env:{...process.env,PATH:${JSON.stringify(w.privateDir)}}})`;
+    refuse(w.run(`require('child_process').execSync(${JSON.stringify(`AGEND_BOUNDARY_STUBS=${quote(w.privateDir)} ${quote(process.execPath)} -e ${quote(inner)}`)})`));
+  });
+  it("a NODE_OPTIONS that only mentions the boundary is not trusted as its preload, even at the root", () => {
+    const w = world(), inner = `const r=require('child_process').spawnSync(${JSON.stringify(w.manager)},['--user','restart','private-unit']);${relay}`;
+    const r = spawnSync(process.execPath, ["--require", boundary, "-e", `const r=require('child_process').spawnSync(process.execPath,['-e',${JSON.stringify(inner)}]);${relay}`],
+      { encoding: "utf8", timeout: 10_000, cwd: w.root, env: { ...w.env, NODE_OPTIONS: `--require=${guard} --conditions=${boundary}` } });
+    refuse({ result: r, markerRan: existsSync(w.mark), journal: readFileSync(w.log, "utf8"), stubRan: existsSync(w.stubMark) });
+  });
+  for (const via of ["spawn", "execSync"]) it(`relative PATH entries are judged against the child's effective cwd (${via})`, () => {
+    const w = world(), other = join(w.root, "other"), relative = join(other, "guard"); mkdirSync(relative, { recursive: true });
+    writeFileSync(join(relative, "systemctl"), readFileSync(w.manager)); chmodSync(join(relative, "systemctl"), 0o755);
+    const opts = `{cwd:${JSON.stringify(other)},env:{...process.env,PATH:'guard:/usr/bin:/bin'}}`;
+    refuse(w.run(via === "spawn"
+      ? `const c=require('child_process').spawn('systemctl',['--user','restart','private-unit'],${opts});c.on('exit',s=>process.exit(s))`
+      : `require('child_process').execSync('systemctl --user restart private-unit',${opts})`));
+  });
   it("relative PATH entries are judged against the child's effective cwd", () => {
     const w = world(), other = join(w.root, "other"), relative = join(other, "guard"); mkdirSync(relative, { recursive: true });
     writeFileSync(join(relative, "systemctl"), readFileSync(w.manager)); chmodSync(join(relative, "systemctl"), 0o755);
