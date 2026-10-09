@@ -6753,8 +6753,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /**
    * #1346: whether this copy may claim the shared dedup key for
    * command-like text. Fleet topics resolve an owning adapter and only its
-   * copy proceeds; anything else (classic targets, unknown routing, no
-   * identity) passes through to the existing handling.
+   * copy proceeds. Classic targets and unknown routing keep their existing
+   * handling. At the receiving Telegram world's own forum root, an explicit
+   * suffix requires a known matching username before dedup; present-thread
+   * copies retain their permissive handling when that identity is unknown.
    */
   private isOwnerCommandCopy(msg: InboundMessage, threadId: string | undefined): boolean {
     if (!msg.adapterId) return true;

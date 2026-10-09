@@ -88,7 +88,7 @@ The tables distinguish menu visibility, AgEnD handling, refusal and ordinary tex
 
 - Discord DMs refuse every native slash command. A foreign guild refuses everything except new `/start` or a registered Classic context; even there, fleet-admin operations and settings-changing `/tips` refuse. Other-owner fleet channels refuse native commands, even for a person administering both bots.
 - Discord typed `/xxx` in fleet/General produces a use-slash-menu notice from the owner and is consumed; Classic typed slash text is silent. A foreign bot suffix is silent when the receiving username is known.
-- Telegram Classic groups require `/cmd@ThisBot`; **bare slash commands are silent**, including `/start`. A suffix for another bot is silent when the receiving username is known. Private chats accept bare forms. Existing Classic/present-thread handling permits a suffix when that username is unknown; the separate no-thread General fail-closed fence is tracked in #1148. A command suffix is not a conversational mention.
+- Telegram Classic groups require `/cmd@ThisBot`; **bare slash commands are silent**, including `/start`. A suffix for another bot is silent when the receiving username is known. Private chats accept bare forms. Existing Classic/present-thread handling permits a suffix when that username is unknown. In the receiving Telegram bot's own group, no-thread General checks an explicit suffix before shared dedup: wrong or unknown receivers are silent, even without a message ID. Bare commands still use the receiving General. A command suffix is not a conversational mention.
 - Recognizers are exact: `/STATUS`, `/status report`, `/update now`, `/pause one two`, etc. remain ordinary agent text in fleet/General. `/restart` and `/visibility` are case-insensitive. This is pinned existing behavior, not the old bug where a recognized `/status` in a worker topic was forwarded.
 - Telegram `/sys-info` and `/sys_info` alias General `/sysinfo`; `/install-cli` and `/install_cli` alias General `/login`. They have no menu entries. `/sys-info` and `/sys_info` match only their **unsuffixed exact forms**; adding `@bot` leaves ordinary text. The install aliases accept suffixes. Recognized General aliases in worker topics point to General.
 - Telegram fleet `/raw <text>` is hidden and F-gated, then enters the raw delivery path. `/raw@bot ...` is ordinary wrapped text, not a raw bypass. Classic `/raw <text>` denies non-C; even C has no successful native raw path today, as the generic `/chat /raw ...` helper drops it. Group mention-shaped variants can instead become ordinary wrapped messages. This capability is unchanged; follow-up [#1458](https://github.com/songsid/AgEnD/issues/1458) records the deferred decision.
@@ -105,8 +105,8 @@ Buttons have their own handler gates; menu visibility and a slash command's gate
 | Surface | Actual gate |
 |---|---|
 | Cancel | current owner/destination/message; admitted fleet speaker, or an existing Classic conversation participant |
-| Model / effort | opener + adapter/channel + current owner/admin, rechecked after the progress update |
-| Clear | F or C in Classic, F elsewhere; exact nonce/world/message; the current handler checks authority when claiming the nonce; the post-retirement fence is tracked in #1148 |
+| Model / effort | opener + adapter/channel + current owner/admin; the source channel must still map to this target at claim and after the progress update |
+| Clear | F or C in Classic, F elsewhere; exact nonce/world/message; current role, source target, adapter, daemon/IPC owner and delivery epoch are rechecked after button retirement, before clear IPC |
 | Tip feedback | identified caller + exact nonce/world/message; advanced unlock additionally requires F |
 | Login / hang / exit / Classic approval | F + exact nonce/world/message, plus request-specific ownership where present |
 | Dashboard / Settings confirmation | current owner F, nonce and requester/authority fences |
@@ -119,7 +119,7 @@ Source: `src/fleet-manager.ts:10443`, `:11592`, `:14413`, `:14719`, `:11126`. St
 
 `tests/command-surface-docs-1148.test.ts` checks both languages' command cells and menu membership against the command table, with explicit Classic real-handler exceptions. `tests/command-gates-by-platform.test.ts` exercises the real handlers. Update both documents when a rule, menu or route changes. Do not infer a Telegram handler from a Discord cell.
 
-The residual no-thread General suffix, clear after-await and moved model/effort callback fences are tracked in [#1148](https://github.com/songsid/AgEnD/issues/1148). The role model and exact-form passthrough are preserved.
+The no-thread General suffix and after-await callback fences reject stale or unverified sources. They preserve the role model and exact-form passthrough. Once the first synchronous IPC/config effect is admitted, the existing backend/restart behavior continues.
 
 ## Audited sources
 
@@ -134,3 +134,7 @@ The residual no-thread General suffix, clear after-await and moved model/effort 
 - [`src/topic-commands.ts:526`](https://github.com/songsid/AgEnD/blob/41687055f2bf5b26fcc9f350309caa183729ca78/src/topic-commands.ts#L526) — Exact typed forms / 精確文字辨識
 - [`src/fleet-manager.ts:6915`](https://github.com/songsid/AgEnD/blob/41687055f2bf5b26fcc9f350309caa183729ca78/src/fleet-manager.ts#L6915) — Telegram Classic real dispatch / 實際路由
 - [`src/classic-channel-manager.ts:483`](https://github.com/songsid/AgEnD/blob/41687055f2bf5b26fcc9f350309caa183729ca78/src/classic-channel-manager.ts#L483) — Empty Classic start grants / 空准入清單
+
+- [`src/fleet-manager.ts:6767`](https://github.com/songsid/AgEnD/blob/5ccbf10d11d4698fd3a4682e16fd4d843054aabf/src/fleet-manager.ts#L6767) — No-thread General suffix / 無 thread 的 General 定址
+- [`src/fleet-manager.ts:11150`](https://github.com/songsid/AgEnD/blob/aec3af6180eff478a5b560513c5ee2909595bedb/src/fleet-manager.ts#L11150) — Clear after-await fence / clear 等待後重驗
+- [`src/fleet-manager.ts:14741`](https://github.com/songsid/AgEnD/blob/aec3af6180eff478a5b560513c5ee2909595bedb/src/fleet-manager.ts#L14741) — Selector source mapping / 選單來源對應

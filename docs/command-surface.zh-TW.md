@@ -88,7 +88,7 @@
 
 - Discord DM 拒絕全部 native slash。外部 guild 只容許新 `/start` 或既有 Classic context；即使是 Classic，Fleet admin 操作及改設定的 `/tips` 仍拒絕。另一 owning bot 的 Fleet channel 會拒絕，即使 caller 同時是兩個 bot 的 admin。
 - Discord Fleet/General 的純文字 `/xxx` 由 owner 回使用 slash menu 提示並消費；Classic 純文字 slash 靜默。receiving username 已知時，指向其他 bot 的 suffix 靜默。
-- Telegram Classic group 須用 `/cmd@ThisBot`；**bare slash 全部靜默**，包含 `/start`。receiving username 已知時，其他 bot suffix 靜默；private 接受 bare 形式。既有 Classic／有-thread 路徑在 username 不明時仍放行 suffix；no-thread General 另採 fail-closed 的 fence，由 #1148 追蹤。命令 suffix 不等於對話 mention。
+- Telegram Classic group 須用 `/cmd@ThisBot`；**bare slash 全部靜默**，包含 `/start`。receiving username 已知時，其他 bot suffix 靜默；private 接受 bare 形式。既有 Classic／有-thread 路徑在 username 不明時仍放行 suffix。在 receiving Telegram bot 自己的 group，no-thread General 在共用 dedup 前驗明確 suffix：錯誤或未知 receiver 靜默，即使沒有 message ID 也一樣；bare command 仍走 receiving General。命令 suffix 不等於對話 mention。
 - 辨識採精確形式：`/STATUS`、`/status report`、`/update now`、`/pause one two` 等在 Fleet/General 仍是普通 agent 訊息；`/restart` 與 `/visibility` 不分大小寫。這是已測試釘住的既有行為，與「正常 `/status` 在 worker topic 被轉送」的舊 bug 不同。
 - Telegram `/sys-info`、`/sys_info` 是 General `/sysinfo` 別名；`/install-cli`、`/install_cli` 是 General `/login` 別名。都不在 menu。`/sys-info`、`/sys_info` 只辨識**無 suffix 的精確形式**，加 `@bot` 仍是普通文字；install 別名接受 suffix。worker topic 內已辨識的 General 別名會指向 General。
 - Telegram Fleet `/raw <text>` 不在 menu，經 F gate 後走 raw delivery。`/raw@bot ...` 是普通包裝訊息，不會绕過 raw gate。Classic `/raw <text>` 拒絕非 C；C 目前也沒有成功的 native raw 路徑，因 `/chat /raw ...` 被共用 helper 丟棄。Group 的某些 mention 形式只是普通包裝訊息。能力維持不動；[#1458](https://github.com/songsid/AgEnD/issues/1458) 記錄延後的決策。
@@ -105,8 +105,8 @@
 | 介面 | 實際 gate |
 |---|---|
 | Cancel | current owner／目的地／訊息；已准入的 Fleet speaker，或既有 Classic 對話參與者 |
-| Model / effort | opener＋adapter/channel＋current owner/admin；progress 更新 await 後再驗 |
-| Clear | Classic 的 F 或 C、其他 context 的 F；精確 nonce/world/message；目前在 claim nonce 時驗授權；retirement 後的 fence 由 #1148 追蹤 |
+| Model / effort | opener＋adapter/channel＋當下 owner/admin；claim 與 progress update 後，來源 channel 都仍須對應此 target |
+| Clear | Classic 的 F 或 C、其他 context 的 F；精確 nonce/world/message；button retirement 後、clear IPC 前重驗當下 role、來源 target、adapter、daemon/IPC owner 與 delivery epoch |
 | Tip feedback | 有身分 caller＋精確 nonce/world/message；advanced unlock 另需 F |
 | Login / hang / exit / Classic approval | F＋精確 nonce/world/message，並使用各請求既有的 ownership 檢查 |
 | Dashboard / Settings confirmation | current owner F、nonce，以及 requester／authority fence |
@@ -119,7 +119,7 @@
 
 `tests/command-surface-docs-1148.test.ts` 以命令表檢查兩語言的命令 cell 與選單，並明列 Classic 真 handler 的例外。`tests/command-gates-by-platform.test.ts` 驅動真 handler。規則、選單或路由改變時，兩份文件一起更新；不要由 Discord cell 推論 Telegram 有對應 handler。
 
-no-thread General suffix、clear await 後，以及搬移 model／effort 選單的剩餘 fence 由 [#1148](https://github.com/songsid/AgEnD/issues/1148) 追蹤。既有角色模型與精確形式 passthrough 維持不動。
+no-thread General suffix 與 callback 的 await 後 fence 拒絕已過期或無法確認的來源；既有角色模型與精確形式 passthrough 維持不動。首個同步 IPC／config effect 核准後，沿用既有 backend／restart 行為。
 
 ## 核對來源
 
@@ -134,3 +134,7 @@ no-thread General suffix、clear await 後，以及搬移 model／effort 選單�
 - [`src/topic-commands.ts:526`](https://github.com/songsid/AgEnD/blob/41687055f2bf5b26fcc9f350309caa183729ca78/src/topic-commands.ts#L526) — Exact typed forms / 精確文字辨識
 - [`src/fleet-manager.ts:6915`](https://github.com/songsid/AgEnD/blob/41687055f2bf5b26fcc9f350309caa183729ca78/src/fleet-manager.ts#L6915) — Telegram Classic real dispatch / 實際路由
 - [`src/classic-channel-manager.ts:483`](https://github.com/songsid/AgEnD/blob/41687055f2bf5b26fcc9f350309caa183729ca78/src/classic-channel-manager.ts#L483) — Empty Classic start grants / 空准入清單
+
+- [`src/fleet-manager.ts:6767`](https://github.com/songsid/AgEnD/blob/5ccbf10d11d4698fd3a4682e16fd4d843054aabf/src/fleet-manager.ts#L6767) — No-thread General suffix / 無 thread 的 General 定址
+- [`src/fleet-manager.ts:11150`](https://github.com/songsid/AgEnD/blob/aec3af6180eff478a5b560513c5ee2909595bedb/src/fleet-manager.ts#L11150) — Clear after-await fence / clear 等待後重驗
+- [`src/fleet-manager.ts:14741`](https://github.com/songsid/AgEnD/blob/aec3af6180eff478a5b560513c5ee2909595bedb/src/fleet-manager.ts#L14741) — Selector source mapping / 選單來源對應

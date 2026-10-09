@@ -48,7 +48,12 @@ Open／pairing 對話准入及 saved grant 不授予 F；chat allowlist 不授�
   Classic Telegram raw 目前被共用 helper 擋住。本次不改能力；
   [#1458](https://github.com/songsid/AgEnD/issues/1458) 記錄以後的決策。
 - 按鈕／選單另驗 nonce、地址與當下授權；之前執行命令的授權不代表後續 click
-  已授權。剩餘來源／await 後 fence 由 #1148 追蹤。
+  已授權。claim 與 progress 後，來源 channel 都仍須對應該 target；
+  clear 在移除按鈕後、首個 IPC effect 前，亦重驗 exact adapter、
+  daemon／IPC owner 與 delivery epoch，且不提供 web mirror。
+- Telegram no-thread General 在 dedup 前驗明確 bot suffix，即使沒有
+  message ID 也一樣。錯誤或未知 receiver 靜默；bare command 與既有
+  Classic／有-thread 的 username 行為不變。
 
 ## 更新介面
 

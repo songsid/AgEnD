@@ -55,7 +55,12 @@ Empty Classic new-start grants request approval; existing registrations stay usa
   records future decisions.
 - Buttons and selectors have independent nonce, address and current-authority
   checks. A command's earlier authorization is not permission for a later click.
-  Remaining source/after-await fences are tracked in #1148.
+  The source channel must still map to the target at claim and after progress.
+  Clear also rechecks the exact adapter, daemon/IPC owner and delivery epoch
+  after retiring buttons, before the first IPC effect; it is not web-mirrored.
+- Telegram no-thread General validates an explicit bot suffix before dedup,
+  even without a message ID. Wrong or unknown receivers are silent; bare
+  commands and existing Classic/present-thread username behavior are unchanged.
 
 ## Updating the surface
 
