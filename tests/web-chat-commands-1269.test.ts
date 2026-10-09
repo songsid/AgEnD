@@ -179,6 +179,21 @@ describe("the chat's commands (the real page modules)", () => {
     expect(c.card().className).toContain("bad");
   });
 
+  it("#1476 review: a command line typed while one is still out stays in the composer (nothing sent, nothing lost)", async () => {
+    const c = await chatPage();
+    let release!: () => void;
+    c.fx.respond = (path: string) => (path === "/ui/command" ? new Promise((r) => { release = () => r({ text: "ok" }); }) : {});
+    await c.type("/ctx"); await c.key("Enter");
+    expect(c.box().value, "an admitted command consumes its line").toBe("");
+    await c.type("/steer please preserve this complete directive"); await c.key("Enter");
+    expect(c.commands()).toHaveLength(1);
+    expect(c.box().value).toBe("/steer please preserve this complete directive");
+    release(); await settle();
+    await c.key("Enter");                                                      // now free: it runs, and is consumed
+    expect(c.commands().map((x) => x.body.command)).toEqual(["ctx", "steer"]);
+    expect(c.box().value).toBe("");
+  });
+
   it("one command at a time: a second Enter while one is out sends nothing", async () => {
     const c = await chatPage();
     let release!: () => void;
@@ -199,6 +214,17 @@ describe("the chat's commands (the real page modules)", () => {
     fire(chips[0], "click"); await settle();
     fire(chips[1], "click"); await settle();
     expect(c.commands().map((x) => x.body)).toEqual([{ instance: "w", command: "model" }, { instance: "w", command: "effort" }]);
+  });
+
+  it("the store's single flight covers the buttons too: a quick action while a command is out sends nothing", async () => {
+    const c = await chatPage({ context_pct: 82 });
+    let release!: () => void;
+    c.fx.respond = (path: string) => (path === "/ui/command" ? new Promise((r) => { release = () => r({ text: "ok" }); }) : {});
+    await c.type("/ctx"); await c.key("Enter");
+    c.panel.store.runCommand("w", "compact", "");                         // a chip's click, straight to the store
+    await settle();
+    expect(c.commands().map((x) => x.body.command)).toEqual(["ctx"]);
+    release(); await settle();
   });
 
   it("quick actions: Compact and Clear… once context is 70% used", async () => {

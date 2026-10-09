@@ -252,3 +252,42 @@ describe("the web's /clear: the platform's fence, a token used once", () => {
     expect((await ask(fm({ topicCommands: { supportsClear: () => false, sendClear: vi.fn() } }))).status).toBe(409);
   });
 });
+
+describe("#1476 review: an instance is an own configured entry (or a ClassicBot room)", () => {
+  function fm(instances: Record<string, unknown>, classic: string[] = []) {
+    const f: any = Object.create(FleetManager.prototype);
+    Object.assign(f, {
+      fleetConfig: { instances: Object.assign(Object.create(null), instances) as Record<string, unknown> }, webClearTokens: new Map(),
+      classicChannels: { getChannelIdByInstance: (n: string) => (classic.includes(n) ? "123456789012345678" : undefined) },
+      instanceIpcClients: new Map(), lifecycle: { daemons: new Map(), epochOf: () => 1 }, shuttingDown: false,
+      applyModel: vi.fn(async () => "model set"), applyEffort: vi.fn(async () => "effort set"),
+      saveFleetConfig: vi.fn(), restartSingleInstance: vi.fn(),
+      topicCommands: { getCtxText: vi.fn(async () => "ctx"), supportsClear: () => false, sendClear: vi.fn() },
+    });
+    // A YAML-loaded map is an ordinary object: give it Object.prototype back, as loadConfig would.
+    Object.setPrototypeOf(f.fleetConfig.instances, Object.prototype);
+    return f;
+  }
+  it("'constructor', 'toString', '__proto__' are not instances: 404, nothing applied, the prototype untouched", async () => {
+    const f = fm({ worker: { working_directory: "/w" }, general: { working_directory: "/g", general_topic: true } });
+    const before = Object.getOwnPropertyNames(Object.prototype).sort();
+    for (const name of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
+      for (const [command, args] of [["model", "opus"], ["effort", "high"], ["ctx", ""]] as const) {
+        const r = await f.webCommand({ instance: name, command, args }, { publicLink: false });
+        expect(r.status, `${name} ${command}`).toBe(404);
+      }
+    }
+    expect(f.applyModel).not.toHaveBeenCalled();
+    expect(f.applyEffort).not.toHaveBeenCalled();
+    expect(f.topicCommands.getCtxText).not.toHaveBeenCalled();
+    expect(f.saveFleetConfig).not.toHaveBeenCalled();
+    expect(f.restartSingleInstance).not.toHaveBeenCalled();
+    expect(Object.getOwnPropertyNames(Object.prototype).sort()).toEqual(before);
+    expect(({} as any).model).toBeUndefined();
+  });
+  it("controls: a configured instance — even one named 'constructor' — and a ClassicBot room are found", async () => {
+    const f = fm({ worker: { working_directory: "/w" }, constructor: { working_directory: "/c" } }, ["room"]);
+    for (const name of ["worker", "constructor", "room"]) expect((await f.webCommand({ instance: name, command: "ctx" }, { publicLink: false })).status, name).toBe(200);
+    expect((await f.webCommand({ instance: "constructor", command: "model", args: "opus" }, { publicLink: false })).body).toEqual({ text: "model set" });
+  });
+});

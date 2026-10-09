@@ -272,7 +272,7 @@ export function createChatStore(deps) {
   // confirmation first: asked in the app's dialog, and a yes counts only while `alive()` (the chat that asked is still
   // the one on screen) — the token is the server's, used once, for the instance as it was when asked.
   async function runCommand(target, command, args, opts = {}) {
-    if (!target || (s.commands[target] && s.commands[target].busy)) return;
+    if (!target || !commandFree(target)) return;
     const alive = opts.alive || (() => true);
     s.commands[target] = { command, busy: true };
     changed(target);
@@ -291,6 +291,8 @@ export function createChatStore(deps) {
     changed(target);
   }
   function dismissCommand(target) { delete s.commands[target]; changed(target); }
+  /** Whether a command can start for `target` now (none is out): checked before a typed command line is consumed. */
+  const commandFree = (target) => !(s.commands[target] && s.commands[target].busy);
 
   /** Wire the store to the app's stream, for the life of the page. */
   function attach(stream) {
@@ -311,6 +313,6 @@ export function createChatStore(deps) {
     attach, applyStatus, applyActivity, ingest, applyDeliveries, openHistory,
     onPrompt, applyPrompts, resolvePrompt, answerPrompt, answerByNonce, holdPrompt, releasePrompt, promptsFor,
     uploadFile, send, addFiles, removeFile, attachPastedText, fileBackAsText, isPasted, putBack, discardFailed, setDraft,
-    cancelReply, isUser, runCommand, dismissCommand,
+    cancelReply, isUser, runCommand, dismissCommand, commandFree,
   };
 }

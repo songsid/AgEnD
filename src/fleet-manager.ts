@@ -11269,9 +11269,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return { current, options: cached.models.map(o => ({ id: o.id, label: this.modelChoiceLabel(o, current) })) };
     };
     return runWebCommand({
+      // Own entries only: a name like "__proto__" or "constructor" must not be found on the prototype (#1476 review).
       scope: (instance) => {
-        const cfg = this.fleetConfig?.instances[instance];
-        if (cfg) return isGeneralInstance(this.fleetConfig, instance) ? "general" : "fleet";
+        const instances = this.fleetConfig?.instances;
+        if (instances && Object.prototype.hasOwnProperty.call(instances, instance)) return isGeneralInstance(this.fleetConfig, instance) ? "general" : "fleet";
         return this.classicChannels?.getChannelIdByInstance(instance) !== undefined ? "classic" : null;
       },
       ctx: (instance) => this.topicCommands.getCtxText(instance),

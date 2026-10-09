@@ -335,7 +335,12 @@ function Composer({ name, lease, busy }) {
   useEffect(() => { refreshTourSpot(); });
   const setValue = (v) => { store.setDraft(name, v); setSel(0); tick(n => n + 1); };
   // #1269: a command line runs the command (POST /ui/command); anything else — "/" included — is sent as before.
-  const runLine = (cmd) => { setValue(""); store.runCommand(name, cmd.command, cmd.args, { alive: () => lease.current() }); };
+  // The draft is consumed only by a command that starts: one still out keeps the new line in the composer (#1476 review).
+  const runLine = (cmd) => {
+    if (!store.commandFree(name)) return;
+    setValue("");
+    store.runCommand(name, cmd.command, cmd.args, { alive: () => lease.current() });
+  };
   const complete = (c) => setValue(`/${c.name}${c.arg ? " " : ""}`);
   const submit = () => {
     if (pick) {
