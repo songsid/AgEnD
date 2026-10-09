@@ -32,6 +32,11 @@ const P = {
   sliders: () => html`<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>`,
   down: () => html`<path d="M12 5v14M19 12l-7 7-7-7"/>`,
   alert: () => html`<path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/>`,
+  chevron: () => html`<path d="M6 9l6 6 6-6"/>`,
+  search: () => html`<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>`,
+  type: () => html`<path d="M4 7V5h16v2M9 19h6M12 5v14"/>`,
+  chart: () => html`<path d="M3 20h18M6 16v-4M11 16V8M16 16v-6"/>`,
+  up: () => html`<path d="M12 19V5M5 12l7-7 7 7"/>`,
   eye: () => html`<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>`,
 };
 

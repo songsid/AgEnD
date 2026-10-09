@@ -49,7 +49,12 @@ const CASES: Array<[string, string]> = [
   ["/ui/fleet/bogus", "none"],
   ["/ui/", "none"],
   ["/uix", "none"],
-  ["/view", "none"],
+  ["/view", "view:"],
+  ["/view/web-dev", "view:web-dev"],
+  ["/view/%E4%B8%AD", "view:中"],
+  ["/view/a%2Fb", "malformed"],
+  ["/view/%E0%A4", "malformed"],
+  ["/view/a/b", "none"],
   ["/settings", "none"],
 ];
 // Every data route under /ui the server answers (web-api.ts), by shape.
@@ -61,12 +66,12 @@ function describeServer(path: string): string {
   const m = shellRoute("GET", path);
   if (!m) return "none";
   if (m.kind === "malformed") return "malformed";
-  return m.route.panel === "chat" ? `chat:${m.route.instance ?? ""}` : `fleet:${m.route.tab}`;
+  return m.route.panel === "fleet" ? `fleet:${m.route.tab}` : `${m.route.panel}:${m.route.instance ?? ""}`;
 }
 function describeClient(path: string): string {
   const r = client.parseRoute(path) as { panel: string; instance?: string | null; tab?: string } | null;
   if (!r) return "none";
-  return r.panel === "chat" ? `chat:${r.instance ?? ""}` : `fleet:${r.tab}`;
+  return r.panel === "fleet" ? `fleet:${r.tab}` : `${r.panel}:${r.instance ?? ""}`;
 }
 
 describe("one classifier, the same on both sides", () => {
@@ -93,12 +98,12 @@ describe("one classifier, the same on both sides", () => {
     }
   });
   it("the sign-in fallback covers every page of the app (and /view, /settings, still pages of their own)", () => {
-    for (const p of ["/ui", "/ui/chat/web-dev", "/ui/fleet", "/ui/fleet/config", "/view", "/settings"]) expect(isWebPageNavigation(p), p).toBe(true);
+    for (const p of ["/ui", "/ui/chat/web-dev", "/ui/fleet", "/ui/fleet/config", "/view", "/view/web-dev", "/settings"]) expect(isWebPageNavigation(p), p).toBe(true);
     for (const p of [...DATA_ROUTES, "/ui/fleet/bogus", "/api/fleet", "/signin"]) expect(isWebPageNavigation(p), p).toBe(false);
   });
   it("the public link's manifest admits exactly the shell's pages (and a malformed one, answered 400 behind it)", () => {
     for (const [p, want] of CASES) {
-      if (want === "none") { if (!["/view", "/settings"].includes(p)) expect(isPublicWebRoute("GET", p), p).toBe(false); }
+      if (want === "none") { if (p !== "/settings") expect(isPublicWebRoute("GET", p), p).toBe(false); }
       else expect(isPublicWebRoute("GET", p), p).toBe(true);
     }
     expect(isPublicWebRoute("POST", "/ui/chat/web-dev")).toBe(false);

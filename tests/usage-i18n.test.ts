@@ -5,6 +5,7 @@ import { setLocale, t } from "../src/locale.js";
 import { renderUsageHtml, renderUsageMarkdown } from "../src/usage/format-rich.js";
 import { formatUsageSummary, type UsagePayload } from "../src/usage/usage-api.js";
 import { USAGE_I18N_KEYS } from "../src/usage/i18n-keys.js";
+import { installDom } from "./helpers/mini-dom.js";
 
 afterEach(() => {
   setLocale("en");
@@ -12,16 +13,17 @@ afterEach(() => {
 });
 
 describe("usage i18n key parity", () => {
-  it("defines every semantic key in both server locales and both View locales", () => {
-    const view = readFileSync(join(process.cwd(), "src/ui/view.html"), "utf8");
-    const enStart = view.indexOf("en: {");
-    const zhStart = view.indexOf('"zh-TW": {', enStart);
-    const mapsEnd = view.indexOf("\n  };\n  let lang", zhStart);
+  it("defines every semantic key in both server locales and both View locales", async () => {
+    // The View's strings are the app's view.* namespace (#1408 step 2): view-strings.js holds the en and zh-TW tables.
+    const strings = readFileSync(join(process.cwd(), "src/ui/shared/view-strings.js"), "utf8");
+    const enStart = strings.search(/"en": \{/);
+    const zhStart = strings.indexOf('"zh-TW": {', enStart);
+    const zhEnd = strings.indexOf("\n});", zhStart);
     expect(enStart).toBeGreaterThanOrEqual(0);
     expect(zhStart).toBeGreaterThan(enStart);
-    expect(mapsEnd).toBeGreaterThan(zhStart);
-    const enView = view.slice(enStart, zhStart);
-    const zhView = view.slice(zhStart, mapsEnd);
+    expect(zhEnd).toBeGreaterThan(zhStart);
+    const enView = strings.slice(enStart, zhStart);
+    const zhView = strings.slice(zhStart, zhEnd);
 
     for (const locale of ["en", "zh-TW"] as const) {
       setLocale(locale);
@@ -32,11 +34,26 @@ describe("usage i18n key parity", () => {
       expect(enView, `View en: ${key}`).toContain(property);
       expect(zhView, `View zh-TW: ${key}`).toContain(property);
     }
-    expect(view).toContain("usageLocalized(m.label, m.labelI18n)");
-    expect(view).toContain("usageLocalized(m.value ?? \"\", m.valueI18n)");
-    expect(view).toContain("usageLocalized(p.hint, p.hintI18n)");
-    expect(view).toContain("usageLocalized(p.error || T(\"usage.error_fallback\"), p.errorI18n)");
-    expect(view).toContain('key: "usage.duration.hours_minutes"');
+    // The same keys, resolved by the page's own translator in both languages (a key that is missing reads back as itself).
+    const dom = installDom();
+    try {
+      const page = await import("/assets/app-i18n.js");
+      await import("/assets/view-strings.js");
+      for (const lang of ["en", "zh-TW"] as const) {
+        page.setLang(lang);
+        for (const key of USAGE_I18N_KEYS) expect(page.t(`view.${key}`), `page ${lang}: ${key}`).not.toBe(`view.${key}`);
+      }
+    } finally {
+      (await import("/assets/app-i18n.js")).setLang("en");
+      dom.restore();
+    }
+    // The page's usage renderer (panel-view.js) names these keys with the same fallbacks the server sends.
+    const panel = readFileSync(join(process.cwd(), "src/ui/shared/panel-view.js"), "utf8");
+    expect(panel).toContain("usageText(m.label, m.labelI18n)");
+    expect(panel).toContain('usageText(m.value ?? "", m.valueI18n)');
+    expect(panel).toContain("usageText(p.hint, p.hintI18n)");
+    expect(panel).toContain('usageText(p.error || tn("usage.error_fallback"), p.errorI18n)');
+    expect(panel).toContain('key: "usage.duration.hours_minutes"');
   });
 });
 
