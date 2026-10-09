@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { SYSTEMD_RESTART_INDETERMINATE_EXIT_CODE } from "./service-restart-selection.js";
 
 /**
  * What a chat `/update` (Discord slash or Telegram) runs: no channel flag, ever.
@@ -212,18 +213,26 @@ interface UpdateOutput {
   error(message: string): void;
 }
 
-/** Report restart status and let the CLI translate failure into exit code 1. */
+/**
+ * Report what `agend restart` came to (#1446 item 4): "restarted"; "pending" when systemd is still running the
+ * restart job after our wait (exit SYSTEMD_RESTART_INDETERMINATE_EXIT_CODE) — not a success, not a failure: the
+ * replacement fleet settles the update; or "failed", which the CLI turns into exit code 1.
+ */
 export function reportUpdateRestart(
   status: number | null,
   output: UpdateOutput = console,
-): boolean {
+): "restarted" | "pending" | "failed" {
   if (status === 0) {
     output.log("  ✓ Service restarted");
-    return true;
+    return "restarted";
+  }
+  if (status === SYSTEMD_RESTART_INDETERMINATE_EXIT_CODE) {
+    output.log("  … The service restart is still running; the new fleet reports when it is up (check: agend status).");
+    return "pending";
   }
 
   output.error("\n  ✗ Auto-restart FAILED. Fleet may be stopped.");
   output.error("  Run: agend start");
   output.error("  Service status: agend status\n");
-  return false;
+  return "failed";
 }
