@@ -24,13 +24,16 @@ function globalPrefix(pkgDir) {
   return path.dirname(lib);
 }
 
+/** ps by absolute path when it is where the OS keeps it: a service's or a test's PATH may not reach it. */
+var PS = ["/bin/ps", "/usr/bin/ps"].filter(function (p) { try { fs.accessSync(p, fs.constants.X_OK); return true; } catch (e) { return false; } })[0] || "ps";
+
 /** As the updater reads it: `ps -o lstart=` under LC_ALL=C (same TZ, inherited). */
 function processStart(pid) {
   try {
     var env = {};
     Object.keys(process.env).forEach(function (k) { env[k] = process.env[k]; });
     env.LC_ALL = "C";
-    var r = childProcess.spawnSync("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8", timeout: 5000, env: env, stdio: ["ignore", "pipe", "ignore"] });
+    var r = childProcess.spawnSync(PS, ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8", timeout: 5000, env: env, stdio: ["ignore", "pipe", "ignore"] });
     var text = String(r.stdout || "").trim();
     return r.status === 0 && text ? text : null;
   } catch (e) {

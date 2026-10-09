@@ -1582,8 +1582,27 @@ program
 
     // ── Install, then verify, then clean up (#1446): nothing is removed before the new install is proven ──
     const { runUpdateInstall } = await import("./update-install.js");
+    // #1450 C1: this update owns the npm prefix from before npm runs until it settles (verify, service, restart) —
+    // released when this process exits, however it exits; a crash leaves a lock the next update reclaims.
+    const { acquireInstallLock } = await import("./install-lock.js");
+    const { randomBytes } = await import("node:crypto");
+    const { createRequire } = await import("node:module");
+    const admission = createRequire(import.meta.url)("../launcher/install-admission.cjs") as { processStart(pid: number): string | null };
+    let releaseLock = (): void => {};
+    process.once("exit", () => releaseLock());
     const installed = runUpdateInstall(
-      { pkg, targetVersion, viaNvm: needsSudo, nvmSh },
+      {
+        pkg, targetVersion, viaNvm: needsSudo, nvmSh,
+        lock: prefix => {
+          const lock = acquireInstallLock(prefix, { spec: pkg, agendHome: DATA_DIR }, {
+            pid: process.pid, processStart: admission.processStart, newToken: () => randomBytes(16).toString("hex"),
+            now: () => new Date(), log: message => console.log(message),
+          });
+          if (!lock.ok) return lock;
+          releaseLock = lock.release;
+          return { ok: true, token: lock.token };
+        },
+      },
       {
         run: (command, args, options = {}) => {
           if (options.inherit) console.log("");
@@ -1591,6 +1610,7 @@ program
             encoding: "utf-8",
             timeout: options.timeoutMs,
             stdio: options.inherit ? "inherit" : ["ignore", "pipe", "pipe"],
+            ...(options.env ? { env: { ...process.env, ...options.env } } : {}),
           });
           return { status: result.status, signal: result.signal, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
         },
