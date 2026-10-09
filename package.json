@@ -74,6 +74,12 @@
     "yaml": "^2.9.0",
     "zod": "^4.3.6"
   },
+  "optionalDependencies": {
+    "@songsid/agend-node-darwin-arm64": "22.23.3",
+    "@songsid/agend-node-darwin-x64": "22.23.3",
+    "@songsid/agend-node-linux-arm64": "22.23.3",
+    "@songsid/agend-node-linux-x64": "22.23.3"
+  },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/ejs": "^3.1.5",

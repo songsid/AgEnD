@@ -225,13 +225,6 @@ function writeClassicAtomic(ctx: SettingsApiContext, classic: Record<string, unk
 const issueKey = (i: { path: string; message: string }) => i.path + "\u0000" + i.message;
 
 /**
- * Reject a write only if it INTRODUCES new validation errors. Pre-existing
- * errors elsewhere in the config (common while a fleet is being assembled)
- * must not block an unrelated edit — otherwise one bad channel would lock the
- * user out of saving anything, which reads as "save didn't persist".
- * Returns true (and responds 400) when the edit adds errors.
- */
-/**
  * #1490 (Fable's 2.2 audit): the connection fields Settings writes. A PUT carries whole connections back, so a field
  * outside these (one added by hand to fleet.yaml) passes through unchanged — but it is never added or changed here:
  * an inline `bot_token`, or anything else, cannot reach fleet.yaml through this endpoint.
@@ -255,6 +248,13 @@ function unownedChannelField(candidate: Record<string, unknown>, previous: Recor
     ?? (record(candidate.options) ? check(CHANNEL_OPTION_FIELDS, candidate.options, previous?.options, "options.") : null);
 }
 
+/**
+ * Reject a write only if it INTRODUCES new validation errors. Pre-existing
+ * errors elsewhere in the config (common while a fleet is being assembled)
+ * must not block an unrelated edit — otherwise one bad channel would lock the
+ * user out of saving anything, which reads as "save didn't persist".
+ * Returns true (and responds 400) when the edit adds errors.
+ */
 function rejectIfWorse(res: ServerResponse, before: ValidationResult, after: ValidationResult): boolean {
   const had = new Set(before.errors.map(issueKey));
   const introduced = after.errors.filter(e => !had.has(issueKey(e)));

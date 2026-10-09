@@ -389,7 +389,9 @@ describe("the service-level commands, behind inert stubs", () => {
     // predates the install, the update verifies that package and restarts through ITS `agend`): its bin is a wrapper
     // that runs this source through tsx, and that is the `agend` on PATH.
     const manifest = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8"));
-    writeFileSync(join(copy, "package.json"), JSON.stringify({ ...manifest, bin: { agend: "bin/agend" } }));
+    // No runtime pins (#1450): this test is about authorisation, and the copy shares node_modules (with the bundled
+    // runtime package) but has no receipt of its own — a pinned copy would refuse to run before the restart step.
+    writeFileSync(join(copy, "package.json"), JSON.stringify({ ...manifest, bin: { agend: "bin/agend" }, optionalDependencies: undefined }));
     mkdirSync(join(copy, "bin"));
     // An installed package always has its canonical entry (#1450 C4); the update verifies it exists.
     mkdirSync(join(copy, "dist"));

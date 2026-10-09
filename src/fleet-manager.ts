@@ -15,7 +15,8 @@ import { measureSyncWork } from "./sync-work-attribution.js";
 import { RuntimeCpuProfiler, ProfileBusyError, profileDuration, type ProfileTicket } from "./runtime-cpu-profile.js";
 import { ProfileControlServer } from "./profile-control.js";
 import type { CpuProfile } from "./cpu-profile.js";
-import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync, readdirSync, renameSync, copyFileSync, chmodSync, statSync, accessSync, realpathSync, constants as fsConstants, type Dirent } from "node:fs";
+import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync, readdirSync, renameSync, copyFileSync, chmodSync, statSync, accessSync, realpathSync, constants as fsConstants, type Dirent, openSync, closeSync, fsyncSync } from "node:fs";
+import { atomicWriteFileSync } from "./atomic-write.js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { freemem, totalmem, cpus, homedir } from "node:os";
@@ -60,6 +61,8 @@ import {
 import { isProbeableRouteTarget, type RouteTarget } from "./fleet-context.js";
 import { loadFleetConfig, loadRawFleetConfig, DEFAULT_COST_GUARD, DEFAULT_DAILY_SUMMARY, DEFAULT_INSTANCE_CONFIG } from "./config.js";
 import { EventLog } from "./event-log.js";
+import { binaryProbe } from "./binary-probe.js";
+import { classifySqliteOpenError } from "./sqlite-open-errors.js";
 import { AdapterWorld } from "./adapter-world.js";
 import { CostGuard, formatCents } from "./cost-guard.js";
 import { startEventLoopWatch, type EventLoopWatch } from "./event-loop-watch.js";
@@ -163,6 +166,8 @@ export function applyTaskListCap<T extends { updated_at: string }>(
 }
 import { handleWebRequest, broadcastSseEvent, SSE_HEARTBEAT_MS } from "./web-api.js";
 import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, type WebChatAttachment } from "./web-chat-history.js";
+import { ReplyButtonStore, parseReplyButtons, replyButtonClickText, replyButtonsFallbackText, REPLY_BUTTON_PREFIX } from "./reply-buttons.js";
+import { ReplyButtonsController, type ReplyButtonsView } from "./reply-buttons-controller.js";
 import { publicAttachment, sweepOrphanedUploads, WebFileLedger } from "./web-upload.js";
 import { handleViewRequest, isViewPath } from "./view-api.js";
 import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, usageProviderIdForBackend } from "./usage/usage-api.js";
@@ -597,6 +602,8 @@ interface AdapterCallbackData {
   threadId?: string;
   messageId: string;
   userId?: string;
+  /** The clicker's platform name, when the adapter knows it (#1266: "who chose"). */
+  username?: string;
   /**
    * Acknowledge the click, optionally with a notice only the clicker sees
    * (#1133): a Discord ephemeral follow-up, a Telegram callback answer. The
@@ -685,6 +692,7 @@ const WEB_MIRRORED_PROMPT_PREFIXES: ReadonlySet<string> = new Set([
  */
 const WEB_ONLY_REPLY_SINK = {
   type: "web",
+  supportsReplyButtons: true,                    // #1266: the web chat shows a reply's buttons itself
   sendText: async () => ({ chatId: "web", messageId: newWebMessageId() }),
   sendFile: async () => ({ chatId: "web", messageId: newWebMessageId() }),
 } as unknown as ChannelAdapter;
@@ -793,6 +801,9 @@ function emojiListFilter(opts: Record<string, unknown>): {
 export class FleetManager implements FleetContext, LifecycleContext, ArchiverContext, StatuslineWatcherContext, OutboundContext, AgentEndpointContext {
   private static signalTarget: FleetManager | null = null;
   private static sighupHandlerInstalled = false;
+
+  /** Test seam: inject a spy to verify saveFleetConfig calls fsync. Default: fsyncSync. */
+  fsyncForTest: ((fd: number) => void) | undefined = undefined;
 
   private children: Map<string, import("node:child_process").ChildProcess> = new Map();
   readonly lifecycle: InstanceLifecycle;
@@ -1311,6 +1322,84 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.topicCommands = new TopicCommands(this);
     this.topicArchiver = new TopicArchiver(this);
     this.statuslineWatcher = new StatuslineWatcher(this);
+  }
+
+  /** #1266: a reply's buttons — the store (reply-buttons.db) and what a click does. Created on first use. */
+  private replyButtonsCtl: ReplyButtonsController | null = null;
+  /** The store could not be opened in this process: buttons are offered as text until the next start. */
+  private replyButtonsUnavailable = false;
+  /**
+   * The controller, or null when reply-buttons.db cannot be opened (#1500 review). That file holds only open choices,
+   * so it never stops AgEnD: the failure is logged and posted once, replies offer their choices as text, and a click on
+   * an older button is answered "closed". The file is left where it is — an open error is not proof of corruption.
+   */
+  replyButtons(): ReplyButtonsController | null {
+    if (this.replyButtonsCtl) return this.replyButtonsCtl;
+    if (this.replyButtonsUnavailable) return null;
+    const path = join(this.dataDir, "reply-buttons.db");
+    let store: ReplyButtonStore;
+    try { store = new ReplyButtonStore(path); }
+    catch (err) {
+      this.replyButtonsUnavailable = true;
+      this.logger.error({ err: (err as Error).message, path }, "Reply buttons unavailable: reply-buttons.db could not be opened — replies offer their choices as text");
+      try { this.notifyFleetError(`⚠️ Reply buttons are off until AgEnD restarts: ${path} could not be opened (${(err as Error).message}). Replies offer their choices as text.`); }
+      catch { /* the notice is best effort */ }
+      return null;
+    }
+    this.replyButtonsCtl = new ReplyButtonsController({
+      store,
+      now: () => Date.now(),
+      adapterFor: (adapterId) => this.worlds.get(adapterId)?.adapter ?? (adapterId === this.getPrimaryAdapterId() ? this.adapter ?? undefined : undefined),
+      mayClick: (set, userId) => this.mayAnswerReplyButtons(set.instance, set.adapterId, userId),
+      deliver: (set, button, by) => this.deliverReplyButtonChoice(set, button, by),
+      publish: (instance, view) => this.emitSseEvent("reply_buttons", { instance, buttons: view }),
+      logger: this.logger,
+      setTimer: (fn, ms) => { const h = setTimeout(fn, ms); h.unref?.(); return h; },
+      clearTimer: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
+    });
+    this.replyButtonsStore = store;
+    return this.replyButtonsCtl;
+  }
+  private replyButtonsStore: ReplyButtonStore | null = null;
+
+  /**
+   * #1266: who may answer a reply's buttons on a platform — whoever may message that instance there: in a ClassicBot
+   * room anyone there (as a typed message), elsewhere someone the sending connection lets speak (#754/#1148), never a
+   * fleet bot.
+   */
+  private mayAnswerReplyButtons(instance: string, adapterId: string, userId: string): boolean {
+    if ([...this.worlds.values()].some(w => w.botUserId && w.botUserId === userId)) return false;
+    if (this.classicChannels?.getChannelIdByInstance(instance) !== undefined) return true;
+    const access = this.worlds.get(adapterId)?.accessManager ?? (adapterId === this.getPrimaryAdapterId() ? this.accessManager : null);
+    return this.isFleetAdmin(userId, adapterId) || !!access?.isAllowed(userId);
+  }
+
+  /** #1266: the choice, delivered as an ordinary inbound message from whoever made it, and shown in the web chat. */
+  private async deliverReplyButtonChoice(
+    set: { instance: string; adapterId: string; chatId: string; threadId: string; messageId: string | null },
+    button: { label: string; value: string },
+    by: { userId: string; username: string; source: string },
+  ): Promise<boolean> {
+    const content = replyButtonClickText(button);
+    const web = by.source === "web";
+    const ts = new Date().toISOString();
+    const messageId = web ? newWebMessageId() : (set.messageId ?? "");
+    const sent = await this.deliverToInstance(set.instance, {
+      type: "fleet_inbound",
+      content,
+      targetSession: set.instance,
+      meta: {
+        chat_id: set.chatId, message_id: messageId, user: by.username, user_id: by.userId, ts,
+        thread_id: set.threadId, adapter_id: set.adapterId === "web" ? undefined : set.adapterId,
+        source: web ? "web" : (this.worlds.get(set.adapterId)?.adapter.type ?? "web"),
+      },
+    });
+    if (sent === false) return false;
+    this.lastInboundUser.set(set.instance, by.username);
+    this.emitSseEvent("message", {
+      instance: set.instance, sender: by.username, role: "user", text: content, ts, ...(web ? { messageId } : {}),
+    });
+    return true;
   }
 
   private ensureDeliveryOutbox(): void {
@@ -4247,17 +4336,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /**
    * Probe the same executable set exposed by the web backend catalog.
    *
-   * This deliberately has no cache: an install `/login` ran can add a
+   * This deliberately skips the cache: an install `/login` ran can add a
    * binary to PATH while the fleet process remains alive, and the next bare
    * `/login` must see it without requiring a restart or an explicit cache
-   * invalidation call.
+   * invalidation call. The fresh answers also refresh the shared cache that
+   * `/ui/backends` reads. #1490: async and bounded, never `which` on the event loop; a probe with no answer in time
+   * counts as not installed, as the old timeout did.
    */
-  private probeInstalledBackends(): Set<string> {
-    const installed = new Set<string>();
-    for (const [backend, info] of Object.entries(BACKEND_INSTALLATION_INFO)) {
-      if (checkBinaryInstalled(info.binary)) installed.add(backend);
-    }
-    return installed;
+  private async probeInstalledBackends(): Promise<Set<string>> {
+    const entries = Object.entries(BACKEND_INSTALLATION_INFO);
+    const found = await Promise.all(entries.map(([, info]) => binaryProbe.probe(info.binary, { fresh: true })));
+    return new Set(entries.filter((_, i) => { const r = found[i]; return r.known && r.path !== null; }).map(([backend]) => backend));
   }
 
   /**
@@ -5628,6 +5717,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // Health HTTP endpoint
     this.startHealthServer(fleet.health_port ?? 19280);
+    // #1266: buttons that ended while AgEnD was down (expired, or chosen before a restart) are shown as ended now.
+    void this.replyButtons()?.sweep().catch(err => this.logger.warn({ err }, "Reply-button sweep failed"));
 
     // Daily update check — first check after 1 hour, then every 24 hours
     this.updateCheckTimer = setTimeout(() => {
@@ -7619,6 +7710,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           return;
         }
       }
+      // #1266: buttons are checked before anything is sent, like stickers.
+      const parsedButtons = parseReplyButtons(args.buttons, args);
+      if (parsedButtons && "error" in parsedButtons) { respond(null, `reply: ${parsedButtons.error}`); return; }
       // Stickers (#1226) are checked before anything is sent: a refused one is the reply's error, not a gap.
       const stickerProblem = await this.replyStickerProblem(outAdapter, args, threadId, contextAdapterId ?? this.getInstanceAdapterId(senderInstanceName ?? instanceName));
       if (stickerProblem) { respond(null, stickerProblem); return; }
@@ -7632,8 +7726,31 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         ticket.subscribe(respond);
         return;
       }
+      // #1266: the buttons' set, before the send (a click cannot match it until the message is known). Where buttons
+      // cannot be shown, the choices go into the text instead.
+      let replySet: { id: string; callbacks: Array<{ id: string; label: string }> } | null = null;
+      if (parsedButtons && "buttons" in parsedButtons) {
+        const buttons = outAdapter.supportsReplyButtons ? this.replyButtons() : null;
+        if (buttons) {
+          const outId = outAdapter === WEB_ONLY_REPLY_SINK ? "web" : ((outAdapter as { id?: unknown }).id as string | undefined) ?? contextAdapterId ?? "";
+          replySet = buttons.prepare({ instance: instanceName, adapterId: outId, chatId: String(args.chat_id ?? ""), threadId }, parsedButtons.buttons);
+        } else {
+          args.text = `${String(args.text)}\n\n${replyButtonsFallbackText(parsedButtons.buttons)}`;
+        }
+      }
       const original = respond;
       const respondAndRecord = (result: unknown, error?: string) => {
+        let buttonsView: ReplyButtonsView | null = null;
+        if (replySet) {
+          const sent = result as { messageId?: string; buttonsMessageId?: string } | null;
+          const carrying = sent?.buttonsMessageId ?? sent?.messageId;
+          if (!error && carrying) {
+            this.replyButtonsCtl?.bind(replySet.id, carrying);
+            buttonsView = this.replyButtonsCtl?.viewOf(replySet.id) ?? null;
+          } else {
+            this.replyButtonsCtl?.discard(replySet.id);
+          }
+        }
         ticket.complete(result, error);
         // Return the platform outcome first. Bookkeeping below must never turn
         // a confirmed Discord/Telegram POST into a tool error if a secondary
@@ -7646,7 +7763,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // an agent cannot invent it to suppress the normal completion marker.
         if (!error && result != null && msg.statusOnly !== true) {
           try {
-            this.afterReplyRouted(instanceName, args, senderSessionName);
+            this.afterReplyRouted(instanceName, args, senderSessionName, buttonsView);
           } catch (err) {
             this.logger.warn({ err, instanceName }, "Reply delivered but post-delivery bookkeeping failed");
           }
@@ -7659,9 +7776,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           });
         }
       };
-      if (routeToolCall(outAdapter, tool, args, threadId, respondAndRecord)) {
+      if (routeToolCall(outAdapter, tool, args, threadId, respondAndRecord, replySet ? { replyButtons: replySet.callbacks } : {})) {
         return;
       }
+      if (replySet) this.replyButtonsCtl?.discard(replySet.id);
       // routeToolCall knows "reply"; not handling it means the world changed.
       ticket.complete(null, "reply not handled");
       original(null, "reply not handled");
@@ -7700,7 +7818,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.worlds.size === 0 && this.isWebOnlyFleet() ? { adapter: WEB_ONLY_PROMPT_SINK, adapterId: "web", chatId: "web" } : null;
   }
 
-  private afterReplyRouted(instanceName: string, args: Record<string, unknown>, senderSessionName?: string): void {
+  private afterReplyRouted(instanceName: string, args: Record<string, unknown>, senderSessionName?: string, buttons: ReplyButtonsView | null = null): void {
     // A reply is NOT proof the turn is over (#410) — but it is not proof of
     // more work either. Split the difference: an instance that is clearly
     // idle loses the button now; one that looks busy keeps it (re-posted
@@ -7730,6 +7848,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       text: (args.text as string ?? "").slice(0, WEB_CHAT_TEXT_MAX),
       ts: new Date().toISOString(),
       ...(attachments.length ? { attachments } : {}),
+      ...(buttons ? { buttons } : {}),                 // #1266
     });
     // Log bot reply to classic instance chat-log
     const isClassic = this.classicChannels?.getChannelIdByInstance(instanceName) !== undefined;
@@ -8978,18 +9097,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     noteSettingsWrite(this.configPath, this.savedFleetConfigSnapshot, this.fleetConfig);
     const output = String(this.rawFleetDocument);
     if (redundantPaths.length > 0) this.writeFleetConfigBackup(source);
-    const tempPath = `${this.configPath}.tmp-${process.pid}`;
-    writeFileSync(tempPath, output, "utf-8");
-    // #1056 (Fable's 2.2 audit): the patcher writes leaves, not configs, so a wrong patch can produce a file the
-    // validator — or the next start — refuses (a bare channels[0], a channels list with a null). Load and validate
-    // what is about to replace fleet.yaml; a result that adds an error is not written, and the save fails instead.
-    const refusal = this.savedFleetConfigProblem(tempPath);
-    if (refusal) {
-      try { unlinkSync(tempPath); } catch { /* already gone */ }
-      throw new Error(refusal);
-    }
-    if (existsSync(this.configPath)) chmodSync(tempPath, statSync(this.configPath).mode);
-    renameSync(tempPath, this.configPath);
+    // Atomic write with fsync. The beforeRename hook runs after fsync and
+    // before rename so validation failures are reported before the file is
+    // replaced (#1056), and the temp file is cleaned up on any throw.
+    atomicWriteFileSync(this.configPath, output, {
+      mode: existsSync(this.configPath) ? statSync(this.configPath).mode : 0o644,
+      fsync: this.fsyncForTest,
+      beforeRename: (tempPath) => {
+        // #1056 (Fable's 2.2 audit): the patcher writes leaves, not configs, so
+        // a wrong patch can produce a file the validator — or the next start —
+        // refuses. Load and validate what is about to replace fleet.yaml.
+        const refusal = this.savedFleetConfigProblem(tempPath);
+        if (refusal) throw new Error(refusal);
+        if (existsSync(this.configPath)) chmodSync(tempPath, statSync(this.configPath).mode);
+      },
+    });
 
     this.rawFleetConfig = loadRawFleetConfig(this.configPath);
     this.savedFleetConfigSnapshot = structuredClone(this.fleetConfig);
@@ -10164,18 +10286,31 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.deliveryOutbox?.wasDeliveryIdPrunedForCaller(deliveryId, callerInstance) ?? false;
   }
 
+  /** How long opening events.db waits for another process's lock (a field so tests need not wait 5 s). */
+  private eventLogBusyTimeoutMs = 5000;
+
   private openEventLog(): EventLog | null {
     const dbPath = join(this.dataDir, "events.db");
     try {
-      return new EventLog(dbPath);
+      return new EventLog(dbPath, { busyTimeoutMs: this.eventLogBusyTimeoutMs });
     } catch (err) {
-      this.logger.error({ err, dbPath }, "events.db unusable — moving it aside and starting a fresh one");
+      // #1490: only a file SQLite proved corrupt is moved aside. A lock (it outlasted the busy timeout), a driver that
+      // cannot load (ABI), or a permission/I/O problem says nothing against the file: it stays where it is, history
+      // intact, and the fleet runs without event logging until it restarts.
+      const kind = classifySqliteOpenError(err);
+      if (kind !== "corrupt") {
+        const key = kind === "busy" ? "eventlog.locked" : kind === "abi" ? "eventlog.abi" : "eventlog.unopenable";
+        this.logger.error({ err, dbPath, kind }, `events.db not opened (${kind}) — left in place; continuing without event logging`);
+        try { this.notifyFleetError(t(key)); } catch { /* best effort: adapters may not be up yet; the log line stands */ }
+        return null;
+      }
+      this.logger.error({ err, dbPath }, "events.db is corrupt — moving it aside and starting a fresh one");
       const stamp = new Date().toISOString().replace(/[:.]/g, "-");
       for (const suffix of ["", "-wal", "-shm"]) {
         try { renameSync(`${dbPath}${suffix}`, `${dbPath}${suffix}.corrupt-${stamp}`); } catch { /* may not exist */ }
       }
       try {
-        return new EventLog(dbPath);
+        return new EventLog(dbPath, { busyTimeoutMs: this.eventLogBusyTimeoutMs });
       } catch (retryErr) {
         // History is worth losing; a fleet that won't start is not.
         this.logger.error({ err: retryErr, dbPath }, "Could not open a fresh events.db — continuing without event logging");
@@ -10678,6 +10813,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     adapterId: string,
     adapter: ChannelAdapter | undefined,
   ): Promise<boolean> {
+    if (data.callbackData.startsWith(REPLY_BUTTON_PREFIX)) {                       // #1266
+      const buttons = this.replyButtons();
+      if (!buttons) { data.ack?.(t("reply_buttons.closed")); return true; }
+      return buttons.handleCallback(data, adapterId);
+    }
     if (this.needsYou?.handleCallback(data, adapterId)) return true;
     if (await this.handleTipDismiss(data, adapterId, adapter)) return true;
     if (await this.handleTipUnlock(data, adapterId, adapter)) return true;
@@ -10930,6 +11070,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * The caller has passed the /ui gate (session, same origin, CSRF). Here: the prompt must be one offered
    * on the dashboard, about the instance the page named, and the action one of its own buttons.
    */
+  /** #1266: a click on a reply's button in the web chat (the /ui gate is passed: a session, or the public link). */
+  clickWebReplyButton(instance: string, id: string, index: number): Promise<{ status: 200 | 400 | 403 | 409; error?: string }> {
+    const buttons = this.replyButtons();
+    return buttons ? buttons.clickWeb(instance, id, index) : Promise.resolve({ status: 409, error: t("reply_buttons.closed") });
+  }
+
   async clickWebPrompt(instance: string, nonce: string, action: string): Promise<{ status: 200 | 400 | 403 | 409; error?: string; outcome?: string }> {
     if (!/^[0-9a-f]{32}$/.test(nonce) || !/^[a-z][a-z-]{0,23}$/.test(action)) return { status: 400, error: "Malformed prompt answer" };
     const entry = this.pendingNonceButtons.get(nonce);
@@ -12641,7 +12787,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     for (const name of this.configuredBackendInstanceNames()) {
       configured.add(this.backendNameOf(name));
     }
-    const installed = this.probeInstalledBackends();
+    const installed = await this.probeInstalledBackends();
     // One entry point for "get this CLI working" (#1131): a backend that is
     // not installed is offered too, and the click installs it first, then
     // signs in (startLoginSession routes it).
@@ -13326,15 +13472,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const onError = (err: unknown) => this.logger.debug({ err }, "SSE client write failed; evicting");
     if (event === "message" && data && typeof data === "object") {
       // A chat message: record it, and send it WITH its id so a reconnecting stream can ask for what it missed.
-      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; role?: unknown };
+      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; role?: unknown; buttons?: unknown };
       const recorded = this.webChatHistory.record({
         instance: String(m.instance ?? ""), sender: String(m.sender ?? ""), text: String(m.text ?? ""), ts: String(m.ts ?? new Date().toISOString()),
         attachments: Array.isArray(m.attachments) ? m.attachments as WebChatAttachment[] : undefined,
         messageId: typeof m.messageId === "string" ? m.messageId : undefined,
         role: typeof m.role === "string" ? m.role : undefined,
+        buttons: m.buttons,
       });
       broadcastSseEvent(this.sseClients, event, recorded, onError, this.webChatHistory.cursorOf(recorded));
       return;
+    }
+    // #1266: a reply's buttons ended — the history shows it too (a later load, the public link's poll).
+    if (event === "reply_buttons" && data && typeof data === "object") {
+      const u = data as { instance?: unknown; buttons?: unknown };
+      this.webChatHistory.updateButtons(String(u.instance ?? ""), u.buttons);
     }
     broadcastSseEvent(this.sseClients, event, data, onError);
   }
@@ -15776,6 +15928,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     this.webSessions?.flush();
 
     this.eventLog?.close();
+    this.replyButtonsCtl?.stop();
+    this.replyButtonsStore?.close();
+    this.replyButtonsCtl = null; this.replyButtonsStore = null;
 
     const pidPath = join(this.dataDir, "fleet.pid");
     try { unlinkSync(pidPath); } catch (e) { this.logger.debug({ err: e }, "Failed to remove fleet PID file"); }

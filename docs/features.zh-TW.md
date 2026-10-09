@@ -140,6 +140,26 @@ agent 可以在 Discord 和 Telegram 傳送貼圖（2.1.12 起）。兩個平台
 
 不支援上傳貼圖或建立貼圖包。
 
+### 回覆按鈕
+
+agent 可以提供讓人點選、而不必打字的選項（2.2）。同一組按鈕會出現在網頁聊天、Telegram（inline keyboard）與 Discord（message components）。
+
+- **送出：** `reply` 接受 `buttons`：1–10 個 `{ label, value? }`。
+  - label 是一行純文字，最多 80 個字元（Discord 的上限，三者中最嚴格）。
+  - `value`（最多 200 字元）是與 label 不同時 agent 收到的內容；它只存在 AgEnD 內，不會送到任何平台。
+  - 按鈕必須搭配 `text`，放在文字的最後一則訊息上。不能與 `stickers` 一起使用；`files` 照常在文字之後送出。
+  - `buttons` 不合規時，該次回覆會回傳錯誤，且不會送出任何東西。
+- **點擊** 會以點擊者發出的一般訊息送給 agent：`[button] Deploy`，value 不同時為 `[button] Deploy (value: deploy-prod)`。它也會顯示在網頁聊天裡。
+- **每則回覆只有一個選擇。** 第一個有權限的點擊就代表所有人。之後各處的按鈕都會顯示選了什麼、誰選的：Discord 上按鈕停用並標出選項，Telegram 顯示單一個「✓ Deploy — alice」按鈕，網頁聊天則停用按鈕。之後的點擊會收到「已經有人回答了」。
+- **誰能點：** 能在那裡對該 instance 發訊息的人。
+  - fleet topic：該連線允許的使用者。
+  - ClassicBot 房間：房間裡的任何人。
+  - 網頁聊天：已登入的使用者，或透過公開連結的訪客（他們也能發訊息）。
+  - bot 的點擊一律不算。
+- **有效期：** 按鈕 24 小時後過期，並會標示出來。AgEnD 重啟後按鈕仍有效：每組按鈕是 `reply-buttons.db` 裡的一列，只對應原本那則訊息，而且只能回答一次，所以點擊無法被重放。
+- **無法顯示按鈕的地方**（例如 `agend-agent reply`）：選項會以編號清單附在文字後，讓人直接回覆。
+- **安全：** 平台上只帶不可猜的 id 與按鈕的序號，不帶 label 或 value；label 一律以純文字顯示。
+
 ## 工具進度（`tool_progress`）
 
 `tool_progress` 會把 agent 的工具活動加進進度泡泡，以這一輪的累積清單呈現：

@@ -1,3 +1,4 @@
+import { binaryProbe } from "./binary-probe.js";
 import type { SettingsExecution } from "./settings-transaction.js";
 import { settingsRequestExecution, settingsWrite, isSettingsReplay } from "./settings-request-capability.js";
 import { readBoundedWebBody } from "./web-body.js";
@@ -18,7 +19,6 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { execFileSync } from "node:child_process";
 import type { LifecycleCreateArgs } from "./instance-lifecycle.js";
 import { CreateInstanceArgs, validateArgs } from "./outbound-schemas.js";
 import { readStatuslineModel, resolveInstanceContext } from "./topic-commands.js";
@@ -208,6 +208,8 @@ export interface WebApiContext {
   acknowledgeNeedsItem?(id: string, principal: string): { status: number; message: string };
   /** Answer one of them, exactly as a click on its platform button would. */
   clickWebPrompt?(instance: string, nonce: string, action: string): Promise<{ status: number; error?: string }>;
+  /** #1266: a click on an agent reply's button. */
+  clickWebReplyButton?(instance: string, id: string, index: number): Promise<{ status: number; error?: string }>;
   /** Interrupt the current reply and drop what was queued for it; false when the instance is not running. */
   cancelInstance?(name: string): boolean;
   restartSingleInstance(name: string, opts?: { explicit?: boolean }): Promise<void>;
@@ -318,16 +320,18 @@ export function handleWebRequest(
       { name: "grok", binary: "grok" },
       { name: "muse", binary: "muse" },
     ];
-    const backends = BACKENDS.map(b => {
-      let installed = false;
-      let binPath = "";
-      // Timeout matches the other `which` probe (instance-lifecycle): these are
-      // synchronous and run in the fleet process, so a hung lookup on a broken
-      // PATH entry (a dead NFS mount) would block the event loop indefinitely.
-      try { binPath = execFileSync("which", [b.binary], { stdio: "pipe", timeout: 2000 }).toString().trim(); installed = true; } catch { /* not installed */ }
-      return { name: b.name, binary: b.binary, installed, path: binPath, deprecated: b.deprecated ?? false };
-    });
-    json(res, 200, { backends });
+    // #1490: seven sequential 2 s `execFileSync("which")` calls used to block the event loop here. The shared probe
+    // runs `which` as bounded async children and reuses an answer for BINARY_PROBE_TTL_MS. `unknown`: no answer in
+    // time (shown as not installed, as the old timeout was).
+    void Promise.all(BACKENDS.map(async (b) => {
+      const found = await binaryProbe.probe(b.binary);
+      const path = found.known ? found.path : null;
+      return { name: b.name, binary: b.binary, installed: path !== null, path: path ?? "", deprecated: b.deprecated ?? false,
+        ...(found.known ? {} : { unknown: true }) };
+    })).then(
+      (backends) => { if (!res.headersSent) json(res, 200, { backends }); },
+      () => { if (!res.headersSent) json(res, 500, { error: "backend probe failed" }); },
+    );
     return true;
   }
 
@@ -350,6 +354,8 @@ export function handleWebRequest(
       // The ticks too, so polling never has to re-read a chat's history — that read would count as the person's
       // activity; this poll does not (isPassiveWebRead).
       deliveries: history ? history.deliveries() : [],
+      // #1266: a reply's buttons that ended after the page saw the reply (the message itself is not sent again).
+      reply_buttons: history ? history.buttonStates() : [],
       // And the fleet prompts open on the dashboard (C4): prompt events are stream-only too.
       prompts: ctx.listWebPrompts?.() ?? [],
       // #1386: "Needs you" rides the passive channels only — no endpoint of its own to poll.
@@ -492,6 +498,29 @@ export function handleWebRequest(
     })().catch(err => {
       ctx.logger.error({ err: (err as Error).message }, "Web prompt answer failed");
       try { json(res, 500, { error: "Prompt answer failed" }); } catch { /* already answered */ }
+    });
+    return true;
+  }
+
+  // #1266: a click on an agent reply's button. The set id travels in the body; the public link may click too (a click
+  // is a message, and the public link may send messages).
+  if (method === "POST" && path === "/ui/reply-button") {
+    if (!ctx.clickWebReplyButton) { json(res, 404, { error: "No buttons here" }); return true; }
+    const click = ctx.clickWebReplyButton.bind(ctx);
+    (async () => {
+      let body: Record<string, unknown>;
+      try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
+      if (!permitWebContinuation(req, res, ctx)) return;
+      const { instance, id, index } = (body ?? {}) as Record<string, unknown>;
+      if (typeof instance !== "string" || typeof id !== "string" || typeof index !== "number") {
+        json(res, 400, { error: "instance, id and index required" });
+        return;
+      }
+      const r = await click(instance, id, index);
+      json(res, r.status, r.status === 200 ? { answered: true } : { error: r.error ?? "Refused", ...(r.status === 409 ? { gone: true } : {}) });
+    })().catch(err => {
+      ctx.logger.error({ err: (err as Error).message }, "Web reply-button click failed");
+      try { json(res, 500, { error: "Click failed" }); } catch { /* already answered */ }
     });
     return true;
   }
