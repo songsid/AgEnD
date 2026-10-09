@@ -203,6 +203,7 @@ import { WEB_CHAT_NOTICE, WEB_REMOTE_DOCS_URL, claimNotice, hasWebChat, releaseN
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import { buildOrgChart, type OrgChart } from "./web-org.js";
 import { CacheService, WINDOWS, type CacheReport, type CacheWindow } from "./cache-service.js";
+import { runWebCommand, type WebChoices, type WebCommandResult } from "./web-commands.js";
 import { claudeProjectKey } from "./backend/claude-code.js";
 import { sharedRolloutIndex } from "./rollout-index.js";
 import {
@@ -11214,6 +11215,111 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return nonce ? null : t("clear.prompt_unavailable");
   }
 
+  /**
+   * What a confirmed /clear must still find when it acts — shared by the platform's Confirm button and the web
+   * (#1269): the same daemon and IPC client, the same interaction owner, lifecycle epoch and delivery epoch as when the
+   * fence was taken. Null when there is no owner to pin (then nothing may be cleared). The reads are cached and
+   * synchronous; they never probe the pane.
+   */
+  private clearTargetFence(instanceName: string): (() => boolean) | null {
+    const ipc = this.instanceIpcClients.get(instanceName);
+    const daemon = this.daemons.get(instanceName);
+    const epoch = this.getDeliveryEpoch(instanceName);
+    // Object identity survives a resident daemon's respawn/freeze, and stop
+    // invalidates its lifecycle epoch before the queued work replaces objects.
+    const readOwner = (): InteractionOwner | null => {
+      try {
+        const owner = daemon?.getInteractionSnapshot?.()?.owner;
+        if (!owner || typeof owner.bootId !== "string" || !owner.bootId
+          || ![owner.spawnGeneration, owner.launchAttempt, owner.launchFenceEpoch]
+            .every(n => Number.isSafeInteger(n) && n >= 0)) return null;
+        return { ...owner };
+      } catch { return null; }
+    };
+    const readLifecycleEpoch = (): number | null => {
+      try {
+        const value = this.lifecycle?.epochOf(instanceName);
+        return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
+      } catch { return null; }
+    };
+    const owner = readOwner(), lifecycleEpoch = readLifecycleEpoch();
+    if (owner === null || lifecycleEpoch === null) return null;
+    return () => {
+      try {
+        const currentOwner = readOwner();
+        return this.daemons.get(instanceName) === daemon
+          && this.instanceIpcClients.get(instanceName) === ipc
+          && currentOwner !== null && sameInteractionOwner(owner, currentOwner)
+          && readLifecycleEpoch() === lifecycleEpoch
+          && this.isDeliveryEpochCurrent(instanceName, epoch);
+      } catch { return false; }
+    };
+  }
+
+  /** #1269: the web's /clear confirmations — one token per question, used once, for the instance as it was asked about. */
+  private readonly webClearTokens = new Map<string, { instance: string; fence: () => boolean; deadline: number }>();
+
+  /** #1269: an instance's chat command from the web chat (web-commands.ts); `publicLink`: a gateway request. */
+  webCommand(input: { instance: string; command: string; args?: string; confirm?: string }, opts: { publicLink: boolean }): Promise<WebCommandResult> {
+    const webMeta = (instance: string) => {
+      const topicId = this.fleetConfig?.instances[instance]?.topic_id;
+      return {
+        chatId: this.getGroupIdForInstance(instance) || "", messageId: newWebMessageId(), username: "web-user", userId: "web-user",
+        threadId: topicId != null ? String(topicId) : undefined, adapterId: this.getAdapterForInstance(instance)?.id ?? "", source: "web" as const,
+      };
+    };
+    const choicesFromCache = (instance: string): WebChoices | null => {
+      const cached = this.readCliEnv(this.backendNameForInstance(instance));     // the cached catalog only: never a probe here
+      if (!cached?.models.length) return null;
+      const current = this.resolveInstanceModel(instance).model;
+      return { current, options: cached.models.map(o => ({ id: o.id, label: this.modelChoiceLabel(o, current) })) };
+    };
+    return runWebCommand({
+      // Own entries only: a name like "__proto__" or "constructor" must not be found on the prototype (#1476 review).
+      scope: (instance) => {
+        const instances = this.fleetConfig?.instances;
+        if (instances && Object.prototype.hasOwnProperty.call(instances, instance)) return isGeneralInstance(this.fleetConfig, instance) ? "general" : "fleet";
+        return this.classicChannels?.getChannelIdByInstance(instance) !== undefined ? "classic" : null;
+      },
+      ctx: (instance) => this.topicCommands.getCtxText(instance),
+      compact: (instance, instructions) => this.topicCommands.sendCompact(instance, instructions),
+      applyModel: (instance, name) => this.applyModel(instance, name),
+      modelChoices: choicesFromCache,
+      applyEffort: (instance, level) => this.applyEffort(instance, level),
+      effortChoices: (instance) => {
+        const levels = this.effortLevelsFor(instance);
+        if (!levels.length) return null;
+        const current = this.resolveInstanceEffort(instance).effort;
+        return { current, options: levels.map(l => ({ id: l, label: this.effortChoiceLabel(l, current) })) };
+      },
+      cancel: (instance) => this.cancelInstance(instance),
+      steer: (instance, text) => this.topicCommands.sendSteer(instance, text, webMeta(instance)),
+      btw: (instance, text) => this.topicCommands.sendBtw(instance, text, webMeta(instance)),
+      pauseWake: (instance, action) => this.topicCommands.runPauseWake(instance, action),
+      save: (instance, filename) => this.topicCommands.sendSave(instance, filename),
+      clearAsk: (instance) => {
+        if (!this.topicCommands.supportsClear(instance)) return { refused: t("clear.unsupported") };
+        const fence = this.clearTargetFence(instance);
+        if (!fence) return { refused: t("clear.not_connected") };
+        const now = performance.now();
+        for (const [k, v] of this.webClearTokens) if (v.deadline < now) this.webClearTokens.delete(k);
+        const token = randomBytes(16).toString("hex");
+        this.webClearTokens.set(token, { instance, fence, deadline: now + CLEAR_CONFIRM_TIMEOUT_MS });
+        return { token, message: t("clear.confirm_message", instance) };
+      },
+      clearConfirm: async (instance, token) => {
+        const entry = this.webClearTokens.get(token);
+        this.webClearTokens.delete(token);                                    // used once, whatever happens next
+        if (!entry || entry.instance !== instance || performance.now() > entry.deadline) return { status: 409, text: t("clear.expired", instance) };
+        this.eventLog?.insert(instance, "clear_action", { action: "confirm", userId: "web" });
+        // sendClear sends its first IPC synchronously: no await separates this check from the effect.
+        if (this.shuttingDown || !entry.fence()) return { status: 409, text: t("menu.click_stale") };
+        return { status: 200, text: await this.topicCommands.sendClear(instance) };
+      },
+      t: (key, ...args) => t(key, ...args),
+    }, input, opts);
+  }
+
   /** Consume `/clear` Confirm/Cancel exactly once; only Confirm reaches IPC. */
   private async handleClearConfirmation(
     data: AdapterCallbackData,
@@ -11244,31 +11350,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // The nonce was claimed synchronously. Keep the exact owner across platform
     // retirement awaits; a replacement with the same name is not this clear's
     // target, and a role granted at claim time may be revoked while editing.
-    const ipc = this.instanceIpcClients.get(pending.instanceName);
-    const daemon = this.daemons.get(pending.instanceName);
-    const epoch = this.getDeliveryEpoch(pending.instanceName);
+    const target = this.clearTargetFence(pending.instanceName);
     const groupId = this.getChannelConfig(callbackAdapterId)?.group_id;
-    // Object identity survives a resident daemon's respawn/freeze, and stop
-    // invalidates its lifecycle epoch before the queued work replaces objects.
-    // These reads are cached and synchronous; they never probe the pane.
-    const readOwner = (): InteractionOwner | null => {
-      try {
-        const owner = daemon?.getInteractionSnapshot?.()?.owner;
-        if (!owner || typeof owner.bootId !== "string" || !owner.bootId
-          || ![owner.spawnGeneration, owner.launchAttempt, owner.launchFenceEpoch]
-            .every(n => Number.isSafeInteger(n) && n >= 0)) return null;
-        return { ...owner };
-      } catch { return null; }
-    };
-    const readLifecycleEpoch = (): number | null => {
-      try {
-        const value = this.lifecycle?.epochOf(pending.instanceName);
-        return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
-      } catch { return null; }
-    };
-    const owner = readOwner(), lifecycleEpoch = readLifecycleEpoch();
     const current = (): boolean => {
-      const currentOwner = readOwner();
       try { return !this.shuttingDown
       && !!data.userId && !!pending.authChannelId
       && !this.webPromptClicks.has(data) // clear is deliberately not web-mirrored
@@ -11279,11 +11363,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         ? pending.adapter.type !== "telegram" || pending.chatId === pending.authChannelId
         : String(this.getChannelConfig(callbackAdapterId)?.group_id ?? "") === pending.chatId)
       && this.getChannelConfig(callbackAdapterId)?.group_id === groupId
-      && this.daemons.get(pending.instanceName) === daemon
-      && this.instanceIpcClients.get(pending.instanceName) === ipc
-      && owner !== null && currentOwner !== null && sameInteractionOwner(owner, currentOwner)
-      && lifecycleEpoch !== null && readLifecycleEpoch() === lifecycleEpoch
-      && this.isDeliveryEpochCurrent(pending.instanceName, epoch);
+      && target !== null && target();
       } catch { return false; } // unavailable authority cannot admit a clear
     };
     const admitted = current();
