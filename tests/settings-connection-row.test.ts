@@ -65,7 +65,7 @@ describe("Settings › Connections & Bots row, as rendered", () => {
       if (path === "/api/settings/schema") return schema;
       if (path === "/api/settings/fleet/raw") return world.fleet;
       if (path === "/api/settings/classic") return { channels: {}, defaults: {} };
-      if (path === "/api/settings/connections") return [{ id: "dc", token_present: true }];
+      if (path === "/api/settings/connections") return [{ id: "dc", token_present: true, status: "connected" }];
       if (path === "/api/fleet") return { version: "2.1.12", instances: [] };
       if (path === "/api/settings/status-emojis") return { keys: [], builtins: { discord: {}, telegram: {} }, telegram_allowed: [], suggestions: [] };
       return [];

@@ -36,3 +36,11 @@ export function discordBotPortalUrl(applicationId: string): string {
 export function isDisallowedIntentsError(message: string | null | undefined): boolean {
   return typeof message === "string" && /disallowed intents|\b4014\b/i.test(message);
 }
+
+/**
+ * The platform refused the bot token itself (#1519 P6): Discord's "An invalid token was provided" / TokenInvalid,
+ * Telegram's 401 Unauthorized, a 401 status. Used only to name the problem; the error text is never shown.
+ */
+export function isRejectedTokenError(message: string | null | undefined): boolean {
+  return typeof message === "string" && /invalid token|TokenInvalid|\b401\b|unauthorized/i.test(message);
+}

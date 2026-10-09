@@ -96,7 +96,10 @@ describe("a gateway 4014 is the connection's problem", () => {
       expect(fm.listSecureConnections()[0]).toMatchObject({ id: "dc", status: "retrying", problem: "missing_intent" });
       fm.adapterState.set("dc", { status: "connected", retryCount: 0, lastError: "Used disallowed intents" });
       expect(fm.listSecureConnections()[0]).not.toHaveProperty("problem");
-      fm.adapterState.set("dc", { status: "retrying", retryCount: 1, lastError: "Invalid token" });
+      // #1519 P6: a refused token is its own named problem; any other error is none.
+      fm.adapterState.set("dc", { status: "retrying", retryCount: 1, lastError: "An invalid token was provided." });
+      expect(fm.listSecureConnections()[0]).toMatchObject({ problem: "rejected" });
+      fm.adapterState.set("dc", { status: "retrying", retryCount: 1, lastError: "getaddrinfo ENOTFOUND gateway.discord.gg" });
       expect(fm.listSecureConnections()[0]).not.toHaveProperty("problem");
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
