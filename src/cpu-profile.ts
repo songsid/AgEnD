@@ -35,6 +35,56 @@ export function cpuProfileSeconds(env: NodeJS.ProcessEnv): number | null {
 /** Bounded artifacts, not a bound on V8's native recording memory or JSON allocation. */
 export async function saveCpuProfile(dataDir: string, profile: unknown, signal?: AbortSignal): Promise<string> {
   signal?.throwIfAborted();
+  // Guard the event loop: a V8 CPU profile with many nodes/samples can exceed
+  // 20 MiB when serialised. We estimate from the structural data before
+  // allocating the full string, so an oversize profile is rejected without
+  // blocking the event loop for O(n) stringify time.
+  //
+  // Estimate accounts for variable-length fields:
+  //  - callFrame.url        (the dominant contributor — can be 300+ chars each)
+  //  - callFrame.functionName (typically short, budget 50 bytes)
+  //  - fixed overhead per node: id, hitCount, children array refs (~100 bytes)
+  //  - timeDeltas: one number per sample (~8 bytes)
+  // A node without a long URL is estimated at ~200 bytes fixed; URL bytes are
+  // counted separately per-node so a profile with many long URLs is caught early.
+  const p = profile as Record<string, unknown> | null;
+  const nodes = Array.isArray(p?.nodes) ? p!.nodes as Array<Record<string, unknown>> : [];
+  const samples = Array.isArray(p?.samples) ? p!.samples as unknown[] : [];
+  const timeDeltas = Array.isArray((p as any)?.timeDeltas) ? (p as any).timeDeltas : [];
+  const NODE_FIXED = 100; // id, hitCount, children, JSON punctuation
+  const FRAME_FIXED = 50; // functionName (short), scriptId, lineNumber, columnNumber
+  let estimatedBytes = timeDeltas.length * 8; // timeDeltas
+  estimatedBytes += samples.length * 8;        // samples array
+  for (const node of nodes) {
+    const frame = (node.callFrame ?? {}) as Record<string, unknown>;
+    // JSON.stringify the individual string fields for exact escaped+UTF-8 byte
+    // count. BMP CJK chars: 1 UTF-16 unit but 3 UTF-8 bytes (JSON keeps them
+    // unescaped). Backslash paths: each \\ → 2 JSON bytes.
+    const urlBytes = typeof frame.url === "string"
+      ? Buffer.byteLength(JSON.stringify(frame.url), "utf8") - 2 : 0;
+    const fnBytes = typeof frame.functionName === "string"
+      ? Buffer.byteLength(JSON.stringify(frame.functionName), "utf8") - 2 : 0;
+    // Variable arrays per node: positionTicks and children.
+    // Do NOT call JSON.stringify on these arrays — that would allocate the very
+    // large string the guard is meant to prevent. Instead use a conservative
+    // per-record byte estimate:
+    //   positionTicks: each {line,ticks} entry ≤ 35 JSON bytes in the worst case
+    //     (e.g. '{"line":999999,"ticks":9999}' = 29 bytes; 35 gives headroom).
+    //   children: each node-id integer ≤ 8 JSON bytes.
+    const MAX_BYTES_PER_TICK = 35;
+    const posTicksBytes = Array.isArray((node as any).positionTicks)
+      ? (node as any).positionTicks.length * MAX_BYTES_PER_TICK : 0;
+    const childrenBytes = Array.isArray((node as any).children)
+      ? (node as any).children.length * 8 : 0;
+    estimatedBytes += NODE_FIXED + FRAME_FIXED + urlBytes + fnBytes + posTicksBytes + childrenBytes;
+    // Early exit: avoid accumulating through every node if already over cap.
+    if (estimatedBytes > CPU_PROFILE_MAX_BYTES) {
+      throw new Error(`CPU profile is too large to save (estimated ≥${Math.round(estimatedBytes / 1_048_576)} MiB, cap is 20 MiB); discarded`);
+    }
+  }
+  if (estimatedBytes > CPU_PROFILE_MAX_BYTES) {
+    throw new Error(`CPU profile is too large to save (estimated ≥${Math.round(estimatedBytes / 1_048_576)} MiB, cap is 20 MiB); discarded`);
+  }
   const json = JSON.stringify(profile);
   if (json === undefined || Buffer.byteLength(json) > CPU_PROFILE_MAX_BYTES) throw new Error("CPU profile exceeds the 20 MiB artifact cap; discarded");
   const directory = join(dataDir, "profiles");
