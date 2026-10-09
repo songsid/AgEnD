@@ -83,10 +83,11 @@ describe("real private worker, exact JSON metadata semantics", () => {
     const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
     let handler!: (message: any) => void; const replies: any[] = [];
     const read = vi.fn(() => JSON.stringify({ cwd: "/fixture", session_id: "mine" }));
+    const stat = vi.fn((): any => { throw Object.assign(new Error("no stat hint"), { code: "EACCES" }); });
     const inertRequire = (name: string) => {
       if (name === "node:worker_threads") return { parentPort: { on: (_event: string, callback: typeof handler) => { handler = callback; }, postMessage: (message: any) => replies.push(message) } };
       if (name === "node:perf_hooks") return { performance: { now: () => 0 } };
-      if (name === "node:fs") return { readdirSync: () => ["mine.json"], readFileSync: read, statSync: () => { throw Object.assign(new Error("no stat hint"), { code: "EACCES" }); } };
+      if (name === "node:fs") return { readdirSync: () => ["mine.json"], readFileSync: read, statSync: stat };
       if (name === "node:path") return { join };
       throw new Error("unexpected worker dependency: " + name);
     };
@@ -94,6 +95,12 @@ describe("real private worker, exact JSON metadata semantics", () => {
     handler({ id: 1, input, deadlineAt: 100 }); handler({ id: 2, input, deadlineAt: 100 });
     expect(replies.map(r => r.reply.sessions)).toEqual([[{ id: "mine", updatedAt: 0, createdAt: null }], [{ id: "mine", updatedAt: 0, createdAt: null }]]);
     expect(read).toHaveBeenCalledTimes(2);
+    stat.mockReturnValue({ dev: 1, ino: 1, size: 128, mtimeMs: 1, ctimeMs: 1 });
+    read.mockImplementationOnce(() => { throw Object.assign(new Error("transient read"), { code: "EIO" }); });
+    handler({ id: 3, input, deadlineAt: 100 }); handler({ id: 4, input, deadlineAt: 100 });
+    expect(replies[2].reply.sessions).toEqual([]);
+    expect(replies[3].reply.sessions).toEqual([{ id: "mine", updatedAt: 0, createdAt: null }]);
+    expect(read).toHaveBeenCalledTimes(4);
   });
   it("keeps directory aliases, filename fallback, subagents, arbitrary property order and duplicate-key last wins", async () => {
     file("mine"); file("other", { cwd: join(root, "other") }); file("sub", { session_created_reason: "subagent" });

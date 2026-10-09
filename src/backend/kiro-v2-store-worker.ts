@@ -52,7 +52,7 @@ function scan({ keys, sessionsDir }: KiroV2StoreInput, deadlineAt: number): Kiro
         entry = { signature: before ?? "", meta, bytes: 2 * (path.length + (before?.length ?? 0) + (meta?.cwd?.length ?? 0) + (meta?.id.length ?? 0)) + 128 };
         if (before !== null && fileSignature(path) === before) {
           drop(path);
-          if (entry.bytes <= CACHE_BYTES) {
+          if (meta !== null && entry.bytes <= CACHE_BYTES) {
             cache.set(path, entry); cacheBytes += entry.bytes;
             while (cache.size > CACHE_LIMIT || cacheBytes > CACHE_BYTES) drop(cache.keys().next().value!);
           }
