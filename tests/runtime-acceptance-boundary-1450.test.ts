@@ -121,6 +121,11 @@ describe("the hop's stubbed manager calls: argv kept, judged fail-closed (manage
     ["systemctl", ["--user"]],
     ["launchctl", ["kickstart", "-k", "gui/501/x"]],
     ["launchctl", ["bootstrap", "gui/501", "/p.plist"]],
+    // Fail closed: verbs off the read-only list, known or not.
+    ["systemctl", ["--user", "enable", "x"]],
+    ["systemctl", ["--user", "frobnicate", "x"]],
+    ["launchctl", ["load", "-w", "/p.plist"]],
+    ["launchctl", ["unload", "/p.plist"]],
   ])("refused: %s %j", (tool, args) => {
     const st = stubs();
     st.call(tool, ...args);
