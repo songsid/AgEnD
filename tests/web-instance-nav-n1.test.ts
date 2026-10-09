@@ -136,13 +136,15 @@ describe("the filter: text, status and CLI, the same on every page and kept by t
     const pg = await app("/ui/chat/web-dev");
     await typeFilter(pg, "doc");
     fire(chip(pg, "Status", "idle"), "change"); await settle();
-    const saved = pg.storage.get("agend_instance_filter");
+    const saved = pg.storage.get("agend_instance_filter") ?? null;
+    expect(saved, "kept in this browser's storage").not.toBeNull();
     expect(JSON.parse(saved!)).toEqual({ q: "doc", status: ["idle"], cli: [] });
     const again = await reload(pg, "/view/web-dev", { agend_instance_filter: saved! });
     expect(rowNames(again)).toEqual(["docs-writer"]);
     // Kept: the known status; dropped: a non-string query, an unknown status, a non-list CLI.
     const bad = await reload(again, "/ui/chat/web-dev", { agend_instance_filter: '{"q":5,"status":["bogus","idle"],"cli":"x"}' });
     expect([rowNames(bad), (bad.root.querySelector("#filterInput") as any).value]).toEqual([["docs-writer"], ""]);
+    expect(bad.root.querySelectorAll(".nav-facet-n").map((n: any) => n.textContent), "one status chip on, no CLI chip").toEqual(["1"]);
     const broken = await reload(bad, "/ui/chat/web-dev", { agend_instance_filter: "{not json" });
     expect(rowNames(broken).length).toBe(5);
   });
