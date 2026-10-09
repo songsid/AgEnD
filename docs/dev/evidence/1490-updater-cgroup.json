@@ -1,0 +1,172 @@
+{
+  "state": "reproduced_and_fixed",
+  "scope": "disposable GitHub-hosted Linux VM; inert private unit and children only",
+  "checks": [
+    {
+      "name": "explicit_disposable_opt_in",
+      "pass": true
+    },
+    {
+      "name": "private_runtime_link",
+      "pass": true
+    },
+    {
+      "name": "actual_user_manager_reload",
+      "pass": true
+    },
+    {
+      "name": "loaded_fragment_is_own_file",
+      "pass": true
+    },
+    {
+      "name": "loaded_kill_mode_mixed",
+      "pass": true
+    },
+    {
+      "name": "loaded_fixture_grace_2s",
+      "pass": true
+    },
+    {
+      "name": "private_start",
+      "pass": true
+    },
+    {
+      "name": "owned_births_readable",
+      "pass": true
+    },
+    {
+      "name": "detached_updater_inherits_unit_cgroup",
+      "pass": true
+    },
+    {
+      "name": "outside_control_has_other_cgroup",
+      "pass": true
+    },
+    {
+      "name": "production_reader_native_running",
+      "pass": true
+    },
+    {
+      "name": "external_private_stop_completed",
+      "pass": true
+    },
+    {
+      "name": "stop_killed_detached_updater",
+      "pass": true
+    },
+    {
+      "name": "production_reader_native_stopped",
+      "pass": true
+    },
+    {
+      "name": "outside_control_survives_stop",
+      "pass": true
+    },
+    {
+      "name": "private_start",
+      "pass": true
+    },
+    {
+      "name": "owned_births_readable",
+      "pass": true
+    },
+    {
+      "name": "detached_updater_inherits_unit_cgroup",
+      "pass": true
+    },
+    {
+      "name": "outside_control_has_other_cgroup",
+      "pass": true
+    },
+    {
+      "name": "production_reader_native_running",
+      "pass": true
+    },
+    {
+      "name": "self_restart_killed_updater_before_return",
+      "pass": true
+    },
+    {
+      "name": "replacement_private_service_active",
+      "pass": true
+    },
+    {
+      "name": "outside_control_survives_restart",
+      "pass": true
+    },
+    {
+      "name": "private_stop_before_scope_control",
+      "pass": true
+    },
+    {
+      "name": "private_start",
+      "pass": true
+    },
+    {
+      "name": "owned_births_readable",
+      "pass": true
+    },
+    {
+      "name": "scoped_updater_has_independent_cgroup",
+      "pass": true
+    },
+    {
+      "name": "scope_is_outside_fleet_unit_subtree",
+      "pass": true
+    },
+    {
+      "name": "scope_membership_matches_owned_unit",
+      "pass": true
+    },
+    {
+      "name": "outside_control_has_other_cgroup",
+      "pass": true
+    },
+    {
+      "name": "production_reader_native_running",
+      "pass": true
+    },
+    {
+      "name": "scope_preserves_literal_positional_argv",
+      "pass": true
+    },
+    {
+      "name": "scope_preserves_environment",
+      "pass": true
+    },
+    {
+      "name": "scope_preserves_working_directory",
+      "pass": true
+    },
+    {
+      "name": "scoped_self_restart_returns_success",
+      "pass": true
+    },
+    {
+      "name": "scoped_updater_survives_own_restart",
+      "pass": true
+    },
+    {
+      "name": "scope_replacement_private_service_active",
+      "pass": true
+    },
+    {
+      "name": "outside_control_survives_scope_restart",
+      "pass": true
+    }
+  ],
+  "stop_elapsed_ms": 2157,
+  "launch_sha256": "27542ee9f78e540182676d30b2d85fe4ef4960ae9905aea61747c5d39cda81a9",
+  "fixture_grace_seconds": 2,
+  "production_grace_claim": "Mechanism only; no claim about 300s production timing",
+  "reader_sha256": "4b65813b8e0cddce0e43ee218468b6816a8a16845e89ddb9f8b6c6e3ae1ba059",
+  "probe_sha256": "e622db3186f950ec2f95b9be4726b0162aebbeab948483b09493b9db74650a30",
+  "cleanup": {
+    "scopesStopped": true,
+    "stopped": true,
+    "disabled": true,
+    "reloaded": true
+  },
+  "source_commit": "1625e8db6a9f82dd66ca8c3fd46b18bcfa89d3e6",
+  "workflow_run": "https://github.com/songsid/AgEnD/actions/runs/37987831656"
+}

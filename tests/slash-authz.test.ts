@@ -41,6 +41,14 @@ vi.mock("../src/channel/factory.js", async () => {
   };
 });
 
+// These existing channel/auth fixtures model a detached fleet outside a service cgroup.
+// Native service launch selection is exercised separately in update-launch-1490.test.ts.
+vi.mock("../src/update-launch.js", async importOriginal => {
+  const real = await importOriginal<typeof import("../src/update-launch.js")>();
+  return { ...real, resolveUpdateLaunch: (agend: string) => real.resolveUpdateLaunch(agend,
+    { ...real.defaultUpdateLaunchDeps, platform: "linux", cgroup: async () => "0::/\n" }) };
+});
+
 import { FleetManager } from "../src/fleet-manager.js";
 import { decideSlash, type SlashFacts } from "../src/slash-authz.js";
 import { setLocale, t } from "../src/locale.js";

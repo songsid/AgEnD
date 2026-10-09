@@ -77,6 +77,8 @@ export interface FleetContext {
   isFleetAdmin(userId: string, adapterId?: string): boolean;
   /** Whether the adapter has any fleet admin at all (an empty allowlist turns the admin commands off). */
   hasFleetAdmins(adapterId?: string): boolean;
+  /** Cached shutdown admission, set synchronously by stopAll before its first await. */
+  isFleetStopping(): boolean;
   /** Telegram-only General command; owns admin/route checks and completion notice. */
   runProfileCommand?(msg: InboundMessage, seconds?: string): Promise<void>;
   /**
