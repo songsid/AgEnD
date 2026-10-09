@@ -69,6 +69,8 @@ export function refreshLaunchdWithoutActivating(
   o: { label: string; target: string; plistPath: string; newPlist: string; expected: ExpectedTuple; pkgDir: string; agendHome: string },
   deps: PlanDeps,
 ): RefreshOutcome {
+  // An older plan never outlives a refresh, whatever this one comes to: removed before anything can fail.
+  deps.removeFile(planPath(o.agendHome));
   const preimage = deps.readFile(o.plistPath);
   const printed = deps.run("launchctl", ["print", o.target]);
   let loaded: ReturnType<typeof parseLaunchctlPrint> | null = null;
@@ -83,7 +85,6 @@ export function refreshLaunchdWithoutActivating(
     return { ok: false, message: `could not tell whether ${o.label} is loaded (launchctl print ${printed.signal ? `killed by ${printed.signal}` : `exited ${printed.status}`}); nothing was changed` };
   }
 
-  deps.removeFile(planPath(o.agendHome));                  // an older plan never outlives a new refresh
   deps.writeFile(o.plistPath, o.newPlist);
   const restore = (why: string): RefreshOutcome => {
     if (preimage !== null) deps.writeFile(o.plistPath, preimage);

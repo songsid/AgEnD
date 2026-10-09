@@ -78,6 +78,20 @@ describe("the refresh that must not activate (agend install --no-activate on lau
     expect(w.files[planPath(HOME)]).toBeUndefined();
   });
 
+  // #1473 review: a refresh revokes the previous plan FIRST — a refusal must not leave an older plan admissible.
+  it.each([
+    ["an uncertain launchctl print", [[/print/, { status: 5 }]]],
+    ["a print whose job cannot be read", [[/print/, { status: 0, stdout: "gui/501/com.agend.fleet = {\n\tstate = running\n}" }]]],
+    ["a loaded job that is not its plist (owner mismatch)", [[/print/, printed([RT, "/elsewhere/cli.js", "fleet", "start"], 7)]]],
+  ] as const)("a refused refresh leaves no earlier plan behind: %s", (_n, answers) => {
+    const w = world({ [PLIST]: plist(OLD_ARGS) }, [[/print/, printed(OLD_ARGS, 701)]]);
+    expect(refresh(w)).toMatchObject({ ok: true, planned: true });
+    expect(readPlan(HOME, w.deps)).not.toBeNull();
+    const again = world(w.files, answers as never);
+    expect(refresh(again, plist(NEW_ARGS))).toMatchObject({ ok: false });
+    expect(again.files[planPath(HOME)]).toBeUndefined();
+  });
+
   it.each([
     ["plutil -lint fails", [[/plutil/, { status: 1 }]], plist(NEW_ARGS), "plutil -lint"],
     ["the new plist leaves its Node to PATH", [], plist(OLD_ARGS), "as a script"],

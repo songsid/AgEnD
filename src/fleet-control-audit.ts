@@ -68,6 +68,14 @@ export function judgeFleetControl(env: NodeJS.ProcessEnv, yes: boolean): Verdict
   return { ok: true, via: yes ? "yes" : "interactive" };
 }
 
+/**
+ * May this command use `--force` (an override of a safety check, e.g. `agend restart --force`, #1450 C6)? Only an
+ * operator's own shell: never a fleet agent's session (even confirmed with --yes) nor a fleet-internal spawn (origin).
+ */
+export function forceAllowed(env: NodeJS.ProcessEnv = process.env): boolean {
+  return !(env.AGEND_INSTANCE_NAME ?? "").trim() && !(env[ORIGIN_ENV] ?? "").trim();
+}
+
 function parentPid(pid: number): number {
   try {
     // "pid (comm) S ppid ..." — comm may contain spaces and parentheses.

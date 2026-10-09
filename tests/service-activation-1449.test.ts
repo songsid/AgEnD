@@ -46,6 +46,11 @@ describe("parsers: what the managers report", () => {
       pid: 4242, state: "running",
     });
   });
+  // #1473 review: EJS writes `"` as `&#34;`; an AGEND_NODE / system path may contain one.
+  it("numeric XML character references are decoded (EJS's &#34;), hex too, and &amp; only once", () => {
+    const t = parsePlist(`<plist><dict><key>ProgramArguments</key><array><string>/opt/a&#34;b/node</string><string>/x/&#x27;q&#x27;/cli.js</string><string>a&amp;#34;b</string></array></dict></plist>`);
+    expect(t?.argv).toEqual(['/opt/a"b/node', "/x/'q'/cli.js", "a&#34;b"]);
+  });
 });
 
 describe("the activation tuple must start exactly the verified install", () => {
@@ -59,6 +64,8 @@ describe("the activation tuple must start exactly the verified install", () => {
     ["no PATH: systemd's default resolves /usr/bin/node, not the verified one", tuple(["/usr/bin/agend", "fleet", "start"], {}), false],
     ["extra arguments", tuple(["/usr/bin/agend", "fleet", "start", "--debug"]), false],
     ["NODE_OPTIONS set", tuple(["/usr/bin/agend", "fleet", "start"], { PATH: "/opt/node22/bin", NODE_OPTIONS: "--require /tmp/x.js" }), false],
+    ["NODE_EXTRA_CA_CERTS set (rendered by no template: must be absent)", tuple(["/opt/node22/bin/node", `${PKG}/dist/cli.js`, "fleet", "start"], { PATH: "/opt/node22/bin", NODE_EXTRA_CA_CERTS: "/tmp/ca.pem" }), false],
+    ["AGEND_NODE set (the launcher would pick that Node)", tuple(["/opt/node22/bin/node", `${PKG}/dist/cli.js`, "fleet", "start"], { PATH: "/opt/node22/bin", AGEND_NODE: "/opt/node20/bin/node" }), false],
     ["the explicit interpreter, but an old Node", tuple(["/opt/node20/bin/node", `${PKG}/dist/cli.js`, "fleet", "start"]), false],
     ["the explicit interpreter, but another entry", tuple(["/opt/node22/bin/node", `${PKG}/dist/agent-cli.js`, "fleet", "start"]), false],
   ])("%s → %s", (_name, t, ok) => {
@@ -75,6 +82,7 @@ describe("since the launcher (#1450): the bin is the sh launcher; a service stil
     ["the sh launcher bin itself, its PATH finding the verified Node", tuple([`${PKG}/launcher/agend`, "fleet", "start"]), true],
     ["the sh launcher bin itself, its PATH finding an old Node", tuple([`${PKG}/launcher/agend`, "fleet", "start"], { PATH: "/opt/node20/bin:/opt/node22/bin" }), false],
     ["the sh launcher bin itself, no PATH", tuple([`${PKG}/launcher/agend`, "fleet", "start"], {}), false],
+    ["the sh launcher bin itself, its PATH right but AGEND_NODE naming another Node", tuple([`${PKG}/launcher/agend`, "fleet", "start"], { PATH: "/opt/node22/bin:/usr/bin:/bin", AGEND_NODE: "/opt/node20/bin/node" }), false],
     ["a Node on the JS launcher", tuple(["/opt/node22/bin/node", `${PKG}/launcher/agend.cjs`, "fleet", "start"]), false],
   ])("%s → %s", (_name, t, ok) => {
     expect(tupleStartsVerified(t, launcherTarget, "/usr/bin:/bin", fs).ok).toBe(ok);
@@ -305,7 +313,7 @@ describe("launchd: loaded job = its plist, prove the new plist, ONE bootout+boot
 
   it("a launchctl getenv that did not complete (timed out) is uncertainty: refused, nothing touched", () => {
     const m = manager([[/getenv/, killed], [/print/, printed(OLD)]], { [plistPath]: plist(OLD) }, [plistPath, plist(NEW)]);
-    expect(activateService(job, verified, m.deps)).toMatchObject({ ok: false, stopped: false, message: expect.stringContaining("Could not read launchd") });
+    expect(activateService(job, verified, m.deps)).toMatchObject({ ok: false, stopped: false, message: expect.stringContaining("could not be read (launchctl getenv") });
     expect(m.calls).not.toContain("refresh");
     expect(m.calls.some(c => /bootout|bootstrap/.test(c))).toBe(false);
   });
@@ -316,6 +324,28 @@ describe("launchd: loaded job = its plist, prove the new plist, ONE bootout+boot
     expect(m.calls).not.toContain("refresh");
     expect(m.calls.some(c => /bootout|bootstrap/.test(c))).toBe(false);
     expect(m.files[plistPath]).toBe(plist(OLD));
+  });
+
+  // #1473 review: every refusal comes after npm replaced the package — each one puts the previous package back.
+  it.each([
+    ["launchctl getenv did not complete", [[/getenv/, killed], [/print/, printed(OLD)]]],
+    ["launchd's environment injects AGEND_NODE", [[/getenv AGEND_NODE/, { stdout: "/opt/node20/bin/node\n" }], [/getenv/, { stdout: "" }], [/print/, printed(OLD)]]],
+    ["the initial launchctl print did not complete", [[/print/, killed], [/getenv/, { stdout: "" }]]],
+    ["the loaded job is not the plist on disk (no owned preimage)", [[/print/, printed(OTHER)], [/getenv/, { stdout: "" }]]],
+  ] as Array<[string, Array<[RegExp, Partial<CommandResult>]>]>)("an early launchd refusal (%s) restores the previous package", (_n, answers) => {
+    const m = manager(answers, { [plistPath]: plist(OLD) }, [plistPath, plist(NEW)]);
+    let restored = 0;
+    m.deps.restorePackage = () => { restored++; return "The previous package (v2.1.12) is back in place"; };
+    const outcome = activateService(job, verified, m.deps);
+    expect(outcome).toMatchObject({ ok: false, stopped: false, message: expect.stringContaining("The previous package (v2.1.12) is back in place") });
+    expect(restored).toBe(1);
+    expect(m.calls.some(c => /bootout|bootstrap/.test(c))).toBe(false);
+  });
+
+  it.each(["NODE_EXTRA_CA_CERTS", "AGEND_NODE"])("launchd's own environment sets %s → refused before anything", key => {
+    const m = manager([[new RegExp(`getenv ${key}`), { stdout: "/x\n" }], [/getenv/, { stdout: "" }], [/print/, printed(OLD)]], { [plistPath]: plist(OLD) }, [plistPath, plist(NEW)]);
+    expect(activateService(job, verified, m.deps)).toMatchObject({ ok: false, stopped: false, message: expect.stringContaining(key) });
+    expect(m.calls.some(c => /bootout|bootstrap/.test(c))).toBe(false);
   });
 
   it("an initial print that exits non-zero for another reason (not 113) is uncertainty too", () => {

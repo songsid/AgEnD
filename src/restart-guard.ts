@@ -5,7 +5,8 @@
  *   - its selected interpreter, NAMED (a 2.1-format definition — a script as argv[0], its Node left to `env node` and
  *     the unit's PATH — never matches: after the hop that is the old Node running the new package);
  *   - this package's canonical entry, then exactly `fleet start`;
- *   - no interpreter-affecting environment, and the bundled runtime's directory on no PATH;
+ *   - no interpreter-affecting environment (INTERPRETER_ENV, AGEND_NODE included: with it the launcher would pick another
+ *     Node) in the definition or, on launchd, in launchd's own environment; the bundled runtime's directory on no PATH;
  *   - and the loaded definition is the file on disk (no reload pending).
  * Otherwise the restart refuses, signalling and stopping nothing. `--force` is for operators; an updater never uses it.
  * (Path 2, launchd's planned activation of a proven new plist, is the update flow's — not this module.)
@@ -14,7 +15,7 @@ import { dirname, join } from "node:path";
 import { createRequire } from "node:module";
 import { canonicalCliEntry } from "./cli-entry.js";
 import {
-  INTERPRETER_ENV, parseLaunchctlPrint, parsePlist, readLoadedUnit, sameJob,
+  INTERPRETER_ENV, launchdManagerEnvViolation, parseLaunchctlPrint, parsePlist, readLoadedUnit, sameJob,
   type ActivationTuple, type TupleDeps,
 } from "./service-activation.js";
 import type { CommandResult } from "./update-install.js";
@@ -106,6 +107,8 @@ export function guardLaunchd(
   run: (command: string, args: string[]) => CommandResult, target: string, plistPath: string, readFile: (path: string) => string | null,
   expected: ExpectedTuple, deps: Pick<TupleDeps, "realpath" | "isExecutable">,
 ): Judgement {
+  const managerEnv = launchdManagerEnvViolation(run);
+  if (managerEnv) return { ok: false, reason: managerEnv };
   const printed = run("launchctl", ["print", target]);
   if (printed.status !== 0 || printed.signal !== null) return { ok: false, reason: `launchctl print ${target} did not complete` };
   const loaded = parseLaunchctlPrint(printed.stdout).tuple;

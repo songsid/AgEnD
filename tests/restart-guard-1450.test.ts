@@ -77,7 +77,7 @@ describe("guardSystemd: what systemd has LOADED (drop-ins included), and no relo
 
 describe("guardLaunchd: the loaded job, and the plist on disk, both", () => {
   const plist = (args: string[]) => `<plist><dict><key>ProgramArguments</key><array>${args.map(a => `<string>${a}</string>`).join("")}</array><key>EnvironmentVariables</key><dict><key>PATH</key><string>/usr/bin:/bin</string></dict></dict></plist>`;
-  const printed = (args: string[]) => (command: string, argv: string[]): CommandResult => ({
+  const printed = (args: string[], managerEnv: Record<string, string> = {}) => (command: string, argv: string[]): CommandResult => command === "launchctl" && argv[0] === "getenv" ? { status: 0, signal: null, stderr: "", stdout: managerEnv[argv[1]!] ?? "" } : ({
     status: command === "launchctl" && argv[0] === "print" ? 0 : 1, signal: null, stderr: "",
     stdout: [`gui/501/com.agend.fleet = {`, `\tprogram = ${args[0]}`, "\targuments = {", ...args.map(a => `\t\t${a}`), "\t}", "\tenvironment = {", "\t\tPATH => /usr/bin:/bin", "\t}", "\tstate = running", "\tpid = 777", "}"].join("\n"),
   });
@@ -94,6 +94,15 @@ describe("guardLaunchd: the loaded job, and the plist on disk, both", () => {
     const old = [`${PKG}/dist/cli.js`, "fleet", "start"];
     expect(guardLaunchd(printed(old), "gui/501/com.agend.fleet", "/p.plist", () => plist(old), expected, deps))
       .toMatchObject({ ok: false, reason: expect.stringContaining("as a script") });
+  });
+  // #1473 review: an UNCHANGED loaded job still inherits launchd's own environment — read fresh at restart.
+  it.each(["NODE_OPTIONS", "NODE_PATH", "NODE_EXTRA_CA_CERTS", "AGEND_NODE"])("launchd's own environment sets %s → refused", key => {
+    expect(guardLaunchd(printed(want, { [key]: "/x" }), "gui/501/com.agend.fleet", "/p.plist", () => plist(want), expected, deps))
+      .toMatchObject({ ok: false, reason: expect.stringContaining(key) });
+  });
+  it("a launchctl getenv that does not complete → refused (uncertainty, never \"unset\")", () => {
+    const run = (command: string, argv: string[]): CommandResult => argv[0] === "getenv" ? { status: null, signal: "SIGTERM", stdout: "", stderr: "" } : printed(want)(command, argv);
+    expect(guardLaunchd(run, "gui/501/com.agend.fleet", "/p.plist", () => plist(want), expected, deps)).toMatchObject({ ok: false, reason: expect.stringContaining("could not be read") });
   });
   it("launchctl print that does not complete → refused", () => {
     expect(guardLaunchd(() => ({ status: null, signal: "SIGTERM", stdout: "", stderr: "" }), "gui/501/com.agend.fleet", "/p.plist", () => plist(want), expected, deps)).toMatchObject({ ok: false });
@@ -127,6 +136,9 @@ describe("#1450: a system Node (no bundled runtime) — the definition starts th
     ["the launcher with no PATH", tuple([LAUNCHER, "fleet", "start"], {}), "finds no node"],
     ["the system Node named (breaks when nvm removes its directory)", tuple(["/opt/node22/bin/node", `${PKG}/dist/cli.js`, "fleet", "start"]), "starts the launcher"],
     ["the launcher with an extra argument", tuple([LAUNCHER, "fleet", "start", "x"], { PATH: "/opt/node22/bin" }), "its arguments"],
+    // #1473 review: the launcher's own override decides before PATH does — an AGEND_NODE would pick another Node.
+    ["the launcher, its PATH right but AGEND_NODE naming an old Node", tuple([LAUNCHER, "fleet", "start"], { PATH: "/opt/node22/bin:/usr/bin", AGEND_NODE: "/opt/node20/bin/node" }), "AGEND_NODE"],
+    ["the launcher with NODE_EXTRA_CA_CERTS", tuple([LAUNCHER, "fleet", "start"], { PATH: "/opt/node22/bin:/usr/bin", NODE_EXTRA_CA_CERTS: "/tmp/ca.pem" }), "NODE_EXTRA_CA_CERTS"],
   ])("%s", (_n, t, refusal) => {
     const judged = judgeTuple(t, sys, fs2);
     if (refusal === null) expect(judged).toEqual({ ok: true });

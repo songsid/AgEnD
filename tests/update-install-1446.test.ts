@@ -15,7 +15,7 @@ import { dirname, join } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { systemdRestartOutcome } from "../src/service-installer.js";
 import {
-  isLocalLinkTarget, NATIVE_CHECK_SCRIPT, newAgendInvocation, runUpdateInstall,
+  isLocalLinkTarget, NATIVE_CHECK_SCRIPT, newAgendInvocation, retireSystemCopy, runUpdateInstall,
   type CommandRunner, type UpdateInstallPlan,
 } from "../src/update-install.js";
 
@@ -375,13 +375,17 @@ describe("item 1: an nvm install runs every step inside nvm's Node 22 — nvm.sh
     return { w, nvmSh: join(nvmDir, "nvm.sh"), nvmPrefix };
   }
 
-  it("installs, verifies with nvm's node, and removes the old system copy last", () => {
+  it("installs and verifies with nvm's node; the old system copy is NOT removed until the activation settles", () => {
     const { w, nvmSh, nvmPrefix } = nvmWorld();
     const outcome = runUpdateInstall({ pkg: fixturePackage(w.root, "v220", "2.2.0"), targetVersion: "2.2.0", viaNvm: true, nvmSh }, w.runner);
-    expect(outcome).toMatchObject({ ok: true, agendPath: join(nvmPrefix, "bin", "agend"), version: "2.2.0" });
+    expect(outcome).toMatchObject({ ok: true, agendPath: join(nvmPrefix, "bin", "agend"), version: "2.2.0", retireSystemCopy: true });
     const calls = w.callLog();
     expect(calls).toContain("nvm-node");                                     // the checks ran on nvm's node
-    expect(calls.at(-1)).toBe("sudo -n npm uninstall -g @songsid/agend");
+    // #1473 review: the old system copy is what the current service still runs — an activation that fails later
+    // must find it in place. The caller retires it once the fleet runs the new install.
+    expect(calls.some(line => /uninstall/.test(line))).toBe(false);
+    retireSystemCopy(w.runner);
+    expect(w.callLog().at(-1)).toBe("sudo -n npm uninstall -g @songsid/agend");
     expect(existsSync(join(w.root, "pwned")), "the path was data, not shell").toBe(false);
   });
 

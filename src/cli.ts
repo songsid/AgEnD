@@ -49,7 +49,7 @@ import {
   processStartMs,
 } from "./update-check.js";
 import { clearUpdateMarker, markUpdateInProgress, setUpdateProgressStage } from "./update-marker.js";
-import { describeSignalSource, gateFleetControl, recordInstanceControl, withOrigin } from "./fleet-control-audit.js";
+import { describeSignalSource, forceAllowed, gateFleetControl, recordInstanceControl, withOrigin } from "./fleet-control-audit.js";
 import { acquireFleetLock, isFleetStartCommandLine, readProcessCommandLine, releaseProcessFleetLock, setProcessFleetLock } from "./fleet-lock.js";
 import { limitFleetCoreDumps } from "./coredump-filter.js";
 import { SYSTEMD_RESTART_TIMEOUT_MS } from "./service-installer.js";
@@ -1452,8 +1452,8 @@ program
      * verified package, then restart through the verified binary — never through whatever invoked this command
      * (process.argv[1] may be another checkout). A failed target check leaves the running fleet alone.
      */
-    const activateVerified = async (verified: { agendPath: string; version: string; dir: string; bin: string; entry: string; node: string; rollback?: { root: string; prefix: string; preimage: import("./package-preimage.js").PackagePreimage | null } }, viaNvm: boolean): Promise<void> => {
-      const { newAgendInvocation } = await import("./update-install.js");
+    const activateVerified = async (verified: { agendPath: string; version: string; dir: string; bin: string; entry: string; node: string; rollback?: { root: string; prefix: string; preimage: import("./package-preimage.js").PackagePreimage | null }; retireSystemCopy?: true }, viaNvm: boolean): Promise<void> => {
+      const { newAgendInvocation, retireSystemCopy } = await import("./update-install.js");
       const { activateService } = await import("./service-activation.js");
       const { getServicePath, getSystemServicePath, detectPlatform } = await import("./service-installer.js");
       const { accessSync, constants } = await import("node:fs");
@@ -1500,6 +1500,15 @@ program
       });
       // Settled: after a success only this transition's preimage is kept (for a repair); a failure consumed it.
       if (outcome.ok && rollback) prunePreimages(rollback.prefix, rollback.preimage);
+      // nvm transition: the old system copy is what the previous service ran. Only once the fleet runs the new install
+      // (activation ok, restart not failed) is it removed; on any failure it stays, so the old unit still starts.
+      if (verified.retireSystemCopy) {
+        if (outcome.ok && process.exitCode !== 1) {
+          retireSystemCopy({ run: (command, args) => capture(command, args), log: message => console.log(message) });
+        } else {
+          console.log("  Note: the old system install was kept, since the new one is not running yet.");
+        }
+      }
       // The refresh above (`install --no-activate`) records a launchd plan; this activation consumed it, whatever it
       // came to — never leave one for a later `agend restart` to act on.
       if (manager.kind === "launchd") {
@@ -1708,7 +1717,9 @@ program
     // #1450 C6: on launchd, writing a new plist without activating is a PLANNED activation — proven, recorded, and
     // left for `agend restart` (a reload there would itself start the job). See service-plan.ts.
     if (opts.activate === false && detectPlatform() === "macos") {
-      const { refreshLaunchdWithoutActivating } = await import("./service-plan.js");
+      const { refreshLaunchdWithoutActivating, planPath } = await import("./service-plan.js");
+      // A refresh revokes any earlier plan first, whatever it comes to (a failed refresh leaves nothing to activate).
+      planDeps().removeFile(planPath(DATA_DIR));
       const { expectedTuple } = await import("./restart-guard.js");
       const expectation = expectedTuple();
       if (!expectation.ok) { console.error(`  ✗ ${expectation.reason}`); process.exitCode = 1; return; }
@@ -1868,6 +1879,11 @@ program
   .option("-y, --yes", "Confirm when run from a fleet agent session (this affects every instance)")
   .option("--force", "Restart even when the loaded service does not start this install on its selected Node (operators only)")
   .action(async (opts: { yes?: boolean; force?: boolean }) => {
+    // --force overrides the C6 guard: an operator's own decision, never a fleet agent's or a fleet-internal spawn's.
+    if (opts.force && !forceAllowed()) {
+      console.error("  ✗ Not restarting: --force is for an operator's own shell, not a fleet agent session or the fleet's own commands. Nothing was stopped.");
+      process.exit(1);
+    }
     if (!gateFleetControl(DATA_DIR, "restart", { yes: opts.yes })) process.exit(1);
     // #1450 C6: what the restarted fleet must run, by this package's own selection (C2) — decided before anything stops.
     const guard = await import("./restart-guard.js");

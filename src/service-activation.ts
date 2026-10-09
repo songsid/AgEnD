@@ -38,8 +38,27 @@ export interface TupleDeps {
   isExecutable(path: string): boolean;
 }
 
-/** Environment that changes what Node runs or loads: never accepted in a service definition AgEnD activates. */
-export const INTERPRETER_ENV = ["NODE_OPTIONS", "NODE_PATH"];
+/**
+ * Environment that changes which Node runs or what it loads: never accepted in a service definition AgEnD activates,
+ * nor in the service manager's own environment (design C6: absent, as `agend install` renders none of them).
+ * AGEND_NODE: the launcher's override — with it set, the launcher a definition starts would pick another Node.
+ */
+export const INTERPRETER_ENV = ["NODE_OPTIONS", "NODE_PATH", "NODE_EXTRA_CA_CERTS", "AGEND_NODE"];
+
+/**
+ * launchd's own environment (`launchctl getenv`), which every job inherits: each interpreter variable must be read to
+ * completion and be unset. A failed or timed-out read is uncertainty, never "unset".
+ */
+export function launchdManagerEnvViolation(run: (command: string, args: string[]) => CommandResult): string | null {
+  for (const key of INTERPRETER_ENV) {
+    const value = run("launchctl", ["getenv", key]);
+    if (value.status === null || value.signal !== null || value.status !== 0) {
+      return `launchd's ${key} could not be read (launchctl getenv ${value.signal ? `killed by ${value.signal}` : `exited ${value.status}`})`;
+    }
+    if (value.stdout.trim() !== "") return `launchd's environment sets ${key} for every job, which changes how Node runs (launchctl unsetenv ${key})`;
+  }
+  return null;
+}
 
 /** systemd's PATH when a unit sets none (systemd.exec, "Environment variables in spawned processes"). */
 export const SYSTEMD_DEFAULT_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
@@ -112,7 +131,14 @@ export function readLoadedUnit(run: (command: string, args: string[]) => Command
   return { ok: true, unit: { tuple: { program: exec[0][0] as string, argv: argv as string[], env }, needDaemonReload: need } };
 }
 
-const xmlUnescape = (text: string) => text.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, "\"").replace(/&apos;/g, "'").replace(/&amp;/g, "&");
+/** XML character data → text: the five named entities and numeric references (EJS writes `"` as `&#34;`), in one pass. */
+const xmlUnescape = (text: string) => text.replace(/&(?:#(\d+)|#x([0-9a-fA-F]+)|(lt|gt|quot|apos|amp));/g, (whole, dec?: string, hex?: string, name?: string) => {
+  if (dec !== undefined || hex !== undefined) {
+    const code = dec !== undefined ? Number.parseInt(dec, 10) : Number.parseInt(hex!, 16);
+    return code <= 0x10ffff ? String.fromCodePoint(code) : whole;
+  }
+  return ({ lt: "<", gt: ">", quot: "\"", apos: "'", amp: "&" } as Record<string, string>)[name!]!;
+});
 
 /** A launchd plist on disk → the tuple it would run (ProgramArguments; EnvironmentVariables). */
 export function parsePlist(xml: string): ActivationTuple | null {
@@ -302,15 +328,10 @@ export function activateService(manager: ServiceManager, verified: VerifiedTarge
   const target = `${manager.domain}/${manager.label}`;
   // Every read must COMPLETE (#1449 r5): a timed-out or failed query is uncertainty, never "unset" or "not loaded".
   const completed = (r: CommandResult) => r.status !== null && r.signal === null;
-  for (const key of ["NODE_OPTIONS", "NODE_PATH"]) {
-    const value = deps.run("launchctl", ["getenv", key]);
-    if (!completed(value) || value.status !== 0) {
-      return { ok: false, stopped: false, message: `  ✗ Could not read launchd's ${key} (launchctl getenv ${value.signal ? `killed by ${value.signal}` : `exited ${value.status}`}). Not activating; nothing was changed.` };
-    }
-    if (value.stdout.trim() !== "") {
-      return { ok: false, stopped: false, message: `  ✗ launchd's environment sets ${key} for every job, which changes how Node runs. Not activating; unset it (launchctl unsetenv ${key}).` };
-    }
-  }
+  // Every refusal below comes after npm replaced the package: each one puts the previous package back (C6).
+  const packageBack = () => (deps.restorePackage ? ` ${deps.restorePackage()}.` : "");
+  const managerEnv = launchdManagerEnvViolation(deps.run);
+  if (managerEnv) return { ok: false, stopped: false, message: `  ✗ ${managerEnv}. Not activating; the service was not changed.${packageBack()}` };
   const preimage = deps.launchdPreimage ?? deps.readFile(manager.plistPath);
   const preimageTuple = preimage !== null ? parsePlist(preimage) : null;
   // The loaded job, or a CONFIRMED absence: launchctl print exits 113 ("Could not find service") for a job that is not
@@ -320,13 +341,13 @@ export function activateService(manager: ServiceManager, verified: VerifiedTarge
   if (completed(before) && before.status === 0) {
     loadedBefore = parseLaunchctlPrint(before.stdout);
     if (!loadedBefore.tuple) {
-      return { ok: false, stopped: false, message: `  ✗ launchctl print of ${manager.label} could not be read. Not activating; nothing was changed.` };
+      return { ok: false, stopped: false, message: `  ✗ launchctl print of ${manager.label} could not be read. Not activating; the service was not changed.${packageBack()}` };
     }
   } else if (!(completed(before) && before.status === 113)) {
-    return { ok: false, stopped: false, message: `  ✗ Could not tell whether ${manager.label} is loaded (launchctl print ${before.signal ? `killed by ${before.signal}` : `exited ${before.status}`}). Not activating; nothing was changed.` };
+    return { ok: false, stopped: false, message: `  ✗ Could not tell whether ${manager.label} is loaded (launchctl print ${before.signal ? `killed by ${before.signal}` : `exited ${before.status}`}). Not activating; the service was not changed.${packageBack()}` };
   }
   if (loadedBefore && (!loadedBefore.tuple || !preimageTuple || !sameJob(loadedBefore.tuple, preimageTuple))) {
-    return { ok: false, stopped: false, message: `  ✗ The job launchd has loaded for ${manager.label} is not the one ${manager.plistPath} describes, so there is no job to roll back to safely. Not activating; reload it (agend install, agend restart) first.` };
+    return { ok: false, stopped: false, message: `  ✗ The job launchd has loaded for ${manager.label} is not the one ${manager.plistPath} describes, so there is no job to roll back to safely. Not activating; reload it (agend install, agend restart) first.${packageBack()}` };
   }
   if (deps.launchdPreimage === undefined) {
     const refreshed = deps.refresh();
@@ -335,7 +356,6 @@ export function activateService(manager: ServiceManager, verified: VerifiedTarge
   const onDisk = deps.readFile(manager.plistPath);
   const diskTuple = onDisk ? parsePlist(onDisk) : null;
   const diskMatch = diskTuple ? tupleStartsVerified(diskTuple, verified, LAUNCHD_DEFAULT_PATH, deps) : { ok: false as const, reason: "the plist cannot be read" };
-  const packageBack = () => (deps.restorePackage ? ` ${deps.restorePackage()}.` : "");
   if (!diskMatch.ok) {
     if (preimage !== null && onDisk !== preimage) deps.writeFile(manager.plistPath, preimage);
     return { ok: false, stopped: false, message: `  ✗ ${manager.plistPath} does not start the verified install: ${diskMatch.reason}. Restored the previous plist; not restarting the fleet.${packageBack()}` };

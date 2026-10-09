@@ -53,7 +53,7 @@ export interface UpdateInstallPlan {
 }
 
 export type UpdateInstallOutcome =
-  | { ok: true; agendPath: string; version: string; dir: string; bin: string; entry: string; node: string; rollback?: { root: string; prefix: string; preimage: PackagePreimage | null } }
+  | { ok: true; agendPath: string; version: string; dir: string; bin: string; entry: string; node: string; rollback?: { root: string; prefix: string; preimage: PackagePreimage | null }; /** nvm transition: retire the old system copy once activation settles. */ retireSystemCopy?: true }
   | { ok: false; stage: "lock" | "install" | "verify"; message: string };
 
 /**
@@ -264,12 +264,17 @@ export function runUpdateInstall(plan: UpdateInstallPlan, runner: CommandRunner)
     };
   }
   if (rollback) Object.assign(verified, { rollback });
-
-  // Only now is the new install proven: clean up the old system copy an nvm install leaves behind. Best effort, and
-  // never waits for a password.
-  if (plan.viaNvm) {
-    runner.log("  Note: removing old system install (may require sudo)...");
-    runner.run("sudo", ["-n", "npm", "uninstall", "-g", "@songsid/agend"], { inherit: true, timeoutMs: 10_000 });
-  }
+  // The old system copy an nvm install leaves behind is what the current service still runs: it is removed only once
+  // the activation has settled on the new install (retireSystemCopy, called by the caller), never here.
+  if (plan.viaNvm) Object.assign(verified, { retireSystemCopy: true });
   return verified;
+}
+
+/**
+ * After an nvm transition's activation SETTLED (the fleet runs the new install): remove the old system copy. Best
+ * effort, and never waits for a password. Before that point the old copy is the rollback for the old service.
+ */
+export function retireSystemCopy(runner: CommandRunner): void {
+  runner.log("  Note: removing old system install (may require sudo)...");
+  runner.run("sudo", ["-n", "npm", "uninstall", "-g", "@songsid/agend"], { inherit: true, timeoutMs: 10_000 });
 }

@@ -345,6 +345,22 @@ describe("the service-level commands, behind inert stubs", () => {
     expect(calls()).toContain("systemctl");
   });
 
+  // #1473 review: --force overrides the C6 restart guard — an operator's own decision only.
+  it.each([
+    ["a fleet agent's session, even confirmed with --yes", "agend-leader", {}],
+    ["a fleet-internal spawn (origin marker)", null, { AGEND_RESTART_ORIGIN: "agend-update" }],
+  ] as const)("`agend restart --force` from %s is refused before anything", async (_n, instance, extra) => {
+    const result = await run(["restart", "--yes", "--force"], instance, extra);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("--force is for an operator's own shell");
+    expect(calls()).toBe("");
+  });
+  it("control: an operator's own `agend restart --force` goes ahead (reaches the stubbed manager)", async () => {
+    const result = await run(["restart", "--force"], null);
+    expect(result.stderr).not.toContain("--force is for an operator");
+    expect(calls()).not.toBe("");
+  });
+
   it("control: with --yes `update` does reach the (stubbed) npm", async () => {
     await run(["update", "--yes"], "agend-leader");
     expect(calls()).toContain("npm install");
