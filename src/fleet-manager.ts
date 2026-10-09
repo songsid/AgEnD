@@ -6,6 +6,7 @@ import { SettingsExecution, settingsRevision, noteSettingsWrite, settingsFileRes
 import { performance } from "node:perf_hooks";
 import { gatewayRequestContext } from "./web-request-context.js";
 import { createPublicWebGateway } from "./public-web-gateway.js";
+import { renderPublicLinkProgress, ThrottledMessageEditor, type PublicLinkProgress } from "./public-link-progress.js";
 import { PublicWebLink, publicLinkSettings } from "./public-web-link.js";
 import { TunnelPurposeLane } from "./tunnel/purpose-lane.js";
 import { ManagedTunnel } from "./tunnel/manager.js";
@@ -4956,13 +4957,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (result?.confirmed === false) data.ack?.(t("dashboard.public_cleanup"));
       await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, t("dashboard.public_closed"), data.editClicked); return true;
     }
-    // The click is claimed and its buttons are spent: say so on the menu now. A public link can take a while to start
-    // (the first one installs cloudflared), and until the outcome lands the menu would otherwise look untouched.
+    // The click is claimed and its buttons are spent: say so on the menu now. A public link follows each of its steps
+    // there (the first one installs cloudflared, which can take a minute): on Discord through the interaction, on
+    // Telegram by editing the menu message itself. Only static words and numbers — the menu may be in General.
     const progressEdit = data.editClicked ?? entry.retire;
-    const progress = progressEdit
-      ? progressEdit(t(action === "public" ? "dashboard.public_starting" : "dashboard.private_sending"))
-        .catch(err => this.logger.debug({ err }, "Could not show the dashboard menu's progress"))
+    const progress = progressEdit && action !== "public"
+      ? progressEdit(t("dashboard.private_sending")).catch(err => this.logger.debug({ err }, "Could not show the dashboard menu's progress"))
       : Promise.resolve();
+    const stepsEdit = progressEdit ?? (entry.messageId && entry.adapter.editMessageRemoveButtons
+      ? (text: string) => entry.adapter.editMessageRemoveButtons!(entry.chatId, entry.messageId!, text, entry.threadId) : undefined);
+    const steps = action === "public" && stepsEdit ? new ThrottledMessageEditor({
+      edit: stepsEdit, now: () => performance.now(), heartbeatMs: 5_000,
+      // Telegram counts edits against a group's ~20 messages a minute.
+      minIntervalMs: (owner.binding as ChannelAdapter).type === "telegram" ? 3_000 : 2_000,
+      onError: err => this.logger.debug({ err }, "Could not show the public link's progress"),
+    }) : null;
+    let lastSteps: PublicLinkProgress | undefined;
     let deliveredByDm = false;
     const send = async (url: string, exposureId?: string, expiresAt?: number, current: () => boolean = () => this.publicOwnerCurrent(owner)): Promise<boolean> => {
       const token = this.webToken;
@@ -5000,14 +5010,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         return false;
       }
     };
-    const ok = action === "public"
-      ? await this.getPublicWebLink().deliver(owner, link => send(link.url, link.exposureId, link.expiresAt, link.isCurrent))
-      : await send(`http://${this.fleetConfig?.hostname || "localhost"}:${this.fleetConfig?.health_port ?? 19280}/signin`);
+    let ok = false;
+    try {
+      ok = action === "public"
+        ? await this.getPublicWebLink().deliver(owner, link => send(link.url, link.exposureId, link.expiresAt, link.isCurrent), p => {
+          lastSteps = p;
+          steps?.update(() => renderPublicLinkProgress(p, performance.now()));
+        })
+        : await send(`http://${this.fleetConfig?.hostname || "localhost"}:${this.fleetConfig?.health_port ?? 19280}/signin`);
+    } catch (err) {
+      // Still closes the step editor below and tells the clicker: a throw must not leave the menu refreshing.
+      this.logger.warn({ err }, "Dashboard sign-in delivery failed");
+    }
     // Only safe, static words enter General; never link, code or platform error text.
-    const outcome = !ok ? "dashboard.private_failed"
-      : (owner.binding as ChannelAdapter).type !== "discord" ? "dashboard.private_sent" : deliveredByDm ? "dashboard.private_sent_dm" : "dashboard.private_sent_here";
+    const outcome = t(!ok ? "dashboard.private_failed"
+      : (owner.binding as ChannelAdapter).type !== "discord" ? "dashboard.private_sent" : deliveredByDm ? "dashboard.private_sent_dm" : "dashboard.private_sent_here");
     await progress;
-    await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, t(outcome), data.editClicked);
+    await steps?.close(); // the last step edit has landed: the outcome cannot be overwritten by it
+    await this.retireNonceButtons(entry, entry.messageId ?? data.messageId,
+      lastSteps ? renderPublicLinkProgress(lastSteps, performance.now(), outcome) : outcome, data.editClicked);
     return true;
   }
 
