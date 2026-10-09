@@ -46,7 +46,7 @@ function seedCache(backend: string, models: Array<{ id: string; label: string }>
 function setup(backend = "codex") {
   const fm = new FleetManager(dataDir);
   // "admin" is a fleet admin of the telegram adapter: a menu click re-checks it (#754 audit).
-  fm.fleetConfig = { channel: { type: "telegram", group_id: "chat", access: { mode: "locked", allowed_users: ["admin"] } }, defaults: {}, instances: { worker: { working_directory: "/tmp", backend } } } as any;
+  fm.fleetConfig = { channel: { type: "telegram", group_id: "chat", access: { mode: "locked", allowed_users: ["admin"] } }, defaults: {}, instances: { worker: { working_directory: "/tmp", backend, topic_id: "chan" } } } as any;
   const promptUser = vi.fn().mockResolvedValue("menu-1");
   const sendText = vi.fn().mockResolvedValue({ messageId: "m1" });
   const editMessageRemoveButtons = vi.fn().mockResolvedValue(undefined);
