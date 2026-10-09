@@ -251,7 +251,9 @@ export class TmuxControlClient extends EventEmitter implements TmuxReadPort {
       this.resolveFailures.delete(windowId);
       if (paneId) {
         this.paneToWindow.set(paneId, windowId);
-        this.mappedAt.set(paneId, this.mono());
+        // Only once observations have been reset (a connect or reconnect): before that there is nothing a mapping
+        // could have been missing, and a never-connected client keeps the old optimistic answer.
+        if (this.observationResetAt > 0) this.mappedAt.set(paneId, this.mono());
         this.logger?.debug({ windowId, paneId }, "Registered window→pane mapping");
       }
     } catch (error) {
