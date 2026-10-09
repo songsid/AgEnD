@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
-# #1450 runtime acceptance, the 2.1.12 → 2.2 hop on Node 20 (docs/design/1450-private-node-runtime.md):
+# #1450 runtime acceptance, the 2.1.12 → 2.2 hop on an old system Node — 20, 18 or 16 (docs/design/1450-private-node-runtime.md):
 #   leg 1: the REAL published 2.1.12 runs `agend update --version <candidate>` (its writable-prefix branch: unlink,
 #          npm install -g, verify, install --no-activate, completion refresh, restart) against the local registry;
 #   leg 2: a plain `npm install -g @songsid/agend@<candidate>` over 2.1.12.
+# On Node 16, 2.1.12 installs but cannot start (its CLI needs Node >= 18), so leg 1 cannot exist there: only leg 2 runs,
+# which is also how such a host gets a working AgEnD back.
 # After each: the candidate is installed and runs on its bundled Node (check_installed). A fail-fast boundary:
 #   - systemctl, launchctl and sudo are stubs that log and fail, so nothing reaches a real service manager by name;
 #   - every Node process preloads boundary.cjs: a fleet start in any form (node entry, `agend`, the launcher, a shell
 #     string, the process itself) or a service manager by absolute path fails at once and is logged;
 # and each leg GATES on it: an empty boundary log, no stub call that would activate anything, and the updater's
 # expected exit.
-# Usage: hop.sh <packages dir>   (after registry.sh; system Node 20.19 on PATH)
+# Usage: hop.sh <packages dir>   (after registry.sh; system Node 16, 18 or 20 on PATH)
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PKGS="${1:?packages dir}"
@@ -19,7 +21,7 @@ SYS_NODE="$(command -v node)"; SYS_NODE_VERSION="$(node --version)"
 OLD=2.1.12
 # shellcheck source=checks.sh
 . "$HERE/checks.sh"
-case "$SYS_NODE_VERSION" in v20.*) ;; *) fail "the hop runs on Node 20 (got $SYS_NODE_VERSION)" ;; esac
+case "$SYS_NODE_VERSION" in v18.*|v20.*) OLD_STARTS=1 ;; v16.*) OLD_STARTS=0 ;; *) fail "the hop runs on an old Node: 16, 18 or 20 (got $SYS_NODE_VERSION)" ;; esac
 
 # A fresh, isolated world for one leg: prefix, HOME, AGEND_HOME, npm cache/config, guarded service managers.
 fresh() {
@@ -47,7 +49,8 @@ STUB
   export NODE_OPTIONS="--require=$HERE/boundary.cjs"
   step "[$1] npm install -g @songsid/agend@$OLD (npmjs) on Node $SYS_NODE_VERSION, npm $(npm --version)"
   npm install -g --no-audit --no-fund --registry https://registry.npmjs.org/ "@songsid/agend@$OLD"
-  [ "$(agend --version)" = "$OLD" ] || fail "agend $OLD did not install"
+  [ -f "$PREFIX/lib/node_modules/@songsid/agend/package.json" ] && [ "$(node -p 'require(process.argv[1]).version' "$PREFIX/lib/node_modules/@songsid/agend/package.json")" = "$OLD" ] || fail "agend $OLD did not install"
+  if [ "$OLD_STARTS" = 1 ]; then [ "$(agend --version)" = "$OLD" ] || fail "agend $OLD does not start"; fi
   [ "$(command -v agend)" = "$PREFIX/bin/agend" ] || fail "agend resolves to $(command -v agend)"
 }
 ORIG_PATH="$PATH"
@@ -64,6 +67,7 @@ check_boundary() {
   fi
 }
 
+if [ "$OLD_STARTS" = 1 ]; then
 fresh old-updater
 step "[old-updater] agend $OLD: agend update --version $CAND --yes"
 set +e
@@ -77,6 +81,9 @@ grep -q "Installed: $CAND" "$WORK/update.out" || fail "the old updater did not r
 echo "  the old updater exited 1 after installing $CAND, as expected (no fleet or service to restart)"
 check_boundary old-updater
 check_installed
+else
+  step "[old-updater] skipped: agend $OLD cannot start on Node $SYS_NODE_VERSION, so it has no updater to run"
+fi
 
 fresh npm-install
 step "[npm-install] npm install -g @songsid/agend@$CAND over $OLD"
