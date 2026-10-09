@@ -14,13 +14,19 @@ export interface UpdateLaunchDeps {
 
 export const defaultUpdateLaunchDeps: UpdateLaunchDeps = {
   platform: process.platform,
-  cgroup: () => readFile("/proc/self/cgroup", { encoding: "utf8", signal: AbortSignal.timeout(2000) }),
+  cgroup: async () => {
+    const started = performance.now();
+    const result = await readFile("/proc/self/cgroup", { encoding: "utf8", signal: AbortSignal.timeout(2000) });
+    if (performance.now() - started >= 2000) throw Error("cgroup read deadline");
+    return result;
+  },
   version: async () => {
+    const started = performance.now();
     try {
       const { stdout } = await promisify(execFile)("systemd-run", ["--version"], {
         encoding: "utf8", timeout: 2000, maxBuffer: 64 * 1024,
       });
-      return stdout;
+      return performance.now() - started < 2000 ? stdout : null;
     } catch { return null; }
   },
   nonce: () => randomBytes(16).toString("hex"),
@@ -53,7 +59,8 @@ export async function resolveUpdateLaunch(agend: string, deps: UpdateLaunchDeps 
   const service = inServiceCgroup(before);
   if (service === null) return { ok: false, reason: "cannot identify the fleet's service cgroup" };
   if (!service) return { ok: true, ...plain };
-  const version = await deps.version();
+  let version: string | null;
+  try { version = await deps.version(); } catch { version = null; }
   const major = /^systemd (\d+)\b/.exec(version ?? "")?.[1];
   if (!major || Number(major) < 240) return { ok: false, reason: "cannot verify a supported systemd-run for an independent updater scope" };
   // v254 introduced --expand-environment. Older scope implementations pass argv literally.

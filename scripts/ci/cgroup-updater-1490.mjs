@@ -67,12 +67,13 @@ const child=spawn(command,args,{detached:true,stdio:'ignore',env:{...process.env
 const state={pid:process.pid,updater:child.pid,scope};writeFileSync(dir+'/main.json',JSON.stringify(state));writeFileSync(dir+'/parent-'+process.pid+'.json',JSON.stringify(state));setInterval(()=>{},10000);
 `, { mode: 0o600 });
     const line = ["/usr/bin/env", "-i", `HOME=${join(root, "home")}`, "PATH=/usr/bin:/bin", `XDG_RUNTIME_DIR=${process.env.XDG_RUNTIME_DIR}`, "LANG=C", process.execPath, main, root, unit, worker, launchModule, installedFixture].map(quote).join(" ");
-    writeFileSync(file, `[Unit]\nDescription=Private inert updater cgroup probe\n[Service]\nType=simple\nWorkingDirectory=${quote(join(root, "home"))}\nExecStart=${line}\nKillMode=mixed\nSendSIGKILL=yes\nTimeoutStopSec=2s\nRestart=no\n`, { mode: 0o600 });
+    writeFileSync(file, `[Unit]\nDescription=Private inert updater cgroup probe\n[Service]\nType=simple\nWorkingDirectory=${join(root, "home")}\nExecStart=${line}\nKillMode=mixed\nSendSIGKILL=yes\nTimeoutStopSec=2s\nRestart=no\n`, { mode: 0o600 });
     check("private_runtime_link", success(sd("link", "--runtime", file))); linked = true;
     check("actual_user_manager_reload", success(sd("daemon-reload")));
     const fragment = sd("show", unit, "-p", "FragmentPath", "--value");
     check("loaded_fragment_is_own_file", success(fragment) && realpathSync(fragment.stdout.trim()) === realpathSync(file));
     const mode = sd("show", unit, "-p", "KillMode", "--value");
+    if (!success(mode)) receipt.load_diagnostic = { mode, load: sd("show", unit, "-p", "LoadState", "--value"), status: sd("status", unit, "--no-pager") };
     check("loaded_kill_mode_mixed", success(mode) && mode.stdout.trim() === "mixed");
     const timeout = sd("show", unit, "-p", "TimeoutStopUSec", "--value");
     check("loaded_fixture_grace_2s", success(timeout) && timeout.stdout.trim() === "2s");
@@ -133,7 +134,13 @@ finally {
   if (linked) {
     const stopped = sd("stop", unit), disabled = sd("disable", "--runtime", unit), reload = sd("daemon-reload");
     const scopes = root ? readdirSync(root).filter(f => /^parent-\d+\.json$/.test(f)).map(f => read(join(root,f))?.scope).filter(Boolean) : [];
-    const scopesStopped = scopes.map(scope => /^agend-updater-[a-f0-9]{32}\.scope$/.test(scope) && success(sd("stop", scope))).every(Boolean);
+    const scopesStopped = scopes.map(scope => {
+      if (!/^agend-updater-[a-f0-9]{32}\.scope$/.test(scope)) return false;
+      sd("kill", "--signal=SIGINT", scope);
+      const stopped = sd("stop", scope);
+      const loaded = sd("show", scope, "-p", "LoadState", "--value");
+      return success(stopped) || (success(loaded) && loaded.stdout.trim() === "not-found");
+    }).every(Boolean);
     receipt.cleanup = { scopesStopped, stopped: success(stopped), disabled: success(disabled), reloaded: success(reload) };
     if (!Object.values(receipt.cleanup).every(Boolean)) { receipt.state = "failed"; process.exitCode = 1; }
   }
