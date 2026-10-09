@@ -241,6 +241,15 @@ export function uninstallService(label: string): boolean {
   return true;
 }
 
+/**
+ * The CLI file a unit starts: `ExecStart=<entry> fleet start`, or `ExecStart=<node> <entry> fleet start` (the explicit
+ * interpreter, #1450). "" when there is no ExecStart.
+ */
+export function unitCliEntry(unitText: string): string {
+  const words = unitText.match(/^ExecStart=(.*)$/m)?.[1]?.trim().split(/\s+/) ?? [];
+  return (words[0] && /(^|\/)node$/.test(words[0]) ? words[1] : words[0]) ?? "";
+}
+
 export function installService(vars: ServiceVars): string {
   const plat = detectPlatform();
   if (plat === "macos") {

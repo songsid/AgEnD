@@ -8,6 +8,7 @@ import {
   uninstallService,
   restartSystemdService,
   SYSTEMD_RESTART_TIMEOUT_MS,
+  unitCliEntry,
 } from "../src/service-installer.js";
 
 describe("ServiceInstaller", () => {
@@ -254,5 +255,16 @@ describe("ServiceInstaller", () => {
       seen.add(e);
     }
     // Mutant (remove dedup): /usr/bin would appear twice.
+  });
+});
+
+describe("unitCliEntry (#1450: doctor compares the unit's CLI with this CLI's canonical entry)", () => {
+  it.each([
+    ["ExecStart=/usr/lib/node_modules/@songsid/agend/dist/cli.js fleet start", "/usr/lib/node_modules/@songsid/agend/dist/cli.js"],
+    ["ExecStart=/opt/rt/bin/node /usr/lib/node_modules/@songsid/agend/dist/cli.js fleet start", "/usr/lib/node_modules/@songsid/agend/dist/cli.js"],
+    ["[Service]\nType=notify\nExecStart=/a/node /b/cli.js fleet start\nRestart=on-failure", "/b/cli.js"],
+    ["[Service]\nType=simple", ""],
+  ])("%j → %j", (unit, entry) => {
+    expect(unitCliEntry(unit)).toBe(entry);
   });
 });

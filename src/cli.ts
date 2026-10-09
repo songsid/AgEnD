@@ -983,11 +983,15 @@ backend
       const svcPath = join(homedir(), ".config/systemd/user/com.agend.fleet.service");
       if (existsSync(svcPath)) {
         const svc = readFileSync(svcPath, "utf-8");
-        const match = svc.match(/ExecStart=(\S+)/);
-        const svcBin = match?.[1] ?? "";
-        const currentBin = es("which agend", { stdio: "pipe" }).toString().trim();
-        if (svcBin === currentBin) ok(`service ExecStart${" ".repeat(3)} matches current binary`);
-        else fail(`service ExecStart${" ".repeat(3)} ${svcBin} ≠ ${currentBin}`);
+        // The CLI the unit starts — `<entry> fleet start`, or `<node> <entry> fleet start` — against this CLI's own
+        // canonical entry (#1450: `agend` on PATH is the sh launcher, never what a unit records).
+        const { unitCliEntry } = await import("./service-installer.js");
+        const svcEntry = unitCliEntry(svc);
+        let svcReal = svcEntry;
+        try { svcReal = realpathSync(svcEntry); } catch { /* reported as is */ }
+        const current = canonicalCliEntry();
+        if (svcReal === current) ok(`service ExecStart${" ".repeat(3)} matches current binary`);
+        else fail(`service ExecStart${" ".repeat(3)} ${svcEntry || "(none)"} ≠ ${current}`);
 
         // Check Restart=on-failure
         if (svc.includes("Restart=on-failure")) {
