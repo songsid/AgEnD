@@ -18,7 +18,7 @@ describe("/model two-tier menu", () => {
       // "admin" is a fleet admin of the telegram adapter: a menu click re-checks it (#754 audit).
       channel: { type: "telegram", group_id: "chat", access: { mode: "locked", allowed_users: ["admin"] } },
       defaults: {},
-      instances: { worker: { working_directory: "/tmp", backend } },
+      instances: { worker: { working_directory: "/tmp", backend, topic_id: "chan" } },
     } as any;
     const promptUser = vi.fn().mockResolvedValue("menu-1");
     const sendText = vi.fn().mockResolvedValue({ messageId: "m1" });

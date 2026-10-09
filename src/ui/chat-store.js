@@ -96,8 +96,12 @@ export function createChatStore(deps) {
   // ── Prompts the fleet has open (hang / clean exit / interactive input): the same buttons the platform shows.
   function onPrompt(p) {
     if (!p || typeof p.nonce !== "string") return;
-    const fresh = !s.prompts[p.nonce];
-    s.prompts[p.nonce] = { ...p, resolved: false, busy: false };
+    const had = s.prompts[p.nonce];
+    const fresh = !had;
+    // A prompt already held (being answered, or claimed from Needs you) keeps its busy/answered state: a repeat of it
+    // only refreshes its text and buttons (#1463 review).
+    if (!had) s.prompts[p.nonce] = { ...p, resolved: false, busy: false };
+    else if (!had.resolved) Object.assign(had, { text: p.text, actions: p.actions, expiresAt: p.expiresAt });
     if (p.instance === s.current) changed(p.instance);
     else if (fresh) deps.toast(tf("chat.promptFor", p.instance, p.text), false);
   }
@@ -133,6 +137,17 @@ export function createChatStore(deps) {
     for (const q of latest && latest !== p ? [p, latest] : [p]) { q.busy = false; if (r && r.gone) q.resolved = true; }
     changed(p.instance);
     deps.toast(r && r.error ? r.error : t("chat.disconnected"), false);
+  }
+  /**
+   * Answer a prompt known only by its nonce (Needs you, #1386): the page's one claim on it. A prompt this store does not
+   * hold yet is entered now, busy, so the chat, a second click and a later hydration all see the same claim; the next
+   * prompts list or prompt_resolved settles it, as for any prompt.
+   */
+  function answerByNonce(item, action) {
+    if (!item || typeof item.nonce !== "string") return Promise.resolve();
+    let p = s.prompts[item.nonce];
+    if (!p) p = s.prompts[item.nonce] = { instance: item.instance, nonce: item.nonce, text: item.text || item.detail || "", actions: item.actions || [], resolved: false, busy: false };
+    return answerPrompt(p, action);
   }
   const promptsFor = (instance) => Object.values(s.prompts).filter(p => p.instance === instance);
 
@@ -255,7 +270,7 @@ export function createChatStore(deps) {
     subscribe(fn) { subs.add(fn); return () => subs.delete(fn); },
     setCurrent(name) { s.current = name; },
     attach, applyStatus, applyActivity, ingest, applyDeliveries, openHistory,
-    onPrompt, applyPrompts, resolvePrompt, answerPrompt, promptsFor,
+    onPrompt, applyPrompts, resolvePrompt, answerPrompt, answerByNonce, promptsFor,
     uploadFile, send, addFiles, removeFile, attachPastedText, fileBackAsText, isPasted, putBack, discardFailed, setDraft,
     cancelReply, isUser,
   };

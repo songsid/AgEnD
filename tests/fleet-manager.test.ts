@@ -2181,7 +2181,7 @@ instances:
       // "admin" is a fleet admin of the telegram adapter: the click re-checks it (#754 audit).
       channel: { type: "telegram", group_id: "chat-1", access: { mode: "locked", allowed_users: ["admin"] } },
       defaults: {},
-      instances: { worker: instance({ working_directory: "/tmp/worker", model: "gpt-5.6" }) },
+      instances: { worker: instance({ working_directory: "/tmp/worker", model: "gpt-5.6", topic_id: "topic-1" }) },
     } as any;
     vi.spyOn(fm as any, "getModelOptions").mockResolvedValue([
       { id: "gpt-5.6", label: "GPT-5.6" },
