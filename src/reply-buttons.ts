@@ -97,6 +97,11 @@ export interface ReplyButtonSet {
   consumedAt: number | null;
   chosenIndex: number | null;
   chosenBy: string | null;
+  /**
+   * When the agent was given the choice (#1500 review). A claim (consumedAt) is not a choice until then: only a
+   * delivered one is shown as chosen; one that cannot be delivered is released.
+   */
+  deliveredAt: number | null;
   /** Set when the platform message was updated to its final state (chosen / expired). */
   settledAt: number | null;
 }
@@ -108,12 +113,12 @@ export type ConsumeResult =
 interface Row {
   id: string; instance: string; adapter_id: string; chat_id: string; thread_id: string; message_id: string | null;
   buttons: string; created_at: number; expires_at: number; consumed_at: number | null; chosen_index: number | null;
-  chosen_by: string | null; settled_at: number | null;
+  chosen_by: string | null; settled_at: number | null; delivered_at: number | null;
 }
 const fromRow = (r: Row): ReplyButtonSet => ({
   id: r.id, instance: r.instance, adapterId: r.adapter_id, chatId: r.chat_id, threadId: r.thread_id, messageId: r.message_id,
   buttons: JSON.parse(r.buttons) as ReplyButton[], createdAt: r.created_at, expiresAt: r.expires_at, consumedAt: r.consumed_at,
-  chosenIndex: r.chosen_index, chosenBy: r.chosen_by, settledAt: r.settled_at,
+  chosenIndex: r.chosen_index, chosenBy: r.chosen_by, deliveredAt: r.delivered_at ?? null, settledAt: r.settled_at,
 });
 
 /** The button sets, in `<dataDir>/reply-buttons.db`. Wall-clock instants: an expiry is a calendar time that must hold across restarts. */
@@ -122,6 +127,7 @@ export class ReplyButtonStore {
   constructor(path: string) {
     this.db = new Database(path);
     this.db.pragma("journal_mode = WAL");
+    this.db.pragma("busy_timeout = 5000");
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS reply_buttons (
         id TEXT PRIMARY KEY,
@@ -136,10 +142,13 @@ export class ReplyButtonStore {
         consumed_at INTEGER,
         chosen_index INTEGER,
         chosen_by TEXT,
-        settled_at INTEGER
+        settled_at INTEGER,
+        delivered_at INTEGER
       );
       CREATE INDEX IF NOT EXISTS idx_reply_buttons_open ON reply_buttons(settled_at, expires_at);
     `);
+    const columns = (this.db.prepare("PRAGMA table_info(reply_buttons)").all() as Array<{ name: string }>).map(c => c.name);
+    if (!columns.includes("delivered_at")) this.db.exec("ALTER TABLE reply_buttons ADD COLUMN delivered_at INTEGER");
   }
   close(): void { this.db.close(); }
 
@@ -177,17 +186,29 @@ export class ReplyButtonStore {
     const after = this.get(id)!;
     return won ? { ok: true, set: after, button } : { ok: false, reason: after.consumedAt !== null ? "used" : "expired", set: after };
   }
+  /** The claim reached the agent: from now on it is the choice. */
+  markDelivered(id: string, now: number): void {
+    this.db.prepare("UPDATE reply_buttons SET delivered_at = ? WHERE id = ? AND consumed_at IS NOT NULL AND delivered_at IS NULL").run(now, id);
+  }
   /** A consumed click that could not reach the agent: the set is open again (only that click's own claim is undone). */
   release(id: string, consumedAt: number): void {
     this.db.prepare(`UPDATE reply_buttons SET consumed_at = NULL, chosen_index = NULL, chosen_by = NULL
-      WHERE id = ? AND consumed_at = ? AND settled_at IS NULL`).run(id, consumedAt);
+      WHERE id = ? AND consumed_at = ? AND delivered_at IS NULL AND settled_at IS NULL`).run(id, consumedAt);
+  }
+  /** Claims never delivered nor released — in flight now, or left by a process that stopped mid-delivery. */
+  undeliveredClaims(): ReplyButtonSet[] {
+    return (this.db.prepare(`SELECT * FROM reply_buttons WHERE settled_at IS NULL AND message_id IS NOT NULL
+      AND consumed_at IS NOT NULL AND delivered_at IS NULL`).all() as Row[]).map(fromRow);
   }
   /** The platform message shows the final state now (chosen or expired). */
   markSettled(id: string, now: number): void { this.db.prepare("UPDATE reply_buttons SET settled_at = ? WHERE id = ? AND settled_at IS NULL").run(now, id); }
-  /** Sets that ended (chosen or expired) and whose message does not show it yet: what a sweep or a restart finishes. */
+  /**
+   * Sets that ended and whose message does not show it yet: a delivered choice, or an expiry nobody claimed. A claim
+   * still being delivered is neither (#1500 review): it may yet be released.
+   */
   unsettled(now: number): ReplyButtonSet[] {
     return (this.db.prepare(`SELECT * FROM reply_buttons WHERE settled_at IS NULL AND message_id IS NOT NULL
-      AND (consumed_at IS NOT NULL OR expires_at <= ?)`).all(now) as Row[]).map(fromRow);
+      AND (delivered_at IS NOT NULL OR (consumed_at IS NULL AND expires_at <= ?))`).all(now) as Row[]).map(fromRow);
   }
   /** The next expiry still to come, for the one sweep timer. */
   nextExpiry(now: number): number | null {

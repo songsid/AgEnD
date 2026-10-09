@@ -7,11 +7,15 @@
  * bytes; ≤ 25 buttons, labels ≤ 80, custom_id ≤ 100); the real adapters' own handling is tested at the bottom.
  * Nothing starts a fleet, tmux or a process: delivery to the agent is the seam (deliverToInstance).
  */
-import { mkdtempSync, rmSync } from "node:fs";
+import { EventEmitter } from "node:events";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FleetManager } from "../src/fleet-manager.js";
+import { handleWebRequest } from "../src/web-api.js";
+import { createPublicWebGateway, isPublicWebRoute } from "../src/public-web-gateway.js";
+import { WebSessionStore, tokenEpoch, csrfTokenFor } from "../src/web-session.js";
 import { AdapterWorld } from "../src/adapter-world.js";
 import { AccessManager } from "../src/channel/access-manager.js";
 import type { ChannelAdapter } from "../src/channel/types.js";
@@ -105,6 +109,21 @@ describe("the store: one choice per set, atomically, and it outlives a restart",
     store.close();
   });
 
+  it("a claim is listed as ended only once delivered (#1500 review)", () => {
+    const store = new ReplyButtonStore(join(scratch(), "rb.db"));
+    const set = store.create({ id: "7".repeat(32), instance: "w", adapterId: "dc", chatId: "g", threadId: "", buttons: [{ label: "A", value: "A" }] }, 0);
+    store.bind(set.id, "m1");
+    store.consume(set.id, 0, "alice", 5);
+    expect(store.unsettled(10).map(x => x.id)).toEqual([]);
+    expect(store.undeliveredClaims().map(x => x.id)).toEqual([set.id]);
+    store.markDelivered(set.id, 6);
+    expect(store.unsettled(10).map(x => x.id)).toEqual([set.id]);
+    expect(store.undeliveredClaims()).toEqual([]);
+    store.release(set.id, 5);                                     // a delivered choice cannot be released
+    expect(store.get(set.id)!.consumedAt).toBe(5);
+    store.close();
+  });
+
   it("expired: nothing is consumed; it is listed as unsettled until settled", () => {
     const store = new ReplyButtonStore(join(scratch(), "rb.db"));
     const set = store.create({ id: "d".repeat(32), instance: "w", adapterId: "dc", chatId: "g", threadId: "", buttons: [{ label: "A", value: "A" }] }, 0);
@@ -117,7 +136,7 @@ describe("the store: one choice per set, atomically, and it outlives a restart",
     store.close();
   });
   it("a click is on the set's message: same adapter and message, and its chat or thread is the set's (Discord and Telegram shapes)", () => {
-    const set = { id: "e".repeat(32), instance: "w", adapterId: "dc", chatId: "guild", threadId: "chan", messageId: "m1", buttons: [], createdAt: 0, expiresAt: 1, consumedAt: null, chosenIndex: null, chosenBy: null, settledAt: null };
+    const set = { id: "e".repeat(32), instance: "w", adapterId: "dc", chatId: "guild", threadId: "chan", messageId: "m1", buttons: [], createdAt: 0, expiresAt: 1, consumedAt: null, chosenIndex: null, chosenBy: null, deliveredAt: null, settledAt: null };
     expect(replyButtonsClickPlace(set, { adapterId: "dc", chatId: "guild", threadId: "chan", messageId: "m1" })).toBe(true);
     expect(replyButtonsClickPlace({ ...set, chatId: "chan", threadId: "" }, { adapterId: "dc", chatId: "guild", threadId: "chan", messageId: "m1" }), "Discord ClassicBot room").toBe(true);
     expect(replyButtonsClickPlace({ ...set, adapterId: "tg", chatId: "-100", threadId: "42" }, { adapterId: "tg", chatId: "-100", threadId: "42", messageId: "m1" }), "Telegram topic").toBe(true);
@@ -391,5 +410,110 @@ describe("a web-only fleet", () => {
     expect(delivered[0].content).toBe("[button] Deploy");
     expect(fm.webChatHistory.list("w").find(m => m.role === "agent")!.buttons!.state).toBe("chosen");
     expect(fm.webChatHistory.buttonStates()).toEqual([{ instance: "w", buttons: expect.objectContaining({ state: "chosen", chosen: 0, by: "web-user" }) }]);
+  });
+});
+
+// ── #1500 review ──
+
+describe("a reply-buttons.db that cannot be opened never stops AgEnD (#1500 review P1)", () => {
+  it("replyButtons() is null (no throw); a reply offers its choices as text; a click is answered 'closed'; noticed once", async () => {
+    const dir = scratch();
+    writeFileSync(join(dir, "reply-buttons.db"), "this is not a database");
+    const h = fleet({ dir });
+    const notices: string[] = [];
+    h.any.notifyFleetError = (text: string) => { notices.push(text); return true; };
+    expect(() => h.any.replyButtons()).not.toThrow();
+    expect(h.any.replyButtons()).toBeNull();
+    expect(notices.length, "posted once").toBe(1);
+    expect(notices[0]).toMatch(/Reply buttons are off until AgEnD restarts/);
+    await h.reply({ text: "Deploy now?", buttons: [{ label: "Deploy" }, { label: "Wait" }] });
+    expect(h.rec.sends[0]!.text).toBe("Deploy now?\n\nOptions: 1) Deploy  2) Wait — reply with your choice.");
+    expect(h.rec.sends[0]!.opts.replyButtons).toBeUndefined();
+    expect((await h.click(`rb:${"a".repeat(32)}:0`)).acks).toEqual(["This choice is closed — reply in text."]);
+    expect(await h.fm.clickWebReplyButton("w", "a".repeat(32), 0)).toMatchObject({ status: 409 });
+    expect(notices.length).toBe(1);
+  });
+});
+
+describe("a claim is not a choice until delivered (#1500 review P2)", () => {
+  async function inFlight(outcome: boolean) {
+    const h = fleet();
+    await h.reply({ text: "Deploy now?", buttons: [{ label: "Deploy" }] });
+    const [deploy] = callbacksOf(h.rec);
+    let finish!: (v: boolean) => void;
+    h.any.deliverToInstance = vi.fn(() => new Promise<boolean>(r => { finish = r; }));
+    const clicking = h.click(deploy!.id);
+    await vi.waitFor(() => expect(h.any.deliverToInstance).toHaveBeenCalled());
+    const setId = deploy!.id.split(":")[1]!;
+    const store = h.any.replyButtonsStore as ReplyButtonStore;
+    // Two layers, each witnessed on its own: the store does not list a claim being delivered as ended…
+    expect(store.unsettled(Date.now() + 2 * REPLY_BUTTON_TTL_MS).map(x => x.id), "an undelivered claim is not 'ended'").not.toContain(setId);
+    // …and settle() itself refuses one (a settle reached another way, e.g. a racing expired click).
+    await h.any.replyButtons().settle(store.get(setId)!);
+    await h.any.replyButtons().sweep();                       // the sweep runs while the delivery is in flight
+    expect(h.rec.settles, "nothing is shown as chosen while it is being delivered").toEqual([]);
+    finish(outcome);
+    const done = await clicking;
+    return { h, done, set: store.get(setId)! };
+  }
+  it("…and the delivery fails: the set reopens, nothing was shown chosen, the next click works", async () => {
+    const { h, done, set } = await inFlight(false);
+    expect(done.acks).toEqual(["This choice is closed — reply in text."]);
+    expect([set.consumedAt, set.deliveredAt, set.settledAt]).toEqual([null, null, null]);
+    expect(h.rec.settles).toEqual([]);
+    h.any.deliverToInstance = vi.fn(async () => true);
+    expect((await h.click(callbacksOf(h.rec)[0]!.id)).acks).toEqual(["Sent: Deploy"]);
+    expect(h.rec.settles.map(s => s.outcome)).toEqual([{ chosenIndex: 0, by: "alice" }]);
+  });
+  it("control: …and the delivery succeeds: delivered, then shown chosen once", async () => {
+    const { h, done, set } = await inFlight(true);
+    expect(done.acks).toEqual(["Sent: Deploy"]);
+    expect(set.deliveredAt).not.toBeNull();
+    expect((h.any.replyButtonsStore as ReplyButtonStore).unsettled(Date.now()).map(x => x.id), "settled now").not.toContain(set.id);
+    expect(h.rec.settles.map(s => s.outcome)).toEqual([{ chosenIndex: 0, by: "alice" }]);
+  });
+  it("a claim left undelivered by a process that stopped is closed as expired at the next sweep, never reopened (no second delivery)", async () => {
+    const h = fleet();
+    await h.reply({ text: "Deploy now?", buttons: [{ label: "Deploy" }] });
+    const setId = callbacksOf(h.rec)[0]!.id.split(":")[1]!;
+    const store = h.any.replyButtonsStore as ReplyButtonStore;
+    expect(store.consume(setId, 0, "alice", Date.now())).toMatchObject({ ok: true });   // claimed, then the process stopped
+    await h.any.replyButtons().sweep();
+    expect(h.rec.settles.map(s => s.outcome)).toEqual([{ expired: true }]);
+    expect(h.fm.webChatHistory.list("w").find(m => m.role === "agent")!.buttons!.state).toBe("expired");
+    expect((await h.click(callbacksOf(h.rec)[0]!.id)).acks).toEqual(["Already answered."]);
+    expect(h.delivered).toEqual([]);
+  });
+});
+
+describe("the public link can click (#1500 review P2)", () => {
+  it("POST /ui/reply-button is on the public manifest, and a gateway session's click goes through the real gateway to the choice", async () => {
+    expect(isPublicWebRoute("POST", "/ui/reply-button")).toBe(true);
+    expect(isPublicWebRoute("GET", "/ui/reply-button")).toBe(false);
+    const h = fleet();
+    await h.reply({ text: "Deploy now?", buttons: [{ label: "Deploy" }] });
+    const setId = callbacksOf(h.rec)[0]!.id.split(":")[1]!;
+    const token = "c".repeat(48), exposureId = "a".repeat(32), host = "sample.trycloudflare.com", pub = `https://${host}`;
+    const sessions = new WebSessionStore();
+    const s = sessions.create({ tier: "admin", surface: "gateway", exposureId, label: "phone", tokenEpoch: tokenEpoch(token) });
+    // The fleet as the web context, with this test's token and sessions (webToken is a getter on FleetManager).
+    const ctx = Object.create(h.fm, { webToken: { value: token }, webSessions: { value: sessions } });
+    let callback!: (req: any, res: any) => void;
+    const server: any = Object.assign(new EventEmitter(), { setTimeout() {}, listen: (_p: number, _h: string, cb: () => void) => cb(), address: () => ({ port: 1 }), close() {}, closeAllConnections() {} });
+    const g = createPublicWebGateway({ exposureId, isCurrent: () => true, isOpen: () => true, create: ((cb: any) => { callback = cb; return server; }) as never,
+      dispatch: (req, res) => { handleWebRequest(req as never, res as never, new URL(req.url ?? "/", pub), ctx); } });
+    await g.listen(); g.setHost(host);
+    const req = Object.assign(new EventEmitter(), { method: "POST", url: "/ui/reply-button", destroy() {}, socket: { destroy() {} },
+      headers: { host, cookie: `__Host-agend_session=${s.sessionId}`, origin: pub, "x-agend-csrf": csrfTokenFor(s.sessionId), "content-type": "application/json" } });
+    let status = 0, body = "";
+    const answered = new Promise<void>(resolve => {
+      const res = Object.assign(new EventEmitter(), { headersSent: false, setHeader() {}, writeHead: (c: number) => { status = c; }, end: (t = "") => { body = t; resolve(); }, write() { return true; }, destroy() {} });
+      callback(req, res);
+      setImmediate(() => { req.emit("data", Buffer.from(JSON.stringify({ instance: "w", id: setId, index: 0 }))); req.emit("end"); });
+    });
+    await answered;
+    expect([status, JSON.parse(body)]).toEqual([200, { answered: true }]);
+    expect(h.delivered[0]!.payload.content).toBe("[button] Deploy");
+    g.close();
   });
 });

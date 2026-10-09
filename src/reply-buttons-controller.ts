@@ -54,6 +54,8 @@ const MAX_TIMER_MS = 2_147_483_647;
 export class ReplyButtonsController {
   private timer: unknown = null;
   private stopped = false;
+  /** Claims this process is delivering right now (a sweep leaves them alone). */
+  private readonly inFlight = new Set<string>();
   constructor(private readonly deps: ReplyButtonsDeps) {}
 
   /** Before the send: a set for these buttons, and the callbacks the platform will carry. */
@@ -72,8 +74,10 @@ export class ReplyButtonsController {
 
   view(set: ReplyButtonSet, now = this.deps.now()): ReplyButtonsView {
     const labels = set.buttons.map(b => b.label);
-    if (set.consumedAt !== null && set.chosenIndex !== null) return { id: set.id, labels, state: "chosen", chosen: set.chosenIndex, by: set.chosenBy ?? "" };
-    return { id: set.id, labels, state: now >= set.expiresAt ? "expired" : "open" };
+    if (set.deliveredAt !== null && set.chosenIndex !== null) return { id: set.id, labels, state: "chosen", chosen: set.chosenIndex, by: set.chosenBy ?? "" };
+    // Settled without a delivered choice: expired, or a claim a stopped process never delivered (closed as expired).
+    if (set.settledAt !== null) return { id: set.id, labels, state: "expired" };
+    return { id: set.id, labels, state: now >= set.expiresAt && set.consumedAt === null ? "expired" : "open" };
   }
   viewOf(id: string): ReplyButtonsView | null {
     const set = this.deps.store.get(id);
@@ -121,26 +125,33 @@ export class ReplyButtonsController {
       return false;
     }
     let delivered = false;
+    this.inFlight.add(id);
     try { delivered = await this.deps.deliver(result.set, result.button, by); }
     catch (err) { this.deps.logger.warn({ err: (err as Error).message, set: id }, "Reply-button choice could not be delivered"); }
+    finally { this.inFlight.delete(id); }
     if (!delivered) {
       this.deps.store.release(id, now);
       ack?.(t("reply_buttons.closed"));
       return false;
     }
+    this.deps.store.markDelivered(id, this.deps.now());
     ack?.(t("reply_buttons.sent", result.button.label));
     await this.settle(result.set);
     return true;
   }
 
-  /** Show how a set ended on its platform message and in the web chat; once. A failed edit is not retried. */
-  async settle(set: ReplyButtonSet): Promise<void> {
+  /**
+   * Show how a set ended on its platform message and in the web chat; once. A failed edit is not retried. Ended is: a
+   * delivered choice, an expiry with no claim, or (`closeClaim`) a claim no process is delivering any more.
+   */
+  async settle(set: ReplyButtonSet, closeClaim = false): Promise<void> {
     const fresh = this.deps.store.get(set.id);
     if (!fresh || fresh.settledAt !== null || fresh.messageId === null) return;
     const now = this.deps.now();
-    if (fresh.consumedAt === null && now < fresh.expiresAt) return;          // still open
+    const ended = fresh.deliveredAt !== null || (fresh.consumedAt === null && now >= fresh.expiresAt) || (closeClaim && fresh.deliveredAt === null);
+    if (!ended) return;                                                     // open, or a claim being delivered
     this.deps.store.markSettled(fresh.id, now);                             // first: a concurrent settle does nothing
-    const view = this.view(fresh, now);
+    const view = this.view({ ...fresh, settledAt: now }, now);
     this.deps.publish(fresh.instance, view);
     const adapter = this.deps.adapterFor(fresh.adapterId);
     if (!adapter?.settleReplyButtons) return;
@@ -149,10 +160,16 @@ export class ReplyButtonsController {
     catch (err) { this.deps.logger.warn({ err: (err as Error).message, set: fresh.id }, "Could not update a reply's buttons on the platform"); }
   }
 
-  /** Settle what has ended (an expiry, or a choice whose message was not updated before a restart), then re-arm. */
+  /**
+   * Settle what has ended (an expiry, or a choice whose message was not updated before a restart), then re-arm. A
+   * claim no one in this process is delivering was left by a process that stopped mid-delivery: whether the agent got
+   * it is unknown, so it is closed as expired ("reply in text") rather than reopened — reopening could deliver a
+   * second choice.
+   */
   async sweep(): Promise<void> {
     const now = this.deps.now();
     for (const set of this.deps.store.unsettled(now)) await this.settle(set);
+    for (const set of this.deps.store.undeliveredClaims()) if (!this.inFlight.has(set.id)) await this.settle(set, true);
     this.deps.store.prune(now - KEEP_SETTLED_MS);
     this.arm();
   }

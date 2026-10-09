@@ -1320,9 +1320,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** #1266: a reply's buttons — the store (reply-buttons.db) and what a click does. Created on first use. */
   private replyButtonsCtl: ReplyButtonsController | null = null;
-  replyButtons(): ReplyButtonsController {
+  /** The store could not be opened in this process: buttons are offered as text until the next start. */
+  private replyButtonsUnavailable = false;
+  /**
+   * The controller, or null when reply-buttons.db cannot be opened (#1500 review). That file holds only open choices,
+   * so it never stops AgEnD: the failure is logged and posted once, replies offer their choices as text, and a click on
+   * an older button is answered "closed". The file is left where it is — an open error is not proof of corruption.
+   */
+  replyButtons(): ReplyButtonsController | null {
     if (this.replyButtonsCtl) return this.replyButtonsCtl;
-    const store = new ReplyButtonStore(join(this.dataDir, "reply-buttons.db"));
+    if (this.replyButtonsUnavailable) return null;
+    const path = join(this.dataDir, "reply-buttons.db");
+    let store: ReplyButtonStore;
+    try { store = new ReplyButtonStore(path); }
+    catch (err) {
+      this.replyButtonsUnavailable = true;
+      this.logger.error({ err: (err as Error).message, path }, "Reply buttons unavailable: reply-buttons.db could not be opened — replies offer their choices as text");
+      try { this.notifyFleetError(`⚠️ Reply buttons are off until AgEnD restarts: ${path} could not be opened (${(err as Error).message}). Replies offer their choices as text.`); }
+      catch { /* the notice is best effort */ }
+      return null;
+    }
     this.replyButtonsCtl = new ReplyButtonsController({
       store,
       now: () => Date.now(),
@@ -5695,7 +5712,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Health HTTP endpoint
     this.startHealthServer(fleet.health_port ?? 19280);
     // #1266: buttons that ended while AgEnD was down (expired, or chosen before a restart) are shown as ended now.
-    void this.replyButtons().sweep().catch(err => this.logger.warn({ err }, "Reply-button sweep failed"));
+    void this.replyButtons()?.sweep().catch(err => this.logger.warn({ err }, "Reply-button sweep failed"));
 
     // Daily update check — first check after 1 hour, then every 24 hours
     this.updateCheckTimer = setTimeout(() => {
@@ -7707,9 +7724,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // cannot be shown, the choices go into the text instead.
       let replySet: { id: string; callbacks: Array<{ id: string; label: string }> } | null = null;
       if (parsedButtons && "buttons" in parsedButtons) {
-        if (outAdapter.supportsReplyButtons) {
+        const buttons = outAdapter.supportsReplyButtons ? this.replyButtons() : null;
+        if (buttons) {
           const outId = outAdapter === WEB_ONLY_REPLY_SINK ? "web" : ((outAdapter as { id?: unknown }).id as string | undefined) ?? contextAdapterId ?? "";
-          replySet = this.replyButtons().prepare({ instance: instanceName, adapterId: outId, chatId: String(args.chat_id ?? ""), threadId }, parsedButtons.buttons);
+          replySet = buttons.prepare({ instance: instanceName, adapterId: outId, chatId: String(args.chat_id ?? ""), threadId }, parsedButtons.buttons);
         } else {
           args.text = `${String(args.text)}\n\n${replyButtonsFallbackText(parsedButtons.buttons)}`;
         }
@@ -7721,10 +7739,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           const sent = result as { messageId?: string; buttonsMessageId?: string } | null;
           const carrying = sent?.buttonsMessageId ?? sent?.messageId;
           if (!error && carrying) {
-            this.replyButtons().bind(replySet.id, carrying);
-            buttonsView = this.replyButtons().viewOf(replySet.id);
+            this.replyButtonsCtl?.bind(replySet.id, carrying);
+            buttonsView = this.replyButtonsCtl?.viewOf(replySet.id) ?? null;
           } else {
-            this.replyButtons().discard(replySet.id);
+            this.replyButtonsCtl?.discard(replySet.id);
           }
         }
         ticket.complete(result, error);
@@ -7755,7 +7773,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (routeToolCall(outAdapter, tool, args, threadId, respondAndRecord, replySet ? { replyButtons: replySet.callbacks } : {})) {
         return;
       }
-      if (replySet) this.replyButtons().discard(replySet.id);
+      if (replySet) this.replyButtonsCtl?.discard(replySet.id);
       // routeToolCall knows "reply"; not handling it means the world changed.
       ticket.complete(null, "reply not handled");
       original(null, "reply not handled");
@@ -10773,7 +10791,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     adapterId: string,
     adapter: ChannelAdapter | undefined,
   ): Promise<boolean> {
-    if (data.callbackData.startsWith(REPLY_BUTTON_PREFIX)) return this.replyButtons().handleCallback(data, adapterId);   // #1266
+    if (data.callbackData.startsWith(REPLY_BUTTON_PREFIX)) {                       // #1266
+      const buttons = this.replyButtons();
+      if (!buttons) { data.ack?.(t("reply_buttons.closed")); return true; }
+      return buttons.handleCallback(data, adapterId);
+    }
     if (this.needsYou?.handleCallback(data, adapterId)) return true;
     if (await this.handleTipDismiss(data, adapterId, adapter)) return true;
     if (await this.handleTipUnlock(data, adapterId, adapter)) return true;
@@ -11028,7 +11050,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   /** #1266: a click on a reply's button in the web chat (the /ui gate is passed: a session, or the public link). */
   clickWebReplyButton(instance: string, id: string, index: number): Promise<{ status: 200 | 400 | 403 | 409; error?: string }> {
-    return this.replyButtons().clickWeb(instance, id, index);
+    const buttons = this.replyButtons();
+    return buttons ? buttons.clickWeb(instance, id, index) : Promise.resolve({ status: 409, error: t("reply_buttons.closed") });
   }
 
   async clickWebPrompt(instance: string, nonce: string, action: string): Promise<{ status: 200 | 400 | 403 | 409; error?: string; outcome?: string }> {
