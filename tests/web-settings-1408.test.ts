@@ -720,4 +720,29 @@ describe("#1453 review r2", () => {
     expect(asked).toBe(0);
     expect(writes().filter(r => r.url.endsWith("/binding/apply"))).toEqual([]);
   });
+
+  it("4b. gone, then back (the same id): the flow that saw it go stays revoked; a new one can run", async () => {
+    const dialogs = await import("/ui/js/settings-dialogs.js");
+    const model = await import("/ui/js/settings-model.js");
+    const verify = gate<{ body: unknown }>();
+    let first = true;
+    routes.push(r => (r.url.endsWith("/binding/verify") ? (first ? (first = false, verify.p) : { body: { verification_id: "v2", probe: { group_name: "G" } } }) : undefined));
+    let asked = 0;
+    (globalThis as any).confirm = () => { asked++; return true; };
+    const ctxFor = (channels: unknown[]) => ({ fleet: { ...FLEET, channels }, schema: model.DEFAULT_SCHEMA, reload() {}, stage() {}, stageChannels() {}, channelType: () => "discord" });
+    await p.mount(h(dialogs.BotDialog, { id: "main", ctx: ctxFor(FLEET.channels), onClose() {} })); await settle(4);
+    btn(p.root.querySelector("dialog"), "Verify the new binding").click(); await settle(2);
+    await p.mount(h(dialogs.BotDialog, { id: "main", ctx: ctxFor([]), onClose() {} })); await settle(2);
+    await p.mount(h(dialogs.BotDialog, { id: "main", ctx: ctxFor(FLEET.channels), onClose() {} })); await settle(2);
+    expect(p.root.querySelector("dialog")).not.toBeNull();
+    verify.open({ body: { verification_id: "v1", probe: { group_name: "G" } } });
+    await settle(6);
+    expect(asked).toBe(0);
+    expect(writes().filter(r => r.url.endsWith("/binding/apply"))).toEqual([]);
+    // Control: a flow started after it came back is its own, and runs.
+    btn(p.root.querySelector("dialog"), "Verify the new binding").click();
+    await vi.waitFor(() => expect(writes().filter(r => r.url.endsWith("/binding/apply"))).toHaveLength(1));
+    expect(asked).toBe(1);
+    expect(writes().find(r => r.url.endsWith("/binding/apply"))!.body.verification_id).toBe("v2");
+  });
 });
