@@ -66,7 +66,7 @@ time were unchanged after the benchmark. Raw snapshot and records remain private
 
 ## Ownership and deadlines
 
-`KiroSessionSource` sends baseline/read requests to one fleet-wide physical
+`KiroSessionSource` sends baseline/read requests to one fleet-wide active
 worker. The worker alone opens readonly SQLite, stats the store, resolves cwd,
 reads TEXT and parses histories. Persistent handles/prepared statements remain
 warm per source. History and creation queries now include both `key` and
@@ -95,10 +95,22 @@ policy rather than blocking the fleet loop.
 A monotonic 15-second total budget includes queue and worker startup. There is
 at most one pending request per source, coalesced; the worker serialises SQL.
 An overdue result cannot commit even if the deadline timer has not run. Timeout
-resolves with no DB result and requests worker termination. The physical slot
-remains reserved until exit, even if termination rejects; waiting requests have
-their own deadlines and cannot create replacement-worker herds. A subsequent
-reader resumes from the last accepted cursor. Last-source close disposes the worker.
+resolves with no DB result and requests worker termination. As of the #1490
+row 66 follow-up, retirement removes its read ownership synchronously; one spare
+physical slot permits a replacement while the old native call still holds exit.
+The retired slot remains reserved until its exact exit, even if termination
+rejects or resolves without exit. At most two physical workers exist; if both
+are held, queued requests keep their original deadlines and legacy fallback
+until an exit makes capacity available. Old messages/errors/exits cannot settle
+or retire the replacement. A subsequent reader resumes from the last accepted
+cursor, without a reset baseline. Last-source close retires the active worker;
+close/reacquire cannot erase physical reservations.
+
+The recovery evidence uses injected workers that hold termination and exit,
+including the real source's cursor path. It does not recreate a hung native
+SQLite call. Reverting only this follow-up restores the original single-worker
+exit gate and its stuck-worker recovery limitation; readonly SQL/schema and
+the earlier asynchronous polling remain unchanged.
 
 ## Remaining unknowns and limitations
 

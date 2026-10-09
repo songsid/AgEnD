@@ -43,13 +43,13 @@ describe("bounded physical transcript lane", () => {
     expect(await first).not.toBeNull(); expect(await second).not.toBeNull();
     const again = a.read(input); worker.ack(); await again; expect(factory).toHaveBeenCalledTimes(1);
   });
-  it("timeout resolves without freeing the physical reservation before exit; old exit preserves waiting work", async () => {
+  it("timeout retains the old physical reservation while the spare worker recovers", async () => {
     vi.useFakeTimers(); let now = 0;
     const first = new FakeWorker(), second = new FakeWorker(), factory = vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(second);
     const lane = new KiroTranscriptLane(factory, () => now), lease = lane.acquire(); closers.push(() => lease.close());
     const reading = lease.read(input); now = KIRO_TRANSCRIPT_BUDGET_MS; await vi.advanceTimersByTimeAsync(KIRO_TRANSCRIPT_BUDGET_MS);
     expect(await reading).toBeNull(); expect(first.terminate).toHaveBeenCalledTimes(1);
-    const retry = lease.read(input); await flush(); expect(factory).toHaveBeenCalledTimes(1);
+    const retry = lease.read(input); await flush(); expect(factory).toHaveBeenCalledTimes(2);
     first.emit("exit", 0); await flush(); expect(factory).toHaveBeenCalledTimes(2);
     expect(second.sent).toHaveLength(1); second.ack(); expect(await retry).not.toBeNull();
   });
@@ -58,22 +58,27 @@ describe("bounded physical transcript lane", () => {
     const lease = lane.acquire(); closers.push(() => lease.close()); const reading = lease.read(input);
     now = KIRO_TRANSCRIPT_BUDGET_MS; worker.ack(); expect(await reading).toBeNull(); expect(worker.terminate).toHaveBeenCalledTimes(1);
   });
-  it("work that expired while awaiting old physical exit never starts another worker", async () => {
-    vi.useFakeTimers(); let now = 0; const worker = new FakeWorker(), factory = vi.fn(() => worker), lane = new KiroTranscriptLane(factory, () => now);
-    const lease = lane.acquire(); closers.push(() => lease.close()); const first = lease.read(input);
-    now = KIRO_TRANSCRIPT_BUDGET_MS; worker.ack(); await first;
-    const next = lease.read(input); now += KIRO_TRANSCRIPT_BUDGET_MS; worker.emit("exit", 0); await flush();
-    expect(factory).toHaveBeenCalledTimes(1); expect(await next).toBeNull();
+  it("work that expired at the physical cap never starts after an old exit", async () => {
+    vi.useFakeTimers(); let now = 0;
+    const first = new FakeWorker(), second = new FakeWorker(), factory = vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(second);
+    const lane = new KiroTranscriptLane(factory, () => now), lease = lane.acquire(); closers.push(() => lease.close());
+    const a = lease.read(input); now += KIRO_TRANSCRIPT_BUDGET_MS; first.ack(); expect(await a).toBeNull();
+    const b = lease.read(input); now += KIRO_TRANSCRIPT_BUDGET_MS; second.ack(); expect(await b).toBeNull();
+    const next = lease.read(input); now += KIRO_TRANSCRIPT_BUDGET_MS; first.emit("exit", 0); await flush();
+    expect(factory).toHaveBeenCalledTimes(2); expect(await next).toBeNull();
   });
-  it("a rejected terminate retains its physical slot while retries still have a deadline", async () => {
-    vi.useFakeTimers(); let now = 0; const worker = new FakeWorker();
-    worker.terminate.mockImplementation(() => Promise.reject(new Error("native exit pending")));
-    const factory = vi.fn(() => worker), lane = new KiroTranscriptLane(factory, () => now), lease = lane.acquire();
-    closers.push(() => lease.close());
-    const first = lease.read(input); now = KIRO_TRANSCRIPT_BUDGET_MS; worker.ack(); expect(await first).toBeNull();
-    const second = lease.read(input); now += KIRO_TRANSCRIPT_BUDGET_MS;
+  it("a rejected terminate retains its reservation; only one spare exists and queued retries retain deadlines", async () => {
+    vi.useFakeTimers(); let now = 0; const first = new FakeWorker(), second = new FakeWorker();
+    first.terminate.mockImplementation(() => Promise.reject(new Error("native exit pending")));
+    second.terminate.mockImplementation(() => Promise.reject(new Error("native exit pending")));
+    const factory = vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(second);
+    const lane = new KiroTranscriptLane(factory, () => now), lease = lane.acquire(); closers.push(() => lease.close());
+    const a = lease.read(input); now += KIRO_TRANSCRIPT_BUDGET_MS; first.ack(); expect(await a).toBeNull();
+    const b = lease.read(input); now += KIRO_TRANSCRIPT_BUDGET_MS; second.ack(); expect(await b).toBeNull();
+    const queued = lease.read(input); now += KIRO_TRANSCRIPT_BUDGET_MS;
     await vi.advanceTimersByTimeAsync(KIRO_TRANSCRIPT_BUDGET_MS);
-    expect(await second).toBeNull(); expect(factory).toHaveBeenCalledTimes(1); expect(worker.terminate).toHaveBeenCalledTimes(1);
+    expect(await queued).toBeNull(); expect(factory).toHaveBeenCalledTimes(2);
+    expect(first.terminate).toHaveBeenCalledTimes(1); expect(second.terminate).toHaveBeenCalledTimes(1);
   });
   it("last close cancels pending work and a late reply cannot restore it", async () => {
     const worker = new FakeWorker(), lane = new KiroTranscriptLane(() => worker), lease = lane.acquire();
