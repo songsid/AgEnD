@@ -15,6 +15,7 @@ import { Dialog } from "/assets/ui-dialog.js";
 import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
+import { confirmedWrite } from "./settings-confirm.js";
 
 register("fleet", {
   en: {
@@ -204,8 +205,13 @@ function Config({ lease }) {
       project_roots: form.roots.map(r => r.trim()).filter(Boolean),
     };
     let r;
-    try { r = await api("POST", "/ui/config", body); } catch (err) { r = { error: err.message }; }
-    setSaving(false);
+    // A change to access or the connection may need a fleet admin's confirmation (#1423): the shell follows it.
+    try {
+      const res = await confirmedWrite("/ui/config", { method: "POST", body, label: t("fleet.config"),
+        onPending: () => { toast(t("app.pendingSent")); if (lease.current()) setSaving(false); } });
+      r = res.ok ? res.body || {} : { error: (res.body && res.body.error) || `HTTP ${res.status}` };
+    } catch (err) { r = { error: err.message }; }
+    if (lease.current()) setSaving(false);
     if (r.error) toast(r.error, false); else toast(t("fleet.configSaved") + (r.needs_restart ? t("fleet.configRestart") : ""));
   }
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
@@ -244,11 +250,18 @@ export function FormDialog({ title, onClose, submit, children, ready = true }) {
     const body = submit.collect();
     if (!body) return;
     setBusy(true);
-    let r;
-    try { r = await api("POST", submit.path, body); } catch (err) { r = { error: err.message }; }
-    if (r.error) { toast(r.error, false); if (lease.current()) setBusy(false); return; }
+    let r, handedOver = false;
+    // A write that needs a fleet admin's confirmation (#1423; e.g. a new instance with control-bearing settings):
+    // the dialog goes at once and the shell follows the request. From then on the dialog is done: the decision is
+    // said in a toast, and nothing here closes, refreshes or acts again.
+    try {
+      const res = await confirmedWrite(submit.path, { method: "POST", body, label: title,
+        onPending: () => { handedOver = true; toast(t("app.pendingSent")); if (lease.current()) { setBusy(false); onClose(); } } });
+      r = res.ok ? res.body || {} : { error: (res.body && res.body.error) || `HTTP ${res.status}` };
+    } catch (err) { r = { error: err.message }; }
+    if (r.error) { toast(r.error, false); if (!handedOver && lease.current()) setBusy(false); return; }
     toast(submit.done);
-    if (!lease.current()) return;
+    if (handedOver || !lease.current()) return;
     setBusy(false);
     onClose();
     if (submit.after) submit.after();

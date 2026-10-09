@@ -15,7 +15,7 @@ import { WEB_CONTENT_SECURITY_POLICY, panelContentSecurityPolicy, sendPanelHtml 
 
 const UI = join(process.cwd(), "src", "ui");
 // #1408 step 2: /view is app.html too (its View panel is a module, shared/panel-view.js), so view.html is gone.
-const PANELS = ["app.html", "settings.html", "signin.html", join("web-terminal", "terminal.html")];
+const PANELS = ["app.html", "signin.html", join("web-terminal", "terminal.html")];   // #1408 step 3: settings.html is gone
 // Every script a panel can load from this origin: the app's modules and the shared ones (*.module.js is vendored Preact/htm).
 const isModule = (f: string) => f.endsWith(".js") && !f.endsWith(".module.js");
 const MODULES = [...readdirSync(UI).filter(isModule), ...readdirSync(join(UI, "shared")).filter(isModule).map(f => join("shared", f))];
@@ -104,7 +104,8 @@ describe("every panel as served", () => {
     const h = await startFleet();
     try {
       const seen = new Set<string>();
-      for (const path of ["/ui", "/view", "/settings", "/signin"]) {
+      const nonces = new Set<string>();
+      for (const path of ["/ui", "/view", "/settings", "/settings/general", "/signin"]) {
         for (let i = 0; i < 2; i++) {
           const res = await raw(h.port, path, { cookie: h.cookie, accept: "text/html" });
           expect(res.status, path).toBe(200);
@@ -114,7 +115,11 @@ describe("every panel as served", () => {
           // Every opening script tag the page carries, in any case.
           const scripts = [...res.body.matchAll(/<script\b([^>]*)>/gi)].map(x => x[1]!);
           const inline = scripts.filter(a => !/\ssrc=/.test(a));
-          if (path === "/ui") expect(inline, "the app shell loads only external scripts").toEqual([]);
+          if (path !== "/signin") expect(inline, `${path}: the app shell loads only external scripts`).toEqual([]);
+          // Every response gets its own nonce, inline script or not.
+          expect(m, `${path}: script-src names this response's nonce`).not.toBeNull();
+          expect(nonces.has(m![1]!), `${path}: a nonce is never reused`).toBe(false);
+          nonces.add(m![1]!);
           if (inline.length) {
             expect(m, `${path} has inline script, so its CSP needs a nonce`).not.toBeNull();
             for (const a of inline) expect(a.trim(), path).toBe(`nonce="${m![1]}"`);
@@ -124,8 +129,9 @@ describe("every panel as served", () => {
           expect(res.body.match(/\son[a-z]+\s*=\s*"/gi) ?? [], path).toEqual([]);
         }
       }
-      // /settings has its inline script (twice, one nonce per response); /view and /ui are the app shell, which has none.
-      expect(seen.size, "/settings has inline script, twice; /view and /ui none").toBe(2);
+      // /ui, /view and /settings are the app shell, which has no inline script (#1408 step 3: settings.html had one).
+      expect([...seen].length, "no app page has inline script").toBe(0);
+      expect(nonces.size, "ten responses, ten nonces").toBe(10);
     } finally { await h.stop(); }
   }, 30_000);
 });
@@ -183,7 +189,11 @@ describe("the app builds its markup from templates and props; the thread's strin
   });
 
   it("esc() escapes quotes on the panels that still write markup by string (the same function writes text and attributes)", () => {
-    for (const file of ["settings.html", join("shared", "panel-view.js")]) {
+    // #1408 step 3: settings.html is gone; the Settings panel writes no markup by string (htm escapes every value).
+    for (const file of ["panel-settings.js", "settings-dialogs.js", "settings-wizard.js", "settings-apply.js", "settings-confirm.js"]) {
+      expect(readFileSync(join(UI, file), "utf8"), file).not.toMatch(/innerHTML|outerHTML|insertAdjacentHTML|dangerouslySetInnerHTML/);
+    }
+    for (const file of [join("shared", "panel-view.js")]) {
       const src = readFileSync(join(UI, file), "utf8");
       const m = src.match(/(?:export )?(?:function esc\(s\) \{[^\n]*\}|const esc = \(s\) => [^\n]*;)/);
       expect(m, file).not.toBeNull();

@@ -38,6 +38,15 @@ const P = {
   chart: () => html`<path d="M3 20h18M6 16v-4M11 16V8M16 16v-6"/>`,
   up: () => html`<path d="M12 19V5M5 12l7-7 7 7"/>`,
   eye: () => html`<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>`,
+  check: () => html`<path d="M20 6L9 17l-5-5"/>`,
+  bot: () => html`<rect x="4" y="8" width="16" height="12" rx="2"/><path d="M12 8V4M9 4h6"/><path d="M9 13h.01M15 13h.01M9 17h6"/>`,
+  plug: () => html`<path d="M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0z"/><path d="M12 18v4"/>`,
+  room: () => html`<path d="M3 21V9l9-6 9 6v12"/><path d="M9 21v-6h6v6"/>`,
+  code: () => html`<path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/>`,
+  wand: () => html`<path d="M15 4V2M15 10V8M11 6H9M21 6h-2M18.5 3.5l-1.4 1.4M18.5 8.5l-1.4-1.4"/><path d="M3 21l11-11"/>`,
+  key: () => html`<circle cx="7.5" cy="15.5" r="4.5"/><path d="M10.7 12.3L21 2M17 6l3 3M14 9l2 2"/>`,
+  pause: () => html`<path d="M8 5v14M16 5v14"/>`,
+  download: () => html`<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>`,
 };
 
 /** <${Icon} name="menu" />; `size` 16 / 18 / 20 / 24. */

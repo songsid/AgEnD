@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   APPLY_FLEET_TARGET,
   APPLY_JOB_DEADLINE_MS,
@@ -13,6 +13,7 @@ import {
 import { FleetManager } from "../src/fleet-manager.js";
 import type { ApplyJob } from "../src/apply-job.js";
 import { handleSettingsRequest, type SettingsApiContext } from "../src/settings-api.js";
+import { h, page, settle, type AppPage } from "./helpers/app-harness.js";
 
 const dirs: string[] = [];
 const DEAD_PID = 999_999;
@@ -365,27 +366,72 @@ describe("GET /api/settings/apply/:jobId", () => {
 });
 
 describe("the settings page tells the truth about a restart it cannot perform", () => {
-  const html = readFileSync(
-    join(process.cwd(), "src", "ui", "settings.html"),
-    "utf8",
-  );
-
-  it("renders restart-required as its own terminal state, not as success", () => {
-    expect(html).toContain('row.status === "restart-required" ? "🔄🔄"');
-    expect(html).toContain('row.status === "restart-required" ? t("applyRestartNeeded")');
-    expect(html).toContain('applyRestartNeeded: "Saved — restart AgEnD to apply"');
-    expect(html).toContain("applyRestartHint");
-    // The panel must not fade away while a restart is still owed.
-    expect(html).toContain("if (!needsRestart) setTimeout");
+  // The Settings panel in the app shell renders the Apply's card from the app store (settings-apply.js publishes it).
+  let p: AppPage;
+  let runner: any, store: any, settings: any, tr: (k: string, ...a: unknown[]) => string;
+  const tn = (k: string, ...a: unknown[]) => tr(`settings.${k}`, ...a);
+  let answer: { ok: boolean; status: number; body: unknown } = { ok: true, status: 200, body: {} };
+  const JOB_ID = "22222222-2222-4222-8222-222222222222";
+  const job = (rows: Array<Record<string, unknown>>, status = "done") => ({
+    id: JOB_ID, key: "k", status, startedAt: 1, deadlineMs: 120000, pid: 1, elapsed_ms: 1000, overdue: false, message: "",
+    targets: rows,
   });
 
-  it("names the rows the reconcile found nothing to do", () => {
-    expect(html).toContain('row.settled_by === "no-change"');
+  beforeAll(async () => {
+    p = page({ url: "http://127.0.0.1:19280/settings" });
+    (globalThis as any).fetch = async (path: string, init: { method?: string } = {}) => {
+      if (init.method === "POST" && path === "/api/settings/apply") return { ok: answer.ok, status: answer.status, json: async () => answer.body };
+      if (path === `/api/settings/apply/${JOB_ID}`) return { ok: true, status: 200, json: async () => answer.body };
+      return { ok: false, status: 404, json: async () => null };
+    };
+    ({ t: tr } = await import("/assets/app-i18n.js"));
+    store = await import("/assets/app-store.js");
+    runner = await import("/ui/js/settings-apply.js");
+    settings = await import("/ui/js/panel-settings.js");
+  });
+  afterAll(() => { p.restore(); delete (globalThis as any).fetch; });
+  beforeEach(async () => { runner.resetOperation(); await p.unmount(); });
+  afterEach(async () => { runner.resetOperation(); await p.unmount(); });
+
+  async function applyAndMount(body: { status: number; body: unknown; ok?: boolean }) {
+    answer = { ok: body.ok ?? body.status < 400, status: body.status, body: body.body };
+    await p.mount(h(settings.SettingsPanel, { route: { panel: "settings", section: "general" }, navKey: "settings:general|1|en" }));
+    runner.startOperation([]);
+    await vi.waitFor(() => expect(runner.operationActive()).toBe(false));
+    await settle();
+    return p.root.querySelector(".s-op") as any;
+  }
+
+  it("renders restart-required as its own terminal state, not as success", async () => {
+    const card = await applyAndMount({
+      status: 202, body: job([{ target: "fleet", kind: "restart", status: "restart-required" }]),
+    });
+
+    const row = card.querySelector(".s-step.restart-required") as any;
+    expect(row).not.toBeNull();
+    expect(row.querySelector(".note").textContent).toBe(tn("applyRestartNeeded"));
+    expect(row.className).not.toContain("done");
+    expect(card.querySelector("p.note").textContent).toBe(tn("applyRestartHint"));
+    expect(card.querySelector("strong").textContent).toBe(tn("applyRestartNeeded"));
+    // The panel must not fade away while a restart is still owed: the card is still there, and nothing dismissed it.
+    await new Promise(r => setTimeout(r, 50));
+    expect(store.appStore.get().settingsOp).not.toBeNull();
+    expect(p.root.querySelector(".s-op")).not.toBeNull();
   });
 
-  it("tells the user to retry when the fleet is already reloading", () => {
-    expect(html).toContain("started.status === 409");
-    expect(html).toContain("applyBusy");
+  it("names the rows the reconcile found nothing to do", async () => {
+    const card = await applyAndMount({
+      status: 202, body: job([{ target: "one", kind: "hot", status: "done", settled_by: "no-change" }]),
+    });
+
+    expect(card.querySelector(".s-step .note").textContent).toBe(tn("applyNoChange"));
+  });
+
+  it("tells the user to retry when the fleet is already reloading", async () => {
+    const card = await applyAndMount({ status: 409, body: { error: "busy" } });
+
+    expect(card.querySelector("p.note").textContent).toBe(tn("applyBusy"));
+    expect(card.querySelector("strong").textContent).toBe(tn("applyPartial"));
   });
 });
 

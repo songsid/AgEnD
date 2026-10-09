@@ -26,7 +26,7 @@ const client = await import("/assets/app-route.js") as {
   parseRoute(p: string): unknown; legacyHashTarget(p: string, h: string): string | null; chatPath(n: string): string; isSafeInstanceName(n: string): boolean;
 };
 
-// [path, what it is]: "chat:<name>" / "chat:" / "fleet:<tab>" / "malformed" / "none"
+// [path, what it is]: "chat:<name>" / "chat:" / "fleet:<tab>" / "settings:<section>" / "malformed" / "none"
 const CASES: Array<[string, string]> = [
   ["/ui", "chat:"],
   ["/ui/chat/web-dev", "chat:web-dev"],
@@ -55,7 +55,16 @@ const CASES: Array<[string, string]> = [
   ["/view/a%2Fb", "malformed"],
   ["/view/%E0%A4", "malformed"],
   ["/view/a/b", "none"],
-  ["/settings", "none"],
+  ["/settings", "settings:agents"],
+  ["/settings/agents", "settings:agents"],
+  ["/settings/bots", "settings:bots"],
+  ["/settings/classic", "settings:classic"],
+  ["/settings/general", "settings:general"],
+  ["/settings/advanced", "settings:advanced"],
+  ["/settings/bogus", "none"],
+  ["/settings/", "none"],
+  ["/settings/general/x", "none"],
+  ["/settingsx", "none"],
 ];
 // Every data route under /ui the server answers (web-api.ts), by shape.
 const DATA_ROUTES = ["/ui/poll", "/ui/events", "/ui/history", "/ui/file/abc", "/ui/prompts", "/ui/instance/web-dev", "/ui/instances",
@@ -66,12 +75,16 @@ function describeServer(path: string): string {
   const m = shellRoute("GET", path);
   if (!m) return "none";
   if (m.kind === "malformed") return "malformed";
-  return m.route.panel === "fleet" ? `fleet:${m.route.tab}` : `${m.route.panel}:${m.route.instance ?? ""}`;
+  if (m.route.panel === "fleet") return `fleet:${m.route.tab}`;
+  if (m.route.panel === "settings") return `settings:${m.route.section}`;
+  return `${m.route.panel}:${m.route.instance ?? ""}`;
 }
 function describeClient(path: string): string {
-  const r = client.parseRoute(path) as { panel: string; instance?: string | null; tab?: string } | null;
+  const r = client.parseRoute(path) as { panel: string; instance?: string | null; tab?: string; section?: string } | null;
   if (!r) return "none";
-  return r.panel === "fleet" ? `fleet:${r.tab}` : `${r.panel}:${r.instance ?? ""}`;
+  if (r.panel === "fleet") return `fleet:${r.tab}`;
+  if (r.panel === "settings") return `settings:${r.section}`;
+  return `${r.panel}:${r.instance ?? ""}`;
 }
 
 describe("one classifier, the same on both sides", () => {
@@ -85,7 +98,9 @@ describe("one classifier, the same on both sides", () => {
   });
   it("no shell path is a data route, and no data route is a shell path", () => {
     for (const p of DATA_ROUTES) expect(shellRoute("GET", p), p).toBeNull();
-    for (const [p, want] of CASES) if (want.startsWith("chat") || want.startsWith("fleet")) expect(DATA_ROUTES).not.toContain(p);
+    for (const [p, want] of CASES) if (want !== "none" && want !== "malformed") expect(DATA_ROUTES).not.toContain(p);
+    // Settings' data lives under /api/settings/, never under its pages' paths.
+    for (const p of ["/api/settings/schema", "/api/settings/fleet/raw", "/api/settings/apply", "/api/settings/pending"]) expect(shellRoute("GET", p), p).toBeNull();
   });
   it("names: the client builds the same paths, and both sides hold names to the same rule", () => {
     for (const n of ["web-dev", "中文", "a b", "a?b#c", "100%"]) {
@@ -97,13 +112,13 @@ describe("one classifier, the same on both sides", () => {
       expect(client.isSafeInstanceName(n), JSON.stringify(n)).toBe(false);
     }
   });
-  it("the sign-in fallback covers every page of the app (and /view, /settings, still pages of their own)", () => {
-    for (const p of ["/ui", "/ui/chat/web-dev", "/ui/fleet", "/ui/fleet/config", "/view", "/view/web-dev", "/settings"]) expect(isWebPageNavigation(p), p).toBe(true);
-    for (const p of [...DATA_ROUTES, "/ui/fleet/bogus", "/api/fleet", "/signin"]) expect(isWebPageNavigation(p), p).toBe(false);
+  it("the sign-in fallback covers every page of the app", () => {
+    for (const p of ["/ui", "/ui/chat/web-dev", "/ui/fleet", "/ui/fleet/config", "/view", "/view/web-dev", "/settings", "/settings/general"]) expect(isWebPageNavigation(p), p).toBe(true);
+    for (const p of [...DATA_ROUTES, "/ui/fleet/bogus", "/settings/bogus", "/api/fleet", "/api/settings/schema", "/signin"]) expect(isWebPageNavigation(p), p).toBe(false);
   });
   it("the public link's manifest admits exactly the shell's pages (and a malformed one, answered 400 behind it)", () => {
     for (const [p, want] of CASES) {
-      if (want === "none") { if (p !== "/settings") expect(isPublicWebRoute("GET", p), p).toBe(false); }
+      if (want === "none") expect(isPublicWebRoute("GET", p), p).toBe(false);
       else expect(isPublicWebRoute("GET", p), p).toBe(true);
     }
     expect(isPublicWebRoute("POST", "/ui/chat/web-dev")).toBe(false);
@@ -173,7 +188,7 @@ describe("served: one page for every route", () => {
       expect(known.body).toMatch(/<body data-mode="full" /);
       expect(maskNonce(unknown.body)).toBe(maskNonce(known.body));
       expect(maskNonce(String(unknown.headers["content-security-policy"]))).toBe(maskNonce(String(known.headers["content-security-policy"])));
-      for (const p of ["/ui", "/ui/fleet", "/ui/fleet/config", "/ui/chat/%E4%B8%AD"]) {
+      for (const p of ["/ui", "/ui/fleet", "/ui/fleet/config", "/ui/chat/%E4%B8%AD", "/settings", "/settings/general", "/settings/advanced"]) {
         const r = await raw(h.port, "GET", p, { cookie: h.cookie, accept: "text/html" });
         expect(r.status, p).toBe(200);
         expect(maskNonce(r.body), p).toBe(maskNonce(known.body));
@@ -195,10 +210,17 @@ describe("served: one page for every route", () => {
         expect(r.status, p).toBe(400);
         expect(r.body, p).not.toContain("<html");
       }
-      for (const p of ["/ui/fleet/bogus", "/ui/chat"]) {
+      for (const p of ["/ui/fleet/bogus", "/ui/chat", "/settings/bogus", "/settings/general/x"]) {
         const r = await raw(h.port, "GET", p, { cookie: h.cookie, accept: "text/html" });
         expect(r.status, p).toBe(404);
         expect(r.body, p).not.toContain("<html");
+      }
+      // A Settings page is read, never written to: another method is refused (the gate's CSRF check, or the route's
+      // own 405 behind it), and the page is not served.
+      for (const m of ["POST", "PUT", "DELETE"]) {
+        const r = await raw(h.port, m, "/settings/general", { cookie: h.cookie, accept: "text/html" });
+        expect([403, 405], m).toContain(r.status);
+        expect(r.body, m).not.toContain("<html");
       }
     } finally { await h.stop(); }
   }, 30_000);
@@ -206,7 +228,7 @@ describe("served: one page for every route", () => {
   it("signed out, a browser navigation to any page gets the sign-in page; an API call still gets JSON", async () => {
     const h = await startListener();
     try {
-      for (const p of ["/ui", "/ui/chat/web-dev", "/ui/chat/nobody", "/ui/fleet", "/ui/fleet/teams"]) {
+      for (const p of ["/ui", "/ui/chat/web-dev", "/ui/chat/nobody", "/ui/fleet", "/ui/fleet/teams", "/settings", "/settings/bots"]) {
         const r = await raw(h.port, "GET", p, { accept: "text/html" });
         expect(r.status, p).toBe(401);
         expect(r.body, p).toContain('src="/assets/signin.js"');
@@ -224,7 +246,7 @@ describe("served: one page for every route", () => {
     });
     try {
       const bodies = new Set<string>(), csps = new Set<string>();
-      for (const p of ["/ui", "/ui/chat/web-dev", "/ui/fleet/config"]) {
+      for (const p of ["/ui", "/ui/chat/web-dev", "/ui/fleet/config", "/settings", "/settings/general"]) {
         const r = await raw(h.port, "GET", p, { cookie: h.cookie, accept: "text/html" });
         const tag = /<body[^>]*>/.exec(r.body)![0];
         expect(tag, p).toContain('data-preview-origin="http://127.0.0.1:4999"');

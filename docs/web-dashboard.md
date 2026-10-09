@@ -8,9 +8,9 @@ AgEnD's web dashboard is three panels on one small web server that the fleet run
 |---|---|
 | **`/ui`**: the app | Talk to your agents (chat, files, Stop reply), see who is working, and manage instances, tasks, schedules and teams. Each chat has its own address, `/ui/chat/<name>`; Fleet is `/ui/fleet` (`/ui/fleet/schedules`, `…/teams`, `…/config`) |
 | **`/view`** | A read-mostly view of every agent: live terminal, roster, usage, and editing each agent's profile and avatar |
-| **`/settings`** | Fleet settings, with apply and restart |
+| **`/settings`** | Fleet settings — agents, connections, ClassicBot, defaults, `fleet.yaml` — with apply and restart. Each section has its own address: `/settings/bots`, `…/classic`, `…/general`, `…/advanced` (`/settings` is Agents) |
 
-`/ui` and `/view` are one app with a sidebar: the instances, **Fleet**, **View**, **Settings**, the theme, the language and the **Session** menu. Moving around inside it does not reload the page, and Back/Forward work. `/settings` is still a page of its own for now, with its navigation bar. `/` opens `/ui`, which goes back to the chat you had open last. Old links of the form `/ui#instance=<name>` still work, also through signing in.
+`/ui`, `/view` and `/settings` are one app with a sidebar: the instances, **Fleet**, **View**, **Settings**, the theme, the language and the **Session** menu. Moving around inside it does not reload the page, and Back/Forward work. `/` opens `/ui`, which goes back to the chat you had open last. Old links of the form `/ui#instance=<name>` still work, also through signing in.
 
 The server listens on **`127.0.0.1`**, on `health_port` (default **19280**). It is reachable from the machine itself unless you set up a way in: see [Reaching it from elsewhere](#reaching-it-from-elsewhere).
 
@@ -35,7 +35,7 @@ An old `?token=` link or bookmark (`/ui?token=…`, as older versions printed) i
 - A session is a record on the server, not a value in your browser. It ends **12 hours** after sign-in, or after **2 hours** without use, whichever comes first. Local sessions survive a fleet restart. Public sessions are scoped to one exposure: four-hour absolute / 30-minute idle limits, and link closure also ends them. They cannot be used locally or on a later exposure; local cookies and header tokens cannot be used on the public host.
 - Only what you do counts as use: opening a page or a chat, sending, changing something. What a page does on its own timer never does: the live stream (also when it reconnects), the polling fallback, and `/view`'s terminal, roster and usage refresh. So a tab left open, including `/view` with `web.view_access: session`, still ends after its idle limit (2 hours locally, 30 minutes for a public session).
 - When a session ends, the page says so once ("Your session has ended. Sign in again") and keeps what you were doing on screen.
-- **The Session menu** (at the bottom of the sidebar in `/ui` and `/view`; in the top bar of `/settings`) shows:
+- **The Session menu** (at the bottom of the sidebar) shows:
   - which browser you are signed in as, and when the session ends;
   - every other signed-in device, each with **Sign out**;
   - **Sign out everywhere**.
@@ -149,6 +149,15 @@ When an instance looks hung, exits on its own, or is stuck on an interactive pro
 - **Editing an agent's profile or avatar always needs a session.** The order of the roster is kept in this browser only.
 - Scripts can still write with the `X-Agend-Token` header.
 
+## `/settings`
+
+**Agents**, **Connections**, **ClassicBot**, **General** and **Developer** (the whole `fleet.yaml` as YAML or JSON) are tabs, each with its own address. The search box filters agents, connections and ClassicBot rooms; **Setup wizard** runs the same four steps as `agend quickstart`.
+
+- **Changes are staged, then applied together.** An agent's or a connection's **Settings** dialog stages its changes when you press **Stage change**; General's **Review changes** does the same. The bar at the bottom counts them and says what applying them costs (immediately, a restart of that agent, or a restart of AgEnD); **Apply changes** applies them all, **Discard** drops them. Staged changes stay while you move between tabs; leaving Settings with any asks **Discard N pending changes?** first.
+- **Once you press Apply, it carries on without you.** You can open the chat or anything else: the writes, the reload and its progress go on, a line at the top says how it is going, and Settings shows the details when you come back. A second Apply waits until the first is done. When a change needs AgEnD itself restarted, **Restart AgEnD** is offered (with its own confirmation).
+- **New agent** is the same dialog as the sidebar's ✎ (New instance).
+- **A change that needs a fleet admin's confirmation** (see [Confirming sensitive changes](#confirming-sensitive-changes)) shows a card in any panel: what it changes, the time left, and **Withdraw**. Apply waits for it; once it is confirmed the rest goes on, and if it is refused or expires, nothing after it is applied and those changes are staged again (a bot token has to be entered again).
+
 ## Reaching it from elsewhere
 
 ### Temporary public link from a phone
@@ -220,6 +229,6 @@ Full reference: [configuration.md](configuration.md). CLI commands: [cli.md](cli
 
 Changing access/F/C lists, secrets, connection destinations/order, public exposure or control-bearing instance settings returns `202 pending_confirmation`. The requester can list/poll `GET /api/settings/pending[/:id]` and withdraw an unclaimed request with `DELETE /api/settings/pending/:id`. Other sessions receive 404. Polling is passive and does not extend sign-in lifetime; `remaining_ms` is the countdown, and the display timestamp is not an authorization deadline.
 
-Confirm the redacted diff in General as a fleet admin. If chat is unavailable, use the host command `agend settings confirm <id>`; Reject, expiry or session revocation does not apply the change. Apply retries must reuse the same `Idempotency-Key` and body, which returns the same request. After a terminal failure, review and submit a new key; secrets must be entered again. The Settings shell's waiting-state presentation is handled separately in #1408.
+Confirm the redacted diff in General as a fleet admin. If chat is unavailable, use the host command `agend settings confirm <id>`; Reject, expiry or session revocation does not apply the change. Apply retries must reuse the same `Idempotency-Key` and body, which returns the same request. After a terminal failure, review and submit a new key; secrets must be entered again. In the web app, a request waiting for confirmation shows as a card in any panel, with its countdown and **Withdraw** (see [`/settings`](#settings)).
 
 First-time Setup also returns a pending request. Confirm it on the host, then explicitly choose **Start AgEnD**. A pending response, an old successful commit or a changed configuration cannot hand over the setup listener to the fleet.

@@ -14048,7 +14048,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (cachedModel?.trim()) return done(cachedModel.trim(), "cli-default");
     // Say WHY it's unresolved: no fresh probe yet vs. the CLI not exposing a default
     // (e.g. claude-code's default is account-side, opencode's is provider-side).
-    return done("default", "unresolved", cliEnv ? "this CLI does not report a default" : "not probed yet");
+    return done("default", "unresolved", cliEnv ? "this CLI does not report a default" : "detected when it starts");
   }
 
   /** Human-readable effective model, e.g. `auto (default)`. Used by /ctx. */

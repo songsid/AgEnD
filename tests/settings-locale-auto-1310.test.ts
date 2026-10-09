@@ -1,128 +1,129 @@
 /**
- * #1310: Settings → Defaults locale picker must have an "Auto (follow system)"
- * option that maps to *unset*. Without it the select falls to its first option
- * (en) and any unrelated defaults save writes locale: en, pinning the UI
+ * #1310: Settings → Defaults locale picker must have an "Auto (follow system)" option that maps to *unset*. Without
+ * it the select falls to its first option (en) and any unrelated defaults save writes locale: en, pinning the UI
  * language and disabling timezone auto-detect.
  *
- * The page's own code runs in a vm with a minimal DOM whose <select> behaves
- * like a browser's (its value is the selected option's, else the first option's).
- * The real Settings API save path exercises handleSettingsRequest directly.
+ * #1408 step 3: the picker is the General section's, rendered in the mini DOM with a fake fetch for the server; the
+ * save path is the panel's (the PUT it stages and Apply sends). The server side is the real settings API, as before.
  */
 import { EventEmitter } from "node:events";
-import { readFileSync } from "node:fs";
-import vm from "node:vm";
-import { describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
+import { fire } from "./helpers/mini-dom.js";
+import { buildSettingsImpactSchema } from "../src/instance-config-impact.js";
 import { handleSettingsRequest, type SettingsApiContext } from "../src/settings-api.js";
 
-const html = readFileSync(new URL("../src/ui/settings.html", import.meta.url), "utf8");
-const slice = (from: string, to: string) => {
-  const a = html.indexOf(from), b = html.indexOf(to, a);
-  expect(a, from).toBeGreaterThan(-1); expect(b, to).toBeGreaterThan(a);
-  return html.slice(a, b);
-};
-const line = (marker: string) => { const l = html.split("\n").find(x => x.includes(marker)); expect(l, marker).toBeTruthy(); return l!; };
+interface Sent { method: string; path: string; body: any }
+const schema = buildSettingsImpactSchema();
+let p: AppPage;
+let fleetDefaults: Record<string, unknown>;
+let sent: Sent[] = [];
 
-class FakeEl {
-  children: Array<FakeEl | string> = [];
-  attrs: Record<string, string> = {};
-  listeners: Record<string, Array<() => void>> = {};
-  parent: FakeEl | null = null;
-  className = ""; style: Record<string, string> = {};
-  selected = false; checked = false; disabled = false; type = ""; open = false; hidden = false;
-  onclick: (() => unknown) | null = null; onchange: (() => unknown) | null = null;
-  classList = { toggle: () => {}, add: () => {}, remove: () => {} };
-  private ownValue = "";
-  constructor(public tag: string) {}
-  get value(): string {
-    if (this.tag !== "select") return this.ownValue;
-    const options = this.all(e => e.tag === "option");
-    return (options.find(o => o.selected) ?? options[0])?.value ?? "";
-  }
-  set value(v: string) {
-    if (this.tag !== "select") { this.ownValue = String(v); return; }
-    for (const o of this.all(e => e.tag === "option")) o.selected = o.value === String(v);
-  }
-  setAttribute(k: string, v: string) { this.attrs[k] = String(v); if (k === "value") this.value = String(v); if (k === "type") this.type = String(v); }
-  getAttribute(k: string) { return this.attrs[k]; }
-  addEventListener(type: string, fn: () => void) { (this.listeners[type] ??= []).push(fn); }
-  append(...kids: Array<FakeEl | string>) { for (const k of kids) { if (k instanceof FakeEl) k.parent = this; this.children.push(k); } }
-  remove() { if (this.parent) this.parent.children = this.parent.children.filter(c => c !== this); this.parent = null; }
-  set innerHTML(_v: string) { this.children = []; }
-  get textContent(): string { return this.children.map(c => typeof c === "string" ? c : c.textContent).join(""); }
-  set textContent(v: string) { this.children = [String(v)]; }
-  fire(type: string) { for (const fn of this.listeners[type] ?? []) fn(); if (type === "change") this.onchange?.(); }
-  all(pred: (e: FakeEl) => boolean): FakeEl[] {
-    const out: FakeEl[] = [];
-    for (const c of this.children) if (c instanceof FakeEl) { if (pred(c)) out.push(c); out.push(...c.all(pred)); }
-    return out;
-  }
-  querySelector(sel: string) { const cls = sel.replace(/^\./, ""); return this.all(e => e.className.split(" ").includes(cls))[0] ?? null; }
-}
-
-/** The locale picker: the select whose options include the "" (auto) value. */
-const localePicker = (host: FakeEl) => {
-  const found = host.all(e => e.tag === "select" && e.all(o => o.tag === "option").some(o => o.value === ""));
-  expect(found, "locale picker (has auto option)").toHaveLength(1);
-  return found[0]!;
+const fakeFetch = async (path: string, init: { method?: string; body?: string } = {}) => {
+  const method = init.method ?? "GET";
+  sent.push({ method, path, body: init.body ? JSON.parse(init.body) : undefined });
+  const body = (() => {
+    if (method !== "GET") return method === "POST" ? { id: "job-1", status: "done", targets: [] } : { ok: true };
+    if (path === "/api/settings/schema") return schema;
+    if (path === "/api/settings/fleet/raw") return { defaults: fleetDefaults, instances: {}, channels: [] };
+    if (path === "/api/settings/classic") return { channels: {}, defaults: {} };
+    if (path === "/api/settings/status-emojis") return { keys: [], builtins: { discord: {}, telegram: {} }, telegram_allowed: [], suggestions: [] };
+    if (path === "/api/fleet") return { version: "2.1.12", instances: [] };
+    return [];
+  })();
+  return { ok: true, status: 200, json: async () => body };
 };
 
-const PAGE_HELPERS = () => [
-  line("const el = (tag, attrs = {}, ...kids) =>"),
-  line("const BACKENDS = ["),
-  line("function select(value, options) {"),
-  // #1294 + #1310: backend and locale pickers are page-level helpers next to select().
-  slice("  /**\n   * The backend picker keeps", "  const impactText"),
-  slice("  const hasOwn = ", "  function setValidation("),
-  slice("  function setValidation(", "  function confirmAccessChange("),
-];
+const realFetch = (globalThis as any).fetch;
+beforeAll(() => {
+  p = page({ url: "http://127.0.0.1:19280/settings" });
+  (globalThis as any).fetch = fakeFetch;
+});
+afterAll(() => { p.restore(); (globalThis as any).fetch = realFetch; });
+beforeEach(() => {
+  fleetDefaults = {}; sent = [];
+  (globalThis as any).confirm = () => true;
+  p.window.confirm = () => true;
+});
+afterEach(async () => {
+  await p.unmount();
+  const { resetOperation } = await import("/ui/js/settings-apply.js");
+  const { resetConfirmations } = await import("/ui/js/settings-confirm.js");
+  resetOperation(); resetConfirmations();
+});
 
-function makeSandbox(extra: Record<string, unknown>) {
-  const staged: Array<{ key: string; change: { apply(): Promise<unknown> } }> = [];
-  const sent: Array<{ path: string; method: string; body: unknown }> = [];
-  const box: Record<string, unknown> = {
-    document: { createElement: (tag: string) => new FakeEl(tag) },
-    t: (k: string) => k, tf: (k: string, ...v: unknown[]) => `${k}:${v.join(",")}`, esc: (s: string) => s,
-    setTimeout, clearTimeout, structuredClone, confirm: () => true,
-    api: async (path: string, opts: { method?: string; body?: string } = {}) => {
-      if (opts.method) sent.push({ path, method: opts.method, body: JSON.parse(opts.body ?? "{}") });
-      return { ok: true, status: 200, body: {} };
-    },
-    channelIds: () => [], chById: () => null, chLabel: () => "",
-    chipList: () => new FakeEl("div"),
-    drawer: (...kids: FakeEl[]) => { const d = new FakeEl("details"); d.append(...kids.slice(1)); return d; },
-    impact: () => new FakeEl("span"), impactOf: () => "now", batchImpact: () => "now",
-    shortName: (n: string) => n, renderAgents: () => {}, AGENT_MODAL_FIELDS: [],
-    stageChange: (key: string, change: { apply(): Promise<unknown> }) => staged.push({ key, change }),
-    statusEmojiEditor: () => ({ box: new FakeEl("div"), value: () => undefined, baseline: () => undefined, refresh: () => {} }),
-    ...extra,
-  };
-  return { box, staged, sent };
-}
-
+/** General, freshly read, with the defaults the test names. */
 async function general(defaults: Record<string, unknown>) {
-  const host = new FakeEl("div");
-  const { box, staged, sent } = makeSandbox({
-    $: (id: string) => (id === "general" ? host : new FakeEl("div")),
-    state: { fleet: { defaults, instances: {}, channels: [] }, classic: { defaults: {} }, pending: new Map() },
-    channels: () => [],
-  });
-  vm.runInNewContext(
-    [...PAGE_HELPERS(), slice("  function renderGeneral() {", "\n  // ── What's New ──"), "this.renderGeneral = renderGeneral;"].join("\n"),
-    box,
-  );
-  (box.renderGeneral as () => void)();
-  const save = host.all(e => e.tag === "button" && e.className === "primary")[0]!;
-  const picker = localePicker(host);
+  fleetDefaults = defaults;
+  const { SettingsPanel } = await import("/ui/js/panel-settings.js");
+  await p.unmount();
+  await p.mount(h(SettingsPanel, { route: { panel: "settings", section: "general" }, navKey: "settings:general" }));
+  await settle(12);
+  const picker = p.root.querySelector("#g-locale")!;
+  /** Review, then Apply: what the panel sends for the defaults (null when nothing differs). */
   const review = async () => {
-    staged.length = 0;
-    await save.onclick!();
-    const defaultsChange = staged.find(s => s.key === "defaults:fleet");
-    if (!defaultsChange) return null;
-    await defaultsChange.change.apply();
-    return sent.at(-1)!;
+    sent = [];
+    fire(p.root.querySelectorAll("button").find((b: any) => b.textContent.trim() === "Review changes")!, "click");
+    await settle();
+    const region = p.root.querySelector("[role=region]");
+    if (!region) return null;
+    fire(region.querySelectorAll("button").find((b: any) => b.textContent.trim() === "Apply changes")!, "click");
+    await settle();
+    return sent.find(s => s.path === "/api/settings/fleet/defaults") ?? null;
   };
-  return { picker, host, review };
+  const logLevel = () => p.root.querySelector("#g-ll")!;
+  return { picker, review, logLevel };
 }
+const pick = async (el: any, value: string) => { el.value = value; fire(el, "change"); await settle(); };
+
+describe("localeSelect picker (#1310)", () => {
+  it("locale unset: picker shows Auto as the selected option", async () => {
+    const { picker } = await general({});
+    expect(picker.value).toBe("");
+    const opts = picker.querySelectorAll("option");
+    expect(opts[0]!.value).toBe("");       // Auto first
+    expect(opts[0]!.textContent).toBe("Auto (follow system)");
+    expect(opts.map((o: any) => o.value)).toEqual(["", "en", "zh-TW"]);
+  });
+
+  it("locale unset + unrelated edit (log_level): PUT body has NO locale key", async () => {
+    const { logLevel, review } = await general({});
+    await pick(logLevel(), "warn");
+    const sentDefaults = await review();
+    expect(sentDefaults).not.toBeNull();
+    expect(Object.keys(sentDefaults!.body)).not.toContain("locale");
+  });
+
+  it("choose Auto (set → Auto): locale is sent as null so the server clears it", async () => {
+    const { picker, review } = await general({ locale: "en" });
+    expect(picker.value).toBe("en");
+    await pick(picker, "");
+    expect((await review())!.body).toMatchObject({ locale: null });
+  });
+
+  it("choose zh-TW: locale is set to zh-TW", async () => {
+    const { picker, review } = await general({});
+    await pick(picker, "zh-TW");
+    expect((await review())!.body).toMatchObject({ locale: "zh-TW" });
+  });
+
+  it("existing explicit en + unrelated edit: locale is not in the PATCH (preserved)", async () => {
+    const { picker, logLevel, review } = await general({ locale: "en" });
+    expect(picker.value).toBe("en");
+    await pick(logLevel(), "warn");
+    const sentDefaults = await review();
+    expect(Object.keys(sentDefaults!.body)).not.toContain("locale");
+    expect(sentDefaults!.body).toMatchObject({ log_level: "warn" });
+  });
+
+  it("unknown locale in fleet.yaml is kept selected (and labelled) until the user changes it", async () => {
+    const { picker } = await general({ locale: "fr" });
+    expect(picker.value).toBe("fr");
+    const kept = picker.querySelectorAll("option").find((o: any) => o.value === "fr");
+    expect(kept).toBeTruthy();
+    expect(kept.textContent).toBe("fr");
+  });
+});
 
 // ── Settings API helpers ──────────────────────────────────────────────────────
 
@@ -157,55 +158,6 @@ function makeApiCtx(initialDefaults: Record<string, unknown> = {}): { ctx: Setti
   } as unknown as SettingsApiContext;
   return { ctx, defaults };
 }
-
-// ── Page-code unit tests ──────────────────────────────────────────────────────
-
-describe("localeSelect picker (#1310)", () => {
-  it("locale unset: picker shows Auto as the selected option", async () => {
-    const { picker } = await general({});
-    expect(picker.value).toBe("");
-    const opts = picker.all(o => o.tag === "option");
-    expect(opts[0]!.value).toBe("");       // Auto first
-    expect(opts[0]!.selected).toBe(true);  // and selected
-  });
-
-  it("locale unset + unrelated edit (log_level): PUT body has NO locale key", async () => {
-    const { host, review } = await general({});
-    const logLevel = host.all(e => e.tag === "select" && e.all(o => o.tag === "option").some(o => o.value === "warn"))[0]!;
-    logLevel.value = "warn";
-    const sent = await review();
-    expect(sent).not.toBeNull();
-    expect(Object.keys(sent!.body as object)).not.toContain("locale");
-  });
-
-  it("choose Auto (set → Auto): locale is sent as null so the server clears it", async () => {
-    const { picker, review } = await general({ locale: "en" });
-    expect(picker.value).toBe("en");
-    picker.value = "";
-    expect((await review())!.body).toMatchObject({ locale: null });
-  });
-
-  it("choose zh-TW: locale is set to zh-TW", async () => {
-    const { picker, review } = await general({});
-    picker.value = "zh-TW";
-    expect((await review())!.body).toMatchObject({ locale: "zh-TW" });
-  });
-
-  it("existing explicit en + unrelated edit: locale is not in the PATCH (preserved)", async () => {
-    const { host, picker, review } = await general({ locale: "en" });
-    expect(picker.value).toBe("en");
-    const logLevel = host.all(e => e.tag === "select" && e.all(o => o.tag === "option").some(o => o.value === "warn"))[0]!;
-    logLevel.value = "warn";
-    const sent = await review();
-    expect(Object.keys(sent!.body as object)).not.toContain("locale");
-    expect(sent!.body).toMatchObject({ log_level: "warn" });
-  });
-
-  it("unknown locale in fleet.yaml is kept selected until the user changes it", async () => {
-    const { picker } = await general({ locale: "fr" });
-    expect(picker.value).toBe("fr");
-  });
-});
 
 // ── Real Settings API path ────────────────────────────────────────────────────
 

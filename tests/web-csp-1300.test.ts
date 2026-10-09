@@ -18,7 +18,7 @@ import { FleetManager } from "../src/fleet-manager.js";
 import { WEB_CONTENT_SECURITY_POLICY, panelContentSecurityPolicy } from "../src/web-host-guard.js";
 
 const UI = join(process.cwd(), "src", "ui");
-const PANELS = ["app.html", "settings.html", "signin.html"];
+const PANELS = ["app.html", "signin.html"];   // #1408 step 3: settings.html is gone (the Settings panel is modules)
 // Every script a panel can load from this origin: the app's modules and the shared ones (*.module.js is vendored Preact/htm).
 const isModule = (f: string) => f.endsWith(".js") && !f.endsWith(".module.js");
 const SHARED = [...readdirSync(join(UI)).filter(isModule), ...readdirSync(join(UI, "shared")).filter(isModule).map(f => join("shared", f))];
@@ -27,8 +27,9 @@ afterEach(() => { for (const d of tempDirs.splice(0)) rmSync(d, { recursive: tru
 const directive = (csp: string, name: string) => csp.split(";").map(s => s.trim()).find(s => s.startsWith(name + " ")) ?? "";
 
 describe("no style attribute, anywhere a panel could write one", () => {
-  it("the View panel's modules are in the scan below, so a rename cannot drop them silently", () => {
-    expect(SHARED).toEqual(expect.arrayContaining([join("shared", "panel-view.js"), join("shared", "view-strings.js")]));
+  it("the View and Settings panels' modules are in the scan below, so a rename cannot drop them silently", () => {
+    expect(SHARED).toEqual(expect.arrayContaining([join("shared", "panel-view.js"), join("shared", "view-strings.js"),
+      "panel-settings.js", "settings-dialogs.js", "settings-wizard.js", "settings-apply.js", "settings-confirm.js", "settings-model.js", "settings-strings.js"]));
   });
 
   it.each(PANELS)("%s: none in the markup or in a template its script builds; no setAttribute('style')", (file) => {
@@ -40,14 +41,8 @@ describe("no style attribute, anywhere a panel could write one", () => {
     expect(src.match(/[{,]\s*style\s*:\s*["'`]/g) ?? [], file).toEqual([]);
   });
 
-  it("settings' el() refuses a style attribute outright", () => {
-    const src = readFileSync(join(UI, "settings.html"), "utf8");
-    const line = src.split("\n").find(l => l.includes("const el = (tag, attrs = {}, ...kids)"))!;
-    const c = vm.createContext({ document: { createElement: () => ({ setAttribute() {}, append() {}, addEventListener() {} }) } });
-    vm.runInContext(line.trim().replace(/^const el =/, "globalThis.el ="), c);
-    expect(() => vm.runInContext('el("div", { style: "color:red" })', c)).toThrow(/class, not a style attribute/);
-    expect(() => vm.runInContext('el("div", { class: "u-row", title: "x" })', c)).not.toThrow();
-  });
+  // #1408 step 3 — dropped: "settings' el() refuses a style attribute outright". settings.html and its el() builder are
+  // gone; the Settings panel is htm, and the module scan below refuses a style prop (style=${…}) or key in every module.
 
   it.each(PANELS)("%s: every <style> block is a bare <style>, so the server's nonce reaches it", (file) => {
     const src = readFileSync(join(UI, file), "utf8");
@@ -118,7 +113,7 @@ describe("every panel as served", () => {
   it("each <style> carries this response's nonce, the CSP's style-src names it and nothing inline, and no style attribute is served", async () => {
     const h = await startFleet();
     try {
-      for (const path of ["/ui", "/view", "/settings", "/signin"]) {
+      for (const path of ["/ui", "/view", "/settings", "/settings/general", "/signin"]) {
         const res = await raw(h.port, path, { cookie: h.cookie, accept: "text/html" });
         expect(res.status, path).toBe(200);
         const csp = String(res.headers["content-security-policy"]);
@@ -128,8 +123,8 @@ describe("every panel as served", () => {
         expect(nonce, `${path}: style-src names a nonce`).toBeTruthy();
         expect(directive(csp, "script-src"), "one nonce for both").toContain(`'nonce-${nonce}'`);
         const tags = [...res.body.matchAll(/<style\b([^>]*)>/g)].map(m => m[1]!.trim());
-        // /ui and /view are the app shell: its styles are external files, so there is no <style> to nonce.
-        if (path === "/ui" || path === "/view") expect(tags, `${path}: the app shell's styles are external files`).toEqual([]);
+        // /ui, /view and /settings are the app shell: its styles are external files, so there is no <style> to nonce.
+        if (path !== "/signin") expect(tags, `${path}: the app shell's styles are external files`).toEqual([]);
         else expect(tags.length, path).toBeGreaterThan(0);
         for (const a of tags) expect(a, path).toBe(`nonce="${nonce}"`);
         expect(res.body.match(/\sstyle\s*=\s*"/gi) ?? [], path).toEqual([]);

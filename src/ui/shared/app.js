@@ -1,5 +1,5 @@
 // #1408: the web app's entry. One page for every route of the app (/ui, /ui/chat/<name>, /ui/fleet[/<tab>], /view,
-// /view/<name>); the server says on <body> which mode this load is in and how live updates travel (app-stream.js).
+// /view/<name>, /settings[/<section>]); the server says on <body> which mode this load is in and how live updates travel (app-stream.js).
 //
 // Public closure (#1408 §4): this file and everything it imports statically are served from /assets/ without a
 // session, and so is View (panel-view.js, loaded on demand). The panels that need a session live under /ui/js/ and are
@@ -48,6 +48,7 @@ if (mode === "full") {
     return m;
   }));
   const loadFleet = retryable((a) => import(retryUrl("/ui/js/panel-fleet.js", a)));
+  const loadSettings = retryable((a) => import(retryUrl("/ui/js/panel-settings.js", a)));
   // The stream opens once the chat listens, so the frames sent on connect (status, open prompts, ticks) reach it too.
   // If the chat cannot load (a session that just ended), the stream still opens for the sidebar.
   const chatBoot = loadChat();
@@ -57,6 +58,7 @@ if (mode === "full") {
   let chatLoads = 0;
   panels.set("chat", { load: () => (chatLoads++ === 0 ? chatBoot : loadChat()).then((m) => m.ChatPanel) });
   panels.set("fleet", { load: () => loadFleet().then((m) => m.FleetPanel) });
+  panels.set("settings", { load: () => loadSettings().then((m) => m.SettingsPanel) });
   onNewInstance = async () => {
     closeDrawer();                                 // on a phone the dialog opens from the drawer: the drawer goes first
     let m;
