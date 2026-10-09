@@ -1,0 +1,75 @@
+# #1450 rehearsal in launchd's GUI domain (gui/<uid>), which an SSH session on a real Mac cannot reach: a GitHub-hosted
+# macOS runner has a logged-in Aqua session. The published 2.1.12 on Node 20.19 is installed as a launchd service and
+# updated by its own `agend update` to a candidate built here (signed official Node runtime packages, local registry,
+# nothing published). scripts/ci/runtime-acceptance/gui-rehearsal.sh. Mac-only, so never on pull requests (fleet
+# decision c553fd23): on demand, and before a release.
+name: Mac GUI-domain rehearsal
+
+on:
+  workflow_dispatch:
+  push:
+    # Lets the rehearsal run from its own branch before this file is on main; removed when it lands.
+    branches: [ci/1450-gui-rehearsal]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mac-gui-rehearsal-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PIN: 22.23.3
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci && npm run build
+      - name: Runtime packages from the signed official Node ${{ env.PIN }}
+        run: node scripts/runtime/build-runtime-packages.mjs --node "$PIN" --out "$RUNNER_TEMP/runtime"
+      - name: The candidate, pinning them
+        run: node scripts/ci/runtime-acceptance/prepare-candidate.mjs "$RUNNER_TEMP/runtime" "$RUNNER_TEMP/packages" "$PIN" "2.2.0-acceptance.${{ github.run_id }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gui-rehearsal-packages
+          path: ${{ runner.temp }}/packages
+          retention-days: 3
+
+  gui:
+    needs: build
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: gui-rehearsal-packages
+          path: ${{ runner.temp }}/packages
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Local registry with the candidate
+        run: bash scripts/ci/runtime-acceptance/registry.sh "$RUNNER_TEMP/packages" "$RUNNER_TEMP/registry"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.0
+      - name: tmux for the fleet
+        run: command -v tmux || brew install tmux
+      - name: 2.1.12 → candidate in the GUI domain, through the old updater
+        run: bash scripts/ci/runtime-acceptance/gui-rehearsal.sh "$RUNNER_TEMP/packages"
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          launchctl print "gui/$(id -u)/com.agend.fleet" 2>&1 | head -60 || true
+          tail -60 "$HOME/.agend/fleet.log" 2>/dev/null || true
+          cat "$RUNNER_TEMP/gui/update.out" 2>/dev/null | tail -40 || true
+      - name: Clean up the job
+        if: always()
+        run: launchctl bootout "gui/$(id -u)/com.agend.fleet" 2>/dev/null || true
