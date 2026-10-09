@@ -122,7 +122,7 @@ function checkInvocation(file, argv = [], env = process.env, cwd = process.cwd()
   if (BACKENDS.has(base) && !fixtureAllowed(file, env, cwd)) throw new Error(`real backend CLI forbidden: ${base}`);
   // Through PATH (`sh -c "agend fleet start"`), an `agend` that is not a registered fixture is whatever is installed on
   // this host — a real fleet. A harness that once stubbed `agend` on PATH must not be the only thing in the way.
-  if (base === 'agend' && argv[0] === 'fleet' && argv[1] === 'start' && !fixtureAllowed(file, env, cwd)) {
+  if (base === 'agend' && launchesDaemon(argv) && !fixtureAllowed(file, env, cwd)) {
     throw new Error('a real `agend fleet start` from a test is forbidden');
   }
   if (base === 'tmux') {
@@ -145,6 +145,10 @@ function checkInvocation(file, argv = [], env = process.env, cwd = process.cwd()
 // `agend` on PATH a test could stub. A test may never start a real fleet (the daemon) that way, from this repo or any
 // copy of it; one that means to observe it sets AGEND_TEST_SELF_SPAWN_LOG, and the spawn is recorded there and
 // replaced by an inert `sh -c 'exit 0'`.
+/** `fleet start` with no instance launches the daemon; `fleet start <instance>` asks a running fleet (HTTP). */
+function launchesDaemon(args) {
+  return args[0] === 'fleet' && args[1] === 'start' && !args.slice(2).some(a => typeof a === 'string' && !a.startsWith('-'));
+}
 function isAgendCli(file) {
   if (!/^cli\.(?:js|ts)$/.test(path.basename(file))) return false;
   try { return JSON.parse(fs.readFileSync(path.join(path.dirname(file), '..', 'package.json'), 'utf8')).name === '@songsid/agend'; }
@@ -154,7 +158,7 @@ function selfFleetStart(file, argv, cwd) {
   if (!/^node(?:js)?$/.test(path.basename(String(file)))) return null;
   const i = argv.findIndex(arg => typeof arg === 'string' && !arg.startsWith('-') && isAgendCli(path.resolve(childCwd(cwd), arg)));
   const rest = i < 0 ? [] : argv.slice(i + 1);
-  return rest[0] === 'fleet' && rest[1] === 'start' ? rest.join(' ') : null;
+  return launchesDaemon(rest) ? rest.join(' ') : null;
 }
 function install() {
   if (globalThis[KEY]) return globalThis[KEY];

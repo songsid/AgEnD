@@ -104,6 +104,7 @@ describe("process guard child execution boundaries", () => {
     expect(guard.selfFleetStart(process.execPath, [cli, "fleet", "start"], process.cwd())).toBe("fleet start");
     expect(guard.selfFleetStart(process.execPath, [cli, "fleet", "restart", "--reload"], process.cwd())).toBeNull();   // talks to a running fleet; tests drive it
     expect(guard.selfFleetStart(process.execPath, [cli, "backend", "doctor"], process.cwd())).toBeNull();
+    expect(guard.selfFleetStart(process.execPath, [cli, "fleet", "start", "worker"], process.cwd())).toBeNull();   // one instance, via a running fleet
     expect(guard.selfFleetStart(process.execPath, [join(scratch(), "dist", "cli.js"), "fleet", "start"], process.cwd())).toBeNull();
     if (!existsSync(cli)) return;
     const root = scratch(), log = join(root, "self-spawn.log");
