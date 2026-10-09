@@ -299,4 +299,14 @@ Changing access/F/C lists, secrets, connection destinations/order, public exposu
 
 Confirm the redacted diff in General as a fleet admin. If chat is unavailable, use the host command `agend settings confirm <id>`; Reject, expiry or session revocation does not apply the change. Apply retries must reuse the same `Idempotency-Key` and body, which returns the same request. After a terminal failure, review and submit a new key; secrets must be entered again. In the web app, a request waiting for confirmation shows as a card in any panel, with its countdown and **Withdraw** (see [`/settings`](#settings)).
 
+**Which bot's admin can confirm?** Changes to existing connections require the
+admin of every affected connection, including both owners when an agent moves.
+A shared token requires every connection that uses its environment key.
+Fleet-wide changes and new connections require the configured primary General's
+bot admin (the first configured General if the primary bot has none). A mixed
+change requires both sets of permissions. Moving the prompt to another General
+does not give that bot's admins permission to confirm; admin membership is
+checked again before applying. Cross-platform or unknown targets require host
+CLI confirmation. First-time Setup still uses host confirmation.
+
 First-time Setup also returns a pending request. Confirm it on the host, then explicitly choose **Start AgEnD**. A pending response, an old successful commit or a changed configuration cannot hand over the setup listener to the fleet.

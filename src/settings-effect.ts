@@ -5,6 +5,7 @@ import type { FleetConfig } from "./types.js";
 import { settingsChangeDiff, type SettingsChangeDiff } from "./settings-change.js";
 import { SettingsConfirmationError } from "./settings-confirmation.js";
 import { validateFleetConfig, validateClassicBotConfig } from "./config-validator.js";
+import { settingsEffectAuthority, settingsSecretAuthority, type SettingsChangeAuthority } from "./settings-authority.js";
 
 export interface SettingsSecretProof {
   readonly key: string; readonly secret: string; readonly previous?: string;
@@ -30,6 +31,8 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
 } {
   const cfg = context.config, before: any = { fleet: structuredClone(cfg), classic: structuredClone(context.classic) }, after = structuredClone(before);
   const operation = `${method} ${path}`;
+  const scoped = (diff: SettingsChangeDiff | null, authority?: SettingsChangeAuthority): SettingsChangeDiff | null => diff
+    ? { ...diff, authority: authority ?? settingsEffectAuthority(before.fleet, after.fleet, before.classic, after.classic) } : null;
   const secret = path.match(/^\/api\/settings\/(?:provider-secrets|secrets)\/([^/]+)\/apply$/);
   const connection = path.match(/^\/api\/settings\/connections\/([^/]+)\/(secret|binding)\/apply$/);
   if (secret || connection) {
@@ -42,10 +45,12 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
       const candidate = { ...current, group_id: proof.binding.group_id, options: { ...current.options } };
       if (proof.binding.general_channel_id === null) delete candidate.options.general_channel_id;
       else if (proof.binding.general_channel_id !== undefined) candidate.options.general_channel_id = proof.binding.general_channel_id;
-      return { diff: settingsChangeDiff({ channels: [current] }, { channels: [candidate] }, { operation, force: true }), proof };
+      return { diff: scoped(settingsChangeDiff({ channels: [current] }, { channels: [candidate] }, { operation, force: true }),
+        { connections: [target], primaryGeneral: false, unknown: false }), proof };
     }
     const diff = settingsChangeDiff(null, null, { operation, secret: { key: proof.key, before: proof.previous, after: proof.secret }, force: true })!;
-    return { diff: { ...diff, affectedConnections: connection ? [target] : [] }, proof };
+    return { diff: scoped({ ...diff, affectedConnections: connection ? [target] : [] },
+      settingsSecretAuthority(cfg, connection ? target : undefined, proof.key)), proof };
   }
   let force = false;
   if (path === "/api/settings/fleet/channels") {
@@ -96,7 +101,8 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     const draft = draftQuickstart(cfg, patch as WizardPlanInput, plan);
     const normalizedBefore = structuredClone(cfg); normalizedBefore.channels = cfg.channels ?? (cfg.channel ? [cfg.channel] : []); delete normalizedBefore.channel;
     const what = patch.connection_only === true ? `connection ${plan.channel_id}` : `instance ${patch.instance_name}`;
-    return { diff: settingsChangeDiff(normalizedBefore, draft, { operation: `${operation} ${what}`, force: true, secret: { key: patch.token_env, after: patch.token } }) };
+    before.fleet = normalizedBefore; after.fleet = draft;
+    return { diff: scoped(settingsChangeDiff(normalizedBefore, draft, { operation: `${operation} ${what}`, force: true, secret: { key: patch.token_env, after: patch.token } })) };
   } else if (path === "/ui/instances") {
     const payload = record(body), channels = cfg?.channels ?? (cfg?.channel ? [cfg.channel] : []);
     const name = payload.topic_name ?? (typeof payload.directory === "string" ? basename(payload.directory) : null);
@@ -105,7 +111,8 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
       channels: channels.slice(0, 1).map((item, index) => ({ id: item.id ?? item.type ?? `channel-${index}`, type: item.type, group_id: item.group_id })),
       ...Object.fromEntries(Object.entries(payload).filter(([key]) => !["topic_name", "directory"].includes(key))) };
     // Target allocation is deferred; the approved request and current owner binding stay pinned.
-    return { diff: settingsChangeDiff({}, { new_instance: draft }, { operation, force: true }) };
+    return { diff: scoped(settingsChangeDiff({}, { new_instance: draft }, { operation, force: true }),
+      { connections: [], primaryGeneral: true, unknown: false }) };
 
   } else {
     if (!cfg) throw new SettingsConfirmationError(503, "fleet_unavailable");
@@ -126,5 +133,5 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
   }
   if (after.fleet && !validateFleetConfig(after.fleet).valid && validateFleetConfig(before.fleet).valid) throw new SettingsConfirmationError(400, "invalid_settings_effect");
   if (!validateClassicBotConfig(after.classic).valid && validateClassicBotConfig(before.classic).valid) throw new SettingsConfirmationError(400, "invalid_classic_effect");
-  return { diff: settingsChangeDiff(before, after, { operation, force }) };
+  return { diff: scoped(settingsChangeDiff(before, after, { operation, force })) };
 }

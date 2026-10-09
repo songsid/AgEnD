@@ -48,6 +48,7 @@ function proposal(h: ReturnType<typeof harness>, options: { now?: () => number; 
   h.fm.settingsConfirmation = { store };
   const view = store.propose({ session: "browser", key: "request", bytes: 1, source: "web_session", section: "access", requestedBy: "admin browser", fingerprint: "effect",
     summary: ["fleet.channels.primary.access.allowed_users: add fleet admin (F) ID 42"], affectedConnections: options.affected,
+    authority: { connections: options.affected ?? [], primaryGeneral: !options.affected?.length, unknown: false },
     current: () => true, unchanged: options.unchanged ?? (async () => true), snapshot: () => null, apply }).view;
   return { store, view, apply };
 }
@@ -112,7 +113,7 @@ describe("#1423 actual General nonce handler", () => {
     const h = harness(); proposal(h, { affected: ["primary"] }); await new Promise(resolve => setTimeout(resolve, 5));
     expect(h.adapter.notifyAlert).not.toHaveBeenCalled(); expect(h.fm.pendingNonceButtons.size).toBe(0);
   });
-  it.each(["affected", "unreachable"])("%s primary falls back to another world's General and its own F", async reason => {
+  it.each(["affected", "unreachable"])("%s primary falls back to another world's General without transferring F authority", async reason => {
     const h = harness(), second = adapter("secondary");
     h.fm.fleetConfig.channels.push({ ...h.fm.fleetConfig.channels[0], id: "secondary", group_id: "300", options: { general_channel_id: "400" }, access: { mode: "locked", allowed_users: ["other-F"] } });
     h.fm.fleetConfig.instances.otherGeneral = { working_directory: h.dir, general_topic: true, topic_id: "400", channel_id: "secondary" };
@@ -125,8 +126,8 @@ describe("#1423 actual General nonce handler", () => {
     await vi.waitFor(() => expect(second.notifyAlert).toHaveBeenCalledOnce());
     const { data } = await promptData(h);
     expect(data).toMatchObject({ chatId: "300", threadId: "400" }); expect(p.store.get(p.view.id, "browser")!.confirmation.kind).toBe("chat");
-    await h.fm.dispatchAdapterCallback({ ...data, userId: "admin" }, "secondary", second); expect(p.apply).not.toHaveBeenCalled();
-    await h.fm.dispatchAdapterCallback({ ...data, userId: "other-F" }, "secondary", second); expect(p.apply).toHaveBeenCalledOnce();
+    await h.fm.dispatchAdapterCallback({ ...data, userId: "other-F" }, "secondary", second); expect(p.apply).not.toHaveBeenCalled();
+    await h.fm.dispatchAdapterCallback({ ...data, userId: "admin" }, "secondary", second); expect(p.apply).toHaveBeenCalledOnce();
   });
   it("a stopped, stopping or replaced General cannot approve an old prompt", async () => {
     const h = harness(), p = proposal(h), { data } = await promptData(h);
