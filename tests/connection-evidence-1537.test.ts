@@ -78,6 +78,24 @@ describe("Connected only on evidence of a login", () => {
     expect(fm.listSecureConnections().find((c: any) => c.id === "tg").identity.username).toBe("control_bot");
   });
 
+  it("Telegram: logged in, then its polling fails (a network error) — Reconnecting, not Connected", async () => {
+    const { fm, dir } = fleet([tg("primary-x"), tg("tg")]);
+    vi.stubEnv(TOKEN_ENV, "123456:test-only");
+    let fail!: (err: Error) => void;
+    let calls = 0;
+    made.next = () => realTelegram(dir, async (opts) => {
+      calls++;
+      if (calls > 1) return new Promise(() => {});
+      opts.onStart?.({ username: "control_bot", id: 42 });
+      return new Promise((_, reject) => { fail = reject; });
+    });
+    await fm.startSharedAdapter({ ...fm.fleetConfig, channels: [fm.fleetConfig.channels[1]] } as FleetConfig);
+    await vi.waitFor(() => expect(rowOf(fm, "tg").status).toBe("connected"));
+    fail(new Error("request to https://api.telegram.org/bot123456:AA-401-ZZ/getUpdates failed, reason: connect ETIMEDOUT"));
+    await new Promise(r => setImmediate(r));
+    expect(rowOf(fm, "tg")).toEqual({ status: "retrying", problem: null, row: "connReconnecting" });
+  });
+
   it("Telegram: a 401 caught by the polling loop — Token rejected, not Connected", async () => {
     const { fm, dir } = fleet([tg("primary-x"), tg("tg")]);
     vi.stubEnv(TOKEN_ENV, "123456:test-only");

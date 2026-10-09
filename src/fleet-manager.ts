@@ -16697,7 +16697,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     let status: string;
     if (!adapter) status = recorded === "retrying" || recorded === "failed" ? recorded : "stopped";
     else if (recorded === "retrying" || recorded === "failed") status = recorded;
-    else if (!world?.botUserId || (evidence && !evidence.ready)) status = evidence?.authRejected ? "failed" : "starting";
+    else if (evidence?.authRejected) status = "failed";
+    else if (!world?.botUserId) status = "starting";                        // not logged in yet
+    else if (evidence && !evidence.ready) status = "retrying";              // logged in once; its polling has failed since
     else status = "connected";
     return { status, ...(problem ? { problem } : {}) };
   }
