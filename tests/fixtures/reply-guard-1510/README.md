@@ -20,6 +20,7 @@ Real CLIs, recorded 2026-10-10. Everything ran in isolated homes on a private tm
 ## muse 1.4.4 (`muse-1.4.4/`)
 
 - **Setup:** the real binary, run directly (never the launcher), `--provider echo --echo-delay-ms 15000 --disable-approval --trust-workspace`. The Meta provider's endpoints (`/muse-code/config`, `/muse-code/models`) are private, so a tool call could not be scripted offline.
+- **Format:** compact JSON, like muse's own logs. AgEnD's cwd match reads `"cwd":"…"` without a space. Kept: `route_facts` (cwd only), the `user_intent.accepted` text (`intent_id`, `surface`, `model_messages`), the `user_intent.materialized` target run (`outcome.kind`, `outcome.run_id`), and the run events.
 - **`session.jsonl` (main session only):** run 1 (`started`, prompt "long echo one"). A second message was typed 4 s in: `user_intent.accepted` / `materialized` at once, but no run. Run 1 ends with `terminal {reason: null}`, and run 2 (`started`, prompt "") begins about 90 ms later and ends 15 s after that. The end-of-turn "reminder observer" runs write to their own session directories, which are not included here.
 - **`session-cancel.jsonl`:** from the 1.4.4 audit. A cancelled run ends with `terminal {reason: "cancelled during end-of-turn reminder wait"}`.
 - **`frames/`:** `between-runs-idle` is the single idle frame (~150 ms) between run 1 and run 2. A pane-only turn end would fire there; the session log shows run 2 starting. Then come `run2-busy` and `run2-idle`.

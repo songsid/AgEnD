@@ -38,6 +38,8 @@ import type { KiroDbCursor } from "./kiro-db-reader.js";
 export { extractKiroAssistantStrings } from "./kiro-db-reader.js";
 import type { TranscriptTurnEvent } from "./transcript-turns.js";
 import { lastLineBoundary, readNewLines } from "./transcript-jsonl.js";
+import { museSessionCwd, museSessionDirs, readFileHeadSync } from "./backend/muse.js";
+import { performance } from "node:perf_hooks";
 
 export interface ToolUseEvent { name: string; input: unknown }
 
@@ -256,6 +258,129 @@ export class CodexRolloutSource implements TranscriptSource {
     }
     if (turns.length) events.turns = turns;
     return events;
+  }
+}
+
+/* -------------------------------------------------------------------- muse */
+
+/**
+ * #1510: muse's turn boundaries, from its session logs (`<root>/<YYYY>/<MM>/<DD>/<id>/session.jsonl`, recorded on
+ * 1.4.4 in tests/fixtures/reply-guard-1510). Only turns are read; muse's tool activity is not.
+ *
+ * - a run is a turn: `runtime.session` run `started` → `terminal {reason}` (null: done; "cancelled …": the user
+ *   stopped it; anything else: it failed);
+ * - a message is `runtime.user_intent.accepted` (its text, surface "main") and lands in a run with
+ *   `user_intent.materialized` — a new run, or the active one when it was typed mid-run;
+ * - the end-of-turn reminder observers write their own session directories and no main-surface intents.
+ *
+ * Every log whose head names this working directory is followed: ownership is decided later, by the delivered text
+ * (TranscriptTurnLedger), so two muse instances in one directory cannot vouch for each other. The directory tree is
+ * re-listed at most every `listTtlMs`; between listings only the logs already known are read, and only when they grew.
+ * Logs present when the source is created are read from their end (existing history is not this launch's).
+ */
+export class MuseSessionSource implements TranscriptSource {
+  /** session.jsonl path → next offset to read (cwd-matched logs only). */
+  private files = new Map<string, number>();
+  /** Logs present at the baseline, with the size to anchor at their last line boundary on first read. */
+  private baseline = new Map<string, number>();
+  private rejected = new Set<string>();
+  private sizes = new Map<string, number>();
+  private listedAt = Number.NEGATIVE_INFINITY;
+  private baselined = false;
+  /** intent_id → its text and time, until it materializes (bounded). */
+  private intents = new Map<string, { text: string; at: number }>();
+
+  constructor(
+    private workingDirectory: string,
+    private root = join(homedir(), ".local", "share", "muse", "sessions"),
+    private listTtlMs = 30_000,
+    private now: () => number = () => performance.now(),
+  ) {}
+
+  reset(): void {
+    this.files.clear(); this.baseline.clear(); this.rejected.clear(); this.sizes.clear(); this.intents.clear();
+    this.listedAt = Number.NEGATIVE_INFINITY; this.baselined = false;
+  }
+
+  async initialize(): Promise<void> { await this.list(); }
+
+  private async list(): Promise<void> {
+    this.listedAt = this.now();
+    for (const dir of museSessionDirs(this.root)) {
+      const path = join(dir, "session.jsonl");
+      if (this.files.has(path) || this.rejected.has(path)) continue;
+      const head = readFileHeadSync(path, 65_536);
+      if (head === null) continue;
+      const cwd = museSessionCwd(head);
+      if (cwd === null) {
+        // A log being started names its cwd within moments; one that still does not a minute on never will (the
+        // end-of-turn reminder observers write two such logs per turn) and is not read again.
+        const mtime = await stat(path).then(st => st.mtimeMs, () => null);
+        if (mtime !== null && Date.now() - mtime > 60_000) this.rejected.add(path);
+        continue;
+      }
+      if (cwd !== this.workingDirectory) { this.rejected.add(path); continue; }
+      if (!this.baselined) {
+        const size = await stat(path).then(st => st.size, () => null);
+        if (size === null) continue;
+        this.baseline.set(path, size);
+        this.files.set(path, -1);
+      } else {
+        this.files.set(path, 0);
+      }
+    }
+    this.baselined = true;
+  }
+
+  async poll(): Promise<TranscriptEvents> {
+    if (!this.baselined || this.now() - this.listedAt >= this.listTtlMs) await this.list();
+    const turns: TranscriptTurnEvent[] = [];
+    for (const [path, offset] of this.files) {
+      const size = await stat(path).then(st => st.size, () => null);
+      if (size === null || size === this.sizes.get(path)) continue;
+      let from = offset;
+      if (from < 0) {
+        try { from = await lastLineBoundary(path, this.baseline.get(path)); } catch { continue; }
+      }
+      let read: { lines: string[]; newOffset: number };
+      try { read = await readNewLines(path, from); } catch { continue; }
+      this.files.set(path, read.newOffset);
+      this.sizes.set(path, size);
+      for (const line of read.lines) this.parse(line, turns);
+    }
+    const events = emptyEvents();
+    if (turns.length) events.turns = turns;
+    return events;
+  }
+
+  private parse(line: string, turns: TranscriptTurnEvent[]): void {
+    let o: Record<string, unknown>;
+    try { o = JSON.parse(line); } catch { return; }
+    const type = o.payload_type, p = o.payload as Record<string, unknown> | undefined;
+    if (!p || typeof p !== "object") return;
+    const at = typeof o.recorded_at === "number" ? Math.floor(o.recorded_at / 1000) : NaN; // microseconds
+    if (type === "runtime.user_intent.accepted") {
+      if (p.surface !== "main" || typeof p.intent_id !== "string" || !Number.isFinite(at)) return;
+      const text = ((p.model_messages as Array<{ content?: Array<{ kind?: string; text?: unknown }> }> | undefined) ?? [])
+        .flatMap(m => m.content ?? []).map(c => c.kind === "text" && typeof c.text === "string" ? c.text : "").join("\n");
+      if (!text.trim()) return;
+      this.intents.set(p.intent_id, { text, at });
+      if (this.intents.size > 64) this.intents.delete(this.intents.keys().next().value as string);
+    } else if (type === "runtime.user_intent.materialized") {
+      const intent = typeof p.intent_id === "string" ? this.intents.get(p.intent_id) : undefined;
+      const runId = (p.outcome as { run_id?: unknown } | undefined)?.run_id;
+      if (!intent || typeof runId !== "string") return;
+      this.intents.delete(p.intent_id as string);
+      turns.push({ kind: "user", turnId: runId, text: intent.text, at: intent.at });
+    } else if (type === "runtime.session" && p.kind === "run" && typeof p.run_id === "string") {
+      const event = p.event as { kind?: unknown; reason?: unknown } | undefined;
+      if (event?.kind === "started") turns.push({ kind: "start", turnId: p.run_id });
+      else if (event?.kind === "terminal") {
+        const reason = event.reason;
+        const end = reason == null ? "complete" : typeof reason === "string" && reason.startsWith("cancelled") ? "aborted" : "error";
+        turns.push({ kind: "end", turnId: p.run_id, end });
+      }
+    }
   }
 }
 
@@ -681,6 +806,7 @@ export function createTranscriptSource(
 ): TranscriptSource | null {
   switch (backend) {
     case "codex": return new CodexRolloutSource(workingDirectory);
+    case "muse": return new MuseSessionSource(workingDirectory);
     // undefined keeps each parameter's own default; only the store moves.
     case "kiro-cli": return new KiroSessionSource(workingDirectory, undefined, undefined, kiroStoreDbPath(storeHome));
     case "opencode": return new OpenCodeDbSource(workingDirectory);
