@@ -198,6 +198,8 @@ export interface WebApiContext {
   needsYouItems?(): unknown[];
   /** #1389: the org chart's structure (fleet.yaml's teams, General, descriptions, thread links); absent: an empty chart. */
   orgChart?(): unknown;
+  /** #1468: the prompt-cache expiry analysis for a window ("24h" | "7d" | "30d"); absent: not offered. */
+  cacheReport?(window: string): Promise<unknown>;
   /** #1386: the web's Acknowledge of a delivery item; `principal` is "web:<session handle>" or "cli". */
   acknowledgeNeedsItem?(id: string, principal: string): { status: number; message: string };
   /** Answer one of them, exactly as a click on its platform button would. */
@@ -799,6 +801,17 @@ export function handleWebRequest(
       ctx.scheduler.delete(decodeURIComponent(schedDelMatch[1]));
       json(res, 200, { deleted: true });
     } catch (err) { json(res, 400, { error: (err as Error).message }); }
+    return true;
+  }
+
+  // #1468: the prompt-cache expiry analysis. Opening it is a person's navigation, like any Fleet tab (it counts as
+  // use); the page never re-reads it on a timer. Answered from the ledgers as they are; a catch-up runs behind.
+  if (method === "GET" && path === "/ui/cache") {
+    if (!ctx.cacheReport) { json(res, 404, { error: "Not available" }); return true; }
+    ctx.cacheReport(url.searchParams.get("window") ?? "7d").then(
+      (report) => json(res, 200, report),
+      (err) => { ctx.logger.error({ err }, "cache analysis failed"); json(res, 500, { error: "Cache analysis failed" }); },
+    );
     return true;
   }
 
