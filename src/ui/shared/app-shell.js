@@ -1,7 +1,7 @@
 // #1408 §2/§7: the app's frame — the sidebar (a drawer on a phone), the main area with its panel, the bottom tabs on a
 // phone, the connection line, toasts. Panels render their own header through <PanelHeader>, so every panel's title,
 // status and ⋯ actions sit in the same place.
-import { html, useEffect, useState } from "./app-html.js";
+import { html, useEffect, useLayoutEffect, useRef, useState } from "./app-html.js";
 import { Icon } from "./ui-icons.js";
 import { Toasts } from "./ui-toast.js";
 import { ConfirmHost } from "./ui-confirm.js";
@@ -23,6 +23,18 @@ export function setSideSection(Component) {
   const entry = { Component };
   shellStore.set({ side: entry });
   return () => { if (shellStore.get().side === entry) shellStore.set({ side: null }); };
+}
+
+/**
+ * Keep a sidebar list's current item in view by scrolling that list only (alpha.2): never scrollIntoView, which would
+ * also scroll every scrollable ancestor, the page included. A list the reader scrolled stays where it is otherwise.
+ */
+export function keepActiveInView(container) {
+  const a = container && container.querySelector('[aria-current="page"]');
+  if (!a) return;
+  const c = container.getBoundingClientRect(), r = a.getBoundingClientRect();
+  if (r.top < c.top) container.scrollTop -= c.top - r.top;
+  else if (r.bottom > c.bottom) container.scrollTop += r.bottom - c.bottom;
 }
 
 /** An app-level dialog (New instance): rendered by the shell until closed, whatever panel is showing. */
@@ -123,6 +135,8 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
   const app = useStore(appStore);
   const shell = useStore(shellStore);
   const current = route && route.panel === "chat" ? route.instance : null;
+  const list = useRef(null);
+  useLayoutEffect(() => { keepActiveInView(list.current); }, [current, app.instances.length]);
   const on = (panel) => !!route && route.panel === panel;
   // A count badge is hidden at 0; its number is also in the link's accessible name.
   const navLink = (panel, href, icon, label, count = 0) => html`<a class=${`side-row${on(panel) ? " active" : ""}`} href=${href}
@@ -155,7 +169,7 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
       ${navLink("fleet", "/ui/fleet", "fleet", t("app.fleet"))}
       ${navLink("view", "/view", "view", t("app.view"))}
     </nav>
-    ${shell.side ? html`<${shell.side.Component} />` : html`<div class="side-section" id="instanceList">
+    ${shell.side ? html`<${shell.side.Component} />` : html`<div class="side-section" id="instanceList" ref=${list}>
       <h2 class="side-label">${t("app.instances")}</h2>
       ${app.instances.length ? html`<ul class="inst-list">${app.instances.map(i => html`<${InstanceRow} key=${i.name} i=${i} active=${i.name === current}
           exec=${app.exec[i.name]} awaiting=${Object.prototype.hasOwnProperty.call(app.awaiting, i.name) ? app.awaiting[i.name] : null} />`)}</ul>`
