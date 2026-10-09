@@ -16,9 +16,13 @@ import { join } from "node:path";
  */
 const toml = readFileSync(join(process.cwd(), ".gitleaks.toml"), "utf-8");
 const target = /^regexTarget = "(\w+)"$/m.exec(toml)?.[1];
-const source = /^regexes = \['''(.+)'''\]$/m.exec(toml)?.[1] ?? "";
+/** Every pattern in the `regexes = [ … ]` array, one triple-quoted literal each (single- or multi-line array). */
+const regexesBlock = /^regexes = \[([\s\S]*?)\]$/m.exec(toml)?.[1] ?? "";
+const patterns = [...regexesBlock.matchAll(/'''(.+?)'''/g)].map(m => m[1]!);
 // RE2's (?i) prefix is JS's "i" flag; the rest of the pattern is common syntax.
-const nonceField = new RegExp(source.replace(/^\(\?i\)/, ""), "i");
+const compile = (pattern: string) => (pattern.startsWith("(?i)") ? new RegExp(pattern.slice(4), "i") : new RegExp(pattern));
+const source = patterns.find(p => /sec-websocket-key/i.test(p)) ?? "";
+const nonceField = source ? compile(source) : /(?!)/;
 
 const NONCE = "dGhlIHNhbXBsZSBub25jZQ=="; // RFC 6455 section 1.3 example
 const secret = (n: number): string => randomBytes(n * 2).toString("base64").replace(/[^A-Za-z0-9]/g, "").slice(0, n);
@@ -67,5 +71,34 @@ describe(".gitleaks.toml Sec-WebSocket-Key allowlist", () => {
     // real nonce is exactly 16 bytes, so this is a secret and has to be reported.
     expect(nonceField.test("Sec-WebSocket-Key: " + randomBytes(25).toString("base64"))).toBe(false);
     expect(nonceField.test("Sec-WebSocket-Key: ")).toBe(false);
+  });
+});
+
+/**
+ * #1450: the nodejs/release-keys commit the runtime build pins its keyring to is a public 40-hex git SHA. gitleaks'
+ * generic-api-key fires on "KEYS" in the constant's name; the allowlist takes exactly that constant with a 40-hex value.
+ */
+describe(".gitleaks.toml release-keys commit allowlist", () => {
+  const releaseKeys = patterns.find(p => p.includes("RELEASE_KEYS_COMMIT"));
+  const allowed = releaseKeys ? compile(releaseKeys) : /(?!)/;
+  const hex = (n: number) => randomBytes(n).toString("hex").slice(0, n);
+
+  it("is one of the match-target regexes, next to the WebSocket one", () => {
+    expect(releaseKeys).toBeDefined();
+    expect(patterns).toHaveLength(2);
+  });
+
+  it("allows only RELEASE_KEYS_COMMIT with a 40-hex value", () => {
+    expect(allowed.test(`RELEASE_KEYS_COMMIT = "${hex(40)}"`)).toBe(true);
+  });
+
+  it.each([
+    ["a non-hex value under the name", () => `RELEASE_KEYS_COMMIT = "${secret(40)}"`],
+    ["a hex value of another length", () => `RELEASE_KEYS_COMMIT = "${hex(64)}"`],
+    ["the same hex under another name", () => `${apiKey} = "${hex(40)}"`],
+    ["the constant followed by more text", () => `RELEASE_KEYS_COMMIT = "${hex(40)}"; ${apiKey} = "${secret(32)}"`],
+    ["a lower-case look-alike name", () => `release_keys_commit = "${hex(40)}"`],
+  ])("still reports %s", (_name, match) => {
+    expect(allowed.test(match())).toBe(false);
   });
 });

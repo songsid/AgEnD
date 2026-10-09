@@ -8,7 +8,7 @@ useDefault = true
 # written that way never applied in CI. A finding is allowed if it matches any
 # of the paths or regexes below.
 [allowlist]
-description = "Confirmed false positives: a fake JWT fixture, public WebSocket handshake nonces, vendored xterm.js"
+description = "Confirmed false positives: a fake JWT fixture, public WebSocket handshake nonces, vendored xterm.js, the pinned nodejs/release-keys commit"
 paths = [
   # Known fake JWT used to verify progress-log redaction
   '''^tests/tool-progress\.test\.ts$''',
@@ -23,4 +23,9 @@ paths = [
 # chars + "=="); gitleaks' generic match may carry a stray leading word character
 # and a trailing quote, ";" or a literal \r / \n, which the tail allows.
 regexTarget = "match"
-regexes = ['''(?i)sec-websocket-key["'\x60]?\s*[:=]\s*["'\x60]?[A-Za-z0-9+/]{22}==(?:\\[nr]|["'\x60;\s])?$''']
+regexes = [
+  '''(?i)sec-websocket-key["'\x60]?\s*[:=]\s*["'\x60]?[A-Za-z0-9+/]{22}==(?:\\[nr]|["'\x60;\s])?$''',
+  # #1450: the nodejs/release-keys commit the runtime build pins its signing keyring to — a public git SHA (40 hex),
+  # matched only as this exact constant (the rule fires on "KEYS" in the name).
+  '''^RELEASE_KEYS_COMMIT = "[0-9a-f]{40}"$''',
+]
