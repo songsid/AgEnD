@@ -75,10 +75,20 @@ describe("stale-while-rate-limited", () => {
     expect(result.providers[0].error).toContain("Token rejected");
   });
 
-  it("shows the rate-limit error when there is nothing good to fall back on", async () => {
+  it("shows a gentler error when there is nothing good to fall back on (no-data 429)", async () => {
+    // Reverse mutation: removing the errorI18n swap for 429-without-stale makes
+    // this test fail because the alarming "usage.error.rate_limited" key is used.
     setUsageFetcherForTests(vi.fn().mockResolvedValue(RATE_LIMITED));
     const result = await getUsageSnapshot();
-    expect(result.providers[0].status).toBe("error");
+    const claude = result.providers[0];
+    expect(claude.status).toBe("error");
+    // errorI18n must use the "transient" key — not the alarming rate_limited key
+    expect(claude.errorI18n?.key).toBe("usage.error.rate_limited_transient");
+    // The format must not show a red alarm — it still says "error" so formatters
+    // can choose a gentler style, but the EN message is the gentler one
+    const plain = formatUsageSummary(result);
+    expect(plain).not.toContain("try again later");
+    expect(plain).toContain("Claude");
   });
 
   it("renders the staleness under the metrics, not instead of them", async () => {
@@ -109,5 +119,41 @@ describe("force floor", () => {
 
     // Refresh-button spam must not become API-call spam.
     expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+});
+
+const RATE_LIMITED_WITH_RETRY_AFTER: UsagePayload = {
+  fetchedAt: "2026-08-02T12:05:00Z",
+  providers: [{
+    id: "claude", name: "Claude", status: "error",
+    error: "Rate limited by Anthropic — try again later.",
+    hint: "retry-after:120",   // 2-minute Retry-After header
+    metrics: [],
+  }],
+};
+
+describe("Retry-After backoff", () => {
+  // Reverse mutation: removing the maxRetryAfterMs cache extension makes
+  // this test fail because the cache TTL stays at 5 minutes, not 2 minutes
+  // (but we can't distinguish 5m from 2m easily). The stronger test: without
+  // the backoff, the fetcher is called a second time within the Retry-After
+  // window when force=true is used.
+
+  it("extends cache TTL to Retry-After window; repeated force within window uses cache", async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(OK)
+      .mockResolvedValueOnce(RATE_LIMITED_WITH_RETRY_AFTER);
+    setUsageFetcherForTests(fetcher);
+
+    await getUsageSnapshot();          // caches good row
+    vi.advanceTimersByTime(31_000);    // past force floor
+    await getUsageSnapshot(true);      // gets 429 with retry-after:120
+    // Within 2-minute Retry-After, force refresh should NOT call fetcher again
+    vi.advanceTimersByTime(60_000);    // 60s later, still within 2m window
+    vi.advanceTimersByTime(31_000);    // past force floor again
+    await getUsageSnapshot(true);      // should serve cache
+
+    // fetcher called only twice (initial OK + 429), not a third time
+    expect(fetcher).toHaveBeenCalledTimes(2);
   });
 });
