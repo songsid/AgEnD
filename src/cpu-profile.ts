@@ -57,16 +57,26 @@ export async function saveCpuProfile(dataDir: string, profile: unknown, signal?:
   estimatedBytes += samples.length * 8;        // samples array
   for (const node of nodes) {
     const frame = (node.callFrame ?? {}) as Record<string, unknown>;
-    // JSON.stringify the individual string fields for the exact escaped byte
-    // count. This handles backslash-heavy paths (each \\ doubles in JSON)
-    // and non-ASCII (e.g. BMP CJK = 1 UTF-16 unit, 3 UTF-8 bytes, but as a
-    // JSON \\uXXXX escape = 6 ASCII bytes). Calling JSON.stringify on one
-    // URL string is cheap; only serialising the whole profile is costly.
+    // JSON.stringify the individual string fields for exact escaped+UTF-8 byte
+    // count. BMP CJK chars: 1 UTF-16 unit but 3 UTF-8 bytes (JSON keeps them
+    // unescaped). Backslash paths: each \\ → 2 JSON bytes.
     const urlBytes = typeof frame.url === "string"
       ? Buffer.byteLength(JSON.stringify(frame.url), "utf8") - 2 : 0;
     const fnBytes = typeof frame.functionName === "string"
       ? Buffer.byteLength(JSON.stringify(frame.functionName), "utf8") - 2 : 0;
-    estimatedBytes += NODE_FIXED + FRAME_FIXED + urlBytes + fnBytes;
+    // Variable arrays per node: positionTicks (array of {line, ticks} objects;
+    // can be enormous — 800k entries is a real V8 shape) and children (node ids).
+    // Serialise each directly so a node with a huge positionTicks is caught before
+    // the whole profile is JSON.stringify'd.
+    const posTicksBytes = Array.isArray((node as any).positionTicks)
+      ? Buffer.byteLength(JSON.stringify((node as any).positionTicks), "utf8") : 0;
+    const childrenBytes = Array.isArray((node as any).children)
+      ? (node as any).children.length * 8 : 0; // each child id ≈ 8 chars JSON
+    estimatedBytes += NODE_FIXED + FRAME_FIXED + urlBytes + fnBytes + posTicksBytes + childrenBytes;
+    // Early exit: avoid accumulating through every node if already over cap.
+    if (estimatedBytes > CPU_PROFILE_MAX_BYTES) {
+      throw new Error(`CPU profile is too large to save (estimated ≥${Math.round(estimatedBytes / 1_048_576)} MiB, cap is 20 MiB); discarded`);
+    }
   }
   if (estimatedBytes > CPU_PROFILE_MAX_BYTES) {
     throw new Error(`CPU profile is too large to save (estimated ≥${Math.round(estimatedBytes / 1_048_576)} MiB, cap is 20 MiB); discarded`);

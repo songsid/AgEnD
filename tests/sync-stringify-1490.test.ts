@@ -1,14 +1,13 @@
 /**
  * #1490 P3: synchronous stringify before size check + stop() flush.
  *
- * (1) saveCpuProfile: size estimation uses Buffer.byteLength for UTF-8 bytes
- *     (not .length / UTF-16 code units). Unicode URLs and JSON-escaping
- *     headroom are accounted for before JSON.stringify is attempted.
- * (2) CacheService.stop(): joins the in-flight kick before flushing, so
- *     dirty data dirtied by a running pass is not lost.
+ * (1) saveCpuProfile: size estimation uses Buffer.byteLength(JSON.stringify(str))
+ *     for exact UTF-8+escaping bytes per callFrame URL/functionName, and counts
+ *     positionTicks and children arrays per node, catching all variable data.
+ * (2) CacheService.stop(): sets closing flag, joins in-flight pass, then flushes.
  */
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { saveCpuProfile, CPU_PROFILE_MAX_BYTES } from "../src/cpu-profile.js";
@@ -21,8 +20,8 @@ function tempDir() { const d = mkdtempSync(join(tmpdir(), "agend-sync-")); dirs.
 
 // ── (1) saveCpuProfile: large profiles rejected before JSON.stringify ──────────
 //
-// Reverse mutation: removing the structural size check makes tests 1-2 fail
-// because JSON.stringify IS called on the big profiles.
+// Reverse mutation: removing the structural size check makes all oversize
+// tests fail because JSON.stringify IS called on the big profiles.
 
 describe("saveCpuProfile: large profiles rejected before JSON.stringify (#1490 P3)", () => {
   it("count-oversize: many short-URL ASCII nodes rejected without stringify", async () => {
@@ -41,16 +40,11 @@ describe("saveCpuProfile: large profiles rejected before JSON.stringify (#1490 P
     expect(spy.mock.calls.some(args => args[0] === bigProfile)).toBe(false);
   });
 
-  it("url-oversize (Unicode): fewer nodes but CJK URLs exceed cap without stringify", async () => {
-    // P2 witness: 60,001 nodes, each with a URL containing CJK characters.
-    // url = 'file:///work/' + '工作/'.repeat(48) + 'entry.js'
-    //   String.length ≈ 170 UTF-16 units, but Buffer.byteLength ≈ 310 UTF-8 bytes.
-    // Total URL bytes: 310 × 60001 ≈ 18.6 MiB × 1.2 escaping = 22.3 MiB > 20 MiB.
+  it("url-oversize (Unicode/CJK): fewer nodes but CJK URLs exceed cap without stringify", async () => {
     const dir = tempDir();
-    const cjkUrl = "file:///work/" + "工作/".repeat(48) + "entry.js";
-    // Verify: Buffer.byteLength of JSON-encoded URL > URL string length
-    // (CJK chars: 1 UTF-16 unit but 3 UTF-8 bytes — JSON keeps them unescaped,
-    // but writing to disk uses UTF-8 so they cost 3 bytes each).
+    const cjkUrl = "file:///work/" + "\u5de5\u4f5c/".repeat(48) + "entry.js";
+    // Verify: JSON-encoded UTF-8 bytes > raw string length (CJK: 1 UTF-16 unit
+    // but 3 UTF-8 bytes in JSON output).
     const jsonEncodedBytes = Buffer.byteLength(JSON.stringify(cjkUrl), "utf8") - 2;
     expect(jsonEncodedBytes).toBeGreaterThan(cjkUrl.length);
 
@@ -58,7 +52,7 @@ describe("saveCpuProfile: large profiles rejected before JSON.stringify (#1490 P
     const bigProfile = {
       nodes: Array.from({ length: nodeCount }, (_, i) => ({
         id: i,
-        callFrame: { functionName: `fn${i % 1000}`, scriptId: "1", url: cjkUrl,
+        callFrame: { functionName: "fn" + (i % 1000), scriptId: "1", url: cjkUrl,
           lineNumber: i, columnNumber: 0 },
         hitCount: 1,
       })),
@@ -66,25 +60,19 @@ describe("saveCpuProfile: large profiles rejected before JSON.stringify (#1490 P
       timeDeltas: Array.from({ length: 60000 }, () => 10),
       startTime: 0, endTime: 600000,
     };
-
     const spy = vi.spyOn(JSON, "stringify");
     await expect(saveCpuProfile(dir, bigProfile)).rejects.toThrow(/too large|exceeds/i);
-    // JSON.stringify must NOT have been called on the large profile
     expect(spy.mock.calls.some(args => args[0] === bigProfile)).toBe(false);
   });
 
-  it("url-oversize (backslash): many escaped backslashes exceed cap without stringify", async () => {
-    // Prism witness: V8 real URL with backslash-heavy path.
-    // "file:///work/" + "\\".repeat(360) + "entry.js" → 381 UTF-8 bytes
-    // JSON-escaped: each \\ becomes \\\\ (4 bytes each) → 743 JSON bytes per URL.
-    // 30,001 nodes × 743 bytes ≈ 22.3 MiB > 20 MiB cap.
+  it("url-oversize (backslash): backslash-heavy URLs exceed cap without stringify", async () => {
+    // Prism witness: each backslash becomes \\\\ in JSON (2 bytes → 2 bytes escaping overhead).
+    // 30,001 nodes x 743 JSON bytes (381 raw bytes each backslash url) ≈ 22 MiB.
     const dir = tempDir();
     const backslashUrl = "file:///work/" + "\\".repeat(360) + "entry.js";
-    // Verify: JSON-escaped length > raw UTF-8 bytes (backslashes double in JSON)
     expect(JSON.stringify(backslashUrl).length - 2).toBeGreaterThan(
       Buffer.byteLength(backslashUrl, "utf8"),
     );
-
     const nodeCount = 30001;
     const bigProfile = {
       nodes: Array.from({ length: nodeCount }, (_, i) => ({
@@ -97,17 +85,65 @@ describe("saveCpuProfile: large profiles rejected before JSON.stringify (#1490 P
       timeDeltas: Array.from({ length: nodeCount - 1 }, () => 10),
       startTime: 0, endTime: nodeCount * 10,
     };
-
     const spy = vi.spyOn(JSON, "stringify");
     await expect(saveCpuProfile(dir, bigProfile)).rejects.toThrow(/too large|exceeds/i);
     expect(spy.mock.calls.some(args => args[0] === bigProfile)).toBe(false);
+  });
+
+  it("positionTicks-oversize: node with 800k positionTicks rejected without stringify", async () => {
+    // Prism witness: 2 nodes, one with 800,000 positionTicks {line,ticks} entries.
+    // 800k × ~22 JSON bytes per entry ≈ 17.6 MiB just for positionTicks; total > 20 MiB.
+    const dir = tempDir();
+    const bigProfile = {
+      nodes: [
+        {
+          id: 1,
+          callFrame: { functionName: "hot", scriptId: "1", url: "file:///app.ts", lineNumber: 0, columnNumber: 0 },
+          hitCount: 800000,
+          positionTicks: Array.from({ length: 800000 }, (_, i) => ({ line: i + 1, ticks: 1 })),
+        },
+        {
+          id: 2,
+          callFrame: { functionName: "(root)", scriptId: "0", url: "", lineNumber: 0, columnNumber: 0 },
+          hitCount: 0,
+        },
+      ],
+      samples: Array.from({ length: 800000 }, () => 1),
+      timeDeltas: Array.from({ length: 800000 }, () => 1000),
+      startTime: 0,
+      endTime: 800000 * 1000,
+    };
+    const spy = vi.spyOn(JSON, "stringify");
+    await expect(saveCpuProfile(dir, bigProfile)).rejects.toThrow(/too large|exceeds/i);
+    expect(spy.mock.calls.some(args => args[0] === bigProfile)).toBe(false);
+  });
+
+  it("small positionTicks: profile with normal positionTicks is accepted (regression)", async () => {
+    const dir = tempDir();
+    const small = {
+      nodes: [{
+        id: 1,
+        callFrame: { functionName: "f", scriptId: "1", url: "file:///app.ts", lineNumber: 1, columnNumber: 0 },
+        hitCount: 5,
+        positionTicks: [{ line: 1, ticks: 3 }, { line: 2, ticks: 2 }],
+        children: [2],
+      }, {
+        id: 2,
+        callFrame: { functionName: "g", scriptId: "1", url: "file:///app.ts", lineNumber: 10, columnNumber: 0 },
+        hitCount: 5,
+      }],
+      startTime: 0, endTime: 100,
+      samples: [1, 2], timeDeltas: [50, 50],
+    };
+    const path = await saveCpuProfile(dir, small);
+    expect(path).toMatch(/\.cpuprofile$/);
   });
 
   it("small profile with non-ASCII URL: accepted and written (regression)", async () => {
     const dir = tempDir();
     const small = {
       nodes: [{ id: 1, callFrame: { functionName: "f", scriptId: "1",
-        url: "file:///工作/app.ts", lineNumber: 0, columnNumber: 0 }, hitCount: 1 }],
+        url: "file:///\u5de5\u4f5c/app.ts", lineNumber: 0, columnNumber: 0 }, hitCount: 1 }],
       startTime: 0, endTime: 100, samples: [1], timeDeltas: [100],
     };
     const path = await saveCpuProfile(dir, small);
@@ -115,11 +151,10 @@ describe("saveCpuProfile: large profiles rejected before JSON.stringify (#1490 P
   });
 });
 
-// ── (2) CacheService.stop(): joins in-flight kick before flush ────────────────
+// ── (2) CacheService.stop(): sets closing flag, joins in-flight, flushes ──────
 //
 // Reverse mutation: reverting stop() to set stopped=true before joining
-// the in-flight kick makes test 5 fail because the running kick would
-// see stopped=true and abort, leaving dirty data unwritten.
+// the in-flight kick makes test "dirty flush" fail because kick() aborts.
 
 function makeMinimalService(dir: string) {
   const stateDir = join(dir, "state");
@@ -144,7 +179,7 @@ function makeMinimalService(dir: string) {
   return { svc, ledgerPath, inst };
 }
 
-describe("CacheService.stop(): joins in-flight kick and flushes (#1490 P3)", () => {
+describe("CacheService.stop(): closing flag + flush (#1490 P3)", () => {
   it("stop() returns a Promise (not void)", async () => {
     const dir = tempDir();
     const { svc } = makeMinimalService(dir);
@@ -163,14 +198,9 @@ describe("CacheService.stop(): joins in-flight kick and flushes (#1490 P3)", () 
   it("stop() flushes dirty data that is pending when called: ledger is written", async () => {
     const dir = tempDir();
     const { svc, ledgerPath } = makeMinimalService(dir);
-
-    // Manually inject dirty state using a properly-shaped ledger
     (svc as any).dirty.add("dev");
     (svc as any).ledgers.set("dev", emptyLedger());
-
     await svc.stop();
-
-    // The ledger must have been written by the flush
     expect(existsSync(ledgerPath)).toBe(true);
   });
 
@@ -178,12 +208,10 @@ describe("CacheService.stop(): joins in-flight kick and flushes (#1490 P3)", () 
     const dir = tempDir();
     const { svc } = makeMinimalService(dir);
 
-    // Start stop() — it sets closing=true immediately
     const stopPromise = svc.stop();
-
     // kick() should now be a no-op (closing=true)
     const kickAfterStop = svc.kick();
-    expect(svc.scanning().active).toBe(false); // no new run started by kick
+    expect(svc.scanning().active).toBe(false);
 
     await stopPromise;
     await kickAfterStop;
