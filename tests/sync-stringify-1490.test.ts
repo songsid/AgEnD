@@ -48,10 +48,11 @@ describe("saveCpuProfile: large profiles rejected before JSON.stringify (#1490 P
     // Total URL bytes: 310 × 60001 ≈ 18.6 MiB × 1.2 escaping = 22.3 MiB > 20 MiB.
     const dir = tempDir();
     const cjkUrl = "file:///work/" + "工作/".repeat(48) + "entry.js";
-    // Verify our understanding: UTF-8 bytes > UTF-16 units
-    const utf8Bytes = Buffer.byteLength(cjkUrl, "utf8");
-    const utf16Units = cjkUrl.length;
-    expect(utf8Bytes).toBeGreaterThan(utf16Units); // CJK chars are 3 bytes each
+    // Verify: Buffer.byteLength of JSON-encoded URL > URL string length
+    // (CJK chars: 1 UTF-16 unit but 3 UTF-8 bytes — JSON keeps them unescaped,
+    // but writing to disk uses UTF-8 so they cost 3 bytes each).
+    const jsonEncodedBytes = Buffer.byteLength(JSON.stringify(cjkUrl), "utf8") - 2;
+    expect(jsonEncodedBytes).toBeGreaterThan(cjkUrl.length);
 
     const nodeCount = 60001;
     const bigProfile = {
@@ -69,6 +70,36 @@ describe("saveCpuProfile: large profiles rejected before JSON.stringify (#1490 P
     const spy = vi.spyOn(JSON, "stringify");
     await expect(saveCpuProfile(dir, bigProfile)).rejects.toThrow(/too large|exceeds/i);
     // JSON.stringify must NOT have been called on the large profile
+    expect(spy.mock.calls.some(args => args[0] === bigProfile)).toBe(false);
+  });
+
+  it("url-oversize (backslash): many escaped backslashes exceed cap without stringify", async () => {
+    // Prism witness: V8 real URL with backslash-heavy path.
+    // "file:///work/" + "\\".repeat(360) + "entry.js" → 381 UTF-8 bytes
+    // JSON-escaped: each \\ becomes \\\\ (4 bytes each) → 743 JSON bytes per URL.
+    // 30,001 nodes × 743 bytes ≈ 22.3 MiB > 20 MiB cap.
+    const dir = tempDir();
+    const backslashUrl = "file:///work/" + "\\".repeat(360) + "entry.js";
+    // Verify: JSON-escaped length > raw UTF-8 bytes (backslashes double in JSON)
+    expect(JSON.stringify(backslashUrl).length - 2).toBeGreaterThan(
+      Buffer.byteLength(backslashUrl, "utf8"),
+    );
+
+    const nodeCount = 30001;
+    const bigProfile = {
+      nodes: Array.from({ length: nodeCount }, (_, i) => ({
+        id: i,
+        callFrame: { functionName: "f", scriptId: "1", url: backslashUrl,
+          lineNumber: 0, columnNumber: 0 },
+        hitCount: 1,
+      })),
+      samples: Array.from({ length: nodeCount - 1 }, (_, i) => i % nodeCount),
+      timeDeltas: Array.from({ length: nodeCount - 1 }, () => 10),
+      startTime: 0, endTime: nodeCount * 10,
+    };
+
+    const spy = vi.spyOn(JSON, "stringify");
+    await expect(saveCpuProfile(dir, bigProfile)).rejects.toThrow(/too large|exceeds/i);
     expect(spy.mock.calls.some(args => args[0] === bigProfile)).toBe(false);
   });
 
@@ -141,5 +172,20 @@ describe("CacheService.stop(): joins in-flight kick and flushes (#1490 P3)", () 
 
     // The ledger must have been written by the flush
     expect(existsSync(ledgerPath)).toBe(true);
+  });
+
+  it("stop() sets closing=true so kick() refuses new work after stop starts", async () => {
+    const dir = tempDir();
+    const { svc } = makeMinimalService(dir);
+
+    // Start stop() — it sets closing=true immediately
+    const stopPromise = svc.stop();
+
+    // kick() should now be a no-op (closing=true)
+    const kickAfterStop = svc.kick();
+    expect(svc.scanning().active).toBe(false); // no new run started by kick
+
+    await stopPromise;
+    await kickAfterStop;
   });
 });

@@ -82,6 +82,8 @@ export class CacheService {
   private running: Promise<void> | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private stopped = false;
+  /** Set by stop() to fence new scan admission while the current pass drains. */
+  private closing = false;
   private pending = { bytes: 0, files: 0 };
   private caughtUp = false;
   private readonly now: () => number;
@@ -90,40 +92,51 @@ export class CacheService {
 
   /** Catch up now (joins a catch-up already running). */
   kick(): Promise<void> {
-    if (this.stopped) return Promise.resolve();
+    if (this.stopped || this.closing) return Promise.resolve();
     return this.running ??= this.catchUp().catch((err) => { this.o.log?.("warn", "cache analysis: a pass failed", { err: String(err) }); })
       .finally(() => { this.running = null; });
   }
 
   /** Keep up on a timer from now on (the first report starts it). */
   start(): void {
-    if (this.timer || this.stopped) return;
+    if (this.timer || this.stopped || this.closing) return;
     this.timer = setInterval(() => { void this.kick(); }, this.o.intervalMs ?? 10 * 60_000);
     this.timer.unref?.();
   }
 
-  /** Stop the periodic timer and flush any pending dirty data. Returns a promise
-   * that resolves once: (1) any in-progress pass has completed, and (2) a
-   * bounded final save of dirty data has been attempted.
-   * Callers that care about durability MUST await the returned promise.
+  /** Stop the timer, fence new scan admission, drain the current pass, then
+   * do one bounded save. Returns a promise callers MUST await for durability.
+   *
+   * Sequence:
+   *  1. Cancel timer and set closing=true so kick()/start() refuse new work.
+   *  2. Join this.running (if any) — the current catchUp() loop will exit at
+   *     its next iteration boundary because closing=true, writing its own dirty
+   *     data before returning.
+   *  3. Do one final save() of anything that is still dirty.
+   *  4. Set stopped=true.
+   *
+   * This bounds shutdown to one physical pass rather than scanning the entire
+   * backlog.
    */
   stop(): Promise<void> {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
-    // Join any pass that was already admitted (running !== null) so we don't
-    // set stopped=true while a catchUp() is mid-flight: it would then hit the
-    // `if (this.stopped) return` guard and skip its own save() call.
+    // Set closing now so: (a) the current catchUp() loop exits after its next
+    // physical pass instead of rescanning the full backlog, and (b) no new
+    // kicks or timers can restart work once we start draining.
+    this.closing = true;
     const inFlight = this.running ?? Promise.resolve();
     return inFlight
       .catch(() => {}) // a failed pass must not prevent the flush
-      .then(() => {
-        // Now do a final flush of any data that was dirtied by the completed
-        // pass (or was already dirty before stop() was called).
+      .then(async () => {
+        // One bounded save for anything dirtied by the just-completed pass
+        // (or already dirty). Use save() directly, not kick(), to avoid
+        // re-entering the full scan loop.
         if (this.dirty.size > 0 || this.metaDirty) {
-          return this.kick();
+          const insts = this.o.instances();
+          await this.save(insts).catch(() => {});
         }
       })
-      .catch(() => {}) // best-effort flush
       .finally(() => { this.stopped = true; });
   }
 
@@ -135,7 +148,10 @@ export class CacheService {
     for (;;) {
       const left = await this.pass();
       if (left === 0) this.caughtUp = true;
-      if (this.stopped || left === 0) return;
+      // Stop looping when: all caught up, explicitly stopped, or closing (stop()
+      // fenced new admission — let the current physical pass write its dirty data,
+      // then exit rather than scanning the full backlog during shutdown).
+      if (this.stopped || this.closing || left === 0) return;
       await sleep(this.o.pauseMs ?? 25);
     }
   }

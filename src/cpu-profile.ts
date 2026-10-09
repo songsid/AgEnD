@@ -57,13 +57,15 @@ export async function saveCpuProfile(dataDir: string, profile: unknown, signal?:
   estimatedBytes += samples.length * 8;        // samples array
   for (const node of nodes) {
     const frame = (node.callFrame ?? {}) as Record<string, unknown>;
-    // Use Buffer.byteLength for UTF-8 byte count (not .length which counts
-    // UTF-16 code units — a CJK character is 2 code units but 3 UTF-8 bytes).
-    // Add a 20% headroom for JSON-escaping overhead.
+    // JSON.stringify the individual string fields for the exact escaped byte
+    // count. This handles backslash-heavy paths (each \\ doubles in JSON)
+    // and non-ASCII (e.g. BMP CJK = 1 UTF-16 unit, 3 UTF-8 bytes, but as a
+    // JSON \\uXXXX escape = 6 ASCII bytes). Calling JSON.stringify on one
+    // URL string is cheap; only serialising the whole profile is costly.
     const urlBytes = typeof frame.url === "string"
-      ? Math.ceil(Buffer.byteLength(frame.url, "utf8") * 1.2) : 0;
+      ? Buffer.byteLength(JSON.stringify(frame.url), "utf8") - 2 : 0;
     const fnBytes = typeof frame.functionName === "string"
-      ? Math.ceil(Buffer.byteLength(frame.functionName, "utf8") * 1.2) : 0;
+      ? Buffer.byteLength(JSON.stringify(frame.functionName), "utf8") - 2 : 0;
     estimatedBytes += NODE_FIXED + FRAME_FIXED + urlBytes + fnBytes;
   }
   if (estimatedBytes > CPU_PROFILE_MAX_BYTES) {
