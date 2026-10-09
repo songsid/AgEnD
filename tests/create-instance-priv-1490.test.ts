@@ -27,13 +27,20 @@ function createCtx(extraInstances: Record<string, unknown> = {}) {
   } as any;
 }
 
+const INERT_META = {
+  instanceName: "general",
+  requestId: undefined,
+  fleetRequestId: undefined,
+  senderSessionName: undefined,
+} as const;
+
 async function callCreate(ctx: any, args: Record<string, unknown>) {
   let result: unknown;
   let error: string | null | undefined;
   await outboundHandlers.get("create_instance")!(
     ctx, args,
     (r, e) => { result = r; error = e; },
-    {},
+    INERT_META,
   );
   return { result, error };
 }
@@ -44,7 +51,7 @@ async function callUpdate(ctx: any, config: Record<string, unknown>) {
   await outboundHandlers.get("update_instance_config")!(
     ctx, { name: "dev", config },
     (r, e) => { result = r; error = e; },
-    {},
+    INERT_META,
   );
   return { result, error };
 }
