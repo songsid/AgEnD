@@ -581,7 +581,7 @@ interface PaneEvidence {
    * screen, so the signature cannot be seen in the box. One more than before our paste is our paste, still in the box.
    */
   collapsedPastes: number;
-  /** Whether this snapshot had an input box the backend could read (only meaningful for backends that read one). */
+  /** Whether this snapshot had an input box/prompt region the backend could read. */
   inputReadable: boolean;
   /** The composer's interrupt mode on this snapshot (CliBackend.readSteerComposer, #1405); null when not readable. */
   steerComposer: SteerComposerMode | null;
@@ -8680,12 +8680,12 @@ export class Daemon extends EventEmitter {
     //    read as ours, we would press Enter to "recover" it, and the turn IT
     //    starts would confirm a message that never reached the pane.
     //
-    //    For a structural box reader (claude-code), "did not already show it" needs a baseline whose box was READ: an
-    //    unreadable one (a dialog, a redraw the reader refused) says nothing about what the box held, and counting it as
-    //    empty would claim an older message as ours and press Enter on it (#1353 review). The prompt-row backends (codex,
-    //    kiro) keep their existing attribution.
+    //    Structured evidence (Claude's box and Codex's current input/footer pair) requires both snapshots to be READ.
+    //    An unreadable baseline says nothing about what the box held; treating it as empty would claim an older draft
+    //    as ours and press Enter on it (#1353/#1359). Codex's native warning viewer can ignore the paste and first Enter,
+    //    then reveal an older draft when the user dismisses it. Row-only backends retain their existing attribution.
     const attributable = baseline != null
-      && (!this.backend?.readInputRow || (baseline.inputReadable && after.inputReadable));
+      && (!this.structuredInputEvidence() || (baseline.inputReadable && after.inputReadable));
     if (after.strandedInput && (signature.unique || (attributable && baseline!.strandedInput === false))) return "stranded";
     //    A paste the CLI shows collapsed carries no signature at all. One the box did not hold before we pasted is
     //    ours, and it is still in the box — whatever echo or output is on screen (#1200).
