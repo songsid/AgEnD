@@ -83,6 +83,10 @@ describe("since the launcher (#1450): the bin is the sh launcher; a service stil
     ["the sh launcher bin itself, its PATH finding an old Node", tuple([`${PKG}/launcher/agend`, "fleet", "start"], { PATH: "/opt/node20/bin:/opt/node22/bin" }), false],
     ["the sh launcher bin itself, no PATH", tuple([`${PKG}/launcher/agend`, "fleet", "start"], {}), false],
     ["the sh launcher bin itself, its PATH right but AGEND_NODE naming another Node", tuple([`${PKG}/launcher/agend`, "fleet", "start"], { PATH: "/opt/node22/bin:/usr/bin:/bin", AGEND_NODE: "/opt/node20/bin/node" }), false],
+    // #1473 review r2: an empty or relative entry is the working directory — a `node` there would win.
+    ["the sh launcher bin itself, a leading empty PATH entry", tuple([`${PKG}/launcher/agend`, "fleet", "start"], { PATH: ":/opt/node22/bin:/usr/bin:/bin" }), false],
+    ["the sh launcher bin itself, a relative PATH entry", tuple([`${PKG}/launcher/agend`, "fleet", "start"], { PATH: "bin:/opt/node22/bin:/usr/bin" }), false],
+    ["the inner entry (env node), a trailing empty PATH entry", tuple([`${PKG}/dist/cli.js`, "fleet", "start"], { PATH: "/opt/node22/bin:/usr/bin:" }), false],
     ["a Node on the JS launcher", tuple(["/opt/node22/bin/node", `${PKG}/launcher/agend.cjs`, "fleet", "start"]), false],
   ])("%s → %s", (_name, t, ok) => {
     expect(tupleStartsVerified(t, launcherTarget, "/usr/bin:/bin", fs).ok).toBe(ok);
@@ -348,6 +352,11 @@ describe("launchd: loaded job = its plist, prove the new plist, ONE bootout+boot
     expect(outcome).toMatchObject({ ok: false, stopped: false, message: expect.stringContaining("The previous package (v2.1.12) is back in place") });
     expect(restored).toBe(1);
     expect(m.calls.some(c => /bootout|bootstrap/.test(c))).toBe(false);
+  });
+
+  it("a blank value is a SET value: launchctl getenv printing \" \\n\" is refused (never trimmed to unset)", () => {
+    const m = manager([[/getenv AGEND_NODE/, { stdout: " \n" }], [/getenv/, { stdout: "" }], [/print/, printed(OLD)]], { [plistPath]: plist(OLD) }, [plistPath, plist(NEW)]);
+    expect(activateService(job, verified, m.deps)).toMatchObject({ ok: false, stopped: false, message: expect.stringContaining("AGEND_NODE") });
   });
 
   it.each(["NODE_EXTRA_CA_CERTS", "AGEND_NODE"])("launchd's own environment sets %s → refused before anything", key => {

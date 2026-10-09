@@ -15,7 +15,7 @@ import { dirname, join } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { systemdRestartOutcome } from "../src/service-installer.js";
 import {
-  isLocalLinkTarget, NATIVE_CHECK_SCRIPT, newAgendInvocation, retireSystemCopy, runUpdateInstall,
+  isLocalLinkTarget, NATIVE_CHECK_SCRIPT, newAgendInvocation, retireSystemCopy, runUpdateInstall, activationSettled,
   type CommandRunner, type UpdateInstallPlan,
 } from "../src/update-install.js";
 
@@ -414,6 +414,18 @@ describe("item 1: an nvm install runs every step inside nvm's Node 22 — nvm.sh
     expect(existsSync(join(A.prefix, "lib", "node_modules", "@songsid", "agend", "package.json"))).toBe(true);
     expect(existsSync(join(B.prefix, "lib", "node_modules", "@songsid", "agend"))).toBe(false);
     expect(readFileSync(join(nvmDir, "uses"), "utf8").trim()).toBe("1");
+  });
+
+  // #1473 review r2: only a POSITIVELY settled activation lets the old system copy go — never inferred from an exit code.
+  it.each([
+    [{ ok: true, via: "restart" } as const, "restarted" as const, true],
+    [{ ok: true, via: "restart" } as const, "pending" as const, false],     // systemd still running the restart job (75)
+    [{ ok: true, via: "restart" } as const, "failed" as const, false],
+    [{ ok: true, via: "restart" } as const, null, false],                  // the restart never reported
+    [{ ok: true, via: "launchd-activation" } as const, null, true],         // the new job was proven running
+    [{ ok: false } as const, "restarted" as const, false],
+  ])("activationSettled(%j, %s) = %s", (outcome, restart, settled) => {
+    expect(activationSettled(outcome, restart)).toBe(settled);
   });
 
   it("a failed verification under nvm keeps the old system copy", () => {

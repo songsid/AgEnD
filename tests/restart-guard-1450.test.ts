@@ -100,6 +100,10 @@ describe("guardLaunchd: the loaded job, and the plist on disk, both", () => {
     expect(guardLaunchd(printed(want, { [key]: "/x" }), "gui/501/com.agend.fleet", "/p.plist", () => plist(want), expected, deps))
       .toMatchObject({ ok: false, reason: expect.stringContaining(key) });
   });
+  it("a blank AGEND_NODE in launchd's environment is set, not unset (getenv prints \" \\n\")", () => {
+    expect(guardLaunchd(printed(want, { AGEND_NODE: " \n" }), "gui/501/com.agend.fleet", "/p.plist", () => plist(want), expected, deps))
+      .toMatchObject({ ok: false, reason: expect.stringContaining("AGEND_NODE") });
+  });
   it("a launchctl getenv that does not complete → refused (uncertainty, never \"unset\")", () => {
     const run = (command: string, argv: string[]): CommandResult => argv[0] === "getenv" ? { status: null, signal: "SIGTERM", stdout: "", stderr: "" } : printed(want)(command, argv);
     expect(guardLaunchd(run, "gui/501/com.agend.fleet", "/p.plist", () => plist(want), expected, deps)).toMatchObject({ ok: false, reason: expect.stringContaining("could not be read") });
@@ -139,6 +143,9 @@ describe("#1450: a system Node (no bundled runtime) — the definition starts th
     // #1473 review: the launcher's own override decides before PATH does — an AGEND_NODE would pick another Node.
     ["the launcher, its PATH right but AGEND_NODE naming an old Node", tuple([LAUNCHER, "fleet", "start"], { PATH: "/opt/node22/bin:/usr/bin", AGEND_NODE: "/opt/node20/bin/node" }), "AGEND_NODE"],
     ["the launcher with NODE_EXTRA_CA_CERTS", tuple([LAUNCHER, "fleet", "start"], { PATH: "/opt/node22/bin:/usr/bin", NODE_EXTRA_CA_CERTS: "/tmp/ca.pem" }), "NODE_EXTRA_CA_CERTS"],
+    // #1473 review r2: a `node` in the service's working directory would win over the later expected one.
+    ["the launcher, a leading empty PATH entry (the cwd)", tuple([LAUNCHER, "fleet", "start"], { PATH: ":/opt/node22/bin:/usr/bin" }), "empty or relative"],
+    ["the launcher, a relative PATH entry", tuple([LAUNCHER, "fleet", "start"], { PATH: "./bin:/opt/node22/bin" }), "empty or relative"],
   ])("%s", (_n, t, refusal) => {
     const judged = judgeTuple(t, sys, fs2);
     if (refusal === null) expect(judged).toEqual({ ok: true });

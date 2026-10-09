@@ -15,7 +15,7 @@ import { dirname, join } from "node:path";
 import { createRequire } from "node:module";
 import { canonicalCliEntry } from "./cli-entry.js";
 import {
-  INTERPRETER_ENV, launchdManagerEnvViolation, parseLaunchctlPrint, parsePlist, readLoadedUnit, sameJob,
+  INTERPRETER_ENV, cwdDependentPath, launchdManagerEnvViolation, parseLaunchctlPrint, parsePlist, readLoadedUnit, sameJob,
   type ActivationTuple, type TupleDeps,
 } from "./service-activation.js";
 import type { CommandResult } from "./update-install.js";
@@ -73,6 +73,9 @@ export function judgeTuple(tuple: ActivationTuple, expected: ExpectedTuple, deps
     }
     const rest = tuple.argv.slice(1);
     if (rest.length !== 2 || rest[0] !== "fleet" || rest[1] !== "start") return { ok: false, reason: `its arguments are ${JSON.stringify(rest)}, not ["fleet","start"]` };
+    if (tuple.env.PATH !== undefined && cwdDependentPath(tuple.env.PATH)) {
+      return { ok: false, reason: "its PATH has an empty or relative entry, so the Node the launcher finds depends on the working directory" };
+    }
     const found = nodeOnPath(tuple.env.PATH, deps);
     if (found !== expected.node) return { ok: false, reason: `its PATH finds ${found ?? "no node"}, not the selected Node ${expected.node}` };
     return { ok: true };

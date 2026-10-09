@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { join } from "node:path";
 import {
   buildServicePath,
+  reloadLaunchdJob,
   classifySystemdServiceState,
   renderLaunchdPlist,
   renderSystemdUnit,
@@ -312,5 +313,50 @@ describe("#1450: a system Node is not named — the service starts the launcher,
     // This checkout pins no runtime: its selection is the system Node.
     expect(defaultServiceProgram(join(process.cwd(), "dist", "cli.js"))).toEqual({ launcherPath: join(process.cwd(), "launcher", "agend") });
     expect(defaultServiceProgram("/nowhere/dist/cli.js")).toEqual({ nodePath: process.execPath });
+  });
+});
+
+describe("#1473 review r2: agend install's launchd reload bootstraps only after launchd CONFIRMED the job gone", () => {
+  /** launchctl answers by verb; `print` answers in turn (the last one repeats). */
+  function launchctl(prints: Array<{ status: number | null; signal?: NodeJS.Signals | null }>) {
+    const calls: string[] = [];
+    let clock = 0, i = 0;
+    const deps = {
+      run: (command: string, args: string[]) => {
+        calls.push([command, ...args].join(" "));
+        if (args[0] === "print") { const p = prints[Math.min(i++, prints.length - 1)]!; return { status: p.status, signal: p.signal ?? null }; }
+        return { status: 0, signal: null };
+      },
+      sleep: (ms: number) => { clock += ms; },
+      now: () => clock,
+    };
+    return { deps, calls, bootstraps: () => calls.filter(c => c.startsWith("launchctl bootstrap")).length };
+  }
+  it.each([
+    ["the job stays loaded", [{ status: 0 }]],
+    ["launchctl print times out", [{ status: null, signal: "SIGTERM" as NodeJS.Signals }]],
+    ["launchctl print fails another way", [{ status: 5 }]],
+  ] as const)("not confirmed (%s): refused, nothing bootstrapped or enabled", (_n, prints) => {
+    const l = launchctl([...prints]);
+    expect(() => reloadLaunchdJob("gui/501", "com.agend.fleet", "/p.plist", l.deps)).toThrow(/did not confirm that com.agend.fleet was unloaded/);
+    expect(l.bootstraps()).toBe(0);
+    expect(l.calls.some(c => c.startsWith("launchctl enable"))).toBe(false);
+  });
+  it.each([
+    ["at once", [{ status: 113 }]],
+    ["after the job lingered", [{ status: 0 }, { status: 0 }, { status: 113 }]],
+  ] as const)("confirmed %s: exactly one bootstrap, then enable", (_n, prints) => {
+    const l = launchctl([...prints]);
+    reloadLaunchdJob("gui/501", "com.agend.fleet", "/p.plist", l.deps);
+    expect(l.bootstraps()).toBe(1);
+    expect(l.calls.at(-1)).toBe("launchctl enable gui/501/com.agend.fleet");
+  });
+});
+
+describe("#1473 review r2: the service PATH has only absolute entries", () => {
+  it("empty and relative entries (cwd-dependent lookups) are dropped", () => {
+    const path = buildServicePath(":/opt/node22/bin:./bin:node_modules/.bin::/usr/bin", "/opt/x/dist/cli.js", "/nonexistent-home", "/opt/node22/bin/node").split(":");
+    expect(path.every(entry => entry.startsWith("/"))).toBe(true);
+    expect(path).toContain("/opt/node22/bin");
   });
 });

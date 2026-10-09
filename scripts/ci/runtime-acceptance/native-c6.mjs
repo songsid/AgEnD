@@ -290,7 +290,7 @@ ${gui ? "" : "<key>LimitLoadToSessionType</key><string>Background</string>\n"}${
 
     // Activation: the preimage job (the previous package, its own marker) runs; npm replaced the package; the refresh
     // writes the new plist. Every launchctl call is the real one, and counted.
-    const activation = async (name, { broken = false } = {}) => {
+    const activation = async (name, { broken = false, swapOnBootstrap = false } = {}) => {
       const j = job(`com.agend.${ID}.act-${name}`);
       installPackage(prefix, "2.1.12-old");
       const taken = takePackagePreimage(root, prefix, new Date());
@@ -304,7 +304,15 @@ ${gui ? "" : "<key>LimitLoadToSessionType</key><string>Background</string>\n"}${
       const order = [];
       const outcome = activateService({ kind: "launchd", label: j.label, plistPath: j.plistPath, domain }, { dir: pkg, bin: join(prefix, "bin", "agend"), entry, node: NODE }, {
         ...deps,
-        run: (command, args) => { if (command === "launchctl" && args[0] === "bootstrap") order.push("bootstrap"); return run(command, args); },
+        run: (command, args) => {
+          if (command === "launchctl" && args[0] === "bootstrap") {
+            // A valid plist for ANOTHER install replaces the proven one just before the first bootstrap (a concurrent
+            // writer): launchd then loads and runs a job that is not the verified install.
+            if (swapOnBootstrap && !order.includes("bootstrap")) writeFileSync(j.plistPath, plist(j.label, [NODE, other.entry, "fleet", "start"], { AGEND_C6_GENERATION: "intruder" }));
+            order.push("bootstrap");
+          }
+          return run(command, args);
+        },
         readFile, writeFile: (p, c) => writeFileSync(p, c),
         refresh: () => { writeFileSync(j.plistPath, plist(j.label, [NODE, entry, "fleet", "start"], { AGEND_C6_GENERATION: "new" }, broken)); return { status: 0, signal: null, stdout: "", stderr: "" }; },
         restart: () => { throw new Error("launchd activation never restarts"); },
@@ -334,6 +342,21 @@ ${gui ? "" : "<key>LimitLoadToSessionType</key><string>Background</string>\n"}${
       assert.equal(readFileSync(a.j.plistPath, "utf8"), a.preimageXml, "the preimage plist is back");
       const now = await waitRunning(a.j);
       assert.ok(now?.pid, "the preimage job runs again");
+      assert.equal(now.tuple.env.AGEND_C6_GENERATION, "previous");
+      assert.equal(versionOf(pkg), "2.1.12-old", "the previous package is installed again");
+      run("launchctl", ["bootout", a.j.target]);
+    });
+    await step("activation: the bootstrap succeeds but launchd loads ANOTHER tuple → rolled back: package back first, the preimage job runs its own tuple", async () => {
+      const a = await activation("mismatch", { swapOnBootstrap: true });
+      assert.equal(a.outcome.ok, false);
+      assert.match(a.outcome.message, /launchd loaded a job that/);
+      assert.match(a.outcome.message, /Rolled back to the previous job, which is running/);
+      assert.deepEqual(a.order, ["bootstrap", "restore-package", "bootstrap"]);
+      assert.equal(a.manager.filter(c => /kickstart/.test(c)).length, 0, "no kickstart");
+      assert.equal(readFileSync(a.j.plistPath, "utf8"), a.preimageXml, "the preimage plist is back");
+      const now = await waitRunning(a.j);
+      assert.ok(now?.pid && now.state === "running", "the preimage job runs again");
+      assert.deepEqual(now.tuple.argv, [NODE, entry, "fleet", "start"]);
       assert.equal(now.tuple.env.AGEND_C6_GENERATION, "previous");
       assert.equal(versionOf(pkg), "2.1.12-old", "the previous package is installed again");
       run("launchctl", ["bootout", a.j.target]);

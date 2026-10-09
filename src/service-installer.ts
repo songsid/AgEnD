@@ -103,6 +103,8 @@ export function buildServicePath(
     .filter(Boolean)
     // Drop Windows/WSL mount noise and node_modules entries.
     .filter(p => !p.includes("/mnt/") && !p.includes("Program Files") && !p.includes("/node_modules/"))
+    // Only absolute entries: an empty or relative one resolves against the service's working directory (#1473 review).
+    .filter(p => p.startsWith("/"))
     // Deduplicate, keeping the first occurrence.
     .filter(p => { if (seen.has(p)) return false; seen.add(p); return true; });
   const moduleMarker = "/lib/node_modules/";
@@ -279,6 +281,43 @@ export function inspectService(label = SERVICE_LABEL): ServiceInfo {
     enabled,
     active: serviceState === "unavailable" ? null : serviceState === "running",
   };
+}
+
+export interface LaunchdReloadDeps {
+  run(command: string, args: string[], inherit?: boolean): { status: number | null; signal: NodeJS.Signals | null };
+  sleep(ms: number): void;
+  /** Monotonic ms. */
+  now(): number;
+}
+const defaultLaunchdReloadDeps: LaunchdReloadDeps = {
+  run: (command, args, inherit) => {
+    const r = spawnSync(command, args, { stdio: inherit ? "inherit" : "ignore", timeout: 15_000 });
+    return { status: r.status, signal: r.signal };
+  },
+  sleep: ms => { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); },
+  now: () => performance.now(),
+};
+
+/**
+ * `agend install`'s launchd (re)load: bootout whatever is loaded, then bootstrap — but only once launchd has
+ * CONFIRMED the job gone (`launchctl print` → 113). bootout returns before the job is unloaded (macOS 15: a bootstrap
+ * right after it fails with 5, EIO), so the wait is bounded (10 s, monotonic); a job still loaded, a print that times
+ * out or fails is not "gone" — nothing is bootstrapped, and the install says so (#1473 review).
+ */
+export function reloadLaunchdJob(domain: string, label: string, plistPath: string, deps: LaunchdReloadDeps = defaultLaunchdReloadDeps): void {
+  const target = `${domain}/${label}`;
+  deps.run("launchctl", ["bootout", target]);                      // not loaded is fine: confirmed below
+  const deadline = deps.now() + 10_000;
+  for (;;) {
+    const printed = deps.run("launchctl", ["print", target]);
+    if (printed.status === 113 && printed.signal === null) break;
+    if (deps.now() >= deadline) throw new Error(`launchd did not confirm that ${label} was unloaded within 10 s; nothing was loaded (retry: agend install)`);
+    deps.sleep(100);
+  }
+  const boot = deps.run("launchctl", ["bootstrap", domain, plistPath], true);
+  if (boot.status !== 0) throw new Error(`launchctl bootstrap ${domain} ${plistPath} failed (${boot.signal ?? `exit ${boot.status}`})`);
+  const enabled = deps.run("launchctl", ["enable", target], true);
+  if (enabled.status !== 0) throw new Error(`launchctl enable ${target} failed (${enabled.signal ?? `exit ${enabled.status}`})`);
 }
 
 export function uninstallService(label: string): boolean {
@@ -758,15 +797,7 @@ export function activateService(plistPath: string, pidPath: string): void {
     const uid = process.getuid?.() ?? 501;
     const domain = `gui/${uid}`;
     const label = plistPath.replace(/.*\//, "").replace(/\.plist$/, "");
-    // Unload if previously loaded (ignore errors). bootout returns before launchd has finished unloading the job (macOS
-    // 15: a bootstrap right after it fails with 5, EIO): wait — bounded, monotonic — until print says it is gone (113).
-    try { execSync(`launchctl bootout ${domain}/${label}`, { stdio: "ignore" }); } catch {}
-    const deadline = performance.now() + 10_000;
-    while (spawnSync("launchctl", ["print", `${domain}/${label}`], { stdio: "ignore", timeout: 5000 }).status !== 113 && performance.now() < deadline) {
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
-    }
-    execSync(`launchctl bootstrap ${domain} ${plistPath}`, { stdio: "inherit" });
-    execSync(`launchctl enable ${domain}/${label}`, { stdio: "inherit" });
+    reloadLaunchdJob(domain, label, plistPath);
   } else {
     const serviceName = plistPath.replace(/.*\//, "").replace(/\.service$/, "");
     execSync("systemctl --user daemon-reload", { stdio: "inherit" });

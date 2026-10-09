@@ -55,9 +55,19 @@ export function launchdManagerEnvViolation(run: (command: string, args: string[]
     if (value.status === null || value.signal !== null || value.status !== 0) {
       return `launchd's ${key} could not be read (launchctl getenv ${value.signal ? `killed by ${value.signal}` : `exited ${value.status}`})`;
     }
-    if (value.stdout.trim() !== "") return `launchd's environment sets ${key} for every job, which changes how Node runs (launchctl unsetenv ${key})`;
+    // Unset prints nothing; a set value prints itself and a newline — even " " (macOS 15). Never trimmed: a blank
+    // value is still set, and the launcher refuses it.
+    if (value.stdout !== "") return `launchd's environment sets ${key} for every job, which changes how Node runs (launchctl unsetenv ${key})`;
   }
   return null;
+}
+
+/**
+ * A PATH whose lookup depends on the working directory: an empty entry (the cwd, for execvp and `command -v`) or a
+ * relative one. Which `node` it finds cannot be proven from the definition alone: refused (#1473 review).
+ */
+export function cwdDependentPath(path: string): boolean {
+  return path.split(":").some(entry => entry === "" || !entry.startsWith("/"));
 }
 
 /** systemd's PATH when a unit sets none (systemd.exec, "Environment variables in spawned processes"). */
@@ -220,6 +230,7 @@ export function tupleStartsVerified(
   if (program === verified.bin && verified.bin !== verified.entry && /\/launcher\/agend$/.test(verified.bin)) {
     if (!sameArgs(args, FLEET_START)) return { ok: false, reason: `its arguments are ${JSON.stringify(args)}, not ["fleet","start"]` };
     if (tuple.env.PATH === undefined) return { ok: false, reason: "its environment has no PATH, so the Node its launcher would find cannot be proven" };
+    if (cwdDependentPath(tuple.env.PATH)) return { ok: false, reason: "its PATH has an empty or relative entry, so the Node its launcher would find depends on the working directory" };
     const found = tuple.env.PATH.split(":").filter(Boolean).map(dir => `${dir}/node`).find(candidate => deps.isExecutable(candidate));
     const real = found ? deps.realpath(found) : null;
     if (real !== verified.node) return { ok: false, reason: `its launcher would find ${real ?? "no node"}, not the verified ${verified.node}` };
@@ -230,6 +241,7 @@ export function tupleStartsVerified(
     // PATH must be in the definition's effective environment: with none (e.g. UnsetEnvironment=PATH), `env node`
     // searches execvp's built-in path (glibc: /bin:/usr/bin), not any manager default — unprovable here (#1449 r5).
     if (tuple.env.PATH === undefined) return { ok: false, reason: "its environment has no PATH, so the Node its `env node` would find cannot be proven" };
+    if (cwdDependentPath(tuple.env.PATH)) return { ok: false, reason: "its PATH has an empty or relative entry, so the Node its `env node` would find depends on the working directory" };
     const interpreter = scriptInterpreter(verified.entry, tuple.env.PATH, deps);
     if (interpreter !== verified.node) return { ok: false, reason: `its Node is ${interpreter ?? "unresolvable"}, not the verified ${verified.node}` };
     return { ok: true };

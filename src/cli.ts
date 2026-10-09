@@ -1419,7 +1419,7 @@ program
     const pkg = `@songsid/agend@${targetVersion ?? tag}`;
 
     // The restart stage, shared by a real update and by the stale-fleet case.
-    const restartFleetForUpdate = (command: string, args: string[], version: string): void => {
+    const restartFleetForUpdate = (command: string, args: string[], version: string): "restarted" | "pending" | "failed" => {
       console.log("  Restarting fleet...");
       setUpdateProgressStage(DATA_DIR, "stopping", { version });
       // `agend restart` may synchronously wait for a Type=notify service to finish
@@ -1443,6 +1443,7 @@ program
         }
         process.exitCode = 1;
       }
+      return restartOutcome;
     };
 
     const nvmSh = join(homedir(), ".nvm", "nvm.sh");
@@ -1453,7 +1454,9 @@ program
      * (process.argv[1] may be another checkout). A failed target check leaves the running fleet alone.
      */
     const activateVerified = async (verified: { agendPath: string; version: string; dir: string; bin: string; entry: string; node: string; rollback?: { root: string; prefix: string; preimage: import("./package-preimage.js").PackagePreimage | null }; retireSystemCopy?: true }, viaNvm: boolean): Promise<void> => {
-      const { newAgendInvocation, retireSystemCopy } = await import("./update-install.js");
+      const { newAgendInvocation, retireSystemCopy, activationSettled } = await import("./update-install.js");
+      // What the restart came to — carried, never inferred from the exit code (pending ≠ restarted).
+      let restartResult: "restarted" | "pending" | "failed" | null = null;
       const { activateService } = await import("./service-activation.js");
       const { getServicePath, getSystemServicePath, detectPlatform } = await import("./service-installer.js");
       const { accessSync, constants } = await import("node:fs");
@@ -1493,17 +1496,17 @@ program
         restart: () => {
           // The completion script embeds this version's subcommand names; --refresh only rewrites existing artifacts.
           try { spawnSync(newAgend.command, [...newAgend.args, "completion", "install", "--refresh"], { encoding: "utf-8", timeout: 15_000, stdio: "ignore" }); } catch { /* cosmetic */ }
-          restartFleetForUpdate(newAgend.command, newAgend.args, verified.version);
+          restartResult = restartFleetForUpdate(newAgend.command, newAgend.args, verified.version);
         },
         log: message => console.log(message),
         restorePackage,
       });
       // Settled: after a success only this transition's preimage is kept (for a repair); a failure consumed it.
       if (outcome.ok && rollback) prunePreimages(rollback.prefix, rollback.preimage);
-      // nvm transition: the old system copy is what the previous service ran. Only once the fleet runs the new install
-      // (activation ok, restart not failed) is it removed; on any failure it stays, so the old unit still starts.
+      // nvm transition: the old system copy is what the previous service ran. Only once the fleet POSITIVELY runs the
+      // new install (activationSettled) is it removed; pending, failed or refused, it stays, so the old unit still starts.
       if (verified.retireSystemCopy) {
-        if (outcome.ok && process.exitCode !== 1) {
+        if (activationSettled(outcome, restartResult)) {
           retireSystemCopy({ run: (command, args) => capture(command, args), log: message => console.log(message) });
         } else {
           console.log("  Note: the old system install was kept, since the new one is not running yet.");

@@ -288,6 +288,19 @@ export function runUpdateInstall(plan: UpdateInstallPlan, runner: CommandRunner)
 }
 
 /**
+ * Has the activation POSITIVELY settled on the new install — the moment the old system copy may go? launchd: the new
+ * job was proven running. Otherwise only a restart that reported "restarted": "pending" (systemd still running the
+ * job) and "failed" keep the old copy, as does any failed activation (#1473 review).
+ */
+export function activationSettled(
+  outcome: { ok: true; via: "restart" | "launchd-activation" } | { ok: false },
+  restart: "restarted" | "pending" | "failed" | null,
+): boolean {
+  if (!outcome.ok) return false;
+  return outcome.via === "launchd-activation" || restart === "restarted";
+}
+
+/**
  * After an nvm transition's activation SETTLED (the fleet runs the new install): remove the old system copy. Best
  * effort, and never waits for a password. Before that point the old copy is the rollback for the old service.
  */
