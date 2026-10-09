@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { once } from "node:events";
@@ -64,7 +64,7 @@ writeFileSync(dir+'/main.json',JSON.stringify({pid:process.pid,updater:child.pid
     check("private_runtime_link", success(sd("link", "--runtime", file))); linked = true;
     check("actual_user_manager_reload", success(sd("daemon-reload")));
     const fragment = sd("show", unit, "-p", "FragmentPath", "--value");
-    check("loaded_fragment_is_own_file", success(fragment) && fragment.stdout.trim() === file);
+    check("loaded_fragment_is_own_file", success(fragment) && realpathSync(fragment.stdout.trim()) === realpathSync(file));
     const mode = sd("show", unit, "-p", "KillMode", "--value");
     check("loaded_kill_mode_mixed", success(mode) && mode.stdout.trim() === "mixed");
     const timeout = sd("show", unit, "-p", "TimeoutStopUSec", "--value");
