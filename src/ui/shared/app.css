@@ -611,6 +611,10 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .chip-x:hover { color: var(--text); background: var(--surface); }
 .dlg-impact { margin-right: auto; align-self: center; }
 .dlg-inline-actions { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
+/* #1519 P1: the bot-token field — the input and its show/hide button on one row. */
+.token-row { display: flex; align-items: center; gap: var(--s-1); }
+.token-row input { flex: 1; min-width: 0; }
+.feedback.ok { color: var(--ok, var(--text)); }
 .seg-inline { display: inline-flex; gap: var(--s-1); }
 .btn.on { background: var(--surface-2); color: var(--text); font-weight: var(--fw-semibold); }
 .card h4 { font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--text-2); }

@@ -172,6 +172,7 @@ import { ReplyButtonStore, parseReplyButtons, replyButtonClickText, replyButtons
 import { ReplyButtonsController, type ReplyButtonsView } from "./reply-buttons-controller.js";
 import { publicAttachment, sweepOrphanedUploads, WebFileLedger } from "./web-upload.js";
 import { handleViewRequest, isViewPath, profileIdentities, resolveInstanceIdentity } from "./view-api.js";
+import { envFileKeys } from "./token-env-name.js";
 import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, usageProviderIdForBackend } from "./usage/usage-api.js";
 import { LOGIN_FLOWS, LOGIN_BACKEND_ALIASES, type LoginFlow, type AuthCheckResult } from "./login-flows.js";
 import { LoginSession } from "./login-manager.js";
@@ -1207,7 +1208,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (!settlement) return false;
         await settlement;
         const job = this.providerSecretJobs.get(id) ?? this.connectionSecretJobs.get(id) ?? this.connectionBindingJobs.get(id);
-        return !!job && ["applied", "applied_next_use", "reloaded"].includes(job.result);
+        // restart_required: the value is stored and committed (the receipt is checked above), only no adapter was running
+        // to take it — the change is done, and the page says it starts with the next restart (#1519 P1), never "failed".
+        return !!job && ["applied", "applied_next_use", "reloaded", "restart_required"].includes(job.result);
       },
     });
     this.settingsConfirmation = gate; return gate;
@@ -16598,6 +16601,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   listSecureConnections(): ConnectionMetadata[] {
     const channels = this.fleetConfig?.channels
       ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
+    // A token written from Settings is in .env before this process has it (#1519 P1: a new connection's token waits for
+    // the restart that starts it) — stored is "set", not "missing". Names only; no value is read out.
+    let stored: Set<string>;
+    try { stored = envFileKeys(this.dataDir); } catch { stored = new Set(); }   // unreadable: only what this process has
     return channels.map((channel, index) => {
       const id = channel.id ?? channel.type ?? `channel-${index}`;
       const world = this.worlds.get(id);
@@ -16606,7 +16613,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         id,
         type: channel.type,
         token_env: channel.bot_token_env,
-        token_present: !!process.env[channel.bot_token_env],
+        token_present: !!process.env[channel.bot_token_env] || stored.has(channel.bot_token_env),
         group_id: channel.group_id != null ? String(channel.group_id) : null,
         general_channel_id: channel.options?.general_channel_id != null
           ? String(channel.options.general_channel_id)
