@@ -19,7 +19,7 @@
  *                   channel: everyone, as for typed messages)
  *  - channel-admin  the admin of the channel's own kind: in a fleet channel an explicit fleet admin, in a ClassicBot
  *                   channel a fleet admin OR a ClassicBot admin (what `isModelAdmin` always meant)
- *  - fleet-admin    an explicit entry in the INVOKING adapter's `allowed_users`; an empty list means nobody
+ *  - fleet-admin    an explicit entry in the OWNING adapter's `allowed_users` (invoking when no target); empty grants nobody
  *  - classic-admin  a ClassicBot admin only (`admin_users`)
  *  - handler        the door has admitted the caller and the table asks nothing more: the command's own handler
  *                   decides, because the rule is not one level. Only `/start` is like this — an allowlist that is a
