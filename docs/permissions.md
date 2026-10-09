@@ -7,13 +7,13 @@ AgEnD checks chat admission, command roles, AgEnD tool profiles and HTTP credent
 | Source | Configuration/state | Meaning |
 |--------|---------------------|---------|
 | Fleet chat admission | `channels[].access` (or legacy `channel.access`) + per-adapter access state | Effective mode and allowed users |
-| Fleet admin (**F**) | Invoking adapter's YAML `access.allowed_users` | Explicit fleet management authority |
+| Fleet admin (**F**) | Owning adapter's YAML `access.allowed_users`; invoking adapter when there is no target | Explicit fleet management authority |
 | ClassicBot admin (**C**) | `classicBot.yaml`: `defaults.admin_users` | ClassicBot management authority |
 | ClassicBot server/group/user admission | `defaults.allowed_guilds`, `allowed_groups`, `allowed_users` | Discord servers, Telegram groups, Telegram private users respectively |
 | AgEnD tool profile | Instance `tool_set` | Server-side permission to invoke AgEnD tools |
 | Dashboard / agent HTTP | `web.token` / per-instance `agent.token` | Separate bearer credentials, not chat roles |
 
-**Open chat access and approved pairing do not make a fleet admin.** F is an explicit entry in the invoking adapter's YAML list; an empty list grants nobody F. ClassicBot's empty admin list likewise grants nobody C. For new ClassicBot starts, omitted, empty or non-array guild/group/private-user lists admit nobody: non-C callers request approval in General. C may start directly. Existing registrations are unaffected.
+**Open chat access and approved pairing do not make a fleet admin.** F is an explicit entry in the owning bot's YAML list (invoking when there is no target); an empty list grants nobody F, and an unknown adapter fails closed. ClassicBot's empty admin list likewise grants nobody C. For new ClassicBot starts, omitted, empty or non-array guild/group/private-user lists admit nobody: non-C callers request approval in General. C may start directly. Existing registrations are unaffected.
 
 ## Fleet chat admission and persisted access
 
@@ -23,12 +23,14 @@ Omitting the whole `access` block supplies an **open** fallback. With a configur
 - The primary adapter uses `<dataDir>/access/access.json`; additional adapters use `access/access-<adapterId>.json`. `dataDir` defaults to `~/.agend`, or `AGEND_HOME` when set.
 - In locked/pairing mode, removing an ID from YAML alone may leave a saved grant. Removing only its saved grant can let YAML restore it at reconstruction. Remove both grants to revoke allowlist admission; open mode admits all users regardless of that list.
 - Typed fleet messages use the target instance's **owning world** access policy. An identified owner whose adapter/world is unavailable is refused; a sibling's policy cannot substitute for it.
-- Discord slash commands first require a guild and an allowed source context: the receiving bot's main guild, a registered Classic channel, or an allowed `/start`. DMs are refused. Fleet slash admission accepts the owning policy's users **or an explicit invoking F**, but still refuses an unavailable owning world. A command's role check follows this ingress check.
+- Discord slash commands first require a guild and an allowed source context: the receiving bot's main guild, a registered Classic channel, or a new `/start` whose handler decides admission. DMs and another bot's fleet channels are refused. Fleet slash admission accepts the owning policy's users **or an explicit F**, but still refuses an unavailable owning world. A command's role check follows this ingress check.
 - Registered Classic channels bypass the fleet user gate and use ClassicBot registration/allowlist/admin rules. F and C remain separate command roles.
 
 See the [access configuration](configuration.md#channelaccess) ([繁體中文](configuration.zh-TW.md#channelaccess)).
 
 ## Command matrix
+
+The full [command surface matrix](command-surface.md) ([繁體中文](command-surface.zh-TW.md)) records all 27 native command names, menu visibility, handling, refusals, forwarding and silence, including unregistered chats and callback qualifiers. The table below is a summary.
 
 **A** means a caller already admitted by the applicable ingress rules, including the explicit Discord fleet-admin admission above. It is not unrestricted access from any server, DM or bot.
 
@@ -38,18 +40,19 @@ These are command role requirements; an applicable instance, backend capability 
 
 | Commands | Discord General / instance | Discord Classic | Telegram General | Telegram instance topic | Telegram Classic |
 |----------|----------------------------|-----------------|------------------|-------------------------|------------------|
-| `/status`, `/restart`, `/login`, `/update`, `/doctor`, `/dashboard` | F | F | F | — | — |
+| `/status`, `/restart`, `/login`, `/update`, `/doctor`, `/dashboard`, `/visibility` | F | F | F | Refuse: use General | — |
+| `/profile` | General only: F | Refuse | F | Refuse: use General | — |
 | `/model`, `/clear` | F | F or C | F | F | F or C |
 | `/effort` | F | F or C | F | F | — |
-| `/pause`, `/wake` | F | F or C | F | F | C |
-| `/compact`, `/save` | F | F or C | A | A | C |
-| `/collab` | F | F or C | A | A | — |
+| `/pause`, `/wake` | F | F or C | F | F | F or C |
+| `/compact`, `/save` | F | F or C | F | F | F or C |
+| `/collab` | F | F or C | F | F | — |
 | `/cancel`, `/ctx`, `/steer`, `/btw` | A | A | A | A | A |
-| `/sysinfo`, `/usage` | A | A | A | — | — |
+| `/sysinfo`, `/usage` | A | A | A | Refuse: use General | — |
 
 Discord's fleet-wide commands can also run in an admitted guild channel without an agent, requiring F; per-agent commands there refuse. Telegram's fleet-wide handlers are General-only. `/tips` is informational: Discord exposes it across admitted contexts and Telegram in General/instance topics; settings-changing arguments require the handler's admin check (F on both platforms).
 
-The implementation matrix is [`src/command-table.ts`](../src/command-table.ts). Discord enforces it after ingress; Telegram has its own handlers and explicit matrix cells, so Discord's roles must not be copied into Telegram's column.
+The implementation matrix is [`src/command-table.ts`](../src/command-table.ts). Discord enforces it after ingress; Telegram General/fleet typed dispatch also enforces its Telegram cells before a recognized handler runs. Classic handlers enforce their own roles. Exact-form passthrough and the ordinary Classic `/chat` exception are detailed in the full matrix; Discord cells do not establish Telegram behavior.
 
 ## ClassicBot lifecycle and addressing
 

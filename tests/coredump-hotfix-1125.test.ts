@@ -15,6 +15,24 @@ import { afterEach, describe, expect, it } from "vitest";
 import { coredumpFilterLaunchPrefix, disableCoredumpMemory, limitFleetCoreDumps } from "../src/coredump-filter.js";
 import { processStartMs, runningFleetPredatesInstall } from "../src/update-check.js";
 import { renderSystemdUnit } from "../src/service-installer.js";
+import { fakeBusctl } from "./support/fake-busctl.js";
+
+/**
+ * The installed `agend` (#1449: the update proves the service runs it on the verified Node by its shebang): a node
+ * script that reports `version`, keeps the unit as it is (`install`), and runs this build for everything else.
+ */
+function installedStub(version: string, log: string | null): string {
+  return [
+    "#!/usr/bin/env node",
+    "const args = process.argv.slice(2);",
+    log ? `require('fs').appendFileSync(${JSON.stringify(log)}, 'agend ' + args.join(' ') + '\\n');` : "",
+    `if (args[0] === '--version') { console.log(${JSON.stringify(version)}); process.exit(0); }`,
+    "if (args[0] === 'install') process.exit(0);",
+    `const r = require('child_process').spawnSync(process.execPath, [${JSON.stringify(join(process.cwd(), "dist", "cli.js"))}, ...args], { stdio: 'inherit' });`,
+    "process.exit(r.status ?? 1);",
+  ].join("\n") + "\n";
+}
+
 
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
@@ -201,15 +219,28 @@ describe("`agend update` when the package is already current (built CLI copy, st
     const unitDir = join(home, ".config", "systemd", "user");
     mkdirSync(unitDir, { recursive: true });
     writeFileSync(join(unitDir, "com.agend.fleet.service"), renderSystemdUnit({
-      label: "com.agend.fleet", execPath: "/usr/local/bin/agend", workingDirectory: agendHome,
-      logPath: join(agendHome, "daemon.log"), path: "/usr/bin:/bin",
+      // as `agend install` writes it for the installed package: its global bin (#1449: a restart is refused unless the
+      // service starts the verified install)
+      label: "com.agend.fleet", execPath: join(home, "bin", "agend"), workingDirectory: agendHome,
+      logPath: join(agendHome, "daemon.log"), path: `${join(home, "bin")}:/usr/bin:/bin`,
     }));
     const bin = join(home, "bin");
     mkdirSync(bin);
     const log = join(home, "calls.log");
     writeFileSync(log, "");
     const version = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")).version;
-    writeFileSync(join(bin, "npm"), `#!/bin/sh\necho "npm $*" >> '${log}'\ncase "$*" in view*) echo '${version}';; esac\nexit 0\n`);
+    // The global package npm reports as installed: before restarting a fleet that predates it, the update verifies
+    // it (#1449 review: version, bin on PATH, a database opens on its node).
+    const globalPkg = join(home, "lib", "node_modules", "@songsid", "agend");
+    mkdirSync(join(globalPkg, "dist"), { recursive: true });
+    symlinkSync(join(process.cwd(), "node_modules"), join(globalPkg, "node_modules"));
+    writeFileSync(join(globalPkg, "package.json"), JSON.stringify({ name: "@songsid/agend", version, bin: { agend: "dist/cli.js" } }));
+    // The installed `agend`: reports the version, keeps the unit as is (`install`), and runs this build for the rest —
+    // so the restart the update dispatches through it is the real restart code.
+    writeFileSync(join(globalPkg, "dist", "cli.js"), installedStub(version, null));
+    chmodSync(join(globalPkg, "dist", "cli.js"), 0o755);
+    symlinkSync(join(globalPkg, "dist", "cli.js"), join(bin, "agend"));
+    writeFileSync(join(bin, "npm"), `#!/bin/sh\necho "npm $*" >> '${log}'\ncase "$*" in view*) echo '${version}';; "root -g") echo '${join(home, "lib", "node_modules")}';; "prefix -g") echo '${home}';; esac\nexit 0\n`);
     // systemd 249 as observed: CoredumpFilter stays 0x33 whatever the unit file says.
     writeFileSync(join(bin, "systemctl"), `#!/bin/sh
 echo "systemctl $*" >> '${log}'
@@ -218,6 +249,9 @@ case "$*" in *"show -p KillMode --value"*) echo mixed;; esac
 case "$*" in *"show -p CoredumpFilter --value"*) echo 0x33;; esac
 exit 0
 `);
+    symlinkSync(process.execPath, join(bin, "node"));
+    writeFileSync(join(bin, "busctl"), fakeBusctl(log, join(home, ".config", "systemd", "user", "com.agend.fleet.service")));
+    chmodSync(join(bin, "busctl"), 0o755);
     chmodSync(join(bin, "npm"), 0o755);
     chmodSync(join(bin, "systemctl"), 0o755);
     const r = spawnSync(process.execPath, [join(pkg, "dist", "cli.js"), "update", "--beta"], {
@@ -378,17 +412,26 @@ describe("upgrade path: the restart runs through the newly installed binary (bui
     const unitDir = join(home, ".config", "systemd", "user");
     mkdirSync(unitDir, { recursive: true });
     writeFileSync(join(unitDir, "com.agend.fleet.service"), renderSystemdUnit({
-      label: "com.agend.fleet", execPath: "/usr/local/bin/agend", workingDirectory: agendHome,
-      logPath: join(agendHome, "daemon.log"), path: "/usr/bin:/bin",
+      // as `agend install` writes it for the installed package: its global bin (#1449: a restart is refused unless the
+      // service starts the verified install)
+      label: "com.agend.fleet", execPath: join(home, "bin", "agend"), workingDirectory: agendHome,
+      logPath: join(agendHome, "daemon.log"), path: `${join(home, "bin")}:/usr/bin:/bin`,
     }));
     const bin = join(home, "bin");
     mkdirSync(bin);
     const log = join(home, "calls.log");
     writeFileSync(log, "");
     // npm: a newer version is published; install is a no-op that "lands" it.
-    writeFileSync(join(bin, "npm"), `#!/bin/sh\necho "npm $*" >> '${log}'\ncase "$*" in view*) echo '99.0.0-beta.3';; "config get prefix") echo '${home}';; esac\nexit 0\n`);
-    // `agend` on PATH = the freshly installed binary: this build.
-    writeFileSync(join(bin, "agend"), `#!/bin/sh\necho "agend $*" >> '${log}'\nexec '${process.execPath}' '${cli}' "$@"\n`);
+    writeFileSync(join(bin, "npm"), `#!/bin/sh\necho "npm $*" >> '${log}'\ncase "$*" in view*) echo '99.0.0-beta.3';; "config get prefix") echo '${home}';; "root -g") echo '${join(home, "lib", "node_modules")}';; "prefix -g") echo '${home}';; esac\nexit 0\n`);
+    // `agend` on PATH = the freshly installed binary: this build, inside a global package npm "installed" (#1446: the
+    // updater checks it reports the target version and that the package opens a database on its node).
+    const globalPkg = join(home, "lib", "node_modules", "@songsid", "agend");
+    mkdirSync(join(globalPkg, "dist"), { recursive: true });
+    symlinkSync(join(process.cwd(), "node_modules"), join(globalPkg, "node_modules"));
+    writeFileSync(join(globalPkg, "package.json"), JSON.stringify({ name: "@songsid/agend", version: "99.0.0-beta.3", bin: { agend: "dist/cli.js" } }));
+    writeFileSync(join(globalPkg, "dist", "cli.js"), installedStub("99.0.0-beta.3", log));
+    chmodSync(join(globalPkg, "dist", "cli.js"), 0o755);
+    symlinkSync(join(globalPkg, "dist", "cli.js"), join(bin, "agend"));
     writeFileSync(join(bin, "systemctl"), `#!/bin/sh
 echo "systemctl $*" >> '${log}'
 case "$*" in *is-active*) echo active;; esac
@@ -396,7 +439,10 @@ case "$*" in *"show -p KillMode --value"*) echo mixed;; esac
 case "$*" in *"show -p CoredumpFilter --value"*) echo 0x33;; esac
 exit 0
 `);
-    for (const f of ["npm", "agend", "systemctl"]) chmodSync(join(bin, f), 0o755);
+    symlinkSync(process.execPath, join(bin, "node"));
+    writeFileSync(join(bin, "busctl"), fakeBusctl(log, join(home, ".config", "systemd", "user", "com.agend.fleet.service")));
+    chmodSync(join(bin, "busctl"), 0o755);
+    for (const f of ["npm", "systemctl"]) chmodSync(join(bin, f), 0o755);
     const r = spawnSync(process.execPath, [cli, "update", "--beta"], {
       env: { ...process.env, AGEND_ALLOW_TEST_FLEET_CONTROL: "1", AGEND_INSTANCE_NAME: "", HOME: home, AGEND_HOME: agendHome, PATH: `${bin}:${process.env.PATH}` },
       encoding: "utf8", timeout: 120_000,

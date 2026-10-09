@@ -289,6 +289,7 @@ import {
   type RestartProgressTarget,
 } from "./restart-progress.js";
 import { launchFullRestartHelper, type FullRestartHelperHandle } from "./full-restart.js";
+import { SYSTEMD_RESTART_INDETERMINATE_EXIT_CODE } from "./service-restart-selection.js";
 import { collectRedundantInstanceDefaultPaths } from "./fleet-yaml-slim.js";
 import { StormWindow, type StormSnapshot } from "./storm-window.js";
 import { SpawnGate } from "./spawn-gate.js";
@@ -4954,7 +4955,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // helper error/non-zero exit is evidence of failure. A signal is also
       // ambiguous under systemd because this helper shares the old cgroup.
       if (this.shuttingDown || !this.isOwnedFullRestartMarker(ownedMarker.startedAt, target)) return;
-      if (!result.error && (result.code === 0 || result.code === null)) return;
+      // The restart job outlived the helper's wait (systemd still running it): the new fleet settles the marker.
+      if (!result.error && (result.code === 0 || result.code === null || result.code === SYSTEMD_RESTART_INDETERMINATE_EXIT_CODE)) return;
       const detail = result.error
         ? "reload helper failed after launch"
         : `reload helper exited before process hand-off (code ${result.code ?? "null"}, signal ${result.signal ?? "none"})`;
