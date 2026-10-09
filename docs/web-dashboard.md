@@ -163,7 +163,7 @@ The fleet's shared work and its overview, one tab each. Every tab has its own ad
 - **Cache** (`/ui/fleet/cache`): how often each Claude Code and Codex instance's prompt cache expires between requests over 24 hours, 7 days or 30 days, what rewriting it costs, and whether a keep-warm ping would pay off.
   - It reads the transcripts on the machine, never a vendor API, and keeps a small summary per instance (`cache-ledger.json`).
   - Costs are list prices from one table; the date they were checked is shown.
-  - Codex does not record cache writes, so its numbers are marked as estimates.
+  - Where a transcript records cache writes, those are used. Where it does not (some Codex sessions), the rewrite is estimated from the uncached input, and the numbers are marked as estimates; so are they when the cache lifetime had to be assumed.
   - Kiro and other CLIs show "not available".
 - **Config**: the fleet's channel, access and defaults.
 
