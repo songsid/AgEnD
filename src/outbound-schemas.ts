@@ -183,7 +183,7 @@ export const SetPersonaEmojiArgs = z.object({
     "One emoji, or a Discord server emoji as <:name:id> from list_emojis. Empty string removes your override for that status.",
   ),
   status: z.enum(["received", "queued", "processing", "delivered", "failed", "progress_prefix", "photo", "attachment"]).optional()
-    .describe("Which of your status stamps to set (default: delivered, the one that stays on a handled message)"),
+    .describe("Which of your status stamps to set (default: delivered, the one that stays on a handled message). progress_prefix is not a reaction: it is the emoji at the start of your progress message."),
 });
 
 export const SetDescriptionArgs = z.object({

@@ -9075,6 +9075,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (redundantPaths.length > 0) this.writeFleetConfigBackup(source);
     const tempPath = `${this.configPath}.tmp-${process.pid}`;
     writeFileSync(tempPath, output, "utf-8");
+    // #1056 (Fable's 2.2 audit): the patcher writes leaves, not configs, so a wrong patch can produce a file the
+    // validator — or the next start — refuses (a bare channels[0], a channels list with a null). Load and validate
+    // what is about to replace fleet.yaml; a result that adds an error is not written, and the save fails instead.
+    const refusal = this.savedFleetConfigProblem(tempPath);
+    if (refusal) {
+      try { unlinkSync(tempPath); } catch { /* already gone */ }
+      throw new Error(refusal);
+    }
     if (existsSync(this.configPath)) chmodSync(tempPath, statSync(this.configPath).mode);
     renameSync(tempPath, this.configPath);
 
@@ -9084,6 +9092,23 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       { path: this.configPath, strippedDefaults: redundantPaths.length },
       "Saved fleet config (lossless patch)",
     );
+  }
+
+  /** Why the config written to `candidate` must not replace fleet.yaml, or null: it does not load, or it adds errors. */
+  private savedFleetConfigProblem(candidate: string): string | null {
+    let after;
+    try { after = validateFleetConfig(loadFleetConfig(candidate)); }
+    catch (err) { return `Refusing to save fleet.yaml: the result would not load (${(err as Error).message})`; }
+    let had = new Set<string>();
+    try {
+      if (this.configPath && existsSync(this.configPath)) {
+        had = new Set(validateFleetConfig(loadFleetConfig(this.configPath)).errors.map(e => `${e.path}\u0000${e.message}`));
+      }
+    } catch { /* the current file does not load: every error of the result counts as new */ }
+    const introduced = after.errors.filter(e => !had.has(`${e.path}\u0000${e.message}`));
+    return introduced.length
+      ? `Refusing to save fleet.yaml: it would be invalid (${introduced.map(e => `${e.path}: ${e.message}`).join("; ")})`
+      : null;
   }
 
   /** One-time upgrade migration; invalid YAML is never rewritten. */
@@ -9153,6 +9178,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const isRecord = (value: unknown): value is Record<string, unknown> =>
       typeof value === "object" && value !== null && !Array.isArray(value);
     if (isRecord(before) && isRecord(after)) {
+      // #1056: a legacy `channel` is being migrated (the caller removed it and kept `channels`). The file has no
+      // `channels` for the leaf patch below to land on — the snapshot's list is only the normalized alias — so a bare
+      // channels[0] holding just the changed field would be written while `channel` is deleted. Move the connection
+      // as it is in the file NOW (a concurrent or manual edit, an option AgEnD does not know) into channels[0]
+      // first; the patch then applies only this save's own changes on top, with the usual identity/order check.
+      if (path.length === 0 && this.rawFleetConfig.channel && !this.rawFleetConfig.channels
+        && after.channel === undefined && Array.isArray(after.channels) && !document.hasIn(["channels"])) {
+        const fresh = document.getIn(["channel"], true);
+        if (isMap(fresh)) {
+          const list = document.createNode([]) as ReturnType<typeof document.createNode> & { items: unknown[] };
+          list.items.push(fresh.clone());
+          document.setIn(["channels"], list);
+        }
+      }
       const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
       for (const key of keys) {
         // `channel` is a derived alias when the raw file uses `channels`.
@@ -9292,6 +9331,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   private lastStatusEmoji = new Map<string, { emoji: string; status?: DeliveryStatus }>();
   /**
+   * #1056: every status emoji each bot really stamped, per `${adapterId}:${messageId}` (match keys). A connection's
+   * status set can change while AgEnD runs, so "is this a stamp?" cannot be answered from the current set alone: a
+   * bot's earlier stamp in the old emoji must still be plumbing, not an agent's reaction. Unbounded for the same
+   * reason as lastStatusEmoji (a few short strings per stamped message).
+   */
+  private stampedStatus = new Map<string, Set<string>>();
+  private noteStamped(adapter: ChannelAdapter, messageId: string, emoji: string): void {
+    const adapterId = typeof (adapter as { id?: unknown }).id === "string" ? (adapter as unknown as { id: string }).id : "?";
+    const k = `${adapterId}:${messageId}`;
+    let set = this.stampedStatus.get(k);
+    if (!set) this.stampedStatus.set(k, set = new Set());
+    set.add(statusMatchKey(emoji));
+  }
+  /**
    * One in-flight status update per bot+message: updates run strictly in call
    * order, so a delayed ❌ add can never land after a newer ✅'s removal —
    * the final state is always the latest call. Entries delete themselves when
@@ -9316,7 +9369,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     instanceName: string, adapterId?: string, adapter?: ChannelAdapter | null,
   ): ResolvedStatusEmojis & { platform: string | undefined } {
     const worldId = adapterId ?? this.getInstanceAdapterId(instanceName);
-    const channel = (worldId ? this.worlds.get(worldId)?.channelConfig : undefined) ?? this.getChannelConfig(worldId ?? undefined);
+    const channel = this.statusEmojiChannel(worldId);
     // The adapter that will react decides the vocabulary: a Telegram bot gets
     // Telegram's reaction set even if the channel lookup fell back elsewhere.
     const reacting = adapter ?? (worldId ? this.worlds.get(worldId)?.adapter : undefined) ?? this.adapter;
@@ -9336,6 +9389,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return { ...resolved, platform };
   }
   private warnedStatusEmojis = new Set<string>();
+
+  /**
+   * The connection whose `options.status_emojis` an instance on `worldId` stamps with. #1056: read from the live config
+   * first — a Settings save replaces `fleetConfig.channels`, and the running world keeps the object it started with —
+   * so a change to the connection's emojis applies at the next stamp, as an instance's own override does. Only the
+   * emoji options are taken from it: the platform is still the running adapter's (resolveStatusEmojisFor).
+   */
+  private statusEmojiChannel(worldId: string | null | undefined): ChannelConfig | undefined {
+    const started = (worldId ? this.worlds.get(worldId)?.channelConfig : undefined) ?? this.getChannelConfig(worldId ?? undefined);
+    if (!worldId) return started;
+    const list = this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
+    const live = list.find(ch => (ch.id ?? ch.type) === worldId);
+    if (!live || !started) return live ?? started;
+    return { ...started, options: { ...(started.options ?? {}), status_emojis: live.options?.status_emojis } } as ChannelConfig;
+  }
 
   /**
    * A Discord connection's server emojis for the Settings picker (#1005), from
@@ -9425,11 +9493,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!self && !classic) return { error: this.personaEmojiMissing(instanceName) };
     const worldId = this.getInstanceAdapterId(instanceName);
     const { platform } = this.resolveStatusEmojisFor(instanceName);
-    const channel = (worldId ? this.worlds.get(worldId)?.channelConfig : undefined) ?? this.getChannelConfig(worldId ?? undefined);
+    const channel = this.statusEmojiChannel(worldId);
     const current = previewStatusEmojis({ platform, platformConfig: channel?.options?.status_emojis, instanceConfig: self?.status_emojis });
     const out: Record<string, unknown> = {
       platform: platform ?? null,
-      statuses: current.entries.map(e => ({ status: e.key, value: e.value, source: e.source })),
+      // #1056: progress_prefix is the emoji at the start of the progress message, not a reaction stamp.
+      statuses: current.entries.map(e => ({ status: e.key, value: e.value, source: e.source, kind: e.key === "progress_prefix" ? "text_prefix" : "reaction" })),
+      // #1056: say inline why the lists differ by platform, so an agent need not know it already.
+      platform_note: platform === "telegram"
+        ? "Telegram has no server custom emoji, so there is no server_emojis list: standard.reactions is the complete set a status reaction can use. progress_prefix is message text, not a reaction, so any single emoji works there."
+        : platform === "discord"
+          ? "A status reaction can be any single emoji, or a server emoji from server_emojis as <:name:id> (one of the servers this bot is in). progress_prefix is message text, not a reaction."
+          : "This instance has no chat connection, so no platform rules apply yet.",
       standard: platform === "telegram"
         ? { reactions: [...TELEGRAM_REACTION_EMOJIS], note: "Telegram reacts only with these; progress_prefix may be any single emoji" }
         : { suggestions: STATUS_EMOJI_SUGGESTIONS, note: "any single emoji works" },
@@ -9826,6 +9901,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (worlds.length > 0 && worlds.every(w => !!w.botUserId)) {
       const reactorWorlds = new Set(worlds.filter(w => w.botUserId === r.userId).map(w => w.id));
       if (reactorWorlds.size === 0) return false; // a human, or a bot outside this fleet
+      // #1056: what this bot really stamped on this message, whatever its status set says now.
+      if ([...reactorWorlds].some(id => this.stampedStatus.get(`${id}:${r.messageId}`)?.has(key))) return true;
       return [...names]
         .filter(n => reactorWorlds.has(this.getInstanceAdapterId(n) ?? ""))
         .some(n => statusMatchKeys(this.resolveStatusEmojisFor(n)).includes(key));
@@ -9833,6 +9910,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Fallback: the built-in ladder (as before #1005) plus every value an
     // operator configured. Not the Telegram built-ins — 👎 is AgEnD's failed
     // stamp there, but also far too common a human reaction to swallow blind.
+    if (worlds.some(w => this.stampedStatus.get(`${w.id}:${r.messageId}`)?.has(key))) return true;   // #1056, as above
     const keys = new Set(statusMatchKeys(builtinStatusEmojis(undefined)));
     for (const name of names) {
       const resolved = this.resolveStatusEmojisFor(name);
@@ -9855,9 +9933,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const emoji = this.receivedReactionFor(instanceName, adapter, msg.adapterId);
     // Classic's system receipt is status-owned too. An ordinary react call
     // would label it as an agent/other reaction and suppress later statuses.
+    // #1056: recorded as this bot's stamp like the delivery statuses (provenance survives a status-set change) —
+    // on Telegram once the adapter took the slot, on Discord before the add (its gateway can echo it first).
     if (adapter instanceof TelegramAdapter) {
-      return adapter.reactDeliveryStatus(msg.chatId, msg.messageId, emoji, msg.timestamp.getTime()).then(() => {});
+      return adapter.reactDeliveryStatus(msg.chatId, msg.messageId, emoji, msg.timestamp.getTime()).then((took) => {
+        if (took) this.noteStamped(adapter, msg.messageId, emoji);
+      });
     }
+    this.noteStamped(adapter, msg.messageId, emoji);
     return adapter.react(msg.threadId ?? msg.chatId, msg.messageId, emoji);
   }
 
@@ -9957,7 +10040,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // with agent react calls. The fleet's last emoji is not ownership.
         if (await adapter.reactDeliveryStatus(chatId, messageId, emoji, receivedAt)) {
           if (emoji == null) this.lastStatusEmoji.delete(key);
-          else this.lastStatusEmoji.set(key, { emoji, status });
+          else { this.lastStatusEmoji.set(key, { emoji, status }); this.noteStamped(adapter, messageId, emoji); }
         }
         return;
       }
@@ -9981,6 +10064,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         await adapter.unreact(target, messageId, last.emoji, threadId).catch(e =>
           this.logger.debug({ err: (e as Error).message }, "Delivery status reaction removal failed"));
       }
+      // Recorded before the add: Discord can report the reaction back before react() resolves.
+      this.noteStamped(adapter, messageId, emoji);
       await adapter.react(target, messageId, emoji, threadId);
       this.lastStatusEmoji.set(key, { emoji, status });
     } catch (e) {

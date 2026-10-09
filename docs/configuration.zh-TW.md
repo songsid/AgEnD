@@ -281,7 +281,7 @@ templates:
 |------|------|------|------|
 | `working_directory` | string | 自動 | 專案目錄路徑。省略時自動建立 `~/.agend/workspaces/<name>` |
 | `display_name` | string | — | Agent 顯示名稱（例："Kuro"）。用 `set_display_name` 設定 |
-| `status_emojis` | object | — | 此 instance 自己的投遞狀態 emoji，逐鍵覆蓋 channel 的 `options.status_emojis`。鍵：`received`、`queued`、`processing`、`delivered`、`failed`、`progress_prefix`、`photo`、`attachment`（ClassicBot 存下圖片／檔案時的貼圖）。解析順序：instance → channel → 內建。Discord 可用伺服器自訂 emoji（`<:name:id>`、`<a:name:id>`、`name:id`）；Telegram 只接受固定反應集合，無效值只警告一次並退回內建值。Settings 可用選擇器編輯（Discord 會列出伺服器自訂 emoji），預覽與 bot 實際 react 的結果一致 |
+| `status_emojis` | object | — | 此 instance 自己的投遞狀態 emoji，逐鍵覆蓋 channel 的 `options.status_emojis`。鍵：`received`、`queued`、`processing`、`delivered`、`failed`、`progress_prefix`、`photo`、`attachment`（ClassicBot 存下圖片／檔案時的貼圖）。解析順序：instance → channel → 內建。Discord 可用伺服器自訂 emoji（`<:name:id>`、`<a:name:id>`、`name:id`）；Telegram 只接受固定反應集合，無效值只警告一次並退回內建值。Settings 可用選擇器編輯（Discord 會列出伺服器自訂 emoji），預覽與 bot 實際 react 的結果一致。連線層級的 `status_emojis` 修改會在 bot 下一次蓋戳記時生效，不需重啟（各 agent 的「避免使用」清單在它下次啟動時更新）。`progress_prefix` 不是反應，而是進度訊息開頭的 emoji |
 | `description` | string | — | 角色描述，加入 backend 原生指令中的 `## Role` |
 | `tags` | string[] | — | 用於探索 instance 能力的標籤 |
 | `topic_id` | number\|string | 自動 | 頻道 topic/thread ID。建立時自動分配 |
