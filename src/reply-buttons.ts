@@ -198,7 +198,7 @@ export class ReplyButtonStore {
   /** Claims never delivered nor released — in flight now, or left by a process that stopped mid-delivery. */
   undeliveredClaims(): ReplyButtonSet[] {
     return (this.db.prepare(`SELECT * FROM reply_buttons WHERE settled_at IS NULL AND message_id IS NOT NULL
-      AND consumed_at IS NOT NULL AND delivered_at IS NULL`).all() as Row[]).map(fromRow);
+      AND consumed_at IS NOT NULL AND delivered_at IS NULL ORDER BY created_at, id`).all() as Row[]).map(fromRow);
   }
   /** The platform message shows the final state now (chosen or expired). */
   markSettled(id: string, now: number): void { this.db.prepare("UPDATE reply_buttons SET settled_at = ? WHERE id = ? AND settled_at IS NULL").run(now, id); }

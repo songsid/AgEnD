@@ -148,7 +148,10 @@ export class ReplyButtonsController {
     const fresh = this.deps.store.get(set.id);
     if (!fresh || fresh.settledAt !== null || fresh.messageId === null) return;
     const now = this.deps.now();
-    const ended = fresh.deliveredAt !== null || (fresh.consumedAt === null && now >= fresh.expiresAt) || (closeClaim && fresh.deliveredAt === null);
+    // Invariant (#1500 review r2): an orphan close only closes a set that is STILL claimed and not delivered. A claim
+    // released while a sweep was awaiting another set's edit is open again — re-read here, it is not an orphan.
+    const ended = fresh.deliveredAt !== null || (fresh.consumedAt === null && now >= fresh.expiresAt)
+      || (closeClaim && fresh.consumedAt !== null && fresh.deliveredAt === null && !this.inFlight.has(fresh.id));
     if (!ended) return;                                                     // open, or a claim being delivered
     this.deps.store.markSettled(fresh.id, now);                             // first: a concurrent settle does nothing
     const view = this.view({ ...fresh, settledAt: now }, now);

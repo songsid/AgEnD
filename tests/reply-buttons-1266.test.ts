@@ -472,6 +472,36 @@ describe("a claim is not a choice until delivered (#1500 review P2)", () => {
     expect((h.any.replyButtonsStore as ReplyButtonStore).unsettled(Date.now()).map(x => x.id), "settled now").not.toContain(set.id);
     expect(h.rec.settles.map(s => s.outcome)).toEqual([{ chosenIndex: 0, by: "alice" }]);
   });
+  it("r2: a claim released while the sweep awaits another set's edit is open again — the sweep does not close it as an orphan", async () => {
+    const h = fleet();
+    await h.reply({ text: "Z?", buttons: [{ label: "Z" }] });
+    const zId = callbacksOf(h.rec)[0]!.id.split(":")[1]!;
+    await h.reply({ text: "Y?", buttons: [{ label: "Y" }] });
+    const yCb = callbacksOf(h.rec)[0]!.id, yId = yCb.split(":")[1]!;
+    const store = h.any.replyButtonsStore as ReplyButtonStore;
+    expect(store.consume(zId, 0, "ghost", Date.now())).toMatchObject({ ok: true });       // Z: an orphan from a stopped process
+    let finishY!: (v: boolean) => void;
+    h.any.deliverToInstance = vi.fn(() => new Promise<boolean>(r => { finishY = r; }));
+    const clickingY = h.click(yCb);                                                        // Y: a claim being delivered
+    await vi.waitFor(() => expect(h.any.deliverToInstance).toHaveBeenCalled());
+    // Z's platform edit is held, so the sweep is parked on it with Y still in its snapshot.
+    let releaseZ!: () => void;
+    const zHeld = new Promise<void>(r => { releaseZ = r; });
+    const settle = (h.adapter as any).settleReplyButtons;
+    (h.adapter as any).settleReplyButtons = async (...a: any[]) => { await settle(...a); if (a[1] === "msg-1-last") await zHeld; };
+    const sweeping = h.any.replyButtons().sweep();
+    await vi.waitFor(() => expect(h.rec.settles.map(x => x.messageId)).toEqual(["msg-1-last"]));
+    finishY(false);                                                                        // Y's delivery fails: released
+    expect((await clickingY).acks).toEqual(["This choice is closed — reply in text."]);
+    expect(store.get(yId)!.consumedAt).toBeNull();
+    releaseZ();
+    await sweeping;
+    expect(store.get(yId)!.settledAt, "Y is open again, not closed as an orphan").toBeNull();
+    expect(h.rec.settles.map(x => x.messageId), "only Z's message was edited").toEqual(["msg-1-last"]);
+    h.any.deliverToInstance = vi.fn(async () => true);
+    expect((await h.click(yCb, { messageId: "msg-2-last" })).acks).toEqual(["Sent: Y"]);
+  });
+
   it("a claim left undelivered by a process that stopped is closed as expired at the next sweep, never reopened (no second delivery)", async () => {
     const h = fleet();
     await h.reply({ text: "Deploy now?", buttons: [{ label: "Deploy" }] });
