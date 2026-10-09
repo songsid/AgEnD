@@ -26,6 +26,12 @@ Only the scratch working-directory path is replaced with `/home/user/sandbox`; p
 baseline Responses requests are the user turn and Codex's automatic thread-title request, not two delivered user turns.
 Neither contains the new delivery text; the fixed run makes zero requests.
 
+The regression also replays these committed frames with a fake clock in a later timing window: the first confirmation
+at 500 ms still sees the warning, user recovery at 750 ms reveals the older draft, and the retry would run at 1,000 ms.
+Recovery now captures again after its delay and requires an attributable current strand before another Enter. This
+timing variation is an inert frame replay, not an additional native capture. Fresh positive echo/queue evidence completes
+without another key; an unknown or failed capture leaves the notice unconfirmed.
+
 `submitted.txt` is a separate native positive control: a multiline old draft plus the new paste submitted normally and
 has a visible transcript echo above the empty composer. The ten ordinary scenarios and 400 sampled post-Enter frames
 also submitted safely or remained unreadable; they did not reproduce the bug without the explicit viewer-recovery race.

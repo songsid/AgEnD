@@ -8941,10 +8941,22 @@ export class Daemon extends EventEmitter {
       return true; // best effort, exactly as before — nothing here is verified
     }
     if (proof !== "submitted") {
-      // A bare Enter is a no-op at an empty prompt, so this is safe even if the
-      // first one did land; when the text is still in the input row it is the
-      // submit it never got. Re-pasting would append the text to itself.
       await new Promise(r => setTimeout(r, NORMAL_ENTER_SETTLE_MS));
+      if (current && !current()) return false;
+      if (this.structuredInputEvidence()) {
+        // The delay may outlive a dialog or the paste itself. Freshly prove an
+        // attributable strand BEFORE another Enter; unknown input is not empty.
+        // Positive echo/queue evidence instead finishes without another key.
+        proof = await this.confirmSubmitted(signature, baseline);
+        if (current && !current()) return false;
+        if (proof === "submitted") return true;
+        if (proof !== "stranded") {
+          this.logger.warn({ label, proof }, "System paste recovery input could not be attributed");
+          return false;
+        }
+      }
+      // Row-only backends retain their existing retry; a structured backend
+      // reaches this key only with fresh ownership of text still in the input.
       if (!(await this.sendDeliveryEnter(`${label}-retry`, current))) return false;
       proof = await this.confirmSubmitted(signature, baseline);
       if (current && !current()) return false;
