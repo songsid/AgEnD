@@ -97,19 +97,21 @@ Pick an instance on the left to talk to it. The web chat is **the same conversat
 - Files that were sent stay in the inbox for **7 days**, like files from Telegram.
 
 ### HTML previews
-When an agent's reply contains a ` ```html ` block, a card under it can run that HTML for you.
+When an agent's reply contains a ` ```html ` block, or attaches a `.html` / `.htm` file, a card under it can run that HTML for you.
+- **Files and blocks work the same.** A file's card sits under the reply's files. Its HTML is read from the fleet only when you click **Preview** or **Open in panel**, and it runs in the same sandboxed frame as a block. The file is never opened on the dashboard's own address. **Download** is the file's own link above the card. A file the fleet no longer has (the agent rewrote it, or the fleet restarted) says so; ask the agent to send it again.
+- **Up to 1 MiB.** A block or a file over 1 MiB (as UTF-8) gets no preview. A file's listed size is checked before anything is read, and its bytes are checked again after. Files are read as UTF-8.
 - **Off on every device until you turn it on.** Use **Allow HTML previews on this device** at the bottom of the sidebar, or the card's **⋯** menu. It asks once and says what it means. Turning it off stops every running preview.
 - **Click to run, every time.** **Preview** runs it in a frame under the card, with this banner: *"Previews run the agent's HTML in an isolated frame. It cannot use your login, but it may be able to send data out. Only preview content you trust. A preview can slow or freeze this tab."* **Stop** closes it. One preview runs at a time.
-- **Download** saves the HTML as `reply.html`. It is never opened in the dashboard.
+- **Download** saves a block's HTML as `reply.html` (a file keeps its own name). It is never opened in the dashboard.
 - **Open in panel** shows the block beside the conversation, with room to use it. On a phone it is a full-screen sheet; **←** goes back to the chat.
   - From an idle card, the panel opens with its own **Preview** to click. From a running preview, the same button moves that preview into the panel.
   - The panel's bar: **Page** / **Code** (the source), **Reload**, **Stop**, **Download**. **From …** at the top shows the message the block came from.
   - Drag the divider to resize it, or focus it and use ← →, Home and End. This device remembers the width.
-  - When a later reply carries a newer version of the block (the same `<title>`, or any newer block when it has none), the panel offers it with **Show it**. It never swaps it in by itself, and the new version waits for **Preview**.
+  - When a later reply carries a newer version of the block (the same `<title>`, or any newer block when it has none) or of the file (a file with the same name), the panel offers it with **Show it**. It never swaps it in by itself, and the new version waits for **Preview**.
   - Closing the panel (**×**, **←** or Esc) or opening another chat stops its preview. Starting a preview in a card stops the panel's: one preview runs at a time.
   - There is no "open in a new tab": the HTML only ever runs in the sandboxed frame. Use **Download** to take it elsewhere.
 - **What it can and cannot do.** The preview runs in a sandbox on a separate address, so it cannot use your sign-in, read your session or act on the dashboard. It **may** be able to send data out (no browser blocks every way), so preview only HTML you trust.
-- **Only agents' replies** get a card, marked so by the fleet. HTML from people (on the web, Telegram or Discord) is only ever shown as code. A block cut off by the length limit gets no preview: ask the agent to send a `.html` file instead.
+- **Only agents' replies** get a card, marked so by the fleet. HTML from people (on the web, Telegram or Discord) is only ever shown as code, and a `.html` file a person uploads stays a plain download. A block cut off by the length limit gets no preview: ask the agent to send a `.html` file instead. Agents are told to prefer a file for whole pages, since a long block is split on Discord and Telegram.
 - **Where it works.** Previews come from a second local port, `health_port + 1` (19281). Over SSH, forward it too: `ssh -L 19280:127.0.0.1:19280 -L 19281:127.0.0.1:19281 <host>`. Through a tunnel or proxy they need `web.preview_origin`, a separate host name mapped to that port; the proxy must pass the external `Host` through. Otherwise the card says why previews are off, and shows the code and **Download** only.
 - **⋯ → Never preview HTML on this device** hides **Preview** on every card for this browser session.
 - **A preview that hangs** can be stopped with **Stop**; it may keep using that tab's preview process, so new previews in that tab may not start until you open the dashboard in a new tab.

@@ -4858,7 +4858,9 @@ export class Daemon extends EventEmitter {
     // chat_id) does not update lastChatId, so its proxy reply would land in
     // whatever USER topic spoke to this instance last — the wrong audience for
     // a task result, and a stale one (sol's review of #515).
-    if (meta.from_instance || !meta.chat_id) return;
+    // A web message on a fleet with no chat platform has no chat_id (its reply goes to the web chat through the fleet's
+    // web-only sink), but it is a person waiting for an answer all the same: the guard arms for it (alpha.2).
+    if (meta.from_instance || (!meta.chat_id && meta.source !== "web")) return;
     // The last non-empty line of what we pasted: everything on screen after it
     // is the agent's own output.
     const inboundMarker = deliveredText.split(/\r?\n/).map(l => l.trim()).filter(Boolean).pop();

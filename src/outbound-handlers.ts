@@ -1212,6 +1212,7 @@ const updateInstanceConfig: Handler = (ctx, rawArgs, respond) => {
   try {
     ctx.saveFleetConfig();
   } catch (err) {
+    rollback();
     respond(null, `Failed to save config: ${(err as Error).message}`);
     return;
   }
@@ -1426,6 +1427,13 @@ const reportResult = wrapAsSend(
 );
 
 const createInstance: Handler = async (ctx, rawArgs, respond, meta) => {
+  // Privilege boundary (#804/#814): tool_set and skipPermissions must be set
+  // via Settings or fleet.yaml, not through the MCP tool. Check raw args before
+  // Zod's passthrough() silently forwards them to instance-lifecycle.
+  if ((rawArgs as any)?.tool_set !== undefined || (rawArgs as any)?.skipPermissions !== undefined) {
+    respond(null, "tool_set and skipPermissions can only be changed by an administrator via Settings or fleet.yaml (privilege boundary, #804/#814)");
+    return;
+  }
   const v = validateArgs(CreateInstanceArgs, rawArgs, "create_instance");
   if (!v.ok) { respond(null, v.error); return; }
   // Reject dangerous working directories
