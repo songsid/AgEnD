@@ -504,7 +504,7 @@ describe("the wizard in the panel", () => {
       if (path === "/api/settings/quickstart/plan") return json({
         channel: { type: "telegram", group_id: "-100123", access: { mode: "locked", allowed_users: ["42"] } },
         instance: { name: "agent-1", working_directory: "/tmp/app", backend: "claude-code" },
-        env_keys: ["AGEND_BOT_TOKEN"], warnings: [],
+        channel_id: "telegram", token_env: "AGEND_TELEGRAM_TOKEN", env_keys: ["AGEND_TELEGRAM_TOKEN"], warnings: [],
       });
       if (path === "/api/settings/quickstart/commit") return json(commitAnswer.body, commitAnswer.status);
       if (method === "POST" && path === "/api/settings/apply") return json({ id: JOB, key: "k", status: "done", startedAt: 1, deadlineMs: 1, pid: 1, elapsed_ms: 1, overdue: false, message: "", targets: [] }, applyStatus);
@@ -541,7 +541,7 @@ describe("the wizard in the panel", () => {
     await next();                                             // Telegram is the default platform
     await type("wz-token", "123456:ABC");
     button(tn("wizardVerify")).click(); await settle();
-    await vi.waitFor(() => expect(p.root.querySelector(".feedback")?.textContent).toBe("bot_one"));
+    await vi.waitFor(() => expect(p.root.querySelector(".feedback")?.textContent).toBe("This is @bot_one."));   // #1519 P1: the bot is named
   }
 
   it("is four steps, with one flow whether or not a fleet exists", async () => {
@@ -631,13 +631,18 @@ describe("the wizard in the panel", () => {
     await vi.waitFor(() => expect(p.root.textContent).toContain(tn("wizardWillWrite")));
     expect(sent.some(c => c.path === "/api/settings/quickstart/plan")).toBe(true);
     expect(sent.some(c => c.path === "/api/settings/quickstart/commit")).toBe(false);   // a preview writes nothing
-    expect(p.root.textContent).toContain(tn("wizardEnvKeys", "AGEND_BOT_TOKEN"));
+    // #1519 P1: no env-name question; the plan's generated name is shown under Advanced, read-only.
+    const plan = sent.find(c => c.path === "/api/settings/quickstart/plan")!;
+    expect(plan.body).not.toHaveProperty("token_env");
+    expect([...p.root.querySelectorAll("details.drawer code")].map((c: any) => c.textContent)).toEqual(["AGEND_TELEGRAM_TOKEN"]);
+    expect(p.root.querySelectorAll("input").some((i: any) => i.value === "AGEND_TELEGRAM_TOKEN"), "not an editable field").toBe(false);
   });
 
   it("keeps the token out of the URL and out of the page after use", async () => {
     await mountWizard();
     await toStepThree();
     expect(field("wz-token").getAttribute("type")).toBe("password");
+    expect(field("wz-env"), "#1519 P1: no env name to type").toBeNull();
     expect(field("wz-token").value).toBe("123456:ABC");
     await next();
     await vi.waitFor(() => expect(p.root.textContent).toContain(tn("wizardWillWrite")));
@@ -648,6 +653,7 @@ describe("the wizard in the panel", () => {
     const commit = sent.find(c => c.path === "/api/settings/quickstart/commit")!;
     expect(commit.method).toBe("POST");
     expect(commit.body.token).toBe("123456:ABC");
+    expect(commit.body.token_env, "the commit carries the plan's generated name").toBe("AGEND_TELEGRAM_TOKEN");
     expect(sent.every(c => !c.path.includes("123456:ABC"))).toBe(true);
   });
 });

@@ -26,7 +26,7 @@ function view() {
   if (!op) return null;
   return {
     id: op.id, phase: op.phase, error: op.error, job: op.job, lostJob: op.lostJob, restart: op.restart,
-    steps: op.steps.map(({ label, impact, status, error, pendingId }) => ({ label, impact, status, error: error || null, pendingId: pendingId || null })),
+    steps: op.steps.map(({ label, impact, status, error, pendingId, note }) => ({ label, impact, status, error: error || null, pendingId: pendingId || null, ...(note ? { note } : {}) })),
     leftover: op.leftover,
   };
 }
@@ -138,6 +138,8 @@ async function rotateConnectionSecret(step, o) {
     if (status && status.ok) result = status.body || result;
   }
   const ok = result.result === "applied" || result.result === "restart_required";
+  // Stored, but no adapter was running to take it (#1519 P1): said as such — not "done", and never "failed".
+  if (result.result === "restart_required") { step.note = t("settings.tokenSavedRestart"); publish(); }
   return { ok, status: ok ? 200 : 409, body: ok ? result : { error: result.error || result.result || "apply failed" } };
 }
 
