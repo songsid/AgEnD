@@ -28,6 +28,7 @@ register("cache", {
     costsMore: "Keep-warm would send about {0} pings per expired request — it would cost {1} more than it saves.",
     costsMoreUnits: "Keep-warm would send about {0} pings per expired request — it would cost more than it saves.",
     unavailable: "Not available", creditBilled: "credit-billed; no cache data", unsupported: "no cache data from this CLI", noData: "no requests read yet",
+    shared: "shares its working directory with {0}; their transcripts cannot be told apart",
     empty: "No instances", emptyHint: "Instances show here once the fleet has them.",
     b0: "≤5m", b1: "≤30m", b2: "≤1h", b3: "≤2h", b4: "≤6h", b5: "≤24h", b6: ">24h", tokensUnit: "input-token equivalents",
   },
@@ -49,6 +50,7 @@ register("cache", {
     costsMore: "每次過期約需送 {0} 次 ping——保溫的花費比省下的多 {1}。",
     costsMoreUnits: "每次過期約需送 {0} 次 ping——保溫的花費比省下的多。",
     unavailable: "不提供", creditBilled: "以 credit 計費，沒有快取資料", unsupported: "這個 CLI 沒有快取資料", noData: "尚未讀到任何請求",
+    shared: "與 {0} 共用工作目錄，無法分辨各自的 transcript",
     empty: "沒有 instance", emptyHint: "fleet 有 instance 後會顯示在這裡。",
     b0: "≤5分", b1: "≤30分", b2: "≤1時", b3: "≤2時", b4: "≤6時", b5: "≤24時", b6: ">24時", tokensUnit: "輸入 token 當量",
   },
@@ -161,6 +163,6 @@ export function CacheReport({ report, win, setWin, refresh }) {
     <div class="ch-cards">${ok.map((r) => html`<${InstanceCard} key=${r.name} r=${r} />`)}</div>
     ${rest.length ? html`<ul class="rows ch-rest">${rest.map((r) => html`<li key=${r.name} class="row-item">
       <span class="grow strong mono">${r.name}</span><span class="muted">${r.backend} · ${r.status === "no_data" ? tc("noData")
-        : `${tc("unavailable")} (${r.status === "credit_billed" ? tc("creditBilled") : tc("unsupported")})`}</span></li>`)}</ul>` : null}
+        : `${tc("unavailable")} (${r.status === "credit_billed" ? tc("creditBilled") : r.status === "shared" ? tc("shared", (r.with || []).join(", ")) : tc("unsupported")})`}</span></li>`)}</ul>` : null}
   </div>`;
 }

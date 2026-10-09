@@ -10679,9 +10679,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   cacheReport(window: string): Promise<CacheReport> {
     const w: CacheWindow = Object.prototype.hasOwnProperty.call(WINDOWS, window) ? window as CacheWindow : "7d";
     this.cacheService ??= new CacheService({
-      instances: () => Object.entries(this.fleetConfig?.instances ?? {}).map(([name, cfg]) => ({
-        name, backend: this.backendNameOf(name), workingDirectory: cfg.working_directory, ledgerPath: join(this.getInstanceDir(name), "cache-ledger.json"),
-      })),
+      // fleet.yaml's instances, then the ClassicBot rooms (their workspace under the AgEnD home, their own backend).
+      instances: () => {
+        const fleet = Object.entries(this.fleetConfig?.instances ?? {}).map(([name, cfg]) => ({
+          name, backend: this.backendNameOf(name), workingDirectory: cfg.working_directory, ledgerPath: join(this.getInstanceDir(name), "cache-ledger.json"),
+        }));
+        const taken = new Set(fleet.map(i => i.name));
+        const classic = (this.classicChannels?.getAll() ?? []).filter(ch => !taken.has(ch.instanceName)).map(ch => ({
+          name: ch.instanceName,
+          backend: this.classicChannels?.getBackendByInstance(ch.instanceName, this.fleetConfig?.defaults?.backend) ?? this.fleetConfig?.defaults?.backend ?? "claude-code",
+          workingDirectory: join(getAgendHome(), "workspaces", ch.instanceName),
+          ledgerPath: join(this.getInstanceDir(ch.instanceName), "cache-ledger.json"),
+        }));
+        return [...fleet, ...new Map(classic.map(c => [c.name, c])).values()];
+      },
       claudeProjectsDir: () => join(process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), ".claude"), "projects"),
       claudeKey: claudeProjectKey,
       codexSessionsDir: () => join(process.env.CODEX_HOME?.trim() || join(homedir(), ".codex"), "sessions"),

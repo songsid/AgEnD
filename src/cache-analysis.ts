@@ -1,20 +1,22 @@
 /**
  * #1468: the prompt-cache expiry analysis — pure, over a ledger (cache-ledger.ts). For a window [from, to]:
  *
- * - The cache's TTL: Claude Code writes 1-hour entries on a subscription (5-minute ones otherwise; the ledger's write
- *   split says which); Codex on GPT-5.6 and later keeps a prefix 30 minutes after its last write or reuse.
- * - An expired request: one that came after a gap longer than the TTL and had to write at least half of the context
+ * - Each gap carries the TTL of the cache it sat on, as that session last wrote it: Claude Code's own write split
+ *   (1 hour, or 5 minutes), Codex's 30 minutes (GPT-5.6 and later). Sessions of one instance can differ.
+ * - An expired request: one that came after a gap longer than its TTL and had to write at least half of the context
  *   the previous request left cached (the cache can outlive its TTL; then nothing was lost). What it rewrote, up to
  *   that context, is the expiry's tokens; its cost is those tokens at the write rate minus what reading them would
- *   have cost.
- * - Keep-warm, simulated: a ping every I = TTL − margin (margin = TTL/10) during each gap, each one reading the
- *   cached context: floor(gap / I) pings. A gap that ended in an expired request saves its expiry cost; any other gap
- *   only pays for its pings. After a session's last request — until the next session starts, or the window ends — the
- *   pings are pure loss: nothing ever reads that cache again.
+ *   have cost, at the returning request's own price tier.
+ * - Keep-warm, simulated: a ping at every I = TTL − TTL/10 after a request (t + k·I, k ≥ 1, up to and including
+ *   the moment the gap ends — floor(gap / I) of them), each reading the cached context at that context's own tier.
+ *   Only pings whose instant falls inside the window are counted. A gap that ended in an expired request inside the
+ *   window saves its expiry cost; any other gap only pays for its pings. After a session's last request the pings
+ *   are pure loss, up to the moment the next session of the instance starts, or the window ends.
  * - Recommendation: on when the simulated pings cost less than the expiries they prevent (by a margin), else off.
  *
- * Money is list price (cache-prices.ts). A model missing from the table is weighed in input-price units instead
- * (write 1.25x, 1-hour write 2x, read 0.1x, output 5x) and shows no dollars.
+ * Money is list price (cache-prices.ts). If any model the window touches — requests, pinged contexts, idle tails —
+ * is missing from the table, the whole instance is weighed in input-price units instead (write 1.25x, 1-hour write
+ * 2x, read 0.1x, output 5x) and shows no dollars.
  */
 import { ratesFor, type Rates } from "./cache-prices.js";
 import { GAP_BUCKETS, type GapEvent, type Ledger } from "./cache-ledger.js";
@@ -22,20 +24,20 @@ import { GAP_BUCKETS, type GapEvent, type Ledger } from "./cache-ledger.js";
 export type Backend = "claude" | "codex";
 
 export interface SimOptions {
-  ttlSec: number;
-  /** Rates for a request of `model` with `prompt` tokens; null: not priced. */
-  rates?: (model: string, prompt: number) => Rates | null;
+  rates: (model: string, prompt: number) => Rates;
   from: number;
   to: number;
+  /** Codex: use each event's measured write (the instance records real writes) rather than the estimate. */
+  measured: boolean;
 }
 
-export interface SimTail { t: number; ctx: number; model: string; until: number }
+export interface SimTail { t: number; ctx: number; model: string; ttl: number; until: number }
 
 export interface SimResult {
   pastTtl: number;
   expired: number;
   rewriteTokens: number;
-  /** Expiry cost — and, below, every amount — in USD, or in input-price units when `priced` is false. */
+  /** Expiry cost — and, below, every amount — in USD, or in input-price units when the instance is not priced. */
   expiryCost: number;
   pings: number;
   pingCost: number;
@@ -43,69 +45,65 @@ export interface SimResult {
   tailCost: number;
   /** What keep-warm would have saved, net of every ping. */
   net: number;
-  priced: boolean;
 }
 
-const UNITS: Rates = { input: 1, read: 0.1, write5m: 1.25, write1h: 2, write: 1.25, output: 5 };
+export const UNITS: Rates = { input: 1, read: 0.1, write5m: 1.25, write1h: 2, write: 1.25, output: 5 };
 const M = 1_000_000;
 
-export const marginFor = (ttlSec: number): number => ttlSec / 10;
-export const pingInterval = (ttlSec: number): number => ttlSec - marginFor(ttlSec);
+export const pingIntervalMs = (ttlSec: number): number => Math.round(ttlSec * 900);
 const writeRate = (r: Rates, ttlSec: number): number => (ttlSec >= 3600 ? r.write1h : ttlSec <= 300 ? r.write5m : r.write);
 
-/** Pings at t + k·I (k ≥ 1) that fall in (max(t, from), min(until, to)]. */
-export function pingsBetween(t: number, until: number, intervalSec: number, from: number, to: number): number {
-  const I = intervalSec * 1000;
-  const lo = Math.max(t, from), hi = Math.min(until, to);
-  if (!(I > 0) || hi <= lo) return 0;
-  return Math.max(0, Math.floor((hi - t) / I) - Math.floor((lo - t) / I));
+/** Pings at t + k·I (k ≥ 1) no later than `end`, counted only where they fall inside [from, to]. */
+export function pingsBetween(t: number, end: number, intervalMs: number, from: number, to: number): number {
+  if (!(intervalMs > 0)) return 0;
+  const kMin = Math.max(1, Math.ceil((from - t) / intervalMs));
+  const kMax = Math.floor((Math.min(end, to) - t) / intervalMs);
+  return Math.max(0, kMax - kMin + 1);
 }
 
 /** The keep-warm simulation over a window's long gaps and its sessions' ends. */
 export function simulate(gaps: readonly GapEvent[], tails: readonly SimTail[], o: SimOptions): SimResult {
-  const I = pingInterval(o.ttlSec);
-  let priced = true;
-  const rates = (model: string, prompt: number): Rates => {
-    const r = o.rates ? o.rates(model, prompt) : null;
-    if (!r) { priced = false; return UNITS; }
-    return r;
-  };
-  const res: SimResult = { pastTtl: 0, expired: 0, rewriteTokens: 0, expiryCost: 0, pings: 0, pingCost: 0, tailPings: 0, tailCost: 0, net: 0, priced: true };
+  const res: SimResult = { pastTtl: 0, expired: 0, rewriteTokens: 0, expiryCost: 0, pings: 0, pingCost: 0, tailPings: 0, tailCost: 0, net: 0 };
   let saved = 0;
-  for (const [tEnd, gap, ctx, rewrite, model, prompt] of gaps) {
-    if (tEnd < o.from || tEnd > o.to) continue;
-    const r = rates(model, prompt);
-    if (gap > o.ttlSec) res.pastTtl++;
+  for (const [tEnd, gap, ctx, ctxModel, ttl, model, prompt, measured, estimated] of gaps) {
+    if (tEnd < o.from) continue;
+    const start = tEnd - Math.round(gap * 1000);
+    const pings = pingsBetween(start, tEnd, pingIntervalMs(ttl), o.from, o.to);
+    res.pings += pings;
+    res.pingCost += pings * ctx * o.rates(ctxModel, ctx).read / M;
+    if (tEnd > o.to || !(gap > ttl)) continue;
+    res.pastTtl++;
+    const rewrite = o.measured && measured !== null ? measured : estimated;
     const lost = Math.min(rewrite, ctx);
-    if (gap > o.ttlSec && ctx > 0 && lost >= ctx / 2) {
+    if (ctx > 0 && lost >= ctx / 2) {
+      const r = o.rates(model, prompt);
+      const cost = lost * (writeRate(r, ttl) - r.read) / M;
       res.expired++;
       res.rewriteTokens += lost;
-      const cost = lost * (writeRate(r, o.ttlSec) - r.read) / M;
       res.expiryCost += cost;
       saved += cost;
     }
-    const pings = gap > I ? Math.floor(gap / I) : 0;
-    res.pings += pings;
-    res.pingCost += pings * ctx * r.read / M;
   }
   for (const tail of tails) {
-    const n = pingsBetween(tail.t, tail.until, I, o.from, o.to);
+    const n = pingsBetween(tail.t, tail.until, pingIntervalMs(tail.ttl), o.from, o.to);
     if (!n) continue;
     res.tailPings += n;
-    res.tailCost += n * tail.ctx * rates(tail.model, tail.ctx).read / M;
+    res.tailCost += n * tail.ctx * o.rates(tail.model, tail.ctx).read / M;
   }
   res.net = saved - res.pingCost - res.tailCost;
-  res.priced = priced;
   return res;
 }
 
-/** Each session's end as the simulation needs it: its last request, until the next session of the instance started. */
+/**
+ * Each session's end: its last request, until the next session of the instance starts (the earliest other session
+ * that starts at or after it — one that starts at the same instant leaves no idle time), or `to`.
+ */
 export function sessionTails(ledger: Ledger, to: number): SimTail[] {
-  const sessions = Object.values(ledger.files).filter((f) => f.last && f.first !== undefined)
-    .map((f) => ({ first: f.first!, last: f.last! })).sort((a, b) => a.first - b.first);
+  const sessions = Object.values(ledger.files).filter((f) => f.last && f.first !== undefined).map((f) => ({ first: f.first!, last: f.last! }));
   return sessions.map((s) => {
-    const next = sessions.find((o) => o.first > s.last.t);
-    return { t: s.last.t, ctx: s.last.ctx, model: s.last.model, until: next ? next.first : to };
+    let until = to;
+    for (const o of sessions) if (o !== s && o.first >= s.last.t && o.first < until) until = o.first;
+    return { t: s.last.t, ctx: s.last.ctx, model: s.last.model, ttl: s.last.ttl, until };
   });
 }
 
@@ -114,6 +112,7 @@ export const isOpenAiTtlModel = (model: string): boolean => /^gpt-(5\.(6|[7-9])|
 
 export interface InstanceAnalysis {
   requests: number;
+  /** The TTL the instance's latest session uses (each gap is judged by its own session's TTL). */
   ttlSec: number;
   /** Writes (and so expiries) are estimated: Codex records none. Also true for a Codex model whose TTL is assumed. */
   estimate: boolean;
@@ -126,7 +125,7 @@ export interface InstanceAnalysis {
   recommendation: { on: boolean; reason: "quiet" | "never_expired" | "saves" | "costs_more"; pingsPerExpiry?: number };
 }
 
-export interface AnalyzeOptions { backend: Backend; from: number; to: number; rates?: SimOptions["rates"] }
+export interface AnalyzeOptions { backend: Backend; from: number; to: number; rates?: (model: string, prompt: number) => Rates | null }
 
 /** Requests in a window below this are too few to say anything. */
 export const MIN_REQUESTS = 3;
@@ -134,17 +133,19 @@ export const MIN_REQUESTS = 3;
 export function analyzeLedger(ledger: Ledger, o: AnalyzeOptions): InstanceAnalysis {
   const listed = o.rates ?? ratesFor;
   const inWindow = (h: number): boolean => h + 3_600_000 > o.from && h <= o.to;
-  // One unit for the whole instance: dollars when every model it used is priced, input-price units otherwise.
-  const models = new Set<string>();
+  const tails = sessionTails(ledger, o.to);
+  // One unit for the whole instance: dollars when every model the window touches is priced.
+  const touched = new Set<string>(), requestModels = new Set<string>();
   for (const [hk, hour] of Object.entries(ledger.hours)) {
     if (!inWindow(Number(hk))) continue;
-    for (const mk of Object.keys(hour.m)) models.add(mk.slice(0, mk.lastIndexOf("|")));
+    for (const mk of Object.keys(hour.m)) { const m = mk.slice(0, mk.lastIndexOf("|")); touched.add(m); requestModels.add(m); }
   }
-  for (const g of ledger.gaps) if (g[0] >= o.from && g[0] <= o.to) models.add(g[4]);
-  const priced = [...models].every((m) => listed(m, 0) !== null);
+  for (const g of ledger.gaps) if (g[0] >= o.from) { touched.add(g[3]); if (g[0] <= o.to) touched.add(g[5]); }
+  for (const t of tails) if (pingsBetween(t.t, t.until, pingIntervalMs(t.ttl), o.from, o.to) > 0) touched.add(t.model);
+  const priced = [...touched].every((m) => listed(m, 0) !== null);
   const rates = (model: string, prompt: number): Rates => (priced ? listed(model, prompt) : null) ?? UNITS;
   const gapBuckets = new Array<number>(GAP_BUCKETS).fill(0);
-  let requests = 0, w5 = 0, w1h = 0, totalCost = 0;
+  let requests = 0, totalCost = 0;
   const estimated = o.backend === "codex" && !ledger.writesSeen;
   for (const [hk, hour] of Object.entries(ledger.hours)) {
     if (!inWindow(Number(hk))) continue;
@@ -152,23 +153,24 @@ export function analyzeLedger(ledger: Ledger, o: AnalyzeOptions): InstanceAnalys
     for (const [mk, [n, uncached, read, write5m, write1h, write, output]] of Object.entries(hour.m)) {
       const bar = mk.lastIndexOf("|");
       const model = mk.slice(0, bar), long = mk.slice(bar + 1) === "1";
-      requests += n; w5 += write5m; w1h += write1h;
+      requests += n;
       const r = rates(model, long ? Number.MAX_SAFE_INTEGER : 0);
       // Codex on GPT-5.6+ with no recorded writes: its uncached input is what got written (the estimate).
       const uncachedRate = estimated && isOpenAiTtlModel(model) ? r.write : r.input;
       totalCost += (uncached * uncachedRate + read * r.read + write5m * r.write5m + write1h * r.write1h + write * r.write + output * r.output) / M;
     }
   }
-  const ttlSec = o.backend === "codex" ? 1800 : w5 > w1h ? 300 : 3600;
-  const sim = simulate(ledger.gaps, sessionTails(ledger, o.to), { ttlSec, rates, from: o.from, to: o.to });
-  const assumedTtl = o.backend === "codex" && [...models].some((m) => !isOpenAiTtlModel(m));
+  const sim = simulate(ledger.gaps, tails, { rates, from: o.from, to: o.to, measured: !estimated });
+  const latest = tails.reduce<SimTail | null>((a, t) => (!a || t.t > a.t ? t : a), null);
+  const ttlSec = latest ? latest.ttl : o.backend === "codex" ? 1800 : 3600;
+  const assumedTtl = o.backend === "codex" && [...requestModels].some((m) => !isOpenAiTtlModel(m));
   let recommendation: InstanceAnalysis["recommendation"];
   if (requests < MIN_REQUESTS) recommendation = { on: false, reason: "quiet" };
   else if (!sim.expired) recommendation = { on: false, reason: "never_expired" };
   else if (sim.net > 0 && sim.net >= sim.expiryCost * 0.1) recommendation = { on: true, reason: "saves" };
   else recommendation = { on: false, reason: "costs_more", pingsPerExpiry: Math.round((sim.pings + sim.tailPings) / sim.expired) };
   return {
-    requests, ttlSec, estimate: estimated || assumedTtl, priced, models: [...models].sort(), gapBuckets, sim,
+    requests, ttlSec, estimate: estimated || assumedTtl, priced, models: [...requestModels].sort(), gapBuckets, sim,
     totalCost, share: totalCost > 0 ? sim.expiryCost / totalCost : null, recommendation,
   };
 }

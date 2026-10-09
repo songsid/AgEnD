@@ -58,6 +58,28 @@ describe("the route", () => {
   });
 });
 
+describe("#1470 review 11: ClassicBot rooms are analysed too", () => {
+  it("the roster: fleet.yaml's instances, then each room with its own backend and its workspace under the AgEnD home", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cache-classic-"));
+    try {
+      const fake: any = {
+        fleetConfig: { instances: { dev: { working_directory: "/w/dev" } }, defaults: { backend: "claude-code" } }, dataDir: dir,
+        getInstanceDir: (n: string) => join(dir, n), backendNameOf: () => "claude-code", logger: { info() {}, warn() {}, debug() {}, error() {} },
+        classicChannels: {
+          getAll: () => [{ instanceName: "room-cx" }, { instanceName: "room-cl" }, { instanceName: "dev" }],
+          getBackendByInstance: (n: string, d?: string) => (n === "room-cx" ? "codex" : d),
+        },
+      };
+      const r = await (FleetManager.prototype as any).cacheReport.call(fake, "7d");
+      fake.cacheService.stop();
+      const roster = fake.cacheService.o.instances();
+      expect(roster.map((i: any) => [i.name, i.backend])).toEqual([["dev", "claude-code"], ["room-cx", "codex"], ["room-cl", "claude-code"]]);
+      expect(roster[1].workingDirectory.endsWith(join("workspaces", "room-cx"))).toBe(true);
+      expect(r.instances.map((i: any) => i.name)).toEqual(["dev", "room-cx", "room-cl"]);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
 // ── The page ──
 const sim = (o: Record<string, number>) => ({ pastTtl: 0, expired: 0, rewriteTokens: 0, expiryCost: 0, pings: 0, pingCost: 0, tailPings: 0, tailCost: 0, net: 0, priced: true, ...o });
 const analysis = (o: Record<string, unknown>) => ({ requests: 120, ttlSec: 3600, estimate: false, priced: true, models: ["claude-opus-5-5"],
@@ -74,6 +96,7 @@ const REPORT = {
       sim: sim({ pastTtl: 2 }), recommendation: { on: false, reason: "never_expired" } }) },
     { name: "kiro", backend: "kiro-cli", status: "credit_billed" },
     { name: "idle", backend: "claude-code", status: "no_data" },
+    { name: "twin-a", backend: "codex", status: "shared", with: ["twin-b"] },
   ],
 };
 
@@ -157,7 +180,8 @@ describe("what it shows", () => {
   it("the instances it cannot analyse, and why", async () => {
     await mount(); await settle(4);
     expect(p.root.querySelectorAll(".ch-rest .row-item").map((e: any) => [e.querySelector(".strong").textContent, e.querySelector(".muted").textContent]))
-      .toEqual([["kiro", "kiro-cli · Not available (credit-billed; no cache data)"], ["idle", "claude-code · no requests read yet"]]);
+      .toEqual([["kiro", "kiro-cli · Not available (credit-billed; no cache data)"], ["idle", "claude-code · no requests read yet"],
+        ["twin-a", "codex · Not available (shares its working directory with twin-b; their transcripts cannot be told apart)"]]);
   });
 
   it("the gap histogram: a bar per bucket, the TTL line after its edge, the buckets past it marked; no inline style anywhere", async () => {

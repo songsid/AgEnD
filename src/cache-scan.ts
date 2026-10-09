@@ -4,13 +4,17 @@
  * - every chunk read is awaited, so the event loop runs between chunks;
  * - a line up to `wholeUpTo` bytes is handed over whole; a longer one only as its first `headBytes` and last
  *   `tailBytes` (a Claude assistant line has its model/id at the start and its usage/timestamp at the end);
- * - a pass stops at the first line end past `maxBytes` and returns the offset to resume from — always a line
- *   start, never inside a line. An unfinished last line (a file being appended to) is left for the next pass.
+ * - a pass stops at the first line end once `maxBytes` have been read (physically: an unfinished line costs what it
+ *   took to read) and returns the offset to resume from — always a line start. An unfinished last line (a file
+ *   being appended to) is left for the next pass;
+ * - given the cursor's inode, a descriptor that turns out to be another file is not read at all.
  */
 import { open } from "node:fs/promises";
 
 export interface ScanOptions {
   maxBytes: number;
+  /** The inode the caller's cursor belongs to: if the descriptor opened is another file, nothing is read. */
+  ino?: number;
   chunkBytes?: number;
   wholeUpTo?: number;
   headBytes?: number;
@@ -23,11 +27,18 @@ export type ScanLine = { whole: Buffer; length: number } | { head: Buffer; tail:
 export interface ScanResult {
   /** Where the next pass starts: just after the last complete line read. */
   offset: number;
-  /** The file's size when this pass started. */
+  /** The file's size when this pass started (of the descriptor actually opened). */
   size: number;
   /** Nothing complete is left before `size`. */
   done: boolean;
+  /** Bytes committed (whole lines). */
   bytes: number;
+  /** Bytes physically read — what a pass's budget is charged, unfinished line included. */
+  read: number;
+  /** The inode of the descriptor opened. */
+  ino: number;
+  /** `opts.ino` was given and the path now names another file: nothing was read. */
+  replaced?: true;
 }
 
 export const SCAN_CHUNK_BYTES = 256 * 1024;
@@ -42,7 +53,10 @@ export async function scanJsonl(path: string, from: number, opts: ScanOptions, o
   const tailBytes = opts.tailBytes ?? TAIL_BYTES;
   const fh = await open(path, "r");
   try {
-    const size = (await fh.stat()).size;
+    const st = await fh.stat();
+    const size = st.size, ino = st.ino;
+    // The file as opened, not as listed: a rename between the two must not feed another file's lines to this cursor.
+    if (opts.ino !== undefined && ino !== opts.ino) return { offset: from, size, done: true, bytes: 0, read: 0, ino, replaced: true };
     let pos = from, committed = from;
     let parts: Buffer[] = [], partLen = 0;
     let big = false, head = Buffer.alloc(0), tail = Buffer.alloc(0), total = 0;
@@ -77,11 +91,11 @@ export async function scanJsonl(path: string, from: number, opts: ScanOptions, o
         emit();
         committed = pos + nl + 1;
         i = nl + 1;
-        if (committed - from >= opts.maxBytes) return { offset: committed, size, done: committed >= size, bytes: committed - from };
+        if (pos + bytesRead - from >= opts.maxBytes) return { offset: committed, size, done: committed >= size, bytes: committed - from, read: pos + bytesRead - from, ino };
       }
       pos += bytesRead;
     }
-    return { offset: committed, size, done: true, bytes: committed - from };
+    return { offset: committed, size, done: true, bytes: committed - from, read: pos - from, ino };
   } finally {
     await fh.close();
   }

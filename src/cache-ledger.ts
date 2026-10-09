@@ -47,16 +47,27 @@ export const KEEP_DAYS = 31;
 /** [requests, uncached, read, write5m, write1h, write, output] */
 export type HourTotals = [number, number, number, number, number, number, number];
 export interface HourAgg { m: Record<string, HourTotals>; g: number[] }
-/** [tEnd, gapSec, contextCached, rewritten, model, promptAfter] */
-export type GapEvent = [number, number, number, number, string, number];
+/**
+ * One long gap: [tEnd, gapSec, contextCached, contextModel, ttlSec, model, promptAfter, measuredWrite, estimatedWrite].
+ * - `contextCached`/`contextModel`: what the previous request left cached, and its model — what a ping would read.
+ * - `ttlSec`: the TTL of that cache as the session last wrote it (Claude's own write split; Codex's 30 minutes).
+ * - `measuredWrite`: what the request after the gap recorded writing (Claude always; Codex its write field, 0
+ *   included, or null when the field is absent). `estimatedWrite`: Codex's uncached input — used only while the
+ *   instance has never recorded a real write (the field exists but stays 0 on the CLIs seen so far).
+ */
+export type GapEvent = [number, number, number, string, number, string, number, number | null, number];
 
-export interface SessionPoint { t: number; ctx: number; model: string }
+export interface SessionPoint { t: number; ctx: number; model: string; ttl: number }
 export interface FileCursor {
   kind: TranscriptKind;
   ino: number;
   offset: number;
   first?: number;
   last?: SessionPoint;
+  /** Claude: the TTL the session's latest cache write used (1 h or 5 min). */
+  ttl?: number;
+  /** The file size at which only an unfinished line was left: not read again until the file grows. */
+  stalled?: number;
   /** Codex: the model of the latest turn_context; the last cumulative total (token_count repeats itself). */
   model?: string;
   total?: number;
@@ -65,7 +76,7 @@ export interface FileCursor {
 }
 
 export interface Ledger {
-  v: 1;
+  v: 2;
   files: Record<string, FileCursor>;
   hours: Record<string, HourAgg>;
   gaps: GapEvent[];
@@ -75,12 +86,12 @@ export interface Ledger {
 
 /** A dictionary keyed by names from outside (paths, model ids): every key an own property (#1467 lesson). */
 const dict = <T>(): Record<string, T> => Object.create(null) as Record<string, T>;
-export function emptyLedger(): Ledger { return { v: 1, files: dict(), hours: dict(), gaps: [] }; }
+export function emptyLedger(): Ledger { return { v: 2, files: dict(), hours: dict(), gaps: [] }; }
 
 /** A ledger read back from disk; anything that is not one is a fresh ledger. */
 export function reviveLedger(raw: unknown): Ledger {
   const l = emptyLedger();
-  if (!raw || typeof raw !== "object" || (raw as Ledger).v !== 1) return l;
+  if (!raw || typeof raw !== "object" || (raw as Ledger).v !== 2) return l;
   const r = raw as Ledger;
   for (const [k, v] of Object.entries(r.files ?? {})) if (v && typeof v.offset === "number") l.files[k] = v;
   for (const [k, v] of Object.entries(r.hours ?? {})) {
@@ -89,7 +100,7 @@ export function reviveLedger(raw: unknown): Ledger {
     for (const [mk, tot] of Object.entries(v.m ?? {})) if (Array.isArray(tot) && tot.length === 7) m[mk] = tot as HourTotals;
     l.hours[k] = { m, g: v.g };
   }
-  if (Array.isArray(r.gaps)) l.gaps = r.gaps.filter((g) => Array.isArray(g) && g.length === 6);
+  if (Array.isArray(r.gaps)) l.gaps = r.gaps.filter((g) => Array.isArray(g) && g.length === 9);
   if (r.writesSeen) l.writesSeen = true;
   return l;
 }
@@ -100,10 +111,14 @@ export const gapBucket = (sec: number): number => { let i = 0; while (i < GAP_ED
 /** The key hourly totals are kept under: the model, and whether the request paid its long-prompt row. */
 export const modelKey = (model: string, prompt: number): string => `${model}|${isLongPrompt(model, prompt) ? 1 : 0}`;
 
-/** What the request after a gap wrote to the cache: Claude's recorded writes; Codex's recorded write, else its uncached input. */
-export function rewritten(turn: Turn, kind: TranscriptKind): number {
-  if (kind === "claude") return turn.write5m + turn.write1h;
-  return turn.write && turn.write > 0 ? turn.write : turn.uncached;
+/** Codex keeps a prefix 30 minutes (GPT-5.6 and later; assumed for any other Codex model, which is then an estimate). */
+export const CODEX_TTL_SEC = 1800;
+const CLAUDE_DEFAULT_TTL_SEC = 3600;
+
+/** The TTL a Claude request's own cache writes used: its write split decides; no write leaves the session's as it was. */
+export function claudeTtlAfter(turn: Turn, current: number | undefined): number {
+  if (turn.write1h > 0 || turn.write5m > 0) return turn.write5m > turn.write1h ? 300 : 3600;
+  return current ?? CLAUDE_DEFAULT_TTL_SEC;
 }
 
 /**
@@ -112,8 +127,10 @@ export function rewritten(turn: Turn, kind: TranscriptKind): number {
  */
 export function addTurn(ledger: Ledger, file: FileCursor, turn: Turn, cutoff: number): void {
   const prev = file.last;
+  const ttlBefore = file.kind === "claude" ? (file.ttl ?? CLAUDE_DEFAULT_TTL_SEC) : CODEX_TTL_SEC;
+  if (file.kind === "claude") file.ttl = claudeTtlAfter(turn, file.ttl);
   file.first ??= turn.t;
-  file.last = { t: turn.t, ctx: turn.prompt + turn.output, model: turn.model };
+  file.last = { t: turn.t, ctx: turn.prompt + turn.output, model: turn.model, ttl: file.kind === "claude" ? file.ttl! : CODEX_TTL_SEC };
   if (turn.write !== null && turn.write > 0) ledger.writesSeen = true;
   if (turn.t < cutoff) return;
   const hk = String(hourOf(turn.t));
@@ -125,7 +142,10 @@ export function addTurn(ledger: Ledger, file: FileCursor, turn: Turn, cutoff: nu
   const gap = (turn.t - prev.t) / 1000;
   if (!(gap >= 0)) return;
   hour.g[gapBucket(gap)]! += 1;
-  if (gap >= GAP_EVENT_SEC) ledger.gaps.push([turn.t, gap, prev.ctx, rewritten(turn, file.kind), turn.model, turn.prompt]);
+  if (gap < GAP_EVENT_SEC) return;
+  const measured = file.kind === "claude" ? turn.write5m + turn.write1h : turn.write;
+  const estimated = file.kind === "claude" ? turn.write5m + turn.write1h : turn.uncached + (turn.write ?? 0);
+  ledger.gaps.push([turn.t, gap, prev.ctx, prev.model, ttlBefore, turn.model, turn.prompt, measured, estimated]);
 }
 
 /** Drop what is older than `cutoff` (hours and gap events). */
@@ -138,8 +158,16 @@ export function pruneLedger(ledger: Ledger, cutoff: number): void {
 
 const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 0);
 const CLAUDE_ID = /"id":"(msg_[A-Za-z0-9_-]{1,120})"/;
+const CLAUDE_ID_G = /"id":"(msg_[A-Za-z0-9_-]{1,120})"/g;
 const CLAUDE_MODEL = /"model":"([^"]{1,120})"/;
+const CLAUDE_MODEL_G = /"model":"([^"]{1,120})"/g;
 const TIMESTAMP = /"timestamp":"([^"]{10,40})"/g;
+const lastMatch = (text: string, re: RegExp): string | undefined => { const all = [...text.matchAll(re)]; return all.length ? all[all.length - 1]![1] : undefined; };
+function lastUsage(text: string): Record<string, unknown> | undefined {
+  const at = text.lastIndexOf("\"usage\":{");
+  const obj = at === -1 ? null : objectAt(text, at + "\"usage\":".length);
+  try { return obj ? JSON.parse(obj) as Record<string, unknown> : undefined; } catch { return undefined; }
+}
 
 function claudeTurn(u: Record<string, unknown> | undefined, model: unknown, ts: unknown): Turn | null {
   if (!u || typeof model !== "string" || typeof ts !== "string") return null;
@@ -166,17 +194,16 @@ export function claudeLine(line: ScanLine, file: FileCursor): Turn | null {
     if (id && file.ids?.includes(id)) return null;
     turn = claudeTurn(d.message.usage, d.message.model, d.timestamp);
   } else {
-    // A long line: the start carries the model and id, the end the usage, type and timestamp.
+    // A long line, kept as its two ends. Claude writes the model and id near the start and the usage and timestamp
+    // near the end, but where `type` and `isSidechain` sit depends on the writer: both ends are searched alike.
     const head = line.head.toString("utf8"), tail = line.tail.toString("utf8");
-    if (!tail.includes("\"type\":\"assistant\"") || head.includes("\"isSidechain\":true")) return null;
-    id = CLAUDE_ID.exec(head)?.[1];
+    const either = (needle: string): boolean => head.includes(needle) || tail.includes(needle);
+    if (!either("\"type\":\"assistant\"") || either("\"isSidechain\":true")) return null;
+    id = CLAUDE_ID.exec(head)?.[1] ?? lastMatch(tail, CLAUDE_ID_G);
     if (id && file.ids?.includes(id)) return null;
-    const at = tail.lastIndexOf("\"usage\":{");
-    const obj = at === -1 ? null : objectAt(tail, at + "\"usage\":".length);
-    let usage: Record<string, unknown> | undefined;
-    try { usage = obj ? JSON.parse(obj) : undefined; } catch { usage = undefined; }
-    const stamps = [...tail.matchAll(TIMESTAMP)];
-    turn = claudeTurn(usage, CLAUDE_MODEL.exec(head)?.[1], stamps.length ? stamps[stamps.length - 1]![1] : undefined);
+    const usage = lastUsage(tail) ?? lastUsage(head);
+    const ts = lastMatch(tail, TIMESTAMP) ?? lastMatch(head, TIMESTAMP);
+    turn = claudeTurn(usage, CLAUDE_MODEL.exec(head)?.[1] ?? lastMatch(tail, CLAUDE_MODEL_G), ts);
   }
   if (turn && id) file.ids = [...(file.ids ?? []).slice(-15), id];
   return turn;
