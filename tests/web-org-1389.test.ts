@@ -195,9 +195,9 @@ const states = (scope: any = p.root) => nodes(scope).map((n: any) => n.querySele
 const team = (name: string) => p.root.querySelectorAll(".org-team").find((s: any) => s.querySelector("h3").textContent.trim() === name);
 
 describe("the page: General → teams → instances", () => {
-  it("the tab is in Fleet's tab bar, between Teams and Config", async () => {
+  it("the tab is in Fleet's tab bar, after Teams", async () => {
     await mount(); await settle(4);
-    expect(p.root.querySelectorAll(".seg-item").map((a: any) => a.getAttribute("href"))).toEqual(["/ui/fleet", "/ui/fleet/schedules", "/ui/fleet/teams", "/ui/fleet/org", "/ui/fleet/config"]);
+    expect(p.root.querySelectorAll(".seg-item").map((a: any) => a.getAttribute("href"))).toEqual(["/ui/fleet", "/ui/fleet/schedules", "/ui/fleet/teams", "/ui/fleet/org", "/ui/fleet/cache", "/ui/fleet/config"]);
     expect(p.root.querySelector(".seg-item.active").getAttribute("href")).toBe("/ui/fleet/org");
     expect(p.root.querySelector(".col.col-wide")).not.toBeNull();
   });
