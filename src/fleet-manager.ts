@@ -61,7 +61,9 @@ import {
 import { isProbeableRouteTarget, type RouteTarget } from "./fleet-context.js";
 import { loadFleetConfig, loadRawFleetConfig, DEFAULT_COST_GUARD, DEFAULT_DAILY_SUMMARY, DEFAULT_INSTANCE_CONFIG } from "./config.js";
 import { EventLog } from "./event-log.js";
+import { binaryProbe } from "./binary-probe.js";
 import { classifySqliteOpenError } from "./sqlite-open-errors.js";
+import { OutboxOpenError } from "./outbox-open-error.js";
 import { AdapterWorld } from "./adapter-world.js";
 import { CostGuard, formatCents } from "./cost-guard.js";
 import { startEventLoopWatch, type EventLoopWatch } from "./event-loop-watch.js";
@@ -555,6 +557,8 @@ interface NonceButtonEntry {
   chatId: string;
   threadId?: string;
   messageId?: string;
+  /** Set when the prompt is a private interaction reply: the only way to edit it (see PrivateSentMessage). */
+  retire?: (text: string) => Promise<void>;
   timer?: ReturnType<typeof setTimeout>;
   /** Text the buttons collapse to when the offer lapses (expiry or instance stop). */
   expiredText: string;
@@ -609,8 +613,16 @@ interface AdapterCallbackData {
    * adapter honours the first call only.
    */
   ack?: (notice?: string) => void;
-  respondPrivate?: (text: string, choices?: Choice[]) => Promise<import("./channel/types.js").SentMessage>;
+  respondPrivate?: (text: string, choices?: Choice[]) => Promise<PrivateSentMessage>;
+  /**
+   * Discord: the clicked message is ephemeral, so only the click's own interaction can edit it — a channel
+   * fetch answers 10008 Unknown Message. Replaces the text and drops the buttons.
+   */
+  editClicked?: (text: string) => Promise<void>;
 }
+
+/** A message only its interaction can edit (a Discord ephemeral reply): `retire` replaces its text and drops its buttons. */
+type PrivateSentMessage = import("./channel/types.js").SentMessage & { retire?: (text: string) => Promise<void> };
 
 /** The prefix of a button's callback data, for logs (never the nonce). */
 function callbackPrefix(callbackData: string): string {
@@ -631,6 +643,8 @@ interface ClassicStartSlashData {
   /** Remove Discord's deferred ephemeral acknowledgement after a command posts publicly. */
   dismissResponse?: () => Promise<void>;
   respondButtons?: (text: string, choices: Choice[]) => Promise<string | undefined>;
+  /** The deferred reply's text replaced and its buttons dropped (an ephemeral reply cannot be fetched from its channel). */
+  retireButtons?: (text: string) => Promise<void>;
   respondChoices?: (text: string, choices: Choice[]) => Promise<string | undefined>;
 }
 
@@ -1403,13 +1417,24 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private ensureDeliveryOutbox(): void {
     if (this.deliveryOutbox) return;
-    const outbox = new DeliveryOutbox(join(this.dataDir, "delivery-outbox.db"), this.managerBootId);
-    this.deliveryOutbox = outbox;
-    if (!this.deliveryOutboxRecovered) {
-      const recovered = outbox.recoverForBoot(this.managerBootId);
-      this.logger.info({ ...recovered }, "Recovered durable delivery outbox for this process boot");
-      this.deliveryOutboxRecovered = true;
+    const dbPath = join(this.dataDir, "delivery-outbox.db");
+    let outbox: DeliveryOutbox | undefined;
+    try {
+      outbox = new DeliveryOutbox(dbPath, this.managerBootId);
+      if (!this.deliveryOutboxRecovered) {
+        const recovered = outbox.recoverForBoot(this.managerBootId);
+        this.logger.info({ ...recovered }, "Recovered durable delivery outbox for this process boot");
+      }
+    } catch (cause) {
+      // Unlike events.db, these rows cannot be discarded: queued messages and uncertain submissions are authoritative.
+      // Publish only a fully recovered store. A partial open/recovery must not authorize admission on a later call.
+      try { outbox?.close(); } catch { /* preserve the original failure */ }
+      const error = new OutboxOpenError(dbPath, cause);
+      this.logger.error({ err: cause, dbPath, kind: error.kind }, error.message);
+      throw error;
     }
+    this.deliveryOutbox = outbox;
+    this.deliveryOutboxRecovered = true;
     outbox.on("admitted", () => { this.scheduleDeliveryOutboxPump(); this.wakeCoordinator?.kick(); });
     outbox.on("state", (event: { deliveryId?: string; state?: string }) => {
       this.scheduleDeliveryOutboxPump();
@@ -3587,7 +3612,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       } else {
         const owner = this.dashboardOwner(data.userId, adapterId, data.channelId);
         if (!owner) { await this.sendLocalDashboard(data, adapterId); return; }
-        await this.showDashboardMenu(owner, data.respondButtons);
+        // Discord shows a deferred reply that is never answered as "the application did not respond".
+        if (!await this.showDashboardMenu(owner, data.respondButtons, data.retireButtons)) await data.respond(t("dashboard.menu_failed"));
       }
     } else if (data.command === "restart") {
       await this.handleRestartSlash(data, adapterId);
@@ -4335,17 +4361,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /**
    * Probe the same executable set exposed by the web backend catalog.
    *
-   * This deliberately has no cache: an install `/login` ran can add a
+   * This deliberately skips the cache: an install `/login` ran can add a
    * binary to PATH while the fleet process remains alive, and the next bare
    * `/login` must see it without requiring a restart or an explicit cache
-   * invalidation call.
+   * invalidation call. The fresh answers also refresh the shared cache that
+   * `/ui/backends` reads. #1490: async and bounded, never `which` on the event loop; a probe with no answer in time
+   * counts as not installed, as the old timeout did.
    */
-  private probeInstalledBackends(): Set<string> {
-    const installed = new Set<string>();
-    for (const [backend, info] of Object.entries(BACKEND_INSTALLATION_INFO)) {
-      if (checkBinaryInstalled(info.binary)) installed.add(backend);
-    }
-    return installed;
+  private async probeInstalledBackends(): Promise<Set<string>> {
+    const entries = Object.entries(BACKEND_INSTALLATION_INFO);
+    const found = await Promise.all(entries.map(([, info]) => binaryProbe.probe(info.binary, { fresh: true })));
+    return new Set(entries.filter((_, i) => { const r = found[i]; return r.known && r.path !== null; }).map(([backend]) => backend));
   }
 
   /**
@@ -4848,10 +4874,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const adapter = id ? this.adapters.get(id) : undefined;
       await adapter?.sendText(msg.chatId, t("dashboard.public_general"), { threadId: msg.threadId }); return;
     }
-    await this.showDashboardMenu(owner);
+    if (!await this.showDashboardMenu(owner)) {
+      await (owner.binding as ChannelAdapter).sendText(owner.chatId, t("dashboard.menu_failed"), { threadId: owner.threadId }).catch(() => undefined);
+    }
   }
   private async sendLocalDashboard(data: ClassicStartSlashData, adapterId: string): Promise<void> {
-    if (this.shuttingDown || !this.hasFleetAdmins(adapterId) || !this.isFleetAdmin(data.userId, adapterId)) return;
+    if (this.shuttingDown || !this.hasFleetAdmins(adapterId) || !this.isFleetAdmin(data.userId, adapterId)) { await data.respond(t("not_authorized")); return; }
     const text = this.topicCommands.getDashboardText();
     const adapter = this.adapters.get(adapterId);
     const token = this.webToken;
@@ -4868,18 +4896,30 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (!adapter.sendDirect) throw new Error("DM unavailable");
         await withinBudget(adapter.sendDirect(data.userId, privateText, { disablePreview: true }), Math.min(deadline, performance.now() + 5_000));
         deliveredByDm = true;
-      } catch {
+      } catch (err) {
+        this.logDashboardDmFailure(err);
         if (!current()) throw new Error("owner changed");
         const id = await withinBudget(data.respond(privateText), deadline); // native slash response is already ephemeral
         if (!id) throw new Error("private delivery unconfirmed");
       }
       if (!current()) throw new Error("owner changed");
-      if (deliveredByDm) await withinBudget(data.respond(t("dashboard.private_sent")), deadline);
-    } catch { this.webLoginCodes!.revokeIfCurrent(login.issuanceId); }
-
+      if (deliveredByDm) await withinBudget(data.respond(t("dashboard.private_sent_dm")), deadline);
+    } catch (err) {
+      this.webLoginCodes!.revokeIfCurrent(login.issuanceId);
+      this.logger.info({ err: (err as Error)?.message }, "Dashboard private delivery was not confirmed");
+      await data.respond(t("dashboard.private_failed")).catch(() => undefined);
+    }
   }
-  private async showDashboardMenu(owner: LoginCodeOwner, respondButtons?: ClassicStartSlashData["respondButtons"]): Promise<void> {
-    if (!this.publicOwnerCurrent(owner)) return;
+  /** Why the DM did not go, for the log only (Discord 50007 = the user does not accept DMs from this server's members). */
+  private logDashboardDmFailure(err: unknown): void {
+    const code = (err as { code?: unknown })?.code;
+    this.logger.info({ code: typeof code === "string" || typeof code === "number" ? code : undefined, err: (err as Error)?.message },
+      "Dashboard DM not delivered; answering privately where the command was used");
+  }
+  /** False when the menu was not shown (the caller still owes the user an answer). */
+  private async showDashboardMenu(owner: LoginCodeOwner, respondButtons?: ClassicStartSlashData["respondButtons"],
+    retireButtons?: ClassicStartSlashData["retireButtons"]): Promise<boolean> {
+    if (!this.publicOwnerCurrent(owner)) { this.logger.info("Dashboard menu not shown: the General owner changed"); return false; }
     const adapter = owner.binding as ChannelAdapter;
     const status = this.getPublicWebStatus();
     const publicAllowed = publicLinkSettings(this.fleetConfig?.web).allowed;
@@ -4889,7 +4929,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const choices = [{ action: "local", label: t("dashboard.local") },
       ...(publicLinkSettings(this.fleetConfig?.web).allowed ? [{ action: "public", label: t("dashboard.public_open") }] : []),
       ...(status.state !== "closed" ? [{ action: "close", label: t("dashboard.public_close") }] : [])];
-    await this.postNonceButtonPromptOrThrow({
+    const posted = await this.postNonceButtonPrompt({
       prefix: "dashboard:", alertType: "login", instanceName: "dashboard", adapter, adapterId: owner.adapterId,
       chatId: owner.chatId, threadId: owner.threadId, timeoutMs: 5 * 60_000,
       message: menuText,
@@ -4897,9 +4937,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       ...(respondButtons ? { deliver: async (c: Choice[]) => {
         const messageId = await respondButtons(menuText, c);
         if (!messageId) throw new Error("menu refused");
-        return { chatId: owner.chatId, threadId: owner.threadId, messageId };
+        // The menu is the command's ephemeral reply: only that interaction can collapse it.
+        return { chatId: owner.chatId, threadId: owner.threadId, messageId, ...(retireButtons ? { retire: retireButtons } : {}) };
       } } : {}),
     });
+    return posted !== null;
   }
   private async handleDashboardCallback(data: AdapterCallbackData, adapterId: string, adapter?: ChannelAdapter): Promise<boolean> {
     const claimed = this.consumeNonceCallback("dashboard:", /^dashboard:([0-9a-f]{32}):(local|public|close)$/, data, adapterId, adapter);
@@ -4912,8 +4954,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (!entry.publicExposureId) return true;
       const result = await this.publicWebLink?.close("admin close", entry.publicExposureId);
       if (result?.confirmed === false) data.ack?.(t("dashboard.public_cleanup"));
-      await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, t("dashboard.public_closed")); return true;
+      await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, t("dashboard.public_closed"), data.editClicked); return true;
     }
+    // The click is claimed and its buttons are spent: say so on the menu now. A public link can take a while to start
+    // (the first one installs cloudflared), and until the outcome lands the menu would otherwise look untouched.
+    const progressEdit = data.editClicked ?? entry.retire;
+    const progress = progressEdit
+      ? progressEdit(t(action === "public" ? "dashboard.public_starting" : "dashboard.private_sending"))
+        .catch(err => this.logger.debug({ err }, "Could not show the dashboard menu's progress"))
+      : Promise.resolve();
+    let deliveredByDm = false;
     const send = async (url: string, exposureId?: string, expiresAt?: number, current: () => boolean = () => this.publicOwnerCurrent(owner)): Promise<boolean> => {
       const token = this.webToken;
       if (!token || !current()) return false;
@@ -4926,8 +4976,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const deliver = async (c: Choice[] = []): Promise<import("./channel/types.js").SentMessage> => {
           try {
             if (!direct.sendDirect) throw new Error("DM unavailable");
-            return await withinBudget(direct.sendDirect(owner.userId, text, { disablePreview: true, choices: c }), Math.min(deadline, performance.now() + 5_000));
-          } catch {
+            const sent = await withinBudget(direct.sendDirect(owner.userId, text, { disablePreview: true, choices: c }), Math.min(deadline, performance.now() + 5_000));
+            deliveredByDm = true;
+            return sent;
+          } catch (err) {
+            this.logDashboardDmFailure(err);
             if (direct.type !== "discord" || !data.respondPrivate || !current()) throw new Error("private delivery unavailable");
             const sent = await withinBudget(data.respondPrivate(text, c), deadline);
             return { ...sent, chatId: owner.chatId, threadId: owner.threadId };
@@ -4941,9 +4994,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         else await deliver();
         if (!current() || this.webToken !== token) throw new Error("owner changed");
         return true;
-      } catch {
+      } catch (err) {
         this.webLoginCodes!.revokeIfCurrent(issued.issuanceId);
-        this.logger.info("Dashboard private delivery was not confirmed");
+        this.logger.info({ err: (err as Error)?.message }, "Dashboard private delivery was not confirmed");
         return false;
       }
     };
@@ -4951,7 +5004,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       ? await this.getPublicWebLink().deliver(owner, link => send(link.url, link.exposureId, link.expiresAt, link.isCurrent))
       : await send(`http://${this.fleetConfig?.hostname || "localhost"}:${this.fleetConfig?.health_port ?? 19280}/signin`);
     // Only safe, static words enter General; never link, code or platform error text.
-    await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, t(ok ? "dashboard.private_sent" : "dashboard.private_failed"));
+    const outcome = !ok ? "dashboard.private_failed"
+      : (owner.binding as ChannelAdapter).type !== "discord" ? "dashboard.private_sent" : deliveredByDm ? "dashboard.private_sent_dm" : "dashboard.private_sent_here";
+    await progress;
+    await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, t(outcome), data.editClicked);
     return true;
   }
 
@@ -10580,7 +10636,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     message: string;
     choices: Array<{ action: string; label: string }>;
     expiredText: string;
-    deliver?: (choices: Choice[]) => Promise<import("./channel/types.js").SentMessage>;
+    deliver?: (choices: Choice[]) => Promise<PrivateSentMessage>;
     extra?: Pick<NonceButtonEntry, "pendingChangeId" | "confirmationCurrent" | "requesterUserId" | "publicExposureId" | "dashboardOwner" | "generalName" | "promptKind" | "authChannelId" | "allowAnyUser" | "tipId" | "classicGroupId" | "classicUserId" | "classicScope" | "classicReplyTo" | "assistFor">;
     timeoutMs?: number;
   }): Promise<string> {
@@ -10611,22 +10667,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (pending !== entry) return;
       this.pendingNonceButtons.delete(nonce);
       this.webPromptGone(entry, entry.expiredText);
-      if (entry.messageId && entry.adapter.editMessageRemoveButtons) {
-        entry.adapter.editMessageRemoveButtons(
-          entry.chatId,
-          entry.messageId,
-          entry.expiredText,
-          entry.threadId,
-        ).catch(err => this.logger.debug({ err, instanceName: entry.instanceName, prefix: entry.prefix },
-          "Failed to expire button prompt"));
-      }
+      this.collapseNoncePrompt(entry)?.catch(err => this.logger.debug({ err, instanceName: entry.instanceName, prefix: entry.prefix },
+        "Failed to expire button prompt"));
     }, opts.timeoutMs ?? NONCE_BUTTON_TIMEOUT_MS);
     entry.timer.unref?.();
     this.pendingNonceButtons.set(nonce, entry);
 
     try {
       const choices = opts.choices.map(c => ({ id: `${opts.prefix}${nonce}:${c.action}`, label: c.label }));
-      const sent = opts.deliver ? await opts.deliver(choices) : await opts.adapter.notifyAlert(opts.chatId, {
+      const sent: PrivateSentMessage = opts.deliver ? await opts.deliver(choices) : await opts.adapter.notifyAlert(opts.chatId, {
         type: opts.alertType,
         instanceName: opts.instanceName,
         message: opts.message,
@@ -10644,6 +10693,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         entry.threadId = sent.threadId;
       }
       entry.messageId = sent.messageId;
+      if (sent.retire) entry.retire = sent.retire;
       // Offered on the dashboard only once it is live on the platform (a failed post is disarmed above),
       // and only if nothing claimed or expired it meanwhile.
       if (WEB_MIRRORED_PROMPT_PREFIXES.has(opts.prefix) && this.pendingNonceButtons.get(nonce) === entry) {
@@ -10705,6 +10755,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         "Could not collapse an expired prompt's buttons");
       if (staleHandling?.keepText && adapter?.removeMessageButtons) {
         adapter.removeMessageButtons(data.chatId, data.messageId, data.threadId).catch(collapseFailed);
+      } else if (data.editClicked) {
+        data.editClicked(t("buttons.stale")).catch(collapseFailed);
       } else {
         adapter?.editMessageRemoveButtons?.(
           data.chatId,
@@ -11102,9 +11154,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     pending: NonceButtonEntry,
     messageId: string,
     text: string,
+    /** The click's own edit of a private prompt (AdapterCallbackData.editClicked); preferred over the prompt's. */
+    editClicked?: (text: string) => Promise<void>,
   ): Promise<void> {
     this.webPromptGone(pending, text);
     try {
+      const retire = editClicked ?? pending.retire;
+      if (retire) { await retire(text); return; }
       if (!pending.adapter.editMessageRemoveButtons) throw new Error("adapter cannot remove prompt buttons");
       await pending.adapter.editMessageRemoveButtons(
         pending.chatId,
@@ -11653,13 +11709,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     for (const entry of entries) { if (entry.timer) clearTimeout(entry.timer); this.webPromptGone(entry, entry.expiredText); }
 
     const collapses = entries
-      .filter(entry => entry.messageId && entry.adapter.editMessageRemoveButtons)
-      .map(entry => entry.adapter.editMessageRemoveButtons!(
-        entry.chatId, entry.messageId!, entry.expiredText, entry.threadId,
-      ).catch(err => this.logger.debug(
+      .map(entry => this.collapseNoncePrompt(entry)?.catch(err => this.logger.debug(
         { err, instanceName: entry.instanceName, prefix: entry.prefix },
         "Failed to retire button prompt during shutdown",
-      )));
+      )))
+      .filter(collapse => collapse !== undefined);
     if (!collapses.length) return;
 
     await Promise.race([
@@ -11677,12 +11731,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.pendingNonceButtons.delete(nonce);
       if (entry.timer) clearTimeout(entry.timer);
       this.webPromptGone(entry, entry.expiredText);
-      if (entry.messageId && entry.adapter.editMessageRemoveButtons) {
-        entry.adapter.editMessageRemoveButtons(entry.chatId, entry.messageId, entry.expiredText, entry.threadId)
-          .catch(err => this.logger.debug({ err, instanceName, prefix: entry.prefix },
-            "Failed to collapse prompt during instance stop"));
-      }
+      this.collapseNoncePrompt(entry)?.catch(err => this.logger.debug({ err, instanceName, prefix: entry.prefix },
+        "Failed to collapse prompt during instance stop"));
     }
+  }
+
+  /** A lapsed prompt's buttons collapsed to its expired text — through its own interaction when it is private. */
+  private collapseNoncePrompt(entry: NonceButtonEntry): Promise<void> | undefined {
+    if (entry.retire) return entry.retire(entry.expiredText);
+    if (!entry.messageId || !entry.adapter.editMessageRemoveButtons) return undefined;
+    return entry.adapter.editMessageRemoveButtons(entry.chatId, entry.messageId, entry.expiredText, entry.threadId);
   }
 
   /** A clean exit is intentional from the CLI's perspective, but often not from
@@ -12786,7 +12844,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     for (const name of this.configuredBackendInstanceNames()) {
       configured.add(this.backendNameOf(name));
     }
-    const installed = this.probeInstalledBackends();
+    const installed = await this.probeInstalledBackends();
     // One entry point for "get this CLI working" (#1131): a backend that is
     // not installed is offered too, and the click installs it first, then
     // signs in (startLoginSession routes it).
