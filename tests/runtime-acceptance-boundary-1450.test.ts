@@ -63,7 +63,7 @@ describe("the hop boundary refuses a fleet start in every form, before anything 
     chmodSync(manager, 0o755);
     const r = w.run(script(manager));
     expect(r.status).not.toBe(0);
-    expect(w.logged()).toContain("service manager by absolute path");
+    expect(w.logged()).toMatch(/service manager by (absolute )?path|sudo in a hop/);
     expect(existsSync(w.mark)).toBe(false);
   });
 
@@ -83,20 +83,105 @@ describe("the hop boundary refuses a fleet start in every form, before anything 
   });
 });
 
-describe("which stubbed manager calls would have activated something (manager-activations.cjs)", () => {
-  const { activation } = createRequire(import.meta.url)("../scripts/ci/runtime-acceptance/manager-activations.cjs") as { activation(line: string): string | null };
+describe("the hop's stubbed manager calls: argv kept, judged fail-closed (manager-activations.cjs)", () => {
+  const { parseLog, refusal } = createRequire(import.meta.url)("../scripts/ci/runtime-acceptance/manager-activations.cjs") as {
+    parseLog(buf: Buffer): Array<{ name: string; args: string[] }> | null; refusal(rec: { name: string; args: string[] }): string | null;
+  };
+  // The EXACT stub the hop writes (hop.sh), for each tool.
+  const hop = readFileSync(join(process.cwd(), "scripts", "ci", "runtime-acceptance", "hop.sh"), "utf8");
+  const template = hop.slice(hop.indexOf("<<STUB\n") + "<<STUB\n".length, hop.indexOf("\nSTUB\n"));
+  function stubs() {
+    const root = mkdtempSync(join(tmpdir(), "agend-stubs-"));
+    roots.push(root);
+    mkdirSync(join(root, "guard"));
+    for (const tool of ["systemctl", "launchctl", "sudo"]) {
+      // The heredoc is unquoted: $tool/$WORK expand at write time, \$ stays a literal $.
+      const body = template.replace(/\$tool/g, tool).replace(/\$WORK/g, root).replace(/\\\$/g, "$").replace(/\\\\n/g, "\\n");
+      writeFileSync(join(root, "guard", tool), body + "\n");
+      chmodSync(join(root, "guard", tool), 0o755);
+    }
+    writeFileSync(join(root, "guard.log"), "");
+    const call = (tool: string, ...args: string[]) => spawnSync(join(root, "guard", tool), args, { encoding: "utf8" });
+    return { call, records: () => parseLog(readFileSync(join(root, "guard.log")))! };
+  }
+  it("argv boundaries survive the log: a quoted multi-word value is ONE argument", () => {
+    const st = stubs();
+    expect(st.call("systemctl", "-p", "two words", "--user", "show", "x").status).toBe(1);
+    expect(st.records()).toEqual([{ name: "systemctl", args: ["-p", "two words", "--user", "show", "x"] }]);
+  });
   it.each([
-    ["systemctl --no-pager --user restart private-unit", "restart"],
-    ["sudo systemctl --user start private-unit", "start"],
-    ["sudo -n -u root /bin/systemctl --user stop x", "stop"],
-    ["launchctl kickstart -k gui/501/x", "kickstart"],
-    ["launchctl bootstrap gui/501 /p.plist", "bootstrap"],
-    ["systemctl -H host --user enable x", "enable"],
-  ])("activating: %s", (line, verb) => { expect(activation(line)).toBe(verb); });
+    ["sudo", ["--user", "root", "systemctl", "--user", "start", "x"]],
+    ["sudo", ["--group", "operators", "systemctl", "--user", "start", "x"]],
+    ["sudo", ["--chdir", "/tmp", "systemctl", "--user", "start", "x"]],
+    ["sudo", ["-p", "multi word prompt", "systemctl", "--user", "start", "x"]],
+    ["sudo", ["-n", "npm", "uninstall", "-g", "@songsid/agend"]],
+    ["systemctl", ["--no-pager", "--user", "restart", "private-unit"]],
+    ["systemctl", ["-p", "two words", "restart", "x"]],
+    ["systemctl", ["--unknown-option", "show", "x"]],
+    ["systemctl", ["--user"]],
+    ["launchctl", ["kickstart", "-k", "gui/501/x"]],
+    ["launchctl", ["bootstrap", "gui/501", "/p.plist"]],
+  ])("refused: %s %j", (tool, args) => {
+    const st = stubs();
+    st.call(tool, ...args);
+    const recs = st.records();
+    expect(recs).toHaveLength(1);
+    expect(refusal(recs[0]!)).not.toBeNull();
+  });
   it.each([
-    ["systemctl --user is-active com.agend.fleet"], ["systemctl --user daemon-reload"], ["systemctl --user show -p KillMode --value com.agend.fleet"],
-    ["systemctl -p ExecStart show x"], ["launchctl print gui/501/x"], ["launchctl getenv NODE_OPTIONS"], ["sudo -n npm uninstall -g @songsid/agend"],
-  ])("not activating: %s", (line) => { expect(activation(line)).toBeNull(); });
+    ["systemctl", ["--user", "is-active", "com.agend.fleet"]],
+    ["systemctl", ["--user", "daemon-reload"]],
+    ["systemctl", ["--user", "show", "-p", "KillMode", "--value", "com.agend.fleet"]],
+    ["systemctl", ["is-active", "agend"]],
+    ["systemctl", ["--user", "reset-failed", "com.agend.fleet"]],
+    ["launchctl", ["print", "gui/501/com.agend.fleet"]],
+    ["launchctl", ["getenv", "NODE_OPTIONS"]],
+  ])("read-only, allowed: %s %j", (tool, args) => {
+    const st = stubs();
+    st.call(tool, ...args);
+    expect(refusal(st.records()[0]!)).toBeNull();
+  });
+  it("a log that is not well-formed is refused as a whole", () => {
+    expect(parseLog(Buffer.from("systemctl 9:short\n"))).toBeNull();
+  });
+});
+
+describe("shell strings are judged as the shell splits them (boundary.cjs)", () => {
+  const { shellViolation } = createRequire(import.meta.url)(BOUNDARY) as { shellViolation(text: string): string | null };
+  it.each([
+    ['"/tmp/a b/systemctl" --user restart x'],
+    ['"/tmp/x"/systemctl --user restart x'],
+    ["'/tmp/x'/launchctl kickstart -k gui/1/x"],
+    ['M=/x/systemctl; "$M" --user restart x'],
+    ["echo $(/usr/bin/systemctl restart x)"],
+    ["env -i /usr/bin/systemctl restart x"],
+    ["eval '/usr/bin/systemctl restart x'"],
+    ['sh -c "/bin/launchctl kickstart -k gui/1/x"'],
+    ["sudo -n npm uninstall -g @songsid/agend"],
+    ["true && agend fleet start"],
+    ["echo 'unterminated"],
+  ])("refused: %s", (text) => { expect(shellViolation(text)).not.toBeNull(); });
+  it.each([
+    ["which agend"], ['readlink -f "/a b/agend"'], ["npm install -g @songsid/agend@2.2.0"], ["node scripts/preinstall-guard.cjs"],
+    ["systemctl --user show -p KillMode --value com.agend.fleet"], ['sys"temctl" --user is-active x'], ["npm config get prefix"],
+  ])("allowed (reaches PATH and its stubs): %s", (text) => { expect(shellViolation(text)).toBeNull(); });
+
+  it.each([
+    ['"%s" --user restart private-unit', "quoted absolute path with a space"],
+    ['"%d"/systemctl --user restart private-unit', "quoted directory + basename"],
+  ])("executed, with a private manager at a path with spaces: %s (%s) is refused and never runs", (form) => {
+    const w = world();
+    const dir = join(w.root, "a dir");
+    mkdirSync(dir);
+    const manager = join(dir, "systemctl");
+    writeFileSync(manager, `#!/bin/sh\necho "$*" >> '${w.mark}'\n`);
+    chmodSync(manager, 0o755);
+    const command = form.replace("%s", manager).replace("%d", dir);
+    const r = w.run(`require('child_process').execSync(${JSON.stringify(command)})`);
+    expect(r.status).not.toBe(0);
+    expect(w.logged()).not.toBe("");
+    expect(existsSync(w.mark)).toBe(false);
+  });
 });
 
 describe("the acceptance DB probe (checks.sh) passes only a validated worker answer AND a clean worker exit", () => {
