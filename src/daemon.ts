@@ -813,6 +813,8 @@ const CONFIRM_BUSY_POLL_MS = 200;
  * hold the pane write lock along with it.
  */
 const CONFIRM_BUSY_MAX_WAIT_MS = 10_000;
+/** How much longer a confirmation waits while the control client is blind (a drained read; its limit is 10 s). */
+const CONFIRM_BUSY_BLIND_EXTRA_MS = 12_000;
 /**
  * How long a delivery waits for an in-flight spawn. Comfortably past the default
  * 25s startup timeout plus dialog dismissal; past it we fall back to the old
@@ -9040,12 +9042,17 @@ export class Daemon extends EventEmitter {
   private async confirmBusyAfterEnter(windowId: string, since: number): Promise<boolean> {
     const client = this.controlClient!;
     const hardDeadline = Date.now() + CONFIRM_BUSY_MAX_WAIT_MS;
+    // A drained control read hides notifications (#1517 review): while the client is blind a quiet pane is not
+    // evidence of a swallowed Enter, so blind polls do not count toward "no reaction". Bounded: past the drain limit
+    // the client retires and resets, which restarts this check from when it could see again.
+    const blindDeadline = hardDeadline + CONFIRM_BUSY_BLIND_EXTRA_MS;
     let observedFrom = since;
     let polls = 0;
 
     while (polls < CONFIRM_BUSY_POLLS) {
       await new Promise(r => setTimeout(r, CONFIRM_BUSY_POLL_MS));
       if (client.hasOutputSince(windowId, observedFrom)) return true;
+      if (client.isObservationBlind?.() && Date.now() < blindDeadline) continue;
 
       const resetAt = client.getObservationResetAt();
       if (resetAt > observedFrom && Date.now() < hardDeadline) {

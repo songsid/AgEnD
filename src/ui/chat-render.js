@@ -463,15 +463,24 @@
     return { kept: kept, rejected: rejected };
   }
 
+  /** #1306 §6.1 (Q4): an attachment a preview card is offered for — a fleet-issued id, a non-image named *.html / *.htm. */
+  function isHtmlAttachment(a) {
+    return !!a && typeof a.id === "string" && /^[0-9a-f]{32}$/.test(a.id) && a.kind !== "photo" && typeof a.name === "string" && /\.html?$/i.test(a.name.trim());
+  }
+
   /**
    * The files shown with a message. Only an id the fleet issued (32 hex) becomes a URL, and only under
    * /ui/file/; a name is text. Images are shown (and open full size), other files are download links.
+   * With { htmlCards: true } (a server-marked agent reply, as for renderMarkdown) each .html/.htm file also gets an
+   * empty card placeholder <div class="html-card" data-att="<id>"> after the list — the id is 32 hex, nothing else.
    */
-  function attachmentsHtml(attachments) {
+  function attachmentsHtml(attachments, opts) {
     if (!Array.isArray(attachments)) return "";
-    var out = [];
+    var cards = !!(opts && opts.htmlCards);
+    var out = [], after = [];
     attachments.forEach(function (a) {
       if (!a || typeof a.id !== "string" || !/^[0-9a-f]{32}$/.test(a.id)) return;
+      if (cards && isHtmlAttachment(a)) after.push('<div class="html-card" data-att="' + a.id + '"></div>');
       var url = "/ui/file/" + a.id;
       var name = escapeHtml(a.name || "file");
       if (a.kind === "photo") {
@@ -480,13 +489,13 @@
         out.push('<a class="att-file" href="' + url + '" download="' + name + '">📎 ' + name + ' <span class="att-size">' + escapeHtml(formatSize(a.size)) + "</span></a>");
       }
     });
-    return out.length ? '<div class="atts">' + out.join("") + "</div>" : "";
+    return (out.length ? '<div class="atts">' + out.join("") + "</div>" : "") + after.join("");
   }
 
   return {
     renderMarkdown: renderMarkdown, escapeHtml: escapeHtml, mergeMessages: mergeMessages, applyReplyButtons: applyReplyButtons, composerKey: composerKey,
     settleFailedSend: settleFailedSend, putBack: putBack,
-    FILE_LIMITS: FILE_LIMITS, formatSize: formatSize, checkFiles: checkFiles, attachmentsHtml: attachmentsHtml,
+    FILE_LIMITS: FILE_LIMITS, formatSize: formatSize, checkFiles: checkFiles, attachmentsHtml: attachmentsHtml, isHtmlAttachment: isHtmlAttachment,
     nextDeliveryState: nextDeliveryState, applyDelivery: applyDelivery, deliveryHtml: deliveryHtml, isBusy: isBusy,
     isNearBottom: isNearBottom, CODE_FOLD_LINES: CODE_FOLD_LINES, lineCount: lineCount,
     LONG_PASTE_CHARS: LONG_PASTE_CHARS, isLongPaste: isLongPaste, formatElapsed: formatElapsed,

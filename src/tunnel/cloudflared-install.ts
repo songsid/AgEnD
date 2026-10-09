@@ -85,6 +85,13 @@ export interface EnsureCloudflaredOptions {
   arch?: string;
   /** Told once, right before a download starts (the caller posts a line in chat). */
   onDownloading?: (info: { version: string; asset: string }) => void | Promise<void>;
+  /**
+   * Where the install is, for a caller that shows it as it happens. Never awaited and never allowed to throw into
+   * the install: `checked` says whether a download is needed, `downloading` follows the bytes (`total` is the
+   * response's Content-Length, null when it sent none), `verifying` covers the checksum, extraction and rename.
+   * Only the call that starts an install hears it; one that joins an install already running does not.
+   */
+  onProgress?: (progress: CloudflaredInstallProgress) => void;
   /** Test seams. */
   fetchImpl?: (url: string, init: { signal: AbortSignal; redirect: "follow" }) => Promise<Response>;
   extractTgz?: (archive: string, intoDir: string) => Promise<void>;
@@ -95,6 +102,15 @@ export interface EnsureCloudflaredOptions {
   signal?: AbortSignal;
   /** Test seam: the uid AgEnD's directories must belong to (default: this process's). */
   uid?: number;
+}
+
+export type CloudflaredInstallProgress =
+  | { readonly phase: "checked"; readonly download: boolean; readonly version: string }
+  | { readonly phase: "downloading"; readonly received: number; readonly total: number | null }
+  | { readonly phase: "verifying" };
+
+function tell(opts: EnsureCloudflaredOptions, progress: CloudflaredInstallProgress): void {
+  try { opts.onProgress?.(progress); } catch { /* a display must never break the install */ }
 }
 
 export interface EnsureCloudflaredResult {
@@ -133,7 +149,11 @@ async function installOrReuse(opts: EnsureCloudflaredOptions, dir: string): Prom
   const target = join(dir, "cloudflared");
   // A bin someone else could have written: its contents are not ours to trust.
   if ((await privateDirectory(opts.dataDir, dir, uid)) === "was-open") await discardInstall(target);
-  if (await installedAndIntact(target, pin.version, asset, uid)) return { path: target, source: "agend" };
+  if (await installedAndIntact(target, pin.version, asset, uid)) {
+    tell(opts, { phase: "checked", download: false, version: pin.version });
+    return { path: target, source: "agend" };
+  }
+  tell(opts, { phase: "checked", download: true, version: pin.version });
 
   throwIfCancelled(opts.signal);
   await opts.onDownloading?.({ version: pin.version, asset: asset.name });
@@ -221,6 +241,7 @@ async function download(asset: CloudflaredAsset, version: string, dir: string, t
   const stampTmp = `${stampPath(target)}.${tag}`;
   try {
     const sha = await fetchToFile(releaseUrl(asset, version), part, opts);
+    tell(opts, { phase: "verifying" });
     if (sha !== asset.sha256) {
       throw new CloudflaredInstallError("checksum-mismatch",
         `${asset.name}: SHA256 ${sha} does not match the pinned ${asset.sha256}`);
@@ -290,6 +311,9 @@ async function fetchToFile(url: string, file: string, opts: EnsureCloudflaredOpt
     if (!res.ok || !res.body) throw new CloudflaredInstallError("download-failed", `HTTP ${res.status}`);
     const reader = res.body.getReader();
     const hash = createHash("sha256");
+    const length = Number(res.headers?.get?.("content-length") ?? "");
+    const total = Number.isSafeInteger(length) && length > 0 ? length : null;
+    tell(opts, { phase: "downloading", received: 0, total });
     let handle;
     try {
       handle = await open(file, "wx", 0o600);
@@ -306,6 +330,7 @@ async function fetchToFile(url: string, file: string, opts: EnsureCloudflaredOpt
         if (bytes > (opts.maxBytes ?? MAX_DOWNLOAD_BYTES)) throw new CloudflaredInstallError("download-failed", "the download is larger than any cloudflared");
         hash.update(chunk.value);
         await writeAll(handle, chunk.value, file);
+        tell(opts, { phase: "downloading", received: bytes, total });
       }
     } catch (err) {
       await reader.cancel().catch(() => { /* already over */ });

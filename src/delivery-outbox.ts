@@ -492,6 +492,14 @@ export class DeliveryOutbox extends EventEmitter {
     this.managerBootId = managerBootId;
     mkdirSync(dirname(dbPath), { recursive: true, mode: 0o700 });
     this.db = new Database(dbPath);
+    try { this.initialize(dbPath); }
+    catch (error) {
+      try { this.db.close(); } catch { /* retain the initialization error */ }
+      throw error;
+    }
+  }
+
+  private initialize(dbPath: string): void {
     chmodSync(dbPath, 0o600);
     this.db.pragma("journal_mode = WAL");
     this.db.pragma("synchronous = NORMAL");
