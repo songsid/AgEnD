@@ -147,6 +147,7 @@ function world() {
   let extraEnv: Record<string, string> = {};
   const setEnv = (e: Record<string, string>) => { extraEnv = e; };
   const run = (args: string[], input?: string) => {
+    const beforeRefs = sh(work,"for-each-ref","--format=%(refname) %(objectname)","refs/gate");
     saveState();
     writeFileSync(join(bin, "calls.log"), "");
     const res = spawnSync("bash", [SCRIPT, ...args], {
@@ -156,7 +157,7 @@ function world() {
     const calls = readFileSync(join(bin, "calls.log"), "utf8").split("\n").filter(Boolean);
     Object.assign(state, JSON.parse(readFileSync(join(bin, "state.json"), "utf8")));
     // The private fetch refs never outlive a run, whatever its verdict.
-    expect(sh(work, "for-each-ref", "--format=%(refname)", "refs/gate")).toBe("");
+    expect(sh(work, "for-each-ref", "--format=%(refname) %(objectname)", "refs/gate")).toBe(beforeRefs);
     return { status: res.status, line: res.stdout, lines: res.stdout.split("\n").filter(Boolean), stderr: res.stderr, calls };
   };
   const writes = (calls: string[]) => calls.filter(c => /^pr (merge|edit|create)|^api -X DELETE/.test(c));
@@ -764,6 +765,14 @@ describe("gate workflow 1480: exact main CI and private single-squash revert", (
   it("a public-readable receipt is not operator authority", () => {
     const w = mergedWorld(); chmodSync(w.receipt,0o644);
     const r = w.post(); expect(r.status).toBe(1); expect(w.writes(r.calls)).toEqual([]);
+  });
+  it("post-merge cleanup never changes another operation's private refs", () => {
+    const w = mergedWorld();
+    w.sh(w.work,"update-ref","refs/gate/post-main",w.approved);
+    w.sh(w.work,"update-ref","refs/gate/post-revert",w.approved);
+    const r=w.post(); expect(r.line).toMatch(/^REVERT_PENDING/);
+    expect(w.sh(w.work,"rev-parse","refs/gate/post-main")).toBe(w.approved);
+    expect(w.sh(w.work,"rev-parse","refs/gate/post-revert")).toBe(w.approved);
   });
   it("an existing claim blocks a concurrent invocation", () => {
     const w = mergedWorld(); mkdirSync(join(dirname(w.receipt), `lock-${w.merged}`), {mode:0o700});

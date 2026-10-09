@@ -109,12 +109,13 @@ function post(merged) {
   const dir = store(), file = join(dir, `${merged}.json`), lock = join(dir, `lock-${merged}`);
   readPrivate(file); // Do not create a lock or branch for a non-gate commit.
   mkdirSync(lock, { mode: 0o700 });
+  const mainRef = `refs/gate/post-${merged}-main`, revertRef = `refs/gate/post-${merged}-revert`;
   let scratch;
   try {
     const r = readPrivate(file); // An earlier invocation may have settled between the preflight read and this claim.
     if (r.reverted) return `REVERTED ${r.reverted}`;
-    git('fetch', '-q', remote, '+refs/heads/main:refs/gate/post-main');
-    const base = git('rev-parse', 'refs/gate/post-main').trim();
+    git('fetch', '-q', remote, `+refs/heads/main:${mainRef}`);
+    const base = git('rev-parse', mainRef).trim();
     verifiedTarget(r, merged, base);
     const state = mainCi(merged);
     if (state !== 'FAILURE') return `${state} ${merged}`;
@@ -130,7 +131,7 @@ function post(merged) {
       const existing = git('ls-remote', '--heads', remote, `refs/heads/${v.branch}`).trim();
       if (existing) {
         const oid = existing.split(/\s/)[0]; requireThat(sha(oid), 'owned branch unreadable');
-        git('fetch', '-q', remote, `+refs/heads/${v.branch}:refs/gate/post-revert`);
+        git('fetch', '-q', remote, `+refs/heads/${v.branch}:${revertRef}`);
         v.head = oid;
       } else {
         scratch = join(dir, `work-${merged}`);
@@ -145,8 +146,8 @@ function post(merged) {
       }
       writePrivate(file, r);
     }
-    git('fetch', '-q', remote, `+refs/heads/${v.branch}:refs/gate/post-revert`);
-    requireThat(git('rev-parse', 'refs/gate/post-revert').trim() === v.head && sha(v.head), 'revert branch changed');
+    git('fetch', '-q', remote, `+refs/heads/${v.branch}:${revertRef}`);
+    requireThat(git('rev-parse', revertRef).trim() === v.head && sha(v.head), 'revert branch changed');
     requireThat(v.tree && git('rev-parse', `${v.head}^{tree}`).trim() === v.tree && git('rev-list', '--parents', '-n', '1', v.head).trim() === `${v.head} ${v.base}`, 'not the recorded single revert');
     // Resume PR creation after a lost answer by looking up this exact branch.
     if (!v.pr) {
@@ -169,8 +170,8 @@ function post(merged) {
     requireThat(p.state === 'OPEN' && p.isDraft === false, 'revert PR not open');
     if (!exactCi(v.head)) return `REVERT_PENDING #${v.pr} ${v.head}`;
     // Reads may take time; repeat provenance, main failure, base/overlap and exact CI immediately before mutation.
-    git('fetch', '-q', remote, '+refs/heads/main:refs/gate/post-main');
-    const currentBase = git('rev-parse', 'refs/gate/post-main').trim();
+    git('fetch', '-q', remote, `+refs/heads/main:${mainRef}`);
+    const currentBase = git('rev-parse', mainRef).trim();
     verifiedTarget(r, merged, currentBase);
     requireThat(mainCi(merged) === 'FAILURE', 'main CI no longer failed');
     requireThat(overlap(currentBase, v.head) === 'DISJOINT', 'revert behind overlapping main: manual sync required');
@@ -184,7 +185,7 @@ function post(merged) {
     return `REVERTED ${r.reverted}`;
   } finally {
     if (scratch) { try { git('worktree', 'remove', '--force', scratch); } catch { /* owned scratch only; operator can inspect */ } }
-    try { git('update-ref', '-d', 'refs/gate/post-main'); git('update-ref', '-d', 'refs/gate/post-revert'); } finally { rmSync(lock, { recursive: true }); }
+    try { git('update-ref', '-d', mainRef); git('update-ref', '-d', revertRef); } finally { rmSync(lock, { recursive: true }); }
   }
 }
 try {
