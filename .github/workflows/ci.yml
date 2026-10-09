@@ -455,7 +455,10 @@ jobs:
         if: needs.detect-changes.outputs.docs-only != 'true'
         with:
           node-version: '20'
-      - name: Rollback proof — Node 20 must not install new package
+      # #1450: the package pins AgEnD's own Node, so on a host a runtime covers the system Node's version is never a
+      # reason to refuse. The rollback proof stays for the case a runtime does not cover (--omit=optional stands in
+      # for it): Node 20 is older than engines, the postinstall refuses, npm rolls back and 2.1.12 stays.
+      - name: Node 20 — without its runtime the upgrade rolls back; with it, AgEnD runs on the bundled Node
         if: needs.detect-changes.outputs.docs-only != 'true'
         run: |
           set -euo pipefail
@@ -466,14 +469,19 @@ jobs:
           BEFORE=$("$PREFIX/bin/agend" --version)
           echo "Before: $BEFORE"
           [ "$BEFORE" = "2.1.12" ] || { echo "baseline install failed"; exit 1; }
-          # Attempt upgrade to new package; must fail due to preinstall guard
-          if npm install --global --prefix "$PREFIX" "./$TGZ"; then
-            echo "ERROR: npm install should have failed on Node 20 but succeeded" >&2
+          # 1. No runtime (omitted): the upgrade must fail and leave 2.1.12 in place.
+          if npm install --global --prefix "$PREFIX" --omit=optional "./$TGZ"; then
+            echo "ERROR: npm install without the runtime should have failed on Node 20 but succeeded" >&2
             exit 1
           fi
-          echo "Good: npm failed as expected on Node 20"
-          # Verify old version is still in place
           AFTER=$("$PREFIX/bin/agend" --version)
-          echo "After: $AFTER"
+          echo "After the refused upgrade: $AFTER"
           [ "$AFTER" = "2.1.12" ] || { echo "ROLLBACK FAILED: version is $AFTER, expected 2.1.12" >&2; exit 1; }
-          echo "Rollback confirmed: 2.1.12 is still installed after failed upgrade on Node 20"
+          echo "Rollback confirmed: 2.1.12 is still installed after a refused upgrade on Node 20"
+          # 2. With the pinned runtime: the upgrade succeeds on Node 20 and AgEnD runs on its bundled Node.
+          npm install --global --prefix "$PREFIX" "./$TGZ"
+          WANT=$(node -p 'require("./package.json").version')
+          GOT=$("$PREFIX/bin/agend" --version)
+          [ "$GOT" = "$WANT" ] || { echo "ERROR: agend --version is $GOT, expected $WANT" >&2; exit 1; }
+          "$PREFIX/bin/agend" --agend-select-json | node -e 'const s = JSON.parse(require("fs").readFileSync(0, "utf8")); console.log("selection:", s.source, s.node); if (s.source !== "runtime") process.exit(1)'
+          echo "Node 20 upgraded to $GOT, running on the bundled Node"
