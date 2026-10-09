@@ -211,6 +211,8 @@ All fields from `instances.<name>` can be set here as shared defaults. Additiona
 
 ### instances.\<name\>
 
+`tool_set` enforces policy for the resolved instance identity, not isolation between shell-capable agents on the same uid. A sibling can read another instance’s `agent.token` or use its IPC socket; see [the shared-account threat model](SECURITY.md#tool-profiles-and-the-shared-host-account).
+
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `working_directory` | string | auto-created | Absolute path to project directory |

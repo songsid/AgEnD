@@ -15,13 +15,15 @@
  *    — not only the ones in cli mode.
  *
  * Which is why keeping a tool out of the schema is a way to spend fewer tokens
- * and get a clearer error, and is not a control. The control is this module,
+ * and get a clearer error, and is not an authorization check. The policy check is this module,
  * called at the points where those four paths converge: the fleet's IPC
  * dispatch and the agent endpoint. See
  * `docs/design/coordinator-tool-perms.zh-TW.md`.
  *
- * Stage 1 wires the callers and records what they would have decided. Nothing
- * here denies anything yet.
+ * This policy is enforced for the identity resolved by the IPC socket or token.
+ * Same-uid agents with a shell can read a sibling's agent.token or connect to
+ * its channel.sock and assume that identity. A tool profile is policy protection,
+ * not an isolation boundary against those agents; that requires OS isolation.
  */
 import { TOOLS } from "./channel/mcp-tools.js";
 

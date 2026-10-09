@@ -21,6 +21,18 @@ Set `skipPermissions: false` to omit that flag and use Claude Code's own permiss
 
 The per-instance `claude-settings.json` is generated again on startup (including the status line and bypass-warning acceptance when applicable). Do not use edits to that generated file as a persistent security policy.
 
+## Tool profiles and the shared host account
+
+`tool_set` is policy protection for the instance identity resolved by AgEnD. It
+refuses disallowed operations on that identity across MCP, direct IPC and the
+agent HTTP endpoint. It is **not a security boundary against a shell-capable
+agent running under the same uid**. Such an agent can read a sibling's
+`agent.token` or connect to its `channel.sock`, claim the sibling's identity and
+receive that sibling's permissions, including a coordinator's. A `0600` file
+does not distinguish processes belonging to its owner. Per-spawn rotation does
+not change that fact. Treat same-account agents as mutually trusted; use OS
+isolation for agents that must not share authority.
+
 ## IPC socket
 
 The daemon communicates with the AgEnD MCP bridge over `~/.agend/instances/<name>/channel.sock`. AgEnD uses a restrictive umask and attempts to set the socket to `0600`. It creates private instance directories with `0700` and tightens eligible existing directories. There is **no shared-secret handshake**. These filesystem permissions separate Unix users; they do not authenticate or isolate processes running as the same UID, or protect against root. Check warnings when permissions could not be restricted.

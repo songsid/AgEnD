@@ -21,6 +21,16 @@
 
 每個 instance 的 `claude-settings.json` 都會在啟動時重新生成，內容包含狀態列，以及適用時的繞過權限警告確認。不要把手動修改這個生成檔當成持久的安全政策。
 
+## 工具組與共用主機帳號
+
+`tool_set` 是針對 AgEnD 所辨識 instance 身分的政策防護。MCP、直接 IPC
+與 agent HTTP 入口都會拒絕該身分不能使用的操作。它**不是同 uid、具有 shell
+能力的 agent 之間的安全邊界**：這類 agent 能讀取另一個 instance 的
+`agent.token` 或連上它的 `channel.sock`，冒用其身分與工具權限，包括
+coordinator 的權限。`0600` 無法區分檔案擁有者的不同程序；每次 spawn
+換 token 也不會改變這件事。請把同帳號 agent 視為互相信任；需要隔離權限時，
+必須使用作業系統隔離。
+
 ## IPC Socket
 
 Daemon 透過 `~/.agend/instances/<name>/channel.sock` 與 AgEnD MCP bridge 通訊。AgEnD 使用限制性的 umask，並嘗試將 socket 設為 `0600`。私有 instance 目錄以 `0700` 建立，符合條件的既有目錄也會收緊權限。**沒有共享金鑰握手**。這些檔案權限用來區隔 Unix 使用者，無法認證或隔離同 UID 的行程，也無法防範 root。請留意無法限制權限的警告。

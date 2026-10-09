@@ -9,7 +9,10 @@
  * daemon writes a fresh 32-byte token to <instanceDir>/agent.token (mode 0600)
  * on each spawn; agent-cli reads it and sends it in the header. The endpoint
  * verifies the header matches the on-disk token for the claimed instance,
- * preventing a local process from impersonating another instance.
+ * rejecting callers that do not hold that instance's credential. Mode 0600
+ * separates OS users, not same-uid processes: a shell-capable sibling can read
+ * another instance's token and claim its identity. Tool profiles enforce policy
+ * for the resolved identity; they are not a sandbox for mutually untrusted agents.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readFileSync } from "node:fs";

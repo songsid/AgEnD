@@ -10510,15 +10510,16 @@ export class Daemon extends EventEmitter {
     // this file from <instanceDir>/agent.token (mode 0o600) and sends its
     // value in the X-Agend-Instance-Token header; the daemon-side /agent
     // endpoint verifies it matches the on-disk value for the claimed
-    // instance. This prevents other local processes (even those holding
-    // the global web token) from impersonating instances.
+    // instance. A global web token cannot substitute for this credential, but
+    // same-uid shell processes can read sibling tokens. Mode 0600 separates
+    // OS users; it does not isolate mutually untrusted agents on this account.
     const agentTokenPath = join(this.instanceDir, "agent.token");
     const agentToken = randomBytes(32).toString("hex");
     const tokenWrite = writeSecretFile(agentTokenPath, agentToken);
     if (!tokenWrite.ok) {
       // Do not fail the spawn over it — an instance that cannot start is worse
       // than one whose token is readable. But say so, loudly: the whole point of
-      // this token is that other local processes cannot use it.
+      // this permission check separates other OS users, not same-uid processes.
       this.logger.error(
         { path: agentTokenPath, mode: tokenWrite.mode?.toString(8), reason: tokenWrite.reason },
         "Agent token file is not owner-only — other local users can impersonate this instance",
