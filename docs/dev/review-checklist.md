@@ -13,12 +13,12 @@ unrelated behavior or to claim verification that was not performed.
 | 3. Ownership across waits | Capture the owner and its generation, recheck them after every relevant await and immediately before effects, and keep revocation permanent for that operation. | An old pane capture authorizes a key on a replacement tmux, or a connection disappearing and returning with the same id revives an old verification. |
 | 4. One claim per operation | Claim synchronously before the first await in an owner that survives the relevant remount or restart, and retain the claim until the authoritative outcome settles it. | Two same-turn clicks send two prompt answers, or reopening Needs you sends a second acknowledgement before the server removes the item. |
 | 5. Async result ordering | Snapshot the target, body, files and retry key at hand-off, and allow only the current read or operation generation to commit its result. | A held usage response overwrites a newer Refresh, or an avatar selected after a profile POST is sent to the old target. |
-| 6. Time and deadlines | Use wall time for persisted calendar instants and monotonic time for elapsed budgets, recheck deadlines at acceptance and effects, and define rollback and forward-jump behavior. | A timer fires a persisted retry early after a wall-clock rollback, or a late capture is accepted because the budget was checked only when it began. |
+| 6. Time and deadlines | Use wall time for persisted calendar instants and monotonic time for elapsed budgets, recheck deadlines at acceptance and effects, and define rollback and forward-jump behavior. | An already-armed timer fires after a clock rollback while wall time is still before the persisted retry's due time, or a late capture is accepted because the budget was checked only when it began. |
 | 7. Recovery and activation | Serialize changes under a proven owner, retain preimages before writes, and prove the effective loaded target and interpreter before claiming activation or rollback. | A stale-lock reader moves aside a new owner's lock, or a unit file names the new install while a loaded drop-in still starts another package. |
 | 8. Exact dialog grammar | Match the complete current dialog, including ordered choices, footer and anchoring, and recapture under the write lock before automatic keys. | Reading only the suffix numbered 1..N hides an earlier destructive choice, or a quoted trust dialog in scrollback receives Enter. |
 | 9. Authorization and target mapping | Enforce the established capability boundary and own-key membership, and revalidate the server-owned source-to-target mapping at the effect. | An agent widens its own tool set, an inherited `constructor` key is accepted as a configured instance, or a moved topic applies a selector to its former target. |
 | 10. Physical work bounds | Bound queueing, reads and parsing as well as logical promises, keep expensive work off the event loop, and retain reservations until physical work exits. | Racing a worker with a timeout frees its slot while the worker still runs, or a short retained line is counted instead of the megabytes actually read. |
-| 11. Tests that prove the contract | Exercise the real decision path with inert effects, include the failing interleaving and a positive control, and report a guard reversal only when it compiles and fails the intended assertion. | A mock reports success without executing the generated DB probe, or a supposed regression fails with TypeError or finishes before its held proof continuation settles. |
+| 11. Tests that prove the contract | For each added or changed assertion, exercise the real decision path with inert effects and show that breaking the protected behavior compiles and fails that assertion; unchanged tests and docs-only changes need no reversal. | A mock reports success without executing the generated DB probe, or a supposed regression fails with TypeError or finishes before its held proof continuation settles. |
 | 12. Exact evidence and claims | Bind checks to the submitted HEAD, verify the intended hook or branch ran, and limit docs and reports to the behavior and platforms actually observed. | An npm rollback cell passes because fetching failed before the hook, old green CI is cited for a changed HEAD, or docs call every Codex cache write estimated despite measured-write support. |
 
 ## Before sending
@@ -27,10 +27,18 @@ unrelated behavior or to claim verification that was not performed.
   what was carried and what changed.
 - Report the commands and outcomes actually obtained, with failures, skips,
   synthetic fixtures, modeled boundaries and native runs distinguished.
+- Attach focused results and reversal evidence for added or changed assertions;
+  leave the full suite to CI (fleet decisions `4d8dd46e` and `20a704da`).
 - When a test needs process, platform or network effects, establish its private
   files, sockets, environment and inert boundaries before execution; a temporary
   `AGEND_HOME` alone does not isolate a real fleet launch. See
   [test isolation](../development.md#tests).
+- Keep connection details for the real-Mac test host out of the repository and
+  GitHub, including fixtures, commit messages and PR comments; refer to it only
+  as "the real-Mac test host" (fleet decision `ab7d1f94`).
+- PRs do not require macOS CI; changes to launchd, service or install paths need
+  a real-Mac rehearsal note before shipping in a release (fleet decision
+  `c553fd23`).
 - Check user-facing docs against the final code and use the
   [CHANGELOG fragment rules](../development.md#changelog-fragments) for changes
   users will notice.
