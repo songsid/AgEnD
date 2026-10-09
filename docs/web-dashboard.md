@@ -6,7 +6,7 @@ AgEnD's web dashboard is three panels on one small web server that the fleet run
 
 | Panel | What it is for |
 |---|---|
-| **`/ui`**: the app | Talk to your agents (chat, files, Stop reply), see who is working, and manage instances, tasks, schedules and teams. Each chat has its own address, `/ui/chat/<name>`; Fleet is `/ui/fleet` (`/ui/fleet/schedules`, `…/teams`, `…/config`); **Needs you** is `/ui/needs` |
+| **`/ui`**: the app | Talk to your agents (chat, files, Stop reply), see who is working, and manage instances, tasks, schedules and teams. Each chat has its own address, `/ui/chat/<name>`; Fleet is `/ui/fleet` (`/ui/fleet/schedules`, `…/teams`, `…/org`, `…/cache`, `…/config`); **Needs you** is `/ui/needs` |
 | **`/view`** | A read-mostly view of every agent: live terminal, roster, usage, and editing each agent's profile and avatar |
 | **`/settings`** | Fleet settings — agents, connections, ClassicBot, defaults, `fleet.yaml` — with apply and restart. Each section has its own address: `/settings/bots`, `…/classic`, `…/general`, `…/advanced` (`/settings` is Agents) |
 
@@ -152,6 +152,20 @@ Type `/` at the start of the message box for the instance's own chat commands, t
 - **Quick actions:**
   - The model and effort in the chat's header open their lists.
   - Once the instance's context is 70% used, **Compact** and **Clear…** appear above the message box.
+
+## Fleet (`/ui/fleet`)
+The fleet's shared work and its overview, one tab each. Every tab has its own address.
+- **Tasks**, **Schedules** and **Teams**: the task board, cron schedules and teams. Create, claim and delete them here.
+- **Org chart** (`/ui/fleet/org`): General at the top, then the teams from `fleet.yaml`, then the instances in no team.
+  - Each instance shows its display name, what it does, its backend and model, and its live state (working, idle, needs you, looks stuck, paused, stopped or crashed).
+  - Each instance also links to its Discord thread or Telegram topic and to its chat.
+  - The chart is read-only: you act in Discord, or from the chat.
+- **Cache** (`/ui/fleet/cache`): how often each Claude Code and Codex instance's prompt cache expires between requests over 24 hours, 7 days or 30 days, what rewriting it costs, and whether a keep-warm ping would pay off.
+  - It reads the transcripts on the machine, never a vendor API, and keeps a small summary per instance (`cache-ledger.json`).
+  - Costs are list prices from one table; the date they were checked is shown.
+  - Where a transcript records cache writes, those are used. Where it does not (some Codex sessions), the rewrite is estimated from the uncached input, and the numbers are marked as estimates; so are they when the cache lifetime had to be assumed.
+  - Kiro and other CLIs show "not available".
+- **Config**: the fleet's channel, access and defaults.
 
 ## Needs you (`/ui/needs`)
 

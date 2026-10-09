@@ -581,7 +581,7 @@ interface PaneEvidence {
    * screen, so the signature cannot be seen in the box. One more than before our paste is our paste, still in the box.
    */
   collapsedPastes: number;
-  /** Whether this snapshot had an input box the backend could read (only meaningful for backends that read one). */
+  /** Whether this snapshot had an input box/prompt region the backend could read. */
   inputReadable: boolean;
   /** The composer's interrupt mode on this snapshot (CliBackend.readSteerComposer, #1405); null when not readable. */
   steerComposer: SteerComposerMode | null;
@@ -7922,6 +7922,15 @@ export class Daemon extends EventEmitter {
     durableAttempt?: DurableDeliveryAttempt,
   ): Promise<boolean> {
     if (!(await this.waitForInputTransientToClear(phase))) return false;
+    return this.sendDeliveryEnterAfterAvailability(phase, stillCurrent, durableAttempt);
+  }
+
+  /** Write half only: callers must finish the availability wait before any final recovery ownership proof. */
+  private async sendDeliveryEnterAfterAvailability(
+    phase: string,
+    stillCurrent?: () => boolean,
+    durableAttempt?: DurableDeliveryAttempt,
+  ): Promise<boolean> {
     // A recovery Enter may have waited for a transient while cancel or spawn
     // replaced the delivery. Check at the last point before the tmux write.
     if (this.deliveryWritesStopping || (stillCurrent && !stillCurrent())) return false;
@@ -8703,12 +8712,12 @@ export class Daemon extends EventEmitter {
     //    read as ours, we would press Enter to "recover" it, and the turn IT
     //    starts would confirm a message that never reached the pane.
     //
-    //    For a structural box reader (claude-code), "did not already show it" needs a baseline whose box was READ: an
-    //    unreadable one (a dialog, a redraw the reader refused) says nothing about what the box held, and counting it as
-    //    empty would claim an older message as ours and press Enter on it (#1353 review). The prompt-row backends (codex,
-    //    kiro) keep their existing attribution.
+    //    Structured evidence (Claude's box and Codex's current input/footer pair) requires both snapshots to be READ.
+    //    An unreadable baseline says nothing about what the box held; treating it as empty would claim an older draft
+    //    as ours and press Enter on it (#1353/#1359). Codex's native warning viewer can ignore the paste and first Enter,
+    //    then reveal an older draft when the user dismisses it. Row-only backends retain their existing attribution.
     const attributable = baseline != null
-      && (!this.backend?.readInputRow || (baseline.inputReadable && after.inputReadable));
+      && (!this.structuredInputEvidence() || (baseline.inputReadable && after.inputReadable));
     if (after.strandedInput && (signature.unique || (attributable && baseline!.strandedInput === false))) return "stranded";
     //    A paste the CLI shows collapsed carries no signature at all. One the box did not hold before we pasted is
     //    ours, and it is still in the box — whatever echo or output is on screen (#1200).
@@ -8941,11 +8950,28 @@ export class Daemon extends EventEmitter {
       return true; // best effort, exactly as before — nothing here is verified
     }
     if (proof !== "submitted") {
-      // A bare Enter is a no-op at an empty prompt, so this is safe even if the
-      // first one did land; when the text is still in the input row it is the
-      // submit it never got. Re-pasting would append the text to itself.
       await new Promise(r => setTimeout(r, NORMAL_ENTER_SETTLE_MS));
-      if (!(await this.sendDeliveryEnter(`${label}-retry`, current))) return false;
+      if (current && !current()) return false;
+      const retryPhase = `${label}-retry`;
+      if (this.structuredInputEvidence()) {
+        // Both the retry delay and the Enter availability wait may outlive the
+        // paste. Complete those waits BEFORE the last ownership/positive proof.
+        if (!(await this.waitForInputTransientToClear(retryPhase))) return false;
+        if (this.deliveryWritesStopping || (current && !current())) return false;
+        proof = await this.confirmSubmitted(signature, baseline);
+        if (this.deliveryWritesStopping || (current && !current())) return false;
+        if (proof === "submitted") return true;
+        if (proof !== "stranded") {
+          this.logger.warn({ label, proof }, "System paste recovery input could not be attributed");
+          return false;
+        }
+        // No further availability wait may invalidate this proof. The write
+        // half retains the same stopping/admission fence immediately before IPC.
+        if (!(await this.sendDeliveryEnterAfterAvailability(retryPhase, current))) return false;
+      } else {
+        // Row-only backends retain their ordinary availability wait and retry.
+        if (!(await this.sendDeliveryEnter(retryPhase, current))) return false;
+      }
       proof = await this.confirmSubmitted(signature, baseline);
       if (current && !current()) return false;
     }

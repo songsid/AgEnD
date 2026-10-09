@@ -206,8 +206,13 @@ describe("runWarmupInstructionNotice (through the real call site)", () => {
     dirs.push(codexDir);
     daemon["backend"] = new CodexBackend(codexDir);
     // Codex's input row still holds the notice: the Enter never submitted it.
-    daemon["tmux"]!.capturePane = async () =>
-      `› ${String(pasteText.mock.calls[0]?.[0] ?? "")}\n  Context 63% left`;
+    // The real idle composer includes its placeholder. A bare `›` is also
+    // native for a whitespace-only draft, but our reader cannot read that pair
+    // and it must not authorize a body-derived recovery Enter (#1359).
+    const nativeIdle = readFileSync(new URL("./fixtures/codex-audit-0162/v0160/idle.pane.txt", import.meta.url), "utf8");
+    daemon["tmux"]!.capturePane = async () => pasteText.mock.calls.length === 0
+      ? nativeIdle
+      : `› ${String(pasteText.mock.calls[0]?.[0] ?? "")}\n  Context 63% left`;
 
     await daemon["runWarmupInstructionNotice"]();
 

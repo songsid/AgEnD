@@ -140,6 +140,27 @@ describe("2. a delete that finishes late never takes over the page", () => {
   });
 });
 
+describe("alpha.2 sweep: a Fleet read the server refuses is an error, not an empty list", () => {
+  it("/ui/tasks answering 500 { error } shows the error state with Try again — not 'No tasks yet'", async () => {
+    handler = (path) => (path === "/ui/tasks" ? { __status: 500, error: "boom" } : {});
+    await p.mount(h(fleet.FleetPanel, { route: { panel: "fleet", tab: "tasks" }, navKey: "fleet:tasks|err|en" }));
+    await settle(6);
+    expect(!!p.root.querySelector(".error-state"), "the error state").toBe(true);
+    expect(!!p.root.querySelector(".empty"), "not the empty state").toBe(false);
+    expect(!!p.root.querySelector(".error-state button"), "with Try again").toBe(true);
+    handler = (path) => (path === "/ui/tasks" ? { tasks: [] } : {});
+    await p.mount(h(fleet.FleetPanel, { route: { panel: "fleet", tab: "tasks" }, navKey: "fleet:tasks|ok|en" }));
+    await settle(6);
+    expect(!!p.root.querySelector(".empty"), "an empty list is the empty state").toBe(true);
+  });
+  it("one of a thing is singular: '1 task', not '1 tasks'", async () => {
+    handler = (path) => (path === "/ui/tasks" ? { tasks: [{ id: "t1", title: "One", status: "open" }] } : {});
+    await p.mount(h(fleet.FleetPanel, { route: { panel: "fleet", tab: "tasks" }, navKey: "fleet:tasks|one|en" }));
+    await settle(6);
+    expect(p.root.querySelector(".list-head span").textContent).toBe("1 task");
+  });
+});
+
 describe("3. a Fleet refresh keeps an open form", () => {
   const TASKS = { tasks: [{ id: "t1", title: "One", status: "open" }] };
   it("Claim resolves while New task is open with a draft: the same dialog, the same draft", async () => {
