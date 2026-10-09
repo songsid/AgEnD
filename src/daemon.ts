@@ -8547,11 +8547,11 @@ export class Daemon extends EventEmitter {
     allowRecoveryEnter = true,
   ): Promise<boolean> {
     // The window this confirmation is about (#1490). The waits below can span a recoverWindow, which replaces
-    // this.tmux; a recovery Enter or a proof taken after that would be about another window. The fence goes down to
-    // the write (sendDeliveryEnterAfterAvailability asks it last, right before the key), and every proof after a wait
-    // asks it first.
-    const generation = this.spawnGeneration;
-    const current = () => this.spawnGeneration === generation && this.tmux?.getWindowId() === windowId;
+    // this.tmux with a new TmuxManager, so its identity (with the spawn generation) is the fence. A recovery Enter or
+    // a proof taken after that would be about another window: the fence goes down to the write
+    // (sendDeliveryEnterAfterAvailability asks it last, right before the key), and every proof after a wait asks it.
+    const generation = this.spawnGeneration, tmux = this.tmux;
+    const current = () => this.spawnGeneration === generation && this.tmux === tmux;
     if (!this.canProveSubmission()) {
       let busy = await this.confirmBusyAfterEnter(windowId, enterAt);
       if (!busy) {
