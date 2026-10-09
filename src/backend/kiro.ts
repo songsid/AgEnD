@@ -183,23 +183,77 @@ function kiroModelPickerAtTail(pane: string): boolean {
   return tail.some(line => /^\s*[>❯›]\s*\*?\s*\S/.test(line));
 }
 
-/** Never navigate a stale trust phrase in scrollback or an unknown menu. */
-function kiroTrustDialogActive(pane: string): boolean {
-  if (kiroModelPickerAtTail(pane)) return false;
-  const lines = pane.replace(/\r/g, "").split("\n");
-  let selected = -1;
-  for (let index = lines.length - 1; index >= 0; index--) {
-    if (/^\s*[❯›]\s*No, exit\s*$/.test(lines[index])) {
-      selected = index;
-      break;
-    }
+const KIRO_TRUST_HEADER = "Warning: Kiro is running in trust all tools mode";
+const KIRO_TRUST_PATTERN = /^\s*(?:Warning: Kiro is running in trust all tools mode|Do you trust the files\?)\s*$/m;
+const KIRO_TRUST_OPTIONS = ["No, exit", "Yes, I accept", "Yes, and don't ask again"] as const;
+
+/**
+ * #849A: only the captured 2.27.1 TUI trust-all-tools layout can receive a
+ * key. Unknown layouts remain held. A live composer or model picker below
+ * the header makes it history, not a consent request. The old synthetic
+ * workspace-trust shape is observable but never auto-accepted.
+ */
+export function kiroTrustPromptState(pane: string): KiroLaunchPromptState {
+  const none: KiroLaunchPromptState = { active: false, cursor: null };
+  if (kiroModelPickerAtTail(pane)) return none;
+  const rows = pane.replace(/\r/g, "").split("\n").map(row => row.trimEnd());
+  let header = -1;
+  for (let index = rows.length - 1; index >= 0; index--) {
+    if (KIRO_TRUST_PATTERN.test(rows[index])) { header = index; break; }
   }
-  if (selected < 0) return false;
-  const yes = lines.findIndex((line, index) => index > selected && index <= selected + 3
-    && /^\s*Yes, I accept\s*$/.test(line));
-  if (yes < 0) return false;
-  const afterChoices = lines.slice(yes + 1).filter(line => line.trim());
-  return afterChoices.every(line => /^\s*(?:enter|esc|press|use)\b/i.test(line));
+  if (header < 0) return none;
+  const body = rows.slice(header + 1);
+  if (body.some(row => KIRO_COMPOSER_ROW.test(row))) return none;
+  const choice = (row: string, label: string) => {
+    if (row.trim() === label) return { glyph: null };
+    const hit = /^\s*(\S)\s+(.+)$/.exec(row);
+    return hit?.[2] === label ? { glyph: hit[1] } : null;
+  };
+  const held: KiroLaunchPromptState = { active: true, cursor: null };
+  if (rows[header].trim() !== KIRO_TRUST_HEADER) {
+    // A question alone is not permission evidence. A structurally selected
+    // two-choice workspace prompt is held for a human, not navigated.
+    return body.some(row => choice(row, KIRO_TRUST_OPTIONS[0]))
+      && body.some(row => choice(row, KIRO_TRUST_OPTIONS[1])) ? held : none;
+  }
+  const first = body.findIndex(row => choice(row, KIRO_TRUST_OPTIONS[0]) !== null);
+  if (first < 0) return held;
+  if (body.slice(0, first).some(row => KIRO_TRUST_OPTIONS.some(label => choice(row, label)))) return held;
+  const options = body.slice(first).filter(row => row.trim());
+  // Exact labels/order, divider and key-hint tail from the native fixture.
+  // No inferred two-option layout, added option, or arbitrary output suffix.
+  if (options.length !== 5 || !/^─{3,}$/.test(options[3].trim())
+    || !/^esc to cancel\s*·\s*↑↓ to navigate\s*·\s*↵ to select$/.test(options[4].trim())) return held;
+  const hits = KIRO_TRUST_OPTIONS.map((label, index) => choice(options[index], label));
+  if (hits.some(hit => !hit)) return held;
+  const marked = hits.flatMap((hit, index) => hit!.glyph === null ? [] : [index]);
+  if (marked.length !== 1 || !KIRO_PROMPT_CURSOR.test(hits[marked[0]]!.glyph!)) return held;
+  return { active: true, cursor: marked[0] };
+}
+
+function kiroTrustPromptDialogs(trustAll: boolean): RuntimeDialog[] {
+  const guarded = { pattern: KIRO_TRUST_PATTERN, blocksDelivery: true, inputBlocked: true, verifyAfterKeys: true, oncePerLaunch: true } as const;
+  const at = (pane: string, cursor: number) => {
+    const state = kiroTrustPromptState(pane);
+    return trustAll && state.active && state.cursor === cursor;
+  };
+  return [
+    {
+      ...guarded, keys: ["Down"], autoResolutionKey: "kiro-trust-all-tools-step",
+      description: "Kiro trust confirmation — one step off 'No, exit'",
+      isActive: pane => at(pane, 0),
+    },
+    {
+      ...guarded, keys: ["Enter"], autoResolutionKey: "kiro-trust-all-tools-confirm",
+      description: "Kiro trust confirmation — confirm per-session 'Yes, I accept'",
+      isActive: pane => at(pane, 1),
+    },
+    {
+      pattern: KIRO_TRUST_PATTERN, keys: [], holdOnly: true, blocksDelivery: true, inputBlocked: true,
+      description: "Kiro trust confirmation — unsafe or unverified choice; holding for a human",
+      isActive: pane => kiroTrustPromptState(pane).active,
+    },
+  ];
 }
 
 /**
@@ -324,8 +378,8 @@ export function kiroLaunchPromptState(pane: string, spec: KiroLaunchPromptSpec):
   return { active: true, cursor: marked[0] };
 }
 
-/** kiro's input row: legacy `12% !>` / `[agent] 3% λ !>`, or a bare `>`/`❯`. */
-const KIRO_COMPOSER_ROW = /^\s*(?:\[[^\]]*\]\s*)?\d+%\s*\S{0,2}\s*!?\s*[❯>]|^\s*[!❯>]\s*$/;
+/** Kiro's legacy input row, or the archived TUI's column-zero `›` composer (including typed text). */
+const KIRO_COMPOSER_ROW = /^\s*(?:\[[^\]]*\]\s*)?\d+%\s*\S{0,2}\s*!?\s*[❯>]|^\s*[!❯>]\s*$|^›(?:[ \t]|$)/;
 
 /**
  * Launch prompts that would move an instance off its engine (#1109). Text
@@ -1437,13 +1491,7 @@ export class KiroBackend implements CliBackend {
   getStartupDialogs(): StartupDialog[] {
     return [
       ...KIRO_ENGINE_PROMPT_DIALOGS,
-      {
-        // Kiro CLI --trust-all-tools now shows a confirmation prompt.
-        // Default cursor is on "No, exit" — press Down then Enter to select "Yes, I accept".
-        pattern: /[❯›]\s*No, exit/m,
-        keys: ["Down", "Enter"],
-        description: "Kiro --trust-all-tools confirmation — navigate to 'Yes, I accept'",
-      },
+      ...kiroTrustPromptDialogs(this.activeTrustAll),
     ];
   }
 
@@ -1476,13 +1524,7 @@ export class KiroBackend implements CliBackend {
         inputBlocked: true,
         isActive: kiroModelPickerAtTail,
       },
-      {
-        // Same trust prompt can also appear mid-session if Kiro re-validates.
-        pattern: /Do you trust the files|Yes, I accept[\s\S]*No, exit/m,
-        keys: ["Down", "Enter"],
-        description: "Kiro trust confirmation dialog — auto-accept",
-        isActive: kiroTrustDialogActive,
-      },
+      ...kiroTrustPromptDialogs(this.activeTrustAll),
     ];
   }
 

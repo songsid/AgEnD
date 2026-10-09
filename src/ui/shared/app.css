@@ -674,3 +674,39 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 @media (max-width: 479px) {
   .p-fleet .seg-item:not(.active) > span { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 }
+
+/* ── Cache analysis (#1468): Fleet → Cache. Bars are SVG attributes; nothing here is an inline style. ── */
+.ch { display: flex; flex-direction: column; gap: var(--s-4); }
+.ch-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s-2) var(--s-4); margin-top: var(--s-2); }
+.ch-scan { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); font-size: var(--fs-xs); color: var(--text-2); }
+.ch-fleet { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-3); }
+.ch-notes { display: flex; flex-direction: column; gap: var(--s-1); font-size: var(--fs-xs); }
+.ch-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr)); gap: var(--s-4); align-items: start; }
+.ch-card { display: flex; flex-direction: column; gap: var(--s-3); min-width: 0; padding: var(--s-4); border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--bg); }
+.ch-card.on { border-color: var(--ok); }
+.ch-head { display: flex; align-items: flex-start; gap: var(--s-3); }
+.ch-id { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ch-id h3 { font-size: var(--fs-sm); font-weight: var(--fw-semibold); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ch-models { font-size: var(--fs-xs); color: var(--text-3); overflow-wrap: anywhere; }
+.ch-rec { flex-shrink: 0; font-size: 11px; line-height: 20px; padding: 0 var(--s-2); border-radius: var(--r-full); border: 1px solid var(--border); color: var(--text-2); white-space: nowrap; }
+.ch-rec.on { color: var(--ok); border-color: var(--ok); font-weight: var(--fw-semibold); }
+.ch-reason { font-size: var(--fs-sm); color: var(--text-2); overflow-wrap: anywhere; }
+.ch-tag { display: inline-block; font-size: 11px; line-height: 18px; padding: 0 var(--s-2); border-radius: var(--r-full); background: var(--surface-2); color: var(--text-2); }
+.ch-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s-2) var(--s-3); }
+.ch-metric { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ch-metric dt { font-size: 11px; color: var(--text-3); line-height: var(--lh-xs); }
+.ch-metric dd { margin: 0; font-size: var(--fs-md); font-weight: var(--fw-semibold); font-variant-numeric: tabular-nums; display: flex; flex-direction: column; }
+.ch-sub { font-size: 11px; font-weight: var(--fw-regular); color: var(--text-3); }
+.ch-fleet .ch-metric dd { font-size: var(--fs-lg); }
+.ch-hist { display: block; width: 100%; height: 96px; color: var(--text-2); }
+.ch-col rect { fill: var(--accent); opacity: 0.55; }
+.ch-col.past rect { fill: var(--warn); opacity: 0.85; }
+.ch-n, .ch-l { font-size: 9px; fill: currentColor; }
+.ch-ttl line { stroke: var(--danger); stroke-width: 1.5; stroke-dasharray: 3 3; }
+.ch-ttl text { font-size: 9px; fill: var(--danger); }
+.ch-rest .row-item { font-size: var(--fs-xs); }
+@media (max-width: 899px) {
+  .ch-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ch-fleet { grid-template-columns: minmax(0, 1fr); }
+  .ch-bar .btn { min-height: var(--tap); }
+}

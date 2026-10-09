@@ -1,7 +1,7 @@
 // #1408 §3: the app's routes on the client. The same table as the server's classifier (src/web-shell-routes.ts;
 // a test runs both over one list of cases). Pure: no DOM, no history.
 
-export const FLEET_TABS = ["tasks", "schedules", "teams", "org", "config"];
+export const FLEET_TABS = ["tasks", "schedules", "teams", "org", "cache", "config"];
 export const SETTINGS_SECTIONS = ["agents", "bots", "classic", "general", "advanced"];
 const MAX_INSTANCE_NAME = 128;
 const PATH_SEPARATOR_OR_CONTROL = /[/\\\u0000-\u001f\u007f]/;

@@ -32,6 +32,9 @@ const BLOCKED = `${ERROR}\n\n${PICKER}\n`;
 // "2" occupies its own terminal line.
 const NARROW_PICKER = readFileSync(new URL("./fixtures/kiro-model-picker-80.txt", import.meta.url), "utf8");
 const NARROW_BLOCKED = `${ERROR}\n\n${NARROW_PICKER}`;
+const NATIVE_TRUST = readFileSync(new URL("./fixtures/kiro-steer-1405/2.27.1-tui-trust-all-tools.pane.txt", import.meta.url), "utf8");
+// Only a cursor edit of the native frame, not a new CLI capture.
+const ACCEPT_TRUST = NATIVE_TRUST.replace("❯ No, exit", "  No, exit").replace(/^([ ]*)Yes, I accept$/m, "$1❯ Yes, I accept");
 const dirs: string[] = [];
 // Only native pure predicates are needed; the constructor probes the host CLI.
 const backend = Object.assign(Object.create(KiroBackend.prototype), { activeUi: "legacy", activeTrustAll: true }) as KiroBackend;
@@ -58,7 +61,7 @@ function makeDaemon(pane = BLOCKED) {
   const tmux = {
     capturePane: vi.fn(async () => screen.pane),
     isWindowAlive: vi.fn(async () => true),
-    sendSpecialKey: vi.fn(async () => true),
+    sendSpecialKey: vi.fn(async (_key: string) => true),
     pasteText: vi.fn(async () => true),
   };
   daemon.tmux = tmux;
@@ -142,20 +145,30 @@ describe("Kiro model-unavailable picker", () => {
     }
   });
 
-  it("keeps auto-accept limited to a selected, current trust dialog", () => {
+  it("holds an unverified workspace trust layout, ignoring its stale copies", () => {
     const trust = backend.getRuntimeDialogs()
-      .find(candidate => candidate.description.includes("trust confirmation"));
+      .find(candidate => candidate.description.includes("trust confirmation") && candidate.holdOnly);
+    expect(trust?.keys).toEqual([]);
+    expect(trust?.blocksDelivery).toBe(true);
     expect(trust?.isActive?.("Do you trust the files?\n❯ No, exit\n  Yes, I accept\n")).toBe(true);
     expect(trust?.isActive?.("Do you trust the files?\n❯ No, exit\n  Yes, I accept\n\n2% λ > ready")).toBe(false);
     expect(trust?.isActive?.(`Do you trust the files?\n❯ No, exit\n  Yes, I accept\n\n${NARROW_PICKER}`)).toBe(false);
   });
 
-  it("still navigates a current canonical trust dialog", async () => {
+  it("navigates the native trust frame only after the cursor actually moves", async () => {
     vi.useFakeTimers();
-    const { daemon, tmux } = makeDaemon("Do you trust the files?\n❯ No, exit\n  Yes, I accept\n");
+    const { daemon, screen, tmux } = makeDaemon(NATIVE_TRUST);
+    tmux.sendSpecialKey.mockImplementation(async (key: string) => {
+      if (key === "Down" && screen.pane === NATIVE_TRUST) screen.pane = ACCEPT_TRUST;
+      else if (key === "Enter" && screen.pane === ACCEPT_TRUST) screen.pane = "2% λ > ready";
+      return true;
+    });
     daemon.startErrorMonitor();
     try {
       await vi.advanceTimersByTimeAsync(5_500);
+      expect(tmux.sendSpecialKey).toHaveBeenCalledTimes(1);
+      expect(tmux.sendSpecialKey).toHaveBeenNthCalledWith(1, "Down");
+      await vi.advanceTimersByTimeAsync(5_100);
       expect(tmux.sendSpecialKey).toHaveBeenCalledTimes(2);
       expect(tmux.sendSpecialKey).toHaveBeenNthCalledWith(1, "Down");
       expect(tmux.sendSpecialKey).toHaveBeenNthCalledWith(2, "Enter");
