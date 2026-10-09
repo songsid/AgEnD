@@ -10,6 +10,8 @@ import { permitWebContinuation } from "./web-continuation.js";
 import { formatWebChannelEcho } from "./web-channel-echo.js";
 import type { SendOpts } from "./channel/types.js";
 import { t } from "./locale.js";
+import { isSafeInstanceName } from "./web-shell-routes.js";
+import { MAX_COMMAND_ARGS } from "./web-commands.js";
 import { sendPanelHtml } from "./web-host-guard.js";
 import { shellRoute } from "./web-shell-routes.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -200,6 +202,8 @@ export interface WebApiContext {
   orgChart?(): unknown;
   /** #1468: the prompt-cache expiry analysis for a window ("24h" | "7d" | "30d"); absent: not offered. */
   cacheReport?(window: string): Promise<unknown>;
+  /** #1269: an instance's chat command from the web chat (web-commands.ts); absent: not offered. */
+  webCommand?(input: { instance: string; command: string; args?: string; confirm?: string }, opts: { publicLink: boolean }): Promise<{ status: number; body: unknown }>;
   /** #1386: the web's Acknowledge of a delivery item; `principal` is "web:<session handle>" or "cli". */
   acknowledgeNeedsItem?(id: string, principal: string): { status: number; message: string };
   /** Answer one of them, exactly as a click on its platform button would. */
@@ -511,6 +515,30 @@ export function handleWebRequest(
     })().catch(err => {
       ctx.logger.error({ err: (err as Error).message }, "Needs you acknowledge failed");
       try { json(res, 500, { error: "Acknowledge failed" }); } catch { /* already answered */ }
+    });
+    return true;
+  }
+
+  // #1269: an instance's chat command (/ctx, /compact, /clear, /model, …) — a session write (CSRF, checked by the
+  // gate), run through the platforms' own handlers and command table. The public link is told it is one (/save is
+  // refused there).
+  if (method === "POST" && path === "/ui/command") {
+    if (!ctx.webCommand) { json(res, 404, { error: "Not available" }); return true; }
+    const run = ctx.webCommand.bind(ctx);
+    (async () => {
+      let body: Record<string, unknown>;
+      try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
+      if (!permitWebContinuation(req, res, ctx)) return;
+      const str = (v: unknown, max: number): string | undefined => (typeof v === "string" && v.length <= max ? v : undefined);
+      const instance = str(body?.instance, 128), command = str(body?.command, 32);
+      if (!instance || !isSafeInstanceName(instance) || !command) { json(res, 400, { error: "instance and command required" }); return; }
+      if (body.args !== undefined && str(body.args, MAX_COMMAND_ARGS) === undefined) { json(res, 400, { error: "args too long" }); return; }
+      if (body.confirm !== undefined && !(typeof body.confirm === "string" && /^[0-9a-f]{32}$/.test(body.confirm))) { json(res, 400, { error: "invalid confirmation" }); return; }
+      const r = await run({ instance, command, args: str(body.args, MAX_COMMAND_ARGS), confirm: body.confirm as string | undefined }, { publicLink: !!gatewayRequestContext(req) });
+      json(res, r.status, r.body);
+    })().catch(err => {
+      ctx.logger.error({ err: (err as Error).message }, "Web command failed");
+      try { json(res, 500, { error: "Command failed" }); } catch { /* already answered */ }
     });
     return true;
   }
@@ -967,6 +995,14 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       }
       // The same tags and meta a Telegram photo/document produces, so the agent needs nothing new.
       const delivery = attachmentDelivery(typed, files);
+      // #1269: `/raw ` is pasted into the CLI with no [user:] envelope (the daemon's own check, on this exact text).
+      // A signed-in local session may do that, as a fleet admin on the platform may; the public link — the outward-
+      // facing surface — may not.
+      if (gatewayRequestContext(req) && delivery.text.startsWith("/raw ")) {
+        ctx.webFiles?.release(files);
+        json(res, 403, { error: t("web.raw_public_refused") });
+        return;
+      }
       const message = typed;
       const ts = new Date().toISOString();
       // The id the agent is given, and the one its delivery reports come back under: the page's ticks.

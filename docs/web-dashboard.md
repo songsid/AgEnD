@@ -128,9 +128,30 @@ While the open chat's agent is working, a line above the composer says so, and *
 ### Answering the fleet's prompts
 When an instance looks hung, exits on its own, or is stuck on an interactive prompt, the buttons Telegram/Discord show also appear in that instance's chat: *Force restart* / *Keep waiting*, *Restart* / *Ignore*, *Ask General to help* / *I'll handle it myself*.
 - It is the **same prompt**: the first answer counts, from either place. The other side's buttons then show the outcome, and the prompt expires everywhere at once.
-- Only these instance-health prompts come to the web. A `/clear` confirmation, login, ClassicBot approvals, tips and the `/model` / `/effort` menus stay where they were asked.
+- Only these instance-health prompts come to the web. A `/clear` confirmation, login, ClassicBot approvals, tips and the `/model` / `/effort` menus stay where they were asked. The web chat runs its own `/clear`, `/model` and `/effort` (below).
 - A prompt raised while the page was not connected appears as soon as it reconnects. One answered elsewhere meanwhile shows as answered.
 - **No chat platform?** On a dashboard-only fleet these prompts are asked here, in the instance's chat. An interactive prompt's *Ask General to help* asks your General instance to look at the terminal, so that one is offered only when the fleet has a General.
+
+### Commands and quick actions
+Type `/` at the start of the message box for the instance's own chat commands, the same ones its Telegram/Discord topic accepts. The same handlers run them, under the same rules.
+- **The palette:** it filters as you type. ↑/↓ moves, **Tab** completes, **Enter** runs, **Esc** closes it.
+- **Commands:**
+  - `/ctx`: context use, model and effort.
+  - `/compact [instructions]`
+  - `/clear`: asks first.
+  - `/model [name]` and `/effort [level]`: with nothing after them, the list to choose from.
+  - `/cancel`
+  - `/btw <question>`
+  - `/steer <text>`
+  - `/pause` and `/wake`
+  - `/save <file>`
+- **Where the answer shows:** above the message box.
+- **Not a command:** anything else starting with `/` is sent as an ordinary message, as before. So is a line typed with a file waiting beside it.
+- **Fleet-wide commands** (`/status`, `/restart`, `/update`, `/login`, …) stay in General.
+- **`/raw`** is not offered. Over the temporary public link a message starting with `/raw ` is refused, and so is `/save`.
+- **Quick actions:**
+  - The model and effort in the chat's header open their lists.
+  - Once the instance's context is 70% used, **Compact** and **Clear…** appear above the message box.
 
 ## Needs you (`/ui/needs`)
 
